@@ -27,6 +27,10 @@ class DraftBatch:
     tree_parents: tuple[int, ...] = ()
     active_mask: tuple[bool, ...] = ()
     mode: str = "verify_chain"
+    cycle_id: int = 0
+    resident_slots: tuple[int, ...] = ()
+    candidate_ids: tuple[int, ...] = ()
+    provider_metadata: tuple[tuple[str, int | str], ...] = ()
 
     def __post_init__(self) -> None:
         rows = len(self.candidate_tokens)
@@ -41,6 +45,26 @@ class DraftBatch:
             raise ValueError("tree_parents must be empty or one entry per row")
         if self.active_mask and len(self.active_mask) != rows:
             raise ValueError("active_mask must be empty or one entry per row")
+        if self.resident_slots and len(self.resident_slots) != rows:
+            raise ValueError("resident_slots must be empty or one entry per row")
+        if self.candidate_ids and len(self.candidate_ids) != rows:
+            raise ValueError("candidate_ids must be empty or one entry per row")
+        if int(self.cycle_id) < 0:
+            raise ValueError("cycle_id must be non-negative")
+        if any(slot < 0 for slot in self.resident_slots):
+            raise ValueError("resident_slots must be non-negative")
+        if any(candidate_id < 0 for candidate_id in self.candidate_ids):
+            raise ValueError("candidate_ids must be non-negative")
+        metadata = tuple((str(key), value) for key, value in self.provider_metadata)
+        keys = tuple(key for key, _value in metadata)
+        if any(not key or key != key.strip() for key in keys):
+            raise ValueError("provider metadata keys must be non-empty trimmed strings")
+        if len(keys) != len(set(keys)):
+            raise ValueError("provider metadata keys must be unique")
+        if any(not isinstance(value, (int, str)) for _key, value in metadata):
+            raise TypeError("provider metadata values must be int or str")
+        object.__setattr__(self, "cycle_id", int(self.cycle_id))
+        object.__setattr__(self, "provider_metadata", metadata)
         known = set(self.request_ids)
         if any(request_id not in known for request_id in self.row_to_request):
             raise ValueError("row_to_request contains request id not present in request_ids")
@@ -60,6 +84,15 @@ class DraftBatch:
     @property
     def kind(self) -> str:
         return self.mode
+
+    @property
+    def verifier_request_ids(self) -> tuple[int, ...]:
+        """One explicit request owner per flattened verifier candidate row."""
+
+        return self.row_to_request
+
+    def provider_metadata_dict(self) -> dict[str, int | str]:
+        return dict(self.provider_metadata)
 
 
 @dataclass(frozen=True, slots=True)
@@ -556,6 +589,11 @@ class AcceptResult:
     transaction_id: int | None = None
     selected_candidate_rows: tuple[int | None, ...] | None = None
     next_tokens: tuple[int | None, ...] | None = None
+    correction_or_bonus_tokens: tuple[int | None, ...] | None = None
+    visible_token_ranges: tuple[tuple[int, int], ...] | None = None
+    target_cursor_deltas: tuple[int, ...] | None = None
+    provider_cursor_deltas: tuple[int, ...] | None = None
+    finish_reasons: tuple[str | None, ...] | None = None
 
     def __post_init__(self) -> None:
         if not self.request_ids:
@@ -573,6 +611,37 @@ class AcceptResult:
                 raise ValueError("next_tokens must align with request_ids")
             if any(token is not None and token < 0 for token in self.next_tokens):
                 raise ValueError("next_tokens must be non-negative")
+        optional_rows = (
+            ("correction_or_bonus_tokens", self.correction_or_bonus_tokens),
+            ("visible_token_ranges", self.visible_token_ranges),
+            ("target_cursor_deltas", self.target_cursor_deltas),
+            ("provider_cursor_deltas", self.provider_cursor_deltas),
+            ("finish_reasons", self.finish_reasons),
+        )
+        for label, values in optional_rows:
+            if values is not None and len(values) != len(self.request_ids):
+                raise ValueError(f"{label} must align with request_ids")
+        if self.correction_or_bonus_tokens is not None and any(
+            token is not None and token < 0 for token in self.correction_or_bonus_tokens
+        ):
+            raise ValueError("correction_or_bonus_tokens must be non-negative")
+        if self.visible_token_ranges is not None and any(
+            start < 0 or end < start for start, end in self.visible_token_ranges
+        ):
+            raise ValueError("visible_token_ranges must be non-negative ordered ranges")
+        if self.target_cursor_deltas is not None and any(
+            delta < 0 for delta in self.target_cursor_deltas
+        ):
+            raise ValueError("target_cursor_deltas must be non-negative")
+        if self.provider_cursor_deltas is not None and any(
+            delta < 0 for delta in self.provider_cursor_deltas
+        ):
+            raise ValueError("provider_cursor_deltas must be non-negative")
+        if self.finish_reasons is not None and any(
+            reason is not None and (not reason or reason != reason.strip())
+            for reason in self.finish_reasons
+        ):
+            raise ValueError("finish_reasons must be None or non-empty trimmed strings")
         if len(self.accepted_counts) != len(self.request_ids) or len(self.accepted_tokens) != len(self.request_ids):
             raise ValueError("accepted counts/tokens must align with request_ids")
         if any(count < 0 for count in self.accepted_counts):

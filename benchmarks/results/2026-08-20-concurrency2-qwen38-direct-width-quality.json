@@ -1,0 +1,4077 @@
+{
+  "candidate_logits_sha256": "78bf138417a18a6fa2a75c1b7bad256c75a15e349515c2406b19e5e7772c0090",
+  "created_at": "2026-08-20T15:41:49.039218+00:00",
+  "execution_manifests": [
+    {
+      "active_mask": [
+        true,
+        true,
+        true
+      ],
+      "active_rows": 3,
+      "active_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 1,
+        "device_to_device_state_import_copies": 384,
+        "device_to_device_state_scatter_copies": 384,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 12,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 3,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 24,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 0,
+        "host_to_device_metadata_copies": 0,
+        "host_to_device_total_bytes": 24,
+        "host_to_device_total_copies": 1
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 2979840,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            64,
+            74,
+            71
+          ],
+          "row_positions": 3
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 3
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 3,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "device_prepare_persistent",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 3,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 3,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "state_import_slots": 3,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true
+      ],
+      "active_rows": 3,
+      "active_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 1,
+        "device_to_device_state_import_copies": 384,
+        "device_to_device_state_scatter_copies": 384,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 12,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 3,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 24,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 0,
+        "host_to_device_metadata_copies": 0,
+        "host_to_device_total_bytes": 24,
+        "host_to_device_total_copies": 1
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 2979840,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            76,
+            63,
+            64
+          ],
+          "row_positions": 3
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 3
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 3,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "device_prepare_persistent",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 3,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 3,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "state_import_slots": 3,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true
+      ],
+      "active_rows": 3,
+      "active_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 1,
+        "device_to_device_state_import_copies": 384,
+        "device_to_device_state_scatter_copies": 384,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 12,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 3,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 24,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 0,
+        "host_to_device_metadata_copies": 0,
+        "host_to_device_total_bytes": 24,
+        "host_to_device_total_copies": 1
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 2979840,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            67,
+            67,
+            88
+          ],
+          "row_positions": 3
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 3
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 3,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "device_prepare_persistent",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 3,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 3,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "state_import_slots": 3,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true
+      ],
+      "active_rows": 3,
+      "active_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 1,
+        "device_to_device_state_import_copies": 384,
+        "device_to_device_state_scatter_copies": 384,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 12,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 3,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 24,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 0,
+        "host_to_device_metadata_copies": 0,
+        "host_to_device_total_bytes": 24,
+        "host_to_device_total_copies": 1
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 2979840,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            95,
+            79,
+            76
+          ],
+          "row_positions": 3
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 3
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 3,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "device_prepare_persistent",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 3,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 3,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "state_import_slots": 3,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true
+      ],
+      "active_rows": 3,
+      "active_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 1,
+        "device_to_device_state_import_copies": 384,
+        "device_to_device_state_scatter_copies": 384,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 12,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 3,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 24,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 0,
+        "host_to_device_metadata_copies": 0,
+        "host_to_device_total_bytes": 24,
+        "host_to_device_total_copies": 1
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 2979840,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            69,
+            80,
+            77
+          ],
+          "row_positions": 3
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 3
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 3,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "device_prepare_persistent",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 3,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 3,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "state_import_slots": 3,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true
+      ],
+      "active_rows": 3,
+      "active_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 1,
+        "device_to_device_state_import_copies": 384,
+        "device_to_device_state_scatter_copies": 384,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 12,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 3,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 24,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 0,
+        "host_to_device_metadata_copies": 0,
+        "host_to_device_total_bytes": 24,
+        "host_to_device_total_copies": 1
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 2979840,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            69,
+            76,
+            80
+          ],
+          "row_positions": 3
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 3
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 3,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "device_prepare_persistent",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 3,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 3,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "state_import_slots": 3,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "active_rows": 5,
+      "active_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 0,
+        "device_to_device_state_import_copies": 640,
+        "device_to_device_state_scatter_copies": 640,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 20,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 5,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 40,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 244,
+        "host_to_device_metadata_copies": 8,
+        "host_to_device_total_bytes": 284,
+        "host_to_device_total_copies": 9
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 4966400,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            64,
+            74,
+            71,
+            76,
+            63
+          ],
+          "row_positions": 5
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 5
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 5,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "host_upload",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 5,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 5,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state_import_slots": 5,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "active_rows": 5,
+      "active_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 0,
+        "device_to_device_state_import_copies": 640,
+        "device_to_device_state_scatter_copies": 640,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 20,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 5,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 40,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 244,
+        "host_to_device_metadata_copies": 8,
+        "host_to_device_total_bytes": 284,
+        "host_to_device_total_copies": 9
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 4966400,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            64,
+            67,
+            67,
+            88,
+            95
+          ],
+          "row_positions": 5
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 5
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 5,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "host_upload",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 5,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 5,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state_import_slots": 5,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "active_rows": 5,
+      "active_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 0,
+        "device_to_device_state_import_copies": 640,
+        "device_to_device_state_scatter_copies": 640,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 20,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 5,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 40,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 244,
+        "host_to_device_metadata_copies": 8,
+        "host_to_device_total_bytes": 284,
+        "host_to_device_total_copies": 9
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 4966400,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            79,
+            76,
+            69,
+            80,
+            77
+          ],
+          "row_positions": 5
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 5
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 5,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "host_upload",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 5,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 5,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state_import_slots": 5,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "active_rows": 5,
+      "active_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 0,
+        "device_to_device_state_import_copies": 640,
+        "device_to_device_state_scatter_copies": 640,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 20,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 5,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 40,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 244,
+        "host_to_device_metadata_copies": 8,
+        "host_to_device_total_bytes": 284,
+        "host_to_device_total_copies": 9
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 4966400,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            69,
+            76,
+            80,
+            76,
+            63
+          ],
+          "row_positions": 5
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 5
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 5,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "host_upload",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 5,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 5,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state_import_slots": 5,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "active_rows": 6,
+      "active_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 0,
+        "device_to_device_state_import_copies": 768,
+        "device_to_device_state_scatter_copies": 768,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 24,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 6,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 48,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 288,
+        "host_to_device_metadata_copies": 8,
+        "host_to_device_total_bytes": 336,
+        "host_to_device_total_copies": 9
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 5959680,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            64,
+            74,
+            71,
+            76,
+            63,
+            64
+          ],
+          "row_positions": 6
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 6
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 6,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "host_upload",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 6,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 6,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "state_import_slots": 6,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "active_rows": 6,
+      "active_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 0,
+        "device_to_device_state_import_copies": 768,
+        "device_to_device_state_scatter_copies": 768,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 24,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 6,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 48,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 288,
+        "host_to_device_metadata_copies": 8,
+        "host_to_device_total_bytes": 336,
+        "host_to_device_total_copies": 9
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 5959680,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            67,
+            67,
+            88,
+            95,
+            79,
+            76
+          ],
+          "row_positions": 6
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 6
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 6,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "host_upload",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 6,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 6,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "state_import_slots": 6,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "active_rows": 6,
+      "active_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 0,
+        "device_to_device_state_import_copies": 768,
+        "device_to_device_state_scatter_copies": 768,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 24,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 6,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 48,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 288,
+        "host_to_device_metadata_copies": 8,
+        "host_to_device_total_bytes": 336,
+        "host_to_device_total_copies": 9
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 5959680,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            69,
+            80,
+            77,
+            69,
+            76,
+            80
+          ],
+          "row_positions": 6
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 6
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 6,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "host_upload",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 6,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 6,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "state_import_slots": 6,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "active_rows": 7,
+      "active_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 0,
+        "device_to_device_state_import_copies": 896,
+        "device_to_device_state_scatter_copies": 896,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 28,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 7,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 56,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 332,
+        "host_to_device_metadata_copies": 8,
+        "host_to_device_total_bytes": 388,
+        "host_to_device_total_copies": 9
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 6952960,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            64,
+            74,
+            71,
+            76,
+            63,
+            64,
+            67
+          ],
+          "row_positions": 7
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 7
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 7,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "host_upload",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 7,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 7,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state_import_slots": 7,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "active_rows": 7,
+      "active_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 0,
+        "device_to_device_state_import_copies": 896,
+        "device_to_device_state_scatter_copies": 896,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 28,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 7,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 56,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 332,
+        "host_to_device_metadata_copies": 8,
+        "host_to_device_total_bytes": 388,
+        "host_to_device_total_copies": 9
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 6952960,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            67,
+            88,
+            95,
+            79,
+            76,
+            69,
+            80
+          ],
+          "row_positions": 7
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 7
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 7,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "host_upload",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 7,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 7,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state_import_slots": 7,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "active_rows": 7,
+      "active_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 0,
+        "device_to_device_state_import_copies": 896,
+        "device_to_device_state_scatter_copies": 896,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 28,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 7,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 56,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 332,
+        "host_to_device_metadata_copies": 8,
+        "host_to_device_total_bytes": 388,
+        "host_to_device_total_copies": 9
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 6952960,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            77,
+            69,
+            76,
+            80,
+            63,
+            64,
+            67
+          ],
+          "row_positions": 7
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 7
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 7,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "host_upload",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 7,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 7,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state_import_slots": 7,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true
+      ],
+      "active_rows": 3,
+      "active_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 1,
+        "device_to_device_state_import_copies": 384,
+        "device_to_device_state_scatter_copies": 384,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 12,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 3,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 24,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 0,
+        "host_to_device_metadata_copies": 0,
+        "host_to_device_total_bytes": 24,
+        "host_to_device_total_copies": 1
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 2979840,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            64,
+            71,
+            63
+          ],
+          "row_positions": 3
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 3
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 3,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "device_prepare_persistent",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 3,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 3,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "state_import_slots": 3,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        false,
+        true,
+        false,
+        false,
+        true,
+        false,
+        true
+      ],
+      "active_rows": 4,
+      "active_slot_indices": [
+        0,
+        2,
+        5,
+        7
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 0,
+        "device_to_device_state_import_copies": 512,
+        "device_to_device_state_scatter_copies": 512,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 32,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 8,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 64,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 376,
+        "host_to_device_metadata_copies": 8,
+        "host_to_device_total_bytes": 440,
+        "host_to_device_total_copies": 9
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 7946240,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            64,
+            0,
+            67,
+            0,
+            0,
+            69,
+            0,
+            80
+          ],
+          "row_positions": 8
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 8
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 8,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "host_upload",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 8,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 8,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        2,
+        5,
+        7
+      ],
+      "state_import_slots": 4,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    }
+  ],
+  "historical_source": {
+    "kind": "gfx1151_gguf_f3_q8t16_rowtile_rejected",
+    "label_does_not_affect_fresh_verdict": true,
+    "path": "benchmarks/results/2026-07-19-gfx1151-gguf-f3-q8t16-rowtile-rejected.json",
+    "sha256": "5a695a060a337bb7af11deffdfed2186787b7285c3215bb77156942d4c2dea7d",
+    "status": "rejected_trajectory_regression"
+  },
+  "kind": "hipengine_execution_profile_gguf_batch_route_requalification_capture",
+  "measurement_valid": true,
+  "performance_claim": false,
+  "profile_qualification_claim": false,
+  "prompts": [
+    {
+      "category": "code",
+      "id": "code_merge_intervals",
+      "prompt_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+      "prompt_tokens": 40,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "code",
+      "id": "code_topological_sort",
+      "prompt_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b",
+      "prompt_tokens": 50,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "code",
+      "id": "code_lru_cache",
+      "prompt_sha256": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8",
+      "prompt_tokens": 47,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "code",
+      "id": "code_markdown_table",
+      "prompt_sha256": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9",
+      "prompt_tokens": 52,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "general_en",
+      "id": "general_en_plan",
+      "prompt_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7",
+      "prompt_tokens": 39,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "general_en",
+      "id": "general_en_explain",
+      "prompt_sha256": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834",
+      "prompt_tokens": 40,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "general_ja",
+      "id": "general_ja_plan",
+      "prompt_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099",
+      "prompt_tokens": 43,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "general_ja",
+      "id": "general_ja_explain",
+      "prompt_sha256": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0",
+      "prompt_tokens": 43,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "mixed_ja_en",
+      "id": "mixed_ja_en_translate",
+      "prompt_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f",
+      "prompt_tokens": 64,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "mixed_ja_en",
+      "id": "mixed_ja_en_review",
+      "prompt_sha256": "937a468d1043a843267f1610aafba73af7c4327f6c1e04379068be066d1eb476",
+      "prompt_tokens": 71,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "code",
+      "id": "heldout_code_rate_limiter",
+      "prompt_sha256": "a64214894c73cc4db1253641e0c723b101dc8ef660d9f06fd063c5f59c97feb6",
+      "prompt_tokens": 55,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    },
+    {
+      "category": "code",
+      "id": "heldout_code_interval_schedule",
+      "prompt_sha256": "f9574bb80a26bb5b1c52b1811f2e6e1ec683f514b9c907b2530cd0afc96084cb",
+      "prompt_tokens": 52,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    },
+    {
+      "category": "general_en",
+      "id": "heldout_general_en_incident",
+      "prompt_sha256": "32275637d440fd542e19fab51aaab79d6aedf068929f8ffa38ce9bd269f9044a",
+      "prompt_tokens": 45,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    },
+    {
+      "category": "general_en",
+      "id": "heldout_general_en_quant",
+      "prompt_sha256": "30d56cc8ef44e814daf6dd0f29dffaaea83b1d2705e956adce630ad8114d6288",
+      "prompt_tokens": 56,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    },
+    {
+      "category": "general_ja",
+      "id": "heldout_general_ja_migration",
+      "prompt_sha256": "0b157150150cc2f06310dca8cb39433bdcb0379927ed7d70e62a20e4d5fbab85",
+      "prompt_tokens": 53,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    },
+    {
+      "category": "general_ja",
+      "id": "heldout_general_ja_speculative",
+      "prompt_sha256": "985a2e8ccb23fefb9a24c2dcac003570cbee86ebb688ef4f7449a4cbe7dc465f",
+      "prompt_tokens": 45,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    },
+    {
+      "category": "mixed_ja_en",
+      "id": "heldout_mixed_summary",
+      "prompt_sha256": "085fce890f18591f27cb6985e577ce959a5e44361dff79b6373fa854ee7e5a44",
+      "prompt_tokens": 52,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    },
+    {
+      "category": "mixed_ja_en",
+      "id": "heldout_mixed_review",
+      "prompt_sha256": "1d111758768713e15792e350917d879b0bb97c27c4ab2a0605026547fe191a61",
+      "prompt_tokens": 56,
+      "suite": "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    }
+  ],
+  "protocol": {
+    "candidate_repeat_runs": 3,
+    "complete_prompt_and_heldout_suite": true,
+    "decode_steps": 24,
+    "dynamic_schedule": [
+      [
+        0,
+        7
+      ],
+      [
+        6,
+        6
+      ],
+      [
+        12,
+        5
+      ],
+      [
+        18,
+        3
+      ]
+    ],
+    "prompt_count": 18,
+    "prompt_suites": [
+      "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "/home/lhl/hipEngine-concurrency2/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    ],
+    "route_profile": "current_package_direct",
+    "same_context_rule": "every batch row consumes its independent strict-c1 teacher token",
+    "sparse_physical_c8_active_slots": [
+      0,
+      2,
+      5,
+      7
+    ],
+    "static_widths": [
+      3,
+      5,
+      6,
+      7
+    ],
+    "strict_gdn_mode": "chain_lds32_direct_nonvolatile",
+    "teacher_forced_rows": 1950,
+    "thresholds_evaluated": {
+      "max_kl_max": 0.05,
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "per_scope_top1_min": 0.97,
+      "review_kl": 0.02,
+      "top1_min": 0.99
+    }
+  },
+  "provenance": {
+    "build_profile": "execution_profile_gguf_direct_width_batch_requalification",
+    "collected_at": "2026-08-20T15:41:49.038963+00:00",
+    "command": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3",
+      "scripts/execution_profile_gguf_batch_route_gate.py",
+      "--model",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--route-profile",
+      "current_package_direct",
+      "--widths",
+      "3,5,6,7",
+      "--decode-steps",
+      "24",
+      "--repeat-runs",
+      "3",
+      "--dynamic",
+      "--sparse",
+      "--compiler-version-file",
+      "/tmp/hipengine-c2-6-hipcc-version.txt",
+      "--require-cached-build",
+      "--json",
+      "/tmp/qwen38-direct-width-quality-clean.json"
+    ],
+    "configured_backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "dirty": false,
+    "environment": {
+      "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": null,
+      "HIPENGINE_GGUF_ROUTER_F32W_COOP": null,
+      "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER": null,
+      "HIPENGINE_HIP_ARCH": null,
+      "HIP_VISIBLE_DEVICES": "0"
+    },
+    "git_branch": "concurrency2",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "hipengine_commit": "fd03b9a9db2f6513ef878c280426eb91e9733cf9",
+    "host_name": "epyc",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8552862704,
+        17105725408
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 17106773984,
+      "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+    },
+    "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": {
+      "command": null,
+      "enabled": false,
+      "kind": null
+    },
+    "quant": "gguf_q4_k_m",
+    "repetitions": 3,
+    "repo_root": "/home/lhl/hipEngine-concurrency2",
+    "resolved_backend": "hip_gfx1100",
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "schema_version": 2,
+    "staged_dirty": false,
+    "target_arch": "gfx1100",
+    "timing_protocol": "none_full_logits_only_v1",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 0
+  },
+  "qualification_blockers": [
+    "route manifest is evidentiary and not runtime-profile resolved",
+    "adapter does not emit the complete exact control-plane record schema",
+    "fresh task and BF16-relative verdicts are not available"
+  ],
+  "quality": {
+    "by_scope": {
+      "category": {
+        "code": {
+          "candidate_teacher_nll_mean": 0.05057058054285692,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 678,
+          "strict_margin_min": 0.10751724243164062,
+          "strict_teacher_nll_mean": 0.05057058054285692,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 678,
+          "topk_overlap_mean": 1.0
+        },
+        "general_en": {
+          "candidate_teacher_nll_mean": 0.23650853834318594,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 438,
+          "strict_margin_min": 0.021253585815429688,
+          "strict_teacher_nll_mean": 0.23650853834318594,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 438,
+          "topk_overlap_mean": 1.0
+        },
+        "general_ja": {
+          "candidate_teacher_nll_mean": 0.24655315937250932,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 426,
+          "strict_margin_min": 0.024492263793945312,
+          "strict_teacher_nll_mean": 0.24655315937250932,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 426,
+          "topk_overlap_mean": 1.0
+        },
+        "mixed_ja_en": {
+          "candidate_teacher_nll_mean": 0.1868928347306302,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 408,
+          "strict_margin_min": 0.004119873046875,
+          "strict_teacher_nll_mean": 0.1868928347306302,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 408,
+          "topk_overlap_mean": 1.0
+        }
+      },
+      "shape": {
+        "c3": {
+          "candidate_teacher_nll_mean": 0.15912995749034609,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 450,
+          "strict_margin_min": 0.004119873046875,
+          "strict_teacher_nll_mean": 0.15912995749034609,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 450,
+          "topk_overlap_mean": 1.0
+        },
+        "c5": {
+          "candidate_teacher_nll_mean": 0.16925207302739326,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 462,
+          "strict_margin_min": 0.004119873046875,
+          "strict_teacher_nll_mean": 0.16925207302739326,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 462,
+          "topk_overlap_mean": 1.0
+        },
+        "c6": {
+          "candidate_teacher_nll_mean": 0.1578293556541268,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 468,
+          "strict_margin_min": 0.004119873046875,
+          "strict_teacher_nll_mean": 0.1578293556541268,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 468,
+          "topk_overlap_mean": 1.0
+        },
+        "c7": {
+          "candidate_teacher_nll_mean": 0.15909005959527264,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 474,
+          "strict_margin_min": 0.004119873046875,
+          "strict_teacher_nll_mean": 0.15909005959527264,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 474,
+          "topk_overlap_mean": 1.0
+        },
+        "c8_sparse4": {
+          "candidate_teacher_nll_mean": 0.2092265683495467,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 96,
+          "strict_margin_min": 0.021253585815429688,
+          "strict_teacher_nll_mean": 0.2092265683495467,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 96,
+          "topk_overlap_mean": 1.0
+        }
+      },
+      "transition": {
+        "enter_c7": {
+          "candidate_teacher_nll_mean": 0.05342061390095238,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 7,
+          "strict_margin_min": 1.0658435821533203,
+          "strict_teacher_nll_mean": 0.05342061390095238,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 7,
+          "topk_overlap_mean": 1.0
+        },
+        "sparse_steady": {
+          "candidate_teacher_nll_mean": 0.2092265683495467,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 96,
+          "strict_margin_min": 0.021253585815429688,
+          "strict_teacher_nll_mean": 0.2092265683495467,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 96,
+          "topk_overlap_mean": 1.0
+        },
+        "steady": {
+          "candidate_teacher_nll_mean": 0.16256702553904417,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 1833,
+          "strict_margin_min": 0.004119873046875,
+          "strict_teacher_nll_mean": 0.16256702553904417,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 1833,
+          "topk_overlap_mean": 1.0
+        },
+        "width_5_to_3": {
+          "candidate_teacher_nll_mean": 0.0013194378411299364,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 3,
+          "strict_margin_min": 6.270788192749023,
+          "strict_teacher_nll_mean": 0.0013194378411299364,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 3,
+          "topk_overlap_mean": 1.0
+        },
+        "width_6_to_5": {
+          "candidate_teacher_nll_mean": 0.0930232533946703,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 5,
+          "strict_margin_min": 0.5728912353515625,
+          "strict_teacher_nll_mean": 0.0930232533946703,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 5,
+          "topk_overlap_mean": 1.0
+        },
+        "width_7_to_6": {
+          "candidate_teacher_nll_mean": 0.04123143545510614,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 6,
+          "strict_margin_min": 1.8479804992675781,
+          "strict_teacher_nll_mean": 0.04123143545510614,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 6,
+          "topk_overlap_mean": 1.0
+        }
+      }
+    },
+    "eligible_for_automatic_admission": true,
+    "finite": true,
+    "hard_gates_passed": true,
+    "requires_outlier_review": false,
+    "rows_over_review_boundary": [],
+    "scope_failures": [],
+    "summary": {
+      "candidate_teacher_nll_mean": 0.16367257223854284,
+      "kl_max": 0.0,
+      "kl_mean": 0.0,
+      "kl_p50": 0.0,
+      "kl_p95": 0.0,
+      "kl_p99": 0.0,
+      "max_abs_logit_delta": 0.0,
+      "rows": 1950,
+      "strict_margin_min": 0.004119873046875,
+      "strict_teacher_nll_mean": 0.16367257223854284,
+      "teacher_delta_p_mean": 0.0,
+      "teacher_nll_delta": 0.0,
+      "top1_agreement": 1.0,
+      "top1_matches": 1950,
+      "topk_overlap_mean": 1.0
+    },
+    "thresholds": {
+      "max_kl_max": 0.05,
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "per_scope_top1_min": 0.97,
+      "review_kl": 0.02,
+      "top1_min": 0.99
+    },
+    "top1_mismatch_rows": [],
+    "top_k": 5
+  },
+  "repeat_determinism": {
+    "mismatches": [],
+    "passed": true,
+    "runs": 3,
+    "trajectory_sha256_by_capture": [
+      [
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8",
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8",
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8"
+      ],
+      [
+        "cede65e2e00a8f12c9b37e5f1538d19f6843c9b231d6626c61e88d6fe66c0451",
+        "cede65e2e00a8f12c9b37e5f1538d19f6843c9b231d6626c61e88d6fe66c0451",
+        "cede65e2e00a8f12c9b37e5f1538d19f6843c9b231d6626c61e88d6fe66c0451"
+      ],
+      [
+        "9c1c9d85239356a9ed253a4e4a8c36fa577078d45e41862e13adfa915efed0b2",
+        "9c1c9d85239356a9ed253a4e4a8c36fa577078d45e41862e13adfa915efed0b2",
+        "9c1c9d85239356a9ed253a4e4a8c36fa577078d45e41862e13adfa915efed0b2"
+      ],
+      [
+        "8d170ccc562db57c60531a95f652138025a9cc9aa2d1873ce176cd3263811538",
+        "8d170ccc562db57c60531a95f652138025a9cc9aa2d1873ce176cd3263811538",
+        "8d170ccc562db57c60531a95f652138025a9cc9aa2d1873ce176cd3263811538"
+      ],
+      [
+        "72fedf6e34d5e4ea5a40952c73b205cdd59c9730f5a645d18b47ad547668e4dc",
+        "72fedf6e34d5e4ea5a40952c73b205cdd59c9730f5a645d18b47ad547668e4dc",
+        "72fedf6e34d5e4ea5a40952c73b205cdd59c9730f5a645d18b47ad547668e4dc"
+      ],
+      [
+        "dec783c3f0c3837e0ad4c9ceb7bf1ee58ffebb68478214504f217b4ecf563c15",
+        "dec783c3f0c3837e0ad4c9ceb7bf1ee58ffebb68478214504f217b4ecf563c15",
+        "dec783c3f0c3837e0ad4c9ceb7bf1ee58ffebb68478214504f217b4ecf563c15"
+      ],
+      [
+        "b6c3ef2a12732334b302c04e028c5a1cad989c7dd905cffa06eb56778f236449",
+        "b6c3ef2a12732334b302c04e028c5a1cad989c7dd905cffa06eb56778f236449",
+        "b6c3ef2a12732334b302c04e028c5a1cad989c7dd905cffa06eb56778f236449"
+      ],
+      [
+        "f3ce80b752b81a303266a3dccd149be9a066d541945552ec599637c3271b5571",
+        "f3ce80b752b81a303266a3dccd149be9a066d541945552ec599637c3271b5571",
+        "f3ce80b752b81a303266a3dccd149be9a066d541945552ec599637c3271b5571"
+      ],
+      [
+        "cc82d87ba272ce8e8618219d624953f33c7a28db8b1edecaa7a213d96093e9e2",
+        "cc82d87ba272ce8e8618219d624953f33c7a28db8b1edecaa7a213d96093e9e2",
+        "cc82d87ba272ce8e8618219d624953f33c7a28db8b1edecaa7a213d96093e9e2"
+      ],
+      [
+        "da156e3535c3432b283d9e5a2fdbde5d1e1aa6d4a3fa0a6537da58485491d32f",
+        "da156e3535c3432b283d9e5a2fdbde5d1e1aa6d4a3fa0a6537da58485491d32f",
+        "da156e3535c3432b283d9e5a2fdbde5d1e1aa6d4a3fa0a6537da58485491d32f"
+      ],
+      [
+        "7a8e955c9782de1e53940c7e3dca2778288a2b3b643af38723998c5b4f4a023c",
+        "7a8e955c9782de1e53940c7e3dca2778288a2b3b643af38723998c5b4f4a023c",
+        "7a8e955c9782de1e53940c7e3dca2778288a2b3b643af38723998c5b4f4a023c"
+      ],
+      [
+        "387e4e935f540350d6c3dcf0f27bc6be6aadadd491521a8d82accfd59dc3d9c6",
+        "387e4e935f540350d6c3dcf0f27bc6be6aadadd491521a8d82accfd59dc3d9c6",
+        "387e4e935f540350d6c3dcf0f27bc6be6aadadd491521a8d82accfd59dc3d9c6"
+      ],
+      [
+        "4907db692acbc82db5b72b6d2d64bf0feb85af7cbbff50c0646f8fb84d1d0551",
+        "4907db692acbc82db5b72b6d2d64bf0feb85af7cbbff50c0646f8fb84d1d0551",
+        "4907db692acbc82db5b72b6d2d64bf0feb85af7cbbff50c0646f8fb84d1d0551"
+      ],
+      [
+        "117b1e83077664c404c19d0560482f49ab77cdd684479f5021fd179e66705683",
+        "117b1e83077664c404c19d0560482f49ab77cdd684479f5021fd179e66705683",
+        "117b1e83077664c404c19d0560482f49ab77cdd684479f5021fd179e66705683"
+      ],
+      [
+        "9c8f93877347159d90f538e14a2aec366ca2b19406287a3334c1392d518af59b",
+        "9c8f93877347159d90f538e14a2aec366ca2b19406287a3334c1392d518af59b",
+        "9c8f93877347159d90f538e14a2aec366ca2b19406287a3334c1392d518af59b"
+      ],
+      [
+        "0af9ce8b6dd98593e8ace781fd6253be5a0e68cf36b09d4296a6eae9cf13cedc",
+        "0af9ce8b6dd98593e8ace781fd6253be5a0e68cf36b09d4296a6eae9cf13cedc",
+        "0af9ce8b6dd98593e8ace781fd6253be5a0e68cf36b09d4296a6eae9cf13cedc"
+      ],
+      [
+        "65fd3a686e2d600d830e9b0d9275b785c668a80236e735605603d4660f569d2c",
+        "65fd3a686e2d600d830e9b0d9275b785c668a80236e735605603d4660f569d2c",
+        "65fd3a686e2d600d830e9b0d9275b785c668a80236e735605603d4660f569d2c"
+      ],
+      [
+        "07f1d8deb30e8c565ac550384f5247a036707785beb3ff2dbf00bb6c8c250e7f",
+        "07f1d8deb30e8c565ac550384f5247a036707785beb3ff2dbf00bb6c8c250e7f",
+        "07f1d8deb30e8c565ac550384f5247a036707785beb3ff2dbf00bb6c8c250e7f"
+      ],
+      [
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8",
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8",
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8"
+      ],
+      [
+        "cede65e2e00a8f12c9b37e5f1538d19f6843c9b231d6626c61e88d6fe66c0451",
+        "cede65e2e00a8f12c9b37e5f1538d19f6843c9b231d6626c61e88d6fe66c0451",
+        "cede65e2e00a8f12c9b37e5f1538d19f6843c9b231d6626c61e88d6fe66c0451"
+      ],
+      [
+        "9c1c9d85239356a9ed253a4e4a8c36fa577078d45e41862e13adfa915efed0b2",
+        "9c1c9d85239356a9ed253a4e4a8c36fa577078d45e41862e13adfa915efed0b2",
+        "9c1c9d85239356a9ed253a4e4a8c36fa577078d45e41862e13adfa915efed0b2"
+      ],
+      [
+        "8d170ccc562db57c60531a95f652138025a9cc9aa2d1873ce176cd3263811538",
+        "8d170ccc562db57c60531a95f652138025a9cc9aa2d1873ce176cd3263811538",
+        "8d170ccc562db57c60531a95f652138025a9cc9aa2d1873ce176cd3263811538"
+      ],
+      [
+        "72fedf6e34d5e4ea5a40952c73b205cdd59c9730f5a645d18b47ad547668e4dc",
+        "72fedf6e34d5e4ea5a40952c73b205cdd59c9730f5a645d18b47ad547668e4dc",
+        "72fedf6e34d5e4ea5a40952c73b205cdd59c9730f5a645d18b47ad547668e4dc"
+      ],
+      [
+        "dec783c3f0c3837e0ad4c9ceb7bf1ee58ffebb68478214504f217b4ecf563c15",
+        "dec783c3f0c3837e0ad4c9ceb7bf1ee58ffebb68478214504f217b4ecf563c15",
+        "dec783c3f0c3837e0ad4c9ceb7bf1ee58ffebb68478214504f217b4ecf563c15"
+      ],
+      [
+        "b6c3ef2a12732334b302c04e028c5a1cad989c7dd905cffa06eb56778f236449",
+        "b6c3ef2a12732334b302c04e028c5a1cad989c7dd905cffa06eb56778f236449",
+        "b6c3ef2a12732334b302c04e028c5a1cad989c7dd905cffa06eb56778f236449"
+      ],
+      [
+        "f3ce80b752b81a303266a3dccd149be9a066d541945552ec599637c3271b5571",
+        "f3ce80b752b81a303266a3dccd149be9a066d541945552ec599637c3271b5571",
+        "f3ce80b752b81a303266a3dccd149be9a066d541945552ec599637c3271b5571"
+      ],
+      [
+        "cc82d87ba272ce8e8618219d624953f33c7a28db8b1edecaa7a213d96093e9e2",
+        "cc82d87ba272ce8e8618219d624953f33c7a28db8b1edecaa7a213d96093e9e2",
+        "cc82d87ba272ce8e8618219d624953f33c7a28db8b1edecaa7a213d96093e9e2"
+      ],
+      [
+        "da156e3535c3432b283d9e5a2fdbde5d1e1aa6d4a3fa0a6537da58485491d32f",
+        "da156e3535c3432b283d9e5a2fdbde5d1e1aa6d4a3fa0a6537da58485491d32f",
+        "da156e3535c3432b283d9e5a2fdbde5d1e1aa6d4a3fa0a6537da58485491d32f"
+      ],
+      [
+        "7a8e955c9782de1e53940c7e3dca2778288a2b3b643af38723998c5b4f4a023c",
+        "7a8e955c9782de1e53940c7e3dca2778288a2b3b643af38723998c5b4f4a023c",
+        "7a8e955c9782de1e53940c7e3dca2778288a2b3b643af38723998c5b4f4a023c"
+      ],
+      [
+        "387e4e935f540350d6c3dcf0f27bc6be6aadadd491521a8d82accfd59dc3d9c6",
+        "387e4e935f540350d6c3dcf0f27bc6be6aadadd491521a8d82accfd59dc3d9c6",
+        "387e4e935f540350d6c3dcf0f27bc6be6aadadd491521a8d82accfd59dc3d9c6"
+      ],
+      [
+        "4907db692acbc82db5b72b6d2d64bf0feb85af7cbbff50c0646f8fb84d1d0551",
+        "4907db692acbc82db5b72b6d2d64bf0feb85af7cbbff50c0646f8fb84d1d0551",
+        "4907db692acbc82db5b72b6d2d64bf0feb85af7cbbff50c0646f8fb84d1d0551"
+      ],
+      [
+        "117b1e83077664c404c19d0560482f49ab77cdd684479f5021fd179e66705683",
+        "117b1e83077664c404c19d0560482f49ab77cdd684479f5021fd179e66705683",
+        "117b1e83077664c404c19d0560482f49ab77cdd684479f5021fd179e66705683"
+      ],
+      [
+        "9c8f93877347159d90f538e14a2aec366ca2b19406287a3334c1392d518af59b",
+        "9c8f93877347159d90f538e14a2aec366ca2b19406287a3334c1392d518af59b",
+        "9c8f93877347159d90f538e14a2aec366ca2b19406287a3334c1392d518af59b"
+      ],
+      [
+        "0af9ce8b6dd98593e8ace781fd6253be5a0e68cf36b09d4296a6eae9cf13cedc",
+        "0af9ce8b6dd98593e8ace781fd6253be5a0e68cf36b09d4296a6eae9cf13cedc",
+        "0af9ce8b6dd98593e8ace781fd6253be5a0e68cf36b09d4296a6eae9cf13cedc"
+      ],
+      [
+        "65fd3a686e2d600d830e9b0d9275b785c668a80236e735605603d4660f569d2c",
+        "65fd3a686e2d600d830e9b0d9275b785c668a80236e735605603d4660f569d2c",
+        "65fd3a686e2d600d830e9b0d9275b785c668a80236e735605603d4660f569d2c"
+      ],
+      [
+        "07f1d8deb30e8c565ac550384f5247a036707785beb3ff2dbf00bb6c8c250e7f",
+        "07f1d8deb30e8c565ac550384f5247a036707785beb3ff2dbf00bb6c8c250e7f",
+        "07f1d8deb30e8c565ac550384f5247a036707785beb3ff2dbf00bb6c8c250e7f"
+      ],
+      [
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8",
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8",
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8"
+      ],
+      [
+        "cede65e2e00a8f12c9b37e5f1538d19f6843c9b231d6626c61e88d6fe66c0451",
+        "cede65e2e00a8f12c9b37e5f1538d19f6843c9b231d6626c61e88d6fe66c0451",
+        "cede65e2e00a8f12c9b37e5f1538d19f6843c9b231d6626c61e88d6fe66c0451"
+      ],
+      [
+        "9c1c9d85239356a9ed253a4e4a8c36fa577078d45e41862e13adfa915efed0b2",
+        "9c1c9d85239356a9ed253a4e4a8c36fa577078d45e41862e13adfa915efed0b2",
+        "9c1c9d85239356a9ed253a4e4a8c36fa577078d45e41862e13adfa915efed0b2"
+      ],
+      [
+        "8d170ccc562db57c60531a95f652138025a9cc9aa2d1873ce176cd3263811538",
+        "8d170ccc562db57c60531a95f652138025a9cc9aa2d1873ce176cd3263811538",
+        "8d170ccc562db57c60531a95f652138025a9cc9aa2d1873ce176cd3263811538"
+      ],
+      [
+        "72fedf6e34d5e4ea5a40952c73b205cdd59c9730f5a645d18b47ad547668e4dc",
+        "72fedf6e34d5e4ea5a40952c73b205cdd59c9730f5a645d18b47ad547668e4dc",
+        "72fedf6e34d5e4ea5a40952c73b205cdd59c9730f5a645d18b47ad547668e4dc"
+      ],
+      [
+        "dec783c3f0c3837e0ad4c9ceb7bf1ee58ffebb68478214504f217b4ecf563c15",
+        "dec783c3f0c3837e0ad4c9ceb7bf1ee58ffebb68478214504f217b4ecf563c15",
+        "dec783c3f0c3837e0ad4c9ceb7bf1ee58ffebb68478214504f217b4ecf563c15"
+      ],
+      [
+        "b6c3ef2a12732334b302c04e028c5a1cad989c7dd905cffa06eb56778f236449",
+        "b6c3ef2a12732334b302c04e028c5a1cad989c7dd905cffa06eb56778f236449",
+        "b6c3ef2a12732334b302c04e028c5a1cad989c7dd905cffa06eb56778f236449"
+      ],
+      [
+        "f3ce80b752b81a303266a3dccd149be9a066d541945552ec599637c3271b5571",
+        "f3ce80b752b81a303266a3dccd149be9a066d541945552ec599637c3271b5571",
+        "f3ce80b752b81a303266a3dccd149be9a066d541945552ec599637c3271b5571"
+      ],
+      [
+        "cc82d87ba272ce8e8618219d624953f33c7a28db8b1edecaa7a213d96093e9e2",
+        "cc82d87ba272ce8e8618219d624953f33c7a28db8b1edecaa7a213d96093e9e2",
+        "cc82d87ba272ce8e8618219d624953f33c7a28db8b1edecaa7a213d96093e9e2"
+      ],
+      [
+        "da156e3535c3432b283d9e5a2fdbde5d1e1aa6d4a3fa0a6537da58485491d32f",
+        "da156e3535c3432b283d9e5a2fdbde5d1e1aa6d4a3fa0a6537da58485491d32f",
+        "da156e3535c3432b283d9e5a2fdbde5d1e1aa6d4a3fa0a6537da58485491d32f"
+      ],
+      [
+        "7a8e955c9782de1e53940c7e3dca2778288a2b3b643af38723998c5b4f4a023c",
+        "7a8e955c9782de1e53940c7e3dca2778288a2b3b643af38723998c5b4f4a023c",
+        "7a8e955c9782de1e53940c7e3dca2778288a2b3b643af38723998c5b4f4a023c"
+      ],
+      [
+        "387e4e935f540350d6c3dcf0f27bc6be6aadadd491521a8d82accfd59dc3d9c6",
+        "387e4e935f540350d6c3dcf0f27bc6be6aadadd491521a8d82accfd59dc3d9c6",
+        "387e4e935f540350d6c3dcf0f27bc6be6aadadd491521a8d82accfd59dc3d9c6"
+      ],
+      [
+        "4907db692acbc82db5b72b6d2d64bf0feb85af7cbbff50c0646f8fb84d1d0551",
+        "4907db692acbc82db5b72b6d2d64bf0feb85af7cbbff50c0646f8fb84d1d0551",
+        "4907db692acbc82db5b72b6d2d64bf0feb85af7cbbff50c0646f8fb84d1d0551"
+      ],
+      [
+        "117b1e83077664c404c19d0560482f49ab77cdd684479f5021fd179e66705683",
+        "117b1e83077664c404c19d0560482f49ab77cdd684479f5021fd179e66705683",
+        "117b1e83077664c404c19d0560482f49ab77cdd684479f5021fd179e66705683"
+      ],
+      [
+        "9c8f93877347159d90f538e14a2aec366ca2b19406287a3334c1392d518af59b",
+        "9c8f93877347159d90f538e14a2aec366ca2b19406287a3334c1392d518af59b",
+        "9c8f93877347159d90f538e14a2aec366ca2b19406287a3334c1392d518af59b"
+      ],
+      [
+        "0af9ce8b6dd98593e8ace781fd6253be5a0e68cf36b09d4296a6eae9cf13cedc",
+        "0af9ce8b6dd98593e8ace781fd6253be5a0e68cf36b09d4296a6eae9cf13cedc",
+        "0af9ce8b6dd98593e8ace781fd6253be5a0e68cf36b09d4296a6eae9cf13cedc"
+      ],
+      [
+        "65fd3a686e2d600d830e9b0d9275b785c668a80236e735605603d4660f569d2c",
+        "65fd3a686e2d600d830e9b0d9275b785c668a80236e735605603d4660f569d2c",
+        "65fd3a686e2d600d830e9b0d9275b785c668a80236e735605603d4660f569d2c"
+      ],
+      [
+        "07f1d8deb30e8c565ac550384f5247a036707785beb3ff2dbf00bb6c8c250e7f",
+        "07f1d8deb30e8c565ac550384f5247a036707785beb3ff2dbf00bb6c8c250e7f",
+        "07f1d8deb30e8c565ac550384f5247a036707785beb3ff2dbf00bb6c8c250e7f"
+      ],
+      [
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8",
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8",
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8"
+      ],
+      [
+        "cede65e2e00a8f12c9b37e5f1538d19f6843c9b231d6626c61e88d6fe66c0451",
+        "cede65e2e00a8f12c9b37e5f1538d19f6843c9b231d6626c61e88d6fe66c0451",
+        "cede65e2e00a8f12c9b37e5f1538d19f6843c9b231d6626c61e88d6fe66c0451"
+      ],
+      [
+        "9c1c9d85239356a9ed253a4e4a8c36fa577078d45e41862e13adfa915efed0b2",
+        "9c1c9d85239356a9ed253a4e4a8c36fa577078d45e41862e13adfa915efed0b2",
+        "9c1c9d85239356a9ed253a4e4a8c36fa577078d45e41862e13adfa915efed0b2"
+      ],
+      [
+        "8d170ccc562db57c60531a95f652138025a9cc9aa2d1873ce176cd3263811538",
+        "8d170ccc562db57c60531a95f652138025a9cc9aa2d1873ce176cd3263811538",
+        "8d170ccc562db57c60531a95f652138025a9cc9aa2d1873ce176cd3263811538"
+      ],
+      [
+        "72fedf6e34d5e4ea5a40952c73b205cdd59c9730f5a645d18b47ad547668e4dc",
+        "72fedf6e34d5e4ea5a40952c73b205cdd59c9730f5a645d18b47ad547668e4dc",
+        "72fedf6e34d5e4ea5a40952c73b205cdd59c9730f5a645d18b47ad547668e4dc"
+      ],
+      [
+        "dec783c3f0c3837e0ad4c9ceb7bf1ee58ffebb68478214504f217b4ecf563c15",
+        "dec783c3f0c3837e0ad4c9ceb7bf1ee58ffebb68478214504f217b4ecf563c15",
+        "dec783c3f0c3837e0ad4c9ceb7bf1ee58ffebb68478214504f217b4ecf563c15"
+      ],
+      [
+        "b6c3ef2a12732334b302c04e028c5a1cad989c7dd905cffa06eb56778f236449",
+        "b6c3ef2a12732334b302c04e028c5a1cad989c7dd905cffa06eb56778f236449",
+        "b6c3ef2a12732334b302c04e028c5a1cad989c7dd905cffa06eb56778f236449"
+      ],
+      [
+        "f3ce80b752b81a303266a3dccd149be9a066d541945552ec599637c3271b5571",
+        "f3ce80b752b81a303266a3dccd149be9a066d541945552ec599637c3271b5571",
+        "f3ce80b752b81a303266a3dccd149be9a066d541945552ec599637c3271b5571"
+      ],
+      [
+        "cc82d87ba272ce8e8618219d624953f33c7a28db8b1edecaa7a213d96093e9e2",
+        "cc82d87ba272ce8e8618219d624953f33c7a28db8b1edecaa7a213d96093e9e2",
+        "cc82d87ba272ce8e8618219d624953f33c7a28db8b1edecaa7a213d96093e9e2"
+      ],
+      [
+        "da156e3535c3432b283d9e5a2fdbde5d1e1aa6d4a3fa0a6537da58485491d32f",
+        "da156e3535c3432b283d9e5a2fdbde5d1e1aa6d4a3fa0a6537da58485491d32f",
+        "da156e3535c3432b283d9e5a2fdbde5d1e1aa6d4a3fa0a6537da58485491d32f"
+      ],
+      [
+        "7a8e955c9782de1e53940c7e3dca2778288a2b3b643af38723998c5b4f4a023c",
+        "7a8e955c9782de1e53940c7e3dca2778288a2b3b643af38723998c5b4f4a023c",
+        "7a8e955c9782de1e53940c7e3dca2778288a2b3b643af38723998c5b4f4a023c"
+      ],
+      [
+        "387e4e935f540350d6c3dcf0f27bc6be6aadadd491521a8d82accfd59dc3d9c6",
+        "387e4e935f540350d6c3dcf0f27bc6be6aadadd491521a8d82accfd59dc3d9c6",
+        "387e4e935f540350d6c3dcf0f27bc6be6aadadd491521a8d82accfd59dc3d9c6"
+      ],
+      [
+        "4907db692acbc82db5b72b6d2d64bf0feb85af7cbbff50c0646f8fb84d1d0551",
+        "4907db692acbc82db5b72b6d2d64bf0feb85af7cbbff50c0646f8fb84d1d0551",
+        "4907db692acbc82db5b72b6d2d64bf0feb85af7cbbff50c0646f8fb84d1d0551"
+      ],
+      [
+        "117b1e83077664c404c19d0560482f49ab77cdd684479f5021fd179e66705683",
+        "117b1e83077664c404c19d0560482f49ab77cdd684479f5021fd179e66705683",
+        "117b1e83077664c404c19d0560482f49ab77cdd684479f5021fd179e66705683"
+      ],
+      [
+        "9c8f93877347159d90f538e14a2aec366ca2b19406287a3334c1392d518af59b",
+        "9c8f93877347159d90f538e14a2aec366ca2b19406287a3334c1392d518af59b",
+        "9c8f93877347159d90f538e14a2aec366ca2b19406287a3334c1392d518af59b"
+      ],
+      [
+        "0af9ce8b6dd98593e8ace781fd6253be5a0e68cf36b09d4296a6eae9cf13cedc",
+        "0af9ce8b6dd98593e8ace781fd6253be5a0e68cf36b09d4296a6eae9cf13cedc",
+        "0af9ce8b6dd98593e8ace781fd6253be5a0e68cf36b09d4296a6eae9cf13cedc"
+      ],
+      [
+        "65fd3a686e2d600d830e9b0d9275b785c668a80236e735605603d4660f569d2c",
+        "65fd3a686e2d600d830e9b0d9275b785c668a80236e735605603d4660f569d2c",
+        "65fd3a686e2d600d830e9b0d9275b785c668a80236e735605603d4660f569d2c"
+      ],
+      [
+        "07f1d8deb30e8c565ac550384f5247a036707785beb3ff2dbf00bb6c8c250e7f",
+        "07f1d8deb30e8c565ac550384f5247a036707785beb3ff2dbf00bb6c8c250e7f",
+        "07f1d8deb30e8c565ac550384f5247a036707785beb3ff2dbf00bb6c8c250e7f"
+      ],
+      [
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8",
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8",
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8"
+      ],
+      [
+        "7a82a430c5f0c997c5923220b7e30aca10a32e26c79030d95a25a6ea023a7e11",
+        "7a82a430c5f0c997c5923220b7e30aca10a32e26c79030d95a25a6ea023a7e11",
+        "7a82a430c5f0c997c5923220b7e30aca10a32e26c79030d95a25a6ea023a7e11"
+      ],
+      [
+        "9c1c9d85239356a9ed253a4e4a8c36fa577078d45e41862e13adfa915efed0b2",
+        "9c1c9d85239356a9ed253a4e4a8c36fa577078d45e41862e13adfa915efed0b2",
+        "9c1c9d85239356a9ed253a4e4a8c36fa577078d45e41862e13adfa915efed0b2"
+      ],
+      [
+        "3acf2ae772a5b526d3841c8f28c2432da19db7534626be5c1c8a193980216545",
+        "3acf2ae772a5b526d3841c8f28c2432da19db7534626be5c1c8a193980216545",
+        "3acf2ae772a5b526d3841c8f28c2432da19db7534626be5c1c8a193980216545"
+      ],
+      [
+        "72fedf6e34d5e4ea5a40952c73b205cdd59c9730f5a645d18b47ad547668e4dc",
+        "72fedf6e34d5e4ea5a40952c73b205cdd59c9730f5a645d18b47ad547668e4dc",
+        "72fedf6e34d5e4ea5a40952c73b205cdd59c9730f5a645d18b47ad547668e4dc"
+      ],
+      [
+        "06d6993117ffc1229463f84376d5635de58b947a1702d6cb76ac68404ef76a39",
+        "06d6993117ffc1229463f84376d5635de58b947a1702d6cb76ac68404ef76a39",
+        "06d6993117ffc1229463f84376d5635de58b947a1702d6cb76ac68404ef76a39"
+      ],
+      [
+        "a14d384554aa44a04d1cbddd1ffd372f5268168de2baf8a60defd2bb3c78208a",
+        "a14d384554aa44a04d1cbddd1ffd372f5268168de2baf8a60defd2bb3c78208a",
+        "a14d384554aa44a04d1cbddd1ffd372f5268168de2baf8a60defd2bb3c78208a"
+      ],
+      [
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8",
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8",
+        "79f2e42d9d805e034205995e25d9abf4fead5f215c1503e5ab2de2e4aaa2b6c8"
+      ],
+      [
+        "b6c3ef2a12732334b302c04e028c5a1cad989c7dd905cffa06eb56778f236449",
+        "b6c3ef2a12732334b302c04e028c5a1cad989c7dd905cffa06eb56778f236449",
+        "b6c3ef2a12732334b302c04e028c5a1cad989c7dd905cffa06eb56778f236449"
+      ],
+      [
+        "4907db692acbc82db5b72b6d2d64bf0feb85af7cbbff50c0646f8fb84d1d0551",
+        "4907db692acbc82db5b72b6d2d64bf0feb85af7cbbff50c0646f8fb84d1d0551",
+        "4907db692acbc82db5b72b6d2d64bf0feb85af7cbbff50c0646f8fb84d1d0551"
+      ],
+      [
+        "07f1d8deb30e8c565ac550384f5247a036707785beb3ff2dbf00bb6c8c250e7f",
+        "07f1d8deb30e8c565ac550384f5247a036707785beb3ff2dbf00bb6c8c250e7f",
+        "07f1d8deb30e8c565ac550384f5247a036707785beb3ff2dbf00bb6c8c250e7f"
+      ]
+    ]
+  },
+  "route": {
+    "candidate_environment": {
+      "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": "unset: current package default",
+      "HIPENGINE_GGUF_ROUTER_F32W_COOP": "unset: current package default",
+      "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER": "unset: current package default"
+    },
+    "candidate_variants": {
+      "source": "current_package_execution_manifests"
+    },
+    "package_min_rows_capability": "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",
+    "package_min_rows_verified": 0,
+    "package_value_verified": false,
+    "policy_capability": "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
+    "policy_restored_after_capture": true,
+    "route_profile": "current_package_direct",
+    "router_candidate_included": false,
+    "strict_environment": {
+      "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": "0"
+    },
+    "strict_variants": {
+      "c1_c2_c4": {
+        "pair": "t16_dual_gemv_decode_bf16_bf16_out",
+        "single": "t16_gemv_decode_bf16_bf16_out",
+        "triple": "t16_triple_gemv_decode_bf16_bf16_out"
+      },
+      "c8": {
+        "pair": "t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out",
+        "single": "t16_gemv_decode_bf16_bf16_out",
+        "triple": "t16_triple_gemv_decode_bf16_bf16_out"
+      }
+    }
+  },
+  "schema_version": 1,
+  "status": "complete",
+  "strict_logits_sha256": "78bf138417a18a6fa2a75c1b7bad256c75a15e349515c2406b19e5e7772c0090",
+  "strict_selected_token_ids_sha256": "0418a9e9d7c6217b22aa040a2f199f18a1377c56e6ad2e7ee8f60f28e8bece0d"
+}

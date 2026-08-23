@@ -1,0 +1,113 @@
+{
+  "schema": 1,
+  "kind": "concurrency2_qwen38_decode_wall_reconciliation_corrected",
+  "created_at": "2026-08-21T22:41:35.455930+00:00",
+  "status": "diagnostic_corrected_step1",
+  "performance_claim": false,
+  "summary": "Corrected step-1 wall reconciliation. Summed kernel durations massively overcount wall coverage under multi-stream overlap; GPU kernel busy-time (interval union) is only 7-29% of wall in graph replay (c1->c8) and 59-62% in eager decode. The graph-replay decode is substantially host/dispatch/phase-gap bound, NOT GPU-bound. Attribution is not yet final: graph HIP-API trace clock includes the capture phase, and the profiler-child replay must be validated against the production continuous-owner path. No kernel or dispatch campaign is selected yet.",
+  "lanes": {
+    "graph_c1": {
+      "root": "/tmp/hipengine-gfx11-c4-full",
+      "kernel_trace_sha256": "6f7c035ed0c8d61a6aadeda3bbb73b8e001d7f582b6dbbfcf56e023a74f93819",
+      "marker_trace_sha256": "2c7c3fac0839c1b4d2de45c976cb5d31d962018c02bc79766fab1b956e2bbcbb",
+      "hip_api_trace_sha256": "3c6f423e97dd6d2c2f2a302a88fda74ecf273afdc85ca467e807c274b80227fe",
+      "memory_copy_trace_sha256": "e366092a8d74501b7d25025c808a3efdea339a7c10d276345a4e3a1fff0c8871",
+      "accounting": {
+        "marker_wall_ns": 35529478,
+        "kernel_sum_ns": 31156638,
+        "kernel_interval_union_ns": 2550457,
+        "uncovered_ns": 32979021,
+        "kernel_count": 823,
+        "hip_api_calls": 2,
+        "hip_api_time_ns": 35374036,
+        "memory_copy_ops": 0,
+        "memory_copy_time_ns": 0
+      }
+    },
+    "graph_c4": {
+      "root": "/tmp/hipengine-gfx11-c4-full",
+      "kernel_trace_sha256": "8fd1cf7de7c6af2e70555de8fb87550b3c5212588f930a907b53db02ed71d431",
+      "marker_trace_sha256": "566cefdaa2da4d25f46c4add39285f31501267b25cd87bc8475181fa14e3b07b",
+      "hip_api_trace_sha256": "326d35a581a98402af554d2d4aec588fc9cd6f4d560775f66746b73a6a8eebae",
+      "memory_copy_trace_sha256": "b0e842224ae9fc4f85edb9ceea78dfd8f9f88ba586b3223b65e6be66afb826b3",
+      "accounting": {
+        "marker_wall_ns": 43869843,
+        "kernel_sum_ns": 39002036,
+        "kernel_interval_union_ns": 5612130,
+        "uncovered_ns": 38257713,
+        "kernel_count": 839,
+        "hip_api_calls": 2,
+        "hip_api_time_ns": 43694471,
+        "memory_copy_ops": 0,
+        "memory_copy_time_ns": 0
+      }
+    },
+    "graph_c8": {
+      "root": "/tmp/hipengine-gfx11-c8-full",
+      "kernel_trace_sha256": "2aba2b552fc3f2cd22b9abb8a42f9a98cd2a47fe7f54f3709bbb9734e47fff6c",
+      "marker_trace_sha256": "aec594cddcaa214bbe0e6cb997e1d591296f99044d75d35cd9c8c2d6f8cf7c6c",
+      "hip_api_trace_sha256": "ab5b9f1401b57a34bbf83f461e35d610983c24290adf38b4e160ad414e59dff0",
+      "memory_copy_trace_sha256": "dc1179dec129b21d17e400a02089c30a13f869f073ca80dbae6c2b51770957b7",
+      "accounting": {
+        "marker_wall_ns": 62030420,
+        "kernel_sum_ns": 56733978,
+        "kernel_interval_union_ns": 17866430,
+        "uncovered_ns": 44163990,
+        "kernel_count": 872,
+        "hip_api_calls": 2,
+        "hip_api_time_ns": 61827647,
+        "memory_copy_ops": 0,
+        "memory_copy_time_ns": 0
+      }
+    },
+    "eager_c1": {
+      "root": "/tmp/hipengine-gfx11-c4-eager",
+      "kernel_trace_sha256": "c6817abfba4f90ceaf288bfaec904eb5094828c564b0906541df8ea1839f474b",
+      "marker_trace_sha256": "5a701a6ede59fc4598278c84ff3a05b4556df9fd9f73ae14af923bb05dc08035",
+      "hip_api_trace_sha256": "18ee63cffcc77f60d16a37c9e145698edbb1513525e5f860f4be913a0dadb454",
+      "memory_copy_trace_sha256": "75a3ddb4be240a1e2e14ac0913de99e9334dee345e0827bbdb8dc40583263d9b",
+      "accounting": {
+        "marker_wall_ns": 36101852,
+        "kernel_sum_ns": 29165048,
+        "kernel_interval_union_ns": 21193182,
+        "uncovered_ns": 14908670,
+        "kernel_count": 760,
+        "hip_api_calls": 1649,
+        "hip_api_time_ns": 12109142,
+        "memory_copy_ops": 0,
+        "memory_copy_time_ns": 0
+      }
+    },
+    "eager_c4": {
+      "root": "/tmp/hipengine-gfx11-c4-eager",
+      "kernel_trace_sha256": "ceef88ba54de6d1ac85b784661d96221a180d73de4f2cf899ab1eee605c750ee",
+      "marker_trace_sha256": "a80807a352267b964aaafb54dd613d6a1e59a44acfa2a15c8d6f7d255a7d1110",
+      "hip_api_trace_sha256": "ad37fdf8cb65f265d23f0d0fd944f6128fd2d8a4a8b6772bf568f1b7ea239ca7",
+      "memory_copy_trace_sha256": "380b2ec8f9962a548489c74871a347ca30aa19fb3fd1dc19ade08aac8043c9f1",
+      "accounting": {
+        "marker_wall_ns": 43362733,
+        "kernel_sum_ns": 38192093,
+        "kernel_interval_union_ns": 27024715,
+        "uncovered_ns": 16338018,
+        "kernel_count": 841,
+        "hip_api_calls": 1683,
+        "hip_api_time_ns": 12551712,
+        "memory_copy_ops": 0,
+        "memory_copy_time_ns": 0
+      }
+    }
+  },
+  "host": {
+    "device": "AMD Radeon Pro W7900",
+    "gfx": "gfx1100"
+  },
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "kv_dtype": "bf16",
+  "prompt_length": 512,
+  "commands": {
+    "graph_c4": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_packed_ar_rocprof.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --decode-mode graph --packed-concurrency 4 --prompt-length 512 --compiler-version-file /tmp/compiler-version.txt --raw-root /tmp/hipengine-gfx11-c4-full/raw --out /tmp/c4-full-profile.json",
+    "graph_c8": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_packed_ar_rocprof.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --decode-mode graph --packed-concurrency 8 --prompt-length 512 --compiler-version-file /tmp/compiler-version.txt --raw-root /tmp/hipengine-gfx11-c8-full/raw --out /tmp/c8-full-profile.json",
+    "eager_c4": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_packed_ar_rocprof.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --decode-mode eager --packed-concurrency 4 --prompt-length 512 --compiler-version-file /tmp/compiler-version.txt --raw-root /tmp/hipengine-gfx11-c4-eager/raw --out /tmp/c4-eager-profile.json"
+  }
+}

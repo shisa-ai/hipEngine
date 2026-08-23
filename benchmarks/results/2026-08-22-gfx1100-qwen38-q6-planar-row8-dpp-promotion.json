@@ -1,0 +1,248 @@
+{
+  "candidate_admission_artifact": "benchmarks/results/2026-08-22-gfx1100-qwen38-q6-planar-row8-dpp-candidate.json",
+  "change": {
+    "default_after": "same exact body with permlanex16+DPP reduction",
+    "default_before": "planar qmicro col8 row8 generic shuffle reduction",
+    "fallbacks": "planar rows1-7 unchanged; standard Q6 and peer backends unchanged",
+    "scope": "gfx1100 BF16 planar-Q6 rows==8 only"
+  },
+  "commands": {
+    "ab": "Six fresh cached-only processes in candidate,control,control,candidate,candidate,control order; production-owner child p512 c8 d32 marker3, with candidate process replacing only the two planar-Q6 rowtile registry variants using a rows==8 candidate/rows<8 retained wrapper.",
+    "final_gate": "scripts/qwen38_q6_planar_actual_operation_gate.py --model ... --require-cached-build --allow-dirty --full-model-smoke <retained clean smoke>"
+  },
+  "counterbalanced_packet": {
+    "all_drained": true,
+    "all_token_hashes_equal": true,
+    "candidate_mean_ms": 57.82323097810149,
+    "candidate_median_ms": 57.73400003090501,
+    "candidate_ms": [
+      57.70833883434534,
+      58.02735406905413,
+      57.73400003090501
+    ],
+    "candidate_wins": 3,
+    "control_mean_ms": 58.66378250842293,
+    "control_median_ms": 58.69303271174431,
+    "control_ms": [
+      58.5917211137712,
+      58.69303271174431,
+      58.706593699753284
+    ],
+    "mean_delta_percent": -1.4328287307432963,
+    "median_delta_ms": -0.9590326808393002,
+    "median_delta_percent": -1.6339804513924916,
+    "order": [
+      "candidate",
+      "control",
+      "control",
+      "candidate",
+      "candidate",
+      "control"
+    ],
+    "runs": [
+      {
+        "all_rows_equal": true,
+        "final_requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 8,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 8
+        },
+        "marked_wall_ms": 57.70833883434534,
+        "path": "/tmp/c2-q6-dpp-owner-pairs/1-candidate.json",
+        "physical_rows": 8,
+        "raw_sha256": "244e4b5c74ba1071e3a5124a42fce65e39ce77276e3d065dc473e00da726d4d1",
+        "scalar_fallbacks": 0,
+        "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+        "transport": "hipgraph",
+        "variant": "candidate"
+      },
+      {
+        "all_rows_equal": true,
+        "final_requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 8,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 8
+        },
+        "marked_wall_ms": 58.5917211137712,
+        "path": "/tmp/c2-q6-dpp-owner-pairs/2-control.json",
+        "physical_rows": 8,
+        "raw_sha256": "34e9af73aec569518442a09175920157eb451f286317bd88fefcecec0a1b9080",
+        "scalar_fallbacks": 0,
+        "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+        "transport": "hipgraph",
+        "variant": "control"
+      },
+      {
+        "all_rows_equal": true,
+        "final_requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 8,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 8
+        },
+        "marked_wall_ms": 58.69303271174431,
+        "path": "/tmp/c2-q6-dpp-owner-pairs/3-control.json",
+        "physical_rows": 8,
+        "raw_sha256": "712bfbf1276bb35edf63017ff47454dee0349868ca43907e6e4063576340280a",
+        "scalar_fallbacks": 0,
+        "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+        "transport": "hipgraph",
+        "variant": "control"
+      },
+      {
+        "all_rows_equal": true,
+        "final_requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 8,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 8
+        },
+        "marked_wall_ms": 58.02735406905413,
+        "path": "/tmp/c2-q6-dpp-owner-pairs/4-candidate.json",
+        "physical_rows": 8,
+        "raw_sha256": "903d70cb3a11886b519b83368097110c6c5294d692054d0e40546a693008f3bb",
+        "scalar_fallbacks": 0,
+        "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+        "transport": "hipgraph",
+        "variant": "candidate"
+      },
+      {
+        "all_rows_equal": true,
+        "final_requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 8,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 8
+        },
+        "marked_wall_ms": 57.73400003090501,
+        "path": "/tmp/c2-q6-dpp-owner-pairs/5-candidate.json",
+        "physical_rows": 8,
+        "raw_sha256": "c3f829b1b3be938672238e629368df436a23a15d7227b5649e75e4f304ff4270",
+        "scalar_fallbacks": 0,
+        "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+        "transport": "hipgraph",
+        "variant": "candidate"
+      },
+      {
+        "all_rows_equal": true,
+        "final_requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 8,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 8
+        },
+        "marked_wall_ms": 58.706593699753284,
+        "path": "/tmp/c2-q6-dpp-owner-pairs/6-control.json",
+        "physical_rows": 8,
+        "raw_sha256": "6feae1227de0e02fa127dcf815254cb69daa63fc2c543b464e051b3984273175",
+        "scalar_fallbacks": 0,
+        "token_sha256": "243aa292798a333f1d765347e1cd0d13ea0deb6b330a0cba5a06b365fe13da78",
+        "transport": "hipgraph",
+        "variant": "control"
+      }
+    ]
+  },
+  "date": "2026-08-22",
+  "decision": "Promote DPP for the existing registered planar-Q6 BF16 row8 wrapper. The exact 0.959-ms complete-step median win is retained; no environment flag is added.",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "gfx": "gfx1100"
+  },
+  "kind": "gfx1100_qwen38_q6_planar_row8_dpp_default_promotion",
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m"
+  },
+  "performance_claim": "marked steady production-owner physical-c8 transition",
+  "physical_evidence": {
+    "candidate": {
+      "allocated_vgpr": 112,
+      "bpermutes": 0,
+      "dpp_adds": 256,
+      "dual_ops": 326,
+      "lds_bytes": 1024,
+      "logical_vgpr": 111,
+      "permlanex16": 64,
+      "scratch_bytes": 0,
+      "static_instruction_slots": 1775,
+      "symbol_size_bytes": 9784,
+      "waitcnt": 57
+    },
+    "candidate_isa_sha256": "3126c7498e2b8e5340aa9d174637c7ea2e011cded53d98a6676c9ef2573c3557",
+    "control": {
+      "allocated_vgpr": 136,
+      "bpermutes": 320,
+      "dual_ops": 518,
+      "lds_bytes": 1024,
+      "logical_vgpr": 130,
+      "scratch_bytes": 0,
+      "static_instruction_slots": 2107,
+      "symbol_size_bytes": 10908,
+      "waitcnt": 232
+    },
+    "control_isa_sha256": "fc7f97bbdab999b04d0cf93419e62fb342fb54433252afcfedc80058fad53b84",
+    "trace_sha256": "6db72a6764b61f48e7945b5a2bdf0c775195c505e02b72ee18385ce5b2c113e8",
+    "unit_trace_us": {
+      "candidate": 15.039,
+      "control": 16.532,
+      "delta_percent": -9.030970239535453
+    }
+  },
+  "promoted_actual_operation_gate": {
+    "all_bit_exact": true,
+    "cpu_quality": {
+      "finite": true,
+      "max_abs": 0.004004478454589844,
+      "max_kl": 1.2086090926308203e-07,
+      "passed": true,
+      "top1_agreement": 1.0,
+      "top1_matches": 16,
+      "top1_total": 16
+    },
+    "full_model": {
+      "dense_bf16_bytes": 0,
+      "final_token_id": 9707,
+      "finite_final_logits": true,
+      "passed": true,
+      "path": "/tmp/qwen38-rowtile-review-smoke-clean/smoke.json",
+      "planar_q6_bytes": 4449177600,
+      "production_graph": true,
+      "standard_q6_bytes": 0,
+      "teardown_bytes": 0
+    },
+    "operation_verdicts": 55,
+    "raw_sha256": "bfaff8b99da35d414107cb1f13b5e355e3e0aca8c83c12cfb807827d644c2c79",
+    "teardown_exact": true
+  },
+  "schema": 1,
+  "source": {
+    "base_commit": "115dd326e",
+    "host": "epyc",
+    "tree": "tracked-clean for counterbalanced A/B; final promotion diff changes only default case8 selection"
+  },
+  "status": "promoted_default",
+  "workload": {
+    "concurrency": 8,
+    "decode_tokens": 32,
+    "marker_index": 3,
+    "path": "public LLM -> EngineService",
+    "prompt_length": 512,
+    "route": "one packed_native physical-c8 group",
+    "transport": "hipgraph"
+  }
+}

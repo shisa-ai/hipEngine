@@ -91,7 +91,10 @@ def test_compare_accepts_dense_hf_output_without_hidden_checkpoints(
 
 
 def test_hf_flash_attention_shim_matches_bottom_right_causal_gqa_window() -> None:
-    torch = pytest.importorskip("torch")
+    try:
+        import torch
+    except (ImportError, OSError) as exc:
+        pytest.skip(f"optional torch runtime is unavailable: {exc}")
     query = torch.tensor(
         [[
             [[0.4, -0.2], [0.1, 0.3], [-0.5, 0.7], [0.2, -0.6]],

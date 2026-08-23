@@ -1,0 +1,101 @@
+{
+  "actual_qwen38": {
+    "engine_service": {
+      "active_children": 0,
+      "command_queue_depth": 0,
+      "driver_thread_id": 140370797131456,
+      "last_speculative_draft_depth": 3,
+      "last_speculative_route": "engine_service_verify_chain",
+      "last_speculative_work_kind": "verify_chain",
+      "sole_driver": true,
+      "speculative_routes": {
+        "engine_service_verify_chain": 1,
+        "legacy_prelaunch_fallback": 0
+      }
+    },
+    "exact": true,
+    "final_requests": {
+      "active": 0,
+      "admitted_current": 0,
+      "admitted_total": 0,
+      "completed_buffered": 0,
+      "pending": 0,
+      "reclaimed_total": 0
+    },
+    "legacy_ids": [
+      9707,
+      9707,
+      9707,
+      9707
+    ],
+    "primary_ids": [
+      9707,
+      9707,
+      9707,
+      9707
+    ],
+    "routes": {
+      "counts": {
+        "host_sampler_requests": 0,
+        "native_c1_decode_steps": 0,
+        "native_full_prefill_rows": 0,
+        "native_incremental_prefill_chunks": 0,
+        "native_incremental_prefill_unsampled_chunks": 0,
+        "native_packed_decode_steps": 0,
+        "native_packed_graph_captures": 0,
+        "native_packed_graph_replays": 0,
+        "native_sampled_prefill_rows": 0,
+        "native_sampler_batch_launches": 0,
+        "native_sampler_requests": 0,
+        "native_sampler_row_launches": 0,
+        "resident_fallback_requests": 0,
+        "serial_c1_row_steps": 0,
+        "serial_decode_fallback_steps": 0
+      },
+      "fallback_reasons": {},
+      "last_execution_manifest": {},
+      "last_physical_group_plan": {},
+      "physical_width_decode_steps": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0
+      },
+      "recent_completed": []
+    }
+  },
+  "created_at": "2026-08-22T14:47:00Z",
+  "decision": "SPEC-C1 closed for guarded phase-serial GGUF MTP. No GPU kernel/default change. SPEC-C2 must replace one-child phase serialization with continuous compatible packing.",
+  "implementation": {
+    "cancellation": "public speculative handle uses normal service cancel/abort/reclaim and GenerationCancelled output",
+    "current_packing": "phase-serial one child per model-owned call; cross-request draft/verify packing deferred to SPEC-C2",
+    "fallback": "legacy generate_speculative_mtp_detailed selected only before child admission when driver lacks submit_speculative_detailed",
+    "primary_route": "EngineService submit_speculative_children -> shared _ChildState/request maps -> driver submit_speculative_detailed -> VERIFY_CHAIN GenerationSubmission/WorkItem -> shared collector/take_result/release",
+    "transaction": "validated model-owned target/provider transaction remains inside the existing route; EngineService is sole lifecycle/output coordinator"
+  },
+  "kind": "concurrency2_spec_c1_engine_service_integration",
+  "passed": true,
+  "performance_claim": false,
+  "schema": 1,
+  "source": {
+    "commit": "fa93efc75",
+    "host": "epyc",
+    "tree_note": "host service/adapter/tests only"
+  },
+  "status": "accepted_engine_service_integration",
+  "validation": {
+    "actual": "Qwen3.8 primary IDs exactly equal direct legacy IDs; verify_chain route count 1, active children 0, draft depth 3",
+    "green": "44 engine service/loop/scheduler tests passed",
+    "hashes": {
+      "hipengine/generation/engine_loop.py": "de1933d90b69fee0b143a6236f5d5f792191f7ff1f0e56fa8e5efd11574c006c",
+      "hipengine/generation/engine_service.py": "64754d2a47789e1706a8619d1ac223e632ad3df3c6b290e08afccaaab5fee632",
+      "tests/test_generation_engine_service.py": "32900705c0892776f52e69bb75ac3ecf4aa4fded3149ef7809f4eadfed83b986"
+    },
+    "raw_smoke_sha256": "5885f53401e74417adaf4ebcfc187d142c4478e527b6511919d66f426506ff07",
+    "red": "primary test invoked legacy control and telemetry had no speculative route counters"
+  }
+}

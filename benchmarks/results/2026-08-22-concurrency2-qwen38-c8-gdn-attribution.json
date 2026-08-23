@@ -1,0 +1,124 @@
+{
+  "created_at": "2026-08-22T15:55:00Z",
+  "decision": "Do not alter gfx1100 strict GDN for this merge. The only high-impact mechanism is changed state representation/association, which is not core-correctness-safe without a separate production-numerics campaign. Keep exact FP32 segmented owner; prioritize product blockers rather than micro-tuning Conv.",
+  "families": {
+    "fused_gdn_recurrence_norm_gate_state": {
+      "calls": 48,
+      "grid_x": [
+        1024
+      ],
+      "grid_y": [
+        48
+      ],
+      "lds_reported": [
+        0
+      ],
+      "max_us": 168.001,
+      "median_us": 162.881,
+      "min_us": 158.96099999999998,
+      "scratch": [
+        0
+      ],
+      "sgpr": [
+        128
+      ],
+      "sum_ms": 7.813331,
+      "vgpr": [
+        80
+      ],
+      "workgroup": [
+        128
+      ]
+    },
+    "indexed_conv_decode": {
+      "calls": 48,
+      "grid_x": [
+        10240
+      ],
+      "grid_y": [
+        8
+      ],
+      "lds_reported": [
+        0
+      ],
+      "max_us": 7.4799999999999995,
+      "median_us": 6.84,
+      "min_us": 6.52,
+      "scratch": [
+        0
+      ],
+      "sgpr": [
+        128
+      ],
+      "sum_ms": 0.328843,
+      "vgpr": [
+        16
+      ],
+      "workgroup": [
+        256
+      ]
+    }
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "gfx": "gfx1100"
+  },
+  "interpretation": [
+    "The recurrence kernel itself owns normalization, gate, recurrent update, and state commit; no separate multi-ms copy/commit bucket exists.",
+    "Conv is 0.329 ms and not a first target.",
+    "The state matrix cannot be retained in registers/LDS; delta depends on a complete K dot, forcing a second state traversal under exact FP32 ownership.",
+    "FP16 state halves traffic but changes persistent arithmetic and is a gfx1151 production-profile experiment, not an exact gfx1100 default.",
+    "Any changed-state representation requires the full production numerical/category/isolation/task gate and strict FP32 fallback."
+  ],
+  "kind": "concurrency2_qwen38_c8_gdn_mechanism_attribution",
+  "model": {
+    "gdn_geometry": {
+      "head_k_dim": 128,
+      "head_v_dim": 128,
+      "num_k_heads": 16,
+      "num_v_heads": 48,
+      "state_dtype": "fp32"
+    },
+    "linear_layers": 48,
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m"
+  },
+  "passed": true,
+  "performance_claim": false,
+  "schema": 1,
+  "source": {
+    "current_commit": "c4c9671cf",
+    "host": "epyc",
+    "kernel_source_unchanged_since_trace": true,
+    "trace_commit": "d7f2b9b0d"
+  },
+  "state_traffic_lower_bound": {
+    "accesses_per_element": "two FP32 reads + one FP32 write",
+    "bytes_per_c8_step_all_48_layers": 3623878656,
+    "diagnostic_max_sum_saving_ms_at_750gb_s": 2.981492792,
+    "encoded_state_gb_s": 463.8071337307993,
+    "gib_per_step": 3.375,
+    "ideal_ms_at_750gb_s": 4.831838208,
+    "state_bytes_per_request_layer": 3145728,
+    "state_elements_per_request_layer": 786432
+  },
+  "status": "attributed_no_safe_strict_optimization_selected",
+  "validation": {
+    "focused": "5 passed",
+    "marker_sha256": "bf267ad80c1e5d22cb437446ee763f3c0ea2d4eca0b10f2fa2d41f1a475b3078",
+    "trace_sha256": "8370f6e8e5fec1f0e97155bbb26c45815753fdf819c7e97bdea6952d40a9e824"
+  },
+  "width_slopes": {
+    "c1_ms": 0.736887,
+    "c4_ms": 4.89111,
+    "c4_to_c8_percent": 59.74555877909103,
+    "c8_ms": 7.813331,
+    "note": "c1 uses the single-row owner; c4/c8 use segmented owner"
+  },
+  "workload": {
+    "marked_transition": 3,
+    "marker_wall_ms": 60.428884,
+    "physical_rows": 8,
+    "prompt_length": 512
+  }
+}

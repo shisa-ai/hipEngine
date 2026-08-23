@@ -85,6 +85,9 @@ _Q4_QMICRO_DENSE_DUAL_Q8X2_ROWTILE8_DP4A_SILU_BF16 = (
 _Q4_DENSE_ROWTILE_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_rowtile_gemv_bf16_bf16_out"
 )
+_Q4_DENSE_ROWTILE16_W2_BF16 = (
+    "hipengine_gguf_q4_k_t16_dense_rowtile16_w2_gemv_bf16_bf16_out"
+)
 _Q4_QMICRO_DENSE_ROWTILE_BF16 = (
     "hipengine_gguf_q4_k_qmicro_t16_dense_rowtile_gemv_bf16_bf16_out"
 )
@@ -1257,6 +1260,51 @@ def gguf_q4_k_t16_dense_rowtile_bf16_bf16_out(
             f"{status}: {rt.error_string(status)}"
         )
 
+def gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact gfx1151 physical-row8 two-wave geometry."""
+
+    _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features, max_rows=8)
+    if rows != 8:
+        raise ValueError("dense Q4 T16 rowtile16-w2 requires rows == 8")
+    lib = library or _t16_selected_gemv_library()
+    rt = runtime or get_hip_runtime()
+    fn = getattr(lib, _Q4_DENSE_ROWTILE16_W2_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    status = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if status != HIP_SUCCESS:
+        raise RuntimeError(
+            f"{_Q4_DENSE_ROWTILE16_W2_BF16} failed with HIP status "
+            f"{status}: {rt.error_string(status)}"
+        )
+
 
 def gguf_q4_k_qmicro_t16_dense_rowtile_bf16_bf16_out(
     x_ptr: int,
@@ -1272,7 +1320,7 @@ def gguf_q4_k_qmicro_t16_dense_rowtile_bf16_bf16_out(
 ) -> None:
     """Launch the exact sole-qmicro rows2-4 primitive."""
 
-    _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
+    _check_dense_q4_t16_rowtile4_shape(rows, in_features, out_features)
     lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_QMICRO_DENSE_ROWTILE_BF16)
@@ -1317,7 +1365,7 @@ def gguf_q4_k_t16_dense_rowtile_bf16_residual_bf16_out(
 ) -> None:
     """Launch exact compact-Q4 FFN-down plus rounded-BF16 residual."""
 
-    _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
+    _check_dense_q4_t16_rowtile4_shape(rows, in_features, out_features)
     lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_ROWTILE_RESIDUAL_BF16)
@@ -1362,9 +1410,9 @@ def gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch the exact two-wave compact-T16 FFN rowtile for rows 2-4."""
+    """Launch the exact two-wave compact-T16 FFN rowtile for rows 2-8."""
 
-    _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
+    _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features, max_rows=8)
     lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_DUAL_ROWTILE_SILU_BF16)
@@ -1460,7 +1508,7 @@ def gguf_q4_k_qmicro_t16_dense_dual_rowtile_silu_bf16_bf16_out(
 ) -> None:
     """Launch the exact qmicro FFN rowtile for rows 2-4."""
 
-    _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features)
+    _check_dense_q4_t16_rowtile4_shape(rows, in_features, out_features)
     lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_QMICRO_DENSE_DUAL_ROWTILE_SILU_BF16)
@@ -1545,6 +1593,23 @@ def _check_dense_q4_t16_rowtile_shape(
 ) -> None:
     if not 2 <= rows <= int(max_rows):
         raise ValueError(f"dense Q4T16 rowtile requires rows in 2..{int(max_rows)}")
+    _check_dense_q4_t16_rowtile_geometry(in_features, out_features)
+
+
+def _check_dense_q4_t16_rowtile4_shape(
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> None:
+    if not 2 <= rows <= 4:
+        raise ValueError("dense Q4T16 rowtile requires rows in 2..4")
+    _check_dense_q4_t16_rowtile_geometry(in_features, out_features)
+
+
+def _check_dense_q4_t16_rowtile_geometry(
+    in_features: int,
+    out_features: int,
+) -> None:
     if in_features <= 0 or in_features % _QK_K:
         raise ValueError("in_features must be a positive multiple of 256")
     if out_features <= 0 or out_features % _T16_COLS:
@@ -3866,6 +3931,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
         KernelKey(
             "hip_gfx1100",
             "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_rowtile16_w2_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
             "gguf_q4_k_qmicro_t16_v1",
             "dense_rowtile_bf16_bf16_out",
         ),
@@ -4297,6 +4372,7 @@ __all__ = [
     "gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_rowtile_bf16_bf16_out",
+    "gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out",
     "gguf_q4_k_t16_dense_rowtile_bf16_residual_bf16_out",
     "gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out",
     "gguf_q4_k_t16_dense_single_col4_bf16_bf16_out",

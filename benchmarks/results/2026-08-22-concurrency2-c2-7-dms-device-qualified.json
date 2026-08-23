@@ -1,0 +1,134 @@
+{
+  "checkpoint_search": {
+    "interpretation": "No trained DMS retrofit metadata/checkpoint is available locally. Synthetic fixture metadata is not model evidence.",
+    "matching_files": [],
+    "roots": [
+      "/models"
+    ]
+  },
+  "correctness": {
+    "command": "uv run pytest -q tests/test_dms_extract_decision_hip.py tests/test_dms_streaming_pack_hip.py tests/test_dms_append_decode_hip.py tests/test_dms_compact_attn_decode_hip.py tests/test_kvcache_dms_device_hip.py tests/test_kvcache_dms.py",
+    "contracts": [
+      "decision extraction bit-exact",
+      "streaming pack bit-exact and no dense shadow",
+      "append/evict bit-exact and fail-closed overflow",
+      "compact attention KL<=0.05/top1>=90%",
+      "device-host metadata/payload parity",
+      "determinism",
+      "c1/c2/c4/c8/c16/c32 pack+append+attention+reclaim",
+      "tracked device-memory baseline restored"
+    ],
+    "failed": 0,
+    "passed": 53
+  },
+  "created_at": "2026-08-22T13:30:00Z",
+  "decision": {
+    "c2_7_hip": "passed",
+    "default": "dense global paging remains gfx1100 default; DMS remains opt-in/fail-closed",
+    "definition_of_done_compact": "passed for format-distinct fixture conformance",
+    "dms_product": "blocked only on valid trained checkpoint/model quality/device savings/soak"
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "gfx": "gfx1100"
+  },
+  "kind": "concurrency2_c2_7_dms_device_fixture_qualification",
+  "model_product_gate": {
+    "blocker": "FileNotFoundError: no packaged DMS metadata for /models/gguf/Qwen3.8-27B-Q4_K_M.gguf; expected /models/gguf/dms_metadata.json",
+    "created_at": "2026-08-22T13:25:38.253697+00:00",
+    "kind": "hipengine_dms_backend_gate",
+    "metadata": null,
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "passed": false,
+    "performance_claim": false,
+    "schema": 1,
+    "status": "blocked_metadata"
+  },
+  "passed": true,
+  "performance_claim": false,
+  "profiler": {
+    "cached_only": true,
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/compiler-version.txt rocprofv3 --kernel-trace --output-format csv -d /tmp/dms-rocprof-final -- python3 scripts/dms_device_rocprof_smoke.py --compiler-version-file /tmp/compiler-version.txt",
+    "harness_sha256": "343adc3327dfc37075fa06f9cd593fe9396896cbc46c0eb20e892cda9a5b15e1",
+    "kernel_identities": {
+      "dms_append_decode_kernel": {
+        "count": 3,
+        "durations_us": [
+          32.897,
+          33.984,
+          29.688
+        ],
+        "resources": [
+          {
+            "lds_bytes": 1536,
+            "scratch_bytes": 0,
+            "sgpr": 128,
+            "vgpr": 32,
+            "workgroup": 256
+          }
+        ]
+      },
+      "dms_compact_attn_decode_kernel": {
+        "count": 2,
+        "durations_us": [
+          12.608,
+          12.807
+        ],
+        "resources": [
+          {
+            "lds_bytes": 0,
+            "scratch_bytes": 0,
+            "sgpr": 128,
+            "vgpr": 16,
+            "workgroup": 256
+          }
+        ]
+      },
+      "dms_extract_decision_kernel": {
+        "count": 1,
+        "durations_us": [
+          4.233
+        ],
+        "resources": [
+          {
+            "lds_bytes": 0,
+            "scratch_bytes": 0,
+            "sgpr": 128,
+            "vgpr": 16,
+            "workgroup": 256
+          }
+        ]
+      },
+      "dms_streaming_pack_kernel": {
+        "count": 2,
+        "durations_us": [
+          15.728,
+          9.253
+        ],
+        "resources": [
+          {
+            "lds_bytes": 1536,
+            "scratch_bytes": 0,
+            "sgpr": 128,
+            "vgpr": 40,
+            "workgroup": 256
+          }
+        ]
+      }
+    },
+    "kernel_trace_sha256": "24aaa18a09a3b631cd6e8423cfd7790f2b9628a94ef0493718d11e2f8faaef38",
+    "prebuild": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/compiler-version.txt python3 scripts/dms_device_rocprof_smoke.py --compiler-version-file /tmp/compiler-version.txt",
+    "tests_passed": 4
+  },
+  "schema": 1,
+  "scope": {
+    "not_qualified": "model quality, compression benefit, or product default without a real trained retrofit checkpoint",
+    "qualified": "fixture-backed BF16 no-shadow DMS device implementation and topology/codec conformance"
+  },
+  "source": {
+    "commit": "1513add19",
+    "host": "epyc",
+    "tree_note": "measurement tree changes only durable profiler harness and expanded lifecycle test; kernel/runtime sources unchanged"
+  },
+  "status": "device_fixture_qualified_product_checkpoint_blocked"
+}

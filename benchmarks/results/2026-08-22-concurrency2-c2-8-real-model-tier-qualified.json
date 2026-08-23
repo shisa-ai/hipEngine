@@ -1,0 +1,347 @@
+{
+  "cancelled_restore_work_ids": [
+    "tier-restore:5:47bbec529e96d7d1bf2b9bc1dc3bd150370f866ed6d506f99275d4c8462d8b89"
+  ],
+  "cold_codec": {
+    "compression_ratio": 1.319065894799634,
+    "encoded_bytes": 7949383,
+    "name": "kvtc_zlib_v1"
+  },
+  "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/compiler-version.txt therock-python scripts/tier_model_kv_gate.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --backend hip_gfx1100 --prompt-length 512 --max-layers 64 --repetitions 3 --compiler-version-file /tmp/compiler-version.txt --require-cached-build --json /tmp/c2-tier-real-model-kv-final.json",
+  "created_at": "2026-08-22T14:08:47.554541+00:00",
+  "decision": "implementation qualified; remain default-off pending integrated request-level TTFT/SLO policy",
+  "economics": {
+    "recompute_median_seconds": 0.18570546805858612,
+    "recompute_prefill_seconds": [
+      0.18183110607787967,
+      0.18649690877646208,
+      0.18570546805858612
+    ],
+    "restore_median_seconds": 0.03952696081250906,
+    "restore_seconds": [
+      0.03952696081250906,
+      0.039563681930303574,
+      0.03816707292571664
+    ],
+    "savings_median_seconds": 0.14617850724607706,
+    "scope": "actual model-produced BF16 KV and same-loaded-model native prefill; not end-user TTFT",
+    "use_restore": true,
+    "warmup_prefill_seconds": 0.23789968015626073
+  },
+  "final": {
+    "codec": "kvtc_zlib_v1",
+    "ledger": {
+      "active_reservations": 0,
+      "backend_fingerprint": "21e90e11265fe32f7e5f446902f32a90099170a1c0f1f72590677ee89c4b99bb",
+      "blocking_counts": {},
+      "generation": 1,
+      "owners": {},
+      "pools": {
+        "tier.host_bytes": {
+          "capacity": 11924074,
+          "free": 11924074,
+          "high_water": 7949383,
+          "plane_role": "cold_host",
+          "unit": "bytes",
+          "used": 0,
+          "used_by_lifetime": {}
+        },
+        "tier.nvme_bytes": {
+          "capacity": 23848149,
+          "free": 23848149,
+          "high_water": 15898766,
+          "plane_role": "cold_nvme",
+          "unit": "bytes",
+          "used": 0,
+          "used_by_lifetime": {}
+        },
+        "tier.transfer_workspace_bytes": {
+          "capacity": 10485760,
+          "free": 10485760,
+          "high_water": 10485760,
+          "plane_role": "transfer_workspace",
+          "unit": "bytes",
+          "used": 0,
+          "used_by_lifetime": {}
+        }
+      },
+      "provisional_reservations": 0,
+      "stats": {
+        "commits": 3,
+        "provisional_reserves": 7,
+        "releases": 3,
+        "rollbacks": 4
+      }
+    },
+    "pending_maintenance": 0,
+    "results": [
+      {
+        "bytes_moved": 10485760,
+        "duration_seconds": 0.5624803849495947,
+        "error": null,
+        "evicted_keys": [],
+        "kind": "offload",
+        "lease_id": null,
+        "passed": true,
+        "tier": "host",
+        "work_id": "tier-offload:1:9597fb32b3990bc188672f3a9fd9fb6e1d5794018714c12ea4d86105f0cd2c72"
+      },
+      {
+        "bytes_moved": 10485760,
+        "duration_seconds": 0.5656212870962918,
+        "error": null,
+        "evicted_keys": [],
+        "kind": "offload",
+        "lease_id": null,
+        "passed": true,
+        "tier": "nvme",
+        "work_id": "tier-offload:2:47bbec529e96d7d1bf2b9bc1dc3bd150370f866ed6d506f99275d4c8462d8b89"
+      },
+      {
+        "bytes_moved": 10485760,
+        "duration_seconds": 0.5860513020306826,
+        "error": null,
+        "evicted_keys": [],
+        "kind": "offload",
+        "lease_id": null,
+        "passed": true,
+        "tier": "nvme",
+        "work_id": "tier-offload:3:2afb2e147b08cddaecff76584dd2eaee9fb94bb336bb2fe1b0780a8fecea743a"
+      },
+      {
+        "bytes_moved": 10485760,
+        "duration_seconds": 0.04149057762697339,
+        "error": null,
+        "evicted_keys": [],
+        "kind": "restore",
+        "lease_id": "lease:100",
+        "passed": true,
+        "tier": "host",
+        "work_id": "tier-restore:4:9597fb32b3990bc188672f3a9fd9fb6e1d5794018714c12ea4d86105f0cd2c72"
+      },
+      {
+        "bytes_moved": 0,
+        "duration_seconds": 0.0,
+        "error": "cancelled before maintenance",
+        "evicted_keys": [],
+        "kind": "restore",
+        "lease_id": null,
+        "passed": false,
+        "tier": null,
+        "work_id": "tier-restore:5:47bbec529e96d7d1bf2b9bc1dc3bd150370f866ed6d506f99275d4c8462d8b89"
+      }
+    ],
+    "store": {
+      "evictions": 0,
+      "host_capacity_bytes": 11924074,
+      "host_used_bytes": 0,
+      "lru": [],
+      "nvme_capacity_bytes": 23848149,
+      "nvme_used_bytes": 0,
+      "object_count": 0,
+      "objects": {},
+      "pinned_objects": 0,
+      "tenant_used_bytes": {}
+    }
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "gfx": "gfx1100"
+  },
+  "kind": "hipengine_real_model_kv_tier_gate",
+  "kv_geometry": {
+    "bytes_per_layer_kv_pair": 1048576,
+    "full_attention_layers": 10,
+    "head_dim": 256,
+    "kv_heads": 2,
+    "tokens": 512
+  },
+  "limitations": [
+    "Restore timing includes host-store take, zlib decode, hot lease reservation, and callback over actual model KV bytes, but callback does not copy bytes into the model GPU cache.",
+    "Recompute is same-loaded-model native prefill compute, not HTTP end-user TTFT.",
+    "Offload compression costs about 0.56 s per 10 MiB object and is maintenance work, not on the restore TTFT boundary.",
+    "Tiering remains default-off pending integrated request-level TTFT/SLO admission policy."
+  ],
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+  "model_identity": {
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "exists": true,
+      "file_count": 9,
+      "path_type": "directory",
+      "sampled_bytes": 9476610,
+      "size_bytes": 22176626792,
+      "value": "1a4745ce8a8734324e62c14aa2545cb7cc1b8ea23a7489b05658f619cc1bdaac"
+    },
+    "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "revision": null
+  },
+  "offload_passed": [
+    true,
+    true,
+    true
+  ],
+  "passed": true,
+  "payload_bytes": 10485760,
+  "payload_sha256": "6e16ccb8585b66202dcb68ea81e99d2ceaf30954bed23338219117f744a4d942",
+  "pending_before_final_drain": 0,
+  "performance_claim": false,
+  "pressure": {
+    "codec": "kvtc_zlib_v1",
+    "ledger": {
+      "active_reservations": 3,
+      "backend_fingerprint": "21e90e11265fe32f7e5f446902f32a90099170a1c0f1f72590677ee89c4b99bb",
+      "blocking_counts": {},
+      "generation": 1,
+      "owners": {
+        "cold:2afb2e147b08cddaecff76584dd2eaee9fb94bb336bb2fe1b0780a8fecea743a": {
+          "tier.nvme_bytes": 7949383
+        },
+        "cold:47bbec529e96d7d1bf2b9bc1dc3bd150370f866ed6d506f99275d4c8462d8b89": {
+          "tier.nvme_bytes": 7949383
+        },
+        "cold:9597fb32b3990bc188672f3a9fd9fb6e1d5794018714c12ea4d86105f0cd2c72": {
+          "tier.host_bytes": 7949383
+        }
+      },
+      "pools": {
+        "tier.host_bytes": {
+          "capacity": 11924074,
+          "free": 3974691,
+          "high_water": 7949383,
+          "plane_role": "cold_host",
+          "unit": "bytes",
+          "used": 7949383,
+          "used_by_lifetime": {
+            "cache": 7949383
+          }
+        },
+        "tier.nvme_bytes": {
+          "capacity": 23848149,
+          "free": 7949383,
+          "high_water": 15898766,
+          "plane_role": "cold_nvme",
+          "unit": "bytes",
+          "used": 15898766,
+          "used_by_lifetime": {
+            "cache": 15898766
+          }
+        },
+        "tier.transfer_workspace_bytes": {
+          "capacity": 10485760,
+          "free": 10485760,
+          "high_water": 10485760,
+          "plane_role": "transfer_workspace",
+          "unit": "bytes",
+          "used": 0,
+          "used_by_lifetime": {}
+        }
+      },
+      "provisional_reservations": 0,
+      "stats": {
+        "commits": 3,
+        "provisional_reserves": 6,
+        "rollbacks": 3
+      }
+    },
+    "pending_maintenance": 0,
+    "results": [
+      {
+        "bytes_moved": 10485760,
+        "duration_seconds": 0.5624803849495947,
+        "error": null,
+        "evicted_keys": [],
+        "kind": "offload",
+        "lease_id": null,
+        "passed": true,
+        "tier": "host",
+        "work_id": "tier-offload:1:9597fb32b3990bc188672f3a9fd9fb6e1d5794018714c12ea4d86105f0cd2c72"
+      },
+      {
+        "bytes_moved": 10485760,
+        "duration_seconds": 0.5656212870962918,
+        "error": null,
+        "evicted_keys": [],
+        "kind": "offload",
+        "lease_id": null,
+        "passed": true,
+        "tier": "nvme",
+        "work_id": "tier-offload:2:47bbec529e96d7d1bf2b9bc1dc3bd150370f866ed6d506f99275d4c8462d8b89"
+      },
+      {
+        "bytes_moved": 10485760,
+        "duration_seconds": 0.5860513020306826,
+        "error": null,
+        "evicted_keys": [],
+        "kind": "offload",
+        "lease_id": null,
+        "passed": true,
+        "tier": "nvme",
+        "work_id": "tier-offload:3:2afb2e147b08cddaecff76584dd2eaee9fb94bb336bb2fe1b0780a8fecea743a"
+      }
+    ],
+    "store": {
+      "evictions": 0,
+      "host_capacity_bytes": 11924074,
+      "host_used_bytes": 7949383,
+      "lru": [
+        "9597fb32b3990bc188672f3a9fd9fb6e1d5794018714c12ea4d86105f0cd2c72",
+        "47bbec529e96d7d1bf2b9bc1dc3bd150370f866ed6d506f99275d4c8462d8b89",
+        "2afb2e147b08cddaecff76584dd2eaee9fb94bb336bb2fe1b0780a8fecea743a"
+      ],
+      "nvme_capacity_bytes": 23848149,
+      "nvme_used_bytes": 15898766,
+      "object_count": 3,
+      "objects": {
+        "2afb2e147b08cddaecff76584dd2eaee9fb94bb336bb2fe1b0780a8fecea743a": {
+          "encoded_bytes": 7949383,
+          "last_access_sequence": 3,
+          "original_bytes": 10485760,
+          "pinned": false,
+          "tenant_id": "model",
+          "tier": "nvme"
+        },
+        "47bbec529e96d7d1bf2b9bc1dc3bd150370f866ed6d506f99275d4c8462d8b89": {
+          "encoded_bytes": 7949383,
+          "last_access_sequence": 2,
+          "original_bytes": 10485760,
+          "pinned": false,
+          "tenant_id": "model",
+          "tier": "nvme"
+        },
+        "9597fb32b3990bc188672f3a9fd9fb6e1d5794018714c12ea4d86105f0cd2c72": {
+          "encoded_bytes": 7949383,
+          "last_access_sequence": 1,
+          "original_bytes": 10485760,
+          "pinned": false,
+          "tenant_id": "model",
+          "tier": "host"
+        }
+      },
+      "pinned_objects": 0,
+      "tenant_used_bytes": {
+        "model": 23848149
+      }
+    }
+  },
+  "prompt_length": 512,
+  "prompt_sha256": "81a9544a8fe49e8940cfede8b37a9c282a8dcfbd685126e0ee18906d5cc143b4",
+  "raw_payload_retained": false,
+  "restore_passed": [
+    true
+  ],
+  "schema": 1,
+  "source": {
+    "commit": "19949a245",
+    "host": "epyc",
+    "tree_note": "runtime change limited to queued tier-work cancellation; measurement uses final implementation"
+  },
+  "status": "accepted_real_model_tier",
+  "validation": {
+    "green": "queued restore cancellation preserves cold object and does not allocate hot request",
+    "raw_json_sha256": "d7434a6881fb06ddc9cb71bba5baa0466104302ad30823c849deb44ace2dcb3f",
+    "red": "queued restore cancellation test failed AttributeError before cancel_request implementation",
+    "script_sha256": "ec8601eb8584b4b79f6aac7b5359d85af17690c471c081a214f89afe4fcad6cc",
+    "tier_tests": "10 passed"
+  }
+}

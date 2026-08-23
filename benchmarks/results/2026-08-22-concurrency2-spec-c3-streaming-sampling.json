@@ -1,0 +1,76 @@
+{
+  "actual_qwen38": {
+    "blocking_ids": [
+      9707,
+      9707,
+      9707,
+      9707
+    ],
+    "chunk_count": 1,
+    "engine_service": {
+      "active_children": 0,
+      "command_queue_depth": 0,
+      "driver_thread_id": 140505040025280,
+      "last_speculative_draft_depth": 3,
+      "last_speculative_route": "engine_service_verify_chain",
+      "last_speculative_work_kind": "verify_chain",
+      "sole_driver": true,
+      "speculative_routes": {
+        "engine_service_verify_chain": 2,
+        "legacy_prelaunch_fallback": 0
+      }
+    },
+    "exact": true,
+    "final_requests": {
+      "active": 0,
+      "admitted_current": 0,
+      "admitted_total": 0,
+      "completed_buffered": 0,
+      "pending": 0,
+      "reclaimed_total": 0
+    },
+    "finish_reason": "length",
+    "stream_ids": [
+      9707,
+      9707,
+      9707,
+      9707
+    ]
+  },
+  "created_at": "2026-08-22T15:15:00Z",
+  "decision": "SPEC-C3 closed for committed host output and current guarded greedy MTP. Processed stochastic samplers still require provider-native probability integration and remain pre-launch incompatible by existing sampling guards.",
+  "implementation": {
+    "commit_event": "provisional speculative tokens cannot construct stream events",
+    "output_tail": [
+      "EOS",
+      "single stop token",
+      "stop sequence",
+      "max-output length"
+    ],
+    "public_api": "LLM.stream_speculative_mtp_detailed requires one prompt and EngineService submission; no legacy streaming fallback",
+    "service": "speculative blocking and streaming share commit normalization, collector terminal, cancel/abort/reclaim, and backpressure path",
+    "stochastic": "per-request acceptance ratios, consumed uniforms, RNG before/after, correction/bonus binding"
+  },
+  "kind": "concurrency2_spec_c3_streaming_sampling",
+  "passed": true,
+  "performance_claim": false,
+  "schema": 1,
+  "source": {
+    "commit": "95322a226",
+    "host": "epyc",
+    "tree_note": "host output/sampling/service tests only"
+  },
+  "status": "accepted_host_and_actual_streaming",
+  "validation": {
+    "actual": "Qwen3.8 p16/d4 blocking and streaming IDs exact 4/4, one committed chunk, finish length, route 2/0, final drain",
+    "green": "115 streaming/service/loop/sampling/packing tests passed",
+    "hashes": {
+      "hipengine/generation/engine_service.py": "f8a936d70ec86508b2911d541d31eff55e8f3866741ecd21f90b9419c7a1fbdd",
+      "hipengine/llm.py": "61826ae97bc1e249e206d50f8aca232fa0153865746fdd118706bb72b18a8017",
+      "hipengine/speculative/streaming.py": "b61f42244d1ea88801c72e3b9bcac0a59a0aa305afbdfd98965ffd860b529832",
+      "tests/test_speculative_streaming.py": "8da92324d7dc64de2006f2f5c83fa2b249dee23830b6cd65bea058f1719e1f99"
+    },
+    "raw_smoke_sha256": "1412d40f07d9cd2c9adafc694ec18c143e6af4955829e124bb42f6ca66466574",
+    "red": "streaming module absent; provisional commit constructor rejected only after implementation"
+  }
+}

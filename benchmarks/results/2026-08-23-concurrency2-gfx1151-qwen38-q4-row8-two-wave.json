@@ -1,0 +1,312 @@
+{
+  "c17": {
+    "baseline": {
+      "end_to_end_p95_seconds": {
+        "median": 12.06551391701214,
+        "samples": [
+          12.077112914063036,
+          12.06551391701214,
+          12.062359873089008
+        ]
+      },
+      "exact_generated_tok_s_aggregate": {
+        "median": 11.271170656483562,
+        "samples": [
+          11.260511655155895,
+          11.271170656483562,
+          11.27352019131151
+        ]
+      },
+      "itl_p99_seconds": {
+        "median": 0.45416259905323386,
+        "samples": [
+          0.46119674504734576,
+          0.4535658279201016,
+          0.45416259905323386
+        ]
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "median": 11.271170656483562,
+        "samples": [
+          11.260511655155895,
+          11.271170656483562,
+          11.27352019131151
+        ]
+      },
+      "ttft_p95_seconds": {
+        "median": 9.412366900010966,
+        "samples": [
+          9.412366900010966,
+          9.41422076895833,
+          9.410769360954873
+        ]
+      }
+    },
+    "candidate": {
+      "end_to_end_p95_seconds": {
+        "median": 12.038104838924482,
+        "samples": [
+          12.026201731991023,
+          12.038104838924482,
+          12.043443958973512
+        ]
+      },
+      "exact_generated_tok_s_aggregate": {
+        "median": 11.297127769188384,
+        "samples": [
+          11.308116366651342,
+          11.297127769188384,
+          11.291730673597375
+        ]
+      },
+      "itl_p99_seconds": {
+        "median": 0.44824502104893327,
+        "samples": [
+          0.44824502104893327,
+          0.44160919403657317,
+          0.45166834094561636
+        ]
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "median": 11.297127769188384,
+        "samples": [
+          11.308116366651342,
+          11.297127769188384,
+          11.291730673597375
+        ]
+      },
+      "ttft_p95_seconds": {
+        "median": 9.403167782002129,
+        "samples": [
+          9.393879991956055,
+          9.403167782002129,
+          9.405058974050917
+        ]
+      }
+    },
+    "deltas": {
+      "end_to_end_p95_seconds": {
+        "absolute": -0.02740907808765769,
+        "percent": -0.22716875780162127
+      },
+      "exact_generated_tok_s_aggregate": {
+        "absolute": 0.025957112704821483,
+        "percent": 0.2302965104151733
+      },
+      "itl_p99_seconds": {
+        "absolute": -0.005917578004300594,
+        "percent": -1.3029646247041504
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "absolute": 0.025957112704821483,
+        "percent": 0.2302965104151733
+      },
+      "ttft_p95_seconds": {
+        "absolute": -0.009199118008837104,
+        "percent": -0.09773437549301933
+      }
+    },
+    "fixed_slo_passed_runs": 3,
+    "live_admission_during_first": false
+  },
+  "c32": {
+    "baseline": {
+      "end_to_end_p95_seconds": {
+        "median": 23.853294492000714,
+        "samples": [
+          23.244631252950057,
+          24.61593271396123,
+          23.853294492000714
+        ]
+      },
+      "exact_generated_tok_s_aggregate": {
+        "median": 10.731586497771483,
+        "samples": [
+          11.011986332320317,
+          10.398999876584112,
+          10.731586497771483
+        ]
+      },
+      "itl_p99_seconds": {
+        "median": 0.8206183559959754,
+        "samples": [
+          0.8343349390197545,
+          0.7674868729664013,
+          0.8206183559959754
+        ]
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "median": 0.0,
+        "samples": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "ttft_p95_seconds": {
+        "median": 19.435214327997528,
+        "samples": [
+          18.835135448956862,
+          20.236980210989714,
+          19.435214327997528
+        ]
+      }
+    },
+    "candidate": {
+      "end_to_end_p95_seconds": {
+        "median": 23.183307074941695,
+        "samples": [
+          23.405261748004705,
+          23.183307074941695,
+          22.948897816007957
+        ]
+      },
+      "exact_generated_tok_s_aggregate": {
+        "median": 11.041491724331392,
+        "samples": [
+          10.937020950976743,
+          11.041491724331392,
+          11.154581624399073
+        ]
+      },
+      "itl_p99_seconds": {
+        "median": 0.8019224880263209,
+        "samples": [
+          0.7981060509337112,
+          0.8090169880306348,
+          0.8019224880263209
+        ]
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "median": 0.0,
+        "samples": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "ttft_p95_seconds": {
+        "median": 18.884881086996756,
+        "samples": [
+          19.121779768029228,
+          18.884881086996756,
+          18.63236958300695
+        ]
+      }
+    },
+    "deltas": {
+      "end_to_end_p95_seconds": {
+        "absolute": -0.6699874170590192,
+        "percent": -2.8087835719451726
+      },
+      "exact_generated_tok_s_aggregate": {
+        "absolute": 0.30990522655990915,
+        "percent": 2.8877857586505407
+      },
+      "itl_p99_seconds": {
+        "absolute": -0.0186958679696545,
+        "percent": -2.278265875123342
+      },
+      "slo_goodput_tok_s_aggregate": {
+        "absolute": 0.0,
+        "percent": null
+      },
+      "ttft_p95_seconds": {
+        "absolute": -0.5503332410007715,
+        "percent": -2.8316293904100953
+      }
+    },
+    "fixed_slo_passed_runs": 0,
+    "live_admission_during_first": true
+  },
+  "correctness": {
+    "all_server_rows_exact": true,
+    "no_fallback": true,
+    "row8_candidate_parent_bf16_exact": true,
+    "strict_parent": "dense_rowtile_bf16_bf16_out"
+  },
+  "created_at": "2026-08-23T12:30:00Z",
+  "decision": "Promote exact gfx1151 row8 variant. c17 remains fixed-SLO passing. c32 and production remain blocked despite material improvement; live c32 admission now overlaps.",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "gfx": "gfx1151"
+  },
+  "invalid_rows": [
+    "Two earlier clean server/profile packets did not route the candidate due capability/resolver-owner omissions and are excluded. Immutable correction worklogs identify them."
+  ],
+  "kind": "concurrency2_gfx1151_qwen38_q4_row8_two_wave",
+  "marked_c17": {
+    "baseline": {
+      "dispatches": 3619,
+      "kernel_sha256": "380038ddedc1ca53b9d8575d8d72235f0acc8773e66c925b0d018d4ff2cb7cce",
+      "kernel_sum_ms": 351.402463,
+      "marker_sha256": "6121c7df711bc6f2e87f0905c9921af433a1b47eb86eb8c0d91634647748ffbc",
+      "q4_dual": {
+        "duration_ms": 158.324138,
+        "kernels": [
+          "void (anonymous namespace)::q4_k_qmicro_t16_dense_dual_q8_1x2_rowtile8_dp4a_silu_gemv_kernel<unsigned short, 8>((anonymous namespace)::gguf_q8_1_block const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)",
+          "void (anonymous namespace)::q4_k_qmicro_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_gemv_kernel<unsigned short>((anonymous namespace)::gguf_q8_1_block const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)"
+        ],
+        "launches": 192
+      },
+      "standard_q4": {
+        "duration_ms": 70.002697,
+        "kernels": [
+          "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)"
+        ],
+        "launches": 424
+      },
+      "window_ms": 368.413358
+    },
+    "candidate": {
+      "dispatches": 3619,
+      "kernel_sha256": "453ad016ad37c1a1f3c5dd4b6942c818564d188b55f20ea44339efc8304a0e21",
+      "kernel_sum_ms": 346.936812,
+      "marker_sha256": "85a1b2835778fee2b6b1d095b7fd8fc388b775a00a0c807a971398a7f55e3b96",
+      "q4_dual": {
+        "duration_ms": 157.1836,
+        "kernels": [
+          "void (anonymous namespace)::q4_k_qmicro_t16_dense_dual_q8_1x2_rowtile8_dp4a_silu_gemv_kernel<unsigned short, 8>((anonymous namespace)::gguf_q8_1_block const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)",
+          "void (anonymous namespace)::q4_k_qmicro_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_gemv_kernel<unsigned short>((anonymous namespace)::gguf_q8_1_block const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)"
+        ],
+        "launches": 192
+      },
+      "standard_q4": {
+        "duration_ms": 68.681026,
+        "kernels": [
+          "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)"
+        ],
+        "launches": 424
+      },
+      "window_ms": 362.290029
+    }
+  },
+  "mechanism": "Two independent wave32 owners share one 64-thread/16-column block at physical row8. Each wave preserves the parent K/FMA/reduction/BF16 schedule. A separate variant is selected only by gfx1151 H5120-package actual-shape capability; gfx1100 and H1024 retain parent rowtile8.",
+  "model": {
+    "kv": "bf16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "recurrent_state": "strict_fp32"
+  },
+  "next_ranked": [
+    "Q4 qmicro dual rowtile8 is the largest marked family (~127.6 ms); reject eight-wave merge mechanism already screened, seek instruction/metadata/weight-traffic reduction.",
+    "Then Q5 rowtile (~30.8 ms) and Q4 split-weight tail (~29.6 ms).",
+    "Rerun c32 and live admission after each retained exact win."
+  ],
+  "passed": true,
+  "performance_claim": true,
+  "raw_sha256": {
+    "c17_baseline": "106458cd412e0156658d2dee2e841ab5af2326bbefcc4624eb0a94369b2cb719",
+    "c17_candidate": "bb9fff804344a68a7299472b8a05ff293bd137418497132474e8708ec5cf7da1",
+    "c32_baseline": "13000d13d5005f1a472c8dbcd6ece68834111397a5cb8c61ebb7375ef3574273",
+    "c32_candidate": "459e5a8dd421019b2375db326003dae295af7e5672ae0b07be4067728ecad41d"
+  },
+  "schema": 1,
+  "source": {
+    "commit": "64f69049f",
+    "dirty": false,
+    "host": "gfx1151"
+  },
+  "status": "promoted_c32_still_blocked"
+}

@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
+
 
 @dataclass(frozen=True, slots=True)
 class SpeculativeProviderKey:
@@ -28,6 +30,84 @@ class SpeculativeProviderKey:
             if not value:
                 raise ValueError(f"speculative provider {name} must be non-empty")
             object.__setattr__(self, name, value)
+
+
+@dataclass(frozen=True, slots=True)
+class SpeculativeProviderCapabilities:
+    """Truthful provider ownership, shape, and fallback declaration."""
+
+    provider_name: str
+    artifact_fingerprint: str
+    attachment_mode: str
+    supported_modes: tuple[str, ...]
+    max_verifier_rows: int
+    transaction_mode: str
+    provider_state_key: str
+    provider_kv_key: str
+    fixed_transaction_units: tuple[tuple[str, int], ...] = ()
+    per_candidate_units: tuple[tuple[str, int], ...] = ()
+    strict_fallback: str = "target_ar"
+
+    def __post_init__(self) -> None:
+        for field in (
+            "provider_name", "artifact_fingerprint", "transaction_mode",
+            "provider_state_key", "provider_kv_key", "strict_fallback",
+        ):
+            value = str(getattr(self, field)).strip()
+            if not value:
+                raise ValueError(f"{field} must be non-empty")
+            object.__setattr__(self, field, value)
+        if self.attachment_mode not in {"model_attached", "independent"}:
+            raise ValueError("attachment_mode must be model_attached or independent")
+        modes = tuple(str(mode) for mode in self.supported_modes)
+        if not modes or len(set(modes)) != len(modes):
+            raise ValueError("supported_modes must be non-empty and unique")
+        if any(mode not in {"verify_chain", "verify_tree"} for mode in modes):
+            raise ValueError("supported_modes may contain verify_chain/verify_tree only")
+        if int(self.max_verifier_rows) <= 0:
+            raise ValueError("max_verifier_rows must be positive")
+        object.__setattr__(self, "supported_modes", modes)
+        object.__setattr__(self, "max_verifier_rows", int(self.max_verifier_rows))
+        for field in ("fixed_transaction_units", "per_candidate_units"):
+            values = tuple((str(pool), int(units)) for pool, units in getattr(self, field))
+            pools = tuple(pool for pool, _units in values)
+            if len(pools) != len(set(pools)) or any(
+                not pool or units <= 0 for pool, units in values
+            ):
+                raise ValueError(f"{field} must contain unique positive pool units")
+            object.__setattr__(self, field, values)
+
+    def supports(self, mode: str) -> bool:
+        return str(mode) in self.supported_modes
+
+    def require_mode(self, mode: str) -> None:
+        selected = str(mode)
+        if not self.supports(selected):
+            raise NotImplementedError(
+                f"provider {self.provider_name} does not support {selected}"
+            )
+
+    def resource_claims(
+        self,
+        *,
+        request_id: int,
+        candidate_rows: int,
+        claim_id: str,
+    ) -> ResourceClaimSet:
+        rows = int(candidate_rows)
+        if rows <= 0 or rows > self.max_verifier_rows:
+            raise ValueError("candidate_rows exceed provider max_verifier_rows")
+        units: dict[str, int] = {}
+        for pool, amount in self.fixed_transaction_units:
+            units[pool] = units.get(pool, 0) + amount
+        for pool, amount in self.per_candidate_units:
+            units[pool] = units.get(pool, 0) + amount * rows
+        return ResourceClaimSet.from_mapping(
+            claim_id,
+            units,
+            request_id=int(request_id),
+            lifetime=ClaimLifetime.TRANSACTION,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +207,7 @@ def register_builtin_speculative_providers() -> None:
 
 
 __all__ = [
+    "SpeculativeProviderCapabilities",
     "SpeculativeProviderConfig",
     "SpeculativeProviderFactory",
     "SpeculativeProviderKey",

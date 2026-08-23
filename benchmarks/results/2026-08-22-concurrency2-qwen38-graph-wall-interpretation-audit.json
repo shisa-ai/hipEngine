@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "kind": "concurrency2_qwen38_graph_wall_interpretation_audit",
+  "created_at": "2026-08-22T04:26:01Z",
+  "status": "prior_interpretation_invalidated_production_validation_open",
+  "performance_claim": false,
+  "audit_commit": "a863991971f808dc6a4904df22f0e4b700e64aea",
+  "physical_host": "epyc",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "gfx": "gfx1100"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16",
+    "sampled_fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "source_artifact": {
+    "path": "benchmarks/results/2026-08-21-concurrency2-qwen38-decode-wall-reconciliation-corrected.json",
+    "sha256": "91e9c2f2519a06cc9be6415015d89d8c3f91e965d4e7ddd133f6d3dbff75292a",
+    "measurement_commit": "35a656cbc8b4e79de4b2ef828c5134a377adff83",
+    "measurement_worktree_dirty": true,
+    "profile_status": "graph packets failed legacy census; eager packet passed",
+    "raw_trace_hashes_retained_in_source_artifact": true
+  },
+  "verdict": {
+    "valid": [
+      "Summed kernel duration is not serialized wall coverage under overlap.",
+      "Dense projections are the largest family by summed kernel duration only.",
+      "Graph marker windows contain one hipGraphLaunch, one blocking hipStreamSynchronize, and no hipMemcpy API call."
+    ],
+    "invalid": [
+      "The graph replay is host-bound.",
+      "The 7-29% kernel interval-union fraction is a recoverable host-overhead fraction.",
+      "Graph HIP API accounting is contaminated by capture: marker filtering leaves exactly the replay launch and synchronization.",
+      "Dispatch/synchronization or dense kernels can be selected before production-owner validation and critical-path attribution."
+    ],
+    "reason": "After a single 0.427-0.473 ms hipGraphLaunch, the host spends 35.0-61.4 ms blocked in hipStreamSynchronize. The 33.1-44.2 ms not covered by traced kernel intervals therefore is not active host submission work. It is currently unattributed in-graph dependency/dispatch/device idle time or a trace-semantics issue."
+  },
+  "graph_lanes": {
+    "c1": {
+      "marker_wall_ms": 35.595482,
+      "kernel_sum_ms": 31.211996,
+      "kernel_interval_union_ms": 2.535267,
+      "uncovered_by_kernel_intervals_ms": 33.060215,
+      "hipGraphLaunch_ms": 0.426115,
+      "hipStreamSynchronize_ms": 34.999044,
+      "memory_copy_trace_rows": 0,
+      "largest_no_kernel_gaps_ms": [10.431228, 10.417817, 10.138383, 0.900320]
+    },
+    "c4": {
+      "marker_wall_ms": 43.869843,
+      "kernel_sum_ms": 39.002036,
+      "kernel_interval_union_ms": 5.612130,
+      "uncovered_by_kernel_intervals_ms": 38.257713,
+      "hipGraphLaunch_ms": 0.473456,
+      "hipStreamSynchronize_ms": 43.221015,
+      "memory_copy_trace_rows": 0,
+      "largest_no_kernel_gaps_ms": [11.594692, 11.513762, 11.504785, 1.899573, 0.626688]
+    },
+    "c8": {
+      "marker_wall_ms": 62.030420,
+      "kernel_sum_ms": 56.733978,
+      "kernel_interval_union_ms": 17.866430,
+      "uncovered_by_kernel_intervals_ms": 44.163990,
+      "hipGraphLaunch_ms": 0.458907,
+      "hipStreamSynchronize_ms": 61.368740,
+      "memory_copy_trace_rows": 0,
+      "largest_no_kernel_gaps_ms": [11.593228, 11.518381, 11.514824, 6.321510, 0.884944]
+    }
+  },
+  "eager_controls": {
+    "c1": {
+      "marker_wall_ms": 36.101852,
+      "kernel_interval_union_ms": 21.197172,
+      "hipLaunchKernel_calls": 823,
+      "hipLaunchKernel_api_ms": 3.631256,
+      "hipMemcpy_calls": 2,
+      "hipMemcpy_api_ms": 8.385434,
+      "memory_copy_trace_rows": 0
+    },
+    "c4": {
+      "marker_wall_ms": 43.362733,
+      "kernel_interval_union_ms": 27.024715,
+      "hipLaunchKernel_calls": 839,
+      "hipLaunchKernel_api_ms": 4.516934,
+      "hipMemcpy_calls": 2,
+      "hipMemcpy_api_ms": 0.087112,
+      "memory_copy_trace_rows": 0
+    },
+    "caveat": "Zero memory-copy trace rows does not prove zero copy APIs: both eager marker windows contain two hipMemcpy calls."
+  },
+  "required_next_gate": {
+    "tracked_clean": true,
+    "path": "actual production continuous owner",
+    "measure": [
+      "marker-scoped graph launch and synchronization API breakdown",
+      "kernel interval union and critical-path/dependency gaps",
+      "graph node/dependency ownership for the repeated approximately 11.5 ms gaps",
+      "memory-copy APIs and device copy operations",
+      "clean non-profiled wall and route/correctness identity"
+    ],
+    "decision_policy": "Do not select host/dispatch or kernel-family optimization until the production path reproduces the gaps and attributes their owner."
+  }
+}

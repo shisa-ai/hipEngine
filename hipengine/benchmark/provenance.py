@@ -254,7 +254,9 @@ def collect_model_identity(
     }
 
 
-def _detect_device_name() -> str | None:
+def detect_device_name() -> str | None:
+    """Return the current HIP device marketing name, or ``None`` if unavailable."""
+
     try:
         hip = ctypes.CDLL("libamdhip64.so")
         hip.hipGetDevice.argtypes = [ctypes.POINTER(ctypes.c_int)]
@@ -365,7 +367,7 @@ def collect_artifact_provenance(
         "configured_backend": requested,
         "resolved_backend": resolved,
         "target_arch": selected_target,
-        "device_name": device_name or _detect_device_name(),
+        "device_name": device_name or detect_device_name(),
         "model_path": model["path"],
         "model_revision": model["revision"],
         "model_fingerprint": model["fingerprint"],

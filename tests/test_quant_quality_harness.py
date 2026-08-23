@@ -59,8 +59,11 @@ def _register(
 
 
 def test_paro_transformers_depthwise_fallback_matches_conv1d() -> None:
-    torch = pytest.importorskip("torch")
-    import torch.nn.functional as F
+    try:
+        import torch
+        import torch.nn.functional as F
+    except (ImportError, OSError) as exc:
+        pytest.skip(f"optional torch runtime is unavailable: {exc}")
 
     from scripts.quant_quality.qwen36_teacher import _torch_depthwise_causal_conv1d
 

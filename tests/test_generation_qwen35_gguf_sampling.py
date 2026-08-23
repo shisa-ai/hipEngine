@@ -12,6 +12,7 @@ import pytest
 
 import hipengine.generation.qwen35_gguf as qwen35_gguf
 from hipengine.dispatch import SlotMove, WorkItem, WorkKind
+from hipengine.dispatch.d2_resolver import CostTable, PhysicalWidthCost, d2_partition
 from hipengine.generation import (
     EngineLoopConfig,
     GenerationAdmissionRejected,
@@ -235,6 +236,42 @@ def test_gfx1100_generator_factory_registers_plain_ar_width(monkeypatch) -> None
     assert generator.server_plain_ar_max_active_requests_by_max_sequence_length == {
         768: 13,
     }
+
+
+def test_gguf_ar_physical_widths_default_capability_and_override(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv(
+        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", raising=False
+    )
+    # Promoted default (2026-08-20): direct c3/c5/c6/c7 are advertised.
+    assert qwen35_gguf._gguf_ar_physical_widths("hip_gfx1100") == (
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+    )
+    assert qwen35_gguf._gguf_ar_physical_widths(
+        "hip_gfx1100", use_capability=True
+    ) == (1, 2, 3, 4, 5, 6, 7, 8)
+    # The env override can still narrow/widen for diagnostics.
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1,2,4,8"
+    )
+    assert qwen35_gguf._gguf_ar_physical_widths(
+        "hip_gfx1100", use_capability=True
+    ) == (1, 2, 4, 8)
+    # Invalid overrides fail closed.
+    monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1 3 2")
+    with pytest.raises(RuntimeError, match="sorted registered AR widths"):
+        qwen35_gguf._gguf_ar_physical_widths("hip_gfx1100")
+    monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1 9")
+    with pytest.raises(RuntimeError, match="sorted registered AR widths"):
+        qwen35_gguf._gguf_ar_physical_widths("hip_gfx1100")
 
 
 def _request(**overrides) -> GenerationRequest:
@@ -2854,7 +2891,11 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
     assert observability["routes"]["physical_width_decode_steps"] == {
         "1": 2,
         "2": 2,
+        "3": 0,
         "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
         "8": 0,
     }
     physical_group = {
@@ -2896,7 +2937,7 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "schema": 1,
         "kind": "gguf_ar_physical_group_plan",
         "logical_c": 1,
-        "physical_bucket_widths": [1, 2, 4, 8],
+        "physical_bucket_widths": [1, 2, 3, 4, 5, 6, 7, 8],
         "policy": "occupancy_adaptive_dense_execution",
         "group_count": 1,
         "groups": [{**physical_group, "execution_path": "native_c1_eager"}],
@@ -2965,6 +3006,41 @@ def test_gguf_c1_graph_seeds_survivor_token_after_packed_width_transition() -> N
     assert slot.c1_decode_graph is not None
 
 
+def test_gguf_c1_edge_disables_graph_while_peer_requests_are_resident() -> None:
+    events: list[object] = []
+
+    class FakeGraph:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+            events.append("graph_close")
+
+    class FakeSession:
+        def step(self, token_id: int, *, return_logits: bool):
+            events.append(("step", int(token_id), bool(return_logits)))
+            return SimpleNamespace(token_id=17)
+
+    graph = FakeGraph()
+    slot = SimpleNamespace(
+        session=FakeSession(),
+        c1_decode_graph=graph,
+        prev_token=16,
+    )
+    row = SimpleNamespace(slot=slot, lease=None)
+    peer = SimpleNamespace(slot=SimpleNamespace())
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._rows = {1: row, 2: peer}
+
+    result = runner._step_native_c1_graph(row)
+
+    assert result.token_id == 17
+    assert events == ["graph_close", ("step", 16, False)]
+    assert slot.c1_decode_graph is None
+
+
 def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch) -> None:
     calls: list[tuple] = []
     runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
@@ -2973,7 +3049,14 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
     runner._last_execution_manifest = {}
     runner._last_physical_group_plan = {}
 
-    def step_native_chunk(rows, *, physical_rows=None, active_slot_indices=()):
+    def step_native_chunk(
+        rows,
+        *,
+        physical_rows=None,
+        active_slot_indices=(),
+        allow_graph=True,
+    ):
+        assert allow_graph is False
         calls.append(
             (
                 tuple(int(row.request_id) for row in rows),
@@ -3007,13 +3090,13 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
 
     assert calls == [
         (tuple(range(100, 108)), 8, tuple(range(8))),
-        (tuple(range(108, 113)), 8, tuple(range(5))),
+        (tuple(range(108, 113)), 5, tuple(range(5))),
     ]
     assert runner._last_physical_group_plan == {
         "schema": 1,
         "kind": "gguf_ar_physical_group_plan",
         "logical_c": 13,
-        "physical_bucket_widths": [1, 2, 4, 8],
+        "physical_bucket_widths": [1, 2, 3, 4, 5, 6, 7, 8],
         "policy": "occupancy_adaptive_dense_execution",
         "group_count": 2,
         "groups": [
@@ -3038,12 +3121,12 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
                 "group_count": 2,
                 "physical_slot_base": 8,
                 "physical_slot_extent": 5,
-                "physical_rows": 8,
+                "physical_rows": 5,
                 "active_rows": 5,
                 "request_ids": list(range(108, 113)),
                 "global_slot_indices": list(range(8, 13)),
                 "active_slot_indices": list(range(5)),
-                "active_mask": [True, True, True, True, True, False, False, False],
+                "active_mask": [True, True, True, True, True],
                 "execution_row_mapping": "dense_active_rows",
                 "execution_path": "packed_native",
             },
@@ -3051,7 +3134,7 @@ def test_gguf_resident_runner_lowers_c13_to_declared_physical_groups(monkeypatch
     }
     assert runner._last_execution_manifest["logical_c"] == 13
     assert runner._last_execution_manifest["physical_group"]["group_index"] == 1
-    assert runner._last_execution_manifest["physical_group"]["physical_rows"] == 8
+    assert runner._last_execution_manifest["physical_group"]["physical_rows"] == 5
 
 
 def test_gguf_compact_serial_capability_is_artifact_scoped_and_bounded() -> None:
@@ -3191,7 +3274,7 @@ def test_gguf_resident_direct_int8_c4_uses_capability_qualified_packed_width(
     runner._last_execution_manifest = {"mode": "native_int8_batch"}
     runner._last_physical_group_plan = {}
 
-    def step_chunk(rows, *, physical_rows, active_slot_indices):
+    def step_chunk(rows, *, physical_rows, active_slot_indices, allow_graph=True):
         calls.append(
             (
                 tuple(int(row.request_id) for row in rows),
@@ -3440,7 +3523,16 @@ def test_gguf_resident_runner_device_kv_admission_is_atomic_at_high_water() -> N
     ceiling_runner.close()
 
 
-def test_gguf_resident_runner_releases_packed_workspace_before_reusing_session() -> None:
+def test_gguf_resident_runner_retains_packed_workspace_across_reclaim() -> None:
+    """Owner-shared packed workspace survives row release at any capacity.
+
+    CONCURRENCY2.md: workspaces are ledger-reserved and reused by
+    non-overlapping work; hot-path HIP allocation is disabled in the promoted
+    server mode. Releasing the ~1 GiB owner slab per reclaim forces a
+    same-size reallocation on the next packed step (the accepted C2-6 packet
+    recorded 246 releases / 242.39 GiB cumulative churn).
+    """
+
     events: list[str] = []
 
     class FakeSession:
@@ -3458,70 +3550,48 @@ def test_gguf_resident_runner_releases_packed_workspace_before_reusing_session()
             events.append("release_packed")
             return 1234
 
-    session = FakeSession()
-    row = qwen35_gguf._GGUFResidentLoopRow(
-        request_id=1,
-        batch_id=0,
-        row_index=0,
-        request=_request(prompts=("first",), max_tokens=1, ignore_eos=True),
-        prompt_ids=(10, 11),
-        native_greedy=True,
-        native_sampled=False,
-        submitted_at=0.0,
-        lease=qwen35_gguf._GGUFResidentSessionLease(
-            session=session,
-            pool_key=("continuous_ar_dynamic_kv", True, True, 256),
-        ),
-    )
-    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
-        qwen35_gguf.Qwen35GGUFResidentModelRunner
-    )
-    runner.capacity = 4
-    runner._prefix_cache = None
-    runner._prefix_state_snapshots = {}
-    runner._available = []
-    runner._kv_pool = None
-    runner._kv_graph_invalidation_count = 0
-    runner._packed_workspace_release_events = 0
-    runner._packed_workspace_released_bytes = 0
-    runner._graph_handles_for_sessions = lambda sessions: ()
-    runner._observe_graph_handles = lambda sessions: None
-    runner._sample_kv_hip_memory = lambda: None
+    def _release_row(capacity: int, request_id: int, prompt: str):
+        session = FakeSession()
+        row = qwen35_gguf._GGUFResidentLoopRow(
+            request_id=request_id,
+            batch_id=request_id - 1,
+            row_index=0,
+            request=_request(prompts=(prompt,), max_tokens=1, ignore_eos=True),
+            prompt_ids=(10, 11),
+            native_greedy=True,
+            native_sampled=False,
+            submitted_at=0.0,
+            lease=qwen35_gguf._GGUFResidentSessionLease(
+                session=session,
+                pool_key=("continuous_ar_dynamic_kv", True, True, 256),
+            ),
+        )
+        runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+            qwen35_gguf.Qwen35GGUFResidentModelRunner
+        )
+        runner.capacity = capacity
+        runner._prefix_cache = None
+        runner._prefix_state_snapshots = {}
+        runner._available = []
+        runner._kv_pool = None
+        runner._kv_graph_invalidation_count = 0
+        runner._packed_workspace_release_events = 0
+        runner._packed_workspace_released_bytes = 0
+        runner._graph_handles_for_sessions = lambda sessions: ()
+        runner._observe_graph_handles = lambda sessions: None
+        runner._sample_kv_hip_memory = lambda: None
+        runner._release_row_resources(row)
+        return runner, row
 
-    runner._release_row_resources(row)
-
-    assert events == ["invalidate", "release_packed", "reset"]
-    assert row.lease is None
-    assert runner._available == [qwen35_gguf._GGUFResidentSessionLease(
-        session=session,
-        pool_key=("continuous_ar_dynamic_kv", True, True, 256),
-    )]
-    assert runner._packed_workspace_release_events == 1
-    assert runner._packed_workspace_released_bytes == 1234
-
-    events.clear()
-    low_occupancy_session = FakeSession()
-    low_occupancy_row = qwen35_gguf._GGUFResidentLoopRow(
-        request_id=2,
-        batch_id=1,
-        row_index=0,
-        request=_request(prompts=("second",), max_tokens=1, ignore_eos=True),
-        prompt_ids=(12, 13),
-        native_greedy=True,
-        native_sampled=False,
-        submitted_at=0.0,
-        lease=qwen35_gguf._GGUFResidentSessionLease(
-            session=low_occupancy_session,
-            pool_key=("continuous_ar_dynamic_kv", True, True, 256),
-        ),
-    )
-    runner.capacity = 2
-    runner._available = []
-    runner._release_row_resources(low_occupancy_row)
-
-    assert events == ["invalidate", "reset"]
-    assert runner._packed_workspace_release_events == 1
-    assert runner._packed_workspace_released_bytes == 1234
+    for capacity in (2, 4, 8):
+        events.clear()
+        runner, row = _release_row(capacity, capacity, f"prompt-{capacity}")
+        assert events == ["invalidate", "reset"]
+        assert "release_packed" not in events
+        assert row.lease is None
+        assert len(runner._available) == 1
+        assert runner._packed_workspace_release_events == 0
+        assert runner._packed_workspace_released_bytes == 0
 
 
 def test_gguf_resident_runner_waits_for_stable_membership_before_graph_capture() -> None:
@@ -6728,3 +6798,439 @@ def test_gguf_host_sampler_stops_on_multi_token_stop_sequence(monkeypatch) -> No
         "logits_d2h_bytes": 12,
     }
     assert len([call for call in calls if call[0] == "step"]) == 1
+
+
+def test_shared_slot_runner_declares_same_round_prefill_decode_only() -> None:
+    runner_type = qwen35_gguf.Qwen35GGUFResidentModelRunner
+
+    assert runner_type.supports_prefill_decode_same_round is True
+    assert runner_type.supports_multiple_prefill_quanta_per_round is False
+
+
+def test_shared_slot_runner_lowers_logical_width_to_registered_c2_groups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._resident_batch_owner = object()
+    runner._shared_runner = SimpleNamespace(backend="hip_gfx1100")
+    runner._last_execution_manifest = {}
+    runner._last_physical_group_plan = {}
+    packed_calls: list[tuple[tuple[int, ...], int]] = []
+    serial_calls: list[tuple[int, ...]] = []
+    runner._step_native_chunk = lambda rows, *, physical_rows, active_slot_indices, allow_graph: (
+        packed_calls.append(
+            (
+                tuple(int(row.request_id) for row in rows),
+                int(physical_rows),
+            )
+        )
+        or True
+    )
+    runner._step_native_serial = lambda rows, *, fallback_reason: serial_calls.append(
+        tuple(int(row.request_id) for row in rows)
+    )
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "backend_package_capability",
+        lambda backend, key, default=None: (
+            (1, 2) if key == "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS" else default
+        ),
+    )
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+    rows = [
+        SimpleNamespace(
+            request_id=request_id,
+            slot=SimpleNamespace(
+                session=SimpleNamespace(kv_attention_source="bf16"),
+                c1_decode_graph=None,
+            ),
+        )
+        for request_id in range(5)
+    ]
+    work = WorkItem(
+        kind=WorkKind.DECODE,
+        request_ids=tuple(range(5)),
+        row_to_request=tuple(range(5)),
+        slot_ids=tuple(range(5)),
+        active_mask=(True,) * 5,
+    )
+
+    runner._step_native_rows(rows, work=work)
+
+    assert packed_calls == [((0, 1), 2), ((2, 3), 2)]
+    assert serial_calls == [(4,)]
+    assert runner._last_physical_group_plan["physical_bucket_widths"] == [1, 2]
+    assert runner._last_physical_group_plan["group_count"] == 3
+
+
+def test_gfx1100_registers_shared_slot_ar_physical_widths_through_c8() -> None:
+    """Host gate for the promoted direct-width shared-slot promotion.
+
+    GREEN once the kernel package registers ``(1, 2, 3, 4, 5, 6, 7, 8)``
+    (direct c3/c5/c6/c7 promoted after #36 lifecycle certification).
+    """
+    from hipengine.kernels.backends import backend_package_capability
+
+    registered = backend_package_capability(
+        "hip_gfx1100", "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", (1,)
+    )
+    assert tuple(int(width) for width in registered) == (
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+    )
+
+
+def test_shared_slot_runner_lowers_logical_width_to_registered_c4_c8_groups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mechanism coverage for the promoted ``(1, 2, 4, 8)`` lowering.
+
+    Six active rows must lower to one width-8 group with two masked lanes,
+    nine to one width-8 group plus a width-1 edge, and three to width 4.
+    """
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._resident_batch_owner = object()
+    runner._shared_runner = SimpleNamespace(backend="hip_gfx1100")
+    runner._last_execution_manifest = {}
+    runner._last_physical_group_plan = {}
+    packed_calls: list[tuple[tuple[int, ...], int, tuple[int, ...]]] = []
+    serial_calls: list[tuple[int, ...]] = []
+    runner._step_native_chunk = lambda rows, *, physical_rows, active_slot_indices, allow_graph: (
+        packed_calls.append(
+            (
+                tuple(int(row.request_id) for row in rows),
+                int(physical_rows),
+                tuple(int(index) for index in active_slot_indices),
+            )
+        )
+        or True
+    )
+    runner._step_native_serial = lambda rows, *, fallback_reason: serial_calls.append(
+        tuple(int(row.request_id) for row in rows)
+    )
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "backend_package_capability",
+        lambda backend, key, default=None: (
+            (1, 2, 4, 8) if key == "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS" else default
+        ),
+    )
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+
+    def _rows(count: int) -> list[SimpleNamespace]:
+        return [
+            SimpleNamespace(
+                request_id=request_id,
+                slot=SimpleNamespace(
+                    session=SimpleNamespace(kv_attention_source="bf16"),
+                    c1_decode_graph=None,
+                ),
+            )
+            for request_id in range(count)
+        ]
+
+    runner._step_native_rows(
+        _rows(6),
+        work=WorkItem(
+            kind=WorkKind.DECODE,
+            request_ids=tuple(range(6)),
+            row_to_request=tuple(range(6)),
+            slot_ids=tuple(range(6)),
+            active_mask=(True,) * 6,
+        ),
+    )
+    assert packed_calls == [((0, 1, 2, 3, 4, 5), 8, (0, 1, 2, 3, 4, 5))]
+
+    packed_calls.clear()
+    serial_calls.clear()
+    runner._step_native_rows(
+        _rows(9),
+        work=WorkItem(
+            kind=WorkKind.DECODE,
+            request_ids=tuple(range(9)),
+            row_to_request=tuple(range(9)),
+            slot_ids=tuple(range(9)),
+            active_mask=(True,) * 9,
+        ),
+    )
+    assert packed_calls == [((0, 1, 2, 3, 4, 5, 6, 7), 8, (0, 1, 2, 3, 4, 5, 6, 7))]
+    assert serial_calls == [(8,)]
+
+    packed_calls.clear()
+    serial_calls.clear()
+    runner._step_native_rows(
+        _rows(3),
+        work=WorkItem(
+            kind=WorkKind.DECODE,
+            request_ids=tuple(range(3)),
+            row_to_request=tuple(range(3)),
+            slot_ids=tuple(range(3)),
+            active_mask=(True,) * 3,
+        ),
+    )
+    assert packed_calls == [((0, 1, 2), 4, (0, 1, 2))]
+    assert runner._last_physical_group_plan["physical_bucket_widths"] == [1, 2, 4, 8]
+
+
+def test_resident_runner_follows_d2_composition_across_c1_to_c32(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prove the actual resident owner lowers every logical c1-c32 to the D2
+    artifact-backed composition when a cost table is configured.
+
+    Ceiling remains the fail-closed fallback when no cost table is set; with one
+    set, the plan's group physical widths must equal ``d2_partition``.
+    """
+    step_ms = {
+        1: 33.1701, 2: 37.5209, 3: 40.0602, 4: 43.2973,
+        5: 48.0149, 6: 52.7025, 7: 57.8864, 8: 63.5257,
+    }
+    cost_table = CostTable(
+        tuple(
+            PhysicalWidthCost(
+                active_rows=w,
+                physical_width=w,
+                mask_class="dense_all_active",
+                model_step_ms=ms,
+                workspace_bytes=0,
+                route_manifest_sha256="a" * 64,
+                correctness_sha256="b" * 64,
+                source="post-promotion-fixture",
+            )
+            for w, ms in step_ms.items()
+        )
+    )
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner._resident_batch_owner = object()
+    runner._shared_runner = SimpleNamespace(backend="hip_gfx1100")
+    runner.generator = SimpleNamespace(
+        model_path="/models/fixture.gguf",
+        _kv_weight_quant_key=lambda: "gguf_q4_k_m",
+    )
+    runner._last_execution_manifest = {}
+    runner._last_physical_group_plan = {}
+    runner._gguf_ar_cost_table = cost_table
+    runner._step_native_chunk = lambda rows, **kwargs: True
+    runner._step_native_serial = lambda rows, **kwargs: None
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+    # Default-D2 is production-active for the configured-owner loop below; for
+    # the ceiling-fallback half, patch the resolver to fail closed to None so it
+    # never reaches the fake runner's missing generator.
+    monkeypatch.setattr(
+        qwen35_gguf, "_gguf_ar_resolve_cost_table", lambda *a, **k: None
+    )
+
+    for c in range(1, 33):
+        rows = [
+            SimpleNamespace(
+                request_id=request_id,
+                slot=SimpleNamespace(
+                    session=SimpleNamespace(kv_attention_source="bf16"),
+                    c1_decode_graph=None,
+                ),
+            )
+            for request_id in range(c)
+        ]
+        runner._step_native_rows(
+            rows,
+            work=WorkItem(
+                kind=WorkKind.DECODE,
+                request_ids=tuple(range(c)),
+                row_to_request=tuple(range(c)),
+                slot_ids=tuple(range(c)),
+                active_mask=(True,) * c,
+            ),
+        )
+        plan = runner._last_physical_group_plan
+        got = sorted(
+            (int(group["physical_rows"]) for group in plan["groups"]),
+            reverse=True,
+        )
+        expected = list(d2_partition(c, cost_table))
+        assert got == expected, f"c{c}: plan {got} != D2 {expected}"
+        assert plan["policy"] == "artifact_backed_d2"
+        assert plan["d2"]["width_sequence"] == expected
+        # Composition must cover every active row exactly.
+        assert sum(got) == c
+
+    # Without a cost table the owner fails closed to ceiling (not D2).
+    runner._gguf_ar_cost_table = None
+    runner._step_native_rows(
+        [
+            SimpleNamespace(
+                request_id=r,
+                slot=SimpleNamespace(
+                    session=SimpleNamespace(kv_attention_source="bf16"),
+                    c1_decode_graph=None,
+                ),
+            )
+            for r in range(13)
+        ],
+        work=WorkItem(
+            kind=WorkKind.DECODE,
+            request_ids=tuple(range(13)),
+            row_to_request=tuple(range(13)),
+            slot_ids=tuple(range(13)),
+            active_mask=(True,) * 13,
+        ),
+    )
+    plan = runner._last_physical_group_plan
+    got = sorted(
+        (int(group["physical_rows"]) for group in plan["groups"]),
+        reverse=True,
+    )
+    assert got == [8, 5]  # ceiling fallback, not D2 (7,6)
+    assert plan["policy"] == "occupancy_adaptive_dense_execution"
+    assert "d2" not in plan
+
+
+def test_resident_runner_d2_artifact_env_loads_cost_table(monkeypatch) -> None:
+    path = Path(
+        "benchmarks/results/2026-08-20-concurrency2-qwen38-d2-cost-map.json"
+    ).resolve()
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_D2_COST_ARTIFACT", str(path))
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "collect_model_identity",
+        lambda _path: {
+            "fingerprint": {
+                "exists": True,
+                "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+            }
+        },
+    )
+    monkeypatch.setattr(qwen35_gguf.socket, "gethostname", lambda: "epyc")
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "detect_device_name",
+        lambda: "AMD Radeon Pro W7900",
+    )
+    qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()
+    try:
+        ct = qwen35_gguf._gguf_ar_resolve_cost_table(
+            "hip_gfx1100",
+            target_arch="gfx1100",
+            model_path="/models/fixture.gguf",
+            quant="gguf_q4_k_m",
+            kv_dtype="bf16",
+            physical_widths=tuple(range(1, 9)),
+        )
+        assert ct is not None
+        assert ct.widths == (1, 2, 3, 4, 5, 6, 7, 8)
+        monkeypatch.setattr(
+            qwen35_gguf,
+            "detect_device_name",
+            lambda: "AMD Radeon RX 7900 XTX",
+        )
+        with pytest.raises(ValueError, match="identity mismatch"):
+            qwen35_gguf._gguf_ar_resolve_cost_table(
+                "hip_gfx1100",
+                target_arch="gfx1100",
+                model_path="/models/fixture.gguf",
+                quant="gguf_q4_k_m",
+                kv_dtype="bf16",
+                physical_widths=tuple(range(1, 9)),
+            )
+        monkeypatch.setattr(
+            qwen35_gguf,
+            "detect_device_name",
+            lambda: "AMD Radeon Pro W7900",
+        )
+        with pytest.raises(ValueError, match="identity mismatch"):
+            qwen35_gguf._gguf_ar_resolve_cost_table(
+                "hip_gfx1100",
+                target_arch="gfx1100",
+                model_path="/models/fixture.gguf",
+                quant="gguf_q4_k_s",
+                kv_dtype="bf16",
+                physical_widths=tuple(range(1, 9)),
+            )
+
+        runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+            qwen35_gguf.Qwen35GGUFResidentModelRunner
+        )
+        runner._resident_batch_owner = SimpleNamespace(
+            kv_storage_dtype=SimpleNamespace(value="bf16")
+        )
+        runner._shared_runner = SimpleNamespace(
+            backend="hip_gfx1100", target_arch="gfx1100"
+        )
+        runner.generator = SimpleNamespace(
+            model_path="/models/fixture.gguf",
+            _kv_weight_quant_key=lambda: "gguf_q4_k_m",
+        )
+        runner._last_execution_manifest = {}
+        runner._last_physical_group_plan = {}
+        runner._step_native_chunk = lambda rows, **kwargs: True
+        runner._step_native_serial = lambda rows, **kwargs: None
+        monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_DECODE", "1")
+        runner._step_native_rows(
+            [
+                SimpleNamespace(
+                    request_id=r,
+                    slot=SimpleNamespace(
+                        session=SimpleNamespace(kv_attention_source="bf16"),
+                        c1_decode_graph=None,
+                    ),
+                )
+                for r in range(13)
+            ],
+            work=WorkItem(
+                kind=WorkKind.DECODE,
+                request_ids=tuple(range(13)),
+                row_to_request=tuple(range(13)),
+                slot_ids=tuple(range(13)),
+                active_mask=(True,) * 13,
+            ),
+        )
+        got = sorted(
+            int(group["physical_rows"])
+            for group in runner._last_physical_group_plan["groups"]
+        )
+        assert got == [6, 7]  # D2 composition loaded from the artifact
+        assert runner._last_physical_group_plan["policy"] == "artifact_backed_d2"
+        assert runner._last_physical_group_plan["d2"]["identity"]["backend"] == "hip_gfx1100"
+    finally:
+        qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()
+
+
+def test_resident_runner_d2_absent_uses_ceiling_and_invalid_explicit_fails(monkeypatch) -> None:
+    """D2 is explicit-config until the actual-server promotion gate passes."""
+    monkeypatch.delenv("HIPENGINE_GGUF_AR_D2_COST_ARTIFACT", raising=False)
+    qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()
+    try:
+        assert qwen35_gguf._gguf_ar_resolve_cost_table(
+            "hip_gfx1100",
+            target_arch="gfx1100",
+            model_path="/missing/model.gguf",
+            quant="gguf_q4_k_m",
+            kv_dtype="bf16",
+            physical_widths=tuple(range(1, 9)),
+        ) is None
+        # An explicitly requested but invalid artifact still raises.
+        monkeypatch.setenv(
+            "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT", "/missing/artifact.json"
+        )
+        with pytest.raises(ValueError, match="does not exist"):
+            qwen35_gguf._gguf_ar_resolve_cost_table(
+                "hip_gfx1100",
+                target_arch="gfx1100",
+                model_path="/missing/model.gguf",
+                quant="gguf_q4_k_m",
+                kv_dtype="bf16",
+                physical_widths=tuple(range(1, 9)),
+            )
+    finally:
+        qwen35_gguf._GGUF_AR_D2_COST_CACHE.clear()

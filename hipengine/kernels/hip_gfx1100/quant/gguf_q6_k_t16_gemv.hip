@@ -128,6 +128,46 @@ __device__ inline uint16_t float_to_output<uint16_t>(float v) {
     acc += __shfl_down(acc, 1);   \
   } while (0)
 
+__device__ inline float q6_t16_permlanex16_f32(float value) {
+  union FloatBits {
+    float value;
+    uint32_t bits;
+  } data;
+  data.value = value;
+  data.bits = __builtin_amdgcn_permlanex16(
+      data.bits, data.bits, 0x76543210U, 0xFEDCBA98U, false, false);
+  return data.value;
+}
+
+template <int DPP_CTRL>
+__device__ inline float q6_t16_dpp_move_f32(float value) {
+  union FloatBits {
+    float value;
+    int bits;
+  } data;
+  data.value = value;
+  data.bits = __builtin_amdgcn_mov_dpp(
+      data.bits, DPP_CTRL, 0xF, 0xF, true);
+  return data.value;
+}
+
+__device__ inline float q6_t16_dpp_add_row_shl1_f32(float value) {
+  float result;
+  asm volatile(
+      "v_add_f32_dpp %0, %1, %1 row_shl:1 row_mask:0xf bank_mask:0xf bound_ctrl:1"
+      : "=v"(result)
+      : "v"(value));
+  return result;
+}
+
+__device__ inline void q6_t16_wave_reduce_dpp(float& value) {
+  value += q6_t16_permlanex16_f32(value);
+  value += q6_t16_dpp_move_f32<0x108>(value);
+  value += q6_t16_dpp_move_f32<0x104>(value);
+  value += q6_t16_dpp_move_f32<0x102>(value);
+  value = q6_t16_dpp_add_row_shl1_f32(value);
+}
+
 __device__ inline int q6_planar_dp4a_u8_s8(
     uint32_t a,
     uint32_t b,
@@ -1750,7 +1790,7 @@ void q6_k_t16_qmicro_planar_gemv_rowtile_kernel(
 // payload groups each K4/column-quartet as four QL01 bytes, four QL23 bytes,
 // then four QH bytes. Every row/output retains the legacy col8 K traversal,
 // integer coefficient product, FP32 FMA stream, wave tree, and BF16 boundary.
-template <typename out_t, int ROW_TILE>
+template <typename out_t, int ROW_TILE, bool USE_DPP_REDUCTION = false>
 __global__ __launch_bounds__(128, 4)
 void q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel(
     const uint16_t* __restrict__ x,
@@ -1833,8 +1873,13 @@ void q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel(
 #pragma unroll
   for (int r = 0; r < ROW_TILE; ++r)
 #pragma unroll
-    for (int local_col = 0; local_col < kTileCols; ++local_col)
-      GGUF_T16_WAVE_REDUCE(acc[r][local_col]);
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      if constexpr (USE_DPP_REDUCTION) {
+        q6_t16_wave_reduce_dpp(acc[r][local_col]);
+      } else {
+        GGUF_T16_WAVE_REDUCE(acc[r][local_col]);
+      }
+    }
 
   __shared__ float xchg[4 * ROW_TILE * kTileCols];
   const int sub_id = tid >> 5;
@@ -2309,7 +2354,11 @@ int launch_q6_t16_qmicro_planar_rowtile_col8(
     Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_CASE(5)
     Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_CASE(6)
     Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_CASE(7)
-    Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_CASE(8)
+    case 8:
+      hipLaunchKernelGGL(
+          (q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<out_t, 8, true>),
+          grid, block, 0, stream, xp, tp, op, rows, in_features, out_features);
+      break;
     default:
       return hipErrorInvalidValue;
   }
@@ -2486,7 +2535,7 @@ extern "C" int
 hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out(
     const void* x, const void* tiles, void* out, int64_t rows,
     int64_t in_features, int64_t out_features, hipStream_t stream) {
-  if (rows >= 2 && rows <= 4) {
+  if (rows >= 2 && rows <= 8) {
     return launch_q6_t16_qmicro_planar_rowtile_col8<uint16_t>(
         x, tiles, out, rows, in_features, out_features, stream);
   }

@@ -1,0 +1,176 @@
+{
+  "schema": 1,
+  "kind": "hipengine_concurrency2_c2_6_canonical_production_load",
+  "status": "accepted",
+  "passed": true,
+  "performance_claim": true,
+  "created_at": "2026-08-18T01:42:57.174803+00:00",
+  "source": {
+    "branch": "concurrency2",
+    "commit": "ff440cd0113272b4d92ed1421973d392ee25a3be",
+    "worktree_clean": true,
+    "worklog": "worklog/entries/20260818T013511.707434Z-lhl-packed-graph-prefill-lifecycle-1e8ca7.md",
+    "raw_artifact": "/tmp/hipengine-c2-6-canonical-clean-ff440cd01.json"
+  },
+  "hardware": {
+    "host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "hipcc": "AMD clang 22.0.0git (rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256_v1": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16"
+  },
+  "protocol": {
+    "timing": "one prepared model; real localhost Uvicorn SSE; independent same-owner c1 generated-ID oracle; scheduler queue/TTFT/ITL plus client end-to-end",
+    "execution_profile": "production",
+    "sampling": "greedy_top1_ignore_eos",
+    "speculative_decode": false,
+    "max_active_requests": 8,
+    "max_pending_requests": 16,
+    "max_queued_requests": 16,
+    "batch_window_ms": 100.0,
+    "slo_seconds": {
+      "queue_p99": 10.0,
+      "ttft_p95": 10.0,
+      "itl_p99": 0.5,
+      "end_to_end_p95": 30.0
+    },
+    "warmups": 0,
+    "measurement_repetitions": 1
+  },
+  "command": "python3 scripts/gguf_production_load_gate.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --json /tmp/hipengine-c2-6-canonical-clean-ff440cd01.json",
+  "tuning": {
+    "candidates_passed": "6/6",
+    "selected": {
+      "candidate_id": "token_budget_256",
+      "prefill_decode_policy": "token_budget",
+      "prefill_chunk_tokens": 256,
+      "fair_prefill_burst_chunks": 1,
+      "batch_window_ms": 100.0,
+      "goodput_generated_tokens_per_second": 55.250855756083,
+      "ttft_p95_seconds": 0.30049368599429727,
+      "itl_p99_seconds": 0.141290876083076,
+      "end_to_end_p95_seconds": 1.3683123630471528
+    }
+  },
+  "workloads": {
+    "static_c1": {
+      "requests": 1,
+      "outcomes": {"completed": 1},
+      "exact": "1/1",
+      "slo_goodput_tokens_per_second": 49.06761737241597,
+      "passed": true
+    },
+    "static_c8": {
+      "requests": 8,
+      "outcomes": {"completed": 8},
+      "exact": "8/8",
+      "slo_goodput_tokens_per_second": 95.90854646837754,
+      "passed": true
+    },
+    "ragged_burst": {
+      "requests": 8,
+      "outcomes": {"completed": 8},
+      "exact": "8/8",
+      "slo_goodput_tokens_per_second": 80.31867389946102,
+      "passed": true
+    },
+    "continuous_fixed": {
+      "requests": 12,
+      "outcomes": {"completed": 12},
+      "exact": "12/12",
+      "slo_goodput_tokens_per_second": 53.19644615079606,
+      "passed": true
+    },
+    "continuous_poisson": {
+      "requests": 12,
+      "outcomes": {"completed": 12},
+      "exact": "12/12",
+      "slo_goodput_tokens_per_second": 43.2958536240377,
+      "passed": true
+    },
+    "cancellation_disconnect": {
+      "requests": 8,
+      "outcomes": {"completed": 6, "disconnected": 1, "timeout": 1},
+      "exact": "8/8",
+      "slo_goodput_tokens_per_second": 60.524792402332665,
+      "cancellation_ack_p95_seconds": 0.16843648720532656,
+      "passed": true
+    },
+    "overload": {
+      "requests": 40,
+      "outcomes": {"completed": 16, "engine_busy_rejected": 24},
+      "exact": "40/40 accounted; 16/16 admitted exact",
+      "slo_goodput_tokens_per_second": 51.30396319998573,
+      "bounded_queue_rejection": true,
+      "passed": true
+    },
+    "idle_recovery": {
+      "requests": 1,
+      "outcomes": {"completed": 1},
+      "exact": "1/1",
+      "slo_goodput_tokens_per_second": 30.77533635804408,
+      "passed": true
+    },
+    "soak": {
+      "requests": 120,
+      "outcomes": {"completed": 120},
+      "exact": "120/120",
+      "wall_seconds": 60.478,
+      "slo_goodput_tokens_per_second": 43.65227621305671,
+      "queue_p99_seconds": 0.012396722100675106,
+      "ttft_p95_seconds": 0.34557216707617044,
+      "itl_p99_seconds": 0.1757061518728733,
+      "end_to_end_p95_seconds": 1.3787872418761253,
+      "passed": true
+    }
+  },
+  "final_gates": {
+    "workloads_passed": true,
+    "overload_metrics_exact": true,
+    "final_ownership_passed": true,
+    "memory_recovery_passed": true,
+    "clean_source_passed": true,
+    "tracked_memory_delta_bytes": 0,
+    "kv_pool_current_pages": 24,
+    "kv_pool_free_pages": 24,
+    "kv_pool_refcounted_pages": 0,
+    "kv_pool_pinned_pages": 0,
+    "generation_queue_depth": 0,
+    "generation_active_requests": 0,
+    "admitted_requests": 271,
+    "reclaimed_requests": 271,
+    "graph_captures": 67,
+    "graph_replays": 1242,
+    "graph_invalidations": 39
+  },
+  "blocker_resolution": {
+    "supersedes": "benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json",
+    "prior_result": "seven canonical attempts faulted before tuning",
+    "root_cause": "decode graphs survived a packed prefill overwrite of their shared private recurrent/KV workspace and later replayed against the wrong occupant's state",
+    "fix_commit": "ff440cd0113272b4d92ed1421973d392ee25a3be",
+    "fix": "invalidate binding decode graphs, flush their synchronized state on the prefill stream, then reuse the packed workspace"
+  },
+  "availability": {
+    "gfx1151": "unavailable on this host",
+    "vllm": "not installed",
+    "sglang": "not installed",
+    "matched_external_comparison": false
+  },
+  "decision": {
+    "canonical_c2_6_load_closed": true,
+    "retain_w7900_global_native_default": true,
+    "full_cross_backend_product_completion": false,
+    "remaining": [
+      "gfx1151 hardware qualification",
+      "matched external serving comparisons when dependencies are available",
+      "C2-7 device/checkpoint product conformance"
+    ]
+  }
+}

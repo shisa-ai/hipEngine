@@ -24,6 +24,14 @@ def test_validate_width_schedule_requires_descending_supported_widths() -> None:
         (5, 2),
         (7, 1),
     )
+    assert validate_width_schedule(
+        ((0, 7), (2, 6), (5, 5), (7, 3)), decode_steps=9
+    ) == (
+        (0, 7),
+        (2, 6),
+        (5, 5),
+        (7, 3),
+    )
     with pytest.raises(ValueError, match="start at step zero"):
         validate_width_schedule(((1, 8),), decode_steps=9)
     with pytest.raises(ValueError, match="strictly descend"):
@@ -51,6 +59,23 @@ def test_bundled_router_policy_uses_package_rowtile_floor_and_restores(
     variants = gate.candidate_variant_manifest(include_router_candidate=True)
     assert variants["c2"]["single"] == "t16_gemv_decode_bf16_bf16_out"
     assert variants["c4"]["single"] == "t16_gemv_decode_rowtile4_bf16_bf16_out"
+
+
+def test_current_package_policy_clears_candidate_overrides_and_restores(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(gate.POLICY_ENV, "caller-rowtile")
+    monkeypatch.setenv(gate.ROUTER_COOP_ENV, "caller-coop")
+    monkeypatch.setenv(gate.ROUTER_PERSISTENT_ENV, "caller-persistent")
+
+    with gate._current_package_policy():
+        assert gate.POLICY_ENV not in os.environ
+        assert gate.ROUTER_COOP_ENV not in os.environ
+        assert gate.ROUTER_PERSISTENT_ENV not in os.environ
+
+    assert os.environ[gate.POLICY_ENV] == "caller-rowtile"
+    assert os.environ[gate.ROUTER_COOP_ENV] == "caller-coop"
+    assert os.environ[gate.ROUTER_PERSISTENT_ENV] == "caller-persistent"
 
 
 def test_build_batch_route_quality_preserves_shape_and_transition_attribution() -> None:

@@ -1,0 +1,136 @@
+{
+  "completion_audit": {
+    "blockers": [
+      {
+        "blocker": "vLLM/SGLang are not installed; llama.cpp HIP binaries fail CPU-ISA/ROCm-ABI checks; the available Vulkan binary has no usable GPU backend",
+        "requirement_id": "C2-6.external",
+        "status": "unavailable"
+      },
+      {
+        "blocker": "public C=10 service MTP wall is 0.579x true AR; phase-serial provider execution fails product economics and HTTP SLO promotion is not run",
+        "requirement_id": "C2-S.C5",
+        "status": "blocked"
+      },
+      {
+        "blocker": "no valid trained retrofit checkpoint is available for model-quality, device-savings, and product-soak qualification",
+        "requirement_id": "DMS.product",
+        "status": "blocked"
+      }
+    ],
+    "false_passes": [],
+    "goal_complete_for_all_optional_products": false,
+    "interpretation": "The repository-wide optional-product audit remains blocked by design; neither blocker is required for the declared dense gfx1100 default/merge objective and both fail closed.",
+    "missing_evidence": [],
+    "passed": true,
+    "status": "blocked",
+    "status_counts": {
+      "blocked": 2,
+      "passed": 38,
+      "unavailable": 1
+    }
+  },
+  "created_at": "2026-08-22T16:55:00Z",
+  "decision": "Objective achieved for gfx1100 core/default/main merge. Do not run or claim gfx1151 until physical host access is restored. Do not promote DMS, tiering, or full continuous SpecDec beyond their explicitly qualified default-off scopes.",
+  "kind": "gfx1100_core_default_main_merge_completion_audit",
+  "objective": "Focus on all core correctness work so the supported gfx1100 Generation-2 path can be the default and all work is merged to main; defer independent gfx1151 qualification until afterward.",
+  "passed": true,
+  "performance_claim": false,
+  "prompt_to_artifact_checklist": {
+    "core_correctness": [
+      "completion audit evidence complete/no false passes",
+      "full broad suite plus focused repair",
+      "final 104-test bundle"
+    ],
+    "fail_closed_unknowns": [
+      "DMS.product blocked valid checkpoint",
+      "SPEC-C5 blocked service economics",
+      "C2-6.external unavailable current GPU builds",
+      "tier integrated GPU restore default-off"
+    ],
+    "gfx1100_default": [
+      "C2-6 canonical accepted",
+      "Qwen3.8 direct widths accepted",
+      "Q6 exact promotion retained"
+    ],
+    "gfx1151_after_merge": [
+      "task #50 blocked by #62",
+      "docs require independent host/model/quant/KV evidence"
+    ],
+    "merge_main": [
+      "git branch main",
+      "HEAD committed",
+      "tracked worktree clean"
+    ]
+  },
+  "schema": 1,
+  "source": {
+    "branch": "main",
+    "commit": "038e5511c3454481337e661f641ee61dfdb6a26a",
+    "host": "epyc",
+    "status": "## main...origin/main [ahead 165]"
+  },
+  "status": "complete_in_scope",
+  "success_criteria": [
+    {
+      "coverage": "one EngineService, global dense BF16 KV, physical c1-c8/logical c1-c32, exact IDs, graph/page/slot lifecycle, long/mixed contexts, pressure/cancel/overload/soak, memory/drain",
+      "evidence": [
+        "benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json",
+        "benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-lifecycle.json",
+        "benchmarks/results/2026-08-22-concurrency2-completion-audit.json"
+      ],
+      "requirement": "Core Generation-2 correctness is complete for the declared gfx1100 dense configuration.",
+      "status": "passed"
+    },
+    {
+      "coverage": "Q6 row8 exact DPP default; existing PM4 break-even policy retained; strict FP32 GDN retained; rejected Q4/Q5 candidates removed",
+      "evidence": [
+        "benchmarks/results/2026-08-22-gfx1100-qwen38-q6-planar-row8-dpp-promotion.json",
+        "benchmarks/results/2026-08-22-concurrency2-qwen38-c8-transport-ab.json",
+        "benchmarks/results/2026-08-22-concurrency2-qwen38-c8-gdn-attribution.json"
+      ],
+      "requirement": "Retained exact/performance wins are on the gfx1100 default path with strict fallbacks.",
+      "status": "passed"
+    },
+    {
+      "coverage": "DMS device fixtures pass but missing trained metadata blocks product; tier host bytes pass but GPU rehydrate keeps default off; SpecDec C0-C4 correctness passes but C5 service 0.579x blocks promotion; exact AR remains default",
+      "evidence": [
+        "benchmarks/results/2026-08-22-concurrency2-c2-7-dms-device-qualified.json",
+        "benchmarks/results/2026-08-22-concurrency2-c2-8-real-model-tier-qualified.json",
+        "benchmarks/results/2026-08-22-concurrency2-spec-c5-product-blocked.json"
+      ],
+      "requirement": "Optional/incomplete products do not silently become gfx1100 defaults.",
+      "status": "passed_fail_closed"
+    },
+    {
+      "coverage": "branch main, all logical units committed, clean tracked tree; tasks #50/#62 remain separate and no W7900 evidence transfers",
+      "evidence": [
+        "docs/CONCURRENCY2.md",
+        "worklog/entries/20260822T155040.874078Z-lhl-qwen38-c8-gdn-recurrence-attribution-a2c4d1.md"
+      ],
+      "requirement": "Changes are merged to local main and gfx1151 is explicitly deferred for independent hardware evidence.",
+      "status": "passed"
+    },
+    {
+      "coverage": "full suite 9843 passed/214 skipped/4 xfailed/12 failed; repaired 3 stale/compactness expectations; remaining 9 were one 4528-byte allocator-baseline cascade and fresh memory/Moonshine 17 passed/1 skipped; final 104-test C2/default/optional focused bundle passed",
+      "evidence": [
+        "/tmp/vstack-pi-bg/bg-160-1787414087215.log",
+        "worklog/entries/20260822T164739.306474Z-lhl-gfx1100-merge-closure-focused-repair-682ec7.md"
+      ],
+      "requirement": "Broad and focused correctness validation covers the merged scope.",
+      "status": "passed_with_focused_repairs"
+    }
+  ],
+  "validation": {
+    "diff_check": true,
+    "final_focused_bundle": "104 passed",
+    "focused_repairs": [
+      "3 repaired expectation nodes passed",
+      "memory_stats + Moonshine: 17 passed, 1 skipped"
+    ],
+    "full_suite": "9843 passed, 214 skipped, 4 xfailed, 12 failed in 2892.85 s",
+    "full_suite_commit": "8cc0c3352",
+    "full_suite_log_sha256": "1971dbdd04a761f30d3deb9b33a7ed4d27d9bc0812398e8de5d34c7c508f20f4",
+    "readme_sync": true,
+    "worklog": "590 valid entries"
+  }
+}

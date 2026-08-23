@@ -1,0 +1,623 @@
+{
+  "claim": "diagnostic_family_ranking_not_performance_promotion",
+  "counter_pilot": {
+    "command": "rocprofv3 --pmc SQ_WAVES MemUnitBusy --kernel-include-regex q4_k_t16_dense_dual_rowtile --kernel-trace ... production-owner p512 c8 d32",
+    "counter_csv_sha256": "babf3fa41753ba91a52ac6f2844d820974be3c61328c7df6ee9706f7f088f7fb",
+    "interpretation": "SQ_WAVES is populated and exactly grid-derived; MemUnitBusy is zero for every sampled dispatch and is unusable as activity evidence on this stack. No zero-memory-activity claim is made.",
+    "kernel_trace_sha256": "30e517a53e28dbbec7d268c982c6a39b1d0df996c2879fad28be61166f2201ee",
+    "result": {
+      "2": {
+        "dispatches": 256,
+        "metadata": {
+          "grid_size": 139264,
+          "lds": 512,
+          "scratch": 0,
+          "vgpr": 120,
+          "workgroup_size": 64
+        },
+        "values": {
+          "MemUnitBusy": [
+            0.0
+          ],
+          "SQ_WAVES": [
+            4352.0
+          ]
+        }
+      },
+      "3": {
+        "dispatches": 256,
+        "metadata": {
+          "grid_size": 139264,
+          "lds": 512,
+          "scratch": 0,
+          "vgpr": 144,
+          "workgroup_size": 64
+        },
+        "values": {
+          "MemUnitBusy": [
+            0.0
+          ],
+          "SQ_WAVES": [
+            4352.0
+          ]
+        }
+      },
+      "4": {
+        "dispatches": 256,
+        "metadata": {
+          "grid_size": 139264,
+          "lds": 512,
+          "scratch": 0,
+          "vgpr": 144,
+          "workgroup_size": 64
+        },
+        "values": {
+          "MemUnitBusy": [
+            0.0
+          ],
+          "SQ_WAVES": [
+            4352.0
+          ]
+        }
+      },
+      "5": {
+        "dispatches": 256,
+        "metadata": {
+          "grid_size": 139264,
+          "lds": 512,
+          "scratch": 0,
+          "vgpr": 168,
+          "workgroup_size": 64
+        },
+        "values": {
+          "MemUnitBusy": [
+            0.0
+          ],
+          "SQ_WAVES": [
+            4352.0
+          ]
+        }
+      },
+      "6": {
+        "dispatches": 256,
+        "metadata": {
+          "grid_size": 139264,
+          "lds": 512,
+          "scratch": 0,
+          "vgpr": 192,
+          "workgroup_size": 64
+        },
+        "values": {
+          "MemUnitBusy": [
+            0.0
+          ],
+          "SQ_WAVES": [
+            4352.0
+          ]
+        }
+      },
+      "7": {
+        "dispatches": 256,
+        "metadata": {
+          "grid_size": 139264,
+          "lds": 512,
+          "scratch": 0,
+          "vgpr": 192,
+          "workgroup_size": 64
+        },
+        "values": {
+          "MemUnitBusy": [
+            0.0
+          ],
+          "SQ_WAVES": [
+            4352.0
+          ]
+        }
+      },
+      "8": {
+        "dispatches": 1088,
+        "metadata": {
+          "grid_size": 139264,
+          "lds": 512,
+          "scratch": 0,
+          "vgpr": 224,
+          "workgroup_size": 64
+        },
+        "values": {
+          "MemUnitBusy": [
+            0.0
+          ],
+          "SQ_WAVES": [
+            4352.0
+          ]
+        }
+      }
+    }
+  },
+  "date": "2026-08-22",
+  "decision": "Start Q6 planar row8 optimization with exact actual-operation RED and complete c8 owner wall. Target reduction/dequant issue and VGPR/LDS geometry; do not assume raw VRAM bandwidth is the sole limiter. Then Q4 singleton row8.",
+  "exact_encoded_weight_ledger": {
+    "lm_q6": {
+      "c8_sum_ms": 3.267461,
+      "diagnostic_ms_at_q4_pair_bw": 2.05323309134689,
+      "diagnostic_saving_ms_at_q4_pair_bw": 1.2142279086531098,
+      "encoded_weight_bytes": 1042944000,
+      "encoded_weight_gb": 1.042944,
+      "encoded_weight_only_gb_s": 319.1909559134753,
+      "fraction_of_864gb_s": 0.3694339767517075,
+      "quant_types": {
+        "Q6_K": 1
+      },
+      "roles": {
+        "output": 1
+      },
+      "tensor_count": 1
+    },
+    "q4_pair": {
+      "c8_sum_ms": 12.633643,
+      "diagnostic_ms_at_q4_pair_bw": 12.633642999999998,
+      "diagnostic_saving_ms_at_q4_pair_bw": 1.7763568394002505e-15,
+      "encoded_weight_bytes": 6417285120,
+      "encoded_weight_gb": 6.41728512,
+      "encoded_weight_only_gb_s": 507.9520705152109,
+      "fraction_of_864gb_s": 0.5879074890222348,
+      "quant_types": {
+        "Q4_K": 128
+      },
+      "roles": {
+        "ffn_gate": 64,
+        "ffn_up": 64
+      },
+      "tensor_count": 128
+    },
+    "q4_single": {
+      "c8_sum_ms": 10.536817,
+      "diagnostic_ms_at_q4_pair_bw": 8.035368525735294,
+      "diagnostic_saving_ms_at_q4_pair_bw": 2.5014484742647056,
+      "encoded_weight_bytes": 4081582080,
+      "encoded_weight_gb": 4.08158208,
+      "encoded_weight_only_gb_s": 387.3638576051952,
+      "fraction_of_864gb_s": 0.44833779815416114,
+      "quant_types": {
+        "Q4_K": 160
+      },
+      "roles": {
+        "attn_gate": 48,
+        "attn_k": 16,
+        "attn_output": 16,
+        "attn_q": 16,
+        "attn_qkv": 24,
+        "attn_v": 8,
+        "ffn_down": 32
+      },
+      "tensor_count": 160
+    },
+    "q5": {
+      "c8_sum_ms": 4.228467,
+      "diagnostic_ms_at_q4_pair_bw": 2.043677544117647,
+      "diagnostic_saving_ms_at_q4_pair_bw": 2.184789455882353,
+      "encoded_weight_bytes": 1038090240,
+      "encoded_weight_gb": 1.03809024,
+      "encoded_weight_only_gb_s": 245.50037637753823,
+      "fraction_of_864gb_s": 0.28414395414066923,
+      "quant_types": {
+        "Q5_K": 48
+      },
+      "roles": {
+        "ssm_out": 48
+      },
+      "tensor_count": 48
+    },
+    "q6_planar": {
+      "c8_sum_ms": 10.570393,
+      "diagnostic_ms_at_q4_pair_bw": 6.705816941636028,
+      "diagnostic_saving_ms_at_q4_pair_bw": 3.864576058363971,
+      "encoded_weight_bytes": 3406233600,
+      "encoded_weight_gb": 3.4062336,
+      "encoded_weight_only_gb_s": 322.2428532222028,
+      "fraction_of_864gb_s": 0.3729662653034755,
+      "quant_types": {
+        "Q6_K": 64
+      },
+      "roles": {
+        "attn_qkv": 24,
+        "attn_v": 8,
+        "ffn_down": 32
+      },
+      "tensor_count": 64
+    }
+  },
+  "family_width_slopes": {
+    "1": {
+      "families": {
+        "gdn": {
+          "count": 48,
+          "kernels": [
+            "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_kernel<unsigned short, true, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, unsigned short*, float, long, long, long, long)"
+          ],
+          "resources": [
+            [
+              128,
+              56,
+              0,
+              0
+            ]
+          ],
+          "sum_ms": 0.736887
+        },
+        "lm_q6": {
+          "count": 1,
+          "kernels": [
+            "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)"
+          ],
+          "resources": [
+            [
+              128,
+              96,
+              512,
+              0
+            ]
+          ],
+          "sum_ms": 1.48301
+        },
+        "q4_pair": {
+          "count": 64,
+          "kernels": [
+            "void (anonymous namespace)::q4_k_t16_dense_dual_local32_silu_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)"
+          ],
+          "resources": [
+            [
+              32,
+              168,
+              0,
+              0
+            ]
+          ],
+          "sum_ms": 9.961954
+        },
+        "q4_single": {
+          "count": 160,
+          "kernels": [
+            "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)"
+          ],
+          "resources": [
+            [
+              32,
+              96,
+              0,
+              0
+            ]
+          ],
+          "sum_ms": 6.361207
+        },
+        "q6_planar": {
+          "count": 64,
+          "kernels": [
+            "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)"
+          ],
+          "resources": [
+            [
+              128,
+              96,
+              512,
+              0
+            ]
+          ],
+          "sum_ms": 5.509271
+        }
+      },
+      "marker_wall_ms": 35.886259,
+      "raw": {
+        "3016721_kernel_trace.csv": "7db845a8d007957d76e626cdaf51ffa44cab979c242aade5018e3a98e7ed8b5f",
+        "3016721_marker_api_trace.csv": "b448b72fb77035cfed8c18c638dc276841eb1e8f7907447eb9fba1eef3a3dd8f"
+      }
+    },
+    "4": {
+      "families": {
+        "gdn": {
+          "count": 48,
+          "kernels": [
+            "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<unsigned short, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)"
+          ],
+          "resources": [
+            [
+              128,
+              80,
+              0,
+              0
+            ]
+          ],
+          "sum_ms": 4.89111
+        },
+        "lm_q6": {
+          "count": 1,
+          "kernels": [
+            "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4>(unsigned short const*, unsigned char const*, float*, long, long, long)"
+          ],
+          "resources": [
+            [
+              128,
+              80,
+              512,
+              0
+            ]
+          ],
+          "sum_ms": 1.616171
+        },
+        "q4_pair": {
+          "count": 64,
+          "kernels": [
+            "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)"
+          ],
+          "resources": [
+            [
+              64,
+              144,
+              512,
+              0
+            ]
+          ],
+          "sum_ms": 10.237429
+        },
+        "q4_single": {
+          "count": 160,
+          "kernels": [
+            "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+            "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+            "void (anonymous namespace)::q4_k_t16_dense_rowtile_residual_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short const*, unsigned short*, long, long)"
+          ],
+          "resources": [
+            [
+              32,
+              96,
+              0,
+              0
+            ],
+            [
+              32,
+              144,
+              0,
+              0
+            ]
+          ],
+          "sum_ms": 7.474694
+        },
+        "q5": {
+          "count": 48,
+          "kernels": [
+            "void (anonymous namespace)::q5_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)"
+          ],
+          "resources": [
+            [
+              128,
+              56,
+              512,
+              0
+            ]
+          ],
+          "sum_ms": 3.138947
+        },
+        "q6_planar": {
+          "count": 64,
+          "kernels": [
+            "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)"
+          ],
+          "resources": [
+            [
+              128,
+              80,
+              512,
+              0
+            ]
+          ],
+          "sum_ms": 6.550963
+        }
+      },
+      "marker_wall_ms": 43.457941,
+      "raw": {
+        "3018927_kernel_trace.csv": "f5d40b3963a4a573ff8ce0faf3a9039bc67ca6d3373b6d6a92c53baaef2ceee4",
+        "3018927_marker_api_trace.csv": "fdc0ab10c2e7e5cc4a828cb1dc76164c94fe13531d77711c56a078e402449e2d"
+      }
+    },
+    "8": {
+      "families": {
+        "gdn": {
+          "count": 48,
+          "kernels": [
+            "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<unsigned short, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, float, long, long, long, long)"
+          ],
+          "resources": [
+            [
+              128,
+              80,
+              0,
+              0
+            ]
+          ],
+          "sum_ms": 7.813331
+        },
+        "lm_q6": {
+          "count": 2,
+          "kernels": [
+            "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4>(unsigned short const*, unsigned char const*, float*, long, long, long)"
+          ],
+          "resources": [
+            [
+              128,
+              80,
+              512,
+              0
+            ]
+          ],
+          "sum_ms": 3.267461
+        },
+        "q4_pair": {
+          "count": 64,
+          "kernels": [
+            "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)"
+          ],
+          "resources": [
+            [
+              64,
+              224,
+              512,
+              0
+            ]
+          ],
+          "sum_ms": 12.633643
+        },
+        "q4_single": {
+          "count": 160,
+          "kernels": [
+            "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)"
+          ],
+          "resources": [
+            [
+              32,
+              216,
+              0,
+              0
+            ]
+          ],
+          "sum_ms": 10.536817
+        },
+        "q5": {
+          "count": 48,
+          "kernels": [
+            "void (anonymous namespace)::q5_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)"
+          ],
+          "resources": [
+            [
+              128,
+              72,
+              512,
+              0
+            ]
+          ],
+          "sum_ms": 4.228467
+        },
+        "q6_planar": {
+          "count": 64,
+          "kernels": [
+            "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)"
+          ],
+          "resources": [
+            [
+              128,
+              136,
+              1024,
+              0
+            ]
+          ],
+          "sum_ms": 10.570393
+        }
+      },
+      "marker_wall_ms": 60.428884,
+      "raw": {
+        "2954750_kernel_trace.csv": "8370f6e8e5fec1f0e97155bbb26c45815753fdf819c7e97bdea6952d40a9e824",
+        "2954750_marker_api_trace.csv": "bf267ad80c1e5d22cb437446ee763f3c0ea2d4eca0b10f2fa2d41f1a475b3078"
+      }
+    }
+  },
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "documented_sustained_assumption_gb_s": [
+      750,
+      820
+    ],
+    "gfx": "gfx1100",
+    "theoretical_vram_gb_s": 864
+  },
+  "kind": "concurrency2_qwen38_c8_family_mechanism_ranking",
+  "model": {
+    "base_layers": 64,
+    "file_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "kv_dtype": "bf16",
+    "nextn_layers_excluded": 1,
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m"
+  },
+  "ranking": [
+    {
+      "family": "q6_planar",
+      "rank": 1,
+      "reason": "3.406 GB exact encoded payload, 10.570 ms, only 322.2 GB/s, c4->c8 +61.4%, VGPR136/LDS1KiB, and issue-heavy reduction/dequant ISA. Diagnostic gap to q4-pair encoded BW is 3.87 ms."
+    },
+    {
+      "family": "q4_single",
+      "rank": 2,
+      "reason": "4.082 GB, 10.537 ms, 387.4 GB/s, c4->c8 +41.0%, VGPR216 and issue-heavy ISA. Diagnostic gap to q4-pair encoded BW is 2.50 ms."
+    },
+    {
+      "family": "q5",
+      "rank": 3,
+      "reason": "1.038 GB, 4.228 ms, 245.5 GB/s and c4->c8 +34.7%; diagnostic gap 2.19 ms, but smaller family and lower VGPR72."
+    },
+    {
+      "family": "gdn",
+      "rank": 4,
+      "reason": "7.813 ms at c8 and +59.7% c4->c8, but recurrent row work naturally scales and requires a separate state/recurrence operation ledger."
+    },
+    {
+      "family": "q4_pair",
+      "rank": 5,
+      "reason": "largest 12.634 ms sum but highest measured encoded-weight throughput 508.0 GB/s; row8 VGPR224 is a secondary occupancy hypothesis, not first target."
+    }
+  ],
+  "schema": 1,
+  "source": {
+    "c1_c4_commit": "64c74fe16",
+    "c8_trace_commit": "d7f2b9b0d",
+    "current_commit": "64c74fe16",
+    "host": "epyc",
+    "tree": "tracked-clean"
+  },
+  "static_isa": {
+    "q4_single_row8": {
+      "code_object": "gguf_t16_selected_gemv-0d7f88b08633aab6",
+      "disassembly_sha256": "937717e7402a35ff9a80b8f0a6a8ad4480be5c357acd83854b3944e444621193",
+      "lds_bytes": 0,
+      "logical_vgpr": 214,
+      "notable_counts": {
+        "ds_bpermute_b32": 320,
+        "dual_ops": 794,
+        "s_waitcnt": 182,
+        "v_dual_fmac_f32": 451
+      },
+      "scratch_bytes": 0,
+      "static_instruction_lines_including_dual_slots": 2394,
+      "symbol_size_bytes": 12372,
+      "trace_allocated_vgpr": 216,
+      "workgroup": 32
+    },
+    "q6_planar_row8": {
+      "code_object": "gguf_q6_k_t16_gemv-946c484889e4ee21",
+      "disassembly_sha256": "fc7f97bbdab999b04d0cf93419e62fb342fb54433252afcfedc80058fad53b84",
+      "lds_bytes": 1024,
+      "logical_vgpr": 134,
+      "notable_counts": {
+        "barriers": 1,
+        "ds_bpermute_b32": 320,
+        "dual_ops": 518,
+        "lds_ops": 400,
+        "s_waitcnt": 233
+      },
+      "scratch_bytes": 0,
+      "static_instruction_lines_including_dual_slots": 2107,
+      "symbol_size_bytes": 10908,
+      "trace_allocated_vgpr": 136,
+      "workgroup": 128
+    }
+  },
+  "workload": {
+    "decode_tokens": 32,
+    "marked_transition_index": 3,
+    "physical_widths": [
+      1,
+      4,
+      8
+    ],
+    "prompt_length": 512,
+    "route": "public LLM -> EngineService -> one packed_native group"
+  }
+}

@@ -56,7 +56,7 @@ working on.
 
 | Document | Use it for |
 | --- | --- |
-| [`CONCURRENCY2.md`](CONCURRENCY2.md) | Active Generation-2 request lifecycle, scheduler, global KV pool/prefix cache, c1-c32, and FastDMS integration redesign. |
+| [`CONCURRENCY2.md`](CONCURRENCY2.md) | Generation-2 lifecycle, scheduler, global pool/prefix, c1-c32, DMS, optional tiering, and the current executable completion/blocker audit. |
 | [`CONCURRENCY.md`](CONCURRENCY.md) | Legacy retained c=N kernel/resident-runner roadmap, readiness ledger, and evidence history. |
 | [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) | Canonical N0-N5 speculative-cycle milestone glossary, ownership boundaries, current W7900/gfx1151 scorecard, and evidence index. |
 | [`SAMPLING.md`](SAMPLING.md) | Normal sampling parameter support plan, sampler-state contract, and CPU/GPU rollout tracks. |

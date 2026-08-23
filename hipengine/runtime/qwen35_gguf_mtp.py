@@ -762,7 +762,23 @@ class Qwen35GGUFTransactionalVerifier:
             device_accept_commit=True,
         )
         self.last_device_proposal_fallback_reason = reason
-        return reason is None
+        if reason is not None:
+            return False
+        # The final short-context bucket row is exact for a host-materialized
+        # proposal, but cross-stream device handoff can expose the proposal
+        # sentinel before its result payload is reusable at that boundary.
+        # Fail closed before launching proposal work; the established host
+        # proposal can still use the target graph safely.
+        context_limit = int(getattr(graph, "context_limit", 0))
+        if (
+            context_limit > 0
+            and int(self.target.position) + budget + 1 >= context_limit
+        ):
+            self.last_device_proposal_fallback_reason = (
+                "target_graph_proposal_handoff_boundary_miss"
+            )
+            return False
+        return True
 
     def prepare(
         self,

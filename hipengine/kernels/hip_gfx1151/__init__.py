@@ -1026,6 +1026,17 @@ GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE = {
 # D08-P1 admits the existing direct/rowtile/WMMA Q5T16 family only for the
 # exact Qwen3.5-0.8B linear-attention QKV role selected by the materializer.
 GGUF_DENSE_Q5_T16_QKV = True
+GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
+    "gguf_q4_k_t16_v1": {
+        "shapes": {
+            (5_120, 1_024): "dense_rowtile16_w2_bf16_bf16_out",
+            (5_120, 5_120): "dense_rowtile16_w2_bf16_bf16_out",
+            (5_120, 6_144): "dense_rowtile16_w2_bf16_bf16_out",
+            (5_120, 10_240): "dense_rowtile16_w2_bf16_bf16_out",
+            (17_408, 5_120): "dense_rowtile16_w2_bf16_bf16_out",
+        },
+    },
+}
 GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
     # Q5: the 27B ssm_out/ffn_down/qkv/v shapes rowtile to c8; the narrow
     # 0.8B SSM-out shape keeps cap 4 so its measured direct leaf wins at c5-c8.
@@ -1103,6 +1114,21 @@ GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES = {
 # Physical-C8 Q6T16 lm-head now has a native rows-8 rowtile owner, so c8 runs
 # as one launch instead of the previous 5+3 partition. rows > 8 still chunk.
 GGUF_Q6_LM_HEAD_MAX_CHUNK = 8
+# Generation-2 gfx1151 Qwen3.8 qualification (2026-08-22): physical widths
+# 1..8 pass the numerical-profile-backed c13 lifecycle with cancellation,
+# refill, compaction, no scalar fallback, and exact memory recovery.
+GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
+# Exact fused pointer-table copies contract thousands of per-plane D2D state
+# transfers when the production owner switches physical groups. Qualified on
+# c13 lifecycle plus counterbalanced c17/c32 serving and marked c17 profiling.
+GGUF_FUSED_LINEAR_STATE_TRANSFER = True
+# The resident batch owner allocates one contiguous Conv/GDN state slab across
+# all scheduler slots. Packed rows may index that canonical slab directly,
+# avoiding the secondary packed-state round trip at physical-group boundaries.
+GGUF_DIRECT_RESIDENT_LINEAR_STATE = True
+# Same-length full-prompt rows may enter one native prefill call. This is scoped
+# independently from decode widths and falls back before mutation on misses.
+GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8
 # F4's clean all-candidate, all-workload production gate selects fair:256 at
 # +5.90% exact mixed-load SLO goodput over fair:128. Scope the default to the
 # measured Q4_K_M generator registry entry; other quants/backends retain their
@@ -2250,11 +2276,16 @@ __all__ = [
     "GGUF_T16_F16_ROCBLAS_VARIANT_POLICIES",
     "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
+    "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
     "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE",
     "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
+    "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
+    "GGUF_FUSED_LINEAR_STATE_TRANSFER",
+    "GGUF_DIRECT_RESIDENT_LINEAR_STATE",
+    "GGUF_C2_PACKED_PREFILL_MAX_ROWS",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
     "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",

@@ -19,9 +19,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     build_gguf_q6_k_t16_gemv,
     gguf_q6_k_t16_gemv_decode_bf16_f32_out,
     gguf_q6_k_t16_gemv_decode_bf16_f32_top1_stage1,
+    gguf_q6_k_t16_gemv_rowtile_bf16_f32_out,
     gguf_q6_k_t16_gemv_rowtile_col8_bf16_bf16_out,
     gguf_q6_k_t16_gemv_rowtile_col8_bf16_f32_out,
     gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
     gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
@@ -295,6 +297,14 @@ def test_p9_h3_q6_t16_build_plan_is_dry_run_safe() -> None:
 
 
 def test_p9_h3_q6_t16_wrappers_validate_args() -> None:
+    assert getattr(gguf_q6_k_t16_gemv_rowtile_bf16_f32_out, "_hipengine_max_rows") == 6
+    assert (
+        getattr(
+            gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
+            "_hipengine_max_rows",
+        )
+        == 4
+    )
     with pytest.raises(ValueError, match="positive multiple of 256"):
         gguf_q6_k_t16_gemv_decode_bf16_f32_out(0, 0, 0, 1, 128, 16)
     with pytest.raises(ValueError, match="positive multiple of 16"):
@@ -429,7 +439,7 @@ def test_q6_t16_qmicro_planar_c1_is_bit_exact_to_legacy(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
-@pytest.mark.parametrize("rows", [2, 3, 4, 5, 6])
+@pytest.mark.parametrize("rows", [2, 3, 4, 5, 6, 7, 8])
 def test_q6_t16_qmicro_planar_rowtile_col8_is_bit_exact_to_legacy(
     rows,
     q6_t16_library,
@@ -437,7 +447,6 @@ def test_q6_t16_qmicro_planar_rowtile_col8_is_bit_exact_to_legacy(
     in_features, out_features = 512, 256
     rng = np.random.default_rng(0x6A11 + rows)
     qweight = make_q6_k_weight(out_features, in_features)
-    legacy_tiles = repack_gguf_q6_k_tile16(qweight[None, ...]).tiles
     qmicro_tiles = repack_gguf_q6_k_tile16_qmicro_planar(
         qweight[None, ...]
     ).tiles
@@ -445,10 +454,13 @@ def test_q6_t16_qmicro_planar_rowtile_col8_is_bit_exact_to_legacy(
         rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
     )
 
+    # Reference is the per-row planar decode (bit-exact source of truth); the
+    # legacy raw col8 rowtile only covers rows 2-6, so per-row is used for the
+    # full 2-8 range.
     expected = _run_single(
-        gguf_q6_k_t16_gemv_rowtile_col8_bf16_bf16_out,
+        gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out,
         x,
-        legacy_tiles,
+        qmicro_tiles,
         rows,
         in_features,
         out_features,

@@ -45,11 +45,14 @@ def test_mtp_int8_target_policy_registration_keeps_scale_metadata() -> None:
 @pytest.mark.parametrize(
     ("budget", "position", "remaining_decode", "expected", "expected_reason"),
     [
-        (1, 1021, 2, True, None),
+        (1, 1020, 2, True, None),
+        (1, 1021, 2, False, "target_graph_proposal_handoff_boundary_miss"),
         (1, 1022, 2, False, "target_graph_context_bucket_miss"),
-        (2, 1020, 3, True, None),
+        (2, 1019, 3, True, None),
+        (2, 1020, 3, False, "target_graph_proposal_handoff_boundary_miss"),
         (2, 1021, 3, False, "target_graph_context_bucket_miss"),
-        (3, 1019, 4, True, None),
+        (3, 1018, 4, True, None),
+        (3, 1019, 4, False, "target_graph_proposal_handoff_boundary_miss"),
         (3, 1020, 4, False, "target_graph_context_bucket_miss"),
         (3, 1019, 3, False, "target_graph_output_room_miss"),
     ],
@@ -63,6 +66,7 @@ def test_device_proposal_ready_checks_live_cycle_end_and_output_room(
 ) -> None:
     class Graph:
         closed = False
+        context_limit = 1023
 
         def compatible_with(self, _target, **_kwargs) -> bool:
             return True

@@ -1,0 +1,253 @@
+{
+  "created_at": "2026-08-22T17:50:00Z",
+  "decision": "Promote GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS=(1..8) for hip_gfx1151. This is correctness/lifecycle promotion, not canonical load/SLO closure.",
+  "hardware": {
+    "device": "AMD Radeon 8060S Graphics",
+    "gfx": "gfx1151",
+    "rocm": "7.15.0"
+  },
+  "host_contracts": {
+    "command": "191-test gfx1151 backend + common C2 host/spec bundle",
+    "passed": 191
+  },
+  "kind": "concurrency2_gfx1151_qwen38_physical_width_promotion",
+  "lifecycle": {
+    "compaction": {
+      "graph_handles_closed": true,
+      "moves": 11,
+      "passed": true
+    },
+    "fallback_reasons": {},
+    "final": {
+      "active": [],
+      "available_sessions": 13,
+      "scheduler_active": 0
+    },
+    "hole_groups": [
+      [
+        8,
+        [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      [
+        3,
+        [
+          true,
+          true,
+          true
+        ]
+      ]
+    ],
+    "initial_groups": [
+      [
+        8,
+        [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      [
+        5,
+        [
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      ]
+    ],
+    "logical_c": 13,
+    "memory": {
+      "active_allocation_delta": 0,
+      "active_allocations_after": 0,
+      "active_allocations_before": 0,
+      "current_allocated_bytes_after": 0,
+      "current_allocated_bytes_before": 0,
+      "current_allocated_delta_bytes": 0,
+      "passed": true,
+      "peak_allocated_bytes": 21827133887,
+      "scope": "hipengine_tracked_process",
+      "total_allocated_bytes": 25707102879,
+      "total_freed_bytes": 25707102879
+    },
+    "no_serial_fallback": true,
+    "numerical_gate": {
+      "hard_gate_passed": true,
+      "hipengine_commit": "7fad69fb5d6e4ffe325a0d99f583d4ced0ac1ec7",
+      "host_name": "gfx1151",
+      "kl_max": 0.0011175924514045844,
+      "path": "/tmp/c2-gfx1151-qwen38-direct-quality.json",
+      "route_profile": "current_package_direct",
+      "rows": 1950,
+      "static_widths": [
+        3,
+        5,
+        6,
+        7
+      ],
+      "top1_agreement": 0.9948717948717949
+    },
+    "physical_width_decode_steps": {
+      "1": 0,
+      "2": 1,
+      "3": 2,
+      "4": 0,
+      "5": 2,
+      "6": 0,
+      "7": 0,
+      "8": 4
+    },
+    "physical_widths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "raw_sha256": "25a4a3c6ece8efb1326c316ef995e441dc97b0f7e58c6365d4a9dc46e284958f",
+    "refill_groups": [
+      [
+        8,
+        [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      ],
+      [
+        5,
+        [
+          true,
+          true,
+          true,
+          true,
+          true
+        ]
+      ]
+    ],
+    "session_reuse": true,
+    "state_kv_accepted": true,
+    "tokens_exact": true
+  },
+  "model": {
+    "algorithm": "sha256-sampled-v1",
+    "exists": true,
+    "path_type": "file",
+    "sample_offsets": [
+      0,
+      8060155376,
+      16120310752
+    ],
+    "sampled_bytes": 3145728,
+    "size_bytes": 16121359328,
+    "value": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa"
+  },
+  "passed": true,
+  "performance_claim": false,
+  "quality": {
+    "hard_gates_passed": true,
+    "measurement_valid": true,
+    "protocol": {
+      "candidate_repeat_runs": 3,
+      "complete_prompt_and_heldout_suite": true,
+      "decode_steps": 24,
+      "dynamic_schedule": [
+        [
+          0,
+          7
+        ],
+        [
+          6,
+          6
+        ],
+        [
+          12,
+          5
+        ],
+        [
+          18,
+          3
+        ]
+      ],
+      "prompt_count": 18,
+      "prompt_suites": [
+        "/home/lhl/hipEngine-gfx1151-c2-20260822/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "/home/lhl/hipEngine-gfx1151-c2-20260822/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+      ],
+      "route_profile": "current_package_direct",
+      "same_context_rule": "every batch row consumes its independent strict-c1 teacher token",
+      "sparse_physical_c8_active_slots": [
+        0,
+        2,
+        5,
+        7
+      ],
+      "static_widths": [
+        3,
+        5,
+        6,
+        7
+      ],
+      "strict_gdn_mode": "chain_lds32_direct_nonvolatile",
+      "teacher_forced_rows": 1950,
+      "thresholds_evaluated": {
+        "max_kl_max": 0.05,
+        "mean_kl_max": 0.001,
+        "p95_kl_max": 0.005,
+        "p99_kl_max": 0.02,
+        "per_scope_top1_min": 0.97,
+        "review_kl": 0.02,
+        "top1_min": 0.99
+      }
+    },
+    "raw_sha256": "e124f904851f0dede86e6f9c17ce7fee7886ecb5637a7251807b0ac4ae20ac96",
+    "summary": {
+      "candidate_teacher_nll_mean": 0.16678364829040246,
+      "kl_max": 0.0011175924514045844,
+      "kl_mean": 5.199979969540048e-05,
+      "kl_p50": 1.8574172509412947e-06,
+      "kl_p95": 0.0002724956674681842,
+      "kl_p99": 0.0006706765408078594,
+      "max_abs_logit_delta": 0.3978919982910156,
+      "rows": 1950,
+      "strict_margin_min": 0.0016937255859375,
+      "strict_teacher_nll_mean": 0.16646653775615325,
+      "teacher_delta_p_mean": -3.3667737314155614e-05,
+      "teacher_nll_delta": 0.00031711053424920976,
+      "top1_agreement": 0.9948717948717949,
+      "top1_matches": 1940,
+      "topk_overlap_mean": 0.9936410256410257
+    }
+  },
+  "schema": 1,
+  "source": {
+    "commit": "7fad69fb5",
+    "measurement_checkout": "/home/lhl/hipEngine-gfx1151-c2-20260822",
+    "measurement_host": "gfx1151",
+    "tracked_clean": true
+  },
+  "status": "promoted_backend_capability"
+}
