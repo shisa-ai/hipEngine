@@ -143,6 +143,40 @@ BF16-relative, category/task, down-projection, manifest, lifecycle-at-scale, or
 runtime-route gate has passed. The speed result therefore authorizes R8 work,
 not product retention.
 
+### Marginal value of tiny-M U4/S4 (2026-08-23 review 2)
+
+The measured DOT8 M4 gate/up win of **1.230×** is real, but it is **not
+1.230× of representation value**. Most of it is recovery of a bandwidth deficit
+in the *current exact owner* that is available with no sidecar at all.
+
+R1 measures the same 6.417-GB gate/up sweep twice: **30.162 ms @ 212.76 GB/s at
+B1/M2** and **35.576 ms @ 180.4 GB/s at B3/M4**. Identical bytes, 17% worse
+bandwidth. So:
+
+| Path | Saves at B3 | % of 111.071-ms cycle | Cost |
+| --- | ---: | ---: | --- |
+| **Exact M4 schedule fix** (reach the owner's own M2 bandwidth) | **5.414 ms** | **4.87%** | none — exact, 0 added bytes, no quality gate |
+| DOT8 U4/S4 sidecar @ 1.230× | 6.652 ms | 5.99% | +5.33 GiB, T3, unqualified re-Q4 |
+| **Marginal value of the sidecar** | **1.238 ms** | **1.11%** | the entire T3 campaign |
+
+**81.4% of the DOT8 win is something the exact owner should already have.**
+The honest standalone case for a tiny-M U4/S4 representation is therefore about
+**1.1% of a B3 cycle**, not 6%. Any summary quoting ~6% for the sidecar is
+comparing it against a control that is itself known to be leaving 4.87% on the
+table, and overstates the marginal case by roughly 5×.
+
+This does not change the tiny-M rejection — it makes it decisive. It also
+re-ranks the work: **R9 item 2 (exact M4 gate/up) is not a smaller version of
+the sidecar path, it is 81% of the same prize with none of the cost**, and it
+must be measured *before* any tiny-M representation is re-screened, or the
+representation will keep being credited with the schedule's deficit.
+
+The same correction applies to the M2/M3 rows the coder reports (0.952× loss,
+1.065× win). Those track the control's bandwidth deficit almost exactly — at
+M2 the owner is already at 212.8 GB/s and there is nothing to recover, so the
+sidecar loses; at M4 the owner is 17% down and the sidecar wins. **The sidecar's
+measured speedup is a function of the control's inefficiency, not of M.**
+
 ## 1. Scope and non-goals
 
 The initial target is Qwen3.8-27B Q4_K_S on `hip_gfx1151`:
@@ -1178,6 +1212,16 @@ Ordered work:
    representation-preserving register/row ownership or staging changes that
    retain one weight sweep and are BF16-bit identical to c1 arithmetic. The
    full possible recovery is about 5% of complete B3.
+
+   **This is the highest-value exact item in the campaign and it must run before
+   any tiny-M representation is re-screened.** Per the marginal-value table in
+   the Verdict, it is **81.4% of the entire measured DOT8 M4 win** at zero bytes
+   and zero quality risk; the sidecar's marginal contribution above it is only
+   **1.238 ms (1.11% of a B3 cycle)**. Running the representation screen first
+   credits the sidecar with this schedule deficit and has already produced one
+   over-stated ~6% figure. Record VGPR/occupancy and effective GB/s per M so the
+   deficit's mechanism (register pressure at VGPR144, row-ownership, or staging)
+   is named rather than inferred.
 3. **Remaining exact families and graph nodes.** In the same R1 trace B1→B3
    total kernel growth is 9.368 ms; after gate/up, the directly measured
    remainder is only **3.954 ms**, not the residual 8.6-ms estimate. Audit Q4
@@ -1195,12 +1239,32 @@ Ordered work:
 
 The old claim that current c8 falls to prefill WMMA is stale: retained gfx1151
 rowtile work now owns rows2–8 and larger widths decompose into <=8-row chunks.
-That still is not an honest M16+ IU4 control because it rereads weights across
-chunks. Build and qualify one exact single-sweep native M16/32/64 control first,
-record actual verifier physical-M histograms, then compare operation-complete
+That still is not an honest wide-M IU4 control because it rereads weights across
+chunks. Build and qualify one exact single-sweep native control first, record
+actual verifier physical-M histograms, then compare operation-complete
 U4/S4 pack+projection+correction+boundary work. R2's historical M16–128 rows and
-prefill R7 do not substitute for this control. Only this regime can plausibly
-use the 16-row IU4 WMMA lane rather than tiny-M DOT8.
+prefill R7 do not substitute for this control.
+
+**Target M32/64/128, not M16.** "M16+" understates the crossover and would point
+the screen at a shape where the answer is predetermined. §3's own weight-only
+table, at one sweep and the 221-GB/s roof:
+
+| Physical M | Memory roof | DOT4 roof | Binding constraint |
+| ---: | ---: | ---: | --- |
+| 16 | **14.14 TOPS** | 28.25 TOPS | **memory** — both arithmetic lanes are 2–8× above it |
+| 32 | 28.29 TOPS | 28.25 TOPS | DOT4 crossover |
+| 64 | 56.58 TOPS | 28.25 TOPS | arithmetic in play; IU4 can matter |
+| 124 | 109.62 TOPS | 28.25 TOPS | full 2× IU4 lane reachable |
+
+At M16 a single-sweep verifier is **still purely memory-bound**, so IU4 buys only
+the 1.12× byte ratio there — the same non-result as tiny M. The IU4 *arithmetic*
+lane cannot contribute until roughly **M>=32**, and the full 2× not until
+**M≈124**. Since the chunked owner rereads weights across chunks, its effective
+OI is lower still and memory binds even harder. Scope the control accordingly and
+state the concurrency this implies: a B3 verifier reaches M32 only at about
+**c8**, and M64+ at **c16+**. If the measured physical-M histogram never reaches
+M32 under realistic concurrency, R10 closes negative without a kernel being
+written — establish the histogram first.
 
 ### R11 — exact expanded prefill control
 
@@ -1211,6 +1275,80 @@ removal from the 2× arithmetic lane. Do not assume a BF16 sidecar is T0: prove
 primitive and full-model output bytes under the declared schedule. Report the
 roughly 31.9-GiB (34.2-GB) FFN residency and complete-wall/lifecycle result;
 retain only an exact or fully profile-qualified explicit product.
+
+### R13 — layer-selective routing to recover the R8 prefill gate
+
+**Added by the 2026-08-23 review 2. This is the highest-expected-value open item
+in the campaign** and requires no new weights, no new quantizer, and no change
+to the immutable Kairic PFS.
+
+R8 measured a **1.476× complete-model p512 prefill** (384.70→567.92 tok/s) and
+then failed promotion. But the failure is narrow and non-uniform, and nobody has
+localized it:
+
+| Packet | top-1 | mean KL | max KL | Against gate |
+| --- | ---: | ---: | ---: | --- |
+| Canonical category suite, 50 teacher rows | **100%** | **0.001124** | 0.015673 | fails mean by **12.4%**; tails pass comfortably |
+| Varied p512, 9-row trajectory | 88.89% | 0.02119 | 0.08754 | fails everything |
+
+The **5.6× max-KL spread** between those two packets is the finding. Diffuse
+quantization noise does not behave that way; concentrated error does. The
+canonical packet is *one metric, 12% over, with passing tails* — that is a
+routing-policy distance from the gate, not a representation dead end.
+
+Standard mitigations, none of which have been tried here, and all of which
+operate on the existing product by **routing fewer layers to it**:
+
+1. **Per-layer sensitivity sweep.** Measure teacher KL with exactly one layer on
+   IU4 and the rest exact, for all 64 layers. Produces a sensitivity ranking, and
+   a per-layer KL contribution budget. This is the prerequisite measurement for
+   everything below and is cheap — 64 short runs, no new kernels.
+2. **Top-k exact retention.** Keep the k most sensitive layers on the strict
+   Q4_K_S owner. In 4-bit practice the first and last one to three layers usually
+   dominate. Speedup scales roughly as `1 - k/64`, so k=8 retains ~1.40× of the
+   measured 1.476×. If the sensitivity ranking is concentrated, k=4 may suffice.
+3. **Role-selective precision.** `down` is typically the most error-sensitive FFN
+   tensor. Route gate/up to IU4 and keep down exact, then measure. R8's leaf
+   already separates the Q5 down control, so the comparison is nearly free.
+
+*Accept:* the canonical packet clears mean KL <=0.001 with tails and top-1
+unchanged, **and** the varied-p512 trajectory clears its envelope, **and** the
+retained speedup is stated with the exact `k` and role policy that produced it.
+A policy that passes canonical but not varied p512 is **not** a pass — the
+varied-packet failure is the more informative of the two and must be explained,
+not routed around.
+
+*Anti-goal:* this is layer/role **routing** policy over an immutable product. It
+is explicitly **not** re-tuning weights against the evaluated prompts, and the
+selection must be made on a calibration split and confirmed on heldout
+categories, or it is benchmark gaming under `AGENTS.md` and non-retainable.
+
+*Relationship to "not scheduled".* This does not reopen "further salvage of the
+immutable Kairic PFS" — that entry closes *changing or re-tuning the product*.
+R13 changes only which layers the runtime sends to it, which is ordinary
+execution-profile routing and already has a registered strict fallback.
+
+### Priority note (2026-08-23 review 2)
+
+R9 is currently labelled "next priority". Weigh that against measured ceilings:
+
+| Item | Status | Ceiling | Distance to landing |
+| --- | --- | ---: | --- |
+| **R13** prefill layer-selective | quality-blocked | **~1.40–1.48× prefill** | one metric, 12% over |
+| R9 exact verifier tax | unmeasured | ~5% of B3 decode | full attribution campaign |
+| R10 packed verifier | unscoped | 0 below M32 | needs histogram first |
+| R12 new S4 product | not started | ~1.1% marginal at tiny M | full new campaign |
+
+R13 is worth roughly an order of magnitude more than R9 and is closer to done.
+R9 item 2 remains mandatory before any tiny-M representation screen, but that is
+a *sequencing* constraint on R12, not a reason to rank the whole of R9 above
+R13. **The correct read of R8 is that the prefill thesis was validated and only
+the routing policy is missing.**
+
+The one input that should reorder this is workload mix: these ceilings assume
+prefill and decode both matter. If the target deployment is decode-dominated
+chat, R9's 5% applies to the dominant phase and R13's 1.4× to the minor one.
+State the assumed mix when picking, rather than leaving it implicit.
 
 ### R12 — new original-weight product only after R9/R11
 
@@ -1228,9 +1366,13 @@ runtime/default MTP route.
   and the W7900's 256K INT8 reach. Revisit only under measured capacity or
   long-context bandwidth pressure.
 - **Current re-Q4 tiny-M runtime integration.** Closed by M2 loss,
-  representation economics, and absent model-quality qualification. Keep B4 as
-  the mechanical leaf; do not route it. Only the new-product R12 gate can reopen
-  the decision.
+  representation economics, and absent model-quality qualification. **Decisively
+  closed by marginal value**: 81.4% of the measured 1.230× M4 DOT8 win is a
+  bandwidth deficit in the exact owner that R9 item 2 can recover for free, so
+  the representation's own contribution is **1.238 ms = 1.11% of a B3 cycle**.
+  Keep B4 as the mechanical leaf; do not route it. Only the new-product R12
+  gate can reopen the decision, and only after R9 item 2 has established the
+  corrected exact baseline.
 - **Further salvage of the immutable Kairic PFS.** Closed by both binding
   full-model distribution failures. A new product revision is a new campaign.
 - **Direct Q4_K/qmicro nibble reuse (§6.2).** Remains a useful ceiling
