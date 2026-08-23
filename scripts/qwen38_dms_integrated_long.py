@@ -88,7 +88,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             use_bulk=True,
             bulk_attention_mode="bulk",
             return_logits=True,
-            record_gpu_stage_timings=True,
+            # Long chunked prefill exceeds the optional 4,096-boundary stage
+            # recorder. Capacity qualification uses end-to-end wall time.
+            record_gpu_stage_timings=False,
         )
         prefill_at = time.perf_counter()
         post_prefill = memory_stats()
@@ -137,6 +139,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "decode_seconds": ended - prefill_at,
             "total_seconds": ended - started,
             "prefill_gpu_stages_ms": prefill_gpu_stages,
+            "prefill_gpu_stage_note": "disabled: long chunked prefill exceeds recorder capacity",
         },
         "decode": decode_rows,
         "dms": snapshot,
