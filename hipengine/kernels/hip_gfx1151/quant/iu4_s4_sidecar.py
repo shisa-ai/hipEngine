@@ -44,6 +44,7 @@ def plan_iu4_s4_sidecar_build(
     cache_root: str | Path | None = None,
     compiler_version: str | None = None,
     profile: ProfileName = "prefill",
+    target_arch: str = "gfx1151",
 ) -> BuildArtifact:
     return plan_hip_build(
         sources=[_SOURCE],
@@ -51,7 +52,7 @@ def plan_iu4_s4_sidecar_build(
         profile=profile,
         cache_root=cache_root,
         compiler_version=compiler_version,
-        target_arch="gfx1151",
+        target_arch=target_arch,
         output_name=_OUTPUT_NAME,
     )
 
@@ -64,6 +65,7 @@ def build_iu4_s4_sidecar(
     dry_run: bool = False,
     load: bool = True,
     require_cached: bool = False,
+    target_arch: str = "gfx1151",
 ) -> ctypes.CDLL | BuildArtifact:
     return build_hip(
         sources=[_SOURCE],
@@ -71,7 +73,7 @@ def build_iu4_s4_sidecar(
         profile=profile,
         cache_root=cache_root,
         compiler_version=compiler_version,
-        target_arch="gfx1151",
+        target_arch=target_arch,
         output_name=_OUTPUT_NAME,
         dry_run=dry_run,
         load=load,

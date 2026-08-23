@@ -47,7 +47,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf")
 DEFAULT_MODEL_SHA256 = "22200efcd98a7aeeaf83f59b0f1400b055d9e0437900e26b930ef2d42a3eb3f9"
 DEFAULT_ROWS = (64, 128, 256, 512, 1024)
-F16_WMMA_ROOF_TFLOPS = 55.066
+F16_WMMA_ROOF_TFLOPS = float(
+    os.environ.get("HIPENGINE_F16_WMMA_ROOF_TFLOPS", "55.066")
+)
 
 
 def _parse_args() -> argparse.Namespace:
