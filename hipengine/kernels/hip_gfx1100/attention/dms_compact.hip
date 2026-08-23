@@ -59,6 +59,52 @@ __global__ void dms_extract_decision_kernel(
   q[channel] = 0;
 }
 
+// Schema-v2 external decision source. One workgroup owns one (token, KV-head)
+// dot product over the declared BF16 normalized hidden stage and resident BF16
+// sidecar weights. The fixed reduction tree is deterministic; ordinary Q is not
+// read or modified. FP32 logits are optional serving telemetry/calibration
+// output, while the uint8 decision plane is consumed directly by pack/append.
+__global__ void dms_external_linear_decision_kernel(
+    const uint16_t* __restrict__ hidden,
+    const uint16_t* __restrict__ weight,
+    const uint16_t* __restrict__ bias,
+    float* __restrict__ logits,
+    uint8_t* __restrict__ evict,
+    const double alpha_scale,
+    const double alpha_offset,
+    const int32_t tokens,
+    const int32_t hidden_size,
+    const int32_t kv_heads) {
+  const int32_t gid = static_cast<int32_t>(blockIdx.x);
+  const int32_t token = gid / kv_heads;
+  const int32_t head = gid - token * kv_heads;
+  const int32_t tid = static_cast<int32_t>(threadIdx.x);
+  const uint16_t* x = hidden + static_cast<int64_t>(token) * hidden_size;
+  const uint16_t* w = weight + static_cast<int64_t>(head) * hidden_size;
+  float acc = 0.0f;
+  for (int32_t index = tid; index < hidden_size; index += kDmsPackThreads) {
+    acc = fmaf(
+        dms_bf16_bits_to_float(x[index]),
+        dms_bf16_bits_to_float(w[index]),
+        acc);
+  }
+  __shared__ float partial[kDmsPackThreads];
+  partial[tid] = acc;
+  __syncthreads();
+  for (int32_t stride = kDmsPackThreads / 2; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      partial[tid] += partial[tid + stride];
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    const float score = partial[0] + dms_bf16_bits_to_float(bias[head]);
+    logits[static_cast<int64_t>(token) * kv_heads + head] = score;
+    evict[static_cast<int64_t>(token) * kv_heads + head] =
+        (static_cast<double>(score) * alpha_scale - alpha_offset > 0.0) ? 1 : 0;
+  }
+}
+
 // U2: streaming pack. Per (row, head) the surviving prompt tokens
 // (~evict | inside the retention window) are scattered in token order into
 // the reserved extent; inputs are never retained (no dense shadow). The
@@ -458,6 +504,44 @@ extern "C" int hipengine_dms_extract_decision_bf16(
       kv_heads,
       head_dim,
       positive_scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dms_external_linear_decision_bf16(
+    const uint16_t* hidden,
+    const uint16_t* weight,
+    const uint16_t* bias,
+    float* logits,
+    uint8_t* evict,
+    double alpha_scale,
+    double alpha_offset,
+    int32_t tokens,
+    int32_t hidden_size,
+    int32_t kv_heads,
+    hipStream_t stream) {
+  if (tokens <= 0 || hidden_size <= 0 || kv_heads <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (alpha_scale == 0.0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int32_t blocks = tokens * kv_heads;
+  hipLaunchKernelGGL(
+      dms_external_linear_decision_kernel,
+      dim3(blocks),
+      dim3(kDmsPackThreads),
+      0,
+      stream,
+      hidden,
+      weight,
+      bias,
+      logits,
+      evict,
+      alpha_scale,
+      alpha_offset,
+      tokens,
+      hidden_size,
+      kv_heads);
   return static_cast<int>(hipGetLastError());
 }
 

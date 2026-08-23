@@ -47,6 +47,7 @@ The normative KV ABI and broader storage roadmap remain in
 | Exact-Q4 logit quality evaluation | Complete; CR2 passed |
 | Compact allocator/backend primitives | Implemented and fixture-tested |
 | Host/device compact transaction rollback | Implemented and fixture-tested |
+| GPU schema-v2 external-linear prediction | Implemented and exact-decision validated; serving wiring open |
 | Normal `LLM.generate()` DMS selection | Not integrated |
 | Sole-owner no-dense-shadow GGUF serving | Not integrated |
 | Allocator-visible production savings | Not measured |
@@ -215,11 +216,14 @@ building blocks exist but are not yet a long-context serving route:
 - `dms_streaming_pack`, `dms_append_decode`, and `dms_compact_attn_decode` pass
   focused host/device fixtures after repairing stale post-shrink raw-buffer
   sizing in the tests;
-- the registered GPU `dms_extract_decision/corrected_mask` primitive implements
-  schema-v1 borrowed-query-channel extraction, not the schema-v2 external linear
-  sidecar used by this candidate;
-- `DMSExternalDecisionRuntime` currently resolves its external-linear projection
-  through `cpu_reference` and feeds host arrays to the backend;
+- the older GPU `dms_extract_decision/corrected_mask` primitive implements
+  schema-v1 borrowed-query-channel extraction;
+- schema-v2 now has a separate registered GPU external-linear projector with
+  resident BF16 sidecar weights. It matches all 393,216 retained validation
+  decisions and has a scratch-free profiler identity, but the normal GGUF session
+  does not call it yet;
+- `DMSExternalDecisionRuntime` remains the host/reference composition used by
+  replay and quality tooling;
 - `DMSDevicePayloadStore` owns no host K/V mirror, but it uploads K/V, decisions,
   bases, capacities, and live counts through host staging and is not selected by
   the normal GGUF resident session;
@@ -804,9 +808,9 @@ byte-exact reclaim after success, cancellation, and injected failure.
 
 ### P3 — GPU sidecar decision and transactional append
 
-- [ ] Register gfx1151 and gfx1100 external-linear BF16 decision kernels.
-- [ ] Consume the declared normalized hidden stage on device.
-- [ ] Preserve all ordinary query channels.
+- [x] Register gfx1151 and gfx1100 external-linear BF16 decision kernels.
+- [x] Consume the declared normalized hidden stage on device.
+- [x] Preserve all ordinary query channels.
 - [ ] Fuse or co-schedule thresholding, protected-window handling, append, and
       compact metadata update where the numerical contract permits.
 - [ ] Eliminate host projection and per-token K/V copies from serving.
