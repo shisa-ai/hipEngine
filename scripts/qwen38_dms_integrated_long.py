@@ -75,7 +75,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     with Qwen35GGUFResidentSession(
         args.model,
         backend=str(args.backend),
-        max_sequence_length=int(args.prompt_tokens) + int(args.decode_steps) + 1,
+        # Each decode step appends exactly one input token; the sampled output
+        # is not appended until the following step.
+        max_sequence_length=int(args.prompt_tokens) + int(args.decode_steps),
         dms_metadata_path=args.metadata,
         dms_max_new_tokens=int(args.decode_steps) + 1,
         use_wmma_prefill=True,
