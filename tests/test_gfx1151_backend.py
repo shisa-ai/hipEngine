@@ -643,6 +643,15 @@ def test_gfx1151_backend_scopes_dense_down_residual_fusions() -> None:
     }
 
 
+def test_gfx1151_is_the_only_backend_admitting_explicit_iu4_ffn_product() -> None:
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_IU4_FFN_PRODUCT", False
+    )
+    assert not backend_package_capability(
+        "hip_gfx1100", "GGUF_IU4_FFN_PRODUCT", False
+    )
+
+
 def test_gfx1151_backend_scopes_08b_short_attention_split_policy() -> None:
     assert backend_package_capability(
         "hip_gfx1151",

@@ -35,6 +35,7 @@ from hipengine.core.tensor import Tensor
 from hipengine.core.rocblas import Rocblas
 from hipengine.dispatch.kv import resolve_paged_attn_decode
 from hipengine.runtime.gguf_packed_manifest import build_packed_decode_execution_manifest
+from hipengine.runtime.iu4_ffn_product import IU4FFNProductRuntime
 from hipengine.runtime.moe_graph import MoeGraphCache
 from hipengine.kernels.hip_gfx1100.attention import (
     aotriton_attn_fwd_compact_varlen,
@@ -2130,6 +2131,7 @@ class Qwen35GGUFFullStackRunner:
     resident_weights: Qwen35GGUFResidentWeights | None = field(default=None, repr=False)
     owns_resident_weights: bool = False
     token_embedding_placement: str = "device"
+    iu4_ffn_pfs_path: str | Path | None = None
     use_selective_weight_arena: bool = False
     selective_weight_max_allocation_bytes: int = (
         GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES
@@ -2148,6 +2150,9 @@ class Qwen35GGUFFullStackRunner:
     _token_embedding_lock: object = field(default_factory=threading.Lock, init=False, repr=False)
     _paged_attn_context_batch: object | None = field(default=None, init=False, repr=False)
     _dense_down_residual_decode_c1: bool | None = field(
+        default=None, init=False, repr=False
+    )
+    _iu4_ffn_product: IU4FFNProductRuntime | None = field(
         default=None, init=False, repr=False
     )
     fp16_recurrent_state: bool = field(default=False, init=False)
@@ -2214,6 +2219,41 @@ class Qwen35GGUFFullStackRunner:
                     out_features=int(hidden_size),
                 )
             )
+        if self.iu4_ffn_pfs_path is not None:
+            try:
+                if not bool(
+                    backend_package_capability(
+                        self.backend,
+                        "GGUF_IU4_FFN_PRODUCT",
+                        False,
+                    )
+                ):
+                    raise ValueError(
+                        f"backend {self.backend!r} does not admit the IU4 FFN product"
+                    )
+                if (
+                    int(hidden_size or 0) != IU4FFNProductRuntime.hidden_size
+                    or int(feed_forward_length or 0)
+                    != IU4FFNProductRuntime.intermediate_size
+                    or len(self.weights.layers) != IU4FFNProductRuntime.layer_count
+                    or getattr(self.weights, "file_type_name", None)
+                    != "MOSTLY_Q4_K_S"
+                ):
+                    raise ValueError(
+                        "IU4 FFN product requires Qwen3.8-27B Q4_K_S "
+                        "H5120/I17408/L64"
+                    )
+                self._iu4_ffn_product = IU4FFNProductRuntime(
+                    self.iu4_ffn_pfs_path,
+                    runtime=self.runtime,
+                    compiler_version=self.compiler_version,
+                    require_cached_build=self.require_cached_build,
+                )
+            except BaseException:
+                if self.weights is not None and self.owns_resident_weights:
+                    self.weights.free(runtime=self.runtime)
+                self.weights = None
+                raise
         if placement == "host":
             try:
                 token_weight = self.weights.root("token_embedding")
@@ -8394,11 +8434,29 @@ class Qwen35GGUFFullStackRunner:
             if next_norm_weight_ptr is not None and rows <= 8
             else None
         )
-        dense_decode_variant = _gguf_dense_pair_silu_decode_variant(
-            self,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=self.ffn_size,
+        iu4_ffn_ready = False
+        if self._iu4_ffn_product is not None:
+            iu4_ffn_ready = self._iu4_ffn_product.launch(
+                layer_id=layer_id,
+                input_ptr=scratch.post_norm.ptr,
+                gate_up_ptr=scratch.ffn_gate_up.ptr,
+                workspace_ptr=scratch.ffn_intermediate.ptr,
+                workspace_nbytes=int(
+                    getattr(scratch.ffn_intermediate, "nbytes", 0)
+                ),
+                output_ptr=scratch.ffn_down.ptr,
+                rows=rows,
+                stream=stream,
+            )
+        dense_decode_variant = (
+            None
+            if iu4_ffn_ready
+            else _gguf_dense_pair_silu_decode_variant(
+                self,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.ffn_size,
+            )
         )
         dense_q8_1_workspace_ptr = _optional_q8_1_workspace_ptr(
             scratch,
@@ -8414,25 +8472,28 @@ class Qwen35GGUFFullStackRunner:
             ),
             planes=2,
         )
-        dense_silu_fused = (
-            rows > 1 or dense_decode_variant is not None
-        ) and launch_gguf_linear_pair_silu(
-            layer.weight("ffn_gate"),
-            layer.weight("ffn_up"),
-            scratch.post_norm.ptr,
-            scratch.ffn_intermediate.ptr,
-            rows=rows,
-            in_features=self.hidden_size,
-            out_features=self.ffn_size,
-            stream=stream,
-            runtime=runtime,
-            use_gemv_decode=(True if dense_decode_variant is not None else None),
-            registered_decode_variant=dense_decode_variant,
-            q8_1_workspace_ptr=dense_q8_1_workspace_ptr,
-            pair_workspace_ptr=scratch.ffn_gate_up.ptr,
-            pair_workspace_nbytes=int(
-                getattr(scratch.ffn_gate_up, "nbytes", 0)
-            ),
+        dense_silu_fused = iu4_ffn_ready or (
+            (rows > 1 or dense_decode_variant is not None)
+            and launch_gguf_linear_pair_silu(
+                layer.weight("ffn_gate"),
+                layer.weight("ffn_up"),
+                scratch.post_norm.ptr,
+                scratch.ffn_intermediate.ptr,
+                rows=rows,
+                in_features=self.hidden_size,
+                out_features=self.ffn_size,
+                stream=stream,
+                runtime=runtime,
+                use_gemv_decode=(
+                    True if dense_decode_variant is not None else None
+                ),
+                registered_decode_variant=dense_decode_variant,
+                q8_1_workspace_ptr=dense_q8_1_workspace_ptr,
+                pair_workspace_ptr=scratch.ffn_gate_up.ptr,
+                pair_workspace_nbytes=int(
+                    getattr(scratch.ffn_gate_up, "nbytes", 0)
+                ),
+            )
         )
         if not dense_silu_fused:
             if not launch_gguf_linear_pair(
@@ -8510,7 +8571,8 @@ class Qwen35GGUFFullStackRunner:
             self._dense_down_residual_decode_c1 = dense_down_decode_c1
         dense_down_decode_fused = rows == 1 and bool(dense_down_decode_c1)
         down_residual_fused = (
-            next_norm_weight_ptr is None
+            not iu4_ffn_ready
+            and next_norm_weight_ptr is None
             and not f32_residual
             and (rows > 1 or dense_down_decode_fused)
             and launch_gguf_linear_residual(
@@ -8527,16 +8589,17 @@ class Qwen35GGUFFullStackRunner:
             )
         )
         if not down_residual_fused:
-            launch_gguf_linear(
-                layer.weight("ffn_down"),
-                scratch.ffn_intermediate.ptr,
-                scratch.ffn_down.ptr,
-                rows=rows,
-                in_features=self.ffn_size,
-                out_features=self.hidden_size,
-                stream=stream,
-                runtime=runtime,
-            )
+            if not iu4_ffn_ready:
+                launch_gguf_linear(
+                    layer.weight("ffn_down"),
+                    scratch.ffn_intermediate.ptr,
+                    scratch.ffn_down.ptr,
+                    rows=rows,
+                    in_features=self.ffn_size,
+                    out_features=self.hidden_size,
+                    stream=stream,
+                    runtime=runtime,
+                )
             if f32_residual:
                 count = rows * self.hidden_size
                 gguf_f32_bf16_add_out_f32(
@@ -9887,6 +9950,9 @@ class Qwen35GGUFFullStackRunner:
     def close(self) -> None:
         try:
             self._unmap_host_token_embedding()
+            if self._iu4_ffn_product is not None:
+                self._iu4_ffn_product.close()
+                self._iu4_ffn_product = None
         finally:
             if self.weights is not None:
                 if self.owns_resident_weights:
@@ -13415,6 +13481,7 @@ class Qwen35GGUFResidentSession:
     kv_capability: Mapping[str, object] | None = None
     defer_kv_allocation: bool = False
     token_embedding_placement: str = "auto"
+    iu4_ffn_pfs_path: str | Path | None = None
     use_small_weight_arena: bool | None = None
     use_decode_scratch_arena: bool | None = None
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
@@ -13679,6 +13746,7 @@ class Qwen35GGUFResidentSession:
                 require_cached_build=self.require_cached_build,
                 backend=resolved_backend,
                 token_embedding_placement=embedding_placement,
+                iu4_ffn_pfs_path=self.iu4_ffn_pfs_path,
                 use_selective_weight_arena=self.small_weight_arena_enabled,
                 selective_weight_max_allocation_bytes=(
                     self.small_weight_arena_max_allocation_bytes
@@ -13687,6 +13755,14 @@ class Qwen35GGUFResidentSession:
             self._owns_runner = True
         else:
             self.runner = self.shared_runner
+            if self.iu4_ffn_pfs_path is not None:
+                product = getattr(self.runner, "_iu4_ffn_product", None)
+                if product is None or Path(product.path) != Path(
+                    self.iu4_ffn_pfs_path
+                ).resolve():
+                    raise ValueError(
+                        "shared runner IU4 FFN product does not match requested PFS"
+                    )
             self.runtime = self.runner.runtime or self.runtime
             self._owns_runner = False
         # ``auto`` is a load-time selector, never a registry/capability key.
@@ -13908,6 +13984,21 @@ class Qwen35GGUFResidentSession:
                 self.prefill_config,
                 linear_chunk_size=int(chunk_override[0]),
                 moe_chunk_size=int(chunk_override[1]),
+            )
+        iu4_product = getattr(self.runner, "_iu4_ffn_product", None)
+        if iu4_product is not None:
+            resolved_linear_chunk = int(self.prefill_config.linear_chunk_size)
+            if resolved_linear_chunk <= 0:
+                resolved_linear_chunk = int(iu4_product.maximum_rows)
+            self.prefill_config = replace(
+                self.prefill_config,
+                linear_chunk_size=min(
+                    resolved_linear_chunk,
+                    int(iu4_product.maximum_rows),
+                ),
+            )
+            self.prefill_chunk_tuning["iu4_ffn_product_max_rows"] = int(
+                iu4_product.maximum_rows
             )
         self._token_host = np.empty((self.max_batch_size,), dtype=np.int64)
         self._token_buf = malloc(self._token_host.nbytes, runtime=runtime)
@@ -15287,6 +15378,24 @@ class Qwen35GGUFResidentSession:
         if self.runner is None:
             raise RuntimeError("GGUF resident session is closed")
         self.runner.select_prefill_quant(quant)
+
+    def iu4_ffn_telemetry(self) -> dict[str, object]:
+        """Return explicit product identity and route/fallback counters."""
+
+        if self.runner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        product = getattr(self.runner, "_iu4_ffn_product", None)
+        if product is None:
+            return {"enabled": False, "launches": 0, "fallbacks": 0}
+        return {
+            "enabled": True,
+            "path": str(product.path),
+            "sha256": str(product.sha256),
+            "minimum_rows": int(product.minimum_rows),
+            "maximum_rows": int(product.maximum_rows),
+            "launches": int(product.launch_count),
+            "fallbacks": int(product.fallback_count),
+        }
 
     def reset(self, *, stream: int = 0) -> None:
         """Reset resident target state without freeing weights or scratch."""

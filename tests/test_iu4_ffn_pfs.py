@@ -17,18 +17,11 @@ from hipengine.quant.iu4_s4 import unpack_s4
 from hipengine.quant.registry import resolve_quant
 
 
-def _pack_s4_words(values: np.ndarray) -> np.ndarray:
+def _pfs_weight_layout(values: np.ndarray) -> np.ndarray:
     q = np.asarray(values, dtype=np.int8)
     unsigned = (q.astype(np.int16) & 0xF).astype(np.uint8)
-    packed_bytes = unsigned[:, 0::2] | (unsigned[:, 1::2] << np.uint8(4))
-    return np.ascontiguousarray(packed_bytes).view(np.uint32)
-
-
-def _pfs_weight_layout(values: np.ndarray) -> np.ndarray:
-    words = _pack_s4_words(values)
-    n, words_per_row = words.shape
     return np.ascontiguousarray(
-        words.reshape(n // 64, 64, words_per_row).transpose(0, 2, 1)
+        unsigned[:, 0::2] | (unsigned[:, 1::2] << np.uint8(4))
     )
 
 
@@ -108,7 +101,7 @@ def _tiles_to_logical(tiles: np.ndarray, *, rows: int, cols: int) -> np.ndarray:
 def test_pfs_product_identity_is_explicit_t3_quant() -> None:
     quant = resolve_quant("iu4_s4_kairic_ffn_v1")
 
-    assert quant.weight_storage == "pfsiu4f_s4_n64_k8word_per_output_scale_sum"
+    assert quant.weight_storage == "pfsiu4f_s4_rowmajor_per_output_scale_sum"
     assert quant.activation_preprocess == "dynamic_u4_block_hadamard1024_per_row"
 
 

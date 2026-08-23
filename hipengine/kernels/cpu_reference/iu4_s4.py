@@ -2,9 +2,98 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
 from hipengine.quant.iu4_s4 import bf16_bits_to_f32, f32_to_bf16_bits
+
+
+@dataclass(frozen=True)
+class U4HadamardRows:
+    quantized: np.ndarray
+    packed_words: np.ndarray
+    scales: np.ndarray
+    zero_points: np.ndarray
+    transformed: np.ndarray
+
+
+def _hadamard_signs(cols: int, seed: int) -> np.ndarray:
+    value = np.arange(cols, dtype=np.uint32) + np.uint32(seed)
+    value ^= value >> np.uint32(16)
+    value *= np.uint32(0x7FEB352D)
+    value ^= value >> np.uint32(15)
+    value *= np.uint32(0x846CA68B)
+    value ^= value >> np.uint32(16)
+    return np.where(value & np.uint32(1), np.float32(-1.0), np.float32(1.0))
+
+
+def block_hadamard_f32(values: object, *, seed: int) -> np.ndarray:
+    source = np.asarray(values, dtype=np.float32)
+    if source.ndim != 2 or source.shape[1] <= 0 or source.shape[1] % 1024:
+        raise ValueError("Hadamard source must be rank-2 with K divisible by 1024")
+    rows, cols = source.shape
+    blocks = cols // 1024
+    transformed = np.ascontiguousarray(
+        source * _hadamard_signs(cols, seed)[None, :], dtype=np.float32
+    ).reshape(rows, blocks, 1024)
+    for stride in (1, 2, 4, 8, 16, 32, 64, 128, 256, 512):
+        groups = transformed.reshape(rows, blocks, 1024 // (2 * stride), 2 * stride)
+        a = groups[..., :stride].copy()
+        b = groups[..., stride:].copy()
+        groups[..., :stride] = a + b
+        groups[..., stride:] = a - b
+    transformed *= np.float32(1.0 / 32.0)
+    return np.ascontiguousarray(transformed.reshape(rows, cols))
+
+
+def _quantize_hadamard_rows(values: np.ndarray, *, seed: int) -> U4HadamardRows:
+    transformed = block_hadamard_f32(values, seed=seed)
+    lo = transformed.min(axis=1)
+    hi = transformed.max(axis=1)
+    scales = ((hi - lo) * np.float32(1.0 / 15.0)).astype(np.float32)
+    scales = np.where(scales > 0.0, scales, np.float32(1.0)).astype(np.float32)
+    zeros = np.rint(-lo / scales).clip(0, 15).astype(np.int32)
+    quantized = np.rint(transformed / scales[:, None]).astype(np.int32)
+    quantized = (quantized + zeros[:, None]).clip(0, 15).astype(np.uint8)
+    words = quantized.reshape(quantized.shape[0], -1, 8).astype(np.uint32)
+    shifts = (np.arange(8, dtype=np.uint32) * np.uint32(4))[None, None, :]
+    packed = np.bitwise_or.reduce(words << shifts, axis=2).astype(np.uint32)
+    return U4HadamardRows(
+        quantized=np.ascontiguousarray(quantized),
+        packed_words=np.ascontiguousarray(packed),
+        scales=np.ascontiguousarray(scales),
+        zero_points=np.ascontiguousarray(zeros),
+        transformed=transformed,
+    )
+
+
+def quantize_u4_hadamard_bf16(values: object, *, seed: int) -> U4HadamardRows:
+    bits = np.asarray(values)
+    if bits.dtype != np.uint16 or bits.ndim != 2:
+        raise ValueError("Hadamard U4 source must be rank-2 BF16 bits")
+    return _quantize_hadamard_rows(bf16_bits_to_f32(bits), seed=seed)
+
+
+def quantize_u4_swiglu_hadamard_bf16(
+    gate_up_values: object,
+    *,
+    width: int,
+    seed: int,
+) -> U4HadamardRows:
+    bits = np.asarray(gate_up_values)
+    if (
+        bits.dtype != np.uint16
+        or bits.ndim != 2
+        or width <= 0
+        or bits.shape[1] != 2 * width
+    ):
+        raise ValueError("SwiGLU Hadamard source must be BF16 [rows, 2*width]")
+    values = bf16_bits_to_f32(bits)
+    gate = values[:, :width]
+    up = values[:, width:]
+    swiglu = (gate / (np.float32(1.0) + np.exp(-gate))) * up
+    return _quantize_hadamard_rows(swiglu.astype(np.float32), seed=seed)
 
 
 def iu4_s4_corrected_i32(
@@ -68,4 +157,11 @@ def iu4_s4_gate_up_silu_bf16(
     return f32_to_bf16_bits((gate / (np.float32(1.0) + np.exp(-gate))) * up)
 
 
-__all__ = ["iu4_s4_corrected_i32", "iu4_s4_gate_up_silu_bf16"]
+__all__ = [
+    "U4HadamardRows",
+    "block_hadamard_f32",
+    "iu4_s4_corrected_i32",
+    "iu4_s4_gate_up_silu_bf16",
+    "quantize_u4_hadamard_bf16",
+    "quantize_u4_swiglu_hadamard_bf16",
+]
