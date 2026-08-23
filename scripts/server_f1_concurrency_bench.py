@@ -1245,11 +1245,20 @@ def _stream_route_summary(
             ),
             "native_caware_decode_expected": native_expected,
         }
+    native_values_valid = (
+        all(value is False for value in native)
+        if int(concurrency) == 1
+        else (
+            all(isinstance(value, bool) for value in native)
+            and any(value is True for value in native)
+        )
+    )
     return {
         "passed": bool(records)
         and all(value is False for value in serial)
-        and all(value is native_expected for value in native)
+        and native_values_valid
         and all(path == "gguf_packed_ar_server_decode" for path in paths),
+        "route_policy": "native_caware_with_native_c1_retirement",
         "paths": paths,
         "serial_decode_fallback_values": sorted(
             {value for value in serial if isinstance(value, bool)}

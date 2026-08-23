@@ -361,6 +361,20 @@ def test_stream_route_summary_requires_native_nonserial_hipengine_cn() -> None:
     summary = SCRIPT._stream_route_summary("hipengine", concurrency=13, samples=[sample])
 
     assert summary["passed"] is True
+
+    # Streaming completion can retire to a native c1 tail. The response ending
+    # on that tail reports native_caware_decode=False without a serial fallback.
+    sample["records"][0]["native_caware_decode"] = False
+    assert SCRIPT._stream_route_summary(
+        "hipengine", concurrency=13, samples=[sample]
+    )["passed"] is True
+
+    for record in sample["records"]:
+        record["native_caware_decode"] = False
+    assert SCRIPT._stream_route_summary(
+        "hipengine", concurrency=13, samples=[sample]
+    )["passed"] is False
+
     sample["records"][0]["serial_decode_fallback"] = True
     assert SCRIPT._stream_route_summary(
         "hipengine", concurrency=13, samples=[sample]
