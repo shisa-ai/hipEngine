@@ -72,8 +72,10 @@ DEFAULT_ROWS = (2, 3, 4, 5, 8, 16, 32, 64, 96, 128)
 IU4_ARITHMETIC_ROOF_TOPS = float(
     os.environ.get("HIPENGINE_IU4_ARITHMETIC_ROOF_TOPS", "109.715")
 )
-IU4_DOT8_ARITHMETIC_ROOF_TOPS = 56.830
-GFX1151_MEMORY_ROOF_GBPS = 221.0
+IU4_DOT8_ARITHMETIC_ROOF_TOPS = float(
+    os.environ.get("HIPENGINE_IU4_DOT8_ROOF_TOPS", "56.830")
+)
+MEMORY_ROOF_GBPS = float(os.environ.get("HIPENGINE_MEMORY_ROOF_GBPS", "221.0"))
 WMMA_VGPR_ANOMALY_THRESHOLD = 64
 
 
@@ -174,9 +176,9 @@ def _implementation_quality_metrics(
 ) -> dict[str, float | str]:
     """Derive the mandatory roof-comparison fields for one IU4 shape."""
 
-    useful_weight_memory_roof_tops = 4.0 * rows * GFX1151_MEMORY_ROOF_GBPS / 1000.0
+    useful_weight_memory_roof_tops = 4.0 * rows * MEMORY_ROOF_GBPS / 1000.0
     memory_binds = useful_weight_memory_roof_tops <= arithmetic_roof_tops
-    candidate_memory_fraction = candidate_effective_weight_gbps / GFX1151_MEMORY_ROOF_GBPS
+    candidate_memory_fraction = candidate_effective_weight_gbps / MEMORY_ROOF_GBPS
     candidate_arithmetic_fraction = core_executed_tops / arithmetic_roof_tops
     binding_fraction = (
         candidate_memory_fraction if memory_binds else candidate_arithmetic_fraction
@@ -184,12 +186,12 @@ def _implementation_quality_metrics(
     return {
         "binding_roof": "memory" if memory_binds else "arithmetic",
         "binding_roof_value": (
-            GFX1151_MEMORY_ROOF_GBPS if memory_binds else arithmetic_roof_tops
+            MEMORY_ROOF_GBPS if memory_binds else arithmetic_roof_tops
         ),
         "binding_roof_unit": "GB/s" if memory_binds else "TOPS",
         "weight_only_useful_memory_roof_tops": useful_weight_memory_roof_tops,
         "arithmetic_roof_tops": arithmetic_roof_tops,
-        "memory_roof_gbps": GFX1151_MEMORY_ROOF_GBPS,
+        "memory_roof_gbps": MEMORY_ROOF_GBPS,
         "candidate_effective_weight_gbps": candidate_effective_weight_gbps,
         "control_effective_weight_gbps": control_effective_weight_gbps,
         "candidate_fraction_of_arithmetic_roof": candidate_arithmetic_fraction,
@@ -666,8 +668,8 @@ def main() -> int:
         "scope": "one-layer actual-weight operation-complete research leaf; no runtime route or model-wide sidecar",
         "hardware": {
             "hostname": platform.node(),
-            "cpu": "AMD Ryzen AI MAX+ 395",
-            "gpu": "AMD Radeon 8060S Graphics",
+            "cpu": os.environ.get("HIPENGINE_HW_CPU", "AMD Ryzen AI MAX+ 395"),
+            "gpu": os.environ.get("HIPENGINE_HW_GPU", "AMD Radeon 8060S Graphics"),
             "arch": os.environ.get("HIPENGINE_HIP_ARCH"),
         },
         "software": {
@@ -728,7 +730,7 @@ def main() -> int:
             "seed": args.seed,
             "implementation_quality_roofs": {
                 "iu4_arithmetic_tops": IU4_ARITHMETIC_ROOF_TOPS,
-                "practical_memory_gbps": GFX1151_MEMORY_ROOF_GBPS,
+                "practical_memory_gbps": MEMORY_ROOF_GBPS,
                 "binding_rule": "min(weight-only 4*M*memory roof, IU4 arithmetic roof)",
             },
         },
