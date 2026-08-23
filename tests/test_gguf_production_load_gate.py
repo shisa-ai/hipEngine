@@ -292,6 +292,38 @@ def test_occupancy_route_uses_live_snapshot_plan_when_hook_timeline_is_empty() -
     ]
 
 
+def test_occupancy_route_accepts_promoted_direct_physical_widths() -> None:
+    plan = {
+        "logical_c": 7,
+        "physical_bucket_widths": list(range(1, 9)),
+        "groups": [
+            {
+                "physical_rows": 7,
+                "active_mask": [True] * 7,
+                "execution_path": "packed_native",
+            }
+        ],
+    }
+
+    summary = _occupancy_summary(
+        [
+            {
+                "active": 7,
+                "pending": 0,
+                "occupancy_ratio": 1.0,
+                "generation_queue_depth": 0,
+                "stream_queue_max_depth": 1,
+                "physical_group_plan": plan,
+            }
+        ],
+        [],
+        stream_queue_limit=4,
+    )
+
+    assert summary["route_passed"] is True
+    assert summary["logical_physical_shapes"][0]["physical_widths"] == [7]
+
+
 def test_poisson_offsets_are_seeded_monotonic_and_start_at_zero() -> None:
     first = _poisson_arrival_offsets(count=8, rate_per_second=4.0, seed=1234)
     second = _poisson_arrival_offsets(count=8, rate_per_second=4.0, seed=1234)
@@ -367,6 +399,7 @@ def test_load_gate_passes_declared_quant_and_records_fp16_state_env() -> None:
     }
     assert "HIPENGINE_GGUF_FP16_RECURRENT_STATE" in _PROVENANCE_ENV_KEYS
     assert "HIPENGINE_EXECUTION_PROFILE" in _PROVENANCE_ENV_KEYS
+    assert "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY" in _PROVENANCE_ENV_KEYS
 
 
 def test_force_disconnect_shutdowns_socket_before_closing_http_wrappers() -> None:

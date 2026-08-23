@@ -85,6 +85,7 @@ _PROVENANCE_ENV_KEYS = (
     "HIPENGINE_COMPILER_VERSION_FILE",
     "HIPENGINE_EXECUTION_PROFILE",
     "HIPENGINE_GGUF_FP16_RECURRENT_STATE",
+    "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY",
     "HIPENGINE_PREFIX_CACHE",
     "HIP_VISIBLE_DEVICES",
     "ROCR_VISIBLE_DEVICES",
@@ -1244,11 +1245,24 @@ def _occupancy_summary(
             for plan in plans
         }
     )
+    declared_widths_passed = all(
+        all(
+            int(group.get("physical_rows", 0)) in declared
+            for group in plan.get("groups", ())
+        )
+        for plan in plans
+        for declared in (
+            {
+                int(width)
+                for width in plan.get("physical_bucket_widths", (1, 2, 4, 8))
+            },
+        )
+    )
     routes_passed = bool(
         plans
         and execution_paths
         and set(execution_paths) <= _NATIVE_EXECUTION_PATHS
-        and all(width in {1, 2, 4, 8} for _c, widths, _masks in logical_shapes for width in widths)
+        and declared_widths_passed
     )
     max_stream_depth = max(stream_depths, default=0)
     return {
