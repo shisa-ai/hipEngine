@@ -987,6 +987,11 @@ class DMSCompactBackend:
             self.generation,
         ) <= 0:
             raise ValueError("compact DMS capacities/generation must be positive")
+        decision_bundle = (
+            ""
+            if retrofit.schema_version == 1
+            else f"_{retrofit.decision_source}"
+        )
         self.spec = KVBackendSpec(
             topology_key="dms_compact",
             hot_codec_key=codec,
@@ -997,7 +1002,7 @@ class DMSCompactBackend:
             artifact_fingerprint=retrofit.artifact_fingerprint,
             prefix_mode="unsupported",
             transaction_mode="journal",
-            kernel_bundle_key=f"dms_compact_{codec}_streaming_v1",
+            kernel_bundle_key=f"dms_compact_{codec}{decision_bundle}_streaming_v1",
             physical_widths=physical_widths,
             max_context_tokens=self.slots_per_layer,
         )
@@ -1585,6 +1590,8 @@ class DMSCompactBackend:
                 "codec": self.codec,
                 "artifact_fingerprint": self.retrofit.artifact_fingerprint,
                 "retrofit_fingerprint": self.retrofit.fingerprint,
+                "decision_source": self.retrofit.decision_source,
+                "physical_layer_ids": list(self.retrofit.physical_layer_ids),
                 "prefix_mode": "off",
                 "no_dense_shadow": True,
                 "device_payloads": self.device_payloads_enabled,
