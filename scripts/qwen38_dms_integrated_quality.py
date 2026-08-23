@@ -46,16 +46,30 @@ def _git() -> dict[str, Any]:
     return {"commit": commit, "working_tree_clean": not dirty}
 
 
-def _prompt(path: Path, count: int) -> tuple[list[int], str]:
+def _prompt(
+    path: Path,
+    count: int,
+    *,
+    split: str | None = None,
+    category: str | None = None,
+) -> tuple[list[int], str, list[str]]:
     raw = json.loads(path.read_text(encoding="utf-8"))
     sequences = sorted(raw["sequences"], key=lambda row: str(row["sequence_id"]))
+    if split is not None:
+        sequences = [row for row in sequences if str(row.get("split")) == str(split)]
+    if category is not None:
+        sequences = [
+            row for row in sequences if str(row.get("category")) == str(category)
+        ]
+    if not sequences:
+        raise ValueError("data manifest filters select no prompt sequences")
     stream = [int(token) for row in sequences for token in row["token_ids"]]
     if not stream:
-        raise ValueError("data manifest contains no tokens")
+        raise ValueError("data manifest contains no selected prompt tokens")
     repeats = (int(count) + len(stream) - 1) // len(stream)
     tokens = (stream * repeats)[: int(count)]
     digest = hashlib.sha256(np.asarray(tokens, dtype=np.int64).tobytes()).hexdigest()
-    return tokens, digest
+    return tokens, digest, [str(row["sequence_id"]) for row in sequences]
 
 
 def _log_softmax(logits: np.ndarray) -> np.ndarray:
@@ -105,6 +119,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--metadata", type=Path, required=True)
     parser.add_argument("--data-manifest", type=Path, required=True)
     parser.add_argument("--prompt-tokens", type=int, required=True)
+    parser.add_argument("--prompt-split")
+    parser.add_argument("--prompt-category")
     parser.add_argument("--decode-steps", type=int, default=8)
     parser.add_argument("--modes", default="no_evict,sidecar")
     parser.add_argument("--backend", default="hip_gfx1151")
@@ -121,7 +137,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     modes = tuple(part.strip() for part in str(args.modes).split(",") if part.strip())
     if not modes or any(mode not in {"no_evict", "sidecar"} for mode in modes):
         raise ValueError("modes must be a comma-separated subset of no_evict,sidecar")
-    prompt, prompt_sha = _prompt(args.data_manifest, args.prompt_tokens)
+    prompt, prompt_sha, prompt_sequence_ids = _prompt(
+        args.data_manifest,
+        args.prompt_tokens,
+        split=args.prompt_split,
+        category=args.prompt_category,
+    )
     max_positions = int(args.prompt_tokens) + int(args.decode_steps)
     started = time.perf_counter()
     runner = Qwen35GGUFFullStackRunner(args.model, backend=str(args.backend))
@@ -232,7 +253,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "tokens": int(args.prompt_tokens),
             "token_ids_sha256": prompt_sha,
             "data_manifest_sha256": _sha256(args.data_manifest),
-            "source_note": "deterministic repeated corpus stream; screening, not broad long-quality closure",
+            "split_filter": args.prompt_split,
+            "category_filter": args.prompt_category,
+            "sequence_ids": prompt_sequence_ids,
+            "source_note": "deterministic selected corpus stream; scope depends on recorded manifest split/category",
         },
         "protocol": {
             "teacher": "dense BF16 KV exact-Q4 resident session",
