@@ -23,6 +23,7 @@ from hipengine.kvcache.backend import (
     KVPoolPlan,
     KVPoolSpec,
     KVStorageView,
+    ResourceChange,
     ResourceClaim,
     ResourceClaimSet,
     ResourceDelta,
@@ -843,6 +844,43 @@ class CompactExtentPool:
         self.high_water_slots = max(self.high_water_slots, used)
         return result
 
+    def shrink(
+        self,
+        owner_id: str,
+        new_lengths: np.ndarray,
+    ) -> tuple[CompactExtent, ...]:
+        identifier = str(owner_id)
+        try:
+            current = self._owners[identifier]
+        except KeyError as exc:
+            raise KeyError(f"unknown compact extent owner {owner_id!r}") from exc
+        lengths = np.asarray(new_lengths, dtype=np.int32)
+        heads = len(current) // self.num_layers
+        if lengths.shape != (self.num_layers, heads):
+            raise ValueError("compact DMS shrink lengths shape mismatch")
+        updated: list[CompactExtent] = []
+        for extent in current:
+            length = int(lengths[extent.layer_id, extent.head_id])
+            if length <= 0 or length > extent.length:
+                raise ValueError("compact DMS shrink length must be within the owned extent")
+            if length < extent.length:
+                self._give(
+                    extent.layer_id,
+                    extent.start + length,
+                    extent.length - length,
+                )
+            updated.append(
+                CompactExtent(
+                    extent.layer_id,
+                    extent.head_id,
+                    extent.start,
+                    length,
+                )
+            )
+        result = tuple(updated)
+        self._owners[identifier] = result
+        return result
+
     def release(self, owner_id: str) -> tuple[CompactExtent, ...]:
         try:
             extents = self._owners.pop(str(owner_id))
@@ -946,7 +984,7 @@ class DMSOperation:
     ]
     logical_tokens: int
     device_snapshot: DMSDevicePayloadSnapshot | None
-    counter_snapshot: tuple[int, int, int]
+    counter_snapshot: tuple[int, int, int, int]
 
 
 class DMSCompactBackend:
@@ -1021,6 +1059,7 @@ class DMSCompactBackend:
         self.pack_calls = 0
         self.decode_appends = 0
         self.evicted_tokens = 0
+        self.released_provisional_slots = 0
         self._device_store: DMSDevicePayloadStore | None = None
         if device_payloads_requested(device_payloads):
             try:
@@ -1087,7 +1126,14 @@ class DMSCompactBackend:
         retained_prompt = protected_prompt + ceil(
             eligible_prompt / self.retrofit.target_compression_ratio
         )
-        per_head = max(1, min(logical_prompt + max_new, retained_prompt + max_new))
+        projected_per_head = max(
+            1,
+            min(logical_prompt + max_new, retained_prompt + max_new),
+        )
+        # Streaming pack must be safe even when a newly trained sidecar
+        # under-compresses. Reserve the full prompt provisionally, then shrink
+        # extents and ledger ownership to actual survivors after pack commits.
+        per_head = max(1, logical_prompt + max_new)
         total_slots = (
             self.retrofit.num_layers * self.retrofit.num_kv_heads * per_head
         )
@@ -1107,6 +1153,7 @@ class DMSCompactBackend:
             claims=tuple(claims),
             metadata=(
                 ("per_head_slots", per_head),
+                ("projected_per_head_slots", projected_per_head),
                 ("logical_prompt_tokens", logical_prompt),
                 ("max_new_tokens", max_new),
                 ("prefix_mode", "off"),
@@ -1239,8 +1286,37 @@ class DMSCompactBackend:
                     np.ascontiguousarray(state.base_offsets[layer, :]),
                     np.ascontiguousarray(state.range_capacity[layer, :]),
                 )
+        self._shrink_after_streaming_pack(state)
         state.logical_tokens = tokens
         self.pack_calls += 1
+
+    def _shrink_after_streaming_pack(self, state: DMSSequenceState) -> None:
+        metadata = state.lease.claims.metadata_dict()
+        max_new_tokens = int(metadata.get("max_new_tokens", 0))
+        current = np.asarray(state.range_capacity, dtype=np.int32)
+        committed = np.maximum(
+            1,
+            np.minimum(current, state.live_counts + max_new_tokens),
+        ).astype(np.int32)
+        released = int(np.sum(current - committed))
+        if released <= 0:
+            return
+        delta = ResourceDelta(
+            operation_id=f"dms-pack-shrink:{state.request_id}",
+            lease_id=state.lease.lease_id,
+            request_id=state.request_id,
+            changes=tuple(
+                ResourceChange(pool_id, -released, ClaimLifetime.LEASE)
+                for pool_id in self.reservation_pool_ids
+            ),
+        )
+        self.ledger.apply_delta(state.lease.lease_id, delta)
+        state.extents = self.extents.shrink(
+            state.lease.lease_id,
+            committed,
+        )
+        state.range_capacity[...] = committed
+        self.released_provisional_slots += released
 
     def append_decode(
         self,
@@ -1516,6 +1592,7 @@ class DMSCompactBackend:
                 int(self.pack_calls),
                 int(self.decode_appends),
                 int(self.evicted_tokens),
+                int(self.released_provisional_slots),
             ),
         )
 
@@ -1553,7 +1630,12 @@ class DMSCompactBackend:
             if self._device_store is None:
                 raise RuntimeError("DMS device store disappeared before rollback")
             self._device_store.restore(operation.device_snapshot)
-        self.pack_calls, self.decode_appends, self.evicted_tokens = operation.counter_snapshot
+        (
+            self.pack_calls,
+            self.decode_appends,
+            self.evicted_tokens,
+            self.released_provisional_slots,
+        ) = operation.counter_snapshot
         return ResourceDelta(
             operation_id=f"rollback:{operation.operation_id}",
             lease_id=operation.lease.lease_id,
@@ -1639,6 +1721,7 @@ class DMSCompactBackend:
                 "streaming_pack_calls": self.pack_calls,
                 "decode_appends": self.decode_appends,
                 "evicted_tokens": self.evicted_tokens,
+                "released_provisional_slots": self.released_provisional_slots,
             },
             "extent_pool": self.extents.snapshot(),
             "ledger": self.ledger.snapshot(),
