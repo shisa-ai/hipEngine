@@ -1,6 +1,6 @@
 # MTP IU4 verifier research plan
 
-_Status: instruction screen complete; no runtime IU4 route or sidecar is implemented_
+_Status: instruction screen and current-verifier attribution complete; no runtime IU4 route or sidecar is implemented_
 
 _Branch: `mpt-iu4`_
 
@@ -37,6 +37,14 @@ companion for that pair would be about 89,407,488 bytes including one FP32 scale
 and one I32 sum per output, so its impossible-best read floor is about
 **0.405 ms**. The leaf's bandwidth-only ceiling is therefore roughly **1.14×
 before U4 activation packing**—not 2×.
+
+R1 then measured the complete exact transactional target window. At physical
+M=4, the 64 gate/up calls own **35.576 ms of 89.348 ms kernel time and 148.655
+ms target wall** (39.82% / 23.93%). They stream 6.417 GB at an aggregate **180.4
+GB/s**. Even an impossible 221-GB/s S4 family with zero activation-pack cost
+would lower the target window by only **1.070×**; deleting gate/up entirely
+would bound it at **1.314×**. The one-layer experiment remains worthwhile, but
+its system ceiling is now measured rather than inferred.
 
 **Decision:** continue the research, but do not allocate a full 5.33–7.99 GiB
 sidecar yet. The next gate is a one-layer, operation-complete, actual-weight
@@ -194,11 +202,12 @@ For the measured gate/up pair:
 | Effective current read rate | 216.6 GB/s | — |
 | Optimistic leaf ceiling | — | about **1.14×** before pack/correction |
 
-Multiplying the representative current leaf by 64 gives about 29.6 ms of a
-111.1 ms verify pass. Replacing it with the optimistic sidecar read floor saves
-only about 3.7 ms/pass, or 3.4% of verify wall, before activation packing. This
-is a projection, not a measured all-layer profile; Phase R1 must replace it with
-an exact target-window family trace.
+The former single-layer projection was 29.6 ms of a 111.1 ms retained-suite
+verify pass. R1 supersedes that estimate with a cache-only exact native trace:
+30.162/30.653/35.576 ms of gate/up core at B1/B2/B3. The B3 S4 family read floor
+is 25.892 ms at 221 GB/s, so its impossible zero-pack saving is 9.684 ms of the
+profiled 148.655-ms target window (1.070×). Applying the leaf's more conservative
+1.14× ceiling saves only 4.37 ms (about 2.9%).
 
 ## 4. What Kairic establishes—and what it does not
 
@@ -374,23 +383,35 @@ graph bucket, lifecycle, and provenance remain exact.
 
 Result: the U4×S4 instruction lane is real and about 2× IU8/FP16 WMMA.
 
-### R1 — current verifier attribution
+### R1 — current verifier attribution (complete)
 
-Before writing a model kernel:
+- [x] Profile exact transactional native B1/B2/B3 target windows with cached
+  builds and the retained FP32 recurrent-state MTP contract.
+- [x] Filter `qwen36_dense_mtp_target_verify_*` ROCTX windows from the final
+  child process; do not profile a nested parent harness.
+- [x] Record physical-M distributions, calls/time, current variants, qmicro
+  bytes/effective bandwidth, and gate/up Amdahl bounds.
+- [x] Retain a diagnostic artifact with exact model/raw-trace hashes and no IU4
+  or product throughput claim.
 
-- profile one complete native B1/B2/B3 target window with the current exact
-  Q4_K_S model and cached builds;
-- report calls/time/bytes for gate/up, down, attention projections, GDN
-  projections, output head, activation quantization, epilogues, and non-linear
-  state/attention work;
-- record physical M distribution, route/fallback counters, and per-family
-  effective GB/s;
-- replace the single-layer 29.6 ms projection in this document with measured
-  all-layer family time; and
-- calculate Amdahl bounds for gate/up-only and full-FFN coverage.
+| Budget | Physical M histogram | Target wall / cycle | Kernel / cycle | Gate/up core / cycle | Gate/up share kernel / wall | Effective gate/up BW | Ideal zero-pack S4 target ceiling |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| B1 | M2×4 | 137.455 ms | 79.980 ms | 30.162 ms | 37.71% / 21.94% | 212.8 GB/s | 1.032× |
+| B2 | M3×2, M2×1 | 121.835 ms | 81.497 ms | 30.653 ms | 37.61% / 25.16% | 209.4 GB/s | 1.041× |
+| B3 | M4×2 | 148.655 ms | 89.348 ms | 35.576 ms | 39.82% / 23.93% | 180.4 GB/s | 1.070× |
 
-Required output: a diagnostic compact artifact with exact model hash, command,
-profile window, current variant names, and no IU4 speed claim.
+Each target cycle has 64 qmicro Q8_1x2 rowtile8 gate/up launches. Q8_1x2
+activation packing adds only 0.107–0.119 ms/cycle in this trace. The remaining
+large projection families are the 212-call Q4 rowtile family (27.99–29.14 ms),
+the 60-call Q5 col4 family (9.76–11.03 ms), Q6 tail calls, GDN/Conv, attention,
+norms, copies, and the output head; exact details are in the compact artifact.
+
+The trace is deliberately a one-prompt attribution diagnostic. All AR/B1/B2/B3
+greedy outputs and GPU/CPU acceptance agree, but its tok/s and absolute wall are
+not MTP economics claims. The first preflight used the newer gfx1151 Q4_K_S
+FP16-state default and faulted in the incompatible MTP chain-journal path; the
+retained run explicitly uses `HIPENGINE_GGUF_FP16_RECURRENT_STATE=0`, matching
+the exact B3 state contract.
 
 ### R2 — one-layer operation-complete leaf
 
@@ -467,7 +488,7 @@ Promotion questions:
 | Native instruction | Expected IU4 ISA; >=1.8× matched IU8/FP16 median; stable samples | **Pass**: 1.98–2.00× |
 | Tiny-M useful arithmetic | Account for `M/16` tile utilization, not raw TOPS | **Warning**: M4 ≈ DOT4 roof |
 | Actual-weight gate/up | Operation-complete M2–5 beats current owner with pack included and passes declared leaf numerics | Not run |
-| Family attribution | Measured all-layer gate/up share and effective BW justify expected target-wall delta | Not run |
+| Family attribution | Measured all-layer gate/up share and effective BW justify expected target-wall delta | **Pass, bounded**: 21.9–25.2% wall; ideal zero-pack S4 ceiling 1.032–1.070× |
 | Memory ROI | Measured complete target/cycle gain justifies +5.329 GiB gate/up (or +7.988 GiB FFN) | Not run |
 | T3 quality | Full strict-teacher/determinism/isolation/BF16-relative/task packet passes | Not run |
 | MTP economics | Full category suite beats same-protocol true AR and current B3 without category regression | Not run |
@@ -486,13 +507,13 @@ HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/mtp_iu4_roofline.py \
   --iterations 65536 --samples 9 --warmups 3 \
   --output /tmp/mtp-iu4-roofline.json
 
-# 2. Capture the current exact target verifier before adding IU4.
-# Use the committed cached-build verifier profiler appropriate to the dense
-# Qwen3.8 native B1/B2/B3 route; do not profile a parent harness that launches
-# nested children, and do not allow hipcc inside rocprof.
+# 2. Current exact target attribution is retained in the R1 artifact.
+# It used the final qwen36_dense_gguf_suite.py child with ROCTX markers,
+# cached builds, native B1-B3, and the required FP32-state rollback.
 
-# 3. Build one layer-0 gate/up S4 companion and measure M=2..128 with actual
-# weights, inclusive activation pack/correction/SiLU, before allocating all 64.
+# 3. Next: build one layer-0 gate/up S4 companion and measure M=2..128 with
+# actual weights, inclusive activation pack/correction/SiLU, before allocating
+# all 64.
 ```
 
 The current lineage command is mechanically blocked by the already documented
@@ -501,8 +522,10 @@ was ported in R0; Kairic/Clang were used only as read-only references.
 
 ## References
 
-- Diagnostic artifact:
+- Instruction diagnostic:
   [`benchmarks/results/2026-08-23-gfx1151-mtp-iu4-instruction-roofline.json`](benchmarks/results/2026-08-23-gfx1151-mtp-iu4-instruction-roofline.json)
+- Current exact verifier attribution:
+  [`benchmarks/results/2026-08-23-gfx1151-qwen38-mtp-native-verifier-attribution.json`](benchmarks/results/2026-08-23-gfx1151-qwen38-mtp-native-verifier-attribution.json)
 - Current exact B3:
   [`benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json`](benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json)
 - gfx1151 roofline: [`docs/ROOFLINE-gfx1151.md`](docs/ROOFLINE-gfx1151.md)
