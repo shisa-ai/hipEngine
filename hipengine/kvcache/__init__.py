@@ -70,6 +70,11 @@ from hipengine.kvcache.dms_labels import (
     future_attention_mass_cpu,
     load_dms_label_manifest,
 )
+from hipengine.kvcache.dms_sidecar import (
+    ExternalDMSLinearSidecar,
+    load_external_dms_sidecar,
+    screen_external_sidecar,
+)
 from hipengine.kvcache.tiering import (
     ColdCodecResult,
     ColdObjectKey,
@@ -179,6 +184,7 @@ __all__ = [
     "DeviceChunkedKVPool",
     "DeviceKVPoolAllocation",
     "DeviceKVPoolStats",
+    "ExternalDMSLinearSidecar",
     "FitAwareAdmissionController",
     "FixedPagedKVPolicy",
     "KVBackendSpec",
@@ -249,7 +255,9 @@ __all__ = [
     "future_attention_mass_cpu",
     "load_dms_capture_manifest",
     "load_dms_label_manifest",
+    "load_external_dms_sidecar",
     "load_dms_retrofit_config",
     "resolve_kv_policy",
     "resolve_prefix_cache_mode",
+    "screen_external_sidecar",
 ]
