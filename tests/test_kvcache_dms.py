@@ -388,9 +388,10 @@ def test_dms_admission_applies_target_cr_only_outside_protected_window() -> None
         {"kind": "admission"},
     )
 
-    # Window=2 protects positions 5,6,7. Of the five older rows, CR4 keeps
-    # ceil(5/4)=2, so every layer/head extent reserves five prompt rows.
-    assert claims.metadata_dict()["per_head_slots"] == 5
+    # Window=2 projects positions 5,6,7 plus ceil(5/4)=2 historical rows,
+    # but pack correctness provisionally reserves all eight prompt rows.
+    assert claims.metadata_dict()["per_head_slots"] == 8
+    assert claims.metadata_dict()["projected_per_head_slots"] == 5
 
 
 def test_dms_work_item_claims_pack_workspace_not_dense_pages() -> None:
@@ -454,6 +455,9 @@ def test_dms_streaming_pack_reduces_allocator_visible_live_rows() -> None:
     snapshot = backend.observability_snapshot()
 
     assert np.all(backend.state_for_request(2).live_counts == 6)
+    # Two decode growth credits remain after pack: 6 live + 2 max-new.
+    assert np.all(backend.state_for_request(2).range_capacity == 8)
+    assert snapshot["operations"]["released_provisional_slots"] == 24
     assert snapshot["capacity"]["logical_token_rows"] == 48
     assert snapshot["capacity"]["live_token_rows"] == 24
     assert snapshot["capacity"]["actual_compression_ratio"] == pytest.approx(2.0)
