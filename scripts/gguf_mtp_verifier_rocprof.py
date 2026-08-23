@@ -3,11 +3,10 @@
 
 By default this diagnostic profiles the historical serial target-step shape with
 ``capture_hidden_seed_fp32=True`` and ``return_logits=False``.  With
-``--mode block-verify`` it profiles the B2-like verifier block used by the
-llama-compat parity lane: previous token plus draft rows, optional dp4a selected
-MoE routing, direct-state commit, and the same ROCTX/kernel-window attribution.
-This tells us whether the verifier gap is a host/copy/launch floor or GPU
-streaming wall on current code.
+``--mode block-verify`` it profiles a B1-B7 verifier block: previous token plus
+draft rows, optional dp4a selected MoE routing, direct-state commit, and the
+same ROCTX/kernel-window attribution.  This tells us whether the verifier gap
+is a host/copy/launch floor or GPU streaming wall on current code.
 
 Parent mode warm-builds outside rocprof, pins ``HIPENGINE_COMPILER_VERSION_FILE``,
 then runs child mode under ``rocprofv3 --kernel-trace --marker-trace`` with
@@ -232,7 +231,10 @@ def _run_child(args: argparse.Namespace) -> int:
                 if args.direct_state_commit:
                     if not result.linear_state_rows_captured:
                         raise RuntimeError("direct-state block profile did not capture linear-state rows")
-                    session._commit_verify_linear_state_row(block_rows - 1, position=start_position + block_rows)
+                    session._commit_verify_linear_state_row(
+                        block_rows - 1,
+                        position=start_position + block_rows,
+                    )
                 session.runtime.device_synchronize()
                 elapsed_ms = (time.perf_counter() - t0) * 1000.0
                 if index is not None:
@@ -606,6 +608,12 @@ def _bucket(family: str) -> str:
         return "moe_router"
     if any(key in f for key in ("linear_attn", "gdn", "ssm", "_conv_")):
         return "gdn_linear_attn"
+    if f.startswith("q4_k_qmicro_t16_dense_dual"):
+        return "dense_q4_gate_up"
+    if f.startswith("q4_k_t16_dense_dual"):
+        return "dense_q4_gate_up"
+    if f.startswith(("q4_k_t16_dense", "q4_k_qmicro_t16_dense")):
+        return "dense_q4_projection"
     if f.startswith(("q4_k_t16_selected", "qk_t16_selected", "gguf_k_selected", "gguf_q4_k_selected")):
         return "moe_selected_gemv"
     if f.startswith(("q8_0_t16", "q8_0_dp4a")):
@@ -683,6 +691,18 @@ def _print_summary(summary: dict[str, Any]) -> None:
         print(f"{row['name'][:30]:30s} {row['calls']:7d} {row['ms_per_step']:9.3f} {row['pct_kernel']:8.1f}")
 
 
+def _native_spec_args_error(args: argparse.Namespace) -> str | None:
+    if not args.native_spec_target_cycle:
+        return None
+    if args.mode != "block-verify" or int(args.block_rows) not in range(2, 9):
+        return "--native-spec-target-cycle requires --mode block-verify --block-rows 2..8"
+    if args.block_verify_mode != "bulk" or args.block_wmma_prefill:
+        return "--native-spec-target-cycle requires bulk non-WMMA block verification"
+    if args.return_logits or args.sync_stage_timings:
+        return "--native-spec-target-cycle does not support logits or synchronized timings"
+    return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--child", action="store_true", help="internal: process run under rocprofv3")
@@ -695,20 +715,20 @@ def main() -> int:
         "--mode",
         choices=("serial-step", "block-verify"),
         default="serial-step",
-        help="Profile the historical serial step verifier or the B2-like target block verifier.",
+        help="Profile the historical serial step verifier or a B1-B7 target block verifier.",
     )
     parser.add_argument(
         "--block-rows",
         type=int,
         default=3,
-        help="Rows passed to verify_target_block in --mode block-verify; B2 uses prev+2 draft rows.",
+        help="Rows passed to verify_target_block in --mode block-verify; B1-B7 use 2..8 physical rows.",
     )
     parser.add_argument("--block-verify-mode", choices=("bulk", "native"), default="bulk")
     parser.add_argument("--block-wmma-prefill", action="store_true")
     parser.add_argument(
         "--native-spec-target-cycle",
         action="store_true",
-        help="Submit fixed three-row block verification through NativeSpecCycle N1.",
+        help="Submit a 2..8-row block through the reusable native target graph.",
     )
     parser.add_argument(
         "--direct-state-commit",
@@ -775,13 +795,9 @@ def main() -> int:
         default=REPO_ROOT / "benchmarks" / "results" / f"{date.today().isoformat()}-gguf-mtp-verifier-rocprof.json",
     )
     args = parser.parse_args()
-    if args.native_spec_target_cycle:
-        if args.mode != "block-verify" or int(args.block_rows) != 3:
-            parser.error("--native-spec-target-cycle requires --mode block-verify --block-rows 3")
-        if args.block_verify_mode != "bulk" or args.block_wmma_prefill:
-            parser.error("--native-spec-target-cycle requires bulk non-WMMA block verification")
-        if args.return_logits or args.sync_stage_timings:
-            parser.error("--native-spec-target-cycle does not support logits or synchronized timings")
+    native_spec_error = _native_spec_args_error(args)
+    if native_spec_error is not None:
+        parser.error(native_spec_error)
     return _run_child(args) if args.child else _run_parent(args)
 
 
