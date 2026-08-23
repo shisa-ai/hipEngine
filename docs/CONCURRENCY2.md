@@ -1,14 +1,16 @@
 # Concurrency and KV Architecture, Generation 2
 
-Last updated: 2026-08-22.
+Last updated: 2026-08-23.
 
-_Status: merged on `main`; Generation-2 implementation spans C2-0 through C2-8.
-Dense gfx1100 short/long serving and the canonical W7900 production load are
-retained as the declared default, while
-cross-backend/external and DMS product closure remain open. The executable audit
-reports 38 passed, 2 blocked, and 1 unavailable rows. This document remains the
-source of truth for the server scheduler, request
-lifecycle, and shared KV-pool architecture. [`CONCURRENCY.md`](CONCURRENCY.md)
+_Status: merged and committed on local `main`; Generation-2 implementation spans
+C2-0 through C2-8. Dense gfx1100 short/long serving and the canonical W7900
+production load are the declared default. The gfx1100 closure boundary is
+`7fad69fb5`; later commits are the independent physical-gfx1151 pass. Local
+`main` is currently a clean fast-forward of `origin/main` (ahead, not diverged),
+so upstream integration/push remains an operational step rather than a code or
+correctness blocker. DMS product training and gfx1151 c32 SLO closure remain
+open. This document is the source of truth for scheduler, request lifecycle,
+shared KV-pool architecture, and the post-merge handoff. [`CONCURRENCY.md`](CONCURRENCY.md)
 remains the historical c=N kernel/resident-runner record._
 
 Related source-of-truth documents:
@@ -34,7 +36,7 @@ Related source-of-truth documents:
 | C2-3 global pool/dense | Stable `GlobalKVPoolSet`; gfx1100 Qwen GGUF BF16 uses `global-arbitrary-pages:g1`. | Dense short route retained; legacy chunk path remains for unported packages. |
 | C2-4 prefix cache | Generation-checked immutable snapshots, COW, quotas, LRU/TTL, pressure eviction. | Dense host conformance closed; DMS prefix remains deliberately off. |
 | C2-5 token budget/c1-c32 | Logical c1-c32, certified physical c1-c8 grouping on gfx1100 Qwen3.8 (other models/backends retain their own registered sets), same-round prefill/decode fairness. | Physical c1-c8 and direct-width lifecycle are qualified; cost-aware D2 is explicit-config pending the actual-server c1-c32 SLO/performance gate. |
-| C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed; gfx1151 and matched external serving comparisons remain unavailable. |
+| C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed. Independent gfx1151 c17 fixed SLO now passes; c32 ITL remains blocked. Matched external GPU comparison remains unavailable/invalid. |
 | C2-7 compact DMS | Strict retrofit metadata, compact extents, no-shadow host/device BF16 pack/decode, c1-c32 lifecycle, fixture-qualified INT8 composition. | gfx1100 fixture correctness and rocprof identities pass; exact Qwen artifact has no trained DMS retrofit, so product default/quality/savings remain blocked. |
 | C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Actual model-produced BF16 KV host restore economics, pressure, cancellation, and drain pass; integrated GPU rehydrate/request-SLO policy remains default-off. |
 | C2-S MTP/SpecDec integration | Reusable `NativeSpecCycle` ABI/graphs, SPEC-C0 records/simulator, one EngineService, compatible packing, committed streaming/tail/RNG, and generic provider/tree metadata. | SPEC-C0–C4 correctness is closed; SPEC-C5 blocks promotion because C=10 public-service MTP is 0.579× true AR despite exact/direct decode wins. |
@@ -80,9 +82,73 @@ The remaining work is not all “tuning,” however. Keep these scopes distinct:
 
 Open optional or backend-specific capabilities stay default-off, explicit, or
 fail-closed. They do not justify withholding the working common architecture
-from integration, but merge readiness still requires reconciling current
-`origin/main`, resolving shared-file conflicts, and proving no regression
-against the same baseline nodes and focused Generation-2 bundles.
+from integration. Current local `main` has no `origin/main` divergence or
+tracked dirt; it can be fast-forward pushed after the normal remote/CI review.
+Do not rewrite the closure history merely to separate later gfx1151 commits:
+the commit order already records gfx1100 closure before the independent pass.
+
+### Merge boundary and post-merge handoff
+
+#### gfx1100 merge deliverable
+
+The user-scoped core deliverable is complete at `7fad69fb5` and audited in
+[`gfx1100 completion audit`](../benchmarks/results/2026-08-22-gfx1100-core-main-merge-complete.json):
+
+- canonical dense-BF16 gfx1100 C2-6 serving is default and exact through logical
+  c1-c32 / physical c1-c8;
+- Q6 row8 DPP and PM4 break-even wins are retained with strict fallbacks;
+- rejected Q4/Q5 candidates are absent, strict FP32 GDN remains canonical, and
+  DMS/tiering/continuous SpecDec fail closed;
+- broad validation recorded 9,843 passed / 214 skipped / 4 xfailed, followed by
+  focused repair and a final 104-test core/default/optional bundle; and
+- branch `main` is committed and clean. `origin/main` is behind but not
+  divergent, so the remaining merge action is a normal fast-forward review and
+  push, not more gfx1100 implementation.
+
+#### gfx1151 post-merge lane
+
+Resume only on a physical Radeon 8060S/gfx1151 host. The current lane used host
+`gfx1151`, checkout `/home/lhl/hipEngine-gfx1151-c2-20260822`, Qwen3.8-27B
+`Q4_K_S`, strict FP32 recurrent state, BF16 KV, and fair:256. Before any new
+measurement, transfer current clean `main`, verify the host/model fingerprint,
+prebuild JIT libraries outside profiling, and require cached builds inside
+`rocprofv3`.
+
+Retained state at handoff:
+
+- physical widths 1..8 and c13 hole/refill/compaction lifecycle pass;
+- packed prefill, fused state transfer, and direct canonical resident Conv/GDN
+  state are defaults for the qualified gfx1151 package;
+- c17 fixed SLO passes at **11.297 tok/s / 0.448 s ITL** after the exact Q4 row8
+  two-wave owner;
+- c32 improves to **11.041 tok/s / 0.802 s ITL**, and live admission overlaps,
+  but fixed c32 ITL still fails; therefore gfx1151 production is not closed;
+- D2 captured-cost composition, physical c9/c16, Q4 dual eight-wave merge,
+  fair-burst1, and FP16-state serving are rejected; do not repeat them without a
+  materially new mechanism; and
+- next measured family is Q4 qmicro dual rowtile (~127.6 ms marked), followed by
+  Q5 rowtile and Q4 split-weight. Every candidate needs actual kernel identity,
+  exact parent parity, clean marked-family improvement, c17/c32 serving, and
+  lifecycle/memory checks.
+
+Primary retained evidence:
+[`gfx1151 physical widths`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-physical-widths.json),
+[`packed prefill`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-packed-prefill-c17.json),
+[`direct resident state`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json), and
+[`Q4 row8 two-wave`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-q4-row8-two-wave.json).
+
+#### DMS training lane (deferred, separate data campaign)
+
+Do not block the dense gfx1100 merge on DMS training, and do not synthesize a
+checkpoint to make the gate green. Device extract/pack/append/compact-attention
+mechanics and cached profiler identities are already qualified. Product closure
+waits for a separately generated, valid trained `dms_metadata.json` bound to an
+exact supported model fingerprint. The training output must record corrected-
+mask semantics, borrowed channel, alpha scale/offset, window/compression target,
+training data/provenance, and checkpoint hash. Only then run model quality,
+allocator-visible device savings, c1-c32 pressure/soak, compressed-codec,
+cancellation, and final-drain gates. Dense global paging remains default until
+all of those pass. This is task #67 and blocks only DMS product task #49.
 
 ### gfx1151 qualification and optimization plan
 
@@ -2583,7 +2649,10 @@ and superseded blocker
 
 ### C2-7 — FastDMS topology and codec composition
 
-- [x] Complete the metadata/checkpoint gate from `KVCACHE.md`.
+- [x] Implement the strict metadata schema/checkpoint validator and prove that
+      unsupported or missing retrofit metadata fails closed.
+- [ ] Generate a valid trained retrofit checkpoint in the separate DMS data
+      campaign, then run model-quality/savings/soak product qualification.
 - [x] Add global compact pool-set/extent accounting and scheduler-owned atomic
       admission through the existing backend protocol.
 - [x] Port streaming no-shadow prefill pack and compact decode in BF16 first.
@@ -2849,8 +2918,9 @@ dense shadow. Its first BF16 payload is a correctness rung; compressed DMS must
 reuse the same engine and backend contract. Until then, dense global paging is
 the canonical Generation-2 KV path and DMS prefix sharing remains off.
 
-The executable completion audit now records **33 passed, 1 blocked, and 1
+The latest executable completion audit records **38 passed, 2 blocked, and 1
 unavailable** rows with no missing evidence. The W7900 canonical C2-6
-load/default scope is closed; the product goal remains open for unavailable
-matched external serving plus DMS trained-checkpoint product conformance. See
+load/default scope is closed. Optional product scope remains open for DMS
+trained-checkpoint conformance and continuous SpecDec service economics; matched
+external serving remains unavailable. See
 [`2026-08-22-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-22-concurrency2-completion-audit.json).
