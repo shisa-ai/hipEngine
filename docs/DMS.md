@@ -3,11 +3,12 @@
 Last updated: 2026-08-23
 
 > **Current status:** explicit c1 integration and 128K/256K capacity execution
-> pass, but the current short-trained CR2 candidate is **rejected for production**.
-> Its integrated 32K dense-teacher gate fails at max KL 6.0177 and 62.5% top-1
-> while no-evict passes at max KL 7.76e-7/100%; learned long-context over-eviction,
-> not compact kernel math, is the blocker. Dense remains default while a separate
-> long-context calibration/training campaign proceeds.
+> pass, but DMS remains **rejected for production**. Exact 32K retraining raises
+> disjoint-row validation accuracy to 83.60%, yet thresholded selection still
+> drifts to 2.305–3.495x live compression on unseen development sequences and
+> fails one Japanese step (max KL 0.14007, 87.5% category top-1). No-evict is
+> essentially exact, so policy/budget selection—not compact kernel math—is the
+> blocker. Dense remains default while exact-budget ranking is implemented.
 
 This document is the end-to-end record and continuation plan for hipEngine's
 external Dynamic Memory Sparsification campaign. It covers the design, exact
@@ -19,8 +20,10 @@ The trained-candidate evidence is
 [`2026-08-23-qwen38-external-dms-cr2-trained-candidate.json`](../benchmarks/results/2026-08-23-qwen38-external-dms-cr2-trained-candidate.json);
 the integrated long-capacity evidence is
 [`2026-08-23-gfx1151-qwen38-external-dms-integrated-128k-256k-capacity.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-external-dms-integrated-128k-256k-capacity.json),
-and the binding 8K/32K quality rejection is
-[`2026-08-23-gfx1151-qwen38-external-dms-integrated-8k-32k-quality.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-external-dms-integrated-8k-32k-quality.json).
+the original binding 8K/32K quality rejection is
+[`2026-08-23-gfx1151-qwen38-external-dms-integrated-8k-32k-quality.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-external-dms-integrated-8k-32k-quality.json),
+and the exact-label long-retraining rejection is
+[`2026-08-23-gfx1151-qwen38-dms-long-trained-linear-rejected.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-dms-long-trained-linear-rejected.json).
 The normative KV ABI and broader storage roadmap remain in
 [`KVCACHE.md`](KVCACHE.md); lifecycle integration is tracked in
 [`CONCURRENCY2.md`](CONCURRENCY2.md).
@@ -30,9 +33,9 @@ The normative KV ABI and broader storage roadmap remain in
 | Question | Answer |
 | --- | --- |
 | Can we train a DMS predictor without modifying the model? | **Yes.** The base GGUF is never optimized, modified, or requantized. |
-| Can we test predictor correctness and exact-Q4 model quality? | **Yes.** The integrated dense-teacher route localizes kernel versus policy error. The candidate passes 768 and 8K but is rejected at 32K; no-evict remains essentially exact. |
-| How large is the predictor? | **655,640 bytes** (`640.27 KiB`, `0.6253 MiB`) plus 2,620 bytes of required metadata. |
-| How long did retained training take? | **99.42 seconds** internal trainer time; 101 seconds process wall time. |
+| Can we test predictor correctness and exact-Q4 model quality? | **Yes.** The integrated dense-teacher route localizes kernel versus policy error. Short and exact-32K-trained threshold policies are both rejected at 32K; no-evict remains essentially exact. |
+| How large is the predictor? | **655,640 bytes** (`640.27 KiB`, `0.6253 MiB`) plus required metadata. Retraining changes values, not tensor geometry. |
+| How long did training take? | The retained short candidate took **99.42 s** internally. Exact 32K fine-tuning to epoch 20 took **583.07 s cumulative trainer time**, plus **637.08 s** for train-only per-head calibration. |
 | How long did the measured retained pipeline take? | **774 seconds (12m54s)** for capture, labels, final training, and both quality gates; excludes data curation, replay, code development, and cache warmup. |
 | What candidate passed? | **CR2/window256:** max KL `0.009691`, 100% top-1, 1.54293x observed total live-cell compression on 768-token heldouts. |
 | Did CR4 or CR8 pass? | **No.** Their max KL values were `0.08908` and `0.24993`, above the `0.05` outer floor. |
@@ -60,7 +63,7 @@ The normative KV ABI and broader storage roadmap remain in
 | Allocator-visible production savings | Partial: c1 tracked residency drops 4.592/7.813 GiB at 128K/256K; full P7 controls open |
 | Serving throughput and profiler evidence | Integrated diagnostic timings measured; no comparator or performance claim |
 | Integrated c1-c32 lifecycle and long soak | Open |
-| Long-context-stable sidecar | Bias-only CR2 and conservative CR1.5 both reject Japanese at 32K; long-weight retraining in progress |
+| Long-context-stable sidecar | Open: bias-only CR2, conservative CR1.5, and epoch-20 exact-label linear weights all reject Japanese at 32K; exact-budget prefill ranking is next |
 | Portable cross-host sidecar package | Open |
 | End-to-end campaign and production guide | Complete in this document |
 | Merge into `origin/main` | Open |
@@ -556,6 +559,32 @@ task/control coverage and protected-window behavior; it is **not** compression
 evidence. Artifact SHA-256:
 `718d40208c14a9eeba878ebce123a368349d2ca041cdf7db314a8436a39bbb6b`.
 
+## Exact 32K retraining outcome (rejected)
+
+Four source-disjoint 32K calibration sequences produced 64 full-prefix,
+query-stride-one layer shards: 131,072 sequence tokens under the exact
+CR2/window256 future-attention oracle. Fine-tuning initialized from the short
+sidecar and reserved `row_index % 16 == 0` in every shard for disjoint internal
+validation. After 20 epochs, 520,192 heldout decisions reached 83.60% accuracy,
+83.48% precision, 83.74% recall, and BCE 0.3660. The 655,640-byte epoch-20
+sidecar SHA is `e52fc60a...d764`.
+
+A train-only per-layer/head quantile pass then changed 64 biases while preserving
+all 327,680 weights. Calibration-source compression was 1.878–2.077x. On the
+reused v2 four-category 32K development suite, however, threshold selection
+shifted to 2.305–3.495x. Code, English, and mixed Japanese/English passed, but
+Japanese recorded max KL 0.14007 and 87.5% top-1 over eight steps, so the
+candidate is rejected. Aggregate top-1 was 96.875%; the binding rule is per
+category and maximum KL, not the aggregate average.
+
+This isolates two distinct facts: the linear classifier does learn useful long
+rankings, but one static threshold cannot enforce CR2 under unseen score
+marginals, and the remaining Japanese critical-token error cannot be waived.
+The fresh v3 final corpus remains unconsumed. The next candidate must use the
+same learned logits as ranks while enforcing the exact historical live budget
+per layer/head and preserving the protected window; it must pass v2 before v3
+is opened.
+
 ## Timing summary
 
 ### Retained path
@@ -851,8 +880,11 @@ byte-exact reclaim after success, cancellation, and injected failure.
 - [x] Register gfx1151 and gfx1100 external-linear BF16 decision kernels.
 - [x] Consume the declared normalized hidden stage on device.
 - [x] Preserve all ordinary query channels.
-- [ ] Fuse or co-schedule thresholding, protected-window handling, append, and
-      compact metadata update where the numerical contract permits.
+- [ ] Replace distribution-sensitive threshold-only prefill selection with a
+      metadata-bound exact historical budget over learned per-layer/head ranks;
+      preserve window protection and deterministic tie-breaking.
+- [ ] Fuse or co-schedule ranking/thresholding, protected-window handling,
+      append, and compact metadata update where the numerical contract permits.
 - [x] Eliminate host projection and per-token K/V copies from c1 decode serving.
 - [ ] Journal request-owned extents only; rollback must not disturb neighbors.
 - [ ] Validate graph/eager repeats and changed-page updates.
@@ -983,8 +1015,9 @@ select in supported production scopes.
       quality gate.
 - [ ] Expand licensed training contexts beyond 768 tokens and include transition
       shapes while preserving an evaluation firewall.
-- [ ] Explore nonlinear or low-rank predictors only if linear CR2 overhead or CR4
-      quality is a measured blocker.
+- [ ] Explore nonlinear or low-rank predictors if exact-budget use of the
+      measured epoch-20 linear rankings still fails CR2 quality; thresholded
+      linear selection is already a measured 32K blocker.
 - [ ] Explore DMS plus compressed KV after standalone CR2 BF16 serving closes.
 - [ ] Do not promote CR4/CR8 from the current weights; both are rejected.
 

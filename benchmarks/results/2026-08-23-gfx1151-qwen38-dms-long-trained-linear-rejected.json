@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_external_dms_long_trained_linear_rejection",
+  "status": "rejected_quality",
+  "date": "2026-08-23",
+  "host": {
+    "identity": "zbook",
+    "hardware": "AMD Ryzen AI Max+ PRO 395 / Radeon 8060S",
+    "backend": "hip_gfx1151"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "firewall": {
+    "calibration_source": "four source-disjoint 32K train sequences: code/general_en/general_ja/mixed_ja_en",
+    "development_source": "reused v2 four-category 32K validation sequences",
+    "final_source": "fresh v3 heldout",
+    "final_source_consumed": false
+  },
+  "labels": {
+    "method": "full-prefix exact future-attention distillation",
+    "query_stride": 1,
+    "target_compression_ratio": 2,
+    "window_size": 256,
+    "sequences": 4,
+    "tokens_per_sequence": 32768,
+    "total_sequence_tokens": 131072,
+    "layer_shards": 64,
+    "manifest_sha256": "2a47af1139e9f7ad19dc08081f7fd428b2ad77fe41c12457fb7df37032b3cdfc"
+  },
+  "training": {
+    "trainer_commit": "6e69f6d234edad56a601da1003a60a676293742d",
+    "initial_sidecar_sha256": "1960ee834c0bd4572249e71b5cba16668e139a2e93a0113af60374d1a517f9f2",
+    "epochs": 20,
+    "batch_size": 512,
+    "learning_rate": 0.0001,
+    "validation_split": "row_index % 16 == 0 in every calibration shard",
+    "validation_decisions": 520192,
+    "validation_bce": 0.3660344440175804,
+    "validation_accuracy": 0.8359951710137795,
+    "validation_precision": 0.8347604579074978,
+    "validation_recall": 0.8374269726055866,
+    "cumulative_trainer_seconds": 583.0732167660318,
+    "peak_device_bytes": 793179136,
+    "epoch20_sidecar_sha256": "e52fc60a4e8f86f00719be107b44a73567795dfdd88dbbce15cf955409fcd764",
+    "epoch20_metadata_sha256": "52b14d7203d7736611015eb47c9410f6ac91233e7451466d048c3f17e5af608d"
+  },
+  "train_only_per_head_calibration": {
+    "duration_seconds": 637.0776967960119,
+    "changed_bias_parameters": 64,
+    "unchanged_weight_parameters": 327680,
+    "source_compression_ratio_min": 1.8777130629037528,
+    "source_compression_ratio_max": 2.0766677493207006,
+    "sidecar_bytes": 655640,
+    "sidecar_sha256": "d2fe336eb0bd878f901455e9167192b479e299b0ced9d64f2131a3f146f23d8b",
+    "metadata_sha256": "4af62dc88ea3e625186d1f688fea7e5f2cdc95ea0a52ba409d020639bb96c6d2"
+  },
+  "development_gate": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen38_dms_integrated_quality_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /home/lhl/dms-artifacts/qwen38-external-v2-long/sidecar-longweights-cr2-ft20-headcal/dms_metadata.json --data-manifest /home/lhl/dms-artifacts/qwen38-external-v2-long/long-data-manifest-32k.json --prompt-tokens 32768 --prompt-split validation --categories code,general_en,general_ja,mixed_ja_en --decode-steps 8 --modes sidecar --backend hip_gfx1151 --max-kl 0.05 --min-top1 0.9 --output /home/lhl/dms-artifacts/qwen38-external-v2-long/quality-dev-longweights-ft20-headcal-32k-d8.json --fail-on-fail",
+    "teacher": "dense BF16 KV exact-Q4 resident session",
+    "trajectory": "strict dense-teacher input tokens",
+    "decode_steps_per_category": 8,
+    "rows": 32,
+    "thresholds": {
+      "max_kl": 0.05,
+      "min_top1_agreement": 0.9
+    },
+    "aggregate": {
+      "max_kl": 0.14007425106505927,
+      "mean_kl": 0.00748358490305232,
+      "p95_kl": 0.03034354524749529,
+      "p99_kl": 0.1081846256347491,
+      "top1_agreement": 0.96875,
+      "all_categories_passed": false
+    },
+    "categories": {
+      "code": {"max_kl": 0.001160668987592657, "top1_agreement": 1.0, "compression_ratio": 3.4946854945655432, "passed": true},
+      "general_en": {"max_kl": 0.0019504820684213945, "top1_agreement": 1.0, "compression_ratio": 2.7956254381358803, "passed": true},
+      "general_ja": {"max_kl": 0.14007425106505927, "top1_agreement": 0.875, "compression_ratio": 2.305226603367181, "passed": false},
+      "mixed_ja_en": {"max_kl": 0.0033464342156219735, "top1_agreement": 1.0, "compression_ratio": 2.541437026357397, "passed": true}
+    },
+    "duration_seconds": 1250.9983248870121,
+    "final_current_allocated_bytes": 0
+  },
+  "conclusion": {
+    "finding": "A memoryless thresholded linear policy learns the exact long labels but its live budget remains unstable under unseen-sequence score-distribution shift and one Japanese trajectory still violates the binding gate.",
+    "disposition": "Do not promote, do not consume v3 final rows, and do not tune against the failing development token.",
+    "next": "Bind an exact-budget prefill ranking mode to metadata so learned logits determine rank while target CR/window determine capacity; retain threshold mode compatibility."
+  }
+}
