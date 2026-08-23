@@ -822,3 +822,46 @@ def test_correctness_summary_matches_each_prompt_to_c1_oracle() -> None:
     assert failed["passed"] is False
     assert failed["mismatch_count"] == 1
     assert failed["mismatches"][0]["first_mismatch_index"] == 1
+
+
+def test_effective_server_environment_records_revalidation_axes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    compiler_version = tmp_path / "hipcc-version.txt"
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1151")
+    monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1,2,3")
+    monkeypatch.setenv("HIPENGINE_EXECUTION_PROFILE", "strict")
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "5")
+    args = SCRIPT.build_parser().parse_args(
+        [
+            "--engine",
+            "hipengine",
+            "--gpu",
+            "7",
+            "--gpu-max-hw-queues",
+            "2",
+            "--compiler-version-file",
+            str(compiler_version),
+            "--hipengine-prefill-decode-policy",
+            "fair",
+            "--concurrencies",
+            "17",
+            "--json",
+            str(tmp_path / "result.json"),
+        ]
+    )
+
+    environment = SCRIPT._effective_server_environment(args, engine="hipengine")
+
+    assert environment["HIPENGINE_HIP_ARCH"] == "gfx1151"
+    assert environment["HIPENGINE_GGUF_FP16_RECURRENT_STATE"] == "0"
+    assert environment["HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS"] == "1,2,3"
+    assert environment["HIPENGINE_EXECUTION_PROFILE"] == "strict"
+    assert environment["GPU_MAX_HW_QUEUES"] == "2"
+    assert environment["HIPENGINE_COMPILER_VERSION_FILE"] == str(compiler_version)
+    assert environment["HIP_VISIBLE_DEVICES"] == "7"
+    assert environment["ROCR_VISIBLE_DEVICES"] is None
+    assert environment["HIPENGINE_PREFILL_DECODE_POLICY"] == "fair"
+    assert environment["HIPENGINE_GGUF_AR_PACKED_DECODE"] == "1"
