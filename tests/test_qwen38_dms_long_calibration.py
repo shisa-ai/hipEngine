@@ -6,10 +6,15 @@ from pathlib import Path
 
 import numpy as np
 
-from scripts.qwen38_dms_build_long_manifest import _mixed_tokens, _source_digest
+from scripts.qwen38_dms_build_long_manifest import (
+    _mixed_tokens,
+    _source_digest,
+    _source_exclusions,
+)
 from scripts.qwen38_dms_calibrate_long_bias import (
     _bf16_float,
     _live_summary,
+    _target_evict_fraction,
     _write_bf16_safetensors,
 )
 from scripts.qwen38_dms_integrated_quality import _prompt
@@ -72,11 +77,47 @@ def test_integrated_quality_selects_heldout_category_without_cross_split_tokens(
     assert sequence_ids == ["heldout-code"]
 
 
+def test_long_manifest_excludes_prior_short_and_long_sources(tmp_path: Path) -> None:
+    short = tmp_path / "short.json"
+    short.write_text(
+        json.dumps(
+            {
+                "python_files": [{"path": "a.py"}],
+                "wikipedia_en": [{"id": "en-old"}],
+                "wikipedia_ja": [{"id": "ja-old"}],
+            }
+        )
+    )
+    long = tmp_path / "long.json"
+    long.write_text(
+        json.dumps(
+            {
+                "sequences": {
+                    "code": [{"dataset": "python-stdlib-long-disjoint", "source_id": "b.py"}],
+                    "en": [{"dataset": "wikimedia-wikipedia-20231101.en-long-disjoint", "source_id": "en-new"}],
+                    "ja": [{"dataset": "wikimedia-wikipedia-20231101.ja-long-disjoint", "source_id": "ja-new"}],
+                }
+            }
+        )
+    )
+
+    code, en, ja = _source_exclusions([short, long])
+
+    assert code == {"a.py", "b.py"}
+    assert en == {"en-old", "en-new"}
+    assert ja == {"ja-old", "ja-new"}
+
+
 def test_long_manifest_source_digest_is_key_order_stable() -> None:
     left = [{"source_id": "a", "sha256": "1"}, {"source_id": "b", "sha256": "2"}]
     right = [{"sha256": "1", "source_id": "a"}, {"sha256": "2", "source_id": "b"}]
 
     assert _source_digest(left) == _source_digest(right)
+
+
+def test_long_calibration_accepts_conservative_fractional_target_cr() -> None:
+    assert _target_evict_fraction(2.0) == 0.5
+    assert np.isclose(_target_evict_fraction(1.5), 1.0 / 3.0)
 
 
 def test_long_calibration_live_summary_counts_per_head_evictions() -> None:

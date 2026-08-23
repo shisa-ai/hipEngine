@@ -60,7 +60,7 @@ The normative KV ABI and broader storage roadmap remain in
 | Allocator-visible production savings | Partial: c1 tracked residency drops 4.592/7.813 GiB at 128K/256K; full P7 controls open |
 | Serving throughput and profiler evidence | Integrated diagnostic timings measured; no comparator or performance claim |
 | Integrated c1-c32 lifecycle and long soak | Open |
-| Long-context-stable sidecar | Current candidate rejected; disjoint calibration/heldout bias-repair campaign in progress |
+| Long-context-stable sidecar | Train-only bias repair passes four-category 8K; CR2 rejects Japanese at 32K, one conservative CR1.5 rescue in progress |
 | Portable cross-host sidecar package | Open |
 | End-to-end campaign and production guide | Complete in this document |
 | Merge into `origin/main` | Open |
