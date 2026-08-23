@@ -1033,6 +1033,7 @@ GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
             (5_120, 5_120): "dense_rowtile16_w2_bf16_bf16_out",
             (5_120, 6_144): "dense_rowtile16_w2_bf16_bf16_out",
             (5_120, 10_240): "dense_rowtile16_w2_bf16_bf16_out",
+            (17_408, 5_120): "dense_rowtile16_w2_bf16_bf16_out",
         },
     },
 }
