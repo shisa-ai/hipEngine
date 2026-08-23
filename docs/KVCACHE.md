@@ -1407,10 +1407,16 @@ host transaction scratch and restores every plane byte-for-byte; integrated
 GGUF compact serving and its resource/SLO gate remain open.
 Atomic compact extents, no-shadow streaming pack, transactional decode metadata,
 grouped CPU attention, common c1-c32 scheduling, pressure/fragmentation/drain,
-and a fixture-qualified INT8 codec are implemented. No current exact GGUF has a
-packaged, trained sidecar/retrofit, so real-checkpoint quality/capacity/performance
-gates remain open; no DMS default or model claim is made. See
-[`2026-08-17-concurrency2-c2-7-dms-host-blocked.json`](../benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json).
+and a fixture-qualified INT8 codec are implemented. A real external BF16 sidecar
+now exists for exact Qwen3.8-27B Q4_K_M SHA `7e78da5d...fe169`: CR2 passes
+broad 768-token category-heldouts at max KL `0.009691`, 100% top-1, and
+1.54293x total live-cell compression, while CR4/CR8 are rejected at max KL
+`0.08908/0.24993`. The full repository category+heldout suite also passes but is
+inside the protected window. This is **trained candidate complete; product gate
+open**: quality replay retains a dense shadow, and integrated allocator savings,
+serving lifecycle/soak/profiler/SLO gates remain open. Dense paging stays default;
+do not package metadata beside the GGUF. Evidence:
+[`CR2 trained candidate`](../benchmarks/results/2026-08-23-qwen38-external-dms-cr2-trained-candidate.json).
 
 ## Later research: AQUA, HIGGS, TurboQuant-style int4
 
@@ -1467,8 +1473,9 @@ These are deliberately after dense INT8 and DMS:
     quality/capacity matrices.
 20. [ ] Complete `IKV-C7`: compare BF16/serial/direct economics, publish the
     retained decision, and remove the mirrored seam when safe.
-21. [ ] Port FastDMS metadata/compact allocator semantics and train/import a
-    matching DMS retrofit before any DMS quality claim.
+21. [x] Port FastDMS metadata/compact allocator semantics and train/import a
+    matching DMS retrofit before any DMS quality claim. Exact Qwen3.8 external
+    CR2 candidate passes the outer quality floor; product serving remains open.
 22. [ ] Port DMS streaming pack/compact decode and combine DMS with a
     quality-admitted storage dtype; do not assume current dense INT8 is that
     dtype.
