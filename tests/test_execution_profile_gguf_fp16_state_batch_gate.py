@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 
 import numpy as np
@@ -36,6 +37,21 @@ def _trajectory(token: int, delta: float = 0.0):
             "logits": np.asarray([0.0, 1.0 + delta, -1.0], dtype=np.float32),
         },
     )
+
+
+def test_fp16_state_environment_explicitly_disables_promoted_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(gate.FP16_STATE_ENV, raising=False)
+
+    with gate.fp16_state_environment(False):
+        assert os.environ[gate.FP16_STATE_ENV] == "0"
+
+    assert gate.FP16_STATE_ENV not in os.environ
+    monkeypatch.setenv(gate.FP16_STATE_ENV, "1")
+    with gate.fp16_state_environment(False):
+        assert os.environ[gate.FP16_STATE_ENV] == "0"
+    assert os.environ[gate.FP16_STATE_ENV] == "1"
 
 
 def test_cycle_tokens_reaches_exact_target_without_input_mutation() -> None:
