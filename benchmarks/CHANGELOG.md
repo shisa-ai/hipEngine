@@ -4,6 +4,14 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [gfx1151 native IU4 B3 prefill control] Qwen3.8-27B Q4_K_S actual layer-0
+  pack8 gate/up+SiLU / M64/128/256/512/1024: established the missing current-
+  owner R7 control at **3.869/3.937/4.170/8.240/16.234 ms**, **32.06–34.56
+  effective GB/s**, and **21.89–23.59 executed TFLOP/s (39.75–42.84% of the
+  measured 55.066-TFLOP/s F16 WMMA roof)**. Finite, activation-sensitive,
+  repeat-bit-deterministic, teardown-exact; diagnostic control only, no IU4 or
+  product-performance claim. `benchmarks/results/2026-08-23-gfx1151-qwen38-pack8-gate-up-prefill-control.json`.
+
 - [gfx1151 native IU4 diagnostic — attribution correction] The R2 gate/up leaf's
   tiny-M loss was attributed to the U4/S4 representation ("the padded IU4
   core"). It is an **implementation** result: the candidate core sustains

@@ -1,8 +1,8 @@
 # MTP IU4 verifier research plan
 
-_Status: R0–R2 complete; single-request B1–B3 IU4 rejected on representation
-economics. R2's candidate core is implementation-limited and must be rebuilt
-before any wide-M or prefill number from it is trusted._
+_Status: R0–R2 complete; B1–B3 evidence backfilled; single-request B1–B3
+IU4 rejected on representation economics. R2's candidate core remains
+implementation-limited; R6 rebuild is the next blocking kernel step._
 
 _Branch: `mpt-iu4`_
 
@@ -898,13 +898,27 @@ is anomalous. Add a derived `accumulators_per_wave` and
 unblocked).
 *Accept:* R2 re-emission flags the core.
 
-**B3. Missing prefill baseline.** No artifact anywhere records
-`pack8_dual_wmma_prefill_silu_bf16` gate/up time at actual prompt shapes, so
-§4.2's priority-1 ranking rests on inference. Measure the current owner alone —
-no IU4 — for layer-0 gate/up at M=64/128/256/512/1024, same protocol as R2
-(3 warmups, 15 counterbalanced HIP-event pairs, cold pool).
-*Accept:* a compact artifact giving ms, effective GB/s, and executed TFLOP/s
-versus the 55.066 F16 WMMA roof. **This is the control R7 must beat.**
+**B3. Missing prefill baseline — complete.** Measured the current
+`pack8_dual_wmma_prefill_silu_bf16` owner alone on actual layer-0 gate/up at
+M=64/128/256/512/1024 with 3 paired warmups, 15 counterbalanced HIP-event
+activation pairs, and the 133,693,440-byte pack8 cold-pool payload. The body
+owns 256 rows per block, so M64/M128 are deliberately charged for the padded
+WMMA work and M512/M1024 for two/four complete weight sweeps:
+
+| M | Median ms | Effective payload GB/s | Executed TFLOP/s | F16 WMMA roof |
+| ---: | ---: | ---: | ---: | ---: |
+| 64 | 3.869 | 34.56 | 23.59 | 42.84% |
+| 128 | 3.937 | 33.95 | 23.18 | 42.09% |
+| 256 | 4.170 | 32.06 | 21.89 | 39.75% |
+| 512 | 8.240 | 32.45 | 22.15 | 40.23% |
+| 1024 | 16.234 | 32.94 | 22.49 | 40.84% |
+
+Outputs are finite, activation-sensitive, repeat-bit-deterministic, and tracked
+allocation tears down 0→0. This validates the prefill classification: the
+control is nowhere near the 221-GB/s weight roof and reaches only about 40–43%
+of the measured 55.066-TFLOP/s F16 WMMA roof while also paying Q4_K→FP16
+reconstruction. **This is the control R7 must beat.** Artifact:
+[`2026-08-23-gfx1151-qwen38-pack8-gate-up-prefill-control.json`](benchmarks/results/2026-08-23-gfx1151-qwen38-pack8-gate-up-prefill-control.json).
 
 **B4. Honest tiny-M re-measure.** After R6, re-run the existing R2 leaf command
 unchanged at rows 2,3,4,5. Expected ~0.42 ms inclusive and 1.10×–1.32×.
