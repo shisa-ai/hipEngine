@@ -4031,3 +4031,30 @@ should be boring.
   submission campaign. Promote a bucket only after a predeclared same-protocol
   experiment improves complete wall and passes its full context/lifecycle/SLO
   packet; never use exactness alone as a speed claim.
+
+## Native IU4 S4 sidecar research family is registered but unrouted
+
+- Added 2026-08-23 during the MTP-IU4 review. `hip_gfx1151/quant/iu4_s4_sidecar.{hip,py}`
+  registers `activation_quant/iu4_u4_row_v1` and
+  `linear_pair_silu/iu4_s4_sidecar_v1` through `register_iu4_s4_sidecar_kernels()`,
+  but nothing in model/runtime dispatch resolves either key. The current exact
+  qmicro Q8_1x2 Q4_K_S chain remains the declared strict fallback and the only
+  live owner. This is intentional for a T3 research leaf, but the registration
+  is live surface with no consumer and no route telemetry.
+- Second, weaker issue: `iu4_s4_matmul_i32_probe` is a bare-I32 probe with no
+  correction/scale/epilogue. It exists only to test nibble/sign/lane layout and
+  is superseded by the operation-complete dual kernel for every measurement
+  purpose.
+- Known defect carried by the current implementation (MTP-IU4.md §3.1): the
+  operation-complete core is a 1-accumulator, 24-VGPR, 64-thread kernel running
+  at ~70% of the memory roof and 9-11% of the IU4 arithmetic roof. MTP-IU4.md
+  punchlist item R6 rebuilds it. Do not delete the family before R6/R7 resolve.
+- Removal trigger: if R7 (dense prefill gate/up A/B) fails to beat
+  `pack8_dual_wmma_prefill_silu_bf16`, unregister both keys and drop the family
+  plus `hipengine/quant/iu4_s4.py`, the CPU-reference oracle, and the leaf
+  script, retaining only the compact artifacts and this document as evidence. If
+  R7 wins, the family stops being a research leaf and must acquire an immutable
+  sidecar manifest, explicit representation selection, route telemetry, and a
+  registered fallback per MTP-IU4.md §8 before any default-on consideration.
+- Drop `iu4_s4_matmul_i32_probe` and its wrapper independently once R6 lands,
+  unless the rebuilt core still needs a layout-only oracle.

@@ -4,6 +4,26 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [gfx1151 native IU4 diagnostic — attribution correction] The R2 gate/up leaf's
+  tiny-M loss was attributed to the U4/S4 representation ("the padded IU4
+  core"). It is an **implementation** result: the candidate core sustains
+  **153.9 GB/s** while its own control sustains **218.3 GB/s** on the same host,
+  layer pair, and launch — **70% of the memory roof** — and executes **9.6-12.5
+  TOPS against the measured 109.715 TOPS IU4 roof (9-11%)**. Cause is register
+  blocking, not arithmetic: 1 accumulator per wave, 24 VGPR, 64 threads, 1 KiB
+  LDS, one 16-column N-tile, versus 16 accumulators and 32 KiB LDS staging in
+  the in-tree prefill owner. Projected onto the control's own 218.3 GB/s the
+  candidate reaches **0.419 ms → 1.10x/1.13x/1.32x at M2/M3/M4**, reversing the
+  recorded 0.787x/0.800x/0.920x. **No measured value changed and the tiny-M
+  rejection is unchanged**, but its basis moves from leaf speed to representation
+  economics: the whole available win is the 1.12x byte ratio (89.4 vs 100.3 MB)
+  → **1.06x target window** for +5.329 GiB and a T3 campaign. The M16-128 rows
+  (3.190-4.463x) are correspondingly **understated** and are withdrawn as bounds.
+  Added a mandatory candidate-vs-control percent-of-roof gate before any future
+  IU4 comparison, and an R6-R9 punchlist. Source: `MTP-IU4.md` §3.1 / §13,
+  `benchmarks/results/2026-08-23-gfx1151-qwen38-iu4-s4-gate-up-leaf.json`,
+  `worklog/entries/20260823T040601.399916Z-lhl-mtp-iu4-review-corrections-70f9a1.md`.
+
 - [Qwen3.8-27B DFlash2 diagnostic — attribution correction] The DFlash2 rows'
   recorded loss reason was wrong: MTP B3's comparator acceptance was read from
   `target_forward_rows / cycles` (**3.85 verify rows/cycle**) as if it were

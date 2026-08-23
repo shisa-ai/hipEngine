@@ -1,6 +1,8 @@
 # MTP IU4 verifier research plan
 
-_Status: R0–R2 complete; single-request B1–B3 IU4 rejected, wide/concurrent research leaf retained_
+_Status: R0–R2 complete; single-request B1–B3 IU4 rejected on representation
+economics. R2's candidate core is implementation-limited and must be rebuilt
+before any wide-M or prefill number from it is trusted._
 
 _Branch: `mpt-iu4`_
 
@@ -66,6 +68,41 @@ not the model full-logit gate.
 packed concurrent verification / M>=8 investigation, with the strongest case
 at M>=16, but require an original-weight/offline-optimized S4 product and the
 full T3 model quality packet before any runtime integration.
+
+### Verdict correction (2026-08-23 review)
+
+The rejection above stands, but R2's stated mechanism was wrong and its wide-M
+rows are not usable evidence. **The R2 candidate core is implementation-limited,
+not representation-limited.** See §3.1. In summary:
+
+- The candidate core sustains **150–155 GB/s** at M2–M16 while its own control,
+  on the same host, same layer pair, and same launch, sustains **218.3 GB/s**.
+  It runs **30% below the 221 GB/s roof the control demonstrably reaches**.
+- It executes **9.6–12.5 TOPS** against the measured 109.715-TOPS IU4 roof —
+  **9–11% of peak**. It is therefore neither compute-bound nor at the memory
+  roof, so it never entered the regime this document's roofline reasons about.
+- Projected onto the control's own demonstrated 218.3 GB/s, the candidate would
+  reach **0.419 ms inclusive**, i.e. **1.10×/1.13×/1.32× at M2/M3/M4** — wins,
+  not the recorded 0.787×/0.800×/0.920× losses.
+
+That projected win is **exactly the 1.12× byte ratio** (89,407,488 S4 bytes
+versus 100,270,080 Q4_K_S bytes) and matches §3's own 1.14× bandwidth-only
+ceiling. So the corrected tiny-M finding is sharper than the original:
+
+> At tiny M the only available lever is **bytes, not ops**. The 2× arithmetic
+> lane contributes nothing, because both the current owner and any fixed
+> candidate are pinned at the weight-bandwidth roof.
+
+Feeding the optimistic 1.32× through R1's measured 23.93% B3 gate/up wall share
+yields **1.06× on the target window** in exchange for 5.329 GiB resident, 15.9%
+weight NRMSE, U4 activations, and a full T3 quality campaign. The go/no-go
+result is unchanged; only its justification is corrected.
+
+**The wide-M rows cut the other way.** R2's M64–M128 results (3.190×–4.463×) are
+**understated**, measured with the same 1-accumulator core at 11% of the IU4
+roof. They are not a floor on what a properly blocked IU4 kernel can do, and
+they remain the wrong control (decode rowtile8, not bulk prefill WMMA). The
+prefill screen in §4.2 is consequently *under*-argued, not over-argued.
 
 ## 1. Scope and non-goals
 
@@ -223,6 +260,68 @@ is 25.892 ms at 221 GB/s, so its impossible zero-pack saving is 9.684 ms of the
 profiled 148.655-ms target window (1.070×). Applying the leaf's more conservative
 1.14× ceiling saves only 4.37 ms (about 2.9%).
 
+### 3.1 Implementation-quality control (2026-08-23 review)
+
+R2 compared a naive candidate against a fully tuned control and attributed the
+gap to the representation. The artifact's own fields refute that attribution:
+
+| M | Control ms | IU4 ms | **IU4 GB/s** | **Control GB/s** | IU4 executed TOPS | Row util |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2 | 0.459 | 0.584 | **153.9** | **218.3** | 9.82 | 0.125 |
+| 3 | 0.473 | 0.591 | **153.5** | 212.0 | 9.79 | 0.188 |
+| 4 | 0.553 | 0.601 | **152.6** | 181.4 | 9.73 | 0.250 |
+| 5 | 0.682 | 0.571 | 152.7 | 147.1 | 9.74 | 0.312 |
+| 8 | 0.958 | 0.600 | 154.2 | 104.6 | 9.84 | 0.500 |
+| 16 | 1.913 | 0.600 | 150.2 | 104.9 | 9.59 | 1.000 |
+| 32 | 3.874 | 1.104 | 161.4 | 103.5 | 10.30 | 1.000 |
+| 64 | 7.961 | 1.991 | 183.7 | 100.8 | 11.72 | 1.000 |
+| 96 | 11.977 | 2.880 | 189.8 | 100.5 | 12.11 | 1.000 |
+| 128 | 16.374 | 3.669 | 196.5 | 98.0 | 12.54 | 1.000 |
+
+Two diagnostics dominate. First, **candidate core time is flat at ~0.59 ms from
+M2 through M16** while row utilization rises 8×; the kernel is insensitive to
+the very axis the tiny-M thesis is about. Second, the candidate never approaches
+either roof: 153 GB/s against a 221 GB/s memory roof, and 9.6–12.5 TOPS against
+a 109.715 TOPS arithmetic roof.
+
+The cause is visible in the retained source and the retained rocprof block, and
+is a register-blocking deficit rather than anything about U4/S4:
+
+| Property | R2 candidate `iu4_s4_dual_silu_bf16_kernel` | Production owner `gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16_kernel` |
+| --- | --- | --- |
+| Source | `hip_gfx1151/quant/iu4_s4_sidecar.hip:143` | `hip_gfx1100/quant/gguf_q4_k_prefill.hip:515` |
+| Accumulators per wave | **1** (`i32x8_t acc`) | **16** (`acc_a[2][4]` + `acc_b[2][4]`) |
+| Workgroup | 64 threads / 2 waves | 128 threads / 4 waves |
+| VGPR (measured) | **24** | register-blocked |
+| LDS (measured) | **1 KiB** (epilogue staging only) | **32 KiB** weight staging union |
+| Operand staging | none; every block re-reads A from global | LDS-staged weights, reused fragments |
+| N-tile per block | 1 (16 columns) | 2 (32 columns) |
+| Dependent WMMA chain | **320-deep, single chain** | 16 independent chains |
+
+The consequences compound:
+
+1. **One accumulator chain.** R0's own instruction screen established that
+   **8 independent chains** are required to reach 109.715 TOPS; a single chain
+   exposes the full WMMA latency chain 320 times per block.
+2. **No activation reuse.** With one 16-column N-tile, all 1,088 x-blocks
+   re-read the whole packed activation tile: about **44.6 MB of redundant
+   logical traffic against 89.4 MB of weights**, roughly a 50% overhead.
+3. **Shallow memory-level parallelism.** 24 VGPR and no K-unroll leave only
+   about two 8-byte loads in flight per wave, and `lane16 = lane & 15` means
+   lanes 16–31 duplicate lanes 0–15, so each 32-lane load instruction fetches
+   only 128 unique bytes.
+
+The M32–M128 bandwidth climb (161→196 GB/s) is itself confirmation: the only
+thing that changes there is `grid.y` growing 2→8, adding the block-level
+parallelism the kernel fails to express within a block.
+
+**Rule adopted from this review:** a candidate kernel may not be compared
+against a tuned production owner until it reaches a comparable fraction of the
+roof that binds it. Any future IU4 leaf must report candidate-versus-control
+effective bandwidth and percent-of-arithmetic-roof in its artifact, and a
+candidate below ~85% of its binding roof is a **kernel result, not a
+representation result**.
+
 ## 4. General U4 applicability beyond MTP
 
 The measured 2× instruction rate is not MTP-specific. It is a gfx1151
@@ -290,6 +389,51 @@ not be reused as proof: its M16–128 control intentionally repeats the decode
 rowtile8 owner. A prefill decision requires an operation-complete comparison
 against `pack8_dual_wmma_prefill_bf16_bf16_out` and the corresponding current
 bulk down/projection owners at actual prompt shapes.
+
+### 4.2.1 Why prefill is the compound case (2026-08-23 review)
+
+This section previously ranked prefill first without quoting a single prefill
+number, which left the top-ranked opportunity unquantified. Two structural
+facts, both checkable in tree, make the case concrete:
+
+- **Prefill is not weight-bandwidth-bound.** At the campaign's ~399 tok/s
+  512-shape prefill, the 16.12 GB model file is swept once per 512-token
+  forward pass, i.e. on the order of **12.5 GB/s against a 221 GB/s roof**.
+  Unlike every decode/verify shape in this document, prefill has bandwidth
+  headroom to spare and is limited by arithmetic and dequantization work.
+- **IU4 removes a stage the current owner cannot avoid.** The retained owner
+  `gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16_kernel` reconstructs Q4_K
+  subblocks into FP16 in a 32-KiB LDS union (`scale*q - min` per value) before
+  any WMMA issues. **A packed S4 companion deletes that decode entirely** —
+  nibbles feed `v_wmma_i32_16x16x16_iu4` directly — *and* doubles the
+  arithmetic roof from 55.066 to 109.715.
+
+That compound effect (dequant elimination **plus** 2× arithmetic), not the
+instruction ratio alone, is the most plausible explanation for Kairic's
+2.52–3.48× at M96–512 in §5. It is also the only surface where all five
+§4.1 conditions can hold at once.
+
+The corresponding warning is that **R2's kernel is not a candidate for this
+comparison as written.** Per §3.1 it has 1 accumulator per wave versus the
+prefill owner's 16, no operand staging versus 32 KiB, and 24 VGPR. Against a
+tuned bulk-prefill owner it would plausibly *lose* despite holding a 2×
+arithmetic roof. R6 must land before R7 is meaningful.
+
+### 4.2.2 Disposition of the DOT8 lane
+
+The measured **56.830 versus 28.252 TOPS** U4×S4 DOT8 advantage deserves an
+explicit disposition rather than the single dismissive sentence in §4.1,
+because DOT8 is the one lane with **zero tile-underfill exposure** and is
+therefore the natural tiny-M shape: it would inherit the existing rowtile8
+owner's demonstrated 218 GB/s memory behavior and swap only the arithmetic.
+
+**Disposition: rejected for tiny M, on the §3.1 economics rather than on
+speed.** A DOT8/S4 port of the current rowtile8 owner would land at the same
+~0.41 ms weight-stream floor as a fixed WMMA kernel, because at M2–M4 both are
+bandwidth-bound and the only lever is the 1.12× byte ratio. It buys the same
+1.06× target window and costs the same 5.329 GiB and T3 campaign. DOT8 is
+worth revisiting only if a future shape is arithmetic-bound at low M — none is
+currently identified. Recorded so this option is not re-derived later.
 
 ### 4.3 KV-cache use is a different thesis
 
@@ -587,6 +731,16 @@ layer 0 because every native B1–B3 shape fails the inclusive speed gate and th
 naive re-Q4 sidecar is numerically far from qualified; layers 8/63 and a
 model-wide allocation cannot change that go/no verdict.
 
+> **Superseded in part by the 2026-08-23 review (§3.1).** The tiny-M go/no
+> verdict survives on representation economics, but **every timing row in this
+> table is a lower bound produced by a 1-accumulator, 24-VGPR, 64-thread
+> candidate running at 9–11% of the IU4 arithmetic roof and 70% of the memory
+> roof.** The M2–M4 losses are implementation-scoped and reverse under a
+> properly blocked kernel; the M16–M128 wins are understated by an unknown but
+> large factor. **Do not cite any row of this table as a bound on IU4** — cite
+> it only as the measured behavior of the R2 reference implementation. R6
+> in §13 replaces it.
+
 CPU and GPU nibble/sign/correction tests pass. The cache-only trace sees the
 operation-complete core at local64, grid-x 69,632, grid-y 1/2/4/6/8, 24 VGPR,
 1 KiB LDS, and zero scratch; saved-code disassembly contains two static
@@ -651,18 +805,31 @@ Promotion questions:
 | --- | --- | --- |
 | Native instruction | Expected IU4 ISA; >=1.8× matched IU8/FP16 median; stable samples | **Pass**: 1.98–2.00× |
 | Tiny-M useful arithmetic | Account for `M/16` tile utilization, not raw TOPS | **Warning**: M4 ≈ DOT4 roof |
-| Actual-weight gate/up | Operation-complete M2–5 beats current owner with pack included and passes declared leaf numerics | **Fail**: M2/M3/M4 = 0.787×/0.800×/0.920×; naive S4 unqualified |
+| **Candidate implementation quality** | Candidate reaches >=85% of its binding roof before any comparison against a tuned owner | **Fail (new, §3.1)**: 153 GB/s vs 218 GB/s control, 9–11% of arithmetic roof |
+| Actual-weight gate/up | Operation-complete M2–5 beats current owner with pack included and passes declared leaf numerics | **Fail, implementation-scoped**: measured 0.787×/0.800×/0.920×, but the candidate is kernel-limited per §3.1. Not yet a verdict on the representation. Roof-projected 1.10×/1.13×/1.32×. |
+| **Tiny-M representation economics** | S4 bytes buy enough target wall to justify the companion | **Fail, representation-scoped (decisive)**: the entire available win is the 1.12× byte ratio → 1.06× target window for +5.329 GiB and a T3 campaign |
 | Family attribution | Measured all-layer gate/up share and effective BW justify expected target-wall delta | **Pass, bounded**: 21.9–25.2% wall; ideal zero-pack S4 ceiling 1.032–1.070× |
-| Memory ROI | Measured complete target/cycle gain justifies +5.329 GiB gate/up (or +7.988 GiB FFN) | **Fail for c1 B1–B3**: leaf is slower; no model-wide allocation |
+| Memory ROI | Measured complete target/cycle gain justifies +5.329 GiB gate/up (or +7.988 GiB FFN) | **Fail for c1 B1–B3**: even the roof-projected leaf yields only 1.06×; no model-wide allocation |
 | T3 quality | Full strict-teacher/determinism/isolation/BF16-relative/task packet passes | Not run |
 | MTP economics | Full category suite beats same-protocol true AR and current B3 without category regression | Not run |
 | Lifecycle | Sidecar load/fallback/close reaches zero tracked allocation and bounded process memory | **One-layer pass**: tracked 0→0; model-wide not run |
 
+The decisive tiny-M gate is now **representation economics**, not the leaf's
+measured speed. The leaf's speed row is implementation-scoped and would flip
+sign under a properly blocked kernel; the economics row would not.
+
 A failed tiny-M gate does not invalidate IU4 generally. It redirects the lane to
 `M>=32` packed verification and `M>=96` prompt work, where the roofline and
-Kairic evidence are much stronger.
+Kairic evidence are much stronger — and where §3.1 means the current evidence
+**understates** the opportunity.
 
-## 12. Immediate next command sequence
+## 12. Reproduction command sequence
+
+> These commands reproduce the **retained R0-R2 evidence as measured**. They are
+> no longer the "next" work — see **§13 Punchlist** for the current ordered
+> handoff. Note that the R2 command below reproduces the
+> implementation-limited core described in §3.1; after R6 lands, the same
+> command becomes backfill item B4.
 
 ```bash
 # 1. Re-run/inspect the instruction screen.
@@ -688,6 +855,145 @@ python3 scripts/qwen38_iu4_s4_gate_up_leaf.py \
 The current lineage command is mechanically blocked by the already documented
 missing `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. No external kernel
 was ported in R0; Kairic/Clang were used only as read-only references.
+
+## 13. Punchlist (2026-08-23 review handoff)
+
+Ordered work list for the kernel lane. **B** items are backfill — evidence that
+should already exist or corrections to landed material. **N** items are new
+work. R6 gates everything downstream: until the candidate core reaches a
+respectable fraction of its binding roof, no IU4 comparison in this document is
+a representation result.
+
+### Dependency order
+
+```text
+B1,B2,B3  (independent, cheap)
+   |
+   v
+R6  core rebuild  ------> B4 (re-measure tiny M; verdict confirmation only)
+   |
+   +--> R7  prefill gate/up A/B   <-- the actual 2x-TOPS thesis
+   |         |
+   |         +--> R8  full prefill FFN (down) 
+   |
+   +--> R9  packed concurrent verifier (only after a clean native batch control)
+```
+
+### B — backfill
+
+**B1. Artifact schema: mandatory implementation-quality fields.**
+Every IU4 artifact must carry, per shape: candidate effective GB/s, control
+effective GB/s, candidate percent-of-arithmetic-roof, candidate
+percent-of-memory-roof, and the binding roof named explicitly. R2's artifact has
+the raw numbers but no derived comparison, which is how the §3.1 defect survived
+review. Add to `scripts/qwen38_iu4_s4_gate_up_leaf.py` emission.
+*Accept:* re-emitting the R2 artifact shows `binding_roof="memory"`,
+`percent_of_binding_roof≈0.70`.
+
+**B2. Retained rocprof block must include occupancy-relevant resources.**
+The R2 profiler block records VGPR/LDS/scratch but no waves-per-SIMD or
+achieved-occupancy estimate, and nothing flagged that 24 VGPR on a WMMA kernel
+is anomalous. Add a derived `accumulators_per_wave` and
+`vgpr_anomaly` heuristic (a WMMA kernel under ~64 VGPR is almost certainly
+unblocked).
+*Accept:* R2 re-emission flags the core.
+
+**B3. Missing prefill baseline.** No artifact anywhere records
+`pack8_dual_wmma_prefill_silu_bf16` gate/up time at actual prompt shapes, so
+§4.2's priority-1 ranking rests on inference. Measure the current owner alone —
+no IU4 — for layer-0 gate/up at M=64/128/256/512/1024, same protocol as R2
+(3 warmups, 15 counterbalanced HIP-event pairs, cold pool).
+*Accept:* a compact artifact giving ms, effective GB/s, and executed TFLOP/s
+versus the 55.066 F16 WMMA roof. **This is the control R7 must beat.**
+
+**B4. Honest tiny-M re-measure.** After R6, re-run the existing R2 leaf command
+unchanged at rows 2,3,4,5. Expected ~0.42 ms inclusive and 1.10×–1.32×.
+*Accept:* verdict confirmation — the §"Verdict correction" projection is
+validated or corrected. **This does not reopen the tiny-M decision**, which
+rests on representation economics (1.12× bytes → 1.06× target window), not on
+this measurement. Record and move on.
+
+### R6 — candidate core rebuild (blocking prerequisite)
+
+Rebuild `iu4_s4_dual_silu_bf16_kernel` to production blocking standards. The
+reference for structure is the in-tree owner
+`gguf_q4_k_pack8_dual_wmma_prefill_silu_bf16_kernel`
+(`hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.hip:515`) — same tiling
+philosophy, different arithmetic. Required changes:
+
+1. **Multiple independent accumulators.** Target 8–16 per wave via an
+   `OUT_TILES × ROW_TILES` register tile. R0 established 8 chains as the
+   requirement for the 109.715-TOPS roof. Budget ~64–128 VGPR; current 24 is
+   the defect signature.
+2. **Widen the N-tile per block** to 64–128 output columns so each activation
+   fragment is amortized across 4–8 weight tiles, cutting the ~44.6 MB
+   redundant activation traffic to 6–12% of weight traffic.
+3. **LDS-stage the packed activation tile.** For M≤16 the entire A operand is
+   ≤40 KiB; load once per workgroup and read from LDS in the K loop. Frees the
+   global load pipeline for weights exclusively.
+4. **Wider loads and K-unroll.** Move to 16-byte (`dwordx4`) loads consuming two
+   k-tiles, unrolled 4–8 deep so many requests are in flight per wave. Note the
+   `lane16 = lane & 15` duplication is inherent to the w32 WMMA ABI and is not
+   itself the bug — shallow MLP is.
+5. **Preserve the declared numerics exactly.** I32 zero-point correction, FP32
+   scales, BF16 gate/up publication before SiLU, and the registered strict
+   qmicro fallback are unchanged. This is a scheduling/blocking rewrite, not an
+   arithmetic change; the CPU-reference oracles in
+   `hipengine/kernels/cpu_reference/iu4_s4.py` must pass untouched.
+
+*Accept:* candidate reaches **>=85% of its binding roof** at M≤16 (i.e. >=188
+GB/s, expected ~0.42 ms) **and** materially raises executed TOPS at M=128 from
+the current 12.54. Existing `tests/test_iu4_s4_sidecar.py` green with no oracle
+edits. Deterministic-bits repeat preserved. Fresh rocprof kernel-trace showing
+the expected VGPR/LDS profile.
+
+*Anti-goal:* do not tune against layer 0 or the fixed R2 shape list; the kernel
+must be shape-general. No hardcoded M, N, or layer constants.
+
+### R7 — dense prefill gate/up A/B (the actual thesis)
+
+The §4.4 step-1 experiment, now with a real control. Compare the R6 kernel
+against B3's measured `pack8_dual_wmma_prefill_silu_bf16` at M=64/128/256/512,
+operation-complete on both sides (IU4 side includes U4 activation packing,
+correction, scales, BF16 publication, SiLU).
+
+*Accept:* a compact artifact with per-shape speedup, paired wins, both sides'
+percent-of-roof, and the family Amdahl share of a complete prefill pass. A win
+here is the first genuine evidence that the 2× lane is reachable in hipEngine.
+
+*Caveat to carry:* the S4 companion is still re-quantized from the dequantized
+Q4_K_S view (15.9% weight NRMSE). R7 is a **speed screen only**. Any retention
+requires the R3 numerical packet and an original-weight/offline-optimized S4
+product per §8.
+
+### R8 — full prefill FFN
+
+Only if R7 wins: add `down`, report complete prefill wall at 512/1K/4K against
+the campaign's 399.031/391.276/385.330 tok/s baseline, plus the T3 quality
+packet. Answers whether the 7.988 GiB full-FFN companion pays for itself on the
+prefill surface — a very different ROI question from the rejected 5.329 GiB
+decode-surface allocation, because prefill has no competing bandwidth pressure.
+
+### R9 — packed concurrent verifier
+
+Deferred behind R7. §4.2 correctly notes the current Qwen3.8 c8 route falls back
+to prefill WMMA and is not a qualified compute-bound batch owner, so there is no
+honest control to measure against yet. Build the native batch control first;
+R2's M16–128 rows do not substitute for one.
+
+### Explicitly not scheduled
+
+- **K4/V8 attention leaf.** Deprioritized: a bytes/capacity thesis, not a TOPS
+  thesis, and current KV targets are already met on both a 128-GiB unified host
+  and the W7900's 256K INT8 reach. Revisit only under measured capacity or
+  long-context bandwidth pressure.
+- **Tiny-M IU4 in any form**, WMMA or DOT8. Closed by representation economics
+  per §4.2.2 and the corrected verdict. B4 records the honest number for the
+  record; it does not reopen the decision.
+- **Direct Q4_K/qmicro nibble reuse (§6.2).** Remains a useful ceiling
+  experiment, but adds groupwise correction and metadata traffic to a surface
+  that is already bandwidth-bound at tiny M and dequant-bound at prefill — where
+  a clean S4 companion is strictly better.
 
 ## References
 
