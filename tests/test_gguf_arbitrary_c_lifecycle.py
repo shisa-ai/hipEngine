@@ -12,6 +12,7 @@ from scripts.gguf_arbitrary_c_lifecycle import (
     _expected_dense_group_masks,
     _expected_hole_group_masks,
     _group_masks,
+    _lifecycle_environment_snapshot,
     _load_quality_gate,
     _resolve_widths,
     _state_kv_accepted,
@@ -42,6 +43,25 @@ def test_gguf_arbitrary_c_lifecycle_defaults_cover_both_physical_windows() -> No
         ["--model", "/tmp/model.gguf", "--gdn-prefill-mode", "auto"]
     )
     assert production.gdn_prefill_mode == "auto"
+
+
+def test_gguf_arbitrary_c_lifecycle_records_production_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "1")
+    monkeypatch.setenv("GPU_MAX_HW_QUEUES", "2")
+    monkeypatch.setenv("HIPENGINE_GPU_MAX_HW_QUEUES_POLICY", "explicit")
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "exact")
+    args = build_parser().parse_args(
+        ["--model", "/tmp/model.gguf", "--gdn-prefill-mode", "auto"]
+    )
+
+    environment = _lifecycle_environment_snapshot(args)
+
+    assert environment["HIPENGINE_GGUF_FP16_RECURRENT_STATE"] == "1"
+    assert environment["GPU_MAX_HW_QUEUES"] == "2"
+    assert environment["HIPENGINE_GPU_MAX_HW_QUEUES_POLICY"] == "explicit"
+    assert environment["HIPENGINE_GGUF_GDN_PREFILL_MODE"] == "auto"
 
 
 def test_gguf_arbitrary_c_lifecycle_summarizes_declared_packed_masks() -> None:
