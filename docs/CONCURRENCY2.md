@@ -153,7 +153,8 @@ retains dense KV. Product closure still requires sole-owner no-shadow GGUF
 serving, allocator-visible device savings, c1-c32 pressure/cancellation/recovery/
 drain, long c1/c8 soak, serving profiler identities, and production task/SLO
 gates. Dense global paging remains default and DMS prefix/speculative modes stay
-off. Evidence: [`CR2 trained candidate`](../benchmarks/results/2026-08-23-qwen38-external-dms-cr2-trained-candidate.json).
+off. Full process, results, capacity/speed goals, and the ordered production
+punchlist: [`DMS.md`](DMS.md). Evidence: [`CR2 trained candidate`](../benchmarks/results/2026-08-23-qwen38-external-dms-cr2-trained-candidate.json).
 
 ### gfx1151 qualification and optimization plan
 
