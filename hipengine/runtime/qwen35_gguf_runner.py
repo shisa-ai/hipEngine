@@ -21928,7 +21928,7 @@ class Qwen35GGUFResidentSession:
             self._packed_verify_scratch = _GGUFFullAttentionPrefillScratch.allocate(
                 self.runner,
                 rows=union_rows,
-                capacity=union_max_seq,
+                capacity=max(union_rows, union_max_seq),
                 allocate_kv_cache=False,
                 segments=union_segments,
                 runtime=runtime,
