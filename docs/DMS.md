@@ -60,6 +60,7 @@ The normative KV ABI and broader storage roadmap remain in
 | Allocator-visible production savings | Partial: c1 tracked residency drops 4.592/7.813 GiB at 128K/256K; full P7 controls open |
 | Serving throughput and profiler evidence | Integrated diagnostic timings measured; no comparator or performance claim |
 | Integrated c1-c32 lifecycle and long soak | Open |
+| Long-context-stable sidecar | Current candidate rejected; disjoint calibration/heldout bias-repair campaign in progress |
 | Portable cross-host sidecar package | Open |
 | End-to-end campaign and production guide | Complete in this document |
 | Merge into `origin/main` | Open |
@@ -212,6 +213,8 @@ torch-free.
 | `scripts/qwen38_dms_quality.py` | Dense/no-evict/CR exact-Q4 KL and top-1 runner |
 | `scripts/qwen38_dms_integrated_long.py` | Explicit c1 no-shadow 128K/256K capacity/decode/teardown runner |
 | `scripts/qwen38_dms_integrated_quality.py` | Dense-teacher versus compact no-evict/sidecar full-logit quality gate |
+| `scripts/qwen38_dms_build_long_manifest.py` | Builds source-disjoint 32K calibration/heldout corpora under the benchmark firewall |
+| `scripts/qwen38_dms_calibrate_long_bias.py` | Captures score-only long streams and folds per-layer/head CR2 quantiles into 64 BF16 biases |
 
 The implementation derives its DMS semantics from read-only FastDMS reference
 commit `c602b0ec3266da7f74d6a658b3dafcddb443fddd`. All hipEngine development and
