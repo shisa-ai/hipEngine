@@ -7,10 +7,13 @@ simultaneous release through the last completed response.  Backend-native decode
 timings are retained as diagnostics and are never substituted for that wall.
 
 Each engine first generates independent c1 token-ID oracles for the four prompt
-rows used by an arbitrary logical c1-c32 sweep. Every warmup, measured burst,
-and live-admission row must return exactly the c1 trajectory for its prompt.  hipEngine's
-resident TTFT/ITL summaries and route/fallback counters are scraped separately;
-llama.cpp does not expose equivalent non-streaming percentile summaries.
+rows used by an arbitrary logical c1-c32 sweep. Strict evidence binds every
+warmup, measured burst, and live-admission row to that trajectory. Production
+evidence keeps c1/cN equality diagnostic, requires a complete external
+numerical/task/control bundle, and binds exact serving control plus same-schedule
+determinism. hipEngine's resident TTFT/ITL summaries and route/fallback counters
+are scraped separately; llama.cpp does not expose equivalent non-streaming
+percentile summaries.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ import os
 import re
 import shlex
 import signal
+import socket
 import statistics
 import subprocess
 import sys
@@ -46,12 +50,28 @@ from hipengine.benchmark.prompts import file_sha256, token_ids_sha256  # noqa: E
 from hipengine.benchmark.provenance import collect_model_identity  # noqa: E402
 from hipengine.util.amdgpu_vram import VramSampler, select_card  # noqa: E402
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 ENGINE_CHOICES = ("hipengine", "llamacpp-hip", "llamacpp-vulkan")
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_LLAMA_HIP_REPO = Path("/home/lhl/llama.cpp/llama.cpp-hip")
 DEFAULT_LLAMA_VULKAN_REPO = Path("/home/lhl/llama.cpp/llama.cpp-vulkan")
 DEFAULT_VULKAN_ICD = "/usr/share/vulkan/icd.d/radeon_icd.json"
+_CORRECTNESS_PROFILES = ("strict", "production")
+_PRODUCTION_CORRECTNESS_BUNDLE_KIND = "hipengine_server_production_correctness_bundle"
+_PRODUCTION_NUMERICAL_LIMITS = {
+    "kl_mean": 1e-3,
+    "kl_p95": 5e-3,
+    "kl_p99": 2e-2,
+    "kl_max": 5e-2,
+    "top1_agreement": 0.99,
+}
+_CORRECTNESS_RUNTIME_PATHS = (
+    "hipengine",
+    "kernels",
+    "scripts/server_f1_concurrency_bench.py",
+    "scripts/execution_profile_gguf_fp16_state_batch_gate.py",
+    "scripts/gguf_arbitrary_c_lifecycle.py",
+)
 _EFFECTIVE_SERVER_ENV_KEYS = (
     "HIPENGINE_BACKEND",
     "HIPENGINE_HIP_ARCH",
@@ -633,37 +653,146 @@ def correctness_summary(
     *,
     oracle: Mapping[str, Sequence[int]],
     expected_tokens: int,
+    profile: str = "strict",
 ) -> dict[str, Any]:
-    mismatches: list[dict[str, Any]] = []
+    normalized_profile = str(profile)
+    if normalized_profile not in _CORRECTNESS_PROFILES:
+        raise ValueError(f"unsupported correctness profile: {normalized_profile}")
+    control_mismatches: list[dict[str, Any]] = []
+    generated_id_mismatches: list[dict[str, Any]] = []
     exact_rows = 0
     for index, record in enumerate(records):
         prompt_hash = str(record.get("prompt_token_ids_sha256") or "")
-        generated = [int(token) for token in record.get("generated_token_ids") or ()]
         expected = oracle.get(prompt_hash)
+        raw_generated = record.get("generated_token_ids")
+        generated_valid = bool(
+            isinstance(raw_generated, Sequence)
+            and not isinstance(raw_generated, (str, bytes, bytearray))
+            and all(isinstance(token, int) and not isinstance(token, bool) for token in raw_generated)
+        )
+        generated = [int(token) for token in raw_generated] if generated_valid else []
+        control_reasons: list[str] = []
+        if expected is None:
+            control_reasons.append("prompt_not_in_declared_oracle")
+        if not generated_valid:
+            control_reasons.append("generated_token_ids_not_integer_sequence")
+        if len(generated) != int(expected_tokens):
+            control_reasons.append("completion_token_count_mismatch")
+        if control_reasons:
+            control_mismatches.append(
+                {
+                    "record_index": index,
+                    "request_index": record.get("request_index"),
+                    "prompt_token_ids_sha256": prompt_hash,
+                    "reasons": control_reasons,
+                    "expected_oracle_present": expected is not None,
+                    "expected_tokens": int(expected_tokens),
+                    "observed_tokens": len(generated),
+                }
+            )
         first = None if expected is None else _first_mismatch(generated, expected)
         if expected is not None and len(generated) == int(expected_tokens) and first is None:
             exact_rows += 1
-            continue
-        mismatches.append(
-            {
-                "record_index": index,
-                "prompt_token_ids_sha256": prompt_hash,
-                "expected_oracle_present": expected is not None,
-                "expected_tokens": int(expected_tokens),
-                "observed_tokens": len(generated),
-                "first_mismatch_index": first,
-                "expected_token": (
-                    int(expected[first])
-                    if expected is not None and first is not None and first < len(expected)
-                    else None
-                ),
-                "observed_token": int(generated[first]) if first is not None and first < len(generated) else None,
-            }
-        )
+        elif expected is not None and generated_valid:
+            generated_id_mismatches.append(
+                {
+                    "record_index": index,
+                    "request_index": record.get("request_index"),
+                    "prompt_token_ids_sha256": prompt_hash,
+                    "expected_tokens": int(expected_tokens),
+                    "observed_tokens": len(generated),
+                    "first_mismatch_index": first,
+                    "expected_token": (
+                        int(expected[first])
+                        if first is not None and first < len(expected)
+                        else None
+                    ),
+                    "observed_token": (
+                        int(generated[first])
+                        if first is not None and first < len(generated)
+                        else None
+                    ),
+                }
+            )
+    generated_id_binding = normalized_profile == "strict"
+    binding_mismatches = list(control_mismatches)
+    if generated_id_binding:
+        binding_mismatches.extend(generated_id_mismatches)
+    control_passed = bool(records) and not control_mismatches
+    generated_id_equality_passed = bool(records) and not generated_id_mismatches
     return {
-        "passed": bool(records) and not mismatches,
+        "profile": normalized_profile,
+        "passed": control_passed and (
+            generated_id_equality_passed if generated_id_binding else True
+        ),
+        "control_passed": control_passed,
+        "generated_id_equality_binding": generated_id_binding,
+        "generated_id_equality_passed": generated_id_equality_passed,
         "rows": len(records),
         "exact_rows": exact_rows,
+        "mismatch_count": len(binding_mismatches),
+        "mismatches": binding_mismatches,
+        "control_mismatch_count": len(control_mismatches),
+        "control_mismatches": control_mismatches,
+        "generated_id_mismatch_count": len(generated_id_mismatches),
+        "generated_id_mismatches": generated_id_mismatches,
+    }
+
+
+def _record_output_signature(record: Mapping[str, Any]) -> str:
+    raw_ids = record.get("generated_token_ids")
+    if isinstance(raw_ids, Sequence) and not isinstance(raw_ids, (str, bytes, bytearray)):
+        payload: Any = [int(token) for token in raw_ids]
+    else:
+        payload = {
+            "text": str(record.get("text") or ""),
+            "completion_tokens": int(record.get("completion_tokens") or 0),
+        }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def repeat_determinism_summary(
+    samples: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    runs: list[dict[tuple[int, str], str]] = []
+    run_sha256: list[str] = []
+    for sample in samples:
+        rows: dict[tuple[int, str], str] = {}
+        for record in sample.get("records", ()):
+            if not isinstance(record, Mapping):
+                continue
+            key = (
+                int(record.get("request_index", -1)),
+                str(record.get("prompt_token_ids_sha256") or ""),
+            )
+            rows[key] = _record_output_signature(record)
+        runs.append(rows)
+        encoded = json.dumps(
+            sorted((index, prompt_hash, value) for (index, prompt_hash), value in rows.items()),
+            separators=(",", ":"),
+        ).encode("utf-8")
+        run_sha256.append(hashlib.sha256(encoded).hexdigest())
+    mismatches: list[dict[str, Any]] = []
+    if runs:
+        expected = runs[0]
+        for run_index, observed in enumerate(runs[1:], start=1):
+            for key in sorted(set(expected) | set(observed)):
+                if expected.get(key) != observed.get(key):
+                    mismatches.append(
+                        {
+                            "run_index": run_index,
+                            "request_index": key[0],
+                            "prompt_token_ids_sha256": key[1],
+                            "expected_signature": expected.get(key),
+                            "observed_signature": observed.get(key),
+                        }
+                    )
+    return {
+        "passed": len(runs) >= 3 and bool(runs[0]) and not mismatches,
+        "runs": len(runs),
+        "required_runs": 3,
+        "run_sha256": run_sha256,
         "mismatch_count": len(mismatches),
         "mismatches": mismatches,
     }
@@ -958,7 +1087,7 @@ def _stream_batch_summary(
     qualifying = [
         row
         for row in rows
-        if row.get("stream_exact") is True
+        if row.get("stream_correctness_passed", row.get("stream_exact")) is True
         and _is_number(row.get("client_ttft_seconds"))
         and float(row["client_ttft_seconds"]) <= float(ttft_p95_limit)
         and all(
@@ -977,14 +1106,23 @@ def _stream_batch_summary(
         and row.get("stream_protocol_complete") is True
         for row in rows
     )
+    correctness_qualified = bool(rows) and all(
+        row.get("stream_correctness_passed", row.get("stream_exact")) is True
+        and row.get("stream_protocol_complete") is True
+        for row in rows
+    )
     wall = float(batch_wall_seconds)
     return {
-        "passed": exact,
+        "passed": correctness_qualified,
         "batch_wall_seconds": wall,
         "total_completion_tokens": total_tokens,
         "exact_generated_tok_s_aggregate": (
             total_tokens / wall if exact and wall > 0.0 else 0.0
         ),
+        "correctness_qualified_tok_s_aggregate": (
+            total_tokens / wall if correctness_qualified and wall > 0.0 else 0.0
+        ),
+        "generated_id_equality_passed": exact,
         "slo_goodput_tok_s_aggregate": qualifying_tokens / wall if wall > 0.0 else 0.0,
         "latency_seconds": {
             "ttft": ttft_summary,
@@ -1182,10 +1320,16 @@ def _run_stream_burst(
             and int(record.get("token_event_count") or 0) == int(args.decode_tokens)
             and record.get("finish_reason") is not None
         )
+        correctness_profile = str(args.correctness_profile)
+        generated_id_binding = correctness_profile == "strict"
         record["stream_oracle_mode"] = oracle_mode
         record["stream_output_exact"] = output_exact
+        record["stream_generated_id_equality_binding"] = generated_id_binding
         record["stream_protocol_complete"] = protocol_complete
         record["stream_exact"] = bool(output_exact and protocol_complete)
+        record["stream_correctness_passed"] = bool(
+            protocol_complete and (output_exact if generated_id_binding else True)
+        )
         record["generated_token_ids_sha256"] = (
             None
             if observed_ids is None
@@ -1725,6 +1869,226 @@ def _effective_server_environment(
     return {key: environment.get(key) for key in _EFFECTIVE_SERVER_ENV_KEYS}
 
 
+def _resolve_correctness_contract(
+    args: argparse.Namespace,
+    *,
+    engine: str,
+) -> dict[str, Any]:
+    profile = str(args.correctness_profile)
+    artifact_path = args.production_correctness_artifact
+    effective_environment = _effective_server_environment(args, engine=engine)
+    if profile == "strict":
+        if artifact_path is not None:
+            raise ValueError(
+                "--production-correctness-artifact is valid only with "
+                "--correctness-profile production"
+            )
+        return {
+            "profile": "strict",
+            "arithmetic_binding": "exact same-engine c1 generated trajectory",
+            "generated_id_equality_binding": True,
+            "public_profile_qualification_claim": False,
+            "runtime_execution_profile": effective_environment.get(
+                "HIPENGINE_EXECUTION_PROFILE"
+            ),
+            "bundle": None,
+        }
+    if profile != "production":
+        raise ValueError(f"unsupported correctness profile: {profile}")
+    if engine != "hipengine":
+        raise ValueError("production correctness profile is supported only for hipEngine")
+    if artifact_path is None:
+        raise ValueError(
+            "--correctness-profile production requires "
+            "--production-correctness-artifact"
+        )
+    if int(args.measured_runs) < 3:
+        raise ValueError("production correctness requires at least three measured runs")
+    if bool(args.streaming_primary) and int(args.stream_measured_runs) < 3:
+        raise ValueError("production streaming correctness requires at least three measured runs")
+    if effective_environment.get("HIPENGINE_GGUF_FP16_RECURRENT_STATE") != "1":
+        raise ValueError(
+            "production correctness requires explicit "
+            "HIPENGINE_GGUF_FP16_RECURRENT_STATE=1"
+        )
+    if effective_environment.get("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS") is not None:
+        raise ValueError("production correctness forbids a physical-width environment override")
+
+    requested_bundle = Path(artifact_path).expanduser()
+    if requested_bundle.is_symlink():
+        raise ValueError(
+            f"production correctness bundle must not be a symlink: {requested_bundle}"
+        )
+    resolved = requested_bundle.resolve()
+    if not resolved.is_file():
+        raise ValueError(f"production correctness bundle must be a regular file: {resolved}")
+    bundle = json.loads(resolved.read_text(encoding="utf-8"))
+    if not isinstance(bundle, Mapping):
+        raise ValueError("production correctness bundle root must be an object")
+    if bundle.get("schema_version") != 1:
+        raise ValueError("production correctness bundle schema_version must be 1")
+    if bundle.get("kind") != _PRODUCTION_CORRECTNESS_BUNDLE_KIND:
+        raise ValueError("unexpected production correctness bundle kind")
+    if bundle.get("status") != "passed" or bundle.get("correctness_profile") != "production":
+        raise ValueError("production correctness bundle must have passed production status")
+    runtime_scope = str(bundle.get("runtime_scope") or "")
+    public_claim = bundle.get("profile_qualification_claim")
+    if not (
+        (runtime_scope == "named_production" and public_claim is True)
+        or (
+            runtime_scope == "scoped_legacy_default_candidate"
+            and public_claim is False
+        )
+    ):
+        raise ValueError("production correctness bundle has an invalid runtime/profile claim")
+    if bundle.get("generated_id_equality_binding") is not False:
+        raise ValueError("production generated-ID equality must be diagnostic")
+
+    head = _capture(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT)
+    current_commit = str(head.get("stdout") or "").strip()
+    bundle_source_commit = str(bundle.get("source_commit") or "")
+    if head.get("returncode") != 0 or not bundle_source_commit:
+        raise ValueError("production correctness bundle source_commit is unavailable")
+    ancestor = _capture(
+        ["git", "merge-base", "--is-ancestor", bundle_source_commit, current_commit],
+        cwd=REPO_ROOT,
+    )
+    runtime_diff = _capture(
+        [
+            "git",
+            "diff",
+            "--quiet",
+            f"{bundle_source_commit}..{current_commit}",
+            "--",
+            *_CORRECTNESS_RUNTIME_PATHS,
+        ],
+        cwd=REPO_ROOT,
+    )
+    if ancestor.get("returncode") != 0 or runtime_diff.get("returncode") != 0:
+        raise ValueError(
+            "production correctness bundle source_commit is not a runtime-equivalent ancestor"
+        )
+    host = bundle.get("host")
+    if not isinstance(host, Mapping) or host.get("physical_host") != socket.gethostname():
+        raise ValueError("production correctness bundle physical host does not match")
+
+    configuration = bundle.get("configuration")
+    if not isinstance(configuration, Mapping):
+        raise ValueError("production correctness bundle configuration is missing")
+    model_identity = collect_model_identity(args.model)
+    model_fingerprint = model_identity.get("fingerprint")
+    if not isinstance(model_fingerprint, Mapping):
+        raise ValueError("model fingerprint is unavailable")
+    expected_fingerprint = configuration.get("model_fingerprint")
+    if not isinstance(expected_fingerprint, Mapping) or any(
+        expected_fingerprint.get(key) != model_fingerprint.get(key)
+        for key in ("algorithm", "value", "size_bytes")
+    ):
+        raise ValueError("production correctness bundle model fingerprint does not match")
+    expected_configuration = {
+        "backend": str(args.backend),
+        "quant": str(args.quant),
+        "kv_storage": str(args.hipengine_kv_storage),
+    }
+    for key, expected in expected_configuration.items():
+        if configuration.get(key) != expected:
+            raise ValueError(f"production correctness bundle {key} does not match")
+    candidate_environment = configuration.get("candidate_environment")
+    if not isinstance(candidate_environment, Mapping) or candidate_environment.get(
+        "HIPENGINE_GGUF_FP16_RECURRENT_STATE"
+    ) != "1":
+        raise ValueError("production correctness bundle does not identify FP16 state")
+
+    gates = bundle.get("gates")
+    if not isinstance(gates, Mapping):
+        raise ValueError("production correctness bundle gates are missing")
+    required_gates = (
+        "numerical",
+        "repeat_determinism",
+        "isolation",
+        "control_ownership",
+        "lifecycle",
+        "bf16_relative",
+        "task_quality",
+        "strict_fallback",
+    )
+    for name in required_gates:
+        gate = gates.get(name)
+        if not isinstance(gate, Mapping) or gate.get("passed") is not True:
+            raise ValueError(f"production correctness gate failed or missing: {name}")
+    if gates["repeat_determinism"].get("runs", 0) < 3:
+        raise ValueError("production repeat_determinism requires at least three runs")
+    if gates["strict_fallback"].get("registered") is not True:
+        raise ValueError("production strict_fallback must remain registered")
+
+    numerical = gates["numerical"]
+    summary = numerical.get("summary")
+    if not isinstance(summary, Mapping):
+        raise ValueError("production numerical summary is missing")
+    for metric, limit in _PRODUCTION_NUMERICAL_LIMITS.items():
+        value = _number(summary.get(metric))
+        if value is None:
+            raise ValueError(f"production numerical metric is missing: {metric}")
+        if metric == "top1_agreement":
+            passed = value >= limit
+        else:
+            passed = value <= limit
+        if not passed:
+            raise ValueError(f"production numerical metric failed: {metric}")
+    if list(numerical.get("scope_failures") or ()):
+        raise ValueError("production numerical scope failures are present")
+    if numerical.get("requires_outlier_review") is True:
+        review = numerical.get("manual_review")
+        if not isinstance(review, Mapping) or review.get("passed") is not True:
+            raise ValueError("production numerical outlier review is missing or failed")
+
+    source_artifacts = bundle.get("source_artifacts")
+    if not isinstance(source_artifacts, Sequence) or isinstance(
+        source_artifacts, (str, bytes, bytearray)
+    ) or not source_artifacts:
+        raise ValueError("production correctness source_artifacts are missing")
+    verified_sources: list[dict[str, str]] = []
+    for index, source in enumerate(source_artifacts):
+        if not isinstance(source, Mapping):
+            raise ValueError(f"production correctness source_artifacts[{index}] is invalid")
+        requested_source = Path(str(source.get("path") or "")).expanduser()
+        if requested_source.is_symlink():
+            raise ValueError(
+                f"production correctness source artifact must not be a symlink: {requested_source}"
+            )
+        source_path = requested_source.resolve()
+        if not source_path.is_file():
+            raise ValueError(f"production correctness source artifact is unavailable: {source_path}")
+        observed_sha256 = file_sha256(source_path)
+        if source.get("sha256") != observed_sha256:
+            raise ValueError(f"production correctness source artifact hash mismatch: {source_path}")
+        verified_sources.append({"path": str(source_path), "sha256": observed_sha256})
+
+    return {
+        "profile": "production",
+        "arithmetic_binding": (
+            "external same-model production numerical/task bundle plus exact "
+            "serving control and schedule-local determinism"
+        ),
+        "generated_id_equality_binding": False,
+        "public_profile_qualification_claim": bool(public_claim),
+        "runtime_scope": runtime_scope,
+        "runtime_execution_profile": effective_environment.get(
+            "HIPENGINE_EXECUTION_PROFILE"
+        ),
+        "bundle": str(resolved),
+        "bundle_sha256": file_sha256(resolved),
+        "source_commit": bundle_source_commit,
+        "current_commit": current_commit,
+        "model_fingerprint": dict(model_fingerprint),
+        "numerical_summary": {
+            key: float(summary[key]) for key in _PRODUCTION_NUMERICAL_LIMITS
+        },
+        "gates": {name: True for name in required_gates},
+        "source_artifacts": verified_sources,
+    }
+
+
 def _wait_ready(base_url: str, process: subprocess.Popen[str], log_path: Path, timeout: float) -> float:
     started = time.perf_counter()
     deadline = started + float(timeout)
@@ -2050,7 +2414,8 @@ def _run_width(
                 stream_measured.append(sample)
                 print(
                     f"{engine} c{concurrency} stream rep{repetition}: "
-                    f"exact={sample['exact_generated_tok_s_aggregate']:.3f} tok/s "
+                    f"qualified={sample['correctness_qualified_tok_s_aggregate']:.3f} tok/s "
+                    f"exact_diag={sample['exact_generated_tok_s_aggregate']:.3f} tok/s "
                     f"goodput={sample['slo_goodput_tok_s_aggregate']:.3f} tok/s "
                     f"wall={sample['batch_wall_seconds']:.3f}s",
                     flush=True,
@@ -2060,6 +2425,12 @@ def _run_width(
                 "warmup_runs": stream_warmups,
                 "measured_runs": stream_measured,
                 "summary": {
+                    "correctness_qualified_tok_s_aggregate": metric_summary(
+                        [
+                            float(sample["correctness_qualified_tok_s_aggregate"])
+                            for sample in stream_measured
+                        ]
+                    ),
                     "exact_generated_tok_s_aggregate": metric_summary(
                         [float(sample["exact_generated_tok_s_aggregate"]) for sample in stream_measured]
                     ),
@@ -2130,7 +2501,9 @@ def _run_width(
             measured_records,
             oracle=oracle,
             expected_tokens=int(args.decode_tokens),
+            profile=str(args.correctness_profile),
         )
+        repeat_determinism = repeat_determinism_summary(measured)
         warmup_records = [
             record for sample in warmups for record in sample["records"]
         ]
@@ -2139,6 +2512,7 @@ def _run_width(
                 warmup_records,
                 oracle=oracle,
                 expected_tokens=int(args.decode_tokens),
+                profile=str(args.correctness_profile),
             )
             if warmup_records
             else {
@@ -2157,6 +2531,7 @@ def _run_width(
                 live["records"],
                 oracle=oracle,
                 expected_tokens=int(args.decode_tokens),
+                profile=str(args.correctness_profile),
             )
         )
         rates = [float(sample["http_wall_tok_s_aggregate"]) for sample in measured]
@@ -2222,6 +2597,8 @@ def _run_width(
                 "request_wall_seconds": metric_summary(request_walls),
             },
             "correctness": {
+                "profile": str(args.correctness_profile),
+                "generated_id_equality_binding": str(args.correctness_profile) == "strict",
                 "oracle_scope": oracle_scope,
                 "oracle_generated_rows": [
                     list(oracle[token_ids_sha256(prompt)])
@@ -2234,6 +2611,7 @@ def _run_width(
                 "oracle_records": width_oracle_records,
                 "warmups": warmup_correctness,
                 "measured": measured_correctness,
+                "repeat_determinism": repeat_determinism,
                 "live_admission": live_correctness,
             },
             "execution": {
@@ -2334,6 +2712,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     if not args.model.exists():
         raise ValueError(f"model does not exist: {args.model}")
+    correctness_contract = _resolve_correctness_contract(args, engine=engine)
     args.work_dir.mkdir(parents=True, exist_ok=True)
     invocation = [sys.executable, str(Path(__file__).relative_to(REPO_ROOT)), *sys.argv[1:]]
     payload: dict[str, Any] = {
@@ -2346,9 +2725,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "engine": engine,
         "protocol": {
             "primary_metric": (
-                "exact SLO-qualified returned completion tokens / barrier-to-last-SSE-completion wall"
+                "correctness-profile-qualified SLO completion tokens / barrier-to-last-SSE-completion wall"
                 if bool(args.streaming_primary)
-                else "C*returned_completion_tokens / barrier-to-last-response HTTP wall"
+                else "C*correctness-profile-qualified completion tokens / barrier-to-last-response HTTP wall"
             ),
             "primary_metric_scope": "prefill + decode + server scheduling + localhost HTTP/SSE",
             "blocking_control_metric": "C*returned_completion_tokens / barrier-to-last-response HTTP wall",
@@ -2400,10 +2779,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 else None
             ),
             "llamacpp_prompt_cache": False,
-            "exact_output_contract": (
-                "blocking rows equal independent same-engine c1 generated token IDs; llama.cpp SSE "
-                "returns those IDs directly; hipEngine SSE reconstructs the blocking-oracle text with "
-                "the exact completion count"
+            "correctness_profile": str(args.correctness_profile),
+            "generated_id_equality_binding": bool(
+                correctness_contract["generated_id_equality_binding"]
+            ),
+            "output_contract": (
+                "exact same-engine c1 generated trajectory"
+                if str(args.correctness_profile) == "strict"
+                else (
+                    "exact request/control ownership and schedule-local determinism; "
+                    "c1/cN generated-ID equality is diagnostic and arithmetic is bound "
+                    "to the production correctness bundle"
+                )
             ),
             "live_admission_concurrency": int(args.live_concurrency),
         },
@@ -2411,11 +2798,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "command_shell": shlex.join(invocation),
         "environment": _hardware_capture(args, engine=engine),
         "provenance": _source_provenance(args, engine),
+        "correctness_contract": correctness_contract,
+        "public_profile_qualification_claim": bool(
+            correctness_contract["public_profile_qualification_claim"]
+        ),
         "oracle": None,
         "rows": {},
         "limitations": [
             "TTFT/ITL/end-to-end curves are matched client-observed SSE timings; engine-resident timing fields are not cross-engine comparable.",
-            "hipEngine SSE does not expose generated token IDs: its stream oracle is exact blocking-c1 text plus completion count, while the exact blocking ID oracle remains retained.",
+            (
+                "hipEngine SSE does not expose generated token IDs: strict uses exact blocking-c1 text plus completion count; production records that equality diagnostically and binds protocol completion plus its external correctness bundle."
+            ),
             "hipEngine and llama.cpp backend-native decode timings have different ownership boundaries and are diagnostic only.",
             "gfx1151 is UMA: whole-card GTT, not the 512 MiB visible-VRAM aperture, is the relevant external memory domain.",
         ],
@@ -2475,6 +2868,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     passed = bool(payload["oracle"]["passed"]) and all(
         row["correctness"]["warmups"]["passed"]
         and row["correctness"]["measured"]["passed"]
+        and row["correctness"]["repeat_determinism"]["passed"]
         and (row["correctness"]["live_admission"] is None or row["correctness"]["live_admission"]["passed"])
         and row["execution"]["route_ok"]
         and (
@@ -2506,6 +2900,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--quant", default="gguf_q4_k_m")
+    parser.add_argument(
+        "--correctness-profile",
+        choices=_CORRECTNESS_PROFILES,
+        default="strict",
+        help=(
+            "Serving evidence contract only; this does not select runtime dispatch. "
+            "Strict binds same-engine c1 generated equality. Production requires a "
+            "matching complete correctness bundle and records c1/cN equality diagnostically."
+        ),
+    )
+    parser.add_argument(
+        "--production-correctness-artifact",
+        type=Path,
+        help="matching fail-closed production numerical/task/control bundle",
+    )
     parser.add_argument("--served-model-name", default="qwen36-35b-q4km")
     parser.add_argument("--hipengine-python", type=Path, default=Path(sys.executable))
     parser.add_argument(
