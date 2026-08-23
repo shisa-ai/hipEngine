@@ -1298,6 +1298,11 @@ span_role       prefill | decode | verify_chain | verify_tree
    - Require explicit metadata; no silent DMS on an ordinary checkpoint.
    - Train or import a real model-bound decision artifact before any quality
      claim. Synthetic metadata remains fixture-only.
+   - The default-off exact-GGUF capture owner streams one checksummed NPZ shard
+     per bounded full-attention chunk: BF16-bit normalized pre-Q hidden rows,
+     FP32 post-head-norm/RoPE Q/K by default, positions/tokens, and final-row
+     teacher top-K/logsumexp. It validates tokenizer/data provenance and rejects
+     the evaluation-only mtp-bench source.
 2. **Compact backend and admission**
    - Add the DMS topology's allocator-visible compact pool/extent plans,
      storage views, and registered kernel bundle.

@@ -142,6 +142,7 @@ from hipengine.kvcache import (
     KVLiveSpans,
     KVScaleMetadata,
 )
+from hipengine.kvcache.dms_capture import DMS_CAPTURE_INPUT_STAGE, DMSCaptureSink
 from hipengine.runtime.native_sampler import NativeSamplerWorkspace
 from hipengine.runtime.qwen35_paro import AotritonPrefillStreamBridge
 from hipengine.kernels.hip_gfx1100.speculative import (
@@ -3847,6 +3848,7 @@ class Qwen35GGUFFullStackRunner:
         stream: int = 0,
         aotriton_bridge: AotritonPrefillStreamBridge | None = None,
         expert_sidecar: _DeviceExpertLayerSidecar | None = None,
+        dms_capture: DMSCaptureSink | None = None,
         allow_aotriton: bool = True,
         aotriton_min_tokens: int | None = None,
         paged_max_context_len: int | None = None,
@@ -3970,6 +3972,14 @@ class Qwen35GGUFFullStackRunner:
         )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_qkv_head_norm_rope")
+        if dms_capture is not None:
+            self._capture_dms_full_attention_prefill_chunk(
+                layer_id=layer_id,
+                scratch=scratch,
+                sink=dms_capture,
+                stream=stream,
+                runtime=runtime,
+            )
         if scratch.key_cache is None or scratch.value_cache is None:
             raise RuntimeError(
                 "GGUF full-attention prefill requires cache-backed key/value buffers; "
@@ -4329,6 +4339,58 @@ class Qwen35GGUFFullStackRunner:
             gpu_stage_recorder=gpu_stage_recorder,
         )
         return used_aotriton
+
+    def _capture_dms_full_attention_prefill_chunk(
+        self,
+        *,
+        layer_id: int,
+        scratch,
+        sink: DMSCaptureSink,
+        stream: int,
+        runtime: HipRuntime,
+    ) -> None:
+        """Synchronously export one bounded exact-Q4 diagnostic chunk."""
+
+        assert self.weights is not None
+        cfg = self.weights.config
+        full_attention_layer_ids = tuple(
+            physical_layer_id
+            for physical_layer_id, layer_type in enumerate(cfg.layer_types)
+            if layer_type == FULL_ATTENTION
+        )
+        try:
+            compact_layer_index = full_attention_layer_ids.index(int(layer_id))
+        except ValueError as exc:
+            raise ValueError(f"layer {layer_id} is not a full-attention capture layer") from exc
+        rows = int(scratch.rows)
+        start = int(scratch.start)
+        if stream:
+            runtime.stream_synchronize(stream)
+        else:
+            runtime.device_synchronize()
+        hidden_bf16 = _copy_bf16_bits_ptr_to_host(
+            int(scratch.norm.ptr),
+            rows * self.hidden_size,
+            runtime=runtime,
+        ).reshape(rows, self.hidden_size)
+        query_f32 = _copy_f32_ptr_to_host(
+            int(scratch.full_query.ptr),
+            rows * self.q_width,
+            runtime=runtime,
+        ).reshape(rows, int(cfg.head_count), int(cfg.key_length))
+        key_f32 = _copy_f32_ptr_to_host(
+            int(scratch.full_key.ptr),
+            rows * self.kv_width,
+            runtime=runtime,
+        ).reshape(rows, int(cfg.head_count_kv), int(cfg.key_length))
+        sink.capture_chunk(
+            physical_layer_id=int(layer_id),
+            compact_layer_index=compact_layer_index,
+            positions=np.arange(start, start + rows, dtype=np.int32),
+            hidden_bf16=hidden_bf16,
+            query_f32=query_f32,
+            key_f32=key_f32,
+        )
 
     def _run_attention_norm_rows(
         self,
@@ -16611,6 +16673,7 @@ class Qwen35GGUFResidentSession:
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         capture_target_hidden_rows: DeviceBuffer | None = None,
         dflash2_capture: DFlash2HiddenCaptureTargets | None = None,
+        dms_capture: DMSCaptureSink | None = None,
         record_gpu_stage_timings: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult:
         """Consume prompt tokens once and return the greedy next token.
@@ -16640,6 +16703,11 @@ class Qwen35GGUFResidentSession:
             else bulk_attention_mode
         )
         run_bulk = len(token_ids) >= min_bulk_tokens if use_bulk is None else bool(use_bulk)
+        if dms_capture is not None:
+            if not return_logits:
+                raise ValueError("DMS capture requires return_logits=True for teacher top-K")
+            if selected_bulk_attention_mode != "bulk":
+                raise ValueError("DMS capture requires bulk_attention_mode='bulk'")
         if run_bulk:
             if len(token_ids) < min_bulk_tokens:
                 raise ValueError(
@@ -16681,15 +16749,24 @@ class Qwen35GGUFResidentSession:
                     bulk_kwargs["capture_target_hidden_rows"] = capture_target_hidden_rows
                 if dflash2_capture is not None:
                     bulk_kwargs["dflash2_capture"] = dflash2_capture
+                if dms_capture is not None:
+                    bulk_kwargs["dms_capture"] = dms_capture
                 if record_gpu_stage_timings:
                     bulk_kwargs["record_gpu_stage_timings"] = True
-                return self._run_bulk_prefill_and_sample(
+                result = self._run_bulk_prefill_and_sample(
                     token_ids,
                     bulk_attention_mode=selected_bulk_attention_mode,
                     return_logits=return_logits,
                     **bulk_kwargs,
                 )
+                if dms_capture is not None:
+                    if result is None:
+                        raise RuntimeError("DMS capture prefill did not return teacher logits")
+                    dms_capture.capture_teacher_logits(result.logits)
+                return result
 
+        if dms_capture is not None:
+            raise ValueError("DMS capture requires the bulk prefill path")
         if record_gpu_stage_timings:
             raise ValueError("GPU stage timing currently requires bulk GGUF prefill")
         if dflash2_capture is not None:
@@ -16742,6 +16819,7 @@ class Qwen35GGUFResidentSession:
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         capture_target_hidden_rows: DeviceBuffer | None = None,
         dflash2_capture: DFlash2HiddenCaptureTargets | None = None,
+        dms_capture: DMSCaptureSink | None = None,
         record_gpu_stage_timings: bool = False,
     ) -> Qwen35GGUFNextTokenProbeResult | None:
         if self.runner is None or self.runner.weights is None or self.scratch is None:
@@ -16755,6 +16833,35 @@ class Qwen35GGUFResidentSession:
             raise ValueError("token_ids must be non-empty")
         if rows > self.scratch.max_positions:
             raise ValueError(f"GGUF bulk prefill rows {rows} exceed cache capacity {self.scratch.max_positions}")
+        if dms_capture is not None:
+            cfg = self.runner.weights.config
+            full_attention_layer_ids = tuple(
+                layer_id
+                for layer_id, layer_type in enumerate(cfg.layer_types)
+                if layer_type == FULL_ATTENTION
+            )
+            if tuple(dms_capture.physical_layer_ids) != full_attention_layer_ids:
+                raise ValueError(
+                    "DMS capture physical layer map does not match the loaded GGUF model"
+                )
+            capture_geometry = (
+                int(dms_capture.hidden_size),
+                int(dms_capture.num_q_heads),
+                int(dms_capture.num_kv_heads),
+                int(dms_capture.head_dim),
+            )
+            model_geometry = (
+                int(self.runner.hidden_size),
+                int(cfg.head_count),
+                int(cfg.head_count_kv),
+                int(cfg.key_length),
+            )
+            if capture_geometry != model_geometry:
+                raise ValueError(
+                    f"DMS capture geometry {capture_geometry} does not match model {model_geometry}"
+                )
+            if str(dms_capture.input_stage) != DMS_CAPTURE_INPUT_STAGE:
+                raise ValueError("DMS capture input stage does not match the runtime tap")
         target_hidden_row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
         if capture_target_hidden_rows is not None:
             required_nbytes = rows * target_hidden_row_nbytes
@@ -16945,6 +17052,7 @@ class Qwen35GGUFResidentSession:
                                 stream=stream,
                                 aotriton_bridge=self._prefill_aotriton_bridge_for_rows(chunk_rows),
                                 expert_sidecar=None,
+                                dms_capture=dms_capture,
                                 stage_prefix="prefill_full_attn",
                                 gpu_stage_recorder=gpu_stage_recorder,
                             )
@@ -17127,6 +17235,7 @@ class Qwen35GGUFResidentSession:
                                     stream=stream,
                                     aotriton_bridge=self._prefill_aotriton_bridge_for_rows(chunk_rows),
                                     expert_sidecar=expert_sidecar,
+                                    dms_capture=dms_capture,
                                     stage_prefix="prefill_full_attn",
                                     gpu_stage_recorder=gpu_stage_recorder,
                                 )
@@ -29537,6 +29646,20 @@ def _validate_raw_rank3_expert_weight(
         )
     if row_bytes <= 0 or int(in_features) <= 0:
         raise ValueError(f"invalid GGUF expert tensor shape for {source.name!r}")
+
+
+def _copy_bf16_bits_ptr_to_host(ptr: int, elements: int, *, runtime: HipRuntime) -> np.ndarray:
+    elements = int(elements)
+    if elements <= 0:
+        raise ValueError("elements must be positive")
+    bits = np.empty((elements,), dtype=np.uint16)
+    copy_device_to_host(
+        host_array_ptr(bits),
+        DeviceBuffer(int(ptr), bits.nbytes),
+        bits.nbytes,
+        runtime=runtime,
+    )
+    return bits
 
 
 def _copy_bf16_ptr_to_host_f32(ptr: int, elements: int, *, runtime: HipRuntime) -> np.ndarray:

@@ -58,6 +58,12 @@ from hipengine.kvcache.dms import (
     extract_dms_eviction_decisions,
     load_dms_retrofit_config,
 )
+from hipengine.kvcache.dms_capture import (
+    DMS_CAPTURE_INPUT_STAGE,
+    DMSCaptureSink,
+    DMSCaptureWriter,
+    load_dms_capture_manifest,
+)
 from hipengine.kvcache.tiering import (
     ColdCodecResult,
     ColdObjectKey,
@@ -142,7 +148,10 @@ __all__ = [
     "DenseKVAdmissionManager",
     "CompactExtent",
     "CompactExtentPool",
+    "DMS_CAPTURE_INPUT_STAGE",
     "DMSAdmissionManager",
+    "DMSCaptureSink",
+    "DMSCaptureWriter",
     "DMSCodecQualification",
     "DMSCompactBackend",
     "DMSCompactResidentRunnerAdapter",
@@ -229,6 +238,7 @@ __all__ = [
     "encode_dms_payload",
     "evaluate_restore_economics",
     "extract_dms_eviction_decisions",
+    "load_dms_capture_manifest",
     "load_dms_retrofit_config",
     "resolve_kv_policy",
     "resolve_prefix_cache_mode",
