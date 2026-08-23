@@ -4045,16 +4045,20 @@ should be boring.
   correction/scale/epilogue. It exists only to test nibble/sign/lane layout and
   is superseded by the operation-complete dual kernel for every measurement
   purpose.
-- Known defect carried by the current implementation (MTP-IU4.md §3.1): the
-  operation-complete core is a 1-accumulator, 24-VGPR, 64-thread kernel running
-  at ~70% of the memory roof and 9-11% of the IU4 arithmetic roof. MTP-IU4.md
-  punchlist item R6 rebuilds it. Do not delete the family before R6/R7 resolve.
-- Removal trigger: if R7 (dense prefill gate/up A/B) fails to beat
-  `pack8_dual_wmma_prefill_silu_bf16`, unregister both keys and drop the family
-  plus `hipengine/quant/iu4_s4.py`, the CPU-reference oracle, and the leaf
-  script, retaining only the compact artifacts and this document as evidence. If
-  R7 wins, the family stops being a research leaf and must acquire an immutable
-  sidecar manifest, explicit representation selection, route telemetry, and a
-  registered fallback per MTP-IU4.md §8 before any default-on consideration.
-- Drop `iu4_s4_matmul_i32_probe` and its wrapper independently once R6 lands,
-  unless the rebuilt core still needs a layout-only oracle.
+- R6 resolves the carried one-accumulator/24-VGPR defect. The diagnostic family
+  now uses paired-K32/dwordx4 layout, a bandwidth-oriented tiny-M DOT8 backfill,
+  and a 16-accumulator-per-wave M256-blocked IU4 WMMA body. Cache-only resources
+  are local128/VGPR192/LDS8192 with 32 reported scratch bytes for wide WMMA;
+  the scratch-free rewrite was rejected after an 8.0-16.1% short-screen loss.
+  R7 beats the real bulk owner by 2.668-3.105x at M64-M512, all 15/15 pairs.
+- R7 therefore selects the promotion trigger rather than removal, but the family
+  remains a research leaf: before any runtime route/default it must acquire an
+  original-weight or offline-optimized S4 product, immutable sidecar manifest,
+  explicit representation selection, route telemetry, full down/complete-model
+  wall evidence, the T3 quality/task packet, and the registered exact fallback
+  described in MTP-IU4.md §8. If that product work is abandoned, unregister the
+  two unrouted keys and retain only the compact evidence/oracles.
+- Keep `iu4_s4_matmul_i32_probe` temporarily because R6 changed the physical
+  layout to paired-K32 and the probe is the independent GPU lane-layout/I32
+  oracle. Drop it once an immutable sidecar-manifest loader has its own complete
+  pack/hash/correction negative-path gate.

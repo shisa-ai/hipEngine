@@ -1,4 +1,4 @@
-"""Experimental gfx1151 packed-U4 x S4 WMMA sidecar wrappers.
+"""Experimental gfx1151 packed-U4 x S4 DOT8/WMMA sidecar wrappers.
 
 This T3 research family is intentionally not wired into model/runtime routing.
 The current exact qmicro Q4_K_S gate/up owner remains the declared fallback.
@@ -29,7 +29,7 @@ IU4_S4_DUAL_SILU_KEY = KernelKey(
     "hip_gfx1151",
     "linear_pair_silu",
     "iu4_s4_sidecar_v1",
-    "wmma_m2_m128_bf16_out",
+    "dot8_m2_m16_wmma_bulk_m17_m1024_bf16_out",
 )
 IU4_S4_STRICT_FALLBACK_KEY = KernelKey(
     "hip_gfx1151",
@@ -85,10 +85,10 @@ def iu4_u4_wmma_nbytes(rows: int, hidden: int) -> int:
 
 
 def _check_shape(rows: int, hidden: int, out_features: int | None = None) -> None:
-    if rows <= 0 or rows > 128:
-        raise ValueError("IU4 research rows must be in [1, 128]")
-    if hidden <= 0 or hidden % 16:
-        raise ValueError("IU4 hidden size must be a positive multiple of 16")
+    if rows <= 0 or rows > 1024:
+        raise ValueError("IU4 research rows must be in [1, 1024]")
+    if hidden <= 0 or hidden % 32:
+        raise ValueError("IU4 hidden size must be a positive multiple of 32")
     if out_features is not None and (out_features <= 0 or out_features % 16):
         raise ValueError("IU4 output size must be a positive multiple of 16")
 

@@ -29,6 +29,22 @@ def test_implementation_quality_names_binding_roof_and_percentages() -> None:
     assert metrics["candidate_fraction_of_binding_roof"] == pytest.approx(0.6964020595)
 
 
+def test_implementation_quality_accepts_dot8_arithmetic_roof() -> None:
+    metrics = _implementation_quality_metrics(
+        rows=4,
+        core_executed_tops=3.0,
+        candidate_effective_weight_gbps=190.0,
+        control_effective_weight_gbps=180.0,
+        arithmetic_roof_tops=56.830,
+    )
+
+    assert metrics["binding_roof"] == "memory"
+    assert metrics["arithmetic_roof_tops"] == pytest.approx(56.830)
+    assert metrics["candidate_fraction_of_arithmetic_roof"] == pytest.approx(
+        3.0 / 56.830
+    )
+
+
 def test_implementation_quality_switches_to_arithmetic_roof_at_m128() -> None:
     metrics = _implementation_quality_metrics(
         rows=128,

@@ -4,6 +4,23 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [gfx1151 native IU4 R6/R7 speed screen] Qwen3.8-27B Q4_K_S actual layer-0
+  gate/up+SiLU / M64/128/256/512: paired-K32 loads plus a 16-accumulator,
+  M256-blocked IU4 WMMA core move the current pack8/F16 owner
+  **3.818/3.940/4.152/8.198 → 1.431/1.455/1.534/2.640 ms
+  (2.668×/2.708×/2.707×/3.105×)**, all 15/15 pairs. M128 executed arithmetic
+  rises **12.54→64.39 TOPS (5.13×)** versus R2; cached trace is local128/
+  VGPR192/LDS8192/scratch32. Finite/deterministic/teardown exact, but this is a
+  re-quantized-Q4_K_S T3 speed screen with no full-model quality or runtime
+  promotion. `benchmarks/results/2026-08-23-gfx1151-qwen38-iu4-s4-r7-prefill-gate-up-ab.json`.
+
+- [gfx1151 native IU4 B4 tiny-M correction] Rebuilt U4/S4 DOT8 rowtile / actual
+  layer-0 M2/M3/M4/M5: current→candidate inclusive is
+  **0.4594→0.4828 ms (0.952×), 0.4732→0.4445 (1.065×), 0.5513→0.4480
+  (1.230×), 0.6734→0.4487 (1.501×)** at 189.66–205.23 effective GB/s. M2 still
+  loses, so the tiny-M representation/ROI rejection remains closed; artifact
+  `benchmarks/results/2026-08-23-gfx1151-qwen38-iu4-s4-r6-b4-gate-up-leaf.json`.
+
 - [gfx1151 native IU4 B3 prefill control] Qwen3.8-27B Q4_K_S actual layer-0
   pack8 gate/up+SiLU / M64/128/256/512/1024: established the missing current-
   owner R7 control at **3.869/3.937/4.170/8.240/16.234 ms**, **32.06–34.56
