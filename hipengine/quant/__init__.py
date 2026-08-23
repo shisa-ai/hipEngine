@@ -87,6 +87,7 @@ from hipengine.quant.gguf_t16 import (
     unpack_gguf_q6_k_tile16,
     unpack_gguf_q8_0_tile16,
 )
+from hipengine.quant.iu4_s4 import IU4S4SidecarQuant, IU4_S4_SIDECAR
 from hipengine.quant.maple_ternary import MAPLE_TERNARY2, MapleTernary2Quant
 from hipengine.quant.w4_paro import W4_PARO, W4ParoQuant
 from hipengine.quant.w8a16 import (
@@ -164,6 +165,8 @@ __all__ = [
     "GGUF_Q8_0_T16_BLOCK_BYTES",
     "GGUF_Q8_0_T16_V1",
     "GGUF_T16_COLS",
+    "IU4S4SidecarQuant",
+    "IU4_S4_SIDECAR",
     "MAPLE_TERNARY2",
     "MapleTernary2Quant",
     "MissingQuantError",

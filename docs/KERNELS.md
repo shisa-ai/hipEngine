@@ -73,13 +73,19 @@ Catalog maintenance rules:
 | --- | --- | --- | --- |
 | `cpu_reference` | NumPy/host | `hipengine/kernels/cpu_reference/` | Shared primitive oracles, Qwen/PARO/GGUF, Laguna, Maple, Moonshine, Moonshine encoder |
 | `hip_gfx1100` | RDNA3 `gfx1100` | `hipengine/kernels/hip_gfx1100/` | Qwen/PARO, GGUF/Qwen/Laguna, Maple, Moonshine, MTP/DFlash, shared state/sampling |
-| `hip_gfx1151` | RDNA3.5 `gfx1151` | Shared gfx11 device sources plus peer registrations/capabilities in `hip_gfx1151/__init__.py` | Independently admitted subsets of the gfx11 families above |
+| `hip_gfx1151` | RDNA3.5 `gfx1151` | Shared gfx11 sources plus peer registrations/capabilities and architecture-specific sources under `hip_gfx1151/` | Independently admitted gfx11 subsets plus explicit gfx1151-only diagnostics |
 | `cuda_sm120a` | CUDA `sm_120a` | `hipengine/kernels/cuda_sm120a/` | Maple and Moonshine peer implementations plus smoke/shared helpers |
 | `cuda_sm86` | CUDA `sm_86` | package scaffold only | No implemented device family yet |
 
 ### gfx1151 source sharing is not backend equivalence
 
-`hip_gfx1151` compiles shared gfx11 `.hip` bodies as native `gfx1151` code objects and registers a peer backend key. `hipengine/kernels/hip_gfx1151/__init__.py` controls aliases, exclusions, thresholds, and architecture-specific defaults. A gfx1100 variant is not a gfx1151 default merely because the source compiles there; each promotion needs its own correctness and performance gate.
+`hip_gfx1151` compiles shared gfx11 `.hip` bodies as native `gfx1151` code
+objects and registers a peer backend key. It may also own explicitly
+architecture-scoped sources, such as the diagnostic native-IU4 family.
+`hipengine/kernels/hip_gfx1151/__init__.py` controls aliases, exclusions,
+thresholds, and architecture-specific defaults. A gfx1100 variant is not a
+gfx1151 default merely because the source compiles there; each promotion needs
+its own correctness and performance gate.
 
 ### CUDA is a peer backend
 
@@ -92,6 +98,7 @@ CPU oracles favor clarity and deterministic boundaries over speed. They are the 
 | Model/path | Source | Oracle families |
 | --- | --- | --- |
 | Shared primitives and Qwen/PARO/GGUF | `cpu_reference/ops.py` | embedding, linear/QKV/O/lm-head, RMSNorm, rotate, full/paged attention, KV quant/dequant/write, GDN and Conv prefill, GGUF Q4/Q5/Q6/Q8 dequant/GEMV, PARO AWQ pack8, MoE selected/tail, MTP/NextN helpers |
+| Native-IU4 research | `cpu_reference/iu4_s4.py` | exact U4×S4 I32 correction identity and BF16 gate/up+SiLU boundary oracle |
 | Laguna | `cpu_reference/laguna.py` | YaRN/plain RoPE, head RMSNorm, global/SWA attention, dense and sparse FFN/MoE, routing, DFlash layer/model, target-hidden projection |
 | DFlash2 | `cpu_reference/dflash2.py` | grouped dynamic conv (prepare/finish), top-16 bilinear candidate selector + greedy walk, q/k-norm sliding-window attention, Qwen3 block-repeat RoPE | DFlash2DraftModel exact-math oracles; fixtures generated from the z-lab/dflash torch reference (test-time torch only). |
 | Maple | `cpu_reference/maple.py` | ternary and affine4 pack/dequant, BF16 boundaries, projections, attention/KV spans, routing/MoE, complete model semantics |
@@ -187,6 +194,7 @@ GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layou
 | Embedding | `quant/gguf_q6_k_embedding.{hip,py}` | `embedding` (`gguf_q4_k/q5_k/q6_k/q8_0`) | Raw GGUF row lookup for root/token tables. |
 | X8 sidecars/replacements | `quant/gguf_x8_selected_gemv.{hip,py}` and pack8 modules | selected `moe_linear` / top-1 helpers | GGML-style packed selected-expert and head diagnostics/qualified lanes. |
 | Q8 dp4a verifier | `quant/gguf_q8_0_dp4a_gemv.{hip,py}` | `linear` pair/triple/rowtile variants | q8_1+sudot4 verifier/draft families; selection is route-specific. |
+| Native IU4 S4 sidecar (diagnostic) | `hip_gfx1151/quant/iu4_s4_sidecar.{hip,py}` plus `quant/iu4_s4.py` | `activation_quant`, `linear_pair_silu` (`iu4_u4_row_v1`, `iu4_s4_sidecar_v1`) | gfx1151-only T3 research leaf: coalesced packed U4×S4 IU4 WMMA, I32 correction/scales, BF16 gate/up+SiLU. No runtime/model route; current qmicro Q8_1x2 Q4_K_S chain is the strict fallback. |
 | Selected pack8/T16 support files | `quant/gguf_*selected*.{hip,py}`, `quant/gguf_*pack8*.{hip,py}`, `quant/gguf_*t16*.{hip,py}` | `linear`, `linear_pair_silu`, `moe_linear`, producer/metadata variants | Build/registration partitions for selected-expert storage layouts; exact ownership stays in each wrapper. |
 
 For dense Qwen3.6-27B on gfx1100, the package-default rank-2 Q4 map is one
@@ -678,6 +686,10 @@ hipengine/kernels/hip_gfx1100/
 └── wmma/
     └── paro_awq_wmma.hip
 
+hipengine/kernels/hip_gfx1151/
+└── quant/
+    └── iu4_s4_sidecar.hip
+
 hipengine/kernels/cuda_sm120a/
 ├── attention/
 │   ├── maple_attention.cu
@@ -733,6 +745,7 @@ variants/dtypes remain in source.
 | MoE tail + RMSNorm composites | HIP PARO/GGUF/Laguna | weighted/shared combine → residual/tail → next RMSNorm |
 | `moe_linear+weighted_sum` | HIP GGUF selected down | selected down projection → slot-order weighted reduction |
 | `linear+residual` | HIP GGUF | linear projection → rounded residual add |
+| `linear_pair_silu/iu4_s4_sidecar_v1` | HIP gfx1151 diagnostic | current exact qmicro Q8_1x2 activation pack → Q4 gate/up+SiLU over the authoritative model representation |
 | `linear+add+rmsnorm` | HIP Laguna | source-F16 projection → add/residual → RMSNorm |
 | Linear-attention snapshot composites | HIP GGUF/DFlash | Conv or GDN primitive → cast if named → state snapshot |
 | `laguna_attention_decode+attention_gate` | HIP Laguna | attention decode → softplus/sigmoid gate publication |
