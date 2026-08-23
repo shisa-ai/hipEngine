@@ -3,12 +3,11 @@
 Last updated: 2026-08-23
 
 > **Current status:** explicit c1 integration and 128K/256K capacity execution
-> pass, but DMS remains **rejected for production**. Metadata-bound exact-budget
-> ranking fixes unseen-prompt capacity drift exactly at 32K (1.983899x in every
-> category), but the epoch-20 linear rank still fails one Japanese step (max KL
-> 0.14180, 87.5% category top-1); the other categories pass at max KL <=0.00155
-> and 100% top-1. No-evict is essentially exact, so semantic retention—not
-> compact kernel math or capacity control—is the blocker. Dense remains default.
+> pass, and the frozen epoch-20 exact-budget **W8192** policy passes the complete
+> four-category 32K v2 development gate at max KL 0.0007085, 100% top-1, and
+> 1.599688x live CR. The source-disjoint v3 final gate is now authorized but not
+> yet consumed. DMS remains default-off until that final evidence and the
+> remaining production lifecycle/memory/performance gates close.
 
 This document is the end-to-end record and continuation plan for hipEngine's
 external Dynamic Memory Sparsification campaign. It covers the design, exact
@@ -63,7 +62,7 @@ The normative KV ABI and broader storage roadmap remain in
 | Allocator-visible production savings | Partial: c1 tracked residency drops 4.592/7.813 GiB at 128K/256K; full P7 controls open |
 | Serving throughput and profiler evidence | Integrated diagnostic timings measured; no comparator or performance claim |
 | Integrated c1-c32 lifecycle and long soak | Open |
-| Long-context-stable sidecar | Open: exact-budget CR2 controls capacity at 1.983899x but the epoch-20 linear rank still rejects Japanese at 32K; one predeclared 8K protected-window screen is next, then continuation-aware labels |
+| Long-context-stable sidecar | Candidate: frozen exact-budget W8192 passes all four v2 categories at 32K (max KL 0.0007085, 100% top-1, 1.599688x CR); source-disjoint v3 final pending |
 | Portable cross-host sidecar package | Open |
 | End-to-end campaign and production guide | Complete in this document |
 | Merge into `origin/main` | Open |
@@ -596,10 +595,16 @@ top-1, while the other categories pass at max KL at most 0.00155 and 100% top-1.
 The exact-budget candidate is rejected and v3 remains sealed. Evidence:
 [`2026-08-23-gfx1151-qwen38-dms-exact-budget-32k-rejected.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-dms-exact-budget-32k-rejected.json).
 
-One global 8,192-token protected-window candidate is predeclared next. It yields
-about 1.60x live CR at 32K but approaches 1.88x/1.94x at 128K/256K. If that full
-category screen rejects, window tuning stops and the oracle must incorporate
-teacher continuation attention before nonlinear predictor work.
+The predeclared global 8,192-token protected-window candidate passes the full
+v2 development suite: aggregate/category top-1 is 100%, max KL is 0.0007085,
+and every category lands at 1.599688x CR with max live count 20,489. Its BF16
+payload is 1,342,767,104 bytes versus 2,147,483,648 dense prompt bytes before
+decode accounting. The policy is now frozen. Evidence:
+[`2026-08-23-gfx1151-qwen38-dms-w8192-32k-development-pass.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-dms-w8192-32k-development-pass.json).
+
+The source-disjoint v3 validation rows may now be consumed exactly once. No
+further policy changes are allowed after viewing final results; a final failure
+rejects this candidate and requires a newly firewalled campaign.
 
 ## Timing summary
 
