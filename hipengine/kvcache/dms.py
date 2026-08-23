@@ -43,6 +43,7 @@ _DMS_SCHEMA_VERSIONS = {1, 2}
 _DMS_BORROWED_QUERY_SOURCE = "borrowed_query_channel_v1"
 _DMS_EXTERNAL_LINEAR_SOURCE = "external_linear_sidecar_v1"
 _DMS_EXTERNAL_INPUT_STAGE = "post_attn_rmsnorm_pre_q_projection"
+_DMS_PREFILL_SELECTION_MODES = {"threshold", "exact_budget"}
 _DMS_CODECS = {"bf16", "int8_per_token_head"}
 _HEX_DIGITS = frozenset("0123456789abcdef")
 
@@ -198,6 +199,7 @@ class DMSRetrofitConfig:
     zero_borrowed_query_channel: bool = True
     sidecar: DMSLinearSidecarSpec | None = None
     training: DMSTrainingProvenance | None = None
+    prefill_selection_mode: str = "threshold"
 
     def __post_init__(self) -> None:
         for name in (
@@ -239,6 +241,15 @@ class DMSRetrofitConfig:
             raise ValueError("DMS alpha_offset must be finite")
         object.__setattr__(self, "alpha_scale", float(self.alpha_scale))
         object.__setattr__(self, "alpha_offset", float(self.alpha_offset))
+        selection_mode = str(self.prefill_selection_mode)
+        if selection_mode not in _DMS_PREFILL_SELECTION_MODES:
+            raise ValueError(
+                "DMS prefill_selection_mode must be one of "
+                f"{sorted(_DMS_PREFILL_SELECTION_MODES)}"
+            )
+        if schema_version == 1 and selection_mode != "threshold":
+            raise ValueError("DMS schema v1 only supports threshold prefill selection")
+        object.__setattr__(self, "prefill_selection_mode", selection_mode)
         object.__setattr__(
             self,
             "physical_layer_ids",
@@ -353,6 +364,7 @@ class DMSRetrofitConfig:
                 "head_dim": self.head_dim,
                 "hidden_size": self.hidden_size,
                 "input_stage": self.input_stage,
+                "prefill_selection_mode": self.prefill_selection_mode,
                 "window_size": self.window_size,
                 "target_compression_ratio": self.target_compression_ratio,
                 "alpha_scale": self.alpha_scale,
@@ -552,6 +564,7 @@ def load_dms_retrofit_config(
         head_dim=int(raw.get("head_dim", 0)),
         hidden_size=(None if raw.get("hidden_size") is None else int(raw["hidden_size"])),
         input_stage=(None if raw.get("input_stage") is None else str(raw["input_stage"])),
+        prefill_selection_mode=str(raw.get("prefill_selection_mode", "threshold")),
         window_size=int(raw.get("window_size", raw.get("dms_window_size", 0))),
         target_compression_ratio=int(
             raw.get("target_compression_ratio", raw.get("target_cr", 0))
@@ -700,6 +713,60 @@ def extract_dms_eviction_decisions(
         evict = decisions * config.alpha_scale - config.alpha_offset > 0.0
     grouped[:, :, 0, config.borrowed_query_channel] = 0
     return cleaned, np.asarray(evict, dtype=np.bool_)
+
+
+def build_dms_exact_budget_eviction(
+    eviction_logits: np.ndarray,
+    *,
+    current_position: int,
+    window_size: int,
+    target_compression_ratio: int,
+    positions: np.ndarray | None = None,
+) -> np.ndarray:
+    """Select exact per-layer/head historical eviction counts from learned ranks."""
+
+    logits = np.asarray(eviction_logits, dtype=np.float32)
+    if logits.ndim != 3 or any(int(dim) <= 0 for dim in logits.shape):
+        raise ValueError("DMS eviction logits must be non-empty [tokens,layers,heads]")
+    if not np.all(np.isfinite(logits)):
+        raise ValueError("DMS eviction logits must be finite")
+    tokens = int(logits.shape[0])
+    pos = (
+        np.arange(tokens, dtype=np.int64)
+        if positions is None
+        else np.asarray(positions, dtype=np.int64)
+    )
+    if pos.shape != (tokens,) or np.any(np.diff(pos) <= 0):
+        raise ValueError("DMS exact-budget positions must be strictly increasing [tokens]")
+    current = int(current_position)
+    window = int(window_size)
+    target_cr = int(target_compression_ratio)
+    if window < 0:
+        raise ValueError("DMS exact-budget window_size must be non-negative")
+    if target_cr <= 0:
+        raise ValueError("DMS exact-budget target_compression_ratio must be positive")
+    if current < int(pos[-1]):
+        raise ValueError("DMS exact-budget current_position cannot precede positions")
+
+    eligible_indices = np.flatnonzero((current - pos) > window)
+    eligible_count = int(eligible_indices.size)
+    historical_live = ceil(eligible_count / target_cr)
+    evict_count = eligible_count - historical_live
+    evict = np.zeros(logits.shape, dtype=np.bool_)
+    if evict_count <= 0:
+        return evict
+    eligible_positions = pos[eligible_indices]
+    for layer in range(int(logits.shape[1])):
+        for head in range(int(logits.shape[2])):
+            # Positive/high logits predict eviction. Oldest position wins exact ties.
+            order = np.lexsort(
+                (
+                    eligible_positions,
+                    -logits[eligible_indices, layer, head],
+                )
+            )
+            evict[eligible_indices[order[:evict_count]], layer, head] = True
+    return evict
 
 
 def build_dms_live_mask(

@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from hipengine.core.memory import (
+    DeviceBuffer,
     copy_device_to_host,
     copy_host_to_device,
     free,
@@ -19,6 +20,7 @@ from hipengine.kvcache import (
     DMSLinearSidecarSpec,
     DMSRetrofitConfig,
     DMSTrainingProvenance,
+    build_dms_exact_budget_eviction,
 )
 from hipengine.kvcache.dms_device import DMSExternalLinearDeviceProjector
 from hipengine.kvcache.dms_sidecar import ExternalDMSLinearSidecar
@@ -47,7 +49,13 @@ def _bf16_float(values: np.ndarray) -> np.ndarray:
     ).view(np.float32)
 
 
-def _source(*, hidden_size: int = 5120, kv_heads: int = 4) -> ExternalDMSLinearSidecar:
+def _source(
+    *,
+    hidden_size: int = 5120,
+    kv_heads: int = 4,
+    window_size: int = 256,
+    prefill_selection_mode: str = "threshold",
+) -> ExternalDMSLinearSidecar:
     sidecar = DMSLinearSidecarSpec(
         path="sidecar.safetensors",
         format="safetensors",
@@ -77,7 +85,7 @@ def _source(*, hidden_size: int = 5120, kv_heads: int = 4) -> ExternalDMSLinearS
         head_dim=256,
         hidden_size=hidden_size,
         input_stage="post_attn_rmsnorm_pre_q_projection",
-        window_size=256,
+        window_size=window_size,
         target_compression_ratio=2,
         alpha_scale=1.0,
         alpha_offset=0.15,
@@ -89,6 +97,7 @@ def _source(*, hidden_size: int = 5120, kv_heads: int = 4) -> ExternalDMSLinearS
         source_path="fixture.json",
         sidecar=sidecar,
         training=training,
+        prefill_selection_mode=prefill_selection_mode,
     )
     rng = np.random.default_rng(20260823)
     weight = rng.standard_normal((1, kv_heads, hidden_size)).astype(np.float32)
@@ -172,6 +181,62 @@ def test_integrated_no_evict_collector_publishes_all_false_decisions() -> None:
 
     assert decisions.shape == (7, 1, 4)
     assert not bool(np.any(decisions))
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_exact_budget_collector_updates_device_decisions_from_learned_ranks() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    source = _source(
+        hidden_size=32,
+        kv_heads=2,
+        window_size=1,
+        prefill_selection_mode="exact_budget",
+    )
+    tokens = 7
+    rng = np.random.default_rng(887)
+    hidden_bits = _bf16_bits(
+        rng.standard_normal((tokens, int(source.config.hidden_size))).astype(np.float32)
+    )
+    expected_logits, _ = source.project(hidden_bits, compact_layer_index=0)
+    expected = build_dms_exact_budget_eviction(
+        expected_logits[:, None, :],
+        current_position=tokens - 1,
+        window_size=source.config.window_size,
+        target_compression_ratio=source.config.target_compression_ratio,
+    )
+    hidden_buf = malloc(hidden_bits.nbytes)
+    collector = _ExternalDMSDevicePrefillCollector(
+        source,
+        token_count=tokens,
+        backend="hip_gfx1151",
+        runtime=get_hip_runtime(),
+    )
+    try:
+        copy_host_to_device(hidden_buf, host_array_ptr(hidden_bits), hidden_bits.nbytes)
+        collector.capture_device_chunk(
+            physical_layer_id=3,
+            compact_layer_index=0,
+            start=0,
+            rows=tokens,
+            hidden_ptr=hidden_buf.ptr,
+            stream=0,
+        )
+        decisions = collector.finalize()
+        device_decisions = np.empty((tokens, 2), dtype=np.uint8)
+        copy_device_to_host(
+            host_array_ptr(device_decisions),
+            DeviceBuffer(collector.decision_ptr(0), device_decisions.nbytes),
+            device_decisions.nbytes,
+        )
+    finally:
+        collector.close()
+        free(hidden_buf)
+
+    np.testing.assert_array_equal(decisions, expected)
+    np.testing.assert_array_equal(device_decisions.astype(np.bool_), expected[:, 0, :])
+    np.testing.assert_array_equal(decisions.sum(axis=0), [[2, 2]])
+    assert not np.any(decisions[-2:])
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")

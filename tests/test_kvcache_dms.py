@@ -17,6 +17,7 @@ from hipengine.kvcache import (
     DMSCodecQualification,
     DMSCompactResidentRunnerAdapter,
     DMSRetrofitConfig,
+    build_dms_exact_budget_eviction,
     build_dms_live_mask,
     compact_attention_reference,
     create_dms_bf16_backend,
@@ -215,6 +216,49 @@ def test_dms_extracts_group_decisions_and_zeros_borrowed_channel() -> None:
     )
     assert np.all(cleaned[:, (0, 2), -1] == 0)
     np.testing.assert_array_equal(q, original)
+
+
+def test_dms_exact_budget_eviction_ranks_each_layer_head_and_protects_window() -> None:
+    logits = np.zeros((10, 2, 2), dtype=np.float32)
+    logits[:7, 0, 0] = [1, 9, 2, 8, 3, 7, 4]
+    logits[:7, 0, 1] = [9, 1, 8, 2, 7, 3, 4]
+    logits[:7, 1, 0] = 5.0
+    logits[:7, 1, 1] = np.arange(7, dtype=np.float32)
+    logits[7:] = 1000.0
+
+    evict = build_dms_exact_budget_eviction(
+        logits,
+        current_position=9,
+        window_size=2,
+        target_compression_ratio=2,
+    )
+
+    assert evict.shape == logits.shape
+    assert evict.dtype == np.bool_
+    np.testing.assert_array_equal(evict.sum(axis=0), np.full((2, 2), 3))
+    assert not np.any(evict[7:])
+    np.testing.assert_array_equal(np.flatnonzero(evict[:, 0, 0]), [1, 3, 5])
+    np.testing.assert_array_equal(np.flatnonzero(evict[:, 0, 1]), [0, 2, 4])
+    # Deterministic equal-score ties evict the oldest positions first.
+    np.testing.assert_array_equal(np.flatnonzero(evict[:, 1, 0]), [0, 1, 2])
+    np.testing.assert_array_equal(np.flatnonzero(evict[:, 1, 1]), [4, 5, 6])
+
+
+def test_dms_exact_budget_eviction_rejects_invalid_scores() -> None:
+    with pytest.raises(ValueError, match=r"\[tokens,layers,heads\]"):
+        build_dms_exact_budget_eviction(
+            np.zeros((4, 2), dtype=np.float32),
+            current_position=3,
+            window_size=1,
+            target_compression_ratio=2,
+        )
+    with pytest.raises(ValueError, match="finite"):
+        build_dms_exact_budget_eviction(
+            np.full((4, 1, 1), np.nan, dtype=np.float32),
+            current_position=3,
+            window_size=1,
+            target_compression_ratio=2,
+        )
 
 
 def test_dms_live_mask_keeps_recent_window_and_non_evicted_rows() -> None:

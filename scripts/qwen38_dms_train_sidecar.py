@@ -700,6 +700,7 @@ def train_sidecar(
         "head_dim": head_dim,
         "hidden_size": hidden_size,
         "input_stage": _INPUT_STAGE,
+        "prefill_selection_mode": "exact_budget",
         "window_size": int(objective["window_size"]),
         "target_compression_ratio": int(objective["target_compression_ratio"]),
         "alpha_scale": float(calibration["alpha_scale"]),

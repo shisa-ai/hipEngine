@@ -128,6 +128,7 @@ def test_schema_v2_loads_and_binds_external_linear_sidecar(tmp_path: Path) -> No
     assert config.input_stage == _INPUT_STAGE
     assert config.borrowed_query_channel is None
     assert config.zero_borrowed_query_channel is False
+    assert config.prefill_selection_mode == "threshold"
     assert config.corrected_mask is False
     assert isinstance(config.sidecar, DMSLinearSidecarSpec)
     assert config.sidecar.resolved_path == str(sidecar.resolve())
@@ -136,6 +137,21 @@ def test_schema_v2_loads_and_binds_external_linear_sidecar(tmp_path: Path) -> No
     assert isinstance(config.training, DMSTrainingProvenance)
     assert config.training.seed == 0
     assert len(config.fingerprint) == 64
+
+
+def test_schema_v2_binds_exact_budget_prefill_selection(tmp_path: Path) -> None:
+    model, _, metadata, payload = _fixture(tmp_path)
+    payload["prefill_selection_mode"] = "exact_budget"
+    _write_metadata(metadata, payload)
+
+    config = load_dms_retrofit_config(model, metadata_path=metadata)
+
+    assert config.prefill_selection_mode == "exact_budget"
+
+    payload["prefill_selection_mode"] = "adaptive_magic"
+    _write_metadata(metadata, payload)
+    with pytest.raises(ValueError, match="prefill_selection_mode"):
+        load_dms_retrofit_config(model, metadata_path=metadata)
 
 
 def test_schema_v2_rejects_unsupported_schema_before_interpreting_fields(

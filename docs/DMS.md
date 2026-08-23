@@ -8,7 +8,8 @@ Last updated: 2026-08-23
 > drifts to 2.305–3.495x live compression on unseen development sequences and
 > fails one Japanese step (max KL 0.14007, 87.5% category top-1). No-evict is
 > essentially exact, so policy/budget selection—not compact kernel math—is the
-> blocker. Dense remains default while exact-budget ranking is implemented.
+> blocker. Dense remains default while the new exact-budget ranking mode is
+> quality-qualified and moved fully onto device.
 
 This document is the end-to-end record and continuation plan for hipEngine's
 external Dynamic Memory Sparsification campaign. It covers the design, exact
@@ -880,9 +881,10 @@ byte-exact reclaim after success, cancellation, and injected failure.
 - [x] Register gfx1151 and gfx1100 external-linear BF16 decision kernels.
 - [x] Consume the declared normalized hidden stage on device.
 - [x] Preserve all ordinary query channels.
-- [ ] Replace distribution-sensitive threshold-only prefill selection with a
+- [x] Replace distribution-sensitive threshold-only prefill selection with a
       metadata-bound exact historical budget over learned per-layer/head ranks;
-      preserve window protection and deterministic tie-breaking.
+      preserve window protection and deterministic tie-breaking. Correctness-
+      first host ranking/device-mask update is implemented; quality is open.
 - [ ] Fuse or co-schedule ranking/thresholding, protected-window handling,
       append, and compact metadata update where the numerical contract permits.
 - [x] Eliminate host projection and per-token K/V copies from c1 decode serving.

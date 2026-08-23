@@ -13686,7 +13686,10 @@ class _ExternalDMSDevicePrefillCollector:
         self._decisions = malloc(decision_bytes, runtime=runtime)
         self._logits = (
             malloc(
-                self.token_count * self.num_kv_heads * DType.FP32.itemsize,
+                source.config.num_layers
+                * self.token_count
+                * self.num_kv_heads
+                * DType.FP32.itemsize,
                 runtime=runtime,
             )
             if self.decision_mode == "sidecar"
@@ -13722,7 +13725,9 @@ class _ExternalDMSDevicePrefillCollector:
                 hidden_ptr=int(hidden_ptr),
                 compact_layer_index=layer,
                 tokens=int(rows),
-                logits_ptr=self._logits.ptr,
+                logits_ptr=(
+                    self._logits.ptr + offset * DType.FP32.itemsize
+                ),
                 evict_ptr=self._decisions.ptr + offset,
                 stream=int(stream),
             )
@@ -13739,10 +13744,45 @@ class _ExternalDMSDevicePrefillCollector:
             self._runtime.stream_synchronize(int(stream))
         else:
             self._runtime.device_synchronize()
-        layer_major = np.empty(
-            (self.source.config.num_layers, self.token_count, self.num_kv_heads),
-            dtype=np.uint8,
+        shape = (
+            self.source.config.num_layers,
+            self.token_count,
+            self.num_kv_heads,
         )
+        if (
+            self.decision_mode == "sidecar"
+            and self.source.config.prefill_selection_mode == "exact_budget"
+        ):
+            from hipengine.kvcache.dms import build_dms_exact_budget_eviction
+
+            if self._logits is None:
+                raise RuntimeError("exact-budget DMS prefill lacks device logits")
+            layer_logits = np.empty(shape, dtype=np.float32)
+            copy_device_to_host(
+                host_array_ptr(layer_logits),
+                self._logits,
+                layer_logits.nbytes,
+                runtime=self._runtime,
+            )
+            token_logits = np.ascontiguousarray(layer_logits.transpose(1, 0, 2))
+            decisions = build_dms_exact_budget_eviction(
+                token_logits,
+                current_position=self.token_count - 1,
+                window_size=self.source.config.window_size,
+                target_compression_ratio=self.source.config.target_compression_ratio,
+            )
+            layer_decisions = np.ascontiguousarray(
+                decisions.transpose(1, 0, 2),
+                dtype=np.uint8,
+            )
+            copy_host_to_device(
+                self._decisions,
+                host_array_ptr(layer_decisions),
+                layer_decisions.nbytes,
+                runtime=self._runtime,
+            )
+            return decisions
+        layer_major = np.empty(shape, dtype=np.uint8)
         copy_device_to_host(
             host_array_ptr(layer_major),
             self._decisions,
