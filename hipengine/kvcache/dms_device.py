@@ -213,16 +213,25 @@ class DMSExternalLinearDeviceProjector:
 class DMSDevicePayloadStore:
     """Per-layer device slot pools + shared staging for the dms_compact kernels."""
 
-    def __init__(self, *, retrofit, slots_per_layer: int, max_pack_rows: int) -> None:
+    def __init__(
+        self,
+        *,
+        retrofit,
+        slots_per_layer: int,
+        max_pack_rows: int,
+        backend: str = "hip_gfx1100",
+    ) -> None:
         from hipengine.core.hip import get_hip_runtime
+        from hipengine.kernels.backends import load_backend_kernel_package
         from hipengine.kernels.hip_gfx1100.attention import build_dms_compact
 
-        get_hip_runtime()  # raises when HIP is unavailable
+        self._runtime = get_hip_runtime()  # raises when HIP is unavailable
+        self._backend = str(backend)
         self._library = build_dms_compact(load=True)
         required_keys = (
-            KernelKey("hip_gfx1100", "dms_streaming_pack", "bf16", "count_rank_scatter"),
-            KernelKey("hip_gfx1100", "dms_append_decode", "bf16", "compact_append_evict"),
-            KernelKey("hip_gfx1100", "dms_compact_attn_decode", "bf16", "grouped_gqa"),
+            KernelKey(self._backend, "dms_streaming_pack", "bf16", "count_rank_scatter"),
+            KernelKey(self._backend, "dms_append_decode", "bf16", "compact_append_evict"),
+            KernelKey(self._backend, "dms_compact_attn_decode", "bf16", "grouped_gqa"),
         )
         if not all(is_registered(key) for key in required_keys):
             from hipengine.kernels.hip_gfx1100.attention import (
@@ -230,21 +239,22 @@ class DMSDevicePayloadStore:
             )
 
             register_dms_compact_kernels(replace=True)
+            load_backend_kernel_package(self._backend)
         try:
             self._pack_fn = resolve(
-                backend="hip_gfx1100",
+                backend=self._backend,
                 layer="dms_streaming_pack",
                 quant="bf16",
                 variant="count_rank_scatter",
             )
             self._append_fn = resolve(
-                backend="hip_gfx1100",
+                backend=self._backend,
                 layer="dms_append_decode",
                 quant="bf16",
                 variant="compact_append_evict",
             )
             self._attn_fn = resolve(
-                backend="hip_gfx1100",
+                backend=self._backend,
                 layer="dms_compact_attn_decode",
                 quant="bf16",
                 variant="grouped_gqa",
@@ -266,6 +276,12 @@ class DMSDevicePayloadStore:
         self._v_slot = [self._alloc(self._slots * self._dim * 2) for _ in range(self._layers)]
         self._positions = [self._alloc(self._slots * 4) for _ in range(self._layers)]
         self._slot_evict = [self._alloc(self._slots) for _ in range(self._layers)]
+        # Serving metadata is persistent per compact layer. Host-composition
+        # methods refresh these planes; direct methods consume them in place so
+        # K/V and decisions never stage through host memory.
+        self._base_meta = [self._alloc(self._heads * 4) for _ in range(self._layers)]
+        self._capacity_meta = [self._alloc(self._heads * 4) for _ in range(self._layers)]
+        self._live_meta = [self._alloc(self._heads * 4) for _ in range(self._layers)]
 
         h, d = self._heads, self._dim
         self._stg = {
@@ -296,6 +312,151 @@ class DMSDevicePayloadStore:
         array = np.ascontiguousarray(array)
         copy_host_to_device(self._stg[name], host_array_ptr(array), array.nbytes)
 
+    def configure_layer(
+        self,
+        layer: int,
+        *,
+        base: np.ndarray,
+        capacity: np.ndarray | None = None,
+        live: np.ndarray | None = None,
+    ) -> None:
+        """Publish persistent extent metadata for one compact layer."""
+
+        self._check_closed()
+        layer = int(layer)
+        if layer < 0 or layer >= self._layers:
+            raise ValueError("DMS device metadata layer is out of range")
+        base_values = np.ascontiguousarray(base, dtype=np.int32)
+        if base_values.shape != (self._heads,) or np.any(base_values < 0):
+            raise ValueError("DMS device extent bases must be [kv_heads]")
+        copy_host_to_device(
+            self._base_meta[layer], host_array_ptr(base_values), base_values.nbytes
+        )
+        if capacity is not None:
+            capacity_values = np.ascontiguousarray(capacity, dtype=np.int32)
+            if capacity_values.shape != (self._heads,) or np.any(
+                capacity_values <= 0
+            ):
+                raise ValueError("DMS device extent capacities must be [kv_heads]")
+            copy_host_to_device(
+                self._capacity_meta[layer],
+                host_array_ptr(capacity_values),
+                capacity_values.nbytes,
+            )
+        if live is not None:
+            live_values = np.ascontiguousarray(live, dtype=np.int32)
+            if live_values.shape != (self._heads,) or np.any(live_values < 0):
+                raise ValueError("DMS device live metadata must be [kv_heads]")
+            copy_host_to_device(
+                self._live_meta[layer],
+                host_array_ptr(live_values),
+                live_values.nbytes,
+            )
+
+    def live_counts(self, layer: int) -> np.ndarray:
+        """Synchronize one compact layer's live counts at a lifecycle barrier."""
+
+        self._check_closed()
+        values = np.empty((self._heads,), dtype=np.int32)
+        copy_device_to_host(
+            host_array_ptr(values), self._live_meta[int(layer)], values.nbytes
+        )
+        return values
+
+    @property
+    def resident_bytes(self) -> int:
+        return sum(int(buffer.nbytes) for buffer in self._buffers)
+
+    def pack_layer_device(
+        self,
+        layer: int,
+        *,
+        k_ptr: int,
+        v_ptr: int,
+        evict_ptr: int,
+        tokens: int,
+        row_start: int = 0,
+        stream: int = 0,
+    ) -> None:
+        """Pack device-resident contiguous K/V and decisions without host staging."""
+
+        self._check_closed()
+        layer = int(layer)
+        tokens = int(tokens)
+        if layer < 0 or layer >= self._layers:
+            raise ValueError("DMS device pack layer is out of range")
+        if tokens <= 0:
+            raise ValueError("DMS direct device pack requires positive tokens")
+        if min(int(k_ptr), int(v_ptr), int(evict_ptr)) <= 0:
+            raise ValueError("DMS direct device pack requires non-null pointers")
+        self._upload("row_starts", np.asarray([int(row_start)], dtype=np.int32))
+        self._upload("row_tokens", np.asarray([tokens], dtype=np.int32))
+        self._pack_fn(
+            int(k_ptr),
+            int(v_ptr),
+            int(evict_ptr),
+            self._base_meta[layer].ptr,
+            self._capacity_meta[layer].ptr,
+            self._live_meta[layer].ptr,
+            self._stg["row_starts"].ptr,
+            self._stg["row_tokens"].ptr,
+            self._k_slot[layer].ptr,
+            self._v_slot[layer].ptr,
+            self._positions[layer].ptr,
+            self._slot_evict[layer].ptr,
+            1,
+            self._heads,
+            self._dim,
+            self._window,
+            stream=int(stream),
+            library=self._library,
+            runtime=self._runtime,
+        )
+
+    def append_layer_device(
+        self,
+        layer: int,
+        *,
+        k_ptr: int,
+        v_ptr: int,
+        evict_ptr: int,
+        row_position: int,
+        stream: int = 0,
+    ) -> None:
+        """Append device-resident K/V and decisions using persistent metadata."""
+
+        self._check_closed()
+        layer = int(layer)
+        if layer < 0 or layer >= self._layers:
+            raise ValueError("DMS device append layer is out of range")
+        if min(int(k_ptr), int(v_ptr), int(evict_ptr)) <= 0:
+            raise ValueError("DMS direct device append requires non-null pointers")
+        self._upload(
+            "row_positions", np.asarray([int(row_position)], dtype=np.int32)
+        )
+        self._upload("status", np.zeros(self._heads, dtype=np.int32))
+        self._append_fn(
+            int(k_ptr),
+            int(v_ptr),
+            int(evict_ptr),
+            self._stg["row_positions"].ptr,
+            self._base_meta[layer].ptr,
+            self._capacity_meta[layer].ptr,
+            self._live_meta[layer].ptr,
+            self._k_slot[layer].ptr,
+            self._v_slot[layer].ptr,
+            self._positions[layer].ptr,
+            self._slot_evict[layer].ptr,
+            self._stg["status"].ptr,
+            1,
+            self._heads,
+            self._dim,
+            self._window,
+            stream=int(stream),
+            library=self._library,
+            runtime=self._runtime,
+        )
+
     def pack_layer(
         self,
         layer: int,
@@ -320,28 +481,18 @@ class DMSDevicePayloadStore:
         self._upload("pack_k", k_bits)
         self._upload("pack_v", v_bits)
         self._upload("pack_evict", evict.astype(np.uint8))
-        self._upload("base", base)
-        self._upload("capacity", capacity)
-        self._upload("row_starts", np.zeros(1, dtype=np.int32))
-        self._upload("row_tokens", np.asarray([tokens], dtype=np.int32))
-        self._pack_fn(
-            self._stg["pack_k"].ptr,
-            self._stg["pack_v"].ptr,
-            self._stg["pack_evict"].ptr,
-            self._stg["base"].ptr,
-            self._stg["capacity"].ptr,
-            self._stg["live"].ptr,
-            self._stg["row_starts"].ptr,
-            self._stg["row_tokens"].ptr,
-            self._k_slot[layer].ptr,
-            self._v_slot[layer].ptr,
-            self._positions[layer].ptr,
-            self._slot_evict[layer].ptr,
-            1,
-            self._heads,
-            self._dim,
-            self._window,
-            library=self._library,
+        self.configure_layer(
+            layer,
+            base=base,
+            capacity=capacity,
+            live=np.zeros((self._heads,), dtype=np.int32),
+        )
+        self.pack_layer_device(
+            layer,
+            k_ptr=self._stg["pack_k"].ptr,
+            v_ptr=self._stg["pack_v"].ptr,
+            evict_ptr=self._stg["pack_evict"].ptr,
+            tokens=tokens,
         )
 
     def append_layer(
@@ -367,29 +518,13 @@ class DMSDevicePayloadStore:
         self._upload("append_k", k_new_bits)
         self._upload("append_v", v_new_bits)
         self._upload("append_evict", evict_new.astype(np.uint8))
-        self._upload("row_positions", np.asarray([int(row_position)], dtype=np.int32))
-        self._upload("base", base)
-        self._upload("capacity", capacity)
-        self._upload("live", live)
-        self._upload("status", np.zeros(self._heads, dtype=np.int32))
-        self._append_fn(
-            self._stg["append_k"].ptr,
-            self._stg["append_v"].ptr,
-            self._stg["append_evict"].ptr,
-            self._stg["row_positions"].ptr,
-            self._stg["base"].ptr,
-            self._stg["capacity"].ptr,
-            self._stg["live"].ptr,
-            self._k_slot[layer].ptr,
-            self._v_slot[layer].ptr,
-            self._positions[layer].ptr,
-            self._slot_evict[layer].ptr,
-            self._stg["status"].ptr,
-            1,
-            self._heads,
-            self._dim,
-            self._window,
-            library=self._library,
+        self.configure_layer(layer, base=base, capacity=capacity, live=live)
+        self.append_layer_device(
+            layer,
+            k_ptr=self._stg["append_k"].ptr,
+            v_ptr=self._stg["append_v"].ptr,
+            evict_ptr=self._stg["append_evict"].ptr,
+            row_position=row_position,
         )
         if tripwire_enabled():
             status = np.zeros(self._heads, dtype=np.int32)
@@ -431,8 +566,7 @@ class DMSDevicePayloadStore:
             q_dev = self._stg["q"].ptr
         else:
             q_dev = int(q_ptr)
-        self._upload("base", base)
-        self._upload("live", live)
+        self.configure_layer(layer, base=base, live=live)
         if out is not None:
             out_dev = self._stg["out"].ptr
         else:
@@ -441,8 +575,8 @@ class DMSDevicePayloadStore:
             q_dev,
             self._k_slot[layer].ptr,
             self._v_slot[layer].ptr,
-            self._stg["base"].ptr,
-            self._stg["live"].ptr,
+            self._base_meta[layer].ptr,
+            self._live_meta[layer].ptr,
             out_dev,
             1,
             self._q_heads,
