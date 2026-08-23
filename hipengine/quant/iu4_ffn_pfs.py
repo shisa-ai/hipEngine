@@ -1,9 +1,9 @@
 """Immutable PromptForge IU4 FFN sidecar product reader.
 
-The PFSIU4F file is a six-entry-per-layer container: combined gate/up S4,
-per-output scales/sums, then down S4 with its scales/sums. Device kernels use a
-separate paired-K32 tile view; conversion is byte-lossless and does not alter
-signed nibbles or metadata.
+The PFSIU4F file is a six-entry-per-layer container: combined gate/up row-major
+S4, per-output scales/sums, then row-major down S4 with its scales/sums. Device
+kernels use a separate paired-K32 tile view; conversion is byte-lossless and
+does not alter signed nibbles or metadata.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ class KairicIU4FFNQuant:
     """Explicit T3 product identity for the published Kairic FFN sidecar."""
 
     name: str = "iu4_s4_kairic_ffn_v1"
-    weight_storage: str = "pfsiu4f_s4_n64_k8word_per_output_scale_sum"
+    weight_storage: str = "pfsiu4f_s4_rowmajor_per_output_scale_sum"
     activation_preprocess: str = "dynamic_u4_block_hadamard1024_per_row"
     compute_dtype: str = "iu4_wmma_i32_accum_bf16_boundary"
     scale_granularity: str = "one_long_k_segment_per_output_and_activation_row"
@@ -162,8 +162,8 @@ class IU4FFNSidecar:
 
     def _weight_view(self, entry: _EntryView) -> np.ndarray:
         return np.ndarray(
-            shape=(entry.rows // 64, entry.cols // 8, 64),
-            dtype=np.uint32,
+            shape=(entry.rows, entry.cols // 2),
+            dtype=np.uint8,
             buffer=self._mapping,
             offset=entry.offset,
         )
@@ -204,22 +204,19 @@ def open_kairic_qwen38_ffn(
     )
 
 
-def pfs_s4_to_n16_k32_tiles(weight_words: object) -> np.ndarray:
-    """Losslessly transpose PFS ``[N64,K8word,N]`` into paired-K32 tiles."""
+def pfs_s4_to_n16_k32_tiles(weight_bytes: object) -> np.ndarray:
+    """Losslessly transpose PFS row-major S4 into paired-K32 tiles."""
 
-    source = np.asarray(weight_words, dtype=np.uint32)
-    if source.ndim != 3 or source.shape[2] != 64:
-        raise ValueError("PFS S4 weights must have shape [N/64, K/8, 64]")
-    n64, words_per_row, _ = source.shape
-    if n64 <= 0 or words_per_row <= 0 or words_per_row % 4:
-        raise ValueError("PFS S4 N and K dimensions must be positive and K divisible by 32")
-    k_pairs = words_per_row // 4
-    words = np.ascontiguousarray(
-        source.reshape(n64, k_pairs, 4, 4, 16)
-        .transpose(0, 3, 1, 4, 2)
-        .reshape(n64 * 4, k_pairs, 16, 4)
+    source = np.asarray(weight_bytes, dtype=np.uint8)
+    if source.ndim != 2:
+        raise ValueError("PFS S4 weights must have row-major shape [N, K/2]")
+    rows, packed_k = source.shape
+    if rows <= 0 or rows % 16 or packed_k <= 0 or packed_k % 16:
+        raise ValueError("PFS S4 N must divide 16 and K must divide 32")
+    return np.ascontiguousarray(
+        source.reshape(rows // 16, 16, packed_k // 16, 16)
+        .transpose(0, 2, 1, 3)
     )
-    return words.view(np.uint8).reshape(n64 * 4, k_pairs, 16, 16)
 
 
 def _sha256_file(path: Path) -> str:

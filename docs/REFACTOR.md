@@ -4032,15 +4032,15 @@ should be boring.
   experiment improves complete wall and passes its full context/lifecycle/SLO
   packet; never use exactness alone as a speed claim.
 
-## Native IU4 S4 sidecar research family is registered but unrouted
+## Native IU4 S4 research keys are unrouted; product route is explicit T3
 
 - Added 2026-08-23 during the MTP-IU4 review. `hip_gfx1151/quant/iu4_s4_sidecar.{hip,py}`
   registers `activation_quant/iu4_u4_row_v1` and
   `linear_pair_silu/iu4_s4_sidecar_v1` through `register_iu4_s4_sidecar_kernels()`,
   but nothing in model/runtime dispatch resolves either key. The current exact
   qmicro Q8_1x2 Q4_K_S chain remains the declared strict fallback and the only
-  live owner. This is intentional for a T3 research leaf, but the registration
-  is live surface with no consumer and no route telemetry.
+  live owner. This remains intentional for the re-quantized T3 research leaf;
+  the separate immutable PFS product below owns the only explicit runtime route.
 - Second, weaker issue: `iu4_s4_matmul_i32_probe` is a bare-I32 probe with no
   correction/scale/epilogue. It exists only to test nibble/sign/lane layout and
   is superseded by the operation-complete dual kernel for every measurement
@@ -4051,18 +4051,21 @@ should be boring.
   are local128/VGPR192/LDS8192 with 32 reported scratch bytes for wide WMMA;
   the scratch-free rewrite was rejected after an 8.0-16.1% short-screen loss.
   R7 beats the real bulk owner by 2.668-3.105x at M64-M512, all 15/15 pairs.
-- R7 therefore selects the promotion trigger rather than removal, but the family
-  remains a research leaf: before any runtime route/default it must acquire an
-  original-weight or offline-optimized S4 product, immutable sidecar manifest,
-  explicit representation selection, route telemetry, full down/complete-model
-  wall evidence, the T3 quality/task packet, and the registered exact fallback
-  described in MTP-IU4.md §8. If that product work is abandoned, unregister the
-  two unrouted keys and retain only the compact evidence/oracles.
-- The `iu4_s4_kairic_ffn_v1` product identity and PFS parser now validate the
-  public file hash/header/table/layout, but they remain cold tooling with no
-  model binder or device allocation owner. Fold them into the eventual explicit
-  representation plugin, or remove them with the research family if R8 is
-  abandoned; do not leave a second ad-hoc sidecar loader beside that plugin.
+- R8 lands the immutable `iu4_s4_kairic_ffn_v1` product identity, PFS parser,
+  device owner, explicit `iu4_ffn_pfs_path` session selector, M96–2048 route
+  telemetry, strict fallback, full gate/down leaf, complete p512/p1K/p4K wall,
+  and long-task packet. Do not merge this explicit product owner into ordinary
+  GGUF weight materialization: its 7.99-GiB secondary representation and T3
+  semantics are intentionally separate.
+- Promotion is blocked, not unfinished: against the available Q4_K_S authority,
+  varied-p512 teacher mean/max KL is 0.02119/0.08754 with 88.89% top-1, and the
+  padded canonical 50-row suite narrowly misses mean KL (0.001124 > 0.001),
+  outside the frozen production envelope despite 1.44–1.48x complete-prefill and 5/5
+  long-task non-inferiority. The exact public Kairic authoritative GGUF also
+  uses unsupported Equalized type IDs 100/102. Remove the explicit product
+  runtime only if this quality-traded configuration is abandoned; otherwise
+  keep omitted/profile behavior unchanged until an Equalized adapter plus
+  BF16-relative/full-profile packet independently passes.
 - Keep `iu4_s4_matmul_i32_probe` temporarily because R6 changed the physical
   layout to paired-K32 and the probe is the independent GPU lane-layout/I32
   oracle. Drop it once an immutable sidecar-manifest loader has its own complete

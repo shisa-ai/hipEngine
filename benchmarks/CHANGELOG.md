@@ -4,6 +4,26 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [blocked-production / retained explicit-T3 gfx1151 Qwen3.8 Kairic IU4 FFN]
+  Qwen3.8-27B Q4_K_S + immutable 7.99-GiB PFS / same-resident p512/p1K/p4K:
+  complete prefill moves **384.70/384.58/359.25 → 567.92/563.05/518.07 tok/s
+  (1.476×/1.464×/1.442×, all 5/5 pairs)**; five 4K retrieval/multihop/
+  aggregation/long-doc/code tasks pass in both arms. Promotion is rejected:
+  arbitrary-p512 teacher mean/max KL is **0.02119/0.08754** with **88.89%**
+  top-1; the padded canonical 50-row suite is 100% top-1 but mean KL
+  **0.001124 > 0.001**, also failing the frozen envelope. Keep only explicit
+  `iu4_ffn_pfs_path`, M96–2048, with exact c1/shape fallback; omitted/named
+  production unchanged.
+  `benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-full-model-gate.json`.
+
+- [gfx1151 Qwen3.8 original-product IU4 full-FFN leaf] Actual layer-0 Q4 gate/up
+  + Q5 down / M64/128/256/512: current→PFS IU4 is
+  **5.833/5.986/8.508/15.882 → 2.239/2.291/2.541/4.813 ms
+  (2.605×/2.613×/3.348×/3.300×)**, all 15/15, finite and deterministic; cache-
+  only IU4 is local128/VGPR216/LDS8192/scratch0. Layer-local hidden top-1 is
+  100%, but model-level quality remains governed by the rejected row above.
+  `benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-full-ffn-q5-leaf.json`.
+
 - [gfx1151 native IU4 R6/R7 speed screen] Qwen3.8-27B Q4_K_S actual layer-0
   gate/up+SiLU / M64/128/256/512: paired-K32 loads plus a 16-accumulator,
   M256-blocked IU4 WMMA core move the current pack8/F16 owner

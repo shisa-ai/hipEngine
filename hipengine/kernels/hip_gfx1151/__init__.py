@@ -52,6 +52,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1151.quant.iu4_s4_ffn_product import (
+    register_iu4_s4_ffn_product_kernels,
+)
 from hipengine.kernels.hip_gfx1151.quant.iu4_s4_sidecar import (
     register_iu4_s4_sidecar_kernels,
 )
@@ -65,6 +68,7 @@ from hipengine.kernels.registry import (
 
 BACKEND = "hip_gfx1151"
 TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
+GGUF_IU4_FFN_PRODUCT = True
 
 
 def _qwen35_08b_q4_pack8_dual_silu_t128(*args, **kwargs):
@@ -2176,6 +2180,7 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
             replace=replace,
         )
     register_iu4_s4_sidecar_kernels(replace=replace)
+    register_iu4_s4_ffn_product_kernels(replace=replace)
 
 
 register_gfx1151_kernels()

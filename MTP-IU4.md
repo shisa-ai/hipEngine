@@ -1,9 +1,10 @@
 # MTP IU4 verifier research plan
 
-_Status: R0–R2 and B1–B4 complete; R6 core rebuilt; R7 dense-prefill
-speed screen passes at 2.67–3.10×. Single-request B1–B3 IU4 remains rejected
-on representation economics. R8 original-weight/down/full-model quality and
-wall qualification is next; no runtime route is authorized._
+_Status: R0–R2/B1–B4/R6–R8 complete. Single-request B1–B3 IU4 remains
+rejected on representation economics. Dense-prefill gate/up passes 2.67–3.10×;
+the immutable original-product full-FFN route reaches 2.61–3.35× leaf and
+1.44–1.47× complete prefill, but fails the Q4_K_S distribution gate. It is
+retained explicit/quality-traded only; decode stays strict fallback._
 
 _Branch: `mpt-iu4`_
 
@@ -65,10 +66,12 @@ Intermediate-channel softmax KL/top-1 are reported only for localization and are
 not the model full-logit gate.
 
 **Decision:** reject native IU4 for single-request B1–B3 and do not allocate the
-5.329-GiB gate/up companion. Retain the rebuilt gfx1151 research family for the
-now-positive dense-prefill investigation, but require an original-weight/
-offline-optimized S4 product, down/full-model wall evidence, and the full T3
-model-quality packet before any runtime integration.
+5.329-GiB gate/up companion there. Retain the rebuilt gfx1151 dense-prefill
+family and the immutable 7.99-GiB Kairic FFN product as an **explicit,
+quality-traded T3 configuration only**. It improves complete prefill 1.44–1.47×
+and passes five long tasks, but Q4_K_S arbitrary-context logits fail the frozen
+distribution envelope; omitted/default profile remains unchanged and c1 decode
+falls back to the current exact owner.
 
 ### Verdict correction (2026-08-23 review)
 
@@ -130,7 +133,8 @@ All candidate outputs are finite and repeat-bit-deterministic, and tracked
 allocation returns 0→0. Applying the fresh M512 leaf delta to 64 gate/up layers
 and the prior Q4_K_S 396.09-tok/s pp512 packet gives an **inferred**, not
 measured, family share of 40.59% and a projected 1.380× complete-prefill gain
-(396.09→546.44 tok/s). R8 must measure the complete model.
+(396.09→546.44 tok/s). R8 below supersedes this projection with a measured
+complete-model result.
 
 This is a **T3 speed screen only**. The sidecar still comes from re-quantized
 dequantized Q4_K_S at ~15.9% weight NRMSE, not original weights. No model-logit,
@@ -846,10 +850,10 @@ Promotion questions:
 | Actual-weight dense-prefill gate/up | Operation-complete M64/128/256/512 beats the current bulk owner | **Pass speed screen, unqualified T3**: 2.668×/2.708×/2.707×/3.105×, all 15/15 pairs, finite/deterministic/teardown exact. Full model quality and wall remain open. |
 | **Tiny-M representation economics** | S4 bytes buy enough target wall to justify the companion | **Fail, representation-scoped (decisive)**: the entire available win is the 1.12× byte ratio → 1.06× target window for +5.329 GiB and a T3 campaign |
 | Family attribution | Measured all-layer gate/up share and effective BW justify expected target-wall delta | **Pass, bounded**: 21.9–25.2% wall; ideal zero-pack S4 ceiling 1.032–1.070× |
-| Memory ROI | Measured complete target/cycle gain justifies +5.329 GiB gate/up (or +7.988 GiB FFN) | **Fail for c1 B1–B3**: even the roof-projected leaf yields only 1.06×; no model-wide allocation |
-| T3 quality | Full strict-teacher/determinism/isolation/BF16-relative/task packet passes | Not run |
+| Memory ROI | Measured complete target/cycle gain justifies +5.329 GiB gate/up (or +7.988 GiB FFN) | **Split**: fail for c1 B1–B3; prefill product gains 1.44–1.47× complete wall for +7.99 GiB but remains explicit due quality. |
+| T3 quality | Full strict-teacher/determinism/isolation/BF16-relative/task packet passes | **Fail for Q4_K_S production envelope**: teacher mean/max KL 0.02119/0.08754 and 88.89% top-1. Long-task 5/5 non-inferiority and deterministic leaf pass; BF16-relative and exact Equalized-authority hipEngine adapter remain unavailable. |
 | MTP economics | Full category suite beats same-protocol true AR and current B3 without category regression | Not run |
-| Lifecycle | Sidecar load/fallback/close reaches zero tracked allocation and bounded process memory | **One-layer pass**: tracked 0→0; model-wide not run |
+| Lifecycle | Sidecar load/fallback/close reaches zero tracked allocation and bounded process memory | **Model-wide pass**: explicit 8,576,827,392-byte product, M96–2048 route telemetry, M<96/c1 fallback, and tracked teardown 0→0. |
 
 The decisive tiny-M gate is now **representation economics**, not the leaf's
 measured speed. The leaf's speed row is implementation-scoped and would flip
@@ -1038,13 +1042,59 @@ family projection is 1.380×, but it is not a complete-model measurement.
 Artifact:
 [`2026-08-23-gfx1151-qwen38-iu4-s4-r7-prefill-gate-up-ab.json`](benchmarks/results/2026-08-23-gfx1151-qwen38-iu4-s4-r7-prefill-gate-up-ab.json).
 
-### R8 — full prefill FFN
+### R8 — original-product full prefill FFN — complete, quality-traded
 
-Only if R7 wins: add `down`, report complete prefill wall at 512/1K/4K against
-the campaign's 399.031/391.276/385.330 tok/s baseline, plus the T3 quality
-packet. Answers whether the 7.988 GiB full-FFN companion pays for itself on the
-prefill surface — a very different ROI question from the rejected 5.329 GiB
-decode-surface allocation, because prefill has no competing bandwidth pressure.
+R8 uses the immutable published Kairic FFN product instead of extending the
+15.9%-NRMSE re-Q4 proxy. `iu4_s4_kairic_ffn_v1` fail-closes SHA-256
+`adcbb90a…ba2b`, `PFSIU4F` header/table/file bytes, all 384 role/dtype/shape/
+offset records, and the release's block-Hadamard seeds. The explicit session
+selector is `iu4_ffn_pfs_path`; only gfx1151 Qwen3.8-27B Q4_K_S H5120/I17408/
+L64 and physical M96–M2048 admit. Every miss, including c1 decode and canonical
+short category prompts, stays on the current strict owner.
+
+The layer-0 Q5-down full-FFN leaf is operation-complete on both sides:
+
+| M | Current Q4 gate/up + Q5 down | PFS IU4 full FFN | Speedup | Paired wins | Output top-1 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 64 | 5.833 ms | 2.239 ms | **2.605×** | 15/15 | 100% |
+| 128 | 5.986 ms | 2.291 ms | **2.613×** | 15/15 | 100% |
+| 256 | 8.508 ms | 2.541 ms | **3.348×** | 15/15 | 100% |
+| 512 | 15.882 ms | 4.813 ms | **3.300×** | 15/15 | 100% |
+
+Layer-local hidden-vector KL is diagnostic but bounded (mean 0.000292–0.000334,
+max 0.00140–0.00352). Cache-only tracing confirms Hadamard packs at local256,
+VGPR48/120, LDS4096, scratch0 and IU4 gate/down at local128, VGPR216, LDS8192,
+scratch0; raw trace SHA-256 is `273e22bf…90a7`.
+
+The same-resident complete-model p512/p1K/p4K screen moves
+**384.70/384.58/359.25 → 567.92/563.05/518.07 tok/s
+(1.476×/1.464×/1.442×)**, all 5/5 pairs. Candidate route counts are 64/64/128
+full-FFN layer launches and teardown is exact. The full 8,576,827,392-byte
+execution payload loads in 47.5 seconds on this host.
+
+Promotion nevertheless **fails** against the available Q4_K_S authority. The
+varied p512 prefill flips top-1 with KL 0.08754; its nine-row strict-teacher
+trajectory is mean/max KL **0.02119/0.08754** and **88.89%** top-1, failing the
+frozen 0.001/0.05/99% envelope. The full canonical category suite padded to
+p512 is much stronger — 50 teacher rows, **100% top-1**, p95/p99/max KL
+**0.004255/0.015595/0.015673** — but mean KL is **0.001124**, narrowly above
+the 0.001 gate. Repeated 512/1K/4K rows stay exact-top1 and low KL, which
+demonstrates why a sole repeated-token gate would have been unsafe. All ten
+canonical short prompts are exact through explicit M<96 fallback.
+
+The bounded 4K retrieval/multihop/aggregation/long-doc/code task suite passes
+**5/5 control and 5/5 candidate**, with candidate wall lower on every row;
+free-running IDs/output lengths differ and the task packet is non-inferiority,
+not arithmetic certification. BF16-relative evidence remains unavailable. The
+public Kairic authoritative GGUF cannot yet supply the exact matched denominator
+because it uses Equalized quant type IDs 100/102, which hipEngine does not load.
+
+**Disposition:** keep the explicit product/runtime and strict fallback because
+it is a large, task-passing, complete-wall prefill improvement; do not expose it
+as `production`, omitted/default, or decode behavior. Artifact set:
+[`full-FFN leaf`](benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-full-ffn-q5-leaf.json),
+[`rejected distribution + complete-prefill gate`](benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-full-model-gate.json), and
+[`accepted long-task gate`](benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-long-task-gate.json).
 
 ### R9 — packed concurrent verifier
 
@@ -1081,6 +1131,12 @@ R2's M16–128 rows do not substitute for one.
   [`benchmarks/results/2026-08-23-gfx1151-qwen38-iu4-s4-r6-b4-gate-up-leaf.json`](benchmarks/results/2026-08-23-gfx1151-qwen38-iu4-s4-r6-b4-gate-up-leaf.json)
 - R7 dense-prefill A/B:
   [`benchmarks/results/2026-08-23-gfx1151-qwen38-iu4-s4-r7-prefill-gate-up-ab.json`](benchmarks/results/2026-08-23-gfx1151-qwen38-iu4-s4-r7-prefill-gate-up-ab.json)
+- R8 original-product full-FFN leaf:
+  [`benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-full-ffn-q5-leaf.json`](benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-full-ffn-q5-leaf.json)
+- R8 full-model distribution/performance gate:
+  [`benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-full-model-gate.json`](benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-full-model-gate.json)
+- R8 long-task gate:
+  [`benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-long-task-gate.json`](benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-long-task-gate.json)
 - Current exact B3:
   [`benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json`](benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json)
 - gfx1151 roofline: [`docs/ROOFLINE-gfx1151.md`](docs/ROOFLINE-gfx1151.md)
