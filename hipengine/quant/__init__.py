@@ -87,6 +87,14 @@ from hipengine.quant.gguf_t16 import (
     unpack_gguf_q6_k_tile16,
     unpack_gguf_q8_0_tile16,
 )
+from hipengine.quant.iu4_ffn_pfs import (
+    IU4FFNSpec,
+    IU4_S4_KAIRIC_FFN_V1,
+    KairicIU4FFNQuant,
+    PFSFormatError,
+    open_kairic_qwen38_ffn,
+    pfs_s4_to_n16_k32_tiles,
+)
 from hipengine.quant.iu4_s4 import IU4S4SidecarQuant, IU4_S4_SIDECAR
 from hipengine.quant.maple_ternary import MAPLE_TERNARY2, MapleTernary2Quant
 from hipengine.quant.w4_paro import W4_PARO, W4ParoQuant
@@ -165,11 +173,15 @@ __all__ = [
     "GGUF_Q8_0_T16_BLOCK_BYTES",
     "GGUF_Q8_0_T16_V1",
     "GGUF_T16_COLS",
+    "IU4FFNSpec",
     "IU4S4SidecarQuant",
+    "IU4_S4_KAIRIC_FFN_V1",
     "IU4_S4_SIDECAR",
+    "KairicIU4FFNQuant",
     "MAPLE_TERNARY2",
     "MapleTernary2Quant",
     "MissingQuantError",
+    "PFSFormatError",
     "QuantPlugin",
     "QK_K",
     "W4ParoQuant",
@@ -187,6 +199,8 @@ __all__ = [
     "ggml_type_name",
     "llama_file_type_name",
     "nbytes_for_shape",
+    "open_kairic_qwen38_ffn",
+    "pfs_s4_to_n16_k32_tiles",
     "quant_layout",
     "quant_shape_from_byte_shape",
     "quant_shape_to_byte_shape",

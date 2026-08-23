@@ -4058,6 +4058,11 @@ should be boring.
   wall evidence, the T3 quality/task packet, and the registered exact fallback
   described in MTP-IU4.md §8. If that product work is abandoned, unregister the
   two unrouted keys and retain only the compact evidence/oracles.
+- The `iu4_s4_kairic_ffn_v1` product identity and PFS parser now validate the
+  public file hash/header/table/layout, but they remain cold tooling with no
+  model binder or device allocation owner. Fold them into the eventual explicit
+  representation plugin, or remove them with the research family if R8 is
+  abandoned; do not leave a second ad-hoc sidecar loader beside that plugin.
 - Keep `iu4_s4_matmul_i32_probe` temporarily because R6 changed the physical
   layout to paired-K32 and the probe is the independent GPU lane-layout/I32
   oracle. Drop it once an immutable sidecar-manifest loader has its own complete
