@@ -69,6 +69,7 @@ _CORRECTNESS_RUNTIME_PATHS = (
     "hipengine",
     "kernels",
     "scripts/server_f1_concurrency_bench.py",
+    "scripts/execution_profile_gguf_fp16_state_gate.py",
     "scripts/execution_profile_gguf_fp16_state_batch_gate.py",
     "scripts/gguf_arbitrary_c_lifecycle.py",
 )

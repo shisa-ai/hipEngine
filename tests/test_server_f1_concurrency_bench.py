@@ -1000,6 +1000,13 @@ def test_repeat_determinism_is_schedule_local_and_binding() -> None:
     assert failed["mismatch_count"] == 1
 
 
+def test_production_correctness_runtime_paths_cover_fp16_gate_dependency() -> None:
+    assert (
+        "scripts/execution_profile_gguf_fp16_state_gate.py"
+        in SCRIPT._CORRECTNESS_RUNTIME_PATHS
+    )
+
+
 def test_production_correctness_bundle_is_fail_closed_and_matching(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
