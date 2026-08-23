@@ -69,6 +69,9 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf")
 DEFAULT_MODEL_SHA256 = "22200efcd98a7aeeaf83f59b0f1400b055d9e0437900e26b930ef2d42a3eb3f9"
 DEFAULT_ROWS = (2, 3, 4, 5, 8, 16, 32, 64, 96, 128)
+IU4_ARITHMETIC_ROOF_TOPS = 109.715
+GFX1151_MEMORY_ROOF_GBPS = 221.0
+WMMA_VGPR_ANOMALY_THRESHOLD = 64
 
 
 def _parse_args() -> argparse.Namespace:
@@ -154,6 +157,63 @@ def _timing_summary(values: list[float]) -> dict[str, float | int | list[float]]
         "max_ms": max(values),
         "p95_ms": _percentile(values, 0.95),
         "stdev_ms": statistics.stdev(values) if len(values) > 1 else 0.0,
+    }
+
+
+def _implementation_quality_metrics(
+    *,
+    rows: int,
+    core_executed_tops: float,
+    candidate_effective_weight_gbps: float,
+    control_effective_weight_gbps: float,
+) -> dict[str, float | str]:
+    """Derive the mandatory roof-comparison fields for one IU4 shape."""
+
+    useful_weight_memory_roof_tops = 4.0 * rows * GFX1151_MEMORY_ROOF_GBPS / 1000.0
+    memory_binds = useful_weight_memory_roof_tops <= IU4_ARITHMETIC_ROOF_TOPS
+    candidate_memory_fraction = candidate_effective_weight_gbps / GFX1151_MEMORY_ROOF_GBPS
+    candidate_arithmetic_fraction = core_executed_tops / IU4_ARITHMETIC_ROOF_TOPS
+    binding_fraction = (
+        candidate_memory_fraction if memory_binds else candidate_arithmetic_fraction
+    )
+    return {
+        "binding_roof": "memory" if memory_binds else "arithmetic",
+        "binding_roof_value": (
+            GFX1151_MEMORY_ROOF_GBPS if memory_binds else IU4_ARITHMETIC_ROOF_TOPS
+        ),
+        "binding_roof_unit": "GB/s" if memory_binds else "TOPS",
+        "weight_only_useful_memory_roof_tops": useful_weight_memory_roof_tops,
+        "arithmetic_roof_tops": IU4_ARITHMETIC_ROOF_TOPS,
+        "memory_roof_gbps": GFX1151_MEMORY_ROOF_GBPS,
+        "candidate_effective_weight_gbps": candidate_effective_weight_gbps,
+        "control_effective_weight_gbps": control_effective_weight_gbps,
+        "candidate_fraction_of_arithmetic_roof": candidate_arithmetic_fraction,
+        "candidate_percent_of_arithmetic_roof": candidate_arithmetic_fraction * 100.0,
+        "candidate_fraction_of_memory_roof": candidate_memory_fraction,
+        "candidate_percent_of_memory_roof": candidate_memory_fraction * 100.0,
+        "candidate_fraction_of_binding_roof": binding_fraction,
+        "candidate_percent_of_binding_roof": binding_fraction * 100.0,
+    }
+
+
+def _kernel_resource_assessment(
+    *,
+    accumulators_per_wave: int,
+    vgpr_count: int,
+) -> dict[str, int | bool | str]:
+    """Flag the low-VGPR/single-chain signature of an unblocked WMMA body."""
+
+    anomaly = vgpr_count < WMMA_VGPR_ANOMALY_THRESHOLD
+    return {
+        "accumulators_per_wave": accumulators_per_wave,
+        "vgpr_count": vgpr_count,
+        "vgpr_anomaly_threshold": WMMA_VGPR_ANOMALY_THRESHOLD,
+        "vgpr_anomaly": anomaly,
+        "vgpr_anomaly_reason": (
+            "WMMA kernel below 64 VGPR is likely register-unblocked; inspect independent accumulator chains"
+            if anomaly
+            else "VGPR count is consistent with a register-blocked WMMA candidate"
+        ),
     }
 
 
@@ -389,6 +449,18 @@ def _screen_rows(
     executed_ops = 4 * padded_rows * hidden * out_features
     sidecar_pair_bytes = 2 * (out_features * hidden // 2 + out_features * 8)
     qmicro_pair_bytes = 100_270_080
+    candidate_effective_weight_gbps = (
+        sidecar_pair_bytes * ((rows + 15) // 16) / core_ms / 1e6
+    )
+    control_effective_weight_gbps = (
+        qmicro_pair_bytes * len(chunks) / current_ms / 1e6
+    )
+    implementation_quality = _implementation_quality_metrics(
+        rows=rows,
+        core_executed_tops=executed_ops / (core_ms / 1000.0) / 1e12,
+        candidate_effective_weight_gbps=candidate_effective_weight_gbps,
+        control_effective_weight_gbps=control_effective_weight_gbps,
+    )
     return {
         "rows": rows,
         "current_chunks": [
@@ -412,15 +484,12 @@ def _screen_rows(
             "core_executed_tops": executed_ops / (core_ms / 1000.0) / 1e12,
             "wmma_row_utilization": rows / padded_rows,
             "iu4_weight_bytes_per_core": sidecar_pair_bytes * ((rows + 15) // 16),
-            "iu4_effective_weight_gbps": (
-                sidecar_pair_bytes * ((rows + 15) // 16) / core_ms / 1e6
-            ),
+            "iu4_effective_weight_gbps": candidate_effective_weight_gbps,
             "current_qmicro_weight_bytes_per_inclusive_call": (
                 qmicro_pair_bytes * len(chunks)
             ),
-            "current_effective_weight_gbps": (
-                qmicro_pair_bytes * len(chunks) / current_ms / 1e6
-            ),
+            "current_effective_weight_gbps": control_effective_weight_gbps,
+            "implementation_quality": implementation_quality,
         },
         "correctness_vs_current_exact": _softmax_metrics(
             bf16_bits_to_f32(control_bits),
@@ -632,7 +701,16 @@ def main() -> int:
             "control_chunking": "runtime _rowtile8_row_chunks for M>8",
             "cold_pool": "actual gate/up source pair and both execution views exceed 64 MiB",
             "seed": args.seed,
+            "implementation_quality_roofs": {
+                "iu4_arithmetic_tops": IU4_ARITHMETIC_ROOF_TOPS,
+                "practical_memory_gbps": GFX1151_MEMORY_ROOF_GBPS,
+                "binding_rule": "min(weight-only 4*M*memory roof, IU4 arithmetic roof)",
+            },
         },
+        "candidate_kernel_resources": _kernel_resource_assessment(
+            accumulators_per_wave=1,
+            vgpr_count=24,
+        ),
         "results": results,
         "gates": {
             "tiny_m_inclusive_faster_all_m2_m5": tiny_all_faster,

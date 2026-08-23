@@ -149,7 +149,12 @@
     "control_chunking": "runtime _rowtile8_row_chunks for M>8",
     "cold_pool": "actual gate/up source pair and both execution views exceed 64 MiB",
     "seed": 107699,
-    "activations": "deterministic BF16-rounded N(0, 0.2) synthetic rows; actual layer-0 weights"
+    "activations": "deterministic BF16-rounded N(0, 0.2) synthetic rows; actual layer-0 weights",
+    "implementation_quality_roofs": {
+      "iu4_arithmetic_tops": 109.715,
+      "practical_memory_gbps": 221.0,
+      "binding_rule": "min(weight-only 4*M*memory roof, IU4 arithmetic roof)"
+    }
   },
   "results": [
     {
@@ -279,7 +284,23 @@
         "iu4_weight_bytes_per_core": 89407488,
         "iu4_effective_weight_gbps": 153.9048551562041,
         "current_qmicro_weight_bytes_per_inclusive_call": 100270080,
-        "current_effective_weight_gbps": 218.34868192082143
+        "current_effective_weight_gbps": 218.34868192082143,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 221.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 1.768,
+          "arithmetic_roof_tops": 109.715,
+          "memory_roof_gbps": 221.0,
+          "candidate_effective_weight_gbps": 153.9048551562041,
+          "control_effective_weight_gbps": 218.34868192082143,
+          "candidate_fraction_of_arithmetic_roof": 0.0894975677878258,
+          "candidate_percent_of_arithmetic_roof": 8.94975677878258,
+          "candidate_fraction_of_memory_roof": 0.6964020595303353,
+          "candidate_percent_of_memory_roof": 69.64020595303353,
+          "candidate_fraction_of_binding_roof": 0.6964020595303353,
+          "candidate_percent_of_binding_roof": 69.64020595303353
+        }
       },
       "correctness_vs_current_exact": {
         "finite": true,
@@ -424,7 +445,23 @@
         "iu4_weight_bytes_per_core": 89407488,
         "iu4_effective_weight_gbps": 153.50189908305745,
         "current_qmicro_weight_bytes_per_inclusive_call": 100270080,
-        "current_effective_weight_gbps": 212.02155369253782
+        "current_effective_weight_gbps": 212.02155369253782,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 221.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 2.652,
+          "arithmetic_roof_tops": 109.715,
+          "memory_roof_gbps": 221.0,
+          "candidate_effective_weight_gbps": 153.50189908305745,
+          "control_effective_weight_gbps": 212.02155369253782,
+          "candidate_fraction_of_arithmetic_roof": 0.08926324387104385,
+          "candidate_percent_of_arithmetic_roof": 8.926324387104385,
+          "candidate_fraction_of_memory_roof": 0.694578728882613,
+          "candidate_percent_of_memory_roof": 69.45787288826129,
+          "candidate_fraction_of_binding_roof": 0.694578728882613,
+          "candidate_percent_of_binding_roof": 69.45787288826129
+        }
       },
       "correctness_vs_current_exact": {
         "finite": true,
@@ -569,7 +606,23 @@
         "iu4_weight_bytes_per_core": 89407488,
         "iu4_effective_weight_gbps": 152.57848903962957,
         "current_qmicro_weight_bytes_per_inclusive_call": 100270080,
-        "current_effective_weight_gbps": 181.36088524635068
+        "current_effective_weight_gbps": 181.36088524635068,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 221.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 3.536,
+          "arithmetic_roof_tops": 109.715,
+          "memory_roof_gbps": 221.0,
+          "candidate_effective_weight_gbps": 152.57848903962957,
+          "control_effective_weight_gbps": 181.36088524635068,
+          "candidate_fraction_of_arithmetic_roof": 0.08872626956393856,
+          "candidate_percent_of_arithmetic_roof": 8.872626956393855,
+          "candidate_fraction_of_memory_roof": 0.6904004028942514,
+          "candidate_percent_of_memory_roof": 69.04004028942514,
+          "candidate_fraction_of_binding_roof": 0.6904004028942514,
+          "candidate_percent_of_binding_roof": 69.04004028942514
+        }
       },
       "correctness_vs_current_exact": {
         "finite": true,
@@ -714,7 +767,23 @@
         "iu4_weight_bytes_per_core": 89407488,
         "iu4_effective_weight_gbps": 152.6934083040104,
         "current_qmicro_weight_bytes_per_inclusive_call": 100270080,
-        "current_effective_weight_gbps": 147.08482174566944
+        "current_effective_weight_gbps": 147.08482174566944,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 221.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 4.42,
+          "arithmetic_roof_tops": 109.715,
+          "memory_roof_gbps": 221.0,
+          "candidate_effective_weight_gbps": 152.6934083040104,
+          "control_effective_weight_gbps": 147.08482174566944,
+          "candidate_fraction_of_arithmetic_roof": 0.08879309653079162,
+          "candidate_percent_of_arithmetic_roof": 8.879309653079162,
+          "candidate_fraction_of_memory_roof": 0.690920399565658,
+          "candidate_percent_of_memory_roof": 69.0920399565658,
+          "candidate_fraction_of_binding_roof": 0.690920399565658,
+          "candidate_percent_of_binding_roof": 69.0920399565658
+        }
       },
       "correctness_vs_current_exact": {
         "finite": true,
@@ -859,7 +928,23 @@
         "iu4_weight_bytes_per_core": 89407488,
         "iu4_effective_weight_gbps": 154.22370390058344,
         "current_qmicro_weight_bytes_per_inclusive_call": 100270080,
-        "current_effective_weight_gbps": 104.6141846771881
+        "current_effective_weight_gbps": 104.6141846771881,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 221.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 7.072,
+          "arithmetic_roof_tops": 109.715,
+          "memory_roof_gbps": 221.0,
+          "candidate_effective_weight_gbps": 154.22370390058344,
+          "control_effective_weight_gbps": 104.6141846771881,
+          "candidate_fraction_of_arithmetic_roof": 0.089682982257598,
+          "candidate_percent_of_arithmetic_roof": 8.968298225759801,
+          "candidate_fraction_of_memory_roof": 0.6978448140297894,
+          "candidate_percent_of_memory_roof": 69.78448140297894,
+          "candidate_fraction_of_binding_roof": 0.6978448140297894,
+          "candidate_percent_of_binding_roof": 69.78448140297894
+        }
       },
       "correctness_vs_current_exact": {
         "finite": true,
@@ -1008,7 +1093,23 @@
         "iu4_weight_bytes_per_core": 89407488,
         "iu4_effective_weight_gbps": 150.24574433345546,
         "current_qmicro_weight_bytes_per_inclusive_call": 200540160,
-        "current_effective_weight_gbps": 104.85304987065683
+        "current_effective_weight_gbps": 104.85304987065683,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 221.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 14.144,
+          "arithmetic_roof_tops": 109.715,
+          "memory_roof_gbps": 221.0,
+          "candidate_effective_weight_gbps": 150.24574433345546,
+          "control_effective_weight_gbps": 104.85304987065683,
+          "candidate_fraction_of_arithmetic_roof": 0.08736974980203363,
+          "candidate_percent_of_arithmetic_roof": 8.736974980203364,
+          "candidate_fraction_of_memory_roof": 0.6798449969839614,
+          "candidate_percent_of_memory_roof": 67.98449969839614,
+          "candidate_fraction_of_binding_roof": 0.6798449969839614,
+          "candidate_percent_of_binding_roof": 67.98449969839614
+        }
       },
       "correctness_vs_current_exact": {
         "finite": true,
@@ -1165,7 +1266,23 @@
         "iu4_weight_bytes_per_core": 178814976,
         "iu4_effective_weight_gbps": 161.42090224863472,
         "current_qmicro_weight_bytes_per_inclusive_call": 401080320,
-        "current_effective_weight_gbps": 103.52431255738321
+        "current_effective_weight_gbps": 103.52431255738321,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 221.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 28.288,
+          "arithmetic_roof_tops": 109.715,
+          "memory_roof_gbps": 221.0,
+          "candidate_effective_weight_gbps": 161.42090224863472,
+          "control_effective_weight_gbps": 103.52431255738321,
+          "candidate_fraction_of_arithmetic_roof": 0.09386824169196344,
+          "candidate_percent_of_arithmetic_roof": 9.386824169196343,
+          "candidate_fraction_of_memory_roof": 0.7304113223920123,
+          "candidate_percent_of_memory_roof": 73.04113223920123,
+          "candidate_fraction_of_binding_roof": 0.7304113223920123,
+          "candidate_percent_of_binding_roof": 73.04113223920123
+        }
       },
       "correctness_vs_current_exact": {
         "finite": true,
@@ -1338,7 +1455,23 @@
         "iu4_weight_bytes_per_core": 357629952,
         "iu4_effective_weight_gbps": 183.73446680426352,
         "current_qmicro_weight_bytes_per_inclusive_call": 802160640,
-        "current_effective_weight_gbps": 100.75957170902804
+        "current_effective_weight_gbps": 100.75957170902804,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 221.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 56.576,
+          "arithmetic_roof_tops": 109.715,
+          "memory_roof_gbps": 221.0,
+          "candidate_effective_weight_gbps": 183.73446680426352,
+          "control_effective_weight_gbps": 100.75957170902804,
+          "candidate_fraction_of_arithmetic_roof": 0.1068438541531725,
+          "candidate_percent_of_arithmetic_roof": 10.68438541531725,
+          "candidate_fraction_of_memory_roof": 0.8313776778473463,
+          "candidate_percent_of_memory_roof": 83.13776778473463,
+          "candidate_fraction_of_binding_roof": 0.8313776778473463,
+          "candidate_percent_of_binding_roof": 83.13776778473463
+        }
       },
       "correctness_vs_current_exact": {
         "finite": true,
@@ -1527,7 +1660,23 @@
         "iu4_weight_bytes_per_core": 536444928,
         "iu4_effective_weight_gbps": 189.81817105184402,
         "current_qmicro_weight_bytes_per_inclusive_call": 1203240960,
-        "current_effective_weight_gbps": 100.46417530175414
+        "current_effective_weight_gbps": 100.46417530175414,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 221.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 84.864,
+          "arithmetic_roof_tops": 109.715,
+          "memory_roof_gbps": 221.0,
+          "candidate_effective_weight_gbps": 189.81817105184402,
+          "control_effective_weight_gbps": 100.46417530175414,
+          "candidate_fraction_of_arithmetic_roof": 0.11038160306139441,
+          "candidate_percent_of_arithmetic_roof": 11.03816030613944,
+          "candidate_fraction_of_memory_roof": 0.85890575136581,
+          "candidate_percent_of_memory_roof": 85.890575136581,
+          "candidate_fraction_of_binding_roof": 0.85890575136581,
+          "candidate_percent_of_binding_roof": 85.890575136581
+        }
       },
       "correctness_vs_current_exact": {
         "finite": true,
@@ -1732,7 +1881,23 @@
         "iu4_weight_bytes_per_core": 715259904,
         "iu4_effective_weight_gbps": 196.4834048061667,
         "current_qmicro_weight_bytes_per_inclusive_call": 1604321280,
-        "current_effective_weight_gbps": 97.98228700426374
+        "current_effective_weight_gbps": 97.98228700426374,
+        "implementation_quality": {
+          "binding_roof": "arithmetic",
+          "binding_roof_value": 109.715,
+          "binding_roof_unit": "TOPS",
+          "weight_only_useful_memory_roof_tops": 113.152,
+          "arithmetic_roof_tops": 109.715,
+          "memory_roof_gbps": 221.0,
+          "candidate_effective_weight_gbps": 196.4834048061667,
+          "control_effective_weight_gbps": 97.98228700426374,
+          "candidate_fraction_of_arithmetic_roof": 0.1142575185362101,
+          "candidate_percent_of_arithmetic_roof": 11.42575185362101,
+          "candidate_fraction_of_memory_roof": 0.8890651801184014,
+          "candidate_percent_of_memory_roof": 88.90651801184013,
+          "candidate_fraction_of_binding_roof": 0.1142575185362101,
+          "candidate_percent_of_binding_roof": 11.42575185362101
+        }
       },
       "correctness_vs_current_exact": {
         "finite": true,
@@ -1833,9 +1998,7 @@
         6,
         8
       ],
-      "vgpr_count": [
-        24
-      ],
+      "vgpr_count": 24,
       "sgpr_count": [
         128
       ],
@@ -1844,7 +2007,11 @@
       ],
       "scratch_size": [
         0
-      ]
+      ],
+      "accumulators_per_wave": 1,
+      "vgpr_anomaly_threshold": 64,
+      "vgpr_anomaly": true,
+      "vgpr_anomaly_reason": "WMMA kernel below 64 VGPR is likely register-unblocked; inspect independent accumulator chains"
     }
   },
   "isa": {
@@ -1880,5 +2047,12 @@
     "worklog_check": true,
     "git_diff_check": true,
     "model_quality_gate_skipped_reason": "T3 candidate failed native B1-B3 inclusive speed gate and has no runtime route; full model promotion is not attempted."
+  },
+  "candidate_kernel_resources": {
+    "accumulators_per_wave": 1,
+    "vgpr_count": 24,
+    "vgpr_anomaly_threshold": 64,
+    "vgpr_anomaly": true,
+    "vgpr_anomaly_reason": "WMMA kernel below 64 VGPR is likely register-unblocked; inspect independent accumulator chains"
   }
 }
