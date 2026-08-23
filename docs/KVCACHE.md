@@ -1215,6 +1215,10 @@ Format/policy development tools:
 
 ## Phase K2 — FastDMS-derived compact DMS
 
+The complete external-sidecar campaign, exact commands/results, capacity and
+speed goals, and ordered production punchlist live in [`DMS.md`](DMS.md).
+This section remains the normative KV ABI and backend design.
+
 ### Goal
 
 After dense INT8 KV lands, port compact DMS semantics from `~/FastDMS` so the
