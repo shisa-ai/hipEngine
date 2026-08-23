@@ -188,6 +188,13 @@ def _load_sequences(path: Path, *, split: str) -> list[dict[str, Any]]:
     return rows
 
 
+def _target_evict_fraction(target_cr: float) -> float:
+    value = float(target_cr)
+    if not np.isfinite(value) or value <= 1.0:
+        raise ValueError("target-cr must be finite and greater than one")
+    return 1.0 - 1.0 / value
+
+
 def _live_summary(
     scores: np.ndarray,
     thresholds: np.ndarray,
@@ -221,7 +228,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--data-manifest", type=Path, required=True)
     parser.add_argument("--split", default="train")
     parser.add_argument("--backend", default="hip_gfx1151")
-    parser.add_argument("--target-cr", type=int, default=2)
+    parser.add_argument("--target-cr", type=float, default=2.0)
     parser.add_argument("--output-dir", type=Path, required=True)
     return parser
 
@@ -231,9 +238,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     metadata_path = args.metadata.expanduser().resolve()
     data_path = args.data_manifest.expanduser().resolve()
     output = args.output_dir.expanduser().resolve()
-    target_cr = int(args.target_cr)
-    if target_cr < 2:
-        raise ValueError("target-cr must be at least two")
+    target_cr = float(args.target_cr)
+    evict_fraction = _target_evict_fraction(target_cr)
     config = load_dms_retrofit_config(model, metadata_path=metadata_path)
     source = load_external_dms_sidecar(config)
     rows = _load_sequences(data_path, split=str(args.split))
@@ -292,7 +298,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     stacked = np.concatenate(
         [scores[:, :eligible, :] for scores in score_arrays], axis=1
     )
-    evict_fraction = 1.0 - 1.0 / float(target_cr)
     threshold_quantile = 1.0 - evict_fraction
     thresholds = np.quantile(stacked, threshold_quantile, axis=1).astype(np.float32)
     old_offset = float(source.config.alpha_offset)
@@ -323,7 +328,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "sequence_ids": [str(row["sequence_id"]) for row in rows],
         "context_tokens": tokens,
         "window_size": int(source.config.window_size),
-        "target_compression_ratio": target_cr,
+        "effective_target_compression_ratio": target_cr,
         "evict_fraction": evict_fraction,
         "alpha_scale": alpha_scale,
         "alpha_offset": old_offset,
@@ -381,9 +386,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "data_manifest": {"path": str(data_path), "sha256": _sha256(data_path)},
         "protocol": {
             "split": str(args.split),
-            "target_cr": target_cr,
+            "effective_target_cr": target_cr,
             "window_size": int(source.config.window_size),
-            "method": "per-layer/head eligible-score median folded into BF16 bias; heldout untouched",
+            "method": "per-layer/head eligible-score target quantile folded into BF16 bias; heldout untouched",
         },
         "captures": captures,
         "calibrated_sequences": sequence_summaries,

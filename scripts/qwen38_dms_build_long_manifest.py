@@ -93,13 +93,40 @@ def _encode_documents(
     return output, used
 
 
+def _source_exclusions(
+    paths: list[Path],
+) -> tuple[set[str], set[str], set[str]]:
+    code: set[str] = set()
+    wikipedia_en: set[str] = set()
+    wikipedia_ja: set[str] = set()
+    for path in paths:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        code.update(str(row["path"]) for row in payload.get("python_files", ()))
+        wikipedia_en.update(
+            str(row["id"]) for row in payload.get("wikipedia_en", ())
+        )
+        wikipedia_ja.update(
+            str(row["id"]) for row in payload.get("wikipedia_ja", ())
+        )
+        for records in payload.get("sequences", {}).values():
+            for row in records:
+                dataset = str(row.get("dataset", ""))
+                source_id = str(row.get("source_id", ""))
+                if "python-stdlib" in dataset:
+                    code.add(source_id)
+                elif "20231101.en" in dataset:
+                    wikipedia_en.add(source_id)
+                elif "20231101.ja" in dataset:
+                    wikipedia_ja.add(source_id)
+    return code, wikipedia_en, wikipedia_ja
+
+
 def _code_records(
-    old_source: dict[str, Any],
+    excluded: set[str],
     *,
     required_pools: int,
 ) -> list[list[dict[str, Any]]]:
     stdlib = Path(sysconfig.get_path("stdlib")).resolve()
-    excluded = {str(row["path"]) for row in old_source["python_files"]}
     candidates: list[dict[str, Any]] = []
     for path in stdlib.rglob("*.py"):
         relative = str(path.relative_to(stdlib))
@@ -136,10 +163,9 @@ def _code_records(
 
 
 def _wiki_records(
-    old_source: dict[str, Any],
+    excluded: set[str],
     *,
     config: str,
-    language: str,
     record_limit: int,
     required_pools: int,
 ) -> list[list[dict[str, Any]]]:
@@ -149,8 +175,6 @@ def _wiki_records(
         raise RuntimeError(
             "building the long DMS corpus requires the optional datasets package"
         ) from exc
-    old_key = f"wikipedia_{language}"
-    excluded = {str(row["id"]) for row in old_source[old_key]}
     dataset = load_dataset(
         "wikimedia/wikipedia",
         config,
@@ -242,6 +266,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--old-source-manifest", type=Path, required=True)
+    parser.add_argument(
+        "--additional-exclude-source-manifest",
+        type=Path,
+        action="append",
+        default=[],
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--tokens", type=int, default=32768)
     parser.add_argument("--wiki-records", type=int, default=128)
@@ -255,23 +285,25 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     target = int(args.tokens)
     if target < 8192:
         raise ValueError("long DMS corpus tokens must be at least 8192")
-    old_source = json.loads(old_path.read_text(encoding="utf-8"))
+    exclusion_paths = [
+        old_path,
+        *(path.expanduser().resolve() for path in args.additional_exclude_source_manifest),
+    ]
+    excluded_code, excluded_en, excluded_ja = _source_exclusions(exclusion_paths)
     reader = GGUFReader(model)
     tokenizer_id, tokenizer_hash = tokenizer_identity(reader)
     tokenizer = Qwen35GGUFTokenizer.from_gguf_info(reader.info)
 
-    code_pools = _code_records(old_source, required_pools=2)
+    code_pools = _code_records(excluded_code, required_pools=2)
     en_pools = _wiki_records(
-        old_source,
+        excluded_en,
         config="20231101.en",
-        language="en",
         record_limit=int(args.wiki_records),
         required_pools=4,
     )
     ja_pools = _wiki_records(
-        old_source,
+        excluded_ja,
         config="20231101.ja",
-        language="ja",
         record_limit=int(args.wiki_records),
         required_pools=4,
     )
@@ -345,7 +377,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "sequence_construction": {
             "benchmark_prompts_used": False,
             "prior_screening_token_stream_used": False,
-            "old_source_manifest_sha256": _sha256_file(old_path),
+            "excluded_source_manifests": [
+                {"path": str(path), "sha256": _sha256_file(path)}
+                for path in exclusion_paths
+            ],
             "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
             "length_tokens": target,
             "method": "one disjoint calibration and one disjoint heldout sequence per category; mixed alternates 1024-token en/ja chunks",
@@ -370,8 +405,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "kind": "hipengine_dms_long_source_manifest",
         "seed": _SEED,
         "data_manifest": str(output),
-        "old_source_manifest": str(old_path),
-        "old_source_manifest_sha256": _sha256_file(old_path),
+        "excluded_source_manifests": [
+            {"path": str(path), "sha256": _sha256_file(path)}
+            for path in exclusion_paths
+        ],
         "provenance": _git(),
         "sequences": source_records,
     }
