@@ -70,6 +70,7 @@ from hipengine.kvcache.dms_labels import (
     future_attention_mass_cpu,
     load_dms_label_manifest,
 )
+from hipengine.kvcache.dms_device import DMSExternalLinearDeviceProjector
 from hipengine.kvcache.dms_sidecar import (
     DMSExternalDecisionRuntime,
     ExternalDMSDecisionCollector,
@@ -169,6 +170,7 @@ __all__ = [
     "DMSCompactBackend",
     "DMSCompactResidentRunnerAdapter",
     "DMSExternalDecisionRuntime",
+    "DMSExternalLinearDeviceProjector",
     "DMSLinearSidecarSpec",
     "DMSOperation",
     "DMSRetrofitConfig",

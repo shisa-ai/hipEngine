@@ -24,7 +24,7 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
-from hipengine.kernels.registry import resolve
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 
 ENV_ENABLE = "HIPENGINE_DMS_DEVICE_PAYLOADS"
 ENV_TRIPWIRE = "HIPENGINE_DMS_DEVICE_TRIPWIRE"
@@ -75,6 +75,141 @@ class DMSDevicePayloadSnapshot:
     extents: tuple[DMSDeviceExtentSnapshot, ...]
 
 
+def _float32_to_bf16_bits(values: np.ndarray) -> np.ndarray:
+    bits = np.ascontiguousarray(values, dtype=np.float32).view(np.uint32)
+    rounded = (
+        bits + np.uint32(0x7FFF) + ((bits >> np.uint32(16)) & np.uint32(1))
+    ) & np.uint32(0xFFFF0000)
+    return np.ascontiguousarray(rounded >> np.uint32(16), dtype=np.uint16)
+
+
+class DMSExternalLinearDeviceProjector:
+    """Resident schema-v2 BF16 sidecar weights and raw-pointer projection."""
+
+    def __init__(self, source, *, backend: str) -> None:
+        from hipengine.core.hip import get_hip_runtime
+        from hipengine.kernels.hip_gfx1100.attention import build_dms_compact
+
+        config = getattr(source, "config", None)
+        if (
+            config is None
+            or int(getattr(config, "schema_version", 0)) != 2
+            or str(getattr(config, "decision_source", ""))
+            != "external_linear_sidecar_v1"
+        ):
+            raise ValueError(
+                "device external DMS projection requires a schema-v2 linear sidecar"
+            )
+        self._runtime = get_hip_runtime()
+        self._library = build_dms_compact(load=True)
+        self._backend = str(backend)
+        project_key = KernelKey(
+            self._backend,
+            "dms_decision_source",
+            "bf16",
+            "external_linear_sidecar_v1",
+        )
+        if not is_registered(project_key):
+            from hipengine.kernels.backends import load_backend_kernel_package
+            from hipengine.kernels.hip_gfx1100.attention import (
+                register_dms_compact_kernels,
+            )
+
+            register_dms_compact_kernels(replace=True)
+            load_backend_kernel_package(self._backend)
+        self._project_fn = resolve(
+            backend=self._backend,
+            layer="dms_decision_source",
+            quant="bf16",
+            variant="external_linear_sidecar_v1",
+        )
+        self._layers = int(config.num_layers)
+        self._heads = int(config.num_kv_heads)
+        self._hidden = int(config.hidden_size)
+        self._alpha_scale = float(config.alpha_scale)
+        self._alpha_offset = float(config.alpha_offset)
+        weight = _float32_to_bf16_bits(source.weight)
+        bias = _float32_to_bf16_bits(source.bias)
+        if weight.shape != (self._layers, self._heads, self._hidden):
+            raise ValueError("device external DMS weight geometry mismatch")
+        if bias.shape != (self._layers, self._heads):
+            raise ValueError("device external DMS bias geometry mismatch")
+        self._buffers: list[DeviceBuffer] = []
+        self._closed = False
+        try:
+            self._weight = malloc(weight.nbytes, runtime=self._runtime)
+            self._buffers.append(self._weight)
+            self._bias = malloc(bias.nbytes, runtime=self._runtime)
+            self._buffers.append(self._bias)
+            copy_host_to_device(
+                self._weight,
+                host_array_ptr(weight),
+                weight.nbytes,
+                runtime=self._runtime,
+            )
+            copy_host_to_device(
+                self._bias,
+                host_array_ptr(bias),
+                bias.nbytes,
+                runtime=self._runtime,
+            )
+        except BaseException:
+            for buffer in reversed(self._buffers):
+                free(buffer, runtime=self._runtime)
+            self._buffers.clear()
+            self._closed = True
+            raise
+
+    @property
+    def resident_bytes(self) -> int:
+        return sum(int(buffer.nbytes) for buffer in self._buffers)
+
+    def project(
+        self,
+        *,
+        hidden_ptr: int,
+        compact_layer_index: int,
+        tokens: int,
+        logits_ptr: int,
+        evict_ptr: int,
+        stream: int = 0,
+    ) -> None:
+        if self._closed:
+            raise RuntimeError("device external DMS projector is closed")
+        layer = int(compact_layer_index)
+        if layer < 0 or layer >= self._layers:
+            raise ValueError("compact DMS layer index is out of range")
+        if int(tokens) <= 0:
+            raise ValueError("device external DMS projection requires positive tokens")
+        if min(int(hidden_ptr), int(logits_ptr), int(evict_ptr)) <= 0:
+            raise ValueError("device external DMS projection requires non-null pointers")
+        weight_layer_bytes = self._heads * self._hidden * 2
+        bias_layer_bytes = self._heads * 2
+        self._project_fn(
+            int(hidden_ptr),
+            self._weight.ptr + layer * weight_layer_bytes,
+            self._bias.ptr + layer * bias_layer_bytes,
+            int(logits_ptr),
+            int(evict_ptr),
+            self._alpha_scale,
+            self._alpha_offset,
+            int(tokens),
+            self._hidden,
+            self._heads,
+            stream=int(stream),
+            library=self._library,
+            runtime=self._runtime,
+        )
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        for buffer in reversed(self._buffers):
+            free(buffer, runtime=self._runtime)
+        self._buffers.clear()
+        self._closed = True
+
+
 class DMSDevicePayloadStore:
     """Per-layer device slot pools + shared staging for the dms_compact kernels."""
 
@@ -84,6 +219,17 @@ class DMSDevicePayloadStore:
 
         get_hip_runtime()  # raises when HIP is unavailable
         self._library = build_dms_compact(load=True)
+        required_keys = (
+            KernelKey("hip_gfx1100", "dms_streaming_pack", "bf16", "count_rank_scatter"),
+            KernelKey("hip_gfx1100", "dms_append_decode", "bf16", "compact_append_evict"),
+            KernelKey("hip_gfx1100", "dms_compact_attn_decode", "bf16", "grouped_gqa"),
+        )
+        if not all(is_registered(key) for key in required_keys):
+            from hipengine.kernels.hip_gfx1100.attention import (
+                register_dms_compact_kernels,
+            )
+
+            register_dms_compact_kernels(replace=True)
         try:
             self._pack_fn = resolve(
                 backend="hip_gfx1100",

@@ -3,6 +3,8 @@
 Units of the streaming no-shadow DMS port: ``dms_extract_decision_bf16``
 reads the borrowed decision neuron (last channel of the first query head of
 each GQA group) from pre-RoPE Q and publishes per-KV-head eviction bits;
+``dms_external_linear_decision_bf16`` projects schema-v2 normalized hidden rows
+through resident BF16 sidecar weights without modifying Q;
 ``dms_streaming_pack_bf16`` scatters the surviving prompt tokens into the
 reserved compact extents; ``dms_append_decode_bf16`` advances one decode
 step (strict parent keep-recompute + append, fail closed on overflow);
@@ -23,6 +25,7 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("dms_compact.hip")
 _OUTPUT_NAME = "dms_compact.so"
 _SYMBOL_EXTRACT_DECISION = "hipengine_dms_extract_decision_bf16"
+_SYMBOL_EXTERNAL_LINEAR_DECISION = "hipengine_dms_external_linear_decision_bf16"
 _SYMBOL_STREAMING_PACK = "hipengine_dms_streaming_pack_bf16"
 _SYMBOL_APPEND_DECODE = "hipengine_dms_append_decode_bf16"
 _SYMBOL_COMPACT_ATTN_DECODE = "hipengine_dms_compact_attn_decode_bf16"
@@ -128,6 +131,77 @@ def dms_extract_decision_bf16(
     )
     if err != HIP_SUCCESS:
         raise RuntimeError(f"dms_extract_decision_bf16 failed with HIP error {err}")
+
+
+def dms_external_linear_decision_bf16(
+    hidden_ptr: int,
+    weight_ptr: int,
+    bias_ptr: int,
+    logits_ptr: int,
+    evict_ptr: int,
+    alpha_scale: float,
+    alpha_offset: float,
+    tokens: int,
+    hidden_size: int,
+    kv_heads: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Project schema-v2 BF16 hidden rows into per-KV-head decisions.
+
+    ``hidden`` is ``[tokens, hidden_size]`` BF16, ``weight`` is
+    ``[kv_heads, hidden_size]`` BF16, ``bias`` is ``[kv_heads]`` BF16,
+    ``logits`` is ``[tokens, kv_heads]`` FP32, and ``evict`` is the matching
+    uint8 decision plane. All pointers are device-resident and ordinary Q is
+    preserved.
+    """
+    if int(tokens) <= 0:
+        raise ValueError("tokens must be positive")
+    if int(hidden_size) <= 0:
+        raise ValueError("hidden_size must be positive")
+    if int(kv_heads) <= 0:
+        raise ValueError("kv_heads must be positive")
+    if not math.isfinite(float(alpha_scale)) or float(alpha_scale) == 0.0:
+        raise ValueError("alpha_scale must be finite and non-zero")
+    if not math.isfinite(float(alpha_offset)):
+        raise ValueError("alpha_offset must be finite")
+
+    library = library or build_dms_compact(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_EXTERNAL_LINEAR_DECISION)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_double,
+        ctypes.c_double,
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(hidden_ptr),
+        ctypes.c_void_p(weight_ptr),
+        ctypes.c_void_p(bias_ptr),
+        ctypes.c_void_p(logits_ptr),
+        ctypes.c_void_p(evict_ptr),
+        ctypes.c_double(float(alpha_scale)),
+        ctypes.c_double(float(alpha_offset)),
+        ctypes.c_int32(tokens),
+        ctypes.c_int32(hidden_size),
+        ctypes.c_int32(kv_heads),
+        ctypes.c_void_p(stream),
+    )
+    if err != HIP_SUCCESS:
+        raise RuntimeError(
+            f"dms_external_linear_decision_bf16 failed with HIP error {err}"
+        )
 
 
 def dms_streaming_pack_bf16(
@@ -394,6 +468,16 @@ def register_dms_compact_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dms_extract_decision", "bf16", "corrected_mask"),
         dms_extract_decision_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "dms_decision_source",
+            "bf16",
+            "external_linear_sidecar_v1",
+        ),
+        dms_external_linear_decision_bf16,
         replace=replace,
     )
     register(
