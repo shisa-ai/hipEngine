@@ -12,6 +12,7 @@ from scripts.qwen38_dms_calibrate_long_bias import (
     _live_summary,
     _write_bf16_safetensors,
 )
+from scripts.qwen38_dms_integrated_quality import _prompt
 
 
 def test_long_manifest_mixed_stream_alternates_bounded_chunks() -> None:
@@ -21,6 +22,45 @@ def test_long_manifest_mixed_stream_alternates_bounded_chunks() -> None:
     mixed = _mixed_tokens(en, ja, target_tokens=12, chunk_tokens=3)
 
     assert mixed == [0, 1, 2, 100, 101, 102, 3, 4, 5, 103, 104, 105]
+
+
+def test_integrated_quality_selects_heldout_category_without_cross_split_tokens(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "manifest.json"
+    path.write_text(
+        json.dumps(
+            {
+                "sequences": [
+                    {
+                        "sequence_id": "train-code",
+                        "split": "train",
+                        "category": "code",
+                        "token_ids": [1, 2, 3, 4],
+                    },
+                    {
+                        "sequence_id": "heldout-code",
+                        "split": "validation",
+                        "category": "code",
+                        "token_ids": [5, 6, 7, 8],
+                    },
+                    {
+                        "sequence_id": "heldout-en",
+                        "split": "validation",
+                        "category": "general_en",
+                        "token_ids": [9, 10, 11, 12],
+                    },
+                ]
+            }
+        )
+    )
+
+    tokens, _digest, sequence_ids = _prompt(
+        path, 6, split="validation", category="code"
+    )
+
+    assert tokens == [5, 6, 7, 8, 5, 6]
+    assert sequence_ids == ["heldout-code"]
 
 
 def test_long_manifest_source_digest_is_key_order_stable() -> None:
