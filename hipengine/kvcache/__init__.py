@@ -64,6 +64,12 @@ from hipengine.kvcache.dms_capture import (
     DMSCaptureWriter,
     load_dms_capture_manifest,
 )
+from hipengine.kvcache.dms_labels import (
+    build_dms_label_artifact,
+    build_eviction_labels,
+    future_attention_mass_cpu,
+    load_dms_label_manifest,
+)
 from hipengine.kvcache.tiering import (
     ColdCodecResult,
     ColdObjectKey,
@@ -228,7 +234,9 @@ __all__ = [
     "TierMaintenanceResult",
     "TierMaintenanceWork",
     "TieredKVCacheBackend",
+    "build_dms_label_artifact",
     "build_dms_live_mask",
+    "build_eviction_labels",
     "compact_attention_reference",
     "create_dense_bf16_backend",
     "create_dense_int8_backend",
@@ -238,7 +246,9 @@ __all__ = [
     "encode_dms_payload",
     "evaluate_restore_economics",
     "extract_dms_eviction_decisions",
+    "future_attention_mass_cpu",
     "load_dms_capture_manifest",
+    "load_dms_label_manifest",
     "load_dms_retrofit_config",
     "resolve_kv_policy",
     "resolve_prefix_cache_mode",
