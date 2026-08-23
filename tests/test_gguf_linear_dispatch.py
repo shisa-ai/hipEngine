@@ -2793,29 +2793,6 @@ def test_gfx1151_q4_t16_full_kv_c1_uses_exact_col4_shape_owner() -> None:
     ]
 
 
-def test_gfx1151_q4_t16_down_selects_row8_two_wave_variant() -> None:
-    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
-
-    register_gfx1151_kernels(replace=True)
-    dispatch = gguf_linear_module.GGUFLinearDispatch(
-        KernelKey(
-            "hip_gfx1151",
-            "linear",
-            "gguf_q4_k_t16_v1",
-            "t16_wmma_prefill_bf16_bf16_out",
-        ),
-        "t16",
-    )
-    with native_batch_decode_session(True):
-        selected = gguf_linear_module._q4_t16_dense_native_dispatch(
-            dispatch,
-            rows=8,
-            in_features=17_408,
-            out_features=5_120,
-        )
-    assert selected.key.variant == "dense_rowtile16_w2_bf16_bf16_out"
-
-
 def test_gfx1151_q4_t16_attn_q_splits_c8_into_exact_c4_rowtiles() -> None:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
@@ -5324,6 +5301,55 @@ def test_gfx1151_q4_k_decode_sidecar_single_uses_t16_owner() -> None:
         (
             (100, 15, 400, 1, 1024, 3072),
             {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
+def test_gfx1151_q4_k_decode_sidecar_row8_uses_two_wave_owner() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight = _fake_weight(
+        layout=LAYOUT_Q4_K_PACK8,
+        quant_key="gguf_q4_k",
+        decode_tiles=True,
+    )
+    key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "dense_rowtile16_w2_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls = []
+
+    def fake_rowtile(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(key, fake_rowtile, replace=True)
+    try:
+        assert launch_gguf_q4_t16_sidecar_decode(
+            weight,
+            x_ptr=100,
+            out_ptr=400,
+            rows=8,
+            in_features=17_408,
+            out_features=5_120,
+            backend="hip_gfx1151",
+            runtime="runtime-sentinel",
+        )
+    finally:
+        register(key, original, replace=True)
+
+    assert calls == [
+        (
+            (100, 15, 400, 8, 17_408, 5_120),
+            {"stream": 0, "runtime": "runtime-sentinel"},
         )
     ]
 
