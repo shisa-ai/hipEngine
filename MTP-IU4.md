@@ -576,6 +576,15 @@ median). Artifacts:
 and
 [`7900 XTX`](benchmarks/results/2026-08-24-gfx1100-7900xtx-mtp-iu4-instruction-roofline.json).
 
+The research sidecar was parametrized to build for gfx1100 (`target_arch`,
+default `gfx1151` unchanged) and is **bit-exact on gfx1100**: the raw I32
+probe and the corrected BF16 gate/up output match the CPU reference with max
+relative error 0.0 and 100% top-1 for rows 2–64, and all five CPU-only sidecar
+unit tests pass. Because the arithmetic is bit-identical to gfx1151, the
+gfx1151 R8 T3 model-distribution failure (re-quantized-from-Q4_K_S S4,
+~15.9% weight NRMSE) transfers verbatim to gfx1100 — no full-model re-gate is
+needed to establish that gfx1100 IU4 is unqualified for production.
+
 **The prefill thesis transfers.** IU4 WMMA sustains **1.981×/1.989×** IU8 on
 gfx1100, matching gfx1151. gfx1100's absolute IU8 roof is already ~2.3×
 gfx1151's (122–134 vs 55 TOP/s), so IU4 doubles an already-higher ceiling.
@@ -1039,6 +1048,37 @@ python3 scripts/qwen38_iu4_s4_gate_up_leaf.py \
 The current lineage command is mechanically blocked by the already documented
 missing `/home/lhl/amd-gpu-tuning/reference/atlas` checkout. No external kernel
 was ported in R0; Kairic/Clang were used only as read-only references.
+
+### 12.1 gfx1100 reproduction (2026-08-24)
+
+Set `HIPENGINE_HIP_ARCH=gfx1100` and the gfx1100 roofs, and pass
+`--target-arch gfx1100` to the leaf/A-B scripts (which default to gfx1151).
+`HIP_VISIBLE_DEVICES=0` selects the W7900, `=1` the 7900 XTX.
+
+```bash
+# Instruction screen (use the measured W7900 roof 241.97 / XTX 266.99).
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  python3 scripts/mtp_iu4_roofline.py --arch gfx1100 \
+  --iterations 65536 --samples 9 --warmups 3 \
+  --output benchmarks/results/2026-08-24-gfx1100-w7900-mtp-iu4-instruction-roofline.json
+
+# Dense prefill gate/up A/B (R7), W7900.
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_IU4_ARITHMETIC_ROOF_TOPS=241.966 \
+  HIPENGINE_F16_WMMA_ROOF_TFLOPS=126.920 PYTHONPATH=. \
+  python3 scripts/qwen38_iu4_prefill_ab.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf \
+  --layer 0 --rows 64,128,256,512 --warmups 3 --samples 15 \
+  --target-arch gfx1100 \
+  --output benchmarks/results/2026-08-24-gfx1100-qwen38-iu4-s4-r7-prefill-gate-up-ab.json
+
+# Tiny-M B4 gate/up leaf (W7900 roofs: IU4 241.97, DOT8 61.16, memory 864).
+HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 \
+  HIPENGINE_IU4_ARITHMETIC_ROOF_TOPS=241.966 \
+  HIPENGINE_IU4_DOT8_ROOF_TOPS=61.164 HIPENGINE_MEMORY_ROOF_GBPS=864.0 PYTHONPATH=. \
+  python3 scripts/qwen38_iu4_s4_gate_up_leaf.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf \
+  --layer 0 --warmups 3 --samples 15 --burst 1 --target-arch gfx1100 \
+  --output benchmarks/results/2026-08-24-gfx1100-w7900-qwen38-iu4-s4-b4-tiny-m-gate-up-leaf.json
+```
 
 ## 13. Punchlist (2026-08-23 review handoff)
 
