@@ -2793,6 +2793,29 @@ def test_gfx1151_q4_t16_full_kv_c1_uses_exact_col4_shape_owner() -> None:
     ]
 
 
+def test_gfx1151_q4_t16_down_selects_row8_two_wave_variant() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    dispatch = gguf_linear_module.GGUFLinearDispatch(
+        KernelKey(
+            "hip_gfx1151",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "t16_wmma_prefill_bf16_bf16_out",
+        ),
+        "t16",
+    )
+    with native_batch_decode_session(True):
+        selected = gguf_linear_module._q4_t16_dense_native_dispatch(
+            dispatch,
+            rows=8,
+            in_features=17_408,
+            out_features=5_120,
+        )
+    assert selected.key.variant == "dense_rowtile16_w2_bf16_bf16_out"
+
+
 def test_gfx1151_q4_t16_attn_q_splits_c8_into_exact_c4_rowtiles() -> None:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 

@@ -2675,6 +2675,37 @@ def _q4_t16_dense_native_dispatch(
         or not 2 <= rows <= max_rows
     ):
         return dispatch
+    if rows == 8:
+        rowtile_variants = backend_package_capability(
+            dispatch.key.backend,
+            "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
+            {},
+        )
+        variant_policy = (
+            rowtile_variants.get(dispatch.key.quant)
+            if isinstance(rowtile_variants, Mapping)
+            else None
+        )
+        shapes = (
+            variant_policy.get("shapes", {})
+            if isinstance(variant_policy, Mapping)
+            else {}
+        )
+        variant = (
+            shapes.get((int(in_features), int(out_features)))
+            if isinstance(shapes, Mapping)
+            else None
+        )
+        if isinstance(variant, str) and variant:
+            key = KernelKey(
+                dispatch.key.backend,
+                dispatch.key.layer,
+                dispatch.key.quant,
+                variant,
+            )
+            _ensure_linear_kernel_registered(key)
+            if is_registered(key):
+                return GGUFLinearDispatch(key, dispatch.abi)
     for variant in _q4_t16_sidecar_decode_variants(
         rows=rows,
         in_features=in_features,
@@ -5757,30 +5788,6 @@ def _native_batch_decode_dispatch(
 
     if not _native_batch_decode_session_enabled or rows <= 1 or rows > 8:
         return dispatch
-    rowtile_variants = backend_package_capability(
-        dispatch.key.backend,
-        "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
-        {},
-    )
-    if rows == 8 and isinstance(rowtile_variants, Mapping):
-        variant_policy = rowtile_variants.get(dispatch.key.quant)
-        variant = variant_policy
-        if isinstance(variant_policy, Mapping):
-            shapes = variant_policy.get("shapes", {})
-            variant = (
-                shapes.get((int(in_features), int(out_features)))
-                if isinstance(shapes, Mapping)
-                else None
-            )
-        if isinstance(variant, str) and variant:
-            rewritten_key = KernelKey(
-                dispatch.key.backend,
-                dispatch.key.layer,
-                dispatch.key.quant,
-                variant,
-            )
-            if is_registered(rewritten_key):
-                return GGUFLinearDispatch(rewritten_key, dispatch.abi)
     t16_rowtile_max_rows = 6
     t16_rowtile_limits = backend_package_capability(
         dispatch.key.backend,
