@@ -24,6 +24,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from hipengine import LLM, SamplingParams  # noqa: E402
+from hipengine.benchmark.prompts import file_sha256  # noqa: E402
+from hipengine.kernels.backends import hip_target_arch_for_backend  # noqa: E402
 from scripts.gguf_packed_ar_rocprof import _Roctx  # noqa: E402
 
 MARKER_PREFIX = "hipengine_c2_production_owner_c"
@@ -33,6 +35,45 @@ def marker_name(concurrency: int, index: int) -> str:
     return f"{MARKER_PREFIX}{int(concurrency)}_decode_transition_{int(index)}"
 
 
+def configure_build_environment(args: argparse.Namespace) -> dict[str, str | None]:
+    target_arch = hip_target_arch_for_backend(str(args.backend))
+    existing_arch = (os.environ.get("HIPENGINE_HIP_ARCH") or "").strip()
+    if existing_arch and existing_arch != target_arch:
+        raise ValueError(
+            f"HIPENGINE_HIP_ARCH={existing_arch!r} conflicts with backend {args.backend!r}"
+        )
+    os.environ["HIPENGINE_HIP_ARCH"] = target_arch
+
+    compiler_file = None
+    if args.compiler_version_file is not None:
+        compiler_file = args.compiler_version_file.expanduser().resolve()
+        if not compiler_file.is_file():
+            raise ValueError(f"compiler-version file does not exist: {compiler_file}")
+        os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(compiler_file)
+    cache_root = None
+    if args.cache_root is not None:
+        cache_root = args.cache_root.expanduser().resolve()
+        os.environ["HIPENGINE_BUILD_CACHE_ROOT"] = str(cache_root)
+    if bool(args.require_cached_build):
+        if compiler_file is None:
+            raise ValueError("--require-cached-build requires --compiler-version-file")
+        if cache_root is None:
+            raise ValueError("--require-cached-build requires --cache-root")
+        os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
+    else:
+        os.environ.pop("HIPENGINE_REQUIRE_CACHED_BUILD", None)
+    return {
+        "HIPENGINE_HIP_ARCH": target_arch,
+        "HIPENGINE_COMPILER_VERSION_FILE": (
+            None if compiler_file is None else str(compiler_file)
+        ),
+        "HIPENGINE_BUILD_CACHE_ROOT": None if cache_root is None else str(cache_root),
+        "HIPENGINE_REQUIRE_CACHED_BUILD": (
+            "1" if bool(args.require_cached_build) else None
+        ),
+    }
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     model = Path(args.model).expanduser().resolve()
     if not model.is_file():
@@ -40,11 +81,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.concurrency <= 0 or args.decode_tokens <= args.marker_index:
         raise ValueError("decode-tokens must exceed the positive marker-index")
 
-    os.environ.setdefault("HIPENGINE_HIP_ARCH", "gfx1100")
-    if args.compiler_version_file is not None:
-        os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(
-            args.compiler_version_file.expanduser().resolve()
-        )
+    build_environment = configure_build_environment(args)
 
     params = SamplingParams(max_tokens=args.decode_tokens, ignore_eos=True)
     llm = LLM(
@@ -119,6 +156,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "schema": 1,
         "kind": "gguf_c2_production_owner_profile_child",
         "profile": bool(args.profile),
+        "require_cached_build": bool(args.require_cached_build),
+        "build_environment": build_environment,
+        "compiler_version_file_sha256": (
+            None
+            if args.compiler_version_file is None
+            else file_sha256(args.compiler_version_file.expanduser().resolve())
+        ),
         "model": str(model),
         "backend": args.backend,
         "quant": args.quant,
@@ -150,6 +194,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt-token-id", type=int, default=9707)
     parser.add_argument("--marker-index", type=int, default=3)
     parser.add_argument("--compiler-version-file", type=Path)
+    parser.add_argument("--cache-root", type=Path)
+    parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--profile", action="store_true")
     parser.add_argument("--out", type=Path, required=True)
     return parser

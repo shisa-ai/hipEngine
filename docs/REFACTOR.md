@@ -1939,6 +1939,20 @@ shorter-horizon audit establishes a lower break-even.
   otherwise retain the selected numeric default and delete the suppression seam.
   Do not preserve both as permanent production knobs.
 
+### Active mechanical rocprof cache workflow cleanup
+
+- `HIPENGINE_BUILD_CACHE_ROOT` and `HIPENGINE_REQUIRE_CACHED_BUILD` provide a
+  process-wide cache contract for lazy JIT builders that do not expose per-call
+  plumbing. `scripts/gguf_continuous_owner_rocprof.py` uses them with a new,
+  isolated cache, unprofiled build/warm children, a compiler guard, descendant
+  monitor, and immutable pre/post cache hashes before wrapping only the final
+  owner child in rocprof.
+- Keep the two build-layer variables as supported profiler/tooling controls while
+  Python/ctypes JIT remains. After profiling entry points share one maintained
+  SDK helper, fold the owner-specific orchestrator and duplicate guard/snapshot
+  code into that helper; do not retain multiple near-identical rocprof parents.
+  Remove neither fail-closed cache-only behavior nor compiler-version pinning.
+
 ## Post-Optimal-Path Cleanup Targets
 
 These are not optimization tasks for the current sprint. They are the cleanup

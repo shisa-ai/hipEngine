@@ -821,6 +821,29 @@ rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-smoke -- \
     --require-cached-build
 ```
 
+For Generation-2 GGUF owner profiling, use the mechanical isolated-cache
+workflow instead of mutating the shared cache:
+
+```bash
+python3 scripts/gguf_continuous_owner_rocprof.py \
+  --source-root /path/to/clean/source \
+  --model /models/gguf/model.gguf --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipcc-version.txt \
+  --cache-root /tmp/lane/cache/<commit>/<compiler>/<profile> \
+  --run-root /tmp/lane/profiles --run-tag c8-owner \
+  --gpu-max-hw-queues 2 --rebuild --profile \
+  --out /tmp/lane/profiles/c8-owner.json
+```
+
+`--rebuild` requires a new/empty scoped cache and never deletes the shared cache.
+The workflow runs an unprofiled build child, snapshots every cache file and
+build manifest, runs an unprofiled `HIPENGINE_REQUIRE_CACHED_BUILD=1` warm child,
+then wraps only the final direct child in rocprof. A PATH compiler guard,
+descendant-process monitor, and pre/post content/mode/mtime tree hashes reject
+compiler activity or cache mutation. `HIPENGINE_BUILD_CACHE_ROOT` and
+`HIPENGINE_REQUIRE_CACHED_BUILD` apply this policy to all HIP/CUDA builders in
+the child, including lazy libraries that do not expose per-call cache flags.
+
 Check expected kernel identity, plausible duration, workgroup/grid, VGPR, LDS, and scratch. `Scratch_Size > 0` on a hot path is a review trigger. Some profiler versions expose start/end timestamps instead of `DurationNs`; subtract them. Raw profiler dumps stay outside Git.
 
 For MTP, profile the final child (`scripts/mtp_verifier_rocprof.py` or the final smoke), not the parent economics/prompt-suite harness that launches nested Python processes.
