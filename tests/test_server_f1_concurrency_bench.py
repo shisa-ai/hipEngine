@@ -1012,6 +1012,14 @@ def test_repeat_determinism_is_schedule_local_and_binding() -> None:
     failed = SCRIPT.repeat_determinism_summary(changed)
     assert failed["passed"] is False
     assert failed["mismatch_count"] == 1
+    assert failed["generated_id_equality_binding"] is True
+
+    production = SCRIPT.repeat_determinism_summary(changed, profile="production")
+    assert production["passed"] is True
+    assert production["control_passed"] is True
+    assert production["generated_id_equality_binding"] is False
+    assert production["generated_id_equality_passed"] is False
+    assert production["generated_id_mismatch_count"] == 1
 
 
 def test_production_correctness_runtime_paths_cover_fp16_gate_dependency() -> None:

@@ -755,13 +755,29 @@ def _record_output_signature(record: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _record_control_signature(record: Mapping[str, Any]) -> str:
+    payload = {
+        "prompt_tokens": int(record.get("prompt_tokens") or 0),
+        "completion_tokens": int(record.get("completion_tokens") or 0),
+        "finish_reason": str(record.get("finish_reason") or ""),
+        "execution_path": str(record.get("execution_path") or ""),
+        "serial_decode_fallback": record.get("serial_decode_fallback"),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def repeat_determinism_summary(
     samples: Sequence[Mapping[str, Any]],
+    *,
+    profile: str = "strict",
 ) -> dict[str, Any]:
-    runs: list[dict[tuple[int, str], str]] = []
+    output_runs: list[dict[tuple[int, str], str]] = []
+    control_runs: list[dict[tuple[int, str], str]] = []
     run_sha256: list[str] = []
     for sample in samples:
-        rows: dict[tuple[int, str], str] = {}
+        outputs: dict[tuple[int, str], str] = {}
+        controls: dict[tuple[int, str], str] = {}
         for record in sample.get("records", ()):
             if not isinstance(record, Mapping):
                 continue
@@ -769,15 +785,20 @@ def repeat_determinism_summary(
                 int(record.get("request_index", -1)),
                 str(record.get("prompt_token_ids_sha256") or ""),
             )
-            rows[key] = _record_output_signature(record)
-        runs.append(rows)
+            outputs[key] = _record_output_signature(record)
+            controls[key] = _record_control_signature(record)
+        output_runs.append(outputs)
+        control_runs.append(controls)
         encoded = json.dumps(
-            sorted((index, prompt_hash, value) for (index, prompt_hash), value in rows.items()),
+            sorted((index, prompt_hash, value) for (index, prompt_hash), value in outputs.items()),
             separators=(",", ":"),
         ).encode("utf-8")
         run_sha256.append(hashlib.sha256(encoded).hexdigest())
-    mismatches: list[dict[str, Any]] = []
-    if runs:
+
+    def mismatches_for(runs: Sequence[Mapping[tuple[int, str], str]]) -> list[dict[str, Any]]:
+        mismatches: list[dict[str, Any]] = []
+        if not runs:
+            return mismatches
         expected = runs[0]
         for run_index, observed in enumerate(runs[1:], start=1):
             for key in sorted(set(expected) | set(observed)):
@@ -791,13 +812,34 @@ def repeat_determinism_summary(
                             "observed_signature": observed.get(key),
                         }
                     )
+        return mismatches
+
+    generated_mismatches = mismatches_for(output_runs)
+    control_mismatches = mismatches_for(control_runs)
+    generated_id_binding = str(profile) == "strict"
+    complete = len(output_runs) >= 3 and bool(output_runs[0])
+    control_passed = complete and not control_mismatches
+    generated_passed = complete and not generated_mismatches
+    binding_mismatches = (
+        [*control_mismatches, *generated_mismatches]
+        if generated_id_binding
+        else control_mismatches
+    )
     return {
-        "passed": len(runs) >= 3 and bool(runs[0]) and not mismatches,
-        "runs": len(runs),
+        "passed": bool(control_passed and (generated_passed or not generated_id_binding)),
+        "profile": str(profile),
+        "generated_id_equality_binding": generated_id_binding,
+        "control_passed": control_passed,
+        "generated_id_equality_passed": generated_passed,
+        "runs": len(output_runs),
         "required_runs": 3,
         "run_sha256": run_sha256,
-        "mismatch_count": len(mismatches),
-        "mismatches": mismatches,
+        "mismatch_count": len(binding_mismatches),
+        "mismatches": binding_mismatches,
+        "control_mismatch_count": len(control_mismatches),
+        "control_mismatches": control_mismatches,
+        "generated_id_mismatch_count": len(generated_mismatches),
+        "generated_id_mismatches": generated_mismatches,
     }
 
 
@@ -2583,7 +2625,10 @@ def _run_width(
             expected_tokens=int(args.decode_tokens),
             profile=str(args.correctness_profile),
         )
-        repeat_determinism = repeat_determinism_summary(measured)
+        repeat_determinism = repeat_determinism_summary(
+            measured,
+            profile=str(args.correctness_profile),
+        )
         warmup_records = [
             record for sample in warmups for record in sample["records"]
         ]
