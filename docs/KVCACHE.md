@@ -1315,6 +1315,12 @@ span_role       prefill | decode | verify_chain | verify_tree
      validation by layer/head/category/context feed a byte-stable BF16
      safetensors export and schema-v2 metadata. Base GGUF weights never enter the
      optimizer or checkpoint.
+   - Torch-free replay loads raw BF16 sidecar tensors, projects the captured
+     hidden stage without changing Q, calibrates diagnostic thresholds on
+     train-only rows, and reports no-evict/CR2/CR4/CR8 validation compression,
+     precision/recall, layer/head/category/context slices, suppressed protected
+     decisions, and deterministic repeats. Capture-only replay marks dense-vs-
+     masked logit quality unavailable until exact runtime replay supplies it.
 2. **Compact backend and admission**
    - Add the DMS topology's allocator-visible compact pool/extent plans,
      storage views, and registered kernel bundle.
