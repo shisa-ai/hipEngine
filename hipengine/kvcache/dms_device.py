@@ -56,6 +56,25 @@ class DMSLayerView:
     evict: np.ndarray  # [slots] uint8
 
 
+@dataclass(frozen=True)
+class DMSDeviceExtentSnapshot:
+    layer: int
+    head: int
+    start: int
+    length: int
+    k_bits: np.ndarray
+    v_bits: np.ndarray
+    positions: np.ndarray
+    evict: np.ndarray
+
+
+@dataclass(frozen=True)
+class DMSDevicePayloadSnapshot:
+    """Temporary request-owned compact journal; never a persistent dense shadow."""
+
+    extents: tuple[DMSDeviceExtentSnapshot, ...]
+
+
 class DMSDevicePayloadStore:
     """Per-layer device slot pools + shared staging for the dms_compact kernels."""
 
@@ -307,6 +326,98 @@ class DMSDevicePayloadStore:
         return DMSLayerView(
             k_bits=k_bits, v_bits=v_bits, positions=positions, evict=evict
         )
+
+    def snapshot(
+        self,
+        base_offsets: np.ndarray,
+        range_capacity: np.ndarray,
+    ) -> DMSDevicePayloadSnapshot:
+        """Read only one request's compact extents at a commit barrier."""
+
+        self._check_closed()
+        bases = np.asarray(base_offsets, dtype=np.int32)
+        capacities = np.asarray(range_capacity, dtype=np.int32)
+        expected = (self._layers, self._heads)
+        if bases.shape != expected or capacities.shape != expected:
+            raise ValueError("DMS device snapshot extent metadata shape mismatch")
+        extents: list[DMSDeviceExtentSnapshot] = []
+        for layer in range(self._layers):
+            for head in range(self._heads):
+                start = int(bases[layer, head])
+                length = int(capacities[layer, head])
+                if start < 0 or length <= 0 or start + length > self._slots:
+                    raise ValueError("DMS device snapshot extent is out of range")
+                k_bits = np.empty((length, self._dim), dtype=np.uint16)
+                v_bits = np.empty_like(k_bits)
+                positions = np.empty((length,), dtype=np.int32)
+                evict = np.empty((length,), dtype=np.uint8)
+                for array, source, byte_offset in (
+                    (k_bits, self._k_slot[layer], start * self._dim * 2),
+                    (v_bits, self._v_slot[layer], start * self._dim * 2),
+                    (positions, self._positions[layer], start * 4),
+                    (evict, self._slot_evict[layer], start),
+                ):
+                    copy_device_to_host(
+                        host_array_ptr(array),
+                        DeviceBuffer(source.ptr + byte_offset, array.nbytes),
+                        array.nbytes,
+                    )
+                extents.append(
+                    DMSDeviceExtentSnapshot(
+                        layer=layer,
+                        head=head,
+                        start=start,
+                        length=length,
+                        k_bits=k_bits,
+                        v_bits=v_bits,
+                        positions=positions,
+                        evict=evict,
+                    )
+                )
+        return DMSDevicePayloadSnapshot(extents=tuple(extents))
+
+    def restore(self, snapshot: DMSDevicePayloadSnapshot) -> None:
+        """Restore request-owned compact extents byte-for-byte after failure."""
+
+        self._check_closed()
+        if not isinstance(snapshot, DMSDevicePayloadSnapshot):
+            raise TypeError("DMS device restore requires DMSDevicePayloadSnapshot")
+        if len(snapshot.extents) != self._layers * self._heads:
+            raise ValueError("DMS device snapshot extent count mismatch")
+        seen: set[tuple[int, int]] = set()
+        for extent in snapshot.extents:
+            key = (int(extent.layer), int(extent.head))
+            if key in seen:
+                raise ValueError("DMS device snapshot has duplicate layer/head extent")
+            seen.add(key)
+            layer, head = key
+            start = int(extent.start)
+            length = int(extent.length)
+            if not (0 <= layer < self._layers and 0 <= head < self._heads):
+                raise ValueError("DMS device snapshot layer/head is out of range")
+            if start < 0 or length <= 0 or start + length > self._slots:
+                raise ValueError("DMS device snapshot extent is out of range")
+            expected_payload = (length, self._dim)
+            if extent.k_bits.shape != expected_payload or extent.k_bits.dtype != np.uint16:
+                raise ValueError("DMS device snapshot K shape/dtype mismatch")
+            if extent.v_bits.shape != expected_payload or extent.v_bits.dtype != np.uint16:
+                raise ValueError("DMS device snapshot V shape/dtype mismatch")
+            if extent.positions.shape != (length,) or extent.positions.dtype != np.int32:
+                raise ValueError("DMS device snapshot position shape/dtype mismatch")
+            if extent.evict.shape != (length,) or extent.evict.dtype != np.uint8:
+                raise ValueError("DMS device snapshot eviction shape/dtype mismatch")
+            for array, destination, byte_offset in (
+                (extent.k_bits, self._k_slot[layer], start * self._dim * 2),
+                (extent.v_bits, self._v_slot[layer], start * self._dim * 2),
+                (extent.positions, self._positions[layer], start * 4),
+                (extent.evict, self._slot_evict[layer], start),
+            ):
+                contiguous = np.ascontiguousarray(array)
+                copy_host_to_device(
+                    DeviceBuffer(destination.ptr + byte_offset, contiguous.nbytes),
+                    host_array_ptr(contiguous),
+                    contiguous.nbytes,
+                )
 
     def close(self) -> None:
         if self._closed:

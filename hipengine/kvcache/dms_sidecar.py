@@ -173,11 +173,6 @@ class DMSExternalDecisionRuntime:
             raise TypeError("external DMS runtime requires a compact DMS backend")
         if retrofit.fingerprint != self.source.config.fingerprint:
             raise ValueError("external DMS runtime/backend metadata fingerprints differ")
-        if bool(getattr(backend, "device_payloads_enabled", False)):
-            raise ValueError(
-                "external DMS device payload mutation requires a qualified device journal; "
-                "use the strict host fallback"
-            )
 
     @staticmethod
     def _require_span_role(span_role: str, expected: str) -> None:

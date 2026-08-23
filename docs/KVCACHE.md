@@ -1324,9 +1324,10 @@ span_role       prefill | decode | verify_chain | verify_tree
    - Runtime resolution is a Qwen model-plugin capability plus the registered
      `dms_decision_source/bf16/external_linear_sidecar_v1` primitive. The
      torch-free source maps physical→compact layers, preserves Q, and feeds
-     host-fallback pack/append through scheduler-owned transactions. Prefix and
-     speculative roles fail closed. Device-payload mutation also fails closed
-     until a device journal can restore compact bytes as well as metadata.
+     host/device pack/append through scheduler-owned transactions. Prefix and
+     speculative roles fail closed. The device path journals only the request's
+     compact extents and restores K/V/position/eviction bytes, metadata, and
+     counters after post-mutation failure; it does not retain a dense shadow.
 2. **Compact backend and admission**
    - Add the DMS topology's allocator-visible compact pool/extent plans,
      storage views, and registered kernel bundle.
@@ -1398,8 +1399,10 @@ remains strict and fingerprint-compatible; schema v2 now adds a fail-closed
 external BF16 linear-sidecar contract with exact GGUF/sidecar hashes, hybrid
 physical-layer mapping, tensor-header validation, and training provenance. The
 registered CPU-reference decision primitive, Qwen plugin capability, exact-stage
-GGUF collector, and transactional host compact bridge are implemented; device
-payload mutation remains fail-closed pending a byte-restoring journal.
+GGUF collector, and transactional host/device compact bridge are implemented.
+The correctness-first device journal snapshots request-owned compact extents to
+host transaction scratch and restores every plane byte-for-byte; integrated
+GGUF compact serving and its resource/SLO gate remain open.
 Atomic compact extents, no-shadow streaming pack, transactional decode metadata,
 grouped CPU attention, common c1-c32 scheduling, pressure/fragmentation/drain,
 and a fixture-qualified INT8 codec are implemented. No current exact GGUF has a

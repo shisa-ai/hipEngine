@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 from types import SimpleNamespace
 
 import numpy as np
@@ -229,6 +230,65 @@ def test_external_runtime_decode_append_rolls_back_after_post_mutation_failure(
     np.testing.assert_array_equal(state.live_counts, before_counts)
     np.testing.assert_array_equal(state.token_positions, before_positions)
     backend.reclaim(lease)
+
+
+def _hip_available() -> bool:
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_external_runtime_device_rollback_restores_request_extent_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source()
+    runtime = DMSExternalDecisionRuntime(source)
+    backend = create_dms_bf16_backend(
+        retrofit=source.config,
+        slots_per_layer=64,
+        max_request_rows=1,
+        max_pack_rows=16,
+        device_payloads=True,
+    )
+    try:
+        request = SimpleNamespace(
+            request_id=11,
+            prompt_tokens=tuple(range(4)),
+            max_new_tokens=2,
+        )
+        backend.reserve(backend.estimate(request, None, {}))
+        hidden = np.ones((4, 2, 3), dtype=np.float32)
+        k = np.ones((4, 2, 2, 2), dtype=np.float32)
+        v = np.full_like(k, 2.0)
+        runtime.streaming_pack(backend, request_id=11, hidden=hidden, k=k, v=v)
+        before = [backend.device_layer_view(11, layer) for layer in range(2)]
+        original_append = backend.append_decode
+
+        def mutate_then_fail(*args, **kwargs):
+            original_append(*args, **kwargs)
+            raise RuntimeError("injected external device failure")
+
+        monkeypatch.setattr(backend, "append_decode", mutate_then_fail)
+        with pytest.raises(RuntimeError, match="injected external"):
+            runtime.append_decode(
+                backend,
+                request_id=11,
+                hidden=np.ones((2, 3), dtype=np.float32),
+                k=np.ones((2, 2, 2), dtype=np.float32),
+                v=np.ones((2, 2, 2), dtype=np.float32),
+                position=4,
+            )
+        after = [backend.device_layer_view(11, layer) for layer in range(2)]
+        for layer in range(2):
+            np.testing.assert_array_equal(before[layer].k_bits, after[layer].k_bits)
+            np.testing.assert_array_equal(before[layer].v_bits, after[layer].v_bits)
+            np.testing.assert_array_equal(before[layer].positions, after[layer].positions)
+            np.testing.assert_array_equal(before[layer].evict, after[layer].evict)
+    finally:
+        backend.close()
 
 
 def test_external_decision_collector_maps_runtime_chunks_and_preserves_hidden() -> None:
