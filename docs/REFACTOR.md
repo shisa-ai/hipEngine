@@ -1769,6 +1769,19 @@ only `22.22 tok/s`; the retained route is one state-bound capture followed by 24
 validated relaunches, not recapture. Keep the gfx1100 admission at 24 until a
 shorter-horizon audit establishes a lower break-even.
 
+## Qwen GGUF external-DMS capture seam
+
+- The default-off `Qwen35GGUFResidentSession.prefill(..., dms_capture=...)`
+  diagnostic synchronously exports normalized pre-Q hidden rows and dense Q/K
+  intermediates to an offline checksummed sink. It is never selected by
+  `LLM.generate()` and intentionally stalls the prefill stream for bounded
+  capture correctness.
+- Removal trigger: after the Qwen3.8 external sidecar is trained and its
+  reproducible capture manifest is retained, either promote this as an explicit
+  model-plugin-owned offline capture API or remove the session keyword and
+  runtime callback. Do not leave a generic synchronous D2H tap in the serving
+  façade, and never make it an environment-selected production path.
+
 ## Cleanup Ledger
 
 | Area | Debt | Current status | Removal trigger |
