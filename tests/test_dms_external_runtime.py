@@ -20,6 +20,23 @@ from hipengine.kvcache.dms_sidecar import (
     ExternalDMSLinearSidecar,
 )
 from hipengine.models.qwen35_dms import resolve_qwen35_dms_decision_capability
+from hipengine.runtime.qwen35_gguf_runner import _normalize_external_dms_decision_mode
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    (("sidecar", "sidecar"), ("NO-EVICT", "no_evict")),
+)
+def test_integrated_external_dms_decision_mode_normalizes_controls(
+    raw: str,
+    expected: str,
+) -> None:
+    assert _normalize_external_dms_decision_mode(raw) == expected
+
+
+def test_integrated_external_dms_decision_mode_rejects_unknown_control() -> None:
+    with pytest.raises(ValueError, match="dms_decision_mode"):
+        _normalize_external_dms_decision_mode("dense")
 
 
 def _config() -> DMSRetrofitConfig:
