@@ -869,6 +869,38 @@ def test_effective_server_environment_records_revalidation_axes(
     assert environment["ROCR_VISIBLE_DEVICES"] is None
     assert environment["HIPENGINE_PREFILL_DECODE_POLICY"] == "fair"
     assert environment["HIPENGINE_GGUF_AR_PACKED_DECODE"] == "1"
+    assert environment["HIPENGINE_GPU_MAX_HW_QUEUES_POLICY"] == "explicit"
+
+
+def test_unset_hardware_queue_policy_reaches_child_without_rocm_limit(
+    tmp_path: Path,
+) -> None:
+    args = SCRIPT.build_parser().parse_args(
+        [
+            "--engine",
+            "hipengine",
+            "--gpu-max-hw-queues",
+            "unset",
+            "--work-dir",
+            str(tmp_path),
+            "--json",
+            str(tmp_path / "result.json"),
+        ]
+    )
+
+    _command, environment, _cwd = SCRIPT._server_command_and_env(
+        args,
+        engine="hipengine",
+        concurrency=8,
+        port=19108,
+    )
+
+    assert args.gpu_max_hw_queues is None
+    assert "GPU_MAX_HW_QUEUES" not in environment
+    assert environment["HIPENGINE_GPU_MAX_HW_QUEUES_POLICY"] == "runtime_default"
+    assert environment["HIPENGINE_PROCESS_ENV_REPORT_PATH"] == str(
+        tmp_path / "hipengine-process-env-19108.json"
+    )
 
 
 def test_production_correctness_treats_c1_id_equality_as_diagnostic() -> None:
