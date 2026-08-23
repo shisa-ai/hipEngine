@@ -4,6 +4,17 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- 2026-08-23 [rejected matched-authority gfx1151 Qwen3.8 Kairic IU4 FFN] The immutable
+  16.618-GB coherent GGUF / 49.579-GiB lossless expanded authority plus the
+  immutable 7.99-GiB PFS moves p512/p1K/p4K **29.57/31.70/33.69 →
+  70.27/72.72/75.67 tok/s (2.377x/2.294x/2.246x, all 5/5 pairs)**, but fails
+  binding correctness. The varied-p512 teacher records mean/max KL
+  **0.08159/0.28923** and **77.78% top-1**; the padded canonical 50-row suite
+  records mean/p95/p99/max KL **0.003768/0.01761/0.05677/0.06360** despite 100%
+  top-1. All ten short prompts fall back exactly and teardown is 0→0. Keep only
+  the explicit quality-traded T3 route; omitted/default and decode stay strict.
+  `benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-authority-pfs-iu4-full-model-gate.json`.
+
 - [retained explicit-authority leaf gfx1151 Qwen3.8 ROCmFP4] The custom Kairic
   coherent GGUF moves **unsupported IDs 100/102 -> exact CPU dequant plus a
   49.579-GiB lossless expanded authority** (ROCmFP4 BF16, ROCmFP6 F32). Its

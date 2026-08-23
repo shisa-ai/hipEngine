@@ -97,11 +97,14 @@ The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains 
 
 Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with explicit FP32 rollback after the complete packed and serving gates; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). The broader default-off review remains in the [`promotion inventory`](results/2026-08-20-valid-faster-default-off-inventory.json).
 
-The custom Kairic coherent GGUF is now loader-supported only through an explicit
+The custom Kairic coherent GGUF is loader-supported only through an explicit
 49.579-GiB expanded authority view; this is not compressed-native execution or
 a public default. Its isolated expanded-BF16 prefill leaf wins all 21 admitted
-M512/1024/2048 shapes by 1.40–4.73x; the matched full-model PFS quality gate is
-tracked separately in the [`leaf artifact`](results/2026-08-23-gfx1151-qwen38-rocmfp4-authority-dense-bf16-leaf.json).
+M512/1024/2048 shapes by 1.40–4.73x. The matched PFS route is 2.25–2.38x faster
+at p512/p1K/p4K, but is rejected on binding correctness: teacher mean/max KL is
+0.08159/0.28923 with 77.78% top-1, and the padded 50-row suite exceeds the
+mean/tail/max envelope despite 100% top-1. See the [`leaf artifact`](results/2026-08-23-gfx1151-qwen38-rocmfp4-authority-dense-bf16-leaf.json)
+and [`matched rejection`](results/2026-08-23-gfx1151-qwen38-kairic-authority-pfs-iu4-full-model-gate.json).
 
 ## Where detailed evidence lives
 
