@@ -4057,17 +4057,19 @@ should be boring.
   and long-task packet. Do not merge this explicit product owner into ordinary
   GGUF weight materialization: its 7.99-GiB secondary representation and T3
   semantics are intentionally separate.
-- Promotion is blocked, not unfinished: against the available Q4_K_S authority,
-  varied-p512 teacher mean/max KL is 0.02119/0.08754 with 88.89% top-1, and the
-  padded canonical 50-row suite narrowly misses mean KL (0.001124 > 0.001),
-  outside the frozen production envelope despite 1.44–1.48x complete-prefill and 5/5
-  long-task non-inferiority. The exact public Kairic authority adapter now
-  parses CIRU IDs 100/102 and provides a lossless 49.579-GiB expanded fallback;
-  the matched PFS packet is pending and compressed-native execution remains
-  absent. Remove the explicit product runtime only if this quality-traded
-  configuration is abandoned; otherwise keep omitted/profile behavior unchanged
-  until the matched-authority and BF16-relative/full-profile packets independently
-  pass.
+- Promotion is blocked, not unfinished. Against Q4_K_S, varied-p512 teacher
+  mean/max KL is 0.02119/0.08754 with 88.89% top-1, and the padded canonical
+  50-row suite narrowly misses mean KL (0.001124 > 0.001), outside the frozen
+  envelope despite 1.44–1.48x complete-prefill and 5/5 long-task
+  non-inferiority. The exact public Kairic authority adapter parses CIRU IDs
+  100/102 and provides a lossless 49.579-GiB expanded fallback, but the matched
+  packet also rejects: teacher mean/max KL 0.08159/0.28923 and 77.78% top-1;
+  padded-suite mean/max KL 0.003768/0.06360 despite 100% top-1. Matched prefill
+  is 2.25–2.38x faster, all 5/5 pairs, but speed cannot override correctness;
+  compressed-native execution remains absent. Remove the explicit product
+  runtime only if this quality-traded research configuration is abandoned;
+  otherwise keep omitted/profile behavior unchanged unless a new immutable
+  product independently passes the complete T3 packet.
 - Keep `iu4_s4_matmul_i32_probe` temporarily because R6 changed the physical
   layout to paired-K32 and the probe is the independent GPU lane-layout/I32
   oracle. Drop it once an immutable sidecar-manifest loader has its own complete

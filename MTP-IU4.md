@@ -2,9 +2,9 @@
 
 _Status: R0–R2/B1–B4/R6–R8 complete. Single-request B1–B3 IU4 remains
 rejected on representation economics. Dense-prefill gate/up passes 2.67–3.10×;
-the immutable original-product full-FFN route reaches 2.61–3.35× leaf and
-1.44–1.47× complete prefill, but fails the Q4_K_S distribution gate. It is
-retained explicit/quality-traded only; decode stays strict fallback._
+the immutable original-product full-FFN route reaches 2.61–3.35× leaf and wins
+complete prefill against both authorities, but fails both binding distribution
+gates. It is retained explicit/quality-traded only; decode stays strict fallback._
 
 _Branch: `mpt-iu4`_
 
@@ -68,10 +68,11 @@ not the model full-logit gate.
 **Decision:** reject native IU4 for single-request B1–B3 and do not allocate the
 5.329-GiB gate/up companion there. Retain the rebuilt gfx1151 dense-prefill
 family and the immutable 7.99-GiB Kairic FFN product as an **explicit,
-quality-traded T3 configuration only**. It improves complete prefill 1.44–1.47×
-and passes five long tasks, but Q4_K_S arbitrary-context logits fail the frozen
-distribution envelope; omitted/default profile remains unchanged and c1 decode
-falls back to the current exact owner.
+quality-traded T3 configuration only**. It improves complete prefill against
+both tested authorities and passes five Q4_K_S long tasks, but arbitrary-context
+logits fail the frozen distribution envelope against both Q4_K_S and the matched
+Kairic authority. Omitted/default profile remains unchanged and c1 decode falls
+back to the authority's exact owner.
 
 ### Verdict correction (2026-08-23 review)
 
@@ -851,7 +852,7 @@ Promotion questions:
 | **Tiny-M representation economics** | S4 bytes buy enough target wall to justify the companion | **Fail, representation-scoped (decisive)**: the entire available win is the 1.12× byte ratio → 1.06× target window for +5.329 GiB and a T3 campaign |
 | Family attribution | Measured all-layer gate/up share and effective BW justify expected target-wall delta | **Pass, bounded**: 21.9–25.2% wall; ideal zero-pack S4 ceiling 1.032–1.070× |
 | Memory ROI | Measured complete target/cycle gain justifies +5.329 GiB gate/up (or +7.988 GiB FFN) | **Split**: fail for c1 B1–B3; prefill product gains 1.44–1.47× complete wall for +7.99 GiB but remains explicit due quality. |
-| T3 quality | Full strict-teacher/determinism/isolation/BF16-relative/task packet passes | **Fail for Q4_K_S production envelope**: teacher mean/max KL 0.02119/0.08754 and 88.89% top-1. Long-task 5/5 non-inferiority and deterministic leaf pass. The exact Kairic authority adapter is now available as an explicit 49.579-GiB expanded denominator; its matched packet is pending, and BF16-relative evidence remains unavailable. |
+| T3 quality | Full strict-teacher/determinism/isolation/BF16-relative/task packet passes | **Fail against both authorities**: Q4_K_S teacher mean/max KL 0.02119/0.08754 and 88.89% top-1; matched Kairic teacher mean/max KL 0.08159/0.28923 and 77.78% top-1. The matched padded 50-row suite is 100% top-1 but mean/max KL 0.003768/0.06360. Q4_K_S long-task 5/5 non-inferiority and deterministic leaf pass; BF16-relative evidence remains unavailable and cannot rescue either binding failure. |
 | MTP economics | Full category suite beats same-protocol true AR and current B3 without category regression | Not run |
 | Lifecycle | Sidecar load/fallback/close reaches zero tracked allocation and bounded process memory | **Model-wide pass**: explicit 8,576,827,392-byte product, M96–2048 route telemetry, M<96/c1 fallback, and tracked teardown 0→0. |
 
@@ -1088,18 +1089,28 @@ canonical short prompts are exact through explicit M<96 fallback.
 The bounded 4K retrieval/multihop/aggregation/long-doc/code task suite passes
 **5/5 control and 5/5 candidate**, with candidate wall lower on every row;
 free-running IDs/output lengths differ and the task packet is non-inferiority,
-not arithmetic certification. BF16-relative evidence remains unavailable. The
-public Kairic authoritative GGUF now supplies the exact matched denominator:
-hipEngine parses CIRU `Q4_0_ROCMFP4` ID 100 and `Q6_0_ROCMFPX` ID 102 and
-materializes lossless expanded fallbacks. The complete matched PFS packet is a
-separate pending gate; no result is inferred from parser/load support alone.
+not arithmetic certification. BF16-relative evidence remains unavailable.
 
-**Disposition:** keep the explicit product/runtime and strict fallback because
-it is a large, task-passing, complete-wall prefill improvement; do not expose it
-as `production`, omitted/default, or decode behavior. Artifact set:
+The public Kairic authoritative GGUF supplies the exact matched denominator:
+hipEngine parses CIRU `Q4_0_ROCMFP4` ID 100 and `Q6_0_ROCMFPX` ID 102 and
+materializes lossless expanded fallbacks. That matched packet also rejects the
+PFS. Its varied-p512 nine-row teacher trajectory is mean/max KL
+**0.08159/0.28923** and **77.78%** top-1. The canonical ten-prompt/five-step
+padded suite remains 100% top-1 but records mean/p95/p99/max KL
+**0.003768/0.01761/0.05677/0.06360**, failing mean, tails, and the absolute
+ceiling. Canonical M40–71 prompts fall back exactly, 10/10 through four tokens.
+The candidate nevertheless moves matched-authority p512/p1K/p4K prefill
+**29.57/31.70/33.69 → 70.27/72.72/75.67 tok/s
+(2.377×/2.294×/2.246×)**, all 5/5 pairs, with exact teardown. Speed cannot
+compensate for the binding correctness failure.
+
+**Disposition:** keep the explicit product/runtime and strict fallback as a
+quality-traded research configuration; do not expose it as `production`,
+omitted/default, or decode behavior. Artifact set:
 [`full-FFN leaf`](benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-full-ffn-q5-leaf.json),
-[`rejected distribution + complete-prefill gate`](benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-full-model-gate.json), and
-[`accepted long-task gate`](benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-long-task-gate.json).
+[`Q4_K_S rejected distribution + complete-prefill gate`](benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-full-model-gate.json),
+[`accepted Q4_K_S long-task gate`](benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-pfs-iu4-r8-long-task-gate.json), and
+[`matched-authority rejection`](benchmarks/results/2026-08-23-gfx1151-qwen38-kairic-authority-pfs-iu4-full-model-gate.json).
 
 ### R9 — packed concurrent verifier
 
