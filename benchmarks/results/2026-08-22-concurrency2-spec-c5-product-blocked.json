@@ -1,0 +1,1306 @@
+{
+  "b3_topline": {
+    "accepted_per_output": 0.636,
+    "category_ratios": {
+      "code": 2.2132975503225163,
+      "general_en": 1.5281732983552716,
+      "general_ja": 1.5200767276173068,
+      "mixed_ja_en": 1.7899257468711858
+    },
+    "draft_acceptance": 0.6309523809523809,
+    "heldout_ratio": 1.7983848539794998,
+    "mtp_decode_tok_s": 53.521041849879566,
+    "mtp_vs_true_ar": 1.8012068563875587,
+    "true_ar_decode_tok_s": 29.713989628720164
+  },
+  "blockers": [
+    "Public C=10 service MTP wall is 10.150 s versus true AR 5.874 s (0.579x).",
+    "Current packed service still invokes phase-serial model-owned prompt loops; decode-only kernel economics do not survive request wall.",
+    "No reason to spend/promote an HTTP SLO load packet while same-loaded direct public service economics fail."
+  ],
+  "created_at": "2026-08-22T15:45:00Z",
+  "decision": "Do not promote full continuous SpecDec or change gfx1100 default. Retain guarded explicit MTP and exact AR pre-launch fallback. Next work must remove phase serialization and then rerun SPEC-C5.",
+  "gates": {
+    "full_train_heldout_categories": true,
+    "graph_profiler": true,
+    "http_load_slo": false,
+    "memory_drain": true,
+    "mixed_host_lifecycle": true,
+    "numerical_quality": true,
+    "public_service_economics": false,
+    "public_service_exactness": true,
+    "transaction_lifecycle": true,
+    "true_ar_economics_direct": true
+  },
+  "kind": "concurrency2_spec_c5_product_gate",
+  "mixed_lifecycle": {
+    "host_test": "test_engine_service_mixed_ar_and_speculative_children_complete_independently",
+    "http_mixed_load": "not promoted/run because same-loaded public service economics already fail",
+    "result": "passed; speculative siblings complete while AR peer remains active, then AR cancellation reclaims"
+  },
+  "model": {
+    "architecture": "qwen35",
+    "file_type": "MOSTLY_Q4_K_M",
+    "gguf_inventory": {
+      "alignment": 32,
+      "architecture": "qwen35",
+      "file_type": 15,
+      "file_type_name": "MOSTLY_Q4_K_M",
+      "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "tensor_count": 866,
+      "tensor_data_offset": 10995680,
+      "tensor_inventory_hash": "0f4915bdd5a7e465ce03e6a3cf76d5dddf35ae28dbd1fa75f5af2c909b8461f3",
+      "tensor_inventory_hash_algorithm": "sha256",
+      "total_tensor_nbytes": 17095778304,
+      "version": 3
+    },
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106773984,
+    "tensor_count": 866
+  },
+  "passed": false,
+  "performance_claim": false,
+  "profiler": {
+    "accept_kernel_calls": 7,
+    "accept_kernel_durations_us": [
+      9.44,
+      9.04,
+      8.4,
+      9.64,
+      9.8,
+      9.72,
+      6.76
+    ],
+    "child_sha256": "96ac428eccc6012c788f7a2953505c634783eeaa2dba408a05f8cfeb94247940",
+    "child_status": "complete_exact",
+    "correctness": {
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true
+    },
+    "memory_after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 17759852125,
+      "peak_allocations": 428,
+      "total_allocated_bytes": 17760271965,
+      "total_freed_bytes": 17760271965
+    },
+    "proposal_graph": {
+      "budgets": [
+        1,
+        2,
+        3
+      ],
+      "captures": 2,
+      "eligible": true,
+      "graphs": 2,
+      "last_error": null,
+      "last_status": "replay",
+      "max_context": 1023,
+      "replays": 7,
+      "unavailable": []
+    },
+    "trace_rows": 93792,
+    "trace_sha256": "9b6b28930ac41149993b73b71e6135c8068989dfe4d5d04b423d0871469afab4"
+  },
+  "public_service_gate": {
+    "all_exact": true,
+    "ar_wall_seconds": 5.874455546960235,
+    "engine_service": {
+      "active_children": 0,
+      "command_queue_depth": 0,
+      "driver_thread_id": 139722291451584,
+      "last_speculative_draft_depth": 3,
+      "last_speculative_route": "engine_service_verify_chain",
+      "last_speculative_work_kind": "verify_chain",
+      "sole_driver": true,
+      "speculative_routes": {
+        "engine_service_verify_chain": 1,
+        "legacy_prelaunch_fallback": 0
+      }
+    },
+    "exact_rows": "10/10",
+    "final_requests": {
+      "active": 0,
+      "admitted_current": 0,
+      "admitted_total": 10,
+      "completed_buffered": 0,
+      "pending": 0,
+      "reclaimed_total": 10
+    },
+    "mtp_vs_ar_wall_ratio": 0.5787686782938285,
+    "mtp_wall_seconds": 10.149919591844082,
+    "raw_sha256": "594085700bdcabef08dfc1eb22360078390720e0e8565cd1a21ff15f40785e53",
+    "work_item": {
+      "draft_depth": 3,
+      "kind": "verify_chain",
+      "request_count": 10,
+      "verifier_rows": 30
+    }
+  },
+  "quality_economics_direct": {
+    "b1": {
+      "categories": {
+        "code": {
+          "accepted_draft_tokens": 48,
+          "accepted_per_output": 0.48,
+          "accepted_per_transition": 0.5,
+          "categories": [
+            "code"
+          ],
+          "client_transition_tok_s": 11.23994213524251,
+          "cycles": 49,
+          "decode_seconds": 2.01235279859975,
+          "decode_tok_s_weighted": 47.705352693026505,
+          "draft_acceptance": 0.9795918367346939,
+          "mtp_vs_true_ar": 1.5977238441750277,
+          "prompt_count": 4,
+          "prompt_ids": [
+            "code_merge_intervals",
+            "code_topological_sort",
+            "code_lru_cache",
+            "code_markdown_table"
+          ],
+          "proposed_draft_tokens": 49,
+          "request_count": 4,
+          "request_wall_seconds": 8.540969236753881,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "proposal": 0.08719479711726308,
+            "scheduler_accept_replay_host_residual": 0.018554209265857935,
+            "target_commit_finish": 0.0009833378717303276,
+            "target_verify": 1.9056204543448985
+          },
+          "target_forward_rows": 98,
+          "target_passes": 49,
+          "timed_transitions": 96,
+          "visible_outputs": 100,
+          "visible_transitions_per_cycle": 1.9591836734693877
+        },
+        "general_en": {
+          "accepted_draft_tokens": 21,
+          "accepted_per_output": 0.42,
+          "accepted_per_transition": 0.4375,
+          "categories": [
+            "general_en"
+          ],
+          "client_transition_tok_s": 12.35001309669076,
+          "cycles": 28,
+          "decode_seconds": 1.140011805575341,
+          "decode_tok_s_weighted": 42.10482713007991,
+          "draft_acceptance": 0.75,
+          "mtp_vs_true_ar": 1.4202109731691928,
+          "prompt_count": 2,
+          "prompt_ids": [
+            "general_en_plan",
+            "general_en_explain"
+          ],
+          "proposed_draft_tokens": 28,
+          "request_count": 2,
+          "request_wall_seconds": 3.8866355544887483,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "proposal": 0.04132375959306955,
+            "scheduler_accept_replay_host_residual": 0.010340092238038778,
+            "target_commit_finish": 0.0008725016377866268,
+            "target_verify": 1.087475452106446
+          },
+          "target_forward_rows": 56,
+          "target_passes": 28,
+          "timed_transitions": 48,
+          "visible_outputs": 50,
+          "visible_transitions_per_cycle": 1.7142857142857142
+        },
+        "general_ja": {
+          "accepted_draft_tokens": 20,
+          "accepted_per_output": 0.4,
+          "accepted_per_transition": 0.4166666666666667,
+          "categories": [
+            "general_ja"
+          ],
+          "client_transition_tok_s": 11.481446808944442,
+          "cycles": 29,
+          "decode_seconds": 1.187177436426282,
+          "decode_tok_s_weighted": 40.432035285721646,
+          "draft_acceptance": 0.6896551724137931,
+          "mtp_vs_true_ar": 1.362322853599994,
+          "prompt_count": 2,
+          "prompt_ids": [
+            "general_ja_plan",
+            "general_ja_explain"
+          ],
+          "proposed_draft_tokens": 29,
+          "request_count": 2,
+          "request_wall_seconds": 4.18065778631717,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "proposal": 0.042865912429988384,
+            "scheduler_accept_replay_host_residual": 0.010327556170523167,
+            "target_commit_finish": 0.0016133417375385761,
+            "target_verify": 1.1323706260882318
+          },
+          "target_forward_rows": 58,
+          "target_passes": 29,
+          "timed_transitions": 48,
+          "visible_outputs": 50,
+          "visible_transitions_per_cycle": 1.6551724137931034
+        },
+        "mixed_ja_en": {
+          "accepted_draft_tokens": 23,
+          "accepted_per_output": 0.46,
+          "accepted_per_transition": 0.4791666666666667,
+          "categories": [
+            "mixed_ja_en"
+          ],
+          "client_transition_tok_s": 8.285908883596612,
+          "cycles": 26,
+          "decode_seconds": 1.0726202516816556,
+          "decode_tok_s_weighted": 44.75022723535709,
+          "draft_acceptance": 0.8846153846153846,
+          "mtp_vs_true_ar": 1.5153949210426219,
+          "prompt_count": 2,
+          "prompt_ids": [
+            "mixed_ja_en_translate",
+            "mixed_ja_en_review"
+          ],
+          "proposed_draft_tokens": 26,
+          "request_count": 2,
+          "request_wall_seconds": 5.792967394925654,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "proposal": 0.042321743443608284,
+            "scheduler_accept_replay_host_residual": 0.00950914528220892,
+            "target_commit_finish": 0.0008573522791266441,
+            "target_verify": 1.0199320106767118
+          },
+          "target_forward_rows": 52,
+          "target_passes": 26,
+          "timed_transitions": 48,
+          "visible_outputs": 50,
+          "visible_transitions_per_cycle": 1.8461538461538463
+        }
+      },
+      "full": {
+        "accepted_draft_tokens": 112,
+        "accepted_per_output": 0.448,
+        "accepted_per_transition": 0.4666666666666667,
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "client_transition_tok_s": 10.71369743066709,
+        "cycles": 132,
+        "decode_seconds": 5.412162292283028,
+        "decode_tok_s_weighted": 44.34456822224377,
+        "draft_acceptance": 0.8484848484848485,
+        "mtp_vs_true_ar": 1.4923801474098373,
+        "prompt_count": 10,
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain",
+          "mixed_ja_en_translate",
+          "mixed_ja_en_review"
+        ],
+        "proposed_draft_tokens": 132,
+        "request_count": 10,
+        "request_wall_seconds": 22.401229972485453,
+        "stage_reconciled": true,
+        "stage_reconciliation_error_seconds": 0.0,
+        "stage_seconds": {
+          "proposal": 0.2137062125839293,
+          "scheduler_accept_replay_host_residual": 0.0487310029566288,
+          "target_commit_finish": 0.004326533526182175,
+          "target_verify": 5.145398543216288
+        },
+        "target_forward_rows": 264,
+        "target_passes": 132,
+        "timed_transitions": 240,
+        "visible_outputs": 250,
+        "visible_transitions_per_cycle": 1.8181818181818181
+      },
+      "heldout": {
+        "accepted_draft_tokens": 46,
+        "accepted_per_output": 0.46,
+        "accepted_per_transition": 0.4791666666666667,
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "client_transition_tok_s": 10.25275974009321,
+        "cycles": 53,
+        "decode_seconds": 2.1758155655115843,
+        "decode_tok_s_weighted": 44.12138672122616,
+        "draft_acceptance": 0.8679245283018868,
+        "mtp_vs_true_ar": 1.48768499413714,
+        "prompt_count": 4,
+        "prompt_ids": [
+          "code_markdown_table",
+          "general_en_explain",
+          "general_ja_explain",
+          "mixed_ja_en_review"
+        ],
+        "proposed_draft_tokens": 53,
+        "request_count": 4,
+        "request_wall_seconds": 9.363332647364587,
+        "stage_reconciled": true,
+        "stage_reconciliation_error_seconds": 0.0,
+        "stage_seconds": {
+          "proposal": 0.09121588664129376,
+          "scheduler_accept_replay_host_residual": 0.020589242223650217,
+          "target_commit_finish": 0.0024685952812433243,
+          "target_verify": 2.061541841365397
+        },
+        "target_forward_rows": 106,
+        "target_passes": 53,
+        "timed_transitions": 96,
+        "visible_outputs": 100,
+        "visible_transitions_per_cycle": 1.8113207547169812
+      },
+      "train": {
+        "accepted_draft_tokens": 66,
+        "accepted_per_output": 0.44,
+        "accepted_per_transition": 0.4583333333333333,
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "client_transition_tok_s": 11.044725726022318,
+        "cycles": 79,
+        "decode_seconds": 3.236346726771444,
+        "decode_tok_s_weighted": 44.494614501226,
+        "draft_acceptance": 0.8354430379746836,
+        "mtp_vs_true_ar": 1.4955367274785585,
+        "prompt_count": 6,
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "general_en_plan",
+          "general_ja_plan",
+          "mixed_ja_en_translate"
+        ],
+        "proposed_draft_tokens": 79,
+        "request_count": 6,
+        "request_wall_seconds": 13.037897325120866,
+        "stage_reconciled": true,
+        "stage_reconciliation_error_seconds": 0.0,
+        "stage_seconds": {
+          "proposal": 0.12249032594263554,
+          "scheduler_accept_replay_host_residual": 0.028141760732978582,
+          "target_commit_finish": 0.0018579382449388504,
+          "target_verify": 3.083856701850891
+        },
+        "target_forward_rows": 158,
+        "target_passes": 79,
+        "timed_transitions": 144,
+        "visible_outputs": 150,
+        "visible_transitions_per_cycle": 1.8227848101265822
+      }
+    },
+    "b2": {
+      "categories": {
+        "code": {
+          "accepted_draft_tokens": 62,
+          "accepted_per_output": 0.62,
+          "accepted_per_transition": 0.6458333333333334,
+          "categories": [
+            "code"
+          ],
+          "client_transition_tok_s": 11.746730317832139,
+          "cycles": 35,
+          "decode_seconds": 1.6386499819345772,
+          "decode_tok_s_weighted": 58.58481131319036,
+          "draft_acceptance": 0.8857142857142857,
+          "mtp_vs_true_ar": 1.962093238129687,
+          "prompt_count": 4,
+          "prompt_ids": [
+            "code_merge_intervals",
+            "code_topological_sort",
+            "code_lru_cache",
+            "code_markdown_table"
+          ],
+          "proposed_draft_tokens": 70,
+          "request_count": 4,
+          "request_wall_seconds": 8.172486930619925,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "proposal": 0.05971883051097393,
+            "scheduler_accept_replay_host_residual": 0.014715073630213737,
+            "target_commit_finish": 0.0009505832567811012,
+            "target_verify": 1.5632654945366085
+          },
+          "target_forward_rows": 105,
+          "target_passes": 35,
+          "timed_transitions": 96,
+          "visible_outputs": 100,
+          "visible_transitions_per_cycle": 2.742857142857143
+        },
+        "general_en": {
+          "accepted_draft_tokens": 28,
+          "accepted_per_output": 0.56,
+          "accepted_per_transition": 0.5833333333333334,
+          "categories": [
+            "general_en"
+          ],
+          "client_transition_tok_s": 12.981949738483054,
+          "cycles": 21,
+          "decode_seconds": 0.9512959797866642,
+          "decode_tok_s_weighted": 50.45748223467147,
+          "draft_acceptance": 0.6829268292682927,
+          "mtp_vs_true_ar": 1.7019490360756178,
+          "prompt_count": 2,
+          "prompt_ids": [
+            "general_en_plan",
+            "general_en_explain"
+          ],
+          "proposed_draft_tokens": 41,
+          "request_count": 2,
+          "request_wall_seconds": 3.6974415220320225,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "proposal": 0.02646097168326378,
+            "scheduler_accept_replay_host_residual": 0.008616105653345585,
+            "target_commit_finish": 0.0009024934843182564,
+            "target_verify": 0.9153164089657366
+          },
+          "target_forward_rows": 62,
+          "target_passes": 21,
+          "timed_transitions": 48,
+          "visible_outputs": 50,
+          "visible_transitions_per_cycle": 2.2857142857142856
+        },
+        "general_ja": {
+          "accepted_draft_tokens": 25,
+          "accepted_per_output": 0.5,
+          "accepted_per_transition": 0.5208333333333334,
+          "categories": [
+            "general_ja"
+          ],
+          "client_transition_tok_s": 11.746037828751788,
+          "cycles": 24,
+          "decode_seconds": 1.09246832318604,
+          "decode_tok_s_weighted": 43.93720072360023,
+          "draft_acceptance": 0.5208333333333334,
+          "mtp_vs_true_ar": 1.4804264055959815,
+          "prompt_count": 2,
+          "prompt_ids": [
+            "general_ja_plan",
+            "general_ja_explain"
+          ],
+          "proposed_draft_tokens": 48,
+          "request_count": 2,
+          "request_wall_seconds": 4.086484370287508,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "proposal": 0.024390285834670067,
+            "scheduler_accept_replay_host_residual": 0.00879715895280242,
+            "target_commit_finish": 0.0008482905104756355,
+            "target_verify": 1.0584325878880918
+          },
+          "target_forward_rows": 72,
+          "target_passes": 24,
+          "timed_transitions": 48,
+          "visible_outputs": 50,
+          "visible_transitions_per_cycle": 2.0
+        },
+        "mixed_ja_en": {
+          "accepted_draft_tokens": 29,
+          "accepted_per_output": 0.58,
+          "accepted_per_transition": 0.6041666666666666,
+          "categories": [
+            "mixed_ja_en"
+          ],
+          "client_transition_tok_s": 8.471493316738066,
+          "cycles": 21,
+          "decode_seconds": 0.9595703585073352,
+          "decode_tok_s_weighted": 50.022387180307085,
+          "draft_acceptance": 0.7073170731707317,
+          "mtp_vs_true_ar": 1.693928191085755,
+          "prompt_count": 2,
+          "prompt_ids": [
+            "mixed_ja_en_translate",
+            "mixed_ja_en_review"
+          ],
+          "proposed_draft_tokens": 41,
+          "request_count": 2,
+          "request_wall_seconds": 5.666061248630285,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "proposal": 0.03408424369990826,
+            "scheduler_accept_replay_host_residual": 0.007909417618066072,
+            "target_commit_finish": 0.002320870291441679,
+            "target_verify": 0.9152558268979192
+          },
+          "target_forward_rows": 62,
+          "target_passes": 21,
+          "timed_transitions": 48,
+          "visible_outputs": 50,
+          "visible_transitions_per_cycle": 2.2857142857142856
+        }
+      },
+      "full": {
+        "accepted_draft_tokens": 144,
+        "accepted_per_output": 0.576,
+        "accepted_per_transition": 0.6,
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "client_transition_tok_s": 11.099562390760983,
+        "cycles": 101,
+        "decode_seconds": 4.641984643414617,
+        "decode_tok_s_weighted": 51.70202368947464,
+        "draft_acceptance": 0.72,
+        "mtp_vs_true_ar": 1.7399892890688051,
+        "prompt_count": 10,
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain",
+          "mixed_ja_en_translate",
+          "mixed_ja_en_review"
+        ],
+        "proposed_draft_tokens": 200,
+        "request_count": 10,
+        "request_wall_seconds": 21.62247407156974,
+        "stage_reconciled": true,
+        "stage_reconciliation_error_seconds": 0.0,
+        "stage_seconds": {
+          "proposal": 0.14465433172881603,
+          "scheduler_accept_replay_host_residual": 0.040037755854427814,
+          "target_commit_finish": 0.005022237543016672,
+          "target_verify": 4.452270318288356
+        },
+        "target_forward_rows": 301,
+        "target_passes": 101,
+        "timed_transitions": 240,
+        "visible_outputs": 250,
+        "visible_transitions_per_cycle": 2.376237623762376
+      },
+      "heldout": {
+        "accepted_draft_tokens": 58,
+        "accepted_per_output": 0.58,
+        "accepted_per_transition": 0.6041666666666666,
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "client_transition_tok_s": 10.630673028229822,
+        "cycles": 41,
+        "decode_seconds": 1.86700525181368,
+        "decode_tok_s_weighted": 51.4192447539941,
+        "draft_acceptance": 0.725,
+        "mtp_vs_true_ar": 1.7337541839676796,
+        "prompt_count": 4,
+        "prompt_ids": [
+          "code_markdown_table",
+          "general_en_explain",
+          "general_ja_explain",
+          "mixed_ja_en_review"
+        ],
+        "proposed_draft_tokens": 80,
+        "request_count": 4,
+        "request_wall_seconds": 9.030472458805889,
+        "stage_reconciled": true,
+        "stage_reconciliation_error_seconds": 0.0,
+        "stage_seconds": {
+          "proposal": 0.06202850956469774,
+          "scheduler_accept_replay_host_residual": 0.016231526620686054,
+          "target_commit_finish": 0.0031996616162359715,
+          "target_verify": 1.7855455540120602
+        },
+        "target_forward_rows": 121,
+        "target_passes": 41,
+        "timed_transitions": 96,
+        "visible_outputs": 100,
+        "visible_transitions_per_cycle": 2.341463414634146
+      },
+      "train": {
+        "accepted_draft_tokens": 86,
+        "accepted_per_output": 0.5733333333333334,
+        "accepted_per_transition": 0.5972222222222222,
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "client_transition_tok_s": 11.435830809776482,
+        "cycles": 60,
+        "decode_seconds": 2.7749793916009367,
+        "decode_tok_s_weighted": 51.892277267300265,
+        "draft_acceptance": 0.7166666666666667,
+        "mtp_vs_true_ar": 1.744184265797153,
+        "prompt_count": 6,
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "general_en_plan",
+          "general_ja_plan",
+          "mixed_ja_en_translate"
+        ],
+        "proposed_draft_tokens": 120,
+        "request_count": 6,
+        "request_wall_seconds": 12.592001612763852,
+        "stage_reconciled": true,
+        "stage_reconciliation_error_seconds": 0.0,
+        "stage_seconds": {
+          "proposal": 0.08262582216411829,
+          "scheduler_accept_replay_host_residual": 0.02380622923374176,
+          "target_commit_finish": 0.0018225759267807007,
+          "target_verify": 2.666724764276296
+        },
+        "target_forward_rows": 180,
+        "target_passes": 60,
+        "timed_transitions": 144,
+        "visible_outputs": 150,
+        "visible_transitions_per_cycle": 2.4
+      }
+    },
+    "b3": {
+      "categories": {
+        "code": {
+          "accepted_draft_tokens": 71,
+          "accepted_per_output": 0.71,
+          "accepted_per_transition": 0.7395833333333334,
+          "categories": [
+            "code"
+          ],
+          "client_transition_tok_s": 12.000952591597182,
+          "cycles": 28,
+          "decode_seconds": 1.4526668810285628,
+          "decode_tok_s_weighted": 66.08535050515303,
+          "draft_acceptance": 0.8875,
+          "mtp_vs_true_ar": 2.2132975503225163,
+          "prompt_count": 4,
+          "prompt_ids": [
+            "code_merge_intervals",
+            "code_topological_sort",
+            "code_lru_cache",
+            "code_markdown_table"
+          ],
+          "proposed_draft_tokens": 80,
+          "request_count": 4,
+          "request_wall_seconds": 7.999364989344031,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "proposal": 0.046889261808246374,
+            "scheduler_accept_replay_host_residual": 0.012486807070672512,
+            "target_commit_finish": 0.002365552354604006,
+            "target_verify": 1.39092525979504
+          },
+          "target_forward_rows": 108,
+          "target_passes": 28,
+          "timed_transitions": 96,
+          "visible_outputs": 100,
+          "visible_transitions_per_cycle": 3.4285714285714284
+        },
+        "general_en": {
+          "accepted_draft_tokens": 28,
+          "accepted_per_output": 0.56,
+          "accepted_per_transition": 0.5833333333333334,
+          "categories": [
+            "general_en"
+          ],
+          "client_transition_tok_s": 12.601741020871065,
+          "cycles": 21,
+          "decode_seconds": 1.059472297783941,
+          "decode_tok_s_weighted": 45.3055734448176,
+          "draft_acceptance": 0.45901639344262296,
+          "mtp_vs_true_ar": 1.5281732983552716,
+          "prompt_count": 2,
+          "prompt_ids": [
+            "general_en_plan",
+            "general_en_explain"
+          ],
+          "proposed_draft_tokens": 61,
+          "request_count": 2,
+          "request_wall_seconds": 3.808997496496886,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "proposal": 0.025278670713305473,
+            "scheduler_accept_replay_host_residual": 0.008746795356273651,
+            "target_commit_finish": 0.0017612902447581291,
+            "target_verify": 1.0236855414696038
+          },
+          "target_forward_rows": 82,
+          "target_passes": 21,
+          "timed_transitions": 48,
+          "visible_outputs": 50,
+          "visible_transitions_per_cycle": 2.2857142857142856
+        },
+        "general_ja": {
+          "accepted_draft_tokens": 28,
+          "accepted_per_output": 0.56,
+          "accepted_per_transition": 0.5833333333333334,
+          "categories": [
+            "general_ja"
+          ],
+          "client_transition_tok_s": 11.811442157780377,
+          "cycles": 21,
+          "decode_seconds": 1.0639719190075994,
+          "decode_tok_s_weighted": 45.1139725987986,
+          "draft_acceptance": 0.45901639344262296,
+          "mtp_vs_true_ar": 1.5200767276173068,
+          "prompt_count": 2,
+          "prompt_ids": [
+            "general_ja_plan",
+            "general_ja_explain"
+          ],
+          "proposed_draft_tokens": 61,
+          "request_count": 2,
+          "request_wall_seconds": 4.063855993095785,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "proposal": 0.024687496479600668,
+            "scheduler_accept_replay_host_residual": 0.0084214280359447,
+            "target_commit_finish": 0.0017340825870633125,
+            "target_verify": 1.0291289119049907
+          },
+          "target_forward_rows": 82,
+          "target_passes": 21,
+          "timed_transitions": 48,
+          "visible_outputs": 50,
+          "visible_transitions_per_cycle": 2.2857142857142856
+        },
+        "mixed_ja_en": {
+          "accepted_draft_tokens": 32,
+          "accepted_per_output": 0.64,
+          "accepted_per_transition": 0.6666666666666666,
+          "categories": [
+            "mixed_ja_en"
+          ],
+          "client_transition_tok_s": 8.538281093625695,
+          "cycles": 18,
+          "decode_seconds": 0.9081065426580608,
+          "decode_tok_s_weighted": 52.85723397554461,
+          "draft_acceptance": 0.64,
+          "mtp_vs_true_ar": 1.7899257468711858,
+          "prompt_count": 2,
+          "prompt_ids": [
+            "mixed_ja_en_translate",
+            "mixed_ja_en_review"
+          ],
+          "proposed_draft_tokens": 50,
+          "request_count": 2,
+          "request_wall_seconds": 5.6217404268682,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "proposal": 0.02847099117934704,
+            "scheduler_accept_replay_host_residual": 0.007792471442371607,
+            "target_commit_finish": 0.0023579136468470097,
+            "target_verify": 0.8694851663894951
+          },
+          "target_forward_rows": 68,
+          "target_passes": 18,
+          "timed_transitions": 48,
+          "visible_outputs": 50,
+          "visible_transitions_per_cycle": 2.6666666666666665
+        }
+      },
+      "full": {
+        "accepted_draft_tokens": 159,
+        "accepted_per_output": 0.636,
+        "accepted_per_transition": 0.6625,
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "client_transition_tok_s": 11.165928112721145,
+        "cycles": 88,
+        "decode_seconds": 4.484217640478164,
+        "decode_tok_s_weighted": 53.521041849879566,
+        "draft_acceptance": 0.6309523809523809,
+        "mtp_vs_true_ar": 1.8012068563875587,
+        "prompt_count": 10,
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain",
+          "mixed_ja_en_translate",
+          "mixed_ja_en_review"
+        ],
+        "proposed_draft_tokens": 252,
+        "request_count": 10,
+        "request_wall_seconds": 21.493958905804902,
+        "stage_reconciled": true,
+        "stage_reconciliation_error_seconds": 0.0,
+        "stage_seconds": {
+          "proposal": 0.12532642018049955,
+          "scheduler_accept_replay_host_residual": 0.03744750190526247,
+          "target_commit_finish": 0.008218838833272457,
+          "target_verify": 4.3132248795591295
+        },
+        "target_forward_rows": 340,
+        "target_passes": 88,
+        "timed_transitions": 240,
+        "visible_outputs": 250,
+        "visible_transitions_per_cycle": 2.727272727272727
+      },
+      "heldout": {
+        "accepted_draft_tokens": 64,
+        "accepted_per_output": 0.64,
+        "accepted_per_transition": 0.6666666666666666,
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "client_transition_tok_s": 10.69362032798242,
+        "cycles": 36,
+        "decode_seconds": 1.799908489920199,
+        "decode_tok_s_weighted": 53.3360448809574,
+        "draft_acceptance": 0.6464646464646465,
+        "mtp_vs_true_ar": 1.7983848539794998,
+        "prompt_count": 4,
+        "prompt_ids": [
+          "code_markdown_table",
+          "general_en_explain",
+          "general_ja_explain",
+          "mixed_ja_en_review"
+        ],
+        "proposed_draft_tokens": 99,
+        "request_count": 4,
+        "request_wall_seconds": 8.977315170690417,
+        "stage_reconciled": true,
+        "stage_reconciliation_error_seconds": 0.0,
+        "stage_seconds": {
+          "proposal": 0.05546138668432832,
+          "scheduler_accept_replay_host_residual": 0.015093349386006594,
+          "target_commit_finish": 0.004948096349835396,
+          "target_verify": 1.7244056575000286
+        },
+        "target_forward_rows": 135,
+        "target_passes": 36,
+        "timed_transitions": 96,
+        "visible_outputs": 100,
+        "visible_transitions_per_cycle": 2.6666666666666665
+      },
+      "train": {
+        "accepted_draft_tokens": 95,
+        "accepted_per_output": 0.6333333333333333,
+        "accepted_per_transition": 0.6597222222222222,
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "client_transition_tok_s": 11.504681530242731,
+        "cycles": 52,
+        "decode_seconds": 2.684309150557965,
+        "decode_tok_s_weighted": 53.64508777614826,
+        "draft_acceptance": 0.6209150326797386,
+        "mtp_vs_true_ar": 1.803099092269474,
+        "prompt_count": 6,
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "general_en_plan",
+          "general_ja_plan",
+          "mixed_ja_en_translate"
+        ],
+        "proposed_draft_tokens": 153,
+        "request_count": 6,
+        "request_wall_seconds": 12.516643735114485,
+        "stage_reconciled": true,
+        "stage_reconciliation_error_seconds": 0.0,
+        "stage_seconds": {
+          "proposal": 0.06986503349617124,
+          "scheduler_accept_replay_host_residual": 0.022354152519255877,
+          "target_commit_finish": 0.0032707424834370613,
+          "target_verify": 2.588819222059101
+        },
+        "target_forward_rows": 205,
+        "target_passes": 52,
+        "timed_transitions": 144,
+        "visible_outputs": 150,
+        "visible_transitions_per_cycle": 2.769230769230769
+      }
+    },
+    "correctness": {
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true
+    },
+    "memory_after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 17761625556,
+      "peak_allocations": 572,
+      "total_allocated_bytes": 18587173753,
+      "total_freed_bytes": 18587173753
+    },
+    "raw_sha256": "79ef3806497a724ad8e3365cd4fc66c8edfd3724d85a3718b0ce3b6b2a19094e",
+    "runtime": {
+      "proposal_graph": {
+        "budgets": [
+          1,
+          2,
+          3
+        ],
+        "captures": 3,
+        "eligible": true,
+        "graphs": 3,
+        "last_error": null,
+        "last_status": "replay",
+        "max_context": 1023,
+        "replays": 326,
+        "unavailable": []
+      }
+    },
+    "speed_claim_eligible": true,
+    "status": "complete_exact",
+    "true_ar": {
+      "categories": {
+        "code": {
+          "accepted_draft_tokens": 0,
+          "accepted_per_output": 0.0,
+          "accepted_per_transition": 0.0,
+          "categories": [
+            "code"
+          ],
+          "client_transition_tok_s": 10.439780685864783,
+          "cycles": 0,
+          "decode_seconds": 3.2151840492151678,
+          "decode_tok_s_weighted": 29.858321803827614,
+          "draft_acceptance": null,
+          "prompt_count": 4,
+          "prompt_ids": [
+            "code_merge_intervals",
+            "code_topological_sort",
+            "code_lru_cache",
+            "code_markdown_table"
+          ],
+          "proposed_draft_tokens": 0,
+          "request_count": 4,
+          "request_wall_seconds": 9.195595471654087,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "autoregressive_step": 3.2151840492151678
+          },
+          "target_forward_rows": 96,
+          "target_passes": 0,
+          "timed_transitions": 96,
+          "visible_outputs": 100,
+          "visible_transitions_per_cycle": null
+        },
+        "general_en": {
+          "accepted_draft_tokens": 0,
+          "accepted_per_output": 0.0,
+          "accepted_per_transition": 0.0,
+          "categories": [
+            "general_en"
+          ],
+          "client_transition_tok_s": 11.59433312179622,
+          "cycles": 0,
+          "decode_seconds": 1.6190572758205235,
+          "decode_tok_s_weighted": 29.646881995372297,
+          "draft_acceptance": null,
+          "prompt_count": 2,
+          "prompt_ids": [
+            "general_en_plan",
+            "general_en_explain"
+          ],
+          "proposed_draft_tokens": 0,
+          "request_count": 2,
+          "request_wall_seconds": 4.13995350105688,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "autoregressive_step": 1.6190572758205235
+          },
+          "target_forward_rows": 48,
+          "target_passes": 0,
+          "timed_transitions": 48,
+          "visible_outputs": 50,
+          "visible_transitions_per_cycle": null
+        },
+        "general_ja": {
+          "accepted_draft_tokens": 0,
+          "accepted_per_output": 0.0,
+          "accepted_per_transition": 0.0,
+          "categories": [
+            "general_ja"
+          ],
+          "client_transition_tok_s": 10.989342671704915,
+          "cycles": 0,
+          "decode_seconds": 1.617318952921778,
+          "decode_tok_s_weighted": 29.678746986353737,
+          "draft_acceptance": null,
+          "prompt_count": 2,
+          "prompt_ids": [
+            "general_ja_plan",
+            "general_ja_explain"
+          ],
+          "proposed_draft_tokens": 0,
+          "request_count": 2,
+          "request_wall_seconds": 4.367868164088577,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "autoregressive_step": 1.617318952921778
+          },
+          "target_forward_rows": 48,
+          "target_passes": 0,
+          "timed_transitions": 48,
+          "visible_outputs": 50,
+          "visible_transitions_per_cycle": null
+        },
+        "mixed_ja_en": {
+          "accepted_draft_tokens": 0,
+          "accepted_per_output": 0.0,
+          "accepted_per_transition": 0.0,
+          "categories": [
+            "mixed_ja_en"
+          ],
+          "client_transition_tok_s": 8.060253477738142,
+          "cycles": 0,
+          "decode_seconds": 1.6254432816058397,
+          "decode_tok_s_weighted": 29.53040597797968,
+          "draft_acceptance": null,
+          "prompt_count": 2,
+          "prompt_ids": [
+            "mixed_ja_en_translate",
+            "mixed_ja_en_review"
+          ],
+          "proposed_draft_tokens": 0,
+          "request_count": 2,
+          "request_wall_seconds": 5.955147705040872,
+          "stage_reconciled": true,
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_seconds": {
+            "autoregressive_step": 1.6254432816058397
+          },
+          "target_forward_rows": 48,
+          "target_passes": 0,
+          "timed_transitions": 48,
+          "visible_outputs": 50,
+          "visible_transitions_per_cycle": null
+        }
+      },
+      "full": {
+        "accepted_draft_tokens": 0,
+        "accepted_per_output": 0.0,
+        "accepted_per_transition": 0.0,
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "client_transition_tok_s": 10.144317781083556,
+        "cycles": 0,
+        "decode_seconds": 8.077003559563309,
+        "decode_tok_s_weighted": 29.713989628720164,
+        "draft_acceptance": null,
+        "prompt_count": 10,
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain",
+          "mixed_ja_en_translate",
+          "mixed_ja_en_review"
+        ],
+        "proposed_draft_tokens": 0,
+        "request_count": 10,
+        "request_wall_seconds": 23.658564841840416,
+        "stage_reconciled": true,
+        "stage_reconciliation_error_seconds": 0.0,
+        "stage_seconds": {
+          "autoregressive_step": 8.077003559563309
+        },
+        "target_forward_rows": 240,
+        "target_passes": 0,
+        "timed_transitions": 240,
+        "visible_outputs": 250,
+        "visible_transitions_per_cycle": null
+      },
+      "heldout": {
+        "accepted_draft_tokens": 0,
+        "accepted_per_output": 0.0,
+        "accepted_per_transition": 0.0,
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "client_transition_tok_s": 9.772691635462524,
+        "cycles": 0,
+        "decode_seconds": 3.236928166821599,
+        "decode_tok_s_weighted": 29.657748041490898,
+        "draft_acceptance": null,
+        "prompt_count": 4,
+        "prompt_ids": [
+          "code_markdown_table",
+          "general_en_explain",
+          "general_ja_explain",
+          "mixed_ja_en_review"
+        ],
+        "proposed_draft_tokens": 0,
+        "request_count": 4,
+        "request_wall_seconds": 9.823291635606438,
+        "stage_reconciled": true,
+        "stage_reconciliation_error_seconds": 0.0,
+        "stage_seconds": {
+          "autoregressive_step": 3.236928166821599
+        },
+        "target_forward_rows": 96,
+        "target_passes": 0,
+        "timed_transitions": 96,
+        "visible_outputs": 100,
+        "visible_transitions_per_cycle": null
+      },
+      "train": {
+        "accepted_draft_tokens": 0,
+        "accepted_per_output": 0.0,
+        "accepted_per_transition": 0.0,
+        "categories": [
+          "code",
+          "general_en",
+          "general_ja",
+          "mixed_ja_en"
+        ],
+        "client_transition_tok_s": 10.40817899679174,
+        "cycles": 0,
+        "decode_seconds": 4.84007539274171,
+        "decode_tok_s_weighted": 29.751602674608286,
+        "draft_acceptance": null,
+        "prompt_count": 6,
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "general_en_plan",
+          "general_ja_plan",
+          "mixed_ja_en_translate"
+        ],
+        "proposed_draft_tokens": 0,
+        "request_count": 6,
+        "request_wall_seconds": 13.835273206233978,
+        "stage_reconciled": true,
+        "stage_reconciliation_error_seconds": 0.0,
+        "stage_seconds": {
+          "autoregressive_step": 4.84007539274171
+        },
+        "target_forward_rows": 144,
+        "target_passes": 0,
+        "timed_transitions": 144,
+        "visible_outputs": 150,
+        "visible_transitions_per_cycle": null
+      }
+    }
+  },
+  "schema": 1,
+  "source": {
+    "commit": "26cb8dd77",
+    "host": "epyc",
+    "tree_note": "host integration changes; model/kernel math unchanged"
+  },
+  "status": "blocked_no_promotion_service_economics",
+  "workload": {
+    "candidate_budgets": [
+      1,
+      2,
+      3
+    ],
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "heldout_ids": [
+      "code_markdown_table",
+      "general_en_explain",
+      "general_ja_explain",
+      "mixed_ja_en_review"
+    ],
+    "max_new_tokens_visible": 25,
+    "max_sequence_length": 107,
+    "prompt_count": 10,
+    "prompt_file": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "prompt_render": "Qwen chat template; reasoning off",
+    "runs": 1,
+    "sampling": {
+      "min_p": 0.0,
+      "seed": 12345,
+      "temperature": 0.0,
+      "top_k": 1,
+      "top_p": 1.0
+    },
+    "target_verify_mode": "native",
+    "timed_decode_transitions": 24,
+    "train_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "general_en_plan",
+      "general_ja_plan",
+      "mixed_ja_en_translate"
+    ],
+    "warmup": true
+  }
+}

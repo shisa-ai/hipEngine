@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "kind": "concurrency2_qwen38_q6_planar_rowtile8_c1_c8_promotion",
+  "created_at": "2026-08-20T10:45:00+00:00",
+  "status": "accepted_primitive_dispatch_promotion",
+  "passed": true,
+  "performance_claim": true,
+  "claim_scope": "same-load direct packed graph model-step c1-c8 plus Q5/Q6 kernel census; not production HTTP serving",
+  "commit": "3ea17c730a4bc532babccdfb9f41d264274d14d0",
+  "provenance": {
+    "host_name": "epyc",
+    "device_name": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "rocm_version": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e"
+  },
+  "workload": {
+    "prompt_length": 128,
+    "decode_steps": 8,
+    "warmup_runs": 1,
+    "measured_runs": 2,
+    "configurations": "c1,c2,c3,c4,c5,c6,c7,native_c8,chunked_c8,serial_c4"
+  },
+  "change": {
+    "primitive": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel ROW_TILE extended 2-4 -> 2-8 (strict bit-parity vs per-row planar decode); export no longer routes rows 5+ to per-row launch_q6_t16_qmicro_planar",
+    "dispatch": "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[gguf_q6_k_t16_qmicro_planar_v1] 6 -> 8 (gfx1100)"
+  },
+  "direct_scaling_aggregate_tok_s": {
+    "before_all_baseline": {"1": 30.22, "2": 53.67, "3": 75.49, "4": 93.60, "5": 67.17, "6": 74.00, "7": 63.48, "8": 69.75},
+    "after_q5_then_q6": {"1": 30.30, "2": 53.79, "3": 75.47, "4": 93.49, "5": 105.67, "6": 115.30, "7": 122.36, "8": 127.32},
+    "delta_pct_vs_baseline": {"5": 57.3, "6": 55.8, "7": 92.8, "8": 82.5}
+  },
+  "scaling_gates": {
+    "c4_scaling_gate_passed": true,
+    "native_c8_scaling_gate_passed": true,
+    "native_c8_is_one_physical_group": true
+  },
+  "composition_controls_after": {
+    "native_c8_aggregate_tok_s": 127.32,
+    "chunked_c8_two_c4_aggregate_tok_s": 91.13,
+    "native_vs_chunked_ratio": 1.397,
+    "note": "native c8 now beats two c4 groups by 39.7%; the Q6 planar WMMA cliff is closed"
+  },
+  "kernel_census_at_c8": {
+    "q6_planar_true_rowtile_kernel": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel",
+    "q6_planar_dispatches": 64,
+    "q6_planar_duration_ms": 10.76,
+    "q6_planar_vgpr": 136,
+    "q6_planar_scratch_bytes": 0,
+    "q6_planar_wmma_prefill_dispatches": 0,
+    "baseline_q6_planar_wmma_duration_ms": 52.24,
+    "q5_true_rowtile_kernel": "q5_k_t16_dense_rowtile_col4_gemv_kernel",
+    "q5_dispatches": 48,
+    "q5_duration_ms": 4.30,
+    "q5_vgpr": 72,
+    "q5_lds_bytes": 512,
+    "q5_scratch_bytes": 0,
+    "q6_planar_lds_bytes": 1024,
+    "q6_planar_workgroup_size": 128
+  },
+  "correctness": {
+    "all_direct_c1_c8_exact": true,
+    "direct_c1_c8_match_c4_repeating_fixture": true,
+    "c4_matches_serial_c4": true,
+    "native_c8_rows_match_c4": true,
+    "chunked_c8_groups_match_c4": true,
+    "all_measured_runs_repeatable": true,
+    "primitive_rows_2_8_strict_bit_parity_vs_per_row_planar_decode": true,
+    "actual_qwen38_q5_q6_rows5_8_gate": {
+      "passed": true,
+      "artifact": "benchmarks/results/2026-08-20-concurrency2-qwen38-q5-q6-rowtile8-actual-operation-gate.json",
+      "q5_operation_verdicts": 52,
+      "q6_operation_verdicts": 55
+    }
+  },
+  "sources": {
+    "graph_packet": {
+      "local_path": "/tmp/q6_rowtile8_bench.json",
+      "sha256": "147acc362faeeba69e6c27622db03ad1c5e0dbf90aa0dcc46327b0d873df3bd6",
+      "bytes": 985869,
+      "command": "/home/lhl/mambaforge/envs/therock/bin/python3 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --configurations c1,c2,c3,c4,c5,c6,c7,native_c8,chunked_c8,serial_c4 --prompt-length 128 --decode-steps 8 --warmup-runs 1 --measured-runs 2 --compiler-version-file /tmp/compiler-version.txt --require-cached-build --json /tmp/q6_rowtile8_bench.json",
+      "hipengine_commit": "3ea17c730a4bc532babccdfb9f41d264274d14d0",
+      "git_dirty": false
+    },
+    "rocprof_census": {
+      "path": "benchmarks/results/2026-08-20-concurrency2-qwen38-q6-planar-rowtile8-c1-c8-promotion.json",
+      "hipengine_commit": "3ea17c730a4bc532babccdfb9f41d264274d14d0",
+      "git_dirty": false
+    }
+  },
+  "limitations": [
+    "Direct model-step graph packet and kernel census, not HTTP/SSE serving goodput.",
+    "Q5+Q6 rowtile promotion applies to gfx1100 only; gfx1151 requires independent measurement.",
+    "Product reachability of direct c3/c5/c6/c7 (dynamic lifecycle gates) remains a separate unit."
+  ]
+}

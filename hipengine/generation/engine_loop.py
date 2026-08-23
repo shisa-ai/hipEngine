@@ -21,7 +21,11 @@ from typing import Any, Callable, Iterable, Protocol, Sequence
 from hipengine.dispatch import RequestState, SlotMove, WorkItem, WorkKind
 from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
 from hipengine.generation.deadline import GenerationCancelled, generation_deadline_expired
-from hipengine.kvcache import PREFIX_CACHE_CHOICES, resolve_prefix_cache_mode
+from hipengine.kvcache import (
+    PREFIX_CACHE_CHOICES,
+    ResourceUnavailable,
+    resolve_prefix_cache_mode,
+)
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
@@ -30,12 +34,14 @@ from hipengine.generation.registry import (
     TextGenerator,
 )
 
-PREFILL_DECODE_POLICIES = ("protect_decode", "protect_ttft", "fair")
+PREFILL_DECODE_POLICIES = ("protect_decode", "protect_ttft", "fair", "token_budget")
 DEFAULT_KV_POOL_INITIAL_PAGES = 128
 DEFAULT_KV_POOL_LOW_WATER_PAGES = 128
 DEFAULT_KV_POOL_CHUNK_PAGES = 128
 DEFAULT_KV_POOL_IDLE_GRACE_SECONDS = 30.0
 DEFAULT_MAX_PREFILL_CHUNK_TOKENS = 256
+DEFAULT_ROUND_PREFILL_TOKEN_BUDGET = 1024
+DEFAULT_ROUND_DECODE_ROW_BUDGET = 32
 # Internal cross-thread routing absorbs transient scheduler bursts; the HTTP
 # client-facing queue remains independently bounded by ServerConfig (default 16).
 DEFAULT_RESIDENT_STREAM_QUEUE_MAX_CHUNKS = 64
@@ -49,6 +55,8 @@ class EngineLoopConfig:
     max_active_requests: int | None = None
     max_prefill_chunk_tokens: int = DEFAULT_MAX_PREFILL_CHUNK_TOKENS
     fair_prefill_burst_chunks: int = 1
+    round_prefill_token_budget: int = DEFAULT_ROUND_PREFILL_TOKEN_BUDGET
+    round_decode_row_budget: int = DEFAULT_ROUND_DECODE_ROW_BUDGET
     kv_pool_initial_pages: int = DEFAULT_KV_POOL_INITIAL_PAGES
     kv_pool_low_water_pages: int = DEFAULT_KV_POOL_LOW_WATER_PAGES
     kv_pool_high_water_pages: int | None = None
@@ -66,6 +74,10 @@ class EngineLoopConfig:
             raise ValueError("max_prefill_chunk_tokens must be positive")
         if self.fair_prefill_burst_chunks <= 0:
             raise ValueError("fair_prefill_burst_chunks must be positive")
+        if self.round_prefill_token_budget <= 0:
+            raise ValueError("round_prefill_token_budget must be positive")
+        if self.round_decode_row_budget <= 0:
+            raise ValueError("round_decode_row_budget must be positive")
         if self.kv_pool_initial_pages <= 0:
             raise ValueError("kv_pool_initial_pages must be positive")
         if self.kv_pool_low_water_pages <= 0:
@@ -91,6 +103,7 @@ class GenerationAdmissionRejected(MemoryError):
         message: str,
         *,
         resource: str,
+        request_id: int | None = None,
         requested_units: int | None = None,
         current_units: int | None = None,
         capacity_units: int | None = None,
@@ -107,6 +120,9 @@ class GenerationAdmissionRejected(MemoryError):
             if value is not None and int(value) < 0:
                 raise ValueError(f"{label} must be non-negative when set")
         self.resource = str(resource)
+        self.request_id = None if request_id is None else int(request_id)
+        if self.request_id is not None and self.request_id < 0:
+            raise ValueError("request_id must be non-negative when set")
         self.requested_units = None if requested_units is None else int(requested_units)
         self.current_units = None if current_units is None else int(current_units)
         self.capacity_units = None if capacity_units is None else int(capacity_units)
@@ -128,6 +144,10 @@ class GenerationSubmission:
     request_ids: tuple[int, ...]
     request: GenerationRequest
     max_ticks: int
+    work_kind: str = "decode"
+    execution_route: str = "resident_scheduler"
+    prelaunch_fallback: str | None = None
+    work_item: WorkItem | None = None
 
 
 @dataclass(slots=True)
@@ -192,6 +212,7 @@ class EngineLoopEvent:
     token_id: int | None = None
     stream_chunk: GenerationStreamChunk | None = None
     completed: CompletedRequest | None = None
+    error: BaseException | None = None
 
 
 class EngineLoopRunner(Protocol):
@@ -310,6 +331,13 @@ class SubmitPollTextGenerator:
         configure_engine_loop = getattr(self._runner, "configure_engine_loop", None)
         if callable(configure_engine_loop):
             configure_engine_loop(self._loop.config)
+        if has_resident_runner:
+            # Global pools/session slabs are a model-load responsibility. Doing
+            # this before EngineService starts keeps submit commands O(1) and
+            # avoids applying the short command timeout to first-use allocation.
+            prepare_runner = getattr(self._runner, "prepare", None)
+            if callable(prepare_runner):
+                prepare_runner()
         # The lock protects one mutable scheduler tick, never an entire request.
         # Native runners therefore release it after each model transition so a
         # later D2 admission worker can enqueue between decode steps.
@@ -318,6 +346,9 @@ class SubmitPollTextGenerator:
         self._stream_queue_max_chunks = int(stream_queue_max_chunks)
         self._stream_states_by_request: dict[int, _ResidentStreamState] = {}
         self._submissions_by_request: dict[int, GenerationSubmission] = {}
+        self._speculative_outputs_by_request: dict[int, GenerationOutput] = {}
+        self._next_speculative_request_id = 1 << 60
+        self._last_speculative_submission: GenerationSubmission | None = None
         self._cancel_dispatch_by_submission: dict[
             int,
             tuple[Any, Callable[[FinishDetails], None]],
@@ -330,6 +361,12 @@ class SubmitPollTextGenerator:
         return self._inner
 
     @property
+    def canonical_token_events(self) -> bool:
+        """Whether scheduler token events are real generated-token events."""
+
+        return self._has_resident_runner
+
+    @property
     def supports_speculative_mtp(self) -> bool:
         """Whether the wrapped model exposes its out-of-band MTP route."""
 
@@ -337,6 +374,10 @@ class SubmitPollTextGenerator:
         return bool(supports) and callable(
             getattr(self._inner, "generate_speculative_mtp_detailed", None)
         )
+
+    @property
+    def last_speculative_submission(self) -> GenerationSubmission | None:
+        return self._last_speculative_submission
 
     @property
     def supports_default_mtp(self) -> bool:
@@ -348,13 +389,148 @@ class SubmitPollTextGenerator:
         self,
         request: GenerationRequest,
     ) -> list[GenerationOutput]:
-        """Delegate model-owned MTP outside the plain-AR submit/poll loop."""
+        """Legacy exact pre-launch fallback for drivers without submission support."""
 
         if not self.supports_speculative_mtp:
             raise NotImplementedError(
                 "speculative MTP generation is not supported by the wrapped generator"
             )
         return list(self._inner.generate_speculative_mtp_detailed(request))
+
+    def submit_speculative_many_detailed(
+        self,
+        requests: Sequence[GenerationRequest],
+    ) -> tuple[GenerationSubmission, ...]:
+        """Pack compatible phase-serial speculative children into one model call."""
+
+        normalized = tuple(requests)
+        if not normalized:
+            return ()
+        if not self.supports_speculative_mtp:
+            raise NotImplementedError(
+                "speculative MTP generation is not supported by the wrapped generator"
+            )
+        if any(len(request.prompts) != 1 for request in normalized):
+            raise ValueError("one speculative child requires exactly one prompt")
+        compatibility = tuple(
+            replace(request, prompts=(), cancellation_token=None)
+            for request in normalized
+        )
+        if any(item != compatibility[0] for item in compatibility[1:]):
+            return tuple(self.submit_speculative_detailed(request) for request in normalized)
+        with self._submission_priority.submission(self._loop_lock):
+            combined = replace(
+                normalized[0],
+                prompts=tuple(request.prompts[0] for request in normalized),
+                cancellation_token=None,
+            )
+            outputs = list(self._inner.generate_speculative_mtp_detailed(combined))
+            if len(outputs) != len(normalized):
+                raise RuntimeError(
+                    "packed speculative generation must return one output per child"
+                )
+            request_ids = tuple(
+                range(
+                    self._next_speculative_request_id,
+                    self._next_speculative_request_id + len(normalized),
+                )
+            )
+            self._next_speculative_request_id += len(normalized)
+            details = getattr(self._inner, "last_batch_generation", {})
+            spec_details = (
+                details.get("speculative_mtp", {}) if isinstance(details, Mapping) else {}
+            )
+            draft_depth = max(
+                1,
+                int(spec_details.get("draft_n_max", min(3, normalized[0].max_tokens))),
+            )
+            work_item = WorkItem(
+                kind=WorkKind.VERIFY_CHAIN,
+                request_ids=request_ids,
+                row_to_request=tuple(
+                    request_id
+                    for request_id in request_ids
+                    for _ in range(draft_depth)
+                ),
+                token_rows=tuple(() for _ in range(len(request_ids) * draft_depth)),
+                draft_depth=draft_depth,
+                tree_parents=tuple(
+                    parent
+                    for _request_id in request_ids
+                    for parent in range(draft_depth)
+                ),
+            )
+            submissions: list[GenerationSubmission] = []
+            for request_id, request, output in zip(
+                request_ids, normalized, outputs, strict=True
+            ):
+                submission = GenerationSubmission(
+                    request_ids=(request_id,),
+                    request=request,
+                    max_ticks=1,
+                    work_kind=WorkKind.VERIFY_CHAIN.value,
+                    execution_route="engine_service_packed_speculative",
+                    work_item=work_item,
+                )
+                self._speculative_outputs_by_request[request_id] = output
+                self._register_submission_cancellation_locked(submission)
+                submissions.append(submission)
+            self._last_speculative_submission = submissions[-1]
+            return tuple(submissions)
+
+    def submit_speculative_detailed(
+        self,
+        request: GenerationRequest,
+    ) -> GenerationSubmission:
+        """Submit one phase-serial VERIFY_CHAIN child to the shared service table.
+
+        SPEC-C1 keeps the validated model-owned target cycle intact, but gives it
+        stable request ownership and the normal EngineService collector/output
+        lifecycle. Cross-request proposal/verify packing remains SPEC-C2.
+        """
+
+        if not self.supports_speculative_mtp:
+            raise NotImplementedError(
+                "speculative MTP generation is not supported by the wrapped generator"
+            )
+        if len(request.prompts) != 1:
+            raise ValueError("one speculative submission requires exactly one prompt")
+        with self._submission_priority.submission(self._loop_lock):
+            outputs = list(self._inner.generate_speculative_mtp_detailed(request))
+            if len(outputs) != 1:
+                raise RuntimeError("one speculative submission must produce one output")
+            request_id = self._next_speculative_request_id
+            self._next_speculative_request_id += 1
+            details = getattr(self._inner, "last_batch_generation", {})
+            spec_details = (
+                details.get("speculative_mtp", {})
+                if isinstance(details, Mapping)
+                else {}
+            )
+            draft_depth = max(
+                1,
+                int(spec_details.get("draft_n_max", min(3, request.max_tokens))),
+            )
+            work_item = WorkItem(
+                kind=WorkKind.VERIFY_CHAIN,
+                request_ids=(request_id,),
+                row_to_request=(request_id,) * draft_depth,
+                token_rows=tuple(() for _ in range(draft_depth)),
+                draft_depth=draft_depth,
+                tree_parents=tuple(range(draft_depth)),
+            )
+            submission = GenerationSubmission(
+                request_ids=(request_id,),
+                request=request,
+                max_ticks=1,
+                work_kind=WorkKind.VERIFY_CHAIN.value,
+                execution_route="engine_service_speculative",
+                work_item=work_item,
+            )
+            self._speculative_outputs_by_request[request_id] = outputs[0]
+            self._last_speculative_submission = submission
+            self._register_submission_cancellation_locked(submission)
+            return submission
 
     def __getattr__(self, name: str):
         return getattr(self._inner, name)
@@ -483,12 +659,42 @@ class SubmitPollTextGenerator:
         self._submission_priority.wait_for_submissions()
         with self._loop_lock:
             self._drain_cancel_commands_locked()
-            events = self._loop.poll(max_ticks=max_ticks)
+            try:
+                events = self._loop.poll(max_ticks=max_ticks)
+            except GenerationAdmissionRejected as exc:
+                request_id = exc.request_id
+                if request_id is None:
+                    pending = tuple(self._loop.scheduler.pending_requests)
+                    request_id = None if not pending else int(pending[0].request_id)
+                submission = (
+                    None
+                    if request_id is None
+                    else self._submissions_by_request.get(int(request_id))
+                )
+                if request_id is None or submission is None:
+                    raise
+                self._abort_submission_locked(submission, reason="cancel")
+                events = (
+                    EngineLoopEvent(
+                        kind="rejected",
+                        request_id=int(request_id),
+                        request_ids=(int(request_id),),
+                        error=exc,
+                    ),
+                )
             self._route_stream_events_locked(events)
             return events
 
     def generation_complete(self, submission: GenerationSubmission) -> bool:
         with self._loop_lock:
+            if submission.work_kind in {
+                WorkKind.VERIFY_CHAIN.value,
+                WorkKind.VERIFY_TREE.value,
+            }:
+                return all(
+                    request_id in self._speculative_outputs_by_request
+                    for request_id in submission.request_ids
+                )
             return self._runner.has_outputs(submission.request_ids)
 
     def cancel_submission(
@@ -619,6 +825,21 @@ class SubmitPollTextGenerator:
         """Consume one completed submission in original prompt order."""
 
         with self._loop_lock:
+            if submission.work_kind in {
+                WorkKind.VERIFY_CHAIN.value,
+                WorkKind.VERIFY_TREE.value,
+            }:
+                if not all(
+                    request_id in self._speculative_outputs_by_request
+                    for request_id in submission.request_ids
+                ):
+                    raise RuntimeError("submitted speculative generation is incomplete")
+                outputs = [
+                    self._speculative_outputs_by_request.pop(request_id)
+                    for request_id in submission.request_ids
+                ]
+                self._unregister_submission_cancellation_locked(submission)
+                return outputs
             if not self._runner.has_outputs(submission.request_ids):
                 missing = self._runner.missing_outputs(submission.request_ids)
                 raise RuntimeError(f"submitted generation is incomplete; missing request_ids={missing}")
@@ -631,9 +852,26 @@ class SubmitPollTextGenerator:
             self._unregister_submission_cancellation_locked(submission)
             return outputs
 
-    def _abort_submission(self, submission: GenerationSubmission) -> None:
+    def abort_submission(
+        self,
+        submission: GenerationSubmission,
+        *,
+        reason: str = "cancel",
+    ) -> None:
+        """Synchronously reclaim one child submission on the sole driver thread."""
+
         with self._loop_lock:
-            self._abort_submission_locked(submission, reason="cancel")
+            self._abort_submission_locked(submission, reason=str(reason))
+
+    def _abort_submission(self, submission: GenerationSubmission) -> None:
+        self.abort_submission(submission, reason="cancel")
+
+    def reconfigure_engine_loop(self, config: EngineLoopConfig) -> None:
+        """Apply one idle configuration on the sole scheduler driver."""
+
+        with self._loop_lock:
+            self._loop.reconfigure(config)
+            self._prefill_chunk_size = int(self._loop.prefill_chunk_size)
 
     def live_loop_snapshot(self) -> dict[str, object]:
         """Return one lock-consistent scheduler plus model-runner snapshot."""
@@ -857,6 +1095,14 @@ class SubmitPollTextGenerator:
         *,
         reason: str,
     ) -> None:
+        if submission.work_kind in {
+            WorkKind.VERIFY_CHAIN.value,
+            WorkKind.VERIFY_TREE.value,
+        }:
+            for request_id in submission.request_ids:
+                self._speculative_outputs_by_request.pop(request_id, None)
+            self._unregister_submission_cancellation_locked(submission)
+            return
         for request_id in submission.request_ids:
             self._loop.cancel(request_id, reason=reason)
             self._loop.release_completed(request_id)
@@ -883,6 +1129,7 @@ class SubmitPollTextGenerator:
             }
             for submission in submissions.values():
                 self._unregister_submission_cancellation_locked(submission)
+            self._speculative_outputs_by_request.clear()
             with self._cancel_commands_lock:
                 self._cancel_commands.clear()
             closer = getattr(self._runner, "close", None)
@@ -1211,6 +1458,26 @@ def add_engine_loop_config_args(
         help="Maximum consecutive prefill chunks while fair scheduling has decode work (env HIPENGINE_FAIR_PREFILL_BURST_CHUNKS; default: 1)",
     )
     parser.add_argument(
+        "--round-prefill-token-budget",
+        type=_positive_int_arg,
+        default=_env_positive_int(
+            env,
+            "HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET",
+            DEFAULT_ROUND_PREFILL_TOKEN_BUDGET,
+        ),
+        help="Token-budget prefill work per round (env HIPENGINE_ROUND_PREFILL_TOKEN_BUDGET; default: 1024)",
+    )
+    parser.add_argument(
+        "--round-decode-row-budget",
+        type=_positive_int_arg,
+        default=_env_positive_int(
+            env,
+            "HIPENGINE_ROUND_DECODE_ROW_BUDGET",
+            DEFAULT_ROUND_DECODE_ROW_BUDGET,
+        ),
+        help="Token-budget due decode rows per round (env HIPENGINE_ROUND_DECODE_ROW_BUDGET; default: 32)",
+    )
+    parser.add_argument(
         "--kv-pool-initial-pages",
         type=_positive_int_arg,
         default=_env_positive_int(env, "HIPENGINE_KV_POOL_INITIAL_PAGES", DEFAULT_KV_POOL_INITIAL_PAGES),
@@ -1270,6 +1537,20 @@ def engine_loop_config_from_args(args: object) -> EngineLoopConfig:
         ),
         max_prefill_chunk_tokens=int(getattr(args, "max_prefill_chunk_tokens")),
         fair_prefill_burst_chunks=int(getattr(args, "fair_prefill_burst_chunks")),
+        round_prefill_token_budget=int(
+            getattr(
+                args,
+                "round_prefill_token_budget",
+                DEFAULT_ROUND_PREFILL_TOKEN_BUDGET,
+            )
+        ),
+        round_decode_row_budget=int(
+            getattr(
+                args,
+                "round_decode_row_budget",
+                DEFAULT_ROUND_DECODE_ROW_BUDGET,
+            )
+        ),
         kv_pool_initial_pages=int(getattr(args, "kv_pool_initial_pages")),
         kv_pool_low_water_pages=int(getattr(args, "kv_pool_low_water_pages")),
         kv_pool_high_water_pages=(
@@ -1336,10 +1617,10 @@ def _nonnegative_float_arg(value: str) -> float:
 class ResidentEngineLoop:
     """Persistent ``submit``/``poll``/``cancel`` driver for resident batches.
 
-    The loop currently executes at most one scheduler work item per tick.  It is
-    deliberately conservative: requests stay resident across polls, admission
-    fills free slots, the prefill/decode choice is explicit, and completion
-    reclaim is delegated to ``ResidentBatchScheduler``.
+    Requests stay resident across polls and completion reclaim is delegated to
+    ``ResidentBatchScheduler``. Legacy policies execute one work item per tick;
+    ``token_budget`` executes fair prefill quanta plus one decode step for every
+    due resident row in a bounded scheduling round.
     """
 
     def __init__(
@@ -1397,15 +1678,72 @@ class ResidentEngineLoop:
         self.config = resolved_config
         self.prefill_decode_policy = resolved_config.prefill_decode_policy
         self.fair_prefill_burst_chunks = int(resolved_config.fair_prefill_burst_chunks)
+        self.round_prefill_token_budget = int(resolved_config.round_prefill_token_budget)
+        self.round_decode_row_budget = int(resolved_config.round_decode_row_budget)
+        if (
+            self.prefill_decode_policy == "token_budget"
+            and self.round_decode_row_budget < int(resolved_capacity)
+        ):
+            raise ValueError(
+                "token_budget round_decode_row_budget must cover resident capacity"
+            )
         self._last_work_kind: WorkKind | None = None
         self._consecutive_prefill_chunks = 0
         self._cold_prefill_cohort_request_ids: frozenset[int] = frozenset()
+        self._rounds = 0
+        self._round_prefill_tokens = 0
+        self._round_decode_rows = 0
         self.scheduler = ResidentBatchScheduler(
             capacity=resolved_capacity,
             context_bucket_size=context_bucket_size,
             max_pending_requests=resolved_config.max_pending_requests,
             reclaim_callback=self._reclaim_runner_state,
         )
+
+    def reconfigure(self, config: EngineLoopConfig) -> None:
+        """Apply an idle resource/policy generation without replacing the loop."""
+
+        if self.scheduler.active_count or self.scheduler.pending_count:
+            raise RuntimeError("cannot reconfigure a non-idle resident engine loop")
+        capacity = int(self.scheduler.capacity)
+        if (
+            config.max_active_requests is not None
+            and int(config.max_active_requests) != capacity
+        ):
+            raise ValueError("reconfiguration cannot change resident capacity")
+        if (
+            config.prefill_decode_policy == "token_budget"
+            and int(config.round_decode_row_budget) < capacity
+        ):
+            raise ValueError(
+                "token_budget round_decode_row_budget must cover resident capacity"
+            )
+        resource_fields = (
+            "kv_pool_initial_pages",
+            "kv_pool_low_water_pages",
+            "kv_pool_high_water_pages",
+            "kv_pool_chunk_pages",
+            "kv_pool_idle_grace_seconds",
+            "prefix_cache",
+        )
+        resource_changed = any(
+            getattr(self.config, field_name) != getattr(config, field_name)
+            for field_name in resource_fields
+        )
+        configure_runner = getattr(self.runner, "configure_engine_loop", None)
+        if resource_changed and callable(configure_runner):
+            configure_runner(config)
+        self.config = config
+        self.prefill_chunk_size = int(config.max_prefill_chunk_tokens)
+        self.prefill_decode_policy = config.prefill_decode_policy
+        self.fair_prefill_burst_chunks = int(config.fair_prefill_burst_chunks)
+        self.round_prefill_token_budget = int(config.round_prefill_token_budget)
+        self.round_decode_row_budget = int(config.round_decode_row_budget)
+        self._last_work_kind = None
+        self._consecutive_prefill_chunks = 0
+        self._cold_prefill_cohort_request_ids = frozenset()
+        self._round_prefill_tokens = 0
+        self._round_decode_rows = 0
 
     @property
     def pending_count(self) -> int:
@@ -1423,10 +1761,18 @@ class ResidentEngineLoop:
         """Return scheduler ownership, work, policy, and latency evidence."""
 
         snapshot = self.scheduler.observability_snapshot()
+        resource_snapshot = getattr(self.runner, "resource_observability_snapshot", None)
+        if callable(resource_snapshot):
+            snapshot["resources"] = resource_snapshot()
         snapshot["scheduler_policy"] = {
             "prefill_decode_policy": self.prefill_decode_policy,
             "prefill_chunk_tokens": int(self.prefill_chunk_size),
             "fair_prefill_burst_chunks": int(self.fair_prefill_burst_chunks),
+            "round_prefill_token_budget": int(self.round_prefill_token_budget),
+            "round_decode_row_budget": int(self.round_decode_row_budget),
+            "rounds": int(self._rounds),
+            "round_prefill_tokens": int(self._round_prefill_tokens),
+            "round_decode_rows": int(self._round_decode_rows),
             "consecutive_prefill_chunks": int(self._consecutive_prefill_chunks),
             "cold_prefill_cohort_size": len(self._cold_prefill_cohort_request_ids),
             "last_work_kind": (
@@ -1514,7 +1860,28 @@ class ResidentEngineLoop:
         events: list[EngineLoopEvent] = []
         reserve_admission = getattr(self.runner, "reserve_admission", None)
         rollback_admission = getattr(self.runner, "rollback_admission", None)
+        plan_admission = getattr(self.runner, "plan_admission", None)
+        selected_request_ids: Sequence[int] | None = None
+        free_slots = self.scheduler.capacity - self.scheduler.active_count
+        if callable(plan_admission) and free_slots > 0 and self.scheduler.pending_count:
+            try:
+                selected_request_ids = tuple(
+                    int(request_id)
+                    for request_id in plan_admission(
+                        self.scheduler.pending_requests,
+                        max_items=free_slots,
+                    )
+                )
+            except ResourceUnavailable as exc:
+                raise GenerationAdmissionRejected(
+                    str(exc),
+                    resource=exc.resource,
+                    requested_units=exc.requested_units,
+                    current_units=exc.current_units,
+                    capacity_units=exc.capacity_units,
+                ) from exc
         admitted = self.scheduler.admit_pending(
+            request_ids=selected_request_ids,
             reserve_callback=(reserve_admission if callable(reserve_admission) else None),
             rollback_callback=(rollback_admission if callable(rollback_admission) else None),
         )
@@ -1522,6 +1889,10 @@ class ResidentEngineLoop:
             EngineLoopEvent(kind="admitted", request_id=request_id, request_ids=(request_id,))
             for request_id in admitted
         )
+
+        if self.prefill_decode_policy == "token_budget":
+            events.extend(self._run_token_budget_round())
+            return tuple(events)
 
         decode = self.scheduler.next_decode_work()
         prefill_available = self.scheduler.has_prefill_work()
@@ -1535,7 +1906,18 @@ class ResidentEngineLoop:
             return tuple(events)
 
         if prefill_available:
-            prefill = self.scheduler.next_prefill_work(chunk_size=self.prefill_chunk_size)
+            packed_prefill_rows = int(
+                getattr(self.runner, "packed_prefill_max_rows", 1)
+            )
+            if packed_prefill_rows > 1:
+                prefill = self.scheduler.next_prefill_batch_work(
+                    chunk_size=self.prefill_chunk_size,
+                    max_rows=packed_prefill_rows,
+                )
+            else:
+                prefill = self.scheduler.next_prefill_work(
+                    chunk_size=self.prefill_chunk_size
+                )
             assert prefill is not None
             events.extend(self._run_prefill(prefill))
             return tuple(events)
@@ -1543,6 +1925,47 @@ class ResidentEngineLoop:
         if decode is None:
             return tuple(events)
         events.extend(self._run_decode(decode))
+        return tuple(events)
+
+    def _run_token_budget_round(self) -> tuple[EngineLoopEvent, ...]:
+        """Run fair prefill quanta and one decode step for every due row."""
+
+        events: list[EngineLoopEvent] = []
+        prefill_budget = self.round_prefill_token_budget
+        prefill_ran = False
+        multiple_prefills = bool(
+            getattr(self.runner, "supports_multiple_prefill_quanta_per_round", False)
+        )
+        while prefill_budget > 0 and self.scheduler.has_prefill_work():
+            work = self.scheduler.next_round_robin_prefill_work(
+                chunk_size=min(self.prefill_chunk_size, prefill_budget)
+            )
+            if work is None:
+                break
+            tokens = sum(len(row) for row in work.token_rows)
+            if tokens <= 0 or tokens > prefill_budget:
+                raise AssertionError("token-budget prefill planner exceeded its budget")
+            events.extend(self._run_prefill(work))
+            prefill_ran = True
+            prefill_budget -= tokens
+            self._round_prefill_tokens += tokens
+            if not multiple_prefills:
+                break
+
+        same_round_decode = bool(
+            getattr(self.runner, "supports_prefill_decode_same_round", False)
+        )
+        decode = (
+            None
+            if prefill_ran and not same_round_decode
+            else self.scheduler.next_decode_work()
+        )
+        if decode is not None:
+            if len(decode.request_ids) > self.round_decode_row_budget:
+                raise AssertionError("due decode rows exceed the configured round budget")
+            events.extend(self._run_decode(decode))
+            self._round_decode_rows += len(decode.request_ids)
+        self._rounds += 1
         return tuple(events)
 
     def _update_cold_prefill_cohort(

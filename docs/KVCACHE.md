@@ -34,6 +34,45 @@ interpretation that the old Qwen3.5 short E2E fixture made 256K INT8 a
 correctness-passing product route. That fixture remains useful kernel bring-up
 evidence; current Qwen3.6 long-context evidence controls the support decision.
 
+Generation-2 C2-3 now provides a format-neutral `GlobalKVPoolSet` with stable
+arbitrary-page pointer tables, explicit page states, typed growth credits,
+COW/in-flight protection, and one dense lifecycle shared by BF16 and an
+artifact-qualified no-mirror INT8 composition. `DenseKVResidentRunnerAdapter`
+requires kernels to consume the backend's generation-checked `KVBatchView`; it
+does not silently fall back to request-private base pointers. C2-6 additionally
+provides `GlobalDeviceKVPool` for resident plugins: the gfx1100 Qwen3.6 GGUF BF16
+package now allocates one stable load-time arena plus per-layer/per-plane pointer
+tables, publishes `global-arbitrary-pages:g1`, and leases arbitrary free global
+page IDs. The old GGUF chunk allocator remains an explicit numerical and
+peer-package compatibility path as tracked in `REFACTOR.md`.
+
+C2-4 integrates that pool with generation-checked backend radix snapshots.
+Only complete immutable pages are indexed; every key includes model, revision,
+adapter, hardware/model/weight quant, backend/layout/artifact, RoPE, multimodal,
+and prompt-token identity. Cache ownership survives source-request reclaim but
+is bounded by global/per-tenant page quotas, TTL, LRU, and cache-first pressure
+eviction. Overlapping snapshots count each physical page once in the resource
+ledger. Hits attach shared pages and advance only the generic prefill cursor;
+incompatible/stale handles miss or fail closed, and sampled reuse requires an
+explicit eligibility policy. The default remains unchanged pending C2-6
+p256+s1 and 2K/8K hardware correctness/economics on both gfx11 targets.
+
+C2-6 is no longer blocked at the gfx1100 short-request adapter boundary. The
+W7900 exact-file Qwen3.6-35B-A3B BF16-KV global-pool route is exact at p128/d8
+for logical c1/c2/c4/c8/c17/c32 and exact under c17 live refill. After the
+2026-08-17 shared-slot c4/c8 promotion (registered physical widths `(1, 2, 4, 8)`),
+matched exact c8 aggregate HTTP wall improves **+59.27%** over serial c1 (was
++29.68% at the c2 cap), c4/c8/c17/c32 short-request rows are +16.6–+29.7% over
+the c2 cap, all byte-exact, and p512/d128 c8 reaches ~0.973x the old design,
+while final active/refcounted/pinned ownership is zero. Actual
+c2 1K/4K/16K/32K/64K, mixed 1K/4K/32K, isolated pressure, and changed-page graph
+replay also pass; the fixed pool drains exactly. C2-6 product closure remains
+blocked because the canonical tuning/load/40-request-overload/soak campaign
+repeatedly triggers a ROCm page fault during high-count oracle ownership before
+measured load. gfx1151 and external gates remain unavailable/unrun. See
+[`short global/native`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json)
+and [`long/load blocked`](../benchmarks/results/2026-08-17-concurrency2-c2-6-w7900-long-load-blocked.json).
+
 ## Executive decision
 
 | Question | Answer |
@@ -267,6 +306,14 @@ orthogonal” therefore does **not** mean every format is one enum toggle; AQUA
 has cross-layer state, OSCAR-like layouts have protected BF16 and packed history
 planes, and DMS changes physical liveness dynamically. It means none of them may
 fork continuous batching, request completion, cancellation, or admission logic.
+
+C2-8 now implements optional cold tiering with exactly that boundary:
+`TieredKVCacheBackend` delegates every attention view to the hot backend and adds
+fingerprinted/checksummed KVTC-style host/NVMe objects, cache/workspace claims,
+tenant quotas, pin-aware LRU, and atomic offload/restore/rollback/drain work. A
+synthetic host gate measures restore versus a recompute proxy but makes no model
+TTFT claim; tiering remains default-off. See
+[`2026-08-17-concurrency2-c2-8-tier-host-accepted.json`](../benchmarks/results/2026-08-17-concurrency2-c2-8-tier-host-accepted.json).
 
 ### Qwen3.6/PARO dense K/V size
 
@@ -1308,6 +1355,15 @@ Soak/stability:
   is available.
 - Enable debug checks for early development: bounds, monotonic positions, live
   count ≤ capacity, no negative slot mappings, and no stale `evict_mask` entries.
+
+C2-7 host/backend implementation status (2026-08-17): strict retrofit metadata,
+atomic compact extents, no-shadow streaming pack, transactional decode metadata,
+grouped CPU attention, common c1-c32 scheduling, pressure/fragmentation/drain,
+and a fixture-qualified INT8 codec are implemented. The current Qwen3.6 GGUF
+artifact has no packaged retrofit and therefore fails closed. HIP kernel and
+real-checkpoint quality/capacity/performance gates remain open; no DMS default or
+model claim is made. See
+[`2026-08-17-concurrency2-c2-7-dms-host-blocked.json`](../benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json).
 
 ## Later research: AQUA, HIGGS, TurboQuant-style int4
 

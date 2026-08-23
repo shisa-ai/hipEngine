@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-21**
+Last updated: **2026-08-23**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -111,15 +111,6 @@ Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with explicit FP32 
 | Kernel and implementation decisions | [`worklog/entries/`](../worklog/entries/) and [`WORKLOG-LEGACY.md`](../WORKLOG-LEGACY.md) |
 | Hardware-specific RX 7900 XTX report | [`7900XTX.md`](7900XTX.md) |
 
-The post-2026-07-10 intermediate narratives removed by this cleanup remain in
-the linked JSON artifacts and changelog. The complete pre-cleanup Markdown is
-also recoverable from Git without keeping a 1.1 MB notebook in the live
-scoreboard:
-
-```bash
-git show 6a8d38ae70b9e2c4244df10d8621db83da6c8112:benchmarks/README.md
-```
-
 ## Benchmark harness catalog
 
 There is no single "run everything" benchmark. Different questions are answered
@@ -176,6 +167,46 @@ this table in the same unit.
 A row is scoped by platform, GPU, model fingerprint, quantization, KV type,
 backend, workload, concurrency, speculative policy, and timing window. A newer
 diagnostic never replaces a retained row.
+
+## Current Generation-2 qualification
+
+W7900 Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, p128/d8, token-budget
+scheduling, and same-loaded-server c1 oracles:
+
+| Logical concurrency | 1 | 4 | 8 | 17 | 32 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Aggregate HTTP tok/s | **27.443** | **43.337** | **46.158** | **45.797** | **44.320** |
+| Exact rows | 1/1 | 4/4 | 8/8 | 17/17 | 32/32 |
+
+The canonical load packet passes all nine fixed/ragged/Poisson/cancel/overload/
+recovery/soak workloads with **210/210** correctness-accounted rows, bounded
+`engine_busy` overload, **271/271** admission/reclaim, zero final refs/pins, and
+zero tracked-memory delta. Physical c1/c2/c4/c8 and logical c1-c32 are retained
+for this package. [`Canonical artifact`](results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json).
+
+On Radeon 8060S/gfx1151, Qwen3.8 `Q4_K_S` packed prefill improves exact c17
+streaming from **9.673→10.956 tok/s (+13.27%)** and TTFT p95
+**11.030→9.406 s (-14.72%)**. A subsequent exact fused packed-state transfer
+reduces the marked c17 owner **420.496→410.878 ms (-2.29%)**. Direct canonical
+resident state then reaches **368.413 ms**, c17 **11.271 tok/s**, and ITL p99
+**0.4542 s** (3/3 fixed-SLO passes). The exact row8 Q4 two-wave owner then
+reaches c17 **11.297 tok/s / 0.448 s ITL** and c32 **11.041 tok/s / 0.802 s
+ITL**; c32 live admission overlaps, but c32 fixed SLO remains blocked, so
+gfx1151 canonical production is not yet promoted.
+
+The separate W7900 Qwen3.8-27B `Q4_K_M` direct graph packet qualifies physical
+`(1,2,3,4,5,6,7,8)`: c1-c8 reaches **30.30/53.79/75.47/93.49/105.67/
+115.30/122.36/127.32 tok/s**, all exact and repeatable. Q5 and planar-Q6 true
+rowtiles own rows 5-8; dynamic compaction, state/KV, graph invalidation, cancel/
+refill, memory recovery, and drain pass. Logical c>8 uses deterministic ceiling
+composition; artifact-backed D2 remains explicit research only.
+[`Width and lifecycle evidence`](results/2026-08-20-concurrency2-qwen38-direct-width-lifecycle.json).
+
+The exact gfx1100 planar-Q6 row8 DPP reduction improves the marked production-
+owner physical-c8 transition **58.693→57.734 ms (-1.634%)** median with identical
+8×32 token IDs, route, graph transport, and drain. This is a steady-transition
+kernel result, not a replacement for the direct-width throughput packet.
+The detailed promotion evidence is retained in the benchmark changelog/artifacts.
 
 ## Current Qwen3.6-35B quantization quality
 
@@ -403,8 +434,6 @@ and [`scoped default`](results/2026-08-08-gfx1100-pm4-scoped-default.json).
 
 ## Maintenance contract
 
-Keep this file compact:
-
 1. Replace the current row for a protocol tuple; do not append an optimization
    diary beneath it.
 2. Put exact commands, samples, deltas, profiler data, correctness details, and
@@ -415,7 +444,7 @@ Keep this file compact:
    row or defines a user-visible limitation. Link one artifact and one rerun
    condition; keep candidate ladders out of the scoreboard.
 5. Keep superseded tables in [`HISTORY.md`](HISTORY.md), artifacts, or Git
-   history rather than copying them forward.
+   history rather than copying them forward (`git show 6a8d38ae70b9e2c4244df10d8621db83da6c8112:benchmarks/README.md`).
 6. Update `Last updated`, then synchronize the public block:
 
 ```bash

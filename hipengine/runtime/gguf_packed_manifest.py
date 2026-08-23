@@ -55,6 +55,7 @@ def build_packed_decode_execution_manifest(
     linear_attention_decode_path: str = "exact_row_local",
     gdn_recurrent_decode_path: str | None = None,
     active_mask: Sequence[bool] | None = None,
+    direct_resident_linear_state: bool = False,
 ) -> dict[str, Any]:
     """Build the auditable host/runtime contract for one packed decode step.
 
@@ -229,12 +230,13 @@ def build_packed_decode_execution_manifest(
     )
 
     imported_positions = tuple(positions[index] for index in imported_indices)
+    linear_state_copies_per_slot = 0 if direct_resident_linear_state else 2 * linear_layers
     state_import_copies = sum(
-        2 * linear_layers + (2 * full_layers if position > 0 else 0)
+        linear_state_copies_per_slot + (2 * full_layers if position > 0 else 0)
         for position in imported_positions
     )
     state_scatter_copies = (
-        active_count * (2 * linear_layers + 2 * full_layers)
+        active_count * (linear_state_copies_per_slot + 2 * full_layers)
         if bool(scatter_state)
         else 0
     )
@@ -405,6 +407,11 @@ def build_packed_decode_execution_manifest(
         "scalar_fallbacks": 0,
         "state_import_slots": len(imported_indices),
         "state_import_slot_indices": list(imported_indices),
+        "linear_state_storage": (
+            "resident_slot_slab_direct"
+            if direct_resident_linear_state
+            else "packed_workspace"
+        ),
         "scatter_state": bool(scatter_state),
         "steady_packed_state_reused": not imported_indices and not bool(scatter_state),
         "profiler_contract": {

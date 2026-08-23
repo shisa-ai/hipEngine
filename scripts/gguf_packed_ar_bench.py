@@ -77,7 +77,11 @@ class PackedARConfiguration:
 CONFIGURATIONS: dict[str, PackedARConfiguration] = {
     "c1": PackedARConfiguration("c1", 1, 1, 1, "direct_native_group"),
     "c2": PackedARConfiguration("c2", 2, 2, 1, "direct_native_group"),
+    "c3": PackedARConfiguration("c3", 3, 3, 1, "direct_native_group"),
     "c4": PackedARConfiguration("c4", 4, 4, 1, "direct_native_group"),
+    "c5": PackedARConfiguration("c5", 5, 5, 1, "direct_native_group"),
+    "c6": PackedARConfiguration("c6", 6, 6, 1, "direct_native_group"),
+    "c7": PackedARConfiguration("c7", 7, 7, 1, "direct_native_group"),
     "native_c8": PackedARConfiguration("native_c8", 8, 8, 1, "direct_native_group"),
     "chunked_c8": PackedARConfiguration("chunked_c8", 8, 4, 2, "chunked_native_groups"),
     "serial_c4": PackedARConfiguration("serial_c4", 4, 1, 4, "serial_bridge"),
@@ -599,30 +603,59 @@ def _cross_configuration_correctness(summaries: Mapping[str, Mapping[str, Any]])
     required = tuple(CONFIGURATIONS)
     missing = [name for name in required if name not in summaries]
     hashes = {name: _first_hashes(summary) for name, summary in summaries.items()}
-    c1 = hashes.get("c1")
-    c2 = hashes.get("c2")
     c4 = hashes.get("c4")
-    native = hashes.get("native_c8")
-    chunked = hashes.get("chunked_c8")
+    direct_names = {
+        1: "c1",
+        2: "c2",
+        3: "c3",
+        4: "c4",
+        5: "c5",
+        6: "c6",
+        7: "c7",
+        8: "native_c8",
+    }
+    direct_width_exact: dict[str, bool] = {}
+    for width, name in direct_names.items():
+        actual = hashes.get(name)
+        expected = (
+            [str(c4[index % len(c4)]) for index in range(width)]
+            if c4
+            else None
+        )
+        direct_width_exact[str(width)] = bool(
+            actual and expected and actual == expected
+        )
     serial = hashes.get("serial_c4")
-    prefix_exact = bool(c1 and c2 and c4 and c1 == c4[:1] and c2 == c4[:2])
+    chunked = hashes.get("chunked_c8")
     serial_exact = bool(c4 and serial and c4 == serial)
-    native_exact = bool(
-        c4 and native and len(native) == 8
-        and native[:4] == c4 and native[4:] == c4
-    )
     chunked_exact = bool(
-        c4 and chunked and len(chunked) == 8
-        and chunked[:4] == c4 and chunked[4:] == c4
+        c4
+        and chunked
+        and len(chunked) == 8
+        and chunked == [str(c4[index % len(c4)]) for index in range(8)]
     )
-    repeatable = all(summary.get("repeatable_trajectories") is True for summary in summaries.values())
-    passed = not missing and prefix_exact and serial_exact and native_exact and chunked_exact and repeatable
+    repeatable = all(
+        summary.get("repeatable_trajectories") is True
+        for summary in summaries.values()
+    )
+    all_direct_exact = all(direct_width_exact.values())
+    passed = bool(
+        not missing
+        and all_direct_exact
+        and serial_exact
+        and chunked_exact
+        and repeatable
+    )
     return {
-        "passed": bool(passed),
+        "passed": passed,
         "missing_configurations": missing,
-        "c1_c2_c4_prefix_exact": prefix_exact,
+        "direct_c1_c8_match_c4_repeating_fixture": direct_width_exact,
+        "all_direct_c1_c8_exact": all_direct_exact,
+        "c1_c2_c3_c4_prefix_exact": all(
+            direct_width_exact[str(width)] for width in range(1, 5)
+        ),
         "c4_matches_serial_c4": serial_exact,
-        "native_c8_rows_match_c4": native_exact,
+        "native_c8_rows_match_c4": direct_width_exact["8"],
         "chunked_c8_groups_match_c4": chunked_exact,
         "all_measured_runs_repeatable": repeatable,
     }
@@ -636,7 +669,21 @@ def _scaling_summary(summaries: Mapping[str, Mapping[str, Any]]) -> dict[str, An
         value = summary.get("rates", {}).get(rate, {}).get("median")
         return float(value) if isinstance(value, (int, float)) else None
 
-    c1_aggregate = median("c1", "decode_tok_s_aggregate")
+    direct_names = {
+        1: "c1",
+        2: "c2",
+        3: "c3",
+        4: "c4",
+        5: "c5",
+        6: "c6",
+        7: "c7",
+        8: "native_c8",
+    }
+    direct_aggregate = {
+        str(width): median(name, "decode_tok_s_aggregate")
+        for width, name in direct_names.items()
+    }
+    c1_aggregate = direct_aggregate["1"]
     serial_aggregate = median("serial_c4", "decode_tok_s_aggregate")
     c4_aggregate = median("c4", "decode_tok_s_aggregate")
     c4_per_request = median("c4", "decode_tok_s_per_request")
@@ -649,6 +696,11 @@ def _scaling_summary(summaries: Mapping[str, Mapping[str, Any]]) -> dict[str, An
     native_vs_chunked = _safe_ratio(native_aggregate, chunked_aggregate)
     native_vs_serial = _safe_ratio(native_aggregate, serial_aggregate)
     return {
+        "direct_c1_c8_decode_tok_s_aggregate": direct_aggregate,
+        "direct_c1_c8_scaling_vs_c1": {
+            width: _safe_ratio(value, c1_aggregate)
+            for width, value in direct_aggregate.items()
+        },
         "c1_baseline_decode_tok_s": c1_aggregate,
         "serial_c4_baseline_decode_tok_s_aggregate": serial_aggregate,
         "c4_decode_tok_s_aggregate": c4_aggregate,
@@ -823,7 +875,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             **{key: os.environ.get(key) for key in _PROVENANCE_ENV_KEYS},
             **route_env,
         },
-        build_profile=f"{target_arch}_gguf_packed_graph_c1_c2_c4_native_c8_controls",
+        build_profile=f"{target_arch}_gguf_packed_graph_direct_c1_c8_controls",
         timing_protocol=(
             "one shared model load; one discarded run and measured repeats per route; "
             "one synchronized graph replay per native group per logical decode transition"
@@ -896,8 +948,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--quant", default="gguf_q4_k_m")
     parser.add_argument(
         "--configurations",
-        default="c1,c2,c4,native_c8,chunked_c8,serial_c4",
-        help="Comma-separated subset of c1,c2,c4,native_c8,chunked_c8,serial_c4.",
+        default="c1,c2,c3,c4,c5,c6,c7,native_c8,chunked_c8,serial_c4",
+        help=(
+            "Comma-separated subset of c1,c2,c3,c4,c5,c6,c7,native_c8,"
+            "chunked_c8,serial_c4."
+        ),
     )
     parser.add_argument("--prompt-token-id", type=int, default=9707)
     parser.add_argument("--prompt-length", type=int, default=512)

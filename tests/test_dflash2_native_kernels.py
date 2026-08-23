@@ -18,8 +18,6 @@ import pytest
 from hipengine.kernels.cpu_reference.dflash2 import (
     candidate_selector_select,
     grouped_dynamic_convolve,
-    grouped_dynamic_conv_finish,
-    grouped_dynamic_conv_prepare,
 )
 
 
@@ -139,7 +137,12 @@ def test_dflash2_grouped_conv_red(_dflash2_lib, _runtime):
 
 
 @pytest.mark.parametrize("rows", [1, 7, 64])
-def test_dflash2_grouped_conv_prepare_finish_red(_dflash2_lib, _runtime, rows):
+def test_dflash2_grouped_conv_prepare_finish_red(
+    _dflash2_lib,
+    _runtime,
+    rows,
+    monkeypatch: pytest.MonkeyPatch,
+):
     """Full prepare+finish against the oracle path (kernel_projection included).
 
     The native path keeps BF16 between ops: the projection output is BF16 and
@@ -156,7 +159,7 @@ def test_dflash2_grouped_conv_prepare_finish_red(_dflash2_lib, _runtime, rows):
     # The WMMA dense path has a pre-existing rows<16 gfx1151 precision quirk
     # (~0.3% max on a few elements); the naive path is exact.  The conv
     # projection is tiny (5120->1280) and uses the naive path for exact RED.
-    os.environ["HIPENGINE_DFLASH_DRAFTER_DENSE"] = "naive"
+    monkeypatch.setenv("HIPENGINE_DFLASH_DRAFTER_DENSE", "naive")
 
     rng = np.random.default_rng(0xDF2A2 + rows)
     hidden_size, group_size = 5120, 16
@@ -189,7 +192,6 @@ def test_dflash2_grouped_conv_prepare_finish_red(_dflash2_lib, _runtime, rows):
     try:
         h_dev = _upload(_runtime, bufs, h_bf)
         proj_dev = _upload(_runtime, bufs, proj_bf)
-        base_dev = _upload(_runtime, bufs, base_bf)
         proj_out = _upload(_runtime, bufs, np.zeros((rows, 2 * kernel_size * groups), np.uint16))
         dflash_dense_bf16_to_bf16(
             h_dev.ptr, proj_dev.ptr, proj_out.ptr, rows, hidden_size,
@@ -336,7 +338,6 @@ def test_dflash2_sliding_attention_red(_dflash2_lib, _runtime):
 # ---------------------------------------------------------------------------
 
 def test_dflash2_selector_red(_dflash2_lib, _runtime):
-    from hipengine.kernels.cpu_reference.dflash2 import dflash2_topk
     from hipengine.kernels.hip_gfx1100.speculative.dflash2 import (
         dflash2_selector,
         dflash2_top16_rows,

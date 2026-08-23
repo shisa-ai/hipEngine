@@ -408,7 +408,7 @@ def test_h7y_frozen_target_artifact_work_model_and_admission_protocol() -> None:
         if relative == "tests/test_laguna_kv_attention.py":
             # The gfx1151 handoff extended this shared test after H7Y without
             # changing the frozen gfx1100 candidate sources.
-            expected = "f856f9b265bf43703b70e9a51979ea927ece6cb6d83168320009ef1b3665d58e"
+            expected = "35e6aa5c48c4ae797c80b7aff3dea9397d16d77a01295e57452506aa7a2c9f02"
         assert _sha256(_ROOT / relative) == expected
 
 

@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "kind": "hipengine_concurrency2_c2_6_compatibility_gate",
+  "status": "accepted_fallback_packet",
+  "passed": true,
+  "performance_claim": false,
+  "created_at": "2026-08-16T22:50:29.464229+00:00",
+  "completed_at": "2026-08-16T22:58:48.690817+00:00",
+  "repo": {
+    "branch": "concurrency2",
+    "base_commit": "9701985dd919eabfdb4e62b445afdf52f6b77a49",
+    "worktree_clean": false,
+    "reason": "C2-6 shared-slot repair was under validation"
+  },
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "architecture": "gfx1100",
+    "device_selector": "HIP_VISIBLE_DEVICES=0",
+    "rocm": "7.2.53211-3d9ef42",
+    "hipcc_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "f24f72d469e5141b6a74086cdf094faf93726def47c5581b9d84acca03b24579",
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16"
+  },
+  "workload": {
+    "prompt_tokens_per_request": 128,
+    "decode_tokens_per_request": 8,
+    "prompt_token_ids": "9707 with four deterministic final-token variants",
+    "logical_widths": [1, 2, 4, 8, 17, 32],
+    "live_refill_width": 17,
+    "scheduler_policy": "token_budget",
+    "prefill_chunk_tokens": 128,
+    "context_tokens_per_sequence": 512,
+    "warmups": 0,
+    "measured_repetitions": 1,
+    "oracle": "serial c1 trajectories generated on each width's same loaded server"
+  },
+  "command": "python3 scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --served-model-name qwen36-c2 --hipengine-route-expectation serial-c1-per-row --hipengine-prefill-decode-policy token_budget --hipengine-kv-storage bf16 --gpu 0 --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --concurrencies 1,2,4,8,17,32 --live-concurrency 17 --prompt-token-id 9707 --prompt-length 128 --decode-tokens 8 --oracle-rows 4 --same-server-oracle --warmup-runs 0 --measured-runs 1 --generation-batch-window-ms 0 --hipengine-prefill-chunk-tokens 128 --ctx-per-seq 512 --server-ready-timeout 600 --request-timeout 600 --inter-rep-seconds 0 --inter-server-seconds 0 --no-memory-sampling --work-dir /tmp/hipengine-c2-6-f1-slotviews-production --json /tmp/hipengine-c2-6-f1-slotviews-production.json",
+  "results": {
+    "c1": {"exact_rows": "1/1", "http_wall_tokens_per_second_diagnostic": 28.57962753345085, "startup_seconds": 77.37579507892951, "pool_pages": 2, "pool_bytes": 10485760},
+    "c2": {"exact_rows": "2/2", "http_wall_tokens_per_second_diagnostic": 28.51877713616856, "startup_seconds": 77.61524153593928, "pool_pages": 4, "pool_bytes": 20971520},
+    "c4": {"exact_rows": "4/4", "http_wall_tokens_per_second_diagnostic": 27.918975336323864, "startup_seconds": 77.3618934317492, "pool_pages": 8, "pool_bytes": 41943040},
+    "c8": {"exact_rows": "8/8", "http_wall_tokens_per_second_diagnostic": 28.15358769371157, "startup_seconds": 77.36488316394389, "pool_pages": 16, "pool_bytes": 83886080},
+    "c17": {"exact_rows": "17/17", "http_wall_tokens_per_second_diagnostic": 27.796766377050236, "startup_seconds": 78.61008415883407, "pool_pages": 34, "pool_bytes": 178257920},
+    "c32": {"exact_rows": "32/32", "http_wall_tokens_per_second_diagnostic": 26.311672472246087, "startup_seconds": 77.85827859118581, "pool_pages": 64, "pool_bytes": 335544320},
+    "c17_live_refill": {"exact_rows": "17/17", "http_wall_tokens_per_second_diagnostic": 27.645, "admission_during_first_request": true}
+  },
+  "execution": {
+    "ownership": "one batch-shaped target scratch owner with lightweight slot-local state/KV/cursor views",
+    "prefill": "owner-packed single-row prefill into each target slot",
+    "decode": "honest physical-c1 serial fallback for shared-slot cN groups",
+    "generation_shape_passed_all_widths": true,
+    "resident_capacity_equaled_logical_width_all_widths": true,
+    "all_native_caware_decode_values": false,
+    "final_ownership_drain": true
+  },
+  "rejected_native_controls": {
+    "c8_physical": "invalid token sentinel 2147483647 at the second packed row",
+    "c4_plus_c4_physical": "same invalid token sentinel at the second packed row",
+    "decision": "shared-slot packed decode is unqualified and fails closed to physical c1"
+  },
+  "host_gates": {
+    "graph_page_id_prefix_eviction_slot_reuse": "passed",
+    "long_context_4k_16k_32k_mixed_membership": "passed",
+    "fixed_ragged_burst_poisson_overload_disconnect": "passed",
+    "logical_widths_1_through_32": "passed",
+    "final_pool_and_ledger_conservation": "passed"
+  },
+  "limitations": [
+    "This packet validates the explicit Generation-1 DeviceChunkedKVPool compatibility adapter, not GlobalKVPoolSet arbitrary-page device execution.",
+    "Shared-slot native packed cN decode remains unqualified, so no throughput or default-promotion claim is made.",
+    "No gfx1151 device is present on this host.",
+    "vLLM and SGLang are not installed; no matched external comparison was run."
+  ],
+  "decision": {
+    "retain_exact_fallback": true,
+    "promote_native_packed_default": false,
+    "close_c2_6": false,
+    "required_next_fix": "add registered GGUF arbitrary-page-table prefill/decode kernels and adapt the shared-slot packed state path before rerunning native c1-c32, long-context, gfx1151, and external gates"
+  }
+}

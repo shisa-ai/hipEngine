@@ -51,6 +51,7 @@ from hipengine.speculative.dflash_drafter import (
     project_laguna_dflash_target_hidden_bf16,
     dflash_silu_mul_bf16,
 )
+from hipengine.speculative.generic import TreeDraftRequest, compile_tree_draft
 from hipengine.speculative.mtp import (
     MTP_CHAIN_CANDIDATE_BUDGETS,
     MissingMtpWeightsError,
@@ -64,6 +65,7 @@ from hipengine.speculative.mtp import (
 )
 from hipengine.speculative.mtp_native import NativeMtpChainProposer, NativeMtpStateSnapshot, NativeMtpStepResult
 from hipengine.speculative.registry import (
+    SpeculativeProviderCapabilities,
     SpeculativeProviderConfig,
     SpeculativeProviderFactory,
     SpeculativeProviderKey,
@@ -128,6 +130,30 @@ from hipengine.speculative.interfaces import (
     TargetVerifyBuffers,
     Verifier,
 )
+from hipengine.speculative.packing import (
+    SpeculativePackedGroup,
+    SpeculativePackingBudget,
+    SpeculativePackingPlan,
+    SpeculativePackingRequest,
+    VerifierCostMap,
+    VerifierCostRecord,
+    pack_speculative_requests,
+)
+from hipengine.speculative.streaming import (
+    SpeculativeCommitEvent,
+    SpeculativeOutputTail,
+    StochasticAcceptanceAccounting,
+    stochastic_acceptance_accounting,
+    trim_speculative_output,
+)
+from hipengine.speculative.simulator import (
+    SpecCycleStage,
+    SpecTransaction,
+    SpeculativeCycleResult,
+    SpeculativeCycleSimulator,
+    SpeculativeRequestState,
+    compose_speculative_claims,
+)
 from hipengine.speculative.native_cycle import (
     NATIVE_SPEC_CYCLE_ABI_VERSION,
     FakeNativeSpecCycleLauncher,
@@ -161,6 +187,7 @@ from hipengine.speculative.ladder import (
 
 __all__ = [
     "AdaptiveBudgetConfig",
+    "SpeculativeProviderCapabilities",
     "SpeculativeProviderConfig",
     "SpeculativeProviderFactory",
     "SpeculativeProviderKey",
@@ -178,6 +205,8 @@ __all__ = [
     "ChainDraftCompiler",
     "ChainDraftRequest",
     "compile_chain_draft",
+    "TreeDraftRequest",
+    "compile_tree_draft",
     "DFLASH_CHAIN_CANDIDATE_BUDGETS",
     "DFlashChainCompiler",
     "DFlashDraftKVAppendPlan",
@@ -272,6 +301,24 @@ __all__ = [
     "TargetVerifyBatch",
     "TargetVerifyBuffers",
     "Verifier",
+    "SpeculativePackedGroup",
+    "SpeculativePackingBudget",
+    "SpeculativePackingPlan",
+    "SpeculativePackingRequest",
+    "VerifierCostMap",
+    "VerifierCostRecord",
+    "pack_speculative_requests",
+    "SpeculativeCommitEvent",
+    "SpeculativeOutputTail",
+    "StochasticAcceptanceAccounting",
+    "stochastic_acceptance_accounting",
+    "trim_speculative_output",
+    "SpecCycleStage",
+    "SpecTransaction",
+    "SpeculativeCycleResult",
+    "SpeculativeCycleSimulator",
+    "SpeculativeRequestState",
+    "compose_speculative_claims",
     "NATIVE_SPEC_CYCLE_ABI_VERSION",
     "FakeNativeSpecCycleLauncher",
     "NativeSpecCycleControl",

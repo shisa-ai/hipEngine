@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "kind": "hipengine_concurrency2_c2_7_dms_gate",
+  "status": "blocked_product_metadata_and_hardware",
+  "passed": false,
+  "host_backend_passed": true,
+  "performance_claim": false,
+  "created_at": "2026-08-17T03:10:00Z",
+  "source": {
+    "hipengine_base_commit": "c3c213078",
+    "fastdms_reference_commit": "c602b0ec3266da7f74d6a658b3dafcddb443fddd"
+  },
+  "implementation": {
+    "topology": "dms_compact",
+    "scheduler": "common Generation-2 token-budget loop",
+    "metadata": "strict corrected-mask trained-checkpoint DMSRetrofitConfig",
+    "allocator": "atomic per-layer/head CompactExtentPool",
+    "spans": "per_head_variable KVLiveSpans",
+    "prefix_mode": "off",
+    "prefill": "streaming count/rank/scatter with no retained dense shadow",
+    "decode": "transactional append/expiry plus grouped-GQA CPU reference",
+    "codecs": ["bf16", "int8_per_token_head"],
+    "transaction_mode": "journal"
+  },
+  "host_gates": {
+    "bf16": {
+      "command": "python3 scripts/dms_backend_gate.py --model /tmp/hipengine-dms-fixture --expected-artifact fixture:dms --slots-per-layer 1024 --prompt-tokens 8 --decode-tokens 2 --json /tmp/hipengine-c2-7-dms-bf16-host.json",
+      "status": "accepted_host_backend",
+      "logical_widths": [1, 2, 4, 8, 16, 32],
+      "all_widths_passed": true,
+      "pressure_rejection_and_recovery": true,
+      "final_conservation": true
+    },
+    "qualified_int8": {
+      "command": "python3 scripts/dms_backend_gate.py --model /tmp/hipengine-dms-fixture --expected-artifact fixture:dms --codec int8_per_token_head --codec-qualification /tmp/hipengine-dms-fixture/int8_qualification.json --slots-per-layer 1024 --prompt-tokens 8 --decode-tokens 2 --json /tmp/hipengine-c2-7-dms-int8-host.json",
+      "status": "accepted_host_backend",
+      "logical_widths": [1, 2, 4, 8, 16, 32],
+      "all_widths_passed": true,
+      "pressure_rejection_and_recovery": true,
+      "final_conservation": true,
+      "qualification_scope": "synthetic fixture only",
+      "required_gate": "KL <= 0.05 and top-1 >= 90%, no dense shadow"
+    },
+    "tests": {
+      "nodes": 107,
+      "scope": "DMS metadata/codec/extent/pack/attention/transaction/c1-c32 plus global pool, ledger, token budget, load and EngineService",
+      "passed": true
+    }
+  },
+  "current_model_gate": {
+    "command": "python3 scripts/dms_backend_gate.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --expected-artifact f24f72d469e5141b6a74086cdf094faf93726def47c5581b9d84acca03b24579 --json /tmp/hipengine-c2-7-dms-current-model-blocked.json",
+    "status": "blocked_metadata",
+    "passed": false,
+    "blocker": "no packaged dms_metadata.json for the exact Qwen3.6 GGUF artifact"
+  },
+  "hardware_gate": {
+    "status": "not_run",
+    "reason": "new HIP kernels require CPU-reference correctness plus rocprof identity; the current W7900 generation repeatedly page-faulted during C2-6 and is not stable enough for honest kernel promotion",
+    "registered_hip_kernel_bundle": false,
+    "default_promoted": false
+  },
+  "decision": {
+    "retain_host_backend_and_cpu_oracle": true,
+    "retain_fixture_qualified_int8_composition": true,
+    "claim_model_quality": false,
+    "claim_allocator_visible_device_savings": false,
+    "promote_dms_default": false,
+    "continue_to_c2_8_host_implementation": true,
+    "required_next": "obtain a retrofitted checkpoint, port/register HIP kernels, run correctness/rocprof, then c1-c32 pressure/soak on fresh hardware"
+  }
+}

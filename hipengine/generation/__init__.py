@@ -22,6 +22,17 @@ from hipengine.generation.batch_scheduler import (
     SpeculativeVerifyPlan,
     SpeculativeVerifyWork,
 )
+from hipengine.generation.concurrency2 import (
+    BlockingOutputCollector,
+    ChildPhase,
+    ChildRequest,
+    CollectedOutput,
+    EngineOutput,
+    OutputCollector,
+    OutputKind,
+    ParentRequest,
+    StreamingOutputCollector,
+)
 from hipengine.generation.constraints import (
     ForcedTokenQueue,
     JsonObjectConstraintState,
@@ -40,6 +51,7 @@ from hipengine.generation.deadline import (
     raise_if_generation_cancelled,
     raise_if_generation_deadline_expired,
 )
+from hipengine.generation.engine_service import EngineService, EngineServiceHandle
 from hipengine.generation.engine_loop import (
     PREFILL_DECODE_POLICIES,
     EngineLoopConfig,
@@ -52,6 +64,19 @@ from hipengine.generation.engine_loop import (
     add_engine_loop_config_args,
     engine_loop_config_from_args,
     engine_loop_config_from_env,
+)
+from hipengine.dispatch.execution_planner import (
+    ExecutionCompatibilityKey,
+    ExecutionPlan,
+    PlannedExecutionGroup,
+    TokenBudgetSLO,
+    plan_execution_groups,
+)
+from hipengine.generation.load_harness import (
+    LoadArrival,
+    LoadScenarioResult,
+    poisson_arrivals,
+    run_load_scenario,
 )
 from hipengine.generation.registry import (
     DecodePhase,
@@ -128,9 +153,13 @@ def register_builtin_generators() -> None:
 
 __all__ = [
     "BatchGenerateRequest",
+    "BlockingOutputCollector",
     "CompactPromptBucket",
     "CompactPromptSlab",
     "CompletedRequest",
+    "ChildPhase",
+    "ChildRequest",
+    "CollectedOutput",
     "DecodePhase",
     "DecodeState",
     "MTP_THINKING_RELAXABLE_BLOCKERS",
@@ -138,6 +167,11 @@ __all__ = [
     "EngineLoopConfig",
     "EngineLoopEvent",
     "EngineLoopRunner",
+    "EngineOutput",
+    "EngineService",
+    "EngineServiceHandle",
+    "ExecutionCompatibilityKey",
+    "ExecutionPlan",
     "GenerationAdmissionRejected",
     "GenerationSubmission",
     "FinishDetails",
@@ -156,12 +190,18 @@ __all__ = [
     "GenerationRequest",
     "GenerationStreamChunk",
     "JsonObjectConstraintState",
+    "LoadArrival",
+    "LoadScenarioResult",
     "MissingGeneratorError",
     "NATIVE_GPU_SAMPLER_UNSUPPORTED_CAPABILITIES",
+    "OutputCollector",
+    "OutputKind",
     "PREFILL_DECODE_POLICIES",
+    "ParentRequest",
     "PreparedPromptInput",
     "PromptInput",
     "PerRowSamplingParams",
+    "PlannedExecutionGroup",
     "RequestObservability",
     "ResidentBatchScheduler",
     "RowSamplingState",
@@ -175,6 +215,7 @@ __all__ = [
     "SPECULATIVE_TARGET_SAMPLING_POLICY",
     "ResidentEngineLoop",
     "SubmitPollTextGenerator",
+    "StreamingOutputCollector",
     "SpeculativeCommitPlan",
     "SpeculativeStateCommitPlan",
     "SpeculativeVerifyBufferPlan",
@@ -185,6 +226,7 @@ __all__ = [
     "TokenSequenceDFAState",
     "ToolCallConstraintSpec",
     "ToolCallConstraintState",
+    "TokenBudgetSLO",
     "TokenLogprob",
     "active_processor_names",
     "add_engine_loop_config_args",
@@ -196,7 +238,9 @@ __all__ = [
     "generation_deadline_expired",
     "normalize_token_sequences",
     "normalize_logit_bias_pairs",
+    "plan_execution_groups",
     "plan_sampler",
+    "poisson_arrivals",
     "register_builtin_generators",
     "register_text_generator",
     "registered_text_generators",
@@ -204,6 +248,7 @@ __all__ = [
     "raise_if_generation_cancelled",
     "raise_if_generation_deadline_expired",
     "row_seed_for_index",
+    "run_load_scenario",
     "sampler_fast_path_blockers",
     "select_token",
     "speculative_mtp_sampling_blockers",

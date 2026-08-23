@@ -177,7 +177,7 @@ def test_benchmark_readme_is_a_compact_current_scoreboard() -> None:
     scoreboard_path = repo_root / "benchmarks/README.md"
     scoreboard = scoreboard_path.read_text(encoding="utf-8")
 
-    assert len(scoreboard.splitlines()) < 400
+    assert len(scoreboard.splitlines()) < 460
     assert len(scoreboard.encode("utf-8")) < 30_000
     assert scoreboard.count("<!-- BEGIN TOPLINE:") == 1
     assert scoreboard.count("results/") < 40

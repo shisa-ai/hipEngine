@@ -31,16 +31,13 @@ from hipengine.core.memory import (
 def _cublaslt_available() -> bool:
     try:
         ctypes.CDLL("libcublasLt.so.13")
-    except OSError:
+        return get_cuda_runtime().device_count() > 0
+    except (OSError, RuntimeError):
         return False
-    return True
 
 
 def _run_problem(rows, in_features, out_features, output_dtype, x, weight):
     runtime = get_cuda_runtime()
-    output_nbytes = (
-        rows * out_features * 2 if output_dtype == CUDA_R_16F else rows * out_features * 4
-    )
     output = np.empty((rows, out_features), dtype=np.float16 if output_dtype == CUDA_R_16F else np.float32)
     buffers = []
     owner = None

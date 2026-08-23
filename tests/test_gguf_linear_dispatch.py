@@ -2309,7 +2309,7 @@ def test_q5_t16_routes_decode_bounded_native_rowtile_and_dense_wmma() -> None:
             {"stream": 8, "runtime": "runtime-sentinel"},
         ),
         (
-            "wmma",
+            "rowtile",
             (102, 14, 202, 5, 6144, 5120),
             {"stream": 9, "runtime": "runtime-sentinel"},
         ),
@@ -2619,6 +2619,12 @@ def test_gfx1151_q4_t16_single_c_n_chunks_to_rowtile8_in_native_session() -> Non
             "gguf_q4_k_t16_v1",
             "dense_rowtile_bf16_bf16_out",
         ),
+        "q4_rowtile_w2": KernelKey(
+            "hip_gfx1151",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_rowtile16_w2_bf16_bf16_out",
+        ),
         "q4_wmma": KernelKey(
             "hip_gfx1151",
             "linear",
@@ -2700,9 +2706,9 @@ def test_gfx1151_q4_t16_single_c_n_chunks_to_rowtile8_in_native_session() -> Non
         # c=9 Q4: (7 rows @ row 0), (2 rows @ row 7).
         ("q4_rowtile", 0, 7, 10_240),
         ("q4_rowtile", 7 * 5_120 * 2, 2, 10_240),
-        # c=16 Q4 ffn_down: (8 @ 0), (8 @ 8).
-        ("q4_rowtile", 0, 8, 5_120),
-        ("q4_rowtile", 8 * 17_408 * 2, 8, 5_120),
+        # c=16 Q4 ffn_down: the gfx1151-qualified row8 two-wave owner.
+        ("q4_rowtile_w2", 0, 8, 5_120),
+        ("q4_rowtile_w2", 8 * 17_408 * 2, 8, 5_120),
         # c=512 stays WMMA prefill.
         ("q4_wmma", 0, 512, 10_240),
         # Q5 direct leaf: one launch, rows=16, out 5120.
@@ -5301,6 +5307,55 @@ def test_gfx1151_q4_k_decode_sidecar_single_uses_t16_owner() -> None:
         (
             (100, 15, 400, 1, 1024, 3072),
             {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
+def test_gfx1151_q4_k_decode_sidecar_row8_uses_two_wave_owner() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight = _fake_weight(
+        layout=LAYOUT_Q4_K_PACK8,
+        quant_key="gguf_q4_k",
+        decode_tiles=True,
+    )
+    key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "dense_rowtile16_w2_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls = []
+
+    def fake_rowtile(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    register(key, fake_rowtile, replace=True)
+    try:
+        assert launch_gguf_q4_t16_sidecar_decode(
+            weight,
+            x_ptr=100,
+            out_ptr=400,
+            rows=8,
+            in_features=17_408,
+            out_features=5_120,
+            backend="hip_gfx1151",
+            runtime="runtime-sentinel",
+        )
+    finally:
+        register(key, original, replace=True)
+
+    assert calls == [
+        (
+            (100, 15, 400, 8, 17_408, 5_120),
+            {"stream": 0, "runtime": "runtime-sentinel"},
         )
     ]
 

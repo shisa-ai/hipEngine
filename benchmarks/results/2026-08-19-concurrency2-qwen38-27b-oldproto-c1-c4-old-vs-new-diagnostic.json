@@ -1,0 +1,230 @@
+{
+  "schema": 1,
+  "kind": "hipengine_qwen38_27b_oldproto_c1_c4_old_vs_new_diagnostic",
+  "created_at": "2026-08-19T05:35:03.423877+00:00",
+  "status": "diagnostic",
+  "passed": false,
+  "passed_reason": "new C2 side fails byte-exact batch-composition invariance at c2/c4 (see findings); old side passed",
+  "performance_claim": false,
+  "performance_claim_scope": "same-host W7900 gfx1100 device 0, identical declared protocol, both sides measured 2026-08-19; diagnostic A/B, not a retained topline row",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106773984,
+    "quant": "gguf_q4_k_m",
+    "kv_storage": "bf16"
+  },
+  "hardware": "AMD Radeon Pro W7900 gfx1100, device 0 (48 GiB), therock env",
+  "protocol": {
+    "prompt_length": 512,
+    "decode_tokens": 128,
+    "prompt_token_id": 9707,
+    "timing_boundary": "SSE client cycle wall, simultaneous release to last completed response, generated-token numerator",
+    "generation_batch_window_ms": 20,
+    "prefill_chunk_tokens": 256,
+    "ctx_per_seq": 1024,
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "stream_measured_runs": 3,
+    "oracle": "independent c1 server, 4 prompt rows",
+    "sampling": "greedy_top1_ignore_eos"
+  },
+  "old_side": {
+    "tree": "/tmp/qwen38-oldg1 @ b08ed12d6 (pre-C2 main, last state of the old design for this model)",
+    "policy": "protect_ttft (F1 harness default; the old tree's scoped factory default for gfx1100 gguf_q4_k_m was fair:256/burst-1 - both pre-C2 policies form the same native_packed_decode batches on this model; route counters confirm 889 packed decode steps per measured set)",
+    "raw_source": "/tmp/qwen38-27b-g1-oldproto-p512d128.json",
+    "harness": "scripts/server_f1_concurrency_bench.py (as present at b08ed12d6)",
+    "result_status": "accepted_backend_packet passed=True (byte-exact at c1/c2/c4)"
+  },
+  "new_side": {
+    "tree": "/home/lhl/hipEngine-concurrency2 @ bdedb6d3e (current C2)",
+    "policy": "token_budget (C2 production default, passed explicitly)",
+    "raw_source": "/tmp/qwen38-27b-c2-oldproto-p512d128.json",
+    "harness": "scripts/server_f1_concurrency_bench.py (current tree)",
+    "result_status": "failed_exception at c8 (unsupported width); c1/c2/c4 rows recorded with mismatches"
+  },
+  "table": {
+    "1": {
+      "new_c2": {
+        "aggregate_tok_s_median": 23.238304630611264,
+        "aggregate_tok_s_samples": [
+          23.250143221165025,
+          23.238304630611264,
+          23.132464138613887
+        ],
+        "itl_p50_seconds": 0.03601393196731806,
+        "itl_max_seconds": 0.09824008727446198,
+        "ttft_p50_seconds": 0.8774973200634122,
+        "measured_rows": 3,
+        "measured_exact_rows": 3,
+        "measured_mismatches": [],
+        "native_c1_decode_steps": 889.0,
+        "native_packed_decode_steps": 0.0,
+        "policy": "token_budget"
+      },
+      "old_g1": {
+        "aggregate_tok_s_median": 23.199881455197836,
+        "aggregate_tok_s_samples": [
+          23.20147875413204,
+          23.199881455197836,
+          23.111839133309335
+        ],
+        "itl_p50_seconds": 0.03610748378559947,
+        "itl_max_seconds": 0.09184970613569021,
+        "ttft_p50_seconds": 0.8833035205025226,
+        "measured_rows": 3,
+        "measured_exact_rows": 3,
+        "measured_mismatches": [],
+        "native_c1_decode_steps": 889.0,
+        "native_packed_decode_steps": 0.0,
+        "policy": "protect_ttft"
+      },
+      "ratio_new_over_old": 1.0016561798165922
+    },
+    "2": {
+      "new_c2": {
+        "aggregate_tok_s_median": 10.176032648338735,
+        "aggregate_tok_s_samples": [
+          10.200253585778993,
+          10.176032648338735,
+          10.167383511108971
+        ],
+        "itl_p50_seconds": 0.18393805576488376,
+        "itl_max_seconds": 0.49025014229118824,
+        "ttft_p50_seconds": 1.35257578920573,
+        "measured_rows": 6,
+        "measured_exact_rows": 4,
+        "measured_mismatches": [
+          {
+            "record_index": 1,
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "expected_oracle_present": true,
+            "expected_tokens": 128,
+            "observed_tokens": 128,
+            "first_mismatch_index": 73,
+            "expected_token": 3154,
+            "observed_token": 6866
+          },
+          {
+            "record_index": 5,
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "expected_oracle_present": true,
+            "expected_tokens": 128,
+            "observed_tokens": 128,
+            "first_mismatch_index": 73,
+            "expected_token": 3154,
+            "observed_token": 6866
+          }
+        ],
+        "native_c1_decode_steps": 14.0,
+        "native_packed_decode_steps": 882.0,
+        "policy": "token_budget"
+      },
+      "old_g1": {
+        "aggregate_tok_s_median": 10.10243282085084,
+        "aggregate_tok_s_samples": [
+          10.114204538625032,
+          10.10243282085084,
+          10.098277047525936
+        ],
+        "itl_p50_seconds": 0.18410970899276435,
+        "itl_max_seconds": 0.2841296708211303,
+        "ttft_p50_seconds": 1.8117059618234634,
+        "measured_rows": 6,
+        "measured_exact_rows": 6,
+        "measured_mismatches": [],
+        "native_c1_decode_steps": 0.0,
+        "native_packed_decode_steps": 889.0,
+        "policy": "protect_ttft"
+      },
+      "ratio_new_over_old": 1.0072853567841589
+    },
+    "4": {
+      "new_c2": {
+        "aggregate_tok_s_median": 17.562915523329888,
+        "aggregate_tok_s_samples": [
+          17.598029031272166,
+          17.562915523329888,
+          17.545221576118063
+        ],
+        "itl_p50_seconds": 0.1979523461777717,
+        "itl_max_seconds": 0.6535145160742104,
+        "ttft_p50_seconds": 2.736973947379738,
+        "measured_rows": 12,
+        "measured_exact_rows": 11,
+        "measured_mismatches": [
+          {
+            "record_index": 1,
+            "prompt_token_ids_sha256": "21bb8bca19ecba9c67d13b85a0a55c4ae09aa3508b4af7fb25346568217543ec",
+            "expected_oracle_present": true,
+            "expected_tokens": 128,
+            "observed_tokens": 128,
+            "first_mismatch_index": 73,
+            "expected_token": 3154,
+            "observed_token": 6866
+          }
+        ],
+        "native_c1_decode_steps": 14.0,
+        "native_packed_decode_steps": 896.0,
+        "policy": "token_budget"
+      },
+      "old_g1": {
+        "aggregate_tok_s_median": 17.65231956407718,
+        "aggregate_tok_s_samples": [
+          17.682130794113068,
+          17.65231956407718,
+          17.615557779668602
+        ],
+        "itl_p50_seconds": 0.19806534284725785,
+        "itl_max_seconds": 0.2959021031856537,
+        "ttft_p50_seconds": 3.6124549941159785,
+        "measured_rows": 12,
+        "measured_exact_rows": 12,
+        "measured_mismatches": [],
+        "native_c1_decode_steps": 0.0,
+        "native_packed_decode_steps": 889.0,
+        "policy": "protect_ttft"
+      },
+      "ratio_new_over_old": 0.9949352808608092
+    },
+    "8": {
+      "new_c2": {
+        "status": "unsupported",
+        "detail": "HTTP 400: qmicro planar rowtile requires rows in [2, 4]"
+      },
+      "old_g1": {
+        "status": "unsupported",
+        "detail": "registry route cap GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS=4"
+      },
+      "ratio_new_over_old": null
+    }
+  },
+  "findings": [
+    {
+      "id": "F1-no-scaling-both-designs",
+      "claim": "Neither design scales concurrency for Qwen3.8-27B on W7900: packed c2/c4 decode costs ~5x the c1 per-step time (ITL p50 36ms c1 vs 184ms c2 / 198ms c4) in BOTH trees, so aggregate tok/s DROPS from c1 to c2 (23.2 -> ~10.1) and only partially recovers at c4 (~17.6).",
+      "evidence": "old_g1 itl_p50: c1=0.0361 c2=0.1841 c4=0.1981; new_c2 itl_p50: c1=0.0360 c2=0.1839 c4=0.1980 (table rows)",
+      "interpretation": "Model-specific (dense 27B, weight-bandwidth-bound; the 35B-A3B MoE packed path scales 1.68x at c8 on the same C2 tree). Pre-dates C2 - identical collapse in the pre-C2 tree. Not a C2 regression; a packed-kernel inefficiency for this model shape ('qmicro planar rowtile' family) that neither design has resolved."
+    },
+    {
+      "id": "F2-c2-batch-composition-invariance-break",
+      "claim": "The new C2 tree is NOT byte-exact vs the c1 oracle at c2/c4 for this model: prompt row 2 (sha256 21bb8bca...) matches through decode token 73 then emits 6866 where the c1 oracle emits 3154 (c2: 4/6 exact, c4: 11/12 exact; deterministic across runs).",
+      "evidence": "new side measured mismatches first_mismatch_index=73 expected=3154 observed=6866; old side (same host/protocol/model) is 6/6 and 12/12 exact",
+      "interpretation": "Batch-composition invariance is a first-class gate; the pre-C2 packed path was invariant for this model, the C2 packed path is not. Candidate root causes: C2 packed-KV/workspace changes (af5d00098 workspace leases, 29a786afc page-aware packed KV copies). Requires fixture isolation and bisection; the packed route for this model must either be fixed to strict parity or the route must fail closed to the serial c1 fallback."
+    },
+    {
+      "id": "F3-physical-cap-c4",
+      "claim": "Physical c8 is unavailable for this model on gfx1100 in both designs: new tree rejects rows>4 (qmicro planar rowtile requires rows in [2,4]); old tree registry cap is 4.",
+      "evidence": "new-side c8 burst HTTP 400 rows; GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS=4"
+    }
+  ],
+  "limitations": [
+    "Old side used protect_ttft (harness default) rather than the old tree's fair scoped default; both policies form the same packed batches here (route counters), and the fair-launch W7900 measurement (2026-08-16) recorded the same flat packed behavior.",
+    "Synthetic token-ID prompts (512x token 9707 with 4 prompt rows); the diverging row is the one that generates varied tokens before converging to the repeat.",
+    "Single host (W7900 device 0); XTX/gfx1151 Qwen3.8 numbers are a different lane and are not mixed in."
+  ],
+  "next": [
+    "Isolate the c2/c4 packed-decode divergence for Qwen3.8-27B (fixture capturing row-2 state at step 73; bisection across af5d00098/29a786afc and the packed graph capture path).",
+    "Decide the product posture for Qwen3.8-27B on gfx1100: fix packed strict parity, or fail the packed route closed to serial c1 until qualified.",
+    "rocprof kernel-family audit of the packed c2/c4 step (184-198ms) vs c1 (36ms) to find why the dense 27B packed step does not reuse weight bandwidth."
+  ]
+}

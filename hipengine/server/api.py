@@ -2367,6 +2367,7 @@ class _GenerationBatcher:
         self._queue: deque[_QueuedGeneration] = deque()
         self._worker: asyncio.Task[None] | None = None
         self._stream_tasks: set[asyncio.Task[None]] = set()
+        self._independent_tasks: set[asyncio.Task[None]] = set()
         self._stream_items: dict[int, _QueuedGeneration] = {}
         self._active_items: dict[int, _QueuedGeneration] = {}
         self._active_requests = 0
@@ -2386,7 +2387,8 @@ class _GenerationBatcher:
 
     def active(self) -> bool:
         worker_active = self._worker is not None and not self._worker.done()
-        return worker_active or any(not task.done() for task in self._stream_tasks)
+        producers = (*self._stream_tasks, *self._independent_tasks)
+        return worker_active or any(not task.done() for task in producers)
 
     def stream_queue_max_chunks(self) -> int:
         return self._stream_queue_max_chunks
@@ -2405,10 +2407,14 @@ class _GenerationBatcher:
         limit = self._max_active_requests
         route_limit = self._route_max_active_requests.get(route_name)
         if route_name == _SPECULATIVE_MTP_DEFAULT_ROUTE:
-            registered_limit = getattr(
-                self._engine_factory(),
-                "server_plain_ar_max_active_requests",
-                None,
+            engine = self._engine_factory()
+            independent = _engine_supports_independent_generation(engine)
+            if independent:
+                route_limit = None
+            registered_limit = (
+                None
+                if independent
+                else getattr(engine, "server_plain_ar_max_active_requests", None)
             )
             if registered_limit is not None:
                 route_limit = int(registered_limit)
@@ -2572,8 +2578,8 @@ class _GenerationBatcher:
                 first = self._queue.popleft()
                 if _queued_generation_cancelled(first):
                     continue
+                engine = self._engine_factory()
                 if first.stream_queue is not None:
-                    engine = self._engine_factory()
                     if _engine_supports_controlled_streaming(engine):
                         active_limit = self._route_request_cap(first.route)
                         if (
@@ -2595,6 +2601,39 @@ class _GenerationBatcher:
                             continue
                         self._launch_controlled_stream(first, engine)
                         continue
+                elif (
+                    str(first.route) == _SPECULATIVE_MTP_DEFAULT_ROUTE
+                    and _engine_supports_independent_generation(engine)
+                ):
+                    active_limit = self._route_request_cap(first.route)
+                    child_rows = len(first.prompts)
+                    if active_limit is not None and child_rows > active_limit:
+                        _finish_queued_generation(
+                            first,
+                            exception=GenerationAdmissionRejected(
+                                "independent child group exceeds the resident request limit",
+                                resource="resident_child_limit",
+                                requested_units=child_rows,
+                                current_units=self._active_requests,
+                                capacity_units=active_limit,
+                            ),
+                        )
+                        continue
+                    if active_limit is not None and self._active_requests + child_rows > active_limit:
+                        self._queue.appendleft(first)
+                        active_tasks = tuple(
+                            task
+                            for task in (*self._stream_tasks, *self._independent_tasks)
+                            if not task.done()
+                        )
+                        if not active_tasks:  # pragma: no cover - defensive invariant
+                            raise RuntimeError(
+                                "independent generation capacity is full without an active producer"
+                            )
+                        await asyncio.wait(active_tasks, return_when=asyncio.FIRST_COMPLETED)
+                        continue
+                    self._launch_independent_generation(first)
+                    continue
                 key = self._group_key(first)
                 group = [first]
                 deferred: deque[_QueuedGeneration] = deque()
@@ -2634,6 +2673,21 @@ class _GenerationBatcher:
         if self._active_items.pop(id(item), None) is not None:
             self._active_requests = max(0, self._active_requests - 1)
 
+    def _launch_independent_generation(self, item: _QueuedGeneration) -> None:
+        child_rows = len(item.prompts)
+        self._active_requests += child_rows
+        self._active_items[id(item)] = item
+        task = asyncio.create_task(self._run_group((item,), manage_active=False))
+        item.producer_task = task
+        self._independent_tasks.add(task)
+
+        def finished(done: asyncio.Task[None]) -> None:
+            if self._active_items.pop(id(item), None) is not None:
+                self._active_requests = max(0, self._active_requests - child_rows)
+            self._independent_tasks.discard(done)
+
+        task.add_done_callback(finished)
+
     async def _run_controlled_stream(self, item: _QueuedGeneration, engine: Any) -> None:
         try:
             if len(item.prompts) == 1:
@@ -2658,12 +2712,18 @@ class _GenerationBatcher:
                     await run_in_threadpool(drain_cancellations)
             self._release_controlled_stream(item)
 
-    async def _run_group(self, group: Sequence[_QueuedGeneration]) -> None:
+    async def _run_group(
+        self,
+        group: Sequence[_QueuedGeneration],
+        *,
+        manage_active: bool = True,
+    ) -> None:
         if not group:
             return
-        self._active_requests += len(group)
-        for item in group:
-            self._active_items[id(item)] = item
+        if manage_active:
+            self._active_requests += len(group)
+            for item in group:
+                self._active_items[id(item)] = item
         try:
             if len(group) == 1 and group[0].stream_queue is not None:
                 if len(group[0].prompts) == 1:
@@ -2748,9 +2808,10 @@ class _GenerationBatcher:
                 else:
                     _finish_queued_generation(item, outputs=item_outputs)
         finally:
-            for item in group:
-                self._active_items.pop(id(item), None)
-            self._active_requests = max(0, self._active_requests - len(group))
+            if manage_active:
+                for item in group:
+                    self._active_items.pop(id(item), None)
+                self._active_requests = max(0, self._active_requests - len(group))
 
     async def _generate_prompts(
         self,
@@ -9721,6 +9782,19 @@ def _engine_supports_controlled_streaming(engine: Any | None) -> bool:
         return False
     for target in (engine, getattr(engine, "_text_generator", None)):
         if target is not None and bool(getattr(target, "supports_controlled_streaming", False)):
+            return True
+    return False
+
+
+def _engine_supports_independent_generation(engine: Any | None) -> bool:
+    """Whether one model service independently owns child progress/output."""
+
+    if engine is None:
+        return False
+    for target in (engine, getattr(engine, "_text_generator", None)):
+        if target is not None and bool(
+            getattr(target, "supports_independent_generation", False)
+        ):
             return True
     return False
 

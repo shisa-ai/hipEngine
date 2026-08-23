@@ -1,0 +1,128 @@
+{
+  "created_at": "2026-08-20T02:13:00+00:00",
+  "environment": {
+    "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS": null
+  },
+  "functional_observation_passed": true,
+  "kind": "concurrency2_qwen38_promoted_default_lifecycle_revalidation",
+  "limitations": [
+    "provenance is dirty and cannot qualify a retained benchmark or product default",
+    "covers only c5 lifecycle, not actual-server c1-c32 D2 routing or performance/SLOs",
+    "D2 was not configured by this command"
+  ],
+  "measurement_valid": false,
+  "passed": false,
+  "performance_claim": false,
+  "provenance": {
+    "build_profile": "gguf_arbitrary_c_lifecycle",
+    "collected_at": "2026-08-20T17:13:49.292874+00:00",
+    "command": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3",
+      "scripts/gguf_arbitrary_c_lifecycle.py",
+      "--model",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--rows",
+      "5",
+      "--cancel-slots",
+      "1",
+      "3",
+      "--original-max-tokens",
+      "5",
+      "--newcomer-max-tokens",
+      "3",
+      "--prompt-length",
+      "16",
+      "--compact-after-middle-hole",
+      "--allow-c1-arithmetic-drift",
+      "--quality-artifact",
+      "benchmarks/results/2026-08-20-concurrency2-qwen38-direct-width-quality.json",
+      "--json",
+      "/tmp/lifecycle_default_c5_promoted.json"
+    ],
+    "configured_backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "dirty": true,
+    "environment": {
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+      "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": null,
+      "HIPENGINE_GGUF_ROUTER_F32W_COOP": null,
+      "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS": null,
+      "HIPENGINE_HIP_ARCH": null,
+      "HIP_VISIBLE_DEVICES": null
+    },
+    "git_branch": "concurrency2",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "hipengine_commit": "79f7afca177996c883ea0692607ba4d9549a426f",
+    "host_name": "epyc",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8552862704,
+        17105725408
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 17106773984,
+      "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+    },
+    "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": {
+      "command": null,
+      "enabled": false,
+      "kind": null
+    },
+    "quant": "gguf_q4_k_m",
+    "repetitions": 1,
+    "repo_root": "/home/lhl/hipEngine-concurrency2",
+    "resolved_backend": "hip_gfx1100",
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "schema_version": 2,
+    "staged_dirty": false,
+    "target_arch": "gfx1100",
+    "timing_protocol": "none_correctness_only_v1",
+    "unstaged_dirty": true,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 0
+  },
+  "result": {
+    "compaction_passed": true,
+    "initial_mask": [
+      "11111"
+    ],
+    "memory_passed": true,
+    "physical_bucket_widths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "state_kv_accepted": true,
+    "tokens_exact": true
+  },
+  "schema": 1,
+  "source": "/tmp/lifecycle_default_c5_promoted.json",
+  "status": "diagnostic_dirty",
+  "validates": "diagnostic observation that the promoted default width set routes direct c5 without an env override; dirty provenance prevents qualification",
+  "workload": {
+    "backend": "hip_gfx1100",
+    "cancel_slots": [
+      1,
+      3
+    ],
+    "compact_after_middle_hole": true,
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "rows": 5
+  }
+}

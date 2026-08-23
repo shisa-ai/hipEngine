@@ -2795,6 +2795,47 @@ void q4_k_t16_dense_rowtile_gemv_kernel(
   }
 }
 
+// Diagnostic rows8 geometry: two independent waves own adjacent 8-column
+// groups in one 16-column block. Each wave executes the established helper and
+// reduction unchanged; there is no cross-wave arithmetic.
+template <typename scalar_t>
+__global__ __launch_bounds__(64, 1)
+void q4_k_t16_dense_rowtile16_w2_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    scalar_t* __restrict__ out,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int ROW_TILE = 8;
+  constexpr int kTileCols = 8;
+  const int wave = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  const int64_t out_group = blockIdx.x * 2 + wave;
+  float acc[ROW_TILE][kTileCols];
+  q4_k_t16_dense_rowtile_accumulate<scalar_t, ROW_TILE, kTileCols>(
+      x, tiles, lane, in_features, out_group, acc);
+
+#pragma unroll
+  for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      GGUF_T16_WAVE_REDUCE(acc[row][local_col]);
+    }
+  }
+  if (lane == 0) {
+    const int64_t out_base = out_group * kTileCols;
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+      for (int local_col = 0; local_col < kTileCols; ++local_col) {
+        out[static_cast<int64_t>(row) * out_features +
+            out_base + local_col] =
+            float_to_scalar<scalar_t>(0.0f + acc[row][local_col]);
+      }
+    }
+  }
+}
+
 // Exact compact-Q4 FFN-down plus rounded-BF16 residual owner. The producer
 // keeps the established dot/reduction and first BF16 boundary, then consumes
 // BF16 residual bits and performs the same FP32 add/final BF16 rounding as the
@@ -3022,7 +3063,7 @@ void q4_k_t16_dense_dual_rowtile_silu_gemv_kernel(
     }
   }
 
-  __shared__ uint16_t projected[2][4][kTileCols];
+  __shared__ uint16_t projected[2][ROW_TILE][kTileCols];
   if (lane == 0) {
 #pragma unroll
     for (int row = 0; row < ROW_TILE; ++row) {
@@ -6238,6 +6279,36 @@ int launch_q4_dense_rowtile(
 }
 
 template <typename scalar_t>
+int launch_q4_dense_rowtile16_w2(
+    const void* x,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles || !out || rows != 8 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(64);
+  const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS));
+  hipLaunchKernelGGL(
+      (q4_k_t16_dense_rowtile16_w2_gemv_kernel<scalar_t>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<scalar_t*>(out),
+      in_features,
+      out_features);
+  return hipGetLastError();
+}
+
+template <typename scalar_t>
 int launch_q4_qmicro_dense_rowtile(
     const void* x,
     const void* tiles,
@@ -6322,7 +6393,7 @@ int launch_q4_dense_dual_rowtile_silu(
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
-  if (!x || !tiles_a || !tiles_b || !out || rows < 2 || rows > 4 ||
+  if (!x || !tiles_a || !tiles_b || !out || rows < 2 || rows > 8 ||
       in_features <= 0 || (in_features % QK_K) != 0 ||
       out_features <= 0 || (out_features % T16_COLS) != 0) {
     return hipErrorInvalidValue;
@@ -6343,6 +6414,10 @@ int launch_q4_dense_dual_rowtile_silu(
     Q4_T16_DENSE_DUAL_ROWTILE_CASE(2);
     Q4_T16_DENSE_DUAL_ROWTILE_CASE(3);
     Q4_T16_DENSE_DUAL_ROWTILE_CASE(4);
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(5);
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(6);
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(7);
+    Q4_T16_DENSE_DUAL_ROWTILE_CASE(8);
     default:
       return hipErrorInvalidValue;
   }
@@ -7288,6 +7363,15 @@ hipengine_gguf_q4_k_t16_dense_rowtile_gemv_bf16_bf16_out(
     int64_t rows, int64_t in_features, int64_t out_features,
     hipStream_t stream) {
   return launch_q4_dense_rowtile<uint16_t>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_dense_rowtile16_w2_gemv_bf16_bf16_out(
+    const void* x, const void* tiles, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_dense_rowtile16_w2<uint16_t>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 

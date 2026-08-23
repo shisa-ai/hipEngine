@@ -1,0 +1,48 @@
+{
+  "created_at": "2026-08-22T14:25:00Z",
+  "decision": "SPEC-C0 closed. No production EngineService route or GPU default changed; SPEC-C1 is next and retains pre-launch AR fallback.",
+  "deliverables": {
+    "cancellation_stages": [
+      "reserved",
+      "target_open",
+      "provider_open",
+      "drafted",
+      "verified",
+      "accepted"
+    ],
+    "conservation": "every success/cancel/capacity-reject releases all cycle claims and clears pending transaction ids",
+    "mapping": "explicit one-to-many row_to_request/verifier_request_ids plus resident slots, candidate ids, parent/depth, active mask",
+    "records": [
+      "SpeculativeRequestState",
+      "DraftBatch cycle/resident/candidate/provider metadata",
+      "SpecTransaction",
+      "extended AcceptResult visible/cursor/finish fields"
+    ],
+    "resource_composition": "provider + target + transient ResourceClaimSet merged and atomically reserved in one SimulatedResourceLedger owner",
+    "transactions": "both target and provider opened before provisional stages; reject/partial/full commit together or roll back together"
+  },
+  "kind": "concurrency2_spec_c0_host_contracts",
+  "passed": true,
+  "performance_claim": false,
+  "schema": 1,
+  "source": {
+    "commit": "9cb3e46f1",
+    "host": "epyc",
+    "tree_note": "new host contracts/simulator/tests only"
+  },
+  "status": "accepted_host_contracts",
+  "validation": {
+    "commands": [
+      "uv run pytest -q tests/test_speculative_cycle_simulator.py",
+      "uv run pytest -q tests/test_speculative_interfaces.py tests/test_speculative_provider_registry.py tests/test_speculative_cycle_simulator.py tests/test_dflash_chain_compiler.py <four scheduler speculative nodes>"
+    ],
+    "focused_bundle": "55 passed across interfaces, provider registry, chain compiler, scheduler speculative nodes, and SPEC-C0 simulator",
+    "green": "11 SPEC-C0 simulator tests passed",
+    "hashes": {
+      "hipengine/speculative/interfaces.py": "06e4551a291cfbe6d92f1748d67744ccfebb1a86f5fc437691cd0542c9722cb9",
+      "hipengine/speculative/simulator.py": "d96b3cdef9813d259010094c1885bf595f3d8f0245e484d0e24eb745d391f58b",
+      "tests/test_speculative_cycle_simulator.py": "285845784dfa61245e740f13f852cbe3cb28980043d9f82f18707a2366afb75c"
+    },
+    "red": "new suite failed collection because hipengine.speculative.simulator was absent"
+  }
+}

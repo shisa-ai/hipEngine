@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "date": "2026-08-19",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "backend": "hip_gfx1100 (AMD Radeon Pro W7900)",
+  "protocol": "gguf_packed_ar_bench p128-d8 warmup1 measured2",
+  "status": "accepted-c8-enabled-not-yet-close-to-linear",
+  "c1_c2_c4_prefix_exact": true,
+  "all_repeatable": true,
+  "rows": {
+    "c1": {
+      "step_ms_median": 33.04,
+      "agg_tok_s_median": 30.396,
+      "passed": true,
+      "repeatable": true
+    },
+    "c2": {
+      "step_ms_median": 37.19,
+      "agg_tok_s_median": 54.038,
+      "passed": true,
+      "repeatable": true
+    },
+    "c4": {
+      "step_ms_median": 42.81,
+      "agg_tok_s_median": 94.387,
+      "passed": true,
+      "repeatable": true
+    },
+    "native_c8": {
+      "step_ms_median": 125.38,
+      "agg_tok_s_median": 63.593,
+      "passed": true,
+      "repeatable": true
+    }
+  },
+  "notes": [
+    "native_c8 (physical 8-row) now runs prefix-exact; was a crash before the lm_head chunk cap.",
+    "c8 uses the t16 rowtile FFN via a 2x4 split (weight read twice) -> 125 ms/step, 63.6 tok/s.",
+    "c8 per-row (15.7 ms) > c4 per-row (10.7 ms): NOT yet close-to-linear; a true ROW_TILE=8 rowtile (weight read once) is the next step.",
+    "c2/c4 unchanged vs faffd2352 (c1_c2_c4_prefix_exact=True)."
+  ],
+  "source": "/tmp/hb-c1248.json"
+}

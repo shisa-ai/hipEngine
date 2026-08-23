@@ -79,6 +79,9 @@ from hipengine.kernels.hip_gfx1100 import (
     LAGUNA_SWA_PREFILL_VARIANT as GFX1100_LAGUNA_SWA_PREFILL_VARIANT,
 )
 from hipengine.kernels.hip_gfx1151 import (
+    GGUF_C2_PACKED_PREFILL_MAX_ROWS,
+    GGUF_DIRECT_RESIDENT_LINEAR_STATE,
+    GGUF_FUSED_LINEAR_STATE_TRANSFER,
     GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
     GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE,
@@ -93,6 +96,8 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_Q5_T16_SELECTED_QWEN_TILE8,
     GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS,
     GGUF_Q6_LM_HEAD_MAX_CHUNK,
+    GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS,
+    GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT,
     GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS,
     GGUF_Q8_T16_DECODE_ROWTILE_ALL,
     GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS,
@@ -656,6 +661,51 @@ def test_gfx1151_backend_scopes_08b_short_attention_split_policy() -> None:
         "GGUF_SHORT_C1_SPLIT_ATTN_POLICIES",
         {},
     ) == {}
+
+
+def test_gfx1151_backend_declares_q4_row8_two_wave_policy() -> None:
+    policy = GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT[
+        "gguf_q4_k_t16_v1"
+    ]["shapes"]
+    assert policy[(5_120, 1_024)] == "dense_rowtile16_w2_bf16_bf16_out"
+    assert policy[(17_408, 5_120)] == "dense_rowtile16_w2_bf16_bf16_out"
+    assert (1_024, 4_096) not in policy
+    assert is_registered(
+        KernelKey(
+            "hip_gfx1151",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_rowtile16_w2_bf16_bf16_out",
+        )
+    )
+
+
+def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
+    assert GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS == (1, 2, 3, 4, 5, 6, 7, 8)
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", (1,)
+    ) == (1, 2, 3, 4, 5, 6, 7, 8)
+    assert GGUF_C2_PACKED_PREFILL_MAX_ROWS == 8
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1
+    ) == 8
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1
+    ) == 1
+    assert GGUF_DIRECT_RESIDENT_LINEAR_STATE is True
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_DIRECT_RESIDENT_LINEAR_STATE", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_DIRECT_RESIDENT_LINEAR_STATE", False
+    ) is False
+    assert GGUF_FUSED_LINEAR_STATE_TRANSFER is True
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_FUSED_LINEAR_STATE_TRANSFER", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_FUSED_LINEAR_STATE_TRANSFER", False
+    ) is False
 
 
 def test_gfx1151_backend_scopes_dense_grouped_gqa_split_policy() -> None:
@@ -2162,11 +2212,6 @@ def test_gguf_gdn_plan_resolves_every_key_for_runner_backend(
         return object()
 
     monkeypatch.setattr(qwen35_gguf_runner, "resolve", fake_resolve)
-    monkeypatch.setattr(
-        qwen35_gguf_runner,
-        "register_qwen35_linear_attn_gdn_kernels",
-        lambda: None,
-    )
     runner = object.__new__(qwen35_gguf_runner.Qwen35GGUFFullStackRunner)
     runner.backend = "hip_gfx1151"
 

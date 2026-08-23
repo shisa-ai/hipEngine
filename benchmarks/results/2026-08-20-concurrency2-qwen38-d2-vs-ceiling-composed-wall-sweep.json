@@ -1,0 +1,1256 @@
+{
+  "command": null,
+  "created_at": "2026-08-20T06:10:00+00:00",
+  "d2_cost_map_sha256": "4060b62bb01818dc3d6d3f4369616b055478748788baa959cf5e05f29a42b54d",
+  "d2_cost_map_source": "benchmarks/results/2026-08-20-concurrency2-qwen38-d2-cost-map.json",
+  "d2_win_rows": [
+    9,
+    10,
+    17,
+    18,
+    25,
+    26
+  ],
+  "diagnostic_aggregate_decode_tokens_per_s": {
+    "c10_d2": 98.884175,
+    "c16_d2": 121.877901,
+    "c1_d2": 28.822507,
+    "c32_d2": 123.254661,
+    "c9_d2": 93.136968
+  },
+  "diagnostic_observation_passed": true,
+  "gate": "not a production gate; diagnostic D2-vs-ceiling eager composed-wall observation",
+  "identity": {
+    "backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "execution_profile": "strict",
+    "graph_mode": "captured_replay",
+    "host_name": "epyc",
+    "kv_dtype": "bf16",
+    "model_fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "physical_widths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "quant": "gguf_q4_k_m",
+    "target_arch": "gfx1100"
+  },
+  "kind": "concurrency2_qwen38_d2_vs_ceiling_composed_wall_sweep",
+  "limitations": [
+    "not HTTP, EngineService, scheduler-owned lowering, or continuous-owner execution",
+    "composition is selected directly by d2_partition/ceiling_partition rather than observed from owner route telemetry",
+    "eager step_batch_native measurement does not match the cost map captured-replay graph mode",
+    "no TTFT, ITL, dynamic membership, server memory, or final-drain evidence",
+    "D2 is always measured before ceiling and the order is not counterbalanced",
+    "c1-c23 use prompt 512 while c24-c32 use prompt 128",
+    "artifact has no canonical command or clean provenance and cannot support a performance/default claim",
+    "2%/0.5 ms noise floor is diagnostic, not a production non-regression policy"
+  ],
+  "measurement_valid": false,
+  "noise_policy": {
+    "noise_tol_ms": "max(0.5, 0.02*ceiling_median)",
+    "only_differentiated_rows_decide": true
+  },
+  "objective": "serial_sum_model_step_wall",
+  "passed": false,
+  "performance_claim": false,
+  "provenance": null,
+  "rows": [
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 28.630697,
+      "ceiling_composition": [
+        1
+      ],
+      "ceiling_estimated_model_step_ms": 33.17,
+      "ceiling_measured_wall_ms": {
+        "max": 35.123264882713556,
+        "mean": 34.91154918447137,
+        "median": 34.927546977996826,
+        "min": 34.65131763368845,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 28.822507,
+      "d2_composition": [
+        1
+      ],
+      "d2_estimated_model_step_ms": 33.17,
+      "d2_goodput_pct_vs_ceiling": 0.669946,
+      "d2_measured_wall_ms": {
+        "max": 34.840770065784454,
+        "mean": 34.713402565103024,
+        "median": 34.69510842114687,
+        "min": 34.53263593837619,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -0.232,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": false,
+      "logical_c": 1,
+      "noise_tol_ms": 0.699,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 50.772633,
+      "ceiling_composition": [
+        2
+      ],
+      "ceiling_estimated_model_step_ms": 37.521,
+      "ceiling_measured_wall_ms": {
+        "max": 39.500626269727945,
+        "mean": 39.379400899633765,
+        "median": 39.39129994250834,
+        "min": 39.25258293747902,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 50.920544,
+      "d2_composition": [
+        2
+      ],
+      "d2_estimated_model_step_ms": 37.521,
+      "d2_goodput_pct_vs_ceiling": 0.291321,
+      "d2_measured_wall_ms": {
+        "max": 39.52883603051305,
+        "mean": 39.28376780822873,
+        "median": 39.27687811665237,
+        "min": 39.048430044204,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -0.114,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": false,
+      "logical_c": 2,
+      "noise_tol_ms": 0.788,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 70.800106,
+      "ceiling_composition": [
+        3
+      ],
+      "ceiling_estimated_model_step_ms": 40.06,
+      "ceiling_measured_wall_ms": {
+        "max": 42.57108084857464,
+        "mean": 42.35187888843939,
+        "median": 42.37281810492277,
+        "min": 42.10202395915985,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 71.531038,
+      "d2_composition": [
+        3
+      ],
+      "d2_estimated_model_step_ms": 40.06,
+      "d2_goodput_pct_vs_ceiling": 1.032389,
+      "d2_measured_wall_ms": {
+        "max": 42.42881806567311,
+        "mean": 42.00304188998416,
+        "median": 41.939835995435715,
+        "min": 41.62925621494651,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -0.433,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": false,
+      "logical_c": 3,
+      "noise_tol_ms": 0.847,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 87.904758,
+      "ceiling_composition": [
+        4
+      ],
+      "ceiling_estimated_model_step_ms": 43.297,
+      "ceiling_measured_wall_ms": {
+        "max": 46.08986200764775,
+        "mean": 45.531764335464686,
+        "median": 45.503794215619564,
+        "min": 45.22647010162473,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 87.716059,
+      "d2_composition": [
+        4
+      ],
+      "d2_estimated_model_step_ms": 43.297,
+      "d2_goodput_pct_vs_ceiling": -0.214663,
+      "d2_measured_wall_ms": {
+        "max": 45.87593814358115,
+        "mean": 45.58192502008751,
+        "median": 45.601684134453535,
+        "min": 45.09180597960949,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": 0.098,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": false,
+      "logical_c": 4,
+      "noise_tol_ms": 0.91,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 99.197276,
+      "ceiling_composition": [
+        5
+      ],
+      "ceiling_estimated_model_step_ms": 48.015,
+      "ceiling_measured_wall_ms": {
+        "max": 50.676760263741016,
+        "mean": 50.32574699725956,
+        "median": 50.404610112309456,
+        "min": 49.6725351549685,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 99.143029,
+      "d2_composition": [
+        5
+      ],
+      "d2_estimated_model_step_ms": 48.015,
+      "d2_goodput_pct_vs_ceiling": -0.054685,
+      "d2_measured_wall_ms": {
+        "max": 51.35565670207143,
+        "mean": 50.601656548678875,
+        "median": 50.4321891348809,
+        "min": 50.04256870597601,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": 0.028,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": false,
+      "logical_c": 5,
+      "noise_tol_ms": 1.008,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 109.220211,
+      "ceiling_composition": [
+        6
+      ],
+      "ceiling_estimated_model_step_ms": 52.702,
+      "ceiling_measured_wall_ms": {
+        "max": 55.31294783577323,
+        "mean": 54.890592116862535,
+        "median": 54.9348876811564,
+        "min": 54.4412462040782,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 109.461379,
+      "d2_composition": [
+        6
+      ],
+      "d2_estimated_model_step_ms": 52.702,
+      "d2_goodput_pct_vs_ceiling": 0.22081,
+      "d2_measured_wall_ms": {
+        "max": 55.16751389950514,
+        "mean": 54.79962256504223,
+        "median": 54.81385346502066,
+        "min": 54.4474539346993,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -0.121,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": false,
+      "logical_c": 6,
+      "noise_tol_ms": 1.099,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 116.523384,
+      "ceiling_composition": [
+        7
+      ],
+      "ceiling_estimated_model_step_ms": 57.886,
+      "ceiling_measured_wall_ms": {
+        "max": 60.68560807034373,
+        "mean": 60.1147721754387,
+        "median": 60.073778964579105,
+        "min": 59.60753187537193,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 116.979874,
+      "d2_composition": [
+        7
+      ],
+      "d2_estimated_model_step_ms": 57.886,
+      "d2_goodput_pct_vs_ceiling": 0.391758,
+      "d2_measured_wall_ms": {
+        "max": 60.11149799451232,
+        "mean": 59.851091413293034,
+        "median": 59.83935343101621,
+        "min": 59.57832979038358,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -0.234,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": false,
+      "logical_c": 7,
+      "noise_tol_ms": 1.201,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 121.636099,
+      "ceiling_composition": [
+        8
+      ],
+      "ceiling_estimated_model_step_ms": 63.526,
+      "ceiling_measured_wall_ms": {
+        "max": 66.3170232437551,
+        "mean": 65.69556321483105,
+        "median": 65.76994876377285,
+        "min": 65.25883730500937,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 122.155126,
+      "d2_composition": [
+        8
+      ],
+      "d2_estimated_model_step_ms": 63.526,
+      "d2_goodput_pct_vs_ceiling": 0.426704,
+      "d2_measured_wall_ms": {
+        "max": 66.74172636121511,
+        "mean": 65.64708548830822,
+        "median": 65.49049797467887,
+        "min": 65.19165402278304,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -0.279,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": false,
+      "logical_c": 8,
+      "noise_tol_ms": 1.315,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 89.496225,
+      "ceiling_composition": [
+        8,
+        1
+      ],
+      "ceiling_estimated_model_step_ms": 96.696,
+      "ceiling_measured_wall_ms": {
+        "max": 101.15735372528434,
+        "mean": 100.59080191422254,
+        "median": 100.56290030479431,
+        "min": 100.0747880898416,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 93.136968,
+      "d2_composition": [
+        5,
+        4
+      ],
+      "d2_estimated_model_step_ms": 91.312,
+      "d2_goodput_pct_vs_ceiling": 4.068041,
+      "d2_measured_wall_ms": {
+        "max": 97.41778671741486,
+        "mean": 96.59095172537491,
+        "median": 96.63187642581761,
+        "min": 95.75596312060952,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -3.931,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 9,
+      "noise_tol_ms": 2.011,
+      "verdict": "d2_win"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 94.583782,
+      "ceiling_composition": [
+        8,
+        2
+      ],
+      "ceiling_estimated_model_step_ms": 101.047,
+      "ceiling_measured_wall_ms": {
+        "max": 106.33975407108665,
+        "mean": 105.66573234973475,
+        "median": 105.72637105360627,
+        "min": 105.05940625444055,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 98.884175,
+      "d2_composition": [
+        6,
+        4
+      ],
+      "d2_estimated_model_step_ms": 96.0,
+      "d2_goodput_pct_vs_ceiling": 4.546649,
+      "d2_measured_wall_ms": {
+        "max": 101.9308278337121,
+        "mean": 101.1208476847969,
+        "median": 101.12841660156846,
+        "min": 100.21107271313667,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -4.598,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 10,
+      "noise_tol_ms": 2.115,
+      "verdict": "d2_win"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 101.751758,
+      "ceiling_composition": [
+        8,
+        3
+      ],
+      "ceiling_estimated_model_step_ms": 103.586,
+      "ceiling_measured_wall_ms": {
+        "max": 108.26308792456985,
+        "mean": 108.03696239599958,
+        "median": 108.10624063014984,
+        "min": 107.47060691937804,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 103.38482,
+      "d2_composition": [
+        6,
+        5
+      ],
+      "d2_estimated_model_step_ms": 100.717,
+      "d2_goodput_pct_vs_ceiling": 1.604947,
+      "d2_measured_wall_ms": {
+        "max": 107.2657909244299,
+        "mean": 106.43435508245602,
+        "median": 106.3985989894718,
+        "min": 105.82914017140865,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -1.708,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 11,
+      "noise_tol_ms": 2.162,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 107.68539,
+      "ceiling_composition": [
+        8,
+        4
+      ],
+      "ceiling_estimated_model_step_ms": 106.823,
+      "ceiling_measured_wall_ms": {
+        "max": 112.9368906840682,
+        "mean": 111.7201058077626,
+        "median": 111.43572954460979,
+        "min": 110.97646271809936,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 108.380973,
+      "d2_composition": [
+        6,
+        6
+      ],
+      "d2_estimated_model_step_ms": 105.405,
+      "d2_goodput_pct_vs_ceiling": 0.64594,
+      "d2_measured_wall_ms": {
+        "max": 111.3328249193728,
+        "mean": 110.7144036795944,
+        "median": 110.7205415610224,
+        "min": 110.05658563226461,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -0.715,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 12,
+      "noise_tol_ms": 2.229,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 111.024421,
+      "ceiling_composition": [
+        8,
+        5
+      ],
+      "ceiling_estimated_model_step_ms": 111.541,
+      "ceiling_measured_wall_ms": {
+        "max": 117.8202060982585,
+        "mean": 117.0339000527747,
+        "median": 117.09135631099343,
+        "min": 115.99939968436956,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 112.353221,
+      "d2_composition": [
+        7,
+        6
+      ],
+      "d2_estimated_model_step_ms": 110.589,
+      "d2_goodput_pct_vs_ceiling": 1.196854,
+      "d2_measured_wall_ms": {
+        "max": 116.08326900750399,
+        "mean": 115.72888511000201,
+        "median": 115.7065185252577,
+        "min": 115.2756572701037,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -1.385,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 13,
+      "noise_tol_ms": 2.342,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 115.369851,
+      "ceiling_composition": [
+        8,
+        6
+      ],
+      "ceiling_estimated_model_step_ms": 116.228,
+      "ceiling_measured_wall_ms": {
+        "max": 122.45294824242592,
+        "mean": 121.37047189753503,
+        "median": 121.34886090643704,
+        "min": 120.47312827780843,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 116.01168,
+      "d2_composition": [
+        7,
+        7
+      ],
+      "d2_estimated_model_step_ms": 115.773,
+      "d2_goodput_pct_vs_ceiling": 0.556323,
+      "d2_measured_wall_ms": {
+        "max": 121.4618319645524,
+        "mean": 120.7545010256581,
+        "median": 120.67750468850136,
+        "min": 120.30925368890166,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -0.671,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 14,
+      "noise_tol_ms": 2.427,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 118.980137,
+      "ceiling_composition": [
+        8,
+        7
+      ],
+      "ceiling_estimated_model_step_ms": 121.412,
+      "ceiling_measured_wall_ms": {
+        "max": 127.10076896473765,
+        "mean": 126.2222396908328,
+        "median": 126.07146357186139,
+        "min": 125.60182716697454,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 118.794939,
+      "d2_composition": [
+        8,
+        7
+      ],
+      "d2_estimated_model_step_ms": 121.412,
+      "d2_goodput_pct_vs_ceiling": -0.155654,
+      "d2_measured_wall_ms": {
+        "max": 127.31191143393517,
+        "mean": 126.35663012042642,
+        "median": 126.26800499856472,
+        "min": 125.6001852452755,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": 0.197,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": false,
+      "logical_c": 15,
+      "noise_tol_ms": 2.521,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 121.445209,
+      "ceiling_composition": [
+        8,
+        8
+      ],
+      "ceiling_estimated_model_step_ms": 127.051,
+      "ceiling_measured_wall_ms": {
+        "max": 133.1717697903514,
+        "mean": 132.03275093110278,
+        "median": 131.7466541659087,
+        "min": 131.25106180086732,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 121.877901,
+      "d2_composition": [
+        8,
+        8
+      ],
+      "d2_estimated_model_step_ms": 127.051,
+      "d2_goodput_pct_vs_ceiling": 0.356286,
+      "d2_measured_wall_ms": {
+        "max": 133.00849590450525,
+        "mean": 131.54190115164965,
+        "median": 131.27892604097724,
+        "min": 131.10706768929958,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -0.468,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": false,
+      "logical_c": 16,
+      "noise_tol_ms": 2.635,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 102.237132,
+      "ceiling_composition": [
+        8,
+        8,
+        1
+      ],
+      "ceiling_estimated_model_step_ms": 160.222,
+      "ceiling_measured_wall_ms": {
+        "max": 166.90238378942013,
+        "mean": 166.309958207421,
+        "median": 166.28009523265064,
+        "min": 165.85888899862766,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 104.85047,
+      "d2_composition": [
+        6,
+        6,
+        5
+      ],
+      "d2_estimated_model_step_ms": 153.42,
+      "d2_goodput_pct_vs_ceiling": 2.556154,
+      "d2_measured_wall_ms": {
+        "max": 162.5021994113922,
+        "mean": 162.07727883011103,
+        "median": 162.1356587857008,
+        "min": 161.52399498969316,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -4.144,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 17,
+      "noise_tol_ms": 3.326,
+      "verdict": "d2_win"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 105.184342,
+      "ceiling_composition": [
+        8,
+        8,
+        2
+      ],
+      "ceiling_estimated_model_step_ms": 164.572,
+      "ceiling_measured_wall_ms": {
+        "max": 172.96705720946193,
+        "mean": 171.35940468870103,
+        "median": 171.1281321477145,
+        "min": 170.73462111875415,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 108.306768,
+      "d2_composition": [
+        6,
+        6,
+        6
+      ],
+      "d2_estimated_model_step_ms": 158.107,
+      "d2_goodput_pct_vs_ceiling": 2.968527,
+      "d2_measured_wall_ms": {
+        "max": 167.36417217180133,
+        "mean": 166.25114216003567,
+        "median": 166.19460005313158,
+        "min": 165.20586097612977,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -4.934,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 18,
+      "noise_tol_ms": 3.423,
+      "verdict": "d2_win"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 109.34393,
+      "ceiling_composition": [
+        8,
+        8,
+        3
+      ],
+      "ceiling_estimated_model_step_ms": 167.112,
+      "ceiling_measured_wall_ms": {
+        "max": 175.29758624732494,
+        "mean": 173.9092908683233,
+        "median": 173.76364720985293,
+        "min": 173.28690504655242,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 110.839217,
+      "d2_composition": [
+        7,
+        6,
+        6
+      ],
+      "d2_estimated_model_step_ms": 163.291,
+      "d2_goodput_pct_vs_ceiling": 1.367509,
+      "d2_measured_wall_ms": {
+        "max": 171.94781498983502,
+        "mean": 171.32902331650257,
+        "median": 171.4194710366428,
+        "min": 169.91476202383637,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -2.344,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 19,
+      "noise_tol_ms": 3.475,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 112.710139,
+      "ceiling_composition": [
+        8,
+        8,
+        4
+      ],
+      "ceiling_estimated_model_step_ms": 170.349,
+      "ceiling_measured_wall_ms": {
+        "max": 178.71865024790168,
+        "mean": 177.66103870235384,
+        "median": 177.44632554240525,
+        "min": 177.01968410983682,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 113.48068,
+      "d2_composition": [
+        7,
+        7,
+        6
+      ],
+      "d2_estimated_model_step_ms": 168.475,
+      "d2_goodput_pct_vs_ceiling": 0.683648,
+      "d2_measured_wall_ms": {
+        "max": 176.8632037565112,
+        "mean": 176.05348391225561,
+        "median": 176.24145396985114,
+        "min": 174.5867282152176,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -1.205,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 20,
+      "noise_tol_ms": 3.549,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 114.843298,
+      "ceiling_composition": [
+        8,
+        8,
+        5
+      ],
+      "ceiling_estimated_model_step_ms": 175.066,
+      "ceiling_measured_wall_ms": {
+        "max": 183.58170799911022,
+        "mean": 182.79878655448556,
+        "median": 182.8578624408692,
+        "min": 182.07121500745416,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 115.78511,
+      "d2_composition": [
+        7,
+        7,
+        7
+      ],
+      "d2_estimated_model_step_ms": 173.659,
+      "d2_goodput_pct_vs_ceiling": 0.820085,
+      "d2_measured_wall_ms": {
+        "max": 182.16603295877576,
+        "mean": 181.26051290892065,
+        "median": 181.37047090567648,
+        "min": 180.1347122527659,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -1.487,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 21,
+      "noise_tol_ms": 3.657,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 117.648827,
+      "ceiling_composition": [
+        8,
+        8,
+        6
+      ],
+      "ceiling_estimated_model_step_ms": 179.754,
+      "ceiling_measured_wall_ms": {
+        "max": 188.3846358396113,
+        "mean": 187.22795328358188,
+        "median": 186.9971896521747,
+        "min": 186.46371690556407,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 117.97826,
+      "d2_composition": [
+        8,
+        7,
+        7
+      ],
+      "d2_estimated_model_step_ms": 179.298,
+      "d2_goodput_pct_vs_ceiling": 0.280014,
+      "d2_measured_wall_ms": {
+        "max": 188.01683094352484,
+        "mean": 186.70204805675894,
+        "median": 186.47503363899887,
+        "min": 185.58768508955836,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -0.522,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 22,
+      "noise_tol_ms": 3.74,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 119.829759,
+      "ceiling_composition": [
+        8,
+        8,
+        7
+      ],
+      "ceiling_estimated_model_step_ms": 184.938,
+      "ceiling_measured_wall_ms": {
+        "max": 193.6955377459526,
+        "mean": 192.3706640372984,
+        "median": 191.93896581418812,
+        "min": 191.644337028265,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 119.543756,
+      "d2_composition": [
+        8,
+        8,
+        7
+      ],
+      "d2_estimated_model_step_ms": 184.938,
+      "d2_goodput_pct_vs_ceiling": -0.238675,
+      "d2_measured_wall_ms": {
+        "max": 193.5692341066897,
+        "mean": 192.4747385783121,
+        "median": 192.39817163906991,
+        "min": 191.4963317103684,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": 0.459,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": false,
+      "logical_c": 23,
+      "noise_tol_ms": 3.839,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 124.926378,
+      "ceiling_composition": [
+        8,
+        8,
+        8
+      ],
+      "ceiling_estimated_model_step_ms": 190.577,
+      "ceiling_measured_wall_ms": {
+        "max": 193.68502404540777,
+        "mean": 192.0925443409942,
+        "median": 192.11314944550395,
+        "min": 190.74237905442715,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 127.030875,
+      "d2_composition": [
+        8,
+        8,
+        8
+      ],
+      "d2_estimated_model_step_ms": 190.577,
+      "d2_goodput_pct_vs_ceiling": 1.684589,
+      "d2_measured_wall_ms": {
+        "max": 190.29820803552866,
+        "mean": 189.1786024789326,
+        "median": 188.93044744618237,
+        "min": 188.4031486697495,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -3.183,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": false,
+      "logical_c": 24,
+      "noise_tol_ms": 3.842,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 110.07972,
+      "ceiling_composition": [
+        8,
+        8,
+        8,
+        1
+      ],
+      "ceiling_estimated_model_step_ms": 223.747,
+      "ceiling_measured_wall_ms": {
+        "max": 228.07656694203615,
+        "mean": 227.15439624153078,
+        "median": 227.10813651792705,
+        "min": 226.38071095570922,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 113.988209,
+      "d2_composition": [
+        7,
+        6,
+        6,
+        6
+      ],
+      "d2_estimated_model_step_ms": 215.994,
+      "d2_goodput_pct_vs_ceiling": 3.550599,
+      "d2_measured_wall_ms": {
+        "max": 221.55407397076488,
+        "mean": 219.85062916064635,
+        "median": 219.3209300749004,
+        "min": 218.768450897187,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -7.787,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 25,
+      "noise_tol_ms": 4.542,
+      "verdict": "d2_win"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 112.604877,
+      "ceiling_composition": [
+        8,
+        8,
+        8,
+        2
+      ],
+      "ceiling_estimated_model_step_ms": 228.098,
+      "ceiling_measured_wall_ms": {
+        "max": 232.13910404592752,
+        "mean": 231.00317118223757,
+        "median": 230.89586105197668,
+        "min": 230.0770841538906,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 115.770608,
+      "d2_composition": [
+        7,
+        7,
+        6,
+        6
+      ],
+      "d2_estimated_model_step_ms": 221.178,
+      "d2_goodput_pct_vs_ceiling": 2.811362,
+      "d2_measured_wall_ms": {
+        "max": 226.0840986855328,
+        "mean": 224.80096702929586,
+        "median": 224.58204603753984,
+        "min": 224.12346908822656,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -6.314,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 26,
+      "noise_tol_ms": 4.618,
+      "verdict": "d2_win"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 115.509446,
+      "ceiling_composition": [
+        8,
+        8,
+        8,
+        3
+      ],
+      "ceiling_estimated_model_step_ms": 230.637,
+      "ceiling_measured_wall_ms": {
+        "max": 236.9623356498778,
+        "mean": 234.30654144613072,
+        "median": 233.7471165228635,
+        "min": 233.34082029759884,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 117.320403,
+      "d2_composition": [
+        7,
+        7,
+        7,
+        6
+      ],
+      "d2_estimated_model_step_ms": 226.362,
+      "d2_goodput_pct_vs_ceiling": 1.5678,
+      "d2_measured_wall_ms": {
+        "max": 230.44543294236064,
+        "mean": 230.0727818510495,
+        "median": 230.13899754732847,
+        "min": 229.77004200220108,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -3.608,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 27,
+      "noise_tol_ms": 4.675,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 117.620885,
+      "ceiling_composition": [
+        8,
+        8,
+        8,
+        4
+      ],
+      "ceiling_estimated_model_step_ms": 233.874,
+      "ceiling_measured_wall_ms": {
+        "max": 238.80882188677788,
+        "mean": 237.7448735642247,
+        "median": 238.0529607180506,
+        "min": 236.50242807343602,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 119.041777,
+      "d2_composition": [
+        7,
+        7,
+        7,
+        7
+      ],
+      "d2_estimated_model_step_ms": 231.546,
+      "d2_goodput_pct_vs_ceiling": 1.208026,
+      "d2_measured_wall_ms": {
+        "max": 236.98431998491287,
+        "mean": 235.41720490902662,
+        "median": 235.21154304035008,
+        "min": 234.79216685518622,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -2.841,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 28,
+      "noise_tol_ms": 4.761,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 119.503969,
+      "ceiling_composition": [
+        8,
+        8,
+        8,
+        5
+      ],
+      "ceiling_estimated_model_step_ms": 238.592,
+      "ceiling_measured_wall_ms": {
+        "max": 244.25151478499174,
+        "mean": 242.6026932662353,
+        "median": 242.66976513899863,
+        "min": 241.27731984481215,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 120.302523,
+      "d2_composition": [
+        8,
+        7,
+        7,
+        7
+      ],
+      "d2_estimated_model_step_ms": 237.185,
+      "d2_goodput_pct_vs_ceiling": 0.668224,
+      "d2_measured_wall_ms": {
+        "max": 242.13325697928667,
+        "mean": 241.09606264391914,
+        "median": 241.05895101092756,
+        "min": 240.4240919277072,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -1.611,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 29,
+      "noise_tol_ms": 4.853,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 120.999762,
+      "ceiling_composition": [
+        8,
+        8,
+        8,
+        6
+      ],
+      "ceiling_estimated_model_step_ms": 243.28,
+      "ceiling_measured_wall_ms": {
+        "max": 249.6676966547966,
+        "mean": 247.93857970507815,
+        "median": 247.9343710001558,
+        "min": 246.08374340459704,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 121.636605,
+      "d2_composition": [
+        8,
+        8,
+        7,
+        7
+      ],
+      "d2_estimated_model_step_ms": 242.824,
+      "d2_goodput_pct_vs_ceiling": 0.526318,
+      "d2_measured_wall_ms": {
+        "max": 248.76332795247436,
+        "mean": 246.89635465620086,
+        "median": 246.636281022802,
+        "min": 245.76043291017413,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -1.298,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": true,
+      "logical_c": 30,
+      "noise_tol_ms": 4.959,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 122.865475,
+      "ceiling_composition": [
+        8,
+        8,
+        8,
+        7
+      ],
+      "ceiling_estimated_model_step_ms": 248.464,
+      "ceiling_measured_wall_ms": {
+        "max": 254.45563113316894,
+        "mean": 252.39763903664425,
+        "median": 252.3084692656994,
+        "min": 251.02294003590941,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 123.274554,
+      "d2_composition": [
+        8,
+        8,
+        8,
+        7
+      ],
+      "d2_estimated_model_step_ms": 248.464,
+      "d2_goodput_pct_vs_ceiling": 0.332949,
+      "d2_measured_wall_ms": {
+        "max": 254.83667105436325,
+        "mean": 252.08472920348868,
+        "median": 251.47119956091046,
+        "min": 250.71380799636245,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -0.837,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": false,
+      "logical_c": 31,
+      "noise_tol_ms": 5.046,
+      "verdict": "tie"
+    },
+    {
+      "ceiling_aggregate_decode_tokens_per_s": 123.129608,
+      "ceiling_composition": [
+        8,
+        8,
+        8,
+        8
+      ],
+      "ceiling_estimated_model_step_ms": 254.103,
+      "ceiling_measured_wall_ms": {
+        "max": 260.03688806667924,
+        "mean": 258.85943142930046,
+        "median": 259.88875003531575,
+        "min": 255.88560523465276,
+        "samples": 8
+      },
+      "d2_aggregate_decode_tokens_per_s": 123.254661,
+      "d2_composition": [
+        8,
+        8,
+        8,
+        8
+      ],
+      "d2_estimated_model_step_ms": 254.103,
+      "d2_goodput_pct_vs_ceiling": 0.101562,
+      "d2_measured_wall_ms": {
+        "max": 260.0960019044578,
+        "mean": 259.0000395430252,
+        "median": 259.6250700298697,
+        "min": 256.6445809789002,
+        "samples": 8
+      },
+      "d2_minus_ceiling_median_ms": -0.264,
+      "d2_no_slower_than_ceiling": true,
+      "differentiated": false,
+      "logical_c": 32,
+      "noise_tol_ms": 5.198,
+      "verdict": "tie"
+    }
+  ],
+  "schema": 2,
+  "scope": "direct_resident_eager_model_step",
+  "source_artifacts": {
+    "c1_23": "/tmp/d2_sweep_c1_23.json",
+    "c24_32": "/tmp/d2_sweep_c24_32.json"
+  },
+  "status": "diagnostic_missing_server_gate",
+  "summary": {
+    "ceiling_wins": 0,
+    "d2_wins": 6,
+    "differentiated": 18,
+    "rows": 32,
+    "ties": 12,
+    "worse_beyond_noise": []
+  },
+  "workload": {
+    "backend": "hip_gfx1100",
+    "cost_map_graph_mode": "captured_replay",
+    "execution_profile": "strict",
+    "kv_dtype": "bf16",
+    "measured_graph_mode": "eager_step_batch_native",
+    "measured_steps": 8,
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "physical_widths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "prompt_length_c1_23": 512,
+    "prompt_length_c24_32": 128,
+    "quant": "gguf_q4_k_m",
+    "warmup_steps": 1
+  }
+}
