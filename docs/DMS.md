@@ -2,12 +2,12 @@
 
 Last updated: 2026-08-23
 
-> **Current status:** trained external CR2 candidate and explicit c1 integrated
-> route complete; product gate remains open/default-off. Exact-Q4 short-context
-> quality passes, and 128K/256K runs prove dense-free compact decode plus tracked
-> resident savings. Long-context realized eviction is far more aggressive than
-> CR2 calibration (6.585x/7.220x live-row compression), so dense-teacher quality,
-> same-host controls, performance, lifecycle, and public selection remain open.
+> **Current status:** explicit c1 integration and 128K/256K capacity execution
+> pass, but the current short-trained CR2 candidate is **rejected for production**.
+> Its integrated 32K dense-teacher gate fails at max KL 6.0177 and 62.5% top-1
+> while no-evict passes at max KL 7.76e-7/100%; learned long-context over-eviction,
+> not compact kernel math, is the blocker. Dense remains default while a separate
+> long-context calibration/training campaign proceeds.
 
 This document is the end-to-end record and continuation plan for hipEngine's
 external Dynamic Memory Sparsification campaign. It covers the design, exact
@@ -18,7 +18,9 @@ punchlist.
 The trained-candidate evidence is
 [`2026-08-23-qwen38-external-dms-cr2-trained-candidate.json`](../benchmarks/results/2026-08-23-qwen38-external-dms-cr2-trained-candidate.json);
 the integrated long-capacity evidence is
-[`2026-08-23-gfx1151-qwen38-external-dms-integrated-128k-256k-capacity.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-external-dms-integrated-128k-256k-capacity.json).
+[`2026-08-23-gfx1151-qwen38-external-dms-integrated-128k-256k-capacity.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-external-dms-integrated-128k-256k-capacity.json),
+and the binding 8K/32K quality rejection is
+[`2026-08-23-gfx1151-qwen38-external-dms-integrated-8k-32k-quality.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-external-dms-integrated-8k-32k-quality.json).
 The normative KV ABI and broader storage roadmap remain in
 [`KVCACHE.md`](KVCACHE.md); lifecycle integration is tracked in
 [`CONCURRENCY2.md`](CONCURRENCY2.md).
@@ -28,7 +30,7 @@ The normative KV ABI and broader storage roadmap remain in
 | Question | Answer |
 | --- | --- |
 | Can we train a DMS predictor without modifying the model? | **Yes.** The base GGUF is never optimized, modified, or requantized. |
-| Can we test predictor correctness and exact-Q4 model quality? | **Yes at the qualified 768-token scope.** Capture, labels, training, replay, compact substitution, KL/top-1, and deterministic repeats are implemented; integrated long-context quality remains open. |
+| Can we test predictor correctness and exact-Q4 model quality? | **Yes.** The integrated dense-teacher route localizes kernel versus policy error. The candidate passes 768 and 8K but is rejected at 32K; no-evict remains essentially exact. |
 | How large is the predictor? | **655,640 bytes** (`640.27 KiB`, `0.6253 MiB`) plus 2,620 bytes of required metadata. |
 | How long did retained training take? | **99.42 seconds** internal trainer time; 101 seconds process wall time. |
 | How long did the measured retained pipeline take? | **774 seconds (12m54s)** for capture, labels, final training, and both quality gates; excludes data curation, replay, code development, and cache warmup. |
@@ -48,7 +50,7 @@ The normative KV ABI and broader storage roadmap remain in
 | Sidecar-only training and BF16 export | Complete |
 | Strict sidecar/model/provenance binding | Complete |
 | Torch-free replay and compression screening | Complete |
-| Exact-Q4 logit quality evaluation | Complete; CR2 passed |
+| Exact-Q4 logit quality evaluation | Short/dense-shadow passed; integrated 8K passed; integrated 32K rejected |
 | Compact allocator/backend primitives | Implemented and fixture-tested |
 | Host/device compact transaction rollback | Implemented and fixture-tested |
 | GPU schema-v2 external-linear prediction | Implemented, exact-decision validated, and wired into explicit c1 prefill/decode |
@@ -637,9 +639,10 @@ focused-repair policy in [`TESTING.md`](TESTING.md).
 - The short-context quality runner uses
   `dense_prefill_then_host_compact_decode_override` and retains dense KV; its
   1.54293x result remains logical-only.
-- The separate integrated c1 route proves post-pack tracked savings, but not
-  long-context dense-teacher quality, sampled process/device peak, no-evict or
-  dense controls, or bounded streaming-prefill peak.
+- The separate integrated c1 route proves post-pack tracked savings and a
+  near-exact no-evict control, but the trained sidecar fails the binding 32K
+  dense-teacher gate; sampled process/device peak, same-host memory controls,
+  and bounded streaming-prefill peak remain open.
 - No DMS throughput, latency, TTFT, ITL, or E2E performance claim exists.
 - No long c1/c8 soak or integrated c1-c32 request lifecycle is qualified.
 - No production serving `rocprofv3` trace proves the final kernel route.
@@ -679,10 +682,11 @@ measurements differ materially:
 Both rows release dense KV before decode, produce finite logits, and drain
 tracked allocation to zero. However, this is a repeated-corpus capacity stress,
 not a semantic-quality workload. The excessive live compression versus CR2 is
-a promotion blocker, and uniform max-head allocation leaves 2.79x/3.67x
-capacity-to-live slot slack. Production acceptance must still reconcile sampled
-process/device peak, same-host dense/no-evict controls, all scratch/metadata, and
-long-context dense-teacher quality.
+now confirmed as a quality blocker: at 32K, sidecar max KL is 6.0177 and top-1
+is 62.5%, while compact no-evict passes at max KL 7.76e-7 and 100% top-1.
+Uniform max-head allocation also leaves 2.79x/3.67x capacity-to-live slot slack.
+Production acceptance requires a newly long-qualified candidate plus sampled
+peaks, same-host memory controls, and full scratch/metadata reconciliation.
 
 Primary capacity goal:
 
@@ -890,7 +894,7 @@ with no stale spans, generations, masks, payloads, or transaction ownership.
 - [ ] Run deterministic graph/eager and same-schedule repeats.
 - [ ] Run the complete mtpbench category suite plus category-heldouts and broad
       long heldouts; no single-prompt tuning.
-- [ ] Add 8K/32K/128K contexts that materially exercise eviction.
+- [ ] Add 8K/32K/128K contexts that materially exercise eviction (8K passes; 32K rejects the current candidate; 128K correctly skipped).
 - [ ] Add production task/SLO and BF16-relative gates from
       [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md).
 - [ ] Reject unexplained first failures; never waive max KL because top-1 passes.
