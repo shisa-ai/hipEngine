@@ -1305,8 +1305,10 @@ span_role       prefill | decode | verify_chain | verify_tree
      the evaluation-only mtp-bench source.
    - The label builder reconstructs dense causal GQA probabilities from Q/K,
      accumulates future key-use only after the grace window, and ranks each
-     layer/KV head independently. Exact live budgets use deterministic
-     `(score, position)` ties; protected-window labels must remain zero. CPU
+     layer/KV head independently. The target CR applies to eligible history:
+     retain the protected window plus `ceil(eligible/CR)` historical keys. Exact
+     budgets use deterministic `(score, position)` ties; protected-window labels
+     must remain zero. CPU
      FP64 is normative and a tiled deterministic ROCm/PyTorch path is the
      practical corpus builder.
    - The offline trainer owns only `[compact_layers,kv_heads,hidden]` weights and
