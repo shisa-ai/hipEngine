@@ -212,7 +212,8 @@ torch-free.
 | `scripts/qwen38_dms_replay.py` | Train-only threshold calibration and capture replay |
 | `scripts/qwen38_dms_quality.py` | Dense/no-evict/CR exact-Q4 KL and top-1 runner |
 | `scripts/qwen38_dms_integrated_long.py` | Explicit c1 no-shadow 128K/256K capacity/decode/teardown runner |
-| `scripts/qwen38_dms_integrated_quality.py` | Dense-teacher versus compact no-evict/sidecar full-logit quality gate |
+| `scripts/qwen38_dms_integrated_quality.py` | Single-prompt dense-teacher versus compact no-evict/sidecar full-logit quality gate |
+| `scripts/qwen38_dms_integrated_quality_suite.py` | Shared-load four-category long-heldout integrated quality suite |
 | `scripts/qwen38_dms_build_long_manifest.py` | Builds source-disjoint 32K calibration/heldout corpora under the benchmark firewall |
 | `scripts/qwen38_dms_calibrate_long_bias.py` | Captures score-only long streams and folds per-layer/head CR2 quantiles into 64 BF16 biases |
 
