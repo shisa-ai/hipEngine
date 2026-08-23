@@ -52,6 +52,26 @@ DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
 DEFAULT_LLAMA_HIP_REPO = Path("/home/lhl/llama.cpp/llama.cpp-hip")
 DEFAULT_LLAMA_VULKAN_REPO = Path("/home/lhl/llama.cpp/llama.cpp-vulkan")
 DEFAULT_VULKAN_ICD = "/usr/share/vulkan/icd.d/radeon_icd.json"
+_EFFECTIVE_SERVER_ENV_KEYS = (
+    "HIPENGINE_BACKEND",
+    "HIPENGINE_HIP_ARCH",
+    "HIPENGINE_COMPILER_VERSION_FILE",
+    "HIPENGINE_EXECUTION_PROFILE",
+    "HIPENGINE_SUBMISSION_TRANSPORT",
+    "HIPENGINE_GGUF_FP16_RECURRENT_STATE",
+    "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
+    "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN",
+    "HIPENGINE_GGUF_GDN_PREFILL_MODE",
+    "HIPENGINE_PREFILL_DECODE_POLICY",
+    "HIPENGINE_MAX_PREFILL_CHUNK_TOKENS",
+    "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS",
+    "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE",
+    "HIPENGINE_GGUF_AR_PACKED_DECODE",
+    "HIP_VISIBLE_DEVICES",
+    "ROCR_VISIBLE_DEVICES",
+    "GPU_MAX_HW_QUEUES",
+    "HSA_OVERRIDE_GFX_VERSION",
+)
 _PROMETHEUS_LINE_RE = re.compile(
     r"^(?P<name>[A-Za-z_:][A-Za-z0-9_:]*)(?:\{(?P<labels>.*)\})?\s+"
     r"(?P<value>[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?|[-+]?Inf|NaN)(?:\s+\d+)?$"
@@ -1689,6 +1709,22 @@ def _server_command_and_env(
     return command, env, repo
 
 
+def _effective_server_environment(
+    args: argparse.Namespace,
+    *,
+    engine: str,
+) -> dict[str, str | None]:
+    """Return the selected environment axes exactly as the server receives them."""
+
+    _, environment, _ = _server_command_and_env(
+        args,
+        engine=engine,
+        concurrency=int(args.concurrencies[0]),
+        port=int(args.port_base),
+    )
+    return {key: environment.get(key) for key in _EFFECTIVE_SERVER_ENV_KEYS}
+
+
 def _wait_ready(base_url: str, process: subprocess.Popen[str], log_path: Path, timeout: float) -> float:
     started = time.perf_counter()
     deadline = started + float(timeout)
@@ -2241,7 +2277,7 @@ def _run_width(
             _stop_server(process)
 
 
-def _hardware_capture(args: argparse.Namespace) -> dict[str, Any]:
+def _hardware_capture(args: argparse.Namespace, *, engine: str) -> dict[str, Any]:
     return {
         "kernel_cmdline": Path("/proc/cmdline").read_text(encoding="utf-8").strip(),
         "uname": _capture(["uname", "-a"]),
@@ -2251,6 +2287,10 @@ def _hardware_capture(args: argparse.Namespace) -> dict[str, Any]:
         "tuned_profile": _capture(["tuned-adm", "active"]),
         "gpu_max_hw_queues": int(args.gpu_max_hw_queues),
         "memory_domain": str(args.memory_domain),
+        "effective_server_environment": _effective_server_environment(
+            args,
+            engine=engine,
+        ),
     }
 
 
@@ -2369,7 +2409,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "command": invocation,
         "command_shell": shlex.join(invocation),
-        "environment": _hardware_capture(args),
+        "environment": _hardware_capture(args, engine=engine),
         "provenance": _source_provenance(args, engine),
         "oracle": None,
         "rows": {},
