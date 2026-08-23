@@ -1,6 +1,6 @@
 # MTP IU4 verifier research plan
 
-_Status: instruction screen and current-verifier attribution complete; no runtime IU4 route or sidecar is implemented_
+_Status: R0–R2 complete; single-request B1–B3 IU4 rejected, wide/concurrent research leaf retained_
 
 _Branch: `mpt-iu4`_
 
@@ -46,12 +46,26 @@ would lower the target window by only **1.070×**; deleting gate/up entirely
 would bound it at **1.314×**. The one-layer experiment remains worthwhile, but
 its system ceiling is now measured rather than inferred.
 
-**Decision:** continue the research, but do not allocate a full 5.33–7.99 GiB
-sidecar yet. The next gate is a one-layer, operation-complete, actual-weight
-`M=2..5` experiment that includes packing, IU4 core, correction, BF16
-publication, and the gate/up SiLU boundary. Native IU4 becomes a stronger
-candidate for packed concurrent verifier rows (`V>=16`, preferably `V>=32`) and
-for `M>=96` prompt/verification batches than for single-request B3.
+R2 confirms the bound. The operation-complete layer-0 candidate—including U4
+packing, native IU4 WMMA, I32 correction/scales, BF16 gate/up publication, and
+SiLU—moves M2/M3/M4 from **0.459/0.473/0.553 ms to 0.584/0.591/0.601 ms**:
+**0.787×/0.800×/0.920×**, with 0/15, 0/15, and 1/15 paired wins. It first wins
+at M5 (1.195×), reaches 1.598× at M8, and reaches 3.190–4.463× at M16–128.
+Activation packing is only 9.7–11.8 µs; tiny-M failure is the padded IU4 core,
+not packing.
+
+The naive research sidecar is also not quality-qualified. It re-quantizes the
+authoritative Q4_K_S view rather than original BF16/F16 weights; one long-K
+symmetric S4 scale per output has about **15.9% weight NRMSE**, and the actual
+gate/up output is about **28.5–29.4% NRMSE** versus the current exact owner.
+Intermediate-channel softmax KL/top-1 are reported only for localization and are
+not the model full-logit gate.
+
+**Decision:** reject native IU4 for single-request B1–B3 and do not allocate the
+5.329-GiB gate/up companion. Retain the original gfx1151 research primitive for
+packed concurrent verification / M>=8 investigation, with the strongest case
+at M>=16, but require an original-weight/offline-optimized S4 product and the
+full T3 model quality packet before any runtime integration.
 
 ## 1. Scope and non-goals
 
@@ -66,7 +80,7 @@ The initial target is Qwen3.8-27B Q4_K_S on `hip_gfx1151`:
 
 This document does **not** claim:
 
-- an operation-complete IU4 kernel win;
+- a single-request B1–B3 operation-complete IU4 win;
 - a verifier or MTP throughput win;
 - production-profile admission;
 - exact trajectory preservation after a new S4 weight quantization;
@@ -413,21 +427,52 @@ FP16-state default and faulted in the incompatible MTP chain-journal path; the
 retained run explicitly uses `HIPENGINE_GGUF_FP16_RECURRENT_STATE=0`, matching
 the exact B3 state contract.
 
-### R2 — one-layer operation-complete leaf
+### R2 — one-layer operation-complete leaf (complete; tiny-M rejected)
 
-Build only layer 0 (then 8 and 63) gate/up companions:
+Implemented an original, direct-builtin gfx1151 research family under
+`hipengine/kernels/hip_gfx1151/quant/iu4_s4_sidecar.{hip,py}`, format helpers
+in `hipengine/quant/iu4_s4.py`, and independent arithmetic oracles in
+`hipengine/kernels/cpu_reference/iu4_s4.py`:
 
-1. offline S4 pack from an explicitly named source (prefer original BF16/F16
-   weights; re-quantizing Q4_K_S must be labeled as such);
-2. dynamic asymmetric U4 pack for `M=2,3,4,5,8,16,32,64,96,128`;
-3. direct `__builtin_amdgcn_wmma_i32_16x16x16_iu4_w32` core;
-4. I32 correction plus FP32 scale;
-5. gate/up BF16 publication and SiLU; and
-6. exact current owner as control/fallback.
+1. per-output symmetric S4 pack from explicitly labeled dequantized Q4_K_S;
+2. dynamic asymmetric U4 pack for M2/3/4/5/8/16/32/64/96/128;
+3. coalesced `[N16,K16,N,8]` / padded `[M16,K16,M,8]` native WMMA tiles;
+4. direct U4×S4 `__builtin_amdgcn_wmma_i32_16x16x16_iu4_w32`;
+5. I32 zero-point correction plus FP32 scales; and
+6. BF16 gate/up publication followed by SiLU×up, with the exact qmicro
+   Q8_1x2 rowtile8 owner as control/fallback.
 
-Use actual 100+ MiB cold-weight pools, counterbalanced order, at least 15 timed
-samples, and include pack+core+correction+SiLU. Report useful TOPS and effective
-GB/s separately. A core-only win cannot pass R2.
+The first row-major storage smoke reached only about 42 GB/s and was replaced
+before retention by the coalesced tile view. Final actual layer-0 results use a
+100,270,080-byte Q4_K_S gate/up source pair, 89,407,488-byte S4 candidate pair,
+three warmups, 15 counterbalanced HIP-event pairs, and runtime-equivalent
+rowtile8 chunking for the current owner:
+
+| Physical M | Current exact inclusive | IU4 inclusive | Speedup | Paired wins | IU4 core effective BW | Output NRMSE vs current |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2 | 0.459 ms | 0.584 ms | **0.787×** | 0/15 | 153.9 GB/s | 28.82% |
+| 3 | 0.473 ms | 0.591 ms | **0.800×** | 0/15 | 153.5 GB/s | 28.74% |
+| 4 | 0.553 ms | 0.601 ms | **0.920×** | 1/15 | 152.6 GB/s | 28.58% |
+| 5 | 0.682 ms | 0.571 ms | 1.195× | 15/15 | 152.7 GB/s | 28.46% |
+| 8 | 0.958 ms | 0.600 ms | 1.598× | 15/15 | 154.2 GB/s | 28.87% |
+| 16 | 1.913 ms | 0.600 ms | 3.190× | 15/15 | 150.2 GB/s | 29.42% |
+| 32 | 3.874 ms | 1.104 ms | 3.509× | 15/15 | 161.4 GB/s | 28.96% |
+| 64 | 7.961 ms | 1.991 ms | 3.998× | 15/15 | 183.7 GB/s | 29.06% |
+| 96 | 11.977 ms | 2.880 ms | 4.158× | 15/15 | 189.8 GB/s | 29.14% |
+| 128 | 16.374 ms | 3.669 ms | 4.463× | 15/15 | 196.5 GB/s | 29.00% |
+
+The current M16+ control is intentionally the runtime's repeated rowtile8 decode
+owner, not bulk-M512 WMMA prefill. Therefore the wide rows establish a packed
+verification/decode crossover, not a prompt-prefill speed claim. R2 stops after
+layer 0 because every native B1–B3 shape fails the inclusive speed gate and the
+naive re-Q4 sidecar is numerically far from qualified; layers 8/63 and a
+model-wide allocation cannot change that go/no verdict.
+
+CPU and GPU nibble/sign/correction tests pass. The cache-only trace sees the
+operation-complete core at local64, grid-x 69,632, grid-y 1/2/4/6/8, 24 VGPR,
+1 KiB LDS, and zero scratch; saved-code disassembly contains two static
+`v_wmma_i32_16x16x16_iu4` sites. Exact commands, samples, hashes, resources,
+and sidecar error are in the compact R2 artifact.
 
 ### R3 — numerical qualification
 
@@ -487,12 +532,12 @@ Promotion questions:
 | --- | --- | --- |
 | Native instruction | Expected IU4 ISA; >=1.8× matched IU8/FP16 median; stable samples | **Pass**: 1.98–2.00× |
 | Tiny-M useful arithmetic | Account for `M/16` tile utilization, not raw TOPS | **Warning**: M4 ≈ DOT4 roof |
-| Actual-weight gate/up | Operation-complete M2–5 beats current owner with pack included and passes declared leaf numerics | Not run |
+| Actual-weight gate/up | Operation-complete M2–5 beats current owner with pack included and passes declared leaf numerics | **Fail**: M2/M3/M4 = 0.787×/0.800×/0.920×; naive S4 unqualified |
 | Family attribution | Measured all-layer gate/up share and effective BW justify expected target-wall delta | **Pass, bounded**: 21.9–25.2% wall; ideal zero-pack S4 ceiling 1.032–1.070× |
-| Memory ROI | Measured complete target/cycle gain justifies +5.329 GiB gate/up (or +7.988 GiB FFN) | Not run |
+| Memory ROI | Measured complete target/cycle gain justifies +5.329 GiB gate/up (or +7.988 GiB FFN) | **Fail for c1 B1–B3**: leaf is slower; no model-wide allocation |
 | T3 quality | Full strict-teacher/determinism/isolation/BF16-relative/task packet passes | Not run |
 | MTP economics | Full category suite beats same-protocol true AR and current B3 without category regression | Not run |
-| Lifecycle | Sidecar load/fallback/close reaches zero tracked allocation and bounded process memory | Not run |
+| Lifecycle | Sidecar load/fallback/close reaches zero tracked allocation and bounded process memory | **One-layer pass**: tracked 0→0; model-wide not run |
 
 A failed tiny-M gate does not invalidate IU4 generally. It redirects the lane to
 `M>=32` packed verification and `M>=96` prompt work, where the roofline and
@@ -511,9 +556,14 @@ HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/mtp_iu4_roofline.py \
 # It used the final qwen36_dense_gguf_suite.py child with ROCTX markers,
 # cached builds, native B1-B3, and the required FP32-state rollback.
 
-# 3. Next: build one layer-0 gate/up S4 companion and measure M=2..128 with
-# actual weights, inclusive activation pack/correction/SiLU, before allocating
-# all 64.
+# 3. Re-run the retained operation-complete layer-0 gate (no model route):
+HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+python3 scripts/qwen38_iu4_s4_gate_up_leaf.py \
+  --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --layer 0 \
+  --rows 2,3,4,5,8,16,32,64,96,128 \
+  --warmups 3 --samples 15 --burst 1 \
+  --compiler-version-file /tmp/hipengine-hipcc-version.txt \
+  --output /tmp/mtp-iu4-r2.json
 ```
 
 The current lineage command is mechanically blocked by the already documented
@@ -526,6 +576,8 @@ was ported in R0; Kairic/Clang were used only as read-only references.
   [`benchmarks/results/2026-08-23-gfx1151-mtp-iu4-instruction-roofline.json`](benchmarks/results/2026-08-23-gfx1151-mtp-iu4-instruction-roofline.json)
 - Current exact verifier attribution:
   [`benchmarks/results/2026-08-23-gfx1151-qwen38-mtp-native-verifier-attribution.json`](benchmarks/results/2026-08-23-gfx1151-qwen38-mtp-native-verifier-attribution.json)
+- Operation-complete R2 leaf:
+  [`benchmarks/results/2026-08-23-gfx1151-qwen38-iu4-s4-gate-up-leaf.json`](benchmarks/results/2026-08-23-gfx1151-qwen38-iu4-s4-gate-up-leaf.json)
 - Current exact B3:
   [`benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json`](benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json)
 - gfx1151 roofline: [`docs/ROOFLINE-gfx1151.md`](docs/ROOFLINE-gfx1151.md)
