@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_external_dms_w8192_development_gate",
+  "status": "passed_development",
+  "date": "2026-08-23",
+  "host": "zbook",
+  "hardware": "AMD Ryzen AI Max+ PRO 395 / Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "commit": "b09eaad430e0c5d744ea9414476f40ee7a272a1e",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "candidate": {
+    "architecture": "external_linear_sidecar_v1",
+    "sidecar_bytes": 655640,
+    "sidecar_sha256": "e52fc60a4e8f86f00719be107b44a73567795dfdd88dbbce15cf955409fcd764",
+    "metadata_sha256": "62c1f2d2c590aff2756796f01bddfaf1b602750ceada4b3ac23639902ff8edfe",
+    "parent_metadata_sha256": "207b17f6936b67b23ea8f0e46386f4c16bf4b977d700dfe0978d805b07d66e7b",
+    "prefill_selection_mode": "exact_budget",
+    "window_size": 8192,
+    "target_historical_compression_ratio": 2
+  },
+  "firewall": {
+    "development_manifest": "/home/lhl/dms-artifacts/qwen38-external-v2-long/long-data-manifest-32k.json",
+    "development_split": "validation",
+    "v3_final_consumed": false
+  },
+  "protocol": {
+    "prompt_tokens": 32768,
+    "decode_steps_per_category": 8,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "teacher": "dense BF16 KV exact-Q4 resident session",
+    "trajectory": "strict dense-teacher input tokens",
+    "max_kl": 0.05,
+    "min_top1_agreement": 0.9,
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen38_dms_integrated_quality_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /home/lhl/dms-artifacts/qwen38-external-v2-long/sidecar-longweights-ft20-exactbudget-w8192/dms_metadata.json --data-manifest /home/lhl/dms-artifacts/qwen38-external-v2-long/long-data-manifest-32k.json --prompt-tokens 32768 --prompt-split validation --categories code,general_en,general_ja,mixed_ja_en --decode-steps 8 --modes sidecar --backend hip_gfx1151 --max-kl 0.05 --min-top1 0.9 --output /home/lhl/dms-artifacts/qwen38-external-v2-long/quality-dev-longweights-ft20-exactbudget-w8192-32k-d8.json --fail-on-fail"
+  },
+  "capacity": {
+    "all_categories_identical": true,
+    "actual_compression_ratio": 1.5996876372687783,
+    "live_token_rows": 1311296,
+    "logical_token_rows": 2097664,
+    "max_live_count": 20489,
+    "payload_bytes": 1342767104
+  },
+  "aggregate": {
+    "rows": 32,
+    "max_kl": 0.0007084898681351379,
+    "mean_kl": 0.00014156301783158504,
+    "p95_kl": 0.0005182268832811474,
+    "p99_kl": 0.0006603641357679256,
+    "top1_agreement": 1.0,
+    "all_categories_passed": true
+  },
+  "categories": {
+    "code": {"max_kl": 0.0007084898681351379, "top1_agreement": 1.0, "passed": true},
+    "general_en": {"max_kl": 0.00043877518063005277, "top1_agreement": 1.0, "passed": true},
+    "general_ja": {"max_kl": 0.00038328106755720383, "top1_agreement": 1.0, "passed": true},
+    "mixed_ja_en": {"max_kl": 0.0005532455701763883, "top1_agreement": 1.0, "passed": true}
+  },
+  "timing": {
+    "load_seconds": 43.603790676017525,
+    "total_seconds": 1264.0855420220178
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "active_allocations": 0
+  },
+  "next": "Freeze the policy and consume the source-disjoint v3 32K validation rows exactly once."
+}
