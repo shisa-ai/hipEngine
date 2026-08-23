@@ -4,6 +4,12 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-23 restored W7900 PARO topline] Qwen3.6-35B-A3B / packed ParoQuant W4 / BF16 KV / 512/128: withdrawn pre-fix row -> **2852.100 prefill / 115.804 decode tok/s** (percent delta n/a across different trajectories), with **18.144 GiB** tracked peak, five stable repaired-runtime samples, and clean provenance; `benchmarks/results/2026-08-23-w7900-current-default-hipengine-paro-packed-5run.json`.
+
+- [2026-08-23 refreshed W7900 GGUF topline] Qwen3.6-35B-A3B / Q4_K_M / BF16 KV / 512/128: **2716.648 -> 2763.590 prefill (+1.73%)** and **92.833 -> 94.603 decode (+1.91%)** on the current default; all six shapes pass five-sample stability and final-ID gates; `benchmarks/results/2026-08-23-w7900-current-default-hipengine-gguf-q4km-5run.json`.
+
+- [2026-08-23 refreshed W7900 dense publication and corrected MTP ratio] Qwen3.6-27B / Q4_K_M / BF16 KV / 512/128: **865.179 -> 875.364 prefill (+1.18%)** and **28.368 -> 28.681 decode (+1.10%)**; natural25 B3 **60.875 -> 60.929 tok/s (+0.09%)**, while current true AR **20.516 -> 29.457 (+43.58%)** correctly changes the stale **2.9672x -> 2.0684x** ratio. All ten prompts and GPU/CPU acceptance are exact; `benchmarks/results/2026-08-23-w7900-qwen36-27b-current-default-publication.json`.
+
 - [Concurrency2 gfx1151 Qwen3.8 Q4 row8 two-wave promotion] Exact wave-independent 16-column block lowers marked standard-Q4 **70.003→68.681 ms (-1.89%)** and c17 owner **368.413→362.290 ms**. c17 **11.271→11.297 tok/s**, ITL **0.4542→0.4482 s**; c32 **10.732→11.041 tok/s (+2.89%)**, ITL **0.8206→0.8019 s**, E2E **23.853→23.183 s**; all exact and c32 live admission overlaps. c32 fixed SLO remains blocked. `benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-q4-row8-two-wave.json`.
 
 - [Concurrency2 gfx1151 Qwen3.8 direct resident-state promotion; c17 fixed SLO closed] Canonical batch-owner Conv/GDN slabs remove duplicate packed-state round trips: clean marked c17 **410.878→368.413 ms (-10.33%)**, fused state transfer **4 launches / 49.16 ms→0**. Three-repeat c17 **10.965→11.271 tok/s**, ITL **0.5046→0.4542 s**, E2E **12.402→12.066 s**, 3/3 fixed-SLO passes; c32 **10.478→10.732 tok/s**, ITL **0.878→0.821 s** but remains blocked. Exact clean c13 lifecycle passes. `benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json`.
