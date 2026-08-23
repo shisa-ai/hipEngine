@@ -6,9 +6,9 @@ the immutable original-product full-FFN route reaches 2.61–3.35× leaf and win
 complete prefill against both authorities, but fails both binding distribution
 gates. It is retained explicit/quality-traded only; decode stays strict fallback._
 
-_Branch: `mpt-iu4`_
+_Branch: `mtp-iu4` (renamed from `mpt-iu4` 2026-08-24 — original uploader typo)_
 
-_Last updated: 2026-08-23_
+_Last updated: 2026-08-24 (gfx1100 port screen §4.2.3)_
 
 ## Verdict
 
@@ -546,6 +546,55 @@ byte ratio, and the complete target-window ROI cannot justify 5.329 GiB plus a
 T3 campaign. DOT8 is worth revisiting only if a future low-M shape is
 arithmetic-bound — none is currently identified. Recorded so this option is
 not re-derived later.
+
+### 4.2.3 gfx1100 port screen (2026-08-24)
+
+The whole gfx1151 plan leaves one question open: does the IU4 capability
+exist on RDNA3, or is it a gfx1151/RDNA3.5 artifact? We now have a direct
+answer from the same in-tree instruction screen run on both gfx1100 devices
+(W7900 and 7900 XTX). The ISA transfer is confirmed and the headline 2×
+lane transfers; the tiny-M DOT8 advantage does **not**.
+
+| Arithmetic lane (best median) | gfx1151 Radeon 8060S | W7900 gfx1100 | 7900 XTX gfx1100 |
+| --- | ---: | ---: | ---: |
+| FP16 WMMA | 55.066 TFLOP/s | 126.9 | 140.1 |
+| BF16 WMMA | 55.381 TFLOP/s | 133.3 | 141.6 |
+| IU8 WMMA (`v_wmma_i32_16x16x16_iu8`) | 55.015 TOPS | 122.1 | 134.3 |
+| **IU4 WMMA (`v_wmma_i32_16x16x16_iu4`)** | **109.715 TOPS** | **242.0** | **267.0** |
+| **IU4/IU8 WMMA ratio** | **1.994×** | **1.981×** | **1.989×** |
+| DOT4 (`v_dot4_i32_iu8`) | 28.252 TOPS | 52.3 | 56.3 |
+| DOT8 (`v_dot8_i32_iu4`) | 56.830 TOPS | 61.2 | 66.2 |
+| **DOT8/DOT4 ratio** | **2.012×** | **1.188×** | **1.169×** |
+
+All six target instructions compile **and execute** on gfx1100
+(`isa_all_expected_seen: true` in both artifacts):
+`v_wmma_i32_16x16x16_iu4` and `v_dot8_i32_iu4` are present in the gfx1100
+ISA, so this is not a gfx1151-only instruction set. Same harness and
+parameters as the gfx1151 row (65536 iters, 9 samples, 3 warmups, best
+median). Artifacts:
+[`W7900`](benchmarks/results/2026-08-24-gfx1100-w7900-mtp-iu4-instruction-roofline.json)
+and
+[`7900 XTX`](benchmarks/results/2026-08-24-gfx1100-7900xtx-mtp-iu4-instruction-roofline.json).
+
+**The prefill thesis transfers.** IU4 WMMA sustains **1.981×/1.989×** IU8 on
+gfx1100, matching gfx1151. gfx1100's absolute IU8 roof is already ~2.3×
+gfx1151's (122–134 vs 55 TOP/s), so IU4 doubles an already-higher ceiling.
+The compute-bound dense-prefill surface (§4.2, R7/R8/R13) is therefore the
+right place to look on gfx1100: the 2× lane plus Q4→FP16 dequant removal
+should transfer. No gfx1100 prefill kernel timing exists yet — this screen
+authorizes that check, nothing more.
+
+**The tiny-M DOT8 thesis is weaker on gfx1100, not stronger.** gfx1151's 2×
+DOT8-over-DOT4 (56.83 vs 28.25) is largely a gfx1151 DOT4 under-measurement:
+gfx1151 DOT4 runs at ~half its WMMA roof. On gfx1100, DOT4 is already
+efficient (~45% of the 122–134 IU8 roof), so the DOT8 lane adds only
+**1.169–1.188×**. Since B1–B3 verifier decode is a DOT-instruction,
+memory-bound regime anyway (§3), the only remaining lever is the 1.12× byte
+ratio, and the marginal-value argument from the Verdict review applies *more*
+strongly here: the DOT8 arithmetic advantage that partially motivated the
+gfx1151 B4 leaf is largely absent on gfx1100. **Do not pursue a tiny-M B1–B3
+IU4 sidecar on gfx1100**; the exact-M4 qmicro bandwidth fix (R9 item 2) stays
+the decode lever and is representation-free.
 
 ### 4.3 KV-cache use is a different thesis
 
