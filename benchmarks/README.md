@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-23**
+Last updated: **2026-08-24**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -205,6 +205,17 @@ queue1 versus queue8 crosses by block. Every policy still has zero fixed-SLO
 goodput. This retains queue1/queue8 as finalists; it does not promote a queue
 policy before full-width, arrival/soak, and context/graph sweeps.
 [`Core matrix`](results/2026-08-23-gfx1151-qwen38-hardware-queue-core-matrix.json).
+
+The subsequent 130-row full-width matrix supersedes the core finalist
+interpretation. All five policies remain mechanically stable, but no queue
+count wins generically: queue2 has the highest normalized 13-width throughput;
+queue1/4/8/unset are **0.75%/0.64%/0.50%/0.42% lower**. The core queue8 c32
+win reverses in both full-width blocks (**-3.68%/-6.90% vs queue2**, paired
+median **-5.29%**). All policies pass all six SLO measurements through c7, c8
+is partial, and c9+ has zero SLO-passing runs. Queue2 remains the current
+control with no new policy promotion pending arrival/soak and context/graph
+stability sweeps.
+[`Full-width matrix`](results/2026-08-24-gfx1151-qwen38-hardware-queue-full-width-matrix.json).
 
 The separate W7900 Qwen3.8-27B `Q4_K_M` direct graph packet qualifies physical
 `(1,2,3,4,5,6,7,8)`: c1-c8 reaches **30.30/53.79/75.47/93.49/105.67/
