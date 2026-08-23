@@ -118,6 +118,42 @@ def test_plan_hip_build_can_enable_prefill_mcumode_for_diagnostics(
     assert decode.flags.count("-mcumode") == 1
 
 
+def test_plan_hip_build_uses_isolated_environment_cache_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
+    isolated = tmp_path / "isolated-cache"
+    monkeypatch.setenv("HIPENGINE_BUILD_CACHE_ROOT", str(isolated))
+
+    artifact = plan_hip_build(
+        sources=[source],
+        family="smoke",
+        compiler_version="hipcc test version",
+    )
+
+    assert artifact.cache_dir.parent == isolated
+    assert not isolated.exists()
+
+
+def test_build_hip_environment_require_cached_is_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
+    monkeypatch.setenv("HIPENGINE_BUILD_CACHE_ROOT", str(tmp_path / "isolated-cache"))
+    monkeypatch.setenv("HIPENGINE_REQUIRE_CACHED_BUILD", "1")
+    monkeypatch.setenv("HIPENGINE_COMPILER_VERSION_TEXT", "hipcc test version")
+
+    with pytest.raises(FileNotFoundError, match="cached build artifact missing"):
+        build_hip(
+            sources=[source],
+            family="smoke",
+            compiler="definitely-not-a-real-hipcc",
+            load=False,
+        )
+
+
 def test_build_hip_dry_run_does_not_create_cache_or_run_compiler(tmp_path: Path) -> None:
     source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
 
