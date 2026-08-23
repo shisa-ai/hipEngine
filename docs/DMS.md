@@ -60,7 +60,7 @@ The normative KV ABI and broader storage roadmap remain in
 | Allocator-visible production savings | Partial: c1 tracked residency drops 4.592/7.813 GiB at 128K/256K; full P7 controls open |
 | Serving throughput and profiler evidence | Integrated diagnostic timings measured; no comparator or performance claim |
 | Integrated c1-c32 lifecycle and long soak | Open |
-| Long-context-stable sidecar | Train-only bias repair passes four-category 8K; CR2 rejects Japanese at 32K, one conservative CR1.5 rescue in progress |
+| Long-context-stable sidecar | Bias-only CR2 and conservative CR1.5 both reject Japanese at 32K; long-weight retraining in progress |
 | Portable cross-host sidecar package | Open |
 | End-to-end campaign and production guide | Complete in this document |
 | Merge into `origin/main` | Open |
@@ -207,7 +207,7 @@ torch-free.
 | `hipengine/models/qwen35_dms.py` | Qwen family capability and physical-to-compact layer mapping |
 | `hipengine/runtime/qwen35_gguf_runner.py` | Exact GGUF capture tap and quality substitution hooks |
 | `scripts/qwen38_dms_capture.py` | Exact-Q4 corpus capture CLI |
-| `scripts/qwen38_dms_build_labels.py` | Deterministic oracle-label CLI |
+| `scripts/qwen38_dms_build_labels.py` | Deterministic oracle-label CLI; full-prefix query-stride subsampling for feasible 32K retraining |
 | `scripts/qwen38_dms_train_sidecar.py` | Sidecar-only trainer/exporter |
 | `scripts/qwen38_dms_replay.py` | Train-only threshold calibration and capture replay |
 | `scripts/qwen38_dms_quality.py` | Dense/no-evict/CR exact-Q4 KL and top-1 runner |

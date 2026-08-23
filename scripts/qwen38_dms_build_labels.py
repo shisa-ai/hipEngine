@@ -31,6 +31,7 @@ def future_attention_mass_torch(
     window_size: int,
     device: str,
     query_tile: int,
+    query_stride: int = 1,
 ) -> np.ndarray:
     """Deterministic tiled PyTorch implementation for practical corpus labeling."""
 
@@ -47,9 +48,12 @@ def future_attention_mass_torch(
     if kv_heads <= 0 or q_heads % kv_heads:
         raise ValueError("DMS GPU oracle Q heads must divide into KV groups")
     tile = int(query_tile)
+    stride = int(query_stride)
     window = int(window_size)
-    if tile <= 0 or window < 0:
-        raise ValueError("DMS GPU query_tile must be positive and window non-negative")
+    if tile <= 0 or stride <= 0 or window < 0:
+        raise ValueError(
+            "DMS GPU query_tile/query_stride must be positive and window non-negative"
+        )
     torch.use_deterministic_algorithms(True)
     q = torch.as_tensor(queries, dtype=torch.float32, device=device)
     k = torch.as_tensor(keys, dtype=torch.float32, device=device)
@@ -61,10 +65,19 @@ def future_attention_mass_torch(
         for kv_head in range(kv_heads):
             head_keys = k[:, kv_head]
             group = q[:, kv_head * group_size : (kv_head + 1) * group_size]
-            for start in range(0, tokens, tile):
-                end = min(tokens, start + tile)
-                query_positions = torch.arange(start, end, device=device, dtype=torch.int64)
-                logits = torch.einsum("bgd,kd->bgk", group[start:end], head_keys) * scale
+            for start in range(0, tokens, tile * stride):
+                end = min(tokens, start + tile * stride)
+                query_positions = torch.arange(
+                    start, end, stride, device=device, dtype=torch.int64
+                )
+                logits = (
+                    torch.einsum(
+                        "bgd,kd->bgk",
+                        group.index_select(0, query_positions),
+                        head_keys,
+                    )
+                    * scale
+                )
                 causal = key_positions.view(1, 1, tokens) <= query_positions.view(-1, 1, 1)
                 logits = logits.masked_fill(~causal, float("-inf"))
                 probabilities = torch.softmax(logits, dim=-1)
@@ -78,7 +91,9 @@ def future_attention_mass_torch(
     return mass.numpy()
 
 
-def _git_provenance(*, device: str, query_tile: int) -> dict[str, Any]:
+def _git_provenance(
+    *, device: str, query_tile: int, query_stride: int
+) -> dict[str, Any]:
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=REPO_ROOT,
@@ -100,6 +115,7 @@ def _git_provenance(*, device: str, query_tile: int) -> dict[str, Any]:
         "command": [str(value) for value in sys.argv],
         "device": str(device),
         "query_tile": int(query_tile),
+        "query_stride": int(query_stride),
         "host": {
             "node": uname.node,
             "system": uname.system,
@@ -126,7 +142,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise FileNotFoundError(captures)
     device = str(args.device)
     query_tile = int(args.query_tile)
+    query_stride = int(args.query_stride)
+    if query_stride <= 0:
+        raise ValueError("query_stride must be positive")
     if device == "cpu":
+        if query_stride != 1:
+            raise ValueError("query_stride subsampling requires a GPU torch device")
         mass_builder = future_attention_mass_cpu
         backend = "cpu_numpy_float64"
         score_dtype = "float64"
@@ -137,8 +158,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             window_size=window_size,
             device=device,
             query_tile=query_tile,
+            query_stride=query_stride,
         )
-        backend = f"torch_{device}_float32_tiled"
+        backend = f"torch_{device}_float32_tiled_query_stride{query_stride}"
         score_dtype = "float32_device_float64_host"
     label_manifest = build_dms_label_artifact(
         captures,
@@ -148,7 +170,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         mass_builder=mass_builder,
         compute_backend=backend,
         compute_score_dtype=score_dtype,
-        compute_provenance=_git_provenance(device=device, query_tile=query_tile),
+        compute_provenance=_git_provenance(
+            device=device,
+            query_tile=query_tile,
+            query_stride=query_stride,
+        ),
     )
     manifest = load_dms_label_manifest(label_manifest, verify_shards=True)
     return {
@@ -171,6 +197,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--query-tile", type=int, default=128)
+    parser.add_argument("--query-stride", type=int, default=1)
     return parser
 
 

@@ -72,6 +72,28 @@ def test_tiled_gpu_future_mass_matches_cpu_and_repeats_deterministically() -> No
     np.testing.assert_allclose(first, expected, rtol=1e-6, atol=1e-6)
     np.testing.assert_array_equal(first, second)
 
+    strided_first = future_attention_mass_torch(
+        query,
+        key,
+        window_size=1,
+        device="cuda",
+        query_tile=2,
+        query_stride=2,
+    )
+    strided_second = future_attention_mass_torch(
+        query,
+        key,
+        window_size=1,
+        device="cuda",
+        query_tile=2,
+        query_stride=2,
+    )
+    assert strided_first.shape == expected.shape
+    assert np.all(np.isfinite(strided_first))
+    assert np.all(strided_first >= 0.0)
+    np.testing.assert_array_equal(strided_first, strided_second)
+    assert not np.array_equal(strided_first, first)
+
 
 def test_eviction_labels_enforce_budget_window_and_position_tie_break() -> None:
     scores = np.asarray(
