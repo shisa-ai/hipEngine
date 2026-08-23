@@ -2,10 +2,12 @@
 
 Last updated: 2026-08-23
 
-> **Current status:** trained external CR2 candidate complete; integrated product
-> gate open. The candidate passes the exact-Q4 outer quality floor, but dense KV
-> paging remains the default. Current quality evaluation retains a dense KV
-> shadow and is **not** evidence of allocator savings or serving speed.
+> **Current status:** trained external CR2 candidate and explicit c1 integrated
+> route complete; product gate remains open/default-off. Exact-Q4 short-context
+> quality passes, and 128K/256K runs prove dense-free compact decode plus tracked
+> resident savings. Long-context realized eviction is far more aggressive than
+> CR2 calibration (6.585x/7.220x live-row compression), so dense-teacher quality,
+> same-host controls, performance, lifecycle, and public selection remain open.
 
 This document is the end-to-end record and continuation plan for hipEngine's
 external Dynamic Memory Sparsification campaign. It covers the design, exact
@@ -13,8 +15,10 @@ model scope, data and training process, reproducible commands, retained artifact
 quality results, implementation map, known limitations, and the production
 punchlist.
 
-The compact evidence source is
-[`benchmarks/results/2026-08-23-qwen38-external-dms-cr2-trained-candidate.json`](../benchmarks/results/2026-08-23-qwen38-external-dms-cr2-trained-candidate.json).
+The trained-candidate evidence is
+[`2026-08-23-qwen38-external-dms-cr2-trained-candidate.json`](../benchmarks/results/2026-08-23-qwen38-external-dms-cr2-trained-candidate.json);
+the integrated long-capacity evidence is
+[`2026-08-23-gfx1151-qwen38-external-dms-integrated-128k-256k-capacity.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-external-dms-integrated-128k-256k-capacity.json).
 The normative KV ABI and broader storage roadmap remain in
 [`KVCACHE.md`](KVCACHE.md); lifecycle integration is tracked in
 [`CONCURRENCY2.md`](CONCURRENCY2.md).
@@ -24,13 +28,13 @@ The normative KV ABI and broader storage roadmap remain in
 | Question | Answer |
 | --- | --- |
 | Can we train a DMS predictor without modifying the model? | **Yes.** The base GGUF is never optimized, modified, or requantized. |
-| Can we test predictor correctness and exact-Q4 model quality? | **Yes.** Capture, labels, training, replay, compact substitution, KL/top-1, and deterministic repeats are implemented. |
+| Can we test predictor correctness and exact-Q4 model quality? | **Yes at the qualified 768-token scope.** Capture, labels, training, replay, compact substitution, KL/top-1, and deterministic repeats are implemented; integrated long-context quality remains open. |
 | How large is the predictor? | **655,640 bytes** (`640.27 KiB`, `0.6253 MiB`) plus 2,620 bytes of required metadata. |
 | How long did retained training take? | **99.42 seconds** internal trainer time; 101 seconds process wall time. |
 | How long did the measured retained pipeline take? | **774 seconds (12m54s)** for capture, labels, final training, and both quality gates; excludes data curation, replay, code development, and cache warmup. |
 | What candidate passed? | **CR2/window256:** max KL `0.009691`, 100% top-1, 1.54293x observed total live-cell compression on 768-token heldouts. |
 | Did CR4 or CR8 pass? | **No.** Their max KL values were `0.08908` and `0.24993`, above the `0.05` outer floor. |
-| Does this already save serving memory? | **Not proven.** The quality route keeps dense KV and is quality-only. |
+| Does this already save serving memory? | **Yes for the explicit c1 post-prefill owner:** tracked residency falls 4.592 GiB at 128K and 7.813 GiB at the 256K limit after dense release. Full production capacity qualification remains open because prefill still has a dense peak, physical compact buffers retain max-head slack, and same-host controls/sampled peaks are missing. |
 | Can it become faster than dense decode? | **Plausibly at long context, but not yet measured.** Compact attention scans fewer rows; the production GPU predictor/pack/attention path must make its overhead smaller than that saving. |
 | Is it quantization-independent? | The BF16 sidecar representation is not tied to GGUF storage, but the current metadata and evidence are intentionally bound to one exact Q4_K_M file. Every additional quant requires calibration and qualification. |
 | Is it on `origin/main`? | Not as of this campaign snapshot. The implementation is committed on branch `fastdms`. |
@@ -47,12 +51,12 @@ The normative KV ABI and broader storage roadmap remain in
 | Exact-Q4 logit quality evaluation | Complete; CR2 passed |
 | Compact allocator/backend primitives | Implemented and fixture-tested |
 | Host/device compact transaction rollback | Implemented and fixture-tested |
-| GPU schema-v2 external-linear prediction | Implemented and exact-decision validated; serving wiring open |
-| Bounded split-K compact attention | Implemented; 128K/256K live-count primitive gates pass, serving wiring open |
+| GPU schema-v2 external-linear prediction | Implemented, exact-decision validated, and wired into explicit c1 prefill/decode |
+| Bounded split-K compact attention | Implemented, primitive-qualified, and executed by explicit c1 at 128K/256K |
 | Normal resident-session DMS selection | Integrated for explicit c1 exact-artifact use; public `LLM.generate()` selection open |
 | Sole-owner no-dense-shadow GGUF decode | Integrated; dense KV is temporary during correctness-first prefill and released after pack |
-| Allocator-visible production savings | Not measured |
-| Serving throughput and profiler evidence | Not measured |
+| Allocator-visible production savings | Partial: c1 tracked residency drops 4.592/7.813 GiB at 128K/256K; full P7 controls open |
+| Serving throughput and profiler evidence | Integrated diagnostic timings measured; no comparator or performance claim |
 | Integrated c1-c32 lifecycle and long soak | Open |
 | Portable cross-host sidecar package | Open |
 | End-to-end campaign and production guide | Complete in this document |
@@ -204,6 +208,7 @@ torch-free.
 | `scripts/qwen38_dms_train_sidecar.py` | Sidecar-only trainer/exporter |
 | `scripts/qwen38_dms_replay.py` | Train-only threshold calibration and capture replay |
 | `scripts/qwen38_dms_quality.py` | Dense/no-evict/CR exact-Q4 KL and top-1 runner |
+| `scripts/qwen38_dms_integrated_long.py` | Explicit c1 no-shadow 128K/256K capacity/decode/teardown runner |
 
 The implementation derives its DMS semantics from read-only FastDMS reference
 commit `c602b0ec3266da7f74d6a658b3dafcddb443fddd`. All hipEngine development and
@@ -211,39 +216,43 @@ evidence were produced in this repository; `~/FastDMS` was not modified.
 
 ### Integrated-serving audit
 
-The first production-route audit on gfx1151 found that the low-level device
-building blocks exist but are not yet a long-context serving route:
+The first production-route audit on gfx1151 identified the low-level seams;
+the subsequent explicit c1 integration now has this status:
 
 - `dms_streaming_pack`, `dms_append_decode`, and `dms_compact_attn_decode` pass
   focused host/device fixtures after repairing stale post-shrink raw-buffer
   sizing in the tests;
 - the older GPU `dms_extract_decision/corrected_mask` primitive implements
   schema-v1 borrowed-query-channel extraction;
-- schema-v2 now has a separate registered GPU external-linear projector with
-  resident BF16 sidecar weights. It matches all 393,216 retained validation
-  decisions and has a scratch-free profiler identity, but the normal GGUF session
-  does not call it yet;
+- schema-v2 has a registered GPU external-linear projector with resident BF16
+  sidecar weights. It matches all 393,216 retained validation decisions, has a
+  scratch-free profiler identity, and is called by explicit c1 GGUF prefill and
+  decode;
 - `DMSExternalDecisionRuntime` remains the host/reference composition used by
   replay and quality tooling;
-- `DMSDevicePayloadStore` owns no host K/V mirror and now accepts direct
+- `DMSDevicePayloadStore` owns no host K/V mirror and accepts direct
   device-resident K/V and decisions with persistent base/capacity/live metadata;
-  strict host composition still exists, but the normal GGUF resident session has
-  not selected the direct seam yet;
+  strict host composition remains the fallback, while explicit c1 GGUF sessions
+  select the direct seam;
 - explicit `Qwen35GGUFResidentSession(..., dms_metadata_path=...)` now selects
   the integrated c1 route. Paged dense KV is a temporary correctness-first
   prefill owner, then is released; decode scans only compact extents. Public
   `LLM.generate()`/c>N selection and streaming prefill without the temporary
   dense peak remain open;
 - the original fixture compact-attention body still uses dynamic shared score
-  storage and remains the small-live fallback. A new 256-row split-K producer/
-  reducer holds LDS at 2,048/1,024 bytes and passes direct 65,664/131,200-row
-  (ideal 128K/256K CR2) numerical probes, but the normal GGUF session has not
-  selected it yet.
+  storage and remains the small-live fallback. The 256-row split-K producer/
+  reducer holds LDS at 2,048/1,024 bytes, passes direct 65,664/131,200-row
+  numerical probes, and is selected by explicit c1 when live capacity exceeds
+  the bounded small-live route.
 
 The old quality harness remains dense-shadow evidence only. The explicit
-integrated resident route is now the owner used by the 128K/256K campaign; its
-remaining questions are temporary dense-prefill peak, long-run quality,
-allocator savings after pack, performance, c>N, and public API promotion.
+integrated resident owner passes 128K and exact-limit 256K execution: after pack
+it releases dense KV, produces finite compact decode, lowers tracked residency
+by 4.592/7.813 GiB, and drains to zero. This is retained capacity evidence, not
+quality or speed evidence. Its remaining questions are temporary dense-prefill
+peak, severe long-context calibration drift, physical max-head slack,
+same-host controls, performance, c>N, and public API promotion. See
+[`2026-08-23-gfx1151-qwen38-external-dms-integrated-128k-256k-capacity.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-external-dms-integrated-128k-256k-capacity.json).
 
 ## Campaign host
 
@@ -614,8 +623,8 @@ focused-repair policy in [`TESTING.md`](TESTING.md).
   and tensor identities fail closed.
 - Capture, labels, training, BF16 export, and replay are deterministic under the
   recorded protocol.
-- The retained CR2 candidate passes the broad long exact-Q4 outer floor in every
-  category with 100% top-1.
+- The retained CR2 candidate passes the broad 768-token exact-Q4 outer floor in
+  every category with 100% top-1.
 - CR4 and CR8 do not pass and are not qualified.
 - Host compact pack/decode/reclaim is transactionally exercised by the quality
   path.
@@ -624,10 +633,12 @@ focused-repair policy in [`TESTING.md`](TESTING.md).
 
 ### Not proven
 
-- The quality runner uses
-  `dense_prefill_then_host_compact_decode_override` and retains dense KV.
-- The reported 1.54293x is logical live-cell compression, not measured device
-  allocation reduction.
+- The short-context quality runner uses
+  `dense_prefill_then_host_compact_decode_override` and retains dense KV; its
+  1.54293x result remains logical-only.
+- The separate integrated c1 route proves post-pack tracked savings, but not
+  long-context dense-teacher quality, sampled process/device peak, no-evict or
+  dense controls, or bounded streaming-prefill peak.
 - No DMS throughput, latency, TTFT, ITL, or E2E performance claim exists.
 - No long c1/c8 soak or integrated c1-c32 request lifecycle is qualified.
 - No production serving `rocprofv3` trace proves the final kernel route.
@@ -656,10 +667,21 @@ Ignoring bounded metadata and allocator alignment, the CR2/window256 target is:
 | 128K | 8.000 GiB | 65,664 | 4.008 GiB | 3.992 GiB | 1.996x |
 | 256K | 16.000 GiB | 131,200 | 8.008 GiB | 7.992 GiB | 1.998x |
 
-These are planning calculations, **not measurements**. Production acceptance
-must reconcile allocator-owned payload, positions, eviction masks, extent
-slack, scales if any, scratch, and tracked/session peak. It must also prove there
-is no dense mirror.
+Those ideal CR2 rows are planning calculations. The first integrated c1
+measurements differ materially:
+
+| Integrated row | Logical live CR | Logical live BF16 K/V | Physical compact slot planes | Net tracked post-pack residency drop | Tracked peak |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 128K + 2 decode | 6.585x | 1.215 GiB | 3.408 GiB | 4.592 GiB | 30.294 GiB |
+| 262,142 + 2 decode (256K limit) | 7.220x | 2.216 GiB | 8.171 GiB | 7.813 GiB | 43.322 GiB |
+
+Both rows release dense KV before decode, produce finite logits, and drain
+tracked allocation to zero. However, this is a repeated-corpus capacity stress,
+not a semantic-quality workload. The excessive live compression versus CR2 is
+a promotion blocker, and uniform max-head allocation leaves 2.79x/3.67x
+capacity-to-live slot slack. Production acceptance must still reconcile sampled
+process/device peak, same-host dense/no-evict controls, all scratch/metadata, and
+long-context dense-teacher quality.
 
 Primary capacity goal:
 
