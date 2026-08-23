@@ -224,20 +224,21 @@ def test_compact_mtp_scoreboard_uses_true_ar_artifacts() -> None:
     results = repo_root / "benchmarks/results"
     scoreboard = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
 
-    dense_path = results / "2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json"
+    dense_path = results / "2026-08-23-w7900-qwen36-27b-current-default-publication.json"
     dense = json.loads(dense_path.read_text(encoding="utf-8"))
     assert dense["performance_claim"] is True
-    assert dense["correctness_claim"] is True
-    assert dense["objective"]["credible_current_options_exhausted"] is True
-    dense_control = dense["final_natural25_control"]
-    assert dense_control["all_exact_greedy"] is True
-    assert dense_control["all_gpu_accept_match_cpu"] is True
-    dense_b3 = dense_control["B3_tok_s"]
-    dense_ratio = dense_control["mtp_vs_true_ar"]["B3"]
+    assert dense["performance_claim_class"] == "current_snapshot"
+    assert dense["correctness"]["passed"] is True
+    dense_natural = dense["natural25"]
+    assert dense_natural["correctness"]["all_exact_greedy"] is True
+    assert dense_natural["correctness"]["all_gpu_accept_match_cpu"] is True
+    dense_ar = dense_natural["summary"]["true_ar"]["full"]
+    dense_b3 = dense_natural["summary"]["mtp"]["3"]["full"]
     expected_dense = (
         "| W7900 / Qwen3.6-27B Dense `Q4_K_M` | Exact/default natural25 B3 | "
-        f"{dense_control['true_ar_tok_s']:.3f} | **{dense_b3:.3f}** | "
-        f"**{dense_ratio:.4f}x** |"
+        f"{dense_ar['decode_tok_s_weighted']:.3f} | "
+        f"**{dense_b3['decode_tok_s_weighted']:.3f}** | "
+        f"**{dense_b3['mtp_vs_true_ar']:.4f}x** |"
     )
     assert expected_dense in scoreboard
     assert dense_path.name in scoreboard

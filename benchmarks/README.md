@@ -15,8 +15,9 @@ The root README exports this compact retained summary verbatim.
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **865.179** | **28.368** |
+| Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2852.100** | **115.804** |
+| Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2763.590** | **94.603** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **875.364** | **28.681** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -32,7 +33,7 @@ Each value is the total tokens per second across all active requests:
 
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` — MTP-3 | **60.875 tok/s** | **2.9672x** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` — MTP-3 | **60.929 tok/s** | **2.0684x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **122.67 tok/s** | **1.2679x** |
 
 ### RX 7900 XTX (`gfx1100`) — Qwen3.8-27B `Q4_K_M` prefill
@@ -89,24 +90,11 @@ Each value is the total tokens per second across all active requests:
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
 
 Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary.
-llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens.
-The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
+llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 ## Current default notes
-
-Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with explicit FP32 rollback after the complete packed and serving gates; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). The broader default-off review remains in the [`promotion inventory`](results/2026-08-20-valid-faster-default-off-inventory.json).
-
-### External DMS trained candidate (default-off)
-
-| Exact model | Candidate | Long heldout quality | Total live-cell compression | Status |
-| --- | --- | --- | ---: | --- |
-| Qwen3.8-27B `Q4_K_M` | external linear CR2/window256 | max KL **0.009691**, top-1 **100%** | **1.543x** | trained candidate; integrated product gate open |
-
-CR4/CR8 are rejected at max KL 0.08908/0.24993. The CR2 row is quality-only and
-retains dense KV during replay; it is not a serving-memory or performance claim.
-Dense paging remains default. See the [`candidate evidence`](results/2026-08-23-qwen38-external-dms-cr2-trained-candidate.json).
-
+Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). Exact Qwen3.8-27B `Q4_K_M` external DMS CR2/window256 passes max KL **0.009691**, **100%** top-1, and **1.543x** logical live cells; dense-shadow quality only, product gate open/default-off. [`DMS evidence`](../docs/DMS.md).
 ## Where detailed evidence lives
 
 | Need | Source |
@@ -174,9 +162,8 @@ this table in the same unit.
 | **Stale / superseded** | A newer route, dependency, or evidence contract replaced it. | No. |
 | **Blocked / rejected** | The protocol could not complete or the candidate failed a gate. | No numeric topline. |
 
-A row is scoped by platform, GPU, model fingerprint, quantization, KV type,
-backend, workload, concurrency, speculative policy, and timing window. A newer
-diagnostic never replaces a retained row.
+A row is scoped by platform, model/quant/KV, workload, concurrency, policy, and
+timing window. A newer diagnostic never replaces a retained row.
 
 ## Current Generation-2 qualification
 
@@ -272,30 +259,35 @@ candidates remain in artifacts and the changelog. Evidence:
 
 ### Radeon Pro W7900: Qwen3.6-35B-A3B
 
-The current valid six-shape publication is GGUF. `Peak` is hipEngine tracked
-allocator high-water.
+The repaired-runtime publication uses two warmups and five measured resets per
+right-sized session. `Peak` is hipEngine tracked allocator high-water.
 
-| Workload | GGUF prefill | GGUF decode | GGUF peak |
+| Workload | PARO prefill | PARO decode | PARO peak | GGUF prefill | GGUF decode | GGUF peak |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512/128 | **2852.100** | **115.804** | **18.144 GiB** | 2763.590 | 94.603 | 21.073 GiB |
+| 1K/128 | 2965.063 | **103.113** | **18.367 GiB** | **3198.957** | 99.728 | 21.133 GiB |
+| 4K/128 | 2927.519 | **106.020** | **19.161 GiB** | **3177.565** | 101.917 | 21.468 GiB |
+| 32K/128 | 2085.511 | **92.422** | **19.851 GiB** | **2154.871** | 89.432 | 22.060 GiB |
+| 64K/128 | 1559.680 | **79.098** | **20.344 GiB** | **1600.734** | 78.021 | 22.736 GiB |
+| 128K/128 | 1049.467 | 61.804 | **21.881 GiB** | **1058.075** | **63.177** | 24.088 GiB |
+
+PARO leads short-context generation and memory; GGUF leads prefill from 1K and
+128K generation. IDs, variance gates, and clean provenance pass. Evidence:
+[`PARO sweep`](results/2026-08-23-w7900-current-default-hipengine-paro-packed-5run.json), [`GGUF sweep`](results/2026-08-23-w7900-current-default-hipengine-gguf-q4km-5run.json).
+
+### Radeon Pro W7900: Qwen3.6-27B Dense GGUF
+
+This `Q4_K_M`/BF16-KV snapshot uses one warmup and three measured resident
+resets per shape with state-bound PM4 graph decode.
+
+| Workload | Prefill | Decode | Tracked peak |
 | --- | ---: | ---: | ---: |
-| 512/128 | **2716.648** | **92.833** | 21.228 GiB |
-| 1K/128 | **3052.541** | **98.148** | 21.295 GiB |
-| 4K/128 | **2953.101** | **100.522** | 21.670 GiB |
-| 32K/128 | **2078.038** | **88.240** | 22.234 GiB |
-| 64K/128 | **1559.878** | **76.691** | 22.879 GiB |
-| 128K/128 | **1037.378** | **62.669** | 24.168 GiB |
+| 512/128 | **875.364 tok/s** | **28.681 tok/s** | 15.587 GiB |
+| 1K/128 | **911.658 tok/s** | **29.383 tok/s** | 15.681 GiB |
+| 4K/128 | **878.721 tok/s** | **26.747 tok/s** | 16.204 GiB |
 
-The former PARO speed row is withdrawn: its sweep predates the grouped-V-head
-runtime fix and therefore followed the wrong generated trajectory. It remains a
-[`pre-fix diagnostic`](results/2026-07-12-w7900-v030-8116c453-hipengine-paro-packed-5run.json),
-not current performance evidence; a fresh repaired-runtime sweep is required.
-GGUF evidence: [`final optimization sweep`](results/2026-07-16-gfx1100-gguf-final-optimization-sweep.json).
-The matched llama.cpp HIP/Vulkan comparison columns and their differing memory
-scopes remain in the linked artifacts and the archived rollup rather than being
-repeated here.
-
-### Dense-Qwen detailed comparisons
-
-Current Qwen3.6-27B and Qwen3.8 cross-engine, context-capacity, INT8-KV, and serving-frontier detail is archived in [`benchmarks/HISTORY.md`](HISTORY.md); the compact current rows above remain authoritative.
+All nine IDs are stable/finite; prefill/decode CV is at most 0.733%/0.475%, and
+the ten-prompt gate is exact. [`Current-default evidence`](results/2026-08-23-w7900-qwen36-27b-current-default-publication.json). Qwen3.8 details remain in the XTX tables above.
 
 ### Radeon 8060S: Qwen3.8-27B Dense GGUF retained campaign state
 
@@ -392,7 +384,7 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 
 | Platform / model | Contract | True AR | MTP | MTP / AR | Status and evidence |
 | --- | --- | ---: | ---: | ---: | --- |
-| W7900 / Qwen3.6-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 22.926 | **61.147** | **2.6671x** | Retained exact natural25 control; all greedy outputs and GPU/CPU acceptance agree. [`artifact`](results/2026-08-07-qwen36-27b-latest-vulkan-parity-exhaustion-audit.json) |
+| W7900 / Qwen3.6-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 29.457 | **60.929** | **2.0684x** | Current clean snapshot; all ten prompts, greedy outputs, and GPU/CPU acceptance agree. The ratio replaces stale historical denominators. [`artifact`](results/2026-08-23-w7900-qwen36-27b-current-default-publication.json) |
 | RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 35.287 | **62.440** | **1.7695x** | Clean idle-card correction; exact greedy and GPU/CPU acceptance, retained fusion improves matched AR 3.764% and B3 0.439% with every category non-regressive. [`artifact`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |
