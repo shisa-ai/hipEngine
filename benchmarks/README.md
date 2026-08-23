@@ -97,6 +97,16 @@ The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains 
 
 Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with explicit FP32 rollback after the complete packed and serving gates; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). The broader default-off review remains in the [`promotion inventory`](results/2026-08-20-valid-faster-default-off-inventory.json).
 
+### External DMS trained candidate (default-off)
+
+| Exact model | Candidate | Long heldout quality | Total live-cell compression | Status |
+| --- | --- | --- | ---: | --- |
+| Qwen3.8-27B `Q4_K_M` | external linear CR2/window256 | max KL **0.009691**, top-1 **100%** | **1.543x** | trained candidate; integrated product gate open |
+
+CR4/CR8 are rejected at max KL 0.08908/0.24993. The CR2 row is quality-only and
+retains dense KV during replay; it is not a serving-memory or performance claim.
+Dense paging remains default. See the [`candidate evidence`](results/2026-08-23-qwen38-external-dms-cr2-trained-candidate.json).
+
 ## Where detailed evidence lives
 
 | Need | Source |

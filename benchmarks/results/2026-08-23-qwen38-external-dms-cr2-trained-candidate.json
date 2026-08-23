@@ -1,0 +1,398 @@
+{
+  "candidate": {
+    "alpha_offset": 3.5251435041427612,
+    "alpha_scale": 1.0,
+    "candidate_summary_path": "/home/lhl/dms-artifacts/qwen38-external-v1/sidecar-cr2-qualified-candidate/candidate_summary.json",
+    "candidate_summary_sha256": "d5e097f35382e4a351a369cdaa744c75d4cfd5a942167abee0113e18dfee166a",
+    "metadata_path": "/home/lhl/dms-artifacts/qwen38-external-v1/sidecar-cr2-qualified-candidate/dms_metadata.json",
+    "metadata_sha256": "7e1ea739617047da7d687827eca121c2c969fbaf899a76ecc871b72e39b8d225",
+    "schema_v2_fingerprint": "439f9e614083ab837da0e3614d8ef97c14c6fcbe40f0859942bb6fd8d06b8acd",
+    "sidecar_nbytes": 655640,
+    "sidecar_path": "/home/lhl/dms-artifacts/qwen38-external-v1/sidecar-cr2-qualified-candidate/qwen38-27b-q4km-dms-sidecar.safetensors",
+    "sidecar_sha256": "1960ee834c0bd4572249e71b5cba16668e139a2e93a0113af60374d1a517f9f2",
+    "target_compression_ratio": 2,
+    "window_size": 256
+  },
+  "capture": {
+    "duration_seconds": 192,
+    "manifest_path": "/home/lhl/dms-artifacts/qwen38-external-v1/captures-fp32-768/capture_manifest.json",
+    "manifest_sha256": "eb3beadf1e5b5b068db9be7ea72d224835cae10bc5aa5be4e31b6b86520f60d6",
+    "qk_dtype": "float32",
+    "shard_bytes": 19130762240,
+    "shards": 640,
+    "tokens": 30720,
+    "working_tree_clean": true
+  },
+  "data": {
+    "benchmark_prompts_used_for_training": false,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "licenses": [
+      "PSF-2.0",
+      "CC-BY-SA-3.0",
+      "GFDL"
+    ],
+    "manifest_path": "/home/lhl/dms-artifacts/qwen38-external-v1/data_manifest.json",
+    "manifest_sha256": "e062a7a722bfc4deed0cbc001dc4de12a6263db6c8e6ab314e5708f39f594934",
+    "sequences": 40,
+    "source_manifest_sha256": "a9c89dfff3e9e3babfe6b2d764e7300c586d8a9b761a801c47707b702d4712eb",
+    "tokens": 30720,
+    "train_sequences": 32,
+    "validation_sequences": 8
+  },
+  "date": "2026-08-23",
+  "exact_q4_long_validation": {
+    "cr2": {
+      "by_category": {
+        "code": {
+          "kl_max": 0.007537543403790829,
+          "kl_mean": 0.0017202278467652581,
+          "kl_p95": 0.007537543403790829,
+          "outer_floor_passed": true,
+          "rows": 16,
+          "top1_agreement": 1.0
+        },
+        "general_en": {
+          "kl_max": 0.0031485787347003157,
+          "kl_mean": 0.0007674013907412752,
+          "kl_p95": 0.0031485787347003157,
+          "outer_floor_passed": true,
+          "rows": 16,
+          "top1_agreement": 1.0
+        },
+        "general_ja": {
+          "kl_max": 0.007316823345785373,
+          "kl_mean": 0.0014111919081561163,
+          "kl_p95": 0.007316823345785373,
+          "outer_floor_passed": true,
+          "rows": 16,
+          "top1_agreement": 1.0
+        },
+        "mixed_ja_en": {
+          "kl_max": 0.009691004998881852,
+          "kl_mean": 0.001727374509492341,
+          "kl_p95": 0.009691004998881852,
+          "outer_floor_passed": true,
+          "rows": 16,
+          "top1_agreement": 1.0
+        }
+      },
+      "compression": {
+        "actual_compression_ratio": 1.5429271834427625,
+        "live_cells": 256178,
+        "logical_cells": 395264
+      },
+      "quality": {
+        "kl_max": 0.009691004998881852,
+        "kl_mean": 0.0014065489137887477,
+        "kl_p95": 0.007504435395090009,
+        "outer_floor_passed": true,
+        "rows": 64,
+        "top1_agreement": 1.0
+      }
+    },
+    "no_evict": {
+      "kl_max": 0.001523883095399215,
+      "kl_mean": 0.00014790954832355385,
+      "kl_p95": 0.0006225238348280437,
+      "outer_floor_passed": true,
+      "rows": 64,
+      "top1_agreement": 1.0
+    },
+    "path": "/home/lhl/dms-artifacts/qwen38-external-v1/quality-run4-heldout-d4-r2.json",
+    "protocol": {
+      "decode_steps": 4,
+      "dense_shadow": true,
+      "purpose": "quality-only; not allocator or performance evidence",
+      "repeats": 2,
+      "route": "dense_prefill_then_host_compact_decode_override",
+      "sequence_ids": [
+        "code-08",
+        "code-09",
+        "general_en-08",
+        "general_en-09",
+        "general_ja-08",
+        "general_ja-09",
+        "mixed_ja_en-08",
+        "mixed_ja_en-09"
+      ],
+      "split": "validation"
+    },
+    "rejected_cr4": {
+      "compression": {
+        "actual_compression_ratio": 2.0855177071461735,
+        "live_cells": 189528,
+        "logical_cells": 395264
+      },
+      "quality": {
+        "kl_max": 0.08908000126409421,
+        "kl_mean": 0.006547674612500897,
+        "kl_p95": 0.015947213365210225,
+        "outer_floor_passed": false,
+        "rows": 64,
+        "top1_agreement": 1.0
+      },
+      "reason": "max KL exceeds 0.05 in mixed_ja_en-08 step 3"
+    },
+    "rejected_cr8": {
+      "compression": {
+        "actual_compression_ratio": 2.5031918127469854,
+        "live_cells": 157904,
+        "logical_cells": 395264
+      },
+      "quality": {
+        "kl_max": 0.24993262370409391,
+        "kl_mean": 0.016108971307585453,
+        "kl_p95": 0.044966376770659656,
+        "outer_floor_passed": false,
+        "rows": 64,
+        "top1_agreement": 1.0
+      },
+      "reason": "max KL exceeds 0.05 in mixed_ja_en-08 step 3"
+    },
+    "sha256": "a83e864f433fb8bebbcebdebe80cd9cc2b6e094a6928600803f892d538708229"
+  },
+  "gates": {
+    "allocator_visible_integrated_gguf_no_shadow": "open",
+    "c1_c32_integrated_serving_lifecycle": "open",
+    "cr2_outer_floor_all_long_categories": "pass",
+    "deterministic_quality_repeats": "pass",
+    "device_compact_byte_rollback_fixture": "pass",
+    "full_mtpbench_plus_category_heldouts": "pass",
+    "host_compact_transaction_reclaim": "pass",
+    "long_context_c1_c8_soak": "open",
+    "model_sidecar_layer_hash_binding": "pass",
+    "no_evict_outer_floor": "pass",
+    "production_mean_tail_task_slo": "open",
+    "serving_rocprof_identity": "open",
+    "strict_schema_loader": "pass"
+  },
+  "host": {
+    "backend": "hip_gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "hostname": "zbook",
+    "intake_free_gib": 121.60305404663086,
+    "torch": {
+      "hip": "7.15.0",
+      "version": "2.10.0+rocm7.15.0a20260727"
+    },
+    "visible_gib": 124.0
+  },
+  "kind": "hipengine_dms_trained_candidate_evidence",
+  "label_replay": {
+    "cr2": {
+      "actual_compression_ratio": 1.5389757538991409,
+      "cells": 393216,
+      "evictions": 137711,
+      "live_cells": 255505,
+      "precision": 0.7027325340749832,
+      "protected_window_violations": 0,
+      "recall": 0.7412224264705882,
+      "suppressed_protected_decisions": 95038
+    },
+    "cr4": {
+      "actual_compression_ratio": 2.077331487830777,
+      "cells": 393216,
+      "evictions": 203927,
+      "live_cells": 189289,
+      "precision": 0.8491960358363532,
+      "protected_window_violations": 0,
+      "recall": 0.8831082734986945,
+      "suppressed_protected_decisions": 121835
+    },
+    "cr8": {
+      "actual_compression_ratio": 2.4916578482127583,
+      "cells": 393216,
+      "evictions": 235403,
+      "live_cells": 157813,
+      "precision": 0.9165346236029277,
+      "protected_window_violations": 0,
+      "recall": 0.9427214415548099,
+      "suppressed_protected_decisions": 128846
+    },
+    "deterministic": true,
+    "path": "/home/lhl/dms-artifacts/qwen38-external-v1/replay-run4-cr2-cr4-cr8.json",
+    "protected_window_violations": 0,
+    "sha256": "a13b196b2481cc2f45b0f3f749dd3d5d1250580097e63437f947b435774260df"
+  },
+  "labels": {
+    "duration_seconds": 30,
+    "manifest_path": "/home/lhl/dms-artifacts/qwen38-external-v1/labels-cr4-w256-fp32/label_manifest.json",
+    "manifest_sha256": "1de9f739769392a97389d9fe4624a476a1255c15ea2dc960e328a0be9f458262",
+    "shards": 640,
+    "target_history_cr": 4,
+    "tokens": 30720,
+    "window_size": 256,
+    "working_tree_clean": true
+  },
+  "limitations": [
+    "quality route retains dense GGUF KV shadow and is not capacity/performance evidence",
+    "CR4 and CR8 rejected by max-KL outer floor",
+    "CR2 remains default-off pending integrated allocator/lifecycle/soak/profiler/product gates"
+  ],
+  "model": {
+    "ar_layers": 64,
+    "head_dim": 256,
+    "hidden_size": 5120,
+    "kv_heads": 4,
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "physical_full_attention_layers": [
+      3,
+      7,
+      11,
+      15,
+      19,
+      23,
+      27,
+      31,
+      35,
+      39,
+      43,
+      47,
+      51,
+      55,
+      59,
+      63
+    ],
+    "q_heads": 24,
+    "quant": "Q4_K_M",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "performance_claim": false,
+  "repository_evaluation": {
+    "cr2": {
+      "compression": {
+        "actual_compression_ratio": 1.0,
+        "live_cells": 62400,
+        "logical_cells": 62400
+      },
+      "quality": {
+        "kl_max": 0.0006685548488620761,
+        "kl_mean": 5.750368086186053e-05,
+        "kl_p95": 0.00032746970494046,
+        "outer_floor_passed": true,
+        "rows": 144,
+        "top1_agreement": 1.0
+      }
+    },
+    "no_evict": {
+      "kl_max": 0.0006685548488620761,
+      "kl_mean": 5.750368086186053e-05,
+      "kl_p95": 0.00032746970494046,
+      "outer_floor_passed": true,
+      "rows": 144,
+      "top1_agreement": 1.0
+    },
+    "note": "all prompts shorter than protected window; task/control coverage, not compression evidence",
+    "path": "/home/lhl/dms-artifacts/qwen38-external-v1/quality-cr2-mtpbench-heldouts-d4-r2.json",
+    "protocol": {
+      "decode_steps": 4,
+      "dense_shadow": true,
+      "purpose": "quality-only; not allocator or performance evidence",
+      "repeats": 2,
+      "route": "dense_prefill_then_host_compact_decode_override",
+      "sequence_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review",
+        "heldout_code_rate_limiter",
+        "heldout_code_interval_schedule",
+        "heldout_general_en_incident",
+        "heldout_general_en_quant",
+        "heldout_general_ja_migration",
+        "heldout_general_ja_speculative",
+        "heldout_mixed_summary",
+        "heldout_mixed_review"
+      ],
+      "split": "validation"
+    },
+    "sha256": "718d40208c14a9eeba878ebce123a368349d2ca041cdf7db314a8436a39bbb6b"
+  },
+  "schema_version": 1,
+  "source_commits": {
+    "capture": "86e9f2ae9f662c5a65272d9ff6279746e41cc9e9",
+    "fastdms_reference": "c602b0ec3266da7f74d6a658b3dafcddb443fddd",
+    "labels": "d5578ed052b4e8e686e2846991e88237ba152f9b",
+    "quality": "1024fbe3ff9fa24564c4731458c7afcf5d4ee99f",
+    "trainer": "8f2a4aad5d3249d5304f087be5cdbbf61985ea34"
+  },
+  "status": "trained_candidate_product_gate_open",
+  "training": {
+    "batch_size": 512,
+    "calibration": {
+      "alpha_offset": -0.06389027088880539,
+      "alpha_scale": 1.0,
+      "calibrated_evictions": 784384,
+      "eligible_decisions": 1046528,
+      "representation": "bfloat16_export",
+      "target_evictions": 784384
+    },
+    "duration_seconds": 99.41821452998556,
+    "epochs": 20,
+    "learning_rate": 0.001,
+    "optimizer_parameter_count": 327744,
+    "optimizer_state_elements": 655490,
+    "parameter_count": 327744,
+    "peak_device_bytes": 185618944,
+    "summary_path": "/home/lhl/dms-artifacts/qwen38-external-v1/sidecar-cr4-w256-run4-bf16cal/training_summary.json",
+    "summary_sha256": "f49b26371f24335f213b80bbe594e2be4da81ea33ce1f246d8c014373232be8f",
+    "validation_by_category": {
+      "code": {
+        "accuracy": 0.8032656555772995,
+        "bce": 0.6290305846752219,
+        "count": 65408,
+        "label_eviction_rate": 0.7495107632093934,
+        "precision": 0.8762644132706157,
+        "predicted_eviction_rate": 0.7345584637964775,
+        "recall": 0.8587834530026109
+      },
+      "general_en": {
+        "accuracy": 0.7693248532289628,
+        "bce": 0.880890626577564,
+        "count": 65408,
+        "label_eviction_rate": 0.7495107632093934,
+        "precision": 0.8351637498518548,
+        "predicted_eviction_rate": 0.7740031800391389,
+        "recall": 0.8624551240208878
+      },
+      "general_ja": {
+        "accuracy": 0.7918144569471625,
+        "bce": 0.7187462674849768,
+        "count": 65408,
+        "label_eviction_rate": 0.7495107632093934,
+        "precision": 0.8497263981351613,
+        "predicted_eviction_rate": 0.7739267367906066,
+        "recall": 0.8774069843342036
+      },
+      "mixed_ja_en": {
+        "accuracy": 0.8149767612524462,
+        "bce": 0.6410278096956503,
+        "count": 65408,
+        "label_eviction_rate": 0.7495107632093934,
+        "precision": 0.8379031372405462,
+        "predicted_eviction_rate": 0.8352800880626223,
+        "recall": 0.9337875326370757
+      }
+    },
+    "validation_global": {
+      "accuracy": 0.7948454317514677,
+      "bce": 0.7174238221083533,
+      "count": 261632,
+      "label_eviction_rate": 0.7495107632093934,
+      "precision": 0.8491960358363532,
+      "predicted_eviction_rate": 0.7794421171722113,
+      "recall": 0.8831082734986945
+    }
+  }
+}

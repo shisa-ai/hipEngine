@@ -1281,7 +1281,7 @@ hipEngine defaults to **RadixCache** for better prefix sharing in multi-turn cha
 
 See [docs/KVCACHE.md](KVCACHE.md) for the staged delivery order: finish the artifact-scoped compact c>N dense-INT8 campaign in [`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md), then add FastDMS-derived compact DMS over the same `KVLiveSpans` ABI.
 
-Dynamic Memory Sparsification (DMS) trains per-head learned KV token eviction via logit distillation. Compact DMS saves real allocator memory (5–8× vs BF16 KV at 8K context, up to 49× at max context per `~/FastDMS` benchmarks) while maintaining or improving decode speed. The reference open implementation is `~/FastDMS` (shisa-ai). Validated checkpoints: `shisa-ai/Llama-3.2-1B-DMS-8x`, `nvidia/Qwen3-8B-DMS-8x`.
+Dynamic Memory Sparsification (DMS) trains per-head learned KV token eviction via logit distillation. Compact DMS saves real allocator memory (5–8× vs BF16 KV at 8K context, up to 49× at max context per `~/FastDMS` benchmarks) while maintaining or improving decode speed. The reference open implementation is `~/FastDMS` (shisa-ai). Validated borrowed-channel checkpoints: `shisa-ai/Llama-3.2-1B-DMS-8x`, `nvidia/Qwen3-8B-DMS-8x`. hipEngine also has a local schema-v2 external-linear CR2 trained candidate for exact Qwen3.8-27B Q4_K_M; it passes outer quality gates but remains default-off pending integrated no-shadow serving/product closure.
 
 #### Why DMS is "major surgery" inside vLLM
 
