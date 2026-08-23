@@ -43,6 +43,18 @@ _KERNEL_KEYS = (
     KernelKey("hip_gfx1100", "dms_streaming_pack", "bf16", "count_rank_scatter"),
     KernelKey("hip_gfx1100", "dms_append_decode", "bf16", "compact_append_evict"),
     KernelKey("hip_gfx1100", "dms_compact_attn_decode", "bf16", "grouped_gqa"),
+    KernelKey(
+        "hip_gfx1100",
+        "dms_compact_attn_decode",
+        "bf16",
+        "grouped_gqa_splitk",
+    ),
+    KernelKey(
+        "hip_gfx1151",
+        "dms_compact_attn_decode",
+        "bf16",
+        "grouped_gqa_splitk",
+    ),
 )
 _TEST_NODES = (
     "tests/test_dms_extract_decision_hip.py::test_dms_extract_decision_production_head_geometry_bit_exact",
@@ -50,6 +62,7 @@ _TEST_NODES = (
     "tests/test_dms_streaming_pack_hip.py::test_dms_streaming_pack_long_prompt_multi_tile_bit_exact",
     "tests/test_dms_append_decode_hip.py::test_dms_append_decode_batched_rows_bit_exact",
     "tests/test_dms_compact_attn_decode_hip.py::test_dms_compact_attn_decode_kl_top1_gate_production_shape",
+    "tests/test_dms_compact_attn_decode_hip.py::test_dms_compact_attn_decode_splitk_crosses_multiple_256_row_tiles",
 )
 
 

@@ -48,6 +48,7 @@ The normative KV ABI and broader storage roadmap remain in
 | Compact allocator/backend primitives | Implemented and fixture-tested |
 | Host/device compact transaction rollback | Implemented and fixture-tested |
 | GPU schema-v2 external-linear prediction | Implemented and exact-decision validated; serving wiring open |
+| Bounded split-K compact attention | Implemented; 128K/256K live-count primitive gates pass, serving wiring open |
 | Normal `LLM.generate()` DMS selection | Not integrated |
 | Sole-owner no-dense-shadow GGUF serving | Not integrated |
 | Allocator-visible production savings | Not measured |
@@ -230,14 +231,15 @@ building blocks exist but are not yet a long-context serving route:
   not selected the direct seam yet;
 - the normal Qwen3.8 GGUF session allocates and scans paged dense full-attention
   caches;
-- the fixture compact-attention kernel uses dynamic shared score storage of
-  `2 * max_live_count * sizeof(float)` per workgroup. CR2 at 128K would require
-  roughly 513 KiB of dynamic shared memory and therefore needs a bounded
-  split-K/online-softmax production body before 128K/256K can run.
+- the original fixture compact-attention body still uses dynamic shared score
+  storage and remains the small-live fallback. A new 256-row split-K producer/
+  reducer holds LDS at 2,048/1,024 bytes and passes direct 65,664/131,200-row
+  (ideal 128K/256K CR2) numerical probes, but the normal GGUF session has not
+  selected it yet.
 
 Accordingly, direct 128K/256K execution of the current quality harness would
-only retest dense-shadow substitution. It cannot prove the requested memory or
-speed result. P2-P4 are mandatory prerequisites to P7/P8.
+only retest dense-shadow substitution. It cannot prove the requested full-model
+memory or speed result. Normal-owner P2-P4 wiring remains prerequisite to P7/P8.
 
 ## Campaign host
 
@@ -823,13 +825,13 @@ fixed schedule, and pass mutation/rollback/isolation fixtures.
 
 ### P4 — Production compact attention
 
-- [ ] Port/tune grouped-GQA compact split-K attention over `KVLiveSpans`.
+- [x] Port bounded-LDS GQA compact split-K attention over persistent compact extents.
 - [ ] Scan each KV stream once for the query heads that share it when profitable.
-- [ ] Support ragged per-layer/per-head `live_counts` and monotonic positions.
+- [x] Support ragged per-layer/per-head `live_counts` and monotonic positions.
 - [ ] Remove any dense-context fallback from the selected DMS decode route.
 - [ ] Add no-evict and forced-pattern strict fixtures against CPU reference.
-- [ ] Record `rocprofv3 --kernel-trace` identities and plausible durations.
-- [ ] Audit VGPR, scratch, LDS, launch count, and reduction ownership.
+- [x] Record primitive `rocprofv3 --kernel-trace` identities and plausible durations.
+- [x] Audit primitive VGPR, scratch, LDS, launch count, and reduction ownership.
 
 **Exit:** exact no-evict and profile-qualified CR2 paths execute the intended
 compact kernel family without hidden dense scans.

@@ -32,6 +32,7 @@ def test_dms_compact_attn_decode_registers_and_build_plan() -> None:
     clear_registry_for_tests()
     from hipengine.kernels.hip_gfx1100.attention import (
         dms_compact_attn_decode_bf16,
+        dms_compact_attn_decode_splitk_bf16,
         plan_dms_compact_build,
         register_dms_compact_kernels,
     )
@@ -45,6 +46,15 @@ def test_dms_compact_attn_decode_registers_and_build_plan() -> None:
             variant="grouped_gqa",
         )
         is dms_compact_attn_decode_bf16
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="dms_compact_attn_decode",
+            quant="bf16",
+            variant="grouped_gqa_splitk",
+        )
+        is dms_compact_attn_decode_splitk_bf16
     )
     artifact = plan_dms_compact_build(compiler_version="dms-test-version")
     assert artifact.family == "dms_compact"
@@ -64,6 +74,18 @@ def test_dms_compact_attn_decode_wrapper_validates_before_gpu_load() -> None:
         dms_compact_attn_decode_bf16(*(args[:9] + (0, 0.25, 8)))
     with pytest.raises(ValueError, match="scale"):
         dms_compact_attn_decode_bf16(*(args[:10] + (0.0, 8)))
+
+    from hipengine.kernels.hip_gfx1100.attention import (
+        dms_compact_attn_decode_splitk_bf16,
+    )
+
+    split_args = (0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 8, 4, 128, 128**-0.5, 256, 3)
+    with pytest.raises(ValueError, match="chunk_size"):
+        dms_compact_attn_decode_splitk_bf16(
+            *(split_args[:-2] + (128, split_args[-1]))
+        )
+    with pytest.raises(ValueError, match="num_splits"):
+        dms_compact_attn_decode_splitk_bf16(*(split_args[:-1] + (0,)))
 
 
 def _extent_buffers(
@@ -138,6 +160,77 @@ def _device_run(
             dim,
             scale,
             score_capacity,
+            library=library,
+        )
+        copy_device_to_host(host_array_ptr(out), buffers["out"], out.nbytes)
+    finally:
+        for buf in buffers.values():
+            free(buf)
+    return out
+
+
+def _device_run_splitk(
+    q: np.ndarray,
+    k_bits: np.ndarray,
+    v_bits: np.ndarray,
+    base: np.ndarray,
+    live: np.ndarray,
+    dim: int,
+    scale: float,
+    score_capacity: int,
+) -> np.ndarray:
+    from hipengine.kernels.hip_gfx1100.attention import (
+        build_dms_compact,
+        dms_compact_attn_decode_splitk_bf16,
+    )
+
+    rows, q_heads, _ = q.shape
+    kv_heads = base.shape[1]
+    chunk_size = 256
+    num_splits = max(1, (int(score_capacity) + chunk_size - 1) // chunk_size)
+    out = np.zeros((rows, q_heads, dim), dtype=np.float32)
+    partial_out = np.empty((rows, q_heads, num_splits, dim), dtype=np.float32)
+    partial_m = np.empty((rows, q_heads, num_splits), dtype=np.float32)
+    partial_l = np.empty_like(partial_m)
+    buffers: dict[str, object] = {}
+
+    def upload(name: str, array: np.ndarray) -> None:
+        array = np.ascontiguousarray(array)
+        buf = malloc(array.nbytes)
+        buffers[name] = buf
+        copy_host_to_device(buf, host_array_ptr(array), array.nbytes)
+
+    try:
+        for name, array in (
+            ("q", q),
+            ("k", k_bits),
+            ("v", v_bits),
+            ("base", base),
+            ("live", live),
+            ("partial_out", partial_out),
+            ("partial_m", partial_m),
+            ("partial_l", partial_l),
+            ("out", out),
+        ):
+            upload(name, array)
+        library = build_dms_compact(load=True)
+        dms_compact_attn_decode_splitk_bf16(
+            buffers["q"].ptr,
+            buffers["k"].ptr,
+            buffers["v"].ptr,
+            buffers["base"].ptr,
+            buffers["live"].ptr,
+            buffers["partial_out"].ptr,
+            buffers["partial_m"].ptr,
+            buffers["partial_l"].ptr,
+            buffers["out"].ptr,
+            rows,
+            q_heads,
+            kv_heads,
+            dim,
+            scale,
+            chunk_size,
+            num_splits,
             library=library,
         )
         copy_device_to_host(host_array_ptr(out), buffers["out"], out.nbytes)
@@ -285,3 +378,30 @@ def test_dms_compact_attn_decode_kl_top1_gate_production_shape() -> None:
         live=[[33, 17, 5, 29], [12, 40, 8, 3]],
         seed=778,
     )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_dms_compact_attn_decode_splitk_crosses_multiple_256_row_tiles() -> None:
+    rows, kv_heads, group, dim = 1, 4, 2, 128
+    live = np.asarray([[513, 257, 509, 300]], dtype=np.int32)
+    cap = 520
+    rng = np.random.default_rng(779)
+    q = rng.standard_normal((rows, kv_heads * group, dim)).astype(np.float32)
+    k_f32 = rng.normal(0.0, 0.2, size=(rows, kv_heads, cap, dim)).astype(np.float32)
+    v_f32 = rng.normal(0.0, 0.2, size=(rows, kv_heads, cap, dim)).astype(np.float32)
+    k_bits, v_bits, base = _extent_buffers(
+        rows, kv_heads, dim, cap, live, k_f32, v_f32
+    )
+    scale = float(dim**-0.5)
+    got = _device_run_splitk(
+        q, k_bits, v_bits, base, live, dim, scale, int(live.max())
+    )
+    repeat = _device_run_splitk(
+        q, k_bits, v_bits, base, live, dim, scale, int(live.max())
+    )
+    want = _oracle(q, k_bits, v_bits, base, live, dim, scale)
+    assert np.isfinite(got).all()
+    kl, top1 = _kl_top1(want, got)
+    assert kl <= 0.05
+    assert top1 >= 0.9
+    np.testing.assert_array_equal(got, repeat)
