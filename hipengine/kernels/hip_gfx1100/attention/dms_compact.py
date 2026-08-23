@@ -30,6 +30,12 @@ _SYMBOL_STREAMING_PACK = "hipengine_dms_streaming_pack_bf16"
 _SYMBOL_APPEND_DECODE = "hipengine_dms_append_decode_bf16"
 _SYMBOL_COMPACT_ATTN_DECODE = "hipengine_dms_compact_attn_decode_bf16"
 _SYMBOL_COMPACT_ATTN_DECODE_SPLITK = "hipengine_dms_compact_attn_decode_splitk_bf16"
+_SYMBOL_COMPACT_ATTN_SPLITK_PRODUCER = (
+    "hipengine_dms_compact_attn_decode_splitk_producer_bf16"
+)
+_SYMBOL_COMPACT_ATTN_SPLITK_REDUCE = (
+    "hipengine_dms_compact_attn_decode_splitk_reduce_bf16"
+)
 
 
 def plan_dms_compact_build(
@@ -383,6 +389,113 @@ def dms_append_decode_bf16(
     )
     if err != HIP_SUCCESS:
         raise RuntimeError(f"dms_append_decode_bf16 failed with HIP error {err}")
+
+
+def dms_compact_attn_decode_splitk_producer_bf16(
+    q_ptr: int,
+    k_slot_ptr: int,
+    v_slot_ptr: int,
+    base_offsets_ptr: int,
+    live_counts_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    rows: int,
+    q_heads: int,
+    kv_heads: int,
+    dim: int,
+    scale: float,
+    chunk_size: int,
+    num_splits: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch only bounded-LDS split producers (serving layer orchestration)."""
+
+    if int(rows) <= 0 or int(q_heads) <= 0 or int(kv_heads) <= 0:
+        raise ValueError("split producer rows/heads must be positive")
+    if int(q_heads) % int(kv_heads) != 0:
+        raise ValueError("q_heads must be a multiple of kv_heads for GQA")
+    if int(dim) <= 0 or not (float(scale) > 0.0):
+        raise ValueError("split producer dim/scale must be positive")
+    if int(chunk_size) != 256 or int(num_splits) <= 0:
+        raise ValueError("split producer requires chunk256 and positive splits")
+    library = library or build_dms_compact(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_COMPACT_ATTN_SPLITK_PRODUCER)
+    fn.argtypes = [ctypes.c_void_p] * 8 + [
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.c_float,
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        *[ctypes.c_void_p(value) for value in (
+            q_ptr,
+            k_slot_ptr,
+            v_slot_ptr,
+            base_offsets_ptr,
+            live_counts_ptr,
+            partial_out_ptr,
+            partial_m_ptr,
+            partial_l_ptr,
+        )],
+        ctypes.c_int32(rows),
+        ctypes.c_int32(q_heads),
+        ctypes.c_int32(kv_heads),
+        ctypes.c_int32(dim),
+        ctypes.c_float(scale),
+        ctypes.c_int32(chunk_size),
+        ctypes.c_int32(num_splits),
+        ctypes.c_void_p(stream),
+    )
+    if err != HIP_SUCCESS:
+        raise RuntimeError(f"DMS split producer failed with HIP error {err}")
+
+
+def dms_compact_attn_decode_splitk_reduce_bf16(
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    out_ptr: int,
+    rows: int,
+    q_heads: int,
+    dim: int,
+    num_splits: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Reduce precomputed compact split statistics into FP32 attention output."""
+
+    if min(int(rows), int(q_heads), int(dim), int(num_splits)) <= 0:
+        raise ValueError("split reducer dimensions must be positive")
+    library = library or build_dms_compact(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_COMPACT_ATTN_SPLITK_REDUCE)
+    fn.argtypes = [ctypes.c_void_p] * 4 + [ctypes.c_int32] * 4 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(partial_out_ptr),
+        ctypes.c_void_p(partial_m_ptr),
+        ctypes.c_void_p(partial_l_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int32(rows),
+        ctypes.c_int32(q_heads),
+        ctypes.c_int32(dim),
+        ctypes.c_int32(num_splits),
+        ctypes.c_void_p(stream),
+    )
+    if err != HIP_SUCCESS:
+        raise RuntimeError(f"DMS split reducer failed with HIP error {err}")
 
 
 def dms_compact_attn_decode_splitk_bf16(

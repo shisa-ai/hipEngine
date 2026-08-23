@@ -787,6 +787,88 @@ extern "C" int hipengine_dms_streaming_pack_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_dms_compact_attn_decode_splitk_producer_bf16(
+    const float* q,
+    const uint16_t* k_slot,
+    const uint16_t* v_slot,
+    const int32_t* base_offsets,
+    const int32_t* live_counts,
+    float* partial_out,
+    float* partial_m,
+    float* partial_l,
+    int32_t rows,
+    int32_t q_heads,
+    int32_t kv_heads,
+    int32_t dim,
+    float scale,
+    int32_t chunk_size,
+    int32_t num_splits,
+    hipStream_t stream) {
+  if (rows <= 0 || q_heads <= 0 || kv_heads <= 0 || dim <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (q_heads % kv_heads != 0 || chunk_size != kDmsPackThreads) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (!(scale > 0.0f) || num_splits <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int32_t blocks = rows * q_heads * num_splits;
+  hipLaunchKernelGGL(
+      dms_compact_attn_splitk_producer_kernel,
+      dim3(blocks),
+      dim3(kDmsPackThreads),
+      0,
+      stream,
+      q,
+      k_slot,
+      v_slot,
+      base_offsets,
+      live_counts,
+      partial_out,
+      partial_m,
+      partial_l,
+      rows,
+      q_heads,
+      kv_heads,
+      dim,
+      scale,
+      chunk_size,
+      num_splits);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dms_compact_attn_decode_splitk_reduce_bf16(
+    const float* partial_out,
+    const float* partial_m,
+    const float* partial_l,
+    float* out,
+    int32_t rows,
+    int32_t q_heads,
+    int32_t dim,
+    int32_t num_splits,
+    hipStream_t stream) {
+  if (rows <= 0 || q_heads <= 0 || dim <= 0 || num_splits <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int32_t blocks = rows * q_heads;
+  hipLaunchKernelGGL(
+      dms_compact_attn_splitk_reduce_kernel,
+      dim3(blocks),
+      dim3(kDmsPackThreads),
+      0,
+      stream,
+      partial_out,
+      partial_m,
+      partial_l,
+      out,
+      rows,
+      q_heads,
+      dim,
+      num_splits);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_dms_compact_attn_decode_splitk_bf16(
     const float* q,
     const uint16_t* k_slot,

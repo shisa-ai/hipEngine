@@ -49,8 +49,8 @@ The normative KV ABI and broader storage roadmap remain in
 | Host/device compact transaction rollback | Implemented and fixture-tested |
 | GPU schema-v2 external-linear prediction | Implemented and exact-decision validated; serving wiring open |
 | Bounded split-K compact attention | Implemented; 128K/256K live-count primitive gates pass, serving wiring open |
-| Normal `LLM.generate()` DMS selection | Not integrated |
-| Sole-owner no-dense-shadow GGUF serving | Not integrated |
+| Normal resident-session DMS selection | Integrated for explicit c1 exact-artifact use; public `LLM.generate()` selection open |
+| Sole-owner no-dense-shadow GGUF decode | Integrated; dense KV is temporary during correctness-first prefill and released after pack |
 | Allocator-visible production savings | Not measured |
 | Serving throughput and profiler evidence | Not measured |
 | Integrated c1-c32 lifecycle and long soak | Open |
@@ -229,17 +229,21 @@ building blocks exist but are not yet a long-context serving route:
   device-resident K/V and decisions with persistent base/capacity/live metadata;
   strict host composition still exists, but the normal GGUF resident session has
   not selected the direct seam yet;
-- the normal Qwen3.8 GGUF session allocates and scans paged dense full-attention
-  caches;
+- explicit `Qwen35GGUFResidentSession(..., dms_metadata_path=...)` now selects
+  the integrated c1 route. Paged dense KV is a temporary correctness-first
+  prefill owner, then is released; decode scans only compact extents. Public
+  `LLM.generate()`/c>N selection and streaming prefill without the temporary
+  dense peak remain open;
 - the original fixture compact-attention body still uses dynamic shared score
   storage and remains the small-live fallback. A new 256-row split-K producer/
   reducer holds LDS at 2,048/1,024 bytes and passes direct 65,664/131,200-row
   (ideal 128K/256K CR2) numerical probes, but the normal GGUF session has not
   selected it yet.
 
-Accordingly, direct 128K/256K execution of the current quality harness would
-only retest dense-shadow substitution. It cannot prove the requested full-model
-memory or speed result. Normal-owner P2-P4 wiring remains prerequisite to P7/P8.
+The old quality harness remains dense-shadow evidence only. The explicit
+integrated resident route is now the owner used by the 128K/256K campaign; its
+remaining questions are temporary dense-prefill peak, long-run quality,
+allocator savings after pack, performance, c>N, and public API promotion.
 
 ## Campaign host
 
@@ -796,15 +800,17 @@ fail-closed behavior.
 
 ### P2 — Sole-owner no-shadow GGUF prefill
 
-- [ ] Provision prompt capacity transactionally, stream K/V survivors directly
-      into compact extents, then shrink to actual survivors.
-- [ ] Remove the dense full-attention K/V arena after pack; no raw+compact mirror.
+- [x] Provision compact capacity from exact measured survivors and pack directly
+      from the temporary dense prefill owner.
+- [x] Remove the dense full-attention K/V arena after pack; no decode-time raw+compact mirror.
 - [ ] Keep protected-window rows and required sinks exact.
 - [ ] Account K, V, positions, eviction mask, live counts, extent slack,
       descriptors, transaction journal, and phase scratch.
 - [ ] Prove rollback restores every byte and ownership counter after failures at
       pre-allocation, mid-pack, post-pack, and shrink boundaries.
 - [ ] Add no-evict compact control through the same sole-owner route.
+- [ ] Replace the temporary dense prefill owner with bounded streaming compact
+      prefill so peak capacity also scales with live rows.
 
 **Exit:** tracked and sampled memory show one compact owner, no dense shadow, and
 byte-exact reclaim after success, cancellation, and injected failure.
@@ -816,7 +822,7 @@ byte-exact reclaim after success, cancellation, and injected failure.
 - [x] Preserve all ordinary query channels.
 - [ ] Fuse or co-schedule thresholding, protected-window handling, append, and
       compact metadata update where the numerical contract permits.
-- [ ] Eliminate host projection and per-token K/V copies from serving.
+- [x] Eliminate host projection and per-token K/V copies from c1 decode serving.
 - [ ] Journal request-owned extents only; rollback must not disturb neighbors.
 - [ ] Validate graph/eager repeats and changed-page updates.
 
