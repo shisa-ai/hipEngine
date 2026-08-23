@@ -94,7 +94,7 @@ llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hi
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 ## Current default notes
-Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). Exact Qwen3.8-27B `Q4_K_M` external DMS c1 executes compactly at 128K/256K and lowers tracked post-pack residency by **4.592/7.813 GiB**, but DMS remains default-off. Exact 32K retraining reaches **83.60%** disjoint-row validation accuracy, yet thresholded selection still drifts to **2.305–3.495x** CR on unseen development sequences and fails Japanese (**max KL 0.14007, 87.5% category top-1**); no-evict is essentially exact. Exact-budget ranking is the next gate. [`DMS evidence`](../docs/DMS.md).
+Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). Exact Qwen3.8-27B `Q4_K_M` external DMS c1 executes compactly at 128K/256K and lowers tracked post-pack residency by **4.592/7.813 GiB**, but DMS remains default-off. Exact-budget epoch-20 ranking now controls every 32K development category at **1.983899x** live CR; code/English/mixed pass at max KL ≤ **0.00155** and 100% top-1, but Japanese still rejects at **max KL 0.14180 / 87.5% category top-1**. No-evict is essentially exact. [`DMS evidence`](../docs/DMS.md).
 ## Where detailed evidence lives
 
 | Need | Source |
