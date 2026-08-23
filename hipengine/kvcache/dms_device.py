@@ -384,6 +384,40 @@ class DMSDevicePayloadStore:
     def resident_bytes(self) -> int:
         return sum(int(buffer.nbytes) for buffer in self._buffers)
 
+    @property
+    def split_capacity(self) -> int:
+        return int(self._split_capacity)
+
+    @property
+    def split_workspace_ptrs(self) -> tuple[int, int, int]:
+        if (
+            self._split_partial_out is None
+            or self._split_partial_m is None
+            or self._split_partial_l is None
+        ):
+            raise RuntimeError("DMS split workspace is not allocated")
+        return (
+            int(self._split_partial_out.ptr),
+            int(self._split_partial_m.ptr),
+            int(self._split_partial_l.ptr),
+        )
+
+    def ensure_split_workspace(self, score_capacity: int) -> int:
+        return self._ensure_split_workspace(int(score_capacity))
+
+    def layer_device_ptrs(self, layer: int) -> tuple[int, int, int, int]:
+        """Return K/V/base/live device pointers for integrated layer kernels."""
+
+        layer = int(layer)
+        if layer < 0 or layer >= self._layers:
+            raise ValueError("DMS device layer pointer index is out of range")
+        return (
+            int(self._k_slot[layer].ptr),
+            int(self._v_slot[layer].ptr),
+            int(self._base_meta[layer].ptr),
+            int(self._live_meta[layer].ptr),
+        )
+
     def pack_layer_device(
         self,
         layer: int,

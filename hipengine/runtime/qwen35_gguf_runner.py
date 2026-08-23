@@ -10,7 +10,7 @@ from contextlib import contextmanager, nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from functools import partial
 from pathlib import Path
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 from typing import Mapping, Sequence
 
 import numpy as np
@@ -4364,6 +4364,17 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError(f"layer {layer_id} is not a full-attention capture layer") from exc
         rows = int(scratch.rows)
         start = int(scratch.start)
+        capture_device = getattr(sink, "capture_device_chunk", None)
+        if callable(capture_device):
+            capture_device(
+                physical_layer_id=int(layer_id),
+                compact_layer_index=compact_layer_index,
+                start=start,
+                rows=rows,
+                hidden_ptr=int(scratch.norm.ptr),
+                stream=int(stream),
+            )
+            return
         if stream:
             runtime.stream_synchronize(stream)
         else:
@@ -7996,6 +8007,20 @@ class Qwen35GGUFFullStackRunner:
         stage_prefix: str = "decode_full_attn",
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
     ) -> None:
+        dms_owner = self.__dict__.get("_dms_decode_owner")
+        if dms_owner is not None:
+            return dms_owner._run_external_dms_full_attention(
+                layer_id=layer_id,
+                hidden_ptr=hidden_ptr,
+                attn_out_ptr=attn_out_ptr,
+                scratch=scratch,
+                position=position,
+                hidden_f32_ptr=hidden_f32_ptr,
+                input_norm_ptr=input_norm_ptr,
+                stream=stream,
+                stage_prefix=stage_prefix,
+                gpu_stage_recorder=gpu_stage_recorder,
+            )
         assert self.weights is not None
         layer = self.weights.layer(layer_id)
         cfg = self.weights.config
@@ -13614,6 +13639,98 @@ class Qwen35GGUFPrefixStateSnapshot:
         self.closed = True
 
 
+class _ExternalDMSDevicePrefillCollector:
+    """GPU-only sidecar decisions captured at the exact GGUF input stage."""
+
+    requires_teacher_logits = False
+
+    def __init__(self, source, *, token_count: int, backend: str, runtime) -> None:
+        from hipengine.kvcache.dms_device import DMSExternalLinearDeviceProjector
+
+        self.source = source
+        self.physical_layer_ids = source.config.physical_layer_ids
+        self.hidden_size = int(source.config.hidden_size)
+        self.num_q_heads = int(source.config.num_q_heads)
+        self.num_kv_heads = int(source.config.num_kv_heads)
+        self.head_dim = int(source.config.head_dim)
+        self.input_stage = str(source.config.input_stage)
+        self.token_count = int(token_count)
+        self._runtime = runtime
+        self._projector = DMSExternalLinearDeviceProjector(source, backend=backend)
+        self._decisions = malloc(
+            source.config.num_layers * self.token_count * self.num_kv_heads,
+            runtime=runtime,
+        )
+        self._logits = malloc(
+            self.token_count * self.num_kv_heads * DType.FP32.itemsize,
+            runtime=runtime,
+        )
+        self._next = np.zeros(source.config.num_layers, dtype=np.int32)
+        self._closed = False
+
+    def capture_device_chunk(
+        self,
+        *,
+        physical_layer_id: int,
+        compact_layer_index: int,
+        start: int,
+        rows: int,
+        hidden_ptr: int,
+        stream: int,
+    ) -> None:
+        layer = int(compact_layer_index)
+        if self.source.compact_layer_index(int(physical_layer_id)) != layer:
+            raise ValueError("external DMS device capture layer map mismatch")
+        if int(start) != int(self._next[layer]):
+            raise ValueError("external DMS device capture chunks must be contiguous")
+        if int(start) + int(rows) > self.token_count:
+            raise ValueError("external DMS device capture exceeds prompt")
+        offset = (layer * self.token_count + int(start)) * self.num_kv_heads
+        self._projector.project(
+            hidden_ptr=int(hidden_ptr),
+            compact_layer_index=layer,
+            tokens=int(rows),
+            logits_ptr=self._logits.ptr,
+            evict_ptr=self._decisions.ptr + offset,
+            stream=int(stream),
+        )
+        self._next[layer] = int(start) + int(rows)
+
+    def decision_ptr(self, compact_layer_index: int) -> int:
+        layer = int(compact_layer_index)
+        return self._decisions.ptr + layer * self.token_count * self.num_kv_heads
+
+    def finalize(self, *, stream: int = 0) -> np.ndarray:
+        if np.any(self._next != self.token_count):
+            raise ValueError("external DMS device capture lacks full prompt coverage")
+        if stream:
+            self._runtime.stream_synchronize(int(stream))
+        else:
+            self._runtime.device_synchronize()
+        layer_major = np.empty(
+            (self.source.config.num_layers, self.token_count, self.num_kv_heads),
+            dtype=np.uint8,
+        )
+        copy_device_to_host(
+            host_array_ptr(layer_major),
+            self._decisions,
+            layer_major.nbytes,
+            runtime=self._runtime,
+        )
+        return np.ascontiguousarray(layer_major.transpose(1, 0, 2), dtype=np.bool_)
+
+    def capture_teacher_logits(self, logits: np.ndarray) -> None:
+        del logits
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        free(self._logits, runtime=self._runtime)
+        free(self._decisions, runtime=self._runtime)
+        self._projector.close()
+        self._closed = True
+
+
 @dataclass
 class Qwen35GGUFResidentSession:
     """Persistent GGUF Qwen3.5 session for public greedy generation.
@@ -13654,6 +13771,8 @@ class Qwen35GGUFResidentSession:
     token_embedding_placement: str = "auto"
     use_small_weight_arena: bool | None = None
     use_decode_scratch_arena: bool | None = None
+    dms_metadata_path: str | Path | None = None
+    dms_max_new_tokens: int = 256
     runner: Qwen35GGUFFullStackRunner | None = field(default=None, init=False)
     scratch: object | None = field(default=None, init=False)
     _target_scratch_owner: object | None = field(default=None, init=False)
@@ -13902,8 +14021,21 @@ class Qwen35GGUFResidentSession:
     _device_kv_allocation: DeviceKVPoolAllocation | None = field(default=None, init=False, repr=False)
     _device_kv_layout: Qwen35GGUFKVChunkLayout | None = field(default=None, init=False, repr=False)
     _device_kv_graph_handles: dict[int, object] = field(default_factory=dict, init=False, repr=False)
+    _dms_source: object | None = field(default=None, init=False, repr=False)
+    _dms_backend: object | None = field(default=None, init=False, repr=False)
+    _dms_dense_prefill_pool: DeviceChunkedKVPool | None = field(default=None, init=False, repr=False)
+    _dms_decode_projector: object | None = field(default=None, init=False, repr=False)
+    _dms_decode_decisions: DeviceBuffer | None = field(default=None, init=False, repr=False)
+    _dms_decode_logits: DeviceBuffer | None = field(default=None, init=False, repr=False)
+    _dms_decode_decisions_host: np.ndarray | None = field(default=None, init=False, repr=False)
+    _dms_decode_seen: set[int] = field(default_factory=set, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        if self.dms_metadata_path is not None:
+            if self.max_batch_size != 1:
+                raise ValueError("external DMS serving currently requires max_batch_size=1")
+            self.defer_kv_allocation = True
+            self.use_decode_scratch_arena = False
         self.prefill_queue_drain = _normalize_prefill_queue_drain(
             self.prefill_queue_drain
         )
@@ -14344,6 +14476,8 @@ class Qwen35GGUFResidentSession:
         # Lazily-created per-layer MoE FFN graph cache (rows==1 resident decode),
         # gated by HIPENGINE_GGUF_MOE_GRAPH. None until first graphed decode.
         self._moe_graph: MoeGraphCache | None = None
+        if self.dms_metadata_path is not None:
+            self._initialize_external_dms_serving(runtime)
         self.reset()
         if self.prefill_flight_recorder_path is not None:
             self._prefill_flight_recorder = PrefillFlightRecorder(
@@ -14353,6 +14487,312 @@ class Qwen35GGUFResidentSession:
                 granularity=self.prefill_flight_recorder_granularity,
             )
         self._decode_graph_min_replay_steps_cache = self._resolve_decode_graph_min_replay_steps()
+
+    def _initialize_external_dms_serving(self, runtime: HipRuntime) -> None:
+        from hipengine.kvcache.dms import load_dms_retrofit_config
+        from hipengine.kvcache.dms_device import DMSExternalLinearDeviceProjector
+        from hipengine.kvcache.dms_sidecar import load_external_dms_sidecar
+        from hipengine.models.qwen35_dms import resolve_qwen35_dms_decision_capability
+
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("external DMS serving requires a live GGUF session")
+        cfg = self.runner.weights.config
+        physical_layers = tuple(
+            index
+            for index, layer_type in enumerate(cfg.layer_types)
+            if layer_type == FULL_ATTENTION
+        )
+        config = load_dms_retrofit_config(
+            self.model_path,
+            metadata_path=self.dms_metadata_path,
+            expected_physical_layer_ids=physical_layers,
+        )
+        resolve_qwen35_dms_decision_capability(
+            config,
+            layer_types=cfg.layer_types,
+            hidden_size=self.runner.hidden_size,
+            num_q_heads=cfg.head_count,
+            num_kv_heads=cfg.head_count_kv,
+            head_dim=cfg.key_length,
+        )
+        source = load_external_dms_sidecar(config)
+        self._dms_source = source
+        self._dms_decode_projector = DMSExternalLinearDeviceProjector(
+            source, backend=self.backend
+        )
+        self._dms_decode_decisions = malloc(
+            config.num_layers * config.num_kv_heads, runtime=runtime
+        )
+        self._dms_decode_logits = malloc(
+            config.num_kv_heads * DType.FP32.itemsize, runtime=runtime
+        )
+        self._dms_decode_decisions_host = np.empty(
+            (config.num_layers, config.num_kv_heads), dtype=np.uint8
+        )
+        pages = (int(self.scratch.max_positions) + 255) // 256
+        pool = self.create_device_kv_pool(
+            initial_pages=pages,
+            low_water_pages=pages,
+            high_water_pages=pages,
+            chunk_pages=pages,
+            idle_grace_seconds=0.0,
+        )
+        allocation = pool.allocate(-1, pages)
+        self.bind_device_kv_allocation(pool, allocation)
+        self._dms_dense_prefill_pool = pool
+
+    def _finalize_external_dms_prefill(
+        self,
+        collector: _ExternalDMSDevicePrefillCollector,
+        *,
+        tokens: int,
+        stream: int,
+    ) -> None:
+        from hipengine.kvcache.dms import build_dms_live_mask, create_dms_bf16_backend
+
+        source = self._dms_source
+        if source is None or self.scratch is None:
+            raise RuntimeError("external DMS prefill owner is unavailable")
+        decisions = collector.finalize(stream=stream)
+        positions = np.arange(int(tokens), dtype=np.int32)
+        max_live = 1
+        for layer in range(source.config.num_layers):
+            for head in range(source.config.num_kv_heads):
+                keep = build_dms_live_mask(
+                    decisions[:, layer, head][None, :],
+                    current_position=int(tokens) - 1,
+                    window_size=source.config.window_size,
+                    positions=positions,
+                )[0]
+                max_live = max(max_live, int(np.count_nonzero(keep)))
+        per_head = max_live + int(self.dms_max_new_tokens)
+        backend = create_dms_bf16_backend(
+            retrofit=source.config,
+            slots_per_layer=source.config.num_kv_heads * per_head,
+            max_request_rows=1,
+            max_pack_rows=max(1, min(int(tokens), 4096)),
+            device_payloads=True,
+            device_backend=self.backend,
+        )
+        request = SimpleNamespace(
+            request_id=0,
+            prompt_tokens=(),
+            max_new_tokens=int(self.dms_max_new_tokens),
+        )
+        claims = backend.estimate(
+            request,
+            None,
+            {
+                "kind": "admission",
+                "tokens": 0,
+                "max_new_tokens": int(self.dms_max_new_tokens),
+                "per_head_slots": per_head,
+                "logical_prompt_tokens": int(tokens),
+            },
+        )
+        backend.reserve(claims)
+        runtime = self.runtime or get_hip_runtime()
+        if stream:
+            runtime.stream_synchronize(int(stream))
+        else:
+            runtime.device_synchronize()
+        for compact_layer, physical_layer in enumerate(source.config.physical_layer_ids):
+            key_cache, value_cache = self.scratch.full_cache(physical_layer)
+            backend.device_streaming_pack_layer(
+                0,
+                compact_layer,
+                k_ptr=key_cache.ptr,
+                v_ptr=value_cache.ptr,
+                evict_ptr=collector.decision_ptr(compact_layer),
+                tokens=int(tokens),
+                stream=int(stream),
+            )
+        backend.finalize_device_streaming_pack(0, eviction=decisions, tokens=int(tokens))
+        self._dms_backend = backend
+        collector.close()
+        self.runner.__dict__["_dms_decode_owner"] = self
+        pool = self._dms_dense_prefill_pool
+        allocation = self.unbind_device_kv_allocation()
+        if pool is None:
+            raise RuntimeError("external DMS dense prefill pool disappeared")
+        pool.release(allocation.request_id)
+        pool.close()
+        self._dms_dense_prefill_pool = None
+
+    def _run_external_dms_full_attention(
+        self,
+        *,
+        layer_id: int,
+        hidden_ptr: int,
+        attn_out_ptr: int,
+        scratch,
+        position: int,
+        hidden_f32_ptr: int | None,
+        input_norm_ptr: int | None,
+        stream: int,
+        stage_prefix: str,
+        gpu_stage_recorder,
+    ) -> None:
+        del stage_prefix
+        source = self._dms_source
+        backend = self._dms_backend
+        projector = self._dms_decode_projector
+        decisions_buffer = self._dms_decode_decisions
+        logits_buffer = self._dms_decode_logits
+        if (
+            source is None
+            or backend is None
+            or projector is None
+            or decisions_buffer is None
+            or logits_buffer is None
+            or self.runner is None
+            or self.runner.weights is None
+        ):
+            raise RuntimeError("external DMS decode owner is incomplete")
+        compact_layer = source.compact_layer_index(int(layer_id))
+        layer = self.runner.weights.layer(layer_id)
+        cfg = self.runner.weights.config
+        runtime = self.runtime or get_hip_runtime()
+        if int(scratch.position_host[0]) != int(position):
+            scratch.set_full_attention_position(position, runtime)
+        if input_norm_ptr is None:
+            self.runner._run_attention_norm_rows(
+                hidden_ptr=hidden_ptr,
+                hidden_f32_ptr=hidden_f32_ptr,
+                weight_ptr=layer.weight("attn_norm").allocation().tensor.ptr,
+                out_ptr=scratch.norm.ptr,
+                rows=1,
+                eps=cfg.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+        elif int(input_norm_ptr) != int(scratch.norm.ptr):
+            raise ValueError("prefused DMS input norm must use scratch.norm")
+        if not launch_gguf_linear_triple(
+            layer.weight("attn_q"),
+            layer.weight("attn_k"),
+            layer.weight("attn_v"),
+            scratch.norm.ptr,
+            scratch.full_q.ptr,
+            scratch.full_k.ptr,
+            scratch.full_v.ptr,
+            rows=1,
+            in_features=self.runner.hidden_size,
+            out_features=2 * self.runner.q_width,
+            out_features_b=self.runner.kv_width,
+            out_features_c=self.runner.kv_width,
+            stream=stream,
+            runtime=runtime,
+        ):
+            launch_gguf_linear(
+                layer.weight("attn_q"), scratch.norm.ptr, scratch.full_q.ptr,
+                rows=1, in_features=self.runner.hidden_size,
+                out_features=2 * self.runner.q_width, stream=stream, runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("attn_k"), scratch.norm.ptr, scratch.full_k.ptr,
+                rows=1, in_features=self.runner.hidden_size,
+                out_features=self.runner.kv_width, stream=stream, runtime=runtime,
+            )
+            launch_gguf_linear(
+                layer.weight("attn_v"), scratch.norm.ptr, scratch.full_v.ptr,
+                rows=1, in_features=self.runner.hidden_size,
+                out_features=self.runner.kv_width, stream=stream, runtime=runtime,
+            )
+        qk_postprocess = self.runner._full_attn_qk_postprocess_fn()
+        if qk_postprocess is None:
+            raise RuntimeError("external DMS serving requires fused Q/K postprocess")
+        qk_postprocess(
+            scratch.full_q.ptr,
+            scratch.full_k.ptr,
+            layer.weight("attn_q_norm").allocation().tensor.ptr,
+            layer.weight("attn_k_norm").allocation().tensor.ptr,
+            scratch.cos_table.ptr,
+            scratch.sin_table.ptr,
+            scratch.position_tensor.ptr,
+            scratch.full_query.ptr,
+            scratch.full_key.ptr,
+            scratch.full_gate.ptr,
+            cfg.rms_norm_eps,
+            cfg.head_count,
+            cfg.head_count_kv,
+            cfg.key_length,
+            cfg.rope_dimension_count,
+            scratch.max_positions,
+            stream=stream,
+            runtime=runtime,
+        )
+        decision_ptr = decisions_buffer.ptr + compact_layer * source.config.num_kv_heads
+        projector.project(
+            hidden_ptr=scratch.norm.ptr,
+            compact_layer_index=compact_layer,
+            tokens=1,
+            logits_ptr=logits_buffer.ptr,
+            evict_ptr=decision_ptr,
+            stream=stream,
+        )
+        f32_to_bf16(
+            scratch.full_key.ptr,
+            scratch.full_k.ptr,
+            self.runner.kv_width,
+            stream=stream,
+            library=self.runner._cast_library(),
+            runtime=runtime,
+        )
+        backend.device_append_layer(
+            0,
+            compact_layer,
+            k_ptr=scratch.full_k.ptr,
+            v_ptr=scratch.full_v.ptr,
+            evict_ptr=decision_ptr,
+            position=int(position),
+            stream=int(stream),
+        )
+        backend.device_compact_decode_attention(
+            0,
+            compact_layer,
+            q_ptr=scratch.full_query.ptr,
+            out_ptr=scratch.full_attn_context.ptr,
+            scale=cfg.key_length**-0.5,
+            stream=int(stream),
+        )
+        qwen35_full_attn_gate_mul_bf16(
+            scratch.full_attn_context.ptr,
+            scratch.full_gate.ptr,
+            scratch.full_gated.ptr,
+            self.runner.q_width,
+            stream=stream,
+            runtime=runtime,
+        )
+        launch_gguf_linear(
+            layer.weight("attn_output"),
+            scratch.full_gated.ptr,
+            attn_out_ptr,
+            rows=1,
+            in_features=self.runner.q_width,
+            out_features=self.runner.hidden_size,
+            stream=stream,
+            runtime=runtime,
+        )
+        self._dms_decode_seen.add(compact_layer)
+        if len(self._dms_decode_seen) == source.config.num_layers:
+            host = self._dms_decode_decisions_host
+            if host is None:
+                raise RuntimeError("external DMS decode host metadata is unavailable")
+            if stream:
+                runtime.stream_synchronize(int(stream))
+            else:
+                runtime.device_synchronize()
+            copy_device_to_host(
+                host_array_ptr(host),
+                decisions_buffer,
+                host.nbytes,
+                runtime=runtime,
+            )
+            backend.finalize_device_append(0, eviction=host.astype(np.bool_), position=position)
+            self._dms_decode_seen.clear()
+        if gpu_stage_recorder is not None:
+            gpu_stage_recorder.mark("decode_full_attn_dms_compact")
 
     def resident_slot_view(self, slot: int) -> "Qwen35GGUFResidentSession":
         """Create one lightweight logical session over a preallocated state slot.
@@ -16703,8 +17143,21 @@ class Qwen35GGUFResidentSession:
             else bulk_attention_mode
         )
         run_bulk = len(token_ids) >= min_bulk_tokens if use_bulk is None else bool(use_bulk)
+        internal_dms_capture = False
+        if self._dms_source is not None:
+            if dms_capture is not None:
+                raise ValueError("external DMS serving owns the prefill capture stage")
+            dms_capture = _ExternalDMSDevicePrefillCollector(
+                self._dms_source,
+                token_count=len(token_ids),
+                backend=self.backend,
+                runtime=self.runtime or get_hip_runtime(),
+            )
+            internal_dms_capture = True
         if dms_capture is not None:
-            if not return_logits:
+            if not return_logits and bool(
+                getattr(dms_capture, "requires_teacher_logits", True)
+            ):
                 raise ValueError("DMS capture requires return_logits=True for teacher top-K")
             if selected_bulk_attention_mode != "bulk":
                 raise ValueError("DMS capture requires bulk_attention_mode='bulk'")
@@ -16761,8 +17214,16 @@ class Qwen35GGUFResidentSession:
                 )
                 if dms_capture is not None:
                     if result is None:
-                        raise RuntimeError("DMS capture prefill did not return teacher logits")
-                    dms_capture.capture_teacher_logits(result.logits)
+                        raise RuntimeError("DMS capture prefill did not return a result")
+                    if bool(getattr(dms_capture, "requires_teacher_logits", True)):
+                        dms_capture.capture_teacher_logits(result.logits)
+                    if internal_dms_capture:
+                        assert isinstance(dms_capture, _ExternalDMSDevicePrefillCollector)
+                        self._finalize_external_dms_prefill(
+                            dms_capture,
+                            tokens=len(token_ids),
+                            stream=0,
+                        )
                 return result
 
         if dms_capture is not None:
@@ -24431,12 +24892,33 @@ class Qwen35GGUFResidentSession:
             graph.close()
         self._decode_graphs.clear()
         self.close_decode_graph_submission_contexts()
+        if self.runner is not None and self.runner.__dict__.get("_dms_decode_owner") is self:
+            self.runner.__dict__.pop("_dms_decode_owner", None)
+        dms_backend = self._dms_backend
+        if dms_backend is not None:
+            if dms_backend.has_request(0):
+                dms_backend.reclaim(dms_backend.lease_for_request(0))
+            dms_backend.close()
+            self._dms_backend = None
+        dms_projector = self._dms_decode_projector
+        if dms_projector is not None:
+            dms_projector.close()
+            self._dms_decode_projector = None
+        for buffer in (self._dms_decode_decisions, self._dms_decode_logits):
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+        self._dms_decode_decisions = None
+        self._dms_decode_logits = None
         if self._device_kv_allocation is not None:
             pool = self._device_kv_pool
             allocation = self.unbind_device_kv_allocation()
             if pool is None:
                 raise RuntimeError("GGUF session lost its device KV pool during close")
             pool.release(allocation.request_id, now_seconds=time.monotonic())
+        dms_prefill_pool = self._dms_dense_prefill_pool
+        if dms_prefill_pool is not None:
+            dms_prefill_pool.close()
+            self._dms_dense_prefill_pool = None
         if self._moe_graph is not None:
             self._moe_graph.close()
             self._moe_graph = None

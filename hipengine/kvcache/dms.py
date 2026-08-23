@@ -1117,7 +1117,12 @@ class DMSCompactBackend:
                 ),
                 metadata=(("workspace_rows", workspace_rows),),
             )
-        logical_prompt = int(stage_map.get("tokens", len(prompt_tokens)))
+        logical_prompt = int(
+            stage_map.get(
+                "logical_prompt_tokens",
+                stage_map.get("tokens", len(prompt_tokens)),
+            )
+        )
         max_new = int(stage_map.get("max_new_tokens", getattr(request, "max_new_tokens", 1)))
         if logical_prompt < 0 or max_new < 0:
             raise ValueError("compact DMS token counts must be non-negative")
@@ -1134,9 +1139,18 @@ class DMSCompactBackend:
             min(logical_prompt + max_new, retained_prompt + max_new),
         )
         # Streaming pack must be safe even when a newly trained sidecar
-        # under-compresses. Reserve the full prompt provisionally, then shrink
-        # extents and ledger ownership to actual survivors after pack commits.
-        per_head = max(1, logical_prompt + max_new)
+        # under-compresses. Reserve the full prompt provisionally by default,
+        # then shrink extents after pack. An integrated owner that has already
+        # produced and counted exact device decisions may provide an explicit
+        # uniform per-head bound before allocating compact payloads.
+        exact_per_head = stage_map.get("per_head_slots")
+        per_head = (
+            max(1, logical_prompt + max_new)
+            if exact_per_head is None
+            else int(exact_per_head)
+        )
+        if per_head <= 0:
+            raise ValueError("compact DMS per_head_slots must be positive")
         total_slots = (
             self.retrofit.num_layers * self.retrofit.num_kv_heads * per_head
         )
@@ -1699,6 +1713,40 @@ class DMSCompactBackend:
             scale=scale,
             stream=int(stream),
         )
+
+    def device_layer_kernel_view(
+        self,
+        request_id: int,
+        compact_layer_index: int,
+    ) -> dict[str, Any]:
+        """Expose compact device pointers/capacity to the integrated model owner."""
+
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        state = self.state_for_request(request_id)
+        layer = int(compact_layer_index)
+        if layer < 0 or layer >= self.retrofit.num_layers:
+            raise ValueError("compact DMS layer index is out of range")
+        k_ptr, v_ptr, base_ptr, live_ptr = self._device_store.layer_device_ptrs(
+            layer
+        )
+        score_capacity = max(1, int(np.max(state.range_capacity[layer])))
+        num_splits = self._device_store.ensure_split_workspace(score_capacity)
+        partial_out_ptr, partial_m_ptr, partial_l_ptr = (
+            self._device_store.split_workspace_ptrs
+        )
+        return {
+            "k_ptr": k_ptr,
+            "v_ptr": v_ptr,
+            "base_ptr": base_ptr,
+            "live_ptr": live_ptr,
+            "score_capacity": score_capacity,
+            "chunk_size": 256,
+            "num_splits": num_splits,
+            "partial_out_ptr": partial_out_ptr,
+            "partial_m_ptr": partial_m_ptr,
+            "partial_l_ptr": partial_l_ptr,
+        }
 
     def device_layer_view(self, request_id: int, layer: int) -> Any:
         """Read back one layer's device slot buffers (test/observability)."""
