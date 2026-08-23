@@ -158,6 +158,7 @@ def test_sidecar_training_reduces_loss_and_exports_stable_strict_artifact(
     assert first["loss_history"][-1]["train_loss"] < first["loss_history"][0]["train_loss"]
     assert first["sidecar_sha256"] == second["sidecar_sha256"]
     assert Path(first["sidecar_path"]).read_bytes() == Path(second["sidecar_path"]).read_bytes()
+    assert first["calibration"]["target_evictions"] == first["calibration"]["calibrated_evictions"]
     assert first["validation"]["global"]["accuracy"] > 0.85
     assert first["validation"]["by_layer_head"]
     assert first["validation"]["by_category"]
@@ -174,6 +175,7 @@ def test_sidecar_training_reduces_loss_and_exports_stable_strict_artifact(
     assert config.sidecar.sha256 == first["sidecar_sha256"]
     assert config.sidecar.weight_shape == (2, 2, 4)
     assert config.sidecar.bias_shape == (2, 2)
+    assert config.alpha_offset == first["calibration"]["alpha_offset"]
 
 
 def test_sidecar_training_resumes_only_sidecar_optimizer_state(tmp_path: Path) -> None:

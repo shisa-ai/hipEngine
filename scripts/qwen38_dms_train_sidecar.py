@@ -236,10 +236,16 @@ class _Metric:
         self.predicted_positive = 0
         self.label_positive = 0
 
-    def update(self, logits: np.ndarray, labels: np.ndarray) -> None:
+    def update(
+        self,
+        logits: np.ndarray,
+        labels: np.ndarray,
+        *,
+        decision_threshold: float,
+    ) -> None:
         values = np.asarray(logits, dtype=np.float64).reshape(-1)
         target = np.asarray(labels, dtype=np.bool_).reshape(-1)
-        prediction = values > 0.0
+        prediction = values > float(decision_threshold)
         losses = np.maximum(values, 0.0) - values * target.astype(np.float64) + np.log1p(
             np.exp(-np.abs(values))
         )
@@ -273,6 +279,7 @@ def _validation_metrics(
     hidden_size: int,
     num_kv_heads: int,
     device: torch.device,
+    decision_threshold: float = 0.0,
 ) -> dict[str, Any]:
     model.eval()
     global_metric = _Metric()
@@ -294,14 +301,27 @@ def _validation_metrics(
                 record.compact_layer_index,
             ).to(device="cpu", dtype=torch.float32).numpy()
             targets = labels[indices]
-            global_metric.update(logits, targets)
-            by_category.setdefault(record.category, _Metric()).update(logits, targets)
-            by_context.setdefault(record.context_bucket, _Metric()).update(logits, targets)
+            global_metric.update(
+                logits,
+                targets,
+                decision_threshold=decision_threshold,
+            )
+            by_category.setdefault(record.category, _Metric()).update(
+                logits,
+                targets,
+                decision_threshold=decision_threshold,
+            )
+            by_context.setdefault(record.context_bucket, _Metric()).update(
+                logits,
+                targets,
+                decision_threshold=decision_threshold,
+            )
             for kv_head in range(num_kv_heads):
                 key = f"layer{record.compact_layer_index}:head{kv_head}"
                 by_layer_head.setdefault(key, _Metric()).update(
                     logits[:, kv_head],
                     targets[:, kv_head],
+                    decision_threshold=decision_threshold,
                 )
     if global_metric.count == 0:
         raise ValueError("DMS validation found no eligible label rows")
@@ -310,6 +330,61 @@ def _validation_metrics(
         "by_layer_head": {key: value.result() for key, value in sorted(by_layer_head.items())},
         "by_category": {key: value.result() for key, value in sorted(by_category.items())},
         "by_context_bucket": {key: value.result() for key, value in sorted(by_context.items())},
+    }
+
+
+def _threshold_for_count(values: np.ndarray, desired_count: int) -> float:
+    scores = np.ascontiguousarray(values, dtype=np.float64).reshape(-1)
+    desired = int(desired_count)
+    if scores.size <= 0 or not np.all(np.isfinite(scores)):
+        raise ValueError("DMS calibration logits must be non-empty and finite")
+    if desired <= 0:
+        return float(np.nextafter(np.max(scores), np.inf))
+    if desired >= scores.size:
+        return float(np.nextafter(np.min(scores), -np.inf))
+    ordered = np.sort(scores)[::-1]
+    upper = float(ordered[desired - 1])
+    lower = float(ordered[desired])
+    if upper > lower:
+        return (upper + lower) * 0.5
+    return float(np.nextafter(upper, -np.inf))
+
+
+def _calibrate_alpha_offset(
+    model: _ExternalLinearSidecar,
+    records: list[_ShardRecord],
+    *,
+    hidden_size: int,
+    num_kv_heads: int,
+    device: torch.device,
+) -> dict[str, int | float]:
+    values: list[np.ndarray] = []
+    desired = 0
+    model.eval()
+    with torch.no_grad():
+        for record in records:
+            hidden, eligible, labels = _load_shard(
+                record,
+                hidden_size=hidden_size,
+                num_kv_heads=num_kv_heads,
+            )
+            indices = np.flatnonzero(eligible)
+            if indices.size == 0:
+                continue
+            logits = model(
+                torch.as_tensor(hidden[indices], dtype=torch.float32, device=device),
+                record.compact_layer_index,
+            ).to(device="cpu", dtype=torch.float32).numpy()
+            values.append(logits.reshape(-1))
+            desired += int(np.count_nonzero(labels[indices]))
+    joined = np.concatenate(values)
+    offset = _threshold_for_count(joined, desired)
+    return {
+        "alpha_scale": 1.0,
+        "alpha_offset": offset,
+        "eligible_decisions": int(joined.size),
+        "target_evictions": desired,
+        "calibrated_evictions": int(np.count_nonzero(joined > offset)),
     }
 
 
@@ -486,12 +561,20 @@ def train_sidecar(
             identity=identity,
         )
 
+    calibration = _calibrate_alpha_offset(
+        model,
+        train_records,
+        hidden_size=hidden_size,
+        num_kv_heads=num_kv_heads,
+        device=target_device,
+    )
     validation = _validation_metrics(
         model,
         validation_records,
         hidden_size=hidden_size,
         num_kv_heads=num_kv_heads,
         device=target_device,
+        decision_threshold=float(calibration["alpha_offset"]),
     )
     sidecar_path = output / "qwen38-27b-q4km-dms-sidecar.safetensors"
     save_safetensors(
@@ -520,8 +603,8 @@ def train_sidecar(
         "input_stage": _INPUT_STAGE,
         "window_size": int(objective["window_size"]),
         "target_compression_ratio": int(objective["target_compression_ratio"]),
-        "alpha_scale": 1.0,
-        "alpha_offset": 0.0,
+        "alpha_scale": float(calibration["alpha_scale"]),
+        "alpha_offset": float(calibration["alpha_offset"]),
         "borrowed_query_channel": None,
         "zero_borrowed_query_channel": False,
         "sidecar": {
@@ -574,6 +657,7 @@ def train_sidecar(
         "completed_epochs": completed_target,
         "resumed_from_epoch": start_epoch,
         "loss_history": loss_history,
+        "calibration": calibration,
         "validation": validation,
         "duration_seconds": duration,
         "peak_device_bytes": peak_device_bytes,
