@@ -601,9 +601,19 @@ efficient (~45% of the 122–134 IU8 roof), so the DOT8 lane adds only
 memory-bound regime anyway (§3), the only remaining lever is the 1.12× byte
 ratio, and the marginal-value argument from the Verdict review applies *more*
 strongly here: the DOT8 arithmetic advantage that partially motivated the
-gfx1151 B4 leaf is largely absent on gfx1100. **Do not pursue a tiny-M B1–B3
-IU4 sidecar on gfx1100**; the exact-M4 qmicro bandwidth fix (R9 item 2) stays
-the decode lever and is representation-free.
+gfx1151 B4 leaf is largely absent on gfx1100. That is now measured directly
+(2026-08-24, tiny-M gate/up leaf on gfx1100 W7900, rows 2–128, 15/15 samples):
+1.438×/1.271×/1.956×/2.295× at M2/M3/M4/M5 — which *looks* like a pass
+(`tiny_m_gate_passed`) but is a **control-deficit + cache artifact**: the exact
+rowtile8 control reaches only 269–502 GB/s (31–58% of the 864 GB/s W7900
+memory roof, tuned for gfx1151 and unsaturating on gfx1100), while the
+candidate reports 891–1458 GB/s (103–169% of roof), which is impossible from
+HBM and means L2/cache-assist or under-measured work. The mechanical speedup
+tracks the control's deficit (doc review 2), not IU4 representation value;
+the representation is unchanged and still fails the T3 distribution gate.
+[`leaf artifact`](benchmarks/results/2026-08-24-gfx1100-w7900-qwen38-iu4-s4-b4-tiny-m-gate-up-leaf.json)
+**Do not pursue a tiny-M B1–B3 IU4 sidecar on gfx1100**; the exact-M4 qmicro
+bandwidth fix (R9 item 2) stays the decode lever and is representation-free.
 
 ### 4.3 KV-cache use is a different thesis
 

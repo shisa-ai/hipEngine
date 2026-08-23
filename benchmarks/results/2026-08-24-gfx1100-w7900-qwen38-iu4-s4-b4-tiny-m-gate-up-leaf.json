@@ -1,0 +1,1957 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-23",
+  "kind": "qwen38_gfx1151_iu4_s4_gate_up_leaf",
+  "status": "tiny_m_gate_passed",
+  "performance_claim": false,
+  "scope": "one-layer actual-weight operation-complete research leaf; no runtime route or model-wide sidecar",
+  "hardware": {
+    "hostname": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100"
+  },
+  "software": {
+    "commit": "db4a326f9377261f193a712c34fdcb8b50519b7b",
+    "tracked_dirty_paths": [
+      " M scripts/qwen38_iu4_s4_gate_up_leaf.py"
+    ],
+    "require_cached_build": false,
+    "compiler_version_file": null,
+    "iu4_build": {
+      "cache_key": "88152a16bbd05ed7282714422a88cb9d308e13425a3bf6c757af86740ed628ce",
+      "cache_dir": "/home/lhl/.cache/hipengine/build/gfx1151_iu4_s4_sidecar-88152a16bbd05ed7",
+      "output": "/home/lhl/.cache/hipengine/build/gfx1151_iu4_s4_sidecar-88152a16bbd05ed7/iu4_s4_sidecar.so",
+      "loaded_output": "/home/lhl/.cache/hipengine/build/gfx1151_iu4_s4_sidecar-0bf43627686607a8/iu4_s4_sidecar.so",
+      "command": [
+        "hipcc",
+        "-shared",
+        "-fPIC",
+        "-O3",
+        "-mllvm",
+        "-amdgpu-unroll-threshold-local=600",
+        "--offload-arch=gfx1100",
+        "/home/lhl/hipEngine-mtp-iu4/hipengine/kernels/hip_gfx1151/quant/iu4_s4_sidecar.hip",
+        "-o",
+        "/home/lhl/.cache/hipengine/build/gfx1151_iu4_s4_sidecar-88152a16bbd05ed7/iu4_s4_sidecar.so"
+      ]
+    }
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "sha256": "22200efcd98a7aeeaf83f59b0f1400b055d9e0437900e26b930ef2d42a3eb3f9",
+    "size_bytes": 16121359328,
+    "quant": "Q4_K_S",
+    "layer": 0,
+    "gate_tensor": "blk.0.ffn_gate.weight",
+    "up_tensor": "blk.0.ffn_up.weight",
+    "shape": [
+      17408,
+      5120
+    ],
+    "source_pair_bytes": 100270080
+  },
+  "representations": {
+    "control": {
+      "variant": "dense_dual_q8_1x2_rowtile8_dp4a_bf16_bf16_out",
+      "layout": "gguf_q4_k_qmicro_t16_v1",
+      "pair_bytes": 100270080,
+      "strict_fallback": true
+    },
+    "candidate": {
+      "variant": "dot8_m2_m16_wmma_bulk_m17_m1024_bf16_out",
+      "layout": "iu4_s4_sidecar_v1",
+      "arithmetic_class": "T3",
+      "source": "re-quantized dequantized Q4_K_S (not original BF16/F16)",
+      "gate_bytes": 44703744,
+      "up_bytes": 44703744,
+      "pair_bytes": 89407488,
+      "gate_payload_sha256": "9357dfeda5640a9998d81ec6c54e076612ff1163949f7818209967100ec04203",
+      "up_payload_sha256": "3f38d7b4a9bead490a978b38489852d0df9aefabd5b37f41746836fa0f271e89",
+      "gate_quantization": {
+        "source": "dequantized authoritative Q4_K_S tensor (not original BF16/F16)",
+        "quantizer": "per-output symmetric S4; scale=max(-min/8,max/7); RNE+clip[-8,7]",
+        "values": 89128960,
+        "build_seconds": 0.7211500573903322,
+        "max_abs": 0.030128616839647293,
+        "rmse": 0.0016184424099624337,
+        "source_rms": 0.010155714405470665,
+        "normalized_rmse": 0.1593627336635829
+      },
+      "up_quantization": {
+        "source": "dequantized authoritative Q4_K_S tensor (not original BF16/F16)",
+        "quantizer": "per-output symmetric S4; scale=max(-min/8,max/7); RNE+clip[-8,7]",
+        "values": 89128960,
+        "build_seconds": 0.7034821892157197,
+        "max_abs": 0.01167348399758339,
+        "rmse": 0.0015336868070490526,
+        "source_rms": 0.009806156823512342,
+        "normalized_rmse": 0.156400395654668
+      }
+    }
+  },
+  "protocol": {
+    "rows": [
+      2,
+      3,
+      4,
+      5,
+      8,
+      16,
+      32,
+      64,
+      96,
+      128
+    ],
+    "warmups": 3,
+    "samples": 15,
+    "burst": 1,
+    "timing": "counterbalanced HIP events; inclusive pack+core+correction+BF16+SiLU",
+    "control_chunking": "runtime _rowtile8_row_chunks for M>8",
+    "cold_pool": "actual gate/up source pair and both execution views exceed 64 MiB",
+    "seed": 107699,
+    "implementation_quality_roofs": {
+      "iu4_arithmetic_tops": 241.966,
+      "practical_memory_gbps": 864.0,
+      "binding_rule": "min(weight-only 4*M*memory roof, IU4 arithmetic roof)"
+    }
+  },
+  "candidate_kernel_routes": {
+    "m2_m16": {
+      "route": "u4s4_dot8_rowtile",
+      "accumulators_per_wave": "4 * padded rows (16/32/64 for row caps 4/8/16)"
+    },
+    "m17_m1024": {
+      "route": "iu4_wmma_bulk_m256",
+      "accumulators_per_wave": 16
+    }
+  },
+  "results": [
+    {
+      "rows": 2,
+      "current_chunks": [
+        {
+          "rows": 2,
+          "row_base": 0
+        }
+      ],
+      "timing": {
+        "current_exact_inclusive": {
+          "samples_ms": [
+            0.5244010090827942,
+            0.274960994720459,
+            0.2157599925994873,
+            0.4235610067844391,
+            0.18836000561714172,
+            0.22432099282741547,
+            0.1878799945116043,
+            0.225600004196167,
+            0.18752099573612213,
+            0.22376100718975067,
+            0.1862799972295761,
+            0.22812099754810333,
+            0.1950400024652481,
+            0.23267999291419983,
+            0.19668099284172058
+          ],
+          "count": 15,
+          "median_ms": 0.22376100718975067,
+          "mean_ms": 0.2476618657509486,
+          "min_ms": 0.1862799972295761,
+          "max_ms": 0.5244010090827942,
+          "p95_ms": 0.4538130074739455,
+          "stdev_ms": 0.09685794423538616
+        },
+        "iu4_inclusive": {
+          "samples_ms": [
+            0.21780100464820862,
+            0.07680000364780426,
+            0.2420009970664978,
+            0.05996000021696091,
+            0.1595200002193451,
+            0.05948000028729439,
+            0.16096100211143494,
+            0.05992000177502632,
+            0.15556000173091888,
+            0.058959998190402985,
+            0.1584399938583374,
+            0.060839999467134476,
+            0.15904100239276886,
+            0.06384000182151794,
+            0.1576399952173233
+          ],
+          "count": 15,
+          "median_ms": 0.15556000173091888,
+          "mean_ms": 0.12338426684339841,
+          "min_ms": 0.058959998190402985,
+          "max_ms": 0.2420009970664978,
+          "p95_ms": 0.22506100237369536,
+          "stdev_ms": 0.06342784518339947
+        },
+        "iu4_activation_pack": {
+          "samples_ms": [
+            0.0163199994713068,
+            0.015479999594390392,
+            0.015599999576807022,
+            0.015479999594390392,
+            0.014960000291466713,
+            0.01500099990516901,
+            0.017240000888705254,
+            0.016839999705553055,
+            0.01720000058412552,
+            0.017680000513792038,
+            0.017319999635219574,
+            0.016920000314712524,
+            0.01720000058412552,
+            0.0175199992954731,
+            0.01744000054895878
+          ],
+          "count": 15,
+          "median_ms": 0.016920000314712524,
+          "mean_ms": 0.01654673336694638,
+          "min_ms": 0.014960000291466713,
+          "max_ms": 0.017680000513792038,
+          "p95_ms": 0.01756799966096878,
+          "stdev_ms": 0.0009753184865852159
+        },
+        "iu4_core_correction_bf16_silu": {
+          "samples_ms": [
+            0.061319999396800995,
+            0.06216000020503998,
+            0.061400000005960464,
+            0.061039999127388,
+            0.061159998178482056,
+            0.06136000156402588,
+            0.061799999326467514,
+            0.061480000615119934,
+            0.061121001839637756,
+            0.061159998178482056,
+            0.061039999127388,
+            0.061319999396800995,
+            0.061080001294612885,
+            0.061400000005960464,
+            0.0652799978852272
+          ],
+          "count": 15,
+          "median_ms": 0.061319999396800995,
+          "mean_ms": 0.06160806640982628,
+          "min_ms": 0.061039999127388,
+          "max_ms": 0.0652799978852272,
+          "p95_ms": 0.06309599950909614,
+          "stdev_ms": 0.001059583854135294
+        },
+        "candidate_wins": 14,
+        "pair_count": 15
+      },
+      "performance": {
+        "inclusive_speedup": 1.4384225038567626,
+        "inclusive_candidate_over_control": 0.6952060311339369,
+        "inclusive_delta_percent": -30.479396886606313,
+        "useful_tops": 4.583644073451298,
+        "core_useful_tops": 11.628044471852983,
+        "core_executed_tops": 23.256088943705965,
+        "candidate_route": "u4s4_dot8_rowtile",
+        "candidate_accumulators_per_wave": 16,
+        "candidate_row_utilization": 0.5,
+        "candidate_weight_sweeps": 1,
+        "candidate_arithmetic_roof_tops": 61.164,
+        "wmma_row_utilization": 0.5,
+        "iu4_weight_bytes_per_core": 89407488,
+        "iu4_effective_weight_gbps": 1458.0477638534403,
+        "current_qmicro_weight_bytes_per_inclusive_call": 100270080,
+        "current_effective_weight_gbps": 448.1123912486252,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 864.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 6.912,
+          "arithmetic_roof_tops": 61.164,
+          "memory_roof_gbps": 864.0,
+          "candidate_effective_weight_gbps": 1458.0477638534403,
+          "control_effective_weight_gbps": 448.1123912486252,
+          "candidate_fraction_of_arithmetic_roof": 0.38022511516097646,
+          "candidate_percent_of_arithmetic_roof": 38.022511516097644,
+          "candidate_fraction_of_memory_roof": 1.6875552822377782,
+          "candidate_percent_of_memory_roof": 168.75552822377782,
+          "candidate_fraction_of_binding_roof": 1.6875552822377782,
+          "candidate_percent_of_binding_roof": 168.75552822377782
+        }
+      },
+      "correctness_vs_current_exact": {
+        "finite": true,
+        "max_abs": 0.0693359375,
+        "mean_abs": 0.0022245191503316164,
+        "rmse": 0.003303804127691307,
+        "normalized_rmse": 0.28815634537701984,
+        "mean_kl": 5.45242549877472e-06,
+        "max_kl": 5.938308279955919e-06,
+        "top1_matches": 0,
+        "top1_total": 2,
+        "top1_agreement": 0.0
+      },
+      "candidate_deterministic_bits": true,
+      "candidate_output_sha256": "c971e306c3024f036a61374b48fcedf117a7c5eab814633c3dc7ff9b4b400bcf",
+      "current_output_sha256": "dd44e872b368c4ae99d694f85dc306fa9a8faef3db236f3bd6b851d2d75e6421"
+    },
+    {
+      "rows": 3,
+      "current_chunks": [
+        {
+          "rows": 3,
+          "row_base": 0
+        }
+      ],
+      "timing": {
+        "current_exact_inclusive": {
+          "samples_ms": [
+            0.2539210021495819,
+            0.21192100644111633,
+            0.21036000549793243,
+            0.21119999885559082,
+            0.21055999398231506,
+            0.1995999962091446,
+            0.1984809935092926,
+            0.19924099743366241,
+            0.19828000664710999,
+            0.19660000503063202,
+            0.19539999961853027,
+            0.19679999351501465,
+            0.19512100517749786,
+            0.20816099643707275,
+            0.2064400017261505
+          ],
+          "count": 15,
+          "median_ms": 0.1995999962091446,
+          "mean_ms": 0.20613906681537628,
+          "min_ms": 0.19512100517749786,
+          "max_ms": 0.2539210021495819,
+          "p95_ms": 0.22452100515365594,
+          "stdev_ms": 0.01466138718895325
+        },
+        "iu4_inclusive": {
+          "samples_ms": [
+            0.16023999452590942,
+            0.06583999842405319,
+            0.1629199981689453,
+            0.06584099680185318,
+            0.16064099967479706,
+            0.06459999829530716,
+            0.15771999955177307,
+            0.06372000277042389,
+            0.15700000524520874,
+            0.06268099695444107,
+            0.1621609926223755,
+            0.06168000027537346,
+            0.16060000658035278,
+            0.06483999639749527,
+            0.16076000034809113
+          ],
+          "count": 15,
+          "median_ms": 0.15700000524520874,
+          "mean_ms": 0.11541626577576002,
+          "min_ms": 0.06168000027537346,
+          "max_ms": 0.1629199981689453,
+          "p95_ms": 0.16238869428634642,
+          "stdev_ms": 0.04964834865028508
+        },
+        "iu4_activation_pack": {
+          "samples_ms": [
+            0.01576000079512596,
+            0.015080000273883343,
+            0.014919999986886978,
+            0.014879999682307243,
+            0.015039999969303608,
+            0.014960000291466713,
+            0.014999999664723873,
+            0.014840000309050083,
+            0.01576000079512596,
+            0.014960000291466713,
+            0.01576000079512596,
+            0.014879999682307243,
+            0.015440000221133232,
+            0.014999999664723873,
+            0.015041000209748745
+          ],
+          "count": 15,
+          "median_ms": 0.014999999664723873,
+          "mean_ms": 0.015154733508825301,
+          "min_ms": 0.014840000309050083,
+          "max_ms": 0.01576000079512596,
+          "p95_ms": 0.01576000079512596,
+          "stdev_ms": 0.00034236029545937885
+        },
+        "iu4_core_correction_bf16_silu": {
+          "samples_ms": [
+            0.056040000170469284,
+            0.05716000124812126,
+            0.061719998717308044,
+            0.06227999925613403,
+            0.06204000115394592,
+            0.06227999925613403,
+            0.06168099865317345,
+            0.06227999925613403,
+            0.06196000054478645,
+            0.06212000176310539,
+            0.06168000027537346,
+            0.06176000088453293,
+            0.062481001019477844,
+            0.06247999891638756,
+            0.06207999959588051
+          ],
+          "count": 15,
+          "median_ms": 0.06204000115394592,
+          "mean_ms": 0.06133613338073095,
+          "min_ms": 0.056040000170469284,
+          "max_ms": 0.062481001019477844,
+          "p95_ms": 0.06248029954731464,
+          "stdev_ms": 0.001952974373291618
+        },
+        "candidate_wins": 15,
+        "pair_count": 15
+      },
+      "performance": {
+        "inclusive_speedup": 1.271337512998178,
+        "inclusive_candidate_over_control": 0.7865731875099898,
+        "inclusive_delta_percent": -21.342681249001018,
+        "useful_tops": 6.812404358391828,
+        "core_useful_tops": 17.23964377992236,
+        "core_executed_tops": 22.986191706563147,
+        "candidate_route": "u4s4_dot8_rowtile",
+        "candidate_accumulators_per_wave": 16,
+        "candidate_row_utilization": 0.75,
+        "candidate_weight_sweeps": 1,
+        "candidate_arithmetic_roof_tops": 61.164,
+        "wmma_row_utilization": 0.75,
+        "iu4_weight_bytes_per_core": 89407488,
+        "iu4_effective_weight_gbps": 1441.126472227885,
+        "current_qmicro_weight_bytes_per_inclusive_call": 100270080,
+        "current_effective_weight_gbps": 502.3551197613007,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 864.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 10.368,
+          "arithmetic_roof_tops": 61.164,
+          "memory_roof_gbps": 864.0,
+          "candidate_effective_weight_gbps": 1441.126472227885,
+          "control_effective_weight_gbps": 502.3551197613007,
+          "candidate_fraction_of_arithmetic_roof": 0.37581243389188324,
+          "candidate_percent_of_arithmetic_roof": 37.58124338918832,
+          "candidate_fraction_of_memory_roof": 1.6679704539674594,
+          "candidate_percent_of_memory_roof": 166.79704539674594,
+          "candidate_fraction_of_binding_roof": 1.6679704539674594,
+          "candidate_percent_of_binding_roof": 166.79704539674594
+        }
+      },
+      "correctness_vs_current_exact": {
+        "finite": true,
+        "max_abs": 0.03857421875,
+        "mean_abs": 0.002225467935204506,
+        "rmse": 0.003286611331836941,
+        "normalized_rmse": 0.2873881711902223,
+        "mean_kl": 5.410260334861336e-06,
+        "max_kl": 5.819612160397518e-06,
+        "top1_matches": 2,
+        "top1_total": 3,
+        "top1_agreement": 0.6666666666666666
+      },
+      "candidate_deterministic_bits": true,
+      "candidate_output_sha256": "43cb0caeaf0dcf25a36d6db281061230a0d98777072cefad94d16f457ccd4d96",
+      "current_output_sha256": "c44a1c41b674a6176f91255fbb2233e69fcffd0f217c5f48b8dc04dd6b0e6877"
+    },
+    {
+      "rows": 4,
+      "current_chunks": [
+        {
+          "rows": 4,
+          "row_base": 0
+        }
+      ],
+      "timing": {
+        "current_exact_inclusive": {
+          "samples_ms": [
+            0.34595999121665955,
+            0.33403998613357544,
+            0.28832098841667175,
+            0.31883999705314636,
+            0.2834010124206543,
+            0.3140009939670563,
+            0.28148001432418823,
+            0.3138810098171234,
+            0.283160001039505,
+            0.3187600076198578,
+            0.28412100672721863,
+            0.3184410035610199,
+            0.28568100929260254,
+            0.31804099678993225,
+            0.2888000011444092
+          ],
+          "count": 15,
+          "median_ms": 0.3138810098171234,
+          "mean_ms": 0.305128534634908,
+          "min_ms": 0.28148001432418823,
+          "max_ms": 0.34595999121665955,
+          "p95_ms": 0.33761598765850065,
+          "stdev_ms": 0.021143679037401636
+        },
+        "iu4_inclusive": {
+          "samples_ms": [
+            0.1636810004711151,
+            0.07344000041484833,
+            0.16143999993801117,
+            0.06756100058555603,
+            0.16259999573230743,
+            0.06644000113010406,
+            0.16047999262809753,
+            0.06716000288724899,
+            0.1607609987258911,
+            0.06756000220775604,
+            0.16167999804019928,
+            0.06728000193834305,
+            0.16099999845027924,
+            0.06808000057935715,
+            0.16332000494003296
+          ],
+          "count": 15,
+          "median_ms": 0.16047999262809753,
+          "mean_ms": 0.11816553324460984,
+          "min_ms": 0.06644000113010406,
+          "max_ms": 0.1636810004711151,
+          "p95_ms": 0.16342830359935762,
+          "stdev_ms": 0.04839419730992828
+        },
+        "iu4_activation_pack": {
+          "samples_ms": [
+            0.01568000018596649,
+            0.015239999629557133,
+            0.015599999576807022,
+            0.015119999647140503,
+            0.015879999846220016,
+            0.015119999647140503,
+            0.015519999898970127,
+            0.015119999647140503,
+            0.015479999594390392,
+            0.015119999647140503,
+            0.015639999881386757,
+            0.015200000256299973,
+            0.015440000221133232,
+            0.015200000256299973,
+            0.015599999576807022
+          ],
+          "count": 15,
+          "median_ms": 0.015440000221133232,
+          "mean_ms": 0.015397333167493343,
+          "min_ms": 0.015119999647140503,
+          "max_ms": 0.015879999846220016,
+          "p95_ms": 0.015740000084042548,
+          "stdev_ms": 0.0002518351946276174
+        },
+        "iu4_core_correction_bf16_silu": {
+          "samples_ms": [
+            0.06159999966621399,
+            0.061159998178482056,
+            0.06088000163435936,
+            0.06104100123047829,
+            0.060759998857975006,
+            0.061000000685453415,
+            0.06088000163435936,
+            0.06095999851822853,
+            0.06164000183343887,
+            0.06692100316286087,
+            0.06639999896287918,
+            0.06728000193834305,
+            0.0663599967956543,
+            0.06672000139951706,
+            0.06620000302791595
+          ],
+          "count": 15,
+          "median_ms": 0.06159999966621399,
+          "mean_ms": 0.06332013383507729,
+          "min_ms": 0.060759998857975006,
+          "max_ms": 0.06728000193834305,
+          "p95_ms": 0.06702870279550552,
+          "stdev_ms": 0.002832014324847599
+        },
+        "candidate_wins": 15,
+        "pair_count": 15
+      },
+      "performance": {
+        "inclusive_speedup": 1.9558887352675998,
+        "inclusive_candidate_over_control": 0.5112765271196178,
+        "inclusive_delta_percent": -48.87234728803822,
+        "useful_tops": 8.886237696338968,
+        "core_useful_tops": 23.15037934622196,
+        "core_executed_tops": 23.15037934622196,
+        "candidate_route": "u4s4_dot8_rowtile",
+        "candidate_accumulators_per_wave": 16,
+        "candidate_row_utilization": 1.0,
+        "candidate_weight_sweeps": 1,
+        "candidate_arithmetic_roof_tops": 61.164,
+        "wmma_row_utilization": 1.0,
+        "iu4_weight_bytes_per_core": 89407488,
+        "iu4_effective_weight_gbps": 1451.4202676049315,
+        "current_qmicro_weight_bytes_per_inclusive_call": 100270080,
+        "current_effective_weight_gbps": 319.4525213819733,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 864.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 13.824,
+          "arithmetic_roof_tops": 61.164,
+          "memory_roof_gbps": 864.0,
+          "candidate_effective_weight_gbps": 1451.4202676049315,
+          "control_effective_weight_gbps": 319.4525213819733,
+          "candidate_fraction_of_arithmetic_roof": 0.3784968175106592,
+          "candidate_percent_of_arithmetic_roof": 37.84968175106592,
+          "candidate_fraction_of_memory_roof": 1.6798845689871893,
+          "candidate_percent_of_memory_roof": 167.98845689871894,
+          "candidate_fraction_of_binding_roof": 1.6798845689871893,
+          "candidate_percent_of_binding_roof": 167.98845689871894
+        }
+      },
+      "correctness_vs_current_exact": {
+        "finite": true,
+        "max_abs": 0.031982421875,
+        "mean_abs": 0.002201622352004051,
+        "rmse": 0.0032217071411941773,
+        "normalized_rmse": 0.28580111203576075,
+        "mean_kl": 5.192060392515929e-06,
+        "max_kl": 5.774054179851345e-06,
+        "top1_matches": 3,
+        "top1_total": 4,
+        "top1_agreement": 0.75
+      },
+      "candidate_deterministic_bits": true,
+      "candidate_output_sha256": "568a0a1802934806ae77040479b7fe9d8b038061c90f04cac687c443fb4ea564",
+      "current_output_sha256": "8a2547aa91bb8e979b779bfa060aac233959b77528ad9a1c4564ce842ad9b882"
+    },
+    {
+      "rows": 5,
+      "current_chunks": [
+        {
+          "rows": 5,
+          "row_base": 0
+        }
+      ],
+      "timing": {
+        "current_exact_inclusive": {
+          "samples_ms": [
+            0.3990809917449951,
+            0.38784000277519226,
+            0.35440000891685486,
+            0.3766010105609894,
+            0.34007999300956726,
+            0.37240099906921387,
+            0.34139999747276306,
+            0.3782010078430176,
+            0.34544000029563904,
+            0.38708099722862244,
+            0.35284000635147095,
+            0.3898409903049469,
+            0.3625209927558899,
+            0.39472100138664246,
+            0.36452099680900574
+          ],
+          "count": 15,
+          "median_ms": 0.37240099906921387,
+          "mean_ms": 0.36979793310165404,
+          "min_ms": 0.34007999300956726,
+          "max_ms": 0.3990809917449951,
+          "p95_ms": 0.39602899849414824,
+          "stdev_ms": 0.019850595404279383
+        },
+        "iu4_inclusive": {
+          "samples_ms": [
+            0.16675999760627747,
+            0.10232000052928925,
+            0.16512100398540497,
+            0.10356000065803528,
+            0.16276100277900696,
+            0.09972000122070312,
+            0.16224099695682526,
+            0.10180000215768814,
+            0.16552099585533142,
+            0.10499999672174454,
+            0.1658399999141693,
+            0.1050800010561943,
+            0.1669600009918213,
+            0.10543999820947647,
+            0.16952000558376312
+          ],
+          "count": 15,
+          "median_ms": 0.16224099695682526,
+          "mean_ms": 0.13650960028171538,
+          "min_ms": 0.09972000122070312,
+          "max_ms": 0.16952000558376312,
+          "p95_ms": 0.16772800236940383,
+          "stdev_ms": 0.03225192983147332
+        },
+        "iu4_activation_pack": {
+          "samples_ms": [
+            0.017680000513792038,
+            0.01592000015079975,
+            0.01592000015079975,
+            0.016599999740719795,
+            0.01600000075995922,
+            0.015641000121831894,
+            0.01655999943614006,
+            0.01664000004529953,
+            0.01696000061929226,
+            0.015720000490546227,
+            0.0163199994713068,
+            0.01607999950647354,
+            0.01616000011563301,
+            0.01576000079512596,
+            0.015879999846220016
+          ],
+          "count": 15,
+          "median_ms": 0.01607999950647354,
+          "mean_ms": 0.016256066784262658,
+          "min_ms": 0.015641000121831894,
+          "max_ms": 0.017680000513792038,
+          "p95_ms": 0.017176000587642192,
+          "stdev_ms": 0.0005522763881786099
+        },
+        "iu4_core_correction_bf16_silu": {
+          "samples_ms": [
+            0.09483999758958817,
+            0.0984409973025322,
+            0.09780000150203705,
+            0.0973609983921051,
+            0.09780000150203705,
+            0.10016000270843506,
+            0.10087999701499939,
+            0.10040000081062317,
+            0.10068099945783615,
+            0.10035999864339828,
+            0.10040099918842316,
+            0.10012000054121017,
+            0.10068099945783615,
+            0.10047999769449234,
+            0.1005999967455864
+          ],
+          "count": 15,
+          "median_ms": 0.10035999864339828,
+          "mean_ms": 0.099400332570076,
+          "min_ms": 0.09483999758958817,
+          "max_ms": 0.10087999701499939,
+          "p95_ms": 0.10074069872498513,
+          "stdev_ms": 0.0017543644621647095
+        },
+        "candidate_wins": 15,
+        "pair_count": 15
+      },
+      "performance": {
+        "inclusive_speedup": 2.2953569446341318,
+        "inclusive_candidate_over_control": 0.4356620883465229,
+        "inclusive_delta_percent": -56.4337911653477,
+        "useful_tops": 10.987230314384538,
+        "core_useful_tops": 17.761849582460695,
+        "core_executed_tops": 28.418959331937117,
+        "candidate_route": "u4s4_dot8_rowtile",
+        "candidate_accumulators_per_wave": 32,
+        "candidate_row_utilization": 0.625,
+        "candidate_weight_sweeps": 1,
+        "candidate_arithmetic_roof_tops": 61.164,
+        "wmma_row_utilization": 0.625,
+        "iu4_weight_bytes_per_core": 89407488,
+        "iu4_effective_weight_gbps": 890.8677681202944,
+        "current_qmicro_weight_bytes_per_inclusive_call": 100270080,
+        "current_effective_weight_gbps": 269.25298334488076,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 864.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 17.28,
+          "arithmetic_roof_tops": 61.164,
+          "memory_roof_gbps": 864.0,
+          "candidate_effective_weight_gbps": 890.8677681202944,
+          "control_effective_weight_gbps": 269.25298334488076,
+          "candidate_fraction_of_arithmetic_roof": 0.46463539552575234,
+          "candidate_percent_of_arithmetic_roof": 46.463539552575234,
+          "candidate_fraction_of_memory_roof": 1.0310969538429333,
+          "candidate_percent_of_memory_roof": 103.10969538429333,
+          "candidate_fraction_of_binding_roof": 1.0310969538429333,
+          "candidate_percent_of_binding_roof": 103.10969538429333
+        }
+      },
+      "correctness_vs_current_exact": {
+        "finite": true,
+        "max_abs": 0.0498046875,
+        "mean_abs": 0.0021817346569150686,
+        "rmse": 0.003213446200453302,
+        "normalized_rmse": 0.28460860917358255,
+        "mean_kl": 5.163868583664627e-06,
+        "max_kl": 5.3721190320530685e-06,
+        "top1_matches": 3,
+        "top1_total": 5,
+        "top1_agreement": 0.6
+      },
+      "candidate_deterministic_bits": true,
+      "candidate_output_sha256": "01fe5d950b5bd088376c9bc339d127fb29733516cf0ea8299327e83776cf64cc",
+      "current_output_sha256": "ae9da75a886490d358cca1663697ca884f2e8431b93951e71df001561705c1ae"
+    },
+    {
+      "rows": 8,
+      "current_chunks": [
+        {
+          "rows": 8,
+          "row_base": 0
+        }
+      ],
+      "timing": {
+        "current_exact_inclusive": {
+          "samples_ms": [
+            0.5362820029258728,
+            0.5330020189285278,
+            0.4916419982910156,
+            0.5083619952201843,
+            0.4818420112133026,
+            0.5092419981956482,
+            0.49000099301338196,
+            0.5245620012283325,
+            0.5017610192298889,
+            0.5384820103645325,
+            0.5162420272827148,
+            0.5497620105743408,
+            0.5253620147705078,
+            0.5712019801139832,
+            0.5376819968223572
+          ],
+          "count": 15,
+          "median_ms": 0.5245620012283325,
+          "mean_ms": 0.5210285385449728,
+          "min_ms": 0.4818420112133026,
+          "max_ms": 0.5712019801139832,
+          "p95_ms": 0.5561940014362334,
+          "stdev_ms": 0.024476837280660184
+        },
+        "iu4_inclusive": {
+          "samples_ms": [
+            0.16947999596595764,
+            0.11020100116729736,
+            0.16843999922275543,
+            0.10544099658727646,
+            0.1690800040960312,
+            0.10540100187063217,
+            0.16820000112056732,
+            0.10856100171804428,
+            0.1671999990940094,
+            0.11300099641084671,
+            0.17336000502109528,
+            0.11524099856615067,
+            0.17151999473571777,
+            0.11844100058078766,
+            0.17084099352359772
+          ],
+          "count": 15,
+          "median_ms": 0.1671999990940094,
+          "mean_ms": 0.1422938659787178,
+          "min_ms": 0.10540100187063217,
+          "max_ms": 0.17336000502109528,
+          "p95_ms": 0.17207199782133104,
+          "stdev_ms": 0.030603245711892376
+        },
+        "iu4_activation_pack": {
+          "samples_ms": [
+            0.01868000067770481,
+            0.026000000536441803,
+            0.017559999600052834,
+            0.016920000314712524,
+            0.017240000888705254,
+            0.01679999940097332,
+            0.016839999705553055,
+            0.01664000004529953,
+            0.016680000349879265,
+            0.016839999705553055,
+            0.016759999096393585,
+            0.016600999981164932,
+            0.016920000314712524,
+            0.016359999775886536,
+            0.016839999705553055
+          ],
+          "count": 15,
+          "median_ms": 0.016839999705553055,
+          "mean_ms": 0.017578733339905738,
+          "min_ms": 0.016359999775886536,
+          "max_ms": 0.026000000536441803,
+          "p95_ms": 0.0208760006353259,
+          "stdev_ms": 0.002392811102800056
+        },
+        "iu4_core_correction_bf16_silu": {
+          "samples_ms": [
+            0.10691999644041061,
+            0.10756099969148636,
+            0.10716000199317932,
+            0.10740099847316742,
+            0.10711999982595444,
+            0.1077210009098053,
+            0.10784000158309937,
+            0.10792099684476852,
+            0.1074799969792366,
+            0.1085209995508194,
+            0.10779999941587448,
+            0.1085600033402443,
+            0.10768000036478043,
+            0.1082800030708313,
+            0.10776100307703018
+          ],
+          "count": 15,
+          "median_ms": 0.1077210009098053,
+          "mean_ms": 0.10771506677071253,
+          "min_ms": 0.10691999644041061,
+          "max_ms": 0.1085600033402443,
+          "p95_ms": 0.10853270068764687,
+          "stdev_ms": 0.00047981951347969803
+        },
+        "candidate_wins": 15,
+        "pair_count": 15
+      },
+      "performance": {
+        "inclusive_speedup": 3.137332560231617,
+        "inclusive_candidate_over_control": 0.3187421099936482,
+        "inclusive_delta_percent": -68.12578900063517,
+        "useful_tops": 17.058174255110917,
+        "core_useful_tops": 26.476979381096573,
+        "core_executed_tops": 26.476979381096573,
+        "candidate_route": "u4s4_dot8_rowtile",
+        "candidate_accumulators_per_wave": 32,
+        "candidate_row_utilization": 1.0,
+        "candidate_weight_sweeps": 1,
+        "candidate_arithmetic_roof_tops": 61.164,
+        "wmma_row_utilization": 1.0,
+        "iu4_weight_bytes_per_core": 89407488,
+        "iu4_effective_weight_gbps": 829.991248176953,
+        "current_qmicro_weight_bytes_per_inclusive_call": 100270080,
+        "current_effective_weight_gbps": 191.15010192351735,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 864.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 27.648,
+          "arithmetic_roof_tops": 61.164,
+          "memory_roof_gbps": 864.0,
+          "candidate_effective_weight_gbps": 829.991248176953,
+          "control_effective_weight_gbps": 191.15010192351735,
+          "candidate_fraction_of_arithmetic_roof": 0.43288502029129183,
+          "candidate_percent_of_arithmetic_roof": 43.288502029129184,
+          "candidate_fraction_of_memory_roof": 0.9606380187233253,
+          "candidate_percent_of_memory_roof": 96.06380187233253,
+          "candidate_fraction_of_binding_roof": 0.9606380187233253,
+          "candidate_percent_of_binding_roof": 96.06380187233253
+        }
+      },
+      "correctness_vs_current_exact": {
+        "finite": true,
+        "max_abs": 0.04296875,
+        "mean_abs": 0.0022124492097646,
+        "rmse": 0.0032492063313157462,
+        "normalized_rmse": 0.28868288962961874,
+        "mean_kl": 5.281463751304614e-06,
+        "max_kl": 5.830723691293041e-06,
+        "top1_matches": 4,
+        "top1_total": 8,
+        "top1_agreement": 0.5
+      },
+      "candidate_deterministic_bits": true,
+      "candidate_output_sha256": "862520a1dcff4af92508324c2bfe14188ebcae6e4f03bb4ed08017fdbe3a8f5b",
+      "current_output_sha256": "ceb28ad70ad4c9a5a18ebccf2a3f8c63c84bd13ef120ae96f1729d6993a617f6"
+    },
+    {
+      "rows": 16,
+      "current_chunks": [
+        {
+          "rows": 8,
+          "row_base": 0
+        },
+        {
+          "rows": 8,
+          "row_base": 8
+        }
+      ],
+      "timing": {
+        "current_exact_inclusive": {
+          "samples_ms": [
+            0.9728839993476868,
+            0.9793230295181274,
+            0.966044008731842,
+            1.0498839616775513,
+            1.0979640483856201,
+            1.2633249759674072,
+            1.2448840141296387,
+            1.1810840368270874,
+            1.0791640281677246,
+            1.064404010772705,
+            1.0392440557479858,
+            1.0858039855957031,
+            1.0345640182495117,
+            1.0882840156555176,
+            1.0513240098953247
+          ],
+          "count": 15,
+          "median_ms": 1.064404010772705,
+          "mean_ms": 1.0798786799112956,
+          "min_ms": 0.966044008731842,
+          "max_ms": 1.2633249759674072,
+          "p95_ms": 1.2504163026809691,
+          "stdev_ms": 0.08933561124390227
+        },
+        "iu4_inclusive": {
+          "samples_ms": [
+            0.21428099274635315,
+            0.17636099457740784,
+            0.21532100439071655,
+            0.18055999279022217,
+            0.2414810061454773,
+            0.219200998544693,
+            0.24652099609375,
+            0.2253209948539734,
+            0.22044099867343903,
+            0.19144099950790405,
+            0.22256100177764893,
+            0.1937599927186966,
+            0.22124099731445312,
+            0.19224099814891815,
+            0.2237199991941452
+          ],
+          "count": 15,
+          "median_ms": 0.219200998544693,
+          "mean_ms": 0.21229679783185323,
+          "min_ms": 0.17636099457740784,
+          "max_ms": 0.24652099609375,
+          "p95_ms": 0.2429930031299591,
+          "stdev_ms": 0.02089939123151387
+        },
+        "iu4_activation_pack": {
+          "samples_ms": [
+            0.017559999600052834,
+            0.016599999740719795,
+            0.017160000279545784,
+            0.01616000011563301,
+            0.017079999670386314,
+            0.016519999131560326,
+            0.016440000385046005,
+            0.01616000011563301,
+            0.01607999950647354,
+            0.01592000015079975,
+            0.016119999811053276,
+            0.01624000072479248,
+            0.01624000072479248,
+            0.01688000001013279,
+            0.016920000314712524
+          ],
+          "count": 15,
+          "median_ms": 0.016440000385046005,
+          "mean_ms": 0.01653866668542226,
+          "min_ms": 0.01592000015079975,
+          "max_ms": 0.017559999600052834,
+          "p95_ms": 0.0172800000756979,
+          "stdev_ms": 0.0004804441443519766
+        },
+        "iu4_core_correction_bf16_silu": {
+          "samples_ms": [
+            0.1902800053358078,
+            0.1908009946346283,
+            0.19008100032806396,
+            0.1904810070991516,
+            0.19023999571800232,
+            0.1903200000524521,
+            0.19032099843025208,
+            0.19144099950790405,
+            0.1910409927368164,
+            0.19128000736236572,
+            0.1910810023546219,
+            0.19148099422454834,
+            0.19100099802017212,
+            0.1913599967956543,
+            0.19380000233650208
+          ],
+          "count": 15,
+          "median_ms": 0.19100099802017212,
+          "mean_ms": 0.19100059966246288,
+          "min_ms": 0.19008100032806396,
+          "max_ms": 0.19380000233650208,
+          "p95_ms": 0.19217669665813444,
+          "stdev_ms": 0.0009124162328456628
+        },
+        "candidate_wins": 15,
+        "pair_count": 15
+      },
+      "performance": {
+        "inclusive_speedup": 4.855835593083228,
+        "inclusive_candidate_over_control": 0.20593777957071377,
+        "inclusive_delta_percent": -79.40622204292862,
+        "useful_tops": 26.022935469598043,
+        "core_useful_tops": 29.865045204620127,
+        "core_executed_tops": 29.865045204620127,
+        "candidate_route": "u4s4_dot8_rowtile",
+        "candidate_accumulators_per_wave": 64,
+        "candidate_row_utilization": 1.0,
+        "candidate_weight_sweeps": 1,
+        "candidate_arithmetic_roof_tops": 61.164,
+        "wmma_row_utilization": 1.0,
+        "iu4_weight_bytes_per_core": 89407488,
+        "iu4_effective_weight_gbps": 468.09958548257134,
+        "current_qmicro_weight_bytes_per_inclusive_call": 200540160,
+        "current_effective_weight_gbps": 188.40605444019107,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 864.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 55.296,
+          "arithmetic_roof_tops": 61.164,
+          "memory_roof_gbps": 864.0,
+          "candidate_effective_weight_gbps": 468.09958548257134,
+          "control_effective_weight_gbps": 188.40605444019107,
+          "candidate_fraction_of_arithmetic_roof": 0.4882781571614042,
+          "candidate_percent_of_arithmetic_roof": 48.82781571614042,
+          "candidate_fraction_of_memory_roof": 0.541781927641865,
+          "candidate_percent_of_memory_roof": 54.17819276418649,
+          "candidate_fraction_of_binding_roof": 0.541781927641865,
+          "candidate_percent_of_binding_roof": 54.17819276418649
+        }
+      },
+      "correctness_vs_current_exact": {
+        "finite": true,
+        "max_abs": 0.0771484375,
+        "mean_abs": 0.0022227931767702103,
+        "rmse": 0.0032732903198576797,
+        "normalized_rmse": 0.2942467221726897,
+        "mean_kl": 5.352279458478806e-06,
+        "max_kl": 6.582313876517125e-06,
+        "top1_matches": 5,
+        "top1_total": 16,
+        "top1_agreement": 0.3125
+      },
+      "candidate_deterministic_bits": true,
+      "candidate_output_sha256": "3b9211ea9cd4bb9d2b33706a0f0d8d99777511d4a769893614d6bc39d8a604de",
+      "current_output_sha256": "efd5595ae0a7da37adaaf73b09f3f832a00e8d5c0b33f47f262f0665ceb4f51b"
+    },
+    {
+      "rows": 32,
+      "current_chunks": [
+        {
+          "rows": 8,
+          "row_base": 0
+        },
+        {
+          "rows": 8,
+          "row_base": 8
+        },
+        {
+          "rows": 8,
+          "row_base": 16
+        },
+        {
+          "rows": 8,
+          "row_base": 24
+        }
+      ],
+      "timing": {
+        "current_exact_inclusive": {
+          "samples_ms": [
+            3.126971960067749,
+            2.1097280979156494,
+            1.9296870231628418,
+            1.9887280464172363,
+            2.014206886291504,
+            2.080367088317871,
+            2.1189279556274414,
+            2.187407970428467,
+            2.1756091117858887,
+            2.213489055633545,
+            2.1616480350494385,
+            2.183168888092041,
+            2.163367986679077,
+            2.1730079650878906,
+            2.1464080810546875
+          ],
+          "count": 15,
+          "median_ms": 2.1616480350494385,
+          "mean_ms": 2.1848482767740887,
+          "min_ms": 1.9296870231628418,
+          "max_ms": 3.126971960067749,
+          "p95_ms": 2.4875339269638053,
+          "stdev_ms": 0.2731722771555762
+        },
+        "iu4_inclusive": {
+          "samples_ms": [
+            0.7390429973602295,
+            0.6348419785499573,
+            0.5487620234489441,
+            0.52988201379776,
+            0.5914819836616516,
+            0.5780829787254333,
+            0.6258019804954529,
+            0.6096829771995544,
+            0.6246820092201233,
+            0.6072019934654236,
+            0.6232029795646667,
+            0.6070020198822021,
+            0.6302419900894165,
+            0.603643000125885,
+            0.6215220093727112
+          ],
+          "count": 15,
+          "median_ms": 0.6096829771995544,
+          "mean_ms": 0.6116716623306274,
+          "min_ms": 0.52988201379776,
+          "max_ms": 0.7390429973602295,
+          "p95_ms": 0.6661022841930389,
+          "stdev_ms": 0.04628892423353461
+        },
+        "iu4_activation_pack": {
+          "samples_ms": [
+            0.017799999564886093,
+            0.01744000054895878,
+            0.016961000859737396,
+            0.016759999096393585,
+            0.016920000314712524,
+            0.017079999670386314,
+            0.01664000004529953,
+            0.01679999940097332,
+            0.016680000349879265,
+            0.016481000930070877,
+            0.016759999096393585,
+            0.01688000001013279,
+            0.016519999131560326,
+            0.01655999943614006,
+            0.01679999940097332
+          ],
+          "count": 15,
+          "median_ms": 0.01679999940097332,
+          "mean_ms": 0.016872133190433184,
+          "min_ms": 0.016481000930070877,
+          "max_ms": 0.017799999564886093,
+          "p95_ms": 0.017548000253736974,
+          "stdev_ms": 0.00035230204716592007
+        },
+        "iu4_core_correction_bf16_silu": {
+          "samples_ms": [
+            0.5939630270004272,
+            0.593641996383667,
+            0.5914819836616516,
+            0.5911629796028137,
+            0.5926820039749146,
+            0.5932819843292236,
+            0.5829229950904846,
+            0.5801219940185547,
+            0.5796819925308228,
+            0.576882004737854,
+            0.578361988067627,
+            0.5703619718551636,
+            0.568202018737793,
+            0.5690420269966125,
+            0.5684019923210144
+          ],
+          "count": 15,
+          "median_ms": 0.5801219940185547,
+          "mean_ms": 0.5820128639539083,
+          "min_ms": 0.568202018737793,
+          "max_ms": 0.5939630270004272,
+          "p95_ms": 0.5937383055686951,
+          "stdev_ms": 0.01007730142391253
+        },
+        "candidate_wins": 15,
+        "pair_count": 15
+      },
+      "performance": {
+        "inclusive_speedup": 3.545527947948451,
+        "inclusive_candidate_over_control": 0.2820454427890295,
+        "inclusive_delta_percent": -71.79545572109704,
+        "useful_tops": 18.71219520086076,
+        "core_useful_tops": 19.665703072162973,
+        "core_executed_tops": 157.32562457730378,
+        "candidate_route": "iu4_wmma_bulk_m256",
+        "candidate_accumulators_per_wave": 16,
+        "candidate_row_utilization": 0.125,
+        "candidate_weight_sweeps": 1,
+        "candidate_arithmetic_roof_tops": 241.966,
+        "wmma_row_utilization": 0.125,
+        "iu4_weight_bytes_per_core": 89407488,
+        "iu4_effective_weight_gbps": 154.11842495518346,
+        "current_qmicro_weight_bytes_per_inclusive_call": 401080320,
+        "current_effective_weight_gbps": 185.54376730013175,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 864.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 110.592,
+          "arithmetic_roof_tops": 241.966,
+          "memory_roof_gbps": 864.0,
+          "candidate_effective_weight_gbps": 154.11842495518346,
+          "control_effective_weight_gbps": 185.54376730013175,
+          "candidate_fraction_of_arithmetic_roof": 0.6501972367080655,
+          "candidate_percent_of_arithmetic_roof": 65.01972367080656,
+          "candidate_fraction_of_memory_roof": 0.17837780666109196,
+          "candidate_percent_of_memory_roof": 17.837780666109197,
+          "candidate_fraction_of_binding_roof": 0.17837780666109196,
+          "candidate_percent_of_binding_roof": 17.837780666109197
+        }
+      },
+      "correctness_vs_current_exact": {
+        "finite": true,
+        "max_abs": 0.1396484375,
+        "mean_abs": 0.0021930509246885777,
+        "rmse": 0.0032318675089753135,
+        "normalized_rmse": 0.2895818829453851,
+        "mean_kl": 5.226769183230266e-06,
+        "max_kl": 6.30880508414982e-06,
+        "top1_matches": 19,
+        "top1_total": 32,
+        "top1_agreement": 0.59375
+      },
+      "candidate_deterministic_bits": true,
+      "candidate_output_sha256": "34b3d7808608eb7d2702f67f537d003368d4f2b15683c8147ad786e1dd51132f",
+      "current_output_sha256": "4a3571841b329e208594203de80739f848deaadcac05ebf9995d1d0dd83d466e"
+    },
+    {
+      "rows": 64,
+      "current_chunks": [
+        {
+          "rows": 8,
+          "row_base": 0
+        },
+        {
+          "rows": 8,
+          "row_base": 8
+        },
+        {
+          "rows": 8,
+          "row_base": 16
+        },
+        {
+          "rows": 8,
+          "row_base": 24
+        },
+        {
+          "rows": 8,
+          "row_base": 32
+        },
+        {
+          "rows": 8,
+          "row_base": 40
+        },
+        {
+          "rows": 8,
+          "row_base": 48
+        },
+        {
+          "rows": 8,
+          "row_base": 56
+        }
+      ],
+      "timing": {
+        "current_exact_inclusive": {
+          "samples_ms": [
+            3.925654888153076,
+            4.693138122558594,
+            4.3357768058776855,
+            4.517377853393555,
+            4.499056816101074,
+            4.6312971115112305,
+            4.501256942749023,
+            4.555578231811523,
+            4.545417785644531,
+            4.596697807312012,
+            4.437617778778076,
+            4.507018089294434,
+            4.461977958679199,
+            4.502297878265381,
+            4.430497169494629
+          ],
+          "count": 15,
+          "median_ms": 4.502297878265381,
+          "mean_ms": 4.476044082641602,
+          "min_ms": 3.925654888153076,
+          "max_ms": 4.693138122558594,
+          "p95_ms": 4.6498494148254395,
+          "stdev_ms": 0.17480674553287226
+        },
+        "iu4_inclusive": {
+          "samples_ms": [
+            0.6594820022583008,
+            0.655722975730896,
+            0.6882420182228088,
+            0.6648420095443726,
+            0.7080029845237732,
+            0.6894429922103882,
+            0.6835629940032959,
+            0.66908198595047,
+            0.6870819926261902,
+            0.665922999382019,
+            0.6835629940032959,
+            0.6660429835319519,
+            0.6858819723129272,
+            0.6660829782485962,
+            0.6878820061683655
+          ],
+          "count": 15,
+          "median_ms": 0.6835629940032959,
+          "mean_ms": 0.6773891925811768,
+          "min_ms": 0.655722975730896,
+          "max_ms": 0.7080029845237732,
+          "p95_ms": 0.6950109899044037,
+          "stdev_ms": 0.014533864551217407
+        },
+        "iu4_activation_pack": {
+          "samples_ms": [
+            0.018360000103712082,
+            0.018079999834299088,
+            0.017559999600052834,
+            0.017960000783205032,
+            0.017559999600052834,
+            0.017999999225139618,
+            0.01764100044965744,
+            0.017640000209212303,
+            0.017880000174045563,
+            0.017999999225139618,
+            0.0175199992954731,
+            0.017680000513792038,
+            0.0175199992954731,
+            0.018400000408291817,
+            0.0175199992954731
+          ],
+          "count": 15,
+          "median_ms": 0.017680000513792038,
+          "mean_ms": 0.017821399867534636,
+          "min_ms": 0.0175199992954731,
+          "max_ms": 0.018400000408291817,
+          "p95_ms": 0.018372000195086002,
+          "stdev_ms": 0.00030152150968665157
+        },
+        "iu4_core_correction_bf16_silu": {
+          "samples_ms": [
+            0.6610429883003235,
+            0.6528419852256775,
+            0.6528429985046387,
+            0.6609629988670349,
+            0.6604019999504089,
+            0.6467620134353638,
+            0.6453629732131958,
+            0.6460829973220825,
+            0.6460019946098328,
+            0.6411229968070984,
+            0.6274430155754089,
+            0.6275219917297363,
+            0.6180430054664612,
+            0.6174020171165466,
+            0.6082429885864258
+          ],
+          "count": 15,
+          "median_ms": 0.6460019946098328,
+          "mean_ms": 0.6408052643140157,
+          "min_ms": 0.6082429885864258,
+          "max_ms": 0.6610429883003235,
+          "p95_ms": 0.6609869956970215,
+          "stdev_ms": 0.017075604365816663
+        },
+        "candidate_wins": 15,
+        "pair_count": 15
+      },
+      "performance": {
+        "inclusive_speedup": 6.5865149485310965,
+        "inclusive_candidate_over_control": 0.1518253595132304,
+        "inclusive_delta_percent": -84.81746404867695,
+        "useful_tops": 33.37953335708221,
+        "core_useful_tops": 35.32034568063655,
+        "core_executed_tops": 141.2813827225462,
+        "candidate_route": "iu4_wmma_bulk_m256",
+        "candidate_accumulators_per_wave": 16,
+        "candidate_row_utilization": 0.25,
+        "candidate_weight_sweeps": 1,
+        "candidate_arithmetic_roof_tops": 241.966,
+        "wmma_row_utilization": 0.25,
+        "iu4_weight_bytes_per_core": 89407488,
+        "iu4_effective_weight_gbps": 138.40125687847083,
+        "current_qmicro_weight_bytes_per_inclusive_call": 802160640,
+        "current_effective_weight_gbps": 178.16694090197598,
+        "implementation_quality": {
+          "binding_roof": "memory",
+          "binding_roof_value": 864.0,
+          "binding_roof_unit": "GB/s",
+          "weight_only_useful_memory_roof_tops": 221.184,
+          "arithmetic_roof_tops": 241.966,
+          "memory_roof_gbps": 864.0,
+          "candidate_effective_weight_gbps": 138.40125687847083,
+          "control_effective_weight_gbps": 178.16694090197598,
+          "candidate_fraction_of_arithmetic_roof": 0.5838894006701197,
+          "candidate_percent_of_arithmetic_roof": 58.38894006701197,
+          "candidate_fraction_of_memory_roof": 0.16018663990563753,
+          "candidate_percent_of_memory_roof": 16.018663990563752,
+          "candidate_fraction_of_binding_roof": 0.16018663990563753,
+          "candidate_percent_of_binding_roof": 16.018663990563752
+        }
+      },
+      "correctness_vs_current_exact": {
+        "finite": true,
+        "max_abs": 0.1259765625,
+        "mean_abs": 0.0021785765420645475,
+        "rmse": 0.00320780557684495,
+        "normalized_rmse": 0.29057522030951566,
+        "mean_kl": 5.147674174126718e-06,
+        "max_kl": 6.382967749017279e-06,
+        "top1_matches": 39,
+        "top1_total": 64,
+        "top1_agreement": 0.609375
+      },
+      "candidate_deterministic_bits": true,
+      "candidate_output_sha256": "e4a4a877441debd8ec36f79e72836accac3884d23f218e4c85e6f9a0d1d876a5",
+      "current_output_sha256": "f8fe297d337df7a950147b3f19034364d6eecb40020341aad0fd7eb2b2d15409"
+    },
+    {
+      "rows": 96,
+      "current_chunks": [
+        {
+          "rows": 8,
+          "row_base": 0
+        },
+        {
+          "rows": 8,
+          "row_base": 8
+        },
+        {
+          "rows": 8,
+          "row_base": 16
+        },
+        {
+          "rows": 8,
+          "row_base": 24
+        },
+        {
+          "rows": 8,
+          "row_base": 32
+        },
+        {
+          "rows": 8,
+          "row_base": 40
+        },
+        {
+          "rows": 8,
+          "row_base": 48
+        },
+        {
+          "rows": 8,
+          "row_base": 56
+        },
+        {
+          "rows": 8,
+          "row_base": 64
+        },
+        {
+          "rows": 8,
+          "row_base": 72
+        },
+        {
+          "rows": 8,
+          "row_base": 80
+        },
+        {
+          "rows": 8,
+          "row_base": 88
+        }
+      ],
+      "timing": {
+        "current_exact_inclusive": {
+          "samples_ms": [
+            7.271830081939697,
+            6.123586177825928,
+            6.530227184295654,
+            6.9164299964904785,
+            6.779667854309082,
+            6.804347991943359,
+            6.68482780456543,
+            6.83582878112793,
+            6.749427795410156,
+            6.685187816619873,
+            6.691187858581543,
+            6.666347980499268,
+            6.625947952270508,
+            6.537548065185547,
+            6.52974796295166
+          ],
+          "count": 15,
+          "median_ms": 6.685187816619873,
+          "mean_ms": 6.695476086934407,
+          "min_ms": 6.123586177825928,
+          "max_ms": 7.271830081939697,
+          "p95_ms": 7.023050022125243,
+          "stdev_ms": 0.24425515628881642
+        },
+        "iu4_inclusive": {
+          "samples_ms": [
+            0.6148830056190491,
+            0.5943629741668701,
+            0.6888830065727234,
+            0.677282989025116,
+            0.7048829793930054,
+            0.6875619888305664,
+            0.6814029812812805,
+            0.6648030281066895,
+            0.6854429841041565,
+            0.6645230054855347,
+            0.6841229796409607,
+            0.6602020263671875,
+            0.681082010269165,
+            0.6604419946670532,
+            0.6858829855918884
+          ],
+          "count": 15,
+          "median_ms": 0.681082010269165,
+          "mean_ms": 0.6690507292747497,
+          "min_ms": 0.5943629741668701,
+          "max_ms": 0.7048829793930054,
+          "p95_ms": 0.693682998418808,
+          "stdev_ms": 0.029115037607286703
+        },
+        "iu4_activation_pack": {
+          "samples_ms": [
+            0.017799999564886093,
+            0.018039999529719353,
+            0.017400000244379044,
+            0.01759999990463257,
+            0.017559999600052834,
+            0.017880000174045563,
+            0.017319999635219574,
+            0.01759999990463257,
+            0.017720000818371773,
+            0.017839999869465828,
+            0.01735999993979931,
+            0.017720000818371773,
+            0.017559999600052834,
+            0.017920000478625298,
+            0.017319999635219574
+          ],
+          "count": 15,
+          "median_ms": 0.01759999990463257,
+          "mean_ms": 0.0176426666478316,
+          "min_ms": 0.017319999635219574,
+          "max_ms": 0.018039999529719353,
+          "p95_ms": 0.017956000193953513,
+          "stdev_ms": 0.00022851913130140272
+        },
+        "iu4_core_correction_bf16_silu": {
+          "samples_ms": [
+            0.6501629948616028,
+            0.6517630219459534,
+            0.6519629955291748,
+            0.650363028049469,
+            0.6503229737281799,
+            0.6497629880905151,
+            0.6306020021438599,
+            0.6245229840278625,
+            0.6230030059814453,
+            0.6178029775619507,
+            0.6178020238876343,
+            0.5975220203399658,
+            0.5958830118179321,
+            0.5898420214653015,
+            0.5903229713439941
+          ],
+          "count": 15,
+          "median_ms": 0.6245229840278625,
+          "mean_ms": 0.6261094013849894,
+          "min_ms": 0.5898420214653015,
+          "max_ms": 0.6519629955291748,
+          "p95_ms": 0.6518230140209198,
+          "stdev_ms": 0.024107413008459547
+        },
+        "candidate_wins": 15,
+        "pair_count": 15
+      },
+      "performance": {
+        "inclusive_speedup": 9.815540149089935,
+        "inclusive_candidate_over_control": 0.10187926337326599,
+        "inclusive_delta_percent": -89.8120736626734,
+        "useful_tops": 50.251687937659675,
+        "core_useful_tops": 54.80265981447539,
+        "core_executed_tops": 146.14042617193437,
+        "candidate_route": "iu4_wmma_bulk_m256",
+        "candidate_accumulators_per_wave": 16,
+        "candidate_row_utilization": 0.375,
+        "candidate_weight_sweeps": 1,
+        "candidate_arithmetic_roof_tops": 241.966,
+        "wmma_row_utilization": 0.375,
+        "iu4_weight_bytes_per_core": 89407488,
+        "iu4_effective_weight_gbps": 143.16124512082195,
+        "current_qmicro_weight_bytes_per_inclusive_call": 1203240960,
+        "current_effective_weight_gbps": 179.98611153581263,
+        "implementation_quality": {
+          "binding_roof": "arithmetic",
+          "binding_roof_value": 241.966,
+          "binding_roof_unit": "TOPS",
+          "weight_only_useful_memory_roof_tops": 331.776,
+          "arithmetic_roof_tops": 241.966,
+          "memory_roof_gbps": 864.0,
+          "candidate_effective_weight_gbps": 143.16124512082195,
+          "control_effective_weight_gbps": 179.98611153581263,
+          "candidate_fraction_of_arithmetic_roof": 0.6039709139793787,
+          "candidate_percent_of_arithmetic_roof": 60.39709139793787,
+          "candidate_fraction_of_memory_roof": 0.16569588555650688,
+          "candidate_percent_of_memory_roof": 16.56958855565069,
+          "candidate_fraction_of_binding_roof": 0.6039709139793787,
+          "candidate_percent_of_binding_roof": 60.39709139793787
+        }
+      },
+      "correctness_vs_current_exact": {
+        "finite": true,
+        "max_abs": 0.115234375,
+        "mean_abs": 0.002190863247960806,
+        "rmse": 0.0032278639172947134,
+        "normalized_rmse": 0.29137386473027244,
+        "mean_kl": 5.211350238842018e-06,
+        "max_kl": 7.035277543860308e-06,
+        "top1_matches": 69,
+        "top1_total": 96,
+        "top1_agreement": 0.71875
+      },
+      "candidate_deterministic_bits": true,
+      "candidate_output_sha256": "41f1e4dae12aaaa2807ef1ba45f2ab5df5988023f5026908c9efe4e4f0393ed8",
+      "current_output_sha256": "9a99f9ba1ac08caf5c82b29c6942903b381f538ff9a01518464f7be20cfe6c98"
+    },
+    {
+      "rows": 128,
+      "current_chunks": [
+        {
+          "rows": 8,
+          "row_base": 0
+        },
+        {
+          "rows": 8,
+          "row_base": 8
+        },
+        {
+          "rows": 8,
+          "row_base": 16
+        },
+        {
+          "rows": 8,
+          "row_base": 24
+        },
+        {
+          "rows": 8,
+          "row_base": 32
+        },
+        {
+          "rows": 8,
+          "row_base": 40
+        },
+        {
+          "rows": 8,
+          "row_base": 48
+        },
+        {
+          "rows": 8,
+          "row_base": 56
+        },
+        {
+          "rows": 8,
+          "row_base": 64
+        },
+        {
+          "rows": 8,
+          "row_base": 72
+        },
+        {
+          "rows": 8,
+          "row_base": 80
+        },
+        {
+          "rows": 8,
+          "row_base": 88
+        },
+        {
+          "rows": 8,
+          "row_base": 96
+        },
+        {
+          "rows": 8,
+          "row_base": 104
+        },
+        {
+          "rows": 8,
+          "row_base": 112
+        },
+        {
+          "rows": 8,
+          "row_base": 120
+        }
+      ],
+      "timing": {
+        "current_exact_inclusive": {
+          "samples_ms": [
+            8.43123722076416,
+            9.043318748474121,
+            9.054280281066895,
+            9.107439994812012,
+            9.118000030517578,
+            9.015839576721191,
+            9.000519752502441,
+            8.854839324951172,
+            8.933879852294922,
+            8.879239082336426,
+            8.69291877746582,
+            8.786718368530273,
+            8.616156578063965,
+            8.724238395690918,
+            8.460797309875488
+          ],
+          "count": 15,
+          "median_ms": 8.879239082336426,
+          "mean_ms": 8.847961552937825,
+          "min_ms": 8.43123722076416,
+          "max_ms": 9.118000030517578,
+          "p95_ms": 9.110608005523682,
+          "stdev_ms": 0.22380341269683413
+        },
+        "iu4_inclusive": {
+          "samples_ms": [
+            0.6921229958534241,
+            0.6786029934883118,
+            0.6988030076026917,
+            0.6833630204200745,
+            0.7019230127334595,
+            0.6868029832839966,
+            0.7131230235099792,
+            0.6864429712295532,
+            0.6870430111885071,
+            0.6685230135917664,
+            0.6930029988288879,
+            0.6762030124664307,
+            0.6868429780006409,
+            0.6652430295944214,
+            0.6723229885101318
+          ],
+          "count": 15,
+          "median_ms": 0.6868029832839966,
+          "mean_ms": 0.6860243360201518,
+          "min_ms": 0.6652430295944214,
+          "max_ms": 0.7131230235099792,
+          "p95_ms": 0.7052830159664154,
+          "stdev_ms": 0.01288212845270709
+        },
+        "iu4_activation_pack": {
+          "samples_ms": [
+            0.018319999799132347,
+            0.018160000443458557,
+            0.017559999600052834,
+            0.01775999926030636,
+            0.018079999834299088,
+            0.01764100044965744,
+            0.017960000783205032,
+            0.017799999564886093,
+            0.018039999529719353,
+            0.01759999990463257,
+            0.01759999990463257,
+            0.017400000244379044,
+            0.017999999225139618,
+            0.01759999990463257,
+            0.017720000818371773
+          ],
+          "count": 15,
+          "median_ms": 0.01775999926030636,
+          "mean_ms": 0.017816066617767017,
+          "min_ms": 0.017400000244379044,
+          "max_ms": 0.018319999799132347,
+          "p95_ms": 0.018208000250160693,
+          "stdev_ms": 0.0002630329400346475
+        },
+        "iu4_core_correction_bf16_silu": {
+          "samples_ms": [
+            0.6390830278396606,
+            0.6388829946517944,
+            0.6589229702949524,
+            0.6572830080986023,
+            0.6577630043029785,
+            0.6562430262565613,
+            0.6413630247116089,
+            0.6364030241966248,
+            0.6317219734191895,
+            0.6240019798278809,
+            0.6239230036735535,
+            0.6084830164909363,
+            0.6058430075645447,
+            0.6022019982337952,
+            0.5991629958152771
+          ],
+          "count": 15,
+          "median_ms": 0.6364030241966248,
+          "mean_ms": 0.6320854703585307,
+          "min_ms": 0.5991629958152771,
+          "max_ms": 0.6589229702949524,
+          "p95_ms": 0.6581109941005707,
+          "stdev_ms": 0.020963798269682102
+        },
+        "candidate_wins": 15,
+        "pair_count": 15
+      },
+      "performance": {
+        "inclusive_speedup": 12.92836417203624,
+        "inclusive_candidate_over_control": 0.07734930627673511,
+        "inclusive_delta_percent": -92.2650693723265,
+        "useful_tops": 66.4441311856243,
+        "core_useful_tops": 71.70617640858475,
+        "core_executed_tops": 143.4123528171695,
+        "candidate_route": "iu4_wmma_bulk_m256",
+        "candidate_accumulators_per_wave": 16,
+        "candidate_row_utilization": 0.5,
+        "candidate_weight_sweeps": 1,
+        "candidate_arithmetic_roof_tops": 241.966,
+        "wmma_row_utilization": 0.5,
+        "iu4_weight_bytes_per_core": 89407488,
+        "iu4_effective_weight_gbps": 140.48878556613587,
+        "current_qmicro_weight_bytes_per_inclusive_call": 1604321280,
+        "current_effective_weight_gbps": 180.68229328248353,
+        "implementation_quality": {
+          "binding_roof": "arithmetic",
+          "binding_roof_value": 241.966,
+          "binding_roof_unit": "TOPS",
+          "weight_only_useful_memory_roof_tops": 442.368,
+          "arithmetic_roof_tops": 241.966,
+          "memory_roof_gbps": 864.0,
+          "candidate_effective_weight_gbps": 140.48878556613587,
+          "control_effective_weight_gbps": 180.68229328248353,
+          "candidate_fraction_of_arithmetic_roof": 0.5926962995510505,
+          "candidate_percent_of_arithmetic_roof": 59.26962995510505,
+          "candidate_fraction_of_memory_roof": 0.1626027610719165,
+          "candidate_percent_of_memory_roof": 16.26027610719165,
+          "candidate_fraction_of_binding_roof": 0.5926962995510505,
+          "candidate_percent_of_binding_roof": 59.26962995510505
+        }
+      },
+      "correctness_vs_current_exact": {
+        "finite": true,
+        "max_abs": 0.12109375,
+        "mean_abs": 0.0021913882810622454,
+        "rmse": 0.00322366006091088,
+        "normalized_rmse": 0.2899569376794729,
+        "mean_kl": 5.199461519297221e-06,
+        "max_kl": 6.221514207267531e-06,
+        "top1_matches": 87,
+        "top1_total": 128,
+        "top1_agreement": 0.6796875
+      },
+      "candidate_deterministic_bits": true,
+      "candidate_output_sha256": "f3987597d0b8bdd0d1f411873c9e9c4841db7a70c881a671c12a715a1060df5c",
+      "current_output_sha256": "e5c181abd47ac3dbfd74925a2a1346e89b3d82b1976de6a8a2333119bc02e16a"
+    }
+  ],
+  "gates": {
+    "tiny_m_inclusive_faster_all_m2_m5": true,
+    "native_b1_b3_inclusive_faster_all_m2_m4": true,
+    "wide_m_inclusive_faster_all_m16_m128": true,
+    "intermediate_error_diagnostic_only": true,
+    "model_logit_quality_gate_run": false,
+    "model_logit_quality_qualified": false,
+    "quality_note": "Gate/up channel top-1 and softmax KL are localization diagnostics, not the project's full-vocabulary outer gate. The re-quantized Q4_K_S S4 view is T3 and remains unqualified without the complete model gate.",
+    "all_finite": true,
+    "all_deterministic": true,
+    "teardown_exact": true
+  },
+  "memory": {
+    "tracked_current_before_bytes": 0,
+    "tracked_current_after_bytes": 0,
+    "teardown_exact": true
+  },
+  "command": "HIPENGINE_HIP_ARCH=gfx1100 python3 scripts/qwen38_iu4_s4_gate_up_leaf.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --layer 0 --warmups 3 --samples 15 --burst 1 --output benchmarks/results/2026-08-24-gfx1100-w7900-qwen38-iu4-s4-b4-tiny-m-gate-up-leaf.json"
+}
