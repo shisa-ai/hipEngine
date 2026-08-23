@@ -208,7 +208,7 @@ torch-free.
 | `hipengine/runtime/qwen35_gguf_runner.py` | Exact GGUF capture tap and quality substitution hooks |
 | `scripts/qwen38_dms_capture.py` | Exact-Q4 corpus capture CLI |
 | `scripts/qwen38_dms_build_labels.py` | Deterministic oracle-label CLI; full-prefix query-stride subsampling for feasible 32K retraining |
-| `scripts/qwen38_dms_train_sidecar.py` | Sidecar-only trainer/exporter |
+| `scripts/qwen38_dms_train_sidecar.py` | Sidecar-only trainer/exporter; optional strict initialization and deterministic calibration-row validation split |
 | `scripts/qwen38_dms_replay.py` | Train-only threshold calibration and capture replay |
 | `scripts/qwen38_dms_quality.py` | Dense/no-evict/CR exact-Q4 KL and top-1 runner |
 | `scripts/qwen38_dms_integrated_long.py` | Explicit c1 no-shadow 128K/256K capacity/decode/teardown runner |

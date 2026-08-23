@@ -18,6 +18,7 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn.functional as F
+from safetensors.torch import load_file as load_safetensors
 from safetensors.torch import save_file as save_safetensors
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -41,6 +42,8 @@ class _ShardRecord:
     physical_layer_id: int
     compact_layer_index: int
     rows: int
+    derived_validation_modulus: int = 1
+    select_derived_validation: bool = False
 
 
 class _ExternalLinearSidecar(torch.nn.Module):
@@ -81,10 +84,26 @@ def _context_bucket(tokens: int) -> str:
     return "gt8192"
 
 
-def _records(label_manifest: Path, manifest: dict[str, Any]) -> tuple[list[_ShardRecord], list[_ShardRecord]]:
+def _records(
+    label_manifest: Path,
+    manifest: dict[str, Any],
+    *,
+    derive_validation_modulus: int = 0,
+) -> tuple[list[_ShardRecord], list[_ShardRecord]]:
     root = label_manifest.parent
     train: list[_ShardRecord] = []
     validation: list[_ShardRecord] = []
+    modulus = int(derive_validation_modulus)
+    has_manifest_validation = any(
+        str(sequence.get("provenance", {}).get("split", "")) == "validation"
+        for sequence in manifest["sequences"]
+    )
+    if has_manifest_validation and modulus:
+        raise ValueError(
+            "derive_validation_modulus cannot be combined with manifest validation rows"
+        )
+    if not has_manifest_validation and modulus and modulus < 2:
+        raise ValueError("derive_validation_modulus must be zero or at least two")
     for sequence in manifest["sequences"]:
         provenance = sequence.get("provenance")
         if not isinstance(provenance, dict):
@@ -95,18 +114,34 @@ def _records(label_manifest: Path, manifest: dict[str, Any]) -> tuple[list[_Shar
         rows = int(sequence["token_count"])
         target = train if split == "train" else validation
         for shard in sequence["shards"]:
-            target.append(
-                _ShardRecord(
-                    path=(root / str(shard["path"])).resolve(),
-                    sequence_id=str(sequence["sequence_id"]),
-                    split=split,
-                    category=str(sequence["category"]),
-                    context_bucket=_context_bucket(rows),
-                    physical_layer_id=int(shard["physical_layer_id"]),
-                    compact_layer_index=int(shard["compact_layer_index"]),
-                    rows=int(shard["rows"]),
+            common = {
+                "path": (root / str(shard["path"])).resolve(),
+                "sequence_id": str(sequence["sequence_id"]),
+                "category": str(sequence["category"]),
+                "context_bucket": _context_bucket(rows),
+                "physical_layer_id": int(shard["physical_layer_id"]),
+                "compact_layer_index": int(shard["compact_layer_index"]),
+                "rows": int(shard["rows"]),
+            }
+            if split == "train" and not has_manifest_validation and modulus:
+                train.append(
+                    _ShardRecord(
+                        **common,
+                        split="train",
+                        derived_validation_modulus=modulus,
+                        select_derived_validation=False,
+                    )
                 )
-            )
+                validation.append(
+                    _ShardRecord(
+                        **common,
+                        split="validation",
+                        derived_validation_modulus=modulus,
+                        select_derived_validation=True,
+                    )
+                )
+            else:
+                target.append(_ShardRecord(**common, split=split))
     if not train:
         raise ValueError("DMS sidecar training requires at least one train shard")
     if not validation:
@@ -129,6 +164,16 @@ def _load_shard(record: _ShardRecord, *, hidden_size: int, num_kv_heads: int) ->
         raise ValueError("DMS label eligibility tensor shape/dtype mismatch")
     if labels.dtype != np.bool_ or labels.shape != (record.rows, num_kv_heads):
         raise ValueError("DMS label target tensor shape/dtype mismatch")
+    if record.derived_validation_modulus > 1:
+        heldout = (
+            np.arange(record.rows, dtype=np.int64)
+            % int(record.derived_validation_modulus)
+            == 0
+        )
+        selected = heldout if record.select_derived_validation else ~heldout
+        hidden_bits = hidden_bits[selected]
+        eligible = eligible[selected]
+        labels = labels[selected]
     if np.any(labels[~eligible]):
         raise ValueError("DMS label shard contains a protected-window eviction")
     return _bf16_bits_to_float32(hidden_bits), eligible, labels
@@ -459,6 +504,8 @@ def train_sidecar(
     max_grad_norm: float = 1.0,
     seed: int = 0,
     resume: bool = False,
+    derive_validation_modulus: int = 0,
+    initial_sidecar: str | Path | None = None,
 ) -> dict[str, Any]:
     """Train sidecar-only parameters and export strict schema-v2 artifacts."""
 
@@ -479,7 +526,11 @@ def train_sidecar(
     hidden_size = int(geometry["hidden_size"])
     if int(geometry["num_layers"]) != num_layers:
         raise ValueError("DMS label num_layers does not match physical layer map")
-    train_records, validation_records = _records(label_path, manifest)
+    train_records, validation_records = _records(
+        label_path,
+        manifest,
+        derive_validation_modulus=int(derive_validation_modulus),
+    )
     completed_target = int(epochs)
     if completed_target <= 0 or int(batch_size) <= 0:
         raise ValueError("DMS epochs and batch_size must be positive")
@@ -502,6 +553,26 @@ def train_sidecar(
         num_kv_heads=num_kv_heads,
         hidden_size=hidden_size,
     ).to(target_device)
+    initial_sidecar_path = (
+        None
+        if initial_sidecar is None
+        else Path(initial_sidecar).expanduser().resolve()
+    )
+    initial_sidecar_sha256 = None
+    if initial_sidecar_path is not None:
+        tensors = load_safetensors(str(initial_sidecar_path), device="cpu")
+        if set(tensors) != {"bias", "weight"}:
+            raise ValueError("initial DMS sidecar requires exactly bias and weight tensors")
+        expected_weight = (num_layers, num_kv_heads, hidden_size)
+        expected_bias = (num_layers, num_kv_heads)
+        if tuple(tensors["weight"].shape) != expected_weight:
+            raise ValueError("initial DMS sidecar weight shape mismatch")
+        if tuple(tensors["bias"].shape) != expected_bias:
+            raise ValueError("initial DMS sidecar bias shape mismatch")
+        with torch.no_grad():
+            model.weight.copy_(tensors["weight"].to(target_device, dtype=torch.float32))
+            model.bias.copy_(tensors["bias"].to(target_device, dtype=torch.float32))
+        initial_sidecar_sha256 = _sha256_file(initial_sidecar_path)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=float(learning_rate),
@@ -522,6 +593,8 @@ def train_sidecar(
             "weight_decay": float(weight_decay),
             "max_grad_norm": float(max_grad_norm),
             "seed": int(seed),
+            "derive_validation_modulus": int(derive_validation_modulus),
+            "initial_sidecar_sha256": initial_sidecar_sha256,
         },
     }
     checkpoint_path = output / "sidecar_checkpoint.pt"
@@ -649,6 +722,8 @@ def train_sidecar(
             "trainer_commit": trainer_commit,
             "fastdms_reference_commit": _FASTDMS_REFERENCE_COMMIT,
             "seed": int(seed),
+            "initial_sidecar_sha256": initial_sidecar_sha256,
+            "derived_validation_modulus": int(derive_validation_modulus),
         },
         "trained_checkpoint": True,
         "evidence_source": "training_summary.json",
@@ -682,6 +757,25 @@ def train_sidecar(
         "optimizer_state_elements": optimizer_state_elements,
         "completed_epochs": completed_target,
         "resumed_from_epoch": start_epoch,
+        "initial_sidecar": (
+            None
+            if initial_sidecar_path is None
+            else {
+                "path": str(initial_sidecar_path),
+                "sha256": initial_sidecar_sha256,
+            }
+        ),
+        "validation_split": {
+            "source": (
+                "manifest"
+                if int(derive_validation_modulus) == 0
+                else "deterministic_row_modulus"
+            ),
+            "modulus": int(derive_validation_modulus),
+            "heldout_remainder": (
+                None if int(derive_validation_modulus) == 0 else 0
+            ),
+        },
         "loss_history": loss_history,
         "calibration": {
             **calibration,
@@ -719,6 +813,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-grad-norm", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--derive-validation-modulus", type=int, default=0)
+    parser.add_argument("--initial-sidecar", type=Path)
     return parser
 
 
@@ -739,6 +835,8 @@ def main(argv: list[str] | None = None) -> int:
         max_grad_norm=float(args.max_grad_norm),
         seed=int(args.seed),
         resume=bool(args.resume),
+        derive_validation_modulus=int(args.derive_validation_modulus),
+        initial_sidecar=args.initial_sidecar,
     )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0

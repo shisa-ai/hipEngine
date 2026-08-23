@@ -8,6 +8,8 @@ import numpy as np
 import pytest
 
 pytest.importorskip("torch")
+import torch
+from safetensors.torch import save_file as save_safetensors
 
 from hipengine.kvcache import load_dms_retrofit_config
 from scripts.qwen38_dms_train_sidecar import train_sidecar
@@ -177,6 +179,61 @@ def test_sidecar_training_reduces_loss_and_exports_stable_strict_artifact(
     assert config.sidecar.weight_shape == (2, 2, 4)
     assert config.sidecar.bias_shape == (2, 2)
     assert config.alpha_offset == first["calibration"]["alpha_offset"]
+
+
+def test_sidecar_training_derives_disjoint_row_validation_and_loads_initial_sidecar(
+    tmp_path: Path,
+) -> None:
+    labels, _ = _label_fixture(tmp_path)
+    manifest = json.loads(labels.read_text(encoding="utf-8"))
+    for sequence in manifest["sequences"]:
+        sequence["provenance"]["split"] = "train"
+    payload = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
+    labels.write_bytes(payload)
+    labels.with_suffix(labels.suffix + ".sha256").write_text(
+        hashlib.sha256(payload).hexdigest() + "\n",
+        encoding="ascii",
+    )
+    initial = tmp_path / "initial.safetensors"
+    initial_weight = torch.arange(16, dtype=torch.float32).reshape(2, 2, 4) / 32
+    initial_bias = torch.tensor([[0.25, -0.5], [0.75, -1.0]], dtype=torch.float32)
+    save_safetensors(
+        {
+            "bias": initial_bias.to(dtype=torch.bfloat16),
+            "weight": initial_weight.to(dtype=torch.bfloat16),
+        },
+        str(initial),
+    )
+
+    result = train_sidecar(
+        labels,
+        tmp_path / "derived-validation",
+        device="cpu",
+        epochs=1,
+        batch_size=32,
+        learning_rate=0.01,
+        budget_weight=0.1,
+        weight_decay=0.0,
+        seed=3,
+        resume=False,
+        derive_validation_modulus=4,
+        initial_sidecar=initial,
+    )
+
+    assert result["initial_sidecar"] == {
+        "path": str(initial.resolve()),
+        "sha256": _sha256(initial),
+    }
+    assert result["validation_split"] == {
+        "source": "deterministic_row_modulus",
+        "modulus": 4,
+        "heldout_remainder": 0,
+    }
+    # 6 sequences x 2 layers x 8 heldout rows x 2 KV-head decisions.
+    assert result["validation"]["global"]["count"] == 192
+    metadata = json.loads(Path(result["metadata_path"]).read_text())
+    assert metadata["training"]["initial_sidecar_sha256"] == _sha256(initial)
+    assert metadata["training"]["derived_validation_modulus"] == 4
 
 
 def test_sidecar_training_resumes_only_sidecar_optimizer_state(tmp_path: Path) -> None:
