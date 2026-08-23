@@ -1,0 +1,1131 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-23",
+  "kind": "hipengine_mtp_iu4_instruction_roofline",
+  "status": "diagnostic_only",
+  "performance_claim": false,
+  "verdict_scope": "Register-resident GFX11 instruction-throughput ceiling only; excludes activation packing, weight traffic, scale/zero correction, epilogues, kernel composition, and model execution.",
+  "hardware": {
+    "arch": "gfx1151",
+    "marketing_name": "AMD Radeon 8060S Graphics",
+    "compute_units": 40,
+    "simds_per_cu": 2,
+    "max_clock_mhz": 2900,
+    "wavefront_size": 32,
+    "max_waves_per_cu": 32,
+    "hostname": "gfx1151"
+  },
+  "software": {
+    "repo": {
+      "commit": "f5cb6ffe6a3d28b25202f7d82acab9e86abf9a03",
+      "branch": "mpt-iu4",
+      "staged_dirty": true,
+      "unstaged_dirty": true,
+      "untracked_dirty": true,
+      "dirty": true,
+      "status_entry_count": 263,
+      "note": "Diagnostic-only run; dirty state is disclosed and cannot support a retained product performance claim."
+    },
+    "source": "scripts/microbench/mtp_iu4_roofline.hip",
+    "source_sha256": "0edbcee4b5a6221eda9d465b147ec6cc775b87ec3b3825d23c2608e225ab63f4",
+    "hipcc": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/hipcc",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "flags": [
+      "-O3",
+      "-std=c++17",
+      "--offload-arch=gfx1151",
+      "--save-temps"
+    ],
+    "cache_key": "70ce5bf628f733b2d0a2",
+    "cache_dir": "/home/lhl/.cache/hipengine/research/mtp_iu4_roofline/70ce5bf628f733b2d0a2",
+    "cache_hit": false,
+    "command": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin/hipcc -O3 -std=c++17 --offload-arch=gfx1151 --save-temps /home/lhl/hipEngine-main/scripts/microbench/mtp_iu4_roofline.hip -o /home/lhl/.cache/hipengine/research/mtp_iu4_roofline/70ce5bf628f733b2d0a2/mtp_iu4_roofline"
+  },
+  "methodology": {
+    "workgroup": "one wave32 (32 threads) per block",
+    "dependency_chains": [
+      2,
+      4,
+      8
+    ],
+    "timing": "HIP events around one kernel launch; warmups excluded",
+    "statistics": "median, linearly interpolated p95, min, max, mean, sample stdev",
+    "operation_count": "WMMA: 16*16*16 MAC * 2 ops = 8192 ops per wave instruction. DOT4/DOT8: 32 lanes * 4/8 MAC * 2 ops = 256/512 ops per wave instruction.",
+    "interpretation": "Select the strongest median chain count per lane; do not use best-of-sample as the headline.",
+    "run_command": "/home/lhl/.cache/hipengine/research/mtp_iu4_roofline/70ce5bf628f733b2d0a2/mtp_iu4_roofline --iterations 65536 --blocks 0 --samples 9 --warmups 3",
+    "raw_parameters": {
+      "blocks": 320,
+      "threads": 32,
+      "iterations": 65536,
+      "warmups": 3,
+      "samples": 9
+    }
+  },
+  "isa_verification": {
+    "assembly_files": [
+      "/home/lhl/.cache/hipengine/research/mtp_iu4_roofline/70ce5bf628f733b2d0a2/mtp_iu4_roofline-hip-amdgcn-amd-amdhsa-gfx1151.s"
+    ],
+    "mnemonic_counts": {
+      "v_wmma_f32_16x16x16_f16": 14,
+      "v_wmma_f32_16x16x16_bf16": 14,
+      "v_wmma_i32_16x16x16_iu8": 28,
+      "v_wmma_i32_16x16x16_iu4": 42,
+      "v_dot4_i32_iu8": 14,
+      "v_dot8_i32_iu4": 14
+    },
+    "all_expected_seen": true
+  },
+  "measurements": [
+    {
+      "lane": "fp16_wmma",
+      "chains": 2,
+      "instruction_ops": 8192,
+      "total_ops": 343597383680,
+      "milliseconds": [
+        6.230532,
+        6.246683,
+        6.273862,
+        6.235992,
+        6.239959,
+        6.239729,
+        6.24045,
+        6.236762,
+        6.23833
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 6.239729,
+        "p95_ms": 6.2629904,
+        "min_ms": 6.230532,
+        "max_ms": 6.273862,
+        "mean_ms": 6.242477666666667,
+        "stdev_ms": 0.01252650339280684
+      },
+      "throughput": {
+        "median_tops": 55.06607477343969,
+        "best_tops": 55.1473587937595,
+        "min_tops": 54.7664873215254,
+        "theoretical_tops": 59.392,
+        "median_percent_of_theoretical": 92.71631663092619
+      }
+    },
+    {
+      "lane": "fp16_wmma",
+      "chains": 4,
+      "instruction_ops": 8192,
+      "total_ops": 687194767360,
+      "milliseconds": [
+        12.50298,
+        12.43961,
+        12.414644,
+        12.469467,
+        12.480367,
+        12.505054,
+        12.5289,
+        12.515194,
+        12.463617
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 12.480367,
+        "p95_ms": 12.523417599999998,
+        "min_ms": 12.414644,
+        "max_ms": 12.5289,
+        "mean_ms": 12.479981444444444,
+        "stdev_ms": 0.03719517468070007
+      },
+      "throughput": {
+        "median_tops": 55.06206406910951,
+        "best_tops": 55.353562080394745,
+        "min_tops": 54.84877103017823,
+        "theoretical_tops": 59.392,
+        "median_percent_of_theoretical": 92.70956369394786
+      }
+    },
+    {
+      "lane": "fp16_wmma",
+      "chains": 8,
+      "instruction_ops": 8192,
+      "total_ops": 1374389534720,
+      "milliseconds": [
+        24.952976,
+        24.984476,
+        24.820724,
+        24.975737,
+        24.988039,
+        24.967159,
+        24.949888,
+        24.985033,
+        24.949892
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 24.967159,
+        "p95_ms": 24.986836600000004,
+        "min_ms": 24.820724,
+        "max_ms": 24.988039,
+        "mean_ms": 24.952658222222222,
+        "stdev_ms": 0.05181368700396167
+      },
+      "throughput": {
+        "median_tops": 55.04789450493747,
+        "best_tops": 55.37266095541774,
+        "min_tops": 55.001896496159624,
+        "theoretical_tops": 59.392,
+        "median_percent_of_theoretical": 92.68570599565172
+      }
+    },
+    {
+      "lane": "bf16_wmma",
+      "chains": 2,
+      "instruction_ops": 8192,
+      "total_ops": 343597383680,
+      "milliseconds": [
+        6.261628,
+        6.223837,
+        6.195103,
+        6.215301,
+        6.227524,
+        6.211695,
+        6.225801,
+        6.241546,
+        6.261304
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 6.225801,
+        "p95_ms": 6.2614984,
+        "min_ms": 6.195103,
+        "max_ms": 6.261628,
+        "mean_ms": 6.229304333333333,
+        "stdev_ms": 0.022192071579733227
+      },
+      "throughput": {
+        "median_tops": 55.18926539412359,
+        "best_tops": 55.46273947019122,
+        "min_tops": 54.87349035745975,
+        "theoretical_tops": 59.392,
+        "median_percent_of_theoretical": 92.92373618353244
+      }
+    },
+    {
+      "lane": "bf16_wmma",
+      "chains": 4,
+      "instruction_ops": 8192,
+      "total_ops": 687194767360,
+      "milliseconds": [
+        12.447583,
+        12.454408,
+        12.417979,
+        12.414934,
+        12.433929,
+        12.424311,
+        12.424271,
+        12.410607,
+        12.416178
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 12.424271,
+        "p95_ms": 12.451678000000001,
+        "min_ms": 12.410607,
+        "max_ms": 12.454408,
+        "mean_ms": 12.427133333333334,
+        "stdev_ms": 0.015207730295806706
+      },
+      "throughput": {
+        "median_tops": 55.310671133944204,
+        "best_tops": 55.37156783386985,
+        "min_tops": 55.17683115568399,
+        "theoretical_tops": 59.392,
+        "median_percent_of_theoretical": 93.1281504814524
+      }
+    },
+    {
+      "lane": "bf16_wmma",
+      "chains": 8,
+      "instruction_ops": 8192,
+      "total_ops": 1374389534720,
+      "milliseconds": [
+        24.846008,
+        24.809057,
+        24.817127,
+        24.811275,
+        24.806427,
+        24.801979,
+        24.875076,
+        24.904171,
+        24.914455
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 24.817127,
+        "p95_ms": 24.9103414,
+        "min_ms": 24.801979,
+        "max_ms": 24.914455,
+        "mean_ms": 24.842841666666665,
+        "stdev_ms": 0.0443476637687947
+      },
+      "throughput": {
+        "median_tops": 55.380686681419654,
+        "best_tops": 55.41451086302428,
+        "min_tops": 55.1643427367767,
+        "theoretical_tops": 59.392,
+        "median_percent_of_theoretical": 93.24603765055842
+      }
+    },
+    {
+      "lane": "i8i8_wmma",
+      "chains": 2,
+      "instruction_ops": 8192,
+      "total_ops": 343597383680,
+      "milliseconds": [
+        6.276856,
+        6.280423,
+        6.272808,
+        6.276816,
+        6.272648,
+        6.282347,
+        6.312476,
+        6.273361,
+        6.27801
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 6.276856,
+        "p95_ms": 6.3004244,
+        "min_ms": 6.272648,
+        "max_ms": 6.312476,
+        "mean_ms": 6.280638333333333,
+        "stdev_ms": 0.012402350936415195
+      },
+      "throughput": {
+        "median_tops": 54.74036423330406,
+        "best_tops": 54.777086755067394,
+        "min_tops": 54.43147564917474,
+        "theoretical_tops": 59.392,
+        "median_percent_of_theoretical": 92.16790852859653
+      }
+    },
+    {
+      "lane": "i8i8_wmma",
+      "chains": 4,
+      "instruction_ops": 8192,
+      "total_ops": 687194767360,
+      "milliseconds": [
+        12.572957,
+        12.582454,
+        12.547828,
+        12.540414,
+        12.531638,
+        12.563446,
+        12.525253,
+        12.4869,
+        12.541324
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 12.541324,
+        "p95_ms": 12.5786552,
+        "min_ms": 12.4869,
+        "max_ms": 12.582454,
+        "mean_ms": 12.543579333333334,
+        "stdev_ms": 0.028489307744310195
+      },
+      "throughput": {
+        "median_tops": 54.79443536902484,
+        "best_tops": 55.03325624134092,
+        "min_tops": 54.615321252912985,
+        "theoretical_tops": 59.392,
+        "median_percent_of_theoretical": 92.2589496380402
+      }
+    },
+    {
+      "lane": "i8i8_wmma",
+      "chains": 8,
+      "instruction_ops": 8192,
+      "total_ops": 1374389534720,
+      "milliseconds": [
+        24.903502,
+        24.973185,
+        25.001396,
+        24.987009,
+        24.959801,
+        24.961081,
+        24.96084,
+        24.981039,
+        24.988691
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 24.973185,
+        "p95_ms": 24.996313999999998,
+        "min_ms": 24.903502,
+        "max_ms": 25.001396,
+        "mean_ms": 24.968504888888887,
+        "stdev_ms": 0.02834102961010967
+      },
+      "throughput": {
+        "median_tops": 55.034611513108956,
+        "best_tops": 55.18860498896902,
+        "min_tops": 54.97251172374535,
+        "theoretical_tops": 59.392,
+        "median_percent_of_theoretical": 92.66334104443183
+      }
+    },
+    {
+      "lane": "u8s8_wmma",
+      "chains": 2,
+      "instruction_ops": 8192,
+      "total_ops": 343597383680,
+      "milliseconds": [
+        6.259507,
+        6.270287,
+        6.262031,
+        6.301785,
+        6.258986,
+        6.267522,
+        6.26676,
+        6.265918,
+        6.270167
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 6.26676,
+        "p95_ms": 6.2891858,
+        "min_ms": 6.258986,
+        "max_ms": 6.301785,
+        "mean_ms": 6.269218111111111,
+        "stdev_ms": 0.012908869745686793
+      },
+      "throughput": {
+        "median_tops": 54.828553140697906,
+        "best_tops": 54.89665317672863,
+        "min_tops": 54.523818835456936,
+        "theoretical_tops": 59.392,
+        "median_percent_of_theoretical": 92.31639470079791
+      }
+    },
+    {
+      "lane": "u8s8_wmma",
+      "chains": 4,
+      "instruction_ops": 8192,
+      "total_ops": 687194767360,
+      "milliseconds": [
+        12.497692,
+        12.499577,
+        12.483186,
+        12.509435,
+        12.504105,
+        12.500859,
+        12.527429,
+        12.560691,
+        12.536566
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 12.504105,
+        "p95_ms": 12.551041000000001,
+        "min_ms": 12.483186,
+        "max_ms": 12.560691,
+        "mean_ms": 12.513282222222223,
+        "stdev_ms": 0.023926678503178166
+      },
+      "throughput": {
+        "median_tops": 54.95753333485283,
+        "best_tops": 55.04962974676497,
+        "min_tops": 54.709949266326184,
+        "theoretical_tops": 59.392,
+        "median_percent_of_theoretical": 92.53356232296072
+      }
+    },
+    {
+      "lane": "u8s8_wmma",
+      "chains": 8,
+      "instruction_ops": 8192,
+      "total_ops": 1374389534720,
+      "milliseconds": [
+        24.975548,
+        24.976952,
+        24.994986,
+        24.978676,
+        24.990295,
+        24.982002,
+        24.979715,
+        25.018871,
+        25.000515
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 24.982002,
+        "p95_ms": 25.0115286,
+        "min_ms": 24.975548,
+        "max_ms": 25.018871,
+        "mean_ms": 24.98861777777778,
+        "stdev_ms": 0.014269482539477386
+      },
+      "throughput": {
+        "median_tops": 55.015187922889446,
+        "best_tops": 55.0294045488011,
+        "min_tops": 54.93411492149266,
+        "theoretical_tops": 59.392,
+        "median_percent_of_theoretical": 92.63063699301159
+      }
+    },
+    {
+      "lane": "i4i4_wmma",
+      "chains": 2,
+      "instruction_ops": 8192,
+      "total_ops": 343597383680,
+      "milliseconds": [
+        3.151313,
+        3.145984,
+        3.145222,
+        3.139772,
+        3.142257,
+        3.143379,
+        3.142297,
+        3.178124,
+        3.182092
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 3.145222,
+        "p95_ms": 3.1805048,
+        "min_ms": 3.139772,
+        "max_ms": 3.182092,
+        "mean_ms": 3.1522711111111112,
+        "stdev_ms": 0.016135580718124504
+      },
+      "throughput": {
+        "median_tops": 109.24423893766482,
+        "best_tops": 109.43386452264687,
+        "min_tops": 107.97845683908574,
+        "theoretical_tops": 118.784,
+        "median_percent_of_theoretical": 91.96881645479594
+      }
+    },
+    {
+      "lane": "i4i4_wmma",
+      "chains": 4,
+      "instruction_ops": 8192,
+      "total_ops": 687194767360,
+      "milliseconds": [
+        6.277501,
+        6.274816,
+        6.30411,
+        6.311404,
+        6.269806,
+        6.262592,
+        6.264516,
+        6.264356,
+        6.269085
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 6.269806,
+        "p95_ms": 6.3084864,
+        "min_ms": 6.262592,
+        "max_ms": 6.311404,
+        "mean_ms": 6.277576222222222,
+        "stdev_ms": 0.017882715822671848
+      },
+      "throughput": {
+        "median_tops": 109.60383261619259,
+        "best_tops": 109.7300873759619,
+        "min_tops": 108.88144180914422,
+        "theoretical_tops": 118.784,
+        "median_percent_of_theoretical": 92.27154550797464
+      }
+    },
+    {
+      "lane": "i4i4_wmma",
+      "chains": 8,
+      "instruction_ops": 8192,
+      "total_ops": 1374389534720,
+      "milliseconds": [
+        12.482465,
+        12.533201,
+        12.535765,
+        12.540214,
+        12.527189,
+        12.523782,
+        12.766798,
+        12.594756,
+        12.478458
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 12.533201,
+        "p95_ms": 12.697981200000001,
+        "min_ms": 12.478458,
+        "max_ms": 12.766798,
+        "mean_ms": 12.553625333333333,
+        "stdev_ms": 0.08685746342427916
+      },
+      "throughput": {
+        "median_tops": 109.65989731753284,
+        "best_tops": 110.14097532884271,
+        "min_tops": 107.65342529270066,
+        "theoretical_tops": 118.784,
+        "median_percent_of_theoretical": 92.31874437426995
+      }
+    },
+    {
+      "lane": "u4s4_wmma",
+      "chains": 2,
+      "instruction_ops": 8192,
+      "total_ops": 343597383680,
+      "milliseconds": [
+        3.306646,
+        3.228138,
+        3.224532,
+        3.20261,
+        3.183294,
+        3.183855,
+        3.141856,
+        3.141696,
+        3.134402
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 3.183855,
+        "p95_ms": 3.2752428,
+        "min_ms": 3.134402,
+        "max_ms": 3.306646,
+        "mean_ms": 3.1941143333333333,
+        "stdev_ms": 0.05486905782405963
+      },
+      "throughput": {
+        "median_tops": 107.91866579351132,
+        "best_tops": 109.6213515943392,
+        "min_tops": 103.91114854145256,
+        "theoretical_tops": 118.784,
+        "median_percent_of_theoretical": 90.85286384825508
+      }
+    },
+    {
+      "lane": "u4s4_wmma",
+      "chains": 4,
+      "instruction_ops": 8192,
+      "total_ops": 687194767360,
+      "milliseconds": [
+        6.305232,
+        6.307076,
+        6.265719,
+        6.267522,
+        6.263314,
+        6.263955,
+        6.265317,
+        6.307998,
+        6.291287
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 6.267522,
+        "p95_ms": 6.307629200000001,
+        "min_ms": 6.263314,
+        "max_ms": 6.307998,
+        "mean_ms": 6.281935555555555,
+        "stdev_ms": 0.020489122572179243
+      },
+      "throughput": {
+        "median_tops": 109.64377426357659,
+        "best_tops": 109.7174383018319,
+        "min_tops": 108.94023228288911,
+        "theoretical_tops": 118.784,
+        "median_percent_of_theoretical": 92.30517095196036
+      }
+    },
+    {
+      "lane": "u4s4_wmma",
+      "chains": 8,
+      "instruction_ops": 8192,
+      "total_ops": 1374389534720,
+      "milliseconds": [
+        12.526858,
+        12.550633,
+        12.51148,
+        12.519495,
+        12.515928,
+        12.535525,
+        12.526548,
+        12.536246,
+        12.566903
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 12.526858,
+        "p95_ms": 12.560395,
+        "min_ms": 12.51148,
+        "max_ms": 12.566903,
+        "mean_ms": 12.532179555555556,
+        "stdev_ms": 0.01763338862152624
+      },
+      "throughput": {
+        "median_tops": 109.71542382934331,
+        "best_tops": 109.85027628386091,
+        "min_tops": 109.36581071088078,
+        "theoretical_tops": 118.784,
+        "median_percent_of_theoretical": 92.36549015805437
+      }
+    },
+    {
+      "lane": "u4u4_wmma",
+      "chains": 2,
+      "instruction_ops": 8192,
+      "total_ops": 343597383680,
+      "milliseconds": [
+        3.141736,
+        3.140334,
+        3.170871,
+        3.17079,
+        3.130996,
+        3.136406,
+        3.132198,
+        3.17548,
+        3.190388
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 3.141736,
+        "p95_ms": 3.1844248,
+        "min_ms": 3.130996,
+        "max_ms": 3.190388,
+        "mean_ms": 3.1543554444444446,
+        "stdev_ms": 0.022366548477084656
+      },
+      "throughput": {
+        "median_tops": 109.36545390191918,
+        "best_tops": 109.74060129109075,
+        "min_tops": 107.69767930421001,
+        "theoretical_tops": 118.784,
+        "median_percent_of_theoretical": 92.07086299663185
+      }
+    },
+    {
+      "lane": "u4u4_wmma",
+      "chains": 4,
+      "instruction_ops": 8192,
+      "total_ops": 687194767360,
+      "milliseconds": [
+        6.263274,
+        6.257703,
+        6.253536,
+        6.253575,
+        6.250169,
+        6.258745,
+        6.244599,
+        6.251692,
+        6.256462
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 6.253575,
+        "p95_ms": 6.2614624,
+        "min_ms": 6.244599,
+        "max_ms": 6.263274,
+        "mean_ms": 6.254417222222222,
+        "stdev_ms": 0.005425716906036017
+      },
+      "throughput": {
+        "median_tops": 109.88830666618693,
+        "best_tops": 110.04626035394747,
+        "min_tops": 109.71813900525508,
+        "theoretical_tops": 118.784,
+        "median_percent_of_theoretical": 92.51103403336049
+      }
+    },
+    {
+      "lane": "u4u4_wmma",
+      "chains": 8,
+      "instruction_ops": 8192,
+      "total_ops": 1374389534720,
+      "milliseconds": [
+        12.51737,
+        12.541857,
+        12.547709,
+        12.510638,
+        12.505749,
+        12.504586,
+        12.492764,
+        12.501501,
+        12.50102
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 12.505749,
+        "p95_ms": 12.545368199999999,
+        "min_ms": 12.492764,
+        "max_ms": 12.547709,
+        "mean_ms": 12.513688222222221,
+        "stdev_ms": 0.018929044216347675
+      },
+      "throughput": {
+        "median_tops": 109.90061728569796,
+        "best_tops": 110.01484817291033,
+        "min_tops": 109.5331055828598,
+        "theoretical_tops": 118.784,
+        "median_percent_of_theoretical": 92.5213979035038
+      }
+    },
+    {
+      "lane": "u8s8_dot4",
+      "chains": 2,
+      "instruction_ops": 256,
+      "total_ops": 10737418240,
+      "milliseconds": [
+        0.587422,
+        0.62313,
+        0.63391,
+        0.583815,
+        0.588064,
+        0.589225,
+        0.624091,
+        0.633749,
+        0.588545
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 0.589225,
+        "p95_ms": 0.6338455999999999,
+        "min_ms": 0.583815,
+        "max_ms": 0.63391,
+        "mean_ms": 0.6057723333333334,
+        "stdev_ms": 0.02211991141483165
+      },
+      "throughput": {
+        "median_tops": 18.222950893122324,
+        "best_tops": 18.391816311674074,
+        "min_tops": 16.938395418908048
+      }
+    },
+    {
+      "lane": "u8s8_dot4",
+      "chains": 4,
+      "instruction_ops": 256,
+      "total_ops": 21474836480,
+      "milliseconds": [
+        0.801825,
+        0.802947,
+        0.802747,
+        0.847671,
+        0.802947,
+        0.801985,
+        0.801825,
+        0.801945,
+        0.802907
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 0.802747,
+        "p95_ms": 0.8297813999999999,
+        "min_ms": 0.801825,
+        "max_ms": 0.847671,
+        "mean_ms": 0.8074221111111111,
+        "stdev_ms": 0.015101677956807008
+      },
+      "throughput": {
+        "median_tops": 26.751686994781668,
+        "best_tops": 26.78244814018021,
+        "min_tops": 25.33392846988985
+      }
+    },
+    {
+      "lane": "u8s8_dot4",
+      "chains": 8,
+      "instruction_ops": 256,
+      "total_ops": 42949672960,
+      "milliseconds": [
+        1.515925,
+        1.517408,
+        1.520213,
+        1.553114,
+        1.564937,
+        1.531714,
+        1.522377,
+        1.518209,
+        1.516205
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 1.520213,
+        "p95_ms": 1.5602078000000001,
+        "min_ms": 1.515925,
+        "max_ms": 1.564937,
+        "mean_ms": 1.5289002222222223,
+        "stdev_ms": 0.017981909150433528
+      },
+      "throughput": {
+        "median_tops": 28.25240473538905,
+        "best_tops": 28.332320503982718,
+        "min_tops": 27.444985299727723
+      }
+    },
+    {
+      "lane": "u4s4_dot8",
+      "chains": 2,
+      "instruction_ops": 512,
+      "total_ops": 21474836480,
+      "milliseconds": [
+        0.587622,
+        0.588304,
+        0.587543,
+        0.619162,
+        0.633228,
+        0.587783,
+        0.587062,
+        0.587703,
+        0.587542
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 0.587703,
+        "p95_ms": 0.6276016,
+        "min_ms": 0.587062,
+        "max_ms": 0.633228,
+        "mean_ms": 0.5962165555555555,
+        "stdev_ms": 0.017359094216801107
+      },
+      "throughput": {
+        "median_tops": 36.54028732199768,
+        "best_tops": 36.58018485270721,
+        "min_tops": 33.913276860783164
+      }
+    },
+    {
+      "lane": "u4s4_dot8",
+      "chains": 4,
+      "instruction_ops": 512,
+      "total_ops": 42949672960,
+      "milliseconds": [
+        0.801464,
+        0.801505,
+        0.801664,
+        0.801424,
+        0.801544,
+        0.800302,
+        0.801224,
+        0.801745,
+        0.801464
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 0.801464,
+        "p95_ms": 0.8017126000000001,
+        "min_ms": 0.800302,
+        "max_ms": 0.801745,
+        "mean_ms": 0.8013706666666667,
+        "stdev_ms": 0.0004269200744870367
+      },
+      "throughput": {
+        "median_tops": 53.58902328738409,
+        "best_tops": 53.66683197093098,
+        "min_tops": 53.57024111157537
+      }
+    },
+    {
+      "lane": "u4s4_dot8",
+      "chains": 8,
+      "instruction_ops": 512,
+      "total_ops": 85899345920,
+      "milliseconds": [
+        1.511516,
+        1.511798,
+        1.510995,
+        1.511156,
+        1.512599,
+        1.511837,
+        1.511316,
+        1.517688,
+        1.511276
+      ],
+      "timing": {
+        "samples": 9,
+        "median_ms": 1.511516,
+        "p95_ms": 1.5156524,
+        "min_ms": 1.510995,
+        "max_ms": 1.517688,
+        "mean_ms": 1.5122423333333335,
+        "stdev_ms": 0.00209760691026699
+      },
+      "throughput": {
+        "median_tops": 56.82992831038507,
+        "best_tops": 56.84952360530644,
+        "min_tops": 56.598817359035586
+      }
+    }
+  ],
+  "best_median_by_lane": {
+    "fp16_wmma": {
+      "chains": 2,
+      "median_tops": 55.06607477343969,
+      "best_tops": 55.1473587937595,
+      "median_ms": 6.239729
+    },
+    "bf16_wmma": {
+      "chains": 8,
+      "median_tops": 55.380686681419654,
+      "best_tops": 55.41451086302428,
+      "median_ms": 24.817127
+    },
+    "i8i8_wmma": {
+      "chains": 8,
+      "median_tops": 55.034611513108956,
+      "best_tops": 55.18860498896902,
+      "median_ms": 24.973185
+    },
+    "u8s8_wmma": {
+      "chains": 8,
+      "median_tops": 55.015187922889446,
+      "best_tops": 55.0294045488011,
+      "median_ms": 24.982002
+    },
+    "i4i4_wmma": {
+      "chains": 8,
+      "median_tops": 109.65989731753284,
+      "best_tops": 110.14097532884271,
+      "median_ms": 12.533201
+    },
+    "u4s4_wmma": {
+      "chains": 8,
+      "median_tops": 109.71542382934331,
+      "best_tops": 109.85027628386091,
+      "median_ms": 12.526858
+    },
+    "u4u4_wmma": {
+      "chains": 8,
+      "median_tops": 109.90061728569796,
+      "best_tops": 110.01484817291033,
+      "median_ms": 12.505749
+    },
+    "u8s8_dot4": {
+      "chains": 8,
+      "median_tops": 28.25240473538905,
+      "best_tops": 28.332320503982718,
+      "median_ms": 1.520213
+    },
+    "u4s4_dot8": {
+      "chains": 8,
+      "median_tops": 56.82992831038507,
+      "best_tops": 56.84952360530644,
+      "median_ms": 1.511516
+    }
+  },
+  "comparisons": {
+    "u4s4_wmma_vs_fp16_wmma": 1.992432260348125,
+    "u4s4_wmma_vs_bf16_wmma": 1.9811134603745006,
+    "u4s4_wmma_vs_u8s8_wmma": 1.994275180576007,
+    "u4s4_wmma_vs_u8s8_dot4": 3.8834012487409058,
+    "u4s4_dot8_vs_u8s8_dot4": 2.011507651920324,
+    "i4i4_vs_u4s4_wmma": 0.9994939042308505,
+    "u4u4_vs_u4s4_wmma": 1.0016879436809423
+  },
+  "limitations": [
+    "Not an operation-complete verifier projection or GEMM.",
+    "No activation quantization, weight decode/load, correction, scaling, conversion, SiLU, residual, or launch graph is included.",
+    "HIP device clock_rate_khz is a property ceiling, not a measured sustained clock; clocks and package power were not pinned.",
+    "The dirty shared worktree is disclosed; this diagnostic cannot promote a product path or update a topline model row."
+  ],
+  "profiler": {
+    "command": "/home/lhl/miniforge3/envs/therock/bin/rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-mtp-iu4-roofline-rocprof-rerun -- /home/lhl/.cache/hipengine/research/mtp_iu4_roofline/70ce5bf628f733b2d0a2/mtp_iu4_roofline --iterations 1024 --samples 1 --warmups 0",
+    "raw_trace_path": "/tmp/hipengine-mtp-iu4-roofline-rocprof-rerun/gfx1151/409359_kernel_trace.csv",
+    "raw_trace_sha256": "ffab7b95e16e038ca693504c026571076a8b0889940b0789195e52dbcc482c08",
+    "dispatch_count": 27,
+    "expected_dispatch_count": 27,
+    "selected_kernel_resources": [
+      {
+        "kernel": "void fp16_wmma_kernel<2>(float*, int, unsigned int)",
+        "duration_ns": 97822,
+        "workgroup_size": 32,
+        "grid_size": 10240,
+        "vgpr_count": 40,
+        "sgpr_count": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "kernel": "void bf16_wmma_kernel<8>(float*, int, unsigned int)",
+        "duration_ns": 385478,
+        "workgroup_size": 32,
+        "grid_size": 10240,
+        "vgpr_count": 88,
+        "sgpr_count": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "kernel": "void integer_wmma_kernel<8, true, true, false>(int*, int, unsigned int)",
+        "duration_ns": 386560,
+        "workgroup_size": 32,
+        "grid_size": 10240,
+        "vgpr_count": 80,
+        "sgpr_count": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "kernel": "void integer_wmma_kernel<8, false, true, false>(int*, int, unsigned int)",
+        "duration_ns": 386319,
+        "workgroup_size": 32,
+        "grid_size": 10240,
+        "vgpr_count": 80,
+        "sgpr_count": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "kernel": "void integer_wmma_kernel<8, true, true, true>(int*, int, unsigned int)",
+        "duration_ns": 194002,
+        "workgroup_size": 32,
+        "grid_size": 10240,
+        "vgpr_count": 72,
+        "sgpr_count": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "kernel": "void integer_wmma_kernel<8, false, true, true>(int*, int, unsigned int)",
+        "duration_ns": 193961,
+        "workgroup_size": 32,
+        "grid_size": 10240,
+        "vgpr_count": 72,
+        "sgpr_count": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "kernel": "void integer_wmma_kernel<8, false, false, true>(int*, int, unsigned int)",
+        "duration_ns": 193641,
+        "workgroup_size": 32,
+        "grid_size": 10240,
+        "vgpr_count": 72,
+        "sgpr_count": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "kernel": "void integer_dot_kernel<8, false>(int*, int, unsigned int)",
+        "duration_ns": 24005,
+        "workgroup_size": 32,
+        "grid_size": 10240,
+        "vgpr_count": 16,
+        "sgpr_count": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      },
+      {
+        "kernel": "void integer_dot_kernel<8, true>(int*, int, unsigned int)",
+        "duration_ns": 24205,
+        "workgroup_size": 32,
+        "grid_size": 10240,
+        "vgpr_count": 16,
+        "sgpr_count": 128,
+        "lds_bytes": 0,
+        "scratch_bytes": 0
+      }
+    ],
+    "all_selected_zero_scratch": true,
+    "note": "Cache-only trace smoke; raw rocprof CSV is intentionally not committed."
+  }
+}
