@@ -223,7 +223,126 @@ is 25.892 ms at 221 GB/s, so its impossible zero-pack saving is 9.684 ms of the
 profiled 148.655-ms target window (1.070×). Applying the leaf's more conservative
 1.14× ceiling saves only 4.37 ms (about 2.9%).
 
-## 4. What Kairic establishes—and what it does not
+## 4. General U4 applicability beyond MTP
+
+The measured 2× instruction rate is not MTP-specific. It is a gfx1151
+arithmetic capability that can serve any contraction whose operands can be
+represented as packed 4-bit lanes. The practical question is narrower: **which
+current hipEngine stages are limited by FP16/BF16/IU8 arithmetic rather than by
+weight/KV traffic, launch overhead, tile underfill, packing, or corrections?**
+
+### 4.1 Conditions required to realize the 2× arithmetic lane
+
+Relative to the measured 55.015–55.381 TOPS/TFLOP/s IU8/BF16 WMMA roofs, the
+109.715-TOPS U4×S4 roof can approach a 2× kernel gain only when all of the
+following hold:
+
+1. the control is compute-bound at the lower WMMA roof;
+2. physical work fills the 16-row WMMA tile and supplies enough independent
+   output tiles to occupy the GPU;
+3. packed U4 activations and S4 weights are already available, or their packing
+   is amortized inside the measured operation;
+4. I32 zero-point correction, scales, BF16/F32 publication, and fused epilogues
+   do not become the new bottleneck; and
+5. the U4/S4 representation passes its T3 model-quality gate.
+
+For an optimistic packed-W4 linear using the measured 221-GB/s read roof,
+`OI≈4*M` ops/B. The measured BF16/IU8 WMMA roof crosses that memory roof around
+`M≈63`; IU4 crosses around `M≈124`. This creates four distinct regimes:
+
+| Physical rows | First-order interpretation |
+| ---: | --- |
+| `M<16` | WMMA underfill plus weight bandwidth; the 2× instruction rate is mostly inaccessible. |
+| `M≈16–63` | Better row reuse, but both old and IU4 lanes are still principally weight-bandwidth limited. |
+| `M≈64–123` | The current BF16/IU8 lane may become compute-bound, but IU4 often moves the operation back under the memory roof; expect less than 2× unless layout/dequant work is also removed. |
+| `M>=124` | Both lanes can be compute-bound in the weight-only model, so a well-tiled operation has the clearest chance to approach the measured 1.99× arithmetic ratio. |
+
+These are screening thresholds, not dispatch thresholds. Activation/output
+traffic, metadata, selected-expert fragmentation, imperfect reuse, and
+application layouts move the real crossover. The measured U4×S4 DOT8 lane also
+has a genuine **56.830 versus 28.252 TOPS** advantage over U8×S8 DOT4, but a
+vector kernel benefits only if it is arithmetic-bound; replacing DOT4 in a
+streaming c=1 GEMV does not remove its weight-bandwidth limit.
+
+### 4.2 Current hipEngine opportunity ranking
+
+| Surface | Current limiting evidence | U4 applicability | Priority |
+| --- | --- | --- | --- |
+| **Dense bulk prefill FFN and projections** | The Qwen3.8 gfx1151 campaign identifies prefill as compute-bound: roughly 370–380 tok/s at 512/1K/4K. The current dense Q4_K_S gate/up prefill owner reconstructs FP16 fragments, uses F16 WMMA with F32 accumulation, and publishes BF16 boundaries. | **Strongest current candidate.** Rows 128–512 fill IU4 tiles and exceed the weight-only crossover. A clean offline S4 product plus U4 activation packing could replace reconstruction and use the 2× lane. | **1** |
+| **Packed concurrent decode / verification** | Reuse rises with physical rows, and R2 wins from M5 onward against repeated rowtile8 decode. However, the current Qwen3.8 c8 route falls back to prefill WMMA and is not a qualified compute-bound batch owner. | Promising at sustained packed `M>=16`, strongest at `M>=64–128`; first build a proper batch control. R2's M16–128 results are not a bulk-prefill comparison. | **2** |
+| **Dense/shared-expert MoE prefill** | Large grouped token sets can be WMMA-heavy, but selected tokens fragment across experts and often leave each expert at small M. | Useful for shared experts or grouped experts only when the measured per-expert row histogram fills tiles. Do not infer eligibility from total prompt rows. | **3** |
+| **K/V projection linears** | These are ordinary weight contractions: large-M during prefill, M1 during serial decode. | Same disposition as other projections: plausible for bulk prefill, not for c1 merely because the output roles are K and V. | **3** |
+| **Prefill attention `QK^T` / `PV` tiles** | Attention can expose large matrix tiles, but current wall also includes layout, masks, softmax, and KV movement; no retained profile establishes these contractions as an IU4-addressable compute bottleneck. | Technically possible, but requires quantized Q/K and possibly probabilities/V plus float softmax boundaries. Treat as a separate quality-sensitive attention product after linear prefill. | **4** |
+| **Long-context KV-cache decode** | Primarily streams K/V and performs reductions at tiny query M. Existing INT8-KV evidence is model-specific, and lower precision faces a harder quality gate. | U4 may help by reducing cache bytes, not primarily through 2× TOPS. A K4/V8 leaf using U4×S4 for `QK^T` is more defensible than immediately quantizing both K and V to four bits. | **capacity/bandwidth lane** |
+| **LM head, embeddings, norms, RoPE, softmax, sampler, GDN/state recurrence** | Singleton/low-reuse weight reads, reductions, elementwise work, or sequential state traffic dominate; several are not matrix contractions. | Poor match for the WMMA advantage. DOT8 may be usable in isolated reductions, but there is no current compute-bound, quality-qualified owner that predicts a material request-level gain. | **defer** |
+
+The dense-prefill classification and routing context are recorded in the
+[Qwen3.8 gfx1151 campaign](docs/QWEN38-27B-GFX1151-CAMPAIGN.md) and its
+[`R6` compact artifact](benchmarks/results/2026-08-18-gfx1151-qwen38-27b-r6-int8-activation-prefill.json).
+The F16 instruction is explicit in
+[`gguf_q4_k_prefill.hip`](hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.hip),
+and the c8 fallback evidence is from the same campaign's measured c>N follow-up.
+
+The strongest answer to “where are we currently compute-bound?” is therefore
+**dense prompt prefill**, especially FFN gate/up/down and large dense
+projections. That is also the surface for which the current R2 artifact must
+not be reused as proof: its M16–128 control intentionally repeats the decode
+rowtile8 owner. A prefill decision requires an operation-complete comparison
+against `pack8_dual_wmma_prefill_bf16_bf16_out` and the corresponding current
+bulk down/projection owners at actual prompt shapes.
+
+### 4.3 KV-cache use is a different thesis
+
+A native four-bit cache path is feasible in principle:
+
+```text
+Q_BF16 -> dynamic asymmetric U4
+K_cache -> symmetric/grouped S4
+QK^T    -> IU4 I32 dot + zero correction + FP32 scale
+mask/softmax -> FP32/BF16
+PV      -> initially retain INT8 or BF16 V
+```
+
+For serial decode, vector `v_dot8_i32_iu4` or packing independent
+heads/requests into WMMA rows is more natural than padding one query to M16.
+The first experiment should be **K4/V8**, preserving float mask/softmax and the
+existing `KVLiveSpans` ownership contract. K4/V4 should follow only if K4/V8
+passes complete attention-output and model-quality gates. Any retained format
+must be a registered `KVStorageView`/`KVCacheBackend` product with payload,
+scale, zero, lifecycle, fallback, and capacity accounting—not a dtype branch in
+the attention kernel.
+
+This lane is lower priority for exploiting the 2× arithmetic result. Long
+context is usually cache-bandwidth-bound, so its success criterion is fewer
+bytes at equal quality and lower complete attention wall. It may be valuable on
+a capacity-constrained 24-GiB device, but gfx1151's 128-GiB unified memory and
+the W7900's existing 256K INT8 reach weaken the capacity case. The repository's
+model-dependent INT8-KV outcomes also warn against assuming that plain S4 will
+qualify; Hadamard/group scaling, variance normalization, or mixed K4/V8 may be
+required.
+
+### 4.4 Recommended non-MTP experiment order
+
+1. **Dense prefill gate/up+SiLU leaf:** actual original/offline-optimized S4
+   weights, physical M=64/96/128/256/512, inclusive U4 pack/correction/output,
+   against the current bulk F16-WMMA/BF16-boundary owner—not the decode rowtile
+   control.
+2. **Full prefill FFN:** add down only if gate/up wins; report family Amdahl
+   share and complete prefill wall at 512/1K/4K with the T3 quality packet.
+3. **Packed c>N linear owner:** only after a clean native batch baseline exists;
+   profile M histograms and distinguish concurrent-request throughput from
+   single-request latency.
+4. **Grouped/shared-expert MoE:** proceed only where actual per-expert rows are
+   large enough to fill IU4 tiles.
+5. **K4/V8 attention leaf:** pursue for measured long-context bandwidth or
+   capacity pressure, not as an automatic consequence of the TOPS result.
+
+A raw 2× instruction ratio is the admission signal for these screens, not a
+performance claim. Retention still requires operation-complete timing, current
+owner comparison, full-model Amdahl impact, representation bytes, and the
+applicable T3 quality/task/lifecycle gates.
+
+## 5. What Kairic establishes—and what it does not
 
 The immutable ROCmFPX release inspected here is
 `ciru-ai/ROCmFPX@e97b32468509270bd15e891973f985b04fe999d7`
@@ -277,9 +396,9 @@ Current companion sizes are also larger than the earlier figures in the prompt:
 The 9.13 GiB/46.3% statement on the card compares companions with a matched
 8-bit companion inventory; it is not the total IU4 companion byte count.
 
-## 5. Representation and correction math
+## 6. Representation and correction math
 
-### 5.1 Clean S4 companion
+### 6.1 Clean S4 companion
 
 For one activation row and one output channel:
 
@@ -306,7 +425,7 @@ error. More segments improve quality while increasing sums/scales, correction
 work, and fragment scheduling. This is a quality/performance parameter, not a
 benchmark-specific knob.
 
-### 5.2 Direct use of current Q4_K/qmicro nibbles
+### 6.2 Direct use of current Q4_K/qmicro nibbles
 
 This avoids a large companion but is not the same formula. Q4_K reconstructs
 subblocks with affine scale/min terms. A direct U4×U4 route needs both weight-sum
@@ -325,7 +444,7 @@ contract. This path saves persistent bytes but adds metadata loads, groupwise
 correction, and packing/layout work—the very costs a clean S4 sidecar avoids.
 It is a useful ceiling experiment, not the default first implementation.
 
-## 6. Sidecar memory model
+## 7. Sidecar memory model
 
 For Qwen3.8 H=5,120, I=17,408, 64 layers, packed 4-bit weights plus one FP32
 scale and one I32 sum per output channel:
@@ -342,7 +461,7 @@ explain Kairic's 7.99 GiB FFN file and correct the earlier “~6 GiB FFN” prem
 A one-layer research sidecar is only about 85.3 MiB for gate/up and 42.5 MiB for
 down, so the leaf gate can be run without committing a model-wide allocation.
 
-## 7. Proposed architecture
+## 8. Proposed architecture
 
 A retained implementation must follow the existing plugin and fallback design:
 
@@ -369,7 +488,7 @@ A retained implementation must follow the existing plugin and fallback design:
    hipEngine's HIP infrastructure. Kairic's CK patch is a register/layout
    reference, not a runtime dependency.
 
-## 8. Execution-profile classification
+## 9. Execution-profile classification
 
 A Kairic-style S4 companion changes weight representation. Under
 [`docs/EXECUTION-PROFILES.md`](docs/EXECUTION-PROFILES.md), it is **T3**:
@@ -386,7 +505,7 @@ No arithmetic class relaxes control semantics. Request/slot/token/position,
 `KVLiveSpans`, Conv/GDN/KV state ownership, masks, acceptance, commit/rollback,
 graph bucket, lifecycle, and provenance remain exact.
 
-## 9. Phased experiment plan
+## 10. Phased experiment plan
 
 ### R0 — instruction capability (complete)
 
@@ -526,7 +645,7 @@ Promotion questions:
   weight outside one route?
 - Does gfx1100 independently qualify, or remain unverified?
 
-## 10. Go/no-go gates
+## 11. Go/no-go gates
 
 | Gate | Pass condition | Current status |
 | --- | --- | --- |
@@ -543,7 +662,7 @@ A failed tiny-M gate does not invalidate IU4 generally. It redirects the lane to
 `M>=32` packed verification and `M>=96` prompt work, where the roofline and
 Kairic evidence are much stronger.
 
-## 11. Immediate next command sequence
+## 12. Immediate next command sequence
 
 ```bash
 # 1. Re-run/inspect the instruction screen.
