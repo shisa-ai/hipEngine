@@ -197,9 +197,10 @@ streaming from **9.673→10.956 tok/s (+13.27%)** and TTFT p95
 **11.030→9.406 s (-14.72%)**. A subsequent exact fused packed-state transfer
 reduces the marked c17 owner **420.496→410.878 ms (-2.29%)**. Direct canonical
 resident state then reaches **368.413 ms**, c17 **11.271 tok/s**, and ITL p99
-**0.4542 s** (3/3 fixed-SLO passes). c32 improves to **10.732 tok/s / 0.821 s
-ITL** but remains blocked, as does live-admission overlap; gfx1151 canonical
-production is not yet promoted.
+**0.4542 s** (3/3 fixed-SLO passes). The exact row8 Q4 two-wave owner then
+reaches c17 **11.297 tok/s / 0.448 s ITL** and c32 **11.041 tok/s / 0.802 s
+ITL**; c32 live admission overlaps, but c32 fixed SLO remains blocked, so
+gfx1151 canonical production is not yet promoted.
 
 The separate W7900 Qwen3.8-27B `Q4_K_M` direct graph packet qualifies physical
 `(1,2,3,4,5,6,7,8)`: c1-c8 reaches **30.30/53.79/75.47/93.49/105.67/

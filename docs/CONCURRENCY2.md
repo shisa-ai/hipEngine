@@ -297,11 +297,14 @@ The measured order is therefore:
 
 1. ~~eliminate cross-group packed-state round trips~~ **DONE** through canonical
    resident slabs: -42.465 ms marked c17, with fixed c17 SLO closed;
-2. tune Q4 paired plus rowtile projections (**228.3 ms combined** in the new
-   direct-state owner), beginning with bytes/occupancy evidence rather than
-   another blind variant; and
-3. resolve live-admission overlap and rerun c32 after each retained projection
-   win. c32 remains substantially capacity-bound, so production is still open.
+2. ~~tune standard-Q4 rowtile geometry~~ **FIRST WIN RETAINED**: the exact
+   gfx1151 row8 two-wave/16-column owner lowers its marked family
+   **70.003→68.681 ms (-1.89%)**, c17 ITL **0.4542→0.4482 s**, and c32
+   throughput **10.732→11.041 tok/s** / ITL **0.8206→0.8019 s**; c32 live
+   admission now overlaps. Evidence: [`Q4 row8 two-wave`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-q4-row8-two-wave.json);
+3. tune the remaining Q4 qmicro dual family (~127.6 ms marked; the eight-wave
+   block-merge mechanism is rejected), then Q5 rowtile and Q4 split-weight.
+   c32 remains substantially capacity-bound, so production is still open.
 
 Device-kernel priorities after those owner-level measurements are:
 
