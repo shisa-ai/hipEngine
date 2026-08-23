@@ -1673,6 +1673,33 @@ class DMSCompactBackend:
         )
         return out
 
+    def device_compact_decode_attention(
+        self,
+        request_id: int,
+        compact_layer_index: int,
+        *,
+        q_ptr: int,
+        out_ptr: int,
+        scale: float | None = None,
+        stream: int = 0,
+    ) -> None:
+        """Attend directly from device pointers and persistent live metadata."""
+
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        state = self.state_for_request(request_id)
+        layer = int(compact_layer_index)
+        if layer < 0 or layer >= self.retrofit.num_layers:
+            raise ValueError("compact DMS layer index is out of range")
+        self._device_store.attention_layer_device(
+            layer,
+            q_ptr=int(q_ptr),
+            out_ptr=int(out_ptr),
+            score_capacity=max(1, int(np.max(state.range_capacity[layer]))),
+            scale=scale,
+            stream=int(stream),
+        )
+
     def device_layer_view(self, request_id: int, layer: int) -> Any:
         """Read back one layer's device slot buffers (test/observability)."""
         if self._device_store is None:

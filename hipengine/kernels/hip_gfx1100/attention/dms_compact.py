@@ -29,6 +29,7 @@ _SYMBOL_EXTERNAL_LINEAR_DECISION = "hipengine_dms_external_linear_decision_bf16"
 _SYMBOL_STREAMING_PACK = "hipengine_dms_streaming_pack_bf16"
 _SYMBOL_APPEND_DECODE = "hipengine_dms_append_decode_bf16"
 _SYMBOL_COMPACT_ATTN_DECODE = "hipengine_dms_compact_attn_decode_bf16"
+_SYMBOL_COMPACT_ATTN_DECODE_SPLITK = "hipengine_dms_compact_attn_decode_splitk_bf16"
 
 
 def plan_dms_compact_build(
@@ -384,6 +385,84 @@ def dms_append_decode_bf16(
         raise RuntimeError(f"dms_append_decode_bf16 failed with HIP error {err}")
 
 
+def dms_compact_attn_decode_splitk_bf16(
+    q_ptr: int,
+    k_slot_ptr: int,
+    v_slot_ptr: int,
+    base_offsets_ptr: int,
+    live_counts_ptr: int,
+    partial_out_ptr: int,
+    partial_m_ptr: int,
+    partial_l_ptr: int,
+    out_ptr: int,
+    rows: int,
+    q_heads: int,
+    kv_heads: int,
+    dim: int,
+    scale: float,
+    chunk_size: int,
+    num_splits: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Bounded-LDS split-K GQA attention over compact BF16 extents."""
+
+    if int(rows) <= 0:
+        raise ValueError("rows must be positive")
+    if int(q_heads) <= 0 or int(kv_heads) <= 0:
+        raise ValueError("attention heads must be positive")
+    if int(q_heads) % int(kv_heads) != 0:
+        raise ValueError("q_heads must be a multiple of kv_heads for GQA")
+    if int(dim) <= 0:
+        raise ValueError("dim must be positive")
+    if not (float(scale) > 0.0):
+        raise ValueError("scale must be positive")
+    if int(chunk_size) != 256:
+        raise ValueError("compact DMS split-K chunk_size must be 256")
+    if int(num_splits) <= 0:
+        raise ValueError("num_splits must be positive")
+
+    library = library or build_dms_compact(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_COMPACT_ATTN_DECODE_SPLITK)
+    fn.argtypes = [ctypes.c_void_p] * 9 + [
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.c_float,
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(q_ptr),
+        ctypes.c_void_p(k_slot_ptr),
+        ctypes.c_void_p(v_slot_ptr),
+        ctypes.c_void_p(base_offsets_ptr),
+        ctypes.c_void_p(live_counts_ptr),
+        ctypes.c_void_p(partial_out_ptr),
+        ctypes.c_void_p(partial_m_ptr),
+        ctypes.c_void_p(partial_l_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int32(rows),
+        ctypes.c_int32(q_heads),
+        ctypes.c_int32(kv_heads),
+        ctypes.c_int32(dim),
+        ctypes.c_float(scale),
+        ctypes.c_int32(chunk_size),
+        ctypes.c_int32(num_splits),
+        ctypes.c_void_p(stream),
+    )
+    if err != HIP_SUCCESS:
+        raise RuntimeError(
+            f"dms_compact_attn_decode_splitk_bf16 failed with HIP error {err}"
+        )
+
+
 def dms_compact_attn_decode_bf16(
     q_ptr: int,
     k_slot_ptr: int,
@@ -493,6 +572,16 @@ def register_dms_compact_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dms_compact_attn_decode", "bf16", "grouped_gqa"),
         dms_compact_attn_decode_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "dms_compact_attn_decode",
+            "bf16",
+            "grouped_gqa_splitk",
+        ),
+        dms_compact_attn_decode_splitk_bf16,
         replace=replace,
     )
 

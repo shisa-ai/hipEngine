@@ -232,6 +232,12 @@ class DMSDevicePayloadStore:
             KernelKey(self._backend, "dms_streaming_pack", "bf16", "count_rank_scatter"),
             KernelKey(self._backend, "dms_append_decode", "bf16", "compact_append_evict"),
             KernelKey(self._backend, "dms_compact_attn_decode", "bf16", "grouped_gqa"),
+            KernelKey(
+                self._backend,
+                "dms_compact_attn_decode",
+                "bf16",
+                "grouped_gqa_splitk",
+            ),
         )
         if not all(is_registered(key) for key in required_keys):
             from hipengine.kernels.hip_gfx1100.attention import (
@@ -258,6 +264,12 @@ class DMSDevicePayloadStore:
                 layer="dms_compact_attn_decode",
                 quant="bf16",
                 variant="grouped_gqa",
+            )
+            self._attn_split_fn = resolve(
+                backend=self._backend,
+                layer="dms_compact_attn_decode",
+                quant="bf16",
+                variant="grouped_gqa_splitk",
             )
         except Exception as exc:  # unregistered kernels = unavailable device path
             raise DMSDeviceUnavailable(f"dms_compact kernels not registered: {exc}") from exc
@@ -301,6 +313,11 @@ class DMSDevicePayloadStore:
             "q": self._alloc(self._q_heads * d * 4),
             "out": self._alloc(self._q_heads * d * 4),
         }
+        self._split_chunk = 256
+        self._split_capacity = 0
+        self._split_partial_out: DeviceBuffer | None = None
+        self._split_partial_m: DeviceBuffer | None = None
+        self._split_partial_l: DeviceBuffer | None = None
         self._closed = False
 
     def _alloc(self, nbytes: int) -> DeviceBuffer:
@@ -457,6 +474,103 @@ class DMSDevicePayloadStore:
             runtime=self._runtime,
         )
 
+    def _ensure_split_workspace(self, score_capacity: int) -> int:
+        num_splits = max(
+            1,
+            (int(score_capacity) + self._split_chunk - 1) // self._split_chunk,
+        )
+        if num_splits <= self._split_capacity:
+            return num_splits
+        old_buffers = (
+            self._split_partial_out,
+            self._split_partial_m,
+            self._split_partial_l,
+        )
+        if any(buffer is not None for buffer in old_buffers):
+            # Workspace growth is a lifecycle boundary; do not free partials
+            # still referenced by an earlier asynchronous launch.
+            self._runtime.device_synchronize()
+        for buffer in old_buffers:
+            if buffer is not None:
+                self._buffers.remove(buffer)
+                free(buffer, runtime=self._runtime)
+        self._split_partial_out = self._alloc(
+            self._q_heads * num_splits * self._dim * 4
+        )
+        self._split_partial_m = self._alloc(self._q_heads * num_splits * 4)
+        self._split_partial_l = self._alloc(self._q_heads * num_splits * 4)
+        self._split_capacity = num_splits
+        return num_splits
+
+    def attention_layer_device(
+        self,
+        layer: int,
+        *,
+        q_ptr: int,
+        out_ptr: int,
+        score_capacity: int,
+        scale: float | None = None,
+        stream: int = 0,
+    ) -> None:
+        """Attend from device pointers using persistent compact metadata."""
+
+        self._check_closed()
+        layer = int(layer)
+        if layer < 0 or layer >= self._layers:
+            raise ValueError("DMS device attention layer is out of range")
+        if min(int(q_ptr), int(out_ptr)) <= 0:
+            raise ValueError("DMS direct device attention requires non-null pointers")
+        capacity = int(score_capacity)
+        if capacity <= 0:
+            raise ValueError("DMS direct device attention requires positive capacity")
+        effective_scale = (
+            float(scale) if scale is not None else float(self._dim**-0.5)
+        )
+        if capacity <= self._split_chunk:
+            self._attn_fn(
+                int(q_ptr),
+                self._k_slot[layer].ptr,
+                self._v_slot[layer].ptr,
+                self._base_meta[layer].ptr,
+                self._live_meta[layer].ptr,
+                int(out_ptr),
+                1,
+                self._q_heads,
+                self._heads,
+                self._dim,
+                effective_scale,
+                capacity,
+                stream=int(stream),
+                library=self._library,
+                runtime=self._runtime,
+            )
+            return
+        num_splits = self._ensure_split_workspace(capacity)
+        assert self._split_partial_out is not None
+        assert self._split_partial_m is not None
+        assert self._split_partial_l is not None
+        self._attn_split_fn(
+            int(q_ptr),
+            self._k_slot[layer].ptr,
+            self._v_slot[layer].ptr,
+            self._base_meta[layer].ptr,
+            self._live_meta[layer].ptr,
+            self._split_partial_out.ptr,
+            self._split_partial_m.ptr,
+            self._split_partial_l.ptr,
+            int(out_ptr),
+            1,
+            self._q_heads,
+            self._heads,
+            self._dim,
+            effective_scale,
+            self._split_chunk,
+            num_splits,
+            stream=int(stream),
+            library=self._library,
+            runtime=self._runtime,
+        )
+
     def pack_layer(
         self,
         layer: int,
@@ -571,20 +685,12 @@ class DMSDevicePayloadStore:
             out_dev = self._stg["out"].ptr
         else:
             out_dev = int(out_ptr)
-        self._attn_fn(
-            q_dev,
-            self._k_slot[layer].ptr,
-            self._v_slot[layer].ptr,
-            self._base_meta[layer].ptr,
-            self._live_meta[layer].ptr,
-            out_dev,
-            1,
-            self._q_heads,
-            self._heads,
-            self._dim,
-            float(scale) if scale is not None else float(self._dim**-0.5),
-            max(1, int(np.max(live))),
-            library=self._library,
+        self.attention_layer_device(
+            layer,
+            q_ptr=q_dev,
+            out_ptr=out_dev,
+            score_capacity=max(1, int(np.max(live))),
+            scale=scale,
         )
         if out is not None:
             copy_device_to_host(host_array_ptr(out), self._stg["out"], out.nbytes)
