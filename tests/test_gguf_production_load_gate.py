@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -374,6 +375,34 @@ def test_load_gate_ignores_untracked_files_for_source_cleanliness(
     assert _tracked_source_dirty(repo) is False
     tracked.write_text("dirty\n", encoding="utf-8")
     assert _tracked_source_dirty(repo) is True
+
+
+def test_long_context_gate_passes_declared_quant_to_llm() -> None:
+    from scripts import gguf_long_context_pressure_gate as long_gate
+
+    args = long_gate.build_parser().parse_args(
+        [
+            "--model",
+            "/tmp/Qwen3.8-Q4_K_S.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--quant",
+            "gguf_q4_k_s",
+            "--gdn-mode",
+            "auto",
+            "--max-active-requests",
+            "3",
+        ]
+    )
+    assert long_gate._llm_construction_kwargs(args, args.model) == {
+        "model": Path("/tmp/Qwen3.8-Q4_K_S.gguf"),
+        "backend": "hip_gfx1151",
+        "quant": "gguf_q4_k_s",
+        "max_active_requests": 3,
+    }
+    assert args.gdn_mode == "auto"
+    assert "HIPENGINE_GGUF_FP16_RECURRENT_STATE" in long_gate._PROVENANCE_ENV_KEYS
+    assert "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY" in long_gate._PROVENANCE_ENV_KEYS
 
 
 def test_load_gate_passes_declared_quant_and_records_fp16_state_env() -> None:
