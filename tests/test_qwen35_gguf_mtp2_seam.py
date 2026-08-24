@@ -60,6 +60,7 @@ def test_resident_runner_delegates_staged_methods_without_backend_branches() -> 
     adapter = _AdapterDouble()
     runner._mtp2_adapter = adapter
     runner._mtp2_adapter_resolved = True
+    runner.generator = SimpleNamespace(target_arch="gfx1151")
     runner._rows = {7: SimpleNamespace(mtp2_candidate_budget=0)}
 
     runner.register_speculative_request(7, 3)
@@ -131,3 +132,6 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
     assert capability.max_candidates_per_request == 3
     assert capability.max_frontier_rows == 4
     assert capability.max_context_tokens == 4096
+
+    target.runner = SimpleNamespace(fp16_recurrent_state=True)
+    assert adapter.capability(semantics) is None
