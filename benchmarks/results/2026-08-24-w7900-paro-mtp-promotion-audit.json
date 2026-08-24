@@ -1,7 +1,7 @@
 {
   "schema": "hipengine.paro_mtp_promotion_audit.v1",
   "date": "2026-08-24",
-  "status": "provider_default_rejected_fast_verifier_pending_full_gate",
+  "status": "provider_default_rejected_fast_verifier_rejected",
   "performance_claim": false,
   "speed_claim_eligible": false,
   "implementation_base": "d99bbc607",
