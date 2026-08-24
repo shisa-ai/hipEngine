@@ -690,6 +690,40 @@ def test_gfx1151_backend_declares_q4_row8_two_wave_policy() -> None:
     )
 
 
+def test_gfx1151_backend_overrides_q5_rowtile_with_scoped_col8_wrapper(
+    monkeypatch,
+) -> None:
+    assert resolve(
+        backend="hip_gfx1151",
+        layer="linear",
+        quant="gguf_q5_k_t16_v1",
+        variant="t16_gemv_rowtile_bf16_bf16_out",
+    ) is gfx1151_backend._gguf_q5_k_t16_gemv_rowtile_gfx1151_bf16_bf16_out
+    assert is_registered(
+        KernelKey(
+            "hip_gfx1151",
+            "linear",
+            "gguf_q5_k_t16_v1",
+            "t16_gemv_rowtile_col8_bf16_bf16_out",
+        )
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("col8"),
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("col4"),
+    )
+    wrapper = gfx1151_backend._gguf_q5_k_t16_gemv_rowtile_gfx1151_bf16_bf16_out
+    wrapper(1, 2, 3, 8, 6_144, 5_120)
+    wrapper(1, 2, 3, 4, 2_048, 1_024)
+    assert calls == ["col8", "col4"]
+
+
 def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
     assert GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS == (1, 2, 3, 4, 5, 6, 7, 8)
     assert backend_package_capability(

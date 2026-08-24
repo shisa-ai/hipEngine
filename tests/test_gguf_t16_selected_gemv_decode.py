@@ -73,6 +73,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q5_k_t16_gemv_decode_bf16_bf16_out,
     gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out,
     gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out,
+    gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out,
     gguf_q5_k_qmicro_t16_selected_qwen_tile8_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out,
@@ -1297,6 +1298,39 @@ def test_q5_t16_dense_decode_and_rowtile_match_selected_production_bits(
         expected,
         **_TOL,
     )
+
+
+@pytest.mark.parametrize("rows", [2, 3, 4, 5, 6, 7, 8])
+def test_q5_t16_dense_rowtile_col8_matches_col4_bits(
+    rows: int,
+    t16_selected_library,
+) -> None:
+    rng = np.random.default_rng(20260824 + rows)
+    in_features = 512
+    out_features = 32
+    raw = make_q5_k_weight(out_features, in_features)
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(rows, in_features)).astype(np.float32)
+    )
+    tiles = repack_gguf_q5_k_tile16(raw[None, ...]).tiles
+    control = _run_dense_single(
+        gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    candidate = _run_dense_single(
+        gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+
+    np.testing.assert_array_equal(candidate, control)
 
 
 def test_q5_t16_dense_tile8_matches_production_bits(
