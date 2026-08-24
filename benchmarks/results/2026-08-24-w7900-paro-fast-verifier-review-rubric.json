@@ -1,7 +1,7 @@
 {
-  "schema": "hipengine.paro_fast_verifier_review_rubric.v1",
+  "schema": "hipengine.paro_fast_verifier_review_rubric.v2",
   "date": "2026-08-24",
-  "status": "predeclared_before_four-prompt-free-running-output-review",
+  "status": "extended_before_remaining-six-prompt-free-running-output-review",
   "performance_claim": false,
   "automatic_admission": {
     "thresholds": "docs/EXECUTION-PROFILES.md section 6.1, unchanged",
@@ -15,10 +15,27 @@
       "A differing free-running ID is diagnostic; task non-inferiority, fluency, language, requested format, and factual/technical coverage are binding.",
       "One category cannot compensate for another."
     ],
+    "code_merge_intervals": [
+      "Return only Python code defining merge_intervals(intervals) for overlapping closed integer intervals and include compact pytest-style tests.",
+      "If the 64-token sample is truncated before executable completion, require strict/fast exact equality rather than guessing task success."
+    ],
+    "code_topological_sort": [
+      "Return only Python code defining topo_sort(nodes, edges), produce a valid DAG order, raise ValueError on a cycle, and include DAG/cycle tests.",
+      "If the 64-token sample is truncated before executable completion, require strict/fast exact equality rather than guessing task success."
+    ],
+    "code_lru_cache": [
+      "Return only Python code implementing O(1) LRUCache get/put operations and three focused tests.",
+      "If the 64-token sample is truncated before executable completion, require strict/fast exact equality rather than guessing task success."
+    ],
     "code_markdown_table": [
       "Return only Python code.",
       "Define markdown_table(rows), preserve stable first-appearance column order, emit a GitHub-flavored markdown table, and include tests.",
       "If the 64-token sample is truncated before executable completion, require strict/fast exact equality rather than guessing task success."
+    ],
+    "general_en_plan": [
+      "Use concise practical English.",
+      "Cover SQLite-to-PostgreSQL migration sequencing, concrete risks, rollback/data handling, and validation steps.",
+      "A changed continuation passes only if it remains coherent and directly responsive."
     ],
     "general_en_explain": [
       "Use fluent technical English.",
@@ -26,10 +43,20 @@
       "Mention relevant throughput levers or examples such as arithmetic intensity, batching, quantization, KV/cache traffic, or compute utilization.",
       "A changed continuation passes only if it remains coherent and directly responsive."
     ],
+    "general_ja_plan": [
+      "Use practical Japanese.",
+      "Cover operational migration risks, ordered procedures, validation, and rollback/monitoring appropriate to a small internal Python tool.",
+      "A changed continuation passes only if it remains coherent and directly responsive."
+    ],
     "general_ja_explain": [
       "Use fluent technical Japanese.",
       "Explain the memory-bandwidth bottleneck causally and concretely for local GPU LLM inference.",
       "Terminology variants such as 計算 and 演算 are acceptable when the completed continuation is grammatical and technically equivalent."
+    ],
+    "mixed_ja_en_translate": [
+      "Provide an English summary followed by a short Japanese reply.",
+      "Cover log-format changes, the cache-invalidation option, and API-response backward compatibility.",
+      "A changed continuation must preserve both requested languages and all three concerns."
     ],
     "mixed_ja_en_review": [
       "Respond with English bullets.",
