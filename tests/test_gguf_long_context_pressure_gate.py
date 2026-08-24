@@ -29,6 +29,18 @@ def test_pool_plan_covers_mixed_and_forces_pressure_rejection() -> None:
     assert plan.pages_by_context[4_096] > plan.initial_pages
 
 
+def test_pressure_capacity_accounts_for_packed_workspace_lease() -> None:
+    plan = gate.build_pool_plan(decode_tokens=32, longer_context_tokens=None)
+
+    assert gate._effective_pressure_high_water(plan, workspace_lease_pages=32) == 166
+    assert gate._required_admission(plan, workspace_lease_pages=32) == {
+        "resource": "device_kv_pool",
+        "requested_units": 17,
+        "current_units": 166,
+        "capacity_units": 166,
+    }
+
+
 def test_workload_plan_covers_each_concurrent_context_and_mixed_rows() -> None:
     workloads = gate.build_workload_specs(
         decode_tokens=32,
