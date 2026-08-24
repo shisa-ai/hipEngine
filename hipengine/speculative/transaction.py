@@ -60,6 +60,7 @@ class SpecCycleStage(StrEnum):
     VERIFIED = "verified"
     ACCEPTED = "accepted"
     READBACK = "readback"
+    COMMITTING = "committing"
     COMMITTED = "committed"
     ROLLED_BACK = "rolled_back"
     CANCELLED = "cancelled"
@@ -83,6 +84,7 @@ class SpecCycleTransaction:
     pre_provider_cursors: tuple[int, ...] = ()
     provider_transaction_mode: SpecTransactionMode | None = None
     provider_owner: str | None = None
+    provider_request_ids: tuple[int, ...] = ()
     provider_checkpoint_ids: tuple[str, ...] = ()
     target_open: bool = False
     provider_open: bool = False
@@ -121,21 +123,34 @@ class SpecCycleTransaction:
             if (
                 self.provider_owner is not None
                 or self.pre_provider_cursors
+                or self.provider_request_ids
                 or self.provider_checkpoint_ids
                 or self.provider_open
                 or self.provider_committed
             ):
                 raise ValueError("K0 transaction cannot retain provider ownership")
             provider_owner = None
+            provider_request_ids: tuple[int, ...] = ()
             provider_cursors: tuple[int, ...] = ()
             provider_checkpoints: tuple[str, ...] = ()
         else:
             provider_owner = _required_text(self.provider_owner, "provider_owner")
+            provider_request_ids = (
+                request_ids
+                if not self.provider_request_ids
+                else _request_ids(self.provider_request_ids)
+            )
+            if any(request_id not in request_ids for request_id in provider_request_ids):
+                raise ValueError("provider_request_ids must be a transaction request subset")
             provider_cursors = _aligned_nonnegative(
-                self.pre_provider_cursors, request_ids, "pre_provider_cursors"
+                self.pre_provider_cursors,
+                provider_request_ids,
+                "pre_provider_cursors",
             )
             provider_checkpoints = _aligned_checkpoints(
-                self.provider_checkpoint_ids, request_ids, "provider_checkpoint_ids"
+                self.provider_checkpoint_ids,
+                provider_request_ids,
+                "provider_checkpoint_ids",
             )
             if self.target_committed != self.provider_committed:
                 raise ValueError("target/provider commit must be atomic")
@@ -152,6 +167,7 @@ class SpecCycleTransaction:
         object.__setattr__(self, "provider_transaction_mode", provider_mode)
         object.__setattr__(self, "target_owner", target_owner)
         object.__setattr__(self, "provider_owner", provider_owner)
+        object.__setattr__(self, "provider_request_ids", provider_request_ids)
         object.__setattr__(self, "target_checkpoint_ids", target_checkpoints)
         object.__setattr__(self, "provider_checkpoint_ids", provider_checkpoints)
 
@@ -286,6 +302,7 @@ class SpecCycleResult:
     finish_reasons: tuple[str | None, ...] = ()
     cancelled_request_ids: tuple[int, ...] = ()
     telemetry: SpecCycleTelemetry | None = None
+    error: str | None = None
 
     def __post_init__(self) -> None:
         stage = SpecCycleStage(self.stage)
@@ -299,6 +316,10 @@ class SpecCycleResult:
                 raise ValueError("committed result requires committed transaction")
         elif not self.transaction.rolled_back:
             raise ValueError("non-committed result requires rolled-back transaction")
+        if stage is SpecCycleStage.FAILED:
+            object.__setattr__(self, "error", _required_text(self.error, "error"))
+        elif self.error is not None:
+            raise ValueError("only failed cycle results may carry error")
         if self.accept_result is not None:
             if self.accept_result.request_ids != request_ids:
                 raise ValueError("accept_result request_ids must match transaction")
