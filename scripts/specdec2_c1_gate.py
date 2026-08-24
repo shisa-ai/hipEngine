@@ -94,7 +94,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             llm = app.state.hipengine_llm
             adapter = llm._text_generator
             resident_snapshot = adapter.live_loop_snapshot()
-            model_identity = client.get("/v1/models").json()["data"][0]["hipengine"]
             direct_generator = adapter.inner
             direct_config, _block_id, _required = _gguf_mtp_required_tensor_names(
                 direct_generator.weight_index
@@ -183,11 +182,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "fp16" if args.allow_fp16_state else "fp32_strict"
             ),
             "execution_profile": args.execution_profile,
-            "execution_profile_manifest_sha256": model_identity.get(
-                "execution_profile_manifest_sha256"
+            "execution_profile_manifest_sha256": getattr(
+                llm, "execution_profile_manifest_sha256", None
             ),
-            "execution_profile_strict_manifest_sha256": model_identity.get(
-                "execution_profile_strict_manifest_sha256"
+            "execution_profile_strict_manifest_sha256": getattr(
+                llm, "execution_profile_strict_manifest_sha256", None
             ),
         },
         "workload": {
