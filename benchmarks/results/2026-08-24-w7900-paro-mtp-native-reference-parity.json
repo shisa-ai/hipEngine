@@ -1,5 +1,5 @@
 {
-  "schema": "hipengine.paro_mtp_native_reference_parity.v1",
+  "schema": "hipengine.paro_mtp_native_reference_parity.v2",
   "date": "2026-08-24",
   "status": "rejected",
   "performance_claim": false,
@@ -13,43 +13,53 @@
     "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
     "quant": "w4_paro+mtp_bf16"
   },
+  "evaluator": {
+    "native_process": "project uv/Python environment; no torch import",
+    "reference_process": "system therock environment; CPU torch only",
+    "reason_split": "mixing the therock system ROCm environment with hipEngine native kernels corrupted both target and proposer argmax readback; the prior v1 fused-scorer mismatch was evaluator-invalid",
+    "native_command": "uv run python scripts/mtp_paro_proposal_parity.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-name code_markdown_table --prompt-render raw --tail-tokens 1 --native-capture-out /tmp/mtp-paro-native-code.npz --out /tmp/mtp-paro-native-code.json",
+    "reference_command": "OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 PYTHONPATH=/home/lhl/hipEngine-main python3 scripts/mtp_paro_proposal_reference.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --capture /tmp/mtp-paro-native-code.npz --out /tmp/mtp-paro-two-process-code.json"
+  },
   "fixture": {
     "prompt": "code_markdown_table",
     "category": "code",
     "split": "heldout",
-    "render": "qwen_chat_thinking_off",
-    "prompt_tokens": 52,
+    "render": "raw",
+    "prompt_tokens": 22,
     "tail_replay_tokens": 1,
-    "root_token": 71093,
-    "root_source": "retained exact-AR fixture /tmp/paro-spike-d64-heldout-raw/code_markdown_table/raw/mtp-economics-B1-run1.json"
+    "root_token": 271,
+    "root_source": "native target sampler under project uv environment"
   },
   "result": {
-    "native_hidden_vs_torch_cpu": {
+    "native_hidden_vs_cpu_reference": {
       "max_abs": 0.09375,
-      "mean_abs": 0.006054043769836426,
+      "mean_abs": 0.007260330021381378,
       "finite": true
     },
-    "native_fused_top1": 0,
-    "native_materialized_w8_top8": [64, 13962, 71093, 98251, 794, 99151, 4307, 2972],
-    "torch_cpu_w8_reference_top8": [248044, 71093, 96188, 248046, 64510, 5069, 78004, 26808],
-    "fused_native_top1_matches_materialized_native_w8": false,
-    "native_reference_top1_equal": false,
+    "native_fused_top1": 71093,
+    "native_rescored_fused_top1": 71093,
+    "native_materialized_w8_top8": [71093, 8160, 12237, 16, 332, 2665, 13962, 248068],
+    "cpu_reference_w8_top8": [71093, 8160, 12237, 16, 332, 2665, 13962, 2],
+    "fused_native_top1_matches_materialized_native_w8": true,
+    "native_reference_top1_equal": true,
     "native_reference_top8_equal": false,
-    "target_sampler_readback_valid": false,
-    "target_sampler_raw": -35180077129728,
-    "seconds": 40.933533990290016
+    "target_sampler_readback_valid": true,
+    "native_seconds": 37.374018591828644
+  },
+  "additional_kernel_gate": {
+    "shape": [1, 2048, 248320],
+    "threads": 128,
+    "fused_vs_unfused": "bit-exact pass",
+    "test": "tests/test_w8a16_lm_head_argmax_rows.py::test_w8a16_lm_head_argmax_rows_matches_unfused[1-2048-248320]"
   },
   "decision": {
     "provider_promotion": "blocked",
-    "strict_verifier_economics": "diagnostic only until proposer parity is repaired",
+    "borrowed_w8_scorer": "parity passed for top-1; no repair required",
+    "diagnostic_target_sampler": "valid in the isolated uv-native process",
+    "remaining_blocker": "native proposal hidden and top-8 parity",
     "next": [
       "localize the first native-versus-reference hidden mismatch by stage",
-      "repair fused borrowed W8 top-1 readback versus materialized W8 logits",
-      "repair or isolate the diagnostic target sampler readback",
-      "rerun category and accept/reject parity fixtures after repair"
+      "rerun reject/partial/full-accept and category fixtures after hidden repair"
     ]
-  },
-  "raw_source": {
-    "/tmp/mtp-paro-parity-code.json": "unretained local raw output"
   }
 }
