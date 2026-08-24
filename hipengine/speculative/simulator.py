@@ -3,12 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from enum import Enum
 from typing import Mapping, Sequence
 
 from hipengine.generation.concurrency2_simulator import SimulatedResourceLedger
 from hipengine.kvcache import ClaimConfidence, ResourceClaim, ResourceClaimSet
+from hipengine.speculative.frontier import SpecPlanReason, SpecTransactionMode
 from hipengine.speculative.interfaces import AcceptResult, DraftBatch
+from hipengine.speculative.transaction import (
+    SpecCycleResult,
+    SpecCycleStage,
+    SpecCycleTelemetry,
+    SpecCycleTransaction,
+)
+
+# Compatibility aliases retained while callers migrate to the production names.
+SpecTransaction = SpecCycleTransaction
+SpeculativeCycleResult = SpecCycleResult
 
 
 def _required_text(value: object, label: str) -> str:
@@ -57,62 +67,6 @@ class SpeculativeRequestState:
             raise ValueError("visible/holdback token ids must be non-negative")
         if self.finished and self.pending_transaction_id is not None:
             raise ValueError("finished request cannot retain a pending transaction")
-
-
-class SpecCycleStage(str, Enum):
-    NEW = "new"
-    RESERVED = "reserved"
-    TARGET_OPEN = "target_open"
-    PROVIDER_OPEN = "provider_open"
-    DRAFTED = "drafted"
-    VERIFIED = "verified"
-    ACCEPTED = "accepted"
-    COMMITTED = "committed"
-    ROLLED_BACK = "rolled_back"
-    CANCELLED = "cancelled"
-
-
-@dataclass(frozen=True, slots=True)
-class SpecTransaction:
-    """Both provisional state owners plus their pre-transaction checkpoints."""
-
-    operation_id: str
-    transaction_id: int
-    cycle_id: int
-    request_ids: tuple[int, ...]
-    reserved_claims: ResourceClaimSet
-    pre_target_cursors: tuple[int, ...]
-    pre_provider_cursors: tuple[int, ...]
-    pre_rng_counters: tuple[int, ...]
-    target_open: bool = False
-    provider_open: bool = False
-    target_committed: bool = False
-    provider_committed: bool = False
-    rolled_back: bool = False
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "operation_id", _required_text(self.operation_id, "operation_id"))
-        if min(int(self.transaction_id), int(self.cycle_id)) < 0:
-            raise ValueError("transaction_id/cycle_id must be non-negative")
-        if not self.request_ids or len(set(self.request_ids)) != len(self.request_ids):
-            raise ValueError("transaction request_ids must be non-empty and unique")
-        lengths = (
-            len(self.pre_target_cursors), len(self.pre_provider_cursors), len(self.pre_rng_counters)
-        )
-        if any(length != len(self.request_ids) for length in lengths):
-            raise ValueError("transaction checkpoints must align with request_ids")
-        if self.rolled_back and (self.target_committed or self.provider_committed):
-            raise ValueError("rolled-back transaction cannot be committed")
-        if self.target_committed != self.provider_committed:
-            raise ValueError("target/provider commit outcomes must match")
-
-
-@dataclass(frozen=True, slots=True)
-class SpeculativeCycleResult:
-    stage: SpecCycleStage
-    transaction: SpecTransaction
-    accept_result: AcceptResult | None = None
-    cancelled_request_ids: tuple[int, ...] = ()
 
 
 def compose_speculative_claims(
@@ -235,7 +189,7 @@ class SpeculativeCycleSimulator:
         claims = compose_speculative_claims(operation_id, component_claims)
         self.ledger.reserve(owner, claims)
         self._active_owner = owner
-        transaction = SpecTransaction(
+        transaction = SpecCycleTransaction(
             operation_id=operation_id,
             transaction_id=transaction_id,
             cycle_id=draft.cycle_id,
@@ -244,6 +198,18 @@ class SpeculativeCycleSimulator:
             pre_target_cursors=tuple(state.target_cursor for state in states),
             pre_provider_cursors=tuple(state.provider_cursor for state in states),
             pre_rng_counters=tuple(state.rng_counter for state in states),
+            target_transaction_mode=SpecTransactionMode.PACKED_SCRATCH,
+            provider_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
+            target_owner=f"{operation_id}:target",
+            provider_owner=f"{operation_id}:provider",
+            target_checkpoint_ids=tuple(
+                f"target:{state.target_request_id}:{state.target_cursor}"
+                for state in states
+            ),
+            provider_checkpoint_ids=tuple(
+                f"provider:{state.target_request_id}:{state.provider_cursor}"
+                for state in states
+            ),
         )
         for state in states:
             self._states[state.target_request_id] = replace(
@@ -325,10 +291,31 @@ class SpeculativeCycleSimulator:
             transaction, target_committed=True, provider_committed=True
         )
         self._release_active_owner()
-        return SpeculativeCycleResult(
-            stage=SpecCycleStage.COMMITTED,
-            transaction=transaction,
-            accept_result=accept_result,
+        candidate_counts = tuple(
+            sum(
+                1
+                for owner, enabled in zip(
+                    draft.row_to_request,
+                    draft.active_mask or (True,) * draft.draft_rows,
+                    strict=True,
+                )
+                if owner == request_id and enabled
+            )
+            for request_id in request_ids
+        )
+        telemetry = SpecCycleTelemetry(
+            operation_id=operation_id,
+            request_ids=request_ids,
+            candidate_counts=candidate_counts,
+            plan_reasons=(SpecPlanReason.SPECULATIVE_QUALIFIED,) * len(request_ids),
+            proposal_widths=(len(request_ids),),
+            target_row_decomposition=(len(request_ids) + draft.draft_rows,),
+            execution_route="eager",
+        )
+        return SpecCycleResult.committed(
+            transaction,
+            accept_result,
+            telemetry=telemetry,
         )
 
     def _accepted_tokens(
@@ -380,7 +367,7 @@ class SpeculativeCycleSimulator:
             rolled_back=True,
         )
         self._release_active_owner()
-        return SpeculativeCycleResult(
+        return SpecCycleResult(
             stage=SpecCycleStage.CANCELLED,
             transaction=rolled_back,
             accept_result=accept_result,

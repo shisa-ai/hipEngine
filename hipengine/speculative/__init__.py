@@ -156,6 +156,11 @@ from hipengine.speculative.streaming import (
     stochastic_acceptance_accounting,
     trim_speculative_output,
 )
+from hipengine.speculative.transaction import (
+    SpecCycleResult,
+    SpecCycleTelemetry,
+    SpecCycleTransaction,
+)
 from hipengine.speculative.simulator import (
     SpecCycleStage,
     SpecTransaction,
@@ -331,6 +336,9 @@ __all__ = [
     "StochasticAcceptanceAccounting",
     "stochastic_acceptance_accounting",
     "trim_speculative_output",
+    "SpecCycleResult",
+    "SpecCycleTelemetry",
+    "SpecCycleTransaction",
     "SpecCycleStage",
     "SpecTransaction",
     "SpeculativeCycleResult",
