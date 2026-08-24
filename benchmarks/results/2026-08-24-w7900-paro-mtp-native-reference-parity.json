@@ -1,65 +1,161 @@
 {
-  "schema": "hipengine.paro_mtp_native_reference_parity.v2",
+  "additional_kernel_gate": {
+    "fused_vs_unfused": "bit-exact pass",
+    "shape": [
+      1,
+      2048,
+      248320
+    ],
+    "test": "tests/test_w8a16_lm_head_argmax_rows.py::test_w8a16_lm_head_argmax_rows_matches_unfused[1-2048-248320]",
+    "threads": 128
+  },
+  "aggregate": {
+    "categories": 4,
+    "first_stage_mismatch": "fc_bf16_gemv_reduction_order",
+    "fixtures": 5,
+    "hidden_cosine_min": 0.9999898076057434,
+    "hidden_max_abs_max": 0.25,
+    "hidden_relative_l2_max": 0.004523367155343294,
+    "kl_nats_max": 0.0001430314731298187,
+    "top1_agreement": 1.0,
+    "top5_set_overlap_min": 1.0,
+    "top8_exact_fixtures": 3
+  },
   "date": "2026-08-24",
-  "status": "rejected",
-  "performance_claim": false,
-  "speed_claim_eligible": false,
+  "decision": {
+    "branching_top8_parity": "not qualified and unsupported by borrowed scorer",
+    "declared_fixed_chain_parity": "passed",
+    "next": "run three-repeat D24 economics; keep route fail-closed to fixed-chain B1",
+    "provider_promotion_blocker_closed": true,
+    "strict_bitwise_hidden_parity": "not claimed"
+  },
+  "declared_scope": {
+    "candidate_budget": 1,
+    "draft_mode": "fixed_chain_top1",
+    "graph_mode": "off",
+    "topk_branching_supported": false
+  },
+  "evaluator": {
+    "native_driver": "scripts/mtp_paro_proposal_parity.py --native-capture-out",
+    "native_process": "project uv/Python environment; no torch import",
+    "reason_split": "avoid mixed ROCm-runtime corruption",
+    "reference_driver": "scripts/mtp_paro_proposal_reference.py",
+    "reference_process": "system therock environment; CPU torch only"
+  },
+  "fixtures": [
+    {
+      "case": "root_transition_reject_screen",
+      "category": "code",
+      "first_stage_mismatch": "fc",
+      "hidden": {
+        "cosine": 0.9999898076057434,
+        "max_abs_native_vs_reference": 0.09375,
+        "mean_abs_native_vs_reference": 0.007260330021381378,
+        "relative_l2": 0.004523367155343294
+      },
+      "kl_nats": 9.96388347834794e-06,
+      "name": "code_markdown_table",
+      "native_token": 71093,
+      "reference_token": 71093,
+      "root_token": 271,
+      "status": "passed_fixed_chain",
+      "top5_overlap": 1.0,
+      "top8_exact": false
+    },
+    {
+      "case": "root_transition_reject_screen",
+      "category": "general_en",
+      "first_stage_mismatch": "fc",
+      "hidden": {
+        "cosine": 0.9999966025352478,
+        "max_abs_native_vs_reference": 0.0625,
+        "mean_abs_native_vs_reference": 0.0031385645270347595,
+        "relative_l2": 0.0026268078945577145
+      },
+      "kl_nats": 1.7622987510197938e-05,
+      "name": "general_en_explain",
+      "native_token": 18844,
+      "reference_token": 18844,
+      "root_token": 271,
+      "status": "passed_fixed_chain",
+      "top5_overlap": 1.0,
+      "top8_exact": true
+    },
+    {
+      "case": "root_transition_reject_screen",
+      "category": "general_ja",
+      "first_stage_mismatch": "fc",
+      "hidden": {
+        "cosine": 0.9999903440475464,
+        "max_abs_native_vs_reference": 0.25,
+        "mean_abs_native_vs_reference": 0.00621587410569191,
+        "relative_l2": 0.0044142454862594604
+      },
+      "kl_nats": 0.00010806008887462683,
+      "name": "general_ja_explain",
+      "native_token": 241456,
+      "reference_token": 241456,
+      "root_token": 271,
+      "status": "passed_fixed_chain",
+      "top5_overlap": 1.0,
+      "top8_exact": false
+    },
+    {
+      "case": "root_transition_reject_screen",
+      "category": "mixed_ja_en",
+      "first_stage_mismatch": "fc",
+      "hidden": {
+        "cosine": 0.9999920129776001,
+        "max_abs_native_vs_reference": 0.25,
+        "mean_abs_native_vs_reference": 0.0033673271536827087,
+        "relative_l2": 0.004061402287334204
+      },
+      "kl_nats": 0.0001430314731298187,
+      "name": "mixed_ja_en_review",
+      "native_token": 79852,
+      "reference_token": 79852,
+      "root_token": 271,
+      "status": "passed_fixed_chain",
+      "top5_overlap": 1.0,
+      "top8_exact": true
+    },
+    {
+      "case": "known_full_accept",
+      "category": "code",
+      "first_stage_mismatch": "fc",
+      "hidden": {
+        "cosine": 0.9999961853027344,
+        "max_abs_native_vs_reference": 0.0625,
+        "mean_abs_native_vs_reference": 0.0032027512788772583,
+        "relative_l2": 0.0027824342250823975
+      },
+      "kl_nats": 9.971645899996564e-07,
+      "name": "code_merge_intervals_cycle3",
+      "native_token": 8160,
+      "reference_token": 8160,
+      "root_token": 198,
+      "status": "passed_fixed_chain",
+      "top5_overlap": 1.0,
+      "top8_exact": true
+    }
+  ],
   "hardware": {
-    "device": "AMD Radeon Pro W7900",
     "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
     "target_arch": "gfx1100"
   },
   "model": {
     "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
     "quant": "w4_paro+mtp_bf16"
   },
-  "evaluator": {
-    "native_process": "project uv/Python environment; no torch import",
-    "reference_process": "system therock environment; CPU torch only",
-    "reason_split": "mixing the therock system ROCm environment with hipEngine native kernels corrupted both target and proposer argmax readback; the prior v1 fused-scorer mismatch was evaluator-invalid",
-    "native_command": "uv run python scripts/mtp_paro_proposal_parity.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-name code_markdown_table --prompt-render raw --tail-tokens 1 --native-capture-out /tmp/mtp-paro-native-code.npz --out /tmp/mtp-paro-native-code.json",
-    "reference_command": "OMP_NUM_THREADS=16 MKL_NUM_THREADS=16 PYTHONPATH=/home/lhl/hipEngine-main python3 scripts/mtp_paro_proposal_reference.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --capture /tmp/mtp-paro-native-code.npz --out /tmp/mtp-paro-two-process-code.json"
-  },
-  "fixture": {
-    "prompt": "code_markdown_table",
-    "category": "code",
-    "split": "heldout",
-    "render": "raw",
-    "prompt_tokens": 22,
-    "tail_replay_tokens": 1,
-    "root_token": 271,
-    "root_source": "native target sampler under project uv environment"
-  },
-  "result": {
-    "native_hidden_vs_cpu_reference": {
-      "max_abs": 0.09375,
-      "mean_abs": 0.007260330021381378,
-      "finite": true
-    },
-    "native_fused_top1": 71093,
-    "native_rescored_fused_top1": 71093,
-    "native_materialized_w8_top8": [71093, 8160, 12237, 16, 332, 2665, 13962, 248068],
-    "cpu_reference_w8_top8": [71093, 8160, 12237, 16, 332, 2665, 13962, 2],
-    "fused_native_top1_matches_materialized_native_w8": true,
-    "native_reference_top1_equal": true,
-    "native_reference_top8_equal": false,
-    "target_sampler_readback_valid": true,
-    "native_seconds": 37.374018591828644
-  },
-  "additional_kernel_gate": {
-    "shape": [1, 2048, 248320],
-    "threads": 128,
-    "fused_vs_unfused": "bit-exact pass",
-    "test": "tests/test_w8a16_lm_head_argmax_rows.py::test_w8a16_lm_head_argmax_rows_matches_unfused[1-2048-248320]"
-  },
-  "decision": {
-    "provider_promotion": "blocked",
-    "borrowed_w8_scorer": "parity passed for top-1; no repair required",
-    "diagnostic_target_sampler": "valid in the isolated uv-native process",
-    "remaining_blocker": "native proposal hidden and top-8 parity",
-    "next": [
-      "localize the first native-versus-reference hidden mismatch by stage",
-      "rerun reject/partial/full-accept and category fixtures after hidden repair"
-    ]
+  "performance_claim": false,
+  "schema": "hipengine.paro_mtp_native_reference_parity.v3",
+  "speed_claim_eligible": false,
+  "status": "passed_declared_fixed_chain_scope",
+  "thresholds": {
+    "finite": true,
+    "full_vocab_kl_max": 0.001,
+    "top1_min": 1.0,
+    "top5_overlap_min": 1.0
   }
 }

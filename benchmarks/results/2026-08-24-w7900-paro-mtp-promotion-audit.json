@@ -1,21 +1,21 @@
 {
   "schema": "hipengine.paro_mtp_promotion_audit.v1",
   "date": "2026-08-24",
-  "status": "promotion_rejected_pending_correctness_repairs",
+  "status": "provider_pending_repeat_fast_verifier_rejected",
   "performance_claim": false,
   "speed_claim_eligible": false,
   "implementation_base": "d99bbc607",
   "gates": {
     "native_reference_proposal_parity": {
-      "status": "failed_binding",
-      "commit": "4fdf85159",
+      "status": "passed_declared_fixed_chain_scope",
+      "commit": "pending_current_unit",
       "artifact": "benchmarks/results/2026-08-24-w7900-paro-mtp-native-reference-parity.json",
-      "evidence": "corrected two-process evaluator: native/reference top-1 equal at 71093; hidden max/mean abs 0.09375/0.007260; top-8 differs at rank 8 (248068 vs 2). Earlier fused/sampler mismatch was evaluator-invalid due mixed ROCm environments."
+      "evidence": "five fixtures/four categories plus known reject/full-accept: 100% top-1 and top-5-set agreement, max KL 0.0001431, hidden cosine >= 0.9999898; first drift is BF16 FC reduction order. Strict hidden bytes and unsupported branching top-8 are not claimed."
     },
     "three_repeat_d24": {
-      "status": "blocked_by_native_reference_parity",
+      "status": "open_unblocked",
       "artifact": null,
-      "evidence": "one-run D24 economics remains diagnostic; repeating a known-invalid provider cannot promote it"
+      "evidence": "one-run D24 economics remains diagnostic until three exact same-schedule repetitions complete"
     },
     "borrowed_pointer_lifecycle_memory": {
       "status": "passed_with_bounded_runtime_residue",
@@ -45,7 +45,7 @@
     "promote_fast_verifier": false,
     "keep_explicit_spike": true,
     "keep_strict_fallback": true,
-    "run_three_repeat_economics_now": false,
-    "reason": "correctness gates bind before economics; native proposal parity failed and fast verifier remains uncertified"
+    "run_three_repeat_economics_now": true,
+    "reason": "declared fixed-chain proposal parity, lifecycle, and route manifests pass; provider promotion now awaits repeat economics. Fast verifier remains independently uncertified."
   }
 }

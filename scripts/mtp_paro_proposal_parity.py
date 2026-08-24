@@ -112,15 +112,26 @@ def run(
     reference_device: str = "cpu",
     root_token_override: int | None = None,
     native_capture_out: Path | None = None,
+    prompt_tokens_file: Path | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     suite = _load_prompt_suite(prompts_file)
     prompt = next((row for row in suite["prompts"] if row["name"] == prompt_name), None)
     if prompt is None:
         raise ValueError(f"unknown prompt {prompt_name!r}")
-    encoder = _load_prompt_encoder(model, prompt_render)
-    encoded = encoder.encode(prompt["prompt"])
-    prompt_tokens = [int(x) for x in encoded.token_ids]
+    if prompt_tokens_file is None:
+        encoder = _load_prompt_encoder(model, prompt_render)
+        encoded = encoder.encode(prompt["prompt"])
+        prompt_tokens = [int(x) for x in encoded.token_ids]
+    else:
+        prompt_tokens = [
+            int(token)
+            for token in prompt_tokens_file.read_text(encoding="utf-8")
+            .replace(",", " ")
+            .split()
+        ]
+        if not prompt_tokens:
+            raise ValueError("prompt token fixture is empty")
     if int(tail_tokens) <= 0:
         raise ValueError("tail_tokens must be positive")
     tail_start = max(0, len(prompt_tokens) - int(tail_tokens))
@@ -134,6 +145,9 @@ def run(
     rescored_native_value: float
     fresh_rescored_native_token: int
     fresh_rescored_native_value: float
+    native_fused_bits: np.ndarray
+    native_fc_bits: np.ndarray
+    native_attn_in_bits: np.ndarray
     capture_buf = None
     with Qwen35ParoResidentSession(
         runner,
@@ -201,6 +215,20 @@ def run(
                         read_lm_head_value=True,
                     )
                 native_hidden_bits = proposer.read_final_hidden_bf16()
+
+                def download(buffer: DeviceBuffer, shape: tuple[int, ...], dtype: Any) -> np.ndarray:
+                    host = np.empty(shape, dtype=dtype)
+                    copy_device_to_host(
+                        host_array_ptr(host),
+                        DeviceBuffer(buffer.ptr, host.nbytes),
+                        host.nbytes,
+                        runtime=session.runtime,
+                    )
+                    return host
+
+                native_fused_bits = download(proposer.fused_buf, (1, 2 * hidden), np.uint16)
+                native_fc_bits = download(proposer.fc_buf, (1, hidden), np.uint16)
+                native_attn_in_bits = download(proposer.attn_in_buf, (1, hidden), np.uint16)
                 native_token = int(proposer.current.token)
                 w8a16_lm_head_argmax_rows_bf16(
                     proposer.final_hidden_buf.ptr,
@@ -316,6 +344,9 @@ def run(
             target_hidden_bits=target_hidden_bits,
             native_hidden_bits=native_hidden_bits,
             native_logits=native_logits,
+            native_fused_bits=native_fused_bits,
+            native_fc_bits=native_fc_bits,
+            native_attn_in_bits=native_attn_in_bits,
             root_token=np.asarray([root_token], dtype=np.int64),
             sampled_root_token=np.asarray([sampled_root_token], dtype=np.int64),
             native_token=np.asarray([native_token], dtype=np.int32),
@@ -433,6 +464,7 @@ def main() -> int:
     parser.add_argument("--reference-device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--root-token", type=int, help="explicit fixture root when sampler diagnostics are unavailable")
     parser.add_argument("--native-capture-out", type=Path, help="write NPZ and stop before importing torch")
+    parser.add_argument("--prompt-tokens-file", type=Path, help="explicit comma/space token fixture")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     names = [
@@ -453,6 +485,7 @@ def main() -> int:
             reference_device=args.reference_device,
             root_token_override=args.root_token,
             native_capture_out=args.native_capture_out,
+            prompt_tokens_file=args.prompt_tokens_file,
         )
         for name in names
     ]
