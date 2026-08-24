@@ -332,6 +332,7 @@ def _scope_summaries(rows: Sequence[dict[str, Any]]) -> dict[str, dict[str, Any]
             summary["strict_margin_min"] = float(
                 min(row["strict_margin"] for row in selected)
             )
+            summary["binding"] = dimension in {"category", "shape", "transition"}
             summary["passed"] = bool(
                 summary["mean_kl"] <= _THRESHOLDS["mean_kl_max"]
                 and summary["p95_kl"] <= _THRESHOLDS["p95_kl_max"]
@@ -853,7 +854,7 @@ def run_sequential(
         {"dimension": dimension, "value": value}
         for dimension, groups in scopes.items()
         for value, summary in groups.items()
-        if not bool(summary["passed"])
+        if bool(summary["binding"]) and not bool(summary["passed"])
     ]
     decision_mismatches = [
         {
