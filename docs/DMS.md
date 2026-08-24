@@ -91,12 +91,14 @@ That is:
 
 | File | Required | Bytes | Binary size | SHA-256 |
 | --- | --- | ---: | ---: | --- |
-| `qwen38-27b-q4km-dms-sidecar.safetensors` | Yes | 655,640 | 640.27 KiB / 0.6253 MiB | `1960ee834c0bd4572249e71b5cba16668e139a2e93a0113af60374d1a517f9f2` |
-| `dms_metadata.json` | Yes | 2,620 | 2.56 KiB | `7e1ea739617047da7d687827eca121c2c969fbaf899a76ecc871b72e39b8d225` |
-| `candidate_summary.json` | Optional evidence index | 1,710 | 1.67 KiB | `d5e097f35382e4a351a369cdaa744c75d4cfd5a942167abee0113e18dfee166a` |
+| `qwen38-27b-q4km-dms-sidecar.safetensors` | Yes | 655,640 | 640.27 KiB / 0.6253 MiB | `e52fc60a4e8f86f00719be107b44a73567795dfdd88dbbce15cf955409fcd764` |
+| `dms_metadata.json` | Yes | 2,090 | 2.04 KiB | `62c1f2d2c590aff2756796f01bddfaf1b602750ceada4b3ac23639902ff8edfe` |
+| `policy_derivation.json` | Optional derivation evidence | 1,015 | 0.99 KiB | `c5983f13e2a95bda120944f86c02ce498eb6379c6ab8f227587ddf6fb482e56e` |
+| `qualification.json` | Optional 32K evidence index | 1,726 | 1.69 KiB | `1c5a11b9ccd45cd7c99d4aa1ad2ccf730842d52c6f28b608a4258464fcf7aa39` |
+| `qualification-128k.json` | Optional 128K evidence index | 1,848 | 1.80 KiB | `e22945a9b543bd327d0ff4b8c8c252252dc71b9eb087e17ea75b4ede32bb3856` |
 
-The minimal sidecar plus metadata distribution is **658,260 bytes** (`642.83
-KiB`, `0.6278 MiB`). The model GGUF is 17,106,775,008 bytes, so the learned
+The minimal sidecar plus metadata distribution is **657,730 bytes** (`642.31
+KiB`, `0.6273 MiB`). The model GGUF is 17,106,775,008 bytes, so the learned
 safetensors payload is about **0.00383%** of the model file, or approximately
 **26,092x smaller**.
 
@@ -106,8 +108,8 @@ The training workspace is much larger than the distributable result:
 | --- | ---: | ---: | --- |
 | FP32 capture tree | 19,131,333,070 | 17.817 GiB | No |
 | Label tree | 5,049,874,413 | 4.703 GiB | No |
-| Final training directory, including checkpoints | 4,627,589 | 4.41 MiB | No |
-| Qualified candidate directory | 660,100 | 644.63 KiB | No; hashes and compact evidence are committed |
+| Final training directory, including checkpoints | 4,628,882 | 4.41 MiB | No |
+| Qualified candidate directory, including 32K/128K evidence copies | 766,646 | 748.68 KiB | No; hashes and compact evidence are committed |
 
 Large captures, label shards, model weights, checkpoints, and raw logs remain
 outside Git by project policy.
@@ -1098,8 +1100,10 @@ be promoted by relaxing the existing max-KL threshold.
 | Sidecar replay | `a13b196b2481cc2f45b0f3f749dd3d5d1250580097e63437f947b435774260df` |
 | Long exact-Q4 quality | `a83e864f433fb8bebbcebdebe80cd9cc2b6e094a6928600803f892d538708229` |
 | Repository evaluation | `718d40208c14a9eeba878ebce123a368349d2ca041cdf7db314a8436a39bbb6b` |
-| Qualified sidecar | `1960ee834c0bd4572249e71b5cba16668e139a2e93a0113af60374d1a517f9f2` |
-| Qualified metadata | `7e1ea739617047da7d687827eca121c2c969fbaf899a76ecc871b72e39b8d225` |
+| Qualified W8192 sidecar | `e52fc60a4e8f86f00719be107b44a73567795dfdd88dbbce15cf955409fcd764` |
+| Qualified W8192 metadata | `62c1f2d2c590aff2756796f01bddfaf1b602750ceada4b3ac23639902ff8edfe` |
+| Qualified W8192 32K manifest | `1c5a11b9ccd45cd7c99d4aa1ad2ccf730842d52c6f28b608a4258464fcf7aa39` |
+| Qualified W8192 128K manifest | `e22945a9b543bd327d0ff4b8c8c252252dc71b9eb087e17ea75b4ede32bb3856` |
 
 ### Major implementation commits
 
