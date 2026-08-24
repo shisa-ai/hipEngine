@@ -4281,3 +4281,21 @@ should be boring.
   consumes variable-budget transitions, move the sequence owner into test
   support and remove the runtime policy hook and benchmark CLI flags. Never
   remove the fixed B1/B2/B3 graph buckets or strict transaction fallbacks.
+
+## RF-OI4 — default-off post-norm draft-hidden diagnostic (2026-08-25)
+
+- **State:** immutable policy infrastructure retained; `post_output_norm`
+  rejected for Qwen3.8 promotion, `pre_output_norm` remains strict/default.
+- **Paths:** `Qwen35GGUFDraftHiddenPolicy` and the explicit
+  `draft_hidden_variant` decoder argument in `runtime/qwen35_gguf_mtp.py`, plus
+  `--draft-hidden-variant` in `scripts/qwen36_dense_gguf_suite.py`.
+- **Why retained:** it is the request-owned single source of truth for prompt
+  priming and steady target proposals, preserves strict target commit/rollback
+  ownership, prevents accidental double normalization, and enables future model
+  artifacts to test their declared convention without ad-hoc branches.
+- **Removal trigger:** if no second model/conversion campaign consumes the
+  manifest, move post-norm transformation into benchmark/test support and remove
+  the runtime candidate path. If a future model promotes post-norm, bind the
+  variant to that model/provider manifest and rerun full category, heldout,
+  long/lifecycle, and same-host economics gates; never select by prompt or live
+  acceptance.

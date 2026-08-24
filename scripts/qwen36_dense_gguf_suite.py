@@ -544,6 +544,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--adaptive-switch-margin", type=float, default=0.02)
     parser.add_argument("--adaptive-exploration-samples", type=int, default=1)
     parser.add_argument(
+        "--draft-hidden-variant",
+        choices=("pre_output_norm", "post_output_norm"),
+        default="pre_output_norm",
+        help="immutable target-to-draft hidden convention",
+    )
+    parser.add_argument(
         "--target-verify-mode",
         choices=("native", "serial-exact"),
         default="native",
@@ -688,6 +694,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 quant=str(args.quant),
                 verifier=timed_verifier,
                 owns_verifier=False,
+                draft_hidden_variant=str(args.draft_hidden_variant),
             )
             for budget in decoder_budgets
         }
@@ -898,6 +905,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 ),
             },
             "target_verify_mode": str(args.target_verify_mode),
+            "draft_hidden_variant": str(args.draft_hidden_variant),
+            "draft_hidden_manifest": decoders[min(decoders)].draft_hidden_manifest,
             "runs": int(args.runs),
             "warmup": bool(args.warmup),
             "max_sequence_length": max_sequence_length,

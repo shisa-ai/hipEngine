@@ -412,6 +412,12 @@ The request-owned exact path retains one 10,240-byte BF16 hidden row instead of
 the full prompt slab; generated IDs and B1/B2/B3 acceptance remain exact on the
 complete category/heldout suite. [`artifact`](results/2026-08-25-gfx1151-qwen38-omlx-oi3-streaming-prompt-priming.json)
 
+A post-output-norm draft-hidden policy is rejected for Qwen3.8: B3 falls
+**21.052 -> 20.710 tok/s (-1.62%)** with worse acceptance, while B2's repeat
+aggregate gain (**+2.63%**) fails heldout (**-0.71%**) and Japanese (**-4.50%**)
+category speed gates. Pre-output-norm remains the strict/default policy.
+[`artifact`](results/2026-08-25-gfx1151-qwen38-omlx-oi4-postnorm-rejected.json)
+
 MTP ratios always use a true no-MTP AR path from the same protocol. Verifier
 `off`/`B0` diagnostics are not speedup denominators. The full category suite,
 heldouts, and anti-gaming rules are mandatory; see

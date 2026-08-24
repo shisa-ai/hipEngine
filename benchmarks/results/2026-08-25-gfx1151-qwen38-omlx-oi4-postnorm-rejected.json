@@ -1,0 +1,477 @@
+{
+  "schema": 1,
+  "kind": "omlx_ideas_oi4_gfx1151_draft_hidden_postnorm_rejection",
+  "status": "policy_infrastructure_retained_candidate_rejected",
+  "created_at": "2026-08-24T22:34:29.198130+00:00",
+  "performance_claim": false,
+  "decision": "Keep pre_output_norm as the strict/default target-to-draft convention. Retain the immutable explicit policy and post_output_norm benchmark diagnostic, but reject post_output_norm promotion: B3 and multiple categories regress; the scoped B2 aggregate win fails heldout and Japanese category speed gates.",
+  "arithmetic_class": "T3 speculative-provider policy; target arithmetic/commit remains exact and unchanged",
+  "hardware": {
+    "host": "zbook",
+    "device": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "arch": "gfx1151"
+  },
+  "software": {
+    "base_commit": "51e990ee84371bf5d6f1dc3cd56e625a2d13bc03",
+    "candidate_state": "scoped tracked diff over 51e990ee8",
+    "donor": {
+      "repo": "/home/lhl/omlx",
+      "commit": "f244ac0",
+      "paths": [
+        "omlx/patches/mlx_lm_mtp/prompt_priming.py",
+        "omlx/patches/mlx_lm_mtp/batch_generator.py"
+      ],
+      "copied_code": false
+    },
+    "changed_file_sha256": {
+      "hipengine/runtime/qwen35_gguf_mtp.py": "82fb0b1bac873a77a85e799a479b7814a3443e40c1ffb6c184220dafe6537c33",
+      "scripts/qwen36_dense_gguf_suite.py": "3cbaeafb18f112ec6d11698350525f036fb6cbe14b4c3d6e20daebf8c766b0a5",
+      "tests/test_qwen35_gguf_mtp_session.py": "0282991b7d0492f52c0fd7b900e639ebe486653eeceec4c2ec33e08ee84dcb0e",
+      "tests/test_qwen36_dense_gguf_suite.py": "93324ed14e034cd4db62e9fc7ca0dbb17a7759bb943b04ce7bdf3949a9528c16"
+    }
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "policy_manifest": {
+    "target_hidden_variant": "post_output_norm",
+    "prompt_target_hidden": "post_output_norm",
+    "proposal_target_hidden": "post_output_norm",
+    "target_commit_hidden": "pre_output_norm",
+    "draft_chain_hidden": "nextn_post_output_norm"
+  },
+  "protocol": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "heldouts": 4,
+    "visible_outputs_per_prompt": 25,
+    "budgets": [
+      1,
+      2,
+      3
+    ],
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1",
+      "GPU_MAX_HW_QUEUES": "unset/package default"
+    },
+    "full_post_command": "/home/lhl/miniforge3/bin/python3.13 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --draft-hidden-variant post_output_norm --target-verify-mode native --runs 1 --warmup --compiler-version-file /tmp/hipengine-omlx-oi0-gfx1151/hipcc-version.txt --require-cached-build --output /tmp/hipengine-omlx-oi4-post-full.json",
+    "b2_pre_repeat_command": "/home/lhl/miniforge3/bin/python3.13 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 2 --draft-hidden-variant pre_output_norm --target-verify-mode native --runs 1 --warmup --compiler-version-file /tmp/hipengine-omlx-oi0-gfx1151/hipcc-version.txt --require-cached-build --output /tmp/hipengine-omlx-oi4-pre-b2-repeat.json",
+    "b2_post_repeat_command": "/home/lhl/miniforge3/bin/python3.13 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 2 --draft-hidden-variant post_output_norm --target-verify-mode native --runs 1 --warmup --compiler-version-file /tmp/hipengine-omlx-oi0-gfx1151/hipcc-version.txt --require-cached-build --output /tmp/hipengine-omlx-oi4-post-b2-repeat.json"
+  },
+  "correctness": {
+    "post_full_status": "complete_exact",
+    "all_exact_greedy": true,
+    "all_gpu_accept_match_cpu": true,
+    "memory_after_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 17926309060,
+      "total_allocated_bytes": 18737121897,
+      "total_freed_bytes": 18737121897,
+      "active_allocations": 0,
+      "peak_allocations": 1195
+    },
+    "one_prompt_screen_status": "complete_exact",
+    "lifecycle": "ten requests reuse/reset one target/provider; reject/partial/full tails; strict target IDs; policy buffer idempotent close; cancellation checkpoint precedes hidden transform",
+    "long_context": {
+      "status": "skipped_after_binding_rejection",
+      "reason": "B3 aggregate/acceptance and multiple category gates already reject promotion; no expensive long promotion gate is needed for a default-off diagnostic"
+    }
+  },
+  "full_suite_comparison": {
+    "1": {
+      "scopes": [
+        {
+          "scope": "full",
+          "pre_tok_s": 17.14345232932231,
+          "post_tok_s": 17.328063166656033,
+          "tok_s_delta_percent": 1.0768591634134461,
+          "pre_accepted": 113,
+          "post_accepted": 113,
+          "pre_proposed": 131,
+          "post_proposed": 129,
+          "pre_acceptance": 0.8625954198473282,
+          "post_acceptance": 0.875968992248062
+        },
+        {
+          "scope": "train",
+          "pre_tok_s": 17.180990090764197,
+          "post_tok_s": 17.090463097166765,
+          "tok_s_delta_percent": -0.526902076767366,
+          "pre_accepted": 67,
+          "post_accepted": 67,
+          "pre_proposed": 78,
+          "post_proposed": 78,
+          "pre_acceptance": 0.8589743589743589,
+          "post_acceptance": 0.8589743589743589
+        },
+        {
+          "scope": "heldout",
+          "pre_tok_s": 17.087452235415547,
+          "post_tok_s": 17.69711421668351,
+          "tok_s_delta_percent": 3.5678928190615355,
+          "pre_accepted": 46,
+          "post_accepted": 46,
+          "pre_proposed": 53,
+          "post_proposed": 51,
+          "pre_acceptance": 0.8679245283018868,
+          "post_acceptance": 0.9019607843137255
+        }
+      ],
+      "categories": [
+        {
+          "category": "code",
+          "pre_tok_s": 18.018656398655676,
+          "post_tok_s": 18.274400047729095,
+          "tok_s_delta_percent": 1.4193269654251273,
+          "pre_accepted": 48,
+          "post_accepted": 48,
+          "pre_proposed": 49,
+          "post_proposed": 48,
+          "pre_acceptance": 0.9795918367346939,
+          "post_acceptance": 1.0
+        },
+        {
+          "category": "general_en",
+          "pre_tok_s": 16.241925642861354,
+          "post_tok_s": 16.77297038657425,
+          "tok_s_delta_percent": 3.2695922601166494,
+          "pre_accepted": 21,
+          "post_accepted": 21,
+          "pre_proposed": 28,
+          "post_proposed": 27,
+          "pre_acceptance": 0.75,
+          "post_acceptance": 0.7777777777777778
+        },
+        {
+          "category": "general_ja",
+          "pre_tok_s": 16.223609309597798,
+          "post_tok_s": 15.626643783565765,
+          "tok_s_delta_percent": -3.6796098490788465,
+          "pre_accepted": 21,
+          "post_accepted": 21,
+          "pre_proposed": 28,
+          "post_proposed": 29,
+          "pre_acceptance": 0.75,
+          "post_acceptance": 0.7241379310344828
+        },
+        {
+          "category": "mixed_ja_en",
+          "pre_tok_s": 17.40557576582221,
+          "post_tok_s": 18.020110914599698,
+          "tok_s_delta_percent": 3.5306798065490863,
+          "pre_accepted": 23,
+          "post_accepted": 23,
+          "pre_proposed": 26,
+          "post_proposed": 25,
+          "pre_acceptance": 0.8846153846153846,
+          "post_acceptance": 0.92
+        }
+      ]
+    },
+    "2": {
+      "scopes": [
+        {
+          "scope": "full",
+          "pre_tok_s": 20.019617396642058,
+          "post_tok_s": 20.733203355297764,
+          "tok_s_delta_percent": 3.5644335479428246,
+          "pre_accepted": 144,
+          "post_accepted": 145,
+          "pre_proposed": 200,
+          "post_proposed": 195,
+          "pre_acceptance": 0.72,
+          "post_acceptance": 0.7435897435897436
+        },
+        {
+          "scope": "train",
+          "pre_tok_s": 19.90011648421087,
+          "post_tok_s": 20.83519088744576,
+          "tok_s_delta_percent": 4.698838843364528,
+          "pre_accepted": 86,
+          "post_accepted": 86,
+          "pre_proposed": 120,
+          "post_proposed": 116,
+          "pre_acceptance": 0.7166666666666667,
+          "post_acceptance": 0.7413793103448276
+        },
+        {
+          "scope": "heldout",
+          "pre_tok_s": 20.201584252411532,
+          "post_tok_s": 20.5820805067936,
+          "tok_s_delta_percent": 1.883497104127585,
+          "pre_accepted": 58,
+          "post_accepted": 59,
+          "pre_proposed": 80,
+          "post_proposed": 79,
+          "pre_acceptance": 0.725,
+          "post_acceptance": 0.7468354430379747
+        }
+      ],
+      "categories": [
+        {
+          "category": "code",
+          "pre_tok_s": 22.138363005487196,
+          "post_tok_s": 23.967563012699085,
+          "tok_s_delta_percent": 8.262580240275685,
+          "pre_accepted": 62,
+          "post_accepted": 63,
+          "pre_proposed": 70,
+          "post_proposed": 66,
+          "pre_acceptance": 0.8857142857142857,
+          "post_acceptance": 0.9545454545454546
+        },
+        {
+          "category": "general_en",
+          "pre_tok_s": 19.687300074779813,
+          "post_tok_s": 19.65205201754469,
+          "tok_s_delta_percent": -0.1790395691701585,
+          "pre_accepted": 28,
+          "post_accepted": 28,
+          "pre_proposed": 41,
+          "post_proposed": 41,
+          "pre_acceptance": 0.6829268292682927,
+          "post_acceptance": 0.6829268292682927
+        },
+        {
+          "category": "general_ja",
+          "pre_tok_s": 17.279043721639205,
+          "post_tok_s": 17.231512221057994,
+          "tok_s_delta_percent": -0.2750817773652936,
+          "pre_accepted": 25,
+          "post_accepted": 25,
+          "pre_proposed": 48,
+          "post_proposed": 48,
+          "pre_acceptance": 0.5208333333333334,
+          "post_acceptance": 0.5208333333333334
+        },
+        {
+          "category": "mixed_ja_en",
+          "pre_tok_s": 19.705844245129757,
+          "post_tok_s": 20.494125395390927,
+          "tok_s_delta_percent": 4.000240438599789,
+          "pre_accepted": 29,
+          "post_accepted": 29,
+          "pre_proposed": 41,
+          "post_proposed": 40,
+          "pre_acceptance": 0.7073170731707317,
+          "post_acceptance": 0.725
+        }
+      ]
+    },
+    "3": {
+      "scopes": [
+        {
+          "scope": "full",
+          "pre_tok_s": 21.05211741250391,
+          "post_tok_s": 20.710030636141298,
+          "tok_s_delta_percent": -1.6249518737693869,
+          "pre_accepted": 159,
+          "post_accepted": 158,
+          "pre_proposed": 252,
+          "post_proposed": 255,
+          "pre_acceptance": 0.6309523809523809,
+          "post_acceptance": 0.6196078431372549
+        },
+        {
+          "scope": "train",
+          "pre_tok_s": 20.932923412708195,
+          "post_tok_s": 20.835107042650616,
+          "tok_s_delta_percent": -0.46728480360366254,
+          "pre_accepted": 95,
+          "post_accepted": 94,
+          "pre_proposed": 153,
+          "post_proposed": 154,
+          "pre_acceptance": 0.6209150326797386,
+          "post_acceptance": 0.6103896103896104
+        },
+        {
+          "scope": "heldout",
+          "pre_tok_s": 21.233475468959583,
+          "post_tok_s": 20.525206597644196,
+          "tok_s_delta_percent": -3.33562384712186,
+          "pre_accepted": 64,
+          "post_accepted": 64,
+          "pre_proposed": 99,
+          "post_proposed": 101,
+          "pre_acceptance": 0.6464646464646465,
+          "post_acceptance": 0.6336633663366337
+        }
+      ],
+      "categories": [
+        {
+          "category": "code",
+          "pre_tok_s": 25.224859416351695,
+          "post_tok_s": 24.302985084655603,
+          "tok_s_delta_percent": -3.654626241835457,
+          "pre_accepted": 71,
+          "post_accepted": 71,
+          "pre_proposed": 80,
+          "post_proposed": 81,
+          "pre_acceptance": 0.8875,
+          "post_acceptance": 0.8765432098765432
+        },
+        {
+          "category": "general_en",
+          "pre_tok_s": 18.025789515062517,
+          "post_tok_s": 18.888808132821566,
+          "tok_s_delta_percent": 4.787688312003779,
+          "pre_accepted": 28,
+          "post_accepted": 29,
+          "pre_proposed": 61,
+          "post_proposed": 58,
+          "pre_acceptance": 0.45901639344262296,
+          "post_acceptance": 0.5
+        },
+        {
+          "category": "general_ja",
+          "pre_tok_s": 18.01538566153967,
+          "post_tok_s": 17.143898162964483,
+          "tok_s_delta_percent": -4.837462349949528,
+          "pre_accepted": 28,
+          "post_accepted": 27,
+          "pre_proposed": 61,
+          "post_proposed": 64,
+          "pre_acceptance": 0.45901639344262296,
+          "post_acceptance": 0.421875
+        },
+        {
+          "category": "mixed_ja_en",
+          "pre_tok_s": 21.170851918747417,
+          "post_tok_s": 20.892837603658034,
+          "tok_s_delta_percent": -1.31319380134719,
+          "pre_accepted": 32,
+          "post_accepted": 31,
+          "pre_proposed": 50,
+          "post_proposed": 52,
+          "pre_acceptance": 0.64,
+          "post_acceptance": 0.5961538461538461
+        }
+      ]
+    }
+  },
+  "b2_immediate_repeat": {
+    "scopes": [
+      {
+        "scope": "full",
+        "pre_tok_s": 20.210897980204344,
+        "post_tok_s": 20.74187008758596,
+        "tok_s_delta_percent": 2.6271574271547804,
+        "pre_accepted": 144,
+        "post_accepted": 145,
+        "pre_proposed": 200,
+        "post_proposed": 195,
+        "pre_acceptance": 0.72,
+        "post_acceptance": 0.7435897435897436
+      },
+      {
+        "scope": "train",
+        "pre_tok_s": 20.228961043287466,
+        "post_tok_s": 21.237870731222454,
+        "tok_s_delta_percent": 4.987451830946954,
+        "pre_accepted": 86,
+        "post_accepted": 86,
+        "pre_proposed": 120,
+        "post_proposed": 116,
+        "pre_acceptance": 0.7166666666666667,
+        "post_acceptance": 0.7413793103448276
+      },
+      {
+        "scope": "heldout",
+        "pre_tok_s": 20.183863788673513,
+        "post_tok_s": 20.03983835964927,
+        "tok_s_delta_percent": -0.7135671867993132,
+        "pre_accepted": 58,
+        "post_accepted": 59,
+        "pre_proposed": 80,
+        "post_proposed": 79,
+        "pre_acceptance": 0.725,
+        "post_acceptance": 0.7468354430379747
+      }
+    ],
+    "categories": [
+      {
+        "category": "code",
+        "pre_tok_s": 22.73689709359488,
+        "post_tok_s": 24.764277382674315,
+        "tok_s_delta_percent": 8.91669729925708,
+        "pre_accepted": 62,
+        "post_accepted": 63,
+        "pre_proposed": 70,
+        "post_proposed": 66,
+        "pre_acceptance": 0.8857142857142857,
+        "post_acceptance": 0.9545454545454546
+      },
+      {
+        "category": "general_en",
+        "pre_tok_s": 19.729564426808146,
+        "post_tok_s": 19.69473054415054,
+        "tok_s_delta_percent": -0.1765567749193342,
+        "pre_accepted": 28,
+        "post_accepted": 28,
+        "pre_proposed": 41,
+        "post_proposed": 41,
+        "pre_acceptance": 0.6829268292682927,
+        "post_acceptance": 0.6829268292682927
+      },
+      {
+        "category": "general_ja",
+        "pre_tok_s": 17.262477983350223,
+        "post_tok_s": 16.48535304352579,
+        "tok_s_delta_percent": -4.501815675443432,
+        "pre_accepted": 25,
+        "post_accepted": 25,
+        "pre_proposed": 48,
+        "post_proposed": 48,
+        "pre_acceptance": 0.5208333333333334,
+        "post_acceptance": 0.5208333333333334
+      },
+      {
+        "category": "mixed_ja_en",
+        "pre_tok_s": 19.67959002676759,
+        "post_tok_s": 20.46584376607625,
+        "tok_s_delta_percent": 3.9952749942413712,
+        "pre_accepted": 29,
+        "post_accepted": 29,
+        "pre_proposed": 41,
+        "post_proposed": 40,
+        "pre_acceptance": 0.7073170731707317,
+        "post_acceptance": 0.725
+      }
+    ]
+  },
+  "binding_failures": [
+    "B1 train speed -0.527% and general_ja speed/acceptance -3.680% / 0.7500->0.7241",
+    "B3 full speed -1.625%, accepted 159->158, proposed 252->255, with code/general_ja/mixed category regressions",
+    "B2 repeat aggregate +2.627% and acceptance 144/200->145/195, but heldout speed -0.714% and general_ja speed -4.502%; no-failed-category gate rejects scoped promotion"
+  ],
+  "raw_sources": {
+    "strict_full": {
+      "path": "/tmp/hipengine-omlx-oi3-full.json",
+      "sha256": "9dfef6d20f7811344d6f26208d37fd47c0134b9e2e78da1fe644c9af88459d43"
+    },
+    "post_full": {
+      "path": "/tmp/hipengine-omlx-oi4-post-full.json",
+      "sha256": "fee2fcbcecce97d219d0b80425db11988f0d54ed0ca6d1b94eb2dbc2b09ff5f7"
+    },
+    "post_screen": {
+      "path": "/tmp/hipengine-omlx-oi4-post-screen.json",
+      "sha256": "7c6298d2d41059dc0eaed1613a6726c51aefb27fd14ca25d132a1765ff83700d"
+    },
+    "b2_pre_repeat": {
+      "path": "/tmp/hipengine-omlx-oi4-pre-b2-repeat.json",
+      "sha256": "54fa6f3656cb036a63c8c61d54bb89587874254225367079997cb2f456f74ac4"
+    },
+    "b2_post_repeat": {
+      "path": "/tmp/hipengine-omlx-oi4-post-b2-repeat.json",
+      "sha256": "94c9b26b40d471a3716f5416332890f0582022450f2351cf2c6f0d61aefd17b2"
+    }
+  }
+}
