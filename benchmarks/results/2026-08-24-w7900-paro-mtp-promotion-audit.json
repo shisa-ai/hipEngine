@@ -1,7 +1,7 @@
 {
   "schema": "hipengine.paro_mtp_promotion_audit.v1",
   "date": "2026-08-24",
-  "status": "provider_default_rejected_fast_verifier_rejected",
+  "status": "provider_default_rejected_fast_verifier_review_positive_unselected",
   "performance_claim": false,
   "speed_claim_eligible": false,
   "implementation_base": "d99bbc607",
@@ -34,10 +34,10 @@
       "strict_fallback_selected": true
     },
     "fast_verifier_production_numerical_task": {
-      "status": "rejected_binding_w7900_d64",
-      "commit": "d714fcdfa",
-      "artifact": "benchmarks/results/2026-08-24-w7900-paro-fast-verifier-d64-numerical-rejected.json",
-      "evidence": "68 aligned full-vocab rows pass mean/p95/p99/max KL (0.000226/0.001519/0.002491/0.002813), but top-1 98.529% fails 99% and cycle 13 decision diverges (strict accept1 bonus1061 vs fast accept0 bonus4016)"
+      "status": "review_positive_full_gate_incomplete",
+      "commit": "f73f286bc",
+      "artifact": "benchmarks/results/2026-08-24-w7900-paro-fast-verifier-four-category-review.json",
+      "evidence": "280 aligned full-vocab rows/four categories reach 99.286% top-1 and pass all KL/scope point gates; two narrow top-2 swaps alter exact decisions but predeclared paired 64-token task review passes 4/4. Wilson 95% interval 97.433%-99.804% and missing full 450-row/three-repeat/BF16-relative/state evidence block promotion."
     }
   },
   "decision": {
@@ -46,6 +46,6 @@
     "keep_explicit_spike": true,
     "keep_strict_fallback": true,
     "run_three_repeat_economics_now": false,
-    "reason": "repeat gate completed: correctness passes but registered strict D24 economics and category non-regression fail. Fast verifier remains independently uncertified."
+    "reason": "registered strict D24 economics and category non-regression fail. Fast verifier is review-positive but remains uncertified/unselected pending the full production gate."
   }
 }

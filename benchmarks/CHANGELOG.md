@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-24 W7900 PARO fast verifier moves to review-positive/unselected] Expanded strict-owned D64 review covers four categories / 280 rows: top-1 **278/280 = 99.286%**, KL mean/p95/p99/max **0.000377/0.001647/0.009209/0.013702**, all 97% scopes pass, and predeclared paired 64-token task review passes **4/4**. Two narrow top-2 swaps remain; 95% top-1 interval **97.433%-99.804%** and missing full 450-row/three-repeat/BF16-relative/state gates block promotion. `benchmarks/results/2026-08-24-w7900-paro-fast-verifier-four-category-review.json`.
+
 - [2026-08-24 W7900 PARO fast verifier rejected by D64 numerical/task gate] Sequential strict-owned `general_en_explain` evaluates 68 full-vocab rows: KL mean/p95/p99/max **0.000226/0.001519/0.002491/0.002813** all pass, but top-1 **98.529% < 99%** and cycle 13 diverges (`strict accept1/bonus1061` vs `fast accept0/bonus4016`). Keep fast uncertified/unselected and strict fallback. `benchmarks/results/2026-08-24-w7900-paro-fast-verifier-d64-numerical-rejected.json`.
 
 - [2026-08-24 W7900 PARO strict D24 repeat gate rejects default promotion] Registered strict B1 provider route passes `30/30` prompt runs, exact `720/720` IDs, and deterministic `321/390 = 82.31%` acceptance, but weighted **104.929 MTP vs 110.515 true-AR tok/s (`0.9495x`)** regresses overall; code/general-Japanese/mixed categories fail non-regression. Keep explicit/default-off; strict D64's separate `1.0220x` heldout remains diagnostic. `benchmarks/results/2026-08-24-w7900-paro-mtp-strict-d24-3run.json`.

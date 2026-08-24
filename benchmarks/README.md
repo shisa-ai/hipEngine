@@ -395,10 +395,12 @@ manifest, and three-repeat correctness gates. The registered strict D24 route is
 exact `720/720`, has deterministic acceptance traces (`321/390 = 82.31%`), but
 reaches only **104.929 versus 110.515 tok/s true AR (`0.9495x`)**; code,
 general-Japanese, and mixed categories regress, so it remains explicit/default-
-off. Strict four-heldout D64 remains exact `256/256` at `1.0220x`, while the fast
-fast verifier is rejected by a sequential D64 strict-teacher gate: KL tails pass,
-but top-1 is `98.529% < 99%` and the cycle-13 task decision diverges. [`repeat artifact`](results/2026-08-24-w7900-paro-mtp-strict-d24-3run.json),
-[`fast rejection`](results/2026-08-24-w7900-paro-fast-verifier-d64-numerical-rejected.json),
+off. Strict four-heldout D64 remains exact `256/256` at `1.0220x`. The expanded
+fast-verifier review is favorable but incomplete: four-category D64 reaches
+`278/280 = 99.286%` top-1, passes all KL/scope gates and paired task review
+`4/4`, but its 95% interval straddles 99% and full 450-row/three-repeat evidence
+is absent. Fast remains unselected. [`repeat artifact`](results/2026-08-24-w7900-paro-mtp-strict-d24-3run.json),
+[`fast review`](results/2026-08-24-w7900-paro-fast-verifier-four-category-review.json),
 and [`spike artifact`](results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json)
 
 MTP ratios always use a true no-MTP AR path from the same protocol. Verifier

@@ -5,12 +5,12 @@
 - **Implementation base:** `050b97936047f8c43ed76dbc690fb9d7d7482c07`
 - **Model:** `/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16`
 - **Hardware:** AMD Radeon Pro W7900, `hip_gfx1100`
-- **Status:** bounded provider-repair spike retained explicit/default-off; fixed-chain parity/lifecycle/manifest/repeat correctness pass, but registered strict D24 economics are `0.9495x` true AR; fast verifier remains rejected/unselected
+- **Status:** bounded provider-repair spike retained explicit/default-off; fixed-chain parity/lifecycle/manifest/repeat correctness pass, but registered strict D24 economics are `0.9495x` true AR; fast verifier is review-positive but remains unselected pending the full production gate
 
 | Surface | Current evidence | Assessment | Next action |
 | --- | --- | --- | --- |
-| Fast verifier (`decode_batched`) | D24 canonical: exact `10/10`, `240/240`; `97.950 tok/s`, `0.8775x` AR, `15.382 ms/cycle`. State differs at cycle 1 (`57/60` linear, `20/20` K/V). Thinking-off D64 `general_en_explain` first diverges at output 24 (`13 -> 4016`). | Useful T2 production candidate, **not** strict or production-qualified. | Keep explicit/default-off; qualify against strict only after proposer repair. |
-| Strict verifier (`c1_loop`) | D24 canonical: exact `10/10`, `240/240`; `90.405 tok/s`, `0.8114x`, `16.727 ms/cycle`. State exact at cycles 1/2/4/8. D64 four-heldout: exact `256/256`, `0.8418x`. | Sound oracle/fallback, currently too slow. | Preserve registered primitives; optimize only after the shared proposer is corrected. |
+| Fast verifier (`decode_batched`) | Four-category D64 strict-teacher review: `278/280 = 99.286%` top-1, all KL tails and every 97% scope pass; two root-row top-2 swaps have identical top-5 sets. Paired 64-token task review passes `4/4`. | Review-positive T2 candidate, **not yet production-qualified**: Wilson 95% top-1 interval `[97.433%, 99.804%]`, only one prompt/category, no three-repeat/BF16-relative/full-state packet. | Keep registered but uncertified/unselected; run the frozen full 18-prompt/450-row campaign and repeats before promotion. |
+| Strict verifier (`c1_loop`) | D24 canonical: exact `10/10`, `240/240`; `90.405 tok/s`, `0.8114x`, `16.727 ms/cycle`. State exact at cycles 1/2/4/8. D64 four-heldout: exact `256/256`, `0.8418x`. | Sound oracle/fallback, currently too slow. | Preserve as selected fallback while the fast candidate completes the full T2 campaign. |
 | Shared acceptance at D24 | Fast and strict have identical traces: `79/151 = 52.32%` draft acceptance, `79/240 = 32.92%` accepted/output. | Strict arithmetic is not the acceptance problem. The old `7.48%` N4 result predates grouped PARO heads and is stale for current economics. | Use current canonical suite and longer horizon for every decision. |
 | Target-hidden input | PARO passed the pre-final-norm last-layer BF16 tap. nano-vLLM-amd `5d8f496da5e3` and vLLM `470229c37efa` pass final output-normalized target hidden. | Contract mismatch repaired; the isolated five-fixture fixed-chain native/reference gate passes all four categories plus reject/full-accept coverage. | Keep the corrected contract; no clean-slate provider rewrite is justified by proposal quality. |
 | Proposer reseed | Target hidden previously seeded prompt prefill only; cycle repair continued from MTP-owned hidden. | Selected-target-hidden reseed is implemented. Native/reference drift begins at BF16 FC reduction order, not input fusion; full-vocab KL remains <= `1.44e-4` with 100% top-1/top-5 agreement in the declared fixed-chain fixtures. | Preserve the scoped numerical evidence; do not claim strict bitwise hidden or branching top-8 parity. |
@@ -164,10 +164,12 @@ Current evidence:
 | Strict D64 weighted MTP | 92.46 tok/s | 113.43 tok/s | +22.68% |
 | Strict D64 total-time MTP/AR | `0.8339x` | `1.0220x` | crosses break-even |
 
-Fast D64 still fails `general_en_explain` at output index 24 (`13 -> 4016`), so
-provider repair does not authorize fast verifier arithmetic. Fast remains a
-separate T2 production-numerics lane; strict remains the provider promotion
-fallback.
+Fast D64 differs from strict `general_en_explain` at output index 24
+(`13 -> 4016`), so provider repair alone does not authorize fast arithmetic.
+The expanded strict-teacher and paired-task review is favorable, however: the
+completed fast continuation is fluent and technically valid, and the Japanese
+swap is also task-equivalent. Fast remains a separate incomplete T2 campaign;
+strict remains the selected fallback.
 
 The spike remains explicit rather than promoted. Qualification status as of
 2026-08-24:
@@ -178,11 +180,11 @@ The spike remains explicit rather than promoted. Qualification status as of
 | Three same-schedule D24 repetitions | **correctness passed; economics rejected** | `30/30` prompt runs and `720/720` IDs exact with deterministic traces. Weighted MTP/AR is `0.9495x`; only general-English beats AR, while code/general-Japanese/mixed regress. No default promotion. |
 | Borrowed-pointer lifecycle and memory | **passed** | Closed-owner launches fail before use; close/reuse is stable; borrowed scoring saves `1,017,114,848` bytes versus the private F16 head. Teardown has one bounded, non-growing 8-byte runtime residue, reported explicitly rather than called exact-zero. |
 | Registered strict/production route manifest | **passed** | Strict hash `3199678e604d...5723`; production hash `9ea22c030d76...8876`. Both select strict verification; fast D64 is registered only as an uncertified/unselected candidate. |
-| Fast-verifier production numerical/task gate | **rejected, binding** | Sequential W7900 D64 strict-teacher capture covers 68 full-vocab rows: all KL gates pass (`mean/p95/p99/max = 0.000226/0.001519/0.002491/0.002813`), but top-1 is `98.529% < 99%` and cycle 13 diverges (`strict accept1/bonus1061`, fast `accept0/bonus4016`). Strict remains fallback; no category averaging can waive this task failure. |
+| Fast-verifier production numerical/task gate | **review-positive; incomplete** | Expanded W7900 matrix covers 280 rows/four categories: top-1 `99.286%`, mean/p95/p99/max KL `0.000377/0.001647/0.009209/0.013702`, and all scopes pass. Two narrow top-2 swaps alter exact decisions, but predeclared paired task review passes `4/4`. Confidence straddles 99% and full 450-row/three-repeat/BF16-relative/state evidence is absent, so fast remains unselected. |
 
 Compact evidence:
 [`provider-contract spike`](../benchmarks/results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json),
-[`native/reference rejection`](../benchmarks/results/2026-08-24-w7900-paro-mtp-native-reference-parity.json),
+[`native/reference parity`](../benchmarks/results/2026-08-24-w7900-paro-mtp-native-reference-parity.json),
 and [`borrowed-pointer lifecycle`](../benchmarks/results/2026-08-24-w7900-paro-mtp-lifecycle-gate.json).
 
 ## Decision After The Spike
@@ -219,10 +221,10 @@ strict target verifier, accept/commit transaction, or scheduler integration.
 | Spike artifact | `benchmarks/results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json` |
 | Spike worklog | `worklog/entries/20260824T063019.079917Z-lhl-paro-mtp-spike-3108e9.md` |
 | Registered route manifests | `74c69f59b`; strict `3199678e604d...5723`, production `9ea22c030d76...8876` |
-| Native/reference rejection | `benchmarks/results/2026-08-24-w7900-paro-mtp-native-reference-parity.json`; `4fdf85159` |
+| Native/reference fixed-chain parity | `benchmarks/results/2026-08-24-w7900-paro-mtp-native-reference-parity.json`; `2a66339f9` |
 | Borrowed-pointer lifecycle pass | `benchmarks/results/2026-08-24-w7900-paro-mtp-lifecycle-gate.json`; `bf849a150` |
 | Strict D24 three-run decision | `benchmarks/results/2026-08-24-w7900-paro-mtp-strict-d24-3run.json` |
-| Fast-verifier numerical rejection | `benchmarks/results/2026-08-24-w7900-paro-fast-verifier-d64-numerical-rejected.json`; harness `23f5a559e` |
+| Fast-verifier four-category review | `benchmarks/results/2026-08-24-w7900-paro-fast-verifier-four-category-review.json`; rubric `108a6ae05`; aggregate `f73f286bc` |
 | Grouped PARO head repair | `52973ce02` |
 | Fast/strict review commit | `4d32e6e2e` |
 | nano-vLLM reference | `/home/lhl/amd-gpu-tuning/nano-vllm-amd@5d8f496da5e3`, read-only |
