@@ -246,6 +246,15 @@ single-stream scope. The temporary runtime-default suppression/report/matrix
 surfaces are removed; direct numeric user overrides remain.
 [`Policy decision`](results/2026-08-24-gfx1151-qwen38-hardware-queue-policy-decision.json).
 
+Cache-only queue2 owner profiling ranks the next optimization. Synchronized
+c8/c17/c32 marker wall is **138.234/360.999/562.330 ms**; c32 is only **1.69%**
+above four c8 groups, while c17 is **30.59%** above two c8 groups because of its
+native c1 tail. Dense projections own 88-93% of GPU duration. The Q4 qmicro
+dual rowtile8 kernel alone is **63.116/129.569/242.346 ms**, or **43.10%** of
+c32 marker wall. No marked multi-stream overlap or memory-copy trace operations
+appear; Queue_Id 1 is used. Q4 qmicro is the first tuning target.
+[`Owner profile`](results/2026-08-24-gfx1151-qwen38-queue2-c8-c17-c32-owner-profile.json).
+
 The separate W7900 Qwen3.8-27B `Q4_K_M` direct graph packet qualifies physical
 `(1,2,3,4,5,6,7,8)`: c1-c8 reaches **30.30/53.79/75.47/93.49/105.67/
 115.30/122.36/127.32 tok/s**, all exact and repeatable. Q5 and planar-Q6 true

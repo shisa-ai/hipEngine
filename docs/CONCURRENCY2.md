@@ -148,8 +148,12 @@ Current retained state:
 - joined adjudication retains the existing explicit queue2 gfx1151 backend
   default. Alternatives are stable but none has a generic, repeatable,
   SLO-qualified advantage; temporary runtime-default/report/matrix surfaces are
-  removed while direct numeric user overrides remain. Profile queue2 next,
-  then resume Q4 qmicro, Q5 rowtile, and Q4 split-weight.
+  removed while direct numeric user overrides remain; and
+- cache-only queue2 c8/c17/c32 profiling measures 138.234/360.999/562.330 ms
+  marked wall. c32 is near-linear at +1.69% over four c8 groups; c17 pays a
+  +30.59% c1-tail premium over two c8 groups. Q4 qmicro dual rowtile8 owns
+  242.346 ms / 43.10% of c32 wall and is the first tuning target, followed by
+  Q5 rowtile and Q4 split-weight tail.
 
 Primary retained evidence:
 [`FP16 serving correctness`](../benchmarks/results/2026-08-23-gfx1151-qwen38-fp16-serving-correctness-bundle-v3.json),
@@ -158,6 +162,7 @@ Primary retained evidence:
 [`hardware-queue load stability`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-load-stability-matrix.json),
 [`hardware-queue context/graph/prefix`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-context-graph-prefix-matrix.json),
 [`hardware-queue decision`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-policy-decision.json),
+[`queue2 c8/c17/c32 owner profile`](../benchmarks/results/2026-08-24-gfx1151-qwen38-queue2-c8-c17-c32-owner-profile.json),
 [`gfx1151 physical widths`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-physical-widths.json),
 [`packed prefill`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-packed-prefill-c17.json),
 [`direct resident state`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json), and
