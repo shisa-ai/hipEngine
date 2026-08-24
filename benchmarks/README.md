@@ -390,11 +390,14 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |
 
 Diagnostic, not a scoreboard/default row: the W7900 packed-PARO B1 provider-
-contract spike keeps canonical D24 exact `240/240`, raises pooled acceptance
-`52.32% -> 80.92%`, and moves weighted MTP `97.12 -> 109.97 tok/s`; its strict
-four-heldout D64 packet stays exact `256/256` and moves total-time MTP/AR
-`0.8339x -> 1.0220x`. It remains explicit pending parity/repeat/lifecycle/profile
-gates, and the fast verifier still fails one D64 heldout. [`artifact`](results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json)
+contract spike passes scoped fixed-chain proposal parity, lifecycle/memory, route-
+manifest, and three-repeat correctness gates. The registered strict D24 route is
+exact `720/720`, has deterministic acceptance traces (`321/390 = 82.31%`), but
+reaches only **104.929 versus 110.515 tok/s true AR (`0.9495x`)**; code,
+general-Japanese, and mixed categories regress, so it remains explicit/default-
+off. Strict four-heldout D64 remains exact `256/256` at `1.0220x`, while the fast
+verifier remains separately unqualified. [`repeat artifact`](results/2026-08-24-w7900-paro-mtp-strict-d24-3run.json)
+and [`spike artifact`](results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json)
 
 MTP ratios always use a true no-MTP AR path from the same protocol. Verifier
 `off`/`B0` diagnostics are not speedup denominators. The full category suite,

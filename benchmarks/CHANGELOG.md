@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-24 W7900 PARO strict D24 repeat gate rejects default promotion] Registered strict B1 provider route passes `30/30` prompt runs, exact `720/720` IDs, and deterministic `321/390 = 82.31%` acceptance, but weighted **104.929 MTP vs 110.515 true-AR tok/s (`0.9495x`)** regresses overall; code/general-Japanese/mixed categories fail non-regression. Keep explicit/default-off; strict D64's separate `1.0220x` heldout remains diagnostic. `benchmarks/results/2026-08-24-w7900-paro-mtp-strict-d24-3run.json`.
+
 - [2026-08-24 W7900 PARO MTP provider-contract spike retained explicit] Final-normalized target-hidden reseed plus borrowed target W8A16 full-vocab scoring keeps D24 exact `240/240`, raises pooled acceptance **52.32% -> 80.92%**, and improves weighted MTP **97.12 -> 109.97 tok/s (+13.23%)**; strict D64 heldouts stay exact `256/256` and total-time MTP/AR improves **0.8339x -> 1.0220x**. Fast D64 remains rejected; spike is not default pending parity/repeat/lifecycle/profile gates. `benchmarks/results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json`.
 
 - [2026-08-23 restored W7900 PARO topline] Qwen3.6-35B-A3B / packed ParoQuant W4 / BF16 KV / 512/128: withdrawn pre-fix row -> **2852.100 prefill / 115.804 decode tok/s** (percent delta n/a across different trajectories), with **18.144 GiB** tracked peak, five stable repaired-runtime samples, and clean provenance; `benchmarks/results/2026-08-23-w7900-current-default-hipengine-paro-packed-5run.json`.
