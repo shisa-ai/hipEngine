@@ -74,16 +74,26 @@ from hipengine.speculative.mtp import (
     compile_mtp_chain,
 )
 from hipengine.speculative.mtp_native import NativeMtpChainProposer, NativeMtpStateSnapshot, NativeMtpStepResult
+from hipengine.speculative.provider import (
+    SpeculativeRequestSemantics,
+    StagedSpeculativeProvider,
+    validate_staged_speculative_provider,
+)
 from hipengine.speculative.registry import (
     SpeculativeProviderCapabilities,
     SpeculativeProviderConfig,
     SpeculativeProviderFactory,
+    StagedSpeculativeProviderFactory,
     SpeculativeProviderKey,
     SpeculativeTextProvider,
+    construct_staged_speculative_provider,
     register_builtin_speculative_providers,
     register_speculative_provider,
+    register_staged_speculative_provider,
     registered_speculative_providers,
+    registered_staged_speculative_providers,
     resolve_speculative_provider,
+    resolve_staged_speculative_provider,
 )
 from hipengine.speculative.verify_graph import (
     DFlashVerifyGraphAddresses,
@@ -205,12 +215,20 @@ __all__ = [
     "SpeculativeProviderCapabilities",
     "SpeculativeProviderConfig",
     "SpeculativeProviderFactory",
+    "StagedSpeculativeProviderFactory",
     "SpeculativeProviderKey",
     "SpeculativeTextProvider",
+    "SpeculativeRequestSemantics",
+    "StagedSpeculativeProvider",
+    "validate_staged_speculative_provider",
+    "construct_staged_speculative_provider",
     "register_builtin_speculative_providers",
     "register_speculative_provider",
+    "register_staged_speculative_provider",
     "registered_speculative_providers",
+    "registered_staged_speculative_providers",
     "resolve_speculative_provider",
+    "resolve_staged_speculative_provider",
     "AdaptiveBudgetController",
     "AdaptiveBudgetDecision",
     "TargetVerifyBufferOwner",

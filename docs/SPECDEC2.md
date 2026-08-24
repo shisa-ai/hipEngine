@@ -407,13 +407,14 @@ start without a GPU run.
 
 ### S1.2 Staged provider SPI and registry
 
-- [ ] Add the bounded staged provider protocol.
-- [ ] Register provider factories/capabilities through plugin keys; no engine
-      branch on provider, backend, or quant.
-- [ ] Keep the existing whole-request `SpeculativeTextProvider` only as a
-      compatibility/oracle protocol during migration.
-- [ ] Reject a provider that attempts unbounded generation ownership.
-- [ ] Define target-attached versus independent-provider catch-up semantics.
+- [x] Add the bounded staged provider protocol.
+- [x] Register staged provider factories through exact existing four-axis
+      provider keys; no engine branch on provider, backend, or quant.
+- [x] Keep the existing whole-request `SpeculativeTextProvider` in a separate
+      compatibility/oracle registry during migration.
+- [x] Reject staged objects that expose whole-request generation ownership.
+- [x] Define target-attached versus independent-provider catch-up semantics in
+      the composed capability contract.
 
 ### S1.3 Planner and simulator
 
