@@ -1,0 +1,154 @@
+{
+  "attempt_notes": [
+    "Two preflight-only invocations failed on repeat-count contract and stale cache key. A final committed-source mechanical cache rebuild repaired the cache; only the v3 c32 row is retained."
+  ],
+  "binding_evidence": {
+    "context_graph_prefix": {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-context-graph-prefix-matrix.json",
+      "sha256": "508f84b109ba3e3f1815733298033b97c0f0b5e76064003075dd1890bd9d8fce",
+      "status": "retained_supported_context_graph_prefix"
+    },
+    "full_width": {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-full-width-matrix.json",
+      "sha256": "bb430715b33cf4fb295b083ce9d78c795254bbb98edc324d936ba850a1d73ab1",
+      "status": "retained_full_width_screen"
+    },
+    "load_stability": {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-load-stability-matrix.json",
+      "sha256": "82932514385eed01e9134271d294dd46df6afda9843a189e6dddb544128dd10d",
+      "status": "retained_load_stability_screen"
+    },
+    "production_correctness": {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-production-correctness.json",
+      "sha256": "b43cf46d20b7c80fb9c80647caeeecd9dea011d10d378acce3d8cf0e8257a21f",
+      "status": "passed"
+    },
+    "q5_col8": {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-retained.json",
+      "sha256": "4385dd81be29958e20be477de64224d878da8cb0c145ed0b1b96d391344974b5",
+      "status": "retained_default_scoped"
+    },
+    "queue_decision": {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-policy-decision.json",
+      "sha256": "26fc6f5f00d24174dcd91bf6675f676234449fdc6e84aeda7b858571e0fab57a",
+      "status": "accepted_existing_default"
+    },
+    "structural_c32": {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-structural-c32-skip.json",
+      "sha256": "634234095b3de0722044a6f1c37fd294ac672a7edb623c8b187c81165967aeb1",
+      "status": "structural_skip_linear_c8_composition"
+    }
+  },
+  "closure_decision": {
+    "complete_packet_run": false,
+    "mechanical_support_retained": true,
+    "next": "Finalize evidence/documentation with explicit blockers; do not claim gfx1151 production closure.",
+    "production_closed": false,
+    "reason": "Task #23 protocol permits the expensive complete packet only after fixed c32 passes. The final narrow c32 precondition fails 0/3, so rerunning canonical width/load/context matrices would violate the declared validation budget and cannot produce closure."
+  },
+  "created_at": "2026-08-24T12:11:13.823387+00:00",
+  "current_c32_precondition": {
+    "blocking_tok_s_median": 11.176514949266519,
+    "blocking_tok_s_samples": [
+      11.176514949266519,
+      10.309045024082142,
+      11.240174132292301
+    ],
+    "control_passed": true,
+    "end_to_end_p95_seconds_median": 24.17141733400058,
+    "itl_p99_seconds_median": 2.125048188958317,
+    "live_admission_during_first": true,
+    "passed": false,
+    "path": "/tmp/c2-gfx1151-hwqueue-v2/task23-c32-precondition-v3/result.json",
+    "repeat_determinism_passed": true,
+    "route_passed": true,
+    "serial_fallback_values": [
+      false
+    ],
+    "sha256": "ce765a11fa146ba6a0161050a23af3806308bd8fa3805f1156eb637a45fd7b90",
+    "slo_goodput_tok_s_median": 0.0,
+    "slo_passed_runs": 0,
+    "status": "failed_gate",
+    "stream_correctness_qualified_tok_s_median": 10.590356032070945,
+    "stream_correctness_qualified_tok_s_samples": [
+      10.590356032070945,
+      11.208546435093869,
+      9.989490207167307
+    ],
+    "streaming_route_passed": true,
+    "ttft_p95_seconds_median": 18.61739025299903
+  },
+  "final_cache": {
+    "build_returncode": 0,
+    "compiler_guard_invoked": false,
+    "immutable_cache_only": true,
+    "path": "/tmp/c2-gfx1151-hwqueue-v2/task23-final-cache/workflow.json",
+    "sha256": "35882cfc3a96406f1c79d7ab2db73ed275552bf2e4d81cd4efc72978be069f84",
+    "source_commit": "edfd10e8ee9f799a0629eaafb7b9cba1c524a8b7",
+    "status": "prepared_cache_only",
+    "tree_sha256": "21fb683a6e3d909006c4a7095e4131c6186b496b18bee49dabb578d665de55f1",
+    "warm_returncode": 0
+  },
+  "hardware": "AMD Radeon 8060S Graphics / gfx1151",
+  "kind": "gfx1151_qwen38_production_closure",
+  "mechanical_closure": {
+    "arrival_cancellation_overload_recovery_soak": true,
+    "c13_lifecycle_memory_zero": true,
+    "canonical_width_control_route_memory_health": true,
+    "final_gpu_kfd_empty": true,
+    "production_numerical_gates": true,
+    "q5_bf16_parent_parity": true,
+    "strict_fallback_registered": true,
+    "supported_context_graph_pressure_prefix_eviction": true
+  },
+  "model": {
+    "kv_storage": "bf16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S (gguf_q4_k_m)",
+    "recurrent_state": "fp16",
+    "sampled_fingerprint": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa"
+  },
+  "performance_claim": true,
+  "physical_host": "gfx1151",
+  "product_blockers": [
+    {
+      "binding": true,
+      "evidence": "0/3 SLO runs; median TTFT18.617s vs 10s, ITL2.125s vs 0.5s; goodput0",
+      "name": "c32_short_prompt_streaming_slo"
+    },
+    {
+      "binding": true,
+      "evidence": "unsupported; prior diagnostic produced no valid completion and recovered only on teardown",
+      "name": "c2_64k_context"
+    },
+    {
+      "binding": true,
+      "evidence": "all queue policies mechanically stable but heavier workload SLOs fail",
+      "name": "heavy_arrival_and_soak_slo"
+    }
+  ],
+  "schema_version": 1,
+  "selected_configuration": {
+    "physical_widths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "prefill_chunk_tokens": 256,
+    "prefill_decode_policy": "fair",
+    "q5_col8_scoped_default": true,
+    "queue_policy": "2",
+    "strict_q5_col4_fallback": true
+  },
+  "software": {
+    "compiler": "clang 23.0.0git aa451e1f + PATCHED:440716f8",
+    "rocm": "HIP 7.15.0"
+  },
+  "source_commit": "edfd10e8ee9f799a0629eaafb7b9cba1c524a8b7",
+  "status": "blocked_c32_product_slo"
+}
