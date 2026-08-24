@@ -211,9 +211,8 @@ count wins generically: queue2 has the highest normalized 13-width throughput;
 queue1/4/8/unset are **0.75%/0.64%/0.50%/0.42% lower**. The core queue8 c32
 win reverses in both full-width blocks (**-3.68%/-6.90% vs queue2**, paired
 median **-5.29%**). All policies pass all six SLO measurements through c7, c8
-is partial, and c9+ has zero SLO-passing runs. Queue2 remains the current
-control with no new policy promotion pending arrival/soak and context/graph
-stability sweeps.
+is partial, and c9+ has zero SLO-passing runs. This fixed-width packet favors
+queue2 but does not stand alone as policy adjudication.
 [`Full-width matrix`](results/2026-08-24-gfx1151-qwen38-hardware-queue-full-width-matrix.json).
 
 The canonical arrival/stability matrix also finds no queue-stability failure:
@@ -224,8 +223,8 @@ queues, memory recovery, drain, and GPU/process health. Every policy completes
 16/rejects 24 overload requests and completes 81-84/rejects 36-39 soak requests
 as bounded `engine_busy`. Static c1/c8 and recovery are SLO-clean; every policy
 fails the heavier workload SLOs. Normalized load throughput versus queue2 is
-q1/q4/q8/unset **-0.57%/+0.47%/-0.67%/-0.09%**, so queue2 remains the control
-pending context/graph/COW/eviction.
+q1/q4/q8/unset **-0.57%/+0.47%/-0.67%/-0.09%**; it adds no alternative policy
+winner.
 [`Load stability`](results/2026-08-24-gfx1151-qwen38-hardware-queue-load-stability-matrix.json).
 
 The final context/graph/prefix matrix completes **20/20** children across all
@@ -236,8 +235,16 @@ Every policy completes a 32K pressure source, rejects 4K with exact
 **1166/1166-page** metadata, and captures/replays/invalidates then regrows on a
 changed page table. Active shared-prefix and completed snapshot-hit/explicit
 snapshot-eviction gates pass with zero request/cache refs. C2 64K remains
-blocked and is not claimed. Queue2 remains the control.
+blocked and is not claimed.
 [`Context/graph/prefix`](results/2026-08-24-gfx1151-qwen38-hardware-queue-context-graph-prefix-matrix.json).
+
+Joined adjudication retains the existing explicit **queue2** gfx1151 backend
+default. All alternatives are stable, but none has a generic, repeatable,
+SLO-qualified advantage; unset is below queue2 in full-width and load rollups.
+Direct cache-only queue2 and unset profiles each use Queue_Id 1 in their measured
+single-stream scope. The temporary runtime-default suppression/report/matrix
+surfaces are removed; direct numeric user overrides remain.
+[`Policy decision`](results/2026-08-24-gfx1151-qwen38-hardware-queue-policy-decision.json).
 
 The separate W7900 Qwen3.8-27B `Q4_K_M` direct graph packet qualifies physical
 `(1,2,3,4,5,6,7,8)`: c1-c8 reaches **30.30/53.79/75.47/93.49/105.67/
