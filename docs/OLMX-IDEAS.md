@@ -1,10 +1,10 @@
 # oMLX Ideas Campaign
 
-- **Status:** source audit complete; experiments not started
+- **Status:** gfx1151 `OI-0` complete; `OI-1` standard-Q4 morphology selected
 - **Created:** 2026-08-25
 - **Requested filename:** `OLMX-IDEAS.md` (the project reviewed is spelled **oMLX**)
-- **Primary target:** Qwen3.6 dense and MoE MTP on `hip_gfx1100` / Radeon Pro W7900
-- **Secondary target:** independently qualified `hip_gfx1151`; no result transfers across hardware lanes
+- **Primary target:** Qwen3.x MTP on `hip_gfx1151` / Radeon 8060S; `OI-0` starts with Qwen3.8-27B `Q4_K_M`
+- **Secondary target:** independently qualified `hip_gfx1100`; no result transfers across hardware lanes
 - **Authority:** [`PLAN.md`](PLAN.md), [`KERNELS.md`](KERNELS.md),
   [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), [`TESTING.md`](TESTING.md),
   [`BENCHMARK.md`](BENCHMARK.md), [`MTP.md`](MTP.md), and
@@ -34,8 +34,9 @@ The most important conclusions are:
    hipEngine already has exact Q4/Q5/Q6 T16 rowtiles through rows 2..8 where
    qualified, small-row pair/triple kernels, quant-specific LM-head rowtiles,
    target graphs, and direct selected-state commit. The useful experiment is a
-   **morphology audit against those owners**, especially the huge-vocabulary
-   LM head—not “add skinny-M GEMM” generically.
+   **morphology audit against those owners**, not “add skinny-M GEMM”
+   generically. `OI-0` later selects the standard-Q4 pair/single rowtiles over
+   the huge-vocabulary LM head on the active gfx1151 artifact.
 4. **Two meaningful runtime ideas were omitted:** safe online draft-depth
    selection and streaming prompt priming. hipEngine already has evidence and
    failed prototypes for adaptive budgets, so a retry must use independent
@@ -61,8 +62,8 @@ The most important conclusions are:
 
 | Rank | ID | Experiment | Decision |
 | ---: | --- | --- | --- |
-| 0 | `OI-0` | Re-profile the current real verifier by width, shape, and quant family | Required before code |
-| 1 | `OI-1` | Small-M morphology audit, beginning with the quantized LM head | Highest-value kernel experiment if `OI-0` confirms it |
+| 0 | `OI-0` | Re-profile the current real verifier by width, shape, and quant family | Complete on gfx1151 |
+| 1 | `OI-1` | Small-M morphology audit, beginning with standard-Q4 dense pair/single rowtiles | Selected by `OI-0` |
 | 2 | `OI-2` | Safe adaptive B1/B2/B3 policy over independent exact buckets | Reopen only after transition RED gates |
 | 3 | `OI-3` | Streaming exact NextN prompt catch-up | Startup/memory experiment, not an acceptance claim |
 | 4 | `OI-4` | Pre-norm versus post-norm draft hidden | Explicit speculative-policy experiment; full suite required |
@@ -177,7 +178,7 @@ must name the exact donor file and commit.
 | Steel tiled affine prefill QMM | `patches/qwen35_q4_mlp.py`; `custom_kernels/qwen35_prefill/csrc/qwen35_qmm.metal` | `A/B` | hipEngine already has Q4/Q5/Q6 T16 WMMA/rocBLAS prefill with shape-scoped policies and strict fallbacks. | Covered; donor thresholds reinforce measured, quant-specific admission. |
 | M-templated verify accumulators | `patches/qwen35_verify_qmm.py` | `A/B` | Existing exact Q4/Q5/Q6 rowtiles are templated through rows 2..8 where qualified. | Covered conceptually. Audit morphology, not existence. |
 | K split across 2/4 wave groups with LDS reduction | same | `A/D` | Some hipEngine projections remain one-wave rowtiles; split-K changes association unless designed carefully. | `OI-1` production/T2 candidate after exact baseline. |
-| Barrier-free multi-wave output tiles for huge N | same | `A/D` | Most relevant to the ~248K-vocabulary quantized LM head. Current Q6 FP32 rowtiles have quant/backend-specific row caps and chunking. | `OI-1` first microbenchmark target. |
+| Barrier-free multi-wave output tiles for huge N | same | `A/D` | Most relevant in isolation to the ~248K-vocabulary quantized LM head. Current Q6 FP32 rowtiles have quant/backend-specific row caps and chunking. | Second rung after `OI-0` measured only 4.5-4.8% target-wall share. |
 | Route floor for large N only | same | `A/C` | hipEngine already uses capability maps and primitive max-row metadata. | Use measurements; never copy `N>=16384` as a universal threshold. |
 | Verify-only routing scope | thread-local arming in oMLX | `A` | hipEngine should resolve a verifier registry variant/manifest, not monkey-patch a global linear class. | Principle retained through plugin dispatch. |
 
@@ -264,23 +265,28 @@ This phase changes no runtime code.
 
 Keep these separate:
 
-- W7900 / Qwen3.6-27B dense `Q4_K_M`, exact/default B1/B2/B3;
-- W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M`, explicit exact and, when relevant,
-  separately labeled `llama-compat`;
-- gfx1151 only after an independent baseline on that physical host.
+- Radeon 8060S/gfx1151 / Qwen3.8-27B dense `Q4_K_M`, exact/default
+  B1/B2/B3—the first active lane;
+- Radeon 8060S/gfx1151 / Qwen3.6-35B-A3B `UD-Q4_K_M`, explicit exact and,
+  when relevant, separately labeled `llama-compat`;
+- gfx1100 only after an independent baseline on that physical host.
 
-The current scoreboard is a reference, not the new baseline: W7900 dense 27B
-reports 29.457 true AR and 60.929 B3 MTP; W7900 35B-A3B reports 96.75 true AR
-and 122.67 explicit accuracy-traded MTP-2. Rerun on the current commit before
-using either as a campaign denominator.
+The exact first-lane file is
+`/models/gguf/Qwen3.8-27B-Q4_K_M.gguf`, SHA-256
+`7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169`.
+The current local `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf` has no trailing NextN
+block and cannot supply a B1/B2/B3 lane; do not silently substitute it. Historical
+scoreboard rows are references, not new baselines. Rerun on the current commit
+before using any rate as a campaign denominator.
 
 ### Measurements
 
 1. Run the canonical true-AR/category and MTP/category protocol from
    [`benchmarks/MTP.md`](../benchmarks/MTP.md) and [`BENCHMARK.md`](BENCHMARK.md).
-2. Profile the **final verifier child** with
-   `scripts/gguf_mtp_verifier_rocprof.py`; never wrap the economics parent in
-   `rocprofv3`.
+2. Profile the **final verifier child**, never the economics parent. For the
+   dense lane run `scripts/qwen36_dense_gguf_suite.py --limit 1
+   --roctx-markers` directly under `rocprofv3` after an unprofiled cache warmup;
+   `scripts/gguf_mtp_verifier_rocprof.py` remains a MoE-oriented reference.
 3. Record per B1/B2/B3:
    - complete cycle wall and target-only wall;
    - proposal, accept/commit/repair, and synchronization/readback windows;
@@ -303,6 +309,34 @@ using either as a campaign denominator.
   near its measured roof, do not create a duplicate kernel merely because the
   oMLX morphology differs.
 
+### gfx1151 result — 2026-08-25
+
+The clean `f1c16ebbb` Qwen3.8-27B `Q4_K_M` natural25 run is exact for all ten
+prompts and all B1/B2/B3 GPU/CPU acceptance decisions:
+
+| Route | tok/s | versus true AR | Draft acceptance | Target share of decode |
+| --- | ---: | ---: | ---: | ---: |
+| true AR | 11.7119 | 1.0000x | — | — |
+| B1 | 17.1878 | 1.4675x | 86.26% | 91.15% |
+| B2 | 20.0909 | 1.7154x | 72.00% | 86.97% |
+| B3 | **21.0620** | **1.7983x** | 63.10% | 83.78% |
+
+B3 wins aggregate and every budget beats AR in every category. B2 nevertheless
+beats B3 in `general_en` (**19.826 versus 18.059 tok/s**), preserving a real
+but bounded `OI-2` premise.
+
+Cached native-gfx1151 B1/B2/B3 traces reconcile **100%** of each target marker
+as device-busy intervals plus measured internal queue gaps and pre/post device
+margins. Kernel sums explain 91.28%/82.51%/81.27%; internal single-stream queue
+gaps explain 8.16%/17.03%/18.23%. Standard-Q4 dense pair plus single rowtiles
+own **53.01%/46.27%/45.06%** of target wall. The Q6 LM-head float rowtile is
+only **4.84%/4.61%/4.52%**, GDN is 2.27%/2.74%/3.10%, and full attention is
+0.55%/0.52%/0.53%.
+
+Decision: open `OI-1` on the standard-Q4 rows 2/3/4 owners, not the LM head.
+Do not open `OI-5` or `OI-6`; neither profile trigger fired. Evidence:
+[`2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json).
+
 ## 7. `OI-1` — small-M quantized projection morphology audit
 
 **Hypothesis:** for selected verifier shapes, an oMLX-inspired output-tiled
@@ -310,42 +344,55 @@ multi-wave or split-K schedule can beat the current exact T16 rowtile/LM-head
 owner by improving occupancy and scheduler behavior while reading each weight
 plane no more often.
 
-### 7.1 Start with the LM head
+### 7.1 Start with the profiled standard-Q4 owners
 
-The donor's multi-simdgroup path is most compelling at huge N. hipEngine's
-quantized vocabulary projection is therefore the first candidate, not every
-linear layer.
+`OI-0` overrules the pre-profile LM-head guess. The first candidates are the
+standard-Q4 `K=5120, N=17408` gate/up+SiLU pair and the live standard-Q4 single
+projection shapes at verifier rows 2/3/4. Together they own 45-53% of target
+wall. The current pair is a 64-thread/two-wave weight-per-wave rowtile; the
+single path is a 32-thread/eight-column rowtile. Both already reuse weights
+across rows, so a candidate needs a genuinely different output/wave morphology,
+not another wrapper around the same work.
 
-Audit exact live shapes and current owners before coding:
+The Q6 `K=5120, N=248320` target LM head remains a second-rung audit. It already
+uses one exact weight-once float rowtile per target cycle and owns only 4.5-4.8%
+of target wall.
 
-- model/quant/layout (`Q4_K_M`, standard or planar Q6 T16, etc.);
-- verifier rows B1/B2/B3 => `M=2/3/4`, then diagnostic rows through 8;
-- hidden K and vocabulary N;
-- current primitive's `_hipengine_max_rows` and backend package cap;
-- whether the current path writes full logits, row top-1, or a bounded accept
-  payload;
-- whether one launch already reads the head once across all rows.
+Audit before coding:
+
+- exact standard-Q4 pair and single `(M,K,N)` call frequencies and shape roles;
+- verifier rows B1/B2/B3 => `M=2/3/4`, including B3's physical tail row;
+- current rowtile K ownership, per-thread FMA order, ordered merge, BF16
+  gate/up+SiLU boundary, lower-ID tie rule where applicable, VGPR/LDS/scratch;
+- existing gfx1151 shape policies and strict primitive-chain fallback;
+- the prior gfx1151 row8 two-wave retention and native Q8_1x2 split-weight
+  rejection, so this experiment does not repeat either mechanism blindly.
 
 ### 7.2 Candidate ladder
 
 Implement one rung at a time:
 
-1. **T0 exact row-shared candidate:** M-templated row accumulators and
-   output-column tiling while preserving each row's existing K traversal,
-   dequant order, FP32 accumulation, output boundary, and lower-ID tie rule.
-2. **T0 exact multi-wave output partition:** independent waves own disjoint N
-   tiles and full K; no cross-wave reduction. This is the closest HIP analogue
-   to the donor huge-N path and should be attempted before split-K.
-3. **T2 split-K candidate:** 2/4 waves own K partitions and reduce through LDS.
-   Declare the reduction association change and use the production-profile
-   gate; do not call it strict.
+1. **T0 exact pair output subdivision:** assign disjoint column groups to
+   independent gate/up wave pairs while preserving every historical K subset,
+   per-thread FMA stream, wave reduction, ordered merge, BF16 gate/up round
+   trips, and SiLU/store boundary. Screen the real pair before routing.
+2. **T0 exact single two-wave output tile:** adapt the retained physical-row8
+   idea only if rows2/3/4 preserve their existing one-wave arithmetic and the
+   actual live shapes beat the current WG32 owner. Do not infer transfer from
+   row8.
+3. **T2 reassociated candidate:** a wave may own full K only under the complete
+   production-profile gate. A naive full-K wave does not preserve the current
+   four-subset ordered merge and must not be labeled strict.
 4. **WMMA candidate only when justified:** GGUF dequant/layout and M<=8 may make
-   scalar/dot4 rowtiles better. WMMA is not implied by the donor source.
+   scalar/dot4 rowtiles better. WMMA is not implied by the donor source, and
+   prior gfx1151 WMMA geometry failures remain binding evidence.
+5. **LM-head rung only after Q4:** revisit output partition/top-1 epilogues only
+   if the Q4 ladder is exhausted and a fresh profile still gives the head
+   enough complete-wall leverage.
 
 Do not combine LM-head fusion, acceptance logic, and a new projection schedule
-in the first RED/GREEN unit. First prove the projection bytes; then separately
-consider a top-1/accept epilogue if the current path still materializes data the
-transaction never consumes.
+in the first RED/GREEN unit. First prove the Q4 pair/single bytes and actual
+weight leaves, then route only an exact gfx1151 shape winner.
 
 ### 7.3 RED and primitive gates
 
@@ -501,7 +548,7 @@ requests.
 
 ### 9.3 Performance/memory gate
 
-Measure 512/4K/16K prompts on the same W7900/model:
+Measure 512/4K/16K prompts on the same gfx1151 host/model:
 
 - target prefill tok/s;
 - total MTP prefill/activation wall and TTFT;
@@ -579,7 +626,7 @@ fusion experiments have done.
 
 The donor chunks key ranges because a long Metal dispatch can trigger macOS
 IOGPU interactivity demotion/termination. That mechanism is not established on
-Linux/ROCm W7900.
+the active Linux/ROCm gfx1151 host.
 
 hipEngine already has:
 
@@ -634,20 +681,21 @@ Update this table as atomic units land. A blank metric is not a pass.
 
 | ID | State | Host/model/quant | Strict/quality gate | Primary metric | Decision artifact/worklog |
 | --- | --- | --- | --- | --- | --- |
-| `OI-0` | pending | W7900 dense 27B first | existing exact category/heldout gate | reconciled target/cycle wall by family | — |
-| `OI-1` | blocked by `OI-0` | exact shape selected by profile | T0 exact or T2 full production gate | primitive + target + full-suite MTP/AR | — |
-| `OI-2` | blocked by transition RED | W7900 dense B1/B2/B3 | exact variable-budget transaction matrix | controller versus best fixed B and true AR | — |
-| `OI-3` | pending after baseline | W7900 dense prompt 512/4K/16K | exact prompt-head cache and generated IDs | TTFT/prefill wall/peak memory | — |
-| `OI-4` | pending | W7900 dense | explicit T3 full category/heldout/long gate | acceptance and complete MTP/AR | — |
-| `OI-5` | blocked by profile trigger | shape selected by `OI-0` | exact chain or full production gate | Conv/GDN boundary and target wall | — |
-| `OI-6` | watchlist | long prefill only | AOTriton/native parity + task gate | dispatch wall/throughput/memory | — |
+| `OI-0` | complete | gfx1151 Qwen3.8-27B `Q4_K_M` | exact 10-prompt category/heldout gate | AR 11.712; B3 21.062; 100% target-timeline reconciliation | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json) |
+| `OI-1` | ready | gfx1151 standard-Q4 rows 2/3/4 | T0 exact or T2 full production gate | primitive + target + full-suite MTP/AR | — |
+| `OI-2` | blocked by transition RED | gfx1151 dense B1/B2/B3 | exact variable-budget transaction matrix | controller versus best fixed B3 and true AR | — |
+| `OI-3` | ready | gfx1151 dense prompt 512/4K/16K | exact prompt-head cache and generated IDs | TTFT/prefill wall/peak memory | — |
+| `OI-4` | ready | gfx1151 dense | explicit T3 full category/heldout/long gate | acceptance and complete MTP/AR | — |
+| `OI-5` | not triggered | gfx1151 GDN 2.27-3.10% of target | profile trigger failed | no implementation | [`OI-0`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json) |
+| `OI-6` | not triggered | gfx1151 attention 0.52-0.55% of target | profile trigger failed | no implementation | [`OI-0`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json) |
 | `OI-7` | separate campaign | model artifact TBD | BF16-relative quant/task/MTP gate | quality/size/speed | — |
 
 ## 15. Final review conclusions
 
 - The prior review's highest-value intuition—small-M verifier specialization—is
-  sound, but hipEngine has already implemented the basic rowtile idea. The next
-  test is output/split morphology on profiled real shapes, especially LM head.
+  sound, but hipEngine has already implemented the basic rowtile idea. Fresh
+  gfx1151 evidence selects exact output/wave morphology on the standard-Q4
+  pair/single rows 2/3/4; the LM head is a second rung.
 - The most valuable omitted oMLX runtime ideas are adaptive per-sequence budget
   selection and streaming prompt priming. Both need hipEngine-specific
   transaction work; neither is a drop-in port.
