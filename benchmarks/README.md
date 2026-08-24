@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-23**
+Last updated: **2026-08-24**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -94,7 +94,7 @@ llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hi
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 ## Current default notes
-Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). Exact Qwen3.8-27B `Q4_K_M` external DMS c1 executes compactly at 128K/256K and lowers tracked post-pack residency by **4.592/7.813 GiB**, but remains default-off. The frozen exact-budget W8192 policy passes sealed source-disjoint four-category 32K final at **max/mean KL 0.003430/0.000430, 100% top-1, and 1.599688x live CR**. Semantic 128K and production lifecycle/memory/performance gates remain open. [`DMS evidence`](../docs/DMS.md).
+Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). Exact Qwen3.8-27B `Q4_K_M` frozen W8192 external DMS passes source-disjoint four-category finals at 32K (**max KL 0.003430, 100% top-1, 1.599688x live CR**) and 128K (**max KL 0.001062, 100% top-1, 1.882225x live CR, 3.750 GiB payload saved**). It remains default-off pending c1-c32 lifecycle/soak, sampled memory controls, and same-host performance. [`DMS evidence`](../docs/DMS.md).
 ## Where detailed evidence lives
 
 | Need | Source |
