@@ -398,8 +398,11 @@ general-Japanese, and mixed categories regress, so it remains explicit/default-
 off. Strict four-heldout D64 remains exact `256/256` at `1.0220x`. The expanded
 fast-verifier review is favorable but incomplete: four-category D64 reaches
 `278/280 = 99.286%` top-1, passes all KL/scope gates and paired task review
-`4/4`, but its 95% interval straddles 99% and full 450-row/three-repeat evidence
-is absent. Fast remains unselected. [`repeat artifact`](results/2026-08-24-w7900-paro-mtp-strict-d24-3run.json),
+`4/4`, but its 95% interval straddles 99%; the complete canonical PARO suite,
+three repeats, and applicable B1 state/task packet are absent. The 18-prompt/450-
+row count was calibration precedent, not a binding cardinality; BF16-relative
+evidence is conditional on a full-precision target teacher. Fast remains
+unselected. [`repeat artifact`](results/2026-08-24-w7900-paro-mtp-strict-d24-3run.json),
 [`fast review`](results/2026-08-24-w7900-paro-fast-verifier-four-category-review.json),
 and [`spike artifact`](results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json)
 
