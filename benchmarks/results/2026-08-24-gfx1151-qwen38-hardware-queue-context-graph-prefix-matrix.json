@@ -1,0 +1,851 @@
+{
+  "contexts": {
+    "1": {
+      "final_ownership": true,
+      "graph_delta": {
+        "captures": 1,
+        "invalidations": 1,
+        "replays": 128
+      },
+      "memory_recovery": true,
+      "workloads": [
+        [
+          1.751739311548358,
+          true,
+          true,
+          true,
+          8.074855591985397,
+          1.0893779930192977,
+          9.133714666008018
+        ],
+        [
+          0.4683460242533354,
+          true,
+          true,
+          true,
+          32.13815903500654,
+          1.1159088319400325,
+          34.1627178019844
+        ],
+        [
+          0.11106602270148187,
+          true,
+          true,
+          true,
+          141.94569327495992,
+          1.2857317849993706,
+          144.0583978940267
+        ],
+        [
+          0.05126668662486924,
+          true,
+          false,
+          true,
+          310.8253176169237,
+          1.4975466530304402,
+          312.0934437479591
+        ],
+        [
+          0.13689061531732122,
+          true,
+          true,
+          true,
+          173.54347320797388,
+          1.1470884029986337,
+          175.3221862600185
+        ],
+        [
+          0.781051498817508,
+          true,
+          true,
+          true,
+          153.172164442949,
+          0.09452077106107026,
+          165.1619026309345
+        ],
+        [
+          1.4391864762924702,
+          true,
+          true,
+          true,
+          164.1739782380173,
+          1.4713164169806987,
+          179.16786973306444
+        ]
+      ],
+      "workspace_lease_pages": 1032
+    },
+    "2": {
+      "final_ownership": true,
+      "graph_delta": {
+        "captures": 1,
+        "invalidations": 1,
+        "replays": 128
+      },
+      "memory_recovery": true,
+      "workloads": [
+        [
+          1.756943554975232,
+          true,
+          true,
+          true,
+          8.06227769202087,
+          1.0851509829517454,
+          9.106667618034407
+        ],
+        [
+          0.4689602068757017,
+          true,
+          true,
+          true,
+          32.104435829096474,
+          1.1141918399371207,
+          34.117979099974036
+        ],
+        [
+          0.11114112438274425,
+          true,
+          true,
+          true,
+          141.8499554110458,
+          1.2833553389646113,
+          143.96105520101264
+        ],
+        [
+          0.051285681945376936,
+          true,
+          false,
+          true,
+          310.709940286004,
+          1.4961067279800773,
+          311.97724229609594
+        ],
+        [
+          0.13695817274715516,
+          true,
+          true,
+          true,
+          174.40187822200824,
+          1.1410312480293214,
+          175.2359236360062
+        ],
+        [
+          0.7814090657107244,
+          true,
+          true,
+          true,
+          153.08564240601845,
+          0.09517639200203121,
+          165.08632884791587
+        ],
+        [
+          1.4391637319789174,
+          true,
+          true,
+          true,
+          164.13255362596828,
+          1.4714295890880749,
+          179.1707281320123
+        ]
+      ],
+      "workspace_lease_pages": 1032
+    },
+    "4": {
+      "final_ownership": true,
+      "graph_delta": {
+        "captures": 1,
+        "invalidations": 1,
+        "replays": 128
+      },
+      "memory_recovery": true,
+      "workloads": [
+        [
+          1.7556359569204,
+          true,
+          true,
+          true,
+          8.069552172906697,
+          1.0872636690037325,
+          9.113451951066963
+        ],
+        [
+          0.46856463075321875,
+          true,
+          true,
+          true,
+          32.127874194062315,
+          1.1150912889279425,
+          34.1467832949711
+        ],
+        [
+          0.11117778631349769,
+          true,
+          true,
+          true,
+          141.79865601297934,
+          1.281662282999605,
+          143.91347803990357
+        ],
+        [
+          0.05128319693699269,
+          true,
+          false,
+          true,
+          310.70102408598177,
+          1.4968703610356897,
+          311.99296866205987
+        ],
+        [
+          0.13687543892451426,
+          true,
+          true,
+          true,
+          174.50187872699462,
+          1.1437860570149496,
+          175.34171884402167
+        ],
+        [
+          0.7810888512278501,
+          true,
+          true,
+          true,
+          153.13334637903608,
+          0.09417777601629496,
+          165.15401273500174
+        ],
+        [
+          1.4396488413374733,
+          true,
+          true,
+          true,
+          164.08869839506224,
+          1.4697767900070176,
+          179.11032038694248
+        ]
+      ],
+      "workspace_lease_pages": 1032
+    },
+    "8": {
+      "final_ownership": true,
+      "graph_delta": {
+        "captures": 1,
+        "invalidations": 1,
+        "replays": 128
+      },
+      "memory_recovery": true,
+      "workloads": [
+        [
+          1.7565841952146786,
+          true,
+          true,
+          true,
+          8.068420180934481,
+          1.0877104320097715,
+          9.10839763295371
+        ],
+        [
+          0.4682386785661254,
+          true,
+          true,
+          true,
+          32.16066815704107,
+          1.1233588440809399,
+          34.17055195698049
+        ],
+        [
+          0.11108547032586516,
+          true,
+          true,
+          true,
+          141.93282657803502,
+          1.284065920044668,
+          144.0329012440052
+        ],
+        [
+          0.05124658927202332,
+          true,
+          false,
+          true,
+          310.9382989590522,
+          1.4962485489668325,
+          312.2158366970252
+        ],
+        [
+          0.13683507950552387,
+          true,
+          true,
+          true,
+          174.54935242899228,
+          1.1450680840061978,
+          175.39356811298057
+        ],
+        [
+          0.7809300783348121,
+          true,
+          true,
+          true,
+          153.1582506300183,
+          0.09550497797317803,
+          165.18758616095874
+        ],
+        [
+          1.4385093569547116,
+          true,
+          true,
+          true,
+          164.1924923589686,
+          1.4732914080377668,
+          179.25225023308303
+        ]
+      ],
+      "workspace_lease_pages": 1032
+    },
+    "unset": {
+      "final_ownership": true,
+      "graph_delta": {
+        "captures": 1,
+        "invalidations": 1,
+        "replays": 128
+      },
+      "memory_recovery": true,
+      "workloads": [
+        [
+          1.7572158635623947,
+          true,
+          true,
+          true,
+          8.064694385044277,
+          1.0862348549999297,
+          9.10525687399786
+        ],
+        [
+          0.4692658910223146,
+          true,
+          true,
+          true,
+          32.07978930603713,
+          1.1159713360248134,
+          34.0955343110254
+        ],
+        [
+          0.11112581274135168,
+          true,
+          true,
+          true,
+          141.84709961607587,
+          1.2852221640059724,
+          143.98070300696418
+        ],
+        [
+          0.05131663760071606,
+          true,
+          false,
+          true,
+          310.5159475749824,
+          1.4960729540325701,
+          311.7895260050427
+        ],
+        [
+          0.13698966236896407,
+          true,
+          true,
+          true,
+          173.3858902939828,
+          1.1385558299953118,
+          175.19535182206891
+        ],
+        [
+          0.7817100972031615,
+          true,
+          true,
+          true,
+          153.01549540797714,
+          0.09499375894665718,
+          165.02275555895176
+        ],
+        [
+          1.439753094735215,
+          true,
+          true,
+          true,
+          164.0231976499781,
+          1.4727008889894933,
+          179.09732074500062
+        ]
+      ],
+      "workspace_lease_pages": 1032
+    }
+  },
+  "cow_conformance": {
+    "gpu_page_aligned_policy": "Shares immutable full pages and allocates a private suffix page; cow_fork_events=0 by design for a 256-token page boundary.",
+    "host_cow_fork_events_expected": [
+      1,
+      2
+    ],
+    "host_device_pool_cow_test_passed": true,
+    "host_device_pool_cow_tests": [
+      "test_device_chunked_kv_pool_shared_prefix_cow_reclaims_after_last_ref_and_pin",
+      "test_chunked_kv_pool_copy_on_write_fork_preserves_prefix_and_splits_suffix"
+    ]
+  },
+  "created_at": "2026-08-24T07:51:45.228740+00:00",
+  "hardware": "AMD Radeon 8060S Graphics / gfx1151",
+  "health": {
+    "children": 20,
+    "lockups_or_timeouts": 0,
+    "postflight_all_kfd_empty": true,
+    "preflight_all_kfd_empty": true,
+    "preflight_temperature_c_max": 52.0,
+    "preflight_temperature_c_min": 35.0
+  },
+  "kind": "gfx1151_qwen38_hardware_queue_context_graph_prefix_matrix",
+  "limitations": [
+    "64K c2 is blocked and excluded from supported context claims.",
+    "32K performance is a product SLO blocker despite exact mechanics.",
+    "GPU prefix reuse is page-aligned and therefore does not trigger a partial-page COW fork; host/device pool COW fork/reclaim contracts pass separately.",
+    "Runtime queue IDs/count remain for cache-only rocprof after policy adjudication."
+  ],
+  "model": {
+    "kv_storage": "bf16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S (registry gguf_q4_k_m)",
+    "recurrent_state": "fp16",
+    "sampled_fingerprint": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa"
+  },
+  "normalized_context_throughput_vs_queue2": {
+    "1": {
+      "geometric_mean_delta_vs_queue2_percent": -0.08937034639543429,
+      "losses": 6,
+      "median_delta_vs_queue2_percent": -0.04932705254374614,
+      "wins": 1
+    },
+    "2": {
+      "geometric_mean_delta_vs_queue2_percent": 0.0,
+      "losses": 0,
+      "median_delta_vs_queue2_percent": 0.0,
+      "wins": 0
+    },
+    "4": {
+      "geometric_mean_delta_vs_queue2_percent": -0.02834106971990602,
+      "losses": 5,
+      "median_delta_vs_queue2_percent": -0.040979110292649334,
+      "wins": 2
+    },
+    "8": {
+      "geometric_mean_delta_vs_queue2_percent": -0.07104424365049766,
+      "losses": 7,
+      "median_delta_vs_queue2_percent": -0.061297903611690074,
+      "wins": 0
+    },
+    "unset": {
+      "geometric_mean_delta_vs_queue2_percent": 0.03281580119709471,
+      "losses": 1,
+      "median_delta_vs_queue2_percent": 0.038524187349087136,
+      "wins": 6
+    }
+  },
+  "performance_claim": true,
+  "physical_host": "gfx1151",
+  "policy_promotion_claim": false,
+  "prefix_reuse_and_eviction": [
+    {
+      "cow_fork_events": 0,
+      "final_request_refcounted_pages": 0,
+      "kl_max": 0.0,
+      "output_exact": true,
+      "passed": true,
+      "queue_policy": "1",
+      "reused_pages": 1,
+      "reused_tokens": 256,
+      "shared_block_count": 1,
+      "snapshot_evicted": false,
+      "snapshot_hit": false,
+      "source_lifecycle": "active",
+      "state_and_kv_exact": true,
+      "trajectory_exact": true,
+      "workspace_lease_pages": 32
+    },
+    {
+      "cow_fork_events": 0,
+      "final_request_refcounted_pages": 0,
+      "kl_max": 0.0,
+      "output_exact": true,
+      "passed": true,
+      "queue_policy": "1",
+      "reused_pages": 1,
+      "reused_tokens": 256,
+      "shared_block_count": 1,
+      "snapshot_evicted": true,
+      "snapshot_hit": true,
+      "source_lifecycle": "completed",
+      "state_and_kv_exact": true,
+      "trajectory_exact": true,
+      "workspace_lease_pages": 32
+    },
+    {
+      "cow_fork_events": 0,
+      "final_request_refcounted_pages": 0,
+      "kl_max": 0.0,
+      "output_exact": true,
+      "passed": true,
+      "queue_policy": "2",
+      "reused_pages": 1,
+      "reused_tokens": 256,
+      "shared_block_count": 1,
+      "snapshot_evicted": false,
+      "snapshot_hit": false,
+      "source_lifecycle": "active",
+      "state_and_kv_exact": true,
+      "trajectory_exact": true,
+      "workspace_lease_pages": 32
+    },
+    {
+      "cow_fork_events": 0,
+      "final_request_refcounted_pages": 0,
+      "kl_max": 0.0,
+      "output_exact": true,
+      "passed": true,
+      "queue_policy": "2",
+      "reused_pages": 1,
+      "reused_tokens": 256,
+      "shared_block_count": 1,
+      "snapshot_evicted": true,
+      "snapshot_hit": true,
+      "source_lifecycle": "completed",
+      "state_and_kv_exact": true,
+      "trajectory_exact": true,
+      "workspace_lease_pages": 32
+    },
+    {
+      "cow_fork_events": 0,
+      "final_request_refcounted_pages": 0,
+      "kl_max": 0.0,
+      "output_exact": true,
+      "passed": true,
+      "queue_policy": "4",
+      "reused_pages": 1,
+      "reused_tokens": 256,
+      "shared_block_count": 1,
+      "snapshot_evicted": false,
+      "snapshot_hit": false,
+      "source_lifecycle": "active",
+      "state_and_kv_exact": true,
+      "trajectory_exact": true,
+      "workspace_lease_pages": 32
+    },
+    {
+      "cow_fork_events": 0,
+      "final_request_refcounted_pages": 0,
+      "kl_max": 0.0,
+      "output_exact": true,
+      "passed": true,
+      "queue_policy": "4",
+      "reused_pages": 1,
+      "reused_tokens": 256,
+      "shared_block_count": 1,
+      "snapshot_evicted": true,
+      "snapshot_hit": true,
+      "source_lifecycle": "completed",
+      "state_and_kv_exact": true,
+      "trajectory_exact": true,
+      "workspace_lease_pages": 32
+    },
+    {
+      "cow_fork_events": 0,
+      "final_request_refcounted_pages": 0,
+      "kl_max": 0.0,
+      "output_exact": true,
+      "passed": true,
+      "queue_policy": "8",
+      "reused_pages": 1,
+      "reused_tokens": 256,
+      "shared_block_count": 1,
+      "snapshot_evicted": false,
+      "snapshot_hit": false,
+      "source_lifecycle": "active",
+      "state_and_kv_exact": true,
+      "trajectory_exact": true,
+      "workspace_lease_pages": 32
+    },
+    {
+      "cow_fork_events": 0,
+      "final_request_refcounted_pages": 0,
+      "kl_max": 0.0,
+      "output_exact": true,
+      "passed": true,
+      "queue_policy": "8",
+      "reused_pages": 1,
+      "reused_tokens": 256,
+      "shared_block_count": 1,
+      "snapshot_evicted": true,
+      "snapshot_hit": true,
+      "source_lifecycle": "completed",
+      "state_and_kv_exact": true,
+      "trajectory_exact": true,
+      "workspace_lease_pages": 32
+    },
+    {
+      "cow_fork_events": 0,
+      "final_request_refcounted_pages": 0,
+      "kl_max": 0.0,
+      "output_exact": true,
+      "passed": true,
+      "queue_policy": "unset",
+      "reused_pages": 1,
+      "reused_tokens": 256,
+      "shared_block_count": 1,
+      "snapshot_evicted": false,
+      "snapshot_hit": false,
+      "source_lifecycle": "active",
+      "state_and_kv_exact": true,
+      "trajectory_exact": true,
+      "workspace_lease_pages": 32
+    },
+    {
+      "cow_fork_events": 0,
+      "final_request_refcounted_pages": 0,
+      "kl_max": 0.0,
+      "output_exact": true,
+      "passed": true,
+      "queue_policy": "unset",
+      "reused_pages": 1,
+      "reused_tokens": 256,
+      "shared_block_count": 1,
+      "snapshot_evicted": true,
+      "snapshot_hit": true,
+      "source_lifecycle": "completed",
+      "state_and_kv_exact": true,
+      "trajectory_exact": true,
+      "workspace_lease_pages": 32
+    }
+  ],
+  "pressure_changed_page_graph": {
+    "1": {
+      "admission": {
+        "capacity_units": 1166,
+        "current_units": 1166,
+        "requested_units": 17,
+        "resource": "device_kv_pool"
+      },
+      "candidate_error_code": "engine_busy",
+      "candidate_outcome": "rejected",
+      "final_pool": [
+        1166,
+        134,
+        1032,
+        1032,
+        1
+      ],
+      "graph_delta": {
+        "captures": 1,
+        "invalidations": 1,
+        "replays": 128
+      },
+      "memory_recovery": true,
+      "passed": true,
+      "regrow_page_table_changed": true,
+      "source_outcome": "completed",
+      "workspace_lease_pages": 1032
+    },
+    "2": {
+      "admission": {
+        "capacity_units": 1166,
+        "current_units": 1166,
+        "requested_units": 17,
+        "resource": "device_kv_pool"
+      },
+      "candidate_error_code": "engine_busy",
+      "candidate_outcome": "rejected",
+      "final_pool": [
+        1166,
+        134,
+        1032,
+        1032,
+        1
+      ],
+      "graph_delta": {
+        "captures": 1,
+        "invalidations": 1,
+        "replays": 128
+      },
+      "memory_recovery": true,
+      "passed": true,
+      "regrow_page_table_changed": true,
+      "source_outcome": "completed",
+      "workspace_lease_pages": 1032
+    },
+    "4": {
+      "admission": {
+        "capacity_units": 1166,
+        "current_units": 1166,
+        "requested_units": 17,
+        "resource": "device_kv_pool"
+      },
+      "candidate_error_code": "engine_busy",
+      "candidate_outcome": "rejected",
+      "final_pool": [
+        1166,
+        134,
+        1032,
+        1032,
+        1
+      ],
+      "graph_delta": {
+        "captures": 1,
+        "invalidations": 1,
+        "replays": 128
+      },
+      "memory_recovery": true,
+      "passed": true,
+      "regrow_page_table_changed": true,
+      "source_outcome": "completed",
+      "workspace_lease_pages": 1032
+    },
+    "8": {
+      "admission": {
+        "capacity_units": 1166,
+        "current_units": 1166,
+        "requested_units": 17,
+        "resource": "device_kv_pool"
+      },
+      "candidate_error_code": "engine_busy",
+      "candidate_outcome": "rejected",
+      "final_pool": [
+        1166,
+        134,
+        1032,
+        1032,
+        1
+      ],
+      "graph_delta": {
+        "captures": 1,
+        "invalidations": 1,
+        "replays": 128
+      },
+      "memory_recovery": true,
+      "passed": true,
+      "regrow_page_table_changed": true,
+      "source_outcome": "completed",
+      "workspace_lease_pages": 1032
+    },
+    "unset": {
+      "admission": {
+        "capacity_units": 1166,
+        "current_units": 1166,
+        "requested_units": 17,
+        "resource": "device_kv_pool"
+      },
+      "candidate_error_code": "engine_busy",
+      "candidate_outcome": "rejected",
+      "final_pool": [
+        1166,
+        134,
+        1032,
+        1032,
+        1
+      ],
+      "graph_delta": {
+        "captures": 1,
+        "invalidations": 1,
+        "replays": 128
+      },
+      "memory_recovery": true,
+      "passed": true,
+      "regrow_page_table_changed": true,
+      "source_outcome": "completed",
+      "workspace_lease_pages": 1032
+    }
+  },
+  "protocol": {
+    "context_driver_sha256": "40b435d999ebb6397e39d34695b428a1f3c31717d04971d0a47e6fb47d101ef9",
+    "context_metric_fields": [
+      "tok_s",
+      "correctness",
+      "slo",
+      "route",
+      "ttft_p95_s",
+      "itl_p99_s",
+      "e2e_p95_s"
+    ],
+    "decode_tokens": 8,
+    "prefill_chunk_tokens": 256,
+    "prefix_driver_sha256": "634b642166be30a7a418a010d892f272f719f98edd94101c41e34bca7d4e3b55",
+    "prefix_lifecycles": [
+      "active",
+      "completed"
+    ],
+    "prefix_tokens": 256,
+    "pressure_driver_sha256": "d040e004f474e3bb6ef6a7591acf98cbd3bc0b2d89ce60bb56e497b886fc43f9",
+    "pressure_dynamic_pages": 134,
+    "pressure_workspace_pages": 1032,
+    "production_gdn_mode": "auto",
+    "queue_policies": [
+      "1",
+      "2",
+      "4",
+      "8",
+      "unset"
+    ],
+    "scheduler_policy": "token_budget",
+    "supported_context_workloads": [
+      "context_1k_c2",
+      "context_4k_c2",
+      "context_16k_c2",
+      "context_32k_c2",
+      "mixed_1k_4k_32k",
+      "graph_seed_32k_c1",
+      "graph_regrow_32k_c1"
+    ]
+  },
+  "raw_matrices": {
+    "prefix": {
+      "mechanical_passed": true,
+      "path": "/tmp/c2-gfx1151-hwqueue-v2/matrices/prefix-cow-eviction-20260824d.json",
+      "sha256": "89aeb494ea036fbc648c4edefa879704bd27ec487c160cb5751409acf2e1bb77"
+    },
+    "pressure_graph": {
+      "all_product_gates_passed": true,
+      "mechanical_passed": true,
+      "path": "/tmp/c2-gfx1151-hwqueue-v2/matrices/pressure-changed-page-graph-20260824a.json",
+      "sha256": "b5bef1adec3f6012902e9cebb31993b4fbb7fa246fbf5345d56a45f4a32e2650"
+    },
+    "supported_context": {
+      "mechanical_passed": true,
+      "path": "/tmp/c2-gfx1151-hwqueue-v2/matrices/context-graph-20260824a.json",
+      "sha256": "19cdd30191b3a39eb9bf367eda326161b4ad97a881ca7144e983a025ec69fbaf"
+    }
+  },
+  "schema_version": 1,
+  "software": {
+    "compiler": "clang 23.0.0git aa451e1f + PATCHED:440716f8",
+    "rocm": "HIP 7.15.0"
+  },
+  "source_commits": {
+    "prefix": "0683aab8e7bbe82f41dae285ab0bc6621b2f18c9",
+    "pressure_graph": "d93761f60e29ad356eb6098a7d9cfc6223b0d08a",
+    "supported_context": "c4fb2976563338253392d5ae5d74ef770a60195c"
+  },
+  "status": "retained_supported_context_graph_prefix",
+  "unsupported_context": {
+    "context_tokens": 65536,
+    "evidence_log": "/tmp/c2-gfx1151-hwqueue-v2/task17-context/q2-complete.log",
+    "evidence_log_sha256": "577882abc9c365eee9bbe55c76b2486614dcf77cc7661c9511915ee31892d76d",
+    "observation": "c2 64K produced no valid completion and retained request pages until process teardown; no KFD process survived. It is not included in the supported policy comparison.",
+    "queue_policy": "2",
+    "status": "blocked"
+  },
+  "verdict": {
+    "all_prefix_reuse_eviction_passed": true,
+    "all_pressure_changed_page_graph_passed": true,
+    "all_supported_context_control_route_memory_passed": true,
+    "findings": [
+      "All policies are exact/native and SLO-clean at c2 1K/4K/16K; c2 32K remains exact/native but exceeds the 240s TTFT/300s E2E SLO for every policy.",
+      "Context throughput is queue-neutral: normalized geometric delta versus queue2 is q1/q4/q8/unset -0.09%/-0.03%/-0.07%/+0.03%.",
+      "Every policy captures/replays/invalidates a 32K graph, completes the 32K pressure source, rejects 4K with exact 1166/1166 device-KV metadata, and regrows on a changed page table.",
+      "Every policy passes active shared-prefix immutability and completed snapshot hit/explicit eviction with zero request/cache refcount after release."
+    ],
+    "next": "Adjudicate the queue policy. Stable unset/larger queues provide no generic win; keep queue2 unless the aggregate evidence says otherwise.",
+    "policy_promoted": false,
+    "queue2_remains_control": true
+  }
+}
