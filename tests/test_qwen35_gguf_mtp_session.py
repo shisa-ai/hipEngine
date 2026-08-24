@@ -494,6 +494,161 @@ def test_streaming_prompt_sink_supports_warm_offset_and_fails_closed_on_owner_mi
     sink.close()
 
 
+def test_draft_hidden_policy_manifest_is_immutable_and_explicit() -> None:
+    strict = mtp_module.Qwen35GGUFDraftHiddenPolicy()
+    candidate = mtp_module.Qwen35GGUFDraftHiddenPolicy(
+        target_hidden_variant="post_output_norm"
+    )
+
+    assert strict.target_hidden_variant == "pre_output_norm"
+    assert strict.manifest()["prompt_target_hidden"] == "pre_output_norm"
+    assert candidate.manifest() == {
+        "target_hidden_variant": "post_output_norm",
+        "prompt_target_hidden": "post_output_norm",
+        "proposal_target_hidden": "post_output_norm",
+        "target_commit_hidden": "pre_output_norm",
+        "draft_chain_hidden": "nextn_post_output_norm",
+    }
+    with pytest.raises(ValueError, match="target_hidden_variant"):
+        mtp_module.Qwen35GGUFDraftHiddenPolicy(target_hidden_variant="adaptive")
+    with pytest.raises(Exception):
+        candidate.target_hidden_variant = "pre_output_norm"
+
+
+def test_post_output_norm_policy_normalizes_each_target_proposal_once(
+    monkeypatch,
+) -> None:
+    calls: list[tuple[int, int, int, int, int]] = []
+    syncs: list[str] = []
+    target_hidden = Tensor.from_handle(0x1000, (1, 4), DType.BF16, Device("hip", 0))
+    output_norm = SimpleNamespace(
+        allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=0x2000))
+    )
+    decoder = Qwen35GGUFMTPDecodeSession.__new__(Qwen35GGUFMTPDecodeSession)
+    decoder.target = SimpleNamespace(
+        last_target_hidden=target_hidden,
+        runner=SimpleNamespace(
+            hidden_size=4,
+            weights=SimpleNamespace(
+                root=lambda name: output_norm,
+                config=SimpleNamespace(rms_norm_eps=1.0e-6),
+            ),
+        ),
+        runtime=SimpleNamespace(device_synchronize=lambda: syncs.append("sync")),
+    )
+    decoder.draft_hidden_policy = mtp_module.Qwen35GGUFDraftHiddenPolicy(
+        target_hidden_variant="post_output_norm"
+    )
+    decoder._draft_post_norm_hidden = DeviceBuffer(0x3000, 8)
+
+    monkeypatch.setattr(
+        mtp_module,
+        "gguf_rmsnorm_bf16_f32_weight",
+        lambda src, weight, dst, **kwargs: calls.append(
+            (
+                int(src),
+                int(weight),
+                int(dst),
+                int(kwargs["rows"]),
+                int(kwargs["hidden_size"]),
+            )
+        ),
+    )
+
+    normalized = decoder._proposal_target_hidden()
+
+    assert normalized.ptr == 0x3000
+    assert calls == [(0x1000, 0x2000, 0x3000, 1, 4)]
+    assert syncs == ["sync"]
+
+    decoder.draft_hidden_policy = mtp_module.Qwen35GGUFDraftHiddenPolicy()
+    strict = decoder._proposal_target_hidden()
+    assert strict.ptr == 0x1000
+    assert calls == [(0x1000, 0x2000, 0x3000, 1, 4)]
+
+
+def test_post_output_norm_decoder_close_frees_owned_policy_row(
+    monkeypatch,
+) -> None:
+    freed: list[int] = []
+    monkeypatch.setattr(
+        mtp_module,
+        "free",
+        lambda buffer, *, runtime: freed.append(int(buffer.ptr)),
+    )
+    verifier_closes: list[str] = []
+    decoder = Qwen35GGUFMTPDecodeSession.__new__(Qwen35GGUFMTPDecodeSession)
+    decoder.target = SimpleNamespace(runtime=object())
+    decoder._draft_post_norm_hidden = DeviceBuffer(0x3000, 8)
+    decoder.owns_verifier = False
+    decoder.verifier = SimpleNamespace(close=lambda: verifier_closes.append("close"))
+
+    decoder.close()
+    decoder.close()
+
+    assert freed == [0x3000]
+    assert verifier_closes == []
+
+
+def test_streaming_prompt_sink_applies_one_consistent_target_hidden_transform(
+    monkeypatch,
+) -> None:
+    pending = DeviceBuffer(0x1000, 8)
+    monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: pending)
+    monkeypatch.setattr(mtp_module, "free", lambda _buffer, *, runtime: None)
+    copies: list[tuple[int, int, int]] = []
+
+    class Runtime:
+        def memset(self, *_args) -> None:
+            pass
+
+        def memcpy_async(self, dst, src, nbytes, _kind, _stream) -> None:
+            copies.append((int(dst), int(src), int(nbytes)))
+
+    rows: list[tuple[int, int, int]] = []
+
+    class Executor:
+        def enqueue_prompt_rows(self, _request_id, token_ids, **kwargs) -> None:
+            for index, token in enumerate(token_ids):
+                rows.append(
+                    (
+                        int(token),
+                        int(kwargs["position_start"]) + index,
+                        int(kwargs["target_hidden_base_ptr"])
+                        + index * int(kwargs["hidden_stride_bytes"]),
+                    )
+                )
+
+    transforms: list[tuple[int, int, int]] = []
+
+    def transform(hidden_ptr: int, count: int, stream: int) -> int:
+        transforms.append((int(hidden_ptr), int(count), int(stream)))
+        return 0x7000
+
+    sink = mtp_module._StreamingNextNPromptSink(
+        request_id=7,
+        prompt_tokens=(11, 22, 33),
+        hidden_size=4,
+        executor=Executor(),
+        runtime=Runtime(),
+        checkpoint=None,
+        transform_hidden_rows=transform,
+    )
+    sink.consume(
+        request_id=7,
+        chunk_start=0,
+        hidden_ptr=0x5000,
+        rows=3,
+        stream=5,
+    )
+    sink.finish(request_id=7, total_rows=3, stream=5)
+
+    assert transforms == [(0x5000, 3, 5)]
+    assert rows == [(11, 0, 0x1000), (22, 1, 0x7000), (33, 2, 0x7008)]
+    assert copies == [(0x1000, 0x7010, 8)]
+    sink.close()
+
+
 def test_streaming_prompt_sink_cancellation_between_chunks_releases_owned_row(
     monkeypatch,
 ) -> None:

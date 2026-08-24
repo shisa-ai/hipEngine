@@ -157,6 +157,26 @@ def test_dense_suite_records_concrete_target_backend_identity() -> None:
         )
 
 
+def test_dense_suite_exposes_explicit_draft_hidden_variant_policy() -> None:
+    parser = build_parser()
+
+    assert (
+        parser.parse_args(["--output", "/tmp/out.json"]).draft_hidden_variant
+        == "pre_output_norm"
+    )
+    assert (
+        parser.parse_args(
+            [
+                "--draft-hidden-variant",
+                "post_output_norm",
+                "--output",
+                "/tmp/out.json",
+            ]
+        ).draft_hidden_variant
+        == "post_output_norm"
+    )
+
+
 def test_dense_suite_defaults_to_native_target_verify_with_serial_rollback() -> None:
     parser = build_parser()
     assert parser.parse_args(["--output", "/tmp/out.json"]).target_verify_mode == "native"

@@ -677,6 +677,30 @@ pre-output-norm/llama-compatible contract, so donor comments are insufficient.
 - Retain only if same-suite economics or quality improves without a failed
   category. Do not tune the choice per prompt.
 
+### 10.1 gfx1151 result — post-norm rejected
+
+An immutable `pre_output_norm|post_output_norm` target-to-draft policy now covers
+both prompt chunks and every steady proposal. Target commit/rollback stays
+pre-output-norm, while deeper draft chaining continues from the NextN head's own
+post-norm output; direct fixtures prove one target norm rather than an accidental
+double application. The strict/default policy remains `pre_output_norm`.
+
+The complete category/heldout run is exact, but post-norm is not a universal
+win:
+
+| Budget | Pre-norm | Post-norm | Speed delta | Acceptance change | Decision |
+| ---: | ---: | ---: | ---: | --- | --- |
+| B1 | 17.143 | 17.328 tok/s | +1.08% | 113/131 -> 113/129 | reject: train -0.53%, Japanese -3.68% |
+| B2 | 20.020 | 20.733 tok/s | +3.56% | 144/200 -> 145/195 | scoped repeat rejects: heldout -0.71%, Japanese -4.50% |
+| B3 | 21.052 | 20.710 tok/s | **-1.62%** | 159/252 -> 158/255 | reject |
+
+The dedicated B2 repeat confirms its aggregate signal (+2.63%) and improved
+proposal efficiency, but it still fails the no-regressed-category rule. Do not
+select hidden convention by prompt or budget. Retain the explicit policy only as
+default-off diagnostic infrastructure for future model artifacts; preserve the
+pre-norm fallback/default. Evidence:
+[`2026-08-25-gfx1151-qwen38-omlx-oi4-postnorm-rejected.json`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi4-postnorm-rejected.json).
+
 ## 11. `OI-5` — profile-triggered GDN prework boundary fusion
 
 **Hypothesis:** if fresh profiling shows a material boundary cost between the
@@ -772,7 +796,7 @@ Update this table as atomic units land. A blank metric is not a pass.
 | `OI-1` | T0 retained; further rungs optional | gfx1151 Q4 attn-Q rows2-4 + recurrent-QKV rows3-4 | strict parent-bit exact | B1/B2/B3 +0.130%/+0.241%/+0.440%; Q4 family -1.724% | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi1-q4-two-wave-retained.json) |
 | `OI-2` | transition retained; controller rejected | gfx1151 dense B1/B2/B3 | all 9 edges + every per-budget outcome exact | adaptive 21.089 vs fixed B3 21.211 (-0.577%); repeat -1.724% | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi2-adaptive-rejected.json) |
 | `OI-3` | retained exact | gfx1151 Qwen3.8 dense 512/4K/16K | shifted cache/cursors + full category/heldout IDs/acceptance exact | TTFT -20.82%/-19.07%/-12.64%; prompt slab -> one 10,240-B row | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi3-streaming-prompt-priming.json) |
-| `OI-4` | ready | gfx1151 dense | explicit T3 full category/heldout/long gate | acceptance and complete MTP/AR | — |
+| `OI-4` | policy retained; post-norm rejected | gfx1151 Qwen3.8 dense B1/B2/B3 | full category/heldout IDs and target acceptance exact | B3 -1.62%; B2 aggregate +2.63% but heldout/Japanese regress | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi4-postnorm-rejected.json) |
 | `OI-5` | not triggered | gfx1151 GDN 2.27-3.10% of target | profile trigger failed | no implementation | [`OI-0`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json) |
 | `OI-6` | not triggered | gfx1151 attention 0.52-0.55% of target | profile trigger failed | no implementation | [`OI-0`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json) |
 | `OI-7` | separate campaign | model artifact TBD | BF16-relative quant/task/MTP gate | quality/size/speed | — |
