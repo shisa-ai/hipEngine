@@ -163,6 +163,24 @@ runtime-reachable, active refactor debt is a bounded indexed document, and the
 server/model runners have one scheduler plus one state/KV commit owner. Strict
 fallback count is not a success metric.
 
+## SPECDEC2 whole-request compatibility seam
+
+- Added 2026-08-24 for the approved [`SPECDEC2.md`](SPECDEC2.md) campaign.
+  During S1-S4 the new Generation-2 one-cycle provider/target path coexists with
+  the synchronous `SubmitPollTextGenerator.submit_speculative_many_detailed()`
+  route, which currently finishes complete model-owned generation under the
+  submission/model-loop lock and then publishes synthetic `VERIFY_CHAIN`
+  metadata. Existing whole-request provider protocols and direct loops remain
+  only for rollback, parity, and exact-oracle use while the staged provider SPI
+  is qualified.
+- Removal trigger: S3 must match direct c1 IDs/cycle semantics and exact
+  hidden/Conv/GDN/KV/cursor/following-AR state; S4 must pass physical c2/c4,
+  late-admission/refill, streaming, cancellation, and ownership gates. Then
+  remove production selection of the synchronous route, synthetic post-hoc work
+  metadata, and duplicate request/result ownership. Keep separately named
+  direct controls and registered strict/eager/serial kernel fallbacks required
+  by the execution-profile contract.
+
 ## Execution-profile migration seam
 
 - Implemented for campaign P3: public `strict|production|batch_invariant`
