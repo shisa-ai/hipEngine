@@ -251,6 +251,12 @@ def _pressure_specs(*, decode_tokens: int) -> tuple[WorkloadRequest, WorkloadReq
     )
 
 
+def _pressure_config_high_water(plan: LongContextPoolPlan) -> int:
+    """Return dynamic request pages; the global pool adds workspace pages."""
+
+    return int(plan.pressure_high_water_pages)
+
+
 def _effective_pressure_high_water(
     plan: LongContextPoolPlan,
     *,
@@ -392,26 +398,6 @@ def _final_pool_from_idle_snapshot(final_idle: Mapping[str, Any]) -> dict[str, A
     return copy.deepcopy(dict(pool)) if isinstance(pool, Mapping) else {}
 
 
-def _wait_for_pressure_allocation(
-    llm: LLM,
-    runner: Any,
-    *,
-    expected_pages: int,
-    timeout_seconds: float,
-) -> dict[str, Any]:
-    deadline = time.monotonic() + float(timeout_seconds)
-    last: dict[str, Any] = {}
-    while time.monotonic() < deadline:
-        snapshot = llm.live_loop_snapshot() or {}
-        pool = _pool_json(runner)
-        active = int(snapshot.get("loop", {}).get("requests", {}).get("active", 0))
-        last = {"pool": pool, "active_requests": active}
-        if int(pool.get("refcounted_pages", 0)) == int(expected_pages) and active >= 1:
-            return last
-        time.sleep(0.01)
-    raise TimeoutError(f"pressure source was not admitted at the expected page count: {last}")
-
-
 def _capture_runtime(adapter: Any, runner: Any):
     reclaimed: dict[int, _ReclaimedRow] = {}
     reclaimed_lock = threading.Lock()
@@ -533,15 +519,18 @@ def _execute_pressure_workload(
                 request_timeout_seconds=float(request_timeout_seconds),
             )
             start_event.set()
-            admission_barrier = _wait_for_pressure_allocation(
-                llm,
-                runner,
-                expected_pages=(
-                    int(workspace_lease_pages)
-                    + int(plan.pages_by_context[32_768])
-                ),
-                timeout_seconds=float(idle_timeout_seconds),
-            )
+            # EngineService control RPCs serialize behind synchronous model
+            # work, so a live-loop poll cannot observe a long prefill while it
+            # is active. Preserve source-first submission order instead: the
+            # 32K source reserves before the candidate is admitted after the
+            # model thread returns from prefill.
+            candidate_delay_seconds = 0.1
+            time.sleep(candidate_delay_seconds)
+            admission_barrier = {
+                "mode": "source_first_submission_delay",
+                "delay_seconds": candidate_delay_seconds,
+                "pool_before_candidate": _pool_json(runner),
+            }
             candidate_start = threading.Event()
             candidate_start.set()
             candidate_trace = executor.submit(
@@ -864,10 +853,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         adapter._loop.config,
                         kv_pool_initial_pages=plan.initial_pages,
                         kv_pool_low_water_pages=plan.low_water_pages,
-                        kv_pool_high_water_pages=_effective_pressure_high_water(
-                            plan,
-                            workspace_lease_pages=workspace_lease_pages,
-                        ),
+                        kv_pool_high_water_pages=_pressure_config_high_water(plan),
                         kv_pool_chunk_pages=plan.chunk_pages,
                         kv_pool_idle_grace_seconds=0.0,
                     )
