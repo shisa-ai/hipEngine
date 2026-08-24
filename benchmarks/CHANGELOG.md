@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-24 gfx1151 Qwen3.8 external DMS W8192 128K final pass] Frozen policy passes four fresh source-disjoint 128K categories / 32 d8 rows at **max/mean KL 0.001062/0.000286 and 100% top-1**. Exact compact capacity is **1.882225x live CR / 69,641 max live rows / 4.250 GiB BF16 payload**, saving **3.750 GiB** versus 8.000 GiB dense-equivalent payload; teardown reaches zero tracked bytes. No speed or sampled-peak claim; lifecycle/memory/performance gates remain. `benchmarks/results/2026-08-24-gfx1151-qwen38-dms-w8192-128k-final-pass.json`.
+
 - [2026-08-23 gfx1151 Qwen3.8 external DMS W8192 sealed-final pass] Frozen 655,640-byte sidecar / 2,090-byte metadata passes the single-use source-disjoint v3 four-category 32K d8 gate: **max/mean KL 0.003430/0.000430, 100% top-1, 1.599688x live CR, 20,489 max live rows**, and zero final tracked bytes. Qualified at 32K; DMS remains default-off pending semantic 128K and production lifecycle/memory/performance gates. `benchmarks/results/2026-08-23-gfx1151-qwen38-dms-w8192-32k-final-pass.json`.
 
 - [2026-08-23 gfx1151 Qwen3.8 external DMS W8192 development pass] Frozen epoch-20 exact-budget W8192 passes all four source-disjoint v2 32K development categories: **max/mean KL 0.0007085/0.0001416, 100% top-1, 1.599688x live CR, 20,489 max live rows**, zero final tracked bytes. This is development evidence, not production promotion; authorize one sealed v3 final run with no further policy changes. `benchmarks/results/2026-08-23-gfx1151-qwen38-dms-w8192-32k-development-pass.json`.
