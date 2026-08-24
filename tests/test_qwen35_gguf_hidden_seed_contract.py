@@ -333,6 +333,65 @@ def test_resident_prefill_forwards_target_hidden_rows_to_bulk_prefill() -> None:
     ]
 
 
+def test_resident_prefill_forwards_request_owned_target_hidden_sink() -> None:
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(
+        backend="hip_gfx1100",
+        hidden_size=8,
+        weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=2)),
+    )
+    session.use_wmma_prefill = None
+    session.use_gemv_decode = None
+    session._bulk_prefill_scratch = object()
+    sink = SimpleNamespace(request_id=7, hidden_size=8, total_rows=2)
+    bulk_calls: list[dict[str, object]] = []
+
+    def fake_bulk_prefill_and_sample(token_ids, **kwargs):
+        bulk_calls.append({"token_ids": tuple(token_ids), **kwargs})
+        return SimpleNamespace(token_id=8)
+
+    session._run_bulk_prefill_and_sample = fake_bulk_prefill_and_sample
+    session._q8_mmq_prefill_context = lambda: nullcontext()
+    session._q6_f16_rocblas_prefill_context = lambda **kwargs: nullcontext()
+
+    result = session.prefill(
+        [10, 11],
+        use_bulk=True,
+        return_logits=False,
+        target_hidden_chunk_sink=sink,
+        target_hidden_request_id=7,
+    )
+
+    assert result.token_id == 8
+    assert bulk_calls == [
+        {
+            "token_ids": (10, 11),
+            "bulk_attention_mode": "bulk",
+            "return_logits": False,
+            "target_hidden_chunk_sink": sink,
+            "target_hidden_request_id": 7,
+        }
+    ]
+
+
+def test_resident_prefill_rejects_target_hidden_sink_owner_mismatch() -> None:
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(
+        hidden_size=8,
+        weights=SimpleNamespace(config=SimpleNamespace(ssm_conv_kernel=2)),
+    )
+    sink = SimpleNamespace(request_id=8, hidden_size=8, total_rows=2)
+
+    with pytest.raises(ValueError, match="owner"):
+        session.prefill(
+            [10, 11],
+            use_bulk=True,
+            return_logits=False,
+            target_hidden_chunk_sink=sink,
+            target_hidden_request_id=7,
+        )
+
+
 def test_bulk_prefill_capture_populates_all_prompt_hidden_rows(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[object, ...]] = []
 
@@ -589,11 +648,42 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
     session._run_output_norm_hidden = fake_run_output_norm_hidden
     session._sample_from_hidden = fake_sample_from_hidden
 
+    sink_calls: list[tuple[object, ...]] = []
+
+    class Sink:
+        request_id = 7
+        hidden_size = 8
+        total_rows = 3
+
+        def consume(self, **kwargs) -> None:
+            sink_calls.append(
+                (
+                    "consume",
+                    int(kwargs["request_id"]),
+                    int(kwargs["chunk_start"]),
+                    int(kwargs["hidden_ptr"]),
+                    int(kwargs["rows"]),
+                    int(kwargs["stream"]),
+                )
+            )
+
+        def finish(self, **kwargs) -> None:
+            sink_calls.append(
+                (
+                    "finish",
+                    int(kwargs["request_id"]),
+                    int(kwargs["total_rows"]),
+                    int(kwargs["stream"]),
+                )
+            )
+
     result = session._run_bulk_prefill_and_sample(
         [3, 4, 7],
         bulk_attention_mode="bulk",
         return_logits=False,
         capture_hidden_seed_fp32=False,
+        target_hidden_chunk_sink=Sink(),
+        target_hidden_request_id=7,
     )
 
     last_src_ptr = 0x1000 + 2 * 8 * DType.BF16.itemsize
@@ -603,6 +693,10 @@ def test_bulk_prefill_without_capture_keeps_last_row_output_norm(monkeypatch: py
     assert ("last_row_output_norm", last_src_ptr, 0x7000, 0, False) in calls
     assert result.hidden_ptr == 0x7000
     assert result.return_logits is False
+    assert sink_calls == [
+        ("consume", 7, 0, 0x1000, 3, 0),
+        ("finish", 7, 3, 0),
+    ]
     assert [call for call in calls if call[0] == "stream_synchronize"] == [
         ("stream_synchronize", 0),
         ("stream_synchronize", 0),

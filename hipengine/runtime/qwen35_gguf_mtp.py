@@ -100,6 +100,186 @@ def _deadline_checkpoint(deadline_at: float | None) -> Callable[[], None] | None
     return _check
 
 
+class _StreamingNextNPromptSink:
+    """Request-owned shifted-hidden consumer for exact NextN prompt priming.
+
+    The sink carries only the newest target trunk row across target-prefill
+    chunks.  Every chunk appends ``token[start]`` against that carried row,
+    appends the remaining tokens against the preceding rows in the current
+    target chunk, then replaces the carried row with the chunk tail.  All
+    copies and draft launches use the target stream, so target buffers may be
+    reused as soon as :meth:`consume` returns without a host synchronization.
+    """
+
+    def __init__(
+        self,
+        *,
+        request_id: int,
+        prompt_tokens: Sequence[int],
+        hidden_size: int,
+        executor: Any,
+        runtime: HipRuntime,
+        checkpoint: Callable[[], None] | None,
+        start_position: int = 0,
+        initial_hidden: Tensor | None = None,
+    ) -> None:
+        tokens = tuple(int(token) for token in prompt_tokens)
+        if not tokens:
+            raise ValueError("streaming NextN prompt sink requires prompt tokens")
+        if int(request_id) < 0:
+            raise ValueError("streaming NextN prompt sink request_id must be non-negative")
+        if int(hidden_size) <= 0:
+            raise ValueError("streaming NextN prompt sink hidden_size must be positive")
+        if int(start_position) < 0:
+            raise ValueError("streaming NextN prompt sink start_position must be non-negative")
+        if int(start_position) > 0 and initial_hidden is None:
+            raise ValueError("warm streaming NextN prompt priming requires initial_hidden")
+        if initial_hidden is not None and (
+            initial_hidden.dtype != DType.BF16
+            or initial_hidden.shape != (1, int(hidden_size))
+        ):
+            raise ValueError(
+                "streaming NextN initial_hidden must be BF16 with shape (1, hidden_size)"
+            )
+
+        self.request_id = int(request_id)
+        self.prompt_tokens = tokens
+        self.total_rows = len(tokens)
+        self.hidden_size = int(hidden_size)
+        self.start_position = int(start_position)
+        self.executor = executor
+        self.runtime = runtime
+        self.checkpoint = checkpoint
+        self.hidden_nbytes = self.hidden_size * DType.BF16.itemsize
+        self._pending_hidden = malloc(self.hidden_nbytes, runtime=runtime)
+        try:
+            if initial_hidden is None:
+                runtime.memset(self._pending_hidden.ptr, 0, self.hidden_nbytes)
+            else:
+                runtime.memcpy(
+                    self._pending_hidden.ptr,
+                    initial_hidden.ptr,
+                    self.hidden_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
+        except Exception:
+            free(self._pending_hidden, runtime=runtime)
+            raise
+        self.consumed_rows = 0
+        self._stream: int | None = None
+        self._finished = False
+        self._failed = False
+        self._closed = False
+
+    @property
+    def final_pending_hidden(self) -> Tensor:
+        if self._closed:
+            raise RuntimeError("streaming NextN prompt sink is closed")
+        return Tensor.from_handle(
+            self._pending_hidden.ptr,
+            (1, self.hidden_size),
+            DType.BF16,
+            Device("hip", 0),
+        )
+
+    def _validate_owner(self, request_id: int) -> None:
+        if int(request_id) != self.request_id:
+            raise RuntimeError(
+                "streaming NextN prompt sink owner mismatch: "
+                f"expected request {self.request_id}, got {int(request_id)}"
+            )
+
+    def consume(
+        self,
+        *,
+        request_id: int,
+        chunk_start: int,
+        hidden_ptr: int,
+        rows: int,
+        stream: int,
+    ) -> None:
+        """Append one contiguous target-hidden chunk to the draft timeline."""
+
+        self._validate_owner(request_id)
+        if self._closed:
+            raise RuntimeError("streaming NextN prompt sink is closed")
+        if self._failed:
+            raise RuntimeError("streaming NextN prompt sink is failed")
+        if self._finished:
+            raise RuntimeError("streaming NextN prompt sink is already finished")
+        start = int(chunk_start)
+        count = int(rows)
+        stream = int(stream)
+        if start != self.consumed_rows:
+            raise RuntimeError(
+                "streaming NextN prompt chunks must be contiguous: "
+                f"expected {self.consumed_rows}, got {start}"
+            )
+        if count <= 0 or start + count > self.total_rows:
+            raise ValueError("streaming NextN prompt chunk is outside the prompt")
+        if int(hidden_ptr) <= 0:
+            raise ValueError("streaming NextN prompt chunk requires a device hidden pointer")
+        if self._stream is None:
+            self._stream = stream
+        elif stream != self._stream:
+            raise RuntimeError("streaming NextN prompt chunks must use one stream")
+        if self.checkpoint is not None:
+            self.checkpoint()
+
+        tokens = self.prompt_tokens[start : start + count]
+        try:
+            self.executor.enqueue_prompt_rows(
+                self.request_id,
+                tokens[:1],
+                position_start=self.start_position + start,
+                target_hidden_base_ptr=self._pending_hidden.ptr,
+                hidden_stride_bytes=self.hidden_nbytes,
+                stream=stream,
+            )
+            if count > 1:
+                self.executor.enqueue_prompt_rows(
+                    self.request_id,
+                    tokens[1:],
+                    position_start=self.start_position + start + 1,
+                    target_hidden_base_ptr=int(hidden_ptr),
+                    hidden_stride_bytes=self.hidden_nbytes,
+                    stream=stream,
+                )
+            self.runtime.memcpy_async(
+                self._pending_hidden.ptr,
+                int(hidden_ptr) + (count - 1) * self.hidden_nbytes,
+                self.hidden_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+        except Exception:
+            self._failed = True
+            raise
+        self.consumed_rows += count
+
+    def finish(self, *, request_id: int, total_rows: int, stream: int) -> None:
+        """Validate complete request ownership at the target activation seam."""
+
+        self._validate_owner(request_id)
+        if self._closed:
+            raise RuntimeError("streaming NextN prompt sink is closed")
+        if self._failed:
+            raise RuntimeError("streaming NextN prompt sink is failed")
+        if int(total_rows) != self.total_rows or self.consumed_rows != self.total_rows:
+            raise RuntimeError(
+                "streaming NextN prompt sink finished before every row was consumed"
+            )
+        if self._stream is not None and int(stream) != self._stream:
+            raise RuntimeError("streaming NextN prompt finish must use the chunk stream")
+        self._finished = True
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        free(self._pending_hidden, runtime=self.runtime)
+
+
 def _effective_target_verify_mode(requested: str, *, rows: int) -> str:
     """Keep unproven root-plus-four target rows on the scalar exact oracle."""
 
@@ -1335,8 +1515,9 @@ class Qwen35GGUFMTPDecodeSession:
     ) -> Qwen35GGUFMTPGenerationResult:
         """Generate one MTP request, observing cancellation/deadline/shutdown.
 
-        ``checkpoint`` is a no-arg callable polled at every cycle boundary
-        before proposal or target mutation (RF3). It should raise
+        ``checkpoint`` is a no-arg callable polled at every streamed prompt
+        chunk and cycle boundary before the corresponding draft/proposal
+        mutation (RF3). It should raise
         ``GenerationCancelled`` / ``GenerationDeadlineExceeded`` (or any error)
         to stop at the next owned boundary. ``lifecycle_hook`` receives stable
         phase names for fault injection and direct lifecycle evidence; production
@@ -1365,6 +1546,7 @@ class Qwen35GGUFMTPDecodeSession:
                 prompt,
                 request_id=rid,
                 use_bulk=use_bulk_prefill,
+                checkpoint=checkpoint,
             )
         else:
             first = self.target.prefill(
@@ -1725,55 +1907,49 @@ class Qwen35GGUFMTPDecodeSession:
         *,
         request_id: int,
         use_bulk: bool | None,
+        checkpoint: Callable[[], None] | None = None,
     ):
-        """Admit one target prompt and catch the shifted NextN state up.
+        """Stream target prompt chunks into the exact shifted NextN state.
 
-        The target owns the public AR prefill policy, including bulk prefill.
-        Retaining each target trunk-hidden row lets the one-layer NextN model
-        consume the same shifted sequence as llama.cpp afterwards: token 0 is
-        paired with zero, then token ``i`` is paired with target hidden
-        ``i - 1``.  Draft catch-up therefore does not force the target back to
-        token-serial prompt arithmetic.
+        The target owns the public AR prefill policy and emits completed
+        pre-output-norm trunk chunks before their hidden buffers are reused.
+        The request sink pairs token 0 with one zero row and token ``i`` with
+        target hidden ``i - 1``, retaining only the latest hidden row across
+        chunk boundaries.  Draft state appends share the target stream and do
+        not score the discarded prompt predictions.
         """
 
         if self.target.runner is None or self.target.runtime is None:
             raise RuntimeError("GGUF target session is closed")
-        hidden_size = int(self.target.runner.hidden_size)
-        hidden_nbytes = hidden_size * DType.BF16.itemsize
-        zero = malloc(hidden_nbytes, runtime=self.target.runtime)
-        hidden_rows = None
+        executor = self.draft_provider.executor
+        sink = _StreamingNextNPromptSink(
+            request_id=int(request_id),
+            prompt_tokens=prompt,
+            hidden_size=int(self.target.runner.hidden_size),
+            executor=executor,
+            runtime=self.target.runtime,
+            checkpoint=checkpoint,
+        )
+        completed = False
         try:
-            hidden_rows = malloc(len(prompt) * hidden_nbytes, runtime=self.target.runtime)
-            self.target.runtime.memset(zero.ptr, 0, zero.nbytes)
             result = self.target.prefill(
                 prompt,
                 use_bulk=use_bulk,
                 return_logits=False,
-                capture_target_hidden_rows=hidden_rows,
+                target_hidden_chunk_sink=sink,
+                target_hidden_request_id=int(request_id),
             )
-            for position, token in enumerate(prompt):
-                previous_hidden_ptr = (
-                    zero.ptr
-                    if position == 0
-                    else hidden_rows.ptr + (position - 1) * hidden_nbytes
-                )
-                self.draft_provider.executor.run_step(
-                    int(request_id),
-                    int(token),
-                    int(position),
-                    Tensor.from_handle(
-                        previous_hidden_ptr,
-                        (1, hidden_size),
-                        DType.BF16,
-                        Device("hip", 0),
-                    ),
-                    return_logits=False,
-                )
+            completed = True
+            return result
         finally:
-            if hidden_rows is not None:
-                free(hidden_rows, runtime=self.target.runtime)
-            free(zero, runtime=self.target.runtime)
-        return result
+            finish_prompt_priming = getattr(executor, "finish_prompt_priming", None)
+            if callable(finish_prompt_priming):
+                finish_prompt_priming(
+                    int(request_id),
+                    stream=0,
+                    synchronize=not completed,
+                )
+            sink.close()
 
     def _register_kv_policy(self, request_id: int) -> FixedPagedKVPolicy:
         owner = self.target._target_scratch_owner

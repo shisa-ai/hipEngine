@@ -28,6 +28,7 @@ from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     build_runtime_state,
     copy_i32_to_i64,
+    set_decode_position_i64,
 )
 from hipengine.kernels.registry import KernelKey, MissingKernelError, is_registered, resolve
 from hipengine.loading.qwen35_gguf_materialize import Qwen35GGUFDeviceWeight
@@ -201,6 +202,25 @@ class Qwen35GGUFNextNStepExecutor(Protocol):
         target_hidden: Tensor,
     ) -> Qwen35GGUFNextNStateAdvance: ...
 
+    def enqueue_prompt_rows(
+        self,
+        request_id: int,
+        token_ids: tuple[int, ...],
+        *,
+        position_start: int,
+        target_hidden_base_ptr: int,
+        hidden_stride_bytes: int,
+        stream: int,
+    ) -> None: ...
+
+    def finish_prompt_priming(
+        self,
+        request_id: int,
+        *,
+        stream: int,
+        synchronize: bool,
+    ) -> None: ...
+
     def reset_request(self, request_id: int) -> None: ...
 
     def close(self) -> None: ...
@@ -266,6 +286,9 @@ class Qwen35GGUFNextNExecutor:
         )
         self.scratch.zero_states(self.runtime)
         self._request_slots: dict[int, int] = {}
+        # Pageable host token arrays backing nonblocking prompt-prime H2D
+        # copies stay alive until the target prefill's completion boundary.
+        self._prompt_priming_staging: dict[int, list[np.ndarray]] = {}
         self._token_host = np.zeros((self.max_requests,), dtype=np.int64)
         self._logits_host = np.empty((1, self.vocab_size), dtype=np.float32)
         hidden_bytes = self.max_requests * self.hidden_size * DType.BF16.itemsize
@@ -1045,6 +1068,100 @@ class Qwen35GGUFNextNExecutor:
             "last_error": self._proposal_graph_last_error,
         }
 
+    def enqueue_prompt_rows(
+        self,
+        request_id: int,
+        token_ids: tuple[int, ...],
+        *,
+        position_start: int,
+        target_hidden_base_ptr: int,
+        hidden_stride_bytes: int,
+        stream: int = 0,
+    ) -> None:
+        """Append exact prompt rows without scoring discarded draft logits.
+
+        Tokens and position metadata are enqueued on the target prefill stream.
+        The caller keeps the target-hidden source live until these consumers
+        retire; :class:`_StreamingNextNPromptSink` does so by inserting every
+        append before target prefill reuses its chunk buffers.
+        """
+
+        request_id = int(request_id)
+        tokens = np.ascontiguousarray(token_ids, dtype=np.int64).reshape(-1)
+        start = int(position_start)
+        base_ptr = int(target_hidden_base_ptr)
+        stride = int(hidden_stride_bytes)
+        stream = int(stream)
+        if tokens.size <= 0:
+            raise ValueError("NextN prompt priming requires at least one token")
+        if start < 0 or start + int(tokens.size) > int(self.scratch.max_positions):
+            raise ValueError("NextN prompt priming positions exceed cache capacity")
+        if base_ptr <= 0:
+            raise ValueError("NextN prompt priming requires a device hidden pointer")
+        hidden_nbytes = self.hidden_size * DType.BF16.itemsize
+        if stride < hidden_nbytes:
+            raise ValueError("NextN prompt priming hidden stride is smaller than one row")
+        if self._proposal_graph_runtime_library is None:
+            self._proposal_graph_runtime_library = build_runtime_state(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=self.require_cached_build,
+            )
+        runtime_library = self._proposal_graph_runtime_library
+        slot = self._slot(request_id)
+        slot_scratch = self.scratch.for_slot(slot, span_role="decode")
+        token_ptr = self._token_buf.ptr + slot * DType.INT64.itemsize
+        self._prompt_priming_staging.setdefault(request_id, []).append(tokens)
+        token_host_ptr = host_array_ptr(tokens)
+
+        for row, token in enumerate(tokens.tolist()):
+            position = start + row
+            self.runtime.memcpy_async(
+                token_ptr,
+                token_host_ptr + row * DType.INT64.itemsize,
+                DType.INT64.itemsize,
+                HipMemcpyKind.HOST_TO_DEVICE,
+                stream,
+            )
+            slot_scratch.position_host[0] = position
+            slot_scratch.context_host[0] = position + 1
+            set_decode_position_i64(
+                slot_scratch.position_buf.ptr,
+                slot_scratch.context_buf.ptr,
+                position,
+                stream=stream,
+                library=runtime_library,
+                runtime=self.runtime,
+            )
+            self._run_block(
+                request_id,
+                int(token),
+                position,
+                Tensor.from_handle(
+                    base_ptr + row * stride,
+                    (1, self.hidden_size),
+                    DType.BF16,
+                    Device("hip", 0),
+                ),
+                stream=stream,
+                token_ready=True,
+                position_ready=True,
+            )
+
+    def finish_prompt_priming(
+        self,
+        request_id: int,
+        *,
+        stream: int = 0,
+        synchronize: bool = False,
+    ) -> None:
+        """Release host staging after the target-owned completion boundary."""
+
+        request_id = int(request_id)
+        if synchronize:
+            self.runtime.stream_synchronize(int(stream))
+        self._prompt_priming_staging.pop(request_id, None)
+
     def advance_state_only(
         self,
         request_id: int,
@@ -1071,6 +1188,7 @@ class Qwen35GGUFNextNExecutor:
     def release_request(self, request_id: int) -> None:
         request_id = int(request_id)
         self.reset_request(request_id)
+        self._prompt_priming_staging.pop(request_id, None)
         self._request_slots.pop(request_id, None)
 
     def close(self) -> None:
@@ -1083,6 +1201,7 @@ class Qwen35GGUFNextNExecutor:
             self.runtime.graph_destroy(proposal_graph.graph)
             self.runtime.stream_destroy(proposal_graph.stream)
         self._proposal_graphs.clear()
+        self._prompt_priming_staging.clear()
         for buffer in reversed(self._buffers):
             free(buffer, runtime=self.runtime)
         for buffer in reversed(self.scratch.buffers):

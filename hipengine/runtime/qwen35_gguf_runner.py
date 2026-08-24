@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field, replace
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
-from typing import Mapping, Sequence
+from typing import Mapping, Protocol, Sequence
 
 import numpy as np
 
@@ -353,6 +353,26 @@ from hipengine.runtime.prefill_flight_recorder import (
 # match ``DFlash2DraftConfig.target_layer_ids`` for the Qwen3.8-27B pair.
 DFLASH2_TAP_LAYER_IDS: tuple[int, ...] = (5, 19, 33, 47, 61)
 DFLASH2_TAP_DEPTHS: tuple[int, ...] = tuple(layer + 1 for layer in DFLASH2_TAP_LAYER_IDS)
+
+
+class TargetHiddenChunkSink(Protocol):
+    """Request-owned consumer for completed pre-output-norm target chunks."""
+
+    request_id: int
+    hidden_size: int
+    total_rows: int
+
+    def consume(
+        self,
+        *,
+        request_id: int,
+        chunk_start: int,
+        hidden_ptr: int,
+        rows: int,
+        stream: int,
+    ) -> None: ...
+
+    def finish(self, *, request_id: int, total_rows: int, stream: int) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -17205,6 +17225,8 @@ class Qwen35GGUFResidentSession:
         capture_hidden_seed_fp32: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         capture_target_hidden_rows: DeviceBuffer | None = None,
+        target_hidden_chunk_sink: TargetHiddenChunkSink | None = None,
+        target_hidden_request_id: int | None = None,
         dflash2_capture: DFlash2HiddenCaptureTargets | None = None,
         dms_capture: DMSCaptureSink | None = None,
         record_gpu_stage_timings: bool = False,
@@ -17223,12 +17245,29 @@ class Qwen35GGUFResidentSession:
         post-output_norm fp32 seed row for the final prompt token. An internal
         MTP caller may provide ``capture_target_hidden_rows`` to retain every
         pre-output-norm trunk row on device for shifted NextN prompt catch-up.
+        Prefer ``target_hidden_chunk_sink`` for request-owned streaming catch-up:
+        it consumes each completed target chunk before the target buffers are
+        reused and carries only one hidden row across chunks.
         """
 
         if not token_ids:
             raise ValueError("token_ids must be non-empty")
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
+        if capture_target_hidden_rows is not None and target_hidden_chunk_sink is not None:
+            raise ValueError("target hidden slab capture and chunk sink are mutually exclusive")
+        if target_hidden_chunk_sink is None:
+            if target_hidden_request_id is not None:
+                raise ValueError("target_hidden_request_id requires a target hidden chunk sink")
+        else:
+            if target_hidden_request_id is None:
+                raise ValueError("target hidden chunk sink requires target_hidden_request_id")
+            if int(target_hidden_chunk_sink.request_id) != int(target_hidden_request_id):
+                raise ValueError("target hidden chunk sink request owner does not match")
+            if int(target_hidden_chunk_sink.hidden_size) != int(self.runner.hidden_size):
+                raise ValueError("target hidden chunk sink hidden_size does not match the runner")
+            if int(target_hidden_chunk_sink.total_rows) != len(token_ids):
+                raise ValueError("target hidden chunk sink row count does not match the prompt")
         min_bulk_tokens = int(self.runner.weights.config.ssm_conv_kernel)
         selected_bulk_attention_mode = (
             getattr(self, "default_bulk_attention_mode", "bulk")
@@ -17294,6 +17333,9 @@ class Qwen35GGUFResidentSession:
                     bulk_kwargs["capture_layer_output_hidden"] = capture_layer_output_hidden
                 if capture_target_hidden_rows is not None:
                     bulk_kwargs["capture_target_hidden_rows"] = capture_target_hidden_rows
+                if target_hidden_chunk_sink is not None:
+                    bulk_kwargs["target_hidden_chunk_sink"] = target_hidden_chunk_sink
+                    bulk_kwargs["target_hidden_request_id"] = int(target_hidden_request_id)
                 if dflash2_capture is not None:
                     bulk_kwargs["dflash2_capture"] = dflash2_capture
                 if dms_capture is not None:
@@ -17359,8 +17401,22 @@ class Qwen35GGUFResidentSession:
                     HipMemcpyKind.DEVICE_TO_DEVICE,
                     0,
                 )
+            elif target_hidden_chunk_sink is not None:
+                target_hidden_chunk_sink.consume(
+                    request_id=int(target_hidden_request_id),
+                    chunk_start=index,
+                    hidden_ptr=self._last_target_hidden_ptr,
+                    rows=1,
+                    stream=0,
+                )
             self._position += 1
         assert hidden_ptr is not None
+        if target_hidden_chunk_sink is not None:
+            target_hidden_chunk_sink.finish(
+                request_id=int(target_hidden_request_id),
+                total_rows=len(token_ids),
+                stream=0,
+            )
         return self._sample_from_hidden(hidden_ptr, return_logits=return_logits)
 
     def _run_bulk_prefill_and_sample(
@@ -17373,6 +17429,8 @@ class Qwen35GGUFResidentSession:
         capture_hidden_seed_fp32: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
         capture_target_hidden_rows: DeviceBuffer | None = None,
+        target_hidden_chunk_sink: TargetHiddenChunkSink | None = None,
+        target_hidden_request_id: int | None = None,
         dflash2_capture: DFlash2HiddenCaptureTargets | None = None,
         dms_capture: DMSCaptureSink | None = None,
         record_gpu_stage_timings: bool = False,
@@ -17418,12 +17476,26 @@ class Qwen35GGUFResidentSession:
             if str(dms_capture.input_stage) != DMS_CAPTURE_INPUT_STAGE:
                 raise ValueError("DMS capture input stage does not match the runtime tap")
         target_hidden_row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
+        if capture_target_hidden_rows is not None and target_hidden_chunk_sink is not None:
+            raise ValueError("target hidden slab capture and chunk sink are mutually exclusive")
         if capture_target_hidden_rows is not None:
             required_nbytes = rows * target_hidden_row_nbytes
             if int(capture_target_hidden_rows.nbytes) < required_nbytes:
                 raise ValueError(
                     "capture_target_hidden_rows is smaller than the prompt hidden rows"
                 )
+        if target_hidden_chunk_sink is None:
+            if target_hidden_request_id is not None:
+                raise ValueError("target_hidden_request_id requires a target hidden chunk sink")
+        else:
+            if target_hidden_request_id is None:
+                raise ValueError("target hidden chunk sink requires target_hidden_request_id")
+            if int(target_hidden_chunk_sink.request_id) != int(target_hidden_request_id):
+                raise ValueError("target hidden chunk sink request owner does not match")
+            if int(target_hidden_chunk_sink.hidden_size) != int(self.runner.hidden_size):
+                raise ValueError("target hidden chunk sink hidden_size does not match the runner")
+            if int(target_hidden_chunk_sink.total_rows) != rows:
+                raise ValueError("target hidden chunk sink row count does not match the prompt")
         if dflash2_capture is not None:
             if int(dflash2_capture.rows) < rows:
                 raise ValueError(
@@ -17661,6 +17733,14 @@ class Qwen35GGUFResidentSession:
                             HipMemcpyKind.DEVICE_TO_DEVICE,
                             stream,
                         )
+                    elif target_hidden_chunk_sink is not None:
+                        target_hidden_chunk_sink.consume(
+                            request_id=int(target_hidden_request_id),
+                            chunk_start=chunk_start,
+                            hidden_ptr=src.ptr,
+                            rows=chunk_rows,
+                            stream=stream,
+                        )
                     last_bulk_scratch = bulk_scratch
                     last_src_ptr = src.ptr + (chunk_rows - 1) * self.runner.hidden_size * DType.BF16.itemsize
                 if last_bulk_scratch is None:
@@ -17846,6 +17926,14 @@ class Qwen35GGUFResidentSession:
                         HipMemcpyKind.DEVICE_TO_DEVICE,
                         stream,
                     )
+                elif target_hidden_chunk_sink is not None:
+                    target_hidden_chunk_sink.consume(
+                        request_id=int(target_hidden_request_id),
+                        chunk_start=0,
+                        hidden_ptr=src.ptr,
+                        rows=rows,
+                        stream=stream,
+                    )
                 last_bulk_scratch = active_bulk_scratch
                 if last_bulk_scratch is None:
                     # Empty synthetic layer stacks still need the shared norm
@@ -17858,6 +17946,13 @@ class Qwen35GGUFResidentSession:
                         stream=stream,
                     )
                 last_src_ptr = src.ptr + (rows - 1) * self.runner.hidden_size * DType.BF16.itemsize
+
+            if target_hidden_chunk_sink is not None:
+                target_hidden_chunk_sink.finish(
+                    request_id=int(target_hidden_request_id),
+                    total_rows=rows,
+                    stream=stream,
+                )
 
             finalize_sequence = 0
             if recorder is not None:
