@@ -420,15 +420,15 @@ start without a GPU run.
 
 - [x] Rebase `SpeculativeCycleSimulator` on the production transaction, result,
       stage, and telemetry records while retaining compatibility aliases.
-- [ ] Cover C={1,2,4,8}, K={0,1,2,3}, mixed K, chain, and bounded tree metadata.
-- [ ] Cover row/request/slot permutation and compact/refill.
-- [ ] Cover atomic provider+target+transient claims and fit rejection.
-- [ ] Cover reject/partial/full accept plus correction/bonus and output tails.
-- [ ] Inject cancel/failure at reserved, target-open, provider-open, drafted,
-      verified, accepted, commit, and readback stages.
-- [ ] Prove final target/provider cursors, RNG, outputs, transactions, leases,
+- [x] Cover C={1,2,4,8}, K={0,1,2,3}, mixed K, chain, and bounded tree metadata.
+- [x] Cover row/request/slot permutation and reclaim/refill.
+- [x] Cover atomic provider+target+transient claims and fit rejection.
+- [x] Cover reject/partial/full accept plus correction/bonus and output tails.
+- [x] Inject cancel/failure at reserved, target-open, provider-open, drafted,
+      verified, accepted, readback, and committing stages.
+- [x] Prove final target/provider cursors, RNG, outputs, transactions, leases,
       and ledger units are conserved.
-- [ ] Prove one peer's reject/cancel cannot mutate another peer.
+- [x] Prove one peer's reject/cancel cannot mutate another peer.
 - [ ] Prove unsupported sampling/context/claims select K=0 before mutation.
 
 ### RED/GREEN gate
