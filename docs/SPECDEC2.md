@@ -399,8 +399,8 @@ start without a GPU run.
 - [x] Add `TargetFrontier` as the canonical root+candidate representation and
       project host-visible candidates through retained `TargetVerifyBatch`
       topology without duplicating it.
-- [ ] Add one atomic target+provider transaction record.
-- [ ] Add committed `SpecCycleResult` and bounded telemetry records.
+- [x] Add one atomic target+provider transaction record.
+- [x] Add committed `SpecCycleResult` and bounded telemetry records.
 - [x] Add stable typed reason values while preserving existing external strings.
 - [x] Export new public-internal records through `hipengine.speculative` without
       making them a supported end-user API.
@@ -417,7 +417,8 @@ start without a GPU run.
 
 ### S1.3 Planner and simulator
 
-- [ ] Rebase `SpeculativeCycleSimulator` on the production records.
+- [x] Rebase `SpeculativeCycleSimulator` on the production transaction, result,
+      stage, and telemetry records while retaining compatibility aliases.
 - [ ] Cover C={1,2,4,8}, K={0,1,2,3}, mixed K, chain, and bounded tree metadata.
 - [ ] Cover row/request/slot permutation and compact/refill.
 - [ ] Cover atomic provider+target+transient claims and fit rejection.
