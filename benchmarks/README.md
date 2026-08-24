@@ -255,6 +255,16 @@ c32 marker wall. No marked multi-stream overlap or memory-copy trace operations
 appear; Queue_Id 1 is used. Q4 qmicro is the first tuning target.
 [`Owner profile`](results/2026-08-24-gfx1151-qwen38-queue2-c8-c17-c32-owner-profile.json).
 
+The first retained post-profile kernel win is a scoped exact Q5T16 col8
+rowtile. It halves output groups for the three gfx1151 Qwen3.8 Q5 shapes while
+keeping the col4 parent as strict fallback. Q5 marked time improves
+**12.56%/13.05%/11.17%** at c8/c17/c32 and complete marker wall improves
+**1.21%/1.95%/2.23%**. Actual rows8 improves 16.04-16.31% with 93/93 wins and
+BF16-bit parity. Three-repeat serving reaches **11.084/10.696 tok/s** at
+c17/c32, c13 lifecycle and memory close exactly, and c32 product SLO remains a
+separate blocker.
+[`Q5 col8`](results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-retained.json).
+
 The separate W7900 Qwen3.8-27B `Q4_K_M` direct graph packet qualifies physical
 `(1,2,3,4,5,6,7,8)`: c1-c8 reaches **30.30/53.79/75.47/93.49/105.67/
 115.30/122.36/127.32 tok/s**, all exact and repeatable. Q5 and planar-Q6 true

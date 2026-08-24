@@ -1,0 +1,616 @@
+{
+  "c13_lifecycle": {
+    "allocation_delta": 0,
+    "compaction_moves": 11,
+    "declared_widths_only": true,
+    "final_active_requests": 0,
+    "final_available_sessions": 13,
+    "final_scheduler_active": 0,
+    "graph_handles_closed": true,
+    "memory_delta_bytes": 0,
+    "newcomer_tokens_exact": true,
+    "no_serial_fallback": true,
+    "original_tokens_exact": true,
+    "passed": true,
+    "path": "/tmp/c2-gfx1151-hwqueue-v2/task20-q5-col8-final/qualification/c13-lifecycle.json",
+    "sha256": "086af394c197e3243e92dbb50ac80e04e1b91a62c9cc3e5583e75f89c8adcfad"
+  },
+  "cache_workflows": {
+    "17": {
+      "cache_tree_sha256": "bf67d1b49b5f0a2ab105679edfe86594fa3da24814de2a9514e1b3409ab9299d",
+      "compiler_guard_invoked": false,
+      "immutable_cache_only": true,
+      "runtime_queue_ids": [
+        1
+      ],
+      "sha256": "66e0955224faa978b7bec3107c991b4a9ab02b8a96724801afe1a79d054d0e9f"
+    },
+    "32": {
+      "cache_tree_sha256": "bf67d1b49b5f0a2ab105679edfe86594fa3da24814de2a9514e1b3409ab9299d",
+      "compiler_guard_invoked": false,
+      "immutable_cache_only": true,
+      "runtime_queue_ids": [
+        1
+      ],
+      "sha256": "c54768bc6995a38ceaf3513174e46c3e5e8e292c86508dcb20138d0d917ea579"
+    },
+    "8": {
+      "cache_tree_sha256": "bf67d1b49b5f0a2ab105679edfe86594fa3da24814de2a9514e1b3409ab9299d",
+      "compiler_guard_invoked": false,
+      "immutable_cache_only": true,
+      "runtime_queue_ids": [
+        1
+      ],
+      "sha256": "b532530cfe5f91b10cf5d55b11c25e2e6efcd0dda6f3f16d5cce028d9e85fd8f"
+    }
+  },
+  "change": {
+    "arithmetic_changed": false,
+    "grid_workgroups": "N/4 -> N/8",
+    "projection_launch_count_delta": 0,
+    "resident_bytes_delta": 0,
+    "rows": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "scoped_shapes": [
+      [
+        6144,
+        5120
+      ],
+      [
+        17408,
+        5120
+      ],
+      [
+        5120,
+        10240
+      ]
+    ],
+    "strict_fallback": "linear/gguf_q5_k_t16_v1/t16_gemv_rowtile_bf16_bf16_out",
+    "variant": "linear/gguf_q5_k_t16_v1/t16_gemv_rowtile_col8_bf16_bf16_out",
+    "workspace_bytes_delta": 0
+  },
+  "created_at": "2026-08-24T11:08:25.177158+00:00",
+  "decision": {
+    "default_scope": "gfx1151 target shapes only",
+    "next": "Tune Q4 split-weight c1 tail and adjudicate structural c32 optimization.",
+    "promoted": true,
+    "reasons": [
+      "Strict BF16 parent parity passes for every row width and actual layers.",
+      "Actual rows8 leaf improves 16.04-16.31% with 93/93 pair wins.",
+      "Marked Q5 family improves 11.17-13.05% and complete owner wall improves at c8/c17/c32.",
+      "Production control/repeat/lifecycle/memory gates pass; c17/c32 throughput is non-regressive."
+    ],
+    "remaining_blockers": [
+      "c32 product TTFT/ITL SLO remains outside this kernel scope",
+      "64K c2 remains unsupported"
+    ]
+  },
+  "hardware": "AMD Radeon 8060S Graphics / gfx1151",
+  "kind": "gfx1151_qwen38_q5_rowtile_col8_promotion",
+  "limitations": [
+    "Serving rates compare candidate to the median of the two retained same-host queue2 blocks; c32 has cross-block variance, so marked target and owner wall are the primary mechanism evidence.",
+    "No new task-quality or cross-width generated-ID equality claim is made."
+  ],
+  "measured_candidate_commit": "922e5fb1c5da658661b250bd47bd2a12d6b9133e",
+  "model": {
+    "kv_storage": "bf16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S (registry gguf_q4_k_m)",
+    "recurrent_state": "fp16",
+    "sampled_fingerprint": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa"
+  },
+  "owner_profiles": {
+    "17": {
+      "candidate": {
+        "dispatches": 3619,
+        "kernel_sum_ms": 336.866779,
+        "kernel_trace_sha256": "cdf3f52125720143697be3c63fd90c00bee2c59230a979f795f6c63829b1fb29",
+        "kernel_union_ms": 336.866779,
+        "marker_trace_sha256": "8bfe5ceaaba6f98e35725eaed96185d34b4ff18b61c4ecc39f386ae8e62ad2eb",
+        "marker_wall_ms": 353.960741,
+        "q5_dispatches": 120,
+        "q5_kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+        "q5_ms": 25.276244,
+        "q5_shapes": [
+          {
+            "count": 112,
+            "grid": [
+              81920,
+              1,
+              1
+            ],
+            "lds_bytes": 1024,
+            "scratch_bytes": 0,
+            "vgpr": 136,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          },
+          {
+            "count": 6,
+            "grid": [
+              163840,
+              1,
+              1
+            ],
+            "lds_bytes": 1024,
+            "scratch_bytes": 0,
+            "vgpr": 136,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          },
+          {
+            "count": 2,
+            "grid": [
+              32768,
+              1,
+              1
+            ],
+            "lds_bytes": 512,
+            "scratch_bytes": 0,
+            "vgpr": 80,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          }
+        ],
+        "uncovered_ms": 17.093962
+      },
+      "control": {
+        "dispatches": 3619,
+        "kernel_sum_ms": 344.577753,
+        "kernel_trace_sha256": "7c719423776c9e9ff96ad8fa44789d6f3808f2698b520a1af81fa10cb98e6b5b",
+        "kernel_union_ms": 344.577753,
+        "marker_trace_sha256": "0ae03ae0423f7bb5b3de4fe65eaf2f6b60b765b2fe99d8e373f19da40973cb1c",
+        "marker_wall_ms": 360.999395,
+        "q5_dispatches": 120,
+        "q5_kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_col4_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+        "q5_ms": 29.069505,
+        "q5_shapes": [
+          {
+            "count": 112,
+            "grid": [
+              163840,
+              1,
+              1
+            ],
+            "lds_bytes": 512,
+            "scratch_bytes": 0,
+            "vgpr": 80,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          },
+          {
+            "count": 6,
+            "grid": [
+              327680,
+              1,
+              1
+            ],
+            "lds_bytes": 512,
+            "scratch_bytes": 0,
+            "vgpr": 80,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          },
+          {
+            "count": 2,
+            "grid": [
+              32768,
+              1,
+              1
+            ],
+            "lds_bytes": 512,
+            "scratch_bytes": 0,
+            "vgpr": 80,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          }
+        ],
+        "uncovered_ms": 16.421642
+      },
+      "delta_percent": {
+        "kernel_sum_ms": -2.2378037853186594,
+        "marker_wall_ms": -1.949768918587802,
+        "q5_ms": -13.048935645791016
+      }
+    },
+    "32": {
+      "candidate": {
+        "dispatches": 5860,
+        "kernel_sum_ms": 515.889194,
+        "kernel_trace_sha256": "7d2bd13222ba5b2444f3241935e41663f0937dd4fd3a66a91dc1474167a04c04",
+        "kernel_union_ms": 515.889194,
+        "marker_trace_sha256": "e15d1ec33c822d74a393c56d45eb86a0cb9242eeab0b5b9957865a0f9d17583b",
+        "marker_wall_ms": 549.796514,
+        "q5_dispatches": 240,
+        "q5_kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+        "q5_ms": 49.325218,
+        "q5_shapes": [
+          {
+            "count": 224,
+            "grid": [
+              81920,
+              1,
+              1
+            ],
+            "lds_bytes": 1024,
+            "scratch_bytes": 0,
+            "vgpr": 136,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          },
+          {
+            "count": 12,
+            "grid": [
+              163840,
+              1,
+              1
+            ],
+            "lds_bytes": 1024,
+            "scratch_bytes": 0,
+            "vgpr": 136,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          },
+          {
+            "count": 4,
+            "grid": [
+              32768,
+              1,
+              1
+            ],
+            "lds_bytes": 512,
+            "scratch_bytes": 0,
+            "vgpr": 80,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          }
+        ],
+        "uncovered_ms": 33.90732
+      },
+      "control": {
+        "dispatches": 5860,
+        "kernel_sum_ms": 518.222733,
+        "kernel_trace_sha256": "e473e1c046b073858900da9b27ffade124dc081efe408bf2a713849ed57b0a98",
+        "kernel_union_ms": 518.222733,
+        "marker_trace_sha256": "050824045be76cccdff5c4dca9516b1a782edc776ad76950ad81a2684f6c13c3",
+        "marker_wall_ms": 562.329843,
+        "q5_dispatches": 240,
+        "q5_kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_col4_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+        "q5_ms": 55.525798,
+        "q5_shapes": [
+          {
+            "count": 224,
+            "grid": [
+              163840,
+              1,
+              1
+            ],
+            "lds_bytes": 512,
+            "scratch_bytes": 0,
+            "vgpr": 80,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          },
+          {
+            "count": 12,
+            "grid": [
+              327680,
+              1,
+              1
+            ],
+            "lds_bytes": 512,
+            "scratch_bytes": 0,
+            "vgpr": 80,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          },
+          {
+            "count": 4,
+            "grid": [
+              32768,
+              1,
+              1
+            ],
+            "lds_bytes": 512,
+            "scratch_bytes": 0,
+            "vgpr": 80,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          }
+        ],
+        "uncovered_ms": 44.10711
+      },
+      "delta_percent": {
+        "kernel_sum_ms": -0.4502965330160369,
+        "marker_wall_ms": -2.228821599283315,
+        "q5_ms": -11.167025460849755
+      }
+    },
+    "8": {
+      "candidate": {
+        "dispatches": 945,
+        "kernel_sum_ms": 129.853602,
+        "kernel_trace_sha256": "f3ce64cd2963357be22c6e642575e7b11272a5951c34769de464a742229d0133",
+        "kernel_union_ms": 129.853602,
+        "marker_trace_sha256": "79a1dc46d095bc7b40c21afb050f0b60e1261b6b705af2080b7ecfc9d5ea5281",
+        "marker_wall_ms": 136.559774,
+        "q5_dispatches": 60,
+        "q5_kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+        "q5_ms": 12.508638,
+        "q5_shapes": [
+          {
+            "count": 56,
+            "grid": [
+              81920,
+              1,
+              1
+            ],
+            "lds_bytes": 1024,
+            "scratch_bytes": 0,
+            "vgpr": 136,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          },
+          {
+            "count": 3,
+            "grid": [
+              163840,
+              1,
+              1
+            ],
+            "lds_bytes": 1024,
+            "scratch_bytes": 0,
+            "vgpr": 136,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          },
+          {
+            "count": 1,
+            "grid": [
+              32768,
+              1,
+              1
+            ],
+            "lds_bytes": 512,
+            "scratch_bytes": 0,
+            "vgpr": 80,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          }
+        ],
+        "uncovered_ms": 6.706172
+      },
+      "control": {
+        "dispatches": 945,
+        "kernel_sum_ms": 131.492109,
+        "kernel_trace_sha256": "161618d47263abba93de688799a8a336de7ab3b9a63aca09c84646bc04d5810b",
+        "kernel_union_ms": 131.492109,
+        "marker_trace_sha256": "fe1b341deed3badde7476ff6b92a7e2cac1194f489cbff513e8dab04c96576da",
+        "marker_wall_ms": 138.234364,
+        "q5_dispatches": 60,
+        "q5_kernel": "void (anonymous namespace)::q5_k_t16_dense_rowtile_col4_gemv_kernel<...>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+        "q5_ms": 14.305237,
+        "q5_shapes": [
+          {
+            "count": 56,
+            "grid": [
+              163840,
+              1,
+              1
+            ],
+            "lds_bytes": 512,
+            "scratch_bytes": 0,
+            "vgpr": 80,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          },
+          {
+            "count": 3,
+            "grid": [
+              327680,
+              1,
+              1
+            ],
+            "lds_bytes": 512,
+            "scratch_bytes": 0,
+            "vgpr": 80,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          },
+          {
+            "count": 1,
+            "grid": [
+              32768,
+              1,
+              1
+            ],
+            "lds_bytes": 512,
+            "scratch_bytes": 0,
+            "vgpr": 80,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          }
+        ],
+        "uncovered_ms": 6.742255
+      },
+      "delta_percent": {
+        "kernel_sum_ms": -1.246087702494758,
+        "marker_wall_ms": -1.2114136829247446,
+        "q5_ms": -12.559029955253454
+      }
+    }
+  },
+  "performance_claim": true,
+  "physical_host": "gfx1151",
+  "production_correctness": {
+    "all_eight_gates_passed": true,
+    "bundle_path": "benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-production-correctness.json",
+    "bundle_sha256": "b43cf46d20b7c80fb9c80647caeeecd9dea011d10d378acce3d8cf0e8257a21f",
+    "inherited_numerical_reason": "col8 is BF16-bit exact to the registered col4 parent for rows2-8"
+  },
+  "schema_version": 1,
+  "serving": {
+    "c32_live_admission_during_first": true,
+    "candidate_packet_passed": true,
+    "candidate_path": "/tmp/c2-gfx1151-hwqueue-v2/task20-q5-col8-final/serving-v3/result.json",
+    "candidate_sha256": "f501c815948a90c4c4a1c9c6d9a61b8937b18a371810ddbf05ddb92b3f14f947",
+    "control_paths": [
+      {
+        "path": "/tmp/c2-gfx1151-hwqueue-v2/runs/6d33fa5349f18692be40bcf8be7191bf5e196592/fp16-production/hwq-2/core/core-c17-c32-20260823d-block00/result.json",
+        "sha256": "f852c799dae7f09049f353c29d97cc0ea0293ceb8d4ca5d733431907b9b7fdd4"
+      },
+      {
+        "path": "/tmp/c2-gfx1151-hwqueue-v2/runs/6d33fa5349f18692be40bcf8be7191bf5e196592/fp16-production/hwq-2/core/core-c17-c32-20260823d-block01/result.json",
+        "sha256": "677f05edce3bc3936fa42a47b6cc7960a23614b1ba1aeafa2a7635777a141161"
+      }
+    ],
+    "widths": {
+      "17": {
+        "candidate_median_tok_s": 11.084390357888044,
+        "candidate_samples_tok_s": [
+          11.099456750401412,
+          11.084390357888044,
+          11.059188904931283
+        ],
+        "control_block_medians_tok_s": [
+          11.039520965819406,
+          11.042531476600583
+        ],
+        "control_median_tok_s": 11.041026221209995,
+        "control_passed": true,
+        "delta_percent": 0.3927545846666547,
+        "memory_peak_delta_gib": 20.118846893310547,
+        "repeat_determinism_passed": true,
+        "route_ok": true,
+        "serial_fallback": [
+          false
+        ]
+      },
+      "32": {
+        "candidate_median_tok_s": 10.69633931383601,
+        "candidate_samples_tok_s": [
+          10.69633931383601,
+          10.690145760726836,
+          10.801200407153033
+        ],
+        "control_block_medians_tok_s": [
+          10.270448683372363,
+          10.80120943469495
+        ],
+        "control_median_tok_s": 10.535829059033656,
+        "control_passed": true,
+        "delta_percent": 1.5234705679353144,
+        "memory_peak_delta_gib": 23.540721893310547,
+        "repeat_determinism_passed": true,
+        "route_ok": true,
+        "serial_fallback": [
+          false
+        ]
+      }
+    }
+  },
+  "software": {
+    "compiler": "clang 23.0.0git aa451e1f + PATCHED:440716f8",
+    "rocm": "HIP 7.15.0"
+  },
+  "source_commit": "cdfdf0b5c47795b485e3b0e1d4f990a8a65d8606",
+  "status": "retained_default_scoped",
+  "strict_correctness": {
+    "actual_rows8": [
+      {
+        "candidate_median_ms": 0.1469751000404358,
+        "control_median_ms": 0.17561570405960084,
+        "delta_percent": -16.308680463704395,
+        "layer": 0,
+        "mismatches": 0,
+        "samples": 31,
+        "sha256": "59490bd47237e7f73e1fd0d7363006cbfc8b04e78f11ebb197fb156f9fedc6ca",
+        "wins": 31
+      },
+      {
+        "candidate_median_ms": 0.15101079940795897,
+        "control_median_ms": 0.17986079454421997,
+        "delta_percent": -16.040179967718327,
+        "layer": 1,
+        "mismatches": 0,
+        "samples": 31,
+        "sha256": "6b73703a0e5796eb21f6eac0bbad160f47a8524d3f2955776498249bade57639",
+        "wins": 31
+      },
+      {
+        "candidate_median_ms": 0.14724719524383545,
+        "control_median_ms": 0.1758599042892456,
+        "delta_percent": -16.270172078764134,
+        "layer": 2,
+        "mismatches": 0,
+        "samples": 31,
+        "sha256": "717624622d1d8b527d123b4a3c438a9eb5cb1c44ea472d5ca273870c539fd703",
+        "wins": 31
+      }
+    ],
+    "all_bf16_exact": true,
+    "dispatch_backend_nodes_passed": 6,
+    "focused_nodes_passed": 16
+  }
+}

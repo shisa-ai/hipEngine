@@ -152,8 +152,12 @@ Current retained state:
 - cache-only queue2 c8/c17/c32 profiling measures 138.234/360.999/562.330 ms
   marked wall. c32 is near-linear at +1.69% over four c8 groups; c17 pays a
   +30.59% c1-tail premium over two c8 groups. Q4 qmicro dual rowtile8 owns
-  242.346 ms / 43.10% of c32 wall and is the first tuning target, followed by
-  Q5 rowtile and Q4 split-weight tail.
+  242.346 ms / 43.10% of c32 wall. Paired-Q and launch-bound candidates are
+  rejected and removed; and
+- the next ranked exact Q5 col8 rowtile is retained for three gfx1151 Qwen3.8
+  shapes. Q5 marked c8/c17/c32 time improves 12.56%/13.05%/11.17%, complete
+  marker wall 1.21%/1.95%/2.23%, production serving reaches 11.084/10.696
+  tok/s, and c13 lifecycle/memory close. Q4 split-weight tail is next.
 
 Primary retained evidence:
 [`FP16 serving correctness`](../benchmarks/results/2026-08-23-gfx1151-qwen38-fp16-serving-correctness-bundle-v3.json),
@@ -163,6 +167,7 @@ Primary retained evidence:
 [`hardware-queue context/graph/prefix`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-context-graph-prefix-matrix.json),
 [`hardware-queue decision`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-policy-decision.json),
 [`queue2 c8/c17/c32 owner profile`](../benchmarks/results/2026-08-24-gfx1151-qwen38-queue2-c8-c17-c32-owner-profile.json),
+[`gfx1151 Q5 col8 rowtile`](../benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-retained.json),
 [`gfx1151 physical widths`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-physical-widths.json),
 [`packed prefill`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-packed-prefill-c17.json),
 [`direct resident state`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json), and
