@@ -153,6 +153,23 @@ def test_profile_command_wraps_only_final_child(tmp_path: Path) -> None:
     assert command.count("scripts/gguf_continuous_owner_profile_child.py") == 1
 
 
+def test_queue_observation_finds_nested_rocprof_output(tmp_path: Path) -> None:
+    trace = tmp_path / "trace" / "host"
+    trace.mkdir(parents=True)
+    (trace / "123_kernel_trace.csv").write_text(
+        '"Kind","Queue_Id","Kernel_Name"\n'
+        '"KERNEL_DISPATCH",1,"kernel_a"\n'
+        '"KERNEL_DISPATCH",3,"kernel_b"\n',
+        encoding="utf-8",
+    )
+
+    observation = SCRIPT._trace_queue_observation(tmp_path / "trace")
+
+    assert observation["observed"] is True
+    assert observation["runtime_queue_ids"] == [1, 3]
+    assert observation["runtime_queue_count"] == 2
+
+
 def test_cache_only_validation_rejects_mutation_or_compiler_activity(tmp_path: Path) -> None:
     cache = tmp_path / "cache"
     cache.mkdir()
