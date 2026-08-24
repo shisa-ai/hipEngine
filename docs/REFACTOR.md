@@ -1795,6 +1795,20 @@ shorter-horizon audit establishes a lower break-even.
   strict fallback. Do not remove rollback coverage or restore metadata without
   restoring payload bytes.
 
+## External-DMS serving control readbacks
+
+- Correctness-first `exact_budget` prefill reads all external-linear logits to
+  host, deterministically ranks them, and uploads the final device mask. Decode
+  also synchronizes after all 16 full-attention layers and reads 64 decision
+  bytes before host metadata finalization. Neither path retains dense KV, but
+  both are production-speed debt and prevent graph-owned control.
+- Removal trigger: implement bounded deterministic per-layer/head device ranking
+  plus device-resident decode live-count/position/eviction finalization. Preserve
+  the current host paths only as strict diagnostic fallbacks until exact mask,
+  rollback, c1-c32 lifecycle, frozen-profile quality, and profiler gates pass.
+  Remove their positive runtime selection once the device owner survives one
+  release window.
+
 ## Cleanup Ledger
 
 | Area | Debt | Current status | Removal trigger |

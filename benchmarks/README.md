@@ -94,7 +94,7 @@ llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hi
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 ## Current default notes
-Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). Exact Qwen3.8-27B `Q4_K_M` frozen W8192 external DMS passes source-disjoint four-category finals at 32K (**max KL 0.003430, 100% top-1, 1.599688x live CR**) and 128K (**max KL 0.001062, 100% top-1, 1.882225x live CR, 3.750 GiB payload saved**). It remains default-off pending c1-c32 lifecycle/soak, sampled memory controls, and same-host performance. [`DMS evidence`](../docs/DMS.md).
+Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). Exact Qwen3.8-27B `Q4_K_M` frozen W8192 external DMS passes source-disjoint four-category finals at 32K (**max KL 0.003430, 100% top-1, 1.599688x live CR**) and 128K (**max KL 0.001062, 100% top-1, 1.882225x live CR, 3.750 GiB payload saved**). Grouped-GQA improves DMS decode **2.04x/2.61x** at 32K/128K, but 128K DMS remains **2.61x slower than dense**. It stays default-off pending performance, real c1-c32 lifecycle/soak, and sampled memory controls. [`DMS evidence`](../docs/DMS.md).
 ## Where detailed evidence lives
 
 | Need | Source |

@@ -43,7 +43,7 @@ The normative KV ABI and broader storage roadmap remain in
 | What candidate passed? | **CR2/window256:** max KL `0.009691`, 100% top-1, 1.54293x observed total live-cell compression on 768-token heldouts. |
 | Did CR4 or CR8 pass? | **No.** Their max KL values were `0.08908` and `0.24993`, above the `0.05` outer floor. |
 | Does this already save serving memory? | **Yes for the explicit c1 post-prefill owner:** frozen W8192 stores 4.250 GiB versus 8.000 GiB dense-equivalent BF16 payload at 128K, saving 3.750 GiB. Full production capacity qualification remains open because prefill still has a dense peak and same-host sampled controls are missing. |
-| Can it become faster than dense decode? | **Plausibly at long context, but not yet measured.** Compact attention scans fewer rows; the production GPU predictor/pack/attention path must make its overhead smaller than that saving. |
+| Can it become faster than dense decode? | **Not yet.** Grouped-GQA compact attention makes DMS decode 2.04x/2.61x faster than its parent at 32K/128K, but retained 128K DMS is still 2.61x slower than matched dense decode (359.21 vs 137.70 ms/token). |
 | Is it quantization-independent? | The BF16 sidecar representation is not tied to GGUF storage, but the current metadata and evidence are intentionally bound to one exact Q4_K_M file. Every additional quant requires calibration and qualification. |
 | Is it on `origin/main`? | Not as of this campaign snapshot. The implementation is committed on branch `fastdms`. |
 
@@ -63,8 +63,8 @@ The normative KV ABI and broader storage roadmap remain in
 | Bounded split-K compact attention | Implemented, primitive-qualified, and executed by explicit c1 at 128K/256K |
 | Normal resident-session DMS selection | Integrated for explicit c1 exact-artifact use; public `LLM.generate()` selection open |
 | Sole-owner no-dense-shadow GGUF decode | Integrated; dense KV is temporary during correctness-first prefill and released after pack |
-| Allocator-visible production savings | Partial: c1 tracked residency drops 4.592/7.813 GiB at 128K/256K; full P7 controls open |
-| Serving throughput and profiler evidence | Integrated diagnostic timings measured; no comparator or performance claim |
+| Allocator-visible production savings | Partial: frozen W8192 saves 3.750 GiB BF16 payload at c1 128K; sampled/same-host P7 controls open |
+| Serving throughput and profiler evidence | Grouped-GQA producer retained: 3.36x 128K leaf and 2.04x/2.61x DMS decode wins at 32K/128K; DMS still slower than dense |
 | Integrated c1-c32 lifecycle and long soak | Open |
 | Long-context-stable sidecar | Qualified at 32K and 128K: final max KL 0.003430/0.001062, 100% top-1, 1.599688x/1.882225x CR |
 | Portable cross-host sidecar package | Open |
@@ -719,7 +719,7 @@ focused-repair policy in [`TESTING.md`](TESTING.md).
   near-exact no-evict control. The frozen W8192 sidecar now passes the binding
   source-disjoint 32K and 128K dense-teacher gates; sampled process/device peak,
   same-host memory controls, and bounded streaming-prefill peak remain open.
-- No DMS throughput, latency, TTFT, ITL, or E2E performance claim exists.
+- A same-protocol c1 decode-latency claim exists for the grouped-GQA win; no DMS throughput, TTFT, serving ITL/SLO, or E2E product claim exists.
 - No long c1/c8 soak or integrated c1-c32 request lifecycle is qualified.
 - No production serving `rocprofv3` trace proves the final kernel route.
 - Prefix sharing and speculative spans intentionally fail closed.
@@ -782,9 +782,10 @@ compressed codec requires its own artifact-specific quality campaign.
 
 ## Can DMS make decode faster?
 
-**Potentially yes at long context, but it is not automatic.** Dense attention
-must read and score every live K/V row. CR2 asymptotically halves those rows, so
-a memory-bound compact attention kernel can reduce full-attention scan time.
+**Potentially yes at long context, but it is not automatic—and the current
+route is still slower than dense.** Dense attention must read and score every
+live K/V row. CR2 asymptotically halves those rows, so a memory-bound compact
+attention kernel can reduce full-attention scan time.
 The sidecar adds only 327,680 weight MACs plus 64 biases per generated token,
 but a host projection, device round trip, serial compaction, poor layout, or
 extra launch can easily erase the saving.
@@ -799,21 +800,34 @@ whole_step_speedup = 1 / ((1 - f_attention)
 
 `f_attention` is the measured dense full-attention share. Because only one in
 four layers is full attention in this hybrid model, whole-model speedup will be
-smaller than the compact-attention speedup. At contexts at or below window256,
-there is no scan reduction and the predictor is pure overhead; production
-policy should remain dense below a measured break-even unless capacity forces
-otherwise.
+smaller than the compact-attention speedup.
+
+The retained grouped-GQA producer scans each compact K/V split once for all six
+query heads instead of six times. At the qualified 128K geometry its leaf median
+falls 46.786 -> 13.920 ms/layer (3.361x); rocprof records 1,092 local256
+workgroups, 16 VGPR, 9,216-byte LDS, and zero scratch. Full-model median DMS
+decode falls 391.68 -> 191.90 ms/token at 32K (2.041x) and 936.04 -> 359.21
+ms/token at 128K (2.606x), with all frozen four-category quality gates passing.
+However, matched dense 128K decode is still 137.70 ms/token, so DMS remains
+2.609x slower. This is a retained DMS-path win and a concrete performance
+blocker, not a production speedup claim. Evidence:
+[`2026-08-24-gfx1151-qwen38-dms-grouped-gqa-decode.json`](../benchmarks/results/2026-08-24-gfx1151-qwen38-dms-grouped-gqa-decode.json).
+
+At contexts at or below the protected window, there is no scan reduction and
+the predictor is pure overhead; production policy should remain dense below a
+measured break-even unless capacity forces otherwise.
 
 Performance goals:
 
-1. Move sidecar projection and decision generation to a registered gfx1151/
-   gfx1100 GPU path; eliminate host decode projection and copies.
+1. [x] Move sidecar projection and decision generation to a registered gfx1151/
+   gfx1100 GPU path; eliminate host decode projection.
 2. Fuse or co-schedule normalized-hidden projection, thresholding, append, and
    metadata updates where correctness permits.
-3. Make grouped-GQA compact attention consume `KVLiveSpans` directly and scan
-   only true live rows.
-4. Demonstrate kernel time scaling with measured live counts under
-   `rocprofv3`, with expected kernel names and no unexpected dense attention.
+3. [x] Make grouped-GQA compact attention consume compact live metadata, scan
+   only true live rows, and share K/V reads across query heads.
+4. [ ] Demonstrate serving-kernel time scaling with measured live counts under
+   `rocprofv3`; retained leaf tracing has expected grouped producer/reducer names,
+   but a full serving trace remains open.
 5. Measure c1 and serving-shaped c8/c32 at 8K/32K/128K/256K against true dense
    BF16 and applicable dense INT8 baselines on the same host.
 6. Require non-regressive E2E/ITL at the selected activation threshold. If short
