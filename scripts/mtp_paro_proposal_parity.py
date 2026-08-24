@@ -23,6 +23,11 @@ from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
+from hipengine.kernels.hip_gfx1100.linear.lm_head import (
+    build_lm_head,
+    lm_head_argmax_stage1_blocks,
+    w8a16_lm_head_argmax_rows_bf16,
+)
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import w8a16_linear_bf16_f32_out
 from hipengine.loading import load_weight_index, qwen35_paro_config_from_hf
 from hipengine.loading.qwen35_paro import normalize_qwen35_weight_name
@@ -106,6 +111,7 @@ def run(
     tail_tokens: int = 4,
     reference_device: str = "cpu",
     root_token_override: int | None = None,
+    native_capture_out: Path | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     suite = _load_prompt_suite(prompts_file)
@@ -124,6 +130,10 @@ def run(
     native_hidden_bits: np.ndarray
     native_logits: np.ndarray
     native_token: int
+    rescored_native_token: int
+    rescored_native_value: float
+    fresh_rescored_native_token: int
+    fresh_rescored_native_value: float
     capture_buf = None
     with Qwen35ParoResidentSession(
         runner,
@@ -192,6 +202,77 @@ def run(
                     )
                 native_hidden_bits = proposer.read_final_hidden_bf16()
                 native_token = int(proposer.current.token)
+                w8a16_lm_head_argmax_rows_bf16(
+                    proposer.final_hidden_buf.ptr,
+                    int(session.lm_head_weight.tensor.ptr),
+                    int(session.lm_head_scale.tensor.ptr),
+                    proposer.block_values_buf.ptr,
+                    proposer.w8_block_indices_buf.ptr,
+                    proposer.w8_out_index_buf.ptr,
+                    proposer.out_value_buf.ptr,
+                    1,
+                    hidden,
+                    int(session.vocab_size),
+                    threads=int(session.lm_head_threads),
+                    library=proposer.lm_lib,
+                    runtime=session.runtime,
+                )
+                session.runtime.device_synchronize()
+                rescored_index_host = np.empty((1,), dtype=np.int32)
+                rescored_value_host = np.empty((1,), dtype=np.float32)
+                copy_device_to_host(
+                    host_array_ptr(rescored_index_host),
+                    DeviceBuffer(proposer.w8_out_index_buf.ptr, rescored_index_host.nbytes),
+                    rescored_index_host.nbytes,
+                    runtime=session.runtime,
+                )
+                copy_device_to_host(
+                    host_array_ptr(rescored_value_host),
+                    DeviceBuffer(proposer.out_value_buf.ptr, rescored_value_host.nbytes),
+                    rescored_value_host.nbytes,
+                    runtime=session.runtime,
+                )
+                rescored_native_token = int(rescored_index_host[0])
+                rescored_native_value = float(rescored_value_host[0])
+                fresh_buffers = []
+                try:
+                    stage1_blocks = lm_head_argmax_stage1_blocks(
+                        int(session.vocab_size), threads=int(session.lm_head_threads)
+                    )
+                    fresh_bv = malloc(stage1_blocks * 4, runtime=session.runtime)
+                    fresh_bi = malloc(stage1_blocks * 4, runtime=session.runtime)
+                    fresh_idx = malloc(4, runtime=session.runtime)
+                    fresh_val = malloc(4, runtime=session.runtime)
+                    fresh_buffers.extend((fresh_bv, fresh_bi, fresh_idx, fresh_val))
+                    w8a16_lm_head_argmax_rows_bf16(
+                        proposer.final_hidden_buf.ptr,
+                        int(session.lm_head_weight.tensor.ptr),
+                        int(session.lm_head_scale.tensor.ptr),
+                        fresh_bv.ptr,
+                        fresh_bi.ptr,
+                        fresh_idx.ptr,
+                        fresh_val.ptr,
+                        1,
+                        hidden,
+                        int(session.vocab_size),
+                        threads=int(session.lm_head_threads),
+                        library=build_lm_head(load=True),
+                        runtime=session.runtime,
+                    )
+                    session.runtime.device_synchronize()
+                    fresh_idx_host = np.empty((1,), dtype=np.int32)
+                    fresh_val_host = np.empty((1,), dtype=np.float32)
+                    copy_device_to_host(
+                        host_array_ptr(fresh_idx_host), fresh_idx, runtime=session.runtime
+                    )
+                    copy_device_to_host(
+                        host_array_ptr(fresh_val_host), fresh_val, runtime=session.runtime
+                    )
+                    fresh_rescored_native_token = int(fresh_idx_host[0])
+                    fresh_rescored_native_value = float(fresh_val_host[0])
+                finally:
+                    for buffer in reversed(fresh_buffers):
+                        free(buffer, runtime=session.runtime)
                 w8a16_linear_bf16_f32_out(
                     proposer.final_hidden_buf.ptr,
                     int(session.lm_head_weight.tensor.ptr),
@@ -227,6 +308,36 @@ def run(
         f"[parity] target/native capture complete root={root_token} native={native_token}",
         flush=True,
     )
+    if native_capture_out is not None:
+        native_capture_out.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(
+            native_capture_out,
+            prompt_tokens=np.asarray(prompt_tokens, dtype=np.int64),
+            target_hidden_bits=target_hidden_bits,
+            native_hidden_bits=native_hidden_bits,
+            native_logits=native_logits,
+            root_token=np.asarray([root_token], dtype=np.int64),
+            sampled_root_token=np.asarray([sampled_root_token], dtype=np.int64),
+            native_token=np.asarray([native_token], dtype=np.int32),
+            rescored_native_token=np.asarray([rescored_native_token], dtype=np.int32),
+            fresh_rescored_native_token=np.asarray([fresh_rescored_native_token], dtype=np.int32),
+            tail_start=np.asarray([tail_start], dtype=np.int64),
+        )
+        return {
+            "schema": "hipengine.paro_mtp_proposal_native_capture.v1",
+            "status": "native_captured",
+            "performance_claim": False,
+            "model": str(model),
+            "prompt": prompt_name,
+            "root_token": root_token,
+            "sampled_root_token": sampled_root_token,
+            "native_token": native_token,
+            "rescored_native_token": rescored_native_token,
+            "fresh_rescored_native_token": fresh_rescored_native_token,
+            "native_top8": _stable_topk(native_logits, 8),
+            "capture": str(native_capture_out),
+            "seconds": time.perf_counter() - started,
+        }
     import torch
     from scripts.mtp_torch_proposal_smoke import _advance, _rope_tables
 
@@ -286,6 +397,11 @@ def run(
         "sampled_root_token": sampled_root_token,
         "root_token_override": root_token_override,
         "native_token": native_token,
+        "rescored_native_token": rescored_native_token,
+        "rescored_native_value": rescored_native_value,
+        "fresh_rescored_native_token": fresh_rescored_native_token,
+        "fresh_rescored_native_value": fresh_rescored_native_value,
+        "lm_head_threads": int(session.lm_head_threads),
         "native_top8": native_top8,
         "torch_w8_reference_top8": reference_top8,
         "fused_native_top1_matches_materialized_native_w8": native_token == native_top8[0],
@@ -316,6 +432,7 @@ def main() -> int:
     parser.add_argument("--tail-tokens", type=int, default=4)
     parser.add_argument("--reference-device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--root-token", type=int, help="explicit fixture root when sampler diagnostics are unavailable")
+    parser.add_argument("--native-capture-out", type=Path, help="write NPZ and stop before importing torch")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     names = [
@@ -335,6 +452,7 @@ def main() -> int:
             tail_tokens=int(args.tail_tokens),
             reference_device=args.reference_device,
             root_token_override=args.root_token,
+            native_capture_out=args.native_capture_out,
         )
         for name in names
     ]
@@ -354,7 +472,7 @@ def main() -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"status": result["status"], "prompts": names}, sort_keys=True))
-    return 0 if result["status"] == "passed" else 1
+    return 0 if result["status"] in {"passed", "native_captured"} else 1
 
 
 if __name__ == "__main__":

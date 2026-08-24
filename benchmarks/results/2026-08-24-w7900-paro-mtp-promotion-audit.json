@@ -10,7 +10,7 @@
       "status": "failed_binding",
       "commit": "4fdf85159",
       "artifact": "benchmarks/results/2026-08-24-w7900-paro-mtp-native-reference-parity.json",
-      "evidence": "hidden max/mean abs 0.09375/0.006054; fused native W8 top-1 0 != materialized native top-1 64; native/CPU W8 top-8 unequal"
+      "evidence": "corrected two-process evaluator: native/reference top-1 equal at 71093; hidden max/mean abs 0.09375/0.007260; top-8 differs at rank 8 (248068 vs 2). Earlier fused/sampler mismatch was evaluator-invalid due mixed ROCm environments."
     },
     "three_repeat_d24": {
       "status": "blocked_by_native_reference_parity",
