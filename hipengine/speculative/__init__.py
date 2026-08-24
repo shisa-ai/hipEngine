@@ -52,6 +52,16 @@ from hipengine.speculative.dflash_drafter import (
     dflash_silu_mul_bf16,
 )
 from hipengine.speculative.generic import TreeDraftRequest, compile_tree_draft
+from hipengine.speculative.frontier import (
+    CandidateGraph,
+    ProviderAttachment,
+    ProviderCatchupMode,
+    SpecPlanReason,
+    SpecRequestPlan,
+    SpecTransactionMode,
+    SpeculativeCapability,
+    TargetFrontier,
+)
 from hipengine.speculative.mtp import (
     MTP_CHAIN_CANDIDATE_BUDGETS,
     MissingMtpWeightsError,
@@ -207,6 +217,14 @@ __all__ = [
     "compile_chain_draft",
     "TreeDraftRequest",
     "compile_tree_draft",
+    "CandidateGraph",
+    "ProviderAttachment",
+    "ProviderCatchupMode",
+    "SpecPlanReason",
+    "SpecRequestPlan",
+    "SpecTransactionMode",
+    "SpeculativeCapability",
+    "TargetFrontier",
     "DFLASH_CHAIN_CANDIDATE_BUDGETS",
     "DFlashChainCompiler",
     "DFlashDraftKVAppendPlan",
