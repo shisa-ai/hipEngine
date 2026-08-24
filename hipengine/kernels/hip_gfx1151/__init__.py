@@ -1166,6 +1166,10 @@ GGUF_DIRECT_RESIDENT_LINEAR_STATE = True
 # Same-length full-prompt rows may enter one native prefill call. This is scoped
 # independently from decode widths and falls back before mutation on misses.
 GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8
+# SPECDEC2 S3 admits construction of the dense NextN c1 staged adapter on
+# gfx1151. Arithmetic/default promotion remains gated by the S3 correctness and
+# complete-wall packet; this capability only exposes the adapter and AR fallback.
+GGUF_SPECDEC2_MTP2_C1 = True
 # F4's clean all-candidate, all-workload production gate selects fair:256 at
 # +5.90% exact mixed-load SLO goodput over fair:128. Scope the default to the
 # measured Q4_K_M generator registry entry; other quants/backends retain their
@@ -2325,6 +2329,7 @@ __all__ = [
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
+    "GGUF_SPECDEC2_MTP2_C1",
     "GGUF_FUSED_LINEAR_STATE_TRANSFER",
     "GGUF_DIRECT_RESIDENT_LINEAR_STATE",
     "GGUF_C2_PACKED_PREFILL_MAX_ROWS",

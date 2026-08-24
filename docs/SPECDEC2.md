@@ -377,10 +377,11 @@ phase while the prior exit gate is red or its logical unit is uncommitted.
 - [x] Defer gfx1100 qualification to S7.
 - [x] Record the legacy whole-request speculative route as migration debt in
       `REFACTOR.md`.
-- [ ] Before the first GPU/kernel edit, run the kernel lineage check and inspect
-      any drift in touched parent families.
-- [ ] Before the first GPU gate, confirm ROCm/device identity and acquire the
-      repository GPU-exclusive lock/lease.
+- [x] Before the first GPU/kernel edit, run the kernel lineage check and inspect
+      drift: 11/18 references drift, while the directly relevant Qwen chain/tree
+      source is clean at `b95eaa5`; no drifted body is copied implicitly.
+- [x] Confirm ROCm/device identity as Radeon 8060S/`gfx1151`; GPU work uses the
+      repository exclusive lock and no competing model process was observed.
 
 ### Exit gate
 
@@ -528,7 +529,8 @@ lifecycle proof and no GPU implementation.
 
 ### S3.1 Adapter
 
-- [ ] Resolve a gfx1151 dense GGUF MTP2 capability at model/session construction.
+- [x] Resolve a package-gated gfx1151 dense GGUF MTP2 c1 capability through the
+      resident model plugin; gfx1100 remains absent and falls to K0.
 - [ ] Wrap the existing exact NextN provider as prepare/propose/commit/rollback
       stages without changing arithmetic.
 - [ ] Wrap N1/N2/N3 target/accept/selected-commit components as one-cycle target

@@ -4795,6 +4795,7 @@ class _GGUFResidentLoopRow:
     prefix_snapshot_hit: bool = False
     prefix_admission_fallback: bool = False
     prefix_fallback_reason: str | None = None
+    mtp2_candidate_budget: int = 0
 
 
 def _compact_live_execution_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
@@ -4923,6 +4924,8 @@ class Qwen35GGUFResidentModelRunner:
         self._last_execution_manifest: dict[str, Any] = {}
         self._last_physical_group_plan: dict[str, Any] = {}
         self._recent_completed_routes: deque[dict[str, Any]] = deque(maxlen=1024)
+        self._mtp2_adapter: Any | None = None
+        self._mtp2_adapter_resolved = False
         self._closed = False
         self._graph_handle_refs: dict[int, weakref.ReferenceType[Any]] = {}
         self._graph_handle_buckets: dict[int, str] = {}
@@ -5899,6 +5902,120 @@ class Qwen35GGUFResidentModelRunner:
         # transition so the scheduler can publish an empty completed output.
         return 1
 
+    def _resolved_mtp2_adapter(self):
+        if self._mtp2_adapter is not None:
+            return self._mtp2_adapter
+        if self._mtp2_adapter_resolved:
+            return None
+        self._mtp2_adapter_resolved = True
+        enabled = bool(
+            backend_package_capability(
+                self.generator.backend,
+                "GGUF_SPECDEC2_MTP2_C1",
+                False,
+            )
+        )
+        if not enabled or not self.generator.supports_speculative_mtp:
+            return None
+        try:
+            config, _block_id, _required = _gguf_mtp_required_tensor_names(
+                self.generator.weight_index
+            )
+        except Exception:
+            return None
+        if config.is_moe:
+            return None
+        from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+
+        self._mtp2_adapter = Qwen35GGUFMTP2Adapter(
+            self,
+            enabled=True,
+            target_verify_mode=_gguf_mtp_server_target_verify_mode(),
+            candidate_budget=min(3, _gguf_mtp_server_candidate_budget()),
+            quant="gguf_q4_k_m",
+        )
+        return self._mtp2_adapter
+
+    def register_speculative_request(
+        self,
+        request_id: int,
+        candidate_budget: int,
+    ) -> None:
+        row = self._row(request_id)
+        row.mtp2_candidate_budget = max(1, int(candidate_budget))
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is not None:
+            adapter.register_request(request_id, candidate_budget)
+
+    def speculative_desired_candidate_count(self, request: GenerationRequest) -> int:
+        return min(3, max(1, int(request.max_tokens)))
+
+    def speculative_capability(self, request_semantics):
+        adapter = self._resolved_mtp2_adapter()
+        return None if adapter is None else adapter.capability(request_semantics)
+
+    def speculative_claims_fit(self, plan) -> bool:
+        adapter = self._resolved_mtp2_adapter()
+        return bool(adapter is not None and adapter.claims_fit(plan))
+
+    def speculative_component_claims(self, plan):
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            raise RuntimeError("GGUF MTP2 adapter is unavailable")
+        return adapter.component_claims(plan)
+
+    def reserve_speculative_claims(self, claims):
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            raise RuntimeError("GGUF MTP2 adapter is unavailable")
+        return adapter.reserve_claims(claims)
+
+    def release_speculative_claims(self, reservation) -> None:
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            raise RuntimeError("GGUF MTP2 adapter is unavailable")
+        adapter.release_claims(reservation)
+
+    def prepare_speculative_requests(self, plan, request_semantics, *, stream=None) -> None:
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            raise RuntimeError("GGUF MTP2 adapter is unavailable")
+        adapter.prepare_requests(plan, request_semantics, stream=stream)
+
+    def propose_speculative_batch(self, plan, request_semantics, *, stream=None):
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            raise RuntimeError("GGUF MTP2 adapter is unavailable")
+        return adapter.propose_batch(plan, request_semantics, stream=stream)
+
+    def speculative_kv_live_spans_owner(self, plan) -> str:
+        return f"gguf-resident:{id(self)}:{plan.operation_id}"
+
+    def execute_target_frontier(
+        self,
+        plan,
+        frontier,
+        complete_claims,
+        *,
+        commit: bool,
+        cancelled_request_ids,
+    ):
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            raise RuntimeError("GGUF MTP2 adapter is unavailable")
+        return adapter.execute_target_frontier(
+            plan,
+            frontier,
+            complete_claims,
+            commit=commit,
+            cancelled_request_ids=cancelled_request_ids,
+        )
+
+    def rollback_speculative_cycle(self, plan, candidate_graph, error) -> None:
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is not None:
+            adapter.rollback_cycle(plan, candidate_graph, error)
+
     def register_batch(
         self,
         request_ids: Sequence[int],
@@ -6021,13 +6138,14 @@ class Qwen35GGUFResidentModelRunner:
         if not callable(prefill_batch):
             return False
         started = time.perf_counter()
+        capture_mtp2_hidden = any(row.mtp2_candidate_budget > 0 for row in rows)
         with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
             results = prefill_batch(
                 chunks,
                 sessions=[lease.session for lease in leases],
                 full_prompt_lengths=[len(chunk) for chunk in chunks],
                 return_logits=False,
-                return_hidden_seeds=False,
+                return_hidden_seeds=capture_mtp2_hidden,
             )
         result_rows = [] if results is None else list(results)
         if len(result_rows) != len(rows):
@@ -6244,6 +6362,9 @@ class Qwen35GGUFResidentModelRunner:
         if row is None:
             return
         with hip_target_arch_environment(self.generator.target_arch):
+            adapter = self._mtp2_adapter
+            if adapter is not None:
+                adapter.release_request(request_id)
             if row.native_greedy or row.native_sampled:
                 self._flush_row_owner(row)
                 output = self._native_output(row, completed)
@@ -6272,6 +6393,9 @@ class Qwen35GGUFResidentModelRunner:
             rid = int(request_id)
             row = self._rows.pop(rid, None)
             if row is not None:
+                adapter = self._mtp2_adapter
+                if adapter is not None:
+                    adapter.release_request(rid)
                 self._release_row_resources(row)
             self._outputs.pop(rid, None)
             self._completed_metadata.pop(rid, None)
@@ -6351,6 +6475,8 @@ class Qwen35GGUFResidentModelRunner:
         with hip_target_arch_environment(self.generator.target_arch):
             try:
                 self._flush_all_packed_owners()
+                if self._mtp2_adapter is not None:
+                    self._mtp2_adapter.close()
                 for row in tuple(self._rows.values()):
                     self._release_row_resources(row)
                 self._rows.clear()
@@ -6558,6 +6684,7 @@ class Qwen35GGUFResidentModelRunner:
         if (
             getattr(self, "_resident_batch_owner", None) is None
             and not _gguf_single_row_block_table_prefill_required(lease.session)
+            and row.mtp2_candidate_budget <= 0
         ):
             result = lease.session.prefill(row.prompt_ids, return_logits=False)
         else:
@@ -6576,7 +6703,7 @@ class Qwen35GGUFResidentModelRunner:
                     sessions=[lease.session],
                     full_prompt_lengths=[len(row.prompt_ids)],
                     return_logits=False,
-                    return_hidden_seeds=False,
+                    return_hidden_seeds=row.mtp2_candidate_budget > 0,
                 )
             result_list = [] if results is None else list(results)
             if len(result_list) != 1:
@@ -7057,6 +7184,14 @@ class Qwen35GGUFResidentModelRunner:
             ),
             native_compact_prefill=bool(native_compact_prefill),
         )
+        if row.mtp2_candidate_budget > 0:
+            adapter = self._resolved_mtp2_adapter()
+            if adapter is not None:
+                adapter.observe_prefill_result(
+                    row.request_id,
+                    row.prompt_ids,
+                    result,
+                )
 
     def _run_resident_fallback(self, row: _GGUFResidentLoopRow) -> None:
         if row.fallback_output is not None:
