@@ -9,6 +9,7 @@ from hipengine.generation.qwen38_gguf_profiles import (
     QWEN38_GGUF_BACKEND,
     QWEN38_GGUF_MODEL,
     QWEN38_GGUF_QUANT,
+    VERIFY_CAPTURE_PREFILL_GDN_ENV,
     qwen38_gguf_gfx1151_strict_registered,
 )
 
@@ -28,6 +29,7 @@ def test_qwen38_strict_profile_resolves_and_disables_fp16_state() -> None:
     resolved.binder(generator, resolved)
 
     assert os.environ[FP16_RECURRENT_STATE_ENV] == "0"
+    assert os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] == "1"
     assert resolved.profile is ExecutionProfile.STRICT
     assert resolved.manifest_sha256 == resolved.strict_manifest_sha256
     assert resolved.manifest["graph_policy"] == "specdec2_eager_c1"

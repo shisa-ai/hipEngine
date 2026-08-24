@@ -20280,6 +20280,146 @@ class Qwen35GGUFResidentSession:
             )
         return linear_attention_decode_paths, full_attention_decode_paths
 
+    def step_hidden_batch_native(
+        self,
+        hidden_rows_ptr: int,
+        *,
+        sessions: Sequence["Qwen35GGUFResidentSession"],
+        positions: Sequence[int],
+        output_hidden_ptr: int,
+        logits_ptr: int,
+        stream: int = 0,
+        score_output: bool = True,
+    ) -> None:
+        """Run one packed model step from caller-owned BF16 hidden rows.
+
+        This is the target-attached draft counterpart to ``step_batch_native``:
+        the caller owns token embedding/NextN fusion, while this method owns one
+        physical full-model backbone and, when requested, row-batched output
+        norm/head. State-only accept repair skips discarded scoring.
+        """
+
+        session_tuple = tuple(sessions)
+        position_tuple = tuple(int(position) for position in positions)
+        rows = len(session_tuple)
+        if rows <= 1 or rows > 8 or len(position_tuple) != rows:
+            raise ValueError("hidden batch rows must be in [2, 8] and align")
+        if int(hidden_rows_ptr) <= 0 or (
+            bool(score_output)
+            and min(int(output_hidden_ptr), int(logits_ptr)) <= 0
+        ):
+            raise ValueError("hidden batch pointers must be non-zero")
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if self._bulk_prefill_scratch is None or self._prefill_hidden_b is None:
+            raise RuntimeError("GGUF resident packed buffers are closed")
+        for session, position in zip(session_tuple, position_tuple, strict=True):
+            if not isinstance(session, Qwen35GGUFResidentSession):
+                raise TypeError("hidden batch requires resident GGUF sessions")
+            if session.runner is not self.runner or session.scratch is None:
+                raise NotImplementedError("hidden batch requires shared live sessions")
+            if int(session.position) != position:
+                raise ValueError("hidden batch positions must match session cursors")
+        slot_blocks = tuple(
+            _GGUFPackedVerifySlotBlock(
+                input_token_ids=(0,),
+                start_position=position,
+                active=True,
+            )
+            for position in position_tuple
+        )
+        max_live_count = max(position + 1 for position in position_tuple)
+        slot_capacity = _packed_ar_slot_capacity(max_live_count)
+        layout = _build_gguf_packed_verify_layout(
+            slot_blocks,
+            slot_capacity=slot_capacity,
+        )
+        runtime = self.runtime or get_hip_runtime()
+        packed_state, packed_scratch_base = self._ensure_packed_verify_workspace(
+            slot_count=rows,
+            rows=rows,
+            max_sequence_length=slot_capacity,
+            runtime=runtime,
+            stream=stream,
+        )
+        layout = _rebind_packed_verify_layout_pages(layout, packed_state)
+        self._sync_packed_decode_initial_state(
+            session_tuple,
+            layout,
+            packed_state,
+            runtime=runtime,
+            stream=stream,
+            copy_linear_state=True,
+        )
+        packed_scratch = packed_scratch_base.for_packed_verify_layout(
+            layout,
+            runtime=runtime,
+            stream=stream,
+            metadata_prepare_fn=self.runner._packed_decode_metadata_kernel(),
+        )
+        layer_types = tuple(self.runner.weights.config.layer_types)
+        if layer_types != (FULL_ATTENTION,):
+            raise NotImplementedError(
+                "hidden batch currently supports one full-attention NextN block"
+            )
+        layer_scratch = replace(
+            self._packed_full_attention_scratch_for_layer(
+                packed_scratch,
+                packed_state,
+                0,
+            ),
+            cos_table=self.scratch.cos_table,
+            sin_table=self.scratch.sin_table,
+        )
+        self.runner._run_full_attention_decode_batch_layer_rows(
+            0,
+            int(hidden_rows_ptr),
+            self._prefill_hidden_b.ptr,
+            layer_scratch,
+            stream=stream,
+            expert_sidecar=None,
+            stage_timings=None,
+            sync_stage_timings=False,
+            stage_prefix="nextn_batch_full_attn",
+            split_workspace=None,
+        )
+        if score_output:
+            gguf_rmsnorm_bf16_f32_weight(
+                self._prefill_hidden_b.ptr,
+                self.runner.weights.root("output_norm").allocation().tensor.ptr,
+                int(output_hidden_ptr),
+                rows=rows,
+                hidden_size=self.runner.hidden_size,
+                eps=self.runner.weights.config.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+            launch_gguf_linear(
+                self.runner.weights.root("lm_head"),
+                int(output_hidden_ptr),
+                int(logits_ptr),
+                rows=rows,
+                in_features=self.runner.hidden_size,
+                out_features=self.runner.vocab_size,
+                output_dtype=GGUF_OUTPUT_F32,
+                stream=stream,
+                runtime=runtime,
+            )
+        self._scatter_packed_decode_state(
+            session_tuple,
+            layout,
+            packed_state,
+            runtime=runtime,
+            stream=stream,
+            copy_full_kv=False,
+            copy_kv=True,
+            copy_linear_state=True,
+        )
+        if stream:
+            runtime.stream_synchronize(stream)
+        else:
+            runtime.device_synchronize()
+
     def step_batch_native(
         self,
         token_ids: list[int] | tuple[int, ...],

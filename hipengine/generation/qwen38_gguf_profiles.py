@@ -19,6 +19,7 @@ QWEN38_GGUF_MODEL = "qwen3_5_gguf"
 QWEN38_GGUF_BACKEND = "hip_gfx1151"
 QWEN38_GGUF_QUANT = "gguf_q4_k_m"
 FP16_RECURRENT_STATE_ENV = "HIPENGINE_GGUF_FP16_RECURRENT_STATE"
+VERIFY_CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
 
 _GDN_CHAIN_VARIANT = "bf16_c1_exact_state_rows_tloop"
 _GDN_REGISTRY_QUANT = "gguf_qwen35"
@@ -30,6 +31,7 @@ def _strict_binder(
 ) -> None:
     del generator, resolved
     os.environ[FP16_RECURRENT_STATE_ENV] = "0"
+    os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] = "1"
 
 
 def _key(profile: ExecutionProfile) -> RuntimeProfileKey:
@@ -82,6 +84,7 @@ __all__ = [
     "QWEN38_GGUF_BACKEND",
     "QWEN38_GGUF_MODEL",
     "QWEN38_GGUF_QUANT",
+    "VERIFY_CAPTURE_PREFILL_GDN_ENV",
     "qwen38_gguf_gfx1151_strict_registered",
     "register_qwen38_gguf_gfx1151_profiles",
 ]

@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
+import hipengine.generation.qwen35_gguf_mtp2 as mtp2_module
 from hipengine.generation.qwen35_gguf_mtp2 import (
     Qwen35GGUFMTP2Adapter,
     _MTP2RequestState,
@@ -50,12 +51,18 @@ class _AdapterDouble:
         self.calls.append(("rollback", args))
 
 
-def test_gfx1151_package_exposes_only_the_s3_c1_adapter_scope() -> None:
+def test_gfx1151_package_exposes_c1_and_physical_c4_adapter_scopes() -> None:
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_SPECDEC2_MTP2_C1", False
     ) is True
     assert backend_package_capability(
+        "hip_gfx1151", "GGUF_SPECDEC2_MTP2_C4", False
+    ) is True
+    assert backend_package_capability(
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_C1", False
+    ) is False
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_SPECDEC2_MTP2_C4", False
     ) is False
 
 
@@ -132,9 +139,9 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
     row.first_token_emitted = True
     capability = adapter.capability(semantics)
     assert capability is not None
-    assert capability.max_requests == 1
+    assert capability.max_requests == 4
     assert capability.max_candidates_per_request == 3
-    assert capability.max_frontier_rows == 4
+    assert capability.max_frontier_rows == 16
     assert capability.max_context_tokens == 4096
 
     target.runner = SimpleNamespace(fp16_recurrent_state=True)
@@ -179,6 +186,7 @@ def test_provider_repair_restores_and_replays_only_committed_prefix(
         request_id=7,
         provider=provider,
         provider_pool_key=None,
+        provider_group_key=(7,),
         verifier=SimpleNamespace(),
         root_hidden_buffer=SimpleNamespace(ptr=1),
         proposal_checkpoint="checkpoint",
@@ -205,6 +213,89 @@ def test_provider_repair_restores_and_replays_only_committed_prefix(
         assert actual_inputs == expected_inputs
 
 
+def test_provider_batch_repair_shares_full_accept_tail_and_rejected_root(
+    monkeypatch,
+) -> None:
+    calls = []
+
+    class Executor:
+        hidden_size = 8
+        runtime = SimpleNamespace(memcpy=lambda *args: None)
+
+        def restore_request_checkpoint(self, checkpoint):
+            calls.append(("restore", checkpoint))
+
+        def advance_state_batch_only(
+            self,
+            request_ids,
+            token_ids,
+            positions,
+            target_hidden,
+        ):
+            calls.append(
+                (
+                    "batch",
+                    tuple(request_ids),
+                    tuple(token_ids),
+                    tuple(positions),
+                    target_hidden.shape,
+                )
+            )
+
+    executor = Executor()
+    results = {
+        1: (
+            SimpleNamespace(token_id=101, position=5, hidden=SimpleNamespace(ptr=1101)),
+            SimpleNamespace(token_id=102, position=6, hidden=SimpleNamespace(ptr=1102)),
+        ),
+        2: (
+            SimpleNamespace(token_id=201, position=8, hidden=SimpleNamespace(ptr=1201)),
+            SimpleNamespace(token_id=202, position=9, hidden=SimpleNamespace(ptr=1202)),
+        ),
+    }
+    provider = SimpleNamespace(executor=executor, last_results=results)
+    states = tuple(
+        _MTP2RequestState(
+            request_id=request_id,
+            provider=provider,
+            provider_pool_key=None,
+            provider_group_key=(1, 2),
+            verifier=None,
+            root_hidden_buffer=SimpleNamespace(ptr=1),
+            proposal_checkpoint=f"checkpoint-{request_id}",
+            proposal_context=MtpProposalContext(
+                request_ids=(request_id,),
+                root_tokens=((90,) if request_id == 1 else (190,)),
+                root_positions=((5,) if request_id == 1 else (8,)),
+                target_hidden=SimpleNamespace(
+                    ptr=2000 + request_id,
+                    ndim=2,
+                    shape=(1, 8),
+                ),
+            ),
+        )
+        for request_id in (1, 2)
+    )
+    monkeypatch.setattr(
+        mtp2_module,
+        "malloc",
+        lambda nbytes, runtime: SimpleNamespace(ptr=3000, nbytes=nbytes),
+    )
+    monkeypatch.setattr(mtp2_module, "free", lambda buffer, runtime: None)
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+
+    adapter._repair_provider_states_batch(
+        states,
+        accepted_counts=(2, 0),
+        candidate_counts=(2, 2),
+    )
+
+    assert calls == [
+        ("restore", "checkpoint-2"),
+        ("batch", (1, 2), (102, 190), (7, 8), (2, 8)),
+    ]
+
+
 def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
     calls = []
     executor = SimpleNamespace(
@@ -217,10 +308,12 @@ def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
         request_id=7,
         provider=provider,
         provider_pool_key=None,
+        provider_group_key=(7,),
         verifier=SimpleNamespace(),
         root_hidden_buffer=SimpleNamespace(ptr=1),
     )
     row = SimpleNamespace(
+        first_token_emitted=True,
         lease=SimpleNamespace(
             session=SimpleNamespace(position=15, last_target_hidden="pre-root-hidden")
         ),
@@ -229,11 +322,54 @@ def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
     )
     adapter = object.__new__(Qwen35GGUFMTP2Adapter)
     adapter._states = {7: state}
+    adapter._intents = {7: 3}
+    adapter._prompt_hidden_rows = {7: np.zeros((1, 4), dtype=np.float32)}
     adapter._disabled_requests = set()
-    adapter.owner = SimpleNamespace(_row=lambda request_id: row)
+    adapter.owner = SimpleNamespace(
+        _row=lambda request_id: row,
+        _flush_row_owner=lambda owned_row: None,
+    )
     plan = SimpleNamespace(request_ids=(7,))
 
     adapter.prepare_k0(plan, (), stream=None)
 
     assert calls == [(7, 90, 15, "pre-root-hidden")]
     assert row.mtp2_k0_catchups == 1
+
+
+def test_k0_does_not_advance_provider_before_prefill_root_is_published() -> None:
+    calls = []
+    state = _MTP2RequestState(
+        request_id=7,
+        provider=SimpleNamespace(
+            executor=SimpleNamespace(
+                advance_state_only=lambda *args: calls.append(args)
+            )
+        ),
+        provider_pool_key=None,
+        provider_group_key=(7,),
+        verifier=None,
+        root_hidden_buffer=SimpleNamespace(ptr=1),
+    )
+    row = SimpleNamespace(
+        first_token_emitted=False,
+        lease=SimpleNamespace(
+            session=SimpleNamespace(position=15, last_target_hidden="prefill-hidden")
+        ),
+        slot=SimpleNamespace(generated_ids=[90]),
+        mtp2_k0_catchups=0,
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._states = {7: state}
+    adapter._intents = {7: 3}
+    adapter._prompt_hidden_rows = {7: np.zeros((1, 4), dtype=np.float32)}
+    adapter._disabled_requests = set()
+    adapter.owner = SimpleNamespace(
+        _row=lambda request_id: row,
+        _flush_row_owner=lambda owned_row: None,
+    )
+
+    adapter.prepare_k0(SimpleNamespace(request_ids=(7,)), (), stream=None)
+
+    assert calls == []
+    assert row.mtp2_k0_catchups == 0

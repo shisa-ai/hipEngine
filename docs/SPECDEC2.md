@@ -585,30 +585,34 @@ old route is a strict oracle rather than the migrated server owner.
 
 ### S4.1 Physical proposal
 
-- [ ] Batch provider proposal for C=2 and C=4 at K={1,2,3} where the provider
+- [x] Batch provider proposal for C=2 and C=4 at K={1,2,3} where the provider
       capability admits the shape.
-- [ ] Keep per-request RNG, state, positions, stop/output room, and cursors.
-- [ ] Prove proposal launch/backbone counts do not scale as one full provider
+- [x] Keep per-request RNG, state, positions, stop/output room, and cursors.
+- [x] Prove proposal launch/backbone counts do not scale as one full provider
       call per request unless a declared fallback is being measured.
-- [ ] Keep candidates device-resident through target lowering.
+- [ ] Keep candidates device-resident through target lowering. The first physical
+      foundation still materializes batched draft top-1 IDs on the host and is
+      therefore functional/default-off rather than S4-complete.
 
 ### S4.2 Physical target frontier
 
-- [ ] Implement/qualify target logical R={4,6,8,12,16} through declared physical
+- [x] Implement/qualify target logical R={4,6,8,12,16} through declared physical
       buckets.
-- [ ] Preserve root/candidate parent topology and per-request ancestor attention.
-- [ ] Implement parent-indexed Conv/GDN candidate recurrence.
-- [ ] Keep per-request `KVLiveSpans` and provisional KV ownership.
+- [x] Preserve root/candidate parent topology and per-request ancestor attention.
+- [x] Implement parent-indexed Conv/GDN candidate recurrence.
+- [x] Keep per-request `KVLiveSpans` and provisional KV ownership.
 - [ ] Run one device accept/selected-state commit payload per physical group.
-- [ ] Report honest physical decomposition and weight sweeps.
+      Target verification is physical, but selected-state/KV copies still lower
+      through request-local commit calls after complete prevalidation.
+- [x] Report honest physical decomposition and weight sweeps.
 
 ### S4.3 Dynamic lifecycle
 
-- [ ] Mixed prompt lengths and context positions.
-- [ ] Different accept counts in the same cycle.
+- [x] Mixed prompt lengths and context positions.
+- [x] Different accept counts in the same cycle.
 - [ ] Rejecting row beside full-accept row.
-- [ ] Staggered finish and refill into a future cycle.
-- [ ] Cancel one row while peers continue.
+- [x] Staggered finish and refill into a future cycle.
+- [x] Cancel one row while peers continue.
 - [ ] Slot permutation/compaction and neighbor substitution.
 - [ ] Prefix restore/COW boundaries and pressure rejection.
 - [ ] Eager/graph fallback and later health.
@@ -875,10 +879,13 @@ Every temporary flag introduced by this campaign must be added to
 
 ## 18. Current handoff
 
-S1-S3 are complete. Backend-neutral scheduling/lifecycle is qualified, and
-strict gfx1151 dense GGUF MTP2 c1 is functionally qualified/default-off across
-B1/B2/B3, controlled target/provider state, lifecycle, profile, profiler, and
-allocation gates. Production Q4_K_S FP16 state still selects K0 before mutation.
-The next action is **S4 physical gfx1151 c2/c4 MTP2**, beginning with RED row-
-ownership and true physical proposal/target call-count gates; gfx1100 remains
-deferred.
+S1-S3 are complete. S4 now has a strict/default-off physical C2/C4 foundation:
+C={2,4}, K={1,2,3}, R through 16, mixed prompt lengths, independent acceptance,
+staggered finish, and late refill execute with shared provider/target backbones
+and exact short-trajectory IDs. Diagnostic complete-wall runs show aggregate
+scaling but no AR win; they are dirty-tree implementation evidence, not retained
+performance claims. S4 remains open for device-resident candidate handoff, one
+physical selected-state/KV commit payload, rejecting/full-accept neighbor and
+remaining cancellation/prefix/pressure lifecycle gates, profiler evidence, and
+a clean same-host packet. Production Q4_K_S FP16 state still selects K0 before
+mutation; gfx1100 remains deferred.
