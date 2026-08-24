@@ -7,6 +7,10 @@ from hipengine.kernels.registry import resolve
 from hipengine.speculative.paro_mtp_profiles import (
     FAST_VERIFIER_CANDIDATE_VARIANT,
     PARO_MTP_BACKEND,
+    GDN_EXACT_ENV,
+    LINEAR_EXACT_ENV,
+    MOE_EXACT_ENV,
+    PARO_MTP_CHAIN_ATTN_MODE_ENV,
     PARO_MTP_CONTRACT_ENV,
     PARO_MTP_MODEL,
     PARO_MTP_MODEL_QUANT,
@@ -42,15 +46,19 @@ def test_paro_mtp_strict_and_production_manifests_are_registered() -> None:
     assert strict_by_layer[PROPOSER_LAYER]["selected_variant"] == TARGET_CONTRACT_VARIANT
     assert strict_by_layer[VERIFIER_LAYER]["selected_variant"] == STRICT_VERIFIER_VARIANT
     assert production_by_layer[PROPOSER_LAYER]["strict_fallback_variant"] == TARGET_CONTRACT_VARIANT
+    assert production_by_layer[VERIFIER_LAYER]["selected_variant"] == FAST_VERIFIER_CANDIDATE_VARIANT
     assert production_by_layer[VERIFIER_LAYER]["strict_fallback_variant"] == STRICT_VERIFIER_VARIANT
     assert production_by_layer[PROPOSER_LAYER]["evidence_artifact"].endswith(
-        "2026-08-24-w7900-paro-mtp-provider-contract-spike.json"
+        "2026-08-24-w7900-paro-fast-d24-3run-default.json"
+    )
+    assert production_by_layer[VERIFIER_LAYER]["evidence_artifact"].endswith(
+        "2026-08-24-w7900-paro-fast-d24-3run-default.json"
     )
     assert production.fell_back_to_strict is False
     assert production.strict_manifest_sha256 == strict.manifest_sha256
 
 
-def test_fast_verifier_route_is_registered_but_not_selected_before_gate() -> None:
+def test_fast_verifier_route_is_certified_and_selected_by_production() -> None:
     candidate_factory = resolve(
         backend=PARO_MTP_BACKEND,
         layer=VERIFIER_LAYER,
@@ -65,10 +73,10 @@ def test_fast_verifier_route_is_registered_but_not_selected_before_gate() -> Non
         variant=FAST_VERIFIER_CANDIDATE_VARIANT,
         target_contract=True,
         verifier_profile="fast",
-        certified=False,
+        certified=True,
     )
-    assert all(
-        row["selected_variant"] != FAST_VERIFIER_CANDIDATE_VARIANT
+    assert any(
+        row["selected_variant"] == FAST_VERIFIER_CANDIDATE_VARIANT
         for row in production.manifest["selections"]
     )
 
@@ -83,4 +91,20 @@ def test_profile_binder_enables_target_contract_and_records_route(monkeypatch) -
     assert __import__("os").environ[PARO_MTP_CONTRACT_ENV] == "1"
     route = __import__("os").environ[PARO_MTP_ROUTE_ENV]
     assert TARGET_CONTRACT_VARIANT in route
-    assert STRICT_VERIFIER_VARIANT in route
+    assert FAST_VERIFIER_CANDIDATE_VARIANT in route
+    env = __import__("os").environ
+    assert env[PARO_MTP_CHAIN_ATTN_MODE_ENV] == "decode_batched"
+    assert env[GDN_EXACT_ENV] == "0"
+    assert env[LINEAR_EXACT_ENV] == "0"
+    assert env[MOE_EXACT_ENV] == "0"
+
+
+def test_strict_profile_binder_restores_exact_route(monkeypatch) -> None:
+    resolution = _resolved("strict")
+    resolution.construct_generator(lambda: SimpleNamespace())
+    env = __import__("os").environ
+
+    assert env[PARO_MTP_CHAIN_ATTN_MODE_ENV] == "c1_loop"
+    assert env[GDN_EXACT_ENV] == "1"
+    assert env[LINEAR_EXACT_ENV] == "1"
+    assert env[MOE_EXACT_ENV] == "1"

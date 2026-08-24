@@ -386,25 +386,19 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | --- | --- | ---: | ---: | ---: | --- |
 | W7900 / Qwen3.6-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 29.457 | **60.929** | **2.0684x** | Current clean snapshot; all ten prompts, greedy outputs, and GPU/CPU acceptance agree. The ratio replaces stale historical denominators. [`artifact`](results/2026-08-23-w7900-qwen36-27b-current-default-publication.json) |
 | RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 35.287 | **62.440** | **1.7695x** | Clean idle-card correction; exact greedy and GPU/CPU acceptance, retained fusion improves matched AR 3.764% and B3 0.439% with every category non-regressive. [`artifact`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) |
+| W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production/default B1 fast, raw D24 | 110.830 | **115.770** | **1.0446x** | Exact `720/720`; complete 10-prompt numerical/repeat/task/state gate passes. Fast improves strict MTP 10.33% overall and every category. [`artifact`](results/2026-08-24-w7900-paro-fast-d24-3run-default.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |
 
-Diagnostic, not a scoreboard/default row: the W7900 packed-PARO B1 provider-
-contract spike passes scoped fixed-chain proposal parity, lifecycle/memory, route-
-manifest, and three-repeat correctness gates. The registered strict D24 route is
-exact `720/720`, has deterministic acceptance traces (`321/390 = 82.31%`), but
-reaches only **104.929 versus 110.515 tok/s true AR (`0.9495x`)**; code,
-general-Japanese, and mixed categories regress, so it remains explicit/default-
-off. Strict four-heldout D64 remains exact `256/256` at `1.0220x`. The expanded
-fast-verifier review is favorable but incomplete: four-category D64 reaches
-`278/280 = 99.286%` top-1, passes all KL/scope gates and paired task review
-`4/4`, but its 95% interval straddles 99%; the complete canonical PARO suite,
-three repeats, and applicable B1 state/task packet are absent. The 18-prompt/450-
-row count was calibration precedent, not a binding cardinality; BF16-relative
-evidence is conditional on a full-precision target teacher. Fast remains
-unselected. [`repeat artifact`](results/2026-08-24-w7900-paro-mtp-strict-d24-3run.json),
-[`fast review`](results/2026-08-24-w7900-paro-fast-verifier-four-category-review.json),
-and [`spike artifact`](results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json)
+The packed-PARO production route uses the corrected final-normalized/borrowed-
+W8A16 provider plus fast `decode_batched` verification. Its complete D64 gate
+covers 10 prompts, 704 canonical rows, and 30 deterministic captures at
+`702/704 = 99.716%` top-1 with all KL/scopes passing; paired task review passes
+`10/10`, and the applicable B1 state/lifecycle packet passes three identical
+runs. Strict `c1_loop` remains the registered strict profile/fallback.
+[`numerical`](results/2026-08-24-w7900-paro-fast-verifier-full-numerical-repeat-review.json),
+[`task`](results/2026-08-24-w7900-paro-fast-verifier-complete-task-review.json),
+and [`state`](results/2026-08-24-w7900-paro-fast-state-lifecycle-review.json)
 
 MTP ratios always use a true no-MTP AR path from the same protocol. Verifier
 `off`/`B0` diagnostics are not speedup denominators. The full category suite,
