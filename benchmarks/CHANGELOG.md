@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-25 SPECDEC2 gfx1151 strict c1; functionally qualified/default-off] Qwen3.8-27B Q4_K_S/BF16-KV/FP32-state B1/B2/B3 staged IDs match true AR and direct dense control; 7/7 controlled logits/state/KV/hidden/cursor/commit/rollback cases pass and cached rocprof engagement is proven. Warm staged B1/B2/B3 complete wall is **0.735/0.731/0.740 s** versus direct **1.157/1.180/1.311 s**, but true AR is **0.720/0.718/0.717 s** on this short request. Production FP16 state selects K0; no automatic/default scope or speed claim. `benchmarks/results/2026-08-25-gfx1151-specdec2-s3-c1.json`.
+
 - [2026-08-24 Concurrency2 gfx1151 final evidence manifest] Final status is **mechanically qualified / product blocked**: queue2 retained; 1,170-row FP16 numerical profile, 130 fixed-width executions, 2,100 load records, supported context/graph/prefix/pressure and lifecycle gates pass; exact scoped Q5 col8 is the sole new runtime win; c32 SLO, c2 64K, and heavy-load SLO remain open. `benchmarks/results/2026-08-24-gfx1151-qwen38-concurrency2-campaign-final.json`.
 
 - [2026-08-24 Concurrency2 gfx1151 production closure; blocked at c32] Final queue2 / Q4_K_S / FP16-state p128/d8 c32 passes production control/repeat/native route/live admission, but streaming is **10.590 tok/s**, TTFT p95 **18.617 s**, ITL p99 **2.125 s**, E2E p95 **24.171 s**, and **0/3 SLO / 0 goodput**. C2 64K and heavy-load SLOs remain blockers. The protocol-gated complete closure matrix is not rerun after the c32 precondition fails. `benchmarks/results/2026-08-24-gfx1151-qwen38-production-closure-blocked.json`.

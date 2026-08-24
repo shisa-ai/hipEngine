@@ -1,0 +1,135 @@
+{
+  "schema": 1,
+  "kind": "specdec2_gfx1151_s3_c1_qualification",
+  "status": "functionally_qualified_default_off",
+  "date": "2026-08-25",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "repo": {
+    "implementation_commit": "d9da1d5af7a30497067c94c786f6ee34a52cdafa",
+    "final_code_commit": "cf1d9578f",
+    "tracked_gate_provenance_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "kv_storage": "bf16",
+    "recurrent_state": "fp32_strict",
+    "production_fp16_state_status": "pre_mutation_k0_incompatible_chain_base_state"
+  },
+  "protocol": {
+    "prompt": "Write one short greeting.",
+    "sampling": "greedy",
+    "max_tokens": 5,
+    "budgets": [1, 2, 3],
+    "arms": ["true_ar", "staged_cold", "staged_warm", "direct_exact"],
+    "commands": [
+      "flock -n /tmp/hipengine-gpu-exclusive.lock env HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt .venv/bin/python scripts/specdec2_c1_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --budget {1,2,3} --max-tokens 5 --output /tmp/specdec2-clean-b{1,2,3}.json --fail-on-fail",
+      "flock -n /tmp/hipengine-gpu-exclusive.lock rocprofv3 --kernel-trace -d /tmp/specdec2-s3-clean-rocprof -o specdec2-s3-clean -f csv -- env HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt .venv/bin/python scripts/specdec2_c1_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --budget 3 --max-tokens 5 --output /tmp/specdec2-prof-child.json --fail-on-fail",
+      "flock -n /tmp/hipengine-gpu-exclusive.lock env HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python3 scripts/gguf_mtp_long_context_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --cycle-ends 128 --candidate-budgets 1,2,3 --direct-repeats 1 --acceptance-cycle-ends 128 --acceptance-budget 3 --generation-contexts '' --max-sequence-length 256 --require-cached-build --out /tmp/specdec2-s3-state-kv.json --fail-on-fail"
+    ]
+  },
+  "generated_id_gate": {
+    "budget_1": {
+      "ids": [271, 9419, 0, 2500, 628],
+      "ar_staged_direct_equal": true,
+      "candidate_counts": [1, 1],
+      "accepted_counts": [1, 1]
+    },
+    "budget_2": {
+      "ids": [271, 9419, 0, 2500, 628],
+      "ar_staged_direct_equal": true,
+      "candidate_counts": [2],
+      "accepted_counts": [2]
+    },
+    "budget_3": {
+      "ids": [271, 9419, 0, 2500, 628],
+      "ar_staged_direct_equal": true,
+      "candidate_counts": [3],
+      "accepted_counts": [2]
+    }
+  },
+  "complete_wall_seconds": {
+    "budget_1": {
+      "ar": 0.7196699000196531,
+      "staged_cold": 1.4054852579720318,
+      "staged_warm": 0.7346811289899051,
+      "direct_exact": 1.1571549020009115,
+      "warm_staged_over_direct": 0.6349030088534563
+    },
+    "budget_2": {
+      "ar": 0.7184838060056791,
+      "staged_cold": 1.4120916690444574,
+      "staged_warm": 0.7305191309424117,
+      "direct_exact": 1.1798561360919848,
+      "warm_staged_over_direct": 0.6191594963112168
+    },
+    "budget_3": {
+      "ar": 0.7170279149431735,
+      "staged_cold": 1.4185312660411,
+      "staged_warm": 0.7398775540059432,
+      "direct_exact": 1.3108086941065267,
+      "warm_staged_over_direct": 0.5644435815328938
+    }
+  },
+  "controlled_state_kv_gate": {
+    "artifact": "/tmp/specdec2-s3-state-kv.json",
+    "cycle_end": 128,
+    "direct_cases": 7,
+    "passed": true,
+    "budgets": [1, 2, 3],
+    "controlled_budget_3_accept_counts": [0, 1, 2, 3],
+    "exact_surfaces": [
+      "target_logits",
+      "target_top1",
+      "accept_summary",
+      "linear_state",
+      "kv_rows",
+      "selected_hidden",
+      "commit",
+      "commit_kv",
+      "commit_position",
+      "cursor",
+      "rollback"
+    ]
+  },
+  "profiler_engagement": {
+    "raw_csv": "/tmp/specdec2-s3-clean-rocprof/specdec2-s3-clean_kernel_trace.csv",
+    "kernel_rows": 17906,
+    "queue_ids": [1, 2],
+    "whole_process_not_marked_cycle": true,
+    "families": {
+      "gdn_recurrent": {"launches": 528, "duration_ns": 19930318},
+      "chain_accept": {"launches": 5, "duration_ns": 21679},
+      "linear_state_commit": {"launches": 13, "duration_ns": 19590016},
+      "target_commit": {"launches": 6, "duration_ns": 106118}
+    }
+  },
+  "failure_containment": {
+    "diagnostic_faults": 3,
+    "fault_kernel_family": "qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel",
+    "root_causes": [
+      "missing persistent packed-prefill last_target_hidden handoff",
+      "production FP16 recurrent state supplied to FP32 chain base-state readers"
+    ],
+    "repairs": [
+      "request-owned BF16 root hidden until verifier commit",
+      "pre-mutation FP16-state capability rejection to K0"
+    ],
+    "gpu_health_after_each": "smoke_add exact",
+    "runtime_restore_required": false
+  },
+  "promotion": {
+    "functional": true,
+    "automatic": false,
+    "default": false,
+    "reason": "strict FP32-only c1 scope is exact; production Q4_K_S FP16 state selects K0 and full state/KV profile plus product quality gates precede auto",
+    "next": "finish S3 state/profile closure, then physical c2/c4 MTP2"
+  }
+}
