@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts.mtp_paro_verifier_repeat_review import aggregate_repeats
 from scripts.mtp_paro_verifier_review_aggregate import aggregate
 
 
@@ -45,6 +46,7 @@ def _capture(path: Path, *, prompt: str, category: str, match: bool) -> Path:
     payload = {
         "model": "fixture-model",
         "backend": "hip_gfx1100",
+        "capture_sha256": "c" * 64,
         "status": "passed" if match else "rejected",
         "prompt": {
             "name": prompt,
@@ -86,6 +88,54 @@ def test_aggregate_preserves_failed_category_and_task_review(tmp_path: Path) -> 
     assert result["scopes"]["category"]["code"]["passed"] is True
     assert result["scopes"]["category"]["general_en"]["passed"] is False
     assert result["review"]["top1_mismatch_rows"][0]["prompt"] == "general"
+
+
+def test_repeat_aggregate_uses_one_quality_trajectory_and_checks_hashes(
+    tmp_path: Path,
+) -> None:
+    paths = []
+    for prompt, category in (("code", "code"), ("general", "general_en")):
+        base = _capture(
+            tmp_path / f"{prompt}-base.json",
+            prompt=prompt,
+            category=category,
+            match=True,
+        )
+        payload = base.read_text(encoding="utf-8")
+        for repeat in range(3):
+            path = tmp_path / f"run{repeat + 1}-{prompt}.json"
+            path.write_text(payload, encoding="utf-8")
+            paths.append(path)
+
+    result = aggregate_repeats(paths, expected_repeats=3)
+
+    assert result["coverage"]["rows"] == 2
+    assert result["coverage"]["capture_files"] == 6
+    assert result["repeat_determinism"]["passed"] is True
+    assert result["review"]["numerical_and_repeat_gates_passed"] is True
+    assert result["status"] == "numerical_repeat_pass_task_review_pending"
+
+
+def test_repeat_aggregate_rejects_capture_hash_drift(tmp_path: Path) -> None:
+    paths = []
+    for repeat in range(3):
+        path = _capture(
+            tmp_path / f"run{repeat + 1}.json",
+            prompt="code",
+            category="code",
+            match=True,
+        )
+        if repeat == 2:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload["capture_sha256"] = "d" * 64
+            path.write_text(json.dumps(payload), encoding="utf-8")
+        paths.append(path)
+
+    result = aggregate_repeats(paths, expected_repeats=3)
+
+    assert result["repeat_determinism"]["passed"] is False
+    assert result["repeat_determinism"]["failed_prompts"] == ["code"]
+    assert result["status"] == "numerical_or_repeat_gate_failed"
 
 
 def test_aggregate_rejects_mixed_candidate_manifests(tmp_path: Path) -> None:
