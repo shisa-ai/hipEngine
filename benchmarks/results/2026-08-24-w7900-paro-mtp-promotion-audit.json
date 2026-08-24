@@ -1,0 +1,51 @@
+{
+  "schema": "hipengine.paro_mtp_promotion_audit.v1",
+  "date": "2026-08-24",
+  "status": "promotion_rejected_pending_correctness_repairs",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "implementation_base": "d99bbc607",
+  "gates": {
+    "native_reference_proposal_parity": {
+      "status": "failed_binding",
+      "commit": "4fdf85159",
+      "artifact": "benchmarks/results/2026-08-24-w7900-paro-mtp-native-reference-parity.json",
+      "evidence": "hidden max/mean abs 0.09375/0.006054; fused native W8 top-1 0 != materialized native top-1 64; native/CPU W8 top-8 unequal"
+    },
+    "three_repeat_d24": {
+      "status": "blocked_by_native_reference_parity",
+      "artifact": null,
+      "evidence": "one-run D24 economics remains diagnostic; repeating a known-invalid provider cannot promote it"
+    },
+    "borrowed_pointer_lifecycle_memory": {
+      "status": "passed_with_bounded_runtime_residue",
+      "commit": "bf849a150",
+      "artifact": "benchmarks/results/2026-08-24-w7900-paro-mtp-lifecycle-gate.json",
+      "private_head_saving_bytes": 1017114848,
+      "teardown_residue_bytes": 8,
+      "residue_non_growing_across_reuse": true
+    },
+    "registered_route_manifest": {
+      "status": "passed",
+      "commit": "74c69f59b",
+      "strict_manifest_sha256": "3199678e604dca83d40f3d538deb3c05ceed3144b0100ef89b3ecfb94aed5723",
+      "production_manifest_sha256": "9ea22c030d76774d398b504be5b78a113dc25b2e4d2260d6efba9ee260dc8876",
+      "fast_verifier_selected": false,
+      "strict_fallback_selected": true
+    },
+    "fast_verifier_production_numerical_task": {
+      "status": "blocked_evaluator_setup_and_rejected_by_existing_task_evidence",
+      "commit": "90db2dfca",
+      "artifact": null,
+      "evidence": "full-logit harness unit passed; first real D64 attempt timed out after 15 minutes with two target sessions plus proposer; retained general_en_explain D64 output-24 divergence remains binding"
+    }
+  },
+  "decision": {
+    "promote_provider": false,
+    "promote_fast_verifier": false,
+    "keep_explicit_spike": true,
+    "keep_strict_fallback": true,
+    "run_three_repeat_economics_now": false,
+    "reason": "correctness gates bind before economics; native proposal parity failed and fast verifier remains uncertified"
+  }
+}

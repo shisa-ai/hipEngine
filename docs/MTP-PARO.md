@@ -5,7 +5,7 @@
 - **Implementation base:** `050b97936047f8c43ed76dbc690fb9d7d7482c07`
 - **Model:** `/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16`
 - **Hardware:** AMD Radeon Pro W7900, `hip_gfx1100`
-- **Status:** bounded provider-repair spike retained explicit/default-off; clean slate deferred; parity/repeat/lifecycle/profile promotion gates remain open
+- **Status:** bounded provider-repair spike retained explicit/default-off; promotion rejected by native/reference parity; lifecycle and route-manifest gates passed; clean slate deferred pending repair
 
 | Surface | Current evidence | Assessment | Next action |
 | --- | --- | --- | --- |
@@ -13,12 +13,12 @@
 | Strict verifier (`c1_loop`) | D24 canonical: exact `10/10`, `240/240`; `90.405 tok/s`, `0.8114x`, `16.727 ms/cycle`. State exact at cycles 1/2/4/8. D64 four-heldout: exact `256/256`, `0.8418x`. | Sound oracle/fallback, currently too slow. | Preserve registered primitives; optimize only after the shared proposer is corrected. |
 | Shared acceptance at D24 | Fast and strict have identical traces: `79/151 = 52.32%` draft acceptance, `79/240 = 32.92%` accepted/output. | Strict arithmetic is not the acceptance problem. The old `7.48%` N4 result predates grouped PARO heads and is stale for current economics. | Use current canonical suite and longer horizon for every decision. |
 | Target-hidden input | PARO passed the pre-final-norm last-layer BF16 tap. nano-vLLM-amd `5d8f496da5e3` and vLLM `470229c37efa` pass final output-normalized target hidden. | Contract mismatch repaired in the explicit spike. | Close native/reference parity on captured final-normalized rows before promotion. |
-| Proposer reseed | Target hidden previously seeded prompt prefill only; cycle repair continued from MTP-owned hidden. | Selected-target-hidden reseed implemented in the explicit spike. | Close reject/partial/full lifecycle and borrowed-pointer ownership gates. |
-| Draft LM head | Private F16 head scored rows `[0, 65536)` while target AR/verifier uses resident full-vocab W8A16 over 248,320 rows. | Spike borrows target W8A16, covers full vocab, and skips the private 970 MiB head. | Confirm tracked-memory removal and same-schedule repeat economics. |
+| Proposer reseed | Target hidden previously seeded prompt prefill only; cycle repair continued from MTP-owned hidden. | Selected-target-hidden reseed is implemented, but the first independent proposal-hidden parity fixture failed. | Localize and repair the first native/reference stage mismatch before expanding acceptance-state cases. |
+| Draft LM head | Private F16 head scored rows `[0, 65536)` while target AR/verifier uses resident full-vocab W8A16 over 248,320 rows. | Borrowed ownership/lifecycle passed and removes 970 MiB, but fused top-1 disagreed with materialized native W8 logits in parity. | Repair fused scorer/readback parity before any production use; defer repeat economics until then. |
 | Vocab-cap impact | `32/72` D24 rejections were outside-cap; general Japanese was `24/30`. Full F16 raised acceptance but usually added enough wall to regress economics. | Target W8A16 spike removes cap failures efficiently and raises D24 pooled acceptance to 80.92%. | Keep cap/private-F16 only as opt-out until promotion gates close. |
-| Route selection | Strict and fast are composed manually from several environment variables. | Unsupported hybrid arithmetic is easy to invoke and hard to reproduce. | Add one cold-path strict/production route plan and manifest. |
+| Route selection | Registered strict and production manifests now bind the corrected proposer to strict B1 graph-off verification; fast is registered only as uncertified. | Exact fallback/provenance is reproducible; unsupported provider scope fails closed. | Keep fast unselected until its full production numerical/task gate passes. |
 | Shared engine infrastructure | `TargetVerifyBatch`, `KVLiveSpans`, accept/commit, journals, NativeSpecCycle, and strict fallbacks are functional. | No evidence supports discarding the engine. | Preserve these boundaries during the spike and any later provider replacement. |
-| Provider-contract spike | D24 exact `240/240`, pooled acceptance `52.32% -> 80.92%`, total-time `0.8700x -> 0.9907x`; strict D64 heldout exact `256/256`, acceptance `39.78% -> 84.67%`, total-time `0.8339x -> 1.0220x`. | Strong retain signal for the stitched provider; not yet a default/performance claim. | Keep `HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT=1` explicit while parity/repeat/lifecycle/profile gates close. |
+| Provider-contract spike | D24 exact `240/240`, pooled acceptance `52.32% -> 80.92%`, total-time `0.8700x -> 0.9907x`; strict D64 heldout exact `256/256`, acceptance `39.78% -> 84.67%`, total-time `0.8339x -> 1.0220x`. | Strong diagnostic economics, but native/reference parity failed and blocks promotion. | Keep `HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT=1` explicit while proposal/scorer parity is repaired; then rerun the repeat gate. |
 
 ## Scope
 
@@ -169,17 +169,21 @@ provider repair does not authorize fast verifier arithmetic. Fast remains a
 separate T2 production-numerics lane; strict remains the provider promotion
 fallback.
 
-The spike is retained explicit rather than promoted because these gates remain:
+The spike remains explicit rather than promoted. Qualification status as of
+2026-08-24:
 
-1. native versus torch/reference proposal parity on captured final-normalized
-   rows;
-2. three same-schedule D24 repetitions;
-3. borrowed-pointer ownership, close/reuse, and tracked-memory lifecycle;
-4. registered PARO MTP strict/production route manifest; and
-5. the fast verifier full production numerical/task gate.
+| Gate | Status | Evidence / consequence |
+| --- | --- | --- |
+| Native/reference proposal parity | **failed, binding** | One captured heldout transition had hidden max/mean abs `0.09375/0.006054`; fused native W8 top-1 `0` also disagreed with materialized native top-1 `64`. Promotion is blocked pending stage/scorer/readback repair. |
+| Three same-schedule D24 repetitions | blocked by parity | Do not spend the full economics rerun while the provider arithmetic is known-invalid. The retained one-run D24 result remains diagnostic. |
+| Borrowed-pointer lifecycle and memory | **passed** | Closed-owner launches fail before use; close/reuse is stable; borrowed scoring saves `1,017,114,848` bytes versus the private F16 head. Teardown has one bounded, non-growing 8-byte runtime residue, reported explicitly rather than called exact-zero. |
+| Registered strict/production route manifest | **passed** | Strict hash `3199678e604d...5723`; production hash `9ea22c030d76...8876`. Both select strict verification; fast D64 is registered only as an uncertified/unselected candidate. |
+| Fast-verifier production numerical/task gate | blocked / fast rejected | The full-logit harness exists, but the first two-session D64 attempt timed out in setup after 15 minutes. Existing visible D64 divergence at output 24 remains binding, so strict remains fallback. |
 
 Compact evidence:
-[`provider-contract spike`](../benchmarks/results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json).
+[`provider-contract spike`](../benchmarks/results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json),
+[`native/reference rejection`](../benchmarks/results/2026-08-24-w7900-paro-mtp-native-reference-parity.json),
+and [`borrowed-pointer lifecycle`](../benchmarks/results/2026-08-24-w7900-paro-mtp-lifecycle-gate.json).
 
 ## Decision After The Spike
 
@@ -214,6 +218,10 @@ strict target verifier, accept/commit transaction, or scheduler integration.
 | Review worklog | `worklog/entries/20260823T222811.535835Z-lhl-paro-mtp-review-042298.md` |
 | Spike artifact | `benchmarks/results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json` |
 | Spike worklog | `worklog/entries/20260824T063019.079917Z-lhl-paro-mtp-spike-3108e9.md` |
+| Registered route manifests | `74c69f59b`; strict `3199678e604d...5723`, production `9ea22c030d76...8876` |
+| Native/reference rejection | `benchmarks/results/2026-08-24-w7900-paro-mtp-native-reference-parity.json`; `4fdf85159` |
+| Borrowed-pointer lifecycle pass | `benchmarks/results/2026-08-24-w7900-paro-mtp-lifecycle-gate.json`; `bf849a150` |
+| Fast-verifier gate harness/blocker | `90db2dfca` |
 | Grouped PARO head repair | `52973ce02` |
 | Fast/strict review commit | `4d32e6e2e` |
 | nano-vLLM reference | `/home/lhl/amd-gpu-tuning/nano-vllm-amd@5d8f496da5e3`, read-only |
