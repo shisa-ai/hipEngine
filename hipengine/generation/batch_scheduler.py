@@ -29,16 +29,15 @@ from hipengine.generation.sampling import (
     thinking_budget_state_from_params,
 )
 from hipengine.kvcache import KVTransaction
-from hipengine.speculative import (
+from hipengine.speculative.interfaces import (
     DraftBatch,
-    SpecCycleResult,
-    SpecCycleStage,
     TargetAcceptSummary,
     TargetCommitPlan,
     TargetStateCommitBuffers,
     TargetVerifyBatch,
     TargetVerifyBuffers,
 )
+from hipengine.speculative.transaction import SpecCycleResult, SpecCycleStage
 
 SPECULATIVE_TARGET_SAMPLING_POLICY = "raw_target_top1"
 SPECULATIVE_TARGET_COMPATIBLE_SAMPLING_MODES = ("greedy_fast",)

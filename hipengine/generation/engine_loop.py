@@ -38,12 +38,17 @@ from hipengine.generation.registry import (
     TextGenerator,
 )
 from hipengine.generation.sampling import speculative_mtp_sampling_blockers
-from hipengine.speculative import (
+from hipengine.speculative.frontier import (
+    CandidateGraph,
+    SpeculativeCapability,
+    TargetFrontier,
+)
+from hipengine.speculative.policy import plan_speculative_requests
+from hipengine.speculative.provider import SpeculativeRequestSemantics
+from hipengine.speculative.transaction import (
     SpecCycleResult,
     SpecCycleStage,
-    SpeculativeCapability,
-    SpeculativeRequestSemantics,
-    plan_speculative_requests,
+    compose_speculative_claims,
 )
 
 PREFILL_DECODE_POLICIES = ("protect_decode", "protect_ttft", "fair", "token_budget")
@@ -2179,11 +2184,17 @@ class ResidentEngineLoop:
             )
         if plan.is_ar_only:
             return None
-        execute = getattr(self.runner, "execute_speculative_cycle", None)
-        if not callable(execute):
-            return None
         start = time.perf_counter()
-        result = execute(plan, commit=True)
+        result = self._run_staged_speculative_cycle(
+            plan,
+            tuple(semantics),
+            capability,
+        )
+        if result is None:
+            execute = getattr(self.runner, "execute_speculative_cycle", None)
+            if not callable(execute):
+                return None
+            result = execute(plan, commit=True)
         elapsed = time.perf_counter() - start
         if not isinstance(result, SpecCycleResult):
             raise TypeError("execute_speculative_cycle must return SpecCycleResult")
@@ -2211,6 +2222,94 @@ class ResidentEngineLoop:
         self.scheduler.record_work_duration(spec_work, elapsed)
         generated_events = self.scheduler.record_speculative_cycle_result(result)
         return self._decode_events(spec_work, generated_events)
+
+    def _run_staged_speculative_cycle(
+        self,
+        plan,
+        semantics: tuple[SpeculativeRequestSemantics, ...],
+        capability: SpeculativeCapability,
+    ) -> SpecCycleResult | None:
+        component_claims = getattr(self.runner, "speculative_component_claims", None)
+        reserve_claims = getattr(self.runner, "reserve_speculative_claims", None)
+        release_claims = getattr(self.runner, "release_speculative_claims", None)
+        prepare = getattr(self.runner, "prepare_speculative_requests", None)
+        propose = getattr(self.runner, "propose_speculative_batch", None)
+        execute_target = getattr(self.runner, "execute_target_frontier", None)
+        required = (
+            component_claims,
+            reserve_claims,
+            release_claims,
+            prepare,
+            propose,
+            execute_target,
+        )
+        if not all(callable(method) for method in required):
+            return None
+        components = component_claims(plan)
+        complete_claims = compose_speculative_claims(plan.operation_id, components)
+        reservation = reserve_claims(complete_claims)
+        candidate_graph: CandidateGraph | None = None
+        try:
+            prepare(plan, semantics, stream=None)
+            candidate_graph = propose(plan, semantics, stream=None)
+            if not isinstance(candidate_graph, CandidateGraph):
+                raise TypeError("propose_speculative_batch must return CandidateGraph")
+            if candidate_graph.request_ids != plan.request_ids:
+                raise ValueError("candidate graph request_ids must match plan")
+            if candidate_graph.resident_slots != plan.resident_slots:
+                raise ValueError("candidate graph resident_slots must match plan")
+            if candidate_graph.candidate_counts != plan.candidate_counts:
+                raise ValueError("candidate graph counts must match plan")
+            root_tokens: list[int] = []
+            root_positions: list[int] = []
+            for request_id in plan.request_ids:
+                request = self.scheduler.active_batch.requests[int(request_id)]
+                root_tokens.append(
+                    int(request.generated_tokens[-1])
+                    if request.generated_tokens
+                    else int(request.prompt_tokens[-1])
+                )
+                root_positions.append(int(request.context_len) - 1)
+            if tuple(root_positions) != candidate_graph.root_positions:
+                raise ValueError("candidate graph root positions must match scheduler state")
+            live_spans_owner = getattr(
+                self.runner,
+                "speculative_kv_live_spans_owner",
+                None,
+            )
+            owner = (
+                live_spans_owner(plan)
+                if callable(live_spans_owner)
+                else f"{plan.operation_id}:target-live-spans"
+            )
+            frontier = TargetFrontier.from_candidate_graph(
+                operation_id=plan.operation_id,
+                candidate_graph=candidate_graph,
+                root_tokens=tuple(root_tokens),
+                physical_row_decomposition=plan.target_row_decomposition,
+                transaction_mode=plan.target_transaction_mode,
+                kv_storage_view_key=capability.kv_backend_key,
+                kv_live_spans_owner=str(owner),
+                execution_route=plan.execution_route,
+            )
+            result = execute_target(
+                plan,
+                frontier,
+                complete_claims,
+                commit=True,
+            )
+            if not isinstance(result, SpecCycleResult):
+                raise TypeError("execute_target_frontier must return SpecCycleResult")
+            if result.transaction.reserved_claims != complete_claims:
+                raise ValueError("target result must own the complete speculative claims")
+            return result
+        except BaseException as exc:
+            rollback = getattr(self.runner, "rollback_speculative_cycle", None)
+            if callable(rollback):
+                rollback(plan, candidate_graph, exc)
+            raise
+        finally:
+            release_claims(reservation)
 
     def _speculative_runner_flag(
         self,

@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from typing import Mapping, Sequence
 
 from hipengine.generation.concurrency2_simulator import SimulatedResourceLedger
-from hipengine.kvcache import ClaimConfidence, ResourceClaim, ResourceClaimSet
+from hipengine.kvcache import ResourceClaimSet
 from hipengine.speculative.frontier import SpecPlanReason, SpecTransactionMode
 from hipengine.speculative.interfaces import AcceptResult, DraftBatch
 from hipengine.speculative.transaction import (
@@ -14,6 +14,7 @@ from hipengine.speculative.transaction import (
     SpecCycleStage,
     SpecCycleTelemetry,
     SpecCycleTransaction,
+    compose_speculative_claims,
 )
 
 # Compatibility aliases retained while callers migrate to the production names.
@@ -67,51 +68,6 @@ class SpeculativeRequestState:
             raise ValueError("visible/holdback token ids must be non-negative")
         if self.finished and self.pending_transaction_id is not None:
             raise ValueError("finished request cannot retain a pending transaction")
-
-
-def compose_speculative_claims(
-    claim_id: str,
-    components: Mapping[str, ResourceClaimSet],
-) -> ResourceClaimSet:
-    """Atomically compose provider, target, and transient ownership vectors."""
-
-    identity = _required_text(claim_id, "claim_id")
-    if not components:
-        raise ValueError("speculative claim composition requires components")
-    entries: dict[tuple[str, object], ResourceClaim] = {}
-    confidence_order = {
-        ClaimConfidence.EXACT: 0,
-        ClaimConfidence.BOUNDED: 1,
-        ClaimConfidence.UNKNOWN: 2,
-    }
-    request_ids = {claims.request_id for claims in components.values() if claims.request_id is not None}
-    if len(request_ids) > 1:
-        raise ValueError("speculative claim components belong to different requests")
-    for component, claims in sorted(components.items()):
-        _required_text(component, "component name")
-        if not isinstance(claims, ResourceClaimSet):
-            raise TypeError("speculative claim components must be ResourceClaimSet")
-        for claim in claims.claims:
-            current = entries.get(claim.key)
-            if current is None:
-                entries[claim.key] = claim
-                continue
-            confidence = max(
-                (current.confidence, claim.confidence), key=confidence_order.__getitem__
-            )
-            entries[claim.key] = ResourceClaim(
-                claim.pool_id,
-                current.units + claim.units,
-                claim.lifetime,
-                confidence,
-            )
-    names = tuple(sorted(str(name) for name in components))
-    return ResourceClaimSet(
-        claim_id=identity,
-        request_id=next(iter(request_ids), None),
-        claims=tuple(entries[key] for key in sorted(entries, key=lambda item: (item[0], str(item[1])))),
-        metadata=(("component_count", len(names)), ("components", ",".join(names))),
-    )
 
 
 class SpeculativeCycleSimulator:
