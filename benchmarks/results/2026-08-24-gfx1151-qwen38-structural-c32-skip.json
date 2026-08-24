@@ -1,0 +1,115 @@
+{
+  "created_at": "2026-08-24T11:15:55.774774+00:00",
+  "decision": {
+    "implement_structural_c32": false,
+    "next": "Run production closure on retained queue2/Q5-col8 state; carry c32 TTFT/ITL and 64K c2 as explicit product blockers.",
+    "reason": [
+      "Post-Q5 c32 marker wall is only 0.65% above four c8 groups; kernel time is 0.69% below four independent c8 sums.",
+      "Only 7.08 ms / 1.29% c32 wall is extra uncovered time, far below the product-SLO gap.",
+      "Major c8 kernels already expose saturating grids; overlapping independent groups would contend for the same compute/memory resources rather than fill idle CUs.",
+      "Every previously justified wider-owner, grouping, queue, state-copy, and scheduler mechanism is measured closed."
+    ],
+    "remaining_bottleneck": "operation-complete c8 kernel compute/weight stream repeated four times, principally Q4 qmicro and standard-Q4 families"
+  },
+  "kind": "gfx1151_qwen38_structural_c32_adjudication",
+  "model": {
+    "kv_storage": "bf16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "recurrent_state": "fp16"
+  },
+  "performance_claim": false,
+  "physical_host": "gfx1151",
+  "post_q5_profile": {
+    "c32": {
+      "kernel_ms": 515.889194,
+      "marker_ms": 549.796514,
+      "uncovered_ms": 33.90732
+    },
+    "c32_extra_uncovered_ms": 7.082632,
+    "c32_kernel_delta_ms": -3.5252140000000054,
+    "c32_kernel_delta_percent": -0.6786900682200558,
+    "c32_marker_overhead_ms": 3.557417999999984,
+    "c32_marker_overhead_percent": 0.6512565698885808,
+    "c8": {
+      "kernel_ms": 129.853602,
+      "marker_ms": 136.559774,
+      "uncovered_ms": 6.706172
+    },
+    "four_c8_kernel_ms": 519.414408,
+    "four_c8_marker_ms": 546.239096,
+    "four_c8_uncovered_ms": 26.824688,
+    "groups": [
+      8,
+      8,
+      8,
+      8
+    ],
+    "max_extra_uncovered_recovery_percent_of_c32_wall": 1.2882278842531911
+  },
+  "prior_structural_adjudication": [
+    {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-retained.json",
+      "sha256": "4385dd81be29958e20be477de64224d878da8cb0c145ed0b1b96d391344974b5"
+    },
+    {
+      "path": "benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-eager-wider-width-screen.json",
+      "sha256": "4af0c978e56efbb6e6baea7ed14237e01ee392e49a93b2843fae8e25f9ebc4e1"
+    },
+    {
+      "path": "benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-c17-d2-profile.json",
+      "sha256": "edb33a95f86fa147dfde173877b816f583f36134717a8c0d66ef95cce7f38ee9"
+    },
+    {
+      "path": "benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json",
+      "sha256": "ea98222c7e2dd8ca9db481affa3d2d60a96e57d3f5abe0b4917e4edd86ca543b"
+    },
+    {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-policy-decision.json",
+      "sha256": "26fc6f5f00d24174dcd91bf6675f676234449fdc6e84aeda7b858571e0fab57a"
+    }
+  ],
+  "rejected_or_closed": [
+    {
+      "mechanism": "native physical c16",
+      "result": "341.46 ms versus 273.90 ms for two c8 owners; rejected exact"
+    },
+    {
+      "mechanism": "native c9 / c17 9+8",
+      "result": "c17 406.50 -> 425.86 ms (+4.76%); rejected exact"
+    },
+    {
+      "mechanism": "captured-cost D2 8+5+4",
+      "result": "predicted win did not transfer; owner 406.50 -> 409.39 ms and serving 10.956 -> 10.926 tok/s"
+    },
+    {
+      "mechanism": "cross-group packed-state transfer",
+      "result": "removed by direct canonical resident slabs; no remaining state round trip to fuse"
+    },
+    {
+      "mechanism": "hardware queues 4/8/unset",
+      "result": "complete queue policy matrix finds no generic or SLO-qualified advantage over queue2"
+    },
+    {
+      "mechanism": "fair burst1",
+      "result": "ITL 4.53 s; rejected"
+    },
+    {
+      "mechanism": "eight-wave/16-column block merging",
+      "result": "marked target regression; rejected"
+    }
+  ],
+  "saturation_evidence": {
+    "compute_units": 40,
+    "interpretation": "Each major c8 projection dispatch independently exposes hundreds to tens of thousands of workgroups; another physical group does not fill an idle-grid hole.",
+    "q4_qmicro_grid_threads": 278528,
+    "q4_qmicro_workgroups": 2176,
+    "q5_col8_grid_threads": 81920,
+    "q5_col8_workgroups": 640,
+    "q6_planar_grid_threads": 3973120,
+    "q6_planar_workgroups": 31040
+  },
+  "schema_version": 1,
+  "source_commit": "01ef1e9564ee13094b892c03afce4c53995906d6",
+  "status": "structural_skip_linear_c8_composition"
+}
