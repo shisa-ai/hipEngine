@@ -229,6 +229,17 @@ q1/q4/q8/unset **-0.57%/+0.47%/-0.67%/-0.09%**, so queue2 remains the control
 pending context/graph/COW/eviction.
 [`Load stability`](results/2026-08-24-gfx1151-qwen38-hardware-queue-load-stability-matrix.json).
 
+The final context/graph/prefix matrix completes **20/20** children across all
+queue policies. C2 1K/4K/16K is exact/native and SLO-clean; 32K is exact/native
+but exceeds TTFT/E2E SLO for every policy. Context throughput is queue-neutral
+versus queue2 (q1/q4/q8/unset geometric **-0.09%/-0.03%/-0.07%/+0.03%**).
+Every policy completes a 32K pressure source, rejects 4K with exact
+**1166/1166-page** metadata, and captures/replays/invalidates then regrows on a
+changed page table. Active shared-prefix and completed snapshot-hit/explicit
+snapshot-eviction gates pass with zero request/cache refs. C2 64K remains
+blocked and is not claimed. Queue2 remains the control.
+[`Context/graph/prefix`](results/2026-08-24-gfx1151-qwen38-hardware-queue-context-graph-prefix-matrix.json).
+
 The separate W7900 Qwen3.8-27B `Q4_K_M` direct graph packet qualifies physical
 `(1,2,3,4,5,6,7,8)`: c1-c8 reaches **30.30/53.79/75.47/93.49/105.67/
 115.30/122.36/127.32 tok/s**, all exact and repeatable. Q5 and planar-Q6 true
