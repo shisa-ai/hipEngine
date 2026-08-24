@@ -97,13 +97,16 @@ The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains 
 
 Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with explicit FP32 rollback after the complete packed and serving gates; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). The broader default-off review remains in the [`promotion inventory`](results/2026-08-20-valid-faster-default-off-inventory.json).
 
-SPECDEC2 S3 functionally qualifies staged dense MTP2 c1 only under strict FP32
-recurrent state: B1/B2/B3 IDs, 7 controlled target state/KV cases, 11 lifecycle/
-fault rows, repeated provider KV/cursor fingerprints, and cached profiler
-engagement pass under strict manifest `0e053fd6...e2bb65b`. Production Q4_K_S
-FP16 state selects K0 before mutation because the current chain verifier's base-
-state readers require FP32. No automatic/default scope or new speed claim is
-promoted. [`S3 artifact`](results/2026-08-25-gfx1151-specdec2-s3-c1.json).
+SPECDEC2 S3 functionally qualifies staged dense MTP2 c1 under strict FP32
+recurrent state. The S4 physical foundation now runs C2/C4, K1-K3, and target R4-
+R16 with exact short-trajectory AR/staged/direct IDs and cached profiler
+engagement under strict manifest `0e053fd6...e2bb65b`. Best warm K2 aggregate
+scales **6.876→9.500→16.053 tok/s** at C1→C2→C4, but C2/C4 complete wall remains
+**21.8%/34.5% slower** than same-cell true AR. Candidate handoff and selected-
+state commit still have host/request-local gaps; this fixed-prompt diagnostic is
+not a promotion suite. Production FP16 state selects K0 and no automatic/default
+scope changes. [`S3 artifact`](results/2026-08-25-gfx1151-specdec2-s3-c1.json);
+[`S4 artifact`](results/2026-08-25-gfx1151-specdec2-s4-physical-c2-c4.json).
 
 ## Where detailed evidence lives
 
