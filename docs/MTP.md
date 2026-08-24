@@ -26,7 +26,14 @@
 > than calling it strict. Evidence:
 > [`current PARO fast/strict review`](../benchmarks/results/2026-08-24-w7900-paro-mtp-fast-strict-review.json).
 > The bounded repair spike and clean-slate decision gate are in
-> [`MTP-PARO.md`](MTP-PARO.md).
+> [`MTP-PARO.md`](MTP-PARO.md). The first explicit provider-contract spike now
+> captures/reseeds final-normalized target hidden and borrows the target W8A16
+> full-vocab scorer. It keeps D24 exact `240/240`, raises pooled acceptance
+> `52.32% -> 80.92%`, and moves total-time MTP/AR `0.8700x -> 0.9907x`; strict
+> D64 heldouts stay exact `256/256` and move `0.8339x -> 1.0220x`. This is a
+> retain signal for the stitched provider, not a default promotion: parity,
+> repeats, lifecycle, registered-profile, and fast-verifier T2 gates remain.
+> Evidence: [`provider spike`](../benchmarks/results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json).
 >
 > Status (2026-06-13): shared ABI, local PARO+MTP-BF16 weights, persistent
 > native proposal, exact B=3 chain verification, verify graph replay, draft vocab

@@ -19,7 +19,13 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import build_dense_gemv, dense_dual_gemv_out_bf16_wmma
-from hipengine.kernels.hip_gfx1100.linear.lm_head import build_lm_head, lm_head_argmax_stage1_blocks, lm_head_fp16_argmax_bf16, topk_f32_rows_i32
+from hipengine.kernels.hip_gfx1100.linear.lm_head import (
+    build_lm_head,
+    lm_head_argmax_stage1_blocks,
+    lm_head_fp16_argmax_bf16,
+    topk_f32_rows_i32,
+    w8a16_lm_head_argmax_rows_bf16,
+)
 from hipengine.kernels.hip_gfx1100.speculative.dflash_drafter import (
     build_dflash_drafter,
     dflash_dense_bf16_to_bf16,
@@ -144,6 +150,24 @@ def _empty_device(shape: tuple[int, ...], dtype: np.dtype[Any] | type[np.generic
 
 
 @dataclass(frozen=True, slots=True)
+class NativeMtpW8A16Head:
+    """Borrowed target-owned full-vocabulary W8A16 proposal scorer."""
+
+    weight_int8_ptr: int
+    scale_f32_ptr: int
+    vocab_size: int
+    threads: int = 256
+
+    def __post_init__(self) -> None:
+        if int(self.weight_int8_ptr) <= 0 or int(self.scale_f32_ptr) <= 0:
+            raise ValueError("W8A16 scorer pointers must be non-zero")
+        if int(self.vocab_size) <= 0:
+            raise ValueError("W8A16 scorer vocab_size must be positive")
+        if int(self.threads) not in {128, 256, 512}:
+            raise ValueError("W8A16 scorer threads must be 128, 256, or 512")
+
+
+@dataclass(frozen=True, slots=True)
 class NativeMtpStepResult:
     token: int
     logit: float
@@ -176,6 +200,7 @@ class NativeMtpChainProposer:
         runtime: HipRuntime | None = None,
         compiler_version: str | None = None,
         require_cached_build: bool = False,
+        scoring_head: NativeMtpW8A16Head | None = None,
     ) -> None:
         if max_positions <= 0:
             raise ValueError("max_positions must be positive")
@@ -196,12 +221,13 @@ class NativeMtpChainProposer:
         self.closed = False
         self.hidden = int(self.config.hidden_size)
         self.vocab = int(self.config.vocab_size)
-        # Draft-only vocab cap: BPE token ids are merge-frequency-ordered, so
-        # the first N rows of lm_head cover the hot tokens. Draft argmax over a
-        # capped row range cuts the dominant per-advance GEMV bytes (~1.7 ms at
-        # full 248k vocab); exactness is unaffected (drafts only steer
-        # acceptance — verify commits target tokens over the FULL vocab).
-        self.draft_vocab = _draft_vocab_from_env(self.vocab)
+        self.scoring_head = scoring_head
+        if scoring_head is not None and int(scoring_head.vocab_size) != self.vocab:
+            raise ValueError("borrowed W8A16 scorer vocabulary does not match the MTP model")
+        # The legacy private F16 scorer may retain a diagnostic prefix cap. A
+        # borrowed target scorer always covers the target's complete decision
+        # surface and avoids duplicating the target head allocation.
+        self.draft_vocab = self.vocab if scoring_head is not None else _draft_vocab_from_env(self.vocab)
         self._vocab_topk_host: tuple | None = None
         self.q_heads = int(self.config.num_attention_heads)
         self.kv_heads = int(self.config.num_key_value_heads)
@@ -218,30 +244,29 @@ class NativeMtpChainProposer:
         self.max_mtp_tokens = int(max_mtp_tokens)
         if self.top_k > 8:
             raise ValueError("native MTP proposer currently supports top_k <= 8")
-        self.weights = {
-            name: self._load_info(name).tensor
-            for name in [
-                "embed_tokens.weight",
-                "lm_head.weight",
-                "mtp.pre_fc_norm_embedding.weight",
-                "mtp.pre_fc_norm_hidden.weight",
-                "mtp.fc.weight",
-                "mtp.layers.0.input_layernorm.weight",
-                "mtp.layers.0.self_attn.q_proj.weight",
-                "mtp.layers.0.self_attn.k_proj.weight",
-                "mtp.layers.0.self_attn.v_proj.weight",
-                "mtp.layers.0.self_attn.o_proj.weight",
-                "mtp.layers.0.post_attention_layernorm.weight",
-                "mtp.layers.0.mlp.gate.weight",
-                "mtp.layers.0.mlp.experts.gate_up_proj",
-                "mtp.layers.0.mlp.experts.down_proj",
-                "mtp.layers.0.mlp.shared_expert_gate.weight",
-                "mtp.layers.0.mlp.shared_expert.gate_proj.weight",
-                "mtp.layers.0.mlp.shared_expert.up_proj.weight",
-                "mtp.layers.0.mlp.shared_expert.down_proj.weight",
-                "mtp.norm.weight",
-            ]
-        }
+        weight_names = [
+            "embed_tokens.weight",
+            "mtp.pre_fc_norm_embedding.weight",
+            "mtp.pre_fc_norm_hidden.weight",
+            "mtp.fc.weight",
+            "mtp.layers.0.input_layernorm.weight",
+            "mtp.layers.0.self_attn.q_proj.weight",
+            "mtp.layers.0.self_attn.k_proj.weight",
+            "mtp.layers.0.self_attn.v_proj.weight",
+            "mtp.layers.0.self_attn.o_proj.weight",
+            "mtp.layers.0.post_attention_layernorm.weight",
+            "mtp.layers.0.mlp.gate.weight",
+            "mtp.layers.0.mlp.experts.gate_up_proj",
+            "mtp.layers.0.mlp.experts.down_proj",
+            "mtp.layers.0.mlp.shared_expert_gate.weight",
+            "mtp.layers.0.mlp.shared_expert.gate_proj.weight",
+            "mtp.layers.0.mlp.shared_expert.up_proj.weight",
+            "mtp.layers.0.mlp.shared_expert.down_proj.weight",
+            "mtp.norm.weight",
+        ]
+        if scoring_head is None:
+            weight_names.insert(1, "lm_head.weight")
+        self.weights = {name: self._load_info(name).tensor for name in weight_names}
         self.q_norm_oneplus = self._load_oneplus_bf16_weight("mtp.layers.0.self_attn.q_norm.weight")
         self.k_norm_oneplus = self._load_oneplus_bf16_weight("mtp.layers.0.self_attn.k_norm.weight")
         cos, sin = _rope_tables(self.max_positions, self.rotary_dim, float(self.config.rope_theta))
@@ -329,10 +354,13 @@ class NativeMtpChainProposer:
         _, self.snapshot_hidden_buf = _empty_device((self.max_mtp_tokens, self.hidden), np.uint16, self.buffers, runtime=self.runtime)
         _, self.final_residual_buf = _empty_device((1, self.hidden), np.uint16, self.buffers, runtime=self.runtime)
         _, self.logits_buf = _empty_device((1, self.vocab), np.float32, self.buffers, runtime=self.runtime)
-        block_count = lm_head_argmax_stage1_blocks(self.vocab, threads=256)
+        scoring_threads = 256 if self.scoring_head is None else int(self.scoring_head.threads)
+        block_count = lm_head_argmax_stage1_blocks(self.vocab, threads=scoring_threads)
         self.block_values_host, self.block_values_buf = _empty_device((block_count,), np.float32, self.buffers, runtime=self.runtime)
         _, self.block_indices_buf = _empty_device((block_count,), np.int64, self.buffers, runtime=self.runtime)
+        _, self.w8_block_indices_buf = _empty_device((block_count,), np.int32, self.buffers, runtime=self.runtime)
         self.out_index_host, self.out_index_buf = _empty_device((1,), np.int64, self.buffers, runtime=self.runtime)
+        self.w8_out_index_host, self.w8_out_index_buf = _empty_device((1,), np.int32, self.buffers, runtime=self.runtime)
         self.out_value_host, self.out_value_buf = _empty_device((1,), np.float32, self.buffers, runtime=self.runtime)
 
     def _ensure_shared_gate_up_dual(self) -> DeviceBuffer:
@@ -415,6 +443,29 @@ class NativeMtpChainProposer:
             )
         return result
 
+    def advance_with_target_hidden(
+        self,
+        *,
+        input_token: int,
+        target_hidden_ptr: int,
+        position: int,
+        need_result: bool = True,
+        read_expert_topk: bool = True,
+        read_lm_head_value: bool = True,
+        stream: int = 0,
+    ) -> NativeMtpStepResult:
+        if int(target_hidden_ptr) <= 0:
+            raise ValueError("target_hidden_ptr must be non-zero")
+        return self.advance(
+            input_token=int(input_token),
+            target_hidden_ptr=int(target_hidden_ptr),
+            position=int(position),
+            need_result=need_result,
+            read_expert_topk=read_expert_topk,
+            read_lm_head_value=read_lm_head_value,
+            stream=stream,
+        )
+
     def advance_with_previous_hidden(
         self,
         *,
@@ -425,7 +476,7 @@ class NativeMtpChainProposer:
         read_lm_head_value: bool = True,
         stream: int = 0,
     ) -> NativeMtpStepResult:
-        return self.advance(
+        return self.advance_with_target_hidden(
             input_token=int(input_token),
             target_hidden_ptr=self.final_hidden_buf.ptr,
             position=int(position),
@@ -471,6 +522,8 @@ class NativeMtpChainProposer:
 
         if k <= 0 or k > 8:
             raise ValueError("vocab_topk supports 1..8")
+        if self.scoring_head is not None:
+            raise NotImplementedError("borrowed W8A16 scorer currently exposes top-1 only")
         if self._vocab_topk_host is None:
             ids, ids_buf = _empty_device((1, 8), np.int32, self.buffers, runtime=self.runtime)
             vals, vals_buf = _empty_device((1, 8), np.float32, self.buffers, runtime=self.runtime)
@@ -490,7 +543,8 @@ class NativeMtpChainProposer:
         truncation, without a vocab-sized D2H.
         """
 
-        valid = lm_head_argmax_stage1_blocks(self.draft_vocab, threads=256)
+        scoring_threads = 256 if self.scoring_head is None else int(self.scoring_head.threads)
+        valid = lm_head_argmax_stage1_blocks(self.draft_vocab, threads=scoring_threads)
         self._copy_device_to_host_array(
             self.block_values_host,
             self.block_values_buf,
@@ -838,23 +892,45 @@ class NativeMtpChainProposer:
         if not need_result:
             self.current = NativeMtpStepResult(token=-1, logit=float("nan"), topk_experts=(), topk_logits=())
             return self.current
-        lm_head_fp16_argmax_bf16(
-            self.final_hidden_buf.ptr,
-            self.weights["lm_head.weight"].ptr,
-            self.logits_buf.ptr,
-            self.block_values_buf.ptr,
-            self.block_indices_buf.ptr,
-            self.out_index_buf.ptr,
-            self.out_value_buf.ptr,
-            self.hidden,
-            self.draft_vocab,
-            threads=256,
-            stream=stream,
-            library=self.lm_lib,
-        )
+        if self.scoring_head is None:
+            lm_head_fp16_argmax_bf16(
+                self.final_hidden_buf.ptr,
+                self.weights["lm_head.weight"].ptr,
+                self.logits_buf.ptr,
+                self.block_values_buf.ptr,
+                self.block_indices_buf.ptr,
+                self.out_index_buf.ptr,
+                self.out_value_buf.ptr,
+                self.hidden,
+                self.draft_vocab,
+                threads=256,
+                stream=stream,
+                library=self.lm_lib,
+            )
+            index_host = self.out_index_host
+            index_buf = self.out_index_buf
+        else:
+            w8a16_lm_head_argmax_rows_bf16(
+                self.final_hidden_buf.ptr,
+                int(self.scoring_head.weight_int8_ptr),
+                int(self.scoring_head.scale_f32_ptr),
+                self.block_values_buf.ptr,
+                self.w8_block_indices_buf.ptr,
+                self.w8_out_index_buf.ptr,
+                self.out_value_buf.ptr,
+                1,
+                self.hidden,
+                self.vocab,
+                threads=int(self.scoring_head.threads),
+                stream=stream,
+                library=self.lm_lib,
+                runtime=self.runtime,
+            )
+            index_host = self.w8_out_index_host
+            index_buf = self.w8_out_index_buf
         # Blocking D2H of the argmax pair implies a stream sync; the explicit
         # device_synchronize on top of it was pure host stall (#107 host-time trim).
-        self._copy_device_to_host_array(self.out_index_host, self.out_index_buf, nbytes=self.out_index_host.nbytes, stream=stream)
+        self._copy_device_to_host_array(index_host, index_buf, nbytes=index_host.nbytes, stream=stream)
         logit = float("nan")
         if read_lm_head_value:
             self._copy_device_to_host_array(self.out_value_host, self.out_value_buf, nbytes=self.out_value_host.nbytes, stream=stream)
@@ -868,7 +944,7 @@ class NativeMtpChainProposer:
             topk_experts = ()
             topk_logits = ()
         self.current = NativeMtpStepResult(
-            token=int(self.out_index_host[0]),
+            token=int(index_host[0]),
             logit=logit,
             topk_experts=topk_experts,
             topk_logits=topk_logits,
@@ -876,4 +952,4 @@ class NativeMtpChainProposer:
         return self.current
 
 
-__all__ = ["NativeMtpChainProposer", "NativeMtpStateSnapshot", "NativeMtpStepResult"]
+__all__ = ["NativeMtpChainProposer", "NativeMtpStateSnapshot", "NativeMtpStepResult", "NativeMtpW8A16Head"]
