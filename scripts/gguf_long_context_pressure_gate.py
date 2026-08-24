@@ -251,12 +251,31 @@ def _pressure_specs(*, decode_tokens: int) -> tuple[WorkloadRequest, WorkloadReq
     )
 
 
-def _required_admission(plan: LongContextPoolPlan) -> dict[str, Any]:
+def _effective_pressure_high_water(
+    plan: LongContextPoolPlan,
+    *,
+    workspace_lease_pages: int,
+) -> int:
+    workspace_pages = int(workspace_lease_pages)
+    if workspace_pages < 0:
+        raise ValueError("workspace lease pages must be non-negative")
+    return int(plan.pressure_high_water_pages) + workspace_pages
+
+
+def _required_admission(
+    plan: LongContextPoolPlan,
+    *,
+    workspace_lease_pages: int = 0,
+) -> dict[str, Any]:
+    effective_capacity = _effective_pressure_high_water(
+        plan,
+        workspace_lease_pages=int(workspace_lease_pages),
+    )
     return {
         "resource": "device_kv_pool",
         "requested_units": int(plan.pages_by_context[4_096]),
-        "current_units": int(plan.pressure_high_water_pages),
-        "capacity_units": int(plan.pressure_high_water_pages),
+        "current_units": effective_capacity,
+        "capacity_units": effective_capacity,
     }
 
 
@@ -291,15 +310,22 @@ def evaluate_packet(
         and pressure.get("candidate_done_sentinel") is True
     ):
         reasons.append("pressure_accept_reject_contract_failed")
-    if pressure.get("candidate_admission") != _required_admission(plan):
+    workspace_lease_pages = int(pressure.get("workspace_lease_pages", 0))
+    effective_capacity = _effective_pressure_high_water(
+        plan,
+        workspace_lease_pages=workspace_lease_pages,
+    )
+    if pressure.get("candidate_admission") != _required_admission(
+        plan,
+        workspace_lease_pages=workspace_lease_pages,
+    ):
         reasons.append("pressure_admission_metadata_mismatch")
     if not (
-        int(final_pool.get("current_pages", -1))
-        == int(plan.pressure_high_water_pages)
+        int(final_pool.get("current_pages", -1)) == effective_capacity
         and int(final_pool.get("free_pages", -1))
         == int(plan.pressure_high_water_pages)
-        and int(final_pool.get("refcounted_pages", -1)) == 0
-        and int(final_pool.get("pinned_pages", -1)) == 0
+        and int(final_pool.get("refcounted_pages", -1)) == workspace_lease_pages
+        and int(final_pool.get("pinned_pages", -1)) == workspace_lease_pages
         and int(final_pool.get("grow_events", -1)) == 0
         and int(final_pool.get("grow_failures", 0)) > 0
         and int(final_pool.get("shrink_events", -1)) == 0
@@ -484,6 +510,7 @@ def _execute_pressure_workload(
     slos: SLOThresholds,
     idle_timeout_seconds: float,
     request_timeout_seconds: float,
+    workspace_lease_pages: int,
 ) -> tuple[dict[str, Any], tuple[int, ...], tuple[int, ...]]:
     long_spec, candidate_spec = _pressure_specs(decode_tokens=plan.decode_tokens)
     before_ids = set(reclaimed)
@@ -509,7 +536,10 @@ def _execute_pressure_workload(
             admission_barrier = _wait_for_pressure_allocation(
                 llm,
                 runner,
-                expected_pages=plan.pages_by_context[32_768],
+                expected_pages=(
+                    int(workspace_lease_pages)
+                    + int(plan.pages_by_context[32_768])
+                ),
                 timeout_seconds=float(idle_timeout_seconds),
             )
             candidate_start = threading.Event()
@@ -572,7 +602,11 @@ def _execute_pressure_workload(
             "passed": bool(
                 summary["passed"]
                 and metrics_exact
-                and admission == _required_admission(plan)
+                and admission
+                == _required_admission(
+                    plan,
+                    workspace_lease_pages=int(workspace_lease_pages),
+                )
             ),
             "long_outcome": row_by_label[long_spec.label].outcome,
             "candidate_outcome": row_by_label[candidate_spec.label].outcome,
@@ -580,6 +614,11 @@ def _execute_pressure_workload(
             "candidate_error_status_code": candidate_trace.error_status_code,
             "candidate_done_sentinel": candidate_trace.done_sentinel,
             "candidate_admission": admission,
+            "workspace_lease_pages": int(workspace_lease_pages),
+            "effective_pressure_high_water_pages": _effective_pressure_high_water(
+                plan,
+                workspace_lease_pages=int(workspace_lease_pages),
+            ),
             "candidate_error_payload": copy.deepcopy(candidate_trace.error_payload),
             "admission_barrier": admission_barrier,
             "metrics": {
@@ -599,7 +638,10 @@ def _execute_pressure_workload(
         summary["failure_reasons"] = sorted(
             set([*summary["failure_reasons"], "pressure_server_counter_accounting_failed"])
         )
-    if admission != _required_admission(plan):
+    if admission != _required_admission(
+        plan,
+        workspace_lease_pages=int(workspace_lease_pages),
+    ):
         summary["failure_reasons"] = sorted(
             set([*summary["failure_reasons"], "pressure_admission_metadata_mismatch"])
         )
@@ -813,11 +855,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         flush=True,
                     )
                 if run_pressure:
+                    workspace_lease_pages = int(
+                        runner.kv_pool_memory_snapshot().get(
+                            "packed_workspace_lease_pages", 0
+                        )
+                    )
                     pressure_config = replace(
                         adapter._loop.config,
                         kv_pool_initial_pages=plan.initial_pages,
                         kv_pool_low_water_pages=plan.low_water_pages,
-                        kv_pool_high_water_pages=plan.pressure_high_water_pages,
+                        kv_pool_high_water_pages=_effective_pressure_high_water(
+                            plan,
+                            workspace_lease_pages=workspace_lease_pages,
+                        ),
                         kv_pool_chunk_pages=plan.chunk_pages,
                         kv_pool_idle_grace_seconds=0.0,
                     )
@@ -847,6 +897,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             slos=slos,
                             idle_timeout_seconds=float(args.idle_timeout_seconds),
                             request_timeout_seconds=float(args.request_timeout_seconds),
+                            workspace_lease_pages=workspace_lease_pages,
                         )
                     )
                     print(
