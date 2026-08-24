@@ -429,7 +429,9 @@ start without a GPU run.
 - [x] Prove final target/provider cursors, RNG, outputs, transactions, leases,
       and ledger units are conserved.
 - [x] Prove one peer's reject/cancel cannot mutate another peer.
-- [ ] Prove unsupported sampling/context/claims select K=0 before mutation.
+- [x] Prove missing capability, unsupported sampling/mode, context/output room,
+      claim miss, circuit breaker, and unavailable execution route select K=0
+      before mutation.
 
 ### RED/GREEN gate
 
@@ -849,7 +851,8 @@ Every temporary flag introduced by this campaign must be added to
 
 ## 18. Current handoff
 
-The next action after this plan commit is **S1 contract RED tests**. No GPU work
-is needed until S3. The initial implementation should create the production
-records and staged provider boundary first, then rebase the simulator so S2 uses
-already-proven transaction semantics rather than inventing a second lifecycle.
+S1 backend-neutral contracts, staged provider ownership, deterministic K/K0
+planning, production transactions/results/telemetry, and the expanded simulator
+matrix are complete. The next action is **S2 Generation-2 one-cycle scheduling
+RED tests**. No GPU work is needed until S3; S2 must consume the S1 records and
+must not invent a second provider or transaction lifecycle.

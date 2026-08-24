@@ -116,6 +116,7 @@ class SpeculativeCapability:
     graph_supported: bool
     eager_supported: bool
     strict_fallback_key: str
+    max_context_tokens: int | None = None
 
     def __post_init__(self) -> None:
         for field in (
@@ -166,6 +167,11 @@ class SpeculativeCapability:
         object.__setattr__(self, "target_row_buckets", target_buckets)
         if not self.graph_supported and not self.eager_supported:
             raise ValueError("capability must declare at least one execution route")
+        if self.max_context_tokens is not None:
+            max_context_tokens = int(self.max_context_tokens)
+            if max_context_tokens <= 0:
+                raise ValueError("max_context_tokens must be positive when set")
+            object.__setattr__(self, "max_context_tokens", max_context_tokens)
 
     def supports_shape(
         self,
