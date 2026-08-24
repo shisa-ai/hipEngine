@@ -402,12 +402,23 @@ class SubmitPollTextGenerator:
 
     @property
     def supports_speculative_mtp(self) -> bool:
-        """Whether the wrapped model exposes its out-of-band MTP route."""
+        """Whether staged or legacy speculative MTP is available."""
 
+        if self._supports_staged_speculative_mtp:
+            return True
         supports = getattr(self._inner, "supports_speculative_mtp", None)
         return bool(supports) and callable(
             getattr(self._inner, "generate_speculative_mtp_detailed", None)
         )
+
+    @property
+    def _supports_staged_speculative_mtp(self) -> bool:
+        if not self._has_resident_runner:
+            return False
+        capability = callable(getattr(self._runner, "speculative_capability", None))
+        opaque = callable(getattr(self._runner, "execute_speculative_cycle", None))
+        staged = callable(getattr(self._runner, "execute_target_frontier", None))
+        return capability and (opaque or staged)
 
     @property
     def last_speculative_submission(self) -> GenerationSubmission | None:
@@ -446,6 +457,22 @@ class SubmitPollTextGenerator:
             )
         if any(len(request.prompts) != 1 for request in normalized):
             raise ValueError("one speculative child requires exactly one prompt")
+        if self._supports_staged_speculative_mtp:
+            with self._submission_priority.submission(self._loop_lock):
+                staged_submissions: list[GenerationSubmission] = []
+                try:
+                    for request in normalized:
+                        staged_submissions.append(
+                            self._submit_staged_speculative_detailed_locked(request)
+                        )
+                except Exception:
+                    for submission in staged_submissions:
+                        self._abort_submission_locked(submission, reason="cancel")
+                    raise
+                submissions = tuple(staged_submissions)
+                if submissions:
+                    self._last_speculative_submission = submissions[-1]
+                return submissions
         compatibility = tuple(
             replace(request, prompts=(), cancellation_token=None)
             for request in normalized
@@ -530,6 +557,10 @@ class SubmitPollTextGenerator:
         if len(request.prompts) != 1:
             raise ValueError("one speculative submission requires exactly one prompt")
         with self._submission_priority.submission(self._loop_lock):
+            if self._supports_staged_speculative_mtp:
+                submission = self._submit_staged_speculative_detailed_locked(request)
+                self._last_speculative_submission = submission
+                return submission
             outputs = list(self._inner.generate_speculative_mtp_detailed(request))
             if len(outputs) != 1:
                 raise RuntimeError("one speculative submission must produce one output")
@@ -565,6 +596,80 @@ class SubmitPollTextGenerator:
             self._last_speculative_submission = submission
             self._register_submission_cancellation_locked(submission)
             return submission
+
+    def _submit_staged_speculative_detailed_locked(
+        self,
+        request: GenerationRequest,
+    ) -> GenerationSubmission:
+        """Admit one staged child without running provider or target work."""
+
+        prompt = request.prompts[0]
+        tokenize_started = time.perf_counter() if isinstance(prompt, str) else None
+        prompt_row = tuple(self._runner.prompt_tokens(prompt))
+        tokenize_ms = (
+            max(0.0, float(getattr(prompt, "tokenize_ms", 0.0)))
+            if tokenize_started is None
+            else max(0.0, (time.perf_counter() - tokenize_started) * 1_000.0)
+        )
+        max_new_tokens = int(self._runner.scheduler_max_new_tokens(request))
+        desired_depth = getattr(
+            self._runner,
+            "speculative_desired_candidate_count",
+            None,
+        )
+        desired = (
+            int(desired_depth(request))
+            if callable(desired_depth)
+            else min(3, max_new_tokens)
+        )
+        request_id: int | None = None
+        try:
+            request_id = self._loop.submit_speculative(
+                prompt_row,
+                max_new_tokens=max_new_tokens,
+                desired_candidate_count=max(1, desired),
+            )
+            runner_request = replace(request, deadline_at=None)
+            self._runner.register_batch(
+                (request_id,),
+                runner_request,
+                prompt_rows=(prompt_row,),
+            )
+            timing_observer = getattr(
+                self._runner,
+                "record_prompt_tokenize_ms",
+                None,
+            )
+            if callable(timing_observer):
+                timing_observer((request_id,), (tokenize_ms,))
+        except Exception:
+            if request_id is not None:
+                self._loop.cancel(request_id)
+                self._loop.release_completed(request_id)
+                self._runner.discard((request_id,))
+            raise
+        assert request_id is not None
+        submission = GenerationSubmission(
+            request_ids=(request_id,),
+            request=request,
+            max_ticks=_submit_poll_max_ticks(
+                (prompt_row,),
+                self._prefill_chunk_size,
+                max_new_tokens=max_new_tokens,
+                prefill_decode_policy=self._loop.prefill_decode_policy,
+            ),
+            work_kind=WorkKind.VERIFY_CHAIN.value,
+            execution_route="engine_service_specdec2",
+            work_item=None,
+        )
+        self._register_submission_cancellation_locked(submission)
+        return submission
+
+    @staticmethod
+    def _is_staged_speculative_submission(
+        submission: GenerationSubmission,
+    ) -> bool:
+        return submission.execution_route == "engine_service_specdec2"
 
     def __getattr__(self, name: str):
         return getattr(self._inner, name)
@@ -721,10 +826,13 @@ class SubmitPollTextGenerator:
 
     def generation_complete(self, submission: GenerationSubmission) -> bool:
         with self._loop_lock:
-            if submission.work_kind in {
-                WorkKind.VERIFY_CHAIN.value,
-                WorkKind.VERIFY_TREE.value,
-            }:
+            if (
+                submission.work_kind in {
+                    WorkKind.VERIFY_CHAIN.value,
+                    WorkKind.VERIFY_TREE.value,
+                }
+                and not self._is_staged_speculative_submission(submission)
+            ):
                 return all(
                     request_id in self._speculative_outputs_by_request
                     for request_id in submission.request_ids
@@ -859,10 +967,13 @@ class SubmitPollTextGenerator:
         """Consume one completed submission in original prompt order."""
 
         with self._loop_lock:
-            if submission.work_kind in {
-                WorkKind.VERIFY_CHAIN.value,
-                WorkKind.VERIFY_TREE.value,
-            }:
+            if (
+                submission.work_kind in {
+                    WorkKind.VERIFY_CHAIN.value,
+                    WorkKind.VERIFY_TREE.value,
+                }
+                and not self._is_staged_speculative_submission(submission)
+            ):
                 if not all(
                     request_id in self._speculative_outputs_by_request
                     for request_id in submission.request_ids
@@ -1129,10 +1240,13 @@ class SubmitPollTextGenerator:
         *,
         reason: str,
     ) -> None:
-        if submission.work_kind in {
-            WorkKind.VERIFY_CHAIN.value,
-            WorkKind.VERIFY_TREE.value,
-        }:
+        if (
+            submission.work_kind in {
+                WorkKind.VERIFY_CHAIN.value,
+                WorkKind.VERIFY_TREE.value,
+            }
+            and not self._is_staged_speculative_submission(submission)
+        ):
             for request_id in submission.request_ids:
                 self._speculative_outputs_by_request.pop(request_id, None)
             self._unregister_submission_cancellation_locked(submission)

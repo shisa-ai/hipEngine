@@ -483,10 +483,11 @@ ledger owner in every injected path.
 
 ### S2.3 EngineService/API lifecycle
 
-- [ ] Make speculative child submission O(1) admission/planning; no generation
-      inside command handling.
-- [ ] Stop calling `submit_speculative_many_detailed()` as a whole-request model
-      execution path for a migrated provider.
+- [x] Make staged speculative child submission O(1) admission/planning; no
+      provider or target generation runs inside command handling.
+- [x] Route migrated staged providers through ordinary loop submissions instead
+      of whole-request `submit_speculative_many_detailed()` execution; retain the
+      legacy path only for unmigrated oracle drivers.
 - [ ] Preserve parent/child IDs, all-choice accounting, finish details, deadlines,
       and circuit-breaker behavior.
 - [ ] Make blocking and SSE consume the same committed result events.
