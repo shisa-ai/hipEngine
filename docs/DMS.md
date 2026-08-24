@@ -4,10 +4,11 @@ Last updated: 2026-08-24
 
 > **Current status:** the frozen epoch-20 exact-budget **W8192** policy is
 > **qualified at 32K and 128K** on source-disjoint four-category final suites.
-> At 128K it records max/mean KL 0.001062/0.000286, 100% top-1, 1.882225x live
-> CR, and 3.750 GiB less BF16 K/V payload than dense-equivalent storage. c1-c32
-> lifecycle/soak, sampled process/device memory controls, and same-host
-> performance remain open, so DMS remains default-off.
+> With the retained wave-cooperative kernel, 128K records max/mean KL
+> 0.002899/0.000321, 100% top-1, 1.882225x live CR, 3.750 GiB less BF16 K/V
+> payload, and c1 decode parity with dense (136.27 versus 137.43 ms/token).
+> c1-c32 lifecycle/soak, sampled memory, bounded-peak prefill, and public
+> admission remain open, so DMS remains default-off.
 
 This document is the end-to-end record and continuation plan for hipEngine's
 external Dynamic Memory Sparsification campaign. It covers the design, exact
@@ -25,8 +26,10 @@ the exact-label long-retraining rejection is
 [`2026-08-23-gfx1151-qwen38-dms-long-trained-linear-rejected.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-dms-long-trained-linear-rejected.json),
 the frozen W8192 sealed 32K final pass is
 [`2026-08-23-gfx1151-qwen38-dms-w8192-32k-final-pass.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-dms-w8192-32k-final-pass.json),
-and the source-disjoint 128K final pass is
-[`2026-08-24-gfx1151-qwen38-dms-w8192-128k-final-pass.json`](../benchmarks/results/2026-08-24-gfx1151-qwen38-dms-w8192-128k-final-pass.json).
+the source-disjoint 128K final pass is
+[`2026-08-24-gfx1151-qwen38-dms-w8192-128k-final-pass.json`](../benchmarks/results/2026-08-24-gfx1151-qwen38-dms-w8192-128k-final-pass.json),
+and the retained wave-cooperative performance/profile evidence is
+[`2026-08-24-gfx1151-qwen38-dms-wave-cooperative-dense-parity.json`](../benchmarks/results/2026-08-24-gfx1151-qwen38-dms-wave-cooperative-dense-parity.json).
 The normative KV ABI and broader storage roadmap remain in
 [`KVCACHE.md`](KVCACHE.md); lifecycle integration is tracked in
 [`CONCURRENCY2.md`](CONCURRENCY2.md).
@@ -36,14 +39,14 @@ The normative KV ABI and broader storage roadmap remain in
 | Question | Answer |
 | --- | --- |
 | Can we train a DMS predictor without modifying the model? | **Yes.** The base GGUF is never optimized, modified, or requantized. |
-| Can we test predictor correctness and exact-Q4 model quality? | **Yes.** The integrated dense-teacher route localizes kernel versus policy error. Frozen W8192 passes source-disjoint 32K and 128K finals at max KL 0.003430/0.001062 and 100% top-1; no-evict remains essentially exact. |
+| Can we test predictor correctness and exact-Q4 model quality? | **Yes.** The integrated dense-teacher route localizes kernel versus policy error. Frozen W8192 with the retained production kernel passes source-disjoint 32K and 128K finals at max KL 0.003784/0.002899 and 100% top-1; no-evict remains essentially exact. |
 | How large is the predictor? | **655,640 bytes** (`640.27 KiB`, `0.6253 MiB`) plus **2,090 bytes** of required metadata. Retraining changes values, not tensor geometry. |
 | How long did training take? | The retained short candidate took **99.42 s** internally. Exact 32K fine-tuning to epoch 20 took **583.07 s cumulative trainer time**, plus **637.08 s** for train-only per-head calibration. |
 | How long did the measured retained pipeline take? | **774 seconds (12m54s)** for capture, labels, final training, and both quality gates; excludes data curation, replay, code development, and cache warmup. |
 | What candidate passed? | **CR2/window256:** max KL `0.009691`, 100% top-1, 1.54293x observed total live-cell compression on 768-token heldouts. |
 | Did CR4 or CR8 pass? | **No.** Their max KL values were `0.08908` and `0.24993`, above the `0.05` outer floor. |
 | Does this already save serving memory? | **Yes for the explicit c1 post-prefill owner:** frozen W8192 stores 4.250 GiB versus 8.000 GiB dense-equivalent BF16 payload at 128K, saving 3.750 GiB. Full production capacity qualification remains open because prefill still has a dense peak and same-host sampled controls are missing. |
-| Can it become faster than dense decode? | **Not yet.** Grouped-GQA compact attention makes DMS decode 2.04x/2.61x faster than its parent at 32K/128K, but retained 128K DMS is still 2.61x slower than matched dense decode (359.21 vs 137.70 ms/token). |
+| Can it become faster than dense decode? | **It now reaches measured c1 parity at 128K.** Wave-cooperative compact attention runs at **136.27 ms/token (7.34 tok/s)** versus matched dense **137.43 ms/token**, while retaining 1.882x live-KV compression. At 32K it is **104.62 vs 99.96 ms/token** (4.67% slower). Concurrent serving and product-default admission remain open. |
 | Is it quantization-independent? | The BF16 sidecar representation is not tied to GGUF storage, but the current metadata and evidence are intentionally bound to one exact Q4_K_M file. Every additional quant requires calibration and qualification. |
 | Is it on `origin/main`? | Not as of this campaign snapshot. The implementation is committed on branch `fastdms`. |
 
@@ -64,9 +67,9 @@ The normative KV ABI and broader storage roadmap remain in
 | Normal resident-session DMS selection | Integrated for explicit c1 exact-artifact use; public `LLM.generate()` selection open |
 | Sole-owner no-dense-shadow GGUF decode | Integrated; dense KV is temporary during correctness-first prefill and released after pack |
 | Allocator-visible production savings | Partial: frozen W8192 saves 3.750 GiB BF16 payload at c1 128K; sampled/same-host P7 controls open |
-| Serving throughput and profiler evidence | Grouped-GQA producer retained: 3.36x 128K leaf and 2.04x/2.61x DMS decode wins at 32K/128K; DMS still slower than dense |
+| Serving throughput and profiler evidence | gfx1151 wave-cooperative group-6 producer retained: 9.79x over grouped leaf; full c1 DMS improves 1.84x/2.63x at 32K/128K and reaches matched-dense parity at 128K. c>N serving remains open |
 | Integrated c1-c32 lifecycle and long soak | Open |
-| Long-context-stable sidecar | Qualified at 32K and 128K: final max KL 0.003430/0.001062, 100% top-1, 1.599688x/1.882225x CR |
+| Long-context-stable sidecar | Qualified with the retained production kernel at 32K and 128K: max KL 0.003784/0.002899, 100% top-1, 1.599688x/1.882225x CR |
 | Portable cross-host sidecar package | Open |
 | End-to-end campaign and production guide | Complete in this document |
 | Merge into `origin/main` | Open |
@@ -224,6 +227,7 @@ torch-free.
 | `scripts/qwen38_dms_integrated_quality_suite.py` | Shared-load four-category long-heldout integrated quality suite |
 | `scripts/qwen38_dms_build_long_manifest.py` | Builds source-disjoint 32K calibration/heldout corpora under the benchmark firewall |
 | `scripts/qwen38_dms_calibrate_long_bias.py` | Captures score-only long streams and folds per-layer/head CR2 quantiles into 64 BF16 biases |
+| `scripts/dms_compact_attn_long_bench.py` | Cached-capable compact-attention long-live microbenchmark and profiler child |
 
 The implementation derives its DMS semantics from read-only FastDMS reference
 commit `c602b0ec3266da7f74d6a658b3dafcddb443fddd`. All hipEngine development and
@@ -255,18 +259,21 @@ the subsequent explicit c1 integration now has this status:
   `LLM.generate()`/c>N selection and streaming prefill without the temporary
   dense peak remain open;
 - the original fixture compact-attention body still uses dynamic shared score
-  storage and remains the small-live fallback. The 256-row split-K producer/
-  reducer holds LDS at 2,048/1,024 bytes, passes direct 65,664/131,200-row
-  numerical probes, and is selected by explicit c1 when live capacity exceeds
-  the bounded small-live route.
+  storage and remains the small-live fallback. The generic 256-row split-K
+  producer/reducer passes direct 65,664/131,200-row numerical probes. Exact
+  24Q/4KV/D256 group-6 geometry now selects the production-T1 wave-cooperative
+  producer (12,800-byte LDS) with the generic grouped producer and CPU oracle as
+  fallbacks.
 
 The old quality harness remains dense-shadow evidence only. The explicit
 integrated resident owner passes 128K and exact-limit 256K execution: after pack
 it releases dense KV, produces finite compact decode, lowers tracked residency
-by 4.592/7.813 GiB, and drains to zero. This is retained capacity evidence, not
-quality or speed evidence. Its remaining questions are temporary dense-prefill
-peak, severe long-context calibration drift, physical max-head slack,
-same-host controls, performance, c>N, and public API promotion. See
+by 4.592/7.813 GiB, and drains to zero. That artifact is retained capacity
+evidence, not quality or speed evidence. At that checkpoint its open questions included
+long-context calibration and c1 performance; later W8192 quality and
+wave-cooperative decode evidence close those two items. Temporary dense-prefill
+peak, physical max-head slack, same-host sampled controls, c>N, and public API
+promotion remain open. See
 [`2026-08-23-gfx1151-qwen38-external-dms-integrated-128k-256k-capacity.json`](../benchmarks/results/2026-08-23-gfx1151-qwen38-external-dms-integrated-128k-256k-capacity.json).
 
 ## Campaign host
@@ -719,7 +726,9 @@ focused-repair policy in [`TESTING.md`](TESTING.md).
   near-exact no-evict control. The frozen W8192 sidecar now passes the binding
   source-disjoint 32K and 128K dense-teacher gates; sampled process/device peak,
   same-host memory controls, and bounded streaming-prefill peak remain open.
-- A same-protocol c1 decode-latency claim exists for the grouped-GQA win; no DMS throughput, TTFT, serving ITL/SLO, or E2E product claim exists.
+- A same-protocol c1 decode-latency/rate claim exists for the wave-cooperative
+  win; no concurrent DMS serving throughput, TTFT, serving ITL/SLO, or E2E
+  product claim exists.
 - No long c1/c8 soak or integrated c1-c32 request lifecycle is qualified.
 - No production serving `rocprofv3` trace proves the final kernel route.
 - Prefix sharing and speculative spans intentionally fail closed.
@@ -782,10 +791,11 @@ compressed codec requires its own artifact-specific quality campaign.
 
 ## Can DMS make decode faster?
 
-**Potentially yes at long context, but it is not automatic—and the current
-route is still slower than dense.** Dense attention must read and score every
-live K/V row. CR2 asymptotically halves those rows, so a memory-bound compact
-attention kernel can reduce full-attention scan time.
+**Yes at sufficiently long context, but it is not automatic.** The current
+explicit c1 route reaches measured dense parity at 128K while remaining 4.67%
+slower at 32K. Dense attention must read and score every live K/V row. CR2
+asymptotically halves those rows, so a memory-bound compact attention kernel can
+reduce full-attention scan time.
 The sidecar adds only 327,680 weight MACs plus 64 biases per generated token,
 but a host projection, device round trip, serial compaction, poor layout, or
 extra launch can easily erase the saving.
@@ -802,16 +812,34 @@ whole_step_speedup = 1 / ((1 - f_attention)
 four layers is full attention in this hybrid model, whole-model speedup will be
 smaller than the compact-attention speedup.
 
-The retained grouped-GQA producer scans each compact K/V split once for all six
-query heads instead of six times. At the qualified 128K geometry its leaf median
-falls 46.786 -> 13.920 ms/layer (3.361x); rocprof records 1,092 local256
-workgroups, 16 VGPR, 9,216-byte LDS, and zero scratch. Full-model median DMS
-decode falls 391.68 -> 191.90 ms/token at 32K (2.041x) and 936.04 -> 359.21
-ms/token at 128K (2.606x), with all frozen four-category quality gates passing.
-However, matched dense 128K decode is still 137.70 ms/token, so DMS remains
-2.609x slower. This is a retained DMS-path win and a concrete performance
-blocker, not a production speedup claim. Evidence:
-[`2026-08-24-gfx1151-qwen38-dms-grouped-gqa-decode.json`](../benchmarks/results/2026-08-24-gfx1151-qwen38-dms-grouped-gqa-decode.json).
+The first retained grouped-GQA producer scans each compact K/V split once for
+all six query heads instead of six times. At the qualified 128K geometry it
+reduced the parent leaf 46.786 -> 13.920 ms/layer (3.361x) and full-model DMS
+decode to 192.74/357.96 ms/token at 32K/128K.
+
+The retained Qwen3.8 production-profile successor assigns one compact token to
+each wave and distributes its 256-dimensional K dot product over 32 lanes while
+sharing every K load across all six query heads. Its scoped gfx1151 128K leaf
+median is **1.422 ms/layer**, **9.792x** faster than grouped and **32.910x**
+faster than the original parent. Cached-only `rocprofv3` records the expected
+`dms_compact_attn_splitk_group6_wave_producer_kernel<6>` at 1.472 ms, 1,092
+local256 workgroups, 56 VGPR, 12,800-byte LDS, and zero scratch, followed by the
+expected reducer at 0.095 ms.
+
+Across all 32 rows of each unchanged category suite, median DMS decode improves
+**192.74 -> 104.62 ms/token at 32K (1.842x)** and **357.96 -> 136.27 ms/token
+at 128K (2.627x)**. Matched dense medians are 99.96 and 137.43 ms/token, so DMS
+is 4.67% slower at 32K and reaches measured parity at 128K (**0.84% lower
+latency, 7.34 tok/s**) while retaining 1.882225x live compression and 3.750 GiB
+payload savings. Arithmetic is production T1 rather than parent-exact; the
+complete frozen 32K and fresh sealed 128K gates pass at 100% top-1 and max KL
+0.003784/0.002899. A compile-plan capability enables this T1 body only for
+native gfx1151; gfx1100, unsupported shapes, and registry misses retain the
+generic grouped producer or CPU-reference fallback. This closes the explicit
+c1 128K decode-performance blocker, not the
+c>N lifecycle, sampled-memory, dense-prefill-peak, or public-admission gates.
+Evidence:
+[`2026-08-24-gfx1151-qwen38-dms-wave-cooperative-dense-parity.json`](../benchmarks/results/2026-08-24-gfx1151-qwen38-dms-wave-cooperative-dense-parity.json).
 
 At contexts at or below the protected window, there is no scan reduction and
 the predictor is pure overhead; production policy should remain dense below a
@@ -826,10 +854,10 @@ Performance goals:
 3. [x] Make grouped-GQA compact attention consume compact live metadata, scan
    only true live rows, and share K/V reads across query heads.
 4. [ ] Demonstrate serving-kernel time scaling with measured live counts under
-   `rocprofv3`; retained leaf tracing has expected grouped producer/reducer names,
-   but a full serving trace remains open.
-5. Measure c1 and serving-shaped c8/c32 at 8K/32K/128K/256K against true dense
-   BF16 and applicable dense INT8 baselines on the same host.
+   `rocprofv3`; retained leaf tracing has the expected wave producer/reducer
+   names, but a full serving trace remains open.
+5. [ ] c1 has matched dense-BF16 evidence at 32K/128K; measure 8K/256K,
+   applicable dense INT8, and serving-shaped c8/c32 on the same host.
 6. Require non-regressive E2E/ITL at the selected activation threshold. If short
    contexts regress, use a measured context/admission policy rather than
    defaulting DMS globally.
@@ -942,7 +970,8 @@ byte-exact reclaim after success, cancellation, and injected failure.
 - [x] Replace distribution-sensitive threshold-only prefill selection with a
       metadata-bound exact historical budget over learned per-layer/head ranks;
       preserve window protection and deterministic tie-breaking. Correctness-
-      first host ranking/device-mask update is implemented; quality is open.
+      first host ranking/device-mask update is implemented and long quality
+      passes; device-only ranking remains open.
 - [ ] Fuse or co-schedule ranking/thresholding, protected-window handling,
       append, and compact metadata update where the numerical contract permits.
 - [x] Eliminate host projection and per-token K/V copies from c1 decode serving.
@@ -954,8 +983,10 @@ fixed schedule, and pass mutation/rollback/isolation fixtures.
 
 ### P4 — Production compact attention
 
-- [x] Port bounded-LDS GQA compact split-K attention over persistent compact extents.
-- [ ] Scan each KV stream once for the query heads that share it when profitable.
+- [x] Port bounded-LDS GQA compact split-K attention over persistent compact
+      extents.
+- [x] Scan each KV stream once for the query heads that share it when
+      profitable; wave-cooperative group-6 is retained.
 - [x] Support ragged per-layer/per-head `live_counts` and monotonic positions.
 - [x] Remove any dense-context fallback from the selected c1 DMS decode route.
 - [x] Add integrated no-evict control plus forced-pattern strict primitive fixtures against CPU reference.
@@ -984,11 +1015,10 @@ with no stale spans, generations, masks, payloads, or transaction ownership.
 ### P6 — Integrated quality and task qualification
 
 - [x] Re-run no-evict and CR2 through the sole-owner device route at the 768-token smoke scope.
-- [ ] Use the strict dense teacher trajectory and full logits.
-- [ ] Record mean/p95/p99/max KL and top-1 by category, shape, layer/head where
-      useful, and transition.
+- [x] Use the strict dense teacher trajectory and full logits for c1 32K/128K.
+- [x] Record mean/p95/p99/max KL and top-1 by category and context shape.
 - [ ] Run deterministic graph/eager and same-schedule repeats.
-- [ ] Run the complete mtpbench category suite plus category-heldouts and broad
+- [x] Run the complete mtpbench category suite plus category-heldouts and broad
       long heldouts; no single-prompt tuning.
 - [x] Add 8K/32K/128K contexts that materially exercise eviction; frozen W8192 passes source-disjoint 32K and 128K suites.
 - [ ] Add production task/SLO and BF16-relative gates from
@@ -1014,7 +1044,7 @@ counts and the capacity target, not merely an attention mask.
 
 ### P8 — Performance and profiler qualification
 
-- [ ] Establish true no-DMS baselines on the same physical host.
+- [x] Establish true no-DMS c1 32K/128K baselines on the same physical host.
 - [ ] Measure prefill, decode, TTFT, ITL, E2E, throughput, and peak memory at
       c1/c8/c32 and 8K/32K/128K/256K where feasible.
 - [ ] Use exact same prompts/token IDs, quant, KV dtype, scheduler, and timing
@@ -1026,12 +1056,13 @@ counts and the capacity target, not merely an attention mask.
 - [ ] Promote a context-aware selection policy only if the full quality suite
       remains green and the complete wall is non-regressive for its declared
       scope.
-- [ ] Update benchmark rollup, changelog, artifact, and worklog for every retained
+- [x] Update benchmark rollup, changelog, artifact, and worklog for every retained
       performance result.
 
 **Exit:** DMS has either a measured same-host speedup in its declared long-context
-scope or an explicitly accepted capacity-only mode with quantified cost. There
-is no performance claim until this phase closes.
+scope or an explicitly accepted capacity-only mode with quantified cost. The
+scoped c1 32K/128K claim is retained; broader serving performance remains
+unclaimed until the remaining phase gates close.
 
 ### P9 — Prefix, speculative decode, and codec composition
 
@@ -1118,6 +1149,9 @@ be promoted by relaxing the existing max-KL threshold.
 | Qualified W8192 metadata | `62c1f2d2c590aff2756796f01bddfaf1b602750ceada4b3ac23639902ff8edfe` |
 | Qualified W8192 32K manifest | `1c5a11b9ccd45cd7c99d4aa1ad2ccf730842d52c6f28b608a4258464fcf7aa39` |
 | Qualified W8192 128K manifest | `e22945a9b543bd327d0ff4b8c8c252252dc71b9eb087e17ea75b4ede32bb3856` |
+| Wave-cooperative 32K quality | `6d8b50dec6810749c2f19d5e66cddd71082ad8c796afa777f88cfe5675087ed2` |
+| Wave-cooperative 128K quality | `a5fb5932ff03a1dd285b132fb950236a449d2625d25887e9c47f296efef4c2fa` |
+| Wave-cooperative retained artifact | `5b183994f747ee93b8a7266fc31f2390b54bada8d6553a71d18215aef821ee15` |
 
 ### Major implementation commits
 
@@ -1142,6 +1176,8 @@ be promoted by relaxing the existing max-KL threshold.
 
 - [`20260823T102244.480574Z-lhl-fastdms-exact-cr2-trained-candidate-b64a81.md`](../worklog/entries/20260823T102244.480574Z-lhl-fastdms-exact-cr2-trained-candidate-b64a81.md)
 - [`20260823T102851.497538Z-lhl-fastdms-branch-handoff-95cb3b.md`](../worklog/entries/20260823T102851.497538Z-lhl-fastdms-branch-handoff-95cb3b.md)
+- [`20260824T041324.684481Z-lhl-dms-grouped-gqa-compact-attention-e77c9d.md`](../worklog/entries/20260824T041324.684481Z-lhl-dms-grouped-gqa-compact-attention-e77c9d.md)
+- [`20260824T074145.146619Z-lhl-dms-wave-group6-dense-parity-9e1a4a.md`](../worklog/entries/20260824T074145.146619Z-lhl-dms-wave-group6-dense-parity-9e1a4a.md)
 
 Use `python3 scripts/worklog.py render` for the complete immutable campaign
 sequence. Earlier superseded attempts are historical diagnostics, not qualified

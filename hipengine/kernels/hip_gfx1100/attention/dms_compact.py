@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ctypes
 import math
+import os
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -36,6 +37,23 @@ _SYMBOL_COMPACT_ATTN_SPLITK_PRODUCER = (
 _SYMBOL_COMPACT_ATTN_SPLITK_REDUCE = (
     "hipengine_dms_compact_attn_decode_splitk_reduce_bf16"
 )
+_ENV_HIP_ARCH = "HIPENGINE_HIP_ARCH"
+_ENV_HIP_OFFLOAD_ARCH = "HIPENGINE_HIP_OFFLOAD_ARCH"
+_WAVE_GROUP6_DEFINE = "-DHIPENGINE_DMS_ENABLE_WAVE_GROUP6=1"
+
+
+def _dms_compile_flags(target_arch: str | None) -> tuple[str, ...]:
+    resolved = target_arch
+    if resolved is None:
+        resolved = os.environ.get(_ENV_HIP_ARCH) or os.environ.get(
+            _ENV_HIP_OFFLOAD_ARCH
+        )
+    if (
+        resolved is not None
+        and resolved.strip().lower().split(":", 1)[0] == "gfx1151"
+    ):
+        return (_WAVE_GROUP6_DEFINE,)
+    return ()
 
 
 def plan_dms_compact_build(
@@ -43,6 +61,7 @@ def plan_dms_compact_build(
     cache_root: str | Path | None = None,
     compiler_version: str | None = None,
     profile: ProfileName = "decode",
+    target_arch: str | None = None,
 ) -> BuildArtifact:
     return plan_hip_build(
         sources=[_SOURCE],
@@ -50,6 +69,8 @@ def plan_dms_compact_build(
         profile=profile,
         cache_root=cache_root,
         compiler_version=compiler_version,
+        target_arch=target_arch,
+        extra_flags=_dms_compile_flags(target_arch),
         output_name=_OUTPUT_NAME,
     )
 
@@ -59,6 +80,7 @@ def build_dms_compact(
     cache_root: str | Path | None = None,
     compiler_version: str | None = None,
     profile: ProfileName = "decode",
+    target_arch: str | None = None,
     dry_run: bool = False,
     load: bool = True,
     require_cached: bool = False,
@@ -69,6 +91,8 @@ def build_dms_compact(
         profile=profile,
         cache_root=cache_root,
         compiler_version=compiler_version,
+        target_arch=target_arch,
+        extra_flags=_dms_compile_flags(target_arch),
         output_name=_OUTPUT_NAME,
         dry_run=dry_run,
         load=load,

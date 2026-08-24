@@ -60,6 +60,14 @@ def test_dms_compact_attn_decode_registers_and_build_plan() -> None:
     )
     artifact = plan_dms_compact_build(compiler_version="dms-test-version")
     assert artifact.family == "dms_compact"
+    gfx1151 = plan_dms_compact_build(
+        compiler_version="dms-test-version", target_arch="gfx1151"
+    )
+    gfx1100 = plan_dms_compact_build(
+        compiler_version="dms-test-version", target_arch="gfx1100"
+    )
+    assert "-DHIPENGINE_DMS_ENABLE_WAVE_GROUP6=1" in gfx1151.flags
+    assert "-DHIPENGINE_DMS_ENABLE_WAVE_GROUP6=1" not in gfx1100.flags
 
 
 def test_dms_compact_attn_decode_wrapper_validates_before_gpu_load() -> None:
@@ -383,7 +391,7 @@ def test_dms_compact_attn_decode_kl_top1_gate_production_shape() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
-def test_dms_compact_attn_decode_splitk_group6_parent_digest() -> None:
+def test_dms_compact_attn_decode_splitk_group6_production_digest_and_gate() -> None:
     rows, kv_heads, group, dim = 1, 4, 6, 256
     live = np.asarray([[513, 257, 509, 300]], dtype=np.int32)
     cap = 520
@@ -406,9 +414,24 @@ def test_dms_compact_attn_decode_splitk_group6_parent_digest() -> None:
         int(live.max()),
     )
 
-    assert hashlib.sha256(got.tobytes()).hexdigest() == (
-        "61378947cd7451b4d4912e98f767bffe7bf1961a13b09f84a04d606ae4f5f923"
+    repeat = _device_run_splitk(
+        q,
+        k_bits,
+        v_bits,
+        base,
+        live,
+        dim,
+        float(dim**-0.5),
+        int(live.max()),
     )
+    want = _oracle(q, k_bits, v_bits, base, live, dim, float(dim**-0.5))
+    kl, top1 = _kl_top1(want, got)
+    assert kl <= 0.05
+    assert top1 >= 0.9
+    assert hashlib.sha256(got.tobytes()).hexdigest() == (
+        "baf26fe9f59a19a3be1d92c9a88b027caeee508f0d635e84895a297c8972964d"
+    )
+    np.testing.assert_array_equal(got, repeat)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
