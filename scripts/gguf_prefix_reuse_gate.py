@@ -278,6 +278,8 @@ def _lifecycle_exact(
     shared_refcount_after_admission: int,
     shared_refcount_after_continuation_release: int,
     final_refcounted_pages: int,
+    final_pinned_pages: int = 0,
+    workspace_lease_pages: int = 0,
     source_session_reset: bool,
     snapshot_evicted: bool,
 ) -> bool:
@@ -287,7 +289,8 @@ def _lifecycle_exact(
             and source_refcount_after_release == 1
             and shared_refcount_after_admission == 2
             and shared_refcount_after_continuation_release == 0
-            and final_refcounted_pages == 0
+            and final_refcounted_pages == workspace_lease_pages
+            and final_pinned_pages == workspace_lease_pages
         )
     if source_lifecycle == "completed":
         return bool(
@@ -295,7 +298,8 @@ def _lifecycle_exact(
             and source_refcount_after_release == 1
             and shared_refcount_after_admission == 2
             and shared_refcount_after_continuation_release == 1
-            and final_refcounted_pages == 0
+            and final_refcounted_pages == workspace_lease_pages
+            and final_pinned_pages == workspace_lease_pages
             and source_session_reset
             and snapshot_evicted
         )
@@ -710,6 +714,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         oracle_pool = None
         runner._available.append(oracle_lease)
         final_pool = pool.stats.to_json_dict()
+        pool_memory = runner.kv_pool_memory_snapshot()
+        workspace_lease_pages = int(
+            pool_memory.get("packed_workspace_lease_pages", 0)
+        )
 
         output_exact = continuation_token == oracle_token
         trajectory_exact = candidate_predicted == reference_predicted
@@ -741,6 +749,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 shared_refcount_after_continuation_release
             ),
             final_refcounted_pages=int(final_pool["refcounted_pages"]),
+            final_pinned_pages=int(final_pool["pinned_pages"]),
+            workspace_lease_pages=workspace_lease_pages,
             source_session_reset=source_session_reset,
             snapshot_evicted=snapshot_evicted,
         )
@@ -906,6 +916,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 ),
                 "snapshot_evicted": snapshot_evicted,
                 "final_refcounted_pages": int(final_pool["refcounted_pages"]),
+                "final_pinned_pages": int(final_pool["pinned_pages"]),
+                "workspace_lease_pages": workspace_lease_pages,
+                "final_request_refcounted_pages": int(
+                    final_pool["refcounted_pages"]
+                ) - workspace_lease_pages,
                 "exact": lifecycle_exact,
             },
             "memory_accounting": {
