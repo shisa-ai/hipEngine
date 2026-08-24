@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-24 Concurrency2 gfx1151 final evidence manifest] Final status is **mechanically qualified / product blocked**: queue2 retained; 1,170-row FP16 numerical profile, 130 fixed-width executions, 2,100 load records, supported context/graph/prefix/pressure and lifecycle gates pass; exact scoped Q5 col8 is the sole new runtime win; c32 SLO, c2 64K, and heavy-load SLO remain open. `benchmarks/results/2026-08-24-gfx1151-qwen38-concurrency2-campaign-final.json`.
+
 - [2026-08-24 Concurrency2 gfx1151 production closure; blocked at c32] Final queue2 / Q4_K_S / FP16-state p128/d8 c32 passes production control/repeat/native route/live admission, but streaming is **10.590 tok/s**, TTFT p95 **18.617 s**, ITL p99 **2.125 s**, E2E p95 **24.171 s**, and **0/3 SLO / 0 goodput**. C2 64K and heavy-load SLOs remain blockers. The protocol-gated complete closure matrix is not rerun after the c32 precondition fails. `benchmarks/results/2026-08-24-gfx1151-qwen38-production-closure-blocked.json`.
 
 - [2026-08-24 Concurrency2 gfx1151 Qwen3.8 exact Q5 col8 rowtile; promoted] Scoped Q5T16 col8 halves output groups for K6144/N5120, K17408/N5120, and K5120/N10240 rows2-8 while retaining col4 fallback. Actual rows8 improves **16.04-16.31% (93/93 wins)** with BF16 parity; c8/c17/c32 Q5 marked time improves **14.305→12.509 / 29.070→25.276 / 55.526→49.325 ms (-12.56%/-13.05%/-11.17%)**, complete marker wall **-1.21%/-1.95%/-2.23%**. Production c17/c32 is **11.084/10.696 tok/s**, lifecycle/memory exact. `benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-retained.json`.

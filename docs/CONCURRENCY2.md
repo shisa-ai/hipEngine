@@ -1,6 +1,6 @@
 # Concurrency and KV Architecture, Generation 2
 
-Last updated: 2026-08-23.
+Last updated: 2026-08-24.
 
 _Status: merged and committed on local `main`; Generation-2 implementation spans
 C2-0 through C2-8. Dense gfx1100 short/long serving and the canonical W7900
@@ -182,6 +182,7 @@ Primary retained evidence:
 [`gfx1151 Q5 col8 rowtile`](../benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-retained.json),
 [`gfx1151 structural c32 adjudication`](../benchmarks/results/2026-08-24-gfx1151-qwen38-structural-c32-skip.json),
 [`gfx1151 production closure blocker`](../benchmarks/results/2026-08-24-gfx1151-qwen38-production-closure-blocked.json),
+[`gfx1151 final campaign manifest`](../benchmarks/results/2026-08-24-gfx1151-qwen38-concurrency2-campaign-final.json),
 [`gfx1151 physical widths`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-physical-widths.json),
 [`packed prefill`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-packed-prefill-c17.json),
 [`direct resident state`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json), and
