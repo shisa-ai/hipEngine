@@ -468,9 +468,208 @@ __global__ void dms_compact_attn_decode_kernel(
 
 // Long-context compact decode uses bounded 256-row split producers plus one
 // deterministic reducer. Unlike the fixture body above, LDS is constant in the
-// live count: two 256-float arrays (2 KiB) per producer and one 256-float array
-// (1 KiB) in the reducer.
+// live count: the generic producer uses two 256-float arrays (2 KiB), the
+// gfx1151 group-6 producer uses bounded score/query/reduction slabs (12.5 KiB
+// before allocation alignment), and the reducer uses one 256-float array
+// (1 KiB).
 constexpr int32_t kDmsMaxGqaGroup = 8;
+#ifndef HIPENGINE_DMS_ENABLE_WAVE_GROUP6
+#define HIPENGINE_DMS_ENABLE_WAVE_GROUP6 0
+#endif
+
+// Qwen3.8's 24Q/4KV/D256 path scores one compact token per wave. This mirrors
+// the qualified dense GQA producer's K-side work distribution while retaining
+// compact contiguous per-head extents and the existing split output ABI.
+template <int32_t QPerKv>
+__global__ void dms_compact_attn_splitk_group6_wave_producer_kernel(
+    const float* __restrict__ q,
+    const uint16_t* __restrict__ k_slot,
+    const uint16_t* __restrict__ v_slot,
+    const int32_t* __restrict__ base_offsets,
+    const int32_t* __restrict__ live_counts,
+    float* __restrict__ partial_out,
+    float* __restrict__ partial_m,
+    float* __restrict__ partial_l,
+    const int32_t rows,
+    const int32_t q_heads,
+    const int32_t kv_heads,
+    const int32_t dim,
+    const float scale,
+    const int32_t chunk_size,
+    const int32_t num_splits) {
+  constexpr int32_t kHeadDim = 256;
+  constexpr int32_t kWaveSize = 32;
+  constexpr int32_t kNumWaves = kDmsPackThreads / kWaveSize;
+  const int32_t gid = static_cast<int32_t>(blockIdx.x);
+  const int32_t split = gid % num_splits;
+  const int32_t rowh = gid / num_splits;
+  const int32_t r = rowh / kv_heads;
+  const int32_t h = rowh - r * kv_heads;
+  const int32_t tid = static_cast<int32_t>(threadIdx.x);
+  const int32_t lane = tid & (kWaveSize - 1);
+  const int32_t wave = tid / kWaveSize;
+  const int32_t rowq_base = r * q_heads + h * QPerKv;
+  const int64_t rowhead = static_cast<int64_t>(r) * kv_heads + h;
+  const int32_t live = live_counts[rowhead];
+  const int32_t begin = split * chunk_size;
+  const int32_t count = max(0, min(chunk_size, live - begin));
+  const int32_t base = base_offsets[rowhead] + begin;
+  __shared__ float scores[QPerKv][kDmsPackThreads];
+  __shared__ float wave_partials[QPerKv][kNumWaves];
+  __shared__ float block_max[QPerKv];
+  __shared__ float q_shared[QPerKv][kHeadDim];
+
+  if (count <= 0) {
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      const int64_t stat_index =
+          static_cast<int64_t>(rowq_base + j) * num_splits + split;
+      float* part = partial_out + stat_index * dim;
+      for (int32_t d = tid; d < dim; d += kDmsPackThreads) {
+        part[d] = 0.0f;
+      }
+      if (tid == 0) {
+        partial_m[stat_index] = -3.4028234663852886e38f;
+        partial_l[stat_index] = 0.0f;
+      }
+    }
+    return;
+  }
+
+#pragma unroll
+  for (int32_t j = 0; j < QPerKv; ++j) {
+    q_shared[j][tid] = q[static_cast<int64_t>(rowq_base + j) * dim + tid];
+  }
+  __syncthreads();
+
+  float local_max[QPerKv];
+#pragma unroll
+  for (int32_t j = 0; j < QPerKv; ++j) {
+    local_max[j] = -3.4028234663852886e38f;
+  }
+  for (int32_t t = wave; t < count; t += kNumWaves) {
+    const uint16_t* krow =
+        k_slot + (static_cast<int64_t>(base) + t) * kHeadDim;
+    float dots[QPerKv] = {};
+    for (int32_t d = lane * 4; d < kHeadDim; d += kWaveSize * 4) {
+      const float k0 = dms_bf16_bits_to_float(krow[d + 0]);
+      const float k1 = dms_bf16_bits_to_float(krow[d + 1]);
+      const float k2 = dms_bf16_bits_to_float(krow[d + 2]);
+      const float k3 = dms_bf16_bits_to_float(krow[d + 3]);
+#pragma unroll
+      for (int32_t j = 0; j < QPerKv; ++j) {
+        dots[j] += q_shared[j][d + 0] * k0;
+        dots[j] += q_shared[j][d + 1] * k1;
+        dots[j] += q_shared[j][d + 2] * k2;
+        dots[j] += q_shared[j][d + 3] * k3;
+      }
+    }
+    for (int32_t offset = kWaveSize / 2; offset > 0; offset >>= 1) {
+#pragma unroll
+      for (int32_t j = 0; j < QPerKv; ++j) {
+        dots[j] += __shfl_down(dots[j], offset);
+      }
+    }
+    if (lane == 0) {
+#pragma unroll
+      for (int32_t j = 0; j < QPerKv; ++j) {
+        const float score = dots[j] * scale;
+        scores[j][t] = score;
+        local_max[j] = fmaxf(local_max[j], score);
+      }
+    }
+  }
+  if (lane == 0) {
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      wave_partials[j][wave] = local_max[j];
+    }
+  }
+  __syncthreads();
+
+  if (tid < kWaveSize) {
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      float value = tid < kNumWaves
+          ? wave_partials[j][tid]
+          : -3.4028234663852886e38f;
+      for (int32_t offset = kWaveSize / 2; offset > 0; offset >>= 1) {
+        value = fmaxf(value, __shfl_down(value, offset));
+      }
+      if (tid == 0) {
+        wave_partials[j][0] = value;
+        block_max[j] = value;
+      }
+    }
+  }
+  __syncthreads();
+
+  float local_sum[QPerKv] = {};
+#pragma unroll
+  for (int32_t j = 0; j < QPerKv; ++j) {
+    const float maximum = block_max[j];
+    for (int32_t t = tid; t < count; t += kDmsPackThreads) {
+      const float value = expf(scores[j][t] - maximum);
+      scores[j][t] = value;
+      local_sum[j] += value;
+    }
+  }
+  for (int32_t offset = kWaveSize / 2; offset > 0; offset >>= 1) {
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      local_sum[j] += __shfl_down(local_sum[j], offset);
+    }
+  }
+  if (lane == 0) {
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      wave_partials[j][wave] = local_sum[j];
+    }
+  }
+  __syncthreads();
+
+  if (tid < kWaveSize) {
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      float value = tid < kNumWaves ? wave_partials[j][tid] : 0.0f;
+      for (int32_t offset = kWaveSize / 2; offset > 0; offset >>= 1) {
+        value += __shfl_down(value, offset);
+      }
+      if (tid == 0) {
+        wave_partials[j][0] = value;
+      }
+    }
+  }
+  __syncthreads();
+
+  if (tid < kHeadDim) {
+    float values[QPerKv] = {};
+    const uint16_t* vs = v_slot + static_cast<int64_t>(base) * kHeadDim;
+    for (int32_t t = 0; t < count; ++t) {
+      const float value =
+          dms_bf16_bits_to_float(vs[static_cast<int64_t>(t) * kHeadDim + tid]);
+#pragma unroll
+      for (int32_t j = 0; j < QPerKv; ++j) {
+        values[j] += scores[j][t] * value;
+      }
+    }
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      const int64_t stat_index =
+          static_cast<int64_t>(rowq_base + j) * num_splits + split;
+      partial_out[stat_index * kHeadDim + tid] = values[j];
+    }
+  }
+  if (tid == 0) {
+#pragma unroll
+    for (int32_t j = 0; j < QPerKv; ++j) {
+      const int64_t stat_index =
+          static_cast<int64_t>(rowq_base + j) * num_splits + split;
+      partial_m[stat_index] = block_max[j];
+      partial_l[stat_index] = wave_partials[j][0];
+    }
+  }
+}
 
 __global__ void dms_compact_attn_splitk_grouped_producer_kernel(
     const float* __restrict__ q,
@@ -943,9 +1142,33 @@ extern "C" int hipengine_dms_compact_attn_decode_splitk_producer_bf16(
   }
   const int32_t group = q_heads / kv_heads;
   const bool grouped = group <= kDmsMaxGqaGroup;
+  const bool wave_group6 = HIPENGINE_DMS_ENABLE_WAVE_GROUP6 != 0 &&
+      group == 6 && q_heads == 24 && kv_heads == 4 && dim == 256;
   const int32_t blocks =
       rows * (grouped ? kv_heads : q_heads) * num_splits;
-  if (grouped) {
+  if (wave_group6) {
+    hipLaunchKernelGGL(
+        HIP_KERNEL_NAME(dms_compact_attn_splitk_group6_wave_producer_kernel<6>),
+        dim3(blocks),
+        dim3(kDmsPackThreads),
+        0,
+        stream,
+        q,
+        k_slot,
+        v_slot,
+        base_offsets,
+        live_counts,
+        partial_out,
+        partial_m,
+        partial_l,
+        rows,
+        q_heads,
+        kv_heads,
+        dim,
+        scale,
+        chunk_size,
+        num_splits);
+  } else if (grouped) {
     hipLaunchKernelGGL(
         dms_compact_attn_splitk_grouped_producer_kernel,
         dim3(blocks),
@@ -1053,9 +1276,33 @@ extern "C" int hipengine_dms_compact_attn_decode_splitk_bf16(
   }
   const int32_t group = q_heads / kv_heads;
   const bool grouped = group <= kDmsMaxGqaGroup;
+  const bool wave_group6 = HIPENGINE_DMS_ENABLE_WAVE_GROUP6 != 0 &&
+      group == 6 && q_heads == 24 && kv_heads == 4 && dim == 256;
   const int32_t producer_blocks =
       rows * (grouped ? kv_heads : q_heads) * num_splits;
-  if (grouped) {
+  if (wave_group6) {
+    hipLaunchKernelGGL(
+        HIP_KERNEL_NAME(dms_compact_attn_splitk_group6_wave_producer_kernel<6>),
+        dim3(producer_blocks),
+        dim3(kDmsPackThreads),
+        0,
+        stream,
+        q,
+        k_slot,
+        v_slot,
+        base_offsets,
+        live_counts,
+        partial_out,
+        partial_m,
+        partial_l,
+        rows,
+        q_heads,
+        kv_heads,
+        dim,
+        scale,
+        chunk_size,
+        num_splits);
+  } else if (grouped) {
     hipLaunchKernelGGL(
         dms_compact_attn_splitk_grouped_producer_kernel,
         dim3(producer_blocks),
