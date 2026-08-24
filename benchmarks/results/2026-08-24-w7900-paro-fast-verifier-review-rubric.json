@@ -1,0 +1,45 @@
+{
+  "schema": "hipengine.paro_fast_verifier_review_rubric.v1",
+  "date": "2026-08-24",
+  "status": "predeclared_before_four-prompt-free-running-output-review",
+  "performance_claim": false,
+  "automatic_admission": {
+    "thresholds": "docs/EXECUTION-PROFILES.md section 6.1, unchanged",
+    "overall_top1_min": 0.99,
+    "per_scope_top1_min": 0.97,
+    "mean_p95_p99_max_kl": [0.001, 0.005, 0.02, 0.05]
+  },
+  "manual_task_review": {
+    "common": [
+      "No ownership/control/state failure may be relabeled as numerical drift.",
+      "A differing free-running ID is diagnostic; task non-inferiority, fluency, language, requested format, and factual/technical coverage are binding.",
+      "One category cannot compensate for another."
+    ],
+    "code_markdown_table": [
+      "Return only Python code.",
+      "Define markdown_table(rows), preserve stable first-appearance column order, emit a GitHub-flavored markdown table, and include tests.",
+      "If the 64-token sample is truncated before executable completion, require strict/fast exact equality rather than guessing task success."
+    ],
+    "general_en_explain": [
+      "Use fluent technical English.",
+      "Explain memory-bandwidth limitation concretely and causally.",
+      "Mention relevant throughput levers or examples such as arithmetic intensity, batching, quantization, KV/cache traffic, or compute utilization.",
+      "A changed continuation passes only if it remains coherent and directly responsive."
+    ],
+    "general_ja_explain": [
+      "Use fluent technical Japanese.",
+      "Explain the memory-bandwidth bottleneck causally and concretely for local GPU LLM inference.",
+      "Terminology variants such as 計算 and 演算 are acceptable when the completed continuation is grammatical and technically equivalent."
+    ],
+    "mixed_ja_en_review": [
+      "Respond with English bullets.",
+      "Preserve Japanese product terms and the literals MTP and KV cache.",
+      "Cover both the speed benefit and long-context memory-monitoring caveat clearly."
+    ]
+  },
+  "decision_policy": {
+    "automatic_promotion": "requires every numerical, scope, determinism, ownership, and task gate",
+    "manual_review_band": "may retain an unselected candidate for further evidence when automatic top1 resolution is marginal but KL/scopes/task outputs are non-inferior",
+    "threshold_change": "not permitted from this result"
+  }
+}
