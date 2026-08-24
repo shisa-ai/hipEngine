@@ -551,13 +551,19 @@ For B1/B2/B3 and reject/partial/full accept:
 - [x] controlled B1/B2/B3 target logits/top-1 and selected hidden match serial;
 - [x] controlled Conv/GDN state, touched BF16 full-attention KV, positions,
       cursor, commit, and rollback match for reject/every-partial/full B3;
-- [ ] provider MTP state/KV/cursor match beyond generated-ID/full-accept repair;
+- [x] provider checkpoint/replay covers reject/partial/full, final K0 catch-up
+      reaches exact cursor, and two 12-token staged repeats have identical visible
+      64 KiB NextN KV hash (Qwen3.8 NextN has no recurrent state plane);
 - [x] following-AR tail continuity matches through five exact output IDs;
 - [x] native-eager and explicit `serial_exact` target modes agree; uncaptured
       graph requests fall back before mutation;
-- [ ] output tails, stop, cancellation, and injected failure restore ownership;
-- [ ] deterministic repeats and artifact/profile manifest identity pass; and
-- [ ] no hidden allocation or dense KV/state shadow appears.
+- [x] output-room tails, EOS/stop, in-flight cancel/deadline, six injected
+      phases, rollback, and subsequent AR/MTP health pass 11/11;
+- [x] repeated staged IDs/provider fingerprints pass under named `strict` with
+      selected=strict manifest `0e053fd6...e2bb65b`; and
+- [x] lifecycle memory returns to zero active/current allocations; the adapter
+      declares one 10 KiB root-hidden owner plus existing provider/target KV and
+      no dense target/provider state shadow.
 
 ### S3.3 Economics and engagement
 
@@ -869,9 +875,10 @@ Every temporary flag introduced by this campaign must be added to
 
 ## 18. Current handoff
 
-S1 and S2 backend-neutral work are complete: staged providers, deterministic
-K/K0 policy, atomic transactions, one-cycle Generation-2 scheduling, target
-frontiers/claims, EngineService admission, cancellation, streaming, refill,
-failure recovery, and shutdown are covered by focused CPU/fake gates. The next
-action is **S3 exact dense GGUF MTP2 c1 adaptation on gfx1151**. Before touching
-GPU/kernel paths, run the lineage check and confirm the gfx1151 device/lease.
+S1-S3 are complete. Backend-neutral scheduling/lifecycle is qualified, and
+strict gfx1151 dense GGUF MTP2 c1 is functionally qualified/default-off across
+B1/B2/B3, controlled target/provider state, lifecycle, profile, profiler, and
+allocation gates. Production Q4_K_S FP16 state still selects K0 before mutation.
+The next action is **S4 physical gfx1151 c2/c4 MTP2**, beginning with RED row-
+ownership and true physical proposal/target call-count gates; gfx1100 remains
+deferred.
