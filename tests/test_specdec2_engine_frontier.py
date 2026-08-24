@@ -5,7 +5,12 @@ from dataclasses import replace
 import pytest
 
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
-from hipengine.speculative import CandidateGraph, TargetFrontier
+from hipengine.speculative import (
+    CandidateGraph,
+    SpecCycleResult,
+    SpecCycleStage,
+    TargetFrontier,
+)
 from tests.test_specdec2_engine_loop import _CycleRunner
 from hipengine.generation.engine_loop import ResidentEngineLoop
 
@@ -101,7 +106,15 @@ class _StagedCycleRunner(_CycleRunner):
     def speculative_kv_live_spans_owner(self, plan):
         return "fake-live-spans"
 
-    def execute_target_frontier(self, plan, frontier, complete_claims, *, commit):
+    def execute_target_frontier(
+        self,
+        plan,
+        frontier,
+        complete_claims,
+        *,
+        commit,
+        cancelled_request_ids=lambda: (),
+    ):
         self.stage_order.append("target")
         assert commit
         assert self.active_claims is complete_claims
@@ -115,6 +128,21 @@ class _StagedCycleRunner(_CycleRunner):
             result.transaction,
             reserved_claims=complete_claims,
         )
+        cancelled = tuple(int(value) for value in cancelled_request_ids())
+        if cancelled:
+            rolled_back = replace(
+                transaction,
+                target_open=False,
+                provider_open=False,
+                target_committed=False,
+                provider_committed=False,
+                rolled_back=True,
+            )
+            return SpecCycleResult(
+                stage=SpecCycleStage.CANCELLED,
+                transaction=rolled_back,
+                cancelled_request_ids=cancelled,
+            )
         return replace(result, transaction=transaction)
 
     def rollback_speculative_cycle(self, plan, candidate_graph, error):

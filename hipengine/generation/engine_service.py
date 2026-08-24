@@ -979,7 +979,9 @@ class EngineService:
             if callable(detokenize):
                 text = str(detokenize(tail.token_ids))
         details = output.finish_details
-        if tail.finish_reason is not None:
+        if tail.finish_reason is not None and (
+            details is None or details.reason != tail.finish_reason
+        ):
             details = FinishDetails(
                 reason=tail.finish_reason,
                 stop_sequence=tail.matched_stop_sequence,
