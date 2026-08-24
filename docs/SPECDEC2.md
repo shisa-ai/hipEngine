@@ -459,9 +459,10 @@ ledger owner in every injected path.
       cycle method whose production result retains stage attribution.
 - [x] Select due speculative and AR request plans under the existing Generation-2
       decode/fairness work item.
-- [ ] Materialize root tokens/positions and target frontier from scheduler-owned
-      request state.
-- [ ] Reserve complete claims before provider/target open.
+- [x] Materialize root tokens/positions and target frontier from scheduler-owned
+      request state after provider proposal.
+- [x] Compose and reserve complete target/provider/transient claims before
+      provider prepare or target open, then release on commit or rollback.
 - [x] Record speculative verify work duration/counts separately from AR decode;
       stage timing remains in `SpecCycleTelemetry`.
 - [x] Keep stable request IDs separate from physical provider/target rows.
@@ -477,7 +478,8 @@ ledger owner in every injected path.
       completion events.
 - [ ] Resolve pending cancellation at safe boundaries.
 - [x] Reclaim terminal requests independently and remove their speculative intent.
-- [ ] Preserve subsequent AR health after provider/target failure.
+- [x] Roll back staged provider work, release complete claims, and preserve
+      subsequent AR health after an injected target-frontier failure.
 
 ### S2.3 EngineService/API lifecycle
 
