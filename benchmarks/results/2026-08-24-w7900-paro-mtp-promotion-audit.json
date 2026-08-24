@@ -35,7 +35,7 @@
     },
     "fast_verifier_production_numerical_task": {
       "status": "rejected_binding_w7900_d64",
-      "commit": "pending_current_unit",
+      "commit": "d714fcdfa",
       "artifact": "benchmarks/results/2026-08-24-w7900-paro-fast-verifier-d64-numerical-rejected.json",
       "evidence": "68 aligned full-vocab rows pass mean/p95/p99/max KL (0.000226/0.001519/0.002491/0.002813), but top-1 98.529% fails 99% and cycle 13 decision diverges (strict accept1 bonus1061 vs fast accept0 bonus4016)"
     }
