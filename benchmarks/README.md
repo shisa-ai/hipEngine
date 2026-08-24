@@ -400,6 +400,18 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |
 
+#### Exact MTP prompt activation (`gfx1151`, Qwen3.8-27B `Q4_K_M`)
+
+| Prompt | Prior TTFT | Streaming TTFT | Delta | Removed prompt-hidden temporary |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 | 13.079 s | **10.356 s** | **-20.82%** | **5 MiB** |
+| 4K | 105.741 s | **85.574 s** | **-19.07%** | **40 MiB** |
+| 16K | 535.653 s | **467.949 s** | **-12.64%** | **160 MiB** |
+
+The request-owned exact path retains one 10,240-byte BF16 hidden row instead of
+the full prompt slab; generated IDs and B1/B2/B3 acceptance remain exact on the
+complete category/heldout suite. [`artifact`](results/2026-08-25-gfx1151-qwen38-omlx-oi3-streaming-prompt-priming.json)
+
 MTP ratios always use a true no-MTP AR path from the same protocol. Verifier
 `off`/`B0` diagnostics are not speedup denominators. The full category suite,
 heldouts, and anti-gaming rules are mandatory; see

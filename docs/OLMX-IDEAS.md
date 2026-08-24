@@ -621,6 +621,30 @@ Measure 512/4K/16K prompts on the same gfx1151 host/model:
 Retain if exact and non-regressive, even if the primary win is bounded memory or
 startup wall rather than steady decode.
 
+### 9.4 gfx1151 result — retained
+
+The target prefill plan now exposes a request-owned hidden-chunk sink. The sink
+carries one BF16 target row across chunks, appends the exact shifted token/hidden
+pairs through the existing NextN block on the target stream, and skips the
+prompt predictions' discarded output norm/LM-head scoring. This is target-hidden
+streaming, not output streaming or a second compute stream. The old full-slab
+capture remains available for diagnostics but is no longer used by MTP prompt
+admission.
+
+Same-host Qwen3.8-27B `Q4_K_M` results (cached/prewarmed kernels, BF16 KV):
+
+| Prompt | Pure target prefill | Full-slab MTP TTFT | Streaming MTP TTFT | Wall delta | Tracked transient | HIP/whole-device transient |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | 54.141 tok/s | 13.079 s | **10.356 s** | **-20.82%** | 5,253,120 -> **10,240 B** | 6 MiB -> **0** |
+| 4K | 53.510 tok/s | 105.741 s | **85.574 s** | **-19.07%** | 41,953,280 -> **10,240 B** | 40 MiB -> **0** |
+| 16K | 40.393 tok/s | 535.653 s | **467.949 s** | **-12.64%** | 167,782,400 -> **10,240 B** | 160 MiB -> **0** |
+
+All shape rows preserve the first token and exact target/draft cursors. The
+complete ten-prompt category/heldout B1/B2/B3 gate preserves greedy IDs,
+acceptance, and GPU/CPU acceptance; teardown returns tracked memory to zero.
+Retain the streaming sink as the sole MTP admission path. Evidence:
+[`2026-08-25-gfx1151-qwen38-omlx-oi3-streaming-prompt-priming.json`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi3-streaming-prompt-priming.json).
+
 ## 10. `OI-4` — draft hidden pre-norm versus post-norm
 
 **Hypothesis:** feeding consistently post-final-norm target hidden to the NextN
@@ -747,7 +771,7 @@ Update this table as atomic units land. A blank metric is not a pass.
 | `OI-0` | complete | gfx1151 Qwen3.8-27B `Q4_K_M` | exact 10-prompt category/heldout gate | AR 11.712; B3 21.062; 100% target-timeline reconciliation | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json) |
 | `OI-1` | T0 retained; further rungs optional | gfx1151 Q4 attn-Q rows2-4 + recurrent-QKV rows3-4 | strict parent-bit exact | B1/B2/B3 +0.130%/+0.241%/+0.440%; Q4 family -1.724% | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi1-q4-two-wave-retained.json) |
 | `OI-2` | transition retained; controller rejected | gfx1151 dense B1/B2/B3 | all 9 edges + every per-budget outcome exact | adaptive 21.089 vs fixed B3 21.211 (-0.577%); repeat -1.724% | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi2-adaptive-rejected.json) |
-| `OI-3` | ready | gfx1151 dense prompt 512/4K/16K | exact prompt-head cache and generated IDs | TTFT/prefill wall/peak memory | — |
+| `OI-3` | retained exact | gfx1151 Qwen3.8 dense 512/4K/16K | shifted cache/cursors + full category/heldout IDs/acceptance exact | TTFT -20.82%/-19.07%/-12.64%; prompt slab -> one 10,240-B row | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi3-streaming-prompt-priming.json) |
 | `OI-4` | ready | gfx1151 dense | explicit T3 full category/heldout/long gate | acceptance and complete MTP/AR | — |
 | `OI-5` | not triggered | gfx1151 GDN 2.27-3.10% of target | profile trigger failed | no implementation | [`OI-0`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json) |
 | `OI-6` | not triggered | gfx1151 attention 0.52-0.55% of target | profile trigger failed | no implementation | [`OI-0`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json) |
