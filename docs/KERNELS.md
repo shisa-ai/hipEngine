@@ -217,7 +217,11 @@ absent. The serial rows1 H=5,120/N=17,408 gate/up pair defaults to the exact
 local32 dual+SiLU owner. Its former changed-arithmetic Q8_1x2 split-weight route
 passes the strict-teacher gate but loses the current seven-pair ZBook timing at
 `0.998071x` with one win, so it remains diagnostic. Native B1 retains its
-separately qualified non-split Q8_1x2 owner.
+separately qualified non-split Q8_1x2 owner. Native verifier rows2-4 use the
+exact standard-Q4 two-wave/16-column owner only for full-attention Q
+K5,120/N12,288 (rows2/3/4) and recurrent QKV K5,120/N10,240 (rows3/4). Each
+wave preserves the parent WG32/eight-column K/FMA/reduction/store sequence;
+the parent stays the registered strict fallback for every shape/row miss.
 
 The selected Q4_K_S representation independently replaces only its 128
 H=5,120/N=17,408 gate/up weights with

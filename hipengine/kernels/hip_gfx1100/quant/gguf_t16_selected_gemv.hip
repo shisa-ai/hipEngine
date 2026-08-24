@@ -2795,10 +2795,10 @@ void q4_k_t16_dense_rowtile_gemv_kernel(
   }
 }
 
-// Diagnostic rows8 geometry: two independent waves own adjacent 8-column
-// groups in one 16-column block. Each wave executes the established helper and
-// reduction unchanged; there is no cross-wave arithmetic.
-template <typename scalar_t>
+// Exact two-wave geometry: independent waves own adjacent 8-column groups in
+// one 16-column block. Each wave executes the established helper and reduction
+// unchanged; there is no cross-wave arithmetic.
+template <typename scalar_t, int ROW_TILE>
 __global__ __launch_bounds__(64, 1)
 void q4_k_t16_dense_rowtile16_w2_gemv_kernel(
     const scalar_t* __restrict__ x,
@@ -2806,7 +2806,6 @@ void q4_k_t16_dense_rowtile16_w2_gemv_kernel(
     scalar_t* __restrict__ out,
     int64_t in_features,
     int64_t out_features) {
-  constexpr int ROW_TILE = 8;
   constexpr int kTileCols = 8;
   const int wave = threadIdx.x >> 5;
   const int lane = threadIdx.x & 31;
@@ -6287,24 +6286,32 @@ int launch_q4_dense_rowtile16_w2(
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
-  if (!x || !tiles || !out || rows != 8 ||
+  if (!x || !tiles || !out ||
+      (rows != 2 && rows != 3 && rows != 4 && rows != 8) ||
       in_features <= 0 || (in_features % QK_K) != 0 ||
       out_features <= 0 || (out_features % T16_COLS) != 0) {
     return hipErrorInvalidValue;
   }
   const dim3 block(64);
   const dim3 grid(static_cast<unsigned int>(out_features / T16_COLS));
-  hipLaunchKernelGGL(
-      (q4_k_t16_dense_rowtile16_w2_gemv_kernel<scalar_t>),
-      grid,
-      block,
-      0,
-      stream,
-      reinterpret_cast<const scalar_t*>(x),
-      reinterpret_cast<const uint8_t*>(tiles),
-      reinterpret_cast<scalar_t*>(out),
-      in_features,
-      out_features);
+#define Q4_T16_DENSE_ROWTILE16_W2_CASE(N)                                   \
+  case N:                                                                    \
+    hipLaunchKernelGGL(                                                       \
+        (q4_k_t16_dense_rowtile16_w2_gemv_kernel<scalar_t, N>),              \
+        grid, block, 0, stream,                                               \
+        reinterpret_cast<const scalar_t*>(x),                                \
+        reinterpret_cast<const uint8_t*>(tiles),                             \
+        reinterpret_cast<scalar_t*>(out), in_features, out_features);        \
+    break
+  switch (rows) {
+    Q4_T16_DENSE_ROWTILE16_W2_CASE(2);
+    Q4_T16_DENSE_ROWTILE16_W2_CASE(3);
+    Q4_T16_DENSE_ROWTILE16_W2_CASE(4);
+    Q4_T16_DENSE_ROWTILE16_W2_CASE(8);
+    default:
+      return hipErrorInvalidValue;
+  }
+#undef Q4_T16_DENSE_ROWTILE16_W2_CASE
   return hipGetLastError();
 }
 

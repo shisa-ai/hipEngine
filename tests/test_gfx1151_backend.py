@@ -663,13 +663,19 @@ def test_gfx1151_backend_scopes_08b_short_attention_split_policy() -> None:
     ) == {}
 
 
-def test_gfx1151_backend_declares_q4_row8_two_wave_policy() -> None:
+def test_gfx1151_backend_declares_q4_two_wave_shape_and_row_policy() -> None:
     policy = GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT[
         "gguf_q4_k_t16_v1"
-    ]["shapes"]
-    assert policy[(5_120, 1_024)] == "dense_rowtile16_w2_bf16_bf16_out"
-    assert policy[(17_408, 5_120)] == "dense_rowtile16_w2_bf16_bf16_out"
-    assert (1_024, 4_096) not in policy
+    ]
+    shapes = policy["shapes"]
+    assert shapes[(5_120, 1_024)] == "dense_rowtile16_w2_bf16_bf16_out"
+    assert shapes[(5_120, 12_288)] == "dense_rowtile16_w2_bf16_bf16_out"
+    assert shapes[(17_408, 5_120)] == "dense_rowtile16_w2_bf16_bf16_out"
+    assert (1_024, 4_096) not in shapes
+    assert policy["rows_by_shape"] == {
+        (5_120, 10_240): (3, 4, 8),
+        (5_120, 12_288): (2, 3, 4),
+    }
     assert is_registered(
         KernelKey(
             "hip_gfx1151",
