@@ -84,6 +84,16 @@ def test_nextn_checkpoint_restores_linear_state_and_cursors(monkeypatch) -> None
         executor.restore_request_checkpoint(checkpoint)
 
 
+def test_nextn_checkpoint_uses_batch_session_logical_cursor(monkeypatch) -> None:
+    executor, _slot, _allocated, _freed = _executor(monkeypatch)
+    executor._batch_sessions = (SimpleNamespace(position=18, _position=18),)
+
+    checkpoint = executor.capture_request_checkpoint(7)
+
+    assert checkpoint.position == 18
+    assert checkpoint.context_length == 19
+
+
 def test_nextn_checkpoint_rejects_wrong_request_owner(monkeypatch) -> None:
     executor, _slot, _allocated, _freed = _executor(monkeypatch)
     checkpoint = executor.capture_request_checkpoint(7)

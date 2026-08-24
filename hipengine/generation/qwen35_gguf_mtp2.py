@@ -10,6 +10,7 @@ import numpy as np
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
+from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_host_to_device,
@@ -42,11 +43,20 @@ from hipengine.speculative.transaction import (
 
 
 @dataclass(slots=True)
+class _MTP2ProviderGroup:
+    key: tuple[int, ...]
+    provider: Any
+    provider_pool_key: Any | None
+    request_ids: set[int]
+
+
+@dataclass(slots=True)
 class _MTP2RequestState:
     request_id: int
     provider: Any
     provider_pool_key: Any | None
-    verifier: Qwen35GGUFTransactionalVerifier
+    provider_group_key: tuple[int, ...]
+    verifier: Qwen35GGUFTransactionalVerifier | None
     root_hidden_buffer: DeviceBuffer
     last_proposal_seconds: float = 0.0
     proposal_checkpoint: Any | None = None
@@ -54,7 +64,7 @@ class _MTP2RequestState:
 
 
 class Qwen35GGUFMTP2Adapter:
-    """One-request staged adapter over the retained exact dense components."""
+    """Staged C1/C2/C4 adapter over the retained exact dense components."""
 
     def __init__(
         self,
@@ -76,6 +86,7 @@ class Qwen35GGUFMTP2Adapter:
         self._intents: dict[int, int] = {}
         self._prompt_hidden_rows: dict[int, np.ndarray] = {}
         self._states: dict[int, _MTP2RequestState] = {}
+        self._provider_groups: dict[tuple[int, ...], _MTP2ProviderGroup] = {}
         self._disabled_requests: set[int] = set()
         self._active_claims: ResourceClaimSet | None = None
         self._transaction_sequence = 0
@@ -109,30 +120,46 @@ class Qwen35GGUFMTP2Adapter:
         request_semantics: Sequence[SpeculativeRequestSemantics],
     ) -> SpeculativeCapability | None:
         semantics = tuple(request_semantics)
-        if not self.enabled or len(semantics) != 1:
+        if not self.enabled or not (1 <= len(semantics) <= 4):
             return None
-        rid = int(semantics[0].request_id)
-        if rid not in self._intents or rid in self._disabled_requests:
-            return None
-        row = self.owner._row(rid)
-        if (
-            not row.native_greedy
-            or not row.first_token_emitted
-            or row.lease is None
-            or row.slot is None
-            or rid not in self._prompt_hidden_rows
-        ):
-            return None
-        target = row.lease.session
-        if bool(
-            getattr(getattr(target, "runner", None), "fp16_recurrent_state", False)
-        ):
-            return None
-        max_context = int(target.target_layout.max_sequence_length)
+        targets = []
+        for item in semantics:
+            rid = int(item.request_id)
+            if rid not in self._intents or rid in self._disabled_requests:
+                return None
+            row = self.owner._row(rid)
+            if (
+                not row.native_greedy
+                or not row.first_token_emitted
+                or row.lease is None
+                or row.slot is None
+                or rid not in self._prompt_hidden_rows
+            ):
+                return None
+            target = row.lease.session
+            if bool(
+                getattr(getattr(target, "runner", None), "fp16_recurrent_state", False)
+            ):
+                return None
+            targets.append(target)
+        if len(semantics) == 1:
+            existing = self._states.get(int(semantics[0].request_id))
+            owner = getattr(targets[0], "_target_scratch_owner", None)
+            if (
+                (existing is not None and existing.verifier is None)
+                or int(getattr(owner, "slot_count", 1)) > 1
+                or int(getattr(self.owner, "capacity", 1)) > 1
+            ):
+                return None
+        max_context = min(
+            int(target.target_layout.max_sequence_length) for target in targets
+        )
         profile = str(getattr(self.generator, "execution_profile", None) or "legacy_exact")
+        max_requests = min(4, max(1, int(getattr(self.owner, "capacity", 4))))
+        max_frontier_rows = max_requests * (self.candidate_budget + 1)
         return SpeculativeCapability(
             capability_key=(
-                f"gguf_mtp2_c1:{self.generator.backend}:{self.quant}:"
+                f"gguf_mtp2_c{max_requests}:{self.generator.backend}:{self.quant}:"
                 f"{self.target_verify_mode}:{self.candidate_budget}"
             ),
             target_key="qwen_dense_gguf",
@@ -147,11 +174,13 @@ class Qwen35GGUFMTP2Adapter:
             catchup_mode=ProviderCatchupMode.TARGET_OUTPUT,
             supported_modes=("verify_chain",),
             supported_sampling_modes=("greedy",),
-            max_requests=1,
+            max_requests=max_requests,
             max_candidates_per_request=self.candidate_budget,
-            max_frontier_rows=self.candidate_budget + 1,
-            proposal_widths=(1,),
-            target_row_buckets=tuple(range(2, self.candidate_budget + 2)),
+            max_frontier_rows=max_frontier_rows,
+            proposal_widths=tuple(
+                width for width in (1, 2, 4) if width <= max_requests
+            ),
+            target_row_buckets=tuple(range(2, max_frontier_rows + 1)),
             target_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
             provider_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
             graph_supported=True,
@@ -164,8 +193,15 @@ class Qwen35GGUFMTP2Adapter:
         return bool(
             self.enabled
             and self._active_claims is None
-            and len(plan.speculative_request_ids) == 1
-            and plan.speculative_request_ids[0] not in self._disabled_requests
+            and 1 <= len(plan.speculative_request_ids) <= 4
+            and not (
+                len(plan.speculative_request_ids) == 1
+                and int(getattr(self.owner, "capacity", 1)) > 1
+            )
+            and not any(
+                request_id in self._disabled_requests
+                for request_id in plan.speculative_request_ids
+            )
         )
 
     def prepare_k0(
@@ -176,13 +212,24 @@ class Qwen35GGUFMTP2Adapter:
         stream: int | None = None,
     ) -> None:
         del request_semantics, stream
-        for request_id in plan.request_ids:
-            rid = int(request_id)
+        ids = tuple(
+            int(request_id)
+            for request_id in plan.request_ids
+            if int(request_id) in self._intents
+            and int(request_id) not in self._disabled_requests
+            and int(request_id) in self._prompt_hidden_rows
+        )
+        if ids:
+            for request_id in ids:
+                if request_id not in self._states:
+                    self.owner._flush_row_owner(self.owner._row(request_id))
+            self._ensure_request_states(ids)
+        for rid in ids:
             state = self._states.get(rid)
-            if state is None or rid in self._disabled_requests:
+            if state is None:
                 continue
             row = self.owner._row(rid)
-            if row.lease is None or row.slot is None:
+            if row.lease is None or row.slot is None or not row.first_token_emitted:
                 continue
             target = row.lease.session
             root_token = int(row.slot.generated_ids[-1])
@@ -239,15 +286,37 @@ class Qwen35GGUFMTP2Adapter:
         stream: int | None = None,
     ) -> None:
         del stream
-        for request_id in plan.speculative_request_ids:
+        ids = tuple(int(value) for value in plan.speculative_request_ids)
+        for request_id in ids:
             if request_id not in self._states:
-                row = self.owner._row(request_id)
-                # Generation-2 packed prefill/decode may still own deferred
-                # state in the shared execution owner. The standalone exact c1
-                # verifier consumes request-session pointers, so scatter the
-                # complete row back only after the operation claims are held.
-                self.owner._flush_row_owner(row)
-                self._states[request_id] = self._open_request(request_id)
+                self.owner._flush_row_owner(self.owner._row(request_id))
+        self._ensure_request_states(ids)
+
+    def _ensure_request_states(self, ids: tuple[int, ...]) -> None:
+        missing = tuple(request_id for request_id in ids if request_id not in self._states)
+        if not missing:
+            return
+        existing_groups = {
+            self._states[request_id].provider_group_key
+            for request_id in ids
+            if request_id in self._states
+        }
+        if len(existing_groups) > 1:
+            raise RuntimeError("GGUF MTP2 requests belong to incompatible provider groups")
+        if existing_groups:
+            group = self._provider_groups[next(iter(existing_groups))]
+            if len(group.request_ids) + len(missing) > int(group.provider.executor.max_requests):
+                raise RuntimeError("GGUF MTP2 provider group has no refill capacity")
+            for request_id in missing:
+                self._states[request_id] = self._attach_request_to_group(
+                    request_id,
+                    group,
+                )
+            return
+        if len(ids) == 1 and int(getattr(self.owner, "capacity", 1)) == 1:
+            self._states[ids[0]] = self._open_request(ids[0])
+        else:
+            self._open_batch_requests(ids)
 
     def propose_batch(
         self,
@@ -257,45 +326,116 @@ class Qwen35GGUFMTP2Adapter:
         stream: int | None = None,
     ) -> CandidateGraph:
         del stream
-        if len(plan.speculative_request_ids) != 1:
-            raise NotImplementedError("GGUF MTP2 S3 supports one speculative request")
-        rid = int(plan.speculative_request_ids[0])
-        state = self._states[rid]
-        row = self.owner._row(rid)
-        target = row.lease.session
-        slot = row.slot
-        if slot is None:
+        ids = tuple(int(value) for value in plan.speculative_request_ids)
+        if not (1 <= len(ids) <= 4):
+            raise NotImplementedError("GGUF MTP2 supports c1/c2/c4 proposal")
+        states = tuple(self._states[request_id] for request_id in ids)
+        if len({state.provider_group_key for state in states}) != 1:
+            raise RuntimeError("physical NextN proposal requires one provider group")
+        rows = tuple(self.owner._row(request_id) for request_id in ids)
+        targets = tuple(row.lease.session for row in rows)
+        slots = tuple(row.slot for row in rows)
+        if any(slot is None for slot in slots):
             raise RuntimeError("GGUF MTP2 row has no committed root token")
-        budget = int(plan.candidate_counts[plan.request_ids.index(rid)])
-        context = MtpProposalContext(
-            request_ids=(rid,),
-            root_tokens=(int(slot.generated_ids[-1]),),
-            root_positions=(int(target.position),),
-            target_hidden=target.last_target_hidden,
+        counts_by_id = dict(zip(plan.request_ids, plan.candidate_counts, strict=True))
+        budgets = tuple(int(counts_by_id[request_id]) for request_id in ids)
+        hidden_size = int(states[0].provider.executor.hidden_size)
+        hidden_batch = malloc(
+            len(ids) * hidden_size * DType.BF16.itemsize,
+            runtime=targets[0].runtime,
         )
-        if state.proposal_checkpoint is not None:
-            raise RuntimeError("GGUF MTP2 proposal checkpoint is already open")
-        checkpoint = state.provider.executor.capture_request_checkpoint(rid)
         try:
-            proposal_started = time.perf_counter()
-            draft = state.provider.propose(
-                context,
-                candidate_budget=budget,
-                return_logits=False,
+            row_nbytes = hidden_size * DType.BF16.itemsize
+            for index, target in enumerate(targets):
+                self.owner._flush_row_owner(rows[index])
+                if int(target.position) != int(slots[index].seq_position):
+                    raise RuntimeError(
+                        "GGUF MTP2 target session cursor is stale after owner flush: "
+                        f"request={ids[index]} target={int(target.position)} "
+                        f"slot={int(slots[index].seq_position)}"
+                    )
+                target.runtime.memcpy(
+                    hidden_batch.ptr + index * row_nbytes,
+                    target.last_target_hidden.ptr,
+                    row_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
+            context = MtpProposalContext(
+                request_ids=ids,
+                root_tokens=tuple(int(slot.generated_ids[-1]) for slot in slots),
+                root_positions=tuple(int(target.position) for target in targets),
+                target_hidden=Tensor.from_handle(
+                    hidden_batch.ptr,
+                    (len(ids), hidden_size),
+                    DType.BF16,
+                    Device("hip", 0),
+                ),
             )
-            state.last_proposal_seconds = time.perf_counter() - proposal_started
+            checkpoints = {}
+            for request_id, state in zip(ids, states, strict=True):
+                if state.proposal_checkpoint is not None:
+                    raise RuntimeError("GGUF MTP2 proposal checkpoint is already open")
+                checkpoints[request_id] = (
+                    state.provider.executor.capture_request_checkpoint(request_id)
+                )
+            proposal_started = time.perf_counter()
+            if len(ids) == 1:
+                draft = states[0].provider.propose(
+                    context,
+                    candidate_budget=budgets[0],
+                    return_logits=False,
+                    allow_graph=False,
+                )
+            else:
+                draft = states[0].provider.propose_batch(
+                    context,
+                    candidate_counts=budgets,
+                )
+                physical_shapes = tuple(
+                    sum(1 for count in budgets if depth < count)
+                    for depth in range(max(budgets))
+                )
+                batched_shapes = tuple(shape for shape in physical_shapes if shape > 1)
+                for row in rows:
+                    row.mtp2_proposal_batch_calls += len(batched_shapes)
+                    row.mtp2_proposal_physical_rows.extend(batched_shapes)
+            proposal_seconds = time.perf_counter() - proposal_started
+            for index, (request_id, state) in enumerate(zip(ids, states, strict=True)):
+                state.last_proposal_seconds = proposal_seconds
+                state.proposal_checkpoint = checkpoints[request_id]
+                state.proposal_context = MtpProposalContext(
+                    request_ids=(request_id,),
+                    root_tokens=(int(context.root_tokens[index]),),
+                    root_positions=(int(context.root_positions[index]),),
+                    target_hidden=targets[index].last_target_hidden,
+                )
         except Exception:
-            state.provider.executor.restore_request_checkpoint(checkpoint)
-            state.provider.executor.release_request_checkpoint(checkpoint)
+            for request_id, checkpoint in locals().get("checkpoints", {}).items():
+                state = self._states[request_id]
+                state.provider.executor.restore_request_checkpoint(checkpoint)
+                state.provider.executor.release_request_checkpoint(checkpoint)
             raise
-        state.proposal_checkpoint = checkpoint
-        state.proposal_context = context
-        parents = draft.tree_parents or tuple(
-            -1 if depth == 1 else index - 1
-            for index, depth in enumerate(draft.draft_depths)
+        finally:
+            free(hidden_batch, runtime=targets[0].runtime)
+        enabled = draft.active_mask or (True,) * draft.draft_rows
+        active_indices = tuple(
+            index for index, active in enumerate(enabled) if bool(active)
         )
+        candidate_tokens = tuple(draft.candidate_tokens[index] for index in active_indices)
+        draft_depths = tuple(draft.draft_depths[index] for index in active_indices)
+        row_to_request = tuple(draft.row_to_request[index] for index in active_indices)
+        parents_list: list[int] = []
+        last_row_by_request: dict[int, int] = {}
+        for row_index, (request_id, depth) in enumerate(
+            zip(row_to_request, draft_depths, strict=True)
+        ):
+            parents_list.append(
+                -1 if depth == 1 else last_row_by_request[request_id]
+            )
+            last_row_by_request[request_id] = row_index
+        parents = tuple(parents_list)
         counts = tuple(
-            sum(1 for owner in draft.row_to_request if owner == request_id)
+            sum(1 for owner in row_to_request if owner == request_id)
             for request_id in plan.request_ids
         )
         offsets = [0]
@@ -315,12 +455,12 @@ class Qwen35GGUFMTP2Adapter:
                 for request_id in plan.request_ids
             ),
             row_offsets=tuple(offsets),
-            row_to_request=draft.row_to_request,
+            row_to_request=row_to_request,
             parent_candidate_rows=parents,
-            draft_depths=draft.draft_depths,
-            active_mask=draft.active_mask or (True,) * draft.draft_rows,
-            candidate_tokens=draft.candidate_tokens,
-            candidate_ids=draft.candidate_ids,
+            draft_depths=draft_depths,
+            active_mask=(True,) * len(candidate_tokens),
+            candidate_tokens=candidate_tokens,
+            candidate_ids=(),
             mode=draft.mode,
             provider_metadata=draft.provider_metadata,
         )
@@ -338,10 +478,23 @@ class Qwen35GGUFMTP2Adapter:
             raise ValueError("GGUF MTP2 target frontier requires commit=True")
         if self._active_claims != complete_claims:
             raise RuntimeError("GGUF MTP2 target does not own complete claims")
-        if len(plan.speculative_request_ids) != 1 or frontier.target_batch is None:
-            raise NotImplementedError("GGUF MTP2 S3 requires one host-visible chain")
+        if frontier.target_batch is None:
+            raise NotImplementedError("GGUF MTP2 requires a host-visible chain")
+        if len(plan.speculative_request_ids) > 1:
+            return self._execute_target_frontier_batch(
+                plan,
+                frontier,
+                complete_claims,
+                cancelled_request_ids=cancelled_request_ids,
+            )
+        if len(plan.speculative_request_ids) != 1:
+            raise NotImplementedError("GGUF MTP2 target has no speculative rows")
         rid = int(plan.speculative_request_ids[0])
         state = self._states[rid]
+        if state.verifier is None:
+            raise NotImplementedError(
+                "a survivor of a physical provider group requires physical target padding"
+            )
         row = self.owner._row(rid)
         target = row.lease.session
         slot = row.slot
@@ -531,6 +684,345 @@ class Qwen35GGUFMTP2Adapter:
             self._restore_provider_checkpoint(state)
             raise
 
+    def _execute_target_frontier_batch(
+        self,
+        plan: SpecRequestPlan,
+        frontier: TargetFrontier,
+        complete_claims: ResourceClaimSet,
+        *,
+        cancelled_request_ids: Callable[[], Sequence[int]],
+    ) -> SpecCycleResult:
+        ids = tuple(int(value) for value in plan.speculative_request_ids)
+        states = tuple(self._states[request_id] for request_id in ids)
+        rows = tuple(self.owner._row(request_id) for request_id in ids)
+        targets = tuple(row.lease.session for row in rows)
+        batch = frontier.target_batch
+        assert batch is not None
+        self._transaction_sequence += 1
+        transaction_id = self._transaction_sequence
+        transaction = SpecCycleTransaction(
+            operation_id=plan.operation_id,
+            transaction_id=transaction_id,
+            cycle_id=plan.cycle_id,
+            request_ids=plan.request_ids,
+            reserved_claims=complete_claims,
+            pre_target_cursors=tuple(
+                int(self.owner._row(request_id).lease.session.position)
+                for request_id in plan.request_ids
+            ),
+            pre_provider_cursors=tuple(int(target.position) for target in targets),
+            pre_rng_counters=(0,) * len(plan.request_ids),
+            target_transaction_mode=plan.target_transaction_mode,
+            provider_transaction_mode=plan.provider_transaction_mode,
+            target_owner=f"{plan.operation_id}:gguf-target-batch",
+            provider_owner=f"{plan.operation_id}:nextn-batch",
+            provider_request_ids=ids,
+            target_checkpoint_ids=tuple(
+                f"target:{request_id}:{self.owner._row(request_id).lease.session.position}"
+                for request_id in plan.request_ids
+            ),
+            provider_checkpoint_ids=tuple(
+                f"provider:{request_id}:{target.position}"
+                for request_id, target in zip(ids, targets, strict=True)
+            ),
+            target_open=True,
+            provider_open=True,
+        )
+        cancelled = tuple(int(value) for value in cancelled_request_ids())
+        if cancelled:
+            for state in states:
+                self._restore_provider_checkpoint(state)
+            return SpecCycleResult(
+                stage=SpecCycleStage.CANCELLED,
+                transaction=replace(
+                    transaction,
+                    target_open=False,
+                    provider_open=False,
+                    rolled_back=True,
+                ),
+                cancelled_request_ids=cancelled,
+            )
+        root_row_by_id = dict(zip(batch.request_ids, batch.root_rows, strict=True))
+        candidate_rows_by_id = {
+            request_id: tuple(
+                sorted(
+                    (
+                        row_index
+                        for row_index in batch.candidate_rows
+                        if batch.row_to_request[row_index] == request_id
+                    ),
+                    key=lambda row_index: batch.draft_depths[row_index],
+                )
+            )
+            for request_id in ids
+        }
+        jobs = []
+        for request_id, target in zip(ids, targets, strict=True):
+            root_row = root_row_by_id[request_id]
+            candidate_rows = candidate_rows_by_id[request_id]
+            block_tokens = (
+                int(batch.tokens[root_row]),
+                *tuple(int(batch.tokens[row]) for row in candidate_rows),
+            )
+            jobs.append(
+                {
+                    "session": target,
+                    "input_token_ids": block_tokens,
+                    "bulk_attention_mode": "bulk",
+                    "use_wmma_prefill": False,
+                    "capture_linear_state_rows": True,
+                    "defer_linear_state_commit": True,
+                    "defer_state_scatter": True,
+                }
+            )
+        owner = self.owner._packed_execution_owner(targets[0])
+        verify_batch = getattr(owner, "verify_target_blocks_batch", None)
+        if not callable(verify_batch):
+            raise RuntimeError("physical target owner has no packed verifier")
+        target_started = time.perf_counter()
+        results = list(verify_batch(jobs))
+        target_seconds = time.perf_counter() - target_started
+        physical_target_rows = sum(len(job["input_token_ids"]) for job in jobs)
+        for row in rows:
+            row.mtp2_target_batch_calls += 1
+            row.mtp2_target_physical_rows.append(physical_target_rows)
+        if len(results) != len(ids):
+            raise RuntimeError("physical target verifier returned wrong result count")
+        target_top1 = [0] * batch.rows
+        for request_id, result in zip(ids, results, strict=True):
+            rows_for_request = (
+                root_row_by_id[request_id],
+                *candidate_rows_by_id[request_id],
+            )
+            if len(result.token_ids) != len(rows_for_request):
+                raise RuntimeError("physical target verifier omitted request rows")
+            for row_index, token in zip(
+                rows_for_request,
+                result.token_ids,
+                strict=True,
+            ):
+                target_top1[row_index] = int(token)
+        remaining = tuple(
+            max(0, int(row.request.max_tokens) - len(row.slot.generated_ids))
+            for row in rows
+        )
+        accept = batch.accept_from_top1(
+            target_top1,
+            transaction_id=transaction_id,
+            remaining_decode=remaining,
+        )
+        provider_update_started = time.perf_counter()
+        self._repair_provider_states_batch(
+            states,
+            accepted_counts=accept.accepted_counts,
+            candidate_counts=tuple(
+                plan.candidate_counts[plan.request_ids.index(request_id)]
+                for request_id in ids
+            ),
+        )
+        provider_update_seconds = time.perf_counter() - provider_update_started
+        cancelled = tuple(int(value) for value in cancelled_request_ids())
+        if cancelled:
+            for state in states:
+                self._restore_provider_checkpoint(state)
+            return SpecCycleResult(
+                stage=SpecCycleStage.CANCELLED,
+                transaction=replace(
+                    transaction,
+                    target_open=False,
+                    provider_open=False,
+                    rolled_back=True,
+                ),
+                cancelled_request_ids=cancelled,
+            )
+        output_ids: list[tuple[int, ...]] = []
+        next_tokens = accept.next_tokens or (None,) * len(ids)
+        for index, (request_id, target, row, result, accepted, accepted_tokens, next_token) in enumerate(
+            zip(
+                ids,
+                targets,
+                rows,
+                results,
+                accept.accepted_counts,
+                accept.accepted_tokens,
+                next_tokens,
+                strict=True,
+            )
+        ):
+            deferred = getattr(result, "deferred_packed_state", None)
+            commit_deferred = getattr(owner, "_commit_deferred_packed_verify_state", None)
+            if deferred is None or not callable(commit_deferred):
+                raise RuntimeError("physical target verifier omitted deferred state")
+            commit_deferred(
+                deferred,
+                target,
+                commit_row_index=int(accepted),
+                position=int(target.position) + int(accepted) + 1,
+                hidden_rows=len(result.token_ids),
+            )
+            visible = (
+                *tuple(int(token) for token in accepted_tokens),
+                *(() if next_token is None else (int(next_token),)),
+            )
+            if not visible:
+                raise RuntimeError("physical target cycle produced no visible token")
+            row.slot.generated_ids.extend(visible)
+            row.slot.prev_token = int(visible[-1])
+            row.slot.seq_position = int(target.position)
+            row.slot.native_decode_steps += 1
+            row.slot.done = len(row.slot.generated_ids) >= int(row.request.max_tokens)
+            row.mtp2_cycles += 1
+            row.mtp2_candidate_counts.append(
+                int(plan.candidate_counts[plan.request_ids.index(request_id)])
+            )
+            row.mtp2_accepted_counts.append(int(accepted))
+            row.mtp2_proposal_ms += float(states[index].last_proposal_seconds) * 1000.0
+            row.mtp2_target_ms += float(target_seconds) * 1000.0
+            row.mtp2_provider_update_ms += float(provider_update_seconds) * 1000.0
+            output_ids.append(visible)
+            self._release_provider_checkpoint(states[index])
+        committed_accept = AcceptResult(
+            request_ids=ids,
+            accepted_counts=accept.accepted_counts,
+            accepted_tokens=accept.accepted_tokens,
+            transaction_id=transaction_id,
+            selected_candidate_rows=accept.selected_candidate_rows,
+            correction_or_bonus_tokens=tuple(next_tokens),
+            target_cursor_deltas=tuple(len(tokens) for tokens in output_ids),
+            provider_cursor_deltas=accept.accepted_counts,
+            finish_reasons=(None,) * len(ids),
+        )
+        telemetry = SpecCycleTelemetry(
+            operation_id=plan.operation_id,
+            request_ids=plan.request_ids,
+            candidate_counts=plan.candidate_counts,
+            plan_reasons=plan.reasons,
+            proposal_widths=plan.proposal_widths,
+            target_row_decomposition=plan.target_row_decomposition,
+            execution_route="eager",
+            proposal_seconds=max(state.last_proposal_seconds for state in states),
+            target_seconds=target_seconds,
+            provider_update_seconds=provider_update_seconds,
+            weight_sweeps=1,
+        )
+        return SpecCycleResult.committed(
+            replace(
+                transaction,
+                target_committed=True,
+                provider_committed=True,
+            ),
+            committed_accept,
+            telemetry=telemetry,
+        )
+
+    def _repair_provider_states_batch(
+        self,
+        states: tuple[_MTP2RequestState, ...],
+        *,
+        accepted_counts: Sequence[int],
+        candidate_counts: Sequence[int],
+    ) -> None:
+        accepted = tuple(int(value) for value in accepted_counts)
+        counts = tuple(int(value) for value in candidate_counts)
+        if len(states) <= 1 or len(accepted) != len(states) or len(counts) != len(states):
+            raise ValueError("physical provider repair requires aligned C>1 rows")
+        if len({state.provider_group_key for state in states}) != 1:
+            raise RuntimeError("physical provider repair requires one provider group")
+        executor = states[0].provider.executor
+        operations: list[list[tuple[int, int, Tensor]]] = []
+        for state, accepted_count, candidate_count in zip(
+            states,
+            accepted,
+            counts,
+            strict=True,
+        ):
+            checkpoint = state.proposal_checkpoint
+            context = state.proposal_context
+            results = state.provider.last_results.get(int(state.request_id))
+            if checkpoint is None or context is None:
+                raise RuntimeError("GGUF MTP2 provider repair has no proposal checkpoint")
+            if results is None or len(results) != candidate_count:
+                raise RuntimeError("GGUF MTP2 provider repair lost proposal rows")
+            if accepted_count < 0 or accepted_count > len(results):
+                raise ValueError("accepted_count is outside proposal rows")
+            if accepted_count == len(results):
+                tail = results[-1]
+                operations.append(
+                    [
+                        (
+                            int(tail.token_id),
+                            int(tail.position) + 1,
+                            tail.hidden,
+                        )
+                    ]
+                )
+                continue
+            executor.restore_request_checkpoint(checkpoint)
+            replay = [
+                (
+                    int(context.root_tokens[0]),
+                    int(context.root_positions[0]),
+                    context.target_hidden,
+                )
+            ]
+            replay.extend(
+                (
+                    int(results[index].token_id),
+                    int(context.root_positions[0]) + index + 1,
+                    results[index].hidden,
+                )
+                for index in range(accepted_count)
+            )
+            operations.append(replay)
+        hidden_size = int(executor.hidden_size)
+        hidden_nbytes = hidden_size * DType.BF16.itemsize
+        hidden_batch = malloc(
+            len(states) * hidden_nbytes,
+            runtime=executor.runtime,
+        )
+        try:
+            for depth in range(max(len(rows) for rows in operations)):
+                active = tuple(
+                    index for index, rows in enumerate(operations) if depth < len(rows)
+                )
+                for packed_row, state_index in enumerate(active):
+                    executor.runtime.memcpy(
+                        hidden_batch.ptr + packed_row * hidden_nbytes,
+                        operations[state_index][depth][2].ptr,
+                        hidden_nbytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                    )
+                ids = tuple(states[index].request_id for index in active)
+                tokens = tuple(operations[index][depth][0] for index in active)
+                positions = tuple(operations[index][depth][1] for index in active)
+                hidden = Tensor.from_handle(
+                    hidden_batch.ptr,
+                    (len(active), hidden_size),
+                    DType.BF16,
+                    Device("hip", 0),
+                )
+                if len(active) == 1:
+                    executor.advance_state_only(
+                        ids[0],
+                        tokens[0],
+                        positions[0],
+                        Tensor.from_handle(
+                            hidden.ptr,
+                            (1, hidden_size),
+                            DType.BF16,
+                            Device("hip", 0),
+                        ),
+                    )
+                else:
+                    executor.advance_state_batch_only(
+                        ids,
+                        tokens,
+                        positions,
+                        hidden,
+                    )
+        finally:
+            free(hidden_batch, runtime=executor.runtime)
+
     def _repair_provider_state(
         self,
         state: _MTP2RequestState,
@@ -618,6 +1110,186 @@ class Qwen35GGUFMTP2Adapter:
         self._disabled_requests.clear()
         self._active_claims = None
 
+    def _open_batch_requests(self, request_ids: tuple[int, ...]) -> None:
+        rows = [self.owner._row(request_id) for request_id in request_ids]
+        targets = [row.lease.session for row in rows]
+        max_positions = min(
+            int(target.target_layout.max_sequence_length) for target in targets
+        )
+        provider_capacity = max(
+            len(request_ids),
+            min(4, int(getattr(self.owner, "capacity", len(request_ids)))),
+        )
+        provider, pool_key, _reused = self.generator._acquire_dense_mtp_draft_provider(
+            targets[0],
+            max_positions=max_positions,
+            pool_enabled=self.owner._shared_runner is not None,
+            max_requests=provider_capacity,
+        )
+        group_key = tuple(sorted(request_ids))
+        group = _MTP2ProviderGroup(
+            key=group_key,
+            provider=provider,
+            provider_pool_key=pool_key,
+            request_ids=set(request_ids),
+        )
+        self._provider_groups[group_key] = group
+        root_buffers: dict[int, DeviceBuffer] = {}
+        verifiers: dict[int, Qwen35GGUFTransactionalVerifier] = {}
+        try:
+            for request_id in request_ids:
+                provider.reset_request(request_id)
+            root_buffers = self._catch_up_provider_batch(
+                provider,
+                request_ids,
+                rows,
+                targets,
+            )
+            for request_id, target in zip(request_ids, targets, strict=True):
+                target._last_target_hidden_ptr = int(root_buffers[request_id].ptr)
+                self._states[request_id] = _MTP2RequestState(
+                    request_id=request_id,
+                    provider=provider,
+                    provider_pool_key=pool_key,
+                    provider_group_key=group_key,
+                    verifier=None,
+                    root_hidden_buffer=root_buffers[request_id],
+                )
+        except Exception:
+            for verifier in verifiers.values():
+                verifier.close()
+            for request_id, buffer in root_buffers.items():
+                target = targets[request_ids.index(request_id)]
+                free(buffer, runtime=target.runtime)
+            for request_id in request_ids:
+                provider.release_request(request_id)
+                self._states.pop(request_id, None)
+            self._provider_groups.pop(group_key, None)
+            self.generator._release_mtp_draft_runner(pool_key, provider)
+            raise
+
+    def _attach_request_to_group(
+        self,
+        request_id: int,
+        group: _MTP2ProviderGroup,
+    ) -> _MTP2RequestState:
+        row = self.owner._row(request_id)
+        target = row.lease.session
+        group.provider.reset_request(request_id)
+        root_hidden = self._catch_up_provider(
+            group.provider,
+            request_id,
+            row.prompt_ids,
+            self._prompt_hidden_rows[request_id],
+            target,
+        )
+        target._last_target_hidden_ptr = int(root_hidden.ptr)
+        group.request_ids.add(request_id)
+        return _MTP2RequestState(
+            request_id=request_id,
+            provider=group.provider,
+            provider_pool_key=group.provider_pool_key,
+            provider_group_key=group.key,
+            verifier=None,
+            root_hidden_buffer=root_hidden,
+        )
+
+    def _catch_up_provider_batch(
+        self,
+        provider: Any,
+        request_ids: tuple[int, ...],
+        rows: Sequence[Any],
+        targets: Sequence[Any],
+    ) -> dict[int, DeviceBuffer]:
+        prompt_lengths = tuple(len(row.prompt_ids) for row in rows)
+        hidden_size = int(provider.executor.hidden_size)
+        count = len(rows)
+        hidden_batch = malloc(
+            count * hidden_size * DType.BF16.itemsize,
+            runtime=targets[0].runtime,
+        )
+        root_buffers: dict[int, DeviceBuffer] = {}
+        try:
+            zero = np.zeros((hidden_size,), dtype=np.uint16)
+            for position in range(max(prompt_lengths)):
+                active = tuple(
+                    index
+                    for index, prompt_length in enumerate(prompt_lengths)
+                    if position < prompt_length
+                )
+                hidden_rows = []
+                for index in active:
+                    request_id = request_ids[index]
+                    prompt_hidden = self._prompt_hidden_rows[request_id]
+                    hidden_rows.append(
+                        zero
+                        if position == 0
+                        else np.ascontiguousarray(
+                            float_array_to_bf16_bits(prompt_hidden[position - 1]),
+                            dtype=np.uint16,
+                        )
+                    )
+                hidden_bits = np.ascontiguousarray(np.stack(hidden_rows), dtype=np.uint16)
+                copy_host_to_device(
+                    hidden_batch,
+                    host_array_ptr(hidden_bits),
+                    hidden_bits.nbytes,
+                    runtime=targets[0].runtime,
+                )
+                active_ids = tuple(request_ids[index] for index in active)
+                active_tokens = tuple(
+                    int(rows[index].prompt_ids[position]) for index in active
+                )
+                hidden = Tensor.from_handle(
+                    hidden_batch.ptr,
+                    (len(active), hidden_size),
+                    DType.BF16,
+                    Device("hip", 0),
+                )
+                if len(active) == 1:
+                    provider.executor.run_step(
+                        active_ids[0],
+                        active_tokens[0],
+                        position,
+                        Tensor.from_handle(
+                            hidden.ptr,
+                            (1, hidden_size),
+                            DType.BF16,
+                            Device("hip", 0),
+                        ),
+                        return_logits=False,
+                    )
+                else:
+                    provider.executor.run_step_batch(
+                        active_ids,
+                        active_tokens,
+                        (position,) * len(active),
+                        hidden,
+                    )
+            for request_id, row, target in zip(request_ids, rows, targets, strict=True):
+                bits = np.ascontiguousarray(
+                    float_array_to_bf16_bits(
+                        self._prompt_hidden_rows[request_id][-1]
+                    ),
+                    dtype=np.uint16,
+                )
+                buffer = malloc(bits.nbytes, runtime=target.runtime)
+                copy_host_to_device(
+                    buffer,
+                    host_array_ptr(bits),
+                    bits.nbytes,
+                    runtime=target.runtime,
+                )
+                root_buffers[request_id] = buffer
+            return root_buffers
+        except Exception:
+            for request_id, buffer in root_buffers.items():
+                target = targets[request_ids.index(request_id)]
+                free(buffer, runtime=target.runtime)
+            raise
+        finally:
+            free(hidden_batch, runtime=targets[0].runtime)
+
     def _open_request(self, request_id: int) -> _MTP2RequestState:
         rid = int(request_id)
         row = self.owner._row(rid)
@@ -636,7 +1308,16 @@ class Qwen35GGUFMTP2Adapter:
             target,
             max_positions=max_positions,
             pool_enabled=self.owner._shared_runner is not None,
+            max_requests=1,
         )
+        group_key = (rid,)
+        group = _MTP2ProviderGroup(
+            key=group_key,
+            provider=provider,
+            provider_pool_key=pool_key,
+            request_ids={rid},
+        )
+        self._provider_groups[group_key] = group
         verifier = None
         root_hidden_buffer = None
         try:
@@ -659,6 +1340,7 @@ class Qwen35GGUFMTP2Adapter:
                 request_id=rid,
                 provider=provider,
                 provider_pool_key=pool_key,
+                provider_group_key=group_key,
                 verifier=verifier,
                 root_hidden_buffer=root_hidden_buffer,
             )
@@ -668,6 +1350,7 @@ class Qwen35GGUFMTP2Adapter:
             if root_hidden_buffer is not None:
                 free(root_hidden_buffer, runtime=target.runtime)
             provider.release_request(rid)
+            self._provider_groups.pop(group_key, None)
             self.generator._release_mtp_draft_runner(pool_key, provider)
             raise
 
@@ -734,17 +1417,23 @@ class Qwen35GGUFMTP2Adapter:
         if state is not None:
             target = self.owner._row(rid).lease.session
             self._release_provider_checkpoint(state)
-            state.verifier.close()
+            if state.verifier is not None:
+                state.verifier.close()
             if int(getattr(target, "_last_target_hidden_ptr", 0)) == int(
                 state.root_hidden_buffer.ptr
             ):
                 target._last_target_hidden_ptr = 0
             free(state.root_hidden_buffer, runtime=target.runtime)
             state.provider.release_request(rid)
-            self.generator._release_mtp_draft_runner(
-                state.provider_pool_key,
-                state.provider,
-            )
+            group = self._provider_groups.get(state.provider_group_key)
+            if group is not None:
+                group.request_ids.discard(rid)
+                if not group.request_ids:
+                    self._provider_groups.pop(group.key, None)
+                    self.generator._release_mtp_draft_runner(
+                        group.provider_pool_key,
+                        group.provider,
+                    )
         if disable:
             self._disabled_requests.add(rid)
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path
-from typing import Mapping, Protocol
+from typing import Mapping, Protocol, Sequence
 
 import numpy as np
 
@@ -273,21 +273,49 @@ class Qwen35GGUFNextNExecutor:
         )
         self.hidden_size = int(self.runner.hidden_size)
         self.vocab_size = int(self.runner.vocab_size)
-        self.scratch = self.runner.allocate_scratch(
+        self._batch_session = Qwen35GGUFResidentSession(
+            self.model,
+            runtime=self.runtime,
+            compiler_version=self.compiler_version,
+            require_cached_build=self.require_cached_build,
+            backend=self.backend,
+            shared_runner=self.runner,
             max_sequence_length=int(max_positions),
             max_batch_size=self.max_requests,
+            use_wmma_prefill=True,
+            use_gemv_decode=True,
+        )
+        self.scratch = self._batch_session._target_scratch_owner
+        if self.scratch is None:
+            raise RuntimeError("GGUF NextN batch scratch is unavailable")
+        self._batch_sessions = (
+            self._batch_session,
+            *tuple(
+                self._batch_session.resident_slot_view(index)
+                for index in range(1, self.max_requests)
+            ),
         )
         self.scratch.zero_states(self.runtime)
         self._request_slots: dict[int, int] = {}
         self._token_host = np.zeros((self.max_requests,), dtype=np.int64)
-        self._logits_host = np.empty((1, self.vocab_size), dtype=np.float32)
+        self._logits_host = np.empty((self.max_requests, self.vocab_size), dtype=np.float32)
         hidden_bytes = self.max_requests * self.hidden_size * DType.BF16.itemsize
         self._token_buf = malloc(self._token_host.nbytes, runtime=self.runtime)
         self._embedding_buf = malloc(hidden_bytes, runtime=self.runtime)
+        self._enorm_buf = malloc(hidden_bytes, runtime=self.runtime)
+        self._hnorm_buf = malloc(hidden_bytes, runtime=self.runtime)
+        self._batch_input_hidden = malloc(hidden_bytes, runtime=self.runtime)
         self._fusion_buf = malloc(2 * hidden_bytes, runtime=self.runtime)
         self._fused_buf = malloc(hidden_bytes, runtime=self.runtime)
         self._layer_out_buf = malloc(hidden_bytes, runtime=self.runtime)
         self._final_hidden_buf = malloc(hidden_bytes, runtime=self.runtime)
+        self._proposal_history_hidden = malloc(
+            self.max_requests
+            * _NEXTN_TOP1_RESULT_CAPACITY
+            * self.hidden_size
+            * DType.BF16.itemsize,
+            runtime=self.runtime,
+        )
         self._logits_buf = malloc(self._logits_host.nbytes, runtime=self.runtime)
         self._lm_head_top1_kernel = None
         self._lm_head_top1_weight: Qwen35GGUFDeviceWeight | None = None
@@ -325,10 +353,14 @@ class Qwen35GGUFNextNExecutor:
             for buffer in (
                 self._token_buf,
                 self._embedding_buf,
+                self._enorm_buf,
+                self._hnorm_buf,
+                self._batch_input_hidden,
                 self._fusion_buf,
                 self._fused_buf,
                 self._layer_out_buf,
                 self._final_hidden_buf,
+                self._proposal_history_hidden,
                 self._logits_buf,
                 self._lm_head_top1_block_values,
                 self._lm_head_top1_block_indices,
@@ -485,6 +517,11 @@ class Qwen35GGUFNextNExecutor:
         logits = self._logits_host.copy() if return_logits else None
         return token, float(self._logits_host[0, token]), logits
 
+    def _set_batch_session_position(self, slot: int, position: int) -> None:
+        sessions = getattr(self, "_batch_sessions", None)
+        if sessions is not None:
+            sessions[int(slot)]._position = int(position)
+
     def _slot(self, request_id: int) -> int:
         request_id = int(request_id)
         slot = self._request_slots.get(request_id)
@@ -609,6 +646,8 @@ class Qwen35GGUFNextNExecutor:
             position,
             target_hidden,
         )
+        slot = self._slot(request_id)
+        self._set_batch_session_position(slot, int(position) + 1)
         if self.weights is None:
             raise RuntimeError("GGUF NextN executor is closed")
         gguf_rmsnorm_bf16_f32_weight(
@@ -638,6 +677,214 @@ class Qwen35GGUFNextNExecutor:
             logit=logit,
             hidden=hidden,
             logits=logits,
+        )
+
+    def _run_step_batch_impl(
+        self,
+        request_ids: Sequence[int],
+        token_ids: Sequence[int],
+        positions: Sequence[int],
+        target_hidden: Tensor,
+        *,
+        score_output: bool,
+    ) -> tuple[Qwen35GGUFNextNStepResult | Qwen35GGUFNextNStateAdvance, ...]:
+        """Run one physically row-batched NextN state transition."""
+
+        ids = tuple(int(value) for value in request_ids)
+        tokens = tuple(int(value) for value in token_ids)
+        pos = tuple(int(value) for value in positions)
+        rows = len(ids)
+        if rows <= 1 or rows > self.max_requests:
+            raise ValueError("NextN batch rows must be in [2, max_requests]")
+        if len(set(ids)) != rows or len(tokens) != rows or len(pos) != rows:
+            raise ValueError("NextN batch request/token/position rows must align")
+        if target_hidden.dtype != DType.BF16 or target_hidden.shape != (
+            rows,
+            self.hidden_size,
+        ):
+            raise ValueError("target_hidden must be contiguous BF16 [rows, hidden]")
+        if any(token < 0 or token >= self.vocab_size for token in tokens):
+            raise ValueError("NextN batch token is outside the vocabulary")
+        slots = tuple(self._slot(request_id) for request_id in ids)
+        sessions = tuple(self._batch_sessions[slot] for slot in slots)
+        session_positions = tuple(int(session.position) for session in sessions)
+        if session_positions != pos:
+            scratch_positions = tuple(
+                int(
+                    self.scratch.for_slot(
+                        slot,
+                        span_role="decode",
+                    ).position_host[0]
+                )
+                for slot in slots
+            )
+            raise ValueError(
+                "NextN batch position does not match provider cursor: "
+                f"sessions={session_positions!r} scratch={scratch_positions!r} "
+                f"requested={pos!r} ids={ids!r} slots={slots!r}"
+            )
+        self._token_host[:rows] = np.asarray(tokens, dtype=np.int64)
+        copy_host_to_device(
+            self._token_buf,
+            host_array_ptr(self._token_host),
+            rows * DType.INT64.itemsize,
+            runtime=self.runtime,
+        )
+        launch_gguf_embedding(
+            self.weights.fallback("token_embedding"),
+            self._token_buf.ptr,
+            self._embedding_buf.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            vocab_size=self.vocab_size,
+            runtime=self.runtime,
+        )
+        gguf_rmsnorm_bf16_f32_weight(
+            self._embedding_buf.ptr,
+            self.weights.nextn("enorm").allocation().tensor.ptr,
+            self._enorm_buf.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            eps=self.weights.config.rms_norm_eps,
+            runtime=self.runtime,
+        )
+        gguf_rmsnorm_bf16_f32_weight(
+            target_hidden.ptr,
+            self.weights.nextn("hnorm").allocation().tensor.ptr,
+            self._hnorm_buf.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            eps=self.weights.config.rms_norm_eps,
+            runtime=self.runtime,
+        )
+        hidden_nbytes = self.hidden_size * DType.BF16.itemsize
+        for row in range(rows):
+            destination = self._fusion_buf.ptr + row * 2 * hidden_nbytes
+            self.runtime.memcpy_async(
+                destination,
+                self._enorm_buf.ptr + row * hidden_nbytes,
+                hidden_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                0,
+            )
+            self.runtime.memcpy_async(
+                destination + hidden_nbytes,
+                self._hnorm_buf.ptr + row * hidden_nbytes,
+                hidden_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                0,
+            )
+        launch_gguf_linear(
+            self.weights.nextn("eh_proj"),
+            self._fusion_buf.ptr,
+            self._fused_buf.ptr,
+            rows=rows,
+            in_features=2 * self.hidden_size,
+            out_features=self.hidden_size,
+            runtime=self.runtime,
+        )
+        self._batch_session.step_hidden_batch_native(
+            self._fused_buf.ptr,
+            sessions=sessions,
+            positions=pos,
+            output_hidden_ptr=self._final_hidden_buf.ptr,
+            logits_ptr=self._logits_buf.ptr,
+            score_output=bool(score_output),
+        )
+        if not score_output:
+            self.last_lm_head_path = "physical_batch_state_only"
+            return tuple(
+                Qwen35GGUFNextNStateAdvance(
+                    request_id=request_id,
+                    input_token=token_id,
+                    position=position,
+                )
+                for request_id, token_id, position in zip(
+                    ids,
+                    tokens,
+                    pos,
+                    strict=True,
+                )
+            )
+        logits = np.empty((rows, self.vocab_size), dtype=np.float32)
+        copy_device_to_host(
+            host_array_ptr(logits),
+            self._logits_buf,
+            logits.nbytes,
+            runtime=self.runtime,
+        )
+        if not np.all(np.isfinite(logits)):
+            raise FloatingPointError("GGUF NextN batch logits contain NaN or Inf")
+        results: list[Qwen35GGUFNextNStepResult] = []
+        for row, (request_id, token_id, position) in enumerate(
+            zip(ids, tokens, pos, strict=True)
+        ):
+            selected = int(np.argmax(logits[row]))
+            results.append(
+                Qwen35GGUFNextNStepResult(
+                    request_id=request_id,
+                    input_token=token_id,
+                    position=position,
+                    token_id=selected,
+                    logit=float(logits[row, selected]),
+                    hidden=Tensor.from_handle(
+                        self._final_hidden_buf.ptr + row * hidden_nbytes,
+                        (1, self.hidden_size),
+                        DType.BF16,
+                        Device("hip", 0),
+                    ),
+                    logits=None,
+                )
+            )
+        self.last_lm_head_path = "physical_batch_full_logits"
+        return tuple(results)
+
+    def run_step_batch(
+        self,
+        request_ids: Sequence[int],
+        token_ids: Sequence[int],
+        positions: Sequence[int],
+        target_hidden: Tensor,
+    ) -> tuple[Qwen35GGUFNextNStepResult, ...]:
+        """Run one physically row-batched NextN step for independent requests."""
+
+        results = self._run_step_batch_impl(
+            request_ids,
+            token_ids,
+            positions,
+            target_hidden,
+            score_output=True,
+        )
+        if not all(isinstance(result, Qwen35GGUFNextNStepResult) for result in results):
+            raise RuntimeError("NextN scored batch returned a state-only result")
+        return tuple(
+            result
+            for result in results
+            if isinstance(result, Qwen35GGUFNextNStepResult)
+        )
+
+    def advance_state_batch_only(
+        self,
+        request_ids: Sequence[int],
+        token_ids: Sequence[int],
+        positions: Sequence[int],
+        target_hidden: Tensor,
+    ) -> tuple[Qwen35GGUFNextNStateAdvance, ...]:
+        """Consume independent accepted inputs in one backbone without scoring."""
+
+        results = self._run_step_batch_impl(
+            request_ids,
+            token_ids,
+            positions,
+            target_hidden,
+            score_output=False,
+        )
+        if not all(isinstance(result, Qwen35GGUFNextNStateAdvance) for result in results):
+            raise RuntimeError("NextN state-only batch returned a scored result")
+        return tuple(
+            result
+            for result in results
+            if isinstance(result, Qwen35GGUFNextNStateAdvance)
         )
 
     def _capture_exact_chain_graph(
@@ -879,6 +1126,7 @@ class Qwen35GGUFNextNExecutor:
         final_hidden_ptr = self._final_hidden_buf.ptr + slot * hidden_nbytes
         slot_scratch.position_host[0] = int(position) + budget - 1
         slot_scratch.context_host[0] = int(position) + budget
+        self._set_batch_session_position(slot, int(position) + budget)
         self.last_lm_head_path = "exact_q6_top1"
         self._proposal_graph_replays += 1
         self._proposal_graph_last_status = "device_handoff"
@@ -1002,6 +1250,7 @@ class Qwen35GGUFNextNExecutor:
         *,
         candidate_budget: int,
         return_logits: bool = False,
+        allow_graph: bool = True,
     ) -> tuple[Qwen35GGUFNextNStepResult, ...]:
         """Run one candidate chain through the exact graph route or eager fallback."""
 
@@ -1017,7 +1266,7 @@ class Qwen35GGUFNextNExecutor:
             raise ValueError("token_id is outside the GGUF vocabulary")
         if position < 0 or int(position) + budget > int(self.scratch.max_positions):
             raise ValueError("GGUF NextN proposal positions exceed cache capacity")
-        if not return_logits:
+        if not return_logits and bool(allow_graph):
             graph_rows = self._run_exact_graph_chain(
                 request_id,
                 token_id,
@@ -1038,10 +1287,51 @@ class Qwen35GGUFNextNExecutor:
                 current_hidden,
                 return_logits=return_logits,
             )
+            preserved_hidden = self._preserve_proposal_hidden(
+                request_id,
+                depth,
+                result.hidden,
+            )
+            result = Qwen35GGUFNextNStepResult(
+                request_id=result.request_id,
+                input_token=result.input_token,
+                position=result.position,
+                token_id=result.token_id,
+                logit=result.logit,
+                hidden=preserved_hidden,
+                logits=result.logits,
+            )
             rows.append(result)
             current_token = int(result.token_id)
             current_hidden = result.hidden
         return tuple(rows)
+
+    def _preserve_proposal_hidden(
+        self,
+        request_id: int,
+        depth: int,
+        hidden: Tensor,
+    ) -> Tensor:
+        if not hasattr(self, "_proposal_history_hidden"):
+            return hidden
+        slot = self._slot(request_id)
+        index = slot * _NEXTN_TOP1_RESULT_CAPACITY + int(depth)
+        if depth < 0 or depth >= _NEXTN_TOP1_RESULT_CAPACITY:
+            raise ValueError("proposal hidden depth exceeds retained capacity")
+        nbytes = self.hidden_size * DType.BF16.itemsize
+        destination = self._proposal_history_hidden.ptr + index * nbytes
+        self.runtime.memcpy(
+            destination,
+            hidden.ptr,
+            nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+        )
+        return Tensor.from_handle(
+            destination,
+            (1, self.hidden_size),
+            DType.BF16,
+            hidden.device,
+        )
 
     def proposal_graph_contract(self) -> dict[str, object]:
         """Return compact exact-chain graph ownership and replay telemetry."""
@@ -1068,6 +1358,10 @@ class Qwen35GGUFNextNExecutor:
         """Consume an accepted tail without computing its discarded prediction."""
 
         self._run_block(request_id, token_id, position, target_hidden)
+        slots = getattr(self, "_request_slots", None)
+        if slots is not None:
+            slot = self._slot(request_id)
+            self._set_batch_session_position(slot, int(position) + 1)
         self.runtime.device_synchronize()
         return Qwen35GGUFNextNStateAdvance(
             request_id=int(request_id),
@@ -1113,12 +1407,18 @@ class Qwen35GGUFNextNExecutor:
             for backup in reversed(allocated):
                 free(backup, runtime=self.runtime)
             raise
+        sessions = getattr(self, "_batch_sessions", None)
+        logical_position = int(
+            slot_scratch.position_host[0]
+            if sessions is None
+            else sessions[slot].position
+        )
         return Qwen35GGUFNextNRequestCheckpoint(
             request_id=rid,
             slot=int(slot),
             state_pairs=tuple(pairs),
-            position=int(slot_scratch.position_host[0]),
-            context_length=int(slot_scratch.context_host[0]),
+            position=logical_position,
+            context_length=logical_position + 1,
         )
 
     def restore_request_checkpoint(
@@ -1142,6 +1442,7 @@ class Qwen35GGUFNextNExecutor:
             )
         slot_scratch.position_host[0] = int(checkpoint.position)
         slot_scratch.context_host[0] = int(checkpoint.context_length)
+        self._set_batch_session_position(slot, int(checkpoint.position))
         copy_host_to_device(
             slot_scratch.position_buf,
             host_array_ptr(slot_scratch.position_host),
@@ -1236,6 +1537,7 @@ class Qwen35GGUFNextNExecutor:
         if slot is None:
             return
         self.scratch.for_slot(slot).zero_states(self.runtime)
+        self._set_batch_session_position(slot, 0)
 
     def release_request(self, request_id: int) -> None:
         request_id = int(request_id)
@@ -1254,8 +1556,7 @@ class Qwen35GGUFNextNExecutor:
         self._proposal_graphs.clear()
         for buffer in reversed(self._buffers):
             free(buffer, runtime=self.runtime)
-        for buffer in reversed(self.scratch.buffers):
-            free(buffer, runtime=self.runtime)
+        self._batch_session.close()
         self.runner.close()
         if self.weights is not None:
             self.weights.free(runtime=self.runtime)
@@ -1305,6 +1606,7 @@ class Qwen35GGUFNextNDraftProvider:
         *,
         candidate_budget: int,
         return_logits: bool = False,
+        allow_graph: bool = True,
     ) -> DraftBatch:
         budget = int(candidate_budget)
         if budget not in MTP_CHAIN_CANDIDATE_BUDGETS:
@@ -1330,14 +1632,19 @@ class Qwen35GGUFNextNDraftProvider:
             position = int(context.root_positions[index])
             run_chain = getattr(self.executor, "run_chain", None)
             if callable(run_chain):
+                chain_kwargs = {
+                    "candidate_budget": budget,
+                    "return_logits": return_logits,
+                }
+                if not allow_graph:
+                    chain_kwargs["allow_graph"] = False
                 results = list(
                     run_chain(
                         int(request_id),
                         current_token,
                         position,
                         hidden,
-                        candidate_budget=budget,
-                        return_logits=return_logits,
+                        **chain_kwargs,
                     )
                 )
                 if len(results) != budget:
@@ -1360,6 +1667,119 @@ class Qwen35GGUFNextNDraftProvider:
                 MtpDraftRequest(
                     request_id=int(request_id),
                     root_position=position,
+                    candidate_tokens=tuple(result.token_id for result in results),
+                    active_count=len(results),
+                )
+            )
+        return compile_mtp_chain(
+            requests,
+            candidate_budget=budget,
+            pad_token_id=self.pad_token_id,
+        )
+
+    def propose_batch(
+        self,
+        context: MtpProposalContext,
+        *,
+        candidate_counts: Sequence[int],
+    ) -> DraftBatch:
+        """Physically batch every shared depth and fall back only for ragged tails."""
+
+        counts = tuple(int(value) for value in candidate_counts)
+        rows = len(context.request_ids)
+        if rows <= 1 or len(counts) != rows or any(count <= 0 for count in counts):
+            raise ValueError("physical NextN proposal requires C>1 positive depths")
+        budget = max(counts)
+        if budget not in MTP_CHAIN_CANDIDATE_BUDGETS:
+            raise ValueError("physical NextN proposal budget is unsupported")
+        if context.target_hidden is None or context.target_hidden.shape != (
+            rows,
+            self.executor.hidden_size,
+        ):
+            raise ValueError("physical NextN target_hidden must align with requests")
+        current_tokens = [int(value) for value in context.root_tokens]
+        current_hidden = [
+            Tensor.from_handle(
+                context.target_hidden.ptr
+                + row * self.executor.hidden_size * DType.BF16.itemsize,
+                (1, self.executor.hidden_size),
+                DType.BF16,
+                context.target_hidden.device,
+            )
+            for row in range(rows)
+        ]
+        per_request: list[list[Qwen35GGUFNextNStepResult]] = [
+            [] for _ in range(rows)
+        ]
+        hidden_nbytes = self.executor.hidden_size * DType.BF16.itemsize
+        for depth in range(budget):
+            active = tuple(index for index, count in enumerate(counts) if depth < count)
+            if len(active) > 1:
+                for packed_row, source_row in enumerate(active):
+                    self.executor.runtime.memcpy(
+                        self.executor._batch_input_hidden.ptr
+                        + packed_row * hidden_nbytes,
+                        current_hidden[source_row].ptr,
+                        hidden_nbytes,
+                        HipMemcpyKind.DEVICE_TO_DEVICE,
+                    )
+                step_rows = self.executor.run_step_batch(
+                    tuple(context.request_ids[index] for index in active),
+                    tuple(current_tokens[index] for index in active),
+                    tuple(
+                        int(context.root_positions[index]) + depth
+                        for index in active
+                    ),
+                    Tensor.from_handle(
+                        self.executor._batch_input_hidden.ptr,
+                        (len(active), self.executor.hidden_size),
+                        DType.BF16,
+                        Device("hip", 0),
+                    ),
+                )
+            else:
+                index = active[0]
+                step_rows = (
+                    self.executor.run_step(
+                        int(context.request_ids[index]),
+                        current_tokens[index],
+                        int(context.root_positions[index]) + depth,
+                        current_hidden[index],
+                        return_logits=False,
+                    ),
+                )
+            if len(step_rows) != len(active):
+                raise RuntimeError("physical NextN step returned the wrong row count")
+            for source_index, result in zip(active, step_rows, strict=True):
+                hidden = self.executor._preserve_proposal_hidden(
+                    int(context.request_ids[source_index]),
+                    depth,
+                    result.hidden,
+                )
+                retained = Qwen35GGUFNextNStepResult(
+                    request_id=result.request_id,
+                    input_token=result.input_token,
+                    position=result.position,
+                    token_id=result.token_id,
+                    logit=result.logit,
+                    hidden=hidden,
+                    logits=result.logits,
+                )
+                per_request[source_index].append(retained)
+                current_tokens[source_index] = int(retained.token_id)
+                current_hidden[source_index] = retained.hidden
+        requests = []
+        for request_id, root_position, results in zip(
+            context.request_ids,
+            context.root_positions,
+            per_request,
+            strict=True,
+        ):
+            self.last_results[int(request_id)] = tuple(results)
+            requests.append(
+                MtpDraftRequest(
+                    request_id=int(request_id),
+                    root_position=int(root_position),
                     candidate_tokens=tuple(result.token_id for result in results),
                     active_count=len(results),
                 )

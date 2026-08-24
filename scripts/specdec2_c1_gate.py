@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exact gfx1151 SPECDEC2 c1 staged/direct/AR qualification gate."""
+"""Exact gfx1151 SPECDEC2 c1/c2/c4 staged/direct/AR qualification gate."""
 
 from __future__ import annotations
 
@@ -26,6 +26,13 @@ def _choice_ids(response: dict[str, Any]) -> tuple[int, ...]:
     return tuple(
         int(token)
         for token in response["choices"][0]["hipengine"]["generated_token_ids"]
+    )
+
+
+def _choice_rows(response: dict[str, Any]) -> tuple[tuple[int, ...], ...]:
+    return tuple(
+        tuple(int(token) for token in choice["hipengine"]["generated_token_ids"])
+        for choice in response["choices"]
     )
 
 
@@ -61,16 +68,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         startup_scratch_probe=False,
         speculative_mtp_serving="auto",
         execution_profile=args.execution_profile,
-        max_active_requests=1,
+        max_active_requests=int(args.concurrency),
         generation_batch_window_ms=0.0,
     )
     started = time.perf_counter()
     app = create_app(config)
     try:
         with TestClient(app) as client:
+            prompts = (args.prompt,) * int(args.concurrency)
             base = {
                 "model": served_name,
-                "prompt": args.prompt,
+                "prompt": args.prompt if args.concurrency == 1 else list(prompts),
                 "max_tokens": args.max_tokens,
                 "temperature": 0.0,
                 "top_p": 1.0,
@@ -99,7 +107,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 direct_generator.weight_index
             )
             direct_request = GenerationRequest(
-                prompts=(args.prompt,),
+                prompts=prompts,
                 max_tokens=args.max_tokens,
                 temperature=0.0,
                 top_p=1.0,
@@ -117,10 +125,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     ar = ar_response.json()
     staged = staged_response.json()
     warm = warm_response.json()
-    direct_ids = tuple(int(token) for token in direct_outputs[0].generated_token_ids or ())
-    ar_ids = _choice_ids(ar)
-    staged_ids = _choice_ids(staged)
-    warm_ids = _choice_ids(warm)
+    direct_ids = tuple(
+        tuple(int(token) for token in output.generated_token_ids or ())
+        for output in direct_outputs
+    )
+    ar_ids = _choice_rows(ar)
+    staged_ids = _choice_rows(staged)
+    warm_ids = _choice_rows(warm)
     recent = resident_snapshot.get("runner", {}).get("routes", {}).get(
         "recent_completed", []
     )
@@ -133,10 +144,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         }
         for fingerprint in provider_fingerprints
     ]
+    staged_capture_count = 2 * int(args.concurrency)
     staged_provider_fingerprints_equal = bool(
-        len(normalized_provider_fingerprints) >= 2
-        and normalized_provider_fingerprints[0]
-        == normalized_provider_fingerprints[1]
+        len(normalized_provider_fingerprints) >= staged_capture_count
+        and len(
+            {
+                json.dumps(fingerprint, sort_keys=True)
+                for fingerprint in normalized_provider_fingerprints[
+                    :staged_capture_count
+                ]
+            }
+        )
+        == 1
     )
     provider_gate_passed = bool(
         not args.provider_fingerprint
@@ -147,15 +166,25 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     passed = bool(
         ar_ids == staged_ids == warm_ids == direct_ids
-        and staged_rows
-        and int(staged_rows[-1]["specdec2_mtp2_candidate_counts"][0])
-        == int(args.budget)
+        and len(staged_rows) >= 2 * int(args.concurrency)
+        and all(
+            int(row["specdec2_mtp2_candidate_counts"][0]) == int(args.budget)
+            for row in staged_rows[-int(args.concurrency) :]
+        )
+        and (
+            int(args.concurrency) == 1
+            or all(
+                int(row["specdec2_mtp2_proposal_batch_calls"]) > 0
+                and int(row["specdec2_mtp2_target_batch_calls"]) > 0
+                for row in staged_rows[-int(args.concurrency) :]
+            )
+        )
         and resident_snapshot.get("loop", {}).get("requests", {}).get("active") == 0
         and provider_gate_passed
     )
     payload = {
         "schema": 1,
-        "kind": "specdec2_gfx1151_c1_gate",
+        "kind": f"specdec2_gfx1151_c{int(args.concurrency)}_gate",
         "status": "passed" if passed else "failed",
         "performance_claim": False,
         "speed_claim_eligible": False,
@@ -191,15 +220,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "workload": {
             "prompt": args.prompt,
+            "concurrency": int(args.concurrency),
             "max_tokens": int(args.max_tokens),
             "candidate_budget": int(args.budget),
             "sampling": "greedy",
         },
         "ids": {
-            "ar": list(ar_ids),
-            "staged_cold": list(staged_ids),
-            "staged_warm": list(warm_ids),
-            "direct_exact": list(direct_ids),
+            "ar": list(ar_ids[0]) if args.concurrency == 1 else [list(row) for row in ar_ids],
+            "staged_cold": list(staged_ids[0]) if args.concurrency == 1 else [list(row) for row in staged_ids],
+            "staged_warm": list(warm_ids[0]) if args.concurrency == 1 else [list(row) for row in warm_ids],
+            "direct_exact": list(direct_ids[0]) if args.concurrency == 1 else [list(row) for row in direct_ids],
             "all_equal": ar_ids == staged_ids == warm_ids == direct_ids,
         },
         "wall_seconds": {
@@ -218,9 +248,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "captures": len(provider_fingerprints),
             "staged_repeat_equal": staged_provider_fingerprints_equal,
             "direct_equal_to_staged": bool(
-                len(normalized_provider_fingerprints) >= 3
-                and normalized_provider_fingerprints[2]
-                == normalized_provider_fingerprints[1]
+                len(normalized_provider_fingerprints) >= 3 * int(args.concurrency)
+                and normalized_provider_fingerprints[staged_capture_count]
+                == normalized_provider_fingerprints[staged_capture_count - 1]
             ),
             "passed": provider_gate_passed,
         },
@@ -239,6 +269,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf"),
     )
     parser.add_argument("--budget", type=int, choices=(1, 2, 3), required=True)
+    parser.add_argument("--concurrency", type=int, choices=(1, 2, 4), default=1)
     parser.add_argument("--max-tokens", type=int, default=5)
     parser.add_argument("--prompt", default="Write one short greeting.")
     parser.add_argument("--allow-fp16-state", action="store_true")
@@ -263,6 +294,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dumps(
             {
                 "budget": args.budget,
+                "concurrency": args.concurrency,
                 "passed": payload["passed"],
                 "wall_seconds": payload["wall_seconds"],
             },

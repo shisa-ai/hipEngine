@@ -1454,6 +1454,7 @@ class Qwen35GGUFBringupGenerator:
         *,
         max_positions: int,
         pool_enabled: bool,
+        max_requests: int = 1,
     ) -> tuple[Any, Any | None, bool]:
         """Open or reuse the architecture-shaped dense NextN provider."""
 
@@ -1467,6 +1468,7 @@ class Qwen35GGUFBringupGenerator:
             int(id(target.runtime)),
             "dense_nextn",
             int(max_positions),
+            int(max_requests),
         )
         if pool_enabled:
             with self._shared_mtp_draft_pool_lock:
@@ -1477,7 +1479,7 @@ class Qwen35GGUFBringupGenerator:
         provider = Qwen35GGUFNextNDraftProvider.from_model(
             self.model_path,
             max_positions=int(max_positions),
-            max_requests=1,
+            max_requests=int(max_requests),
             runtime=target.runtime,
             require_cached_build=bool(target.require_cached_build),
             borrowed_fallback_weights=borrow_qwen35_gguf_nextn_fallback_weights(target),
@@ -4803,6 +4805,10 @@ class _GGUFResidentLoopRow:
     mtp2_target_ms: float = 0.0
     mtp2_provider_update_ms: float = 0.0
     mtp2_k0_catchups: int = 0
+    mtp2_proposal_batch_calls: int = 0
+    mtp2_proposal_physical_rows: list[int] = field(default_factory=list)
+    mtp2_target_batch_calls: int = 0
+    mtp2_target_physical_rows: list[int] = field(default_factory=list)
 
 
 def _compact_live_execution_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
@@ -5915,10 +5921,15 @@ class Qwen35GGUFResidentModelRunner:
         if self._mtp2_adapter_resolved:
             return None
         self._mtp2_adapter_resolved = True
+        capability_name = (
+            "GGUF_SPECDEC2_MTP2_C1"
+            if int(self.capacity) == 1
+            else "GGUF_SPECDEC2_MTP2_C4"
+        )
         enabled = bool(
             backend_package_capability(
                 self.generator.backend,
-                "GGUF_SPECDEC2_MTP2_C1",
+                capability_name,
                 False,
             )
         )
@@ -8090,7 +8101,7 @@ class Qwen35GGUFResidentModelRunner:
             for sample in row.samples
         )
         execution_path = (
-            "gguf_specdec2_mtp2_c1"
+            "gguf_specdec2_mtp2"
             if row.mtp2_cycles > 0
             else (
                 "gguf_packed_ar_native_sampler_decode"
@@ -8204,6 +8215,16 @@ class Qwen35GGUFResidentModelRunner:
                 row.mtp2_provider_update_ms
             ),
             "specdec2_mtp2_k0_catchups": int(row.mtp2_k0_catchups),
+            "specdec2_mtp2_proposal_batch_calls": int(
+                row.mtp2_proposal_batch_calls
+            ),
+            "specdec2_mtp2_proposal_physical_rows": list(
+                row.mtp2_proposal_physical_rows
+            ),
+            "specdec2_mtp2_target_batch_calls": int(row.mtp2_target_batch_calls),
+            "specdec2_mtp2_target_physical_rows": list(
+                row.mtp2_target_physical_rows
+            ),
             "prefix_eligible": bool(row.prefix_eligible),
             "prefix_lookup": bool(row.prefix_lookup),
             "prefix_matched_tokens": int(row.prefix_matched_tokens),
