@@ -157,7 +157,13 @@ Current retained state:
 - the next ranked exact Q5 col8 rowtile is retained for three gfx1151 Qwen3.8
   shapes. Q5 marked c8/c17/c32 time improves 12.56%/13.05%/11.17%, complete
   marker wall 1.21%/1.95%/2.23%, production serving reaches 11.084/10.696
-  tok/s, and c13 lifecycle/memory close. Q4 split-weight tail is next.
+  tok/s, and c13 lifecycle/memory close;
+- Q4 split-weight tuning closes as a durable skip after every bounded exact
+  mechanism is already rejected or below owner admission; and
+- structural c32 tuning closes without code: post-Q5 c32 is only 0.65% above
+  four c8 marker walls, its kernel sum is 0.68% lower, and all extra uncovered
+  time is only 7.08 ms / 1.29% of c32 wall. Wider owners, D2, queue expansion,
+  packed-state copies, fair-burst1, and eight-wave merging are measured closed.
 
 Primary retained evidence:
 [`FP16 serving correctness`](../benchmarks/results/2026-08-23-gfx1151-qwen38-fp16-serving-correctness-bundle-v3.json),
@@ -168,6 +174,7 @@ Primary retained evidence:
 [`hardware-queue decision`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-policy-decision.json),
 [`queue2 c8/c17/c32 owner profile`](../benchmarks/results/2026-08-24-gfx1151-qwen38-queue2-c8-c17-c32-owner-profile.json),
 [`gfx1151 Q5 col8 rowtile`](../benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-retained.json),
+[`gfx1151 structural c32 adjudication`](../benchmarks/results/2026-08-24-gfx1151-qwen38-structural-c32-skip.json),
 [`gfx1151 physical widths`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-physical-widths.json),
 [`packed prefill`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-packed-prefill-c17.json),
 [`direct resident state`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json), and
@@ -404,9 +411,12 @@ The measured order is therefore:
    **70.003→68.681 ms (-1.89%)**, c17 ITL **0.4542→0.4482 s**, and c32
    throughput **10.732→11.041 tok/s** / ITL **0.8206→0.8019 s**; c32 live
    admission now overlaps. Evidence: [`Q4 row8 two-wave`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-q4-row8-two-wave.json);
-3. tune the remaining Q4 qmicro dual family (~127.6 ms marked; the eight-wave
-   block-merge mechanism is rejected), then Q5 rowtile and Q4 split-weight.
-   c32 remains substantially capacity-bound, so production is still open.
+3. ~~tune the remaining Q4 qmicro/Q5/split-weight ladder~~ **CLOSED**: Q4
+   paired-Q and launch-bound candidates are rejected; exact Q5 col8 is retained
+   at -11.17% c32 family / -2.23% complete marker wall; split-weight is a durable
+   c17-only skip. Post-Q5 c32 is only +0.65% over four c8 marker walls, so no new
+   structural owner is justified. Production closure must retain the c32 SLO
+   blocker rather than reopen measured-negative grouping mechanisms.
 
 Device-kernel priorities after those owner-level measurements are:
 
