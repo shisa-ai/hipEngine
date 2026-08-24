@@ -375,7 +375,7 @@ def _cache_only_environment(
 def _trace_queue_observation(trace_dir: Path) -> dict[str, Any]:
     queue_ids: set[int] = set()
     files: list[str] = []
-    for path in sorted(trace_dir.glob("*_kernel_trace.csv")):
+    for path in sorted(trace_dir.rglob("*_kernel_trace.csv")):
         files.append(str(path))
         with path.open(newline="", encoding="utf-8") as handle:
             for row in csv.DictReader(handle):
