@@ -7,6 +7,7 @@ import pytest
 
 from scripts import mtp_paro_verifier_numerics
 from scripts.mtp_paro_verifier_numerics import (
+    _capture_sha256,
     _review_manifests,
     _row_review_diagnostic,
     _scope_summaries,
@@ -85,6 +86,22 @@ def test_scope_summaries_bind_each_row_role() -> None:
     assert result["row_role"]["root"]["passed"] is False
     assert result["row_role"]["draft_candidate"]["top1_agreement"] == 1.0
     assert result["row_role"]["draft_candidate"]["passed"] is True
+
+
+def test_capture_hash_binds_prompt_manifest_rows_and_cycles() -> None:
+    kwargs = {
+        "prompt": {"name": "fixture", "tokens": 4},
+        "candidate_manifest_sha256": "a" * 64,
+        "rows": [{"row": 0, "kl": 1.0e-4}],
+        "cycles": [{"cycle": 1, "root": 7}],
+    }
+    first = _capture_sha256(**kwargs)
+    second = _capture_sha256(**kwargs)
+    changed = _capture_sha256(**{**kwargs, "cycles": [{"cycle": 1, "root": 8}]})
+
+    assert first == second
+    assert len(first) == 64
+    assert changed != first
 
 
 def test_fast_review_manifest_is_unselected_with_strict_fallback() -> None:
