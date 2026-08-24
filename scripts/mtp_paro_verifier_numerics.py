@@ -11,6 +11,7 @@ a discrete candidate decision differs.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -80,6 +81,33 @@ _THRESHOLDS = {
 
 def _set_route(flags: dict[str, str]) -> None:
     os.environ.update(flags)
+
+
+def _sha256_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _capture_sha256(
+    *,
+    prompt: dict[str, Any],
+    candidate_manifest_sha256: str,
+    rows: Sequence[dict[str, Any]],
+    cycles: Sequence[dict[str, Any]],
+) -> str:
+    payload = {
+        "prompt": prompt,
+        "candidate_manifest_sha256": candidate_manifest_sha256,
+        "rows": list(rows),
+        "cycles": list(cycles),
+    }
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return _sha256_bytes(encoded)
 
 
 def _review_manifests() -> dict[str, Any]:
@@ -851,6 +879,26 @@ def run_sequential(
         "task_decisions": not decision_mismatches,
         "finite": bool(np.isfinite(kl).all()),
     }
+    manifests = _review_manifests()
+    prompt_metadata = {
+        "name": prompt_name,
+        "category": prompt.get("category"),
+        "split": prompt.get("split"),
+        "render": prompt_render,
+        "prompt_tokens": len(prompt_tokens),
+        "prompt_tokens_sha256": _sha256_bytes(
+            np.asarray(prompt_tokens, dtype=np.int64).tobytes()
+        ),
+        "prompts_file": str(prompts_file),
+        "prompts_file_sha256": _sha256_bytes(prompts_file.read_bytes()),
+        "decode_tokens": decode_tokens,
+    }
+    capture_sha256 = _capture_sha256(
+        prompt=prompt_metadata,
+        candidate_manifest_sha256=manifests["candidate_review_sha256"],
+        rows=row_metrics,
+        cycles=replay_cycles,
+    )
     return {
         "schema": "hipengine.paro_mtp_verifier_numerics.v3",
         "status": "passed" if all(checks.values()) else "rejected",
@@ -858,7 +906,8 @@ def run_sequential(
         "model": str(model),
         "backend": backend,
         "capture_mode": "sequential_strict_then_fast_replay",
-        "manifests": _review_manifests(),
+        "capture_sha256": capture_sha256,
+        "manifests": manifests,
         "candidate": {
             "source_class": "T2",
             "chain_attn_mode": "decode_batched",
@@ -868,14 +917,7 @@ def run_sequential(
                 "environment": _STRICT_FLAGS,
             },
         },
-        "prompt": {
-            "name": prompt_name,
-            "category": prompt.get("category"),
-            "split": prompt.get("split"),
-            "render": prompt_render,
-            "prompt_tokens": len(prompt_tokens),
-            "decode_tokens": decode_tokens,
-        },
+        "prompt": prompt_metadata,
         "teacher_forcing": "strict-owned proposals, commit rows, tokens, positions, and contexts",
         "thresholds": _THRESHOLDS,
         "aggregate": aggregate,

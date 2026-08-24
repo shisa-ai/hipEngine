@@ -1,0 +1,125 @@
+{
+  "coverage": {
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "prompts": 10,
+    "splits": [
+      "heldout",
+      "train"
+    ]
+  },
+  "date": "2026-08-24",
+  "local_token_root": "/tmp/paro-fast-full-review-tokens",
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+  "prompt_render": "qwen_chat_thinking_off",
+  "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+  "prompts": [
+    {
+      "category": "code",
+      "local_path": "/tmp/paro-fast-full-review-tokens/code_merge_intervals.txt",
+      "name": "code_merge_intervals",
+      "rendered_text_sha256": "eac40b994461ed1c2ae1e02719cef4d780076fb0fd2f6c97dc3ad8a5db1dc083",
+      "source_text_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+      "split": "train",
+      "token_ids_sha256": "df2d91b35856f260bc0f83b53da392a38fb2c844139b8f2aaa308d42e37f1d76",
+      "tokens": 40
+    },
+    {
+      "category": "code",
+      "local_path": "/tmp/paro-fast-full-review-tokens/code_topological_sort.txt",
+      "name": "code_topological_sort",
+      "rendered_text_sha256": "28b7d74488d5cbff3df093947f5ab28c2fe5382d6a6959bda3ba2bb7033156e7",
+      "source_text_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b",
+      "split": "train",
+      "token_ids_sha256": "c819ac9a0e81eccc744973022a451072c12ab6636918423f4974af480b617498",
+      "tokens": 50
+    },
+    {
+      "category": "code",
+      "local_path": "/tmp/paro-fast-full-review-tokens/code_lru_cache.txt",
+      "name": "code_lru_cache",
+      "rendered_text_sha256": "110320bda55ac45a08b7c473728b7dac7b2d3faba7724c02d442eab71fbcbe92",
+      "source_text_sha256": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8",
+      "split": "train",
+      "token_ids_sha256": "3b7619476b9bbdeaf418a2e7463d244df53d3de5cd8def0adfbe13c1ed96380a",
+      "tokens": 47
+    },
+    {
+      "category": "code",
+      "local_path": "/tmp/paro-fast-full-review-tokens/code_markdown_table.txt",
+      "name": "code_markdown_table",
+      "rendered_text_sha256": "35a3edd8e92a755a60abad68077170d07d789602e141dcd528a24ade210de59e",
+      "source_text_sha256": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9",
+      "split": "heldout",
+      "token_ids_sha256": "826baa75301566149ab7fca4d8e37f7de27fb7381b5e61a528334c86528bdb9e",
+      "tokens": 52
+    },
+    {
+      "category": "general_en",
+      "local_path": "/tmp/paro-fast-full-review-tokens/general_en_plan.txt",
+      "name": "general_en_plan",
+      "rendered_text_sha256": "ec66c448bd7f609ffe5b8e2c8fe0955f37f6fdc033d3f9587561a0390156bbba",
+      "source_text_sha256": "e17b3e91d28543829ac542ded5af8a317d54a3b7786d6e86207d40663c59eda7",
+      "split": "train",
+      "token_ids_sha256": "fc1069fb8471bda5da1cafdae026d4a93ceacc425630d552d48c3d1aac651156",
+      "tokens": 39
+    },
+    {
+      "category": "general_en",
+      "local_path": "/tmp/paro-fast-full-review-tokens/general_en_explain.txt",
+      "name": "general_en_explain",
+      "rendered_text_sha256": "151f9d2b50f1bcc5399bd966f250ff5c6bc7e98e4ca0c6347a9b6e020a3e5e3e",
+      "source_text_sha256": "a222515d5bdbfc00bd44b9ed884145ac6df6eff9b69fd11e5506f78bc745b834",
+      "split": "heldout",
+      "token_ids_sha256": "0f65019eb3f00b8ad7657613732c1951e31cffc82c81fb106a6037b630ae48dd",
+      "tokens": 40
+    },
+    {
+      "category": "general_ja",
+      "local_path": "/tmp/paro-fast-full-review-tokens/general_ja_plan.txt",
+      "name": "general_ja_plan",
+      "rendered_text_sha256": "71bbcf7a45bdc119adc184a111b10ca868ce506c944b1a10adcfc099409353a4",
+      "source_text_sha256": "42e20345ac1e92a9c03a7d6453b8982feffe4deae2ca42063519fdc2fb0cb099",
+      "split": "train",
+      "token_ids_sha256": "79dbc18d76d4fc4a071da62e486d2e7a9d43237a5e773065d8f082bfa1c02de5",
+      "tokens": 43
+    },
+    {
+      "category": "general_ja",
+      "local_path": "/tmp/paro-fast-full-review-tokens/general_ja_explain.txt",
+      "name": "general_ja_explain",
+      "rendered_text_sha256": "4e578984bf272ce9d72be42ed655c733d2d7846fa0bbd6b715a9431ac15bbf2f",
+      "source_text_sha256": "ec6e0a0ae0444b43d0b9b06cecbcd53a142a6eb55ebce9e7166fa5dffae7e9e0",
+      "split": "heldout",
+      "token_ids_sha256": "155f9e514f5eba59e5eeecf2c94935827b5d7871ef7144e6e3aba5ea208bd814",
+      "tokens": 43
+    },
+    {
+      "category": "mixed_ja_en",
+      "local_path": "/tmp/paro-fast-full-review-tokens/mixed_ja_en_translate.txt",
+      "name": "mixed_ja_en_translate",
+      "rendered_text_sha256": "35f98eaa8aa8e974462e530aa607d163bf0409c38c12e9f2e1dd37428f7e94c7",
+      "source_text_sha256": "e0564221797981a111f1aff35928bff0992f892c89326300cef90e27a222e00f",
+      "split": "train",
+      "token_ids_sha256": "3e74801363c2057a4249de6a7515cee2f23e15a74a8181e35342a5adfa80d467",
+      "tokens": 64
+    },
+    {
+      "category": "mixed_ja_en",
+      "local_path": "/tmp/paro-fast-full-review-tokens/mixed_ja_en_review.txt",
+      "name": "mixed_ja_en_review",
+      "rendered_text_sha256": "d9f723f8f341e83e3c57e80fbda4b394c5ab5b539b03b08912d4a84679e87982",
+      "source_text_sha256": "937a468d1043a843267f1610aafba73af7c4327f6c1e04379068be066d1eb476",
+      "split": "heldout",
+      "token_ids_sha256": "4d58beab6d31fd07ad4c75bea58aecb4c04160bed4439425ab9d284775b18da6",
+      "tokens": 71
+    }
+  ],
+  "schema": "hipengine.paro_fast_review_fixtures.v1",
+  "tokenization": "Qwen chat_template rendered with enable_thinking=False"
+}
