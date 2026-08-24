@@ -34,7 +34,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     from hipengine.generation.qwen35_gguf import _gguf_mtp_required_tensor_names
     from hipengine.generation.registry import GenerationRequest
+    from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
     from hipengine.server import ServerConfig, create_app
+
+    provider_fingerprints: list[dict[str, Any]] = []
+    original_release_request = Qwen35GGUFNextNDraftProvider.release_request
+    if args.provider_fingerprint:
+        def release_with_fingerprint(provider, request_id):
+            fingerprint = provider.executor.request_state_fingerprint(request_id)
+            fingerprint["capture_index"] = len(provider_fingerprints)
+            provider_fingerprints.append(fingerprint)
+            return original_release_request(provider, request_id)
+
+        Qwen35GGUFNextNDraftProvider.release_request = release_with_fingerprint
 
     os.environ["HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"] = str(args.budget)
     if not args.allow_fp16_state:
@@ -53,50 +65,53 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     started = time.perf_counter()
     app = create_app(config)
-    with TestClient(app) as client:
-        base = {
-            "model": served_name,
-            "prompt": args.prompt,
-            "max_tokens": args.max_tokens,
-            "temperature": 0.0,
-            "top_p": 1.0,
-        }
-        ar_started = time.perf_counter()
-        ar_response = client.post("/v1/completions", json=base)
-        ar_wall = time.perf_counter() - ar_started
-        ar_response.raise_for_status()
-        staged_started = time.perf_counter()
-        staged_response = client.post(
-            "/v1/completions", json={**base, "speculative_mtp": True}
-        )
-        staged_wall = time.perf_counter() - staged_started
-        staged_response.raise_for_status()
-        warm_started = time.perf_counter()
-        warm_response = client.post(
-            "/v1/completions", json={**base, "speculative_mtp": True}
-        )
-        warm_wall = time.perf_counter() - warm_started
-        warm_response.raise_for_status()
-        llm = app.state.hipengine_llm
-        adapter = llm._text_generator
-        resident_snapshot = adapter.live_loop_snapshot()
-        direct_generator = adapter.inner
-        direct_config, _block_id, _required = _gguf_mtp_required_tensor_names(
-            direct_generator.weight_index
-        )
-        direct_request = GenerationRequest(
-            prompts=(args.prompt,),
-            max_tokens=args.max_tokens,
-            temperature=0.0,
-            top_p=1.0,
-            ignore_eos=False,
-        )
-        direct_started = time.perf_counter()
-        direct_outputs = direct_generator._generate_dense_speculative_mtp_detailed(
-            direct_request,
-            config=direct_config,
-        )
-        direct_wall = time.perf_counter() - direct_started
+    try:
+        with TestClient(app) as client:
+            base = {
+                "model": served_name,
+                "prompt": args.prompt,
+                "max_tokens": args.max_tokens,
+                "temperature": 0.0,
+                "top_p": 1.0,
+            }
+            ar_started = time.perf_counter()
+            ar_response = client.post("/v1/completions", json=base)
+            ar_wall = time.perf_counter() - ar_started
+            ar_response.raise_for_status()
+            staged_started = time.perf_counter()
+            staged_response = client.post(
+                "/v1/completions", json={**base, "speculative_mtp": True}
+            )
+            staged_wall = time.perf_counter() - staged_started
+            staged_response.raise_for_status()
+            warm_started = time.perf_counter()
+            warm_response = client.post(
+                "/v1/completions", json={**base, "speculative_mtp": True}
+            )
+            warm_wall = time.perf_counter() - warm_started
+            warm_response.raise_for_status()
+            llm = app.state.hipengine_llm
+            adapter = llm._text_generator
+            resident_snapshot = adapter.live_loop_snapshot()
+            direct_generator = adapter.inner
+            direct_config, _block_id, _required = _gguf_mtp_required_tensor_names(
+                direct_generator.weight_index
+            )
+            direct_request = GenerationRequest(
+                prompts=(args.prompt,),
+                max_tokens=args.max_tokens,
+                temperature=0.0,
+                top_p=1.0,
+                ignore_eos=False,
+            )
+            direct_started = time.perf_counter()
+            direct_outputs = direct_generator._generate_dense_speculative_mtp_detailed(
+                direct_request,
+                config=direct_config,
+            )
+            direct_wall = time.perf_counter() - direct_started
+    finally:
+        Qwen35GGUFNextNDraftProvider.release_request = original_release_request
 
     ar = ar_response.json()
     staged = staged_response.json()
@@ -109,12 +124,33 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "recent_completed", []
     )
     staged_rows = [row for row in recent if row.get("specdec2_mtp2_used")]
+    normalized_provider_fingerprints = [
+        {
+            key: value
+            for key, value in fingerprint.items()
+            if key not in {"request_id", "slot", "capture_index"}
+        }
+        for fingerprint in provider_fingerprints
+    ]
+    staged_provider_fingerprints_equal = bool(
+        len(normalized_provider_fingerprints) >= 2
+        and normalized_provider_fingerprints[0]
+        == normalized_provider_fingerprints[1]
+    )
+    provider_gate_passed = bool(
+        not args.provider_fingerprint
+        or (
+            staged_provider_fingerprints_equal
+            and normalized_provider_fingerprints[0]["visible_kv_bytes"] > 0
+        )
+    )
     passed = bool(
         ar_ids == staged_ids == warm_ids == direct_ids
         and staged_rows
         and int(staged_rows[-1]["specdec2_mtp2_candidate_counts"][0])
         == int(args.budget)
         and resident_snapshot.get("loop", {}).get("requests", {}).get("active") == 0
+        and provider_gate_passed
     )
     payload = {
         "schema": 1,
@@ -168,6 +204,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
         },
         "staged_rows": staged_rows,
+        "provider_fingerprints": provider_fingerprints,
+        "provider_fingerprint_gate": {
+            "enabled": bool(args.provider_fingerprint),
+            "captures": len(provider_fingerprints),
+            "staged_repeat_equal": staged_provider_fingerprints_equal,
+            "direct_equal_to_staged": bool(
+                len(normalized_provider_fingerprints) >= 3
+                and normalized_provider_fingerprints[2]
+                == normalized_provider_fingerprints[1]
+            ),
+            "passed": provider_gate_passed,
+        },
         "resident_snapshot": resident_snapshot,
         "total_wall_seconds": time.perf_counter() - started,
         "passed": passed,
@@ -186,6 +234,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--max-tokens", type=int, default=5)
     parser.add_argument("--prompt", default="Write one short greeting.")
     parser.add_argument("--allow-fp16-state", action="store_true")
+    parser.add_argument("--provider-fingerprint", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--fail-on-fail", action="store_true")
     args = parser.parse_args(argv)

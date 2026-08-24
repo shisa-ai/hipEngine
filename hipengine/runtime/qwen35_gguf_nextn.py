@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 from pathlib import Path
 from typing import Mapping, Protocol
 
@@ -70,6 +71,18 @@ class Qwen35GGUFNextNStateAdvance:
     request_id: int
     input_token: int
     position: int
+
+
+@dataclass(slots=True)
+class Qwen35GGUFNextNRequestCheckpoint:
+    """Request-local provisional provider state before one proposal."""
+
+    request_id: int
+    slot: int
+    state_pairs: tuple[tuple[DeviceBuffer, DeviceBuffer], ...]
+    position: int
+    context_length: int
+    released: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1062,6 +1075,162 @@ class Qwen35GGUFNextNExecutor:
             position=int(position),
         )
 
+    def capture_request_checkpoint(
+        self,
+        request_id: int,
+    ) -> Qwen35GGUFNextNRequestCheckpoint:
+        """Snapshot mutable Conv/GDN state and logical cursor before proposal."""
+
+        rid = int(request_id)
+        slot = self._request_slots.get(rid)
+        if slot is None:
+            raise ValueError("GGUF NextN checkpoint requires an active request")
+        slot_scratch = self.scratch.for_slot(slot, span_role="decode")
+        live_states = tuple(
+            state
+            for pair in zip(
+                slot_scratch.layer_conv_states,
+                slot_scratch.layer_recurrent_states,
+                strict=True,
+            )
+            for state in pair
+            if state is not None
+        )
+        allocated: list[DeviceBuffer] = []
+        try:
+            pairs: list[tuple[DeviceBuffer, DeviceBuffer]] = []
+            for state in live_states:
+                backup = malloc(int(state.nbytes), runtime=self.runtime)
+                allocated.append(backup)
+                self.runtime.memcpy(
+                    backup.ptr,
+                    state.ptr,
+                    state.nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
+                pairs.append((state, backup))
+        except BaseException:
+            for backup in reversed(allocated):
+                free(backup, runtime=self.runtime)
+            raise
+        return Qwen35GGUFNextNRequestCheckpoint(
+            request_id=rid,
+            slot=int(slot),
+            state_pairs=tuple(pairs),
+            position=int(slot_scratch.position_host[0]),
+            context_length=int(slot_scratch.context_host[0]),
+        )
+
+    def restore_request_checkpoint(
+        self,
+        checkpoint: Qwen35GGUFNextNRequestCheckpoint,
+    ) -> None:
+        """Restore provider state/cursor and leave rejected KV suffix invisible."""
+
+        if checkpoint.released:
+            raise RuntimeError("GGUF NextN checkpoint is released")
+        slot = self._request_slots.get(int(checkpoint.request_id))
+        if slot != int(checkpoint.slot):
+            raise RuntimeError("GGUF NextN checkpoint slot ownership changed")
+        slot_scratch = self.scratch.for_slot(slot, span_role="decode")
+        for state, backup in checkpoint.state_pairs:
+            self.runtime.memcpy(
+                state.ptr,
+                backup.ptr,
+                state.nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
+        slot_scratch.position_host[0] = int(checkpoint.position)
+        slot_scratch.context_host[0] = int(checkpoint.context_length)
+        copy_host_to_device(
+            slot_scratch.position_buf,
+            host_array_ptr(slot_scratch.position_host),
+            slot_scratch.position_host.nbytes,
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            slot_scratch.context_buf,
+            host_array_ptr(slot_scratch.context_host),
+            slot_scratch.context_host.nbytes,
+            runtime=self.runtime,
+        )
+
+    def release_request_checkpoint(
+        self,
+        checkpoint: Qwen35GGUFNextNRequestCheckpoint,
+    ) -> None:
+        if checkpoint.released:
+            return
+        for _state, backup in reversed(checkpoint.state_pairs):
+            free(backup, runtime=self.runtime)
+        checkpoint.released = True
+
+    def request_state_fingerprint(self, request_id: int) -> dict[str, object]:
+        """Return exact visible provider state/KV/cursor hashes for gates."""
+
+        rid = int(request_id)
+        slot = self._request_slots.get(rid)
+        if slot is None:
+            raise ValueError("GGUF NextN fingerprint requires an active request")
+        slot_scratch = self.scratch.for_slot(slot, span_role="decode")
+        self.runtime.device_synchronize()
+
+        def read_digest(buffer, *, nbytes: int | None = None) -> tuple[str, int]:
+            count = int(buffer.nbytes if nbytes is None else nbytes)
+            host = np.empty((count,), dtype=np.uint8)
+            copy_device_to_host(
+                host_array_ptr(host),
+                DeviceBuffer(int(buffer.ptr), count),
+                count,
+                runtime=self.runtime,
+            )
+            return hashlib.sha256(host.tobytes()).hexdigest(), count
+
+        state_hash = hashlib.sha256()
+        state_bytes = 0
+        for pair in zip(
+            slot_scratch.layer_conv_states,
+            slot_scratch.layer_recurrent_states,
+            strict=True,
+        ):
+            for state in pair:
+                if state is None:
+                    continue
+                digest, count = read_digest(state)
+                state_hash.update(bytes.fromhex(digest))
+                state_bytes += count
+        context = int(slot_scratch.context_host[0])
+        max_positions = int(slot_scratch.max_positions)
+        visible_rows = min(max(0, context), max_positions)
+        kv_hash = hashlib.sha256()
+        kv_bytes = 0
+        for pair in zip(
+            slot_scratch.full_key_caches,
+            slot_scratch.full_value_caches,
+            strict=True,
+        ):
+            for cache in pair:
+                if cache is None:
+                    continue
+                if int(cache.nbytes) % max_positions:
+                    raise RuntimeError("GGUF NextN KV cache is not position divisible")
+                count = visible_rows * (int(cache.nbytes) // max_positions)
+                if count <= 0:
+                    continue
+                digest, count = read_digest(cache, nbytes=count)
+                kv_hash.update(bytes.fromhex(digest))
+                kv_bytes += count
+        return {
+            "request_id": rid,
+            "slot": int(slot),
+            "position": int(slot_scratch.position_host[0]),
+            "context_length": context,
+            "state_sha256": state_hash.hexdigest(),
+            "state_bytes": state_bytes,
+            "visible_kv_sha256": kv_hash.hexdigest(),
+            "visible_kv_bytes": kv_bytes,
+        }
+
     def reset_request(self, request_id: int) -> None:
         slot = self._request_slots.get(int(request_id))
         if slot is None:
@@ -1347,6 +1516,7 @@ Qwen35GGUFNextNDraftModel = Qwen35GGUFNextNDraftProvider
 
 __all__ = [
     "Qwen35GGUFNextNDeviceProposal",
+    "Qwen35GGUFNextNRequestCheckpoint",
     "Qwen35GGUFNextNDraftModel",
     "Qwen35GGUFNextNDraftProvider",
     "Qwen35GGUFNextNExecutor",

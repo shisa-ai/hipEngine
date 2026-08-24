@@ -2329,6 +2329,9 @@ class ResidentEngineLoop:
                 target_physical_available=target_available,
             )
         if plan.is_ar_only:
+            prepare_k0 = getattr(self.runner, "prepare_speculative_k0", None)
+            if callable(prepare_k0):
+                prepare_k0(plan, tuple(semantics), stream=None)
             return None
         start = time.perf_counter()
         result = self._run_staged_speculative_cycle(
