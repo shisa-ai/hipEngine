@@ -470,6 +470,134 @@ __global__ void dms_compact_attn_decode_kernel(
 // deterministic reducer. Unlike the fixture body above, LDS is constant in the
 // live count: two 256-float arrays (2 KiB) per producer and one 256-float array
 // (1 KiB) in the reducer.
+constexpr int32_t kDmsMaxGqaGroup = 8;
+
+__global__ void dms_compact_attn_splitk_grouped_producer_kernel(
+    const float* __restrict__ q,
+    const uint16_t* __restrict__ k_slot,
+    const uint16_t* __restrict__ v_slot,
+    const int32_t* __restrict__ base_offsets,
+    const int32_t* __restrict__ live_counts,
+    float* __restrict__ partial_out,
+    float* __restrict__ partial_m,
+    float* __restrict__ partial_l,
+    const int32_t rows,
+    const int32_t q_heads,
+    const int32_t kv_heads,
+    const int32_t dim,
+    const float scale,
+    const int32_t chunk_size,
+    const int32_t num_splits) {
+  const int32_t gid = static_cast<int32_t>(blockIdx.x);
+  const int32_t split = gid % num_splits;
+  const int32_t rowh = gid / num_splits;
+  const int32_t r = rowh / kv_heads;
+  const int32_t h = rowh - r * kv_heads;
+  const int32_t tid = static_cast<int32_t>(threadIdx.x);
+  const int32_t group = q_heads / kv_heads;
+  const int32_t query_head_base = h * group;
+  const int32_t rowq_base = r * q_heads + query_head_base;
+  const int64_t rowhead = static_cast<int64_t>(r) * kv_heads + h;
+  const int32_t live = live_counts[rowhead];
+  const int32_t begin = split * chunk_size;
+  const int32_t count = max(0, min(chunk_size, live - begin));
+  const int32_t base = base_offsets[rowhead] + begin;
+  __shared__ float probabilities[kDmsMaxGqaGroup][kDmsPackThreads];
+  __shared__ float reduction[kDmsPackThreads];
+
+  if (count <= 0) {
+#pragma unroll
+    for (int32_t j = 0; j < kDmsMaxGqaGroup; ++j) {
+      if (j < group) {
+        const int64_t stat_index =
+            static_cast<int64_t>(rowq_base + j) * num_splits + split;
+        float* part = partial_out + stat_index * dim;
+        for (int32_t d = tid; d < dim; d += kDmsPackThreads) {
+          part[d] = 0.0f;
+        }
+        if (tid == 0) {
+          partial_m[stat_index] = -3.4028234663852886e38f;
+          partial_l[stat_index] = 0.0f;
+        }
+      }
+    }
+    return;
+  }
+
+  float dots[kDmsMaxGqaGroup] = {};
+  if (tid < count) {
+    const uint16_t* krow =
+        k_slot + (static_cast<int64_t>(base) + tid) * dim;
+    for (int32_t d = 0; d < dim; ++d) {
+      const float key = dms_bf16_bits_to_float(krow[d]);
+#pragma unroll
+      for (int32_t j = 0; j < kDmsMaxGqaGroup; ++j) {
+        if (j < group) {
+          dots[j] += q[static_cast<int64_t>(rowq_base + j) * dim + d] * key;
+        }
+      }
+    }
+  }
+
+#pragma unroll
+  for (int32_t j = 0; j < kDmsMaxGqaGroup; ++j) {
+    if (j < group) {
+      const float score =
+          tid < count ? dots[j] * scale : -3.4028234663852886e38f;
+      probabilities[j][tid] = score;
+      reduction[tid] = score;
+      __syncthreads();
+      for (int32_t stride = kDmsPackThreads / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+          reduction[tid] = fmaxf(reduction[tid], reduction[tid + stride]);
+        }
+        __syncthreads();
+      }
+      const float block_m = reduction[0];
+      const float probability = tid < count ? expf(score - block_m) : 0.0f;
+      probabilities[j][tid] = probability;
+      reduction[tid] = probability;
+      __syncthreads();
+      for (int32_t stride = kDmsPackThreads / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+          reduction[tid] += reduction[tid + stride];
+        }
+        __syncthreads();
+      }
+      if (tid == 0) {
+        const int64_t stat_index =
+            static_cast<int64_t>(rowq_base + j) * num_splits + split;
+        partial_m[stat_index] = block_m;
+        partial_l[stat_index] = reduction[0];
+      }
+      __syncthreads();
+    }
+  }
+
+  const uint16_t* vs = v_slot + static_cast<int64_t>(base) * dim;
+  for (int32_t d = tid; d < dim; d += kDmsPackThreads) {
+    float values[kDmsMaxGqaGroup] = {};
+    for (int32_t t = 0; t < count; ++t) {
+      const float value =
+          dms_bf16_bits_to_float(vs[static_cast<int64_t>(t) * dim + d]);
+#pragma unroll
+      for (int32_t j = 0; j < kDmsMaxGqaGroup; ++j) {
+        if (j < group) {
+          values[j] += probabilities[j][t] * value;
+        }
+      }
+    }
+#pragma unroll
+    for (int32_t j = 0; j < kDmsMaxGqaGroup; ++j) {
+      if (j < group) {
+        const int64_t stat_index =
+            static_cast<int64_t>(rowq_base + j) * num_splits + split;
+        partial_out[stat_index * dim + d] = values[j];
+      }
+    }
+  }
+}
+
 __global__ void dms_compact_attn_splitk_producer_kernel(
     const float* __restrict__ q,
     const uint16_t* __restrict__ k_slot,
@@ -813,28 +941,55 @@ extern "C" int hipengine_dms_compact_attn_decode_splitk_producer_bf16(
   if (!(scale > 0.0f) || num_splits <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int32_t blocks = rows * q_heads * num_splits;
-  hipLaunchKernelGGL(
-      dms_compact_attn_splitk_producer_kernel,
-      dim3(blocks),
-      dim3(kDmsPackThreads),
-      0,
-      stream,
-      q,
-      k_slot,
-      v_slot,
-      base_offsets,
-      live_counts,
-      partial_out,
-      partial_m,
-      partial_l,
-      rows,
-      q_heads,
-      kv_heads,
-      dim,
-      scale,
-      chunk_size,
-      num_splits);
+  const int32_t group = q_heads / kv_heads;
+  const bool grouped = group <= kDmsMaxGqaGroup;
+  const int32_t blocks =
+      rows * (grouped ? kv_heads : q_heads) * num_splits;
+  if (grouped) {
+    hipLaunchKernelGGL(
+        dms_compact_attn_splitk_grouped_producer_kernel,
+        dim3(blocks),
+        dim3(kDmsPackThreads),
+        0,
+        stream,
+        q,
+        k_slot,
+        v_slot,
+        base_offsets,
+        live_counts,
+        partial_out,
+        partial_m,
+        partial_l,
+        rows,
+        q_heads,
+        kv_heads,
+        dim,
+        scale,
+        chunk_size,
+        num_splits);
+  } else {
+    hipLaunchKernelGGL(
+        dms_compact_attn_splitk_producer_kernel,
+        dim3(blocks),
+        dim3(kDmsPackThreads),
+        0,
+        stream,
+        q,
+        k_slot,
+        v_slot,
+        base_offsets,
+        live_counts,
+        partial_out,
+        partial_m,
+        partial_l,
+        rows,
+        q_heads,
+        kv_heads,
+        dim,
+        scale,
+        chunk_size,
+        num_splits);
+  }
   return static_cast<int>(hipGetLastError());
 }
 
@@ -896,28 +1051,55 @@ extern "C" int hipengine_dms_compact_attn_decode_splitk_bf16(
   if (!(scale > 0.0f) || num_splits <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  const int32_t producer_blocks = rows * q_heads * num_splits;
-  hipLaunchKernelGGL(
-      dms_compact_attn_splitk_producer_kernel,
-      dim3(producer_blocks),
-      dim3(kDmsPackThreads),
-      0,
-      stream,
-      q,
-      k_slot,
-      v_slot,
-      base_offsets,
-      live_counts,
-      partial_out,
-      partial_m,
-      partial_l,
-      rows,
-      q_heads,
-      kv_heads,
-      dim,
-      scale,
-      chunk_size,
-      num_splits);
+  const int32_t group = q_heads / kv_heads;
+  const bool grouped = group <= kDmsMaxGqaGroup;
+  const int32_t producer_blocks =
+      rows * (grouped ? kv_heads : q_heads) * num_splits;
+  if (grouped) {
+    hipLaunchKernelGGL(
+        dms_compact_attn_splitk_grouped_producer_kernel,
+        dim3(producer_blocks),
+        dim3(kDmsPackThreads),
+        0,
+        stream,
+        q,
+        k_slot,
+        v_slot,
+        base_offsets,
+        live_counts,
+        partial_out,
+        partial_m,
+        partial_l,
+        rows,
+        q_heads,
+        kv_heads,
+        dim,
+        scale,
+        chunk_size,
+        num_splits);
+  } else {
+    hipLaunchKernelGGL(
+        dms_compact_attn_splitk_producer_kernel,
+        dim3(producer_blocks),
+        dim3(kDmsPackThreads),
+        0,
+        stream,
+        q,
+        k_slot,
+        v_slot,
+        base_offsets,
+        live_counts,
+        partial_out,
+        partial_m,
+        partial_l,
+        rows,
+        q_heads,
+        kv_heads,
+        dim,
+        scale,
+        chunk_size,
+        num_splits);
+  }
   hipError_t error = hipGetLastError();
   if (error != hipSuccess) {
     return static_cast<int>(error);

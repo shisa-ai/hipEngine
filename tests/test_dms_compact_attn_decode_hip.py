@@ -12,6 +12,8 @@ no-ROCm runners.
 
 from __future__ import annotations
 
+import hashlib
+
 import numpy as np
 import pytest
 
@@ -377,6 +379,35 @@ def test_dms_compact_attn_decode_kl_top1_gate_production_shape() -> None:
         dim=128,
         live=[[33, 17, 5, 29], [12, 40, 8, 3]],
         seed=778,
+    )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_dms_compact_attn_decode_splitk_group6_parent_digest() -> None:
+    rows, kv_heads, group, dim = 1, 4, 6, 256
+    live = np.asarray([[513, 257, 509, 300]], dtype=np.int32)
+    cap = 520
+    rng = np.random.default_rng(780)
+    q = rng.standard_normal((rows, kv_heads * group, dim)).astype(np.float32)
+    k_f32 = rng.normal(0.0, 0.2, size=(rows, kv_heads, cap, dim)).astype(np.float32)
+    v_f32 = rng.normal(0.0, 0.2, size=(rows, kv_heads, cap, dim)).astype(np.float32)
+    k_bits, v_bits, base = _extent_buffers(
+        rows, kv_heads, dim, cap, live, k_f32, v_f32
+    )
+
+    got = _device_run_splitk(
+        q,
+        k_bits,
+        v_bits,
+        base,
+        live,
+        dim,
+        float(dim**-0.5),
+        int(live.max()),
+    )
+
+    assert hashlib.sha256(got.tobytes()).hexdigest() == (
+        "61378947cd7451b4d4912e98f767bffe7bf1961a13b09f84a04d606ae4f5f923"
     )
 
 
