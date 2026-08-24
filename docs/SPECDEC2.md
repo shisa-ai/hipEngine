@@ -392,16 +392,17 @@ start without a GPU run.
 
 ### S1.1 Contract records
 
-- [ ] Add `SpeculativeCapability` with target/provider/profile/KV/sampling and
+- [x] Add `SpeculativeCapability` with target/provider/profile/KV/sampling and
       shape limits, transaction modes, graph/eager support, and strict fallback.
-- [ ] Add `SpecRequestPlan` with `K=0` as a first-class valid plan.
-- [ ] Add host/device `CandidateGraph` descriptors without framework tensors.
-- [ ] Add `TargetFrontier` as the canonical root+candidate representation or
-      explicitly adapt `TargetVerifyBatch` without duplicate topology semantics.
+- [x] Add `SpecRequestPlan` with `K=0` as a first-class valid plan.
+- [x] Add host/device `CandidateGraph` descriptors without framework tensors.
+- [x] Add `TargetFrontier` as the canonical root+candidate representation and
+      project host-visible candidates through retained `TargetVerifyBatch`
+      topology without duplicating it.
 - [ ] Add one atomic target+provider transaction record.
 - [ ] Add committed `SpecCycleResult` and bounded telemetry records.
-- [ ] Add stable typed reason values while preserving existing external strings.
-- [ ] Export new public-internal records through `hipengine.speculative` without
+- [x] Add stable typed reason values while preserving existing external strings.
+- [x] Export new public-internal records through `hipengine.speculative` without
       making them a supported end-user API.
 
 ### S1.2 Staged provider SPI and registry
