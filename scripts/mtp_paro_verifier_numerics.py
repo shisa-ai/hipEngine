@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import time
 from pathlib import Path
@@ -21,11 +22,28 @@ import numpy as np
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
+from hipengine.execution_profiles import (
+    VariantSelection,
+    build_variant_manifest,
+    manifest_sha256,
+    resolve_runtime_profile,
+)
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from hipengine.speculative import MtpDraftRequest, TargetVerifyBatch, compile_mtp_chain
 from hipengine.speculative.mtp_native import NativeMtpChainProposer, NativeMtpW8A16Head
+from hipengine.speculative.paro_mtp_profiles import (
+    FAST_VERIFIER_CANDIDATE_VARIANT,
+    PARO_MTP_BACKEND,
+    PARO_MTP_MODEL,
+    PARO_MTP_MODEL_QUANT,
+    PARO_MTP_REGISTRY_QUANT,
+    PROPOSER_LAYER,
+    STRICT_VERIFIER_VARIANT,
+    TARGET_CONTRACT_VARIANT,
+    VERIFIER_LAYER,
+)
 from scripts.mtp_prompt_suite_economics import _load_prompt_encoder, _load_prompt_suite
 from scripts.quant_quality.metrics import per_row_metrics
 
@@ -62,6 +80,53 @@ _THRESHOLDS = {
 
 def _set_route(flags: dict[str, str]) -> None:
     os.environ.update(flags)
+
+
+def _review_manifests() -> dict[str, Any]:
+    strict = resolve_runtime_profile(
+        model=PARO_MTP_MODEL,
+        backend=PARO_MTP_BACKEND,
+        quant=PARO_MTP_MODEL_QUANT,
+        profile="strict",
+    )
+    production = resolve_runtime_profile(
+        model=PARO_MTP_MODEL,
+        backend=PARO_MTP_BACKEND,
+        quant=PARO_MTP_MODEL_QUANT,
+        profile="production",
+    )
+    candidate = build_variant_manifest(
+        profile="production",
+        backend=PARO_MTP_BACKEND,
+        model=PARO_MTP_MODEL,
+        quant=PARO_MTP_MODEL_QUANT,
+        kv_policy="paged_bf16_kv_live_spans",
+        graph_policy="off_b1_fixed_chain",
+        selections=(
+            VariantSelection(
+                layer=PROPOSER_LAYER,
+                scope="b1_graph_off_fixed_chain",
+                selected_variant=TARGET_CONTRACT_VARIANT,
+                strict_fallback_variant=TARGET_CONTRACT_VARIANT,
+                registry_quant=PARO_MTP_REGISTRY_QUANT,
+            ),
+            VariantSelection(
+                layer=VERIFIER_LAYER,
+                scope="b1_graph_off_fixed_chain",
+                selected_variant=FAST_VERIFIER_CANDIDATE_VARIANT,
+                strict_fallback_variant=STRICT_VERIFIER_VARIANT,
+                registry_quant=PARO_MTP_REGISTRY_QUANT,
+            ),
+        ),
+    )
+    return {
+        "registered_strict_sha256": strict.manifest_sha256,
+        "registered_production_sha256": production.manifest_sha256,
+        "candidate_review_sha256": manifest_sha256(candidate),
+        "candidate_review_manifest": candidate,
+        "candidate_registered_but_uncertified": True,
+        "candidate_selected_by_production": False,
+    }
 
 
 def _target_batch(root: int, context: int, candidate: int) -> TargetVerifyBatch:
@@ -111,7 +176,31 @@ def _prefill(
     return int(result.token_id)
 
 
+def _wilson_interval(successes: int, total: int, *, z: float = 1.959963984540054) -> tuple[float, float]:
+    if total <= 0:
+        raise ValueError("Wilson interval requires at least one observation")
+    if successes < 0 or successes > total:
+        raise ValueError("Wilson successes must be in [0, total]")
+    proportion = float(successes) / float(total)
+    z2 = float(z) * float(z)
+    denominator = 1.0 + z2 / float(total)
+    center = (proportion + z2 / (2.0 * float(total))) / denominator
+    radius = (
+        float(z)
+        * math.sqrt(
+            proportion * (1.0 - proportion) / float(total)
+            + z2 / (4.0 * float(total) * float(total))
+        )
+        / denominator
+    )
+    return max(0.0, center - radius), min(1.0, center + radius)
+
+
 def _summary(values: np.ndarray, top1: np.ndarray) -> dict[str, Any]:
+    if values.size == 0 or top1.size != values.size:
+        raise ValueError("summary needs non-empty aligned KL/top-1 vectors")
+    matches = int(np.count_nonzero(top1))
+    low, high = _wilson_interval(matches, int(values.size))
     return {
         "rows": int(values.size),
         "mean_kl": float(np.mean(values)),
@@ -119,7 +208,112 @@ def _summary(values: np.ndarray, top1: np.ndarray) -> dict[str, Any]:
         "p99_kl": float(np.percentile(values, 99.0)),
         "max_kl": float(np.max(values)),
         "top1_agreement": float(np.mean(top1)),
+        "top1_matches": matches,
+        "top1_mismatches": int(values.size) - matches,
+        "top1_wilson95_low": low,
+        "top1_wilson95_high": high,
     }
+
+
+def _stable_topk(row: np.ndarray, k: int) -> list[int]:
+    values = np.asarray(row, dtype=np.float32).reshape(-1)
+    if k <= 0 or k > values.size:
+        raise ValueError("top-k must be in [1, vocab]")
+    candidate_ids = np.argpartition(values, -k)[-k:]
+    ordered = candidate_ids[np.lexsort((candidate_ids, -values[candidate_ids]))]
+    return [int(token) for token in ordered]
+
+
+def _token_probability(row: np.ndarray, token_id: int) -> float:
+    values = np.asarray(row, dtype=np.float64).reshape(-1)
+    maximum = float(np.max(values))
+    denominator = float(np.exp(values - maximum).sum())
+    return float(math.exp(float(values[int(token_id)]) - maximum) / denominator)
+
+
+def _row_review_diagnostic(
+    strict_row: np.ndarray,
+    candidate_row: np.ndarray,
+    *,
+    top_k: int = 5,
+) -> dict[str, Any]:
+    strict_values = np.asarray(strict_row, dtype=np.float32).reshape(-1)
+    candidate_values = np.asarray(candidate_row, dtype=np.float32).reshape(-1)
+    if strict_values.shape != candidate_values.shape or strict_values.size < 2:
+        raise ValueError("row diagnostics need aligned vocab vectors with at least two tokens")
+    strict_top = _stable_topk(strict_values, max(2, top_k))
+    candidate_top = _stable_topk(candidate_values, max(2, top_k))
+    strict_top1 = strict_top[0]
+    candidate_top1 = candidate_top[0]
+    strict_margin = float(strict_values[strict_top1] - strict_values[strict_top[1]])
+    candidate_margin = float(
+        candidate_values[candidate_top1] - candidate_values[candidate_top[1]]
+    )
+    return {
+        "strict_topk": strict_top[:top_k],
+        "candidate_topk": candidate_top[:top_k],
+        "strict_margin": strict_margin,
+        "candidate_margin": candidate_margin,
+        "strict_top1_candidate_rank": int(
+            1 + np.count_nonzero(candidate_values > candidate_values[strict_top1])
+        ),
+        "candidate_top1_strict_rank": int(
+            1 + np.count_nonzero(strict_values > strict_values[candidate_top1])
+        ),
+        "strict_gap_to_candidate_top1": float(
+            strict_values[strict_top1] - strict_values[candidate_top1]
+        ),
+        "candidate_gap_to_strict_top1": float(
+            candidate_values[candidate_top1] - candidate_values[strict_top1]
+        ),
+        "strict_top1_probability": _token_probability(strict_values, strict_top1),
+        "candidate_probability_of_strict_top1": _token_probability(
+            candidate_values, strict_top1
+        ),
+        "strict_probability_of_candidate_top1": _token_probability(
+            strict_values, candidate_top1
+        ),
+        "candidate_top1_probability": _token_probability(
+            candidate_values, candidate_top1
+        ),
+    }
+
+
+def _scope_summaries(rows: Sequence[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    if not rows:
+        raise ValueError("scope summaries need at least one row")
+    result: dict[str, dict[str, Any]] = {}
+    for dimension in (
+        "category",
+        "shape",
+        "transition",
+        "row_role",
+        "decision_role",
+        "strict_selected_for_commit",
+    ):
+        groups: dict[str, Any] = {}
+        for value in sorted({str(row[dimension]) for row in rows}):
+            selected = [row for row in rows if str(row[dimension]) == value]
+            summary = _summary(
+                np.asarray([row["kl"] for row in selected], dtype=np.float64),
+                np.asarray([row["top1_equal"] for row in selected], dtype=np.bool_),
+            )
+            summary["top5_overlap_mean"] = float(
+                np.mean([row["top5_overlap"] for row in selected])
+            )
+            summary["strict_margin_min"] = float(
+                min(row["strict_margin"] for row in selected)
+            )
+            summary["passed"] = bool(
+                summary["mean_kl"] <= _THRESHOLDS["mean_kl_max"]
+                and summary["p95_kl"] <= _THRESHOLDS["p95_kl_max"]
+                and summary["p99_kl"] <= _THRESHOLDS["p99_kl_max"]
+                and summary["max_kl"] <= _THRESHOLDS["max_kl_max"]
+                and summary["top1_agreement"] >= _THRESHOLDS["per_scope_top1_min"]
+            )
+            groups[value] = summary
+        result[dimension] = groups
+    return result
 
 
 def run(
@@ -464,6 +658,7 @@ def run_sequential(
                     schedule.append(
                         {
                             "cycle": cycle,
+                            "output_offset": len(strict_generated),
                             "context": context,
                             "root": root,
                             "candidate": candidate,
@@ -529,11 +724,39 @@ def run_sequential(
                 fast_top1 = np.argmax(fast_logits, axis=1).astype(np.int64)
                 labels = np.argmax(strict_logits, axis=1).astype(np.int64)
                 metrics = per_row_metrics(strict_logits, fast_logits, labels, top_k=5)
+                fast_bonus = int(
+                    fast.next_token
+                    if fast.next_token is not None
+                    else fast_top1[fast.accepted_count]
+                )
+                cycle_decision_mismatch = bool(
+                    int(fast.accepted_count) != int(record["strict_accepted"])
+                    or fast_bonus != int(record["strict_bonus"])
+                )
+                if decision_mismatch is None and cycle_decision_mismatch:
+                    decision_mismatch = {
+                        "cycle": int(record["cycle"]),
+                        "output_offset": int(record["output_offset"]),
+                        "strict_accepted": int(record["strict_accepted"]),
+                        "candidate_accepted": int(fast.accepted_count),
+                        "strict_bonus": int(record["strict_bonus"]),
+                        "candidate_bonus": fast_bonus,
+                    }
                 for row in range(2):
+                    diagnostic = _row_review_diagnostic(
+                        strict_logits[row], fast_logits[row], top_k=5
+                    )
                     row_metrics.append(
                         {
                             "cycle": int(record["cycle"]),
+                            "output_offset": int(record["output_offset"]),
                             "row": row,
+                            "row_role": "root" if row == 0 else "draft_candidate",
+                            "decision_role": (
+                                "draft_acceptance_or_reject_correction"
+                                if row == 0
+                                else "full_accept_bonus"
+                            ),
                             "category": str(prompt.get("category", "unknown")),
                             "shape": "c2_b1",
                             "transition": (
@@ -541,31 +764,24 @@ def run_sequential(
                                 if int(record["cycle"]) == 1
                                 else "verify_to_verify"
                             ),
+                            "context": int(record["context"]),
+                            "position": int(record["context"]) + row,
+                            "strict_selected_for_commit": bool(
+                                row == int(record["strict_commit_row"])
+                            ),
+                            "candidate_selected_for_commit": bool(
+                                row == int(fast.commit_row)
+                            ),
+                            "cycle_task_decision_mismatch": cycle_decision_mismatch,
                             "strict_top1": int(record["strict_target_top1"][row]),
                             "candidate_top1": int(fast_top1[row]),
                             "kl": float(metrics["kl_nats"][row]),
                             "top1_equal": bool(metrics["top1_equal"][row]),
                             "top5_overlap": float(metrics["topk_set_overlap"][row]),
                             "max_abs_logit_delta": float(metrics["max_abs_logit_delta"][row]),
+                            **diagnostic,
                         }
                     )
-                fast_bonus = int(
-                    fast.next_token
-                    if fast.next_token is not None
-                    else fast_top1[fast.accepted_count]
-                )
-                if decision_mismatch is None and (
-                    int(fast.accepted_count) != int(record["strict_accepted"])
-                    or fast_bonus != int(record["strict_bonus"])
-                ):
-                    decision_mismatch = {
-                        "cycle": int(record["cycle"]),
-                        "output_offset": output_offset,
-                        "strict_accepted": int(record["strict_accepted"]),
-                        "candidate_accepted": int(fast.accepted_count),
-                        "strict_bonus": int(record["strict_bonus"]),
-                        "candidate_bonus": fast_bonus,
-                    }
                 if int(fast.commit_row) != int(record["strict_commit_row"]):
                     candidate_session._commit_bulk_linear_states(
                         int(record["strict_commit_row"]), base_slot=0
@@ -580,6 +796,7 @@ def run_sequential(
                         "candidate_accepted": int(fast.accepted_count),
                         "candidate_bonus": fast_bonus,
                         "candidate_commit_row": int(fast.commit_row),
+                        "task_decision_mismatch": cycle_decision_mismatch,
                     }
                 )
                 output_offset += len(record["committed"])
@@ -596,6 +813,33 @@ def run_sequential(
     kl = np.asarray([row["kl"] for row in row_metrics], dtype=np.float64)
     top1 = np.asarray([row["top1_equal"] for row in row_metrics], dtype=np.bool_)
     aggregate = _summary(kl, top1)
+    aggregate["sample_resolution"] = 1.0 / float(aggregate["rows"])
+    aggregate["top5_overlap_mean"] = float(
+        np.mean([row["top5_overlap"] for row in row_metrics])
+    )
+    aggregate["strict_margin_min"] = float(
+        min(row["strict_margin"] for row in row_metrics)
+    )
+    scopes = _scope_summaries(row_metrics)
+    scope_failures = [
+        {"dimension": dimension, "value": value}
+        for dimension, groups in scopes.items()
+        for value, summary in groups.items()
+        if not bool(summary["passed"])
+    ]
+    decision_mismatches = [
+        {
+            "cycle": int(cycle["cycle"]),
+            "output_offset": int(cycle["output_offset"]),
+            "strict_accepted": int(cycle["strict_accepted"]),
+            "candidate_accepted": int(cycle["candidate_accepted"]),
+            "strict_bonus": int(cycle["strict_bonus"]),
+            "candidate_bonus": int(cycle["candidate_bonus"]),
+        }
+        for cycle in replay_cycles
+        if bool(cycle["task_decision_mismatch"])
+    ]
+    top1_mismatch_rows = [row for row in row_metrics if not row["top1_equal"]]
     checks = {
         "prefill_root_equal": int(strict_root) == int(candidate_root),
         "mean_kl": aggregate["mean_kl"] <= _THRESHOLDS["mean_kl_max"],
@@ -603,16 +847,18 @@ def run_sequential(
         "p99_kl": aggregate["p99_kl"] <= _THRESHOLDS["p99_kl_max"],
         "max_kl": aggregate["max_kl"] <= _THRESHOLDS["max_kl_max"],
         "top1": aggregate["top1_agreement"] >= _THRESHOLDS["top1_min"],
-        "task_decisions": decision_mismatch is None,
+        "per_scope": not scope_failures,
+        "task_decisions": not decision_mismatches,
         "finite": bool(np.isfinite(kl).all()),
     }
     return {
-        "schema": "hipengine.paro_mtp_verifier_numerics.v2",
+        "schema": "hipengine.paro_mtp_verifier_numerics.v3",
         "status": "passed" if all(checks.values()) else "rejected",
         "performance_claim": False,
         "model": str(model),
         "backend": backend,
         "capture_mode": "sequential_strict_then_fast_replay",
+        "manifests": _review_manifests(),
         "candidate": {
             "source_class": "T2",
             "chain_attn_mode": "decode_batched",
@@ -633,11 +879,19 @@ def run_sequential(
         "teacher_forcing": "strict-owned proposals, commit rows, tokens, positions, and contexts",
         "thresholds": _THRESHOLDS,
         "aggregate": aggregate,
+        "scopes": scopes,
+        "scope_failures": scope_failures,
         "checks": checks,
+        "review": {
+            "automatic_admission_threshold_unchanged": True,
+            "one_mismatch_point_estimate": (
+                float(aggregate["rows"] - 1) / float(aggregate["rows"])
+            ),
+            "top1_mismatch_rows": top1_mismatch_rows,
+            "task_decision_mismatches": decision_mismatches,
+        },
         "first_decision_mismatch": decision_mismatch,
-        "first_top1_mismatch": next(
-            (row for row in row_metrics if not row["top1_equal"]), None
-        ),
+        "first_top1_mismatch": top1_mismatch_rows[0] if top1_mismatch_rows else None,
         "rows": row_metrics,
         "cycles": replay_cycles,
         "seconds": time.perf_counter() - started,
