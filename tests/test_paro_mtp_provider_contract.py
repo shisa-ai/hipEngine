@@ -85,6 +85,22 @@ def test_w8a16_target_head_binding_is_full_vocab_and_borrowed() -> None:
     assert head.scale_f32_ptr == 0x2000
 
 
+def test_borrowed_w8_head_rejects_closed_owner() -> None:
+    import pytest
+
+    owner = SimpleNamespace(closed=False)
+    head = mtp_native.NativeMtpW8A16Head(
+        weight_int8_ptr=0x1000,
+        scale_f32_ptr=0x2000,
+        vocab_size=248320,
+        owner=owner,
+    )
+    head.validate_live()
+    owner.closed = True
+    with pytest.raises(RuntimeError, match="owner is closed"):
+        head.validate_live()
+
+
 def test_target_contract_scope_fails_closed_outside_b1_graph_off_chain() -> None:
     validate = mtp_chain_e2e_smoke._validate_proposer_target_contract_scope
     validate(

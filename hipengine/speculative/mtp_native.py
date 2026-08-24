@@ -7,7 +7,7 @@ shared verifier without per-proposal weight reloads or target-hidden D2H copies.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -157,6 +157,7 @@ class NativeMtpW8A16Head:
     scale_f32_ptr: int
     vocab_size: int
     threads: int = 256
+    owner: Any | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if int(self.weight_int8_ptr) <= 0 or int(self.scale_f32_ptr) <= 0:
@@ -165,6 +166,10 @@ class NativeMtpW8A16Head:
             raise ValueError("W8A16 scorer vocab_size must be positive")
         if int(self.threads) not in {128, 256, 512}:
             raise ValueError("W8A16 scorer threads must be 128, 256, or 512")
+
+    def validate_live(self) -> None:
+        if self.owner is not None and bool(getattr(self.owner, "closed", False)):
+            raise RuntimeError("borrowed target W8A16 scorer owner is closed")
 
 
 @dataclass(frozen=True, slots=True)
@@ -486,6 +491,18 @@ class NativeMtpChainProposer:
             stream=stream,
         )
 
+    def read_final_hidden_bf16(self, *, stream: int = 0) -> np.ndarray:
+        """Copy the current one-row BF16 MTP hidden for correctness diagnostics."""
+
+        host = np.empty((1, self.hidden), dtype=np.uint16)
+        self._copy_device_to_host_array(
+            host,
+            self.final_hidden_buf,
+            nbytes=host.nbytes,
+            stream=stream,
+        )
+        return host
+
     def save_state(self, slot: int, *, stream: int = 0) -> NativeMtpStateSnapshot:
         if slot < 0 or slot >= self.max_mtp_tokens:
             raise ValueError("snapshot slot outside capacity")
@@ -576,6 +593,8 @@ class NativeMtpChainProposer:
 
         if self.closed:
             raise RuntimeError("NativeMtpChainProposer is closed")
+        if self.scoring_head is not None:
+            self.scoring_head.validate_live()
         if self.cache_len >= self.max_mtp_tokens:
             raise RuntimeError("MTP cache capacity exceeded")
         if position < 0 or position >= self.max_positions:

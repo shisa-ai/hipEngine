@@ -1,0 +1,55 @@
+{
+  "schema": "hipengine.paro_mtp_native_reference_parity.v1",
+  "date": "2026-08-24",
+  "status": "rejected",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100"
+  },
+  "model": {
+    "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "quant": "w4_paro+mtp_bf16"
+  },
+  "fixture": {
+    "prompt": "code_markdown_table",
+    "category": "code",
+    "split": "heldout",
+    "render": "qwen_chat_thinking_off",
+    "prompt_tokens": 52,
+    "tail_replay_tokens": 1,
+    "root_token": 71093,
+    "root_source": "retained exact-AR fixture /tmp/paro-spike-d64-heldout-raw/code_markdown_table/raw/mtp-economics-B1-run1.json"
+  },
+  "result": {
+    "native_hidden_vs_torch_cpu": {
+      "max_abs": 0.09375,
+      "mean_abs": 0.006054043769836426,
+      "finite": true
+    },
+    "native_fused_top1": 0,
+    "native_materialized_w8_top8": [64, 13962, 71093, 98251, 794, 99151, 4307, 2972],
+    "torch_cpu_w8_reference_top8": [248044, 71093, 96188, 248046, 64510, 5069, 78004, 26808],
+    "fused_native_top1_matches_materialized_native_w8": false,
+    "native_reference_top1_equal": false,
+    "native_reference_top8_equal": false,
+    "target_sampler_readback_valid": false,
+    "target_sampler_raw": -35180077129728,
+    "seconds": 40.933533990290016
+  },
+  "decision": {
+    "provider_promotion": "blocked",
+    "strict_verifier_economics": "diagnostic only until proposer parity is repaired",
+    "next": [
+      "localize the first native-versus-reference hidden mismatch by stage",
+      "repair fused borrowed W8 top-1 readback versus materialized W8 logits",
+      "repair or isolate the diagnostic target sampler readback",
+      "rerun category and accept/reject parity fixtures after repair"
+    ]
+  },
+  "raw_source": {
+    "/tmp/mtp-paro-parity-code.json": "unretained local raw output"
+  }
+}
