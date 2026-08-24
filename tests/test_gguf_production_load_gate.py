@@ -402,7 +402,7 @@ def test_long_context_gate_passes_declared_quant_to_llm() -> None:
     }
     assert args.gdn_mode == "auto"
     assert "HIPENGINE_GGUF_FP16_RECURRENT_STATE" in long_gate._PROVENANCE_ENV_KEYS
-    assert "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY" in long_gate._PROVENANCE_ENV_KEYS
+    assert "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY" not in long_gate._PROVENANCE_ENV_KEYS
 
 
 def test_load_gate_passes_declared_quant_and_records_fp16_state_env() -> None:
@@ -428,7 +428,7 @@ def test_load_gate_passes_declared_quant_and_records_fp16_state_env() -> None:
     }
     assert "HIPENGINE_GGUF_FP16_RECURRENT_STATE" in _PROVENANCE_ENV_KEYS
     assert "HIPENGINE_EXECUTION_PROFILE" in _PROVENANCE_ENV_KEYS
-    assert "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY" in _PROVENANCE_ENV_KEYS
+    assert "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY" not in _PROVENANCE_ENV_KEYS
 
 
 def test_force_disconnect_shutdowns_socket_before_closing_http_wrappers() -> None:

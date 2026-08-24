@@ -50,7 +50,6 @@ def test_gguf_arbitrary_c_lifecycle_records_production_environment(
 ) -> None:
     monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "1")
     monkeypatch.setenv("GPU_MAX_HW_QUEUES", "2")
-    monkeypatch.setenv("HIPENGINE_GPU_MAX_HW_QUEUES_POLICY", "explicit")
     monkeypatch.setenv("HIPENGINE_GGUF_GDN_PREFILL_MODE", "exact")
     args = build_parser().parse_args(
         ["--model", "/tmp/model.gguf", "--gdn-prefill-mode", "auto"]
@@ -60,7 +59,7 @@ def test_gguf_arbitrary_c_lifecycle_records_production_environment(
 
     assert environment["HIPENGINE_GGUF_FP16_RECURRENT_STATE"] == "1"
     assert environment["GPU_MAX_HW_QUEUES"] == "2"
-    assert environment["HIPENGINE_GPU_MAX_HW_QUEUES_POLICY"] == "explicit"
+    assert "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY" not in environment
     assert environment["HIPENGINE_GGUF_GDN_PREFILL_MODE"] == "auto"
 
 
