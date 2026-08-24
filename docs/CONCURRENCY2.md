@@ -36,7 +36,7 @@ Related source-of-truth documents:
 | C2-3 global pool/dense | Stable `GlobalKVPoolSet`; gfx1100 Qwen GGUF BF16 uses `global-arbitrary-pages:g1`. | Dense short route retained; legacy chunk path remains for unported packages. |
 | C2-4 prefix cache | Generation-checked immutable snapshots, COW, quotas, LRU/TTL, pressure eviction. | Dense host conformance closed; DMS prefix remains deliberately off. |
 | C2-5 token budget/c1-c32 | Logical c1-c32, certified physical c1-c8 grouping on gfx1100 Qwen3.8 (other models/backends retain their own registered sets), same-round prefill/decode fairness. | Physical c1-c8 and direct-width lifecycle are qualified; cost-aware D2 is explicit-config pending the actual-server c1-c32 SLO/performance gate. |
-| C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed. Independent gfx1151 c17 fixed SLO now passes; c32 ITL remains blocked. Matched external GPU comparison remains unavailable/invalid. |
+| C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed. Independent gfx1151 mechanical support passes, but final c32 streaming is 0/3 SLO (TTFT/ITL 18.617/2.125 s) and c2 64K remains unsupported; production closure is blocked. Matched external GPU comparison remains unavailable/invalid. |
 | C2-7 compact DMS | Strict retrofit metadata, compact extents, no-shadow host/device BF16 pack/decode, c1-c32 lifecycle, fixture-qualified INT8 composition. | gfx1100 fixture correctness and rocprof identities pass; exact Qwen artifact has no trained DMS retrofit, so product default/quality/savings remain blocked. |
 | C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Actual model-produced BF16 KV host restore economics, pressure, cancellation, and drain pass; integrated GPU rehydrate/request-SLO policy remains default-off. |
 | C2-S MTP/SpecDec integration | Reusable `NativeSpecCycle` ABI/graphs, SPEC-C0 records/simulator, one EngineService, compatible packing, committed streaming/tail/RNG, and generic provider/tree metadata. | SPEC-C0–C4 correctness is closed; SPEC-C5 blocks promotion because C=10 public-service MTP is 0.579× true AR despite exact/direct decode wins. |
@@ -163,7 +163,13 @@ Current retained state:
 - structural c32 tuning closes without code: post-Q5 c32 is only 0.65% above
   four c8 marker walls, its kernel sum is 0.68% lower, and all extra uncovered
   time is only 7.08 ms / 1.29% of c32 wall. Wider owners, D2, queue expansion,
-  packed-state copies, fair-burst1, and eight-wave merging are measured closed.
+  packed-state copies, fair-burst1, and eight-wave merging are measured closed;
+  and
+- final committed-source c32 streaming passes production control/repeat/native
+  route/live admission but fails 0/3 SLO: 10.590 tok/s, TTFT p95 18.617 s,
+  ITL p99 2.125 s, E2E p95 24.171 s, goodput zero. C2 64K and heavy-load SLOs
+  also remain blocked, so the protocol correctly forbids the expensive complete
+  closure rerun and no gfx1151 production-closure claim is made.
 
 Primary retained evidence:
 [`FP16 serving correctness`](../benchmarks/results/2026-08-23-gfx1151-qwen38-fp16-serving-correctness-bundle-v3.json),
@@ -175,6 +181,7 @@ Primary retained evidence:
 [`queue2 c8/c17/c32 owner profile`](../benchmarks/results/2026-08-24-gfx1151-qwen38-queue2-c8-c17-c32-owner-profile.json),
 [`gfx1151 Q5 col8 rowtile`](../benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-retained.json),
 [`gfx1151 structural c32 adjudication`](../benchmarks/results/2026-08-24-gfx1151-qwen38-structural-c32-skip.json),
+[`gfx1151 production closure blocker`](../benchmarks/results/2026-08-24-gfx1151-qwen38-production-closure-blocked.json),
 [`gfx1151 physical widths`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-physical-widths.json),
 [`packed prefill`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-packed-prefill-c17.json),
 [`direct resident state`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json), and
