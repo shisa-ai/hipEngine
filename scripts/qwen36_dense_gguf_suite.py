@@ -33,6 +33,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from hipengine.benchmark.provenance import collect_artifact_provenance
 from hipengine.core.memory import memory_stats, reset_memory_stats
+from hipengine.kernels.backends import HIP_BACKEND_TARGET_ARCH
 from hipengine.loading import load_gguf_index
 from hipengine.runtime.qwen35_gguf_mtp import (
     Qwen35GGUFMTPDecodeSession,
@@ -101,6 +102,22 @@ def suite_speed_claim_eligible(
         and Path(prompts_path).resolve() == DEFAULT_PROMPTS.resolve()
         and tuple(str(prompt_id) for prompt_id in prompt_ids) == FULL_PROMPT_IDS
         and int(max_new_tokens) == 25
+    )
+
+
+def native_hip_speed_claim_hardware_eligible(
+    *,
+    resolved_backend: str,
+    target_arch: str,
+    device_name: str,
+) -> bool:
+    """Accept a concrete native HIP backend/arch pair with named hardware."""
+
+    expected_arch = HIP_BACKEND_TARGET_ARCH.get(str(resolved_backend))
+    return bool(
+        expected_arch is not None
+        and str(target_arch) == expected_arch
+        and str(device_name).strip()
     )
 
 
@@ -736,7 +753,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 all_exact=all_exact,
             )
             and not bool(provenance["dirty"])
-            and provenance["device_name"] == "AMD Radeon Pro W7900"
+            and native_hip_speed_claim_hardware_eligible(
+                resolved_backend=str(provenance["resolved_backend"]),
+                target_arch=str(provenance["target_arch"]),
+                device_name=str(provenance["device_name"]),
+            )
         ),
         "provenance": provenance,
         "command": shlex.join([str(Path(sys.executable).resolve()), *sys.argv]),

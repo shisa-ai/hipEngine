@@ -15,6 +15,7 @@ from scripts.qwen36_dense_gguf_suite import (
     _resolved_target_identity,
     aggregate_scopes,
     build_parser,
+    native_hip_speed_claim_hardware_eligible,
     parse_candidate_budgets,
     suite_speed_claim_eligible,
     timed_transition_count,
@@ -120,6 +121,29 @@ def test_dense_suite_defaults_to_native_target_verify_with_serial_rollback() -> 
             ["--target-verify-mode", "serial-exact", "--output", "/tmp/out.json"]
         ).target_verify_mode
         == "serial-exact"
+    )
+
+
+def test_native_speed_claim_hardware_accepts_independently_qualified_gfx1151() -> None:
+    assert native_hip_speed_claim_hardware_eligible(
+        resolved_backend="hip_gfx1151",
+        target_arch="gfx1151",
+        device_name="AMD Radeon 8060S Graphics",
+    )
+    assert native_hip_speed_claim_hardware_eligible(
+        resolved_backend="hip_gfx1100",
+        target_arch="gfx1100",
+        device_name="AMD Radeon Pro W7900",
+    )
+    assert not native_hip_speed_claim_hardware_eligible(
+        resolved_backend="hip_gfx1151",
+        target_arch="gfx1100",
+        device_name="AMD Radeon 8060S Graphics",
+    )
+    assert not native_hip_speed_claim_hardware_eligible(
+        resolved_backend="hip_gfx1151",
+        target_arch="gfx1151",
+        device_name="",
     )
 
 
