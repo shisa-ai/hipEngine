@@ -5,9 +5,9 @@ from pathlib import Path
 from scripts.qwen38_gguf_teacher import PROTOCOL_ID, TEACHER_STEPS, _sha256_json, build_parser
 
 
-def test_qwen38_gguf_teacher_protocol_is_fixed_to_eight_rows() -> None:
-    assert PROTOCOL_ID == "qwen38-gguf-bf16-teacher-v1"
-    assert TEACHER_STEPS == 8
+def test_qwen38_gguf_teacher_reuses_the_established_ninety_row_schema() -> None:
+    assert PROTOCOL_ID == "qwen36-bf16-teacher-mtpbench-v1"
+    assert TEACHER_STEPS == 9
 
 
 def test_qwen38_gguf_teacher_parser_requires_model_identity(tmp_path: Path) -> None:

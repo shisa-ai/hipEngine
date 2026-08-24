@@ -17,10 +17,16 @@ from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.gguf_mtp_category_bench import load_prompt_rows
+from scripts.quant_quality.qwen36_teacher import (
+    PROTOCOL_ID as QUANT_QUALITY_PROTOCOL_ID,
+    TEACHER_STEPS as QUANT_QUALITY_TEACHER_STEPS,
+)
 from scripts.qwen36_dense_gguf_suite import HELDOUT_PROMPT_IDS
 
-TEACHER_STEPS = 8
-PROTOCOL_ID = "qwen38-gguf-bf16-teacher-v1"
+# Reuse the established 90-row cache/compare schema. Despite its historical
+# qwen36 name, the protocol is model-bound by fixture/model hashes.
+TEACHER_STEPS = QUANT_QUALITY_TEACHER_STEPS
+PROTOCOL_ID = QUANT_QUALITY_PROTOCOL_ID
 
 
 def _sha256(path: Path) -> str:
