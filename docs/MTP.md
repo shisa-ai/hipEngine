@@ -25,6 +25,8 @@
 > more verifier tuning; then qualify fast as a T2 production candidate rather
 > than calling it strict. Evidence:
 > [`current PARO fast/strict review`](../benchmarks/results/2026-08-24-w7900-paro-mtp-fast-strict-review.json).
+> The bounded repair spike and clean-slate decision gate are in
+> [`MTP-PARO.md`](MTP-PARO.md).
 >
 > Status (2026-06-13): shared ABI, local PARO+MTP-BF16 weights, persistent
 > native proposal, exact B=3 chain verification, verify graph replay, draft vocab
