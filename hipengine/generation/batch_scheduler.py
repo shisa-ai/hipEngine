@@ -188,6 +188,41 @@ class PerRowSamplingParams:
         object.__setattr__(self, "logprobs", bool(self.logprobs))
         object.__setattr__(self, "top_logprobs", int(self.top_logprobs))
 
+    @classmethod
+    def from_generation_request(cls, request) -> "PerRowSamplingParams":
+        """Project the torch-free public request into scheduler row semantics."""
+
+        return cls(
+            temperature=request.temperature,
+            top_k=request.top_k,
+            top_p=request.top_p,
+            min_p=request.min_p,
+            repetition_penalty=request.repetition_penalty,
+            presence_penalty=request.presence_penalty,
+            frequency_penalty=request.frequency_penalty,
+            logit_bias=request.logit_bias,
+            suppress_tokens=request.suppress_token_ids,
+            min_tokens=request.min_tokens,
+            eos_token_id=request.eos_token_id,
+            ignore_eos=request.ignore_eos,
+            seed=request.seed,
+            stop_tokens=request.stop_token_ids,
+            stop_token_sequences=request.stop_token_sequences,
+            forced_tokens_pending=request.forced_tokens_pending,
+            forced_token_reason=request.forced_token_reason,
+            post_thinking_forced_tokens_pending=request.post_thinking_forced_tokens_pending,
+            post_thinking_forced_token_reason=request.post_thinking_forced_token_reason,
+            force_sequence_completion_token_sequences=request.force_sequence_completion_token_sequences,
+            force_sequence_completion_reason=request.force_sequence_completion_reason,
+            json_object_close_forcing=request.json_object_close_forcing,
+            tool_call_constraint=request.tool_call_constraint,
+            thinking_close_token_ids=request.thinking_close_token_ids,
+            thinking_hard_token_cap=request.thinking_hard_token_cap,
+            thinking_soft_close_window=request.thinking_soft_close_window,
+            logprobs=request.logprobs,
+            top_logprobs=request.top_logprobs,
+        )
+
     def resolved_seed(self, *, request_id: int, row_index: int) -> int:
         base = int(self.seed) if self.seed is not None else 0
         return _stable_sampler_seed(base_seed=base, request_id=int(request_id), row_index=int(row_index))

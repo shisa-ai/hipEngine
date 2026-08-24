@@ -476,7 +476,8 @@ ledger owner in every injected path.
       physical lowering remains a target-adapter responsibility.
 - [x] Publish multi-token committed cycle results through canonical token and
       completion events.
-- [ ] Resolve pending cancellation at safe boundaries.
+- [x] Resolve pending cancellation at the staged target/commit boundary without
+      publishing token events; preserve survivor/request ownership.
 - [x] Reclaim terminal requests independently and remove their speculative intent.
 - [x] Roll back staged provider work, release complete claims, and preserve
       subsequent AR health after an injected target-frontier failure.
@@ -488,23 +489,24 @@ ledger owner in every injected path.
 - [x] Route migrated staged providers through ordinary loop submissions instead
       of whole-request `submit_speculative_many_detailed()` execution; retain the
       legacy path only for unmigrated oracle drivers.
-- [ ] Preserve parent/child IDs, all-choice accounting, finish details, deadlines,
-      and circuit-breaker behavior.
-- [ ] Make blocking and SSE consume the same committed result events.
-- [ ] Keep unsupported public sampling/streaming behavior fail-closed until its
-      exact path is qualified.
+- [x] Preserve parent/child IDs, multi-prompt accounting, finish details,
+      deadlines, and pre-mutation circuit/K0 behavior.
+- [x] Make blocking and SSE consume the same committed IDs and finish details.
+- [x] Route unsupported sampling to K0 before provider mutation; greedy staged
+      streaming remains the only fake-provider qualified surface.
 
 ### Fake/CPU proof
 
 - [x] Admission returns while a fake speculative request remains active.
 - [x] A late AR request advances before the first speculative request finishes.
-- [ ] Two speculative requests refill after staggered completion.
+- [x] Two speculative requests stagger retirement and refill into a K3/K2 cycle.
 - [x] One request emits multiple committed IDs without duplicates.
-- [ ] Cancellation at every stage preserves a survivor.
-- [x] Mixed K0/K1 fairness and output order pass; K3/refill remains in the next
-      lifecycle unit.
+- [x] Simulator cancellation/failure at every precommit stage plus live service
+      cancellation at the target boundary preserve peers and publish no tail.
+- [x] Mixed K0/K1/K3 fairness, physical-slot permutation, and output order pass.
 - [x] A provider cannot run a second cycle without the engine yielding.
-- [ ] Shutdown drains all child, transaction, output, and resource owners.
+- [x] Shutdown waits for the safe cycle boundary and drains child, claim, output,
+      request, and scheduler owners.
 
 Expected focused tests include new SPECDEC2 scheduler/loop files plus:
 
@@ -858,8 +860,9 @@ Every temporary flag introduced by this campaign must be added to
 
 ## 18. Current handoff
 
-S1 backend-neutral contracts, staged provider ownership, deterministic K/K0
-planning, production transactions/results/telemetry, and the expanded simulator
-matrix are complete. The next action is **S2 Generation-2 one-cycle scheduling
-RED tests**. No GPU work is needed until S3; S2 must consume the S1 records and
-must not invent a second provider or transaction lifecycle.
+S1 and S2 backend-neutral work are complete: staged providers, deterministic
+K/K0 policy, atomic transactions, one-cycle Generation-2 scheduling, target
+frontiers/claims, EngineService admission, cancellation, streaming, refill,
+failure recovery, and shutdown are covered by focused CPU/fake gates. The next
+action is **S3 exact dense GGUF MTP2 c1 adaptation on gfx1151**. Before touching
+GPU/kernel paths, run the lineage check and confirm the gfx1151 device/lease.

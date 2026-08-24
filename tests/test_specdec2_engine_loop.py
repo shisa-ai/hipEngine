@@ -59,10 +59,10 @@ class _CycleRunner:
             supported_modes=("verify_chain",),
             supported_sampling_modes=("greedy",),
             max_requests=4,
-            max_candidates_per_request=2,
-            max_frontier_rows=12,
+            max_candidates_per_request=3,
+            max_frontier_rows=16,
             proposal_widths=(1, 2, 4),
-            target_row_buckets=(1, 2, 4, 8, 12),
+            target_row_buckets=(1, 2, 4, 8, 16),
             target_transaction_mode=SpecTransactionMode.PACKED_SCRATCH,
             provider_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
             graph_supported=False,
@@ -245,3 +245,43 @@ def test_cancelled_speculative_request_never_opens_a_cycle() -> None:
     assert runner.cycle_plans == []
     assert loop.completed[request_id].finish_reason == "cancel"
     assert loop.poll(max_ticks=1) == ()
+
+
+def test_two_speculative_requests_stagger_retire_and_refill_with_k3() -> None:
+    runner = _CycleRunner()
+    loop = ResidentEngineLoop(
+        runner,
+        capacity=2,
+        prefill_chunk_size=8,
+        prefill_decode_policy="protect_ttft",
+    )
+    first = loop.submit_speculative(
+        [10],
+        max_new_tokens=2,
+        desired_candidate_count=3,
+    )
+    survivor = loop.submit_speculative(
+        [20],
+        max_new_tokens=8,
+        desired_candidate_count=3,
+    )
+
+    loop.poll(max_ticks=3)
+
+    assert runner.cycle_plans[0].request_ids == (first, survivor)
+    assert runner.cycle_plans[0].candidate_counts == (1, 3)
+    assert loop.completed[first].generated_tokens == (1, 8000)
+    assert loop.active_count == 1
+
+    refill = loop.submit_speculative(
+        [30],
+        max_new_tokens=3,
+        desired_candidate_count=2,
+    )
+    loop.poll(max_ticks=2)
+
+    assert runner.cycle_plans[1].request_ids == (refill, survivor)
+    assert runner.cycle_plans[1].candidate_counts == (2, 3)
+    assert loop.completed[refill].generated_tokens == (201, 202, 8002)
+    assert len(loop.completed[survivor].generated_tokens) == 8
+    assert loop.active_count == 0
