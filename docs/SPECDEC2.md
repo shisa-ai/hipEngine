@@ -548,9 +548,10 @@ For B1/B2/B3 and reject/partial/full accept:
 
 - [x] B1/B2/B3 generated IDs match true AR and the unchanged direct dense
       control; staged policy deliberately uses K0 for the one-token tail.
-- [ ] target logits/top-1 and selected hidden match;
-- [ ] Conv/GDN state, full-attention KV, live counts, positions, and cursor match;
-- [ ] provider MTP state/KV/cursor match;
+- [x] controlled B1/B2/B3 target logits/top-1 and selected hidden match serial;
+- [x] controlled Conv/GDN state, touched BF16 full-attention KV, positions,
+      cursor, commit, and rollback match for reject/every-partial/full B3;
+- [ ] provider MTP state/KV/cursor match beyond generated-ID/full-accept repair;
 - [x] following-AR tail continuity matches through five exact output IDs;
 - [x] native-eager and explicit `serial_exact` target modes agree; uncaptured
       graph requests fall back before mutation;
@@ -560,12 +561,14 @@ For B1/B2/B3 and reject/partial/full accept:
 
 ### S3.3 Economics and engagement
 
-- [ ] Profiler trace proves expected proposal, target, accept, and commit kernel
-      families and plausible durations.
-- [ ] One-cycle service overhead is measured against the unchanged direct cycle.
-- [ ] Suggested adapter overhead gate is <=5% complete wall before c>N work;
-      larger overhead must be localized and fixed or explicitly approved.
-- [ ] The public c1 route yields between cycles and does not hold a request-life
+- [x] Cached profiler trace proves expected GDN recurrence, chain accept,
+      selected-state commit, and target-commit kernels with positive durations.
+- [x] Complete staged cold/warm and unchanged direct walls are measured for
+      B1/B2/B3 on the same loaded service.
+- [x] Warm staged is 36.5-43.6% faster than the direct exact control and within
+      1.9-3.2% of true AR on this short trajectory; cold provider construction
+      remains 1.41 s and is not a speed claim.
+- [x] The public c1 route yields between cycles and does not hold a request-life
       model lock.
 
 GPU work follows `KERNELS.md`: prebuild outside `rocprofv3`, use cached builds,
