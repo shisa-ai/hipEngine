@@ -1,0 +1,606 @@
+{
+  "aggregate": {
+    "max_kl": 0.013702315820799553,
+    "mean_kl": 0.0003769083466514944,
+    "p95_kl": 0.001646726452908445,
+    "p99_kl": 0.009209367190941675,
+    "rows": 280,
+    "sample_resolution": 0.0035714285714285713,
+    "strict_margin_min": 0.015077590942382812,
+    "top1_agreement": 0.9928571428571429,
+    "top1_matches": 278,
+    "top1_mismatches": 2,
+    "top1_wilson95_high": 0.998038980406592,
+    "top1_wilson95_low": 0.9743348269530735,
+    "top5_overlap_mean": 0.9835714285714285
+  },
+  "backend": "hip_gfx1100",
+  "capture_mode": "sequential_strict_then_fast_replay",
+  "checks": {
+    "finite": true,
+    "max_kl": true,
+    "mean_kl": true,
+    "p95_kl": true,
+    "p99_kl": true,
+    "per_scope": true,
+    "task_decision_proxy": false,
+    "top1": true
+  },
+  "coverage": {
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "note": "one retained D64 heldout per category; broader than the 68-row screen but not the full 18-prompt/450-row production campaign",
+    "prompts": 4,
+    "rows": 280
+  },
+  "date": "2026-08-24",
+  "decision": {
+    "automatic_numerical_point_gates": "passed: 99.286% overall top1, all KL tails, and every 97% scope",
+    "classification": "review-positive candidate, not a definitive quality rejection",
+    "exact_decision_parity": "failed twice; diagnostic rather than universal T2 task gate",
+    "paired_task_noninferiority": "passed under predeclared four-prompt rubric",
+    "promotion": "not yet; keep candidate unselected pending full 18-prompt/450-row, three-repeat, BF16-relative, and applicable state/task gates",
+    "statistical_precision": "Wilson 95% interval 97.433%-99.804% straddles the 99% threshold"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "device_serial": "D7070100",
+    "hip_visible_devices": "0",
+    "physical_host": "epyc",
+    "target_arch": "gfx1100"
+  },
+  "manifests": {
+    "candidate_registered_but_uncertified": true,
+    "candidate_review_manifest": {
+      "backend": "hip_gfx1100",
+      "execution_profile": "production",
+      "graph_policy": "off_b1_fixed_chain",
+      "kind": "hipengine_execution_profile_manifest",
+      "kv_policy": "paged_bf16_kv_live_spans",
+      "model": "qwen3_5_moe_paro",
+      "quant": "w4_paro",
+      "schema_version": 1,
+      "selections": [
+        {
+          "evidence_artifact": null,
+          "layer": "mtp_proposer_route",
+          "registry_quant": "w4_paro_mtp",
+          "scope": "b1_graph_off_fixed_chain",
+          "selected_variant": "target_final_norm_selected_reseed_w8a16_full_vocab",
+          "strict_fallback_variant": "target_final_norm_selected_reseed_w8a16_full_vocab"
+        },
+        {
+          "evidence_artifact": null,
+          "layer": "mtp_verifier_route",
+          "registry_quant": "w4_paro_mtp",
+          "scope": "b1_graph_off_fixed_chain",
+          "selected_variant": "b1_graph_off_fast_d64_candidate",
+          "strict_fallback_variant": "b1_graph_off_strict_exact"
+        }
+      ]
+    },
+    "candidate_review_sha256": "610d3686ba950b3a5700fd5f50b95902069f11994cea2ebf69e4ffd73dcdab6f",
+    "candidate_selected_by_production": false,
+    "registered_production_sha256": "9ea22c030d76774d398b504be5b78a113dc25b2e4d2260d6efba9ee260dc8876",
+    "registered_strict_sha256": "3199678e604dca83d40f3d538deb3c05ceed3144b0100ef89b3ecfb94aed5723"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+  "performance_claim": false,
+  "prompts": {
+    "code_markdown_table": {
+      "aggregate": {
+        "max_kl": 0.0013633562717225121,
+        "mean_kl": 2.894485779277856e-05,
+        "p95_kl": 2.8514327215217766e-05,
+        "p99_kl": 0.0006794101005900799,
+        "rows": 66,
+        "sample_resolution": 0.015151515151515152,
+        "strict_margin_min": 0.6935520172119141,
+        "top1_agreement": 1.0,
+        "top1_matches": 66,
+        "top1_mismatches": 0,
+        "top1_wilson95_high": 0.9999999999999999,
+        "top1_wilson95_low": 0.9449974429864586,
+        "top5_overlap_mean": 0.9939393939393939
+      },
+      "category": "code",
+      "render": "qwen_chat_thinking_off",
+      "rows": 66,
+      "scope_failures": [],
+      "source": "/tmp/mtp-paro-fast-review-code_markdown_table.json",
+      "split": "heldout",
+      "status": "passed",
+      "task_decision_mismatches": 0,
+      "top1_mismatches": 0
+    },
+    "general_en_explain": {
+      "aggregate": {
+        "max_kl": 0.002812909924036588,
+        "mean_kl": 0.0002263457161924023,
+        "p95_kl": 0.0015185222673056574,
+        "p99_kl": 0.00249081791353211,
+        "rows": 68,
+        "sample_resolution": 0.014705882352941176,
+        "strict_margin_min": 0.0844573974609375,
+        "top1_agreement": 0.9852941176470589,
+        "top1_matches": 67,
+        "top1_mismatches": 1,
+        "top1_wilson95_high": 0.9973993164238933,
+        "top1_wilson95_low": 0.9212902687183916,
+        "top5_overlap_mean": 0.9911764705882352
+      },
+      "category": "general_en",
+      "render": "qwen_chat_thinking_off",
+      "rows": 68,
+      "scope_failures": [],
+      "source": "benchmarks/results/2026-08-24-w7900-paro-fast-verifier-d64-enhanced-general-en-review.json",
+      "split": "heldout",
+      "status": "rejected",
+      "task_decision_mismatches": 1,
+      "top1_mismatches": 1
+    },
+    "general_ja_explain": {
+      "aggregate": {
+        "max_kl": 0.013702315820799553,
+        "mean_kl": 0.0008168318447125165,
+        "p95_kl": 0.004152914518180008,
+        "p99_kl": 0.012113002783078843,
+        "rows": 78,
+        "sample_resolution": 0.01282051282051282,
+        "strict_margin_min": 0.015077590942382812,
+        "top1_agreement": 0.9871794871794872,
+        "top1_matches": 77,
+        "top1_mismatches": 1,
+        "top1_wilson95_high": 0.9977332682461664,
+        "top1_wilson95_low": 0.930891429982978,
+        "top5_overlap_mean": 0.9717948717948718
+      },
+      "category": "general_ja",
+      "render": "qwen_chat_thinking_off",
+      "rows": 78,
+      "scope_failures": [
+        {
+          "dimension": "strict_selected_for_commit",
+          "value": "True"
+        }
+      ],
+      "source": "/tmp/mtp-paro-fast-review-general_ja_explain.json",
+      "split": "heldout",
+      "status": "rejected",
+      "task_decision_mismatches": 1,
+      "top1_mismatches": 1
+    },
+    "mixed_ja_en_review": {
+      "aggregate": {
+        "max_kl": 0.010385182103132648,
+        "mean_kl": 0.00036058211557993237,
+        "p95_kl": 0.0007669530866955936,
+        "p99_kl": 0.0093879719877302,
+        "rows": 68,
+        "sample_resolution": 0.014705882352941176,
+        "strict_margin_min": 0.4103221893310547,
+        "top1_agreement": 1.0,
+        "top1_matches": 68,
+        "top1_mismatches": 0,
+        "top1_wilson95_high": 1.0,
+        "top1_wilson95_low": 0.9465286634799296,
+        "top5_overlap_mean": 0.9794117647058823
+      },
+      "category": "mixed_ja_en",
+      "render": "qwen_chat_thinking_off",
+      "rows": 68,
+      "scope_failures": [],
+      "source": "/tmp/mtp-paro-fast-review-mixed_ja_en_review.json",
+      "split": "heldout",
+      "status": "passed",
+      "task_decision_mismatches": 0,
+      "top1_mismatches": 0
+    }
+  },
+  "raw_matrix_source": {
+    "path": "/tmp/mtp-paro-fast-review-four-category.json",
+    "sha256": "93d4d5dbff850d568662d859d5bee6b5192c057703e07e5041a3af8b554a6d5f"
+  },
+  "review": {
+    "automatic_admission_threshold_unchanged": true,
+    "distribution_gates_passed": true,
+    "eligible_for_automatic_admission": false,
+    "point_estimate_uncertain_at_99pct": true,
+    "task_decision_mismatches": [
+      {
+        "candidate_accepted": 0,
+        "candidate_bonus": 4016,
+        "cycle": 13,
+        "output_offset": 23,
+        "prompt": "general_en_explain",
+        "strict_accepted": 1,
+        "strict_bonus": 1061
+      },
+      {
+        "candidate_accepted": 0,
+        "candidate_bonus": 96626,
+        "cycle": 10,
+        "output_offset": 13,
+        "prompt": "general_ja_explain",
+        "strict_accepted": 0,
+        "strict_bonus": 113550
+      }
+    ],
+    "top1_mismatch_rows": [
+      {
+        "candidate_gap_to_strict_top1": 0.03806495666503906,
+        "candidate_margin": 0.03806495666503906,
+        "candidate_probability_of_strict_top1": 0.35490671442852895,
+        "candidate_selected_for_commit": true,
+        "candidate_top1": 4016,
+        "candidate_top1_probability": 0.36867663626219777,
+        "candidate_top1_strict_rank": 2,
+        "candidate_topk": [
+          4016,
+          13,
+          1521,
+          11,
+          318
+        ],
+        "category": "general_en",
+        "context": 63,
+        "cycle": 13,
+        "cycle_task_decision_mismatch": true,
+        "decision_role": "draft_acceptance_or_reject_correction",
+        "kl": 0.0023321755800000546,
+        "max_abs_logit_delta": 0.13005828857421875,
+        "output_offset": 23,
+        "position": 63,
+        "prompt": "general_en_explain",
+        "row": 0,
+        "row_role": "root",
+        "shape": "c2_b1",
+        "strict_gap_to_candidate_top1": 0.0844573974609375,
+        "strict_margin": 0.0844573974609375,
+        "strict_probability_of_candidate_top1": 0.3370628901994176,
+        "strict_selected_for_commit": false,
+        "strict_top1": 13,
+        "strict_top1_candidate_rank": 2,
+        "strict_top1_probability": 0.3667670583725873,
+        "strict_topk": [
+          13,
+          4016,
+          1521,
+          11,
+          318
+        ],
+        "top1_equal": false,
+        "top5_overlap": 1.0,
+        "transition": "verify_to_verify"
+      },
+      {
+        "candidate_gap_to_strict_top1": 0.09349822998046875,
+        "candidate_margin": 0.09349822998046875,
+        "candidate_probability_of_strict_top1": 0.21037219147676853,
+        "candidate_selected_for_commit": true,
+        "candidate_top1": 96626,
+        "candidate_top1_probability": 0.23099048803160083,
+        "candidate_top1_strict_rank": 2,
+        "candidate_topk": [
+          96626,
+          113550,
+          246822,
+          241456,
+          98050
+        ],
+        "category": "general_ja",
+        "context": 56,
+        "cycle": 10,
+        "cycle_task_decision_mismatch": true,
+        "decision_role": "draft_acceptance_or_reject_correction",
+        "kl": 0.013702315820799553,
+        "max_abs_logit_delta": 0.5555884838104248,
+        "output_offset": 13,
+        "position": 56,
+        "prompt": "general_ja_explain",
+        "row": 0,
+        "row_role": "root",
+        "shape": "c2_b1",
+        "strict_gap_to_candidate_top1": 0.02890491485595703,
+        "strict_margin": 0.02890491485595703,
+        "strict_probability_of_candidate_top1": 0.1935710996742082,
+        "strict_selected_for_commit": true,
+        "strict_top1": 113550,
+        "strict_top1_candidate_rank": 2,
+        "strict_top1_probability": 0.19924790436779274,
+        "strict_topk": [
+          113550,
+          96626,
+          246822,
+          241456,
+          98050
+        ],
+        "top1_equal": false,
+        "top5_overlap": 1.0,
+        "transition": "verify_to_verify"
+      }
+    ]
+  },
+  "rubric": "benchmarks/results/2026-08-24-w7900-paro-fast-verifier-review-rubric.json",
+  "schema": "hipengine.paro_mtp_verifier_review_matrix.v1",
+  "scope_failures": [],
+  "scopes": {
+    "category": {
+      "code": {
+        "max_kl": 0.0013633562717225121,
+        "mean_kl": 2.894485779277856e-05,
+        "p95_kl": 2.8514327215217766e-05,
+        "p99_kl": 0.0006794101005900799,
+        "passed": true,
+        "rows": 66,
+        "strict_margin_min": 0.6935520172119141,
+        "top1_agreement": 1.0,
+        "top1_matches": 66,
+        "top1_mismatches": 0,
+        "top1_wilson95_high": 0.9999999999999999,
+        "top1_wilson95_low": 0.9449974429864586,
+        "top5_overlap_mean": 0.9939393939393939
+      },
+      "general_en": {
+        "max_kl": 0.002812909924036588,
+        "mean_kl": 0.0002263457161924023,
+        "p95_kl": 0.0015185222673056574,
+        "p99_kl": 0.00249081791353211,
+        "passed": true,
+        "rows": 68,
+        "strict_margin_min": 0.0844573974609375,
+        "top1_agreement": 0.9852941176470589,
+        "top1_matches": 67,
+        "top1_mismatches": 1,
+        "top1_wilson95_high": 0.9973993164238933,
+        "top1_wilson95_low": 0.9212902687183916,
+        "top5_overlap_mean": 0.9911764705882352
+      },
+      "general_ja": {
+        "max_kl": 0.013702315820799553,
+        "mean_kl": 0.0008168318447125165,
+        "p95_kl": 0.004152914518180008,
+        "p99_kl": 0.012113002783078843,
+        "passed": true,
+        "rows": 78,
+        "strict_margin_min": 0.015077590942382812,
+        "top1_agreement": 0.9871794871794872,
+        "top1_matches": 77,
+        "top1_mismatches": 1,
+        "top1_wilson95_high": 0.9977332682461664,
+        "top1_wilson95_low": 0.930891429982978,
+        "top5_overlap_mean": 0.9717948717948718
+      },
+      "mixed_ja_en": {
+        "max_kl": 0.010385182103132648,
+        "mean_kl": 0.00036058211557993237,
+        "p95_kl": 0.0007669530866955936,
+        "p99_kl": 0.0093879719877302,
+        "passed": true,
+        "rows": 68,
+        "strict_margin_min": 0.4103221893310547,
+        "top1_agreement": 1.0,
+        "top1_matches": 68,
+        "top1_mismatches": 0,
+        "top1_wilson95_high": 1.0,
+        "top1_wilson95_low": 0.9465286634799296,
+        "top5_overlap_mean": 0.9794117647058823
+      }
+    },
+    "decision_role": {
+      "draft_acceptance_or_reject_correction": {
+        "max_kl": 0.013702315820799553,
+        "mean_kl": 0.0004036491496797868,
+        "p95_kl": 0.0017199533402610415,
+        "p99_kl": 0.007056781845146175,
+        "passed": true,
+        "rows": 140,
+        "strict_margin_min": 0.02890491485595703,
+        "top1_agreement": 0.9857142857142858,
+        "top1_matches": 138,
+        "top1_mismatches": 2,
+        "top1_wilson95_high": 0.9960735592765573,
+        "top1_wilson95_low": 0.9494118460788701,
+        "top5_overlap_mean": 0.982857142857143
+      },
+      "full_accept_bonus": {
+        "max_kl": 0.011638272914668749,
+        "mean_kl": 0.000350167543623202,
+        "p95_kl": 0.001066184169888986,
+        "p99_kl": 0.00832639849329036,
+        "passed": true,
+        "rows": 140,
+        "strict_margin_min": 0.015077590942382812,
+        "top1_agreement": 1.0,
+        "top1_matches": 140,
+        "top1_mismatches": 0,
+        "top1_wilson95_high": 0.9999999999999999,
+        "top1_wilson95_low": 0.9732937996305869,
+        "top5_overlap_mean": 0.9842857142857143
+      }
+    },
+    "row_role": {
+      "draft_candidate": {
+        "max_kl": 0.011638272914668749,
+        "mean_kl": 0.000350167543623202,
+        "p95_kl": 0.001066184169888986,
+        "p99_kl": 0.00832639849329036,
+        "passed": true,
+        "rows": 140,
+        "strict_margin_min": 0.015077590942382812,
+        "top1_agreement": 1.0,
+        "top1_matches": 140,
+        "top1_mismatches": 0,
+        "top1_wilson95_high": 0.9999999999999999,
+        "top1_wilson95_low": 0.9732937996305869,
+        "top5_overlap_mean": 0.9842857142857143
+      },
+      "root": {
+        "max_kl": 0.013702315820799553,
+        "mean_kl": 0.0004036491496797868,
+        "p95_kl": 0.0017199533402610415,
+        "p99_kl": 0.007056781845146175,
+        "passed": true,
+        "rows": 140,
+        "strict_margin_min": 0.02890491485595703,
+        "top1_agreement": 0.9857142857142858,
+        "top1_matches": 138,
+        "top1_mismatches": 2,
+        "top1_wilson95_high": 0.9960735592765573,
+        "top1_wilson95_low": 0.9494118460788701,
+        "top5_overlap_mean": 0.982857142857143
+      }
+    },
+    "shape": {
+      "c2_b1": {
+        "max_kl": 0.013702315820799553,
+        "mean_kl": 0.0003769083466514944,
+        "p95_kl": 0.001646726452908445,
+        "p99_kl": 0.009209367190941675,
+        "passed": true,
+        "rows": 280,
+        "strict_margin_min": 0.015077590942382812,
+        "top1_agreement": 0.9928571428571429,
+        "top1_matches": 278,
+        "top1_mismatches": 2,
+        "top1_wilson95_high": 0.998038980406592,
+        "top1_wilson95_low": 0.9743348269530735,
+        "top5_overlap_mean": 0.9835714285714285
+      }
+    },
+    "strict_selected_for_commit": {
+      "False": {
+        "max_kl": 0.004148348085078957,
+        "mean_kl": 0.0001875105622882516,
+        "p95_kl": 0.0007886582685955455,
+        "p99_kl": 0.002625423529862333,
+        "passed": true,
+        "rows": 140,
+        "strict_margin_min": 0.0844573974609375,
+        "top1_agreement": 0.9928571428571429,
+        "top1_matches": 139,
+        "top1_mismatches": 1,
+        "top1_wilson95_high": 0.9987379955557328,
+        "top1_wilson95_low": 0.9606516069372742,
+        "top5_overlap_mean": 0.9785714285714285
+      },
+      "True": {
+        "max_kl": 0.013702315820799553,
+        "mean_kl": 0.0005663061310147373,
+        "p95_kl": 0.0033547427307223676,
+        "p99_kl": 0.01114956749816965,
+        "passed": true,
+        "rows": 140,
+        "strict_margin_min": 0.015077590942382812,
+        "top1_agreement": 0.9928571428571429,
+        "top1_matches": 139,
+        "top1_mismatches": 1,
+        "top1_wilson95_high": 0.9987379955557328,
+        "top1_wilson95_low": 0.9606516069372742,
+        "top5_overlap_mean": 0.9885714285714287
+      }
+    },
+    "transition": {
+      "prefill_to_verify": {
+        "max_kl": 3.053288112867285e-05,
+        "mean_kl": 1.0005176735866596e-05,
+        "p95_kl": 3.0393680520694363e-05,
+        "p99_kl": 3.0505041007077152e-05,
+        "passed": true,
+        "rows": 8,
+        "strict_margin_min": 0.5083751678466797,
+        "top1_agreement": 1.0,
+        "top1_matches": 8,
+        "top1_mismatches": 0,
+        "top1_wilson95_high": 1.0,
+        "top1_wilson95_low": 0.6755924351161198,
+        "top5_overlap_mean": 1.0
+      },
+      "verify_to_verify": {
+        "max_kl": 0.013702315820799553,
+        "mean_kl": 0.0003876996163548952,
+        "p95_kl": 0.0016639915746804231,
+        "p99_kl": 0.009328437055467402,
+        "passed": true,
+        "rows": 272,
+        "strict_margin_min": 0.015077590942382812,
+        "top1_agreement": 0.9926470588235294,
+        "top1_matches": 270,
+        "top1_mismatches": 2,
+        "top1_wilson95_high": 0.9979812368783867,
+        "top1_wilson95_low": 0.9735913510341818,
+        "top5_overlap_mean": 0.9830882352941176
+      }
+    }
+  },
+  "status": "review_positive_more_evidence_required",
+  "task_review": {
+    "limitations": [
+      "64 output tokens per prompt",
+      "one prompt per category",
+      "no three-repeat candidate determinism packet",
+      "not the full 18-prompt/450-row production campaign"
+    ],
+    "paired_noninferiority_passed": true,
+    "prompts": {
+      "code_markdown_table": {
+        "candidate_text": "```python\ndef markdown_table(rows):\n    \"\"\"\n    Generate a GitHub-flavored markdown table from a list of dictionaries.\n    \n    Args:\n        rows: A list of dictionaries where each dictionary represents a row.\n        \n    Returns:\n        A string containing the markdown table.\n    \"\"\"\n",
+        "exact_ids": true,
+        "first_mismatch_output": null,
+        "paired_noninferiority_passed": true,
+        "raw_sha256": "199efd2d56d3feaa3c06ade1e4c2054d9972d798a1d77c746cb0f61f778be0d5",
+        "raw_source": "/tmp/paro-fast-review-free-running-raw/code_markdown_table/raw/mtp-economics-B1-run1.json",
+        "review_note": "Strict/fast outputs are exact. The 64-token code sample is truncated before implementation/tests, so the predeclared fail-closed equality rule passes candidate noninferiority but makes no absolute task-completion claim.",
+        "strict_text": "```python\ndef markdown_table(rows):\n    \"\"\"\n    Generate a GitHub-flavored markdown table from a list of dictionaries.\n    \n    Args:\n        rows: A list of dictionaries where each dictionary represents a row.\n        \n    Returns:\n        A string containing the markdown table.\n    \"\"\"\n",
+        "verdict": "passed_noninferiority_exact_truncated"
+      },
+      "general_en_explain": {
+        "candidate_text": "Transformer inference on local GPUs is typically **memory-bandwidth limited** (also known as memory-bound) rather than compute-bound due to the specific arithmetic intensity of the operations involved.\n\n### 1. The Core Concept: Arithmetic Intensity\n\n**Arithmetic Intensity** is defined as the ratio of floating-point operations (",
+        "exact_ids": false,
+        "first_mismatch_output": 24,
+        "paired_noninferiority_passed": true,
+        "raw_sha256": "4687db691d3d42980378d49dd82500d009ef5c7ec8be829cb1f541dc29653cdc",
+        "raw_source": "/tmp/paro-fast-review-free-running-raw/general_en_explain/raw/mtp-economics-B1-run1.json",
+        "review_note": "Both continuations are fluent, directly responsive, and technically explain memory-bandwidth limitation. Fast pivots coherently through arithmetic intensity; no candidate-caused factual or format regression is visible in the 64-token sample.",
+        "strict_text": "Transformer inference on local GPUs is typically **memory-bandwidth limited** (also known as memory-bound) rather than compute-bound. This means the GPU\u2019s arithmetic logic units (ALUs) spend most of their time idle, waiting for data to be fetched from or written to the GPU\u2019s high-bandwidth memory (HBM",
+        "verdict": "passed_paired_manual_review"
+      },
+      "general_ja_explain": {
+        "candidate_text": "\u30ed\u30fc\u30ab\u30ebGPU\uff08\u7279\u306b\u6d88\u8cbb\u5411\u3051GPU\u3084\u3001VRAM\u5bb9\u91cf\u306b\u5bfe\u3057\u3066\u6f14\u7b97\u30b3\u30a2\u6570\u304c\u9650\u3089\u308c\u305f\u74b0\u5883\uff09\u306b\u304a\u3044\u3066\u3001\u5927\u898f\u6a21\u8a00\u8a9e\u30e2\u30c7\u30eb\uff08LLM\uff09\u306e\u63a8\u8ad6\u901f\u5ea6\u304c\u30e1\u30e2\u30ea\u5e2f\u57df\u5e45\uff08Memory Bandwidth\uff09\u306b\u5236\u7d04\u3055\u308c\u3084\u3059\u3044\u73fe\u8c61\u306f\u3001\u30b3\u30f3\u30d4\u30e5\u30fc\u30bf\u30a2\u30fc\u30ad\u30c6\u30af\u30c1\u30e3\u306e\u89b3\u70b9\u304b\u3089\u300c**",
+        "exact_ids": false,
+        "first_mismatch_output": 14,
+        "paired_noninferiority_passed": true,
+        "raw_sha256": "44ec11470c215404e70cc34d537650ecb5b40bb0ff49e1dc5bb2c699110437bd",
+        "raw_source": "/tmp/paro-fast-review-free-running-general_ja_explain.json",
+        "review_note": "Both continuations are fluent technical Japanese and directly frame local-GPU LLM memory-bandwidth limits. The \u8a08\u7b97/\u6f14\u7b97 top-2 swap continues as grammatical \u8a08\u7b97\u80fd\u529b vs \u6f14\u7b97\u30b3\u30a2\u6570 phrasing; no material task regression is visible.",
+        "strict_text": "\u30ed\u30fc\u30ab\u30ebGPU\uff08\u7279\u306b\u6d88\u8cbb\u5411\u3051GPU\u3084\u3001VRAM\u5bb9\u91cf\u306b\u5bfe\u3057\u3066\u8a08\u7b97\u80fd\u529b\u304c\u76f8\u5bfe\u7684\u306b\u4f4e\u3044\u74b0\u5883\uff09\u306b\u304a\u3044\u3066\u3001\u5927\u898f\u6a21\u8a00\u8a9e\u30e2\u30c7\u30eb\uff08LLM\uff09\u306e\u63a8\u8ad6\u901f\u5ea6\u304c\u30e1\u30e2\u30ea\u5e2f\u57df\u5e45\uff08Memory Bandwidth\uff09\u306b\u5236\u7d04\u3055\u308c\u3084\u3059\u3044\u73fe\u8c61\u306f\u3001\u30b3\u30f3\u30d4\u30e5\u30fc\u30bf\u30a2\u30fc\u30ad\u30c6\u30af\u30c1\u30e3\u306e\u89b3\u70b9\u304b\u3089\u300c",
+        "verdict": "passed_paired_manual_review"
+      },
+      "mixed_ja_en_review": {
+        "candidate_text": "- Enabling MTP in the new inference mode improves generation speed.\n- However, KV cache usage increases with longer contexts, so monitoring memory is recommended.<|im_end|>\n<|endoftext|><|im_start|><|im_start|>assistant\n<think>\n\n</think>\n\n- Enabling MTP in the new inference mode improves generation speed.\n- However, KV cache usage",
+        "exact_ids": true,
+        "first_mismatch_output": null,
+        "paired_noninferiority_passed": true,
+        "raw_sha256": "919f499e62202462bafee1aa20a0d633d291d90b593f3b62096e777fe7f62bda",
+        "raw_source": "/tmp/paro-fast-review-free-running-mixed_ja_en_review.json",
+        "review_note": "Strict/fast outputs are exact. The response begins with English bullets, preserves MTP and KV cache, and covers both speed benefit and long-context memory monitoring. Any shared 64-token tail artifact is not candidate-caused.",
+        "strict_text": "- Enabling MTP in the new inference mode improves generation speed.\n- However, KV cache usage increases with longer contexts, so monitoring memory is recommended.<|im_end|>\n<|endoftext|><|im_start|><|im_start|>assistant\n<think>\n\n</think>\n\n- Enabling MTP in the new inference mode improves generation speed.\n- However, KV cache usage",
+        "verdict": "passed_noninferiority_exact"
+      }
+    },
+    "prompts_passed": 4
+  },
+  "thresholds": {
+    "max_kl_max": 0.05,
+    "mean_kl_max": 0.001,
+    "p95_kl_max": 0.005,
+    "p99_kl_max": 0.02,
+    "per_scope_top1_min": 0.97,
+    "top1_min": 0.99
+  }
+}
