@@ -1,0 +1,145 @@
+{
+  "backend": "hip_gfx1100",
+  "candidate_review_manifest_sha256": "610d3686ba950b3a5700fd5f50b95902069f11994cea2ebf69e4ffd73dcdab6f",
+  "checks": {
+    "all_paired_noninferior": true,
+    "complete_canonical_suite": true,
+    "divergent_outputs_reviewed": true,
+    "rubric_predeclared": true
+  },
+  "coverage": {
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "decode_tokens": 64,
+    "divergent_paired_manual_reviews": 2,
+    "exact_trajectories": 8,
+    "prompts": 10
+  },
+  "date": "2026-08-24",
+  "decision": {
+    "exact_ids": "diagnostic: 8 exact, 2 task-equivalent divergent",
+    "promotion": "task evidence is no longer a blocker; state/lifecycle and same-suite economics remain",
+    "task_gate": "passed within predeclared D64/64-token scope"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "device_serial": "D7070100",
+    "hip_visible_devices": "0",
+    "physical_host": "epyc",
+    "target_arch": "gfx1100"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+  "numerical_repeat_artifact": "benchmarks/results/2026-08-24-w7900-paro-fast-verifier-full-numerical-repeat-review.json",
+  "performance_claim": false,
+  "prompts": {
+    "code_lru_cache": {
+      "capture_sha256": "30068fc939db99d41e7f7806a8fc657da5ed8271fd6c909995f93e8e44496699",
+      "exact_ids": true,
+      "numerical_top1_mismatches": 0,
+      "paired_noninferiority_passed": true,
+      "review_note": "Every strict-owned target decision and commit row matches across D64, so the fast free-running trajectory is identical within the reviewed 64-token horizon. For truncated code, this is the rubric-required fail-closed equality result.",
+      "task_decision_mismatches": 0,
+      "verdict": "passed_exact_strict_schedule"
+    },
+    "code_markdown_table": {
+      "capture_sha256": "eec06c65d727bf0c1c70387c4801f68f860f4704890b4bd1e2b16a58af797c64",
+      "exact_ids": true,
+      "numerical_top1_mismatches": 0,
+      "paired_noninferiority_passed": true,
+      "review_note": "Every strict-owned target decision and commit row matches across D64, so the fast free-running trajectory is identical within the reviewed 64-token horizon. For truncated code, this is the rubric-required fail-closed equality result.",
+      "task_decision_mismatches": 0,
+      "verdict": "passed_exact_strict_schedule"
+    },
+    "code_merge_intervals": {
+      "capture_sha256": "f464e3f67df69aefc33d0e5ca314be2094c81142e6091a2acfb201817a32b74f",
+      "exact_ids": true,
+      "numerical_top1_mismatches": 0,
+      "paired_noninferiority_passed": true,
+      "review_note": "Every strict-owned target decision and commit row matches across D64, so the fast free-running trajectory is identical within the reviewed 64-token horizon. For truncated code, this is the rubric-required fail-closed equality result.",
+      "task_decision_mismatches": 0,
+      "verdict": "passed_exact_strict_schedule"
+    },
+    "code_topological_sort": {
+      "capture_sha256": "e93c5f4a10ae5261ff32778473771d40b746cd7b57e8a9209eac9aafd86ac555",
+      "exact_ids": true,
+      "numerical_top1_mismatches": 0,
+      "paired_noninferiority_passed": true,
+      "review_note": "Every strict-owned target decision and commit row matches across D64, so the fast free-running trajectory is identical within the reviewed 64-token horizon. For truncated code, this is the rubric-required fail-closed equality result.",
+      "task_decision_mismatches": 0,
+      "verdict": "passed_exact_strict_schedule"
+    },
+    "general_en_explain": {
+      "candidate_text": "Transformer inference on local GPUs is typically **memory-bandwidth limited** (also known as memory-bound) rather than compute-bound due to the specific arithmetic intensity of the operations involved.\n\n### 1. The Core Concept: Arithmetic Intensity\n\n**Arithmetic Intensity** is defined as the ratio of floating-point operations (",
+      "capture_sha256": "2f984aaaf0f192f91500825301c981d45d4d25aff1d6dcac4328634e29306c21",
+      "exact_ids": false,
+      "first_mismatch_output": 24,
+      "numerical_top1_mismatches": 1,
+      "paired_noninferiority_passed": true,
+      "raw_sha256": "4687db691d3d42980378d49dd82500d009ef5c7ec8be829cb1f541dc29653cdc",
+      "raw_source": "/tmp/paro-fast-review-free-running-raw/general_en_explain/raw/mtp-economics-B1-run1.json",
+      "review_note": "Both are fluent, directly responsive, and technically concrete. Fast coherently explains the bandwidth limit through arithmetic intensity; no factual, language, or format regression is visible in the 64-token paired sample.",
+      "strict_text": "Transformer inference on local GPUs is typically **memory-bandwidth limited** (also known as memory-bound) rather than compute-bound. This means the GPU\u2019s arithmetic logic units (ALUs) spend most of their time idle, waiting for data to be fetched from or written to the GPU\u2019s high-bandwidth memory (HBM",
+      "task_decision_mismatches": 1,
+      "verdict": "passed_paired_manual_review"
+    },
+    "general_en_plan": {
+      "capture_sha256": "b056f0f322ade7c7190875ed94d8a2836146db01ef20837ded3405ed2a8c28e0",
+      "exact_ids": true,
+      "numerical_top1_mismatches": 0,
+      "paired_noninferiority_passed": true,
+      "review_note": "Every strict-owned target decision and commit row matches across D64, so the fast free-running trajectory is identical within the reviewed 64-token horizon. For truncated code, this is the rubric-required fail-closed equality result.",
+      "task_decision_mismatches": 0,
+      "verdict": "passed_exact_strict_schedule"
+    },
+    "general_ja_explain": {
+      "candidate_text": "\u30ed\u30fc\u30ab\u30ebGPU\uff08\u7279\u306b\u6d88\u8cbb\u5411\u3051GPU\u3084\u3001VRAM\u5bb9\u91cf\u306b\u5bfe\u3057\u3066\u6f14\u7b97\u30b3\u30a2\u6570\u304c\u9650\u3089\u308c\u305f\u74b0\u5883\uff09\u306b\u304a\u3044\u3066\u3001\u5927\u898f\u6a21\u8a00\u8a9e\u30e2\u30c7\u30eb\uff08LLM\uff09\u306e\u63a8\u8ad6\u901f\u5ea6\u304c\u30e1\u30e2\u30ea\u5e2f\u57df\u5e45\uff08Memory Bandwidth\uff09\u306b\u5236\u7d04\u3055\u308c\u3084\u3059\u3044\u73fe\u8c61\u306f\u3001\u30b3\u30f3\u30d4\u30e5\u30fc\u30bf\u30a2\u30fc\u30ad\u30c6\u30af\u30c1\u30e3\u306e\u89b3\u70b9\u304b\u3089\u300c**",
+      "capture_sha256": "907112c02f3dc6b7d571b418a274ebbea1855db2d13b4005130906c5e65affcf",
+      "exact_ids": false,
+      "first_mismatch_output": 14,
+      "numerical_top1_mismatches": 1,
+      "paired_noninferiority_passed": true,
+      "raw_sha256": "44ec11470c215404e70cc34d537650ecb5b40bb0ff49e1dc5bb2c699110437bd",
+      "raw_source": "/tmp/paro-fast-review-free-running-general_ja_explain.json",
+      "review_note": "Both are fluent technical Japanese. The narrow \u8a08\u7b97/\u6f14\u7b97 swap completes as grammatical \u8a08\u7b97\u80fd\u529b vs \u6f14\u7b97\u30b3\u30a2\u6570 phrasing and remains directly responsive; no material regression is visible.",
+      "strict_text": "\u30ed\u30fc\u30ab\u30ebGPU\uff08\u7279\u306b\u6d88\u8cbb\u5411\u3051GPU\u3084\u3001VRAM\u5bb9\u91cf\u306b\u5bfe\u3057\u3066\u8a08\u7b97\u80fd\u529b\u304c\u76f8\u5bfe\u7684\u306b\u4f4e\u3044\u74b0\u5883\uff09\u306b\u304a\u3044\u3066\u3001\u5927\u898f\u6a21\u8a00\u8a9e\u30e2\u30c7\u30eb\uff08LLM\uff09\u306e\u63a8\u8ad6\u901f\u5ea6\u304c\u30e1\u30e2\u30ea\u5e2f\u57df\u5e45\uff08Memory Bandwidth\uff09\u306b\u5236\u7d04\u3055\u308c\u3084\u3059\u3044\u73fe\u8c61\u306f\u3001\u30b3\u30f3\u30d4\u30e5\u30fc\u30bf\u30a2\u30fc\u30ad\u30c6\u30af\u30c1\u30e3\u306e\u89b3\u70b9\u304b\u3089\u300c",
+      "task_decision_mismatches": 1,
+      "verdict": "passed_paired_manual_review"
+    },
+    "general_ja_plan": {
+      "capture_sha256": "0607d73cc504760f80358737046dec30f9cedb4b899098d958d78135daa0cab1",
+      "exact_ids": true,
+      "numerical_top1_mismatches": 0,
+      "paired_noninferiority_passed": true,
+      "review_note": "Every strict-owned target decision and commit row matches across D64, so the fast free-running trajectory is identical within the reviewed 64-token horizon. For truncated code, this is the rubric-required fail-closed equality result.",
+      "task_decision_mismatches": 0,
+      "verdict": "passed_exact_strict_schedule"
+    },
+    "mixed_ja_en_review": {
+      "capture_sha256": "7e1e89270a68f640c318dd16fe90d88490a55db71f3c5305a2dad4adaf4bc555",
+      "exact_ids": true,
+      "numerical_top1_mismatches": 0,
+      "paired_noninferiority_passed": true,
+      "review_note": "Every strict-owned target decision and commit row matches across D64, so the fast free-running trajectory is identical within the reviewed 64-token horizon. For truncated code, this is the rubric-required fail-closed equality result.",
+      "task_decision_mismatches": 0,
+      "verdict": "passed_exact_strict_schedule"
+    },
+    "mixed_ja_en_translate": {
+      "capture_sha256": "666d75a50fb7dfbd88eb45441a93b6e2eeb1b58a80056e322036b4d938c74988",
+      "exact_ids": true,
+      "numerical_top1_mismatches": 0,
+      "paired_noninferiority_passed": true,
+      "review_note": "Every strict-owned target decision and commit row matches across D64, so the fast free-running trajectory is identical within the reviewed 64-token horizon. For truncated code, this is the rubric-required fail-closed equality result.",
+      "task_decision_mismatches": 0,
+      "verdict": "passed_exact_strict_schedule"
+    }
+  },
+  "rubric": "benchmarks/results/2026-08-24-w7900-paro-fast-verifier-review-rubric.json",
+  "rubric_sha256": "c8f0eda0588c08484b33c1e84991930f5f36376993dc9e9b1be38bf36ad76901",
+  "schema": "hipengine.paro_mtp_fast_complete_task_review.v1",
+  "status": "passed"
+}
