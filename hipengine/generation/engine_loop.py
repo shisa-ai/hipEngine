@@ -649,6 +649,13 @@ class SubmitPollTextGenerator:
                 runner_request,
                 prompt_rows=(prompt_row,),
             )
+            register_speculative = getattr(
+                self._runner,
+                "register_speculative_request",
+                None,
+            )
+            if callable(register_speculative):
+                register_speculative(request_id, max(1, desired))
             timing_observer = getattr(
                 self._runner,
                 "record_prompt_tokenize_ms",
