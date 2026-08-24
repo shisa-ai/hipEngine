@@ -90,6 +90,7 @@ from hipengine.core.tensor import Tensor
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from hipengine.speculative import MTP_CHAIN_CANDIDATE_BUDGETS, MtpDraftRequest, TargetVerifyBatch, compile_mtp_chain
 from hipengine.speculative.mtp_native import NativeMtpChainProposer, NativeMtpW8A16Head
+from hipengine.speculative.paro_mtp_profiles import validate_paro_mtp_route_scope
 from scripts.mtp_native_decode_step_smoke import run_smoke as run_native_mtp_proposal
 from scripts.dflash_chain_e2e_bench import _build_branching_topk_tree_target_batch
 
@@ -358,14 +359,15 @@ def _validate_proposer_target_contract_scope(
 ) -> None:
     if not enabled:
         return
-    if int(candidate_budget) != 1:
-        raise ValueError("PARO proposer target-contract spike is currently B=1 only")
-    if str(graph_mode) != "off":
-        raise ValueError("PARO proposer target-contract spike currently requires graph_mode=off")
-    if str(tree_mode) != "chain" or float(confidence_threshold) != 0.0 or float(draft_p_min) != 0.0:
-        raise ValueError("PARO proposer target-contract spike currently supports fixed chain policy only")
-    if int(ar_fallback_zero_streak) != 0 or bool(overlap_verify_commit_proposer):
-        raise ValueError("PARO proposer target-contract spike does not yet support fallback or overlap")
+    validate_paro_mtp_route_scope(
+        candidate_budget=int(candidate_budget),
+        graph_mode=str(graph_mode),
+        draft_mode=str(tree_mode),
+        confidence_threshold=float(confidence_threshold),
+        draft_p_min=float(draft_p_min),
+        ar_fallback_zero_streak=int(ar_fallback_zero_streak),
+        overlap_verify_commit_proposer=bool(overlap_verify_commit_proposer),
+    )
 
 
 def _advance_proposer_from_selected_target(
@@ -1132,6 +1134,7 @@ def _run_spec_persistent_device(
                     scale_f32_ptr=int(session.lm_head_scale.tensor.ptr),
                     vocab_size=int(session.vocab_size),
                     threads=int(session.lm_head_threads),
+                    owner=session,
                 )
                 if proposer_target_contract
                 else None
