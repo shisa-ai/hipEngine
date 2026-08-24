@@ -15,7 +15,9 @@ from scripts.qwen36_dense_gguf_suite import (
     _resolved_target_identity,
     aggregate_scopes,
     build_parser,
+    build_budget_policy,
     native_hip_speed_claim_hardware_eligible,
+    parse_budget_sequence,
     parse_candidate_budgets,
     suite_speed_claim_eligible,
     timed_transition_count,
@@ -50,6 +52,48 @@ def _row(
             "scheduler_accept_replay_host_residual": decode_seconds * 0.15,
         },
     }
+
+
+def test_budget_sequence_parser_requires_supported_transition_budgets() -> None:
+    assert parse_budget_sequence("1,1,2,1,3,2,2,3,3,1") == (
+        1,
+        1,
+        2,
+        1,
+        3,
+        2,
+        2,
+        3,
+        3,
+        1,
+    )
+    with pytest.raises(ValueError, match="subset of 1,2,3"):
+        parse_budget_sequence("1,4")
+
+
+def test_budget_policy_builder_returns_fresh_request_owned_instances() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "--adaptive-budget",
+            "--adaptive-ema-alpha",
+            "0.5",
+            "--adaptive-switch-margin",
+            "0.1",
+            "--budget-sequence",
+            "1,2,3",
+            "--output",
+            "/tmp/out.json",
+        ]
+    )
+
+    adaptive_a = build_budget_policy(args, "adaptive")
+    adaptive_b = build_budget_policy(args, "adaptive")
+    sequence = build_budget_policy(args, "sequence")
+    assert adaptive_a is not adaptive_b
+    assert adaptive_a.config.ema_alpha == 0.5
+    assert adaptive_a.config.switch_margin == 0.1
+    assert sequence.budgets == (1, 2, 3)
 
 
 def test_candidate_budget_parser_accepts_unique_b1_through_b4_subset() -> None:

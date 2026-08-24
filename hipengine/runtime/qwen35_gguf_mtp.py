@@ -34,6 +34,8 @@ from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative import (
+    MtpBudgetCycleResult,
+    MtpBudgetPolicy,
     MtpProposalContext,
     TargetAcceptSummary,
     TargetCommitPlan,
@@ -220,6 +222,7 @@ class Qwen35GGUFMTPGenerationResult:
     gpu_accept_match_cpu: bool
     graph_stats: dict[str, object]
     cycle_records: tuple[dict[str, object], ...] = ()
+    budget_policy_summary: dict[str, object] | None = None
 
     @property
     def accepted_draft_tokens(self) -> int:
@@ -253,6 +256,7 @@ class Qwen35GGUFMTPGenerationResult:
             "gpu_accept_match_cpu": bool(self.gpu_accept_match_cpu),
             "graph_stats": self.graph_stats,
             "cycle_records": list(self.cycle_records),
+            "budget_policy": self.budget_policy_summary,
         }
 
 
@@ -1327,6 +1331,7 @@ class Qwen35GGUFMTPDecodeSession:
         stop_token_ids: Sequence[int] = (),
         checkpoint: Callable[[], None] | None = None,
         lifecycle_hook: Callable[[str], None] | None = None,
+        budget_policy: MtpBudgetPolicy | None = None,
     ) -> Qwen35GGUFMTPGenerationResult:
         """Generate one MTP request, observing cancellation/deadline/shutdown.
 
@@ -1346,6 +1351,11 @@ class Qwen35GGUFMTPDecodeSession:
         self.draft_provider.reset_request(int(request_id))
         scheduler = ResidentBatchScheduler(capacity=1)
         rid = scheduler.submit(prompt, max_new_tokens=int(max_new_tokens), request_id=int(request_id))
+        if budget_policy is not None:
+            budget_policy.start_request(
+                request_id=rid,
+                max_budget=self.candidate_budget,
+            )
         scheduler.admit_pending()
         scheduler.next_prefill_work(chunk_size=len(prompt))
 
@@ -1384,6 +1394,9 @@ class Qwen35GGUFMTPDecodeSession:
                 verify_seconds=0.0,
                 gpu_accept_match_cpu=True,
                 graph_stats=scheduler.graph_buckets.stats.to_json_dict(),
+                budget_policy_summary=(
+                    None if budget_policy is None else budget_policy.summary()
+                ),
             )
 
         policy = self._register_kv_policy(rid)
@@ -1397,6 +1410,7 @@ class Qwen35GGUFMTPDecodeSession:
         decode_started = time.perf_counter()
         while rid not in scheduler.completed:
             _mtp_cycle_checkpoint(checkpoint)
+            cycle_started = time.perf_counter()
             cycle_phases: list[str] = []
 
             def lifecycle_phase(name: str) -> None:
@@ -1408,7 +1422,26 @@ class Qwen35GGUFMTPDecodeSession:
             remaining = int(request.remaining_decode)
             if remaining <= 0:
                 break
-            budget = _largest_budget_at_most(min(self.candidate_budget, remaining))
+            max_cycle_budget = _largest_budget_at_most(
+                min(self.candidate_budget, remaining)
+            )
+            budget = max_cycle_budget
+            if budget_policy is not None:
+                budget = int(
+                    budget_policy.choose_budget(
+                        cycle=len(accepted_counts) + 1,
+                        max_budget=max_cycle_budget,
+                        remaining_decode=remaining,
+                    )
+                )
+                if (
+                    budget not in _GGUF_MTP_CANDIDATE_BUDGETS
+                    or budget > max_cycle_budget
+                    or budget > self.candidate_budget
+                ):
+                    raise ValueError(
+                        "budget policy selected an unsupported or oversized budget"
+                    )
             proposal_context = MtpProposalContext(
                 request_ids=(rid,),
                 root_tokens=(root,),
@@ -1595,6 +1628,18 @@ class Qwen35GGUFMTPDecodeSession:
                 )
                 proposal_seconds += time.perf_counter() - proposal_update_started
             lifecycle_phase("after_draft_repair")
+            cycle_wall_ms = (time.perf_counter() - cycle_started) * 1000.0
+            if budget_policy is not None:
+                budget_policy.record_cycle(
+                    MtpBudgetCycleResult(
+                        cycle=len(accepted_counts) + 1,
+                        budget=budget,
+                        accepted_count=accepted,
+                        visible_tokens=accepted + 1,
+                        cycle_wall_ms=cycle_wall_ms,
+                        full_accept=bool(summary.full_accept[0]),
+                    )
+                )
             # Cancellation observed during an in-flight cycle is published only
             # after target commit and draft repair are both terminal. Raising
             # here suppresses the whole non-streaming response without leaving
@@ -1607,6 +1652,7 @@ class Qwen35GGUFMTPDecodeSession:
             record: dict[str, object] = {
                 "cycle": len(accepted_counts),
                 "budget": budget,
+                "cycle_wall_ms": cycle_wall_ms,
                 "root_token": root,
                 "root_position": int(work.target_batch.positions[0]),
                 "draft_tokens": list(draft.candidate_tokens),
@@ -1668,6 +1714,9 @@ class Qwen35GGUFMTPDecodeSession:
             gpu_accept_match_cpu=gpu_match,
             graph_stats=scheduler.graph_buckets.stats.to_json_dict(),
             cycle_records=tuple(records),
+            budget_policy_summary=(
+                None if budget_policy is None else budget_policy.summary()
+            ),
         )
 
     def _prefill_target_and_draft(

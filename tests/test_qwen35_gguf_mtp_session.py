@@ -317,6 +317,21 @@ def test_mtp_generate_cancellation_precedes_proposal_mutation(monkeypatch) -> No
     proposed: list[tuple[object, ...]] = []
     device_proposals: list[tuple[object, ...]] = []
     prepared: list[tuple[object, ...]] = []
+    budget_events: list[tuple[object, ...]] = []
+
+    class BudgetPolicy:
+        def start_request(self, *, request_id, max_budget):
+            budget_events.append(("start", int(request_id), int(max_budget)))
+
+        def choose_budget(self, **kwargs):
+            budget_events.append(("choose", kwargs))
+            raise AssertionError("cancellation must prevent budget choice")
+
+        def record_cycle(self, result):
+            budget_events.append(("record", result))
+
+        def summary(self):
+            return {"kind": "test"}
 
     class FakeScheduler:
         def __init__(self, capacity: int = 1) -> None:
@@ -390,8 +405,10 @@ def test_mtp_generate_cancellation_precedes_proposal_mutation(monkeypatch) -> No
             max_new_tokens=4,
             request_id=7,
             checkpoint=cancel_before_first_cycle,
+            budget_policy=BudgetPolicy(),
         )
 
+    assert budget_events == [("start", 7, 2)]
     assert proposed == []
     assert device_proposals == []
     assert prepared == []

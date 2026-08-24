@@ -52,6 +52,13 @@ from hipengine.speculative.dflash_drafter import (
     dflash_silu_mul_bf16,
 )
 from hipengine.speculative.generic import TreeDraftRequest, compile_tree_draft
+from hipengine.speculative.mtp_budget import (
+    MtpAdaptiveBudgetConfig,
+    MtpAdaptiveBudgetPolicy,
+    MtpBudgetCycleResult,
+    MtpBudgetPolicy,
+    MtpBudgetSequencePolicy,
+)
 from hipengine.speculative.mtp import (
     MTP_CHAIN_CANDIDATE_BUDGETS,
     MissingMtpWeightsError,
@@ -223,6 +230,11 @@ __all__ = [
     "DFlashVerifyGraphBucketKey",
     "DFlashVerifyGraphValidation",
     "MTP_CHAIN_CANDIDATE_BUDGETS",
+    "MtpAdaptiveBudgetConfig",
+    "MtpAdaptiveBudgetPolicy",
+    "MtpBudgetCycleResult",
+    "MtpBudgetPolicy",
+    "MtpBudgetSequencePolicy",
     "MissingMtpWeightsError",
     "MtpChainCompiler",
     "MtpDraftProvider",

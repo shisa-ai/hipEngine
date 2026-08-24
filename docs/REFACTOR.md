@@ -4261,3 +4261,23 @@ should be boring.
   -> 184/198ms) in BOTH trees, so neither design scales this model's
   aggregate throughput; rocprof kernel-family audit of the packed step is
   the follow-up.
+
+## RF-OI2 — default-off adaptive MTP budget diagnostic (2026-08-25)
+
+- **State:** rejected for promotion; retained only as explicit diagnostic and
+  transition-contract infrastructure.
+- **Paths:** `hipengine/speculative/mtp_budget.py`, optional `budget_policy` in
+  `runtime/qwen35_gguf_mtp.py`, and `--budget-sequence` / `--adaptive-budget`
+  in `scripts/qwen36_dense_gguf_suite.py`.
+- **Why retained:** the request-owned sequence policy is the first real gfx1151
+  proof of all nine B1/B2/B3 transitions over independent proposal/target graph
+  buckets, including reject/partial/full outcomes and clean teardown. The EMA
+  controller supplies reproducible negative evidence without prompt/token
+  branches, but loses to fixed B3 on aggregate/train/category economics.
+- **Removal trigger:** before exposing adaptive depth in public generation,
+  either (a) replace the rejected EMA controller with a deterministic policy
+  that beats the best fixed budget on full train and every heldout/category
+  gate, then remove the old controller/config, or (b) if no successor campaign
+  consumes variable-budget transitions, move the sequence owner into test
+  support and remove the runtime policy hook and benchmark CLI flags. Never
+  remove the fixed B1/B2/B3 graph buckets or strict transaction fallbacks.

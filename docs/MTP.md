@@ -483,6 +483,17 @@ oracles are diagnostic bounds only.
 | A4 | Tree or rejection-boundary sibling retest | Full B=3 tree is exact but negative on the current stack. Lower wall does not by itself make tree overhead cheaper, so only revisit if histograms show first-rejection cases a sibling can recover. | Revisit only after the reduced-DAG/proposer wall path stabilizes. Prefer a chain-plus-one-sibling-at-first-rejection diagnostic before reopening full tree search; treat the possible `+0.3-0.5` visible tokens/cycle as a hypothesis, not a claim. Compare against chain at the same B and report added rows, acceptance lift, wall, and ratio. |
 | A5 | Relaxed speculative sampling | This is the known theoretical acceptance ceiling, but it changes the exact top-1 accept contract and needs distribution access from both models. | Out of scope for the exact-default sprint. Treat as explicit opt-in quality tier, never as a default speed row; it needs a separate accept/reject kernel and distribution-read cost model. |
 
+**gfx1151 dense update (2026-08-25):** Qwen3.8-27B `Q4_K_M` now passes a
+request-owned variable-budget transition gate: all nine directed B1/B2/B3
+edges, all accepted depths per budget, exact generated IDs/GPU acceptance, three
+budget-specific proposal/target buckets, deterministic repeat choices, and
+zero teardown. The first content-agnostic EMA scorer remains default-off and is
+rejected economically: **21.089 vs fixed B3 21.211 tok/s (-0.577%)** in the
+primary full suite and **20.832 vs 21.197 (-1.724%)** on matched repeat, with
+material code/general-English losses. Retain the transition seam, not the
+policy. Evidence:
+[`2026-08-25-gfx1151-qwen38-omlx-oi2-adaptive-rejected.json`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi2-adaptive-rejected.json).
+
 For B sweeps, use the ratio gate rather than intuition. The retained fixed B=1
 row is `1.617 / 14.134 = 0.1144` visible tokens/ms, just above AR at about
 `1 / 9.031 = 0.1107` tokens/ms. Fixed B=3 has much higher density
