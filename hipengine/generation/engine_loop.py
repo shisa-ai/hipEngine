@@ -19,7 +19,11 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Iterable, Protocol, Sequence
 
 from hipengine.dispatch import RequestState, SlotMove, WorkItem, WorkKind
-from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
+from hipengine.generation.batch_scheduler import (
+    CompletedRequest,
+    GeneratedToken,
+    ResidentBatchScheduler,
+)
 from hipengine.generation.deadline import GenerationCancelled, generation_deadline_expired
 from hipengine.kvcache import (
     PREFIX_CACHE_CHOICES,
@@ -32,6 +36,14 @@ from hipengine.generation.registry import (
     GenerationRequest,
     GenerationStreamChunk,
     TextGenerator,
+)
+from hipengine.generation.sampling import speculative_mtp_sampling_blockers
+from hipengine.speculative import (
+    SpecCycleResult,
+    SpecCycleStage,
+    SpeculativeCapability,
+    SpeculativeRequestSemantics,
+    plan_speculative_requests,
 )
 
 PREFILL_DECODE_POLICIES = ("protect_decode", "protect_ttft", "fair", "token_budget")
@@ -240,6 +252,23 @@ class EngineLoopRunner(Protocol):
 
     def rollback_admission(self, request: RequestState) -> None:
         """Release an unpublished reservation after slot-commit failure."""
+
+    def speculative_capability(
+        self,
+        request_semantics: Sequence[SpeculativeRequestSemantics],
+    ) -> SpeculativeCapability | None:
+        """Return one cold composed capability or None for target-only AR."""
+
+    def speculative_claims_fit(self, plan) -> bool:
+        """Check complete target/provider/transient fit without mutation."""
+
+    def execute_speculative_cycle(
+        self,
+        plan,
+        *,
+        commit: bool,
+    ) -> SpecCycleResult:
+        """Execute exactly one bounded planned cycle."""
 
 
 class SubmitPollTextGenerator:
@@ -1699,6 +1728,8 @@ class ResidentEngineLoop:
             max_pending_requests=resolved_config.max_pending_requests,
             reclaim_callback=self._reclaim_runner_state,
         )
+        self._speculative_candidate_counts: dict[int, int] = {}
+        self._speculative_cycle_sequence = 0
 
     def reconfigure(self, config: EngineLoopConfig) -> None:
         """Apply an idle resource/policy generation without replacing the loop."""
@@ -1804,10 +1835,34 @@ class ResidentEngineLoop:
             request_id=request_id,
         )
 
+    def submit_speculative(
+        self,
+        prompt_tokens: Iterable[int],
+        *,
+        max_new_tokens: int,
+        desired_candidate_count: int,
+        request_id: int | None = None,
+    ) -> int:
+        """Submit speculative intent into the ordinary Generation-2 lifecycle."""
+
+        desired = int(desired_candidate_count)
+        if desired <= 0:
+            raise ValueError("desired_candidate_count must be positive")
+        selected = self.submit(
+            prompt_tokens,
+            max_new_tokens=max_new_tokens,
+            request_id=request_id,
+        )
+        self._speculative_candidate_counts[selected] = desired
+        return selected
+
     def cancel(self, request_id: int, *, reason: str = "cancel") -> bool:
         """Cancel a pending or active request and reclaim active scheduler state."""
 
-        return self.scheduler.cancel(request_id, reason=reason) is not None
+        completed = self.scheduler.cancel(request_id, reason=reason)
+        if completed is not None:
+            self._speculative_candidate_counts.pop(int(request_id), None)
+        return completed is not None
 
     def compact(self, order: Sequence[int] | None = None) -> tuple[SlotMove, ...]:
         """Compact scheduler slots and commit the same moves to the runner."""
@@ -2035,6 +2090,9 @@ class ResidentEngineLoop:
         return (EngineLoopEvent(kind="work", request_ids=work.request_ids, work_kind=work.kind),)
 
     def _run_decode(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
+        speculative = self._maybe_run_speculative_cycle(work)
+        if speculative is not None:
+            return speculative
         start = time.perf_counter()
         decode_batch = getattr(self.runner, "decode_batch", None)
         if callable(decode_batch):
@@ -2043,6 +2101,128 @@ class ResidentEngineLoop:
             generated = tuple(self.runner.decode(work))
         self.scheduler.record_work_duration(work, time.perf_counter() - start)
         generated_events = self.scheduler.record_generated_events(generated)
+        return self._decode_events(work, generated_events)
+
+    def _maybe_run_speculative_cycle(
+        self,
+        work: WorkItem,
+    ) -> tuple[EngineLoopEvent, ...] | None:
+        desired = tuple(
+            self._speculative_candidate_counts.get(int(request_id), 0)
+            for request_id in work.request_ids
+        )
+        if not any(desired):
+            return None
+        semantics: list[SpeculativeRequestSemantics] = []
+        sampler_block = self.scheduler.sampler_params_block(work.request_ids)
+        for request_id in work.request_ids:
+            request = self.scheduler.active_batch.requests[int(request_id)]
+            params = sampler_block.params_for(int(request_id))
+            sampling_mode = (
+                "greedy"
+                if not speculative_mtp_sampling_blockers(params)
+                else "processed"
+            )
+            semantics.append(
+                SpeculativeRequestSemantics(
+                    request_id=int(request_id),
+                    sampling_mode=sampling_mode,
+                    mode="verify_chain",
+                    context_tokens=max(1, int(request.context_len)),
+                    remaining_decode=int(request.remaining_decode),
+                )
+            )
+        resolve_capability = getattr(self.runner, "speculative_capability", None)
+        capability = (
+            resolve_capability(tuple(semantics))
+            if callable(resolve_capability)
+            else None
+        )
+        if capability is not None and not isinstance(capability, SpeculativeCapability):
+            raise TypeError("runner speculative_capability must return SpeculativeCapability or None")
+        self._speculative_cycle_sequence += 1
+        operation_id = f"specdec2-cycle:{self._speculative_cycle_sequence}"
+        graph_available = self._speculative_runner_flag(
+            "speculative_graph_available",
+            work,
+            default=True,
+        )
+        target_available = self._speculative_runner_flag(
+            "speculative_target_physical_available",
+            work,
+            default=True,
+        )
+        plan = plan_speculative_requests(
+            capability,
+            tuple(semantics),
+            resident_slots=work.slot_ids,
+            desired_candidate_counts=desired,
+            operation_id=operation_id,
+            cycle_id=self._speculative_cycle_sequence,
+            context_bucket_size=self.scheduler.context_bucket_size,
+            graph_available=graph_available,
+            target_physical_available=target_available,
+        )
+        claims_fit = getattr(self.runner, "speculative_claims_fit", None)
+        if plan.has_speculative_rows and callable(claims_fit) and not bool(claims_fit(plan)):
+            plan = plan_speculative_requests(
+                capability,
+                tuple(semantics),
+                resident_slots=work.slot_ids,
+                desired_candidate_counts=desired,
+                operation_id=operation_id,
+                cycle_id=self._speculative_cycle_sequence,
+                context_bucket_size=self.scheduler.context_bucket_size,
+                claims_fit=False,
+                graph_available=graph_available,
+                target_physical_available=target_available,
+            )
+        if plan.is_ar_only:
+            return None
+        execute = getattr(self.runner, "execute_speculative_cycle", None)
+        if not callable(execute):
+            return None
+        start = time.perf_counter()
+        result = execute(plan, commit=True)
+        elapsed = time.perf_counter() - start
+        if not isinstance(result, SpecCycleResult):
+            raise TypeError("execute_speculative_cycle must return SpecCycleResult")
+        if result.stage is not SpecCycleStage.COMMITTED:
+            raise RuntimeError("runner returned a non-committed speculative cycle")
+        if result.transaction.request_ids != plan.request_ids:
+            raise ValueError("speculative result request_ids must match plan")
+        if result.transaction.cycle_id != plan.cycle_id:
+            raise ValueError("speculative result cycle_id must match plan")
+        row_to_request = tuple(
+            request_id
+            for request_id, count in zip(
+                plan.request_ids, plan.candidate_counts, strict=True
+            )
+            for _ in range(count)
+        )
+        spec_work = WorkItem(
+            kind=WorkKind(plan.mode),
+            request_ids=plan.request_ids,
+            row_to_request=row_to_request,
+            draft_depth=plan.max_candidate_count,
+            slot_ids=work.slot_ids,
+            active_mask=work.active_mask,
+        )
+        self.scheduler.record_work_duration(spec_work, elapsed)
+        generated_events = self.scheduler.record_speculative_cycle_result(result)
+        return self._decode_events(spec_work, generated_events)
+
+    def _speculative_runner_flag(
+        self,
+        name: str,
+        work: WorkItem,
+        *,
+        default: bool,
+    ) -> bool:
+        value = getattr(self.runner, name, default)
+        return bool(value(work) if callable(value) else value)
+
+    def _decode_events(self, work: WorkItem, generated_events) -> tuple[EngineLoopEvent, ...]:
         self._last_work_kind = work.kind
         self._consecutive_prefill_chunks = 0
         self._cold_prefill_cohort_request_ids = frozenset()
@@ -2069,6 +2249,7 @@ class ResidentEngineLoop:
         return tuple(events)
 
     def _reclaim_runner_state(self, completed: CompletedRequest) -> None:
+        self._speculative_candidate_counts.pop(int(completed.request_id), None)
         reclaim = getattr(self.runner, "reclaim", None)
         if callable(reclaim):
             reclaim(completed)

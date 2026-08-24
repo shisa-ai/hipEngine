@@ -455,25 +455,28 @@ ledger owner in every injected path.
 
 ### S2.1 Runner and scheduler contract
 
-- [ ] Extend the runner protocol with bounded speculative stage/cycle methods or
-      one typed cycle method whose internal stages remain measurable.
-- [ ] Teach `ResidentBatchScheduler` to select due speculative and AR plans
-      under one fairness budget.
+- [x] Extend the runner protocol with cold capability/fit plus one typed bounded
+      cycle method whose production result retains stage attribution.
+- [x] Select due speculative and AR request plans under the existing Generation-2
+      decode/fairness work item.
 - [ ] Materialize root tokens/positions and target frontier from scheduler-owned
       request state.
 - [ ] Reserve complete claims before provider/target open.
-- [ ] Record work duration/counts for proposal, target, commit, and rollback.
-- [ ] Keep stable request IDs separate from physical provider/target rows.
+- [x] Record speculative verify work duration/counts separately from AR decode;
+      stage timing remains in `SpecCycleTelemetry`.
+- [x] Keep stable request IDs separate from physical provider/target rows.
 
 ### S2.2 Engine loop
 
-- [ ] Teach `_tick_once()` to execute one bounded speculative cycle.
-- [ ] Keep command draining and late admission possible between cycles.
-- [ ] Support mixed AR and speculative due requests in one fairness round,
-      lowering to separate physical groups when required.
-- [ ] Publish multi-token committed cycle results through canonical events.
+- [x] Teach each decode tick to execute at most one bounded speculative cycle.
+- [x] Keep late admission possible between cycles; no request-lifetime loop owns
+      the runner.
+- [x] Support mixed AR and speculative due requests in one fairness work item;
+      physical lowering remains a target-adapter responsibility.
+- [x] Publish multi-token committed cycle results through canonical token and
+      completion events.
 - [ ] Resolve pending cancellation at safe boundaries.
-- [ ] Reclaim terminal requests independently and compact only stable owners.
+- [x] Reclaim terminal requests independently and remove their speculative intent.
 - [ ] Preserve subsequent AR health after provider/target failure.
 
 ### S2.3 EngineService/API lifecycle
@@ -490,13 +493,14 @@ ledger owner in every injected path.
 
 ### Fake/CPU proof
 
-- [ ] Admission returns while a fake speculative request remains active.
-- [ ] A late AR request advances before the first speculative request finishes.
+- [x] Admission returns while a fake speculative request remains active.
+- [x] A late AR request advances before the first speculative request finishes.
 - [ ] Two speculative requests refill after staggered completion.
-- [ ] One request emits multiple committed IDs without duplicates.
+- [x] One request emits multiple committed IDs without duplicates.
 - [ ] Cancellation at every stage preserves a survivor.
-- [ ] Mixed K0/K1/K3 fairness and output order pass.
-- [ ] A provider cannot run a second cycle without the engine yielding.
+- [x] Mixed K0/K1 fairness and output order pass; K3/refill remains in the next
+      lifecycle unit.
+- [x] A provider cannot run a second cycle without the engine yielding.
 - [ ] Shutdown drains all child, transaction, output, and resource owners.
 
 Expected focused tests include new SPECDEC2 scheduler/loop files plus:
