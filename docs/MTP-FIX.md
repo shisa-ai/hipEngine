@@ -16,6 +16,8 @@ request/cycle records.
 
 Related design and historical evidence:
 
+- [`SPECDEC2.md`](SPECDEC2.md) — approved continuous speculative successor and implementation punchlist;
+- [`SPECDEC2-RESEARCH.md`](SPECDEC2-RESEARCH.md) — external engine audit and architecture rationale;
 - [`MTP.md`](MTP.md) — implementation history, economics, and provider design;
 - [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) — N0–N5 ownership milestones;
 - [`MTP-LLAMACPP-PARITY.md`](MTP-LLAMACPP-PARITY.md) — external comparison protocol;

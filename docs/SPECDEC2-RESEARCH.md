@@ -1,6 +1,6 @@
 # SPECDEC2 / MTP2 Research and Architecture Proposal
 
-Status: **research proposal; not yet an approved `docs/PLAN.md` change**
+Status: **research complete; architecture approved; normative implementation plan is [`SPECDEC2.md`](SPECDEC2.md)**
 
 Date: **2026-08-24**
 
@@ -1051,6 +1051,10 @@ Promotion rules:
 - Do not require every provider before shipping the first exact MTP2 scope.
 
 ## Recommended first campaign
+
+Architecture approval is now recorded in [`SPECDEC2.md`](SPECDEC2.md). Its
+normative S0-S7 punchlist supersedes this research-stage recommendation. The
+original bounded first unit was:
 
 After explicit architecture approval, open a bounded **SPECDEC2-S0/S1** campaign:
 
