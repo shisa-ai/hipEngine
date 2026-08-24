@@ -150,6 +150,7 @@ from hipengine.speculative.interfaces import (
     TargetVerifyBuffers,
     Verifier,
 )
+from hipengine.speculative.policy import plan_speculative_requests
 from hipengine.speculative.packing import (
     SpeculativePackedGroup,
     SpeculativePackingBudget,
@@ -349,6 +350,7 @@ __all__ = [
     "VerifierCostMap",
     "VerifierCostRecord",
     "pack_speculative_requests",
+    "plan_speculative_requests",
     "SpeculativeCommitEvent",
     "SpeculativeOutputTail",
     "StochasticAcceptanceAccounting",
