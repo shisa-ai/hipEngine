@@ -16,6 +16,9 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
+from hipengine.loading import load_gguf_index
+from hipengine.loading.gguf import MissingGGUFTensorError
+from hipengine.loading.qwen35_gguf_nextn import build_qwen35_gguf_nextn_tensor_map
 from hipengine.runtime import qwen35_gguf_nextn as nextn_mod
 from hipengine.runtime.qwen35_gguf_nextn import (
     Qwen35GGUFNextNDeviceProposal,
@@ -665,6 +668,10 @@ def _require_real_nextn(model: Path) -> None:
         pytest.skip(f"local GGUF fixture not found: {model}")
     if not _hip_available():
         pytest.skip("HIP runtime is not available")
+    try:
+        build_qwen35_gguf_nextn_tensor_map(load_gguf_index(model))
+    except MissingGGUFTensorError as exc:
+        pytest.skip(f"local GGUF fixture is not MTP-capable: {exc}")
     free_bytes, _ = get_hip_runtime().mem_get_info()
     if free_bytes < 3 * 1024**3:
         pytest.skip(f"GGUF NextN one-step gate needs 3 GiB free VRAM; only {free_bytes / 1024**3:.2f} GiB")

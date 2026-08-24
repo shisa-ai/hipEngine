@@ -1,6 +1,6 @@
 # oMLX Ideas Campaign
 
-- **Status:** gfx1151 `OI-0` complete; first exact `OI-1` Q4 morphology retained
+- **Status:** gfx1151 `OI-0`/`OI-1` complete; `OI-2` transitions pass, controller rejected
 - **Created:** 2026-08-25
 - **Requested filename:** `OLMX-IDEAS.md` (the project reviewed is spelled **oMLX**)
 - **Primary target:** Qwen3.x MTP on `hip_gfx1151` / Radeon 8060S; `OI-0` starts with Qwen3.8-27B `Q4_K_M`
@@ -540,6 +540,36 @@ A verifier `B0` timing row is not true AR and cannot drive the decision.
 - Compare against true AR from the same protocol.
 - No dynamic graph capture occurs after a proposal is in flight.
 
+### 8.4 gfx1151 result — 2026-08-25
+
+The request-owned variable-budget transition contract passes on the exact
+Qwen3.8-27B `Q4_K_M` lane. The deterministic schedule
+`1,1,2,1,3,2,2,3,3,1` exercises all nine directed budget edges on the complete
+natural25 suite. Real cycles cover B1 reject/full, B2 reject/every partial/full,
+and B3 reject/every partial/full. All generated IDs, GPU/CPU acceptance,
+transaction stage reconciliation, and teardown remain exact. The provider owns
+three independent `(slot,budget)` proposal graphs; target scheduler rows own
+three distinct shape buckets. Cancellation before a cycle chooses no budget or
+launches no proposal/target mutation.
+
+The content-agnostic EMA controller is rejected. It explores B1/B2/B3, estimates
+per-depth conditional acceptance and per-budget complete cycle wall, and scores
+expected visible tokens/wall with 2% hysteresis. It receives no prompt text,
+token IDs, categories, or heldout outcomes. Nevertheless:
+
+- primary adaptive **21.089 tok/s** versus fixed B3 **21.211** (**-0.577%**);
+- train **-1.047%**, code **-3.916%**, general English **-7.769%** versus each
+  scope's best fixed budget;
+- independent matched repeat adaptive **20.832** versus B3 **21.197 tok/s
+  (-1.724%)**;
+- budget choices, accepted counts, and generated IDs repeat exactly on all ten
+  prompts, so this is an economics rejection rather than nondeterminism.
+
+Retain the explicit sequence/policy hook only as default-off transition and
+negative-policy infrastructure. Do not wire adaptive depth into public
+generation. Evidence:
+[`2026-08-25-gfx1151-qwen38-omlx-oi2-adaptive-rejected.json`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi2-adaptive-rejected.json).
+
 ## 9. `OI-3` — streaming exact NextN prompt priming
 
 **Hypothesis:** consume target hidden chunks into the NextN cache as target
@@ -716,7 +746,7 @@ Update this table as atomic units land. A blank metric is not a pass.
 | --- | --- | --- | --- | --- | --- |
 | `OI-0` | complete | gfx1151 Qwen3.8-27B `Q4_K_M` | exact 10-prompt category/heldout gate | AR 11.712; B3 21.062; 100% target-timeline reconciliation | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json) |
 | `OI-1` | T0 retained; further rungs optional | gfx1151 Q4 attn-Q rows2-4 + recurrent-QKV rows3-4 | strict parent-bit exact | B1/B2/B3 +0.130%/+0.241%/+0.440%; Q4 family -1.724% | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi1-q4-two-wave-retained.json) |
-| `OI-2` | blocked by transition RED | gfx1151 dense B1/B2/B3 | exact variable-budget transaction matrix | controller versus best fixed B3 and true AR | — |
+| `OI-2` | transition retained; controller rejected | gfx1151 dense B1/B2/B3 | all 9 edges + every per-budget outcome exact | adaptive 21.089 vs fixed B3 21.211 (-0.577%); repeat -1.724% | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi2-adaptive-rejected.json) |
 | `OI-3` | ready | gfx1151 dense prompt 512/4K/16K | exact prompt-head cache and generated IDs | TTFT/prefill wall/peak memory | — |
 | `OI-4` | ready | gfx1151 dense | explicit T3 full category/heldout/long gate | acceptance and complete MTP/AR | — |
 | `OI-5` | not triggered | gfx1151 GDN 2.27-3.10% of target | profile trigger failed | no implementation | [`OI-0`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json) |
