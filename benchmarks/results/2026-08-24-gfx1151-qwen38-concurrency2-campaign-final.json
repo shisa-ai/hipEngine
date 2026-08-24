@@ -1,0 +1,227 @@
+{
+  "commits": {
+    "closure_blocker": "f6946b5b3",
+    "context_matrix": "75a03a364",
+    "lane_freeze": "caa5c656b",
+    "lineage_restore": "2149abd7e",
+    "owner_profile": "75767908f",
+    "q5_publication": "01ef1e956",
+    "q5_runtime": "cdfdf0b5c",
+    "qmicro_launchbound_reject": "a4ececa7d",
+    "qmicro_pairq_reject": "d97d8d89d",
+    "queue_cleanup": "970b51c6f",
+    "queue_decision": "896977833",
+    "route_qualification": "9b0df6c78",
+    "split_weight_skip": "e18a1ef44",
+    "structural_skip": "edfd10e8e"
+  },
+  "correctness": {
+    "c13_lifecycle_passed": true,
+    "canonical_fixed_width_executions": 130,
+    "direct_width_rows": 1950,
+    "fp16_kl_max": 0.03286571255372825,
+    "fp16_kl_mean": 0.00010249953022477523,
+    "fp16_rows": 1170,
+    "fp16_top1_agreement": 0.9982905982905983,
+    "load_request_records": 2100,
+    "prefix_pressure_graph_passed": true,
+    "supported_context_max": "c2 32K exact/native; 16K max SLO-clean"
+  },
+  "created_at": "2026-08-24T12:16:24.131358+00:00",
+  "evidence": [
+    {
+      "path": "benchmarks/results/2026-08-23-gfx1151-qwen38-fp16-serving-correctness-bundle-v3.json",
+      "sha256": "73a63f689ceb5adf60491398f9fb33c3f8540d0b90a292067b9482ac3445ef98",
+      "status": "passed"
+    },
+    {
+      "path": "benchmarks/results/2026-08-23-gfx1151-qwen38-hardware-queue-core-matrix.json",
+      "sha256": "fa5831f551ee347d139fba370bcd6826d7de5048d39a21e8091fdfba3d8b67ff",
+      "status": "retained_core_screen"
+    },
+    {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-full-width-matrix.json",
+      "sha256": "bb430715b33cf4fb295b083ce9d78c795254bbb98edc324d936ba850a1d73ab1",
+      "status": "retained_full_width_screen"
+    },
+    {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-load-stability-matrix.json",
+      "sha256": "82932514385eed01e9134271d294dd46df6afda9843a189e6dddb544128dd10d",
+      "status": "retained_load_stability_screen"
+    },
+    {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-context-graph-prefix-matrix.json",
+      "sha256": "508f84b109ba3e3f1815733298033b97c0f0b5e76064003075dd1890bd9d8fce",
+      "status": "retained_supported_context_graph_prefix"
+    },
+    {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-policy-decision.json",
+      "sha256": "26fc6f5f00d24174dcd91bf6675f676234449fdc6e84aeda7b858571e0fab57a",
+      "status": "accepted_existing_default"
+    },
+    {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-queue2-c8-c17-c32-owner-profile.json",
+      "sha256": "c746726ba79a03d5fa14d6097b9bc2cc5ab05ae55030bf07be9ea4ccd888d5d2",
+      "status": "retained_profile_ranked"
+    },
+    {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-q4-qmicro-pairq-rejected.json",
+      "sha256": "39aca7cb259a206527fd81fe5f32f03506a90b97960c954cd848264e64c8a26b",
+      "status": "rejected_removed"
+    },
+    {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-q4-qmicro-launch-bound2-rejected.json",
+      "sha256": "4d113a03ba55ef9bdbcc4367fa9e6528ba693f45cfbc7bd410ce11329353dd34",
+      "status": "rejected_removed"
+    },
+    {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-retained.json",
+      "sha256": "4385dd81be29958e20be477de64224d878da8cb0c145ed0b1b96d391344974b5",
+      "status": "retained_default_scoped"
+    },
+    {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-production-correctness.json",
+      "sha256": "b43cf46d20b7c80fb9c80647caeeecd9dea011d10d378acce3d8cf0e8257a21f",
+      "status": "passed"
+    },
+    {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-q4-split-weight-tail-skip.json",
+      "sha256": "3e10b2802b7032f6d1b9fe9421f855bbe9e876cbc4a8f7eca5bcdadce64aaa83",
+      "status": "durable_skip_incumbent_retained"
+    },
+    {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-structural-c32-skip.json",
+      "sha256": "634234095b3de0722044a6f1c37fd294ac672a7edb623c8b187c81165967aeb1",
+      "status": "structural_skip_linear_c8_composition"
+    },
+    {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-production-closure-blocked.json",
+      "sha256": "a4d30141114ec4e22eaf5afcf6f70cb16ec6063c6ac1b4b46a9b02b7726b526f",
+      "status": "blocked_c32_product_slo"
+    }
+  ],
+  "final_configuration": {
+    "gpu_max_hw_queues": 2,
+    "physical_widths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "prefill_decode_policy": "fair:256",
+    "q5_col4_strict_fallback_registered": true,
+    "q5_col8_scoped_shapes": [
+      [
+        6144,
+        5120
+      ],
+      [
+        17408,
+        5120
+      ],
+      [
+        5120,
+        10240
+      ]
+    ],
+    "queue_default_changed": false,
+    "user_numeric_override_preserved": true
+  },
+  "hardware": "AMD Radeon 8060S Graphics / gfx1151",
+  "kind": "gfx1151_qwen38_concurrency2_campaign_final",
+  "model": {
+    "kv_storage": "bf16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "recurrent_state": "fp16 production / fp32 strict fallback",
+    "sampled_fingerprint": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa"
+  },
+  "open_blockers": [
+    {
+      "detail": "0/3 final streaming SLO; TTFT18.617s, ITL2.125s, goodput0",
+      "name": "c32 product SLO"
+    },
+    {
+      "detail": "unsupported/no valid completion in diagnostic",
+      "name": "c2 64K context"
+    },
+    {
+      "detail": "mechanically stable but product latency fails across queue policies",
+      "name": "heavy arrival/soak SLO"
+    },
+    {
+      "detail": "unavailable/invalid on this host",
+      "name": "matched external serving"
+    }
+  ],
+  "performance": {
+    "complete_marker_delta_percent": {
+      "c17": -1.95,
+      "c32": -2.23,
+      "c8": -1.21
+    },
+    "final_c32_e2e_p95_s": 24.171,
+    "final_c32_goodput_tok_s": 0,
+    "final_c32_itl_p99_s": 2.125,
+    "final_c32_slo_passed_runs": "0/3",
+    "final_c32_streaming_tok_s": 10.59,
+    "final_c32_ttft_p95_s": 18.617,
+    "q5_actual_row8_delta_percent_range": [
+      -16.31,
+      -16.04
+    ],
+    "q5_leaf_wins": "93/93",
+    "q5_marked_delta_percent": {
+      "c17": -13.05,
+      "c32": -11.17,
+      "c8": -12.56
+    },
+    "three_repeat_blocking_tok_s": {
+      "c17": 11.084,
+      "c32": 10.696
+    }
+  },
+  "performance_claim": true,
+  "physical_host": "gfx1151",
+  "repository_state": {
+    "local_main_ahead": 41,
+    "origin_main_behind": 0,
+    "tracked_changes_before_final_docs": 1,
+    "unrelated_untracked_preserved": 73
+  },
+  "runtime_commit": "cdfdf0b5c47795b485e3b0e1d4f990a8a65d8606",
+  "schema_version": 1,
+  "source_commit": "f6946b5b36c27a894c77557a788d261808030ece",
+  "status": "mechanically_qualified_product_blocked",
+  "task_outcomes": {
+    "production_closure": "blocked at c32 precondition; full closure packet not repeated",
+    "q5": "scoped exact col8 promoted",
+    "qmicro": "incumbent retained; paired-Q fails c8/c32 owner and launch-bound hint retains VGPR152",
+    "queue_policy": "retain explicit queue2; all alternatives mechanically stable but no generic/SLO win",
+    "split_weight": "durable c17-only skip after complete rejected mechanism census",
+    "structural_c32": "skip; c32 only 0.65% above four c8 marker walls"
+  },
+  "verdict": {
+    "forbidden_reopens": [
+      "queue count from isolated width results",
+      "c9/c16 owners",
+      "captured-cost D2",
+      "fair burst1",
+      "eight-wave merge",
+      "paired-Q qmicro",
+      "Q4 launch-bound hints"
+    ],
+    "mechanical_campaign_complete": true,
+    "next_valid_work": [
+      "new operation-complete c8 Q4 projection mechanism",
+      "new c2 64K ownership/capacity mechanism",
+      "product scheduling mechanism that materially closes c32 TTFT/ITL"
+    ],
+    "production_closed": false,
+    "retained_runtime_change": "scoped exact Q5 col8 rowtile"
+  }
+}

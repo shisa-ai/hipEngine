@@ -273,6 +273,7 @@ p99**, **24.171 s E2E p95**, and **0/3 SLO runs / 0 goodput**. C2 64K and heavy
 load SLOs also remain blocked. Per protocol, the expensive complete closure
 matrix was not repeated after this failed precondition.
 [`Closure blocker`](results/2026-08-24-gfx1151-qwen38-production-closure-blocked.json).
+[`Campaign final`](results/2026-08-24-gfx1151-qwen38-concurrency2-campaign-final.json).
 
 The separate W7900 Qwen3.8-27B `Q4_K_M` direct graph packet qualifies physical
 `(1,2,3,4,5,6,7,8)`: c1-c8 reaches **30.30/53.79/75.47/93.49/105.67/
