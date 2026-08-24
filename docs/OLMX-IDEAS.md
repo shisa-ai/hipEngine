@@ -786,6 +786,30 @@ Adopting these ideas requires a separate converter/artifact proposal with:
 There is no generic “raise 166 tensors to 5-bit” experiment. Tensor count and
 bits must come from the declared model's measured plan.
 
+### 13.1 Qwen3.8 native-XL artifact plan
+
+Preflight selected one concrete candidate rather than a generic bit-count recipe.
+The public Unsloth revision `4ca72078...` provides a 54.66-GB split BF16 source,
+a 13.64-MB 496-entry importance matrix, and a full 866-tensor `UD-Q4_K_XL`
+sensitivity template. The deployed file's own metadata names the same source
+model and imatrix family.
+
+The remote XL artifact cannot be loaded unchanged: its dense inventory includes
+`IQ4_NL` and `IQ3_S`, which are not native hipEngine execution formats. The
+candidate projects only unsupported template types upward to native `Q4_K`,
+retains every measured `Q5_K/Q6_K/Q8_0` assignment, and enforces explicit NextN
+floors (Q8 K/V, Q6 Q/output/FFN/`eh_proj`, Q6 LM head). The resulting exact
+per-tensor plan is `360 F32 / 149 Q4_K / 191 Q5_K / 56 Q6_K / 110 Q8_0`,
+**5.2061 effective bpw / 17,779,359,744 tensor bytes**, 4.00% larger than the
+current Q4_K_M payload. A llama.cpp per-tensor/imatrix dry run reports the same
+5.21 bpw and 16,955.72 MiB output.
+
+Source download and quantization are in progress. No quality/performance/default
+claim exists until the output hash, exact header manifest, BF16-relative logits,
+task packet, full AR/MTP economics, resident memory, and loader/registry gates
+pass. Planning evidence:
+[`2026-08-25-gfx1151-qwen38-omlx-oi7-native-xl-plan.json`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi7-native-xl-plan.json).
+
 ## 14. Campaign scorecard
 
 Update this table as atomic units land. A blank metric is not a pass.
@@ -799,7 +823,7 @@ Update this table as atomic units land. A blank metric is not a pass.
 | `OI-4` | policy retained; post-norm rejected | gfx1151 Qwen3.8 dense B1/B2/B3 | full category/heldout IDs and target acceptance exact | B3 -1.62%; B2 aggregate +2.63% but heldout/Japanese regress | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi4-postnorm-rejected.json) |
 | `OI-5` | not triggered | gfx1151 GDN 2.27-3.10% of target | profile trigger failed | no implementation | [`OI-0`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json) |
 | `OI-6` | not triggered | gfx1151 attention 0.52-0.55% of target | profile trigger failed | no implementation | [`OI-0`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json) |
-| `OI-7` | separate campaign | model artifact TBD | BF16-relative quant/task/MTP gate | quality/size/speed | — |
+| `OI-7` | source downloading | Qwen3.8 native-XL 5.2061 bpw plan | BF16-relative quant/task/MTP gate pending | 17.779 GB tensor payload (+4.00% vs Q4_K_M) | [`plan`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi7-native-xl-plan.json) |
 
 ## 15. Final review conclusions
 
