@@ -47,6 +47,7 @@ class _MTP2RequestState:
     provider: Any
     provider_pool_key: Any | None
     verifier: Qwen35GGUFTransactionalVerifier
+    root_hidden_buffer: DeviceBuffer
     last_proposal_seconds: float = 0.0
 
 
@@ -121,6 +122,10 @@ class Qwen35GGUFMTP2Adapter:
         ):
             return None
         target = row.lease.session
+        if bool(
+            getattr(getattr(target, "runner", None), "fp16_recurrent_state", False)
+        ):
+            return None
         max_context = int(target.target_layout.max_sequence_length)
         profile = str(getattr(self.generator, "execution_profile", None) or "legacy_exact")
         return SpeculativeCapability(
@@ -207,6 +212,12 @@ class Qwen35GGUFMTP2Adapter:
         del stream
         for request_id in plan.speculative_request_ids:
             if request_id not in self._states:
+                row = self.owner._row(request_id)
+                # Generation-2 packed prefill/decode may still own deferred
+                # state in the shared execution owner. The standalone exact c1
+                # verifier consumes request-session pointers, so scatter the
+                # complete row back only after the operation claims are held.
+                self.owner._flush_row_owner(row)
                 self._states[request_id] = self._open_request(request_id)
 
     def propose_batch(
@@ -388,6 +399,7 @@ class Qwen35GGUFMTP2Adapter:
                 mode=summary.mode,
             )
             state.verifier.commit(prepared, commit_plan)
+            native_graph_submitted = bool(prepared.native_graph_submitted)
             state.verifier.finish(prepared)
             prepared = None
             accepted = int(summary.accepted_counts[0])
@@ -409,6 +421,12 @@ class Qwen35GGUFMTP2Adapter:
             slot.seq_position = int(target.position)
             slot.native_decode_steps += 1
             slot.done = len(slot.generated_ids) >= int(row.request.max_tokens)
+            row.mtp2_cycles += 1
+            row.mtp2_candidate_counts.append(int(plan.candidate_counts[0]))
+            row.mtp2_accepted_counts.append(accepted)
+            row.mtp2_proposal_ms += float(state.last_proposal_seconds) * 1000.0
+            row.mtp2_target_ms += float(target_seconds) * 1000.0
+            row.mtp2_provider_update_ms += float(provider_update_seconds) * 1000.0
             accept = AcceptResult(
                 request_ids=plan.request_ids,
                 accepted_counts=summary.accepted_counts,
@@ -422,6 +440,9 @@ class Qwen35GGUFMTP2Adapter:
                 provider_cursor_deltas=summary.accepted_counts,
                 finish_reasons=(None,),
             )
+            actual_execution_route = (
+                "graph" if native_graph_submitted else "eager"
+            )
             telemetry = SpecCycleTelemetry(
                 operation_id=plan.operation_id,
                 request_ids=plan.request_ids,
@@ -429,7 +450,7 @@ class Qwen35GGUFMTP2Adapter:
                 plan_reasons=plan.reasons,
                 proposal_widths=plan.proposal_widths,
                 target_row_decomposition=plan.target_row_decomposition,
-                execution_route=plan.execution_route,
+                execution_route=actual_execution_route,
                 proposal_seconds=max(0.0, state.last_proposal_seconds),
                 target_seconds=target_seconds,
                 provider_update_seconds=provider_update_seconds,
@@ -481,6 +502,13 @@ class Qwen35GGUFMTP2Adapter:
         if row.lease is None:
             raise RuntimeError("GGUF MTP2 request has no target session")
         target = row.lease.session
+        if bool(
+            getattr(getattr(target, "runner", None), "fp16_recurrent_state", False)
+        ):
+            raise RuntimeError(
+                "GGUF MTP2 strict c1 requires FP32 recurrent state; "
+                "disable HIPENGINE_GGUF_FP16_RECURRENT_STATE"
+            )
         max_positions = int(target.target_layout.max_sequence_length)
         provider, pool_key, _reused = self.generator._acquire_dense_mtp_draft_provider(
             target,
@@ -488,15 +516,17 @@ class Qwen35GGUFMTP2Adapter:
             pool_enabled=self.owner._shared_runner is not None,
         )
         verifier = None
+        root_hidden_buffer = None
         try:
             provider.reset_request(rid)
-            self._catch_up_provider(
+            root_hidden_buffer = self._catch_up_provider(
                 provider,
                 rid,
                 row.prompt_ids,
                 self._prompt_hidden_rows[rid],
                 target,
             )
+            target._last_target_hidden_ptr = int(root_hidden_buffer.ptr)
             verifier = Qwen35GGUFTransactionalVerifier(
                 target,
                 max_candidate_budget=self.candidate_budget,
@@ -508,10 +538,13 @@ class Qwen35GGUFMTP2Adapter:
                 provider=provider,
                 provider_pool_key=pool_key,
                 verifier=verifier,
+                root_hidden_buffer=root_hidden_buffer,
             )
         except Exception:
             if verifier is not None:
                 verifier.close()
+            if root_hidden_buffer is not None:
+                free(root_hidden_buffer, runtime=target.runtime)
             provider.release_request(rid)
             self.generator._release_mtp_draft_runner(pool_key, provider)
             raise
@@ -523,7 +556,7 @@ class Qwen35GGUFMTP2Adapter:
         prompt_ids: Sequence[int],
         hidden_rows: np.ndarray,
         target: Any,
-    ) -> None:
+    ) -> DeviceBuffer:
         rows = np.ascontiguousarray(hidden_rows, dtype=np.float32)
         hidden_size = int(provider.executor.hidden_size)
         if rows.shape != (len(tuple(prompt_ids)), hidden_size):
@@ -558,14 +591,32 @@ class Qwen35GGUFMTP2Adapter:
                     ),
                     return_logits=False,
                 )
-        finally:
+            final_hidden_bits = np.ascontiguousarray(
+                float_array_to_bf16_bits(rows[-1]),
+                dtype=np.uint16,
+            )
+            copy_host_to_device(
+                DeviceBuffer(hidden_buffer.ptr, final_hidden_bits.nbytes),
+                host_array_ptr(final_hidden_bits),
+                final_hidden_bits.nbytes,
+                runtime=target.runtime,
+            )
+            return hidden_buffer
+        except Exception:
             free(hidden_buffer, runtime=target.runtime)
+            raise
 
     def _drop_request(self, request_id: int, *, disable: bool) -> None:
         rid = int(request_id)
         state = self._states.pop(rid, None)
         if state is not None:
+            target = self.owner._row(rid).lease.session
             state.verifier.close()
+            if int(getattr(target, "_last_target_hidden_ptr", 0)) == int(
+                state.root_hidden_buffer.ptr
+            ):
+                target._last_target_hidden_ptr = 0
+            free(state.root_hidden_buffer, runtime=target.runtime)
             state.provider.release_request(rid)
             self.generator._release_mtp_draft_runner(
                 state.provider_pool_key,

@@ -4796,6 +4796,12 @@ class _GGUFResidentLoopRow:
     prefix_admission_fallback: bool = False
     prefix_fallback_reason: str | None = None
     mtp2_candidate_budget: int = 0
+    mtp2_cycles: int = 0
+    mtp2_candidate_counts: list[int] = field(default_factory=list)
+    mtp2_accepted_counts: list[int] = field(default_factory=list)
+    mtp2_proposal_ms: float = 0.0
+    mtp2_target_ms: float = 0.0
+    mtp2_provider_update_ms: float = 0.0
 
 
 def _compact_live_execution_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
@@ -5954,6 +5960,16 @@ class Qwen35GGUFResidentModelRunner:
         adapter = self._resolved_mtp2_adapter()
         return None if adapter is None else adapter.capability(request_semantics)
 
+    def speculative_graph_available(self, work) -> bool:
+        del work
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            return False
+        # The plan is constructed after this cold hook, so use the current c1
+        # intent and session graph cache directly in the adapter's later
+        # telemetry. Uncaptured S3 shapes conservatively plan eager.
+        return False
+
     def speculative_claims_fit(self, plan) -> bool:
         adapter = self._resolved_mtp2_adapter()
         return bool(adapter is not None and adapter.claims_fit(plan))
@@ -5974,19 +5990,22 @@ class Qwen35GGUFResidentModelRunner:
         adapter = self._resolved_mtp2_adapter()
         if adapter is None:
             raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        adapter.release_claims(reservation)
+        with hip_target_arch_environment(self.generator.target_arch):
+            adapter.release_claims(reservation)
 
     def prepare_speculative_requests(self, plan, request_semantics, *, stream=None) -> None:
         adapter = self._resolved_mtp2_adapter()
         if adapter is None:
             raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        adapter.prepare_requests(plan, request_semantics, stream=stream)
+        with hip_target_arch_environment(self.generator.target_arch):
+            adapter.prepare_requests(plan, request_semantics, stream=stream)
 
     def propose_speculative_batch(self, plan, request_semantics, *, stream=None):
         adapter = self._resolved_mtp2_adapter()
         if adapter is None:
             raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        return adapter.propose_batch(plan, request_semantics, stream=stream)
+        with hip_target_arch_environment(self.generator.target_arch):
+            return adapter.propose_batch(plan, request_semantics, stream=stream)
 
     def speculative_kv_live_spans_owner(self, plan) -> str:
         return f"gguf-resident:{id(self)}:{plan.operation_id}"
@@ -6003,18 +6022,20 @@ class Qwen35GGUFResidentModelRunner:
         adapter = self._resolved_mtp2_adapter()
         if adapter is None:
             raise RuntimeError("GGUF MTP2 adapter is unavailable")
-        return adapter.execute_target_frontier(
-            plan,
-            frontier,
-            complete_claims,
-            commit=commit,
-            cancelled_request_ids=cancelled_request_ids,
-        )
+        with hip_target_arch_environment(self.generator.target_arch):
+            return adapter.execute_target_frontier(
+                plan,
+                frontier,
+                complete_claims,
+                commit=commit,
+                cancelled_request_ids=cancelled_request_ids,
+            )
 
     def rollback_speculative_cycle(self, plan, candidate_graph, error) -> None:
         adapter = self._resolved_mtp2_adapter()
         if adapter is not None:
-            adapter.rollback_cycle(plan, candidate_graph, error)
+            with hip_target_arch_environment(self.generator.target_arch):
+                adapter.rollback_cycle(plan, candidate_graph, error)
 
     def register_batch(
         self,
@@ -8062,14 +8083,29 @@ class Qwen35GGUFResidentModelRunner:
             for sample in row.samples
         )
         execution_path = (
-            "gguf_packed_ar_native_sampler_decode"
-            if row.native_sampler
+            "gguf_specdec2_mtp2_c1"
+            if row.mtp2_cycles > 0
             else (
-                "gguf_packed_ar_host_sampler_decode"
-                if row.native_sampled
-                else "gguf_packed_ar_server_decode"
+                "gguf_packed_ar_native_sampler_decode"
+                if row.native_sampler
+                else (
+                    "gguf_packed_ar_host_sampler_decode"
+                    if row.native_sampled
+                    else "gguf_packed_ar_server_decode"
+                )
             )
         )
+        if row.mtp2_cycles > 0:
+            timing.update(
+                {
+                    "specdec2_mtp2_cycles": float(row.mtp2_cycles),
+                    "specdec2_mtp2_proposal_ms": float(row.mtp2_proposal_ms),
+                    "specdec2_mtp2_target_ms": float(row.mtp2_target_ms),
+                    "specdec2_mtp2_provider_update_ms": float(
+                        row.mtp2_provider_update_ms
+                    ),
+                }
+            )
         return GenerationOutput(
             text=(
                 "".join(token.token_text for token in token_logprobs)
@@ -8149,6 +8185,15 @@ class Qwen35GGUFResidentModelRunner:
             ),
             "serial_decode_fallback": bool(
                 slot is not None and slot.serial_decode_steps > 0
+            ),
+            "specdec2_mtp2_used": bool(row.mtp2_cycles > 0),
+            "specdec2_mtp2_cycles": int(row.mtp2_cycles),
+            "specdec2_mtp2_candidate_counts": list(row.mtp2_candidate_counts),
+            "specdec2_mtp2_accepted_counts": list(row.mtp2_accepted_counts),
+            "specdec2_mtp2_proposal_ms": float(row.mtp2_proposal_ms),
+            "specdec2_mtp2_target_ms": float(row.mtp2_target_ms),
+            "specdec2_mtp2_provider_update_ms": float(
+                row.mtp2_provider_update_ms
             ),
             "prefix_eligible": bool(row.prefix_eligible),
             "prefix_lookup": bool(row.prefix_lookup),

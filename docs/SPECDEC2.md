@@ -531,25 +531,29 @@ lifecycle proof and no GPU implementation.
 
 - [x] Resolve a package-gated gfx1151 dense GGUF MTP2 c1 capability through the
       resident model plugin; gfx1100 remains absent and falls to K0.
-- [ ] Wrap the existing exact NextN provider as prepare/propose/commit/rollback
-      stages without changing arithmetic.
-- [ ] Wrap N1/N2/N3 target/accept/selected-commit components as one-cycle target
-      execution.
-- [ ] Bind target/provider resource claims, stable slabs, graph keys, and strict
-      eager/serial fallback.
-- [ ] Preserve exact context/output-room and circuit-breaker reasons.
-- [ ] Leave the old whole-request route as an explicit oracle/rollback only.
+- [x] Wrap the existing exact dense NextN provider as prompt catch-up, proposal,
+      full-accept repair, release, and rollback stages without changing math.
+- [x] Wrap the transactional target verifier/accept/selected commit as one-cycle
+      eager c1 execution; uncaptured graph shapes plan qualified eager.
+- [x] Bind complete operation claims, request-owned root-hidden storage,
+      provider/verifier lifetime, shape keys, and serial-exact target fallback.
+- [x] Preserve exact context/output-room/circuit reasons and reject FP16 state
+      before mutation because chain base-state readers require FP32.
+- [x] Leave the old whole-request dense method as an explicit direct oracle;
+      staged providers no longer use it for serving.
 
 ### S3.2 Correctness
 
 For B1/B2/B3 and reject/partial/full accept:
 
-- [ ] generated IDs and cycle semantics match the direct exact control;
+- [x] B1/B2/B3 generated IDs match true AR and the unchanged direct dense
+      control; staged policy deliberately uses K0 for the one-token tail.
 - [ ] target logits/top-1 and selected hidden match;
 - [ ] Conv/GDN state, full-attention KV, live counts, positions, and cursor match;
 - [ ] provider MTP state/KV/cursor match;
-- [ ] following-AR continuity matches;
-- [ ] graph/eager and graph-miss fallback agree;
+- [x] following-AR tail continuity matches through five exact output IDs;
+- [x] native-eager and explicit `serial_exact` target modes agree; uncaptured
+      graph requests fall back before mutation;
 - [ ] output tails, stop, cancellation, and injected failure restore ownership;
 - [ ] deterministic repeats and artifact/profile manifest identity pass; and
 - [ ] no hidden allocation or dense KV/state shadow appears.
