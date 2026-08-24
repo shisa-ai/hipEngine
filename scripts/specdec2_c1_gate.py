@@ -125,7 +125,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "command": [sys.executable, *sys.argv],
         "repo": {
             "commit": _git(["rev-parse", "HEAD"]),
-            "dirty": bool(_git(["status", "--porcelain"])),
+            "dirty": bool(
+                _git(["status", "--porcelain", "--untracked-files=no"])
+            ),
+            "shared_untracked_files_excluded": True,
         },
         "host": {
             "hostname": platform.node(),
