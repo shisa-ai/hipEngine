@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-23**
+Last updated: **2026-08-24**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -388,6 +388,13 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 35.287 | **62.440** | **1.7695x** | Clean idle-card correction; exact greedy and GPU/CPU acceptance, retained fusion improves matched AR 3.764% and B3 0.439% with every category non-regressive. [`artifact`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |
+
+Diagnostic, not a scoreboard/default row: the W7900 packed-PARO B1 provider-
+contract spike keeps canonical D24 exact `240/240`, raises pooled acceptance
+`52.32% -> 80.92%`, and moves weighted MTP `97.12 -> 109.97 tok/s`; its strict
+four-heldout D64 packet stays exact `256/256` and moves total-time MTP/AR
+`0.8339x -> 1.0220x`. It remains explicit pending parity/repeat/lifecycle/profile
+gates, and the fast verifier still fails one D64 heldout. [`artifact`](results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json)
 
 MTP ratios always use a true no-MTP AR path from the same protocol. Verifier
 `off`/`B0` diagnostics are not speedup denominators. The full category suite,
