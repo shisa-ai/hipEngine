@@ -34,10 +34,10 @@
       "strict_fallback_selected": true
     },
     "fast_verifier_production_numerical_task": {
-      "status": "blocked_evaluator_setup_and_rejected_by_existing_task_evidence",
-      "commit": "90db2dfca",
-      "artifact": null,
-      "evidence": "full-logit harness unit passed; first real D64 attempt timed out after 15 minutes with two target sessions plus proposer; retained general_en_explain D64 output-24 divergence remains binding"
+      "status": "rejected_binding_w7900_d64",
+      "commit": "pending_current_unit",
+      "artifact": "benchmarks/results/2026-08-24-w7900-paro-fast-verifier-d64-numerical-rejected.json",
+      "evidence": "68 aligned full-vocab rows pass mean/p95/p99/max KL (0.000226/0.001519/0.002491/0.002813), but top-1 98.529% fails 99% and cycle 13 decision diverges (strict accept1 bonus1061 vs fast accept0 bonus4016)"
     }
   },
   "decision": {

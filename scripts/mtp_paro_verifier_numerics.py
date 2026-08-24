@@ -358,6 +358,7 @@ def run_sequential(
     prompt_render: str,
     decode_tokens: int,
     backend: str,
+    prompt_tokens_file: Path | None = None,
 ) -> dict[str, Any]:
     """Run strict capture and fast replay sequentially to bound W7900 VRAM."""
 
@@ -365,8 +366,18 @@ def run_sequential(
     prompt = next((row for row in suite["prompts"] if row["name"] == prompt_name), None)
     if prompt is None:
         raise ValueError(f"unknown prompt {prompt_name!r}")
-    encoder = _load_prompt_encoder(model, prompt_render)
-    prompt_tokens = [int(token) for token in encoder.encode(prompt["prompt"]).token_ids]
+    if prompt_tokens_file is None:
+        encoder = _load_prompt_encoder(model, prompt_render)
+        prompt_tokens = [int(token) for token in encoder.encode(prompt["prompt"]).token_ids]
+    else:
+        prompt_tokens = [
+            int(token)
+            for token in prompt_tokens_file.read_text(encoding="utf-8")
+            .replace(",", " ")
+            .split()
+        ]
+        if not prompt_tokens:
+            raise ValueError("prompt token fixture is empty")
     if decode_tokens < 2:
         raise ValueError("decode_tokens must be at least 2")
 
@@ -640,6 +651,7 @@ def main() -> int:
     parser.add_argument("--prompt-name", required=True)
     parser.add_argument("--prompt-render", choices=("raw", "qwen_chat_thinking_off", "qwen_chat_thinking_on"), default="qwen_chat_thinking_off")
     parser.add_argument("--decode-tokens", type=int, default=64)
+    parser.add_argument("--prompt-tokens-file", type=Path)
     parser.add_argument("--backend", default="hip_gfx1100")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
@@ -650,6 +662,7 @@ def main() -> int:
         prompt_render=args.prompt_render,
         decode_tokens=int(args.decode_tokens),
         backend=args.backend,
+        prompt_tokens_file=args.prompt_tokens_file,
     )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")

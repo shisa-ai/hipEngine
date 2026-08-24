@@ -178,7 +178,7 @@ The spike remains explicit rather than promoted. Qualification status as of
 | Three same-schedule D24 repetitions | **correctness passed; economics rejected** | `30/30` prompt runs and `720/720` IDs exact with deterministic traces. Weighted MTP/AR is `0.9495x`; only general-English beats AR, while code/general-Japanese/mixed regress. No default promotion. |
 | Borrowed-pointer lifecycle and memory | **passed** | Closed-owner launches fail before use; close/reuse is stable; borrowed scoring saves `1,017,114,848` bytes versus the private F16 head. Teardown has one bounded, non-growing 8-byte runtime residue, reported explicitly rather than called exact-zero. |
 | Registered strict/production route manifest | **passed** | Strict hash `3199678e604d...5723`; production hash `9ea22c030d76...8876`. Both select strict verification; fast D64 is registered only as an uncertified/unselected candidate. |
-| Fast-verifier production numerical/task gate | blocked / fast rejected | The full-logit harness exists, but the first two-session D64 attempt timed out in setup after 15 minutes. Existing visible D64 divergence at output 24 remains binding, so strict remains fallback. |
+| Fast-verifier production numerical/task gate | **rejected, binding** | Sequential W7900 D64 strict-teacher capture covers 68 full-vocab rows: all KL gates pass (`mean/p95/p99/max = 0.000226/0.001519/0.002491/0.002813`), but top-1 is `98.529% < 99%` and cycle 13 diverges (`strict accept1/bonus1061`, fast `accept0/bonus4016`). Strict remains fallback; no category averaging can waive this task failure. |
 
 Compact evidence:
 [`provider-contract spike`](../benchmarks/results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json),
@@ -222,7 +222,7 @@ strict target verifier, accept/commit transaction, or scheduler integration.
 | Native/reference rejection | `benchmarks/results/2026-08-24-w7900-paro-mtp-native-reference-parity.json`; `4fdf85159` |
 | Borrowed-pointer lifecycle pass | `benchmarks/results/2026-08-24-w7900-paro-mtp-lifecycle-gate.json`; `bf849a150` |
 | Strict D24 three-run decision | `benchmarks/results/2026-08-24-w7900-paro-mtp-strict-d24-3run.json` |
-| Fast-verifier gate harness/blocker | `90db2dfca`; sequential evaluator `23f5a559e` |
+| Fast-verifier numerical rejection | `benchmarks/results/2026-08-24-w7900-paro-fast-verifier-d64-numerical-rejected.json`; harness `23f5a559e` |
 | Grouped PARO head repair | `52973ce02` |
 | Fast/strict review commit | `4d32e6e2e` |
 | nano-vLLM reference | `/home/lhl/amd-gpu-tuning/nano-vllm-amd@5d8f496da5e3`, read-only |
