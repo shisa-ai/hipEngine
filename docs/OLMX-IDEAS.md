@@ -1,6 +1,6 @@
 # oMLX Ideas Campaign
 
-- **Status:** gfx1151 `OI-0` complete; `OI-1` standard-Q4 morphology selected
+- **Status:** gfx1151 `OI-0` complete; first exact `OI-1` Q4 morphology retained
 - **Created:** 2026-08-25
 - **Requested filename:** `OLMX-IDEAS.md` (the project reviewed is spelled **oMLX**)
 - **Primary target:** Qwen3.x MTP on `hip_gfx1151` / Radeon 8060S; `OI-0` starts with Qwen3.8-27B `Q4_K_M`
@@ -422,7 +422,40 @@ determinism, isolation, task, and lifecycle gates.
 - Any exact, measured, same-suite non-regressive win is retained in its exact
   shape/backend scope; there is no arbitrary minimum percentage.
 
-### 7.5 Stop conditions
+### 7.5 gfx1151 T0 result — 2026-08-25
+
+The first exact pair-output subdivision (four waves owning gate/up four-column
+halves) is rejected. It is BF16-bit exact over layers 0/8/63 and rows 2/3/4,
+but loses all nine actual cases; its weighted pair wall is **1.02655x** the
+parent.
+
+The existing exact two-wave/16-column single-projection body transfers only in
+narrow scopes:
+
+- full-attention Q `K=5120, N=12288`: rows 2/3/4;
+- recurrent QKV `K=5120, N=10240`: rows 3/4.
+
+Every other measured role/row remains on the WG32/eight-column parent. The
+selected key is `(hip_gfx1151, linear, gguf_q4_k_t16_v1,
+dense_rowtile16_w2_bf16_bf16_out)`; the parent `dense_rowtile_bf16_bf16_out`
+is its strict fallback. The selected/fallback manifest SHA-256 is
+`90f0a8585617d3c4e4fa2ccd17ab9b53f0aba4ebc5fabdb282505e8850515fbf`.
+
+The cached B3 trace names 256 selected calls at WG64, VGPR 120/144, zero LDS,
+and zero scratch. The physical standard-Q4 single family improves
+**150.960→148.358 ms (-1.724%)** and total target kernels improve
+**690.081→686.661 ms (-0.496%)**. Target-marker wall is flat within changed
+queue gaps. Against the immediate same-host hot control, complete B1/B2/B3 are
+**17.092→17.115 (+0.130%)**, **19.960→20.008 (+0.241%)**, and
+**20.947→21.040 tok/s (+0.440%)**. Corresponding MTP/own-AR ratios improve
+**+0.224%/+0.336%/+0.535%**, with every train/heldout/category ratio positive;
+all IDs and GPU/CPU acceptance decisions remain exact.
+
+Decision: retain this gfx1151-only T0 scope. Do not route the rejected pair
+candidate or any losing single shape. Evidence:
+[`2026-08-25-gfx1151-qwen38-omlx-oi1-q4-two-wave-retained.json`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi1-q4-two-wave-retained.json).
+
+### 7.6 Stop conditions
 
 Stop or narrow scope if:
 
@@ -682,7 +715,7 @@ Update this table as atomic units land. A blank metric is not a pass.
 | ID | State | Host/model/quant | Strict/quality gate | Primary metric | Decision artifact/worklog |
 | --- | --- | --- | --- | --- | --- |
 | `OI-0` | complete | gfx1151 Qwen3.8-27B `Q4_K_M` | exact 10-prompt category/heldout gate | AR 11.712; B3 21.062; 100% target-timeline reconciliation | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json) |
-| `OI-1` | ready | gfx1151 standard-Q4 rows 2/3/4 | T0 exact or T2 full production gate | primitive + target + full-suite MTP/AR | — |
+| `OI-1` | T0 retained; further rungs optional | gfx1151 Q4 attn-Q rows2-4 + recurrent-QKV rows3-4 | strict parent-bit exact | B1/B2/B3 +0.130%/+0.241%/+0.440%; Q4 family -1.724% | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi1-q4-two-wave-retained.json) |
 | `OI-2` | blocked by transition RED | gfx1151 dense B1/B2/B3 | exact variable-budget transaction matrix | controller versus best fixed B3 and true AR | — |
 | `OI-3` | ready | gfx1151 dense prompt 512/4K/16K | exact prompt-head cache and generated IDs | TTFT/prefill wall/peak memory | — |
 | `OI-4` | ready | gfx1151 dense | explicit T3 full category/heldout/long gate | acceptance and complete MTP/AR | — |

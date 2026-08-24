@@ -2721,7 +2721,7 @@ def launch_gguf_q4_t16_sidecar_decode(
     if not variants:
         return False
     resolved_backend = _weight_backend(weight, backend=backend)
-    if rows == 8:
+    if rows in {2, 3, 4, 8}:
         rowtile_variants = backend_package_capability(
             resolved_backend,
             "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
@@ -2737,12 +2737,23 @@ def launch_gguf_q4_t16_sidecar_decode(
             if isinstance(variant_policy, Mapping)
             else {}
         )
-        preferred = (
-            shapes.get((int(in_features), int(out_features)))
-            if isinstance(shapes, Mapping)
-            else None
+        rows_by_shape = (
+            variant_policy.get("rows_by_shape", {})
+            if isinstance(variant_policy, Mapping)
+            else {}
         )
-        if isinstance(preferred, str) and preferred:
+        shape = (int(in_features), int(out_features))
+        preferred = shapes.get(shape) if isinstance(shapes, Mapping) else None
+        allowed_rows = (
+            rows_by_shape.get(shape, (8,))
+            if isinstance(rows_by_shape, Mapping)
+            else (8,)
+        )
+        if (
+            isinstance(preferred, str)
+            and preferred
+            and int(rows) in allowed_rows
+        ):
             variants = (preferred, *variants)
     for variant in variants:
         key = KernelKey(

@@ -5360,6 +5360,75 @@ def test_gfx1151_q4_k_decode_sidecar_row8_uses_two_wave_owner() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "rows,in_features,out_features,expect_two_wave",
+    [
+        (2, 5_120, 12_288, True),
+        (3, 5_120, 12_288, True),
+        (4, 5_120, 12_288, True),
+        (2, 5_120, 10_240, False),
+        (3, 5_120, 10_240, True),
+        (4, 5_120, 10_240, True),
+        (3, 17_408, 5_120, False),
+    ],
+)
+def test_gfx1151_q4_k_decode_smallm_two_wave_shape_policy(
+    rows: int,
+    in_features: int,
+    out_features: int,
+    expect_two_wave: bool,
+) -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight = _fake_weight(
+        layout=LAYOUT_Q4_K_PACK8,
+        quant_key="gguf_q4_k",
+        decode_tiles=True,
+    )
+    two_wave_key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "dense_rowtile16_w2_bf16_bf16_out",
+    )
+    parent_key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "dense_rowtile_bf16_bf16_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (two_wave_key, parent_key)
+    }
+    calls: list[str] = []
+
+    register(two_wave_key, lambda *args, **kwargs: calls.append("two_wave"), replace=True)
+    register(parent_key, lambda *args, **kwargs: calls.append("parent"), replace=True)
+    try:
+        assert launch_gguf_q4_t16_sidecar_decode(
+            weight,
+            x_ptr=100,
+            out_ptr=400,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+            backend="hip_gfx1151",
+            runtime="runtime-sentinel",
+        )
+    finally:
+        for key, original in originals.items():
+            register(key, original, replace=True)
+
+    assert calls == ["two_wave" if expect_two_wave else "parent"]
+
+
 def test_gfx1151_q4_k_t16_shared_down_selects_native_tail_batch() -> None:
     """The production tail boundary consumes the resident T16 sidecar."""
 
