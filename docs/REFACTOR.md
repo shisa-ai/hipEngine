@@ -4222,3 +4222,14 @@ should be boring.
   -> 184/198ms) in BOTH trees, so neither design scales this model's
   aggregate throughput; rocprof kernel-family audit of the packed step is
   the follow-up.
+
+## PARO MTP verifier numerical evaluator migration (2026-08-24)
+
+- `scripts/mtp_paro_verifier_numerics.py` temporarily retains the original
+  simultaneous two-session `run()` beside the sequential `run_sequential()`
+  selected by the CLI. The simultaneous owner needs about 85% W7900 VRAM with
+  the proposer and timed out during setup; it remains only for bisection while
+  the sequential strict-capture/fast-replay evaluator is qualified.
+- Remove the old `run()` after `run_sequential()` completes at least one D64
+  full-logit gate and its strict schedule/commit replay is covered by a focused
+  real-model regression. Keep only the sequential evaluator thereafter.
