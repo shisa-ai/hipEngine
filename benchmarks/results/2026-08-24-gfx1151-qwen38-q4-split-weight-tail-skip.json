@@ -1,0 +1,82 @@
+{
+  "created_at": "2026-08-24T11:13:09.117891+00:00",
+  "current_profile": {
+    "c17_marker_wall_ms": 353.961,
+    "c17_split_weight_dispatches": 64,
+    "c17_split_weight_ms": 29.438,
+    "c17_wall_share": 0.08316735459556278,
+    "c32_split_weight_dispatches": 0,
+    "scope": "8+8+1 physical c1 tail only",
+    "source": "benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-retained.json"
+  },
+  "decision": {
+    "code_change": false,
+    "next": "Adjudicate structural c32 optimization with the post-Q5 profile; retain this c1 strict owner.",
+    "reason": [
+      "The remaining family is absent from c32, the campaign product blocker.",
+      "The current c1 qmicro wave-metadata split owner is already the best qualified exact one-payload role.",
+      "All obvious instruction, metadata, geometry, and occupancy variants are duplicate rejected mechanisms or lack a credible owner-level premise.",
+      "A speculative new layout would expand scope beyond Task #21 and require materializer/one-payload requalification."
+    ],
+    "tune_now": false
+  },
+  "kind": "gfx1151_qwen38_q4_split_weight_tail_adjudication",
+  "mechanism_adjudication": [
+    {
+      "mechanism": "adjacent qmicro packed-Q pair loads",
+      "result": "rejected: exact but +4.96% actual-layer family regression, 0/45 wins"
+    },
+    {
+      "mechanism": "standard-T16 paired Q/coefficient loads",
+      "result": "rejected: exact +0.39% leaf, projects only 0.15% selected wall and misses admission threshold"
+    },
+    {
+      "mechanism": "qmicro metadata LDS expansion",
+      "result": "rejected: exact but +8.71% to +19.80%, higher VGPR/LDS"
+    },
+    {
+      "mechanism": "qmicro wave-metadata payload replacement",
+      "result": "c1 leaf positive but rejected as one-payload policy because native rows regress 27.8-32.0% and prefill is non-positive; current Q4_K_S already retains the bounded c1 role only"
+    },
+    {
+      "mechanism": "larger output geometry / launch occupancy hints",
+      "result": "eight-wave geometry regressed marked family; launch-bound changes do not lower resources"
+    }
+  ],
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "recurrent_state": "fp16"
+  },
+  "performance_claim": false,
+  "physical_host": "gfx1151",
+  "prior_evidence": [
+    {
+      "path": "benchmarks/results/2026-08-16-gfx1151-qwen38-27b-qmicro-paired-qload-rejected.json",
+      "sha256": "55124c49e10f1d8d2c1ff141711e06811f4dc143cb27c9d820143de278bd3566"
+    },
+    {
+      "path": "benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-paircoeff-rejected.json",
+      "sha256": "f0c0909122d7fd957e002a3be7876c6d27b0034b03a77a3ffd19f350eb3eb743"
+    },
+    {
+      "path": "benchmarks/results/2026-07-27-gfx1151-laguna-q4-qmicro-metadata-lds-rejected.json",
+      "sha256": "3366292f2085c8fcf9beb301ce3900b2ba670861f224a8d76ca7120c1d8ba7f8"
+    },
+    {
+      "path": "benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-wave-meta-rejected.json",
+      "sha256": "6572e28ea0951ad210369f72db43457937171ccd3fc6d1679f495d873ff5835c"
+    },
+    {
+      "path": "benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-split-weight-rejected.json",
+      "sha256": "4daf2a75b97aaf16e21a0fba27448b9da8db7ad6bf3ffdde64ce68e2980bbd27"
+    },
+    {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-retained.json",
+      "sha256": "4385dd81be29958e20be477de64224d878da8cb0c145ed0b1b96d391344974b5"
+    }
+  ],
+  "schema_version": 1,
+  "source_commit": "01ef1e9564ee13094b892c03afce4c53995906d6",
+  "status": "durable_skip_incumbent_retained"
+}
