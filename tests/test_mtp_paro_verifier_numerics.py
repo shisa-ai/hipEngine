@@ -83,9 +83,12 @@ def test_scope_summaries_bind_each_row_role() -> None:
     result = _scope_summaries(rows)
 
     assert result["row_role"]["root"]["top1_agreement"] == 0.0
+    assert result["row_role"]["root"]["binding"] is False
     assert result["row_role"]["root"]["passed"] is False
     assert result["row_role"]["draft_candidate"]["top1_agreement"] == 1.0
+    assert result["row_role"]["draft_candidate"]["binding"] is False
     assert result["row_role"]["draft_candidate"]["passed"] is True
+    assert result["category"]["general_en"]["binding"] is True
 
 
 def test_capture_hash_binds_prompt_manifest_rows_and_cycles() -> None:

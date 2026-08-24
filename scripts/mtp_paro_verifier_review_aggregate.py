@@ -70,7 +70,7 @@ def aggregate(paths: Sequence[Path]) -> dict[str, Any]:
         {"dimension": dimension, "value": value}
         for dimension, groups in scopes.items()
         for value, scoped in groups.items()
-        if not bool(scoped["passed"])
+        if bool(scoped["binding"]) and not bool(scoped["passed"])
     ]
     checks = {
         "finite": bool(np.isfinite(kl).all()),
@@ -97,7 +97,7 @@ def aggregate(paths: Sequence[Path]) -> dict[str, Any]:
             "prompts": len(captures),
             "categories": sorted({str(row["category"]) for row in rows}),
             "rows": len(rows),
-            "note": "one retained D64 heldout per category; broader than the 68-row screen but not the full 18-prompt/450-row production campaign",
+            "note": "quality rows come from one canonical trajectory per supplied prompt; repeat captures are handled separately and must not inflate this denominator",
         },
         "manifests": captures[0]["manifests"],
         "thresholds": _THRESHOLDS,
