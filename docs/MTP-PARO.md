@@ -5,20 +5,20 @@
 - **Implementation base:** `050b97936047f8c43ed76dbc690fb9d7d7482c07`
 - **Model:** `/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16`
 - **Hardware:** AMD Radeon Pro W7900, `hip_gfx1100`
-- **Status:** bounded provider-repair spike retained explicit/default-off; fixed-chain proposal parity, lifecycle, and route-manifest gates passed; three-repeat D24 remains before provider promotion; fast verifier remains rejected/unselected
+- **Status:** bounded provider-repair spike retained explicit/default-off; fixed-chain parity/lifecycle/manifest/repeat correctness pass, but registered strict D24 economics are `0.9495x` true AR; fast verifier remains rejected/unselected
 
 | Surface | Current evidence | Assessment | Next action |
 | --- | --- | --- | --- |
 | Fast verifier (`decode_batched`) | D24 canonical: exact `10/10`, `240/240`; `97.950 tok/s`, `0.8775x` AR, `15.382 ms/cycle`. State differs at cycle 1 (`57/60` linear, `20/20` K/V). Thinking-off D64 `general_en_explain` first diverges at output 24 (`13 -> 4016`). | Useful T2 production candidate, **not** strict or production-qualified. | Keep explicit/default-off; qualify against strict only after proposer repair. |
 | Strict verifier (`c1_loop`) | D24 canonical: exact `10/10`, `240/240`; `90.405 tok/s`, `0.8114x`, `16.727 ms/cycle`. State exact at cycles 1/2/4/8. D64 four-heldout: exact `256/256`, `0.8418x`. | Sound oracle/fallback, currently too slow. | Preserve registered primitives; optimize only after the shared proposer is corrected. |
 | Shared acceptance at D24 | Fast and strict have identical traces: `79/151 = 52.32%` draft acceptance, `79/240 = 32.92%` accepted/output. | Strict arithmetic is not the acceptance problem. The old `7.48%` N4 result predates grouped PARO heads and is stale for current economics. | Use current canonical suite and longer horizon for every decision. |
-| Target-hidden input | PARO passed the pre-final-norm last-layer BF16 tap. nano-vLLM-amd `5d8f496da5e3` and vLLM `470229c37efa` pass final output-normalized target hidden. | Contract mismatch repaired; the isolated five-fixture fixed-chain native/reference gate passes all four categories plus reject/full-accept coverage. | Run the three-repeat canonical economics gate before provider promotion. |
+| Target-hidden input | PARO passed the pre-final-norm last-layer BF16 tap. nano-vLLM-amd `5d8f496da5e3` and vLLM `470229c37efa` pass final output-normalized target hidden. | Contract mismatch repaired; the isolated five-fixture fixed-chain native/reference gate passes all four categories plus reject/full-accept coverage. | Keep the corrected contract; no clean-slate provider rewrite is justified by proposal quality. |
 | Proposer reseed | Target hidden previously seeded prompt prefill only; cycle repair continued from MTP-owned hidden. | Selected-target-hidden reseed is implemented. Native/reference drift begins at BF16 FC reduction order, not input fusion; full-vocab KL remains <= `1.44e-4` with 100% top-1/top-5 agreement in the declared fixed-chain fixtures. | Preserve the scoped numerical evidence; do not claim strict bitwise hidden or branching top-8 parity. |
-| Draft LM head | Private F16 head scored rows `[0, 65536)` while target AR/verifier uses resident full-vocab W8A16 over 248,320 rows. | Borrowed ownership/lifecycle passed and removes 970 MiB. Isolated uv-native fused, rescored, fresh-scratch, and materialized W8 top-1 all agree; full-shape fused/unfused kernel parity passes. | Keep the borrowed scorer; defer repeat economics until proposal-hidden/top-k parity is repaired. |
+| Draft LM head | Private F16 head scored rows `[0, 65536)` while target AR/verifier uses resident full-vocab W8A16 over 248,320 rows. | Borrowed ownership/lifecycle passed and removes 970 MiB. Isolated uv-native fused, rescored, fresh-scratch, and materialized W8 top-1 all agree; full-shape fused/unfused kernel parity passes. | Keep the borrowed scorer in the explicit route; the remaining D24 loss is verifier economics. |
 | Vocab-cap impact | `32/72` D24 rejections were outside-cap; general Japanese was `24/30`. Full F16 raised acceptance but usually added enough wall to regress economics. | Target W8A16 spike removes cap failures efficiently and raises D24 pooled acceptance to 80.92%. | Keep cap/private-F16 only as opt-out until promotion gates close. |
 | Route selection | Registered strict and production manifests now bind the corrected proposer to strict B1 graph-off verification; fast is registered only as uncertified. | Exact fallback/provenance is reproducible; unsupported provider scope fails closed. | Keep fast unselected until its full production numerical/task gate passes. |
 | Shared engine infrastructure | `TargetVerifyBatch`, `KVLiveSpans`, accept/commit, journals, NativeSpecCycle, and strict fallbacks are functional. | No evidence supports discarding the engine. | Preserve these boundaries during the spike and any later provider replacement. |
-| Provider-contract spike | D24 exact `240/240`, pooled acceptance `52.32% -> 80.92%`, total-time `0.8700x -> 0.9907x`; strict D64 heldout exact `256/256`, acceptance `39.78% -> 84.67%`, total-time `0.8339x -> 1.0220x`. | Proposal parity now passes for the declared B1 fixed-chain scope; one-run economics remain diagnostic. | Keep `HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT=1` explicit through the three-repeat D24 confirmation. |
+| Provider-contract spike | Registered strict D24 three-run: exact `720/720`, deterministic `321/390 = 82.31%` acceptance, but weighted `104.929` versus `110.515` true-AR tok/s (`0.9495x`). Strict D64 heldout remains exact `256/256` at `1.0220x`. | Correct provider, workload-dependent economics; D24 fails overall and three category non-regression gates. | Keep `HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT=1` explicit/default-off; optimize strict verifier wall rather than redesigning the provider. |
 
 ## Scope
 
@@ -175,7 +175,7 @@ The spike remains explicit rather than promoted. Qualification status as of
 | Gate | Status | Evidence / consequence |
 | --- | --- | --- |
 | Native/reference proposal parity | **passed for declared fixed-chain scope** | Five fixtures cover four categories plus known reject/full-accept transitions: 100% top-1 and top-5-set agreement, max full-vocab KL `1.44e-4`, hidden cosine >= `0.9999898`. Drift begins at BF16 FC reduction order. Exact hidden bytes and branching top-8 are not claimed; borrowed scoring does not expose branching top-k. |
-| Three same-schedule D24 repetitions | open | Now unblocked. The retained one-run D24 result remains diagnostic until three exact same-schedule runs pass. |
+| Three same-schedule D24 repetitions | **correctness passed; economics rejected** | `30/30` prompt runs and `720/720` IDs exact with deterministic traces. Weighted MTP/AR is `0.9495x`; only general-English beats AR, while code/general-Japanese/mixed regress. No default promotion. |
 | Borrowed-pointer lifecycle and memory | **passed** | Closed-owner launches fail before use; close/reuse is stable; borrowed scoring saves `1,017,114,848` bytes versus the private F16 head. Teardown has one bounded, non-growing 8-byte runtime residue, reported explicitly rather than called exact-zero. |
 | Registered strict/production route manifest | **passed** | Strict hash `3199678e604d...5723`; production hash `9ea22c030d76...8876`. Both select strict verification; fast D64 is registered only as an uncertified/unselected candidate. |
 | Fast-verifier production numerical/task gate | blocked / fast rejected | The full-logit harness exists, but the first two-session D64 attempt timed out in setup after 15 minutes. Existing visible D64 divergence at output 24 remains binding, so strict remains fallback. |
@@ -221,7 +221,8 @@ strict target verifier, accept/commit transaction, or scheduler integration.
 | Registered route manifests | `74c69f59b`; strict `3199678e604d...5723`, production `9ea22c030d76...8876` |
 | Native/reference rejection | `benchmarks/results/2026-08-24-w7900-paro-mtp-native-reference-parity.json`; `4fdf85159` |
 | Borrowed-pointer lifecycle pass | `benchmarks/results/2026-08-24-w7900-paro-mtp-lifecycle-gate.json`; `bf849a150` |
-| Fast-verifier gate harness/blocker | `90db2dfca` |
+| Strict D24 three-run decision | `benchmarks/results/2026-08-24-w7900-paro-mtp-strict-d24-3run.json` |
+| Fast-verifier gate harness/blocker | `90db2dfca`; sequential evaluator `23f5a559e` |
 | Grouped PARO head repair | `52973ce02` |
 | Fast/strict review commit | `4d32e6e2e` |
 | nano-vLLM reference | `/home/lhl/amd-gpu-tuning/nano-vllm-amd@5d8f496da5e3`, read-only |

@@ -1,21 +1,21 @@
 {
   "schema": "hipengine.paro_mtp_promotion_audit.v1",
   "date": "2026-08-24",
-  "status": "provider_pending_repeat_fast_verifier_rejected",
+  "status": "provider_default_rejected_fast_verifier_pending_full_gate",
   "performance_claim": false,
   "speed_claim_eligible": false,
   "implementation_base": "d99bbc607",
   "gates": {
     "native_reference_proposal_parity": {
       "status": "passed_declared_fixed_chain_scope",
-      "commit": "pending_current_unit",
+      "commit": "2a66339f9",
       "artifact": "benchmarks/results/2026-08-24-w7900-paro-mtp-native-reference-parity.json",
       "evidence": "five fixtures/four categories plus known reject/full-accept: 100% top-1 and top-5-set agreement, max KL 0.0001431, hidden cosine >= 0.9999898; first drift is BF16 FC reduction order. Strict hidden bytes and unsupported branching top-8 are not claimed."
     },
     "three_repeat_d24": {
-      "status": "open_unblocked",
-      "artifact": null,
-      "evidence": "one-run D24 economics remains diagnostic until three exact same-schedule repetitions complete"
+      "status": "correctness_pass_economics_rejected",
+      "artifact": "benchmarks/results/2026-08-24-w7900-paro-mtp-strict-d24-3run.json",
+      "evidence": "30/30 prompt runs and 720/720 IDs exact with deterministic acceptance; registered strict route is 104.929 vs 110.515 true-AR tok/s (0.9495x), with three category regressions"
     },
     "borrowed_pointer_lifecycle_memory": {
       "status": "passed_with_bounded_runtime_residue",
@@ -45,7 +45,7 @@
     "promote_fast_verifier": false,
     "keep_explicit_spike": true,
     "keep_strict_fallback": true,
-    "run_three_repeat_economics_now": true,
-    "reason": "declared fixed-chain proposal parity, lifecycle, and route manifests pass; provider promotion now awaits repeat economics. Fast verifier remains independently uncertified."
+    "run_three_repeat_economics_now": false,
+    "reason": "repeat gate completed: correctness passes but registered strict D24 economics and category non-regression fail. Fast verifier remains independently uncertified."
   }
 }
