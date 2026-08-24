@@ -145,9 +145,11 @@ Current retained state:
   active/completed prefix reuse and eviction are exact. C2 64K is blocked and
   unclaimed. Context throughput is queue-neutral within 0.09% versus queue2;
   and
-- the complete queue packet now supports adjudication. Keep queue2 unless the
-  joined policy review finds a binding reason otherwise; profile the selected
-  owner before resuming Q4 qmicro, Q5 rowtile, and Q4 split-weight.
+- joined adjudication retains the existing explicit queue2 gfx1151 backend
+  default. Alternatives are stable but none has a generic, repeatable,
+  SLO-qualified advantage; temporary runtime-default/report/matrix surfaces are
+  removed while direct numeric user overrides remain. Profile queue2 next,
+  then resume Q4 qmicro, Q5 rowtile, and Q4 split-weight.
 
 Primary retained evidence:
 [`FP16 serving correctness`](../benchmarks/results/2026-08-23-gfx1151-qwen38-fp16-serving-correctness-bundle-v3.json),
@@ -155,6 +157,7 @@ Primary retained evidence:
 [`hardware-queue full-width matrix`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-full-width-matrix.json),
 [`hardware-queue load stability`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-load-stability-matrix.json),
 [`hardware-queue context/graph/prefix`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-context-graph-prefix-matrix.json),
+[`hardware-queue decision`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-policy-decision.json),
 [`gfx1151 physical widths`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-physical-widths.json),
 [`packed prefill`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-packed-prefill-c17.json),
 [`direct resident state`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json), and

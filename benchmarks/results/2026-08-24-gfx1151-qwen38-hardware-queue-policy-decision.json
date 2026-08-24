@@ -1,0 +1,202 @@
+{
+  "cleanup": {
+    "removed": [
+      "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY runtime-default suppression",
+      "HIPENGINE_PROCESS_ENV_REPORT_PATH writer/consumer",
+      "server_f1_hwqueue_matrix.py",
+      "test_server_f1_hwqueue_matrix.py",
+      "unset mode from F1 and selected-owner profiler CLIs"
+    ],
+    "retained": [
+      "queue2 gfx1151 backend metadata",
+      "direct GPU_MAX_HW_QUEUES user overrides 1/2/4/8",
+      "compact retained evidence and immutable raw matrices",
+      "cache-only selected-owner rocprof workflow"
+    ]
+  },
+  "created_at": "2026-08-24T08:15:13.216767+00:00",
+  "decision": {
+    "default_changed": false,
+    "explicit_user_override_preserved": true,
+    "reason": [
+      "All five policies are mechanically stable; the historical lockup workaround is not disproven by stability alone.",
+      "Queue2 has the best complete full-width normalized performance.",
+      "Load and context performance are queue-neutral; no alternative has a generic repeatable advantage.",
+      "No alternative improves the binding product SLO/capacity blockers.",
+      "Unset is stable but is 0.42% below queue2 full-width, 0.09% below on load, and only +0.03% on context\u2014insufficient to remove the risk-reducing package limit.",
+      "Queue2 and unset direct profiled children each use one runtime Queue_Id in their measured single-stream scope."
+    ],
+    "runtime_default_selected": false,
+    "selected_behavior": "retain HIP_BACKEND_PROCESS_ENV_DEFAULTS[hip_gfx1151][GPU_MAX_HW_QUEUES]=2",
+    "selected_policy": "2",
+    "temporary_matrix_surfaces_removed": true
+  },
+  "evidence_artifacts": {
+    "context_graph_prefix": {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-context-graph-prefix-matrix.json",
+      "sha256": "508f84b109ba3e3f1815733298033b97c0f0b5e76064003075dd1890bd9d8fce",
+      "status": "retained_supported_context_graph_prefix"
+    },
+    "core": {
+      "path": "benchmarks/results/2026-08-23-gfx1151-qwen38-hardware-queue-core-matrix.json",
+      "sha256": "fa5831f551ee347d139fba370bcd6826d7de5048d39a21e8091fdfba3d8b67ff",
+      "status": "retained_core_screen"
+    },
+    "correctness": {
+      "path": "benchmarks/results/2026-08-23-gfx1151-qwen38-fp16-serving-correctness-bundle-v3.json",
+      "sha256": "73a63f689ceb5adf60491398f9fb33c3f8540d0b90a292067b9482ac3445ef98",
+      "status": "passed"
+    },
+    "full_width": {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-full-width-matrix.json",
+      "sha256": "bb430715b33cf4fb295b083ce9d78c795254bbb98edc324d936ba850a1d73ab1",
+      "status": "retained_full_width_screen"
+    },
+    "load_stability": {
+      "path": "benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-load-stability-matrix.json",
+      "sha256": "82932514385eed01e9134271d294dd46df6afda9843a189e6dddb544128dd10d",
+      "status": "retained_load_stability_screen"
+    }
+  },
+  "hardware": "AMD Radeon 8060S Graphics / gfx1151",
+  "joined_results": {
+    "context_graph_prefix": {
+      "children": 20,
+      "normalized_geometric_delta_vs_queue2_percent": {
+        "1": -0.08937034639543429,
+        "2": 0.0,
+        "4": -0.02834106971990602,
+        "8": -0.07104424365049766,
+        "unset": 0.03281580119709471
+      },
+      "pressure_graph_prefix_passed": true,
+      "supported_context": "c2 1K/4K/16K SLO-clean; 32K exact/SLO-blocked",
+      "unsupported_context": "64K c2 blocked"
+    },
+    "core": {
+      "finding": "c17 neutral; c32 queue8 signal crossed/reversed in broader evidence",
+      "mechanical_children": 10,
+      "policy_selection_role": "diagnostic finalist screen only"
+    },
+    "correctness": {
+      "c13_lifecycle_passed": true,
+      "direct_width_rows": 1950,
+      "fp16_rows": 1170,
+      "kl_max": 0.03286571255372825,
+      "kl_mean": 0.00010249953022477523,
+      "top1_agreement": 0.9982905982905983
+    },
+    "full_width": {
+      "children": 10,
+      "finding": "queue2 ranks first across 13 widths; no alternative generic win",
+      "normalized_geometric_delta_vs_queue2_percent": {
+        "1": -0.7532069728183433,
+        "2": 0.0,
+        "4": -0.6437452152557643,
+        "8": -0.5040836203407784,
+        "unset": -0.41859524133863735
+      },
+      "queue8_c32_paired_percent": [
+        -3.676336748145359,
+        -6.901911620372414
+      ],
+      "width_executions": 130
+    },
+    "load_stability": {
+      "children": 10,
+      "finding": "all mechanically stable; static c1/c8/recovery SLO-clean, heavier load SLO-blocked for every policy",
+      "normalized_geometric_delta_vs_queue2_percent": {
+        "1": -0.5740797269145226,
+        "2": 0.0,
+        "4": 0.4712976726041651,
+        "8": -0.6662815084345963,
+        "unset": -0.09208455524080117
+      },
+      "request_records": 2100,
+      "workload_executions": 90
+    }
+  },
+  "kind": "gfx1151_qwen38_hardware_queue_policy_decision",
+  "model": {
+    "kv_storage": "bf16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S (registry gguf_q4_k_m)",
+    "recurrent_state": "fp16",
+    "sampled_fingerprint": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa"
+  },
+  "performance_claim": true,
+  "physical_host": "gfx1151",
+  "remaining_product_blockers": [
+    "c8 fixed SLO is partial; c9+ fixed-width SLO fails",
+    "heavy arrival/soak workloads fail ITL and soak E2E for every policy",
+    "c2 32K exceeds TTFT/E2E SLO for every policy",
+    "c2 64K unsupported",
+    "queue IDs used do not reveal runtime maximum allocatable queues"
+  ],
+  "rocprof_queue_observation": {
+    "2": {
+      "cache_tree_sha256": "a4c086274fade7c40d7d86f80dfef2bc6963d281448d9adbac179f8b01d931f3",
+      "compiler_guard_invoked": false,
+      "immutable_cache_only": true,
+      "kernel_dispatches": 14681,
+      "kernel_trace_files": [
+        {
+          "path": "/tmp/c2-gfx1151-hwqueue-v2/task7-queue-trace/runs/q2/trace/gfx1151/1790434_kernel_trace.csv",
+          "sha256": "3310559ad07906323081ab5d23d855c5a587c8024e8874d384b0f4ffa7c70a85"
+        }
+      ],
+      "observed_queue_count": 1,
+      "observed_queue_ids": [
+        1
+      ],
+      "profile_returncode": 0,
+      "scope": "queues used by one direct c8 p128/d8 single-stream child; not runtime maximum allocatable queues",
+      "workflow_path": "/tmp/c2-gfx1151-hwqueue-v2/task7-queue-trace/q2.json",
+      "workflow_sha256": "784ce4f8fce9cc92f25731ffccefa758df4aab0ef153bd78dfb1a60f61a151cd"
+    },
+    "unset": {
+      "cache_tree_sha256": "a4c086274fade7c40d7d86f80dfef2bc6963d281448d9adbac179f8b01d931f3",
+      "compiler_guard_invoked": false,
+      "immutable_cache_only": true,
+      "kernel_dispatches": 14681,
+      "kernel_trace_files": [
+        {
+          "path": "/tmp/c2-gfx1151-hwqueue-v2/task7-queue-trace/runs/unset/trace/gfx1151/1791658_kernel_trace.csv",
+          "sha256": "beae7946e651b9b83ffb46a747629b8378da9ba47b647efdbeaf89db981e9041"
+        }
+      ],
+      "observed_queue_count": 1,
+      "observed_queue_ids": [
+        1
+      ],
+      "profile_returncode": 0,
+      "scope": "queues used by one direct c8 p128/d8 single-stream child; not runtime maximum allocatable queues",
+      "workflow_path": "/tmp/c2-gfx1151-hwqueue-v2/task7-queue-trace/unset.json",
+      "workflow_sha256": "ae9441d69dbafcc9ec28580c53ceb7f9a4785c7cd55171bcb731a8d3687aa232"
+    }
+  },
+  "schema_version": 1,
+  "selection_policy": {
+    "anti_cherry_pick": "No single width, block, or core screen can select the policy; all complete packets bind.",
+    "binding_order": [
+      "mechanical stability and no MES/KFD failure",
+      "exact production control/ownership/route/memory/drain",
+      "complete fixed-width/load/context/graph/prefix coverage",
+      "SLO-qualified non-regression",
+      "generic matched performance improvement"
+    ],
+    "candidates": [
+      "1",
+      "2",
+      "4",
+      "8",
+      "unset"
+    ]
+  },
+  "software": {
+    "compiler": "clang 23.0.0git aa451e1f + PATCHED:440716f8",
+    "rocm": "HIP 7.15.0"
+  },
+  "source_commit": "970b51c6fd9cc8ba8e472101e845f52b11b00cb1",
+  "status": "accepted_existing_default"
+}
