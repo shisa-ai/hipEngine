@@ -97,12 +97,13 @@ The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains 
 
 Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with explicit FP32 rollback after the complete packed and serving gates; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). The broader default-off review remains in the [`promotion inventory`](results/2026-08-20-valid-faster-default-off-inventory.json).
 
-SPECDEC2 S3 now functionally qualifies staged dense MTP2 c1 only under strict
-FP32 recurrent state: B1/B2/B3 IDs match true AR and the direct dense control,
-all 7 controlled state/KV cases pass, and cached profiler engagement is proven.
-Production Q4_K_S FP16 state selects K0 before mutation because the current
-chain verifier's base-state readers require FP32. No automatic/default scope or
-new speed claim is promoted. [`S3 artifact`](results/2026-08-25-gfx1151-specdec2-s3-c1.json).
+SPECDEC2 S3 functionally qualifies staged dense MTP2 c1 only under strict FP32
+recurrent state: B1/B2/B3 IDs, 7 controlled target state/KV cases, 11 lifecycle/
+fault rows, repeated provider KV/cursor fingerprints, and cached profiler
+engagement pass under strict manifest `0e053fd6...e2bb65b`. Production Q4_K_S
+FP16 state selects K0 before mutation because the current chain verifier's base-
+state readers require FP32. No automatic/default scope or new speed claim is
+promoted. [`S3 artifact`](results/2026-08-25-gfx1151-specdec2-s3-c1.json).
 
 ## Where detailed evidence lives
 
