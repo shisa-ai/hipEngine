@@ -140,6 +140,31 @@ def test_target_contract_scope_fails_closed_outside_b1_graph_off_chain() -> None
         )
 
 
+def test_omitted_route_defaults_to_registered_fast_production(monkeypatch) -> None:
+    args = SimpleNamespace(execution_profile=None, chain_attn_mode=None)
+    monkeypatch.delenv("HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT", raising=False)
+
+    mtp_chain_e2e_smoke._apply_paro_execution_profile(args)
+
+    assert args.execution_profile == "production"
+    assert args.chain_attn_mode == "decode_batched"
+    assert len(args.execution_profile_manifest_sha256) == 64
+    assert __import__("os").environ["HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT"] == "1"
+
+
+def test_explicit_strict_profile_selects_c1_loop() -> None:
+    args = SimpleNamespace(execution_profile="strict", chain_attn_mode=None)
+    mtp_chain_e2e_smoke._apply_paro_execution_profile(args)
+    assert args.chain_attn_mode == "c1_loop"
+
+
+def test_manual_chain_mode_preserves_legacy_diagnostic_route() -> None:
+    args = SimpleNamespace(execution_profile=None, chain_attn_mode="batched")
+    mtp_chain_e2e_smoke._apply_paro_execution_profile(args)
+    assert args.execution_profile is None
+    assert args.chain_attn_mode == "batched"
+
+
 def test_cycle_reseed_helper_uses_selected_target_hidden() -> None:
     calls: list[dict[str, object]] = []
 

@@ -90,7 +90,14 @@ from hipengine.core.tensor import Tensor
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from hipengine.speculative import MTP_CHAIN_CANDIDATE_BUDGETS, MtpDraftRequest, TargetVerifyBatch, compile_mtp_chain
 from hipengine.speculative.mtp_native import NativeMtpChainProposer, NativeMtpW8A16Head
-from hipengine.speculative.paro_mtp_profiles import validate_paro_mtp_route_scope
+from hipengine.execution_profiles import resolve_runtime_profile
+from hipengine.speculative.paro_mtp_profiles import (
+    PARO_MTP_BACKEND,
+    PARO_MTP_CHAIN_ATTN_MODE_ENV,
+    PARO_MTP_MODEL,
+    PARO_MTP_MODEL_QUANT,
+    validate_paro_mtp_route_scope,
+)
 from scripts.mtp_native_decode_step_smoke import run_smoke as run_native_mtp_proposal
 from scripts.dflash_chain_e2e_bench import _build_branching_topk_tree_target_batch
 
@@ -344,6 +351,41 @@ def _mtp_proposer_target_contract_enabled() -> bool:
     """Use selected final target hidden plus the target-owned W8 scorer."""
 
     return _env_flag("HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT", False)
+
+
+def _apply_paro_execution_profile(args: Any) -> None:
+    """Resolve the default/explicit PARO MTP profile before resident construction.
+
+    An explicit legacy ``--chain-attn-mode`` without ``--execution-profile``
+    remains a manual diagnostic route. Omitting both selects qualified
+    production (fast); strict is available through ``--execution-profile strict``.
+    """
+
+    requested = getattr(args, "execution_profile", None)
+    explicit_chain = getattr(args, "chain_attn_mode", None)
+    if requested is None and explicit_chain is not None:
+        return
+    profile = "production" if requested is None else str(requested)
+    resolved = resolve_runtime_profile(
+        model=PARO_MTP_MODEL,
+        backend=PARO_MTP_BACKEND,
+        quant=PARO_MTP_MODEL_QUANT,
+        profile=profile,
+    )
+    if resolved.binder is None:
+        raise RuntimeError("PARO MTP execution profile has no route binder")
+    resolved.binder(args, resolved)
+    selected_chain = os.environ[PARO_MTP_CHAIN_ATTN_MODE_ENV]
+    if explicit_chain is not None and str(explicit_chain) != selected_chain:
+        raise ValueError(
+            f"execution profile {profile!r} requires chain_attn_mode="
+            f"{selected_chain!r}, got {explicit_chain!r}"
+        )
+    args.chain_attn_mode = selected_chain
+    args.execution_profile = profile
+    args.execution_profile_manifest_sha256 = resolved.manifest_sha256
+    args.execution_profile_strict_manifest_sha256 = resolved.strict_manifest_sha256
+    args.execution_profile_fell_back_to_strict = resolved.fell_back_to_strict
 
 
 def _validate_proposer_target_contract_scope(
@@ -1776,6 +1818,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "ar": ar,
         "mtp": spec,
         "proposal_impl": str(args.proposal_impl),
+        "execution_profile": getattr(args, "execution_profile", None),
+        "execution_profile_manifest_sha256": getattr(
+            args, "execution_profile_manifest_sha256", None
+        ),
+        "execution_profile_strict_manifest_sha256": getattr(
+            args, "execution_profile_strict_manifest_sha256", None
+        ),
+        "execution_profile_fell_back_to_strict": getattr(
+            args, "execution_profile_fell_back_to_strict", None
+        ),
         "require_cached_build": require_cached_build,
         "decision_reason": "Native MTP proposal rows reached verify_chain_bulk_and_commit and exact AR was checked. persistent_device keeps MTP weights/cache resident, but artifacts remain diagnostic until acceptance and speed gates pass.",
     }
@@ -1786,7 +1838,7 @@ def main() -> int:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--prompt-tokens", default="151646")
     parser.add_argument("--decode-tokens", type=int, default=3)
-    parser.add_argument("--candidate-budget", type=int, default=2)
+    parser.add_argument("--candidate-budget", type=int, default=1)
     parser.add_argument(
         "--active-budget-cap",
         type=int,
@@ -1800,7 +1852,17 @@ def main() -> int:
     )
     parser.add_argument("--proposal-impl", choices=("reload_d2h", "persistent_device", "persistent_device_b1"), default="reload_d2h")
     parser.add_argument("--backend", default="hip_gfx1151")
-    parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched", "decode_batched"), default="c1_loop")
+    parser.add_argument(
+        "--execution-profile",
+        choices=("strict", "production"),
+        help="registered PARO MTP route; omitted with no manual chain mode defaults to production",
+    )
+    parser.add_argument(
+        "--chain-attn-mode",
+        choices=("c1_loop", "batched", "decode_batched"),
+        default=None,
+        help="manual diagnostic route when --execution-profile is omitted",
+    )
     parser.add_argument("--graph-mode", choices=("off", "auto", "validate"), default="off")
     parser.add_argument("--tree-mode", choices=("chain", "branching_topk"), default="chain", help="reload_d2h only: chain (top-1 verify_chain) or branching_topk (balanced DDTree via verify_tree_bulk_and_commit, reusing the MTP head per-depth top-k + values)")
     parser.add_argument("--tree-top-k", type=int, default=2, help="branch width per depth for --tree-mode branching_topk (1..8)")
@@ -1891,6 +1953,7 @@ def main() -> int:
     parser.add_argument("--json", type=Path)
     parser.add_argument("--out", type=Path, help="alias for --json (artifact path)")
     args = parser.parse_args()
+    _apply_paro_execution_profile(args)
     result = run(args)
     out_path = args.out or args.json
     if out_path:

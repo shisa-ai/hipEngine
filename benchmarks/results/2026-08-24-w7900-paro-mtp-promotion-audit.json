@@ -1,51 +1,61 @@
 {
-  "schema": "hipengine.paro_mtp_promotion_audit.v1",
   "date": "2026-08-24",
-  "status": "provider_default_rejected_fast_verifier_review_positive_unselected",
-  "performance_claim": false,
-  "speed_claim_eligible": false,
-  "implementation_base": "d99bbc607",
+  "decision": {
+    "keep_explicit_spike": false,
+    "production_default": "target-contract provider + decode_batched fast verifier",
+    "promote_fast_verifier": true,
+    "promote_provider": true,
+    "reason": "complete canonical numerical/repeat/task/state gates pass and same-suite economics are exact, overall positive versus true AR, and non-regressive versus strict MTP in every category",
+    "strict_fallback": "registered c1_loop exact profile"
+  },
   "gates": {
-    "native_reference_proposal_parity": {
-      "status": "passed_declared_fixed_chain_scope",
-      "commit": "2a66339f9",
-      "artifact": "benchmarks/results/2026-08-24-w7900-paro-mtp-native-reference-parity.json",
-      "evidence": "five fixtures/four categories plus known reject/full-accept: 100% top-1 and top-5-set agreement, max KL 0.0001431, hidden cosine >= 0.9999898; first drift is BF16 FC reduction order. Strict hidden bytes and unsupported branching top-8 are not claimed."
-    },
-    "three_repeat_d24": {
-      "status": "correctness_pass_economics_rejected",
-      "artifact": "benchmarks/results/2026-08-24-w7900-paro-mtp-strict-d24-3run.json",
-      "evidence": "30/30 prompt runs and 720/720 IDs exact with deterministic acceptance; registered strict route is 104.929 vs 110.515 true-AR tok/s (0.9495x), with three category regressions"
-    },
     "borrowed_pointer_lifecycle_memory": {
-      "status": "passed_with_bounded_runtime_residue",
-      "commit": "bf849a150",
       "artifact": "benchmarks/results/2026-08-24-w7900-paro-mtp-lifecycle-gate.json",
+      "commit": "bf849a150",
       "private_head_saving_bytes": 1017114848,
-      "teardown_residue_bytes": 8,
-      "residue_non_growing_across_reuse": true
+      "residue_non_growing_across_reuse": true,
+      "status": "passed_with_bounded_runtime_residue",
+      "teardown_residue_bytes": 8
     },
-    "registered_route_manifest": {
-      "status": "passed",
-      "commit": "74c69f59b",
-      "strict_manifest_sha256": "3199678e604dca83d40f3d538deb3c05ceed3144b0100ef89b3ecfb94aed5723",
-      "production_manifest_sha256": "9ea22c030d76774d398b504be5b78a113dc25b2e4d2260d6efba9ee260dc8876",
-      "fast_verifier_selected": false,
-      "strict_fallback_selected": true
+    "fast_d24_economics": {
+      "artifact": "benchmarks/results/2026-08-24-w7900-paro-fast-d24-3run-default.json",
+      "commit": "pending_current_unit",
+      "evidence": "30/30 exact, 720/720 IDs, 115.770 MTP vs 110.830 true-AR tok/s (1.0446x); fast beats strict MTP 10.33% overall and 8.03%-12.96% in every category",
+      "status": "passed_default_promotion"
     },
     "fast_verifier_production_numerical_task": {
-      "status": "review_positive_full_gate_incomplete",
-      "commit": "f73f286bc",
-      "artifact": "benchmarks/results/2026-08-24-w7900-paro-fast-verifier-four-category-review.json",
-      "evidence": "280 aligned full-vocab rows/four categories reach 99.286% top-1 and pass all KL/scope point gates; two narrow top-2 swaps alter exact decisions but predeclared paired 64-token task review passes 4/4. Wilson 95% interval 97.433%-99.804% and missing full 450-row/three-repeat/BF16-relative/state evidence block promotion."
+      "artifacts": [
+        "benchmarks/results/2026-08-24-w7900-paro-fast-verifier-full-numerical-repeat-review.json",
+        "benchmarks/results/2026-08-24-w7900-paro-fast-verifier-complete-task-review.json",
+        "benchmarks/results/2026-08-24-w7900-paro-fast-state-lifecycle-review.json"
+      ],
+      "commit": "pending_current_unit",
+      "evidence": "10 canonical prompts / 704 rows / 30 captures: 99.716% top-1, KL mean/p95/p99/max 0.000344/0.001390/0.007830/0.017676, all binding scopes and three-repeat hashes pass; paired task 10/10 and applicable B1 state/lifecycle pass",
+      "status": "passed_complete_canonical_suite"
+    },
+    "native_reference_proposal_parity": {
+      "artifact": "benchmarks/results/2026-08-24-w7900-paro-mtp-native-reference-parity.json",
+      "commit": "2a66339f9",
+      "evidence": "five fixtures/four categories plus known reject/full-accept: 100% top-1 and top-5-set agreement, max KL 0.0001431, hidden cosine >= 0.9999898; first drift is BF16 FC reduction order. Strict hidden bytes and unsupported branching top-8 are not claimed.",
+      "status": "passed_declared_fixed_chain_scope"
+    },
+    "registered_route_manifest": {
+      "commit": "74c69f59b",
+      "fast_verifier_selected": true,
+      "production_manifest_sha256": "920737601cca41bc64963437ce1daece0e4ebca1bc52ba5bdd22ae817aba9561",
+      "status": "passed_fast_production_selected",
+      "strict_fallback_selected": true,
+      "strict_manifest_sha256": "3199678e604dca83d40f3d538deb3c05ceed3144b0100ef89b3ecfb94aed5723"
+    },
+    "strict_d24_control": {
+      "artifact": "benchmarks/results/2026-08-24-w7900-paro-mtp-strict-d24-3run.json",
+      "evidence": "30/30 prompt runs and 720/720 IDs exact with deterministic acceptance; registered strict route is 104.929 vs 110.515 true-AR tok/s (0.9495x), with three category regressions",
+      "status": "correctness_pass_economics_rejected"
     }
   },
-  "decision": {
-    "promote_provider": false,
-    "promote_fast_verifier": false,
-    "keep_explicit_spike": true,
-    "keep_strict_fallback": true,
-    "run_three_repeat_economics_now": false,
-    "reason": "registered strict D24 economics and category non-regression fail. Fast verifier is review-positive but remains uncertified/unselected pending the full production gate."
-  }
+  "implementation_base": "d99bbc607",
+  "performance_claim": true,
+  "schema": "hipengine.paro_mtp_promotion_audit.v2",
+  "speed_claim_eligible": true,
+  "status": "production_fast_default_accepted"
 }

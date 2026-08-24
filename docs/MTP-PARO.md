@@ -5,20 +5,20 @@
 - **Implementation base:** `050b97936047f8c43ed76dbc690fb9d7d7482c07`
 - **Model:** `/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16`
 - **Hardware:** AMD Radeon Pro W7900, `hip_gfx1100`
-- **Status:** bounded provider-repair spike retained explicit/default-off; fixed-chain parity/lifecycle/manifest/repeat correctness pass, but registered strict D24 economics are `0.9495x` true AR; fast verifier is review-positive but remains unselected pending the full production gate
+- **Status:** qualified production B1 default: corrected target-contract provider + fast `decode_batched` verifier; registered strict `c1_loop` profile/fallback retained
 
 | Surface | Current evidence | Assessment | Next action |
 | --- | --- | --- | --- |
-| Fast verifier (`decode_batched`) | Four-category D64 strict-teacher review: `278/280 = 99.286%` top-1, all KL tails and every 97% scope pass; two root-row top-2 swaps have identical top-5 sets. Paired 64-token task review passes `4/4`. | Review-positive T2 candidate, **not yet production-qualified**: Wilson 95% top-1 interval `[97.433%, 99.804%]`, only one prompt/category, no three-repeat or complete applicable B1 state/KV/rollback/isolation packet. BF16-relative evidence is conditional and no full-precision target teacher is present locally. | Keep registered but uncertified/unselected; run the complete canonical PARO suite/heldouts, repeats, and applicable state/task gates before promotion. |
-| Strict verifier (`c1_loop`) | D24 canonical: exact `10/10`, `240/240`; `90.405 tok/s`, `0.8114x`, `16.727 ms/cycle`. State exact at cycles 1/2/4/8. D64 four-heldout: exact `256/256`, `0.8418x`. | Sound oracle/fallback, currently too slow. | Preserve as selected fallback while the fast candidate completes the full T2 campaign. |
+| Fast verifier (`decode_batched`) | Complete D64 gate: 10 canonical prompts, 704 rows, 30 captures; `702/704 = 99.716%` top-1, KL mean/p95/p99/max `0.000344/0.001390/0.007830/0.017676`, all binding scopes and three-repeat hashes pass. Paired task review `10/10`; applicable B1 state/lifecycle pass. | **Production-qualified T2 default** for B1 graph-off fixed-chain. | Keep strict `c1_loop` as registered profile/fallback and use fast for production/default. |
+| Strict verifier (`c1_loop`) | D24 three-run weighted `104.929 tok/s`, `0.9495x` true AR; exact `720/720`. D64 strict remains the exact oracle. | Sound strict profile/fallback, 10.33% slower than qualified fast MTP overall. | Preserve as explicit strict profile and automatic production rollback. |
 | Shared acceptance at D24 | Fast and strict have identical traces: `79/151 = 52.32%` draft acceptance, `79/240 = 32.92%` accepted/output. | Strict arithmetic is not the acceptance problem. The old `7.48%` N4 result predates grouped PARO heads and is stale for current economics. | Use current canonical suite and longer horizon for every decision. |
 | Target-hidden input | PARO passed the pre-final-norm last-layer BF16 tap. nano-vLLM-amd `5d8f496da5e3` and vLLM `470229c37efa` pass final output-normalized target hidden. | Contract mismatch repaired; the isolated five-fixture fixed-chain native/reference gate passes all four categories plus reject/full-accept coverage. | Keep the corrected contract; no clean-slate provider rewrite is justified by proposal quality. |
 | Proposer reseed | Target hidden previously seeded prompt prefill only; cycle repair continued from MTP-owned hidden. | Selected-target-hidden reseed is implemented. Native/reference drift begins at BF16 FC reduction order, not input fusion; full-vocab KL remains <= `1.44e-4` with 100% top-1/top-5 agreement in the declared fixed-chain fixtures. | Preserve the scoped numerical evidence; do not claim strict bitwise hidden or branching top-8 parity. |
 | Draft LM head | Private F16 head scored rows `[0, 65536)` while target AR/verifier uses resident full-vocab W8A16 over 248,320 rows. | Borrowed ownership/lifecycle passed and removes 970 MiB. Isolated uv-native fused, rescored, fresh-scratch, and materialized W8 top-1 all agree; full-shape fused/unfused kernel parity passes. | Keep the borrowed scorer in the explicit route; the remaining D24 loss is verifier economics. |
 | Vocab-cap impact | `32/72` D24 rejections were outside-cap; general Japanese was `24/30`. Full F16 raised acceptance but usually added enough wall to regress economics. | Target W8A16 spike removes cap failures efficiently and raises D24 pooled acceptance to 80.92%. | Keep cap/private-F16 only as opt-out until promotion gates close. |
-| Route selection | Registered strict and production manifests now bind the corrected proposer to strict B1 graph-off verification; fast is registered only as uncertified. | Exact fallback/provenance is reproducible; unsupported provider scope fails closed. | Keep fast unselected until its full production numerical/task gate passes. |
+| Route selection | Strict manifest `3199678e...5723` selects c1-loop exact; production manifest `92073760...9561` selects fast decode-batched with exact strict fallback. Omitting both profile and manual chain mode selects production fast. | Qualified default and rollback are reproducible and fail closed outside B1 graph-off fixed-chain. | Remove temporary env/manual duplicate selection after one release window. |
 | Shared engine infrastructure | `TargetVerifyBatch`, `KVLiveSpans`, accept/commit, journals, NativeSpecCycle, and strict fallbacks are functional. | No evidence supports discarding the engine. | Preserve these boundaries during the spike and any later provider replacement. |
-| Provider-contract spike | Registered strict D24 three-run: exact `720/720`, deterministic `321/390 = 82.31%` acceptance, but weighted `104.929` versus `110.515` true-AR tok/s (`0.9495x`). Strict D64 heldout remains exact `256/256` at `1.0220x`. | Correct provider, workload-dependent economics; D24 fails overall and three category non-regression gates. | Keep `HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT=1` explicit/default-off; optimize strict verifier wall rather than redesigning the provider. |
+| Provider-contract production route | Fast D24 three-run: exact `720/720`, deterministic `80.92%` draft acceptance, weighted `115.770` versus `110.830` true-AR tok/s (`1.0446x`). Fast beats strict MTP `10.33%` overall and `8.03%-12.96%` in every category. | Correct and economically positive qualified production composition. | Default to corrected provider + fast verifier; retain strict profile/fallback. |
 
 ## Scope
 
@@ -164,12 +164,10 @@ Current evidence:
 | Strict D64 weighted MTP | 92.46 tok/s | 113.43 tok/s | +22.68% |
 | Strict D64 total-time MTP/AR | `0.8339x` | `1.0220x` | crosses break-even |
 
-Fast D64 differs from strict `general_en_explain` at output index 24
-(`13 -> 4016`), so provider repair alone does not authorize fast arithmetic.
-The expanded strict-teacher and paired-task review is favorable, however: the
-completed fast continuation is fluent and technically valid, and the Japanese
-swap is also task-equivalent. Fast remains a separate incomplete T2 campaign;
-strict remains the selected fallback.
+Fast D64 differs from strict in two narrow heldout top-2 decisions, but complete
+paired task review finds both continuations non-inferior. The complete canonical
+strict-teacher/repeat/state packet qualifies those T2 differences for production;
+strict generated-ID equality remains diagnostic rather than a universal gate.
 
 The spike remains explicit rather than promoted. Qualification status as of
 2026-08-24:
@@ -177,28 +175,18 @@ The spike remains explicit rather than promoted. Qualification status as of
 | Gate | Status | Evidence / consequence |
 | --- | --- | --- |
 | Native/reference proposal parity | **passed for declared fixed-chain scope** | Five fixtures cover four categories plus known reject/full-accept transitions: 100% top-1 and top-5-set agreement, max full-vocab KL `1.44e-4`, hidden cosine >= `0.9999898`. Drift begins at BF16 FC reduction order. Exact hidden bytes and branching top-8 are not claimed; borrowed scoring does not expose branching top-k. |
-| Three same-schedule D24 repetitions | **correctness passed; economics rejected** | `30/30` prompt runs and `720/720` IDs exact with deterministic traces. Weighted MTP/AR is `0.9495x`; only general-English beats AR, while code/general-Japanese/mixed regress. No default promotion. |
+| Strict D24 three-repeat control | **correctness passed; strict economics rejected** | `30/30` prompt runs and `720/720` IDs exact with deterministic traces. Strict MTP/AR is `0.9495x`; this blocks strict as production default but preserves it as exact profile/fallback. Qualified fast economics are recorded below. |
 | Borrowed-pointer lifecycle and memory | **passed** | Closed-owner launches fail before use; close/reuse is stable; borrowed scoring saves `1,017,114,848` bytes versus the private F16 head. Teardown has one bounded, non-growing 8-byte runtime residue, reported explicitly rather than called exact-zero. |
-| Registered strict/production route manifest | **passed** | Strict hash `3199678e604d...5723`; production hash `9ea22c030d76...8876`. Both select strict verification; fast D64 is registered only as an uncertified/unselected candidate. |
-| Fast-verifier production numerical/task gate | **review-positive; incomplete** | Expanded W7900 matrix covers 280 rows/four categories: top-1 `99.286%`, mean/p95/p99/max KL `0.000377/0.001647/0.009209/0.013702`, and all scopes pass. Two narrow top-2 swaps alter exact decisions, but predeclared paired task review passes `4/4`. Confidence straddles 99%; the complete canonical PARO suite, three repeats, and applicable B1 state/task evidence are absent. The exact 18-prompt/450-row calibration count is not a binding cardinality, and BF16-relative evidence applies only if a full-precision target teacher exists. |
+| Registered strict/production route manifest | **passed; fast selected** | Strict hash `3199678e604d...5723`; production hash `920737601cca...9561`. Production selects fast decode-batched and names strict c1-loop as exact fallback. |
+| Fast-verifier production numerical/task gate | **passed** | Complete W7900 matrix: 10 prompts, 704 rows, 30 captures; top-1 `99.716%`, mean/p95/p99/max KL `0.000344/0.001390/0.007830/0.017676`, all binding scopes and repeat hashes pass. Paired task `10/10`; applicable B1 state/lifecycle passes three identical runs. |
+| Fast D24 economics | **passed; production default** | Exact `720/720`; weighted `115.770` MTP versus `110.830` true AR (`1.0446x`). Fast improves strict MTP `10.33%` overall and every category by `8.03%-12.96%`. |
 
-The actual next-gate contract is source-bound rather than cardinality-bound:
-
-1. keep the frozen mean/p95/p99/max KL and 99% overall / 97% per-scope limits;
-2. run every prompt in `benchmarks/prompts/mtpbench-code-general-ja.jsonl`
-   across all four categories and its applicable heldouts, per project anti-gaming
-   policy and `EXECUTION-PROFILES.md` section 6.4;
-3. repeat the same manifest/schedule at least three times;
-4. cover the route's applicable B1 state surfaces: repeated reject/full-accept,
-   selected-state/KV ownership, rollback/isolation, long horizon, reuse, and
-   teardown. Generic c4/c8 multi-request dynamics are outside this B1 route's
-   declared scope unless that scope expands; and
-5. run BF16-relative non-inferiority only if a full-precision target teacher is
-   available. The local packed model directory has a packed target and BF16 MTP
-   sidecar, but no full-precision target teacher.
-
-`18 prompts/450 rows` describes the threshold calibration and other campaign
-packets; it was not written as a universal candidate sample-size requirement.
+The source-bound production contract is complete: the full canonical suite,
+three fixed-schedule repeats, frozen numerical thresholds, predeclared task
+review, and applicable B1 state/KV/rollback/isolation/teardown checks all pass.
+Generic c4/c8 multi-request dynamics remain outside this B1 route's declared
+scope. BF16-relative comparison is inapplicable because the local packed model
+directory has no full-precision target teacher.
 
 Compact evidence:
 [`provider-contract spike`](../benchmarks/results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json),
@@ -238,11 +226,14 @@ strict target verifier, accept/commit transaction, or scheduler integration.
 | Review worklog | `worklog/entries/20260823T222811.535835Z-lhl-paro-mtp-review-042298.md` |
 | Spike artifact | `benchmarks/results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json` |
 | Spike worklog | `worklog/entries/20260824T063019.079917Z-lhl-paro-mtp-spike-3108e9.md` |
-| Registered route manifests | `74c69f59b`; strict `3199678e604d...5723`, production `9ea22c030d76...8876` |
+| Registered route manifests | strict `3199678e604d...5723`, fast production `920737601cca...9561` |
 | Native/reference fixed-chain parity | `benchmarks/results/2026-08-24-w7900-paro-mtp-native-reference-parity.json`; `2a66339f9` |
 | Borrowed-pointer lifecycle pass | `benchmarks/results/2026-08-24-w7900-paro-mtp-lifecycle-gate.json`; `bf849a150` |
 | Strict D24 three-run decision | `benchmarks/results/2026-08-24-w7900-paro-mtp-strict-d24-3run.json` |
-| Fast-verifier four-category review | `benchmarks/results/2026-08-24-w7900-paro-fast-verifier-four-category-review.json`; rubric `108a6ae05`; aggregate `f73f286bc` |
+| Fast-verifier complete numerical/repeat | `benchmarks/results/2026-08-24-w7900-paro-fast-verifier-full-numerical-repeat-review.json`; `7bd5524da` |
+| Fast-verifier complete task | `benchmarks/results/2026-08-24-w7900-paro-fast-verifier-complete-task-review.json`; `058caeb04` |
+| Fast-verifier B1 state/lifecycle | `benchmarks/results/2026-08-24-w7900-paro-fast-state-lifecycle-review.json`; `cdad810e2` |
+| Fast production economics/default | `benchmarks/results/2026-08-24-w7900-paro-fast-d24-3run-default.json` |
 | Grouped PARO head repair | `52973ce02` |
 | Fast/strict review commit | `4d32e6e2e` |
 | nano-vLLM reference | `/home/lhl/amd-gpu-tuning/nano-vllm-amd@5d8f496da5e3`, read-only |
