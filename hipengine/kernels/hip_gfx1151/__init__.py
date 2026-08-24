@@ -51,6 +51,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
+    gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out,
+    gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out,
 )
 from hipengine.kernels.registry import (
     KernelKey,
@@ -1055,6 +1057,41 @@ GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
 GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT = {
     "gguf_q5_k_t16_v1": frozenset({(2_048, 1_024)}),
 }
+_GGUF_Q5_T16_ROWTILE_COL8_SHAPES = frozenset(
+    {
+        (6_144, 5_120),
+        (17_408, 5_120),
+        (5_120, 10_240),
+    }
+)
+
+
+def _gguf_q5_k_t16_gemv_rowtile_gfx1151_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    **kwargs,
+) -> None:
+    fn = (
+        gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out
+        if (int(in_features), int(out_features))
+        in _GGUF_Q5_T16_ROWTILE_COL8_SHAPES
+        else gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out
+    )
+    fn(
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
 # Qwen3.8-27B P5 exact serial-c1 output subdivisions. Full-attention K/V
 # K5120/N1024 Q4 projections use four-column ownership after the actual-weight
 # pool improves 1.03169x with 14/15 wins. Recurrent-output Q5 uses two
@@ -2061,6 +2098,11 @@ _GFX1151_OVERRIDES = {
         "f32",
         "bf16_hidden",
     ): qwen35_router_logits_bf16_f32w_auto_256,
+    (
+        "linear",
+        "gguf_q5_k_t16_v1",
+        "t16_gemv_rowtile_bf16_bf16_out",
+    ): _gguf_q5_k_t16_gemv_rowtile_gfx1151_bf16_bf16_out,
     (
         "linear",
         "gguf_q8_0_t16_v1",
