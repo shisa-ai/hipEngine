@@ -33,17 +33,31 @@
       "general_ja",
       "mixed_ja_en"
     ],
-    "note": "one retained D64 heldout per category; broader than the 68-row screen but not the full 18-prompt/450-row production campaign",
+    "note": "one retained D64 heldout per category; broader than the 68-row screen but not the complete canonical PARO prompt/heldout suite required by project anti-gaming and execution-profile policy",
     "prompts": 4,
     "rows": 280
   },
   "date": "2026-08-24",
+  "qualification_contract": {
+    "binding": [
+      "Frozen numerical thresholds and every category/shape/transition scope in docs/EXECUTION-PROFILES.md section 6.1.",
+      "At least three fixed-seed repeats with the same manifest and schedule under section 6.4.",
+      "Complete multi-category prompt suite and applicable heldouts under section 6.4 and the repository anti-gaming policy.",
+      "Applicable B1 state/KV/rollback/isolation and task-quality checks under sections 6.3-6.4."
+    ],
+    "conditional": [
+      "BF16-relative non-inferiority only where a BF16/full-precision target teacher is available (section 6.2); the packed model directory contains only the packed target plus BF16 MTP sidecar, not a full-precision target teacher."
+    ],
+    "not_binding": [
+      "Exactly 18 prompts/450 rows. That cardinality describes threshold calibration and other completed campaign packets; the normative requirement is complete declared suite/heldout and scope coverage, not that exact count."
+    ]
+  },
   "decision": {
     "automatic_numerical_point_gates": "passed: 99.286% overall top1, all KL tails, and every 97% scope",
     "classification": "review-positive candidate, not a definitive quality rejection",
     "exact_decision_parity": "failed twice; diagnostic rather than universal T2 task gate",
     "paired_task_noninferiority": "passed under predeclared four-prompt rubric",
-    "promotion": "not yet; keep candidate unselected pending full 18-prompt/450-row, three-repeat, BF16-relative, and applicable state/task gates",
+    "promotion": "not yet; keep candidate unselected pending the complete canonical PARO prompt/heldout suite, three fixed-schedule repeats, and applicable B1 state/KV/rollback/isolation/task gates. BF16-relative evidence is conditional on a full-precision target teacher being available; none is present in the packed model directory.",
     "statistical_precision": "Wilson 95% interval 97.433%-99.804% straddles the 99% threshold"
   },
   "hardware": {
@@ -544,7 +558,9 @@
       "64 output tokens per prompt",
       "one prompt per category",
       "no three-repeat candidate determinism packet",
-      "not the full 18-prompt/450-row production campaign"
+      "not the complete canonical PARO prompt/heldout suite",
+      "no complete applicable B1 state/KV/rollback/isolation packet",
+      "BF16-relative comparison is conditional; the packed model directory has no full-precision target teacher artifact"
     ],
     "paired_noninferiority_passed": true,
     "prompts": {

@@ -9,7 +9,7 @@
 
 | Surface | Current evidence | Assessment | Next action |
 | --- | --- | --- | --- |
-| Fast verifier (`decode_batched`) | Four-category D64 strict-teacher review: `278/280 = 99.286%` top-1, all KL tails and every 97% scope pass; two root-row top-2 swaps have identical top-5 sets. Paired 64-token task review passes `4/4`. | Review-positive T2 candidate, **not yet production-qualified**: Wilson 95% top-1 interval `[97.433%, 99.804%]`, only one prompt/category, no three-repeat/BF16-relative/full-state packet. | Keep registered but uncertified/unselected; run the frozen full 18-prompt/450-row campaign and repeats before promotion. |
+| Fast verifier (`decode_batched`) | Four-category D64 strict-teacher review: `278/280 = 99.286%` top-1, all KL tails and every 97% scope pass; two root-row top-2 swaps have identical top-5 sets. Paired 64-token task review passes `4/4`. | Review-positive T2 candidate, **not yet production-qualified**: Wilson 95% top-1 interval `[97.433%, 99.804%]`, only one prompt/category, no three-repeat or complete applicable B1 state/KV/rollback/isolation packet. BF16-relative evidence is conditional and no full-precision target teacher is present locally. | Keep registered but uncertified/unselected; run the complete canonical PARO suite/heldouts, repeats, and applicable state/task gates before promotion. |
 | Strict verifier (`c1_loop`) | D24 canonical: exact `10/10`, `240/240`; `90.405 tok/s`, `0.8114x`, `16.727 ms/cycle`. State exact at cycles 1/2/4/8. D64 four-heldout: exact `256/256`, `0.8418x`. | Sound oracle/fallback, currently too slow. | Preserve as selected fallback while the fast candidate completes the full T2 campaign. |
 | Shared acceptance at D24 | Fast and strict have identical traces: `79/151 = 52.32%` draft acceptance, `79/240 = 32.92%` accepted/output. | Strict arithmetic is not the acceptance problem. The old `7.48%` N4 result predates grouped PARO heads and is stale for current economics. | Use current canonical suite and longer horizon for every decision. |
 | Target-hidden input | PARO passed the pre-final-norm last-layer BF16 tap. nano-vLLM-amd `5d8f496da5e3` and vLLM `470229c37efa` pass final output-normalized target hidden. | Contract mismatch repaired; the isolated five-fixture fixed-chain native/reference gate passes all four categories plus reject/full-accept coverage. | Keep the corrected contract; no clean-slate provider rewrite is justified by proposal quality. |
@@ -180,7 +180,25 @@ The spike remains explicit rather than promoted. Qualification status as of
 | Three same-schedule D24 repetitions | **correctness passed; economics rejected** | `30/30` prompt runs and `720/720` IDs exact with deterministic traces. Weighted MTP/AR is `0.9495x`; only general-English beats AR, while code/general-Japanese/mixed regress. No default promotion. |
 | Borrowed-pointer lifecycle and memory | **passed** | Closed-owner launches fail before use; close/reuse is stable; borrowed scoring saves `1,017,114,848` bytes versus the private F16 head. Teardown has one bounded, non-growing 8-byte runtime residue, reported explicitly rather than called exact-zero. |
 | Registered strict/production route manifest | **passed** | Strict hash `3199678e604d...5723`; production hash `9ea22c030d76...8876`. Both select strict verification; fast D64 is registered only as an uncertified/unselected candidate. |
-| Fast-verifier production numerical/task gate | **review-positive; incomplete** | Expanded W7900 matrix covers 280 rows/four categories: top-1 `99.286%`, mean/p95/p99/max KL `0.000377/0.001647/0.009209/0.013702`, and all scopes pass. Two narrow top-2 swaps alter exact decisions, but predeclared paired task review passes `4/4`. Confidence straddles 99% and full 450-row/three-repeat/BF16-relative/state evidence is absent, so fast remains unselected. |
+| Fast-verifier production numerical/task gate | **review-positive; incomplete** | Expanded W7900 matrix covers 280 rows/four categories: top-1 `99.286%`, mean/p95/p99/max KL `0.000377/0.001647/0.009209/0.013702`, and all scopes pass. Two narrow top-2 swaps alter exact decisions, but predeclared paired task review passes `4/4`. Confidence straddles 99%; the complete canonical PARO suite, three repeats, and applicable B1 state/task evidence are absent. The exact 18-prompt/450-row calibration count is not a binding cardinality, and BF16-relative evidence applies only if a full-precision target teacher exists. |
+
+The actual next-gate contract is source-bound rather than cardinality-bound:
+
+1. keep the frozen mean/p95/p99/max KL and 99% overall / 97% per-scope limits;
+2. run every prompt in `benchmarks/prompts/mtpbench-code-general-ja.jsonl`
+   across all four categories and its applicable heldouts, per project anti-gaming
+   policy and `EXECUTION-PROFILES.md` section 6.4;
+3. repeat the same manifest/schedule at least three times;
+4. cover the route's applicable B1 state surfaces: repeated reject/full-accept,
+   selected-state/KV ownership, rollback/isolation, long horizon, reuse, and
+   teardown. Generic c4/c8 multi-request dynamics are outside this B1 route's
+   declared scope unless that scope expands; and
+5. run BF16-relative non-inferiority only if a full-precision target teacher is
+   available. The local packed model directory has a packed target and BF16 MTP
+   sidecar, but no full-precision target teacher.
+
+`18 prompts/450 rows` describes the threshold calibration and other campaign
+packets; it was not written as a universal candidate sample-size requirement.
 
 Compact evidence:
 [`provider-contract spike`](../benchmarks/results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json),
