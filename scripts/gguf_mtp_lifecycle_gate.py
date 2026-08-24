@@ -34,6 +34,19 @@ from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from scripts.gguf_mtp_long_context_gate import _atomic_write_json, _prompt, _provenance
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
+def _expected_prefix_through_token(
+    expected: Sequence[int],
+    token_id: int,
+) -> tuple[int, ...]:
+    tokens = tuple(int(token) for token in expected)
+    terminal = int(token_id)
+    try:
+        index = tokens.index(terminal)
+    except ValueError as exc:
+        raise ValueError("terminal token is absent from expected AR output") from exc
+    return tokens[: index + 1]
+
+
 FAULT_PHASES = (
     "before_proposal",
     "after_proposal_before_target",
@@ -394,7 +407,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         use_bulk_prefill=True,
                     )
                 _release(provider, request_id)
-                expected_length = 5 if kind == "eos_in_cycle" else 4
+                expected_prefix = _expected_prefix_through_token(
+                    expected,
+                    token_id,
+                )
                 terminal_health = _mtp_health(
                     target,
                     provider,
@@ -410,7 +426,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "mtp_health": terminal_health,
                 }
                 terminal_row["passed"] = bool(
-                    tuple(terminal.token_ids) == tuple(expected[:expected_length])
+                    tuple(terminal.token_ids) == expected_prefix
                     and terminal.cycles == 1
                     and terminal_health["output_ids_exact"]
                     and terminal_health["lifecycle_phases_exact"]

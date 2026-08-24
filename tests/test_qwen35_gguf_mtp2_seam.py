@@ -3,11 +3,15 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
-from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+from hipengine.generation.qwen35_gguf_mtp2 import (
+    Qwen35GGUFMTP2Adapter,
+    _MTP2RequestState,
+)
 from hipengine.kernels.backends import backend_package_capability
-from hipengine.speculative import SpeculativeRequestSemantics
+from hipengine.speculative import MtpProposalContext, SpeculativeRequestSemantics
 
 
 class _AdapterDouble:
@@ -135,3 +139,101 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
 
     target.runner = SimpleNamespace(fp16_recurrent_state=True)
     assert adapter.capability(semantics) is None
+
+
+@pytest.mark.parametrize(
+    ("accepted", "expected_inputs", "full_tail"),
+    [
+        (0, [(90, 10)], False),
+        (1, [(90, 10), (101, 11)], False),
+        (2, [(90, 10), (101, 11), (102, 12)], False),
+        (3, [], True),
+    ],
+)
+def test_provider_repair_restores_and_replays_only_committed_prefix(
+    accepted,
+    expected_inputs,
+    full_tail,
+) -> None:
+    calls = []
+
+    class Executor:
+        def restore_request_checkpoint(self, checkpoint):
+            calls.append(("restore", checkpoint))
+
+        def advance_state_only(self, request_id, token_id, position, hidden):
+            calls.append(("advance", request_id, token_id, position, hidden))
+
+    results = tuple(
+        SimpleNamespace(token_id=101 + index, hidden=f"h{index}")
+        for index in range(3)
+    )
+    provider = SimpleNamespace(
+        executor=Executor(),
+        last_results={7: results},
+        advance_full_accept_tail=lambda request_id, accepted_count: calls.append(
+            ("full", request_id, accepted_count)
+        ),
+    )
+    state = _MTP2RequestState(
+        request_id=7,
+        provider=provider,
+        provider_pool_key=None,
+        verifier=SimpleNamespace(),
+        root_hidden_buffer=SimpleNamespace(ptr=1),
+        proposal_checkpoint="checkpoint",
+        proposal_context=MtpProposalContext(
+            request_ids=(7,),
+            root_tokens=(90,),
+            root_positions=(10,),
+            target_hidden=SimpleNamespace(ndim=2, shape=(1, 4)),
+        ),
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+
+    adapter._repair_provider_state(
+        state,
+        accepted_count=accepted,
+        candidate_count=3,
+    )
+
+    if full_tail:
+        assert calls == [("full", 7, 3)]
+    else:
+        assert calls[0] == ("restore", "checkpoint")
+        actual_inputs = [(call[2], call[3]) for call in calls[1:]]
+        assert actual_inputs == expected_inputs
+
+
+def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
+    calls = []
+    executor = SimpleNamespace(
+        advance_state_only=lambda request_id, token, position, hidden: calls.append(
+            (request_id, token, position, hidden)
+        )
+    )
+    provider = SimpleNamespace(executor=executor)
+    state = _MTP2RequestState(
+        request_id=7,
+        provider=provider,
+        provider_pool_key=None,
+        verifier=SimpleNamespace(),
+        root_hidden_buffer=SimpleNamespace(ptr=1),
+    )
+    row = SimpleNamespace(
+        lease=SimpleNamespace(
+            session=SimpleNamespace(position=15, last_target_hidden="pre-root-hidden")
+        ),
+        slot=SimpleNamespace(generated_ids=[90]),
+        mtp2_k0_catchups=0,
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._states = {7: state}
+    adapter._disabled_requests = set()
+    adapter.owner = SimpleNamespace(_row=lambda request_id: row)
+    plan = SimpleNamespace(request_ids=(7,))
+
+    adapter.prepare_k0(plan, (), stream=None)
+
+    assert calls == [(7, 90, 15, "pre-root-hidden")]
+    assert row.mtp2_k0_catchups == 1

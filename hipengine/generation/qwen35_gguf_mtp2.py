@@ -49,6 +49,8 @@ class _MTP2RequestState:
     verifier: Qwen35GGUFTransactionalVerifier
     root_hidden_buffer: DeviceBuffer
     last_proposal_seconds: float = 0.0
+    proposal_checkpoint: Any | None = None
+    proposal_context: MtpProposalContext | None = None
 
 
 class Qwen35GGUFMTP2Adapter:
@@ -166,6 +168,33 @@ class Qwen35GGUFMTP2Adapter:
             and plan.speculative_request_ids[0] not in self._disabled_requests
         )
 
+    def prepare_k0(
+        self,
+        plan: SpecRequestPlan,
+        request_semantics: Sequence[SpeculativeRequestSemantics],
+        *,
+        stream: int | None = None,
+    ) -> None:
+        del request_semantics, stream
+        for request_id in plan.request_ids:
+            rid = int(request_id)
+            state = self._states.get(rid)
+            if state is None or rid in self._disabled_requests:
+                continue
+            row = self.owner._row(rid)
+            if row.lease is None or row.slot is None:
+                continue
+            target = row.lease.session
+            root_token = int(row.slot.generated_ids[-1])
+            root_position = int(target.position)
+            state.provider.executor.advance_state_only(
+                rid,
+                root_token,
+                root_position,
+                target.last_target_hidden,
+            )
+            row.mtp2_k0_catchups += 1
+
     def component_claims(
         self,
         plan: SpecRequestPlan,
@@ -244,13 +273,23 @@ class Qwen35GGUFMTP2Adapter:
             root_positions=(int(target.position),),
             target_hidden=target.last_target_hidden,
         )
-        proposal_started = time.perf_counter()
-        draft = state.provider.propose(
-            context,
-            candidate_budget=budget,
-            return_logits=False,
-        )
-        state.last_proposal_seconds = time.perf_counter() - proposal_started
+        if state.proposal_checkpoint is not None:
+            raise RuntimeError("GGUF MTP2 proposal checkpoint is already open")
+        checkpoint = state.provider.executor.capture_request_checkpoint(rid)
+        try:
+            proposal_started = time.perf_counter()
+            draft = state.provider.propose(
+                context,
+                candidate_budget=budget,
+                return_logits=False,
+            )
+            state.last_proposal_seconds = time.perf_counter() - proposal_started
+        except Exception:
+            state.provider.executor.restore_request_checkpoint(checkpoint)
+            state.provider.executor.release_request_checkpoint(checkpoint)
+            raise
+        state.proposal_checkpoint = checkpoint
+        state.proposal_context = context
         parents = draft.tree_parents or tuple(
             -1 if depth == 1 else index - 1
             for index, depth in enumerate(draft.draft_depths)
@@ -336,6 +375,7 @@ class Qwen35GGUFMTP2Adapter:
             provider_open=True,
         )
         if tuple(int(value) for value in cancelled_request_ids()):
+            self._restore_provider_checkpoint(state)
             self._drop_request(rid, disable=True)
             return SpecCycleResult(
                 stage=SpecCycleStage.CANCELLED,
@@ -373,6 +413,7 @@ class Qwen35GGUFMTP2Adapter:
             if cancelled:
                 state.verifier.rollback(prepared)
                 prepared = None
+                self._restore_provider_checkpoint(state)
                 self._drop_request(rid, disable=True)
                 return SpecCycleResult(
                     stage=SpecCycleStage.CANCELLED,
@@ -398,17 +439,35 @@ class Qwen35GGUFMTP2Adapter:
                 tree_shape=summary.tree_shape,
                 mode=summary.mode,
             )
+            accepted = int(summary.accepted_counts[0])
+            provider_update_started = time.perf_counter()
+            self._repair_provider_state(
+                state,
+                accepted_count=accepted,
+                candidate_count=int(plan.candidate_counts[0]),
+            )
+            provider_update_seconds = time.perf_counter() - provider_update_started
+            cancelled = tuple(int(value) for value in cancelled_request_ids())
+            if cancelled:
+                state.verifier.rollback(prepared)
+                prepared = None
+                self._restore_provider_checkpoint(state)
+                self._drop_request(rid, disable=True)
+                return SpecCycleResult(
+                    stage=SpecCycleStage.CANCELLED,
+                    transaction=replace(
+                        transaction,
+                        target_open=False,
+                        provider_open=False,
+                        rolled_back=True,
+                    ),
+                    cancelled_request_ids=cancelled,
+                )
             state.verifier.commit(prepared, commit_plan)
             native_graph_submitted = bool(prepared.native_graph_submitted)
             state.verifier.finish(prepared)
             prepared = None
-            accepted = int(summary.accepted_counts[0])
-            provider_update_started = time.perf_counter()
-            state.provider.advance_full_accept_tail(
-                rid,
-                accepted_count=accepted,
-            )
-            provider_update_seconds = time.perf_counter() - provider_update_started
+            self._release_provider_checkpoint(state)
             next_token = None if summary.next_tokens is None else summary.next_tokens[0]
             output_ids = (
                 *tuple(int(token) for token in summary.accepted_tokens[0]),
@@ -469,7 +528,67 @@ class Qwen35GGUFMTP2Adapter:
         except Exception:
             if prepared is not None:
                 state.verifier.rollback(prepared)
+            self._restore_provider_checkpoint(state)
             raise
+
+    def _repair_provider_state(
+        self,
+        state: _MTP2RequestState,
+        *,
+        accepted_count: int,
+        candidate_count: int,
+    ) -> None:
+        checkpoint = state.proposal_checkpoint
+        context = state.proposal_context
+        if checkpoint is None or context is None:
+            raise RuntimeError("GGUF MTP2 provider repair has no proposal checkpoint")
+        results = state.provider.last_results.get(int(state.request_id))
+        if results is None or len(results) != int(candidate_count):
+            raise RuntimeError("GGUF MTP2 provider repair lost proposal rows")
+        accepted = int(accepted_count)
+        if accepted < 0 or accepted > len(results):
+            raise ValueError("accepted_count is outside proposal rows")
+        executor = state.provider.executor
+        if accepted == len(results):
+            state.provider.advance_full_accept_tail(
+                state.request_id,
+                accepted_count=accepted,
+            )
+            return
+        executor.restore_request_checkpoint(checkpoint)
+        executor.advance_state_only(
+            state.request_id,
+            int(context.root_tokens[0]),
+            int(context.root_positions[0]),
+            context.target_hidden,
+        )
+        for index in range(accepted):
+            proposal_row = results[index]
+            executor.advance_state_only(
+                state.request_id,
+                int(proposal_row.token_id),
+                int(context.root_positions[0]) + index + 1,
+                proposal_row.hidden,
+            )
+
+    def _restore_provider_checkpoint(self, state: _MTP2RequestState) -> None:
+        checkpoint = state.proposal_checkpoint
+        if checkpoint is None:
+            return
+        try:
+            state.provider.executor.restore_request_checkpoint(checkpoint)
+        finally:
+            state.provider.executor.release_request_checkpoint(checkpoint)
+            state.proposal_checkpoint = None
+            state.proposal_context = None
+
+    def _release_provider_checkpoint(self, state: _MTP2RequestState) -> None:
+        checkpoint = state.proposal_checkpoint
+        if checkpoint is None:
+            return
+        state.provider.executor.release_request_checkpoint(checkpoint)
+        state.proposal_checkpoint = None
+        state.proposal_context = None
 
     def rollback_cycle(
         self,
@@ -479,6 +598,9 @@ class Qwen35GGUFMTP2Adapter:
     ) -> None:
         del candidate_graph, error
         for request_id in plan.speculative_request_ids:
+            state = self._states.get(int(request_id))
+            if state is not None:
+                self._restore_provider_checkpoint(state)
             self._drop_request(int(request_id), disable=True)
 
     def release_request(self, request_id: int) -> None:
@@ -611,6 +733,7 @@ class Qwen35GGUFMTP2Adapter:
         state = self._states.pop(rid, None)
         if state is not None:
             target = self.owner._row(rid).lease.session
+            self._release_provider_checkpoint(state)
             state.verifier.close()
             if int(getattr(target, "_last_target_hidden_ptr", 0)) == int(
                 state.root_hidden_buffer.ptr

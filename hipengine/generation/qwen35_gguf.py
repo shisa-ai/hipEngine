@@ -4802,6 +4802,7 @@ class _GGUFResidentLoopRow:
     mtp2_proposal_ms: float = 0.0
     mtp2_target_ms: float = 0.0
     mtp2_provider_update_ms: float = 0.0
+    mtp2_k0_catchups: int = 0
 
 
 def _compact_live_execution_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
@@ -5973,6 +5974,12 @@ class Qwen35GGUFResidentModelRunner:
     def speculative_claims_fit(self, plan) -> bool:
         adapter = self._resolved_mtp2_adapter()
         return bool(adapter is not None and adapter.claims_fit(plan))
+
+    def prepare_speculative_k0(self, plan, request_semantics, *, stream=None) -> None:
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is not None:
+            with hip_target_arch_environment(self.generator.target_arch):
+                adapter.prepare_k0(plan, request_semantics, stream=stream)
 
     def speculative_component_claims(self, plan):
         adapter = self._resolved_mtp2_adapter()
@@ -8104,6 +8111,7 @@ class Qwen35GGUFResidentModelRunner:
                     "specdec2_mtp2_provider_update_ms": float(
                         row.mtp2_provider_update_ms
                     ),
+                    "specdec2_mtp2_k0_catchups": float(row.mtp2_k0_catchups),
                 }
             )
         return GenerationOutput(
@@ -8195,6 +8203,7 @@ class Qwen35GGUFResidentModelRunner:
             "specdec2_mtp2_provider_update_ms": float(
                 row.mtp2_provider_update_ms
             ),
+            "specdec2_mtp2_k0_catchups": int(row.mtp2_k0_catchups),
             "prefix_eligible": bool(row.prefix_eligible),
             "prefix_lookup": bool(row.prefix_lookup),
             "prefix_matched_tokens": int(row.prefix_matched_tokens),
