@@ -88,8 +88,6 @@ _EFFECTIVE_SERVER_ENV_KEYS = (
     "HIPENGINE_QWEN35_RETAINED_BATCH_DEFAULTS",
     "HIPENGINE_QWEN35_EXPERIMENTAL_NATIVE_BATCH_DECODE",
     "HIPENGINE_GGUF_AR_PACKED_DECODE",
-    "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY",
-    "HIPENGINE_PROCESS_ENV_REPORT_PATH",
     "HIP_VISIBLE_DEVICES",
     "ROCR_VISIBLE_DEVICES",
     "GPU_MAX_HW_QUEUES",
@@ -866,25 +864,22 @@ def _positive_int(raw: str) -> int:
     return value
 
 
-def _parse_gpu_max_hw_queues(raw: str) -> int | None:
-    normalized = str(raw).strip().lower()
-    if normalized == "unset":
-        return None
+def _parse_gpu_max_hw_queues(raw: str) -> int:
     try:
-        value = int(normalized)
+        value = int(str(raw).strip())
     except ValueError as exc:
         raise argparse.ArgumentTypeError(
-            "gpu-max-hw-queues must be one of 1,2,4,8,unset"
+            "gpu-max-hw-queues must be one of 1,2,4,8"
         ) from exc
     if value not in {1, 2, 4, 8}:
         raise argparse.ArgumentTypeError(
-            "gpu-max-hw-queues must be one of 1,2,4,8,unset"
+            "gpu-max-hw-queues must be one of 1,2,4,8"
         )
     return value
 
 
-def _gpu_max_hw_queues_label(value: int | None) -> str:
-    return "unset" if value is None else str(int(value))
+def _gpu_max_hw_queues_label(value: int) -> str:
+    return str(int(value))
 
 
 def _validate_concurrency_plan(
@@ -1808,10 +1803,6 @@ def _server_paths(args: argparse.Namespace, engine: str) -> tuple[Path | None, P
     return REPO_ROOT, None
 
 
-def _process_env_report_path(args: argparse.Namespace, *, port: int) -> Path:
-    return args.work_dir / f"hipengine-process-env-{int(port)}.json"
-
-
 def _server_command_and_env(
     args: argparse.Namespace,
     *,
@@ -1821,12 +1812,7 @@ def _server_command_and_env(
 ) -> tuple[list[str], dict[str, str], Path]:
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
-    if args.gpu_max_hw_queues is None:
-        env.pop("GPU_MAX_HW_QUEUES", None)
-        env["HIPENGINE_GPU_MAX_HW_QUEUES_POLICY"] = "runtime_default"
-    else:
-        env["GPU_MAX_HW_QUEUES"] = str(int(args.gpu_max_hw_queues))
-        env["HIPENGINE_GPU_MAX_HW_QUEUES_POLICY"] = "explicit"
+    env["GPU_MAX_HW_QUEUES"] = str(int(args.gpu_max_hw_queues))
     if args.compiler_version_file is not None:
         env["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     if engine == "hipengine":
@@ -1836,9 +1822,6 @@ def _server_command_and_env(
         # the already-remapped one-device view down to zero devices.
         env["HIP_VISIBLE_DEVICES"] = str(args.gpu)
         env.pop("ROCR_VISIBLE_DEVICES", None)
-        env["HIPENGINE_PROCESS_ENV_REPORT_PATH"] = str(
-            _process_env_report_path(args, port=port)
-        )
         env["HIPENGINE_PREFILL_DECODE_POLICY"] = str(
             args.hipengine_prefill_decode_policy
         )
@@ -2269,33 +2252,6 @@ def _server_log_record(path: Path) -> dict[str, Any]:
     return payload
 
 
-def _process_env_report_record(args: argparse.Namespace, *, port: int) -> dict[str, Any]:
-    path = _process_env_report_path(args, port=port)
-    if not path.is_file():
-        return {
-            "path": str(path),
-            "missing": True,
-            "runtime_queue_ids": None,
-            "runtime_queue_count": None,
-            "runtime_observation": "requires rocprof queue trace",
-        }
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, Mapping):
-        raise BenchError(f"process environment report root must be an object: {path}")
-    queue = payload.get("gpu_max_hw_queues")
-    if not isinstance(queue, Mapping):
-        raise BenchError(f"process environment report queue record is missing: {path}")
-    return {
-        "path": str(path),
-        "sha256": file_sha256(path),
-        "missing": False,
-        "configured": dict(queue),
-        "runtime_queue_ids": queue.get("runtime_queue_ids"),
-        "runtime_queue_count": queue.get("runtime_queue_count"),
-        "runtime_observation": queue.get("runtime_observation"),
-    }
-
-
 def _selected_metrics(samples: Sequence[Mapping[str, Any]], raw_path: Path) -> dict[str, Any]:
     scalar_names = (
         "hipengine_requests_total",
@@ -2422,14 +2378,6 @@ def _run_oracle(
                 "server_command_shell": shlex.join(command),
                 "server_startup_seconds": startup_seconds,
                 "server_log": _server_log_record(log_path),
-                "runtime_queue_observation": (
-                    _process_env_report_record(
-                        args,
-                        port=int(args.port_base) + 1,
-                    )
-                    if engine == "hipengine"
-                    else None
-                ),
             }
         )
         return oracle, records, server_metadata
@@ -2710,14 +2658,6 @@ def _run_width(
                 "command_shell": shlex.join(command),
                 "startup_seconds": startup_seconds,
                 "log": _server_log_record(log_path),
-                "runtime_queue_observation": (
-                    _process_env_report_record(
-                        args,
-                        port=int(args.port_base) + int(concurrency),
-                    )
-                    if engine == "hipengine"
-                    else None
-                ),
             },
             "warmup_runs": warmups,
             "measured_runs": measured,
@@ -3118,12 +3058,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--gpu-max-hw-queues",
         type=_parse_gpu_max_hw_queues,
-        default=1,
-        metavar="{1,2,4,8,unset}",
-        help=(
-            "Explicit ROCm queue limit, or unset to suppress both the harness "
-            "value and gfx1151 backend package default for the ROCm runtime default"
-        ),
+        default=2,
+        metavar="{1,2,4,8}",
+        help="Explicit ROCm queue limit; gfx1151 production defaults to 2",
     )
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--concurrencies", type=_parse_concurrencies, default=[1, 2, 4, 8, 13])

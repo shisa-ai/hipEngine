@@ -8,7 +8,6 @@ records the native HIP/CUDA architecture needed by the JIT build layer and maps
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import subprocess
@@ -17,7 +16,6 @@ from collections.abc import Iterator, Mapping, MutableMapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from importlib import import_module
-from pathlib import Path
 from types import ModuleType
 
 AUTO_BACKEND = "auto"
@@ -25,10 +23,7 @@ CPU_BACKEND = "cpu_reference"
 _ENV_BACKEND = "HIPENGINE_BACKEND"
 _ENV_HIP_ARCH = "HIPENGINE_HIP_ARCH"
 _ENV_GPU_MAX_HW_QUEUES = "GPU_MAX_HW_QUEUES"
-_ENV_GPU_MAX_HW_QUEUES_POLICY = "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY"
-_ENV_PROCESS_ENV_REPORT_PATH = "HIPENGINE_PROCESS_ENV_REPORT_PATH"
 _ENV_HSA_SCRATCH_SINGLE_LIMIT = "HSA_SCRATCH_SINGLE_LIMIT"
-_GPU_MAX_HW_QUEUE_POLICIES = frozenset({"auto", "explicit", "backend_default", "runtime_default"})
 
 HIP_BACKEND_TARGET_ARCH: dict[str, str] = {
     "hip_gfx1100": "gfx1100",
@@ -47,8 +42,9 @@ CUDA_TARGET_ARCH_BACKEND: dict[str, str] = {
 # On gfx1100, rocprof identifies repeated 300-MiB use-once allocations for the
 # 3,200-byte/thread AOTriton prefill kernel; 8 MiB preserves measured
 # full-engine behavior while materially reducing whole-device peak.
-# ROCm's documented default is four hardware queues. Clean Laguna branch-
-# concurrency evidence admits two on gfx1151. Explicit user values always win.
+# ROCm's documented default is four hardware queues. Complete Qwen3.8
+# fixed-width, arrival/soak, context/graph, prefix, and pressure matrices retain
+# two on gfx1151. Explicit user values always win.
 HIP_BACKEND_PROCESS_ENV_DEFAULTS: dict[str, dict[str, str]] = {
     "hip_gfx1100": {_ENV_HSA_SCRATCH_SINGLE_LIMIT: "8388608"},
     "hip_gfx1151": {_ENV_GPU_MAX_HW_QUEUES: "2"},
@@ -142,13 +138,11 @@ def configure_hip_process_environment(
     """Apply hardware-local HIP defaults before ``libamdhip64`` is loaded.
 
     gfx1100 caps reclaimable single-dispatch scratch at 8 MiB instead of
-    ROCr's much larger default threshold; gfx1151 uses two hardware queues for
-    the admitted Laguna shared/routed MoE overlap while remaining below ROCm's
+    ROCr's much larger default threshold; gfx1151 uses two hardware queues after
+    complete same-host queue-policy validation while remaining below ROCm's
     documented default of four. The policy is applied only when all recognized
     visible HIP architectures map to the same backend. Existing environment
     values are never overwritten, so users retain explicit rollback/control.
-    The benchmark-only ``runtime_default`` policy suppresses the gfx1151 package
-    queue limit while leaving ``GPU_MAX_HW_QUEUES`` absent for ROCm initialization.
     """
 
     env_map = os.environ if env is None else env
@@ -169,25 +163,7 @@ def configure_hip_process_environment(
         if backend_hint in HIP_BACKEND_TARGET_ARCH:
             backends.add(backend_hint)
 
-    queue_policy = (
-        env_map.get(_ENV_GPU_MAX_HW_QUEUES_POLICY) or "auto"
-    ).strip().lower()
-    if queue_policy not in _GPU_MAX_HW_QUEUE_POLICIES:
-        valid = ", ".join(sorted(_GPU_MAX_HW_QUEUE_POLICIES))
-        raise ValueError(
-            f"invalid {_ENV_GPU_MAX_HW_QUEUES_POLICY}={queue_policy!r}; expected {valid}"
-        )
     queue_before = env_map.get(_ENV_GPU_MAX_HW_QUEUES)
-    if queue_policy == "runtime_default" and queue_before is not None:
-        raise ValueError(
-            f"{_ENV_GPU_MAX_HW_QUEUES_POLICY}=runtime_default requires "
-            f"{_ENV_GPU_MAX_HW_QUEUES} to be absent"
-        )
-    if queue_policy == "explicit" and queue_before is None:
-        raise ValueError(
-            f"{_ENV_GPU_MAX_HW_QUEUES_POLICY}=explicit requires "
-            f"{_ENV_GPU_MAX_HW_QUEUES}"
-        )
     if queue_before is not None:
         try:
             if int(queue_before) < 1:
@@ -201,48 +177,11 @@ def configure_hip_process_environment(
     backend = next(iter(backends)) if len(backends) == 1 else None
     if backend is not None:
         for name, value in HIP_BACKEND_PROCESS_ENV_DEFAULTS.get(backend, {}).items():
-            if name == _ENV_GPU_MAX_HW_QUEUES and queue_policy == "runtime_default":
-                continue
             if name in env_map:
                 continue
             env_map[name] = value
             applied[name] = value
 
-    queue_after = env_map.get(_ENV_GPU_MAX_HW_QUEUES)
-    if queue_before is not None:
-        queue_source = "explicit_environment"
-    elif _ENV_GPU_MAX_HW_QUEUES in applied:
-        queue_source = "backend_default"
-    elif queue_policy == "runtime_default":
-        queue_source = "rocm_runtime_default"
-    else:
-        queue_source = "not_applicable"
-    report_path_raw = (env_map.get(_ENV_PROCESS_ENV_REPORT_PATH) or "").strip()
-    if report_path_raw:
-        report_path = Path(report_path_raw).expanduser()
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report = {
-            "schema_version": 1,
-            "kind": "hipengine_process_environment_report",
-            "detected_arches": list(arches),
-            "resolved_backend": backend,
-            "applied_defaults": dict(applied),
-            "gpu_max_hw_queues": {
-                "requested_policy": queue_policy,
-                "value_before_backend_defaults": queue_before,
-                "effective_value": queue_after,
-                "source": queue_source,
-                "runtime_queue_ids": None,
-                "runtime_queue_count": None,
-                "runtime_observation": "requires rocprof queue trace",
-            },
-        }
-        temporary = report_path.with_suffix(report_path.suffix + ".tmp")
-        temporary.write_text(
-            json.dumps(report, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        temporary.replace(report_path)
     return applied
 
 

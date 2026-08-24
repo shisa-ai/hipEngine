@@ -883,18 +883,16 @@ def test_effective_server_environment_records_revalidation_axes(
     assert environment["ROCR_VISIBLE_DEVICES"] is None
     assert environment["HIPENGINE_PREFILL_DECODE_POLICY"] == "fair"
     assert environment["HIPENGINE_GGUF_AR_PACKED_DECODE"] == "1"
-    assert environment["HIPENGINE_GPU_MAX_HW_QUEUES_POLICY"] == "explicit"
 
 
-def test_unset_hardware_queue_policy_reaches_child_without_rocm_limit(
+def test_hardware_queue_cli_defaults_to_retained_queue2_and_rejects_unset(
     tmp_path: Path,
 ) -> None:
-    args = SCRIPT.build_parser().parse_args(
+    parser = SCRIPT.build_parser()
+    args = parser.parse_args(
         [
             "--engine",
             "hipengine",
-            "--gpu-max-hw-queues",
-            "unset",
             "--work-dir",
             str(tmp_path),
             "--json",
@@ -909,12 +907,21 @@ def test_unset_hardware_queue_policy_reaches_child_without_rocm_limit(
         port=19108,
     )
 
-    assert args.gpu_max_hw_queues is None
-    assert "GPU_MAX_HW_QUEUES" not in environment
-    assert environment["HIPENGINE_GPU_MAX_HW_QUEUES_POLICY"] == "runtime_default"
-    assert environment["HIPENGINE_PROCESS_ENV_REPORT_PATH"] == str(
-        tmp_path / "hipengine-process-env-19108.json"
-    )
+    assert args.gpu_max_hw_queues == 2
+    assert environment["GPU_MAX_HW_QUEUES"] == "2"
+    assert "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY" not in environment
+    assert "HIPENGINE_PROCESS_ENV_REPORT_PATH" not in environment
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "--engine",
+                "hipengine",
+                "--gpu-max-hw-queues",
+                "unset",
+                "--json",
+                str(tmp_path / "rejected.json"),
+            ]
+        )
 
 
 def test_production_correctness_treats_c1_id_equality_as_diagnostic() -> None:

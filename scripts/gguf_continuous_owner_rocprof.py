@@ -352,12 +352,8 @@ def _child_command(
 
 def _queue_environment(environment: Mapping[str, str], queue_policy: str) -> dict[str, str]:
     selected = {str(key): str(value) for key, value in environment.items()}
-    if queue_policy == "unset":
-        selected.pop("GPU_MAX_HW_QUEUES", None)
-        selected["HIPENGINE_GPU_MAX_HW_QUEUES_POLICY"] = "runtime_default"
-    else:
-        selected["GPU_MAX_HW_QUEUES"] = str(int(queue_policy))
-        selected["HIPENGINE_GPU_MAX_HW_QUEUES_POLICY"] = "explicit"
+    selected["GPU_MAX_HW_QUEUES"] = str(int(queue_policy))
+    selected.pop("HIPENGINE_GPU_MAX_HW_QUEUES_POLICY", None)
     return selected
 
 
@@ -418,7 +414,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cache-root", type=Path, required=True)
     parser.add_argument("--run-root", type=Path, required=True)
     parser.add_argument("--run-tag", required=True)
-    parser.add_argument("--gpu-max-hw-queues", choices=("1", "2", "4", "8", "unset"), default="2")
+    parser.add_argument("--gpu-max-hw-queues", choices=("1", "2", "4", "8"), default="2")
     parser.add_argument(
         "--fp16-recurrent-state",
         action=argparse.BooleanOptionalAction,
