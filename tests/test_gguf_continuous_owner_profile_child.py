@@ -53,7 +53,19 @@ def test_continuous_owner_cache_only_environment_is_explicit(
             str(tmp_path / "result.json"),
         ]
     )
-    monkeypatch.delenv("HIPENGINE_HIP_ARCH", raising=False)
+    for key in (
+        "HIPENGINE_HIP_ARCH",
+        "HIPENGINE_COMPILER_VERSION_FILE",
+        "HIPENGINE_BUILD_CACHE_ROOT",
+        "HIPENGINE_REQUIRE_CACHED_BUILD",
+    ):
+        # Register absence as well as an existing value with pytest's undo
+        # stack before the helper mutates os.environ directly. ``delenv`` alone
+        # records nothing when a key starts absent, so use a sentinel set/delete
+        # pair whose reverse undo first restores the sentinel and then restores
+        # the true original state.
+        monkeypatch.setenv(key, "__pytest_restore__")
+        monkeypatch.delenv(key)
 
     selected = configure_build_environment(args)
 
