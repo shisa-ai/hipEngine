@@ -42,6 +42,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
     gguf_q4_k_pack8_dual_silu_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
+    gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
@@ -71,6 +75,35 @@ def _qwen35_08b_q4_pack8_dual_silu_t128(*args, **kwargs):
 
     kwargs["threads"] = 128
     return gguf_q4_k_pack8_dual_silu_bf16_bf16_out(*args, **kwargs)
+
+
+def gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    **kwargs,
+):
+    """Select the admitted exact single-wave owner for physical small rows."""
+
+    fn = (
+        gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
+        if int(rows) in GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_ROWS
+        and (int(in_features), int(out_features))
+        in GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES
+        else gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
+    )
+    return fn(
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
 
 
 def gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
@@ -1028,6 +1061,19 @@ GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE = {
 # D08-P1 admits the existing direct/rowtile/WMMA Q5T16 family only for the
 # exact Qwen3.5-0.8B linear-attention QKV role selected by the materializer.
 GGUF_DENSE_Q5_T16_QKV = True
+# SPECDEC2-PERF P5 admits the existing exact single-wave standard-Q4 parent for
+# physical rows where the four-wave shared-B owner overprovisions a 256-row
+# tile. Narrow V and wide-K down remain on shared-B; all peer backends and shape
+# misses retain their source registration.
+GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_ROWS = frozenset({6, 8, 12, 16})
+GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES = frozenset(
+    {
+        (5_120, 6_144),
+        (5_120, 10_240),
+        (5_120, 12_288),
+        (6_144, 5_120),
+    }
+)
 # Exact standard-Q4 two-wave/16-column output ownership. The shape map is the
 # independently qualified physical-row8 scope. ``rows_by_shape`` narrows the
 # OI-1 small-M extension to actual-weight winners; unspecified shapes therefore
@@ -2140,6 +2186,11 @@ _GFX1151_OVERRIDES = {
     ): gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out,
     (
         "linear",
+        "gguf_q4_k_t16_v1",
+        "t16_wmma_prefill_bf16_bf16_out",
+    ): gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out,
+    (
+        "linear",
         "gguf_q6_k_t16_v1",
         "t16_wmma_prefill_bf16_bf16_out",
     ): gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out,
@@ -2193,6 +2244,19 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
             _GFX1151_OVERRIDES.get((key.layer, key.quant, key.variant), source_fn),
             replace=replace,
         )
+    for variant, fn in (
+        (
+            "t16_wmma_prefill_single_wave_bf16_bf16_out",
+            gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
+        ),
+        (
+            "t16_wmma_prefill_shared_b_bf16_bf16_out",
+            gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
+        ),
+    ):
+        key = KernelKey(BACKEND, "linear", "gguf_q4_k_t16_v1", variant)
+        if replace or not is_registered(key):
+            register(key, fn, replace=replace)
     q4_pack8_decode_pair_key = KernelKey(
         BACKEND,
         "linear_pair",
@@ -2299,6 +2363,8 @@ __all__ = [
     "GGUF_Q4_K_M_MAX_PREFILL_CHUNK_TOKENS",
     "GGUF_Q4_K_M_PREFILL_DECODE_POLICY",
     "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",
+    "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_ROWS",
+    "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES",
     "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
