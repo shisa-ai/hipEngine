@@ -37,6 +37,7 @@ from hipengine.generation.sampling import (
 )
 from hipengine.server import ServerConfig, create_app, render_chat_prompt
 from hipengine.server.__main__ import build_parser
+from hipengine.speculative.policy import DEFAULT_AUTO_DEPTH_POLICY
 from hipengine.server.api import (
     ChatCompletionRequest,
     CompletionRequest,
@@ -1741,9 +1742,12 @@ def test_capabilities_endpoint_defaults_to_auto_exact_fallback() -> None:
     assert payload["auto_route"] == {
         "selected_route": "default",
         "reason": "automatic_mtp_scope_not_promoted",
+        "selected_candidate_count": 0,
+        "policy_key": DEFAULT_AUTO_DEPTH_POLICY.policy_key,
+        "policy_fingerprint": DEFAULT_AUTO_DEPTH_POLICY.fingerprint,
         "exact_default_required": True,
         "compatibility_mtp_explicit_only": True,
-        "evidence": "benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf2-long-target-graphs.json",
+        "evidence": "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
     }
 
 
@@ -6649,10 +6653,14 @@ def test_completions_default_auto_keeps_compatibility_mtp_explicit_only() -> Non
         "requested_route": "speculative_mtp_auto",
         "selected_route": "default",
         "reason": "automatic_mtp_scope_not_promoted",
+        "policy_cell": "auto-c2-measured-k0",
+        "selected_candidate_count": 0,
+        "policy_reason": "measured_speedup_below_1p10",
+        "policy_fingerprint": DEFAULT_AUTO_DEPTH_POLICY.fingerprint,
         "realized_group_rows": 2,
         "output_horizon_tokens": 24,
         "exact_default_required": True,
-        "evidence": "benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf2-long-target-graphs.json",
+        "evidence": "benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json",
     }
     explicit_response = client.post(
         "/v1/completions",

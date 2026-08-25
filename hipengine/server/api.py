@@ -68,6 +68,10 @@ from hipengine.generation import (
 from hipengine.generation.constraints import JsonObjectConstraintState, ToolCallConstraintSpec
 from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kvcache import resolve_prefix_cache_mode
+from hipengine.speculative.policy import (
+    DEFAULT_AUTO_DEPTH_POLICY,
+    select_offline_speculative_depth,
+)
 from hipengine.tokenization.identity import token_ids_sha256
 
 
@@ -255,7 +259,7 @@ _SPECULATIVE_MTP_AUTO_REJECTION_REASON = (
     _SpeculativeMTPRouteReason.AUTOMATIC_SCOPE_NOT_PROMOTED.value
 )
 _SPECULATIVE_MTP_AUTO_EVIDENCE = (
-    "benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf2-long-target-graphs.json"
+    "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json"
 )
 _SPECULATIVE_PROVIDER_ROUTE = "speculative"
 _SPECULATIVE_PROVIDER_ALLOWED_REQUEST_KEYS = frozenset(
@@ -1387,6 +1391,9 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
         payload["auto_route"] = {
             "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
             "reason": _SPECULATIVE_MTP_AUTO_REJECTION_REASON,
+            "selected_candidate_count": 0,
+            "policy_key": DEFAULT_AUTO_DEPTH_POLICY.policy_key,
+            "policy_fingerprint": DEFAULT_AUTO_DEPTH_POLICY.fingerprint,
             "exact_default_required": True,
             "compatibility_mtp_explicit_only": True,
             "evidence": _SPECULATIVE_MTP_AUTO_EVIDENCE,
@@ -2040,16 +2047,41 @@ def _resolve_realized_generation_route(
     rows = int(group_rows)
     if rows < 1:
         raise ValueError("automatic generation route requires a positive realized group")
+    decision = select_offline_speculative_depth(
+        DEFAULT_AUTO_DEPTH_POLICY,
+        concurrency=rows,
+        output_horizon_tokens=int(sampling.max_tokens),
+    )
+    if decision.selected_k != 0:
+        return (
+            _SPECULATIVE_MTP_BATCH_ROUTE,
+            {
+                "requested_route": _SPECULATIVE_MTP_AUTO_ROUTE,
+                "selected_route": _SPECULATIVE_MTP_BATCH_ROUTE,
+                "reason": decision.reason,
+                "policy_cell": decision.cell_key,
+                "selected_candidate_count": decision.selected_k,
+                "policy_fingerprint": decision.policy_fingerprint,
+                "realized_group_rows": rows,
+                "output_horizon_tokens": int(sampling.max_tokens),
+                "exact_default_required": True,
+                "evidence": decision.evidence,
+            },
+        )
     return (
         _SPECULATIVE_MTP_DEFAULT_ROUTE,
         {
             "requested_route": _SPECULATIVE_MTP_AUTO_ROUTE,
             "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
             "reason": _SPECULATIVE_MTP_AUTO_REJECTION_REASON,
+            "policy_cell": decision.cell_key,
+            "selected_candidate_count": 0,
+            "policy_reason": decision.reason,
+            "policy_fingerprint": decision.policy_fingerprint,
             "realized_group_rows": rows,
             "output_horizon_tokens": int(sampling.max_tokens),
             "exact_default_required": True,
-            "evidence": _SPECULATIVE_MTP_AUTO_EVIDENCE,
+            "evidence": decision.evidence,
         },
     )
 
