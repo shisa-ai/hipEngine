@@ -32,6 +32,7 @@ from hipengine.core.memory import (
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.convert import f32_to_bf16
 from hipengine.kernels.hip_gfx1100.runtime import unpack_verify_chain_dynamic_metadata_i64
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.hip_gfx1100.speculative import (
     ACCEPT_PACKED_PAYLOAD_FIELDS,
     build_dflash_accept,
@@ -357,6 +358,15 @@ def _native_target_graph_context_limit(session: Any, *, rows: int) -> int | None
     if capacity <= 0:
         return _NATIVE_TARGET_SHORT_CONTEXT_LIMIT
     if rows <= 0 or end > capacity:
+        return None
+    graph_context_limit = int(
+        backend_package_capability(
+            str(getattr(session, "backend", "")),
+            "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
+            capacity,
+        )
+    )
+    if end > graph_context_limit:
         return None
     if end < 1024:
         return min(_NATIVE_TARGET_SHORT_CONTEXT_LIMIT, capacity)

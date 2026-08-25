@@ -72,6 +72,7 @@ from hipengine.kernels.registry import resolve
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
     advance_decode_positions_i64,
+    copy_i32_to_i64,
     embedding_lookup_batch_fp16_i64,
     embedding_lookup_batch_mapped_fp16_i64,
     embedding_lookup_fp16_i64,
@@ -2614,6 +2615,7 @@ class Qwen35ParoResidentSession:
         slab,
         *,
         sample: bool = True,
+        final_hidden_row_sink: Any | None = None,
     ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
         """Run a compact c>N native prompt slab, once packed stages exist.
 
@@ -2667,6 +2669,29 @@ class Qwen35ParoResidentSession:
             hidden = self._run_native_prefill_packed_layers(slab, metadata, stream=0)
             self.runtime.stream_synchronize(0)
             results = self._commit_packed_prefill_final_rows(hidden, slab, sample=sample, stream=0)
+            if final_hidden_row_sink is not None:
+                final_rows = self._packed_prefill_final_rows(slab)
+                seed_tokens = {
+                    int(final_row): (
+                        None if result is None else int(result.token_id)
+                    )
+                    for final_row, result in zip(final_rows, results, strict=True)
+                }
+                for row_index, (request_id, prompt_index) in enumerate(
+                    zip(slab.row_to_request, slab.positions, strict=True)
+                ):
+                    hidden_row = Tensor.from_handle(
+                        hidden.ptr + row_index * self.hidden_nbytes,
+                        (1, self.config.hidden_size),
+                        DType.FP16,
+                        self.device,
+                    )
+                    final_hidden_row_sink(
+                        int(request_id),
+                        int(prompt_index),
+                        hidden_row,
+                        seed_tokens.get(row_index),
+                    )
             self._restore_decode_scratch_after_prefill()
             self.last_prefill_execution = {
                 "path": "native_prefill_compact_cN",
@@ -2681,6 +2706,7 @@ class Qwen35ParoResidentSession:
                 "full_attention_prefill_path": getattr(self, "_last_packed_prefill_full_attention_path", "packed_varlen"),
                 "blockers": list(getattr(self, "_last_packed_prefill_blockers", [])),
                 "decode_scratch_released_for_prefill": minimize_prefill_workspace_overlap,
+                "final_hidden_row_sink": final_hidden_row_sink is not None,
             }
             return results
         finally:
@@ -4053,6 +4079,51 @@ class Qwen35ParoResidentSession:
         self._verify_scratch_cache_generation = int(getattr(self, "_verify_scratch_cache_generation", 0)) + 1
         self._verify_linear_scratch_cache.clear()
         self._verify_mlp_scratch_cache.clear()
+
+    def prepare_specdec2_verify_scratch(
+        self,
+        *,
+        rows: int,
+        chain_attn_mode: str,
+        max_context_tokens: int,
+    ) -> None:
+        """Reserve fixed-address C1 verifier scratch before mutation."""
+
+        count = int(rows)
+        mode = str(chain_attn_mode)
+        max_context = int(max_context_tokens)
+        if self.closed:
+            raise RuntimeError("session is closed")
+        if count <= 1 or count > self.max_batch_size:
+            raise ValueError("SPECDEC2 verifier rows must be in (1, max_batch_size]")
+        if mode not in {"c1_loop", "decode_batched"}:
+            raise ValueError("SPECDEC2 C1 chain attention mode is unsupported")
+        if max_context <= 0 or max_context > self.max_sequence_length:
+            raise ValueError("SPECDEC2 verifier context bucket is outside session capacity")
+        for layer_id, state in enumerate(self.states):
+            if self.config.layer_types[layer_id] != "linear_attention":
+                continue
+            self.linear_scratch[layer_id] = self._verify_linear_attention_scratch(
+                layer_id,
+                state,
+                rows=count,
+            )
+            self.moe_scratch[layer_id] = self._verify_mlp_scratch(
+                layer_id,
+                state,
+                rows=count,
+            )
+        if mode == "decode_batched":
+            self._ensure_full_prefill_scratch(tokens=count)
+            self._ensure_moe_c1_prefill_scratch(tokens=count)
+            num_splits = max(
+                1,
+                (max_context + self.decode_chunk_size - 1) // self.decode_chunk_size,
+            )
+            self._ensure_full_decode_batch_partials(
+                rows=count,
+                num_splits=num_splits,
+            )
 
     def _verify_scratch_generation_stamp_enabled(self) -> bool:
         return _env_flag("HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP", True)
@@ -8049,6 +8120,7 @@ class Qwen35ParoResidentSession:
                 self.verify_capture_hidden_concat,
                 self.verify_ancestor_mask_u8,
                 self.verify_cache_slot_buf,
+                self.verify_tree_committed_buf,
             )
         )
     @staticmethod
@@ -10836,6 +10908,7 @@ class Qwen35ParoResidentSession:
         chain_attn_mode: str = "c1_loop",
         canonicalize_after: bool = True,
         synchronize_after_commit: bool = True,
+        candidate_token_ids_i32: Tensor | None = None,
     ) -> Qwen35ParoBulkVerifyResult:
         """Run one native root+candidate verifier forward and commit the selected row.
 
@@ -10891,6 +10964,14 @@ class Qwen35ParoResidentSession:
             raise ValueError("capture rows outside capture_hidden_concat")
         if graph_mode not in {"off", "auto", "validate"}:
             raise ValueError("graph_mode must be off, auto, or validate")
+        if candidate_token_ids_i32 is not None and (
+            candidate_token_ids_i32.dtype != DType.INT32
+            or candidate_token_ids_i32.shape != (len(batch.candidate_rows),)
+            or len(batch.request_ids) != 1
+        ):
+            raise ValueError(
+                "device candidate token IDs must be request-local INT32 candidate rows"
+            )
 
         bucket_seconds: dict[str, float] = {}
 
@@ -10910,7 +10991,12 @@ class Qwen35ParoResidentSession:
             capture_target_start = 0
 
         t_bucket = time.perf_counter()
-        self._write_verify_chain_metadata(batch, base_slot=base_slot, stream=stream)
+        self._write_verify_chain_metadata(
+            batch,
+            base_slot=base_slot,
+            stream=stream,
+            candidate_token_ids_i32=candidate_token_ids_i32,
+        )
         _mark_bucket("metadata_upload", t_bucket)
         linear_attn_mode = "chain_tloop" if self._should_use_chain_tloop_linear_verify(batch, rows=rows, graph_mode=graph_mode) else "tree_tloop"
         try:
@@ -10965,6 +11051,28 @@ class Qwen35ParoResidentSession:
                 stream=stream,
                 already_synchronized=bool(graph_info.get("native_spec_cycle_graph")),
             )
+            if candidate_token_ids_i32 is not None:
+                candidate_host = np.empty(
+                    (len(batch.candidate_rows),),
+                    dtype=np.int32,
+                )
+                copy_device_to_host(
+                    host_array_ptr(candidate_host),
+                    DeviceBuffer(
+                        candidate_token_ids_i32.ptr,
+                        candidate_host.nbytes,
+                    ),
+                    candidate_host.nbytes,
+                    runtime=self.runtime,
+                )
+                actual_tokens = list(batch.tokens)
+                for candidate_row, token in zip(
+                    batch.candidate_rows,
+                    candidate_host.tolist(),
+                    strict=True,
+                ):
+                    actual_tokens[int(candidate_row)] = int(token)
+                batch = replace(batch, tokens=tuple(actual_tokens))
             if self._verify_gpu_accept_enabled():
                 # Fast path: trust GPU accept-summary kernel, skip CPU top1 read + CPU accept.
                 summary = TargetAcceptSummary.from_gpu_payload(batch, gpu_payload)
@@ -12808,7 +12916,14 @@ class Qwen35ParoResidentSession:
         )
         return position_tensor, append_spans, decode_spans
 
-    def _write_verify_chain_metadata(self, batch: TargetVerifyBatch, *, base_slot: int, stream: int = 0) -> None:
+    def _write_verify_chain_metadata(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        base_slot: int,
+        stream: int = 0,
+        candidate_token_ids_i32: Tensor | None = None,
+    ) -> None:
         rows = int(batch.rows)
         token_i64 = np.asarray(batch.tokens, dtype=np.int64)
         token_i32 = np.asarray(batch.tokens, dtype=np.int32)
@@ -12952,6 +13067,37 @@ class Qwen35ParoResidentSession:
                 self.verify_positions_i32.ptr,
                 self.prefill_context_count_buf.ptr,
                 rows,
+                stream=stream,
+                library=self.libraries["runtime_state"],
+                runtime=self.runtime,
+            )
+        if candidate_token_ids_i32 is not None:
+            if candidate_token_ids_i32.dtype != DType.INT32 or (
+                candidate_token_ids_i32.shape != (len(batch.candidate_rows),)
+            ):
+                raise ValueError("device candidate token metadata shape/dtype drift")
+            candidate_rows = tuple(int(row) for row in batch.candidate_rows)
+            if candidate_rows != tuple(range(rows - len(candidate_rows), rows)):
+                raise ValueError("device candidate rows must be a contiguous suffix")
+            destination_i32 = (
+                self.verify_token_ids_i32.ptr
+                + candidate_rows[0] * DType.INT32.itemsize
+            )
+            destination_i64 = (
+                self.verify_token_ids_i64.ptr
+                + candidate_rows[0] * DType.INT64.itemsize
+            )
+            self.runtime.memcpy_async(
+                destination_i32,
+                candidate_token_ids_i32.ptr,
+                len(candidate_rows) * DType.INT32.itemsize,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            copy_i32_to_i64(
+                candidate_token_ids_i32.ptr,
+                destination_i64,
+                len(candidate_rows),
                 stream=stream,
                 library=self.libraries["runtime_state"],
                 runtime=self.runtime,

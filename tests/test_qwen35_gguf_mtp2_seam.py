@@ -14,6 +14,7 @@ from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
 import hipengine.generation.qwen35_gguf_mtp2 as mtp2_module
 from hipengine.generation.qwen35_gguf_mtp2 import (
     Qwen35GGUFMTP2Adapter,
+    _target_verify_mode_for_context,
     _MTP2RequestState,
 )
 from hipengine.kernels.backends import backend_package_capability
@@ -65,6 +66,18 @@ class _AdapterDouble:
 
     def rollback_cycle(self, *args):
         self.calls.append(("rollback", args))
+
+
+def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1100", end_position=95
+    ) == "native"
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1100", end_position=96
+    ) == "serial_exact"
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1151", end_position=96
+    ) == "native"
 
 
 def test_backend_packages_expose_independently_qualified_adapter_scopes() -> None:

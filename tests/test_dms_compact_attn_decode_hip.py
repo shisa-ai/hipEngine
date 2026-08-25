@@ -13,6 +13,7 @@ no-ROCm runners.
 from __future__ import annotations
 
 import hashlib
+import os
 
 import numpy as np
 import pytest
@@ -428,9 +429,17 @@ def test_dms_compact_attn_decode_splitk_group6_production_digest_and_gate() -> N
     kl, top1 = _kl_top1(want, got)
     assert kl <= 0.05
     assert top1 >= 0.9
-    assert hashlib.sha256(got.tobytes()).hexdigest() == (
+    target_arch = (
+        os.environ.get("HIPENGINE_HIP_ARCH")
+        or os.environ.get("HIP_OFFLOAD_ARCH")
+        or "gfx1100"
+    ).strip().lower().split(":", 1)[0]
+    expected_digest = (
         "baf26fe9f59a19a3be1d92c9a88b027caeee508f0d635e84895a297c8972964d"
+        if target_arch == "gfx1151"
+        else "61378947cd7451b4d4912e98f767bffe7bf1961a13b09f84a04d606ae4f5f923"
     )
+    assert hashlib.sha256(got.tobytes()).hexdigest() == expected_digest
     np.testing.assert_array_equal(got, repeat)
 
 

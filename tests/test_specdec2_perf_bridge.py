@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from scripts import specdec2_perf_bridge as bridge_module
 from scripts.specdec2_perf_bridge import (
     FULL_PROMPT_IDS,
     BridgeContractError,
@@ -161,6 +163,23 @@ def test_bridge_requires_separate_c1_and_physical_service_capacities() -> None:
     assert bridge_service_capacity((2,)) == 2
     with pytest.raises(ValueError, match="separate bridge invocations"):
         bridge_service_capacity((1, 2, 4))
+
+
+def test_roctx_prefers_profiler_sdk_overlay(monkeypatch) -> None:
+    loaded = []
+
+    def fake_cdll(name):
+        loaded.append(name)
+        return SimpleNamespace(
+            roctxRangePushA=SimpleNamespace(),
+            roctxRangePop=SimpleNamespace(),
+        )
+
+    monkeypatch.setattr(bridge_module.ctypes, "CDLL", fake_cdll)
+
+    bridge_module._Roctx(True)
+
+    assert loaded == ["librocprofiler-sdk-roctx.so.1"]
 
 
 def test_bridge_counterbalance_is_index_only_and_reverses_ar_spec_order() -> None:
