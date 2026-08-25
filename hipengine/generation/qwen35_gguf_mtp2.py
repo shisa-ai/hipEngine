@@ -20,6 +20,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.tensor import Tensor
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
     ACCEPT_PACKED_PAYLOAD_FIELDS,
     build_dflash_accept,
@@ -65,6 +66,25 @@ from hipengine.speculative.transaction import (
     SpecCycleTelemetry,
     SpecCycleTransaction,
 )
+
+
+def _target_verify_mode_for_context(
+    requested: str,
+    *,
+    backend: str,
+    end_position: int,
+) -> str:
+    selected = str(requested)
+    if selected != "native":
+        return selected
+    native_context_limit = int(
+        backend_package_capability(
+            str(backend),
+            "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT",
+            int(end_position),
+        )
+    )
+    return "native" if int(end_position) <= native_context_limit else "serial_exact"
 
 
 @dataclass(slots=True)
@@ -271,7 +291,13 @@ class Qwen35GGUFMTP2Adapter:
                         target,
                         max_candidate_budget=self.candidate_budget,
                         quant=self.quant,
-                        target_verify_mode=self.target_verify_mode,
+                        target_verify_mode=_target_verify_mode_for_context(
+                            self.target_verify_mode,
+                            backend=self.generator.backend,
+                            end_position=(
+                                len(row.prompt_ids) + self.candidate_budget + 1
+                            ),
+                        ),
                     )
                     if len(ids) == 1 and int(getattr(self.owner, "capacity", 1)) == 1
                     else None
@@ -415,19 +441,32 @@ class Qwen35GGUFMTP2Adapter:
             1023,
             *(int(target.target_layout.max_sequence_length) for target in targets),
         )
+        realized_verify_modes = {
+            str(state.verifier.target_verify_mode)
+            for item in semantics
+            if (state := self._states.get(int(item.request_id))) is not None
+            and state.verifier is not None
+        }
+        if len(realized_verify_modes) > 1:
+            return None
+        realized_verify_mode = (
+            next(iter(realized_verify_modes))
+            if realized_verify_modes
+            else self.target_verify_mode
+        )
         profile = str(getattr(self.generator, "execution_profile", None) or "legacy_exact")
         max_requests = min(4, max(1, int(getattr(self.owner, "capacity", 4))))
         max_frontier_rows = max_requests * (self.candidate_budget + 1)
         return SpeculativeCapability(
             capability_key=(
                 f"gguf_mtp2_c{max_requests}:{self.generator.backend}:{self.quant}:"
-                f"{self.target_verify_mode}:{self.candidate_budget}"
+                f"{realized_verify_mode}:{self.candidate_budget}"
             ),
             target_key="qwen_dense_gguf",
             provider_key="qwen_nextn_dense",
             method_key="mtp2",
             policy_fingerprint=(
-                f"dense-nextn:{self.target_verify_mode}:b{self.candidate_budget}"
+                f"dense-nextn:{realized_verify_mode}:b{self.candidate_budget}"
             ),
             execution_profile=profile,
             kv_backend_key=str(getattr(target, "kv_storage_dtype", "bf16")),
@@ -444,7 +483,7 @@ class Qwen35GGUFMTP2Adapter:
             target_row_buckets=tuple(range(2, max_frontier_rows + 1)),
             target_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
             provider_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
-            graph_supported=True,
+            graph_supported=realized_verify_mode == "native",
             eager_supported=True,
             strict_fallback_key="gguf_target_ar",
             max_context_tokens=max_context,
@@ -1970,7 +2009,11 @@ class Qwen35GGUFMTP2Adapter:
                 target,
                 max_candidate_budget=self.candidate_budget,
                 quant=self.quant,
-                target_verify_mode=self.target_verify_mode,
+                target_verify_mode=_target_verify_mode_for_context(
+                    self.target_verify_mode,
+                    backend=self.generator.backend,
+                    end_position=len(row.prompt_ids) + self.candidate_budget + 1,
+                ),
             )
             return _MTP2RequestState(
                 request_id=rid,
