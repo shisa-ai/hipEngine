@@ -1,6 +1,6 @@
 # SPECDEC2 S7 / gfx1100 Integration Plan
 
-- Status: **active; S7.0 plus dense-GGUF G1 and packed-PARO P1 foundations complete; physical C2/C4 and promotion gates remain**
+- Status: **active; C1 foundations complete and independent W7900 performance campaign P0 open**
 - Started: **2026-08-25**
 - Hardware lanes: **AMD Radeon Pro W7900** (binding/default) and **RX 7900 XTX** (independent diagnostic)
 - Shared architecture base: [`SPECDEC2.md`](SPECDEC2.md) S1-S6 at `82af2b6a4`
@@ -8,11 +8,13 @@
 - Packed PARO target/provider: `/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16`, W4A16 target + BF16 MTP sidecar, BF16 KV
 - Normative gates: [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), [`TESTING.md`](TESTING.md), [`BENCHMARK.md`](BENCHMARK.md), [`KERNELS.md`](KERNELS.md)
 
-This is the independent gfx1100 S7 ledger. It maps and qualifies **both** dense
-GGUF MTP2 and packed-PARO MTP2 on the backend-neutral Generation-2 SPECDEC2
-owner. The lanes share frontier, transaction, scheduler, and lifecycle records;
-they do not share provider capabilities, physical buckets, numerical profiles,
-policies, or performance evidence.
+This is the independent gfx1100 S7 capability ledger. It maps and qualifies
+**both** dense GGUF MTP2 and packed-PARO MTP2 on the backend-neutral Generation-2
+SPECDEC2 owner. The active implementation/performance punchlist is
+[`SPECDEC2-PERF-GFX1100.md`](SPECDEC2-PERF-GFX1100.md). The lanes share frontier,
+transaction, scheduler, and lifecycle records; they do not share provider
+capabilities, physical buckets, numerical profiles, policies, or performance
+evidence.
 
 ## 1. Frozen decisions
 
@@ -49,9 +51,10 @@ its current true-AR baseline. It is a control, not staged SPECDEC2 evidence.
 
 The landed `Qwen35GGUFMTP2Adapter` has no hardcoded gfx1151 arithmetic. It uses
 shared raw-pointer NextN, transactional target, device accept, selected commit,
-and gfx1100-source kernels. Construction currently fails closed on gfx1100
-because package capability and a named strict dense-GGUF gfx1100 profile are
-absent.
+and gfx1100-source kernels. The package now exposes only C1 and resolves the
+named strict dense-GGUF gfx1100 profile. Direct N2/N3P device proposal/target
+owners are retained reuse controls; staged C1 still materializes proposal IDs on
+the host and therefore has remaining device-boundary work.
 
 ### 2.3 Packed PARO control
 
@@ -67,17 +70,18 @@ Its canonical D24 evidence is exact `720/720`, `115.770 tok/s`, and `1.0446x`
 true AR; its complete D64 numerical/repeat/task/state gate passes. This remains
 a control until the same provider/target ownership executes through SPECDEC2.
 
-`Qwen35ParoResidentModelRunner` currently exposes no staged provider hooks and
-does not retain all prompt final-normalized hidden rows. The target verifier is
-still singleton. PARO therefore requires a dedicated staged adapter and root-
-hidden owner; it cannot reuse the dense GGUF adapter or claim C>1.
+`Qwen35ParoResidentModelRunner` now exposes the dedicated staged hooks used by
+`Qwen35ParoMTP2Adapter`. Prompt final-normalized hidden rows stream directly into
+NextN with one carried row, so there is no prompt-sized hidden owner. The target
+verifier remains singleton and staged proposal/result ownership is not yet fully
+device-resident; PARO still cannot reuse the dense adapter or claim C>1.
 
 ## 3. Capability map
 
 | Lane | First exact capability | Proposal | Target frontier | Transaction | Initial policy |
 | --- | --- | --- | --- | --- | --- |
-| GGUF dense | `gfx1100/qwen_dense_gguf/mtp2/strict/c1/k1-k3` | Existing dense NextN, C1 device candidates | C1 R2/R3/R4, native/eager exact | provider journal + target reversible journal | explicit strict only; auto K0 |
-| PARO packed | `gfx1100/qwen_paro/mtp2/production/c1/k1` | Corrected persistent BF16 sidecar, C1 device top-1 | C1 R2 fast packed scratch; strict c1-loop fallback | provider selected reseed + target packed scratch | production explicit/default only after staged parity; auto K0 during bring-up |
+| GGUF dense | `gfx1100/qwen_dense_gguf/mtp2/strict/c1/k1-k3` | Existing dense NextN; staged C1 host IDs with retained direct N3P device primitive | C1 R2/R3/R4, native/eager exact | provider journal + target reversible journal | explicit strict only; auto K0 |
+| PARO packed | `gfx1100/qwen_paro/mtp2/production/c1/k1` | Corrected persistent BF16 sidecar; device scorer with staged bounded host-I32 handoff | C1 R2 fast packed scratch; strict c1-loop fallback | provider selected reseed + target packed scratch | production explicit/default only after staged parity; auto K0 during bring-up |
 
 Future physical cells are separate gates:
 
@@ -90,10 +94,10 @@ Future physical cells are separate gates:
 ```text
 S7.0 audit + backend-neutral proof
   -> G1 dense GGUF strict C1
-    -> G2 dense GGUF physical C2/C4 + local K policy
   -> P1 packed PARO staged C1 K1
-    -> P2 packed PARO physical C2/C4 K1 + local K policy
-      -> S7 product/load closure and default decision per lane
+    -> SPECDEC2-PERF-GFX1100 P0-P10
+      -> dense G2 and packed P2 physical C2/C4 + local policies
+        -> S7 product/load closure and default decision per lane
 ```
 
 G1 and P1 may proceed independently after this plan. G2 cannot use P1 evidence;
