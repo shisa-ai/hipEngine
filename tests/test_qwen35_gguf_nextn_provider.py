@@ -632,6 +632,7 @@ def test_nextn_executor_enqueues_prompt_rows_on_target_stream_without_scoring(
     executor._prompt_priming_staging = {}
     executor._token_buf = DeviceBuffer(0x1000, DType.INT64.itemsize)
     executor._slot = lambda _request_id: 0
+    executor._batch_sessions = [SimpleNamespace(_position=0)]
 
     slot_scratch = SimpleNamespace(
         position_host=np.zeros((1,), dtype=np.int64),
@@ -706,6 +707,7 @@ def test_nextn_executor_enqueues_prompt_rows_on_target_stream_without_scoring(
         (7, 33, 11, 0x4040, 5, True, True),
     ]
     assert len(executor._prompt_priming_staging[7]) == 1
+    assert executor._batch_sessions[0]._position == 12
 
     executor.finish_prompt_priming(7, stream=5, synchronize=False)
     assert 7 not in executor._prompt_priming_staging

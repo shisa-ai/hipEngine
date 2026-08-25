@@ -8,6 +8,7 @@ import pytest
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
+from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
 from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
 import hipengine.generation.qwen35_gguf_mtp2 as mtp2_module
@@ -794,3 +795,265 @@ def test_k0_does_not_advance_provider_before_prefill_root_is_published() -> None
 
     assert calls == []
     assert row.mtp2_k0_catchups == 0
+
+
+def test_packed_prompt_hidden_sinks_preserve_ragged_request_offsets() -> None:
+    calls: dict[int, list[tuple[str, int, int, int, int]]] = {7: [], 8: []}
+
+    class Sink:
+        hidden_size = 4
+
+        def __init__(self, request_id: int, total_rows: int) -> None:
+            self.request_id = request_id
+            self.total_rows = total_rows
+
+        def consume(self, **kwargs) -> None:
+            calls[self.request_id].append(
+                (
+                    "consume",
+                    int(kwargs["chunk_start"]),
+                    int(kwargs["hidden_ptr"]),
+                    int(kwargs["rows"]),
+                    int(kwargs["stream"]),
+                )
+            )
+
+        def finish(self, **kwargs) -> None:
+            calls[self.request_id].append(
+                (
+                    "finish",
+                    int(kwargs["total_rows"]),
+                    0,
+                    0,
+                    int(kwargs["stream"]),
+                )
+            )
+
+    runner_mod._consume_packed_target_hidden_sinks(
+        sinks=(Sink(7, 9), Sink(8, 13)),
+        request_ids=(7, 8),
+        prompt_row_starts=(2, 5),
+        packed_cu_seqlens=(0, 2, 5),
+        hidden_base_ptr=0x1000,
+        hidden_row_nbytes=8,
+        stream=3,
+        finish=False,
+    )
+
+    assert calls == {
+        7: [("consume", 2, 0x1000, 2, 3)],
+        8: [("consume", 5, 0x1010, 3, 3)],
+    }
+
+
+def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
+    monkeypatch,
+) -> None:
+    class Runtime:
+        pass
+
+    targets = {
+        rid: SimpleNamespace(
+            runtime=Runtime(),
+            target_layout=SimpleNamespace(max_sequence_length=1024),
+            _last_target_hidden_ptr=0,
+        )
+        for rid in (7, 8)
+    }
+    rows = {
+        rid: SimpleNamespace(
+            request_id=rid,
+            prompt_ids=(11 + rid, 22 + rid),
+            lease=SimpleNamespace(session=targets[rid]),
+            prefix_reused_tokens=0,
+            mtp2_prompt_streaming=False,
+            mtp2_prompt_prime_rows=0,
+            mtp2_prompt_carried_bytes=0,
+            mtp2_prompt_fallback_reason=None,
+        )
+        for rid in (7, 8)
+    }
+    finish_calls: list[tuple[int, bool]] = []
+
+    class Executor:
+        hidden_size = 4
+        max_requests = 4
+        runtime = targets[7].runtime
+
+        def enqueue_prompt_rows(self, *args, **kwargs) -> None:
+            pass
+
+        def finish_prompt_priming(self, request_id, *, stream, synchronize) -> None:
+            finish_calls.append((int(request_id), bool(synchronize)))
+
+    class Provider:
+        executor = Executor()
+
+        def __init__(self) -> None:
+            self.reset: list[int] = []
+            self.released: list[int] = []
+
+        def reset_request(self, request_id) -> None:
+            self.reset.append(int(request_id))
+
+        def release_request(self, request_id) -> None:
+            self.released.append(int(request_id))
+
+    provider = Provider()
+    released_pool: list[tuple[object, object]] = []
+    generator = SimpleNamespace(
+        backend="hip_gfx1151",
+        execution_profile="strict",
+        _acquire_dense_mtp_draft_provider=lambda *args, **kwargs: (
+            provider,
+            "pool",
+            False,
+        ),
+        _release_mtp_draft_runner=lambda key, owned: released_pool.append(
+            (key, owned)
+        ),
+    )
+    owner = SimpleNamespace(
+        generator=generator,
+        capacity=4,
+        _shared_runner=SimpleNamespace(hidden_size=4),
+        _row=lambda request_id: rows[int(request_id)],
+    )
+    carried = {
+        7: DeviceBuffer(0x7000, 8),
+        8: DeviceBuffer(0x8000, 8),
+    }
+
+    class Sink:
+        hidden_size = 4
+
+        def __init__(self, *, request_id, prompt_tokens, **kwargs) -> None:
+            self.request_id = int(request_id)
+            self.total_rows = len(tuple(prompt_tokens))
+            self.closed = False
+
+        def take_final_pending_buffer(self):
+            return carried[self.request_id]
+
+        def close(self) -> None:
+            self.closed = True
+
+    monkeypatch.setattr(
+        mtp2_module,
+        "_StreamingNextNPromptSink",
+        Sink,
+        raising=False,
+    )
+    adapter = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=2,
+    )
+    adapter.register_request(7, 2)
+    adapter.register_request(8, 2)
+
+    sinks = adapter.begin_prompt_streaming((7, 8), checkpoints={})
+    adapter.finish_prompt_streaming((7, 8), success=True, stream=0)
+
+    assert tuple(sink.request_id for sink in sinks) == (7, 8)
+    assert provider.reset == [7, 8]
+    assert finish_calls == [(7, False), (8, False)]
+    assert adapter._prompt_hidden_rows == {}
+    assert set(adapter._states) == {7, 8}
+    assert adapter._states[7].root_hidden_buffer is carried[7]
+    assert adapter._states[8].root_hidden_buffer is carried[8]
+    assert adapter._states[7].provider_group_key == adapter._states[8].provider_group_key
+    assert targets[7]._last_target_hidden_ptr == carried[7].ptr
+    assert targets[8]._last_target_hidden_ptr == carried[8].ptr
+    assert rows[7].mtp2_prompt_streaming and rows[8].mtp2_prompt_streaming
+    assert rows[7].mtp2_prompt_prime_rows == 2
+    assert rows[8].mtp2_prompt_carried_bytes == 8
+    adapter.observe_prefill_result(7, rows[7].prompt_ids, SimpleNamespace(token_id=9))
+    assert adapter._states[7].root_hidden_buffer is carried[7]
+    assert released_pool == []
+
+
+def test_mtp2_long_prompt_selects_k0_before_provider_streaming() -> None:
+    target = SimpleNamespace(
+        target_layout=SimpleNamespace(max_sequence_length=4096),
+        runtime=object(),
+    )
+    row = SimpleNamespace(
+        prompt_ids=tuple(range(1022)),
+        lease=SimpleNamespace(session=target),
+        prefix_reused_tokens=0,
+        mtp2_candidate_budget=2,
+        mtp2_prompt_fallback_reason=None,
+    )
+    acquired: list[str] = []
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(
+            _acquire_dense_mtp_draft_provider=lambda *args, **kwargs: acquired.append(
+                "provider"
+            )
+        ),
+        capacity=1,
+        _shared_runner=SimpleNamespace(hidden_size=4),
+        _row=lambda request_id: row,
+    )
+    adapter = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=2,
+    )
+    adapter.register_request(7, 2)
+
+    assert adapter.begin_prompt_streaming((7,), checkpoints={}) is None
+    assert row.mtp2_candidate_budget == 0
+    assert row.mtp2_prompt_fallback_reason == "target_context_k0"
+    assert acquired == []
+    assert adapter._prompt_streaming_sinks == {}
+    assert adapter._states == {}
+
+
+def test_mtp2_streaming_prompt_failure_drains_provider_and_sink() -> None:
+    events: list[tuple[object, ...]] = []
+
+    class Sink:
+        def close(self) -> None:
+            events.append(("sink_close",))
+
+    provider = SimpleNamespace(
+        executor=SimpleNamespace(
+            finish_prompt_priming=lambda request_id, *, stream, synchronize: events.append(
+                ("finish", int(request_id), int(stream), bool(synchronize))
+            )
+        ),
+        release_request=lambda request_id: events.append(
+            ("release_request", int(request_id))
+        ),
+    )
+    group = mtp2_module._MTP2ProviderGroup(
+        key=(7,),
+        provider=provider,
+        provider_pool_key="pool",
+        request_ids={7},
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._prompt_streaming_sinks = {7: Sink()}
+    adapter._prompt_streaming_group_keys = {7: (7,)}
+    adapter._provider_groups = {(7,): group}
+    adapter.generator = SimpleNamespace(
+        _release_mtp_draft_runner=lambda key, owned: events.append(
+            ("release_group", key, owned)
+        )
+    )
+
+    adapter.finish_prompt_streaming((7,), success=False, stream=5)
+
+    assert events == [
+        ("finish", 7, 5, True),
+        ("release_request", 7),
+        ("sink_close",),
+        ("release_group", "pool", provider),
+    ]
+    assert adapter._prompt_streaming_sinks == {}
+    assert adapter._prompt_streaming_group_keys == {}
+    assert adapter._provider_groups == {}

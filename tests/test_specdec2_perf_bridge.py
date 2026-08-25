@@ -327,6 +327,9 @@ def test_bridge_installs_initial_k0_attachment_and_refill_owners() -> None:
         def _catch_up_provider_batch(self) -> None:
             return None
 
+        def begin_prompt_streaming(self, *args, **kwargs):
+            return None
+
     class Runner:
         def __init__(self) -> None:
             self.adapter = Adapter()
@@ -373,6 +376,7 @@ def test_bridge_installs_initial_k0_attachment_and_refill_owners() -> None:
     installed = _install_stage_ledger(service, ledger)
 
     assert installed["provider_k0_attach"]
+    assert installed["provider_streaming_open"]
     assert installed["provider_open"]
     assert installed["nextn_prompt_prime_c1"]
     assert installed["nextn_prompt_prime_batch"]

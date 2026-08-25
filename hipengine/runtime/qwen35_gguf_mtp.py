@@ -205,10 +205,13 @@ class _StreamingNextNPromptSink:
         self._stream: int | None = None
         self._finished = False
         self._failed = False
+        self._transferred = False
         self._closed = False
 
     @property
     def final_pending_hidden(self) -> Tensor:
+        if self._transferred:
+            raise RuntimeError("streaming NextN carried hidden row was already transferred")
         if self._closed:
             raise RuntimeError("streaming NextN prompt sink is closed")
         return Tensor.from_handle(
@@ -318,11 +321,24 @@ class _StreamingNextNPromptSink:
             raise RuntimeError("streaming NextN prompt finish must use the chunk stream")
         self._finished = True
 
+    def take_final_pending_buffer(self) -> DeviceBuffer:
+        """Transfer the one carried BF16 row to the request-state owner."""
+
+        if self._transferred:
+            raise RuntimeError("streaming NextN carried hidden row was already transferred")
+        if self._closed:
+            raise RuntimeError("streaming NextN prompt sink is closed")
+        if self._failed or not self._finished:
+            raise RuntimeError("streaming NextN carried hidden row is not complete")
+        self._transferred = True
+        return self._pending_hidden
+
     def close(self) -> None:
         if self._closed:
             return
         self._closed = True
-        free(self._pending_hidden, runtime=self.runtime)
+        if not self._transferred:
+            free(self._pending_hidden, runtime=self.runtime)
 
 
 def _effective_target_verify_mode(requested: str, *, rows: int) -> str:
