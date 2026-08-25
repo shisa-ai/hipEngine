@@ -14990,6 +14990,43 @@ class Qwen35GGUFResidentSession:
         view._device_kv_graph_handles = {}
         view._int8_prefill_oracle_buffers = {}
         view._linear_state_snapshot_backups = ()
+        # Packed prefill/verify may grow slot-local result buffers after this
+        # view is created. Never inherit the owner's pointers: the owner closes
+        # its own buffers, while _close_resident_slot_view_buffers closes these.
+        view._verify_hidden_seed_buf = None
+        view._verify_hidden_f32_a = None
+        view._verify_hidden_f32_b = None
+        view._verify_token_ids_i64 = None
+        view._verify_token_counter_i64 = None
+        view._verify_block_rows_capacity = 0
+        view._verify_hidden_seed_rows_populated = 0
+        view._verify_logits_buf = None
+        view._verify_lm_block_values = None
+        view._verify_lm_block_indices_i32 = None
+        view._verify_lm_out_indices_i32 = None
+        view._verify_lm_out_values = None
+        view._verify_lm_q8_1 = None
+        view._verify_lm_rows_capacity = 0
+        view._verify_linear_conv_state_rows = ()
+        view._verify_linear_recurrent_state_rows = ()
+        view._verify_linear_state_rows_capacity = 0
+        view._verify_linear_conv_initial_snapshots = ()
+        view._verify_linear_recurrent_initial_snapshots = ()
+        view._verify_linear_initial_snapshot_users = 0
+        view._verify_linear_state_src_conv_table_buf = None
+        view._verify_linear_state_src_recurrent_table_buf = None
+        view._verify_linear_state_dst_conv_table_buf = None
+        view._verify_linear_state_dst_recurrent_table_buf = None
+        view._verify_linear_state_commit_row_i32_buf = None
+        view._verify_linear_state_src_conv_host = None
+        view._verify_linear_state_src_recurrent_host = None
+        view._verify_linear_state_src_conv_cached = None
+        view._verify_linear_state_src_recurrent_cached = None
+        view._verify_linear_state_dst_conv_host = None
+        view._verify_linear_state_dst_recurrent_host = None
+        view._verify_linear_state_conv_row_nbytes = 0
+        view._verify_linear_state_recurrent_row_nbytes = 0
+        view._verify_linear_state_layer_count = 0
         # Share the batch owner's packed workspace bookkeeping: views never
         # own a packed allocation and every resize/dirty check is owner-wide.
         view.__dict__["_packed_ws_state"] = self._packed_workspace_state()
@@ -25436,8 +25473,65 @@ class Qwen35GGUFResidentSession:
         self._decode_graph_submission_contexts.clear()
         return proofs
 
+    def _close_resident_slot_view_buffers(self, *, runtime: HipRuntime) -> None:
+        """Release allocations grown by one lightweight resident slot view."""
+
+        if getattr(self, "_resident_batch_owner", None) is None:
+            raise RuntimeError("resident slot-view cleanup requires a batch owner")
+        for buffer in (
+            self._verify_lm_out_values,
+            self._verify_lm_out_indices_i32,
+            self._verify_lm_block_indices_i32,
+            self._verify_lm_block_values,
+            self._verify_lm_q8_1,
+            self._verify_logits_buf,
+            self._verify_token_counter_i64,
+            self._verify_token_ids_i64,
+            self._verify_hidden_seed_buf,
+            self._verify_hidden_f32_a,
+            self._verify_hidden_f32_b,
+        ):
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+        self._verify_hidden_seed_buf = None
+        self._verify_hidden_f32_a = None
+        self._verify_hidden_f32_b = None
+        self._verify_token_ids_i64 = None
+        self._verify_token_counter_i64 = None
+        self._verify_block_rows_capacity = 0
+        self._verify_hidden_seed_rows_populated = 0
+        self._verify_lm_out_values = None
+        self._verify_lm_out_indices_i32 = None
+        self._verify_lm_block_indices_i32 = None
+        self._verify_lm_block_values = None
+        self._verify_lm_q8_1 = None
+        self._verify_logits_buf = None
+        self._verify_lm_rows_capacity = 0
+        self._free_verify_linear_state_row_buffers(runtime=runtime)
+        self._free_verify_linear_initial_snapshot_buffers(runtime=runtime)
+        for buffer in reversed(self._buffers):
+            if buffer is not None:
+                free(buffer, runtime=runtime)
+        self._buffers = ()
+        self._verify_linear_state_src_conv_table_buf = None
+        self._verify_linear_state_src_recurrent_table_buf = None
+        self._verify_linear_state_dst_conv_table_buf = None
+        self._verify_linear_state_dst_recurrent_table_buf = None
+        self._verify_linear_state_commit_row_i32_buf = None
+        self._verify_linear_state_src_conv_host = None
+        self._verify_linear_state_src_recurrent_host = None
+        self._verify_linear_state_src_conv_cached = None
+        self._verify_linear_state_src_recurrent_cached = None
+        self._verify_linear_state_dst_conv_host = None
+        self._verify_linear_state_dst_recurrent_host = None
+        self._verify_linear_state_conv_row_nbytes = 0
+        self._verify_linear_state_recurrent_row_nbytes = 0
+        self._verify_linear_state_layer_count = 0
+
     def close(self) -> None:
         runtime = self.runtime or get_hip_runtime()
+        for view in reversed(tuple(self.__dict__.pop("_resident_slot_views", ()))):
+            view._close_resident_slot_view_buffers(runtime=runtime)
         recorder = self._prefill_flight_recorder
         if recorder is not None:
             # Never unmap the GPU-visible cursor until all queued markers retire.
