@@ -360,14 +360,18 @@ def test_staged_prefill_uses_packed_target_and_streams_final_hidden_rows(monkeyp
 
 def test_prefill_completion_reserves_c1_verify_scratch_before_first_cycle() -> None:
     proposer = _ProposerDouble()
-    row = SimpleNamespace(prompt_ids=(10, 11), mtp2_prompt_hidden_buffer=object())
+    row = SimpleNamespace(
+        prompt_ids=(10, 11),
+        request=SimpleNamespace(max_tokens=8),
+        mtp2_prompt_hidden_buffer=object(),
+    )
     calls = []
     owner = SimpleNamespace(
         generator=SimpleNamespace(backend="hip_gfx1100"),
         _row=lambda request_id: row,
         _session=SimpleNamespace(
-            prepare_specdec2_verify_scratch=lambda *, rows, chain_attn_mode: calls.append(
-                ("reserve", rows, chain_attn_mode)
+            prepare_specdec2_verify_scratch=lambda *, rows, chain_attn_mode, max_context_tokens: calls.append(
+                ("reserve", rows, chain_attn_mode, max_context_tokens)
             )
         ),
         _release_mtp2_prompt_capture=lambda selected: calls.append(("release", selected)),
@@ -381,11 +385,11 @@ def test_prefill_completion_reserves_c1_verify_scratch_before_first_cycle() -> N
 
     adapter.observe_prefill_result(7)
 
-    assert calls == [("reserve", 2, "decode_batched"), ("release", row)]
+    assert calls == [("reserve", 2, "decode_batched", 10), ("release", row)]
 
     owner.generator.execution_profile = "strict"
     adapter.observe_prefill_result(7)
-    assert calls[-2:] == [("reserve", 2, "c1_loop"), ("release", row)]
+    assert calls[-2:] == [("reserve", 2, "c1_loop", 10), ("release", row)]
 
 
 def test_initial_root_k0_keeps_primed_provider_live() -> None:

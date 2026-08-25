@@ -4084,17 +4084,21 @@ class Qwen35ParoResidentSession:
         *,
         rows: int,
         chain_attn_mode: str,
+        max_context_tokens: int,
     ) -> None:
         """Reserve fixed-address C1 verifier scratch before mutation."""
 
         count = int(rows)
         mode = str(chain_attn_mode)
+        max_context = int(max_context_tokens)
         if self.closed:
             raise RuntimeError("session is closed")
         if count <= 1 or count > self.max_batch_size:
             raise ValueError("SPECDEC2 verifier rows must be in (1, max_batch_size]")
         if mode not in {"c1_loop", "decode_batched"}:
             raise ValueError("SPECDEC2 C1 chain attention mode is unsupported")
+        if max_context <= 0 or max_context > self.max_sequence_length:
+            raise ValueError("SPECDEC2 verifier context bucket is outside session capacity")
         for layer_id, state in enumerate(self.states):
             if self.config.layer_types[layer_id] != "linear_attention":
                 continue
@@ -4111,6 +4115,14 @@ class Qwen35ParoResidentSession:
         if mode == "decode_batched":
             self._ensure_full_prefill_scratch(tokens=count)
             self._ensure_moe_c1_prefill_scratch(tokens=count)
+            num_splits = max(
+                1,
+                (max_context + self.decode_chunk_size - 1) // self.decode_chunk_size,
+            )
+            self._ensure_full_decode_batch_partials(
+                rows=count,
+                num_splits=num_splits,
+            )
 
     def _verify_scratch_generation_stamp_enabled(self) -> bool:
         return _env_flag("HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP", True)

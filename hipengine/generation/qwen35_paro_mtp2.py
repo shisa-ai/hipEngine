@@ -220,6 +220,7 @@ class Qwen35ParoMTP2Adapter:
                 == "strict"
                 else "decode_batched"
             ),
+            max_context_tokens=len(row.prompt_ids) + int(row.request.max_tokens),
         )
         self.owner._release_mtp2_prompt_capture(row)
 
