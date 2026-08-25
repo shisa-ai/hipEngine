@@ -160,6 +160,20 @@ def parse_budgets(value: str) -> tuple[int, ...]:
     )
 
 
+def bridge_service_capacity(concurrencies: Sequence[int]) -> int:
+    """Return one honest service capacity or require a separate C1 packet."""
+
+    selected = tuple(int(value) for value in concurrencies)
+    if not selected or any(value not in {1, 2, 4} for value in selected):
+        raise ValueError("bridge concurrency must be a non-empty subset of 1,2,4")
+    if 1 in selected and any(value > 1 for value in selected):
+        raise ValueError(
+            "strict C1 and physical C2/C4 require separate bridge invocations "
+            "with capacity 1 and capacity 4"
+        )
+    return max(selected)
+
+
 def resolve_platform(
     *,
     backend: str,
@@ -944,6 +958,7 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--limit must be positive")
     if int(args.max_sequence_length) <= 0:
         raise ValueError("--max-sequence-length must be positive")
+    bridge_service_capacity(args.concurrency)
     if args.require_cached_build and args.compiler_version_file is None:
         raise ValueError("--require-cached-build requires --compiler-version-file")
     if args.compiler_version_file is not None and not Path(args.compiler_version_file).is_file():
@@ -1037,6 +1052,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "categories": sorted({str(row["category"]) for row in prompts}),
         "heldout_ids": sorted(_HELDOUT_IDS),
         "concurrency": list(args.concurrency),
+        "service_capacity": bridge_service_capacity(args.concurrency),
         "candidate_budgets": list(args.budgets),
         "max_tokens": int(args.max_tokens),
         "runs": int(args.runs),
