@@ -105,6 +105,7 @@ class Qwen35GGUFNextNDeviceProposal:
     completion_event: int
     stream: int
     final_hidden: Tensor
+    hidden_rows: Tensor | None = None
 
     def __post_init__(self) -> None:
         if self.request_id < 0 or self.root_token < 0 or self.root_position < 0:
@@ -117,6 +118,15 @@ class Qwen35GGUFNextNDeviceProposal:
             raise ValueError("device proposal result span must cover every top-1 row")
         if self.final_hidden.dtype != DType.BF16 or self.final_hidden.shape[0] != 1:
             raise ValueError("device proposal final hidden row must be rank-2 BF16")
+        if self.hidden_rows is not None and (
+            self.hidden_rows.dtype != DType.BF16
+            or self.hidden_rows.shape
+            != (self.budget, self.final_hidden.shape[1])
+            or self.hidden_rows.device != self.final_hidden.device
+        ):
+            raise ValueError(
+                "device proposal hidden rows must be BF16 [budget, hidden_size]"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -774,28 +784,51 @@ class Qwen35GGUFNextNExecutor:
     def _run_step_batch_impl(
         self,
         request_ids: Sequence[int],
-        token_ids: Sequence[int],
+        token_ids: Sequence[int] | None,
         positions: Sequence[int],
         target_hidden: Tensor,
         *,
         score_output: bool,
+        token_ids_device: Sequence[Tensor] | None = None,
     ) -> tuple[Qwen35GGUFNextNStepResult | Qwen35GGUFNextNStateAdvance, ...]:
         """Run one physically row-batched NextN state transition."""
 
         ids = tuple(int(value) for value in request_ids)
-        tokens = tuple(int(value) for value in token_ids)
+        device_tokens = (
+            None if token_ids_device is None else tuple(token_ids_device)
+        )
+        tokens = (
+            (0,) * len(ids)
+            if device_tokens is not None
+            else tuple(int(value) for value in (() if token_ids is None else token_ids))
+        )
         pos = tuple(int(value) for value in positions)
         rows = len(ids)
         if rows <= 1 or rows > self.max_requests:
             raise ValueError("NextN batch rows must be in [2, max_requests]")
         if len(set(ids)) != rows or len(tokens) != rows or len(pos) != rows:
             raise ValueError("NextN batch request/token/position rows must align")
+        if device_tokens is not None and (
+            token_ids is not None
+            or len(device_tokens) != rows
+            or any(
+                tensor.dtype != DType.INT32
+                or tensor.shape != (1,)
+                or tensor.device.kind != "hip"
+                for tensor in device_tokens
+            )
+        ):
+            raise ValueError(
+                "device NextN tokens must be one HIP INT32 scalar per request"
+            )
         if target_hidden.dtype != DType.BF16 or target_hidden.shape != (
             rows,
             self.hidden_size,
         ):
             raise ValueError("target_hidden must be contiguous BF16 [rows, hidden]")
-        if any(token < 0 or token >= self.vocab_size for token in tokens):
+        if device_tokens is None and any(
+            token < 0 or token >= self.vocab_size for token in tokens
+        ):
             raise ValueError("NextN batch token is outside the vocabulary")
         slots = tuple(self._slot(request_id) for request_id in ids)
         sessions = tuple(self._batch_sessions[slot] for slot in slots)
@@ -815,13 +848,23 @@ class Qwen35GGUFNextNExecutor:
                 f"sessions={session_positions!r} scratch={scratch_positions!r} "
                 f"requested={pos!r} ids={ids!r} slots={slots!r}"
             )
-        self._token_host[:rows] = np.asarray(tokens, dtype=np.int64)
-        copy_host_to_device(
-            self._token_buf,
-            host_array_ptr(self._token_host),
-            rows * DType.INT64.itemsize,
-            runtime=self.runtime,
-        )
+        if device_tokens is None:
+            self._token_host[:rows] = np.asarray(tokens, dtype=np.int64)
+            copy_host_to_device(
+                self._token_buf,
+                host_array_ptr(self._token_host),
+                rows * DType.INT64.itemsize,
+                runtime=self.runtime,
+            )
+        else:
+            for row, token in enumerate(device_tokens):
+                copy_i32_to_i64(
+                    token.ptr,
+                    self._token_buf.ptr + row * DType.INT64.itemsize,
+                    1,
+                    library=self._batch_session._runtime_state_library,
+                    runtime=self.runtime,
+                )
         launch_gguf_embedding(
             self.weights.fallback("token_embedding"),
             self._token_buf.ptr,
@@ -978,6 +1021,26 @@ class Qwen35GGUFNextNExecutor:
             for result in results
             if isinstance(result, Qwen35GGUFNextNStateAdvance)
         )
+
+    def advance_state_batch_only_device(
+        self,
+        request_ids: Sequence[int],
+        token_ids: Sequence[Tensor],
+        positions: Sequence[int],
+        target_hidden: Tensor,
+    ) -> None:
+        """Consume device-resident accepted IDs without host materialization."""
+
+        results = self._run_step_batch_impl(
+            request_ids,
+            None,
+            positions,
+            target_hidden,
+            score_output=False,
+            token_ids_device=token_ids,
+        )
+        if not all(isinstance(result, Qwen35GGUFNextNStateAdvance) for result in results):
+            raise RuntimeError("NextN device state-only batch returned a scored result")
 
     def _device_top1_rows(self, rows: int) -> Tensor:
         owner = self._batch_session
@@ -1377,6 +1440,16 @@ class Qwen35GGUFNextNExecutor:
                     stream=stream,
                 ):
                     raise RuntimeError("GGUF NextN exact top-1 graph route became unavailable")
+                hidden_row_ptr = self._proposal_history_hidden.ptr + (
+                    slot * _NEXTN_TOP1_RESULT_CAPACITY + depth
+                ) * hidden_nbytes
+                runtime.memcpy_async(
+                    hidden_row_ptr,
+                    final_hidden_ptr,
+                    hidden_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
                 hidden_ptr = final_hidden_ptr
                 if depth + 1 < int(budget):
                     copy_i32_to_i64(
@@ -1539,6 +1612,9 @@ class Qwen35GGUFNextNExecutor:
         runtime.graph_launch(graph.graph_exec, stream)
         runtime.event_record(graph.completion_event, stream)
         final_hidden_ptr = self._final_hidden_buf.ptr + slot * hidden_nbytes
+        hidden_rows_ptr = self._proposal_history_hidden.ptr + (
+            slot * _NEXTN_TOP1_RESULT_CAPACITY
+        ) * hidden_nbytes
         slot_scratch.position_host[0] = int(position) + budget - 1
         slot_scratch.context_host[0] = int(position) + budget
         self._set_batch_session_position(slot, int(position) + budget)
@@ -1561,7 +1637,27 @@ class Qwen35GGUFNextNExecutor:
                 DType.BF16,
                 Device("hip", 0),
             ),
+            hidden_rows=Tensor.from_handle(
+                hidden_rows_ptr,
+                (budget, self.hidden_size),
+                DType.BF16,
+                Device("hip", 0),
+            ),
         )
+
+    def prepare_proposal_graph(
+        self,
+        request_id: int,
+        *,
+        candidate_budget: int,
+    ) -> bool:
+        """Capture one exact budget graph without executing proposal state."""
+
+        budget = int(candidate_budget)
+        if budget not in _NEXTN_EXACT_CHAIN_GRAPH_BUDGETS:
+            return False
+        slot = self._slot(int(request_id))
+        return self._proposal_graph(int(request_id), slot, budget) is not None
 
     def launch_cached_graph_chain_device(
         self,
@@ -1610,7 +1706,19 @@ class Qwen35GGUFNextNExecutor:
                     position=int(proposal.root_position) + depth,
                     token_id=next_token,
                     logit=logit,
-                    hidden=proposal.final_hidden,
+                    hidden=(
+                        proposal.final_hidden
+                        if proposal.hidden_rows is None
+                        else Tensor.from_handle(
+                            proposal.hidden_rows.ptr
+                            + depth
+                            * proposal.final_hidden.shape[1]
+                            * DType.BF16.itemsize,
+                            (1, proposal.final_hidden.shape[1]),
+                            DType.BF16,
+                            proposal.hidden_rows.device,
+                        )
+                    ),
                     logits=None,
                 )
             )
@@ -1882,6 +1990,39 @@ class Qwen35GGUFNextNExecutor:
             input_token=int(token_id),
             position=int(position),
         )
+
+    def advance_state_only_device(
+        self,
+        request_id: int,
+        token_id: Tensor,
+        position: int,
+        target_hidden: Tensor,
+    ) -> None:
+        """Consume one device-resident accepted ID without reading it to host."""
+
+        if (
+            token_id.dtype != DType.INT32
+            or token_id.shape != (1,)
+            or token_id.device.kind != "hip"
+        ):
+            raise ValueError("device NextN token must be one HIP INT32 scalar")
+        slot = self._slot(request_id)
+        copy_i32_to_i64(
+            token_id.ptr,
+            self._token_buf.ptr + slot * DType.INT64.itemsize,
+            1,
+            library=self._batch_session._runtime_state_library,
+            runtime=self.runtime,
+        )
+        self._run_block(
+            int(request_id),
+            0,
+            int(position),
+            target_hidden,
+            token_ready=True,
+        )
+        self._set_batch_session_position(slot, int(position) + 1)
+        self.runtime.device_synchronize()
 
     def capture_request_checkpoint(
         self,
@@ -2387,6 +2528,24 @@ class Qwen35GGUFNextNDraftProvider:
             requests,
             candidate_budget=budget,
             pad_token_id=self.pad_token_id,
+        )
+
+    def prepare_device_proposal(
+        self,
+        request_id: int,
+        *,
+        candidate_budget: int,
+    ) -> bool:
+        """Prepare a provider-owned exact graph before the first hot cycle."""
+
+        prepare = getattr(self.executor, "prepare_proposal_graph", None)
+        if not callable(prepare):
+            return False
+        return bool(
+            prepare(
+                int(request_id),
+                candidate_budget=int(candidate_budget),
+            )
         )
 
     def launch_device_proposal(

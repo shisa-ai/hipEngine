@@ -157,6 +157,7 @@ class Qwen35GGUFNativeAcceptCommitResult:
         default_factory=lambda: np.empty((0, 0), dtype=np.float32)
     )
     lm_head_logits_f32: np.ndarray | None = None
+    compact_result: bool = False
 
     def __post_init__(self) -> None:
         rows = len(self.input_token_ids)
@@ -168,7 +169,16 @@ class Qwen35GGUFNativeAcceptCommitResult:
             raise ValueError("token_ids must contain accepted drafts plus one correction")
         if self.commit_row != self.accepted_draft_tokens:
             raise ValueError("strict-chain commit_row must equal accepted_draft_tokens")
-        if self.commit_token != self.input_token_ids[self.commit_row]:
+        expected_commit_token = (
+            self.input_token_ids[self.commit_row]
+            if not self.compact_result
+            else (
+                self.input_token_ids[0]
+                if self.commit_row == 0
+                else self.token_ids[self.commit_row - 1]
+            )
+        )
+        if self.commit_token != expected_commit_token:
             raise ValueError("commit_token must match the selected target input row")
         if self.commit_position != self.start_position + self.commit_row:
             raise ValueError("commit_position must match the selected target row position")
@@ -185,9 +195,11 @@ class Qwen35GGUFNativeAcceptCommitResult:
         ):
             raise ValueError("target_top1 must contain one non-negative token per target row")
         if self.proposal_device_handoff:
-            if len(self.proposal_top1_values) != rows - 1:
+            if not self.compact_result and len(self.proposal_top1_values) != rows - 1:
                 raise ValueError("device handoff must return one proposal value per candidate")
-            if not np.all(np.isfinite(np.asarray(self.proposal_top1_values, dtype=np.float32))):
+            if self.proposal_top1_values and not np.all(
+                np.isfinite(np.asarray(self.proposal_top1_values, dtype=np.float32))
+            ):
                 raise ValueError("device handoff proposal values must be finite")
         elif self.proposal_top1_values:
             raise ValueError("proposal values require a device-handoff result")
@@ -569,6 +581,7 @@ def _enqueue_device_proposal_handoff(
     proposal_event: int,
     proposal_budget: int,
     target_rows: int,
+    copy_result_payload: bool = True,
 ) -> None:
     """Wait for proposal IDs and inject both i64/i32 metadata source columns."""
 
@@ -590,14 +603,16 @@ def _enqueue_device_proposal_handoff(
                 HipMemcpyKind.DEVICE_TO_DEVICE,
                 int(stream),
             )
-    proposal_payload_start = ACCEPT_PACKED_PAYLOAD_FIELDS + 1 + 2 * int(target_rows)
-    runtime.memcpy_async(
-        int(result_payload_ptr) + proposal_payload_start * DType.INT32.itemsize,
-        int(proposal_result_ptr),
-        int(proposal_result_nbytes),
-        HipMemcpyKind.DEVICE_TO_DEVICE,
-        int(stream),
-    )
+    if copy_result_payload:
+        proposal_payload_start = ACCEPT_PACKED_PAYLOAD_FIELDS + 1 + 2 * int(target_rows)
+        runtime.memcpy_async(
+            int(result_payload_ptr)
+            + proposal_payload_start * DType.INT32.itemsize,
+            int(proposal_result_ptr),
+            int(proposal_result_nbytes),
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            int(stream),
+        )
 
 
 def _native_target_configuration_key(
@@ -930,6 +945,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         request_id: int = 0,
         remaining_decode: int | None = None,
         device_proposal: Any | None = None,
+        compact_result: bool = False,
     ):
         """Stage live metadata, replay once, and return one bounded result."""
 
@@ -1017,6 +1033,7 @@ class Qwen35GGUFNativeB2TargetGraph:
                 proposal_event=proposal_event,
                 proposal_budget=proposal_budget,
                 target_rows=self.rows,
+                copy_result_payload=not bool(compact_result),
             )
         control = replace(
             self.control,
@@ -1046,10 +1063,18 @@ class Qwen35GGUFNativeB2TargetGraph:
         if self.device_accept_commit:
             if self.result_payload is None:
                 raise RuntimeError("N2 native accept/commit result payload is missing")
-            payload = np.empty((self.result_payload.numel,), dtype=np.int32)
+            payload_items = (
+                ACCEPT_PACKED_PAYLOAD_FIELDS + 1 + self.rows
+                if bool(compact_result)
+                else self.result_payload.numel
+            )
+            payload = np.empty((payload_items,), dtype=np.int32)
             copy_device_to_host(
                 host_array_ptr(payload),
-                _tensor_buffer(self.result_payload),
+                DeviceBuffer(
+                    self.result_payload.ptr,
+                    payload_items * DType.INT32.itemsize,
+                ),
                 payload.nbytes,
                 runtime=runtime,
             )
@@ -1071,19 +1096,28 @@ class Qwen35GGUFNativeB2TargetGraph:
                 or visible_length != accepted + 1
                 or next_token < 0
                 or output_start + visible_length > target_top1_start
-                or target_top1_start + self.rows > payload.size
+                or (
+                    not bool(compact_result)
+                    and target_top1_start + self.rows > payload.size
+                )
             ):
                 raise RuntimeError("N2 native accept/commit returned an invalid bounded payload")
             output_tokens = [
                 int(token)
                 for token in payload[output_start:output_start + visible_length].tolist()
             ]
-            target_top1 = [
-                int(token)
-                for token in payload[target_top1_start:target_top1_start + self.rows].tolist()
-            ]
+            target_top1 = (
+                []
+                if bool(compact_result)
+                else [
+                    int(token)
+                    for token in payload[
+                        target_top1_start:target_top1_start + self.rows
+                    ].tolist()
+                ]
+            )
             proposal_top1_values: tuple[float, ...] = ()
-            if device_proposal is not None:
+            if device_proposal is not None and not bool(compact_result):
                 proposal_payload_start = target_top1_start + self.rows
                 proposal_payload_end = proposal_payload_start + 2 * proposal_budget
                 if proposal_payload_end > payload.size:
@@ -1150,6 +1184,7 @@ class Qwen35GGUFNativeB2TargetGraph:
                 proposal_device_handoff=device_proposal is not None,
                 verify_buffers=live_verify_buffers,
                 state_commit_buffers=live_state_commit_buffers,
+                compact_result=bool(compact_result),
             )
         else:
             token_host = np.empty((self.rows,), dtype=np.int64)
@@ -2245,6 +2280,7 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
     capture_pre_output_norm_hidden: bool = True,
     capture_lm_head_logits: bool = False,
     defer_linear_state_commit: bool = True,
+    compact_result: bool = False,
 ):
     """Retire a cached proposal and cached N2 target behind one synchronization.
 
@@ -2294,13 +2330,16 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
         session.last_native_spec_target_fallback_reason = reason
         raise NativeSpecTargetGraphUnsupportedError(reason)
     try:
-        return graph.launch(
-            cycle_id=int(cycle_id),
-            transaction_id=int(transaction_id),
-            request_id=int(request_id),
-            remaining_decode=int(remaining_decode),
-            device_proposal=device_proposal,
-        )
+        launch_kwargs = {
+            "cycle_id": int(cycle_id),
+            "transaction_id": int(transaction_id),
+            "request_id": int(request_id),
+            "remaining_decode": int(remaining_decode),
+            "device_proposal": device_proposal,
+        }
+        if compact_result:
+            launch_kwargs["compact_result"] = True
+        return graph.launch(**launch_kwargs)
     except Exception:
         try:
             graph.close()

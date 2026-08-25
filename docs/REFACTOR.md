@@ -225,6 +225,21 @@ fallback count is not a success metric.
   adapters. Keep the strict host materialization oracle callable from tests, but
   remove duplicate model-launch bodies from production selection.
 
+## SPECDEC2 P4 device-chain qualification oracle
+
+- Added 2026-08-25 with SPECDEC2-PERF P4. The promoted C1/C2/C4 cycle keeps
+  proposal and target IDs device-resident through GPU accept and selected
+  commit, then reads only bounded committed output/status. Setting
+  `HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE=1` temporarily adds post-commit
+  candidate/target-ID materialization and the CPU acceptance oracle for strict
+  qualification; it is never part of default production timing.
+- Removal trigger: after P4 reject/every-partial/full, following-AR,
+  cancellation/failure, profile, and full category gates are retained with
+  GPU/CPU accept agreement and cache-only traces prove no pre-accept D2H in the
+  default route, move the oracle to a test/qualification adapter and remove the
+  runtime environment read. Keep the pure CPU acceptance implementation and
+  strict eager fallback.
+
 ## Execution-profile migration seam
 
 - Implemented for campaign P3: public `strict|production|batch_invariant`

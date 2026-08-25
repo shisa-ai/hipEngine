@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import os
 import time
 from typing import Any, Callable, Mapping, Sequence
 
@@ -34,6 +35,7 @@ from hipengine.runtime.qwen35_gguf_mtp import (
 )
 from hipengine.runtime.qwen35_gguf_nextn import (
     Qwen35GGUFNextNBatchDeviceProposal,
+    Qwen35GGUFNextNDeviceProposal,
 )
 from hipengine.speculative.frontier import (
     CandidateGraph,
@@ -51,6 +53,7 @@ from hipengine.speculative.buffers import (
 )
 from hipengine.speculative.interfaces import (
     AcceptResult,
+    DraftBatch,
     TargetAcceptSummary,
     TargetCommitPlan,
     TargetVerifyBatch,
@@ -86,7 +89,18 @@ class _MTP2RequestState:
     last_proposal_seconds: float = 0.0
     proposal_checkpoint: Any | None = None
     proposal_context: MtpProposalContext | None = None
+    proposal_device: Qwen35GGUFNextNDeviceProposal | None = None
     proposal_device_batch: Qwen35GGUFNextNBatchDeviceProposal | None = None
+    device_chain_prepare_error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _PhysicalAcceptPending:
+    batch: TargetVerifyBatch
+    buffers: TargetVerifyBuffers
+    payload: Tensor
+    request_count: int
+    output_stride: int
 
 
 class Qwen35GGUFMTP2Adapter:
@@ -108,6 +122,10 @@ class Qwen35GGUFMTP2Adapter:
         self.candidate_budget = int(candidate_budget)
         self.quant = str(quant)
         self.physical_prompt_streaming = False
+        self.device_chain_qualification_oracle = os.environ.get(
+            "HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE",
+            "0",
+        ).strip().lower() in {"1", "true", "yes", "on"}
         if self.candidate_budget not in {1, 2, 3}:
             raise ValueError("MTP2 candidate budget must be 1, 2, or 3")
         self._intents: dict[int, int] = {}
@@ -381,6 +399,71 @@ class Qwen35GGUFMTP2Adapter:
         rid = int(request_id)
         if rid not in self._intents:
             return
+        if int(getattr(self.owner, "capacity", 1)) > 1:
+            row = self.owner._row(rid)
+            target = None if row.lease is None else row.lease.session
+            prepare_device_commit = getattr(
+                target,
+                "prepare_external_verify_state_commit",
+                None,
+            )
+            if callable(prepare_device_commit):
+                prepare_device_commit()
+        if int(getattr(self.owner, "capacity", 1)) == 1:
+            state = self._states.get(rid)
+            row = self.owner._row(rid)
+            target = None if row.lease is None else row.lease.session
+            token_id = getattr(result, "token_id", None)
+            budget = int(self._intents[rid])
+            if (
+                state is not None
+                and state.verifier is not None
+                and target is not None
+                and token_id is not None
+            ):
+                try:
+                    prepare_proposal = getattr(
+                        state.provider,
+                        "prepare_device_proposal",
+                        None,
+                    )
+                    prepare_target = getattr(
+                        target,
+                        "prepare_native_spec_target_graph",
+                        None,
+                    )
+                    if callable(prepare_proposal):
+                        prepare_proposal(rid, candidate_budget=budget)
+                    if callable(prepare_target):
+                        prepare_target(
+                            (int(token_id), *((0,) * budget)),
+                            request_id=rid,
+                        )
+                    draft = DraftBatch(
+                        request_ids=(rid,),
+                        candidate_tokens=(0,) * budget,
+                        parent_positions=tuple(
+                            int(target.position) + depth - 1
+                            for depth in range(1, budget + 1)
+                        ),
+                        draft_depths=tuple(range(1, budget + 1)),
+                        row_to_request=(rid,) * budget,
+                        mode="verify_chain",
+                    )
+                    verify_batch = TargetVerifyBatch.from_draft(
+                        draft,
+                        root_tokens=(int(token_id),),
+                        root_positions=(int(target.position),),
+                    )
+                    state.verifier.graph_bucket(
+                        ("specdec2", "verify_chain", budget + 1, "graph"),
+                        verify_batch,
+                    )
+                    state.device_chain_prepare_error = None
+                except Exception as exc:
+                    state.device_chain_prepare_error = (
+                        f"{type(exc).__name__}:{exc}"
+                    )
         hidden = getattr(result, "hidden_seeds", None)
         if hidden is None:
             self._prompt_hidden_rows.pop(rid, None)
@@ -760,13 +843,39 @@ class Qwen35GGUFMTP2Adapter:
                 )
             proposal_started = time.perf_counter()
             device_draft = None
+            device_proposal = None
             if len(ids) == 1:
-                draft = states[0].provider.propose(
-                    context,
-                    candidate_budget=budgets[0],
-                    return_logits=False,
-                    allow_graph=False,
+                verifier = states[0].verifier
+                remaining_by_id = {
+                    int(item.request_id): int(item.remaining_decode)
+                    for item in request_semantics
+                }
+                device_ready = getattr(verifier, "device_proposal_ready", None)
+                launch_device = getattr(
+                    states[0].provider, "launch_device_proposal", None
                 )
+                target_device_ready = bool(
+                    callable(device_ready)
+                    and device_ready(
+                        budgets[0],
+                        remaining_decode=remaining_by_id[ids[0]],
+                    )
+                )
+                if target_device_ready and callable(launch_device):
+                    device_proposal = launch_device(
+                        context,
+                        candidate_budget=budgets[0],
+                    )
+                if device_proposal is None:
+                    draft = states[0].provider.propose(
+                        context,
+                        candidate_budget=budgets[0],
+                        return_logits=False,
+                        allow_graph=target_device_ready,
+                    )
+                else:
+                    draft = None
+                    rows[0].mtp2_candidate_device_handoffs += 1
             else:
                 draft = None
                 device_draft = states[0].provider.propose_batch_device(
@@ -792,6 +901,7 @@ class Qwen35GGUFMTP2Adapter:
                     root_positions=(int(context.root_positions[index]),),
                     target_hidden=targets[index].last_target_hidden,
                 )
+                state.proposal_device = device_proposal
                 state.proposal_device_batch = device_draft
         except Exception:
             for request_id, checkpoint in locals().get("checkpoints", {}).items():
@@ -799,7 +909,7 @@ class Qwen35GGUFMTP2Adapter:
                 state.provider.executor.restore_request_checkpoint(checkpoint)
                 state.provider.executor.release_request_checkpoint(checkpoint)
             raise
-        if device_draft is None:
+        if device_draft is None and device_proposal is None:
             assert draft is not None
             enabled = draft.active_mask or (True,) * draft.draft_rows
             active_indices = tuple(
@@ -829,10 +939,22 @@ class Qwen35GGUFMTP2Adapter:
                 for request_id, count in zip(ids, budgets, strict=True)
                 for _ in range(count)
             )
-            candidate_token_ids = device_draft.token_ids
+            if device_draft is not None:
+                candidate_token_ids = device_draft.token_ids
+                handoff = "device_i32"
+            else:
+                assert device_proposal is not None
+                candidate_token_ids = Tensor.from_handle(
+                    device_proposal.result_ptr,
+                    (device_proposal.budget,),
+                    DType.INT32,
+                    device_proposal.final_hidden.device,
+                    strides=(2,),
+                )
+                handoff = "device_graph_i32x2"
             draft_mode = "verify_chain"
             draft_metadata = (
-                ("candidate_handoff", "device_i32"),
+                ("candidate_handoff", handoff),
                 ("candidate_rows", sum(budgets)),
             )
         parents_list: list[int] = []
@@ -903,8 +1025,6 @@ class Qwen35GGUFMTP2Adapter:
                 complete_claims,
                 cancelled_request_ids=cancelled_request_ids,
             )
-        if frontier.target_batch is None:
-            raise NotImplementedError("GGUF MTP2 requires a host or device chain")
         if len(plan.speculative_request_ids) != 1:
             raise NotImplementedError("GGUF MTP2 target has no speculative rows")
         rid = int(plan.speculative_request_ids[0])
@@ -959,6 +1079,29 @@ class Qwen35GGUFMTP2Adapter:
                 cancelled_request_ids=(rid,),
             )
         batch = frontier.target_batch
+        device_proposal = state.proposal_device
+        if batch is None:
+            graph = frontier.candidate_graph
+            if device_proposal is None or graph is None or graph.token_ids is None:
+                raise NotImplementedError("GGUF MTP2 requires a host or device chain")
+            if (
+                graph.token_ids.ptr != device_proposal.result_ptr
+                or graph.token_ids.strides != (2,)
+            ):
+                raise RuntimeError("C1 candidate graph lost its device proposal")
+            placeholder = getattr(
+                state.provider,
+                "placeholder_device_proposal",
+                None,
+            )
+            if not callable(placeholder):
+                raise RuntimeError("C1 provider omitted its device placeholder")
+            shape_draft = placeholder(device_proposal)
+            batch = TargetVerifyBatch.from_draft(
+                shape_draft,
+                root_tokens=frontier.root_tokens,
+                root_positions=frontier.root_positions,
+            )
         remaining = max(0, int(row.request.max_tokens) - len(slot.generated_ids))
         graph_key = (
             "specdec2",
@@ -978,6 +1121,17 @@ class Qwen35GGUFMTP2Adapter:
                 graph_bucket=bucket,
                 remaining_decode=(remaining,),
                 return_logits=False,
+                device_proposal=device_proposal,
+                qualification_oracle=bool(
+                    getattr(
+                        self,
+                        "device_chain_qualification_oracle",
+                        False,
+                    )
+                ),
+                allow_graph=(
+                    int(batch.candidate_count) == int(self.candidate_budget)
+                ),
             )
             target_seconds = time.perf_counter() - target_started
             cancelled = tuple(int(value) for value in cancelled_request_ids())
@@ -1012,11 +1166,18 @@ class Qwen35GGUFMTP2Adapter:
             )
             accepted = int(summary.accepted_counts[0])
             provider_update_started = time.perf_counter()
-            self._repair_provider_state(
-                state,
-                accepted_count=accepted,
-                candidate_count=int(plan.candidate_counts[0]),
-            )
+            if device_proposal is None:
+                self._repair_provider_state(
+                    state,
+                    accepted_count=accepted,
+                    candidate_count=int(plan.candidate_counts[0]),
+                )
+            else:
+                self._repair_provider_state_device(
+                    state,
+                    device_proposal,
+                    accepted_count=accepted,
+                )
             provider_update_seconds = time.perf_counter() - provider_update_started
             cancelled = tuple(int(value) for value in cancelled_request_ids())
             if cancelled:
@@ -1036,6 +1197,8 @@ class Qwen35GGUFMTP2Adapter:
                 )
             state.verifier.commit(prepared, commit_plan)
             native_graph_submitted = bool(prepared.native_graph_submitted)
+            if prepared.native_device_accept_commit:
+                row.mtp2_device_accept_calls += 1
             state.verifier.finish(prepared)
             prepared = None
             self._release_provider_checkpoint(state)
@@ -1155,6 +1318,313 @@ class Qwen35GGUFMTP2Adapter:
             array.nbytes,
             runtime=runtime,
         )
+
+    def _enqueue_target_batch_accept(
+        self,
+        batch: TargetVerifyBatch,
+        *,
+        proposal: Qwen35GGUFNextNBatchDeviceProposal,
+        target_results: Sequence[Any],
+        remaining_decode: Sequence[int],
+        transaction_id: int,
+        runtime: Any,
+    ) -> _PhysicalAcceptPending:
+        """Chain physical proposal/target IDs into GPU accept without D2H."""
+
+        results = tuple(target_results)
+        if proposal.request_ids != batch.request_ids or len(results) != len(
+            batch.request_ids
+        ):
+            raise ValueError("physical accept identities do not align")
+        if tuple(int(result.request_id) for result in results) != batch.request_ids:
+            raise ValueError("physical target result request IDs changed")
+        if any(
+            int(result.transaction_id) != int(transaction_id)
+            for result in results
+        ):
+            raise ValueError("physical target result transaction changed")
+        if tuple(int(result.rows) - 1 for result in results) != tuple(
+            proposal.candidate_counts
+        ):
+            raise ValueError("physical target rows do not match proposal counts")
+        owner, remaining_owner, payload_owner = self._batch_accept_resources(runtime)
+        buffers = owner.bind(batch, transaction_id=int(transaction_id))
+        request_count = len(batch.request_ids)
+        remaining = Tensor.from_handle(
+            remaining_owner.ptr,
+            (request_count,),
+            DType.INT32,
+            remaining_owner.device,
+        )
+        payload = Tensor.from_handle(
+            payload_owner.ptr,
+            (request_count, ACCEPT_PACKED_PAYLOAD_FIELDS),
+            DType.INT32,
+            payload_owner.device,
+        )
+        roots = np.asarray(tuple(proposal.root_tokens), dtype=np.int32)
+        self._upload_accept_array(
+            Tensor.from_handle(
+                buffers.token_ids.ptr,
+                (request_count,),
+                DType.INT32,
+                buffers.token_ids.device,
+            ),
+            roots,
+            runtime,
+        )
+        for tensor, values in (
+            (buffers.positions, np.asarray(batch.positions, dtype=np.int32)),
+            (buffers.parent_rows, np.asarray(batch.parent_rows, dtype=np.int32)),
+            (buffers.draft_depths, np.asarray(batch.draft_depths, dtype=np.int32)),
+            (buffers.row_to_request, np.asarray(batch.row_to_request, dtype=np.int32)),
+            (buffers.active_mask, np.asarray(batch.active_mask, dtype=np.uint8)),
+            (remaining, np.asarray(tuple(remaining_decode), dtype=np.int32)),
+        ):
+            self._upload_accept_array(tensor, values, runtime)
+        runtime.memcpy_async(
+            buffers.token_ids.ptr + request_count * DType.INT32.itemsize,
+            proposal.token_ids.ptr,
+            proposal.token_ids.numel * DType.INT32.itemsize,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            0,
+        )
+        candidate_offset = request_count
+        for request_index, (result, candidate_count) in enumerate(
+            zip(results, proposal.candidate_counts, strict=True)
+        ):
+            runtime.memcpy_async(
+                buffers.target_top1.ptr
+                + request_index * DType.INT32.itemsize,
+                result.target_top1.ptr,
+                DType.INT32.itemsize,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                0,
+            )
+            runtime.memcpy_async(
+                buffers.target_top1.ptr
+                + candidate_offset * DType.INT32.itemsize,
+                result.target_top1.ptr + DType.INT32.itemsize,
+                int(candidate_count) * DType.INT32.itemsize,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                0,
+            )
+            candidate_offset += int(candidate_count)
+        if self._batch_accept_library is None:
+            self._batch_accept_library = build_dflash_accept(
+                load=True,
+                compiler_version=getattr(self.generator, "compiler_version", None),
+                require_cached=bool(
+                    getattr(self.generator, "require_cached_build", False)
+                ),
+            )
+        output_stride = (
+            int(buffers.committed_output_ids.strides[0])
+            if buffers.committed_output_ids is not None
+            and buffers.committed_output_ids.strides is not None
+            else batch.rows
+        )
+        dflash_accept_chain_i32_packed(
+            buffers.token_ids.ptr,
+            buffers.positions.ptr,
+            buffers.parent_rows.ptr,
+            buffers.draft_depths.ptr,
+            buffers.active_mask.ptr,
+            buffers.target_top1.ptr,
+            remaining.ptr,
+            buffers.accepted_counts.ptr,
+            buffers.commit_rows.ptr,
+            buffers.commit_tokens.ptr,
+            buffers.commit_positions.ptr,
+            buffers.next_tokens.ptr if buffers.next_tokens is not None else 0,
+            buffers.full_accept.ptr if buffers.full_accept is not None else 0,
+            (
+                buffers.committed_output_ids.ptr
+                if buffers.committed_output_ids is not None
+                else 0
+            ),
+            (
+                buffers.committed_output_lengths.ptr
+                if buffers.committed_output_lengths is not None
+                else 0
+            ),
+            payload.ptr,
+            batch.rows,
+            request_count,
+            output_stride,
+            library=self._batch_accept_library,
+            runtime=runtime,
+        )
+        return _PhysicalAcceptPending(
+            batch=batch,
+            buffers=buffers,
+            payload=payload,
+            request_count=request_count,
+            output_stride=output_stride,
+        )
+
+    @staticmethod
+    def _read_target_batch_accept(
+        pending: _PhysicalAcceptPending,
+        *,
+        runtime: Any,
+    ) -> TargetAcceptSummary:
+        """Read one bounded committed-output/status result after device commit."""
+
+        runtime.device_synchronize()
+        payload_host = np.empty(
+            (pending.request_count, ACCEPT_PACKED_PAYLOAD_FIELDS),
+            dtype=np.int32,
+        )
+        copy_device_to_host(
+            host_array_ptr(payload_host),
+            DeviceBuffer(pending.payload.ptr, payload_host.nbytes),
+            payload_host.nbytes,
+            runtime=runtime,
+        )
+        committed = np.full(
+            (pending.request_count, pending.output_stride),
+            -1,
+            dtype=np.int32,
+        )
+        output = pending.buffers.committed_output_ids
+        if output is None:
+            raise RuntimeError("physical accept omitted committed output IDs")
+        for request_index, candidate_count in enumerate(
+            pending.batch.candidate_counts
+        ):
+            count = int(candidate_count) + 1
+            copy_device_to_host(
+                host_array_ptr(committed)
+                + request_index * pending.output_stride * DType.INT32.itemsize,
+                DeviceBuffer(
+                    output.ptr
+                    + request_index
+                    * pending.output_stride
+                    * DType.INT32.itemsize,
+                    count * DType.INT32.itemsize,
+                ),
+                count * DType.INT32.itemsize,
+                runtime=runtime,
+            )
+        accepted_counts = tuple(int(value) for value in payload_host[:, 0])
+        accepted_tokens = tuple(
+            tuple(
+                int(token)
+                for token in committed[index, 1 : accepted + 1].tolist()
+            )
+            for index, accepted in enumerate(accepted_counts)
+        )
+        return TargetAcceptSummary(
+            request_ids=pending.batch.request_ids,
+            accepted_counts=accepted_counts,
+            accepted_tokens=accepted_tokens,
+            commit_rows=tuple(int(value) for value in payload_host[:, 1]),
+            commit_tokens=tuple(int(value) for value in payload_host[:, 2]),
+            commit_positions=tuple(int(value) for value in payload_host[:, 3]),
+            next_tokens=tuple(
+                None if int(value) < 0 else int(value)
+                for value in payload_host[:, 4]
+            ),
+            full_accept=tuple(bool(value) for value in payload_host[:, 5]),
+            candidate_counts=pending.batch.candidate_counts,
+            transaction_id=pending.buffers.transaction_id,
+            draft_depth=pending.batch.draft_depth,
+            tree_shape=pending.batch.tree_shape,
+            mode=pending.batch.mode,
+        )
+
+    @staticmethod
+    def _qualify_target_batch_device_accept(
+        frontier: TargetFrontier,
+        proposal: Qwen35GGUFNextNBatchDeviceProposal,
+        target_results: Sequence[Any],
+        summary: TargetAcceptSummary,
+        remaining_decode: Sequence[int],
+        *,
+        provider: Any,
+        runtime: Any,
+    ) -> float:
+        """Run the post-commit CPU oracle outside the promoted device chain."""
+
+        started = time.perf_counter()
+        materialized = provider.materialize_batch_device_proposal(proposal)
+        enabled = materialized.active_mask or (True,) * materialized.draft_rows
+        candidate_tokens = tuple(
+            int(token)
+            for token, active in zip(
+                materialized.candidate_tokens,
+                enabled,
+                strict=True,
+            )
+            if bool(active)
+        )
+        graph = frontier.candidate_graph
+        if graph is None:
+            raise RuntimeError("device-chain oracle lost its candidate graph")
+        host_graph = replace(graph, candidate_tokens=candidate_tokens)
+        batch = TargetVerifyBatch.from_draft(
+            host_graph.to_draft_batch(),
+            root_tokens=frontier.root_tokens,
+            root_positions=frontier.root_positions,
+        )
+        top1: list[int] = [0] * batch.rows
+        root_by_id = dict(zip(batch.request_ids, batch.root_rows, strict=True))
+        candidate_by_id = {
+            request_id: tuple(
+                sorted(
+                    (
+                        row
+                        for row in batch.candidate_rows
+                        if batch.row_to_request[row] == request_id
+                    ),
+                    key=lambda row: batch.draft_depths[row],
+                )
+            )
+            for request_id in batch.request_ids
+        }
+        for result in target_results:
+            values = np.empty((int(result.rows),), dtype=np.int32)
+            copy_device_to_host(
+                host_array_ptr(values),
+                DeviceBuffer(result.target_top1.ptr, values.nbytes),
+                values.nbytes,
+                runtime=runtime,
+            )
+            destination_rows = (
+                root_by_id[int(result.request_id)],
+                *candidate_by_id[int(result.request_id)],
+            )
+            if len(destination_rows) != values.size:
+                raise RuntimeError("device-chain oracle target rows changed")
+            for row, value in zip(destination_rows, values, strict=True):
+                top1[row] = int(value)
+        cpu_accept = batch.accept_from_top1(
+            tuple(top1),
+            transaction_id=summary.transaction_id,
+            remaining_decode=tuple(int(value) for value in remaining_decode),
+        )
+        cpu_summary = replace(
+            TargetAcceptSummary.from_accept_result(batch, cpu_accept),
+            transaction_id=summary.transaction_id,
+        )
+        if any(
+            getattr(summary, field) != getattr(cpu_summary, field)
+            for field in (
+                "request_ids",
+                "accepted_counts",
+                "accepted_tokens",
+                "commit_rows",
+                "commit_tokens",
+                "commit_positions",
+                "next_tokens",
+                "full_accept",
+            )
+        ):
+            raise RuntimeError(
+                "physical GPU device-chain accept does not match CPU oracle"
+            )
+        return time.perf_counter() - started
 
     def _accept_target_batch_on_device(
         self,
@@ -1357,6 +1827,9 @@ class Qwen35GGUFMTP2Adapter:
         for request_id, target in zip(ids, targets, strict=True):
             job = {
                 "session": target,
+                "request_id": int(request_id),
+                "resident_slot": int(plan.resident_slots[plan.request_ids.index(request_id)]),
+                "transaction_id": int(transaction_id),
                 "bulk_attention_mode": "bulk",
                 "use_wmma_prefill": False,
                 "capture_linear_state_rows": True,
@@ -1389,7 +1862,8 @@ class Qwen35GGUFMTP2Adapter:
         if not callable(verify_batch):
             raise RuntimeError("physical target owner has no packed verifier")
         target_started = time.perf_counter()
-        results = list(verify_batch(jobs))
+        device_result = batch is None
+        results = list(verify_batch(jobs, device_result=device_result))
         target_seconds = time.perf_counter() - target_started
         physical_target_rows = sum(len(job["input_token_ids"]) for job in jobs)
         for row in rows:
@@ -1398,144 +1872,221 @@ class Qwen35GGUFMTP2Adapter:
         if len(results) != len(ids):
             raise RuntimeError("physical target verifier returned wrong result count")
         candidate_readback_seconds = 0.0
-        if batch is None:
-            assert device_draft is not None
-            readback_started = time.perf_counter()
-            materialized = states[0].provider.materialize_batch_device_proposal(
-                device_draft
-            )
-            candidate_readback_seconds = time.perf_counter() - readback_started
-            for row in rows:
-                row.mtp2_candidate_d2h_after_target += 1
-            enabled = materialized.active_mask or (True,) * materialized.draft_rows
-            candidate_tokens = tuple(
-                int(token)
-                for token, active in zip(
-                    materialized.candidate_tokens,
-                    enabled,
-                    strict=True,
-                )
-                if bool(active)
-            )
-            graph = frontier.candidate_graph
-            assert graph is not None
-            host_graph = replace(graph, candidate_tokens=candidate_tokens)
-            batch = TargetVerifyBatch.from_draft(
-                host_graph.to_draft_batch(),
-                root_tokens=frontier.root_tokens,
-                root_positions=frontier.root_positions,
-            )
-            root_row_by_id = dict(
-                zip(batch.request_ids, batch.root_rows, strict=True)
-            )
-            candidate_rows_by_id = {
-                request_id: tuple(
-                    sorted(
-                        (
-                            row_index
-                            for row_index in batch.candidate_rows
-                            if batch.row_to_request[row_index] == request_id
-                        ),
-                        key=lambda row_index: batch.draft_depths[row_index],
-                    )
-                )
-                for request_id in ids
-            }
-        target_top1 = [0] * batch.rows
-        for request_id, result in zip(ids, results, strict=True):
-            rows_for_request = (
-                root_row_by_id[request_id],
-                *candidate_rows_by_id[request_id],
-            )
-            if len(result.token_ids) != len(rows_for_request):
-                raise RuntimeError("physical target verifier omitted request rows")
-            for row_index, token in zip(
-                rows_for_request,
-                result.token_ids,
-                strict=True,
-            ):
-                target_top1[row_index] = int(token)
+        bounded_readback_seconds = 0.0
         remaining = tuple(
             max(0, int(row.request.max_tokens) - len(row.slot.generated_ids))
             for row in rows
         )
-        accept_started = time.perf_counter()
-        gpu_summary, accept_buffers = self._accept_target_batch_on_device(
-            batch,
-            target_top1,
-            remaining,
-            transaction_id=transaction_id,
-            runtime=targets[0].runtime,
-        )
-        accept = batch.accept_from_top1(
-            target_top1,
-            transaction_id=transaction_id,
-            remaining_decode=remaining,
-        )
-        cpu_summary = replace(
-            TargetAcceptSummary.from_accept_result(batch, accept),
-            transaction_id=transaction_id,
-        )
-        if any(
-            getattr(gpu_summary, field) != getattr(cpu_summary, field)
-            for field in (
-                "request_ids",
-                "accepted_counts",
-                "accepted_tokens",
-                "commit_rows",
-                "commit_tokens",
-                "commit_positions",
-                "next_tokens",
-                "full_accept",
+        if device_result:
+            assert device_draft is not None
+            graph = frontier.candidate_graph
+            assert graph is not None
+            shape_graph = replace(
+                graph,
+                candidate_tokens=(0,) * graph.candidate_rows,
             )
-        ):
-            raise RuntimeError(
-                "physical GPU accept payload does not match the CPU oracle"
+            batch = TargetVerifyBatch.from_draft(
+                shape_graph.to_draft_batch(),
+                root_tokens=frontier.root_tokens,
+                root_positions=frontier.root_positions,
             )
-        accept_seconds = time.perf_counter() - accept_started
+            cancelled = tuple(int(value) for value in cancelled_request_ids())
+            if cancelled:
+                targets[0].runtime.device_synchronize()
+                for state in states:
+                    self._restore_provider_checkpoint(state)
+                return SpecCycleResult(
+                    stage=SpecCycleStage.CANCELLED,
+                    transaction=replace(
+                        transaction,
+                        target_open=False,
+                        provider_open=False,
+                        rolled_back=True,
+                    ),
+                    cancelled_request_ids=cancelled,
+                )
+            accept_started = time.perf_counter()
+            pending = self._enqueue_target_batch_accept(
+                batch,
+                proposal=device_draft,
+                target_results=results,
+                remaining_decode=remaining,
+                transaction_id=transaction_id,
+                runtime=targets[0].runtime,
+            )
+            commit_batch = getattr(
+                owner,
+                "_commit_deferred_packed_verify_states_batch_device",
+                None,
+            )
+            if not callable(commit_batch):
+                raise RuntimeError(
+                    "physical target owner has no device selected-state commit"
+                )
+            commit_started = time.perf_counter()
+            commit_contract = commit_batch(
+                results,
+                targets,
+                accept_buffers=pending.buffers,
+            )
+            commit_seconds = time.perf_counter() - commit_started
+            readback_started = time.perf_counter()
+            gpu_summary = self._read_target_batch_accept(
+                pending,
+                runtime=targets[0].runtime,
+            )
+            bounded_readback_seconds = time.perf_counter() - readback_started
+            if bool(
+                getattr(self, "device_chain_qualification_oracle", False)
+            ):
+                candidate_readback_seconds = (
+                    self._qualify_target_batch_device_accept(
+                        frontier,
+                        device_draft,
+                        results,
+                        gpu_summary,
+                        remaining,
+                        provider=states[0].provider,
+                        runtime=targets[0].runtime,
+                    )
+                )
+                for row in rows:
+                    row.mtp2_candidate_d2h_after_target += 1
+            accept_seconds = time.perf_counter() - accept_started
+            if int(commit_contract.get("requests", 0)) != len(ids):
+                raise RuntimeError("physical selected-state commit omitted requests")
+            for target, summary_position in zip(
+                targets, gpu_summary.commit_positions, strict=True
+            ):
+                next_position = int(summary_position) + 1
+                target._position = next_position
+                target.scratch.position_host[0] = next_position
+                target.scratch.context_host[0] = next_position + 1
+            accept = AcceptResult(
+                request_ids=ids,
+                accepted_counts=gpu_summary.accepted_counts,
+                accepted_tokens=gpu_summary.accepted_tokens,
+                transaction_id=transaction_id,
+                selected_candidate_rows=gpu_summary.commit_rows,
+                next_tokens=gpu_summary.next_tokens,
+                correction_or_bonus_tokens=gpu_summary.next_tokens,
+                target_cursor_deltas=tuple(
+                    int(count) + (1 if next_token is not None else 0)
+                    for count, next_token in zip(
+                        gpu_summary.accepted_counts,
+                        gpu_summary.next_tokens or (None,) * len(ids),
+                        strict=True,
+                    )
+                ),
+                provider_cursor_deltas=gpu_summary.accepted_counts,
+                finish_reasons=(None,) * len(ids),
+            )
+            provider_update_started = time.perf_counter()
+            self._repair_provider_states_batch_device(
+                states,
+                device_draft,
+                accepted_counts=gpu_summary.accepted_counts,
+            )
+            provider_update_seconds = (
+                time.perf_counter() - provider_update_started
+            )
+        else:
+            assert batch is not None
+            target_top1 = [0] * batch.rows
+            for request_id, result in zip(ids, results, strict=True):
+                rows_for_request = (
+                    root_row_by_id[request_id],
+                    *candidate_rows_by_id[request_id],
+                )
+                if len(result.token_ids) != len(rows_for_request):
+                    raise RuntimeError("physical target verifier omitted request rows")
+                for row_index, token in zip(
+                    rows_for_request,
+                    result.token_ids,
+                    strict=True,
+                ):
+                    target_top1[row_index] = int(token)
+            accept_started = time.perf_counter()
+            gpu_summary, accept_buffers = self._accept_target_batch_on_device(
+                batch,
+                target_top1,
+                remaining,
+                transaction_id=transaction_id,
+                runtime=targets[0].runtime,
+            )
+            accept = batch.accept_from_top1(
+                target_top1,
+                transaction_id=transaction_id,
+                remaining_decode=remaining,
+            )
+            cpu_summary = replace(
+                TargetAcceptSummary.from_accept_result(batch, accept),
+                transaction_id=transaction_id,
+            )
+            if any(
+                getattr(gpu_summary, field) != getattr(cpu_summary, field)
+                for field in (
+                    "request_ids",
+                    "accepted_counts",
+                    "accepted_tokens",
+                    "commit_rows",
+                    "commit_tokens",
+                    "commit_positions",
+                    "next_tokens",
+                    "full_accept",
+                )
+            ):
+                raise RuntimeError(
+                    "physical GPU accept payload does not match the CPU oracle"
+                )
+            accept_seconds = time.perf_counter() - accept_started
+            provider_update_started = time.perf_counter()
+            self._repair_provider_states_batch(
+                states,
+                accepted_counts=accept.accepted_counts,
+                candidate_counts=tuple(
+                    plan.candidate_counts[plan.request_ids.index(request_id)]
+                    for request_id in ids
+                ),
+            )
+            provider_update_seconds = (
+                time.perf_counter() - provider_update_started
+            )
+            cancelled = tuple(int(value) for value in cancelled_request_ids())
+            if cancelled:
+                for state in states:
+                    self._restore_provider_checkpoint(state)
+                return SpecCycleResult(
+                    stage=SpecCycleStage.CANCELLED,
+                    transaction=replace(
+                        transaction,
+                        target_open=False,
+                        provider_open=False,
+                        rolled_back=True,
+                    ),
+                    cancelled_request_ids=cancelled,
+                )
+            commit_batch = getattr(
+                owner,
+                "_commit_deferred_packed_verify_states_batch",
+                None,
+            )
+            if not callable(commit_batch):
+                raise RuntimeError(
+                    "physical target owner has no batch selected-state commit"
+                )
+            commit_started = time.perf_counter()
+            commit_contract = commit_batch(
+                results,
+                targets,
+                accepted_counts=gpu_summary.accepted_counts,
+                accept_buffers=accept_buffers,
+            )
+            commit_seconds = time.perf_counter() - commit_started
+            if int(commit_contract.get("requests", 0)) != len(ids):
+                raise RuntimeError("physical selected-state commit omitted requests")
         for row in rows:
             row.mtp2_device_accept_calls += 1
-        provider_update_started = time.perf_counter()
-        self._repair_provider_states_batch(
-            states,
-            accepted_counts=accept.accepted_counts,
-            candidate_counts=tuple(
-                plan.candidate_counts[plan.request_ids.index(request_id)]
-                for request_id in ids
-            ),
-        )
-        provider_update_seconds = time.perf_counter() - provider_update_started
-        cancelled = tuple(int(value) for value in cancelled_request_ids())
-        if cancelled:
-            for state in states:
-                self._restore_provider_checkpoint(state)
-            return SpecCycleResult(
-                stage=SpecCycleStage.CANCELLED,
-                transaction=replace(
-                    transaction,
-                    target_open=False,
-                    provider_open=False,
-                    rolled_back=True,
-                ),
-                cancelled_request_ids=cancelled,
-            )
-        commit_batch = getattr(
-            owner,
-            "_commit_deferred_packed_verify_states_batch",
-            None,
-        )
-        if not callable(commit_batch):
-            raise RuntimeError("physical target owner has no batch selected-state commit")
-        commit_started = time.perf_counter()
-        commit_contract = commit_batch(
-            results,
-            targets,
-            accepted_counts=gpu_summary.accepted_counts,
-            accept_buffers=accept_buffers,
-        )
-        commit_seconds = time.perf_counter() - commit_started
-        if int(commit_contract.get("requests", 0)) != len(ids):
-            raise RuntimeError("physical selected-state commit omitted requests")
         for row in rows:
             row.mtp2_selected_commit_batch_calls += 1
             row.mtp2_execution_routes.append("eager")
@@ -1557,7 +2108,12 @@ class Qwen35GGUFMTP2Adapter:
                 *(() if next_token is None else (int(next_token),)),
             )
             if not visible:
-                raise RuntimeError("physical target cycle produced no visible token")
+                raise RuntimeError(
+                    "physical target cycle produced no visible token: "
+                    f"request={request_id} accepted={accepted} "
+                    f"next={next_token} remaining={remaining[index]} "
+                    f"summary={gpu_summary!r}"
+                )
             row.slot.generated_ids.extend(visible)
             row.slot.prev_token = int(visible[-1])
             row.slot.seq_position = int(target.position)
@@ -1584,6 +2140,7 @@ class Qwen35GGUFMTP2Adapter:
             accepted_tokens=accept.accepted_tokens,
             transaction_id=transaction_id,
             selected_candidate_rows=accept.selected_candidate_rows,
+            next_tokens=tuple(next_tokens),
             correction_or_bonus_tokens=tuple(next_tokens),
             target_cursor_deltas=tuple(len(tokens) for tokens in output_ids),
             provider_cursor_deltas=accept.accepted_counts,
@@ -1601,7 +2158,9 @@ class Qwen35GGUFMTP2Adapter:
             target_seconds=target_seconds,
             accept_commit_seconds=accept_seconds + commit_seconds,
             provider_update_seconds=provider_update_seconds,
-            scheduler_readback_seconds=candidate_readback_seconds,
+            scheduler_readback_seconds=(
+                candidate_readback_seconds + bounded_readback_seconds
+            ),
             weight_sweeps=1,
         )
         return SpecCycleResult.committed(
@@ -1613,6 +2172,165 @@ class Qwen35GGUFMTP2Adapter:
             committed_accept,
             telemetry=telemetry,
         )
+
+    def _repair_provider_states_batch_device(
+        self,
+        states: tuple[_MTP2RequestState, ...],
+        proposal: Qwen35GGUFNextNBatchDeviceProposal,
+        *,
+        accepted_counts: Sequence[int],
+    ) -> None:
+        """Repair physical provider state without materializing candidate IDs."""
+
+        accepted = tuple(int(value) for value in accepted_counts)
+        if (
+            len(states) <= 1
+            or len(states) != len(accepted)
+            or proposal.request_ids
+            != tuple(int(state.request_id) for state in states)
+        ):
+            raise ValueError("physical device repair requires aligned C>1 rows")
+        if any(
+            value < 0 or value > count
+            for value, count in zip(
+                accepted, proposal.candidate_counts, strict=True
+            )
+        ):
+            raise ValueError("accepted count is outside the device proposal")
+        executor = states[0].provider.executor
+        hidden_size = int(executor.hidden_size)
+        hidden_nbytes = hidden_size * DType.BF16.itemsize
+        _proposal_hidden, repair_hidden = self._cycle_hidden_tensors(
+            executor.runtime,
+            hidden_size=hidden_size,
+        )
+
+        def packed_hidden(values: Sequence[Tensor]) -> Tensor:
+            rows = tuple(values)
+            for row, hidden in enumerate(rows):
+                executor.runtime.memcpy(
+                    repair_hidden.ptr + row * hidden_nbytes,
+                    hidden.ptr,
+                    hidden_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
+            return Tensor.from_handle(
+                repair_hidden.ptr,
+                (len(rows), hidden_size),
+                DType.BF16,
+                Device("hip", 0),
+            )
+
+        restored: list[tuple[_MTP2RequestState, MtpProposalContext]] = []
+        for state, accepted_count, candidate_count in zip(
+            states,
+            accepted,
+            proposal.candidate_counts,
+            strict=True,
+        ):
+            checkpoint = state.proposal_checkpoint
+            context = state.proposal_context
+            if checkpoint is None or context is None:
+                raise RuntimeError("GGUF MTP2 device repair has no checkpoint")
+            if accepted_count < int(candidate_count):
+                executor.restore_request_checkpoint(checkpoint)
+                restored.append((state, context))
+        if restored:
+            ids = tuple(state.request_id for state, _context in restored)
+            tokens = tuple(int(context.root_tokens[0]) for _state, context in restored)
+            positions = tuple(
+                int(context.root_positions[0]) for _state, context in restored
+            )
+            hidden = packed_hidden(
+                tuple(context.target_hidden for _state, context in restored)
+            )
+            advance_one = getattr(executor, "advance_state_only", None)
+            if len(restored) == 1 and callable(advance_one):
+                advance_one(
+                    ids[0],
+                    tokens[0],
+                    positions[0],
+                    Tensor.from_handle(
+                        hidden.ptr,
+                        (1, hidden_size),
+                        DType.BF16,
+                        hidden.device,
+                    ),
+                )
+            else:
+                executor.advance_state_batch_only(ids, tokens, positions, hidden)
+
+        offsets: dict[int, int] = {}
+        cursor = 0
+        for request_id, count in zip(
+            proposal.request_ids, proposal.candidate_counts, strict=True
+        ):
+            offsets[int(request_id)] = cursor
+            cursor += int(count)
+        operations: list[list[tuple[Tensor, int, Tensor]]] = []
+        for state, accepted_count, candidate_count, hidden_rows in zip(
+            states,
+            accepted,
+            proposal.candidate_counts,
+            proposal.hidden_rows,
+            strict=True,
+        ):
+            root_position = int(proposal.root_positions[
+                proposal.request_ids.index(state.request_id)
+            ])
+            if accepted_count == int(candidate_count):
+                candidate_indices = (int(candidate_count) - 1,)
+            else:
+                candidate_indices = tuple(range(accepted_count))
+            base = offsets[state.request_id]
+            operations.append(
+                [
+                    (
+                        Tensor.from_handle(
+                            proposal.token_ids.ptr
+                            + (base + candidate_index) * DType.INT32.itemsize,
+                            (1,),
+                            DType.INT32,
+                            proposal.token_ids.device,
+                        ),
+                        root_position + candidate_index + 1,
+                        hidden_rows[candidate_index],
+                    )
+                    for candidate_index in candidate_indices
+                ]
+            )
+        for depth in range(max((len(rows) for rows in operations), default=0)):
+            active = tuple(
+                index for index, rows in enumerate(operations) if depth < len(rows)
+            )
+            ids = tuple(states[index].request_id for index in active)
+            tokens = tuple(operations[index][depth][0] for index in active)
+            positions = tuple(operations[index][depth][1] for index in active)
+            hidden = packed_hidden(
+                tuple(operations[index][depth][2] for index in active)
+            )
+            if len(active) == 1:
+                advance_one = getattr(executor, "advance_state_only_device", None)
+                if callable(advance_one):
+                    advance_one(
+                        ids[0],
+                        tokens[0],
+                        positions[0],
+                        Tensor.from_handle(
+                            hidden.ptr,
+                            (1, hidden_size),
+                            DType.BF16,
+                            hidden.device,
+                        ),
+                    )
+                else:
+                    executor.advance_state_batch_only_device(
+                        ids, tokens, positions, hidden
+                    )
+            else:
+                executor.advance_state_batch_only_device(
+                    ids, tokens, positions, hidden
+                )
 
     def _repair_provider_states_batch(
         self,
@@ -1719,6 +2437,56 @@ class Qwen35GGUFMTP2Adapter:
                     hidden,
                 )
 
+    def _repair_provider_state_device(
+        self,
+        state: _MTP2RequestState,
+        proposal: Qwen35GGUFNextNDeviceProposal,
+        *,
+        accepted_count: int,
+    ) -> None:
+        """Repair C1 provider state from proposal device rows only."""
+
+        checkpoint = state.proposal_checkpoint
+        context = state.proposal_context
+        hidden_rows = proposal.hidden_rows
+        if checkpoint is None or context is None or hidden_rows is None:
+            raise RuntimeError("GGUF MTP2 C1 device repair lost proposal ownership")
+        accepted = int(accepted_count)
+        if accepted < 0 or accepted > int(proposal.budget):
+            raise ValueError("accepted_count is outside the device proposal")
+        executor = state.provider.executor
+        if accepted < int(proposal.budget):
+            executor.restore_request_checkpoint(checkpoint)
+            executor.advance_state_only(
+                state.request_id,
+                int(context.root_tokens[0]),
+                int(context.root_positions[0]),
+                context.target_hidden,
+            )
+            candidate_indices = tuple(range(accepted))
+        else:
+            candidate_indices = (int(proposal.budget) - 1,)
+        hidden_size = int(hidden_rows.shape[1])
+        hidden_nbytes = hidden_size * DType.BF16.itemsize
+        for candidate_index in candidate_indices:
+            executor.advance_state_only_device(
+                state.request_id,
+                Tensor.from_handle(
+                    proposal.result_ptr
+                    + candidate_index * 2 * DType.INT32.itemsize,
+                    (1,),
+                    DType.INT32,
+                    proposal.final_hidden.device,
+                ),
+                int(context.root_positions[0]) + candidate_index + 1,
+                Tensor.from_handle(
+                    hidden_rows.ptr + candidate_index * hidden_nbytes,
+                    (1, hidden_size),
+                    DType.BF16,
+                    hidden_rows.device,
+                ),
+            )
+
     def _repair_provider_state(
         self,
         state: _MTP2RequestState,
@@ -1769,6 +2537,7 @@ class Qwen35GGUFMTP2Adapter:
             state.provider.executor.release_request_checkpoint(checkpoint)
             state.proposal_checkpoint = None
             state.proposal_context = None
+            state.proposal_device = None
             state.proposal_device_batch = None
 
     def _release_provider_checkpoint(self, state: _MTP2RequestState) -> None:
@@ -1778,6 +2547,7 @@ class Qwen35GGUFMTP2Adapter:
         state.provider.executor.release_request_checkpoint(checkpoint)
         state.proposal_checkpoint = None
         state.proposal_context = None
+        state.proposal_device = None
         state.proposal_device_batch = None
 
     def rollback_cycle(
@@ -1800,7 +2570,7 @@ class Qwen35GGUFMTP2Adapter:
     ) -> bool:
         """Fall back to AR only while every target cursor is still canonical."""
 
-        del error
+        reason = f"{type(error).__name__}:{error}"
         rows = tuple(
             self.owner._row(int(request_id))
             for request_id in plan.speculative_request_ids
@@ -1814,7 +2584,9 @@ class Qwen35GGUFMTP2Adapter:
                 return False
         for row in rows:
             row.mtp2_recoverable_failures += 1
-            row.mtp2_failure_reasons.append("precommit_failure_ar_fallback")
+            row.mtp2_failure_reasons.extend(
+                ("precommit_failure_ar_fallback", reason)
+            )
         return True
 
     def release_request(self, request_id: int) -> None:
