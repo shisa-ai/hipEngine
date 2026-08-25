@@ -269,6 +269,49 @@ def _copy_array_to_tensor(tensor: Tensor, values: np.ndarray, *, runtime) -> Non
     )
 
 
+def _allocate_native_linear_state_tables(
+    workspace: RuntimeWorkspace,
+    session: Any,
+    *,
+    runtime: Any,
+) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    """Snapshot mutable session pointer tables into graph-owned storage."""
+
+    table_specs = (
+        (
+            "native_spec_linear_state_src_conv_table",
+            session._verify_linear_state_src_conv_host,
+        ),
+        (
+            "native_spec_linear_state_src_recurrent_table",
+            session._verify_linear_state_src_recurrent_host,
+        ),
+        (
+            "native_spec_linear_state_dst_conv_table",
+            session._verify_linear_state_dst_conv_host,
+        ),
+        (
+            "native_spec_linear_state_dst_recurrent_table",
+            session._verify_linear_state_dst_recurrent_host,
+        ),
+    )
+    if any(values is None for _name, values in table_specs):
+        raise RuntimeError("GGUF native target graph pointer tables are incomplete")
+    graph_tables: list[Tensor] = []
+    for name, values in table_specs:
+        assert values is not None
+        array = np.ascontiguousarray(values, dtype=np.uint64)
+        table = workspace.reserve_tensor(name, (array.size,), DType.INT64)
+        _copy_array_to_tensor(table, array, runtime=runtime)
+        graph_tables.append(table)
+    return (
+        graph_tables[0],
+        graph_tables[1],
+        graph_tables[2],
+        graph_tables[3],
+    )
+
+
 def _stage_target_batch(
     batch: TargetVerifyBatch,
     buffers: TargetVerifyBuffers,
@@ -657,10 +700,6 @@ def _native_target_binding_signature(session: Any) -> tuple[int, ...]:
         "_prefill_hidden_b",
         "_verify_lm_out_indices_i32",
         "_lm_out_index",
-        "_verify_linear_state_src_conv_table_buf",
-        "_verify_linear_state_src_recurrent_table_buf",
-        "_verify_linear_state_dst_conv_table_buf",
-        "_verify_linear_state_dst_recurrent_table_buf",
     ):
         add(getattr(session, name, None))
     scratch = getattr(session, "scratch", None)
@@ -817,6 +856,10 @@ class Qwen35GGUFNativeB2TargetGraph:
     dynamic_metadata: Tensor
     token_ids_i32: Tensor
     positions_i32: Tensor
+    linear_state_src_conv_table: Tensor | None
+    linear_state_src_recurrent_table: Tensor | None
+    linear_state_dst_conv_table: Tensor | None
+    linear_state_dst_recurrent_table: Tensor | None
     accept_buffers: TargetVerifyBuffers | None
     remaining_decode: Tensor | None
     result_payload: Tensor | None
@@ -1529,6 +1572,21 @@ def capture_qwen35_gguf_native_b2_target_graph(
             (rows,),
             DType.INT32,
         )
+        linear_state_src_conv_table = None
+        linear_state_src_recurrent_table = None
+        linear_state_dst_conv_table = None
+        linear_state_dst_recurrent_table = None
+        if device_accept_commit:
+            (
+                linear_state_src_conv_table,
+                linear_state_src_recurrent_table,
+                linear_state_dst_conv_table,
+                linear_state_dst_recurrent_table,
+            ) = _allocate_native_linear_state_tables(
+                workspace,
+                session,
+                runtime=runtime,
+            )
         accept_buffers = None
         remaining_decode_tensor = None
         result_payload = None
@@ -1670,8 +1728,10 @@ def capture_qwen35_gguf_native_b2_target_graph(
         if device_accept_commit:
             assert accept_buffers is not None
             assert visible_output_ids is not None and visible_output_lengths is not None
-            assert session._verify_linear_state_src_conv_table_buf is not None
-            assert session._verify_linear_state_dst_conv_table_buf is not None
+            assert linear_state_src_conv_table is not None
+            assert linear_state_src_recurrent_table is not None
+            assert linear_state_dst_conv_table is not None
+            assert linear_state_dst_recurrent_table is not None
             stages = (
                 NativeSpecCycleStage.VERIFY
                 | NativeSpecCycleStage.ACCEPT
@@ -1685,8 +1745,8 @@ def capture_qwen35_gguf_native_b2_target_graph(
                     control.pointers,
                     state=replace(
                         control.pointers.state,
-                        linear_state_rows=session._verify_linear_state_src_conv_table_buf.ptr,
-                        linear_state_dst=session._verify_linear_state_dst_conv_table_buf.ptr,
+                        linear_state_rows=linear_state_src_conv_table.ptr,
+                        linear_state_dst=linear_state_dst_conv_table.ptr,
                         hidden_seed_dst=session.scratch.hidden_seed_fp32.ptr,
                     ),
                     outputs=replace(
@@ -1794,11 +1854,11 @@ def capture_qwen35_gguf_native_b2_target_graph(
                     runtime=runtime,
                 )
                 linear_commit_kernel(
-                    session._verify_linear_state_src_conv_table_buf.ptr,
-                    session._verify_linear_state_dst_conv_table_buf.ptr,
+                    linear_state_src_conv_table.ptr,
+                    linear_state_dst_conv_table.ptr,
                     int(session._verify_linear_state_conv_row_nbytes),
-                    session._verify_linear_state_src_recurrent_table_buf.ptr,
-                    session._verify_linear_state_dst_recurrent_table_buf.ptr,
+                    linear_state_src_recurrent_table.ptr,
+                    linear_state_dst_recurrent_table.ptr,
                     int(session._verify_linear_state_recurrent_row_nbytes),
                     accept_buffers.commit_rows.ptr,
                     int(session._verify_linear_state_layer_count),
@@ -1874,6 +1934,10 @@ def capture_qwen35_gguf_native_b2_target_graph(
             dynamic_metadata=dynamic_metadata,
             token_ids_i32=token_ids_i32,
             positions_i32=positions_i32,
+            linear_state_src_conv_table=linear_state_src_conv_table,
+            linear_state_src_recurrent_table=linear_state_src_recurrent_table,
+            linear_state_dst_conv_table=linear_state_dst_conv_table,
+            linear_state_dst_recurrent_table=linear_state_dst_recurrent_table,
             accept_buffers=accept_buffers,
             remaining_decode=remaining_decode_tensor,
             result_payload=result_payload,
