@@ -35,7 +35,11 @@
         "performance_claim": {"const": false},
         "tool_choice": {"const": "auto"},
         "collector": {"type": "string", "minLength": 1},
-        "history": {"type": "string", "minLength": 1}
+        "history": {"type": "string", "minLength": 1},
+        "repetitions": {"type": "integer", "minimum": 1},
+        "max_tokens": {"type": "integer", "minimum": 1},
+        "server_capabilities_sha256": {"$ref": "#/$defs/sha256"},
+        "server_capabilities": {"type": "object"}
       }
     },
     "turnRecord": {
