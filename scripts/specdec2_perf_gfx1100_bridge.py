@@ -88,9 +88,14 @@ def build_execution_plan(
         raise ValueError("runs must be positive")
     prompts = _tuple_text(prompt_ids, name="prompt_ids")
 
+    canonical_positions = {
+        prompt_id: index
+        for index, (prompt_id, _category, _split) in enumerate(CANONICAL_PROMPTS)
+    }
     plan: list[dict[str, Any]] = []
     for run_index in range(repeat_count):
-        for prompt_index, prompt_id in enumerate(prompts):
+        for selected_index, prompt_id in enumerate(prompts):
+            prompt_index = canonical_positions.get(prompt_id, selected_index)
             parity = (run_index + prompt_index) % 2
             arm_order = ARMS if parity == 0 else tuple(reversed(ARMS))
             plan.append(
@@ -447,6 +452,26 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--allow-partial-suite", action="store_true")
     validate.add_argument("--production-id-drift", action="store_true")
     validate.add_argument("--output", type=Path, required=True)
+
+    loaded = subparsers.add_parser(
+        "run-loaded-paro",
+        help="emit the loaded packed-PARO AR/staged attachment",
+    )
+    loaded.add_argument("--lane", choices=("paro",), default="paro")
+    loaded.add_argument("--model", type=Path)
+    loaded.add_argument("--profile", choices=PROFILES, required=True)
+    loaded.add_argument("--candidate-budget", type=int, required=True)
+    loaded.add_argument("--prompts", type=Path, default=Path("benchmarks/prompts/mtpbench-code-general-ja.jsonl"))
+    loaded.add_argument("--prompt-ids", type=_csv_text, default=())
+    loaded.add_argument("--limit", type=int)
+    loaded.add_argument("--runs", type=int, default=3)
+    loaded.add_argument("--max-tokens", type=int, default=25)
+    loaded.add_argument("--arms", type=_csv_text, default=())
+    loaded.add_argument("--warmup", action=argparse.BooleanOptionalAction, default=True)
+    loaded.add_argument("--max-sequence-length", type=int)
+    loaded.add_argument("--compiler-version-file", type=Path)
+    loaded.add_argument("--require-cached-build", action="store_true")
+    loaded.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -464,6 +489,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 prompt_ids=args.prompt_ids,
             ),
         }
+    elif args.command == "run-loaded-paro":
+        from scripts.specdec2_perf_gfx1100_child import (
+            DEFAULT_MODEL,
+            run_loaded_packet,
+        )
+
+        if args.model is None:
+            args.model = DEFAULT_MODEL
+        payload = run_loaded_packet(args)
     else:
         source = json.loads(args.input.read_text(encoding="utf-8"))
         source_rows = source.get("rows") if isinstance(source, dict) else source
