@@ -182,6 +182,21 @@ fallback count is not a success metric.
   direct controls and registered strict/eager/serial kernel fallbacks required
   by the execution-profile contract.
 
+## SPECDEC2 gfx1100 packed-PARO C1 bring-up debt
+
+- Added 2026-08-25 for S7 P1. The staged provider now streams target prompt
+  hidden rows directly into NextN and pools the heavy proposer, but C1 proposal
+  still returns one bounded host token, target backup copies the canonical slot
+  into spare slot 1 each cycle, and claim reservation is a logical owner rather
+  than a persistent RuntimeWorkspace slab. The short warm route is ~9.1% slower
+  than AR, so it remains explicit/default-off and automatic K0.
+- Removal/promotion trigger: make candidate/top1/accept/selected-commit device-
+  resident with bounded final readback, move hot backup/scratch to stable claim-
+  backed slabs, prove exact rollback and cached profiler engagement, and pass
+  complete same-suite wall against the qualified direct fast B1 control. C2/C4
+  additionally requires physical multi-request PARO proposal/target ownership;
+  do not broaden the singleton adapter.
+
 ## SPECDEC2 dense NextN host/device proposal duplication
 
 - Added 2026-08-25 with the S4 C2/C4 device-candidate handoff. The exact
