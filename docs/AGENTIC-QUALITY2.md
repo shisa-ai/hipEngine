@@ -1,6 +1,6 @@
 # AGENTIC-QUALITY2 — ZBook Agent Quality Campaign
 
-- **Status:** approved; active; AQ0-AQ7 complete, AQ8 one-mechanism declaration next
+- **Status:** approved; active; AQ0-AQ8 complete, AQ9 no-implementation disposition next
 - **Approved:** 2026-08-25
 - **Execution host:** `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 - **Primary model:** Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV
@@ -804,12 +804,56 @@ outputs and heldout details remain local and cannot tune AQ8.
 
 ### AQ8 / Task #48 — one mechanism declaration
 
-- [ ] Join AQ3/AQ6/AQ7 evidence.
-- [ ] Select at most one Section 11 mechanism or no-go.
-- [ ] Fill every declaration field before code.
-- [ ] Prohibit fixture/category/model-conditioned behavior explicitly.
-- [ ] Add `REFACTOR.md` removal trigger for any temporary flag/path.
-- [ ] Commit the declaration before implementation.
+- [x] Join AQ3/AQ6/AQ7 evidence.
+- [x] Select at most one Section 11 mechanism or no-go.
+- [x] Fill every declaration field before code.
+- [x] Prohibit fixture/category/model-conditioned behavior explicitly.
+- [x] Add `REFACTOR.md` removal trigger for any temporary flag/path. No entry is
+      needed because the declaration adds no runtime path or flag.
+- [x] Commit the declaration before implementation.
+
+#### AQ8 decision — retained no-go / no implementation
+
+AQ8 admits **no runtime mechanism**. The Qwen3.6 development denominator has
+seven deterministic failed task blocks: two legal no-call choices under auto,
+one valid wrong call count, one valid wrong declared tool, and three schema-
+valid actions/content that fail an external task oracle. AQ3 independently found
+zero parser/projection/runtime/unresolved failures; AQ6 likewise has zero
+malformed argument, content/reasoning leak, truncation, runtime, or schema-
+invalid published call. All 56 published primary call blocks are declared,
+JSON-valid, and strict-schema-valid. Patch is already 4/4.
+
+| Candidate | Measured trigger | AQ8 decision |
+| --- | ---: | --- |
+| Parser/template correctness repair | 0 independent mismatches | Reject: no runtime RED. |
+| Complete token-level argument schema constraint | 0 invalid/schema-violating calls | Reject: cannot choose the intended valid tool/action or external result. |
+| Bounded invalid-tool repair | 0 malformed/invalid/truncated/leaked outputs | Reject: retrying valid choices would coerce `auto` semantics. |
+| Patch/diff constraint | 4/4 patch observations pass | Reject: no syntax premise. |
+| No implementation | 7/7 unique development failures model-owned | **Admit.** |
+
+AQ7 aggregates corroborate model dependence without supplying tuning data:
+Qwen3.8 development is 22/34 while Ornith is 16/34 under the same admitted
+runtime, and their raw/heldout outputs remain sealed from selection. Qwen3.8's
+instruction-family gain especially argues against relabeling a shared runtime
+path as defective. The runtime cannot infer benchmark-required tool identity,
+call count, arguments, or external result from `tools`, `tool_choice=auto`, and
+JSON Schema without guessing task intent.
+
+Existing auto/required/specific/none semantics, strict post-validation,
+fail-closed publication/session behavior, streaming behavior, native-sampler/MTP
+blockers, and telemetry remain unchanged. Repair count/token budget is zero.
+There is no new flag, alternate path, fallback chain, or `REFACTOR.md` debt.
+Reopening requires an independent candidate-specific RED: a valid envelope
+misparsed/misprojected by the runtime, an argument prefix that violates a
+supported strict schema, a generically repairable invalid output, or a patch
+syntax failure after intended semantics are independently established.
+
+The compact decision artifact is
+[`2026-08-26-zbook-agentic-quality2-aq8-no-go-decision.json`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq8-no-go-decision.json).
+Because runtime source is unchanged, AQ9 implementation, AQ10 candidate semantic
+qualification, AQ11 post-change primary measurement, and AQ12 transfer are
+not-applicable phases on the approved no-go path; redundant GPU reruns cannot
+create post-change evidence when there is no change.
 
 ### AQ9 / Task #49 — implementation
 
@@ -1052,18 +1096,16 @@ weights, caches, or profiler data.
 
 ## 18. Current handoff
 
-Start AQ8 / Task #48 from the committed AQ7 comparison packet and the frozen
-Section 11 order. Join AQ3's independent boundary taxonomy with AQ6's primary
-expanded baseline and AQ7's aggregate cross-model evidence. Declare **at most
-one** model-general mechanism, or a measured no-go, before implementation.
-Complete every declaration field: development premise, exact request/capability
-scope, auto/required/specific/no-tool semantics, RED oracle, fallback/fail-
-closed behavior, telemetry, removal trigger, and keep/reject thresholds.
+AQ8 retained `no_implementation`: no candidate has a runtime-owned development
+trigger, and coercing valid automatic-tool choices would violate public
+semantics and the anti-overfit contract. Start AQ9 / Task #49 by recording the
+implementation phase as not applicable with no runtime diff, flag, fallback, or
+`REFACTOR.md` debt. Then disposition AQ10–AQ12 as not applicable because there
+is no candidate to qualify, remeasure, or transfer; do not spend redundant GPU
+runs pretending unchanged source is a post-change row.
 
-Do not inspect or tune to AQ6/AQ7 heldout model outputs, comparison-model raw
-outputs, workload IDs, or exact answers. The aggregate result is diagnostic:
-Qwen3.8's instruction gain and otherwise shared deterministic model-owned
-selection/grounding failures provide no permission for a model-name, family,
-language, prompt, or fixture-conditioned branch. If no general runtime
-mechanism has a credible development premise without semantic coercion, declare
-no-go rather than implementing one.
+AQ13 still owns campaign closure: audit every objective and Task #40–#53,
+publish retained/no-go/default/unsupported scopes and reopen criteria, run the
+applicable milestone/process gates, update campaign/PLAN indices as needed,
+merge and push cleanly, and verify local/remote equality. AQ6/AQ7 heldout and
+raw comparison outputs remain sealed.
