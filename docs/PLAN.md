@@ -1021,7 +1021,7 @@ Phase-0 targets (driven by the current research focus):
 | **Qwen3-0.6B** dense | full_attention + dense_mlp | Phase 0 smoke |
 | **Qwen3.5 0.8B** dense | full_attention + dense_mlp | Phase 0 correctness |
 | **Qwen3.5 27B** dense | full_attention + dense_mlp | Phase 1 perf target |
-| **Qwen3.6 35B-A3B** MoE hybrid | full_attention + linear_attention + gdn + moe_top2 | Phase 2 perf target; the separate 60/60/45 W HP ZBook gfx1151 quality/performance campaign is owned by [`QWEN36-35B-ZBOOK-GFX1151-CAMPAIGN.md`](QWEN36-35B-ZBOOK-GFX1151-CAMPAIGN.md) |
+| **Qwen3.6 35B-A3B** MoE hybrid | full_attention + linear_attention + gdn + moe_top2 | Phase 2 perf target; the closed ZBook quant/runtime campaign is [`QWEN36-35B-ZBOOK-GFX1151-CAMPAIGN.md`](QWEN36-35B-ZBOOK-GFX1151-CAMPAIGN.md), while the active quality-only automatic-tool/task follow-up is [`AGENTIC-QUALITY2.md`](AGENTIC-QUALITY2.md) |
 | **Moonshine ASR** encoder-decoder | conv encoder + self/cross attention + gated decoder MLP | HIP FP16 graph decoder and selected encoder hybrids promoted internally; `cuda_sm120a` C0-C8 includes a torch-free encoder, static/continuous batching, and device-owned decode but remains outside public model admission; gfx1151 transfer campaign: [`MOONSHINE.md`](MOONSHINE.md) |
 | **Maple-Preview 20B-A1B** ternary MoE | GQA sliding/global attention + top-8/256 MoE + packed ternary/affine4 | gfx11 public c1/c2/c4/c8 path promoted; `cuda_sm120a` c1 generation, native prefill through p512 performance / 770 state, exact wave32 direct decode, and exact split-K global decode through a full p512 suite are retained on GPU0, while CUDA resident batching/serving remain pending |
 | **Gemma 4** | sliding_attention + global_attention + dense_mlp | Phase 3 |

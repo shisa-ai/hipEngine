@@ -18,6 +18,7 @@ from hipengine.core.memory import (
 from hipengine.runtime import gguf_native_spec_cycle as native_cycle_mod
 from hipengine.runtime.gguf_native_spec_cycle import (
     NativeSpecTargetGraphUnsupportedError,
+    Qwen35GGUFNativeAcceptCommitResult,
     build_native_b2_target_batch,
     run_qwen35_gguf_native_mtp_cycle,
     verify_qwen35_gguf_native_b2_target,
@@ -26,6 +27,61 @@ from hipengine.runtime.gguf_native_spec_cycle import (
 from hipengine.speculative.mtp_resident_draft import (
     NativeSpecProposalGraphUnsupportedError,
 )
+
+
+def test_native_target_binding_signature_covers_linear_commit_tables() -> None:
+    session = SimpleNamespace(
+        _prefill_hidden_a=None,
+        _prefill_hidden_b=None,
+        _verify_lm_out_indices_i32=None,
+        _lm_out_index=None,
+        _verify_linear_state_src_conv_table_buf=SimpleNamespace(ptr=0x1000),
+        _verify_linear_state_src_recurrent_table_buf=SimpleNamespace(ptr=0x2000),
+        _verify_linear_state_dst_conv_table_buf=SimpleNamespace(ptr=0x3000),
+        _verify_linear_state_dst_recurrent_table_buf=SimpleNamespace(ptr=0x4000),
+        scratch=None,
+        _bulk_prefill_scratch=None,
+        _verify_linear_conv_state_rows=(),
+        _verify_linear_recurrent_state_rows=(),
+        _verify_linear_conv_initial_snapshots=(),
+        _verify_linear_recurrent_initial_snapshots=(),
+        _verify_linear_initial_snapshot_users=0,
+    )
+
+    signature = native_cycle_mod._native_target_binding_signature(session)
+
+    assert signature == (0x1000, 0x2000, 0x3000, 0x4000)
+
+
+def test_compact_n2_result_validates_commit_from_visible_tokens_without_row_ids() -> None:
+    kwargs = {
+        "input_token_ids": [100, 0, 0],
+        "token_ids": [101, 102, 103],
+        "accepted_draft_tokens": 2,
+        "commit_row": 2,
+        "commit_token": 102,
+        "commit_position": 7,
+        "next_token": 103,
+        "full_accept": True,
+        "start_position": 5,
+        "end_position": 8,
+        "hidden_seed_rows_ptr": 0x1000,
+        "hidden_seed_row_count": 3,
+        "hidden_size": 8,
+        "proposal_device_handoff": True,
+    }
+
+    with pytest.raises(ValueError, match="commit_token"):
+        Qwen35GGUFNativeAcceptCommitResult(**kwargs)
+
+    result = Qwen35GGUFNativeAcceptCommitResult(
+        **kwargs,
+        compact_result=True,
+    )
+
+    assert result.target_top1 == []
+    assert result.proposal_top1_values == ()
+    assert result.compact_result
 
 
 def test_build_native_b2_target_batch_uses_root_prefixed_chain_layout() -> None:
