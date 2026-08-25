@@ -257,6 +257,9 @@ def test_quality_json_schemas_pin_separate_non_performance_kinds() -> None:
                 "performance_claim"
             ]
             assert performance_claim["const"] is False
+            ownership = payload["$defs"]["finalOwnership"]["properties"]
+            assert ownership["cache_resident_entries"]["minimum"] == 0
+            assert ownership["cache_resident_pages"]["minimum"] == 0
         else:
             assert payload["properties"]["performance_claim"]["const"] is False
             assert "determinism" in payload["properties"]["quality"]["properties"]

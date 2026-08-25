@@ -398,6 +398,11 @@ def _validate_final_ownership(value: Any) -> dict[str, int]:
         raise AgenticBenchmarkError(
             "final_ownership.cache_resident_bytes exceeds allowed_cache_bytes"
         )
+    for field in ("cache_resident_entries", "cache_resident_pages"):
+        normalized[field] = _nonnegative_int(
+            ownership.get(field, 0),
+            label=f"final_ownership.{field}",
+        )
     normalized["cache_resident_bytes"] = resident
     normalized["allowed_cache_bytes"] = allowed
     return normalized
