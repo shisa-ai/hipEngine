@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Common true-AR / legacy-native / staged SPECDEC2 performance bridge.
 
-The bridge is the P1 measurement owner from ``docs/SPECDEC2-PERF.md``.  It
-loads one gfx1151 service per candidate budget, runs true AR and Generation-2
-SPECDEC2 under one request boundary, and keeps the current-source direct dense
+The bridge is the shared P1 measurement owner from ``docs/SPECDEC2-PERF.md``
+and ``docs/SPECDEC2-PERF-GFX1100.md``. It loads one backend-qualified dense
+service per candidate budget, runs true AR and Generation-2 SPECDEC2 under one
+request boundary, and keeps the current-source direct dense
 MTP route as a C1 execution-efficiency control.  Dense direct C>1 is
 request-serial, so those legacy cells are explicitly skipped rather than being
 misreported as physical evidence.
@@ -45,6 +46,7 @@ from hipengine.benchmark.provenance import (  # noqa: E402
 )
 from hipengine.core.memory import memory_stats  # noqa: E402
 from hipengine.generation.registry import GenerationRequest  # noqa: E402
+from hipengine.kernels.backends import HIP_BACKEND_TARGET_ARCH  # noqa: E402
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf")
 DEFAULT_PROMPTS = REPO_ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
@@ -156,6 +158,52 @@ def parse_budgets(value: str) -> tuple[int, ...]:
         allowed=frozenset({1, 2, 3}),
         label="candidate budget",
     )
+
+
+def resolve_platform(
+    *,
+    backend: str,
+    target_arch: str | None,
+    quant_label: str,
+    gpu_max_hw_queues: int | None,
+    environ: Mapping[str, str],
+) -> dict[str, str | None]:
+    """Resolve backend-local evidence identity without cross-lane defaults."""
+
+    selected_backend = str(backend)
+    expected_arch = HIP_BACKEND_TARGET_ARCH.get(selected_backend)
+    if expected_arch is None:
+        raise ValueError(f"unsupported HIP bridge backend: {selected_backend!r}")
+    selected_arch = expected_arch if target_arch is None else str(target_arch)
+    if selected_arch != expected_arch:
+        raise ValueError(
+            f"target arch {selected_arch!r} does not match backend "
+            f"{selected_backend!r} ({expected_arch!r})"
+        )
+    selected_quant = str(quant_label).strip()
+    if not selected_quant:
+        raise ValueError("quant label must be non-empty")
+    if gpu_max_hw_queues is not None:
+        if int(gpu_max_hw_queues) <= 0:
+            raise ValueError("gpu_max_hw_queues must be positive when set")
+        queue = str(int(gpu_max_hw_queues))
+        queue_source = "explicit_cli"
+    elif str(environ.get("GPU_MAX_HW_QUEUES", "")).strip():
+        queue = str(environ["GPU_MAX_HW_QUEUES"]).strip()
+        queue_source = "environment"
+    elif selected_backend == "hip_gfx1151":
+        queue = "2"
+        queue_source = "gfx1151_campaign_default"
+    else:
+        queue = None
+        queue_source = "unset"
+    return {
+        "backend": selected_backend,
+        "target_arch": selected_arch,
+        "quant_label": selected_quant,
+        "gpu_max_hw_queues": queue,
+        "queue_source": queue_source,
+    }
 
 
 def arm_order(prompt_index: int) -> tuple[str, str, str]:
@@ -859,6 +907,14 @@ def _selected_prompts(args: argparse.Namespace) -> tuple[dict[str, Any], ...]:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
+    parser.add_argument(
+        "--backend",
+        choices=tuple(sorted(HIP_BACKEND_TARGET_ARCH)),
+        default="hip_gfx1151",
+    )
+    parser.add_argument("--target-arch")
+    parser.add_argument("--quant-label", default="Q4_K_S")
+    parser.add_argument("--gpu-max-hw-queues", type=int)
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--scope", choices=("train", "full"), default="full")
     parser.add_argument("--limit", type=int)
@@ -892,6 +948,13 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--require-cached-build requires --compiler-version-file")
     if args.compiler_version_file is not None and not Path(args.compiler_version_file).is_file():
         raise ValueError(f"compiler version file not found: {args.compiler_version_file}")
+    resolve_platform(
+        backend=args.backend,
+        target_arch=args.target_arch,
+        quant_label=args.quant_label,
+        gpu_max_hw_queues=args.gpu_max_hw_queues,
+        environ=os.environ,
+    )
     if args.profile_child:
         if not args.roctx_markers or not args.require_cached_build:
             raise ValueError("--profile-child requires ROCTX markers and cached builds")
@@ -918,10 +981,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if args.compiler_version_file is None
         else Path(args.compiler_version_file).read_text(encoding="utf-8")
     )
+    platform_config = resolve_platform(
+        backend=args.backend,
+        target_arch=args.target_arch,
+        quant_label=args.quant_label,
+        gpu_max_hw_queues=args.gpu_max_hw_queues,
+        environ=os.environ,
+    )
     environment = {
-        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "HIPENGINE_HIP_ARCH": platform_config["target_arch"],
         "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
-        "GPU_MAX_HW_QUEUES": os.environ.get("GPU_MAX_HW_QUEUES") or "2",
+        "GPU_MAX_HW_QUEUES": platform_config["gpu_max_hw_queues"],
         "HIPENGINE_REQUIRE_CACHED_BUILD": (
             "1" if args.require_cached_build else os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD")
         ),
@@ -933,11 +1003,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     }
     provenance = collect_artifact_provenance(
         repo_root=REPO_ROOT,
-        configured_backend="hip_gfx1151",
-        resolved_backend="hip_gfx1151",
-        target_arch="gfx1151",
+        configured_backend=str(platform_config["backend"]),
+        resolved_backend=str(platform_config["backend"]),
+        target_arch=str(platform_config["target_arch"]),
         model_path=Path(args.model).resolve(),
-        quant="Q4_K_S",
+        quant=str(platform_config["quant_label"]),
         kv_dtype="bf16",
         command=(str(Path(sys.executable).resolve()), *sys.argv),
         environment={
@@ -994,13 +1064,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "host": {
             "hostname": platform.node(),
             "device": provenance.get("device_name"),
-            "backend": "hip_gfx1151",
-            "target_arch": "gfx1151",
+            "backend": platform_config["backend"],
+            "target_arch": platform_config["target_arch"],
+            "gpu_max_hw_queues": platform_config["gpu_max_hw_queues"],
+            "queue_source": platform_config["queue_source"],
         },
         "model": {
             "path": str(Path(args.model).resolve()),
             "fingerprint": provenance.get("model_fingerprint"),
-            "quant": "Q4_K_S",
+            "quant": platform_config["quant_label"],
             "kv": "bf16",
             "execution_profile": "strict",
             "recurrent_state": "fp32",
@@ -1042,7 +1114,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 os.environ["HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"] = str(int(budget))
                 llm = LLM(
                     str(Path(args.model).resolve()),
-                    backend="hip_gfx1151",
+                    backend=str(platform_config["backend"]),
                     execution_profile="strict",
                     max_active_requests=max(args.concurrency),
                     max_sequence_length=int(args.max_sequence_length),
