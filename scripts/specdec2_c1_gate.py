@@ -36,6 +36,23 @@ def _choice_rows(response: dict[str, Any]) -> tuple[tuple[int, ...], ...]:
     )
 
 
+def _physical_staged_row_passes(row: dict[str, Any]) -> bool:
+    """Validate the post-P4 device-resident physical-cycle contract."""
+
+    return bool(
+        int(row["specdec2_mtp2_proposal_batch_calls"]) > 0
+        and int(row["specdec2_mtp2_target_batch_calls"]) > 0
+        and int(row["specdec2_mtp2_candidate_device_handoffs"]) > 0
+        and int(row["specdec2_mtp2_candidate_d2h_after_target"]) == 0
+        and int(row["specdec2_mtp2_device_accept_calls"])
+        == int(row["specdec2_mtp2_target_batch_calls"])
+        and int(row["specdec2_mtp2_selected_commit_batch_calls"])
+        == int(row["specdec2_mtp2_target_batch_calls"])
+        and row["specdec2_mtp2_execution_routes"]
+        == ["eager"] * int(row["specdec2_mtp2_target_batch_calls"])
+    )
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     from fastapi.testclient import TestClient
 
@@ -174,17 +191,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         and (
             int(args.concurrency) == 1
             or all(
-                int(row["specdec2_mtp2_proposal_batch_calls"]) > 0
-                and int(row["specdec2_mtp2_target_batch_calls"]) > 0
-                and int(row["specdec2_mtp2_candidate_device_handoffs"]) > 0
-                and int(row["specdec2_mtp2_candidate_d2h_after_target"])
-                == int(row["specdec2_mtp2_candidate_device_handoffs"])
-                and int(row["specdec2_mtp2_device_accept_calls"])
-                == int(row["specdec2_mtp2_target_batch_calls"])
-                and int(row["specdec2_mtp2_selected_commit_batch_calls"])
-                == int(row["specdec2_mtp2_target_batch_calls"])
-                and row["specdec2_mtp2_execution_routes"]
-                == ["eager"] * int(row["specdec2_mtp2_target_batch_calls"])
+                _physical_staged_row_passes(row)
                 for row in staged_rows[-int(args.concurrency) :]
             )
         )
