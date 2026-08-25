@@ -496,6 +496,7 @@ def _execute_pressure_workload(
     idle_timeout_seconds: float,
     request_timeout_seconds: float,
     workspace_lease_pages: int,
+    speculative_mtp: bool = False,
 ) -> tuple[dict[str, Any], tuple[int, ...], tuple[int, ...]]:
     long_spec, candidate_spec = _pressure_specs(decode_tokens=plan.decode_tokens)
     before_ids = set(reclaimed)
@@ -516,6 +517,7 @@ def _execute_pressure_workload(
                 workload_start=workload_start,
                 served_model_name=_SERVED_MODEL_NAME,
                 request_timeout_seconds=float(request_timeout_seconds),
+                speculative_mtp=bool(speculative_mtp),
             )
             start_event.set()
             # EngineService control RPCs serialize behind synchronous model
@@ -542,6 +544,7 @@ def _execute_pressure_workload(
                 workload_start=time.perf_counter(),
                 served_model_name=_SERVED_MODEL_NAME,
                 request_timeout_seconds=float(request_timeout_seconds),
+                speculative_mtp=bool(speculative_mtp),
             ).result(timeout=float(request_timeout_seconds))
             long_trace = long_future.result(timeout=float(request_timeout_seconds))
         idle = _wait_for_idle(llm, batcher, timeout_seconds=float(idle_timeout_seconds))
@@ -834,6 +837,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         stream_queue_limit=int(args.stream_queue_max_chunks),
                         idle_timeout_seconds=float(args.idle_timeout_seconds),
                         request_timeout_seconds=float(args.request_timeout_seconds),
+                        speculative_mtp=bool(args.speculative_mtp),
                     )
                     workload_results[name] = summary
                     print(
@@ -883,6 +887,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             idle_timeout_seconds=float(args.idle_timeout_seconds),
                             request_timeout_seconds=float(args.request_timeout_seconds),
                             workspace_lease_pages=workspace_lease_pages,
+                            speculative_mtp=bool(args.speculative_mtp),
                         )
                     )
                     print(
@@ -909,6 +914,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         stream_queue_limit=int(args.stream_queue_max_chunks),
                         idle_timeout_seconds=float(args.idle_timeout_seconds),
                         request_timeout_seconds=float(args.request_timeout_seconds),
+                        speculative_mtp=bool(args.speculative_mtp),
                     )
                     workload_results["graph_regrow_32k_c1"] = summary
                     regrow_block_ids, regrow_pointers = _allocation_for_workload(
@@ -1018,6 +1024,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "quant": str(args.quant),
             "kv_dtype": "bf16",
             "decode_tokens": int(args.decode_tokens),
+            "speculative_mtp": bool(args.speculative_mtp),
             "graph_decode_tokens": _graph_output_tokens(
                 str(args.backend), int(args.decode_tokens)
             ),
@@ -1104,6 +1111,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma-separated workload subset; subsets are diagnostic only.",
     )
     parser.add_argument("--skip-pressure", action="store_true")
+    parser.add_argument(
+        "--speculative-mtp",
+        action="store_true",
+        help=(
+            "Send workloads through the explicit speculative API route; "
+            "long contexts must select K0 before provider mutation."
+        ),
+    )
     parser.add_argument("--max-active-requests", type=int, default=3)
     parser.add_argument("--max-pending-requests", type=int, default=8)
     parser.add_argument("--max-queued-requests", type=int, default=8)

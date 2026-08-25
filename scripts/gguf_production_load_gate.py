@@ -977,6 +977,7 @@ def _stream_request(
     workload_start: float,
     served_model_name: str,
     request_timeout_seconds: float,
+    speculative_mtp: bool = False,
 ) -> _HTTPTrace:
     start_event.wait(timeout=30.0)
     target = float(workload_start) + float(spec.arrival_offset_seconds)
@@ -997,6 +998,8 @@ def _stream_request(
             "include_usage": True,
         },
     }
+    if speculative_mtp:
+        payload["speculative_mtp"] = True
     if spec.timeout_ms is not None:
         payload["timeout_ms"] = float(spec.timeout_ms)
     connection = http.client.HTTPConnection(host, int(port), timeout=float(request_timeout_seconds))
@@ -1493,6 +1496,7 @@ def _execute_workload(
     idle_timeout_seconds: float,
     request_timeout_seconds: float,
     require_rejects: bool = False,
+    speculative_mtp: bool = False,
 ) -> dict[str, Any]:
     if not specs:
         raise ValueError(f"workload {name} has no requests")
@@ -1522,6 +1526,7 @@ def _execute_workload(
                     workload_start=workload_start,
                     served_model_name="qwen35-production-load",
                     request_timeout_seconds=float(request_timeout_seconds),
+                    speculative_mtp=bool(speculative_mtp),
                 )
                 for spec in specs
             ]

@@ -156,7 +156,7 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
     assert capability.max_requests == 4
     assert capability.max_candidates_per_request == 3
     assert capability.max_frontier_rows == 16
-    assert capability.max_context_tokens == 4096
+    assert capability.max_context_tokens == 1023
 
     target.runner = SimpleNamespace(fp16_recurrent_state=True)
     assert adapter.capability(semantics) is None
@@ -669,12 +669,48 @@ def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
         _row=lambda request_id: row,
         _flush_row_owner=lambda owned_row: None,
     )
-    plan = SimpleNamespace(request_ids=(7,))
+    plan = SimpleNamespace(
+        request_ids=(7,),
+        reasons=(mtp2_module.SpecPlanReason.NO_PROVIDER,),
+    )
 
     adapter.prepare_k0(plan, (), stream=None)
 
     assert calls == [(7, 90, 15, "pre-root-hidden")]
     assert row.mtp2_k0_catchups == 1
+
+
+def test_context_bucket_k0_does_not_attach_or_mutate_provider() -> None:
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._states = {}
+    adapter._intents = {7: 3}
+    adapter._prompt_hidden_rows = {7: np.zeros((1, 4), dtype=np.float32)}
+    adapter._disabled_requests = set()
+    calls = []
+    adapter.owner = SimpleNamespace(
+        _row=lambda request_id: SimpleNamespace(
+            first_token_emitted=True,
+            lease=SimpleNamespace(
+                session=SimpleNamespace(position=1023, last_target_hidden="hidden")
+            ),
+            slot=SimpleNamespace(generated_ids=[90]),
+            mtp2_k0_catchups=0,
+        ),
+        _flush_row_owner=lambda row: calls.append("flush"),
+    )
+    adapter._ensure_request_states = lambda ids: calls.append(("attach", ids))
+
+    adapter.prepare_k0(
+        SimpleNamespace(
+            request_ids=(7,),
+            reasons=(mtp2_module.SpecPlanReason.TARGET_GRAPH_CONTEXT_BUCKET_MISS,),
+        ),
+        (),
+        stream=None,
+    )
+
+    assert calls == []
+    assert adapter._states == {}
 
 
 def test_k0_does_not_advance_provider_before_prefill_root_is_published() -> None:
@@ -709,7 +745,14 @@ def test_k0_does_not_advance_provider_before_prefill_root_is_published() -> None
         _flush_row_owner=lambda owned_row: None,
     )
 
-    adapter.prepare_k0(SimpleNamespace(request_ids=(7,)), (), stream=None)
+    adapter.prepare_k0(
+        SimpleNamespace(
+            request_ids=(7,),
+            reasons=(mtp2_module.SpecPlanReason.NO_PROVIDER,),
+        ),
+        (),
+        stream=None,
+    )
 
     assert calls == []
     assert row.mtp2_k0_catchups == 0
