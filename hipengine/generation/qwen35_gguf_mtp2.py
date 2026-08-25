@@ -13,12 +13,18 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import (
     DeviceBuffer,
+    copy_device_to_host,
     copy_host_to_device,
     free,
     host_array_ptr,
     malloc,
 )
 from hipengine.core.tensor import Tensor
+from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
+    ACCEPT_PACKED_PAYLOAD_FIELDS,
+    build_dflash_accept,
+    dflash_accept_chain_i32_packed,
+)
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFTransactionalVerifier
@@ -34,13 +40,20 @@ from hipengine.speculative.frontier import (
     SpeculativeCapability,
     TargetFrontier,
 )
+from hipengine.speculative.buffers import (
+    TargetVerifyBufferOwner,
+    TargetVerifyBufferSpec,
+)
 from hipengine.speculative.interfaces import (
     AcceptResult,
+    TargetAcceptSummary,
     TargetCommitPlan,
     TargetVerifyBatch,
+    TargetVerifyBuffers,
 )
 from hipengine.speculative.mtp import MtpProposalContext
 from hipengine.speculative.provider import SpeculativeRequestSemantics
+from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative.transaction import (
     SpecCycleResult,
     SpecCycleStage,
@@ -98,6 +111,11 @@ class Qwen35GGUFMTP2Adapter:
         self._disabled_requests: set[int] = set()
         self._active_claims: ResourceClaimSet | None = None
         self._transaction_sequence = 0
+        self._batch_accept_workspace: RuntimeWorkspace | None = None
+        self._batch_accept_owner: TargetVerifyBufferOwner | None = None
+        self._batch_accept_remaining: Tensor | None = None
+        self._batch_accept_payload: Tensor | None = None
+        self._batch_accept_library: Any | None = None
 
     def register_request(self, request_id: int, candidate_budget: int) -> None:
         rid = int(request_id)
@@ -732,6 +750,159 @@ class Qwen35GGUFMTP2Adapter:
             self._restore_provider_checkpoint(state)
             raise
 
+    def _batch_accept_resources(
+        self,
+        runtime: Any,
+    ) -> tuple[TargetVerifyBufferOwner, Tensor, Tensor]:
+        if self._batch_accept_workspace is None:
+            workspace = RuntimeWorkspace(device=Device("hip", 0), runtime=runtime)
+            spec = TargetVerifyBufferSpec(
+                backend=str(self.generator.backend),
+                bucket="gguf-mtp2-physical-r16-c4",
+                device=Device("hip", 0),
+                max_rows=16,
+                max_requests=4,
+                mode="verify_chain",
+            )
+            self._batch_accept_workspace = workspace
+            self._batch_accept_owner = TargetVerifyBufferOwner.allocate(
+                spec,
+                workspace=workspace,
+            )
+            self._batch_accept_remaining = workspace.reserve_tensor(
+                "target_verify/gguf-mtp2-physical-r16-c4/remaining_decode",
+                (4,),
+                DType.INT32,
+            )
+            self._batch_accept_payload = workspace.reserve_tensor(
+                "target_verify/gguf-mtp2-physical-r16-c4/packed_accept_payload",
+                (4, ACCEPT_PACKED_PAYLOAD_FIELDS),
+                DType.INT32,
+            )
+        if (
+            self._batch_accept_owner is None
+            or self._batch_accept_remaining is None
+            or self._batch_accept_payload is None
+        ):
+            raise RuntimeError("physical accept workspace is incomplete")
+        return (
+            self._batch_accept_owner,
+            self._batch_accept_remaining,
+            self._batch_accept_payload,
+        )
+
+    @staticmethod
+    def _upload_accept_array(tensor: Tensor, values: np.ndarray, runtime: Any) -> None:
+        array = np.ascontiguousarray(values)
+        if array.nbytes > tensor.numel * tensor.dtype.itemsize:
+            raise ValueError("physical accept upload exceeds tensor capacity")
+        copy_host_to_device(
+            DeviceBuffer(tensor.ptr, array.nbytes),
+            host_array_ptr(array),
+            array.nbytes,
+            runtime=runtime,
+        )
+
+    def _accept_target_batch_on_device(
+        self,
+        batch: TargetVerifyBatch,
+        target_top1: Sequence[int],
+        remaining_decode: Sequence[int],
+        *,
+        transaction_id: int,
+        runtime: Any,
+    ) -> tuple[TargetAcceptSummary, TargetVerifyBuffers]:
+        """Emit one GPU accept payload for the whole physical target group."""
+
+        owner, remaining_owner, payload_owner = self._batch_accept_resources(runtime)
+        buffers = owner.bind(batch, transaction_id=int(transaction_id))
+        request_count = len(batch.request_ids)
+        remaining = Tensor.from_handle(
+            remaining_owner.ptr,
+            (request_count,),
+            DType.INT32,
+            remaining_owner.device,
+        )
+        payload = Tensor.from_handle(
+            payload_owner.ptr,
+            (request_count, ACCEPT_PACKED_PAYLOAD_FIELDS),
+            DType.INT32,
+            payload_owner.device,
+        )
+        for tensor, values in (
+            (buffers.token_ids, np.asarray(batch.tokens, dtype=np.int32)),
+            (buffers.positions, np.asarray(batch.positions, dtype=np.int32)),
+            (buffers.parent_rows, np.asarray(batch.parent_rows, dtype=np.int32)),
+            (buffers.draft_depths, np.asarray(batch.draft_depths, dtype=np.int32)),
+            (buffers.row_to_request, np.asarray(batch.row_to_request, dtype=np.int32)),
+            (buffers.active_mask, np.asarray(batch.active_mask, dtype=np.uint8)),
+            (buffers.target_top1, np.asarray(tuple(target_top1), dtype=np.int32)),
+            (remaining, np.asarray(tuple(remaining_decode), dtype=np.int32)),
+        ):
+            self._upload_accept_array(tensor, values, runtime)
+        if self._batch_accept_library is None:
+            self._batch_accept_library = build_dflash_accept(
+                load=True,
+                compiler_version=getattr(self.generator, "compiler_version", None),
+                require_cached=bool(
+                    getattr(self.generator, "require_cached_build", False)
+                ),
+            )
+        dflash_accept_chain_i32_packed(
+            buffers.token_ids.ptr,
+            buffers.positions.ptr,
+            buffers.parent_rows.ptr,
+            buffers.draft_depths.ptr,
+            buffers.active_mask.ptr,
+            buffers.target_top1.ptr,
+            remaining.ptr,
+            buffers.accepted_counts.ptr,
+            buffers.commit_rows.ptr,
+            buffers.commit_tokens.ptr,
+            buffers.commit_positions.ptr,
+            buffers.next_tokens.ptr if buffers.next_tokens is not None else 0,
+            buffers.full_accept.ptr if buffers.full_accept is not None else 0,
+            (
+                buffers.committed_output_ids.ptr
+                if buffers.committed_output_ids is not None
+                else 0
+            ),
+            (
+                buffers.committed_output_lengths.ptr
+                if buffers.committed_output_lengths is not None
+                else 0
+            ),
+            payload.ptr,
+            batch.rows,
+            request_count,
+            batch.rows,
+            library=self._batch_accept_library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        payload_host = np.empty(
+            (request_count, ACCEPT_PACKED_PAYLOAD_FIELDS),
+            dtype=np.int32,
+        )
+        copy_device_to_host(
+            host_array_ptr(payload_host),
+            DeviceBuffer(payload.ptr, payload_host.nbytes),
+            payload_host.nbytes,
+            runtime=runtime,
+        )
+        summary = TargetAcceptSummary.from_gpu_payload(
+            batch,
+            {
+                "accepted_counts": tuple(int(value) for value in payload_host[:, 0]),
+                "commit_rows": tuple(int(value) for value in payload_host[:, 1]),
+                "commit_tokens": tuple(int(value) for value in payload_host[:, 2]),
+                "commit_positions": tuple(int(value) for value in payload_host[:, 3]),
+                "next_tokens": tuple(int(value) for value in payload_host[:, 4]),
+                "full_accept": tuple(bool(value) for value in payload_host[:, 5]),
+            },
+        )
+        return replace(summary, transaction_id=int(transaction_id)), buffers
+
     def _execute_target_frontier_batch(
         self,
         plan: SpecRequestPlan,
@@ -932,11 +1103,40 @@ class Qwen35GGUFMTP2Adapter:
             max(0, int(row.request.max_tokens) - len(row.slot.generated_ids))
             for row in rows
         )
+        gpu_summary, accept_buffers = self._accept_target_batch_on_device(
+            batch,
+            target_top1,
+            remaining,
+            transaction_id=transaction_id,
+            runtime=targets[0].runtime,
+        )
         accept = batch.accept_from_top1(
             target_top1,
             transaction_id=transaction_id,
             remaining_decode=remaining,
         )
+        cpu_summary = replace(
+            TargetAcceptSummary.from_accept_result(batch, accept),
+            transaction_id=transaction_id,
+        )
+        if any(
+            getattr(gpu_summary, field) != getattr(cpu_summary, field)
+            for field in (
+                "request_ids",
+                "accepted_counts",
+                "accepted_tokens",
+                "commit_rows",
+                "commit_tokens",
+                "commit_positions",
+                "next_tokens",
+                "full_accept",
+            )
+        ):
+            raise RuntimeError(
+                "physical GPU accept payload does not match the CPU oracle"
+            )
+        for row in rows:
+            row.mtp2_device_accept_calls += 1
         provider_update_started = time.perf_counter()
         self._repair_provider_states_batch(
             states,
@@ -961,31 +1161,36 @@ class Qwen35GGUFMTP2Adapter:
                 ),
                 cancelled_request_ids=cancelled,
             )
+        commit_batch = getattr(
+            owner,
+            "_commit_deferred_packed_verify_states_batch",
+            None,
+        )
+        if not callable(commit_batch):
+            raise RuntimeError("physical target owner has no batch selected-state commit")
+        commit_contract = commit_batch(
+            results,
+            targets,
+            accepted_counts=gpu_summary.accepted_counts,
+            accept_buffers=accept_buffers,
+        )
+        if int(commit_contract.get("requests", 0)) != len(ids):
+            raise RuntimeError("physical selected-state commit omitted requests")
+        for row in rows:
+            row.mtp2_selected_commit_batch_calls += 1
         output_ids: list[tuple[int, ...]] = []
         next_tokens = accept.next_tokens or (None,) * len(ids)
-        for index, (request_id, target, row, result, accepted, accepted_tokens, next_token) in enumerate(
+        for index, (request_id, target, row, accepted, accepted_tokens, next_token) in enumerate(
             zip(
                 ids,
                 targets,
                 rows,
-                results,
                 accept.accepted_counts,
                 accept.accepted_tokens,
                 next_tokens,
                 strict=True,
             )
         ):
-            deferred = getattr(result, "deferred_packed_state", None)
-            commit_deferred = getattr(owner, "_commit_deferred_packed_verify_state", None)
-            if deferred is None or not callable(commit_deferred):
-                raise RuntimeError("physical target verifier omitted deferred state")
-            commit_deferred(
-                deferred,
-                target,
-                commit_row_index=int(accepted),
-                position=int(target.position) + int(accepted) + 1,
-                hidden_rows=len(result.token_ids),
-            )
             visible = (
                 *tuple(int(token) for token in accepted_tokens),
                 *(() if next_token is None else (int(next_token),)),
@@ -1237,6 +1442,13 @@ class Qwen35GGUFMTP2Adapter:
         self._prompt_hidden_rows.clear()
         self._disabled_requests.clear()
         self._active_claims = None
+        if self._batch_accept_workspace is not None:
+            self._batch_accept_workspace.free()
+            self._batch_accept_workspace = None
+            self._batch_accept_owner = None
+            self._batch_accept_remaining = None
+            self._batch_accept_payload = None
+            self._batch_accept_library = None
 
     def _open_batch_requests(self, request_ids: tuple[int, ...]) -> None:
         rows = [self.owner._row(request_id) for request_id in request_ids]

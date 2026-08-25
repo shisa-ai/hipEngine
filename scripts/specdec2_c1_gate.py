@@ -179,6 +179,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 and int(row["specdec2_mtp2_candidate_device_handoffs"]) > 0
                 and int(row["specdec2_mtp2_candidate_d2h_after_target"])
                 == int(row["specdec2_mtp2_candidate_device_handoffs"])
+                and int(row["specdec2_mtp2_device_accept_calls"])
+                == int(row["specdec2_mtp2_target_batch_calls"])
+                and int(row["specdec2_mtp2_selected_commit_batch_calls"])
+                == int(row["specdec2_mtp2_target_batch_calls"])
                 for row in staged_rows[-int(args.concurrency) :]
             )
         )

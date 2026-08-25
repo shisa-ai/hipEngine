@@ -602,16 +602,18 @@ old route is a strict oracle rather than the migrated server owner.
 - [x] Preserve root/candidate parent topology and per-request ancestor attention.
 - [x] Implement parent-indexed Conv/GDN candidate recurrence.
 - [x] Keep per-request `KVLiveSpans` and provisional KV ownership.
-- [ ] Run one device accept/selected-state commit payload per physical group.
-      Target verification is physical, but selected-state/KV copies still lower
-      through request-local commit calls after complete prevalidation.
+- [x] Run one device accept/selected-state commit payload per physical group.
+      One packed DFlash accept kernel emits the C2/C4 decision payload; the
+      packed target owner then installs independently selected hidden/Conv/GDN/
+      KV rows through one group commit call with one fused linear-state commit.
+      The strict CPU accept result remains a binding oracle.
 - [x] Report honest physical decomposition and weight sweeps.
 
 ### S4.3 Dynamic lifecycle
 
 - [x] Mixed prompt lengths and context positions.
 - [x] Different accept counts in the same cycle.
-- [ ] Rejecting row beside full-accept row.
+- [x] Rejecting row beside full-accept row.
 - [x] Staggered finish and refill into a future cycle.
 - [x] Cancel one row while peers continue.
 - [ ] Slot permutation/compaction and neighbor substitution.
@@ -890,8 +892,7 @@ promotion. Commit `7ac70a39d` subsequently removes pre-target candidate D2H
 for all clean C2/C4 K1-K3 cells with neutral complete wall; see the
 [`device-candidate artifact`](../benchmarks/results/2026-08-25-gfx1151-specdec2-s4-device-candidates.json).
 Cached C4/K3 profiling confirms packed GDN/full-attention engagement.
-S4 remains open for one physical selected-state/KV accept/commit payload,
-rejecting/full-accept neighbor and
-remaining cancellation/prefix/pressure lifecycle gates, profiler evidence, and
+S4 remains open for slot permutation/compaction, prefix/pressure and eager/
+graph fallback lifecycle gates, plus
 a clean same-host packet. Production Q4_K_S FP16 state still selects K0 before
 mutation; gfx1100 remains deferred.

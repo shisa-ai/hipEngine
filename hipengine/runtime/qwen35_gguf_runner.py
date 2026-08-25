@@ -23192,6 +23192,183 @@ class Qwen35GGUFResidentSession:
         self._packed_verify_max_written_positions = tuple(written_positions)
         return results
 
+    def _commit_deferred_packed_verify_states_batch(
+        self,
+        results: Sequence[Qwen35GGUFBlockVerifyResult],
+        destination_sessions: Sequence["Qwen35GGUFResidentSession"],
+        *,
+        accepted_counts: Sequence[int],
+        accept_buffers: object,
+        stream: int = 0,
+    ) -> dict[str, object]:
+        """Install independently selected packed rows behind one group payload."""
+
+        result_tuple = tuple(results)
+        sessions = tuple(destination_sessions)
+        accepted = tuple(int(value) for value in accepted_counts)
+        if len(result_tuple) <= 1 or not (
+            len(result_tuple) == len(sessions) == len(accepted)
+        ):
+            raise ValueError("packed selected-state commit requires aligned C>1 rows")
+        accepted_device = getattr(accept_buffers, "accepted_counts", None)
+        if (
+            not isinstance(accepted_device, Tensor)
+            or accepted_device.dtype != DType.INT32
+            or accepted_device.shape != (len(sessions),)
+        ):
+            raise ValueError("packed selected-state commit requires GPU accept counts")
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        runtime = self.runtime or get_hip_runtime()
+        cfg = self.runner.weights.config
+        hidden_row_nbytes = self.runner.hidden_size * DType.FP32.itemsize
+        linear_copies: list[tuple[int, int, int, int, int, int]] = []
+        cursor_updates: list[tuple[Qwen35GGUFResidentSession, int, int]] = []
+        written_positions = list(self._packed_verify_max_written_positions)
+        shared_packed_state = None
+        for result, session, accepted_count in zip(
+            result_tuple,
+            sessions,
+            accepted,
+            strict=True,
+        ):
+            deferred = result.deferred_packed_state
+            if getattr(deferred, "owner", None) is not self:
+                raise RuntimeError("deferred packed verifier state belongs to another owner")
+            if session.runner is not self.runner or session.scratch is None:
+                raise RuntimeError("packed selected-state destination is incompatible")
+            packed_state = getattr(deferred, "packed_state", None)
+            if not isinstance(packed_state, _GGUFPackedTargetState):
+                raise RuntimeError("deferred packed verifier state is invalid")
+            if shared_packed_state is None:
+                shared_packed_state = packed_state
+            elif packed_state is not shared_packed_state:
+                raise RuntimeError("physical commit rows do not share packed target state")
+            row_start = int(getattr(deferred, "row_start"))
+            row_end = int(getattr(deferred, "row_end"))
+            slot_index = int(getattr(deferred, "slot_index"))
+            start_position = int(getattr(deferred, "start_position"))
+            slot_rows = row_end - row_start
+            if accepted_count < 0 or accepted_count >= slot_rows:
+                raise ValueError("accepted count is outside deferred packed rows")
+            selected_row = row_start + accepted_count
+            consumed_rows = accepted_count + 1
+            end_position = start_position + consumed_rows
+            hidden_count = len(result.token_ids)
+            if hidden_count != slot_rows:
+                raise RuntimeError("packed verifier hidden-row ownership changed")
+            session._ensure_verify_block_buffers(hidden_count, runtime=runtime)
+            if self._verify_hidden_seed_buf is None or session._verify_hidden_seed_buf is None:
+                raise RuntimeError("packed verifier hidden buffers are closed")
+            runtime.memcpy_async(
+                session._verify_hidden_seed_buf.ptr,
+                self._verify_hidden_seed_buf.ptr + row_start * hidden_row_nbytes,
+                hidden_count * hidden_row_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            runtime.memcpy_async(
+                session.scratch.hidden_seed_fp32.ptr,
+                self._verify_hidden_seed_buf.ptr + selected_row * hidden_row_nbytes,
+                hidden_row_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            for layer_id, layer_type in enumerate(cfg.layer_types):
+                if layer_type == LINEAR_ATTENTION:
+                    src_pair = self._verify_linear_state_row_pair(layer_id)
+                    if src_pair is None:
+                        raise RuntimeError(
+                            f"linear-state rows for layer {layer_id} were not captured"
+                        )
+                    src_conv_rows, src_recurrent_rows = src_pair
+                    dst_conv = session.scratch.layer_conv_states[layer_id]
+                    dst_recurrent = session.scratch.layer_recurrent_states[layer_id]
+                    if dst_conv is None or dst_recurrent is None:
+                        raise RuntimeError(
+                            f"destination layer {layer_id} missing linear state"
+                        )
+                    linear_copies.append(
+                        (
+                            src_conv_rows.ptr + selected_row * int(dst_conv.nbytes),
+                            dst_conv.ptr,
+                            src_recurrent_rows.ptr
+                            + selected_row * int(dst_recurrent.nbytes),
+                            dst_recurrent.ptr,
+                            int(dst_conv.nbytes),
+                            int(dst_recurrent.nbytes),
+                        )
+                    )
+                elif layer_type == FULL_ATTENTION:
+                    self._copy_session_packed_kv_segments(
+                        session,
+                        packed_state,
+                        slot_index,
+                        layer_id,
+                        start_position=start_position,
+                        rows=consumed_rows,
+                        packed_to_session=True,
+                        runtime=runtime,
+                        stream=stream,
+                    )
+                else:
+                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+            session._verify_hidden_seed_rows_populated = hidden_count
+            cursor_updates.append((session, end_position, slot_index))
+            if slot_index < len(written_positions):
+                written_positions[slot_index] = max(
+                    int(written_positions[slot_index]),
+                    end_position,
+                )
+        fused_linear = self._fused_linear_state_pair_copy(
+            linear_copies,
+            runtime=runtime,
+            stream=stream,
+        )
+        if not fused_linear:
+            for (
+                src_conv,
+                dst_conv,
+                src_recurrent,
+                dst_recurrent,
+                conv_nbytes,
+                recurrent_nbytes,
+            ) in linear_copies:
+                runtime.memcpy_async(
+                    dst_conv,
+                    src_conv,
+                    conv_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                runtime.memcpy_async(
+                    dst_recurrent,
+                    src_recurrent,
+                    recurrent_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+        for session, end_position, _slot_index in cursor_updates:
+            session._position = end_position
+            session.scratch.position_host[0] = end_position
+            session.scratch.context_host[0] = end_position + 1
+            set_decode_position_i64(
+                session.scratch.position_buf.ptr,
+                session.scratch.context_buf.ptr,
+                end_position,
+                stream=stream,
+                library=session._runtime_state_library,
+                runtime=runtime,
+            )
+            session._hidden_seed_fp32_populated = True
+        self._packed_verify_max_written_positions = tuple(written_positions)
+        return {
+            "requests": len(sessions),
+            "accepted_counts_device_ptr": int(accepted_device.ptr),
+            "linear_state_pairs": len(linear_copies),
+            "fused_linear_state_commit": bool(fused_linear),
+        }
+
     def _commit_deferred_packed_verify_state(
         self,
         deferred_state: object,
