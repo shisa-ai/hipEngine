@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-25**
+Last updated: **2026-08-26**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -101,16 +101,18 @@ The exact `Q4_K_M` W8192 DMS sidecar passes 32K/128K at 100% top-1, saves
 3.750 GiB live K/V at 128K, and matches dense c1 decode. It stays default-off
 pending serving gates. [`DMS status`](../docs/DMS.md).
 
-SPECDEC2-PERF P2 retains exact streaming prompt activation for strict C1/K2:
-full-suite throughput improves **14.294→16.237 tok/s (+13.59%)**, every category
-is positive, and staged reaches **1.486x true AR** with one 10 KiB carried row.
-Physical C2/C4 streaming is rejected because `general_en` regresses despite
-aggregate gains; exact replay remains. p4K/p16K eager streaming is also rejected
-and those contexts select K0 before provider mutation. P3 additionally removes
-the two steady proposal/repair allocation pairs: every physical full-suite cycle
-and warmed profiler window is allocation-free, with complete wall neutral within
-noise. Automatic/product policy remains K0; no public scope promotes.
-[`P3 evidence`](results/2026-08-25-gfx1151-specdec2-perf-p3-stable-slabs.json).
+SPECDEC2-PERF now closes its P4 device cycle. Strict C1/K2 runs proposal and
+N2 target→accept→selected commit as graph/device chains at **15.732 tok/s vs
+10.913 true AR (1.442x)** across the full suite, with every category positive.
+Physical C2/C4 completes device-resident candidate→target→GPU accept→selected
+commit with zero candidate D2H, zero warmed allocation/free, exact K1-K3 oracle
+coverage, and zero final ownership. It remains performance-blocked at
+**5.618/9.183 tok/s vs 15.530/28.766 true AR** because acceptance is only
+**18.43%**. P5 profiles R6/R8/R12/R16 and admits one default-off P6 route:
+for four exact standard-Q4 shapes at rows 6/8/12/16, use the existing exact
+single-wave parent instead of the overprovisioned 256-row shared-B owner. The
+operation owner projects **1.145x** and **23.0–23.1 ms** target saving.
+Automatic/product remains K0. [`P5 evidence`](results/2026-08-26-gfx1151-specdec2-perf-p5-target-admission.json).
 
 gfx1100 SPECDEC2-PERF now retains corrected C1 device chains. Dense
 Qwen3.6-27B GGUF K1/K2/K3 is exact at **1.273x/1.413x/1.440x true AR**, but
