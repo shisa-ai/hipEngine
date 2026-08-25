@@ -411,6 +411,22 @@ def _install_stage_ledger(service: Any, ledger: _StageLedger) -> dict[str, bool]
     return installed
 
 
+def _close_preserving_primary(
+    closer: Any,
+    *,
+    primary_failure_active: bool,
+) -> dict[str, str] | None:
+    """Close an owner without replacing an in-flight measurement failure."""
+
+    try:
+        closer()
+    except BaseException as exc:
+        if not primary_failure_active:
+            raise
+        return {"type": type(exc).__name__, "message": str(exc)}
+    return None
+
+
 def _memory_delta(before: Mapping[str, int], after: Mapping[str, int]) -> dict[str, int]:
     delta_keys = (
         "total_allocated_bytes",
@@ -1154,11 +1170,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                 cell["ratios"] = _arm_ratios(cell)
                                 atomic_write_json(args.output, payload)
                 finally:
+                    primary_failure_active = sys.exc_info()[0] is not None
                     if ledger is not None:
                         ledger.close()
-                    llm.close()
+                    close_error = _close_preserving_primary(
+                        llm.close,
+                        primary_failure_active=primary_failure_active,
+                    )
                     if load_row is not None:
                         load_row["memory_after_close"] = memory_stats()
+                        if close_error is not None:
+                            load_row["secondary_close_error"] = close_error
+                    elif close_error is not None:
+                        payload.setdefault("secondary_close_errors", []).append(
+                            close_error
+                        )
                     atomic_write_json(args.output, payload)
 
         payload["summary"] = _summarize(payload["cells"])
