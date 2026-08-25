@@ -138,6 +138,30 @@ def test_nextn_root_snapshot_captures_and_restores_slot_state(monkeypatch) -> No
     assert executor._batch_sessions[1]._position == 18
 
 
+def test_nextn_root_snapshot_rejects_slot_reuse_and_reset_invalidates(monkeypatch) -> None:
+    executor, slot, _allocated, _freed = _executor(monkeypatch)
+    executor.max_requests = 2
+    executor._request_slots = {7: 1}
+    executor._provider_root_state_metadata[7] = (0, 18, 18)
+    executor._provider_root_state_snapshots = ()
+    executor.scratch.layer_conv_states = ()
+    executor.scratch.layer_recurrent_states = ()
+
+    with pytest.raises(RuntimeError, match="unavailable"):
+        executor.restore_request_root_state(7)
+
+    executor._provider_root_state_metadata[7] = (1, 18, 18)
+    slot.zero_states = lambda runtime: None
+    executor._batch_sessions = (
+        SimpleNamespace(position=0, _position=0),
+        SimpleNamespace(position=18, _position=18),
+    )
+    executor.reset_request(7)
+
+    assert 7 not in executor._provider_root_state_metadata
+    assert executor._batch_sessions[1]._position == 0
+
+
 def test_nextn_fingerprint_reads_only_owned_kv_slot(monkeypatch) -> None:
     executor, slot, _allocated, _freed = _executor(monkeypatch)
     executor._request_slots = {7: 1}

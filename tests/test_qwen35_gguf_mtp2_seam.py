@@ -1360,18 +1360,24 @@ def test_provider_batch_device_repair_uses_root_snapshot_and_kminus1_state() -> 
 
     executor = Executor()
     provider = SimpleNamespace(executor=executor, last_results={})
+    candidate_counts = (2, 2, 2, 3)
     proposal = Qwen35GGUFNextNBatchDeviceProposal(
-        request_ids=(1, 2, 3),
-        root_tokens=(90, 190, 290),
-        root_positions=(5, 8, 11),
-        candidate_counts=(2, 2, 2),
-        token_ids=Tensor.from_handle(0x5000, (6,), DType.INT32, Device("hip", 0)),
+        request_ids=(1, 2, 3, 4),
+        root_tokens=(90, 190, 290, 390),
+        root_positions=(5, 8, 11, 14),
+        candidate_counts=candidate_counts,
+        token_ids=Tensor.from_handle(0x5000, (9,), DType.INT32, Device("hip", 0)),
         hidden_rows=tuple(
-            (
-                Tensor.from_handle(0x6000 + row * 0x1000, (1, 8), DType.BF16, Device("hip", 0)),
-                Tensor.from_handle(0x6100 + row * 0x1000, (1, 8), DType.BF16, Device("hip", 0)),
+            tuple(
+                Tensor.from_handle(
+                    0x6000 + row * 0x1000 + depth * 0x100,
+                    (1, 8),
+                    DType.BF16,
+                    Device("hip", 0),
+                )
+                for depth in range(count)
             )
-            for row in range(3)
+            for row, count in enumerate(candidate_counts)
         ),
     )
     states = tuple(
@@ -1379,7 +1385,7 @@ def test_provider_batch_device_repair_uses_root_snapshot_and_kminus1_state() -> 
             request_id=request_id,
             provider=provider,
             provider_pool_key=None,
-            provider_group_key=(1, 2, 3),
+            provider_group_key=(1, 2, 3, 4),
             verifier=None,
             root_hidden_buffer=SimpleNamespace(ptr=1),
             proposal_checkpoint=f"checkpoint-{request_id}",
@@ -1399,21 +1405,23 @@ def test_provider_batch_device_repair_uses_root_snapshot_and_kminus1_state() -> 
         for row, request_id in enumerate(proposal.request_ids)
     )
     adapter = object.__new__(Qwen35GGUFMTP2Adapter)
-    adapter.owner = SimpleNamespace(capacity=3)
+    adapter.owner = SimpleNamespace(capacity=4)
     adapter._cycle_hidden_tensors = lambda runtime, hidden_size: (
-        Tensor.from_handle(0xD000, (3, 8), DType.BF16, Device("hip", 0)),
-        Tensor.from_handle(0xE000, (3, 8), DType.BF16, Device("hip", 0)),
+        Tensor.from_handle(0xD000, (4, 8), DType.BF16, Device("hip", 0)),
+        Tensor.from_handle(0xE000, (4, 8), DType.BF16, Device("hip", 0)),
     )
 
     adapter._repair_provider_states_batch_device(
         states,
         proposal,
-        accepted_counts=(2, 1, 0),
+        accepted_counts=(2, 1, 0, 1),
     )
 
     assert calls == [
         ("root_snapshot", 3),
-        ("device", (1,), (0x5004,), (7,)),
+        ("checkpoint", "checkpoint-4"),
+        ("host", (4,), (390,), (14,)),
+        ("device", (1, 4), (0x5004, 0x5018), (7, 15)),
     ]
 
 
