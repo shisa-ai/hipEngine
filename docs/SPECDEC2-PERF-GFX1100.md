@@ -354,11 +354,15 @@ work never begins from failing upstream gates.
 
 ## 7. P1 — common bridge and current-main baseline
 
-- [ ] Add `scripts/specdec2_perf_gfx1100_bridge.py` with lane selection and no
-      backend/model policy in engine hot paths. Reuse the direct dense suite and
-      PARO economics primitives; do not duplicate model execution.
-- [ ] Add schema, aggregation, counterbalance, exact-denominator, missing-owner,
-      malformed-manifest, incomplete-suite, and dirty-provenance tests.
+- [x] Add the committed `scripts/specdec2_perf_gfx1100_bridge.py` row contract,
+      content-agnostic arm planner, strict validator/aggregator, and atomic
+      checkpoint writer.
+- [ ] Wire lane execution into the bridge by reusing the direct dense suite and
+      PARO economics primitives; do not duplicate model execution or add
+      backend/model policy in engine hot paths.
+- [x] Add schema, aggregation, counterbalance, exact-denominator, missing-owner,
+      malformed-manifest, incomplete-suite, dirty-provenance, stage-reconciliation,
+      and atomic-checkpoint tests.
 - [ ] Support lane-appropriate AR/direct/staged arms, profiles, C/K, horizons,
       prompt scopes, repeats, immediate progress, and atomic checkpoints.
 - [ ] Emit complete/decode-only attribution, exact accounting, physical shapes,
