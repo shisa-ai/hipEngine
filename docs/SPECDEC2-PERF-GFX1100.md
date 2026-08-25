@@ -1,6 +1,6 @@
 # SPECDEC2-PERF-GFX1100 — W7900 Activation and Hot-Cycle Campaign
 
-- Status: **active; P1-P3 retained, packed P4 device candidate retained, dense P4 device chain rejected**
+- Status: **active; P1-P5 measured, corrected dense/packed P4 device chains retained, automatic K0**
 - Approved: **2026-08-25**
 - Functional predecessor: [`SPECDEC2-GFX1100.md`](SPECDEC2-GFX1100.md), G1/P1 foundations complete
 - Mechanism reference: [`SPECDEC2-PERF.md`](SPECDEC2-PERF.md), with no gfx1151 evidence transfer
@@ -395,9 +395,10 @@ next implementation owner in each lane.
 [`2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json),
 [`dense P3 stable slabs`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p3-dense-stable-slabs.json),
 [`packed P4 device candidate`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-paro-device-candidate.json),
+[`corrected dense P4`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-dense-device-chain-retained.json),
 and [`P5 target profiles`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p5-target-profiles.json).
-Dense streaming is exact at `1.259x/1.365x/1.419x` AR for K1/K2/K3 but remains
-behind direct; p128/p512 is exact but slow and p4K/p16K is pre-mutation K0.
+Corrected dense P4 is exact at `1.273x/1.413x/1.440x` AR for K1/K2/K3 but
+remains behind direct; p128/p512 is exact but slow and p4K/p16K is pre-mutation K0.
 Packed production device candidate is exact with 372/372 zero-allocation cycles
 and improves to `0.979x` AR, still below product promotion. Dense P3 stable slabs
 are exact/wall-neutral; request-local graph
@@ -474,15 +475,13 @@ first use remains P4. No product cell promotes; both automatic policies remain K
       cached proposal→target event retirement with bounded final results.
 - [x] Shared physical C2/C4 staged source can carry device candidate IDs into
       packed target lowering; gfx1100 package capability remains false.
-- [ ] Adapt budget-specific C1 N3P proposal ownership to one bounded staged cycle
-      rather than calling `provider.propose(..., allow_graph=False)` and
-      materializing host candidates.  The first cached-device adapter is rejected:
-      clean K1 failed following-AR state safety on one heldout prompt.
-- [ ] Keep C1 candidates on device into the existing target/accept/selected
-      commit owner and remove intermediate reconstruction/D2H. Reopen only with
-      a focused state/KV fixture and full clean exact gate.
-- [ ] Preserve canonical checkpoint/repair fingerprints for reject/every
-      partial/full acceptance.
+- [x] Adapt budget-specific C1 N3P proposal ownership to one bounded staged
+      cycle. The first `abed6101d` adapter was rejected on following-AR safety;
+      corrected shared pre-capture/commit-table source supersedes it and passes.
+- [x] Keep C1 candidates on device into target/accept/selected commit/provider
+      repair with zero pre-target candidate D2H; bounded tail fallback remains.
+- [x] Preserve canonical checkpoint/repair fingerprints for reject/every
+      partial/full acceptance across the complete exact category packet.
 
 ### Packed PARO
 
