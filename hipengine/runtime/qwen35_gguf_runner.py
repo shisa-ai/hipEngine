@@ -147,6 +147,7 @@ from hipengine.runtime.native_sampler import NativeSamplerWorkspace
 from hipengine.runtime.qwen35_paro import AotritonPrefillStreamBridge
 from hipengine.kernels.hip_gfx1100.speculative import (
     build_dflash_commit,
+    dflash_commit_chain_i32,
     linear_state_pair_commit_chunked_i32,
     linear_state_pair_commit_i32,
 )
@@ -338,7 +339,7 @@ from hipengine.runtime.gguf_linear import (
     wmma_prefill_session,
 )
 from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
-from hipengine.speculative import TargetVerifyBatch
+from hipengine.speculative import TargetStateCommitBuffers, TargetVerifyBatch
 from hipengine.runtime.prefill_flight_recorder import (
     FlightRecorderPhase,
     PrefillFlightRecorder,
@@ -967,6 +968,59 @@ class Qwen35GGUFBlockVerifyResult:
                 raise ValueError("lm_head_logits_f32 rows must match input_token_ids length")
             if self.lm_head_logits_f32.dtype != np.float32:
                 raise ValueError("lm_head_logits_f32 must be float32")
+
+
+@dataclass(frozen=True)
+class Qwen35GGUFPackedVerifyDeviceResult:
+    """Stable packed target rows retained on device through selected commit."""
+
+    request_id: int
+    resident_slot: int
+    transaction_id: int
+    start_position: int
+    row_start: int
+    row_end: int
+    input_token_ids: Tensor
+    target_top1: Tensor
+    hidden_seeds: Tensor
+    deferred_packed_state: object
+
+    def __post_init__(self) -> None:
+        for name in (
+            "request_id",
+            "resident_slot",
+            "transaction_id",
+            "start_position",
+            "row_start",
+            "row_end",
+        ):
+            if int(getattr(self, name)) < 0:
+                raise ValueError(f"{name} must be non-negative")
+        rows = int(self.row_end) - int(self.row_start)
+        if rows <= 0:
+            raise ValueError("packed device result requires a positive row span")
+        if (
+            self.input_token_ids.shape != (rows,)
+            or self.input_token_ids.dtype != DType.INT64
+        ):
+            raise ValueError("packed input IDs must be INT64 [rows]")
+        if self.target_top1.shape != (rows,) or self.target_top1.dtype != DType.INT32:
+            raise ValueError("packed target top-1 must be INT32 [rows]")
+        if (
+            self.hidden_seeds.ndim != 2
+            or self.hidden_seeds.shape[0] != rows
+            or self.hidden_seeds.dtype != DType.FP32
+        ):
+            raise ValueError("packed hidden seeds must be FP32 [rows, hidden_size]")
+        device = self.input_token_ids.device
+        if self.target_top1.device != device or self.hidden_seeds.device != device:
+            raise ValueError("packed device-result tensors must share one device")
+        if self.deferred_packed_state is None:
+            raise ValueError("packed device result requires deferred target state")
+
+    @property
+    def rows(self) -> int:
+        return int(self.row_end) - int(self.row_start)
 
 
 @dataclass(frozen=True)
@@ -18220,7 +18274,8 @@ class Qwen35GGUFResidentSession:
         jobs: list[dict[str, object]] | tuple[dict[str, object], ...],
         *,
         stream: int = 0,
-    ) -> list[Qwen35GGUFBlockVerifyResult]:
+        device_result: bool = False,
+    ) -> list[Qwen35GGUFBlockVerifyResult] | list[Qwen35GGUFPackedVerifyDeviceResult]:
         """Run one packed target-verifier pass for multiple resident sessions.
 
         This is the llama.cpp-style serving verifier path: rows from independent
@@ -18273,6 +18328,8 @@ class Qwen35GGUFResidentSession:
             raise NotImplementedError("packed target verifier cannot defer uncaptured linear-state commit")
         if defer_state_scatter and (not capture_linear_state_rows or not defer_linear_state_commit):
             raise NotImplementedError("packed target verifier can defer scatter only for captured/deferred rows")
+        if bool(device_result) and not defer_state_scatter:
+            raise ValueError("packed device results require deferred state scatter")
 
         slot_blocks: list[_GGUFPackedVerifySlotBlock] = []
         for job in job_list:
@@ -18299,6 +18356,13 @@ class Qwen35GGUFResidentSession:
             for token in input_token_ids:
                 if token < 0 or token >= int(self.runner.vocab_size):
                     raise ValueError(f"token_id {token} outside [0, {self.runner.vocab_size})")
+            if bool(device_result):
+                for identity_name in ("request_id", "resident_slot", "transaction_id"):
+                    identity = int(job.get(identity_name, -1))
+                    if identity < 0:
+                        raise ValueError(
+                            f"packed device result requires non-negative {identity_name}"
+                        )
             candidate_ids = job.get("candidate_token_ids_device")
             if candidate_ids is not None and (
                 not isinstance(candidate_ids, Tensor)
@@ -18364,6 +18428,7 @@ class Qwen35GGUFResidentSession:
         gpu_stage_recorder = (
             _HipEventStageRecorder(runtime, enabled=True, stream=stream)
             if _gguf_packed_verify_gpu_stage_timings_enabled()
+            and not bool(device_result)
             else None
         )
         if gpu_stage_recorder is not None:
@@ -18470,50 +18535,76 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
                 runtime=runtime,
             )
-            runtime.memcpy_async(
-                self.scratch.hidden_seed_fp32.ptr,
-                hidden_seed_buf.ptr + (rows - 1) * self.runner.hidden_size * DType.FP32.itemsize,
-                self.runner.hidden_size * DType.FP32.itemsize,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                stream,
-            )
+            if not bool(device_result):
+                runtime.memcpy_async(
+                    self.scratch.hidden_seed_fp32.ptr,
+                    hidden_seed_buf.ptr
+                    + (rows - 1) * self.runner.hidden_size * DType.FP32.itemsize,
+                    self.runner.hidden_size * DType.FP32.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
             add_stage("packed_verify_output_norm_hidden", output_norm_start)
             if gpu_stage_recorder is not None:
                 gpu_stage_recorder.mark("packed_verify_gpu_output_norm_hidden")
             sample_start = time.perf_counter()
-            token_host = self._sample_target_block_rows_from_hidden(
-                packed_scratch.norm.ptr,
-                rows,
-                activation_dtype=GGUF_ACTIVATION_BF16,
-                stream=stream,
-            )
+            if bool(device_result):
+                self._enqueue_target_block_rows_from_hidden(
+                    packed_scratch.norm.ptr,
+                    rows,
+                    activation_dtype=GGUF_ACTIVATION_BF16,
+                    stream=stream,
+                )
+                token_host = None
+            else:
+                token_host = self._sample_target_block_rows_from_hidden(
+                    packed_scratch.norm.ptr,
+                    rows,
+                    activation_dtype=GGUF_ACTIVATION_BF16,
+                    stream=stream,
+                )
             add_stage("packed_verify_lm_head_sample", sample_start)
             if gpu_stage_recorder is not None:
                 gpu_stage_recorder.mark("packed_verify_gpu_lm_head_sample")
-        hidden_readback_start = time.perf_counter()
-        hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
-        copy_device_to_host(host_array_ptr(hidden_host), hidden_seed_buf, hidden_host.nbytes, runtime=runtime)
-        add_stage("packed_verify_hidden_readback", hidden_readback_start)
         scatter_start = time.perf_counter()
-        results = self._scatter_packed_verify_outputs(
-            job_list,
-            layout,
-            packed_state,
-            hidden_host,
-            token_host,
-            runtime=runtime,
-            stream=stream,
-            linear_state_rows_captured=capture_linear_state_rows,
-            final_linear_state_committed=not defer_linear_state_commit,
-            defer_state_scatter=defer_state_scatter,
-        )
-        add_stage("packed_verify_scatter_outputs", scatter_start)
-        sync_start = time.perf_counter()
-        if stream:
-            runtime.stream_synchronize(stream)
+        if bool(device_result):
+            results = self._describe_packed_verify_device_outputs(
+                job_list,
+                layout,
+                packed_state,
+                hidden_seed_buf,
+            )
+            add_stage("packed_verify_device_descriptors", scatter_start)
         else:
-            runtime.device_synchronize()
-        add_stage("packed_verify_final_sync", sync_start)
+            hidden_readback_start = time.perf_counter()
+            hidden_host = np.empty((rows, self.runner.hidden_size), dtype=np.float32)
+            copy_device_to_host(
+                host_array_ptr(hidden_host),
+                hidden_seed_buf,
+                hidden_host.nbytes,
+                runtime=runtime,
+            )
+            add_stage("packed_verify_hidden_readback", hidden_readback_start)
+            assert token_host is not None
+            results = self._scatter_packed_verify_outputs(
+                job_list,
+                layout,
+                packed_state,
+                hidden_host,
+                token_host,
+                runtime=runtime,
+                stream=stream,
+                linear_state_rows_captured=capture_linear_state_rows,
+                final_linear_state_committed=not defer_linear_state_commit,
+                defer_state_scatter=defer_state_scatter,
+            )
+            add_stage("packed_verify_scatter_outputs", scatter_start)
+            sync_start = time.per_counter()
+            if stream:
+                runtime.stream_synchronize(stream)
+            else:
+                runtime.device_synchronize()
+            add_stage("packed_verify_final_sync", sync_start)
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.resolve_into(stage_timings)
         stage_timings["packed_verify_total"] = (time.perf_counter() - total_start) * 1000.0
@@ -23987,6 +24078,69 @@ class Qwen35GGUFResidentSession:
         self._packed_decode_direct_linear_state = False
         return True
 
+    def _describe_packed_verify_device_outputs(
+        self,
+        jobs: list[dict[str, object]],
+        layout: _GGUFPackedVerifyLayout,
+        packed_state: _GGUFPackedTargetState,
+        hidden_seed_buf: DeviceBuffer,
+    ) -> list[Qwen35GGUFPackedVerifyDeviceResult]:
+        """Return stable target row descriptors without synchronizing or D2H."""
+
+        if self.runner is None or self._prefill_token_buf is None:
+            raise RuntimeError("packed target device-result storage is closed")
+        if self._verify_lm_out_indices_i32 is None:
+            raise RuntimeError("packed target top-1 storage is closed")
+        hidden_size = int(self.runner.hidden_size)
+        hidden_row_nbytes = hidden_size * DType.FP32.itemsize
+        device = Device("hip", 0)
+        results: list[Qwen35GGUFPackedVerifyDeviceResult] = []
+        for slot_index, job in enumerate(jobs):
+            row_start = int(layout.cu_seqlens[slot_index])
+            row_end = int(layout.cu_seqlens[slot_index + 1])
+            rows = row_end - row_start
+            start_position = int(layout.row_positions[row_start])
+            results.append(
+                Qwen35GGUFPackedVerifyDeviceResult(
+                    request_id=int(job["request_id"]),
+                    resident_slot=int(job["resident_slot"]),
+                    transaction_id=int(job["transaction_id"]),
+                    start_position=start_position,
+                    row_start=row_start,
+                    row_end=row_end,
+                    input_token_ids=Tensor.from_handle(
+                        self._prefill_token_buf.ptr
+                        + row_start * DType.INT64.itemsize,
+                        (rows,),
+                        DType.INT64,
+                        device,
+                    ),
+                    target_top1=Tensor.from_handle(
+                        self._verify_lm_out_indices_i32.ptr
+                        + row_start * DType.INT32.itemsize,
+                        (rows,),
+                        DType.INT32,
+                        device,
+                    ),
+                    hidden_seeds=Tensor.from_handle(
+                        hidden_seed_buf.ptr + row_start * hidden_row_nbytes,
+                        (rows, hidden_size),
+                        DType.FP32,
+                        device,
+                    ),
+                    deferred_packed_state=_GGUFPackedVerifyDeferredState(
+                        owner=self,
+                        packed_state=packed_state,
+                        slot_index=slot_index,
+                        row_start=row_start,
+                        row_end=row_end,
+                        start_position=start_position,
+                        end_position=start_position + rows,
+                    ),
+                )
+            )
+        return results
+
     def _scatter_packed_verify_outputs(
         self,
         jobs: list[dict[str, object]],
@@ -24142,6 +24296,457 @@ class Qwen35GGUFResidentSession:
             )
         self._packed_verify_max_written_positions = tuple(written_positions)
         return results
+
+    def prepare_external_verify_state_commit(self) -> None:
+        """Allocate stable external selected-row pointer tables before cycles."""
+
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        runtime = self.runtime or get_hip_runtime()
+        conv_dests: list[int] = []
+        recurrent_dests: list[int] = []
+        conv_row_nbytes = 0
+        recurrent_row_nbytes = 0
+        for layer_id, layer_type in enumerate(
+            self.runner.weights.config.layer_types
+        ):
+            if layer_type != LINEAR_ATTENTION:
+                continue
+            conv_state = self.scratch.layer_conv_states[layer_id]
+            recurrent_state = self.scratch.layer_recurrent_states[layer_id]
+            if conv_state is None or recurrent_state is None:
+                raise RuntimeError(
+                    f"destination layer {layer_id} missing linear state"
+                )
+            conv_nbytes = int(conv_state.nbytes)
+            recurrent_nbytes = int(recurrent_state.nbytes)
+            if conv_row_nbytes not in {0, conv_nbytes} or recurrent_row_nbytes not in {
+                0,
+                recurrent_nbytes,
+            }:
+                raise RuntimeError("external linear-state row geometry is not uniform")
+            conv_row_nbytes = conv_nbytes
+            recurrent_row_nbytes = recurrent_nbytes
+            conv_dests.append(int(conv_state.ptr))
+            recurrent_dests.append(int(recurrent_state.ptr))
+        n_layers = len(conv_dests)
+        if n_layers <= 0:
+            return
+        tables_ready = (
+            self._verify_linear_state_src_conv_table_buf is not None
+            and self._verify_linear_state_src_recurrent_table_buf is not None
+            and self._verify_linear_state_dst_conv_table_buf is not None
+            and self._verify_linear_state_dst_recurrent_table_buf is not None
+            and int(self._verify_linear_state_layer_count) == n_layers
+            and int(self._verify_linear_state_conv_row_nbytes) == conv_row_nbytes
+            and int(self._verify_linear_state_recurrent_row_nbytes)
+            == recurrent_row_nbytes
+        )
+        if tables_ready:
+            if (
+                self._verify_linear_state_dst_conv_host is None
+                or self._verify_linear_state_dst_recurrent_host is None
+                or not np.array_equal(
+                    self._verify_linear_state_dst_conv_host,
+                    np.asarray(conv_dests, dtype=np.uint64),
+                )
+                or not np.array_equal(
+                    self._verify_linear_state_dst_recurrent_host,
+                    np.asarray(recurrent_dests, dtype=np.uint64),
+                )
+            ):
+                raise RuntimeError(
+                    "external verify destination binding generation changed"
+                )
+            return
+        # A resident slot may already own pointer tables for a different
+        # source/entry geometry. Keep those buffers in its close-owned list and
+        # install one exact external-row table set during activation; later
+        # cycles reuse this geometry without reallocating.
+        table_nbytes = n_layers * np.dtype(np.uint64).itemsize
+        new_buffers = tuple(
+            malloc(table_nbytes, runtime=runtime) for _index in range(4)
+        )
+        self._verify_linear_state_src_conv_table_buf = new_buffers[0]
+        self._verify_linear_state_src_recurrent_table_buf = new_buffers[1]
+        self._verify_linear_state_dst_conv_table_buf = new_buffers[2]
+        self._verify_linear_state_dst_recurrent_table_buf = new_buffers[3]
+        self._verify_linear_state_src_conv_host = np.zeros(
+            (n_layers,), dtype=np.uint64
+        )
+        self._verify_linear_state_src_recurrent_host = np.zeros(
+            (n_layers,), dtype=np.uint64
+        )
+        self._verify_linear_state_src_conv_cached = np.zeros(
+            (n_layers,), dtype=np.uint64
+        )
+        self._verify_linear_state_src_recurrent_cached = np.zeros(
+            (n_layers,), dtype=np.uint64
+        )
+        self._verify_linear_state_dst_conv_host = np.asarray(
+            conv_dests, dtype=np.uint64
+        )
+        self._verify_linear_state_dst_recurrent_host = np.asarray(
+            recurrent_dests, dtype=np.uint64
+        )
+        self._verify_linear_state_conv_row_nbytes = conv_row_nbytes
+        self._verify_linear_state_recurrent_row_nbytes = recurrent_row_nbytes
+        self._verify_linear_state_layer_count = n_layers
+        self._buffers = (*self._buffers, *new_buffers)
+        copy_host_to_device(
+            self._verify_linear_state_dst_conv_table_buf,
+            host_array_ptr(self._verify_linear_state_dst_conv_host),
+            self._verify_linear_state_dst_conv_host.nbytes,
+            runtime=runtime,
+        )
+        copy_host_to_device(
+            self._verify_linear_state_dst_recurrent_table_buf,
+            host_array_ptr(self._verify_linear_state_dst_recurrent_host),
+            self._verify_linear_state_dst_recurrent_host.nbytes,
+            runtime=runtime,
+        )
+
+    def _bind_external_verify_linear_state_tables(
+        self,
+        source_owner: "Qwen35GGUFResidentSession",
+        *,
+        row_start: int,
+        runtime: HipRuntime,
+    ) -> tuple[int, int, int]:
+        """Bind stable per-layer tables for a device-selected external row."""
+
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if source_owner.runner is not self.runner:
+            raise RuntimeError("external verify state must share the destination runner")
+        cfg = self.runner.weights.config
+        conv_sources: list[int] = []
+        recurrent_sources: list[int] = []
+        conv_dests: list[int] = []
+        recurrent_dests: list[int] = []
+        conv_row_nbytes = 0
+        recurrent_row_nbytes = 0
+        for layer_id, layer_type in enumerate(cfg.layer_types):
+            if layer_type != LINEAR_ATTENTION:
+                continue
+            source_pair = source_owner._verify_linear_state_row_pair(layer_id)
+            if source_pair is None:
+                raise RuntimeError(
+                    f"external linear-state rows for layer {layer_id} were not captured"
+                )
+            src_conv, src_recurrent = source_pair
+            dst_conv = self.scratch.layer_conv_states[layer_id]
+            dst_recurrent = self.scratch.layer_recurrent_states[layer_id]
+            if dst_conv is None or dst_recurrent is None:
+                raise RuntimeError(
+                    f"destination layer {layer_id} missing linear state"
+                )
+            conv_nbytes = int(dst_conv.nbytes)
+            recurrent_nbytes = int(dst_recurrent.nbytes)
+            if conv_row_nbytes not in {0, conv_nbytes} or recurrent_row_nbytes not in {
+                0,
+                recurrent_nbytes,
+            }:
+                raise RuntimeError("external linear-state row geometry is not uniform")
+            conv_row_nbytes = conv_nbytes
+            recurrent_row_nbytes = recurrent_nbytes
+            conv_sources.append(int(src_conv.ptr) + int(row_start) * conv_nbytes)
+            recurrent_sources.append(
+                int(src_recurrent.ptr) + int(row_start) * recurrent_nbytes
+            )
+            conv_dests.append(int(dst_conv.ptr))
+            recurrent_dests.append(int(dst_recurrent.ptr))
+        n_layers = len(conv_sources)
+        if n_layers <= 0:
+            return 0, 0, 0
+        tables_ready = (
+            self._verify_linear_state_src_conv_table_buf is not None
+            and self._verify_linear_state_src_recurrent_table_buf is not None
+            and self._verify_linear_state_dst_conv_table_buf is not None
+            and self._verify_linear_state_dst_recurrent_table_buf is not None
+            and int(self._verify_linear_state_layer_count) == n_layers
+            and int(self._verify_linear_state_conv_row_nbytes) == conv_row_nbytes
+            and int(self._verify_linear_state_recurrent_row_nbytes)
+            == recurrent_row_nbytes
+        )
+        if not tables_ready:
+            self.prepare_external_verify_state_commit()
+        if (
+            self._verify_linear_state_dst_conv_host is None
+            or self._verify_linear_state_dst_recurrent_host is None
+            or not np.array_equal(
+                self._verify_linear_state_dst_conv_host,
+                np.asarray(conv_dests, dtype=np.uint64),
+            )
+            or not np.array_equal(
+                self._verify_linear_state_dst_recurrent_host,
+                np.asarray(recurrent_dests, dtype=np.uint64),
+            )
+        ):
+            raise RuntimeError("external verify destination binding generation changed")
+        assert self._verify_linear_state_src_conv_host is not None
+        assert self._verify_linear_state_src_recurrent_host is not None
+        assert self._verify_linear_state_src_conv_cached is not None
+        assert self._verify_linear_state_src_recurrent_cached is not None
+        assert self._verify_linear_state_src_conv_table_buf is not None
+        assert self._verify_linear_state_src_recurrent_table_buf is not None
+        self._verify_linear_state_src_conv_host[:] = np.asarray(
+            conv_sources, dtype=np.uint64
+        )
+        self._verify_linear_state_src_recurrent_host[:] = np.asarray(
+            recurrent_sources, dtype=np.uint64
+        )
+        if not np.array_equal(
+            self._verify_linear_state_src_conv_host,
+            self._verify_linear_state_src_conv_cached,
+        ):
+            copy_host_to_device(
+                self._verify_linear_state_src_conv_table_buf,
+                host_array_ptr(self._verify_linear_state_src_conv_host),
+                self._verify_linear_state_src_conv_host.nbytes,
+                runtime=runtime,
+            )
+            np.copyto(
+                self._verify_linear_state_src_conv_cached,
+                self._verify_linear_state_src_conv_host,
+            )
+        if not np.array_equal(
+            self._verify_linear_state_src_recurrent_host,
+            self._verify_linear_state_src_recurrent_cached,
+        ):
+            copy_host_to_device(
+                self._verify_linear_state_src_recurrent_table_buf,
+                host_array_ptr(self._verify_linear_state_src_recurrent_host),
+                self._verify_linear_state_src_recurrent_host.nbytes,
+                runtime=runtime,
+            )
+            np.copyto(
+                self._verify_linear_state_src_recurrent_cached,
+                self._verify_linear_state_src_recurrent_host,
+            )
+        return n_layers, conv_row_nbytes, recurrent_row_nbytes
+
+    def _commit_external_verify_state_row_device(
+        self,
+        source_owner: "Qwen35GGUFResidentSession",
+        *,
+        request_id: int,
+        transaction_id: int,
+        row_start: int,
+        rows: int,
+        commit_row_i32_ptr: int,
+        commit_position_i32_ptr: int,
+        stream: int = 0,
+    ) -> None:
+        """Select external packed hidden/linear rows and device cursors."""
+
+        if self.runner is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        runtime = self.runtime or get_hip_runtime()
+        row_start = int(row_start)
+        rows = int(rows)
+        if row_start < 0 or rows <= 0:
+            raise ValueError("external verify row span is invalid")
+        if source_owner._verify_hidden_seed_buf is None:
+            raise RuntimeError("external verify hidden rows are closed")
+        self._ensure_verify_block_buffers(rows, runtime=runtime)
+        if self._verify_hidden_seed_buf is None:
+            raise RuntimeError("destination verify hidden rows are closed")
+        hidden_size = int(self.runner.hidden_size)
+        hidden_row_nbytes = hidden_size * DType.FP32.itemsize
+        runtime.memcpy_async(
+            self._verify_hidden_seed_buf.ptr,
+            source_owner._verify_hidden_seed_buf.ptr
+            + row_start * hidden_row_nbytes,
+            rows * hidden_row_nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            int(stream),
+        )
+        n_layers, conv_nbytes, recurrent_nbytes = (
+            self._bind_external_verify_linear_state_tables(
+                source_owner,
+                row_start=row_start,
+                runtime=runtime,
+            )
+        )
+        if n_layers:
+            assert self._verify_linear_state_src_conv_table_buf is not None
+            assert self._verify_linear_state_src_recurrent_table_buf is not None
+            assert self._verify_linear_state_dst_conv_table_buf is not None
+            assert self._verify_linear_state_dst_recurrent_table_buf is not None
+            linear_commit = (
+                linear_state_pair_commit_chunked_i32
+                if self._chunked_linear_state_commit_enabled()
+                else linear_state_pair_commit_i32
+            )
+            if self._dflash_commit_library is None:
+                self._dflash_commit_library = build_dflash_commit(
+                    load=True,
+                    compiler_version=self.compiler_version,
+                    require_cached=self.require_cached_build,
+                )
+            linear_commit(
+                self._verify_linear_state_src_conv_table_buf.ptr,
+                self._verify_linear_state_dst_conv_table_buf.ptr,
+                conv_nbytes,
+                self._verify_linear_state_src_recurrent_table_buf.ptr,
+                self._verify_linear_state_dst_recurrent_table_buf.ptr,
+                recurrent_nbytes,
+                int(commit_row_i32_ptr),
+                n_layers,
+                stream=int(stream),
+                library=self._dflash_commit_library,
+                runtime=runtime,
+            )
+        device = Device("hip", 0)
+        accepted = Tensor.from_handle(
+            int(commit_row_i32_ptr), (1,), DType.INT32, device
+        )
+        commit_position = Tensor.from_handle(
+            int(commit_position_i32_ptr), (1,), DType.INT32, device
+        )
+        hidden_src = Tensor.from_handle(
+            source_owner._verify_hidden_seed_buf.ptr
+            + row_start * hidden_row_nbytes,
+            (1, rows, hidden_size),
+            DType.FP32,
+            device,
+        )
+        hidden_dst = Tensor.from_handle(
+            self.scratch.hidden_seed_fp32.ptr,
+            (1, 1, hidden_size),
+            DType.FP32,
+            device,
+        )
+        dflash_commit_chain_i32(
+            TargetStateCommitBuffers(
+                request_ids=(int(request_id),),
+                transaction_id=int(transaction_id),
+                accepted_counts=accepted,
+                commit_rows=accepted,
+                commit_positions=commit_position,
+                hidden_taps_src=hidden_src,
+                hidden_taps_dst=hidden_dst,
+                mode="verify_chain",
+            ),
+            target_rows=rows,
+            stream=int(stream),
+            library=self._dflash_commit_library,
+            runtime=runtime,
+        )
+        copy_i32_to_i64(
+            int(commit_position_i32_ptr),
+            self.scratch.position_buf.ptr,
+            1,
+            stream=int(stream),
+            library=self._runtime_state_library,
+            runtime=runtime,
+        )
+        copy_i32_to_i64(
+            int(commit_position_i32_ptr),
+            self.scratch.context_buf.ptr,
+            1,
+            stream=int(stream),
+            library=self._runtime_state_library,
+            runtime=runtime,
+        )
+        advance_decode_position_i64(
+            self.scratch.position_buf.ptr,
+            self.scratch.context_buf.ptr,
+            stream=int(stream),
+            library=self._runtime_state_library,
+            runtime=runtime,
+        )
+        self._verify_hidden_seed_rows_populated = rows
+        self._hidden_seed_fp32_populated = True
+
+    def _commit_deferred_packed_verify_states_batch_device(
+        self,
+        results: Sequence[Qwen35GGUFPackedVerifyDeviceResult],
+        destination_sessions: Sequence["Qwen35GGUFResidentSession"],
+        *,
+        accept_buffers: object,
+        stream: int = 0,
+    ) -> dict[str, object]:
+        """Install packed target state from GPU accept rows before readback."""
+
+        result_tuple = tuple(results)
+        sessions = tuple(destination_sessions)
+        if len(result_tuple) <= 1 or len(result_tuple) != len(sessions):
+            raise ValueError("packed device commit requires aligned C>1 rows")
+        accepted = getattr(accept_buffers, "accepted_counts", None)
+        commit_positions = getattr(accept_buffers, "commit_positions", None)
+        if (
+            not isinstance(accepted, Tensor)
+            or not isinstance(commit_positions, Tensor)
+            or accepted.dtype != DType.INT32
+            or commit_positions.dtype != DType.INT32
+            or accepted.shape != (len(sessions),)
+            or commit_positions.shape != (len(sessions),)
+        ):
+            raise ValueError("packed device commit requires GPU accept metadata")
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        cfg = self.runner.weights.config
+        shared_packed_state = None
+        written_positions = list(self._packed_verify_max_written_positions)
+        for index, (result, session) in enumerate(
+            zip(result_tuple, sessions, strict=True)
+        ):
+            if result.request_id != int(getattr(session, "request_id", result.request_id)):
+                raise RuntimeError("packed device result request identity changed")
+            deferred = result.deferred_packed_state
+            if getattr(deferred, "owner", None) is not self:
+                raise RuntimeError("deferred packed verifier state belongs to another owner")
+            packed_state = getattr(deferred, "packed_state", None)
+            if not isinstance(packed_state, _GGUFPackedTargetState):
+                raise RuntimeError("deferred packed verifier state is invalid")
+            if shared_packed_state is None:
+                shared_packed_state = packed_state
+            elif packed_state is not shared_packed_state:
+                raise RuntimeError("physical commit rows do not share packed target state")
+            if session.runner is not self.runner or session.scratch is None:
+                raise RuntimeError("packed selected-state destination is incompatible")
+            rows = int(result.rows)
+            slot_index = int(getattr(deferred, "slot_index"))
+            for layer_id, layer_type in enumerate(cfg.layer_types):
+                if layer_type == FULL_ATTENTION:
+                    self._copy_session_packed_kv_segments(
+                        session,
+                        packed_state,
+                        slot_index,
+                        layer_id,
+                        start_position=int(result.start_position),
+                        rows=rows,
+                        packed_to_session=True,
+                        runtime=self.runtime or get_hip_runtime(),
+                        stream=int(stream),
+                    )
+                elif layer_type != LINEAR_ATTENTION:
+                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+            session._commit_external_verify_state_row_device(
+                self,
+                request_id=int(result.request_id),
+                transaction_id=int(result.transaction_id),
+                row_start=int(result.row_start),
+                rows=rows,
+                commit_row_i32_ptr=accepted.ptr + index * DType.INT32.itemsize,
+                commit_position_i32_ptr=(
+                    commit_positions.ptr + index * DType.INT32.itemsize
+                ),
+                stream=int(stream),
+            )
+            if slot_index < len(written_positions):
+                written_positions[slot_index] = max(
+                    int(written_positions[slot_index]),
+                    int(result.start_position) + rows,
+                )
+        self._packed_verify_max_written_positions = tuple(written_positions)
+        return {
+            "requests": len(sessions),
+            "accepted_counts_device_ptr": int(accepted.ptr),
+            "device_selected": True,
+        }
 
     def _commit_deferred_packed_verify_states_batch(
         self,
@@ -25326,6 +25931,40 @@ class Qwen35GGUFResidentSession:
             device_accept_commit=bool(device_accept_commit),
         )
 
+    def prepare_native_spec_target_graph(
+        self,
+        input_token_ids: list[int] | tuple[int, ...],
+        *,
+        request_id: int,
+    ) -> bool:
+        """Capture/cache one strict N2 target graph before a hot cycle."""
+
+        tokens = tuple(int(token) for token in input_token_ids)
+        budget = len(tokens) - 1
+        if budget not in {1, 2, 3}:
+            return False
+        cache_name = f"_native_spec_b{budget}_target_graph_n2"
+        existing = getattr(self, cache_name, None)
+        if existing is not None and not bool(getattr(existing, "closed", False)):
+            return True
+        graph = self.capture_native_spec_target_graph(
+            tokens,
+            request_id=int(request_id),
+            bulk_attention_mode="native",
+            use_wmma_prefill=False,
+            capture_linear_state_rows=True,
+            capture_pre_output_norm_hidden=True,
+            defer_linear_state_commit=True,
+            device_accept_commit=True,
+        )
+        setattr(self, cache_name, graph)
+        cache = getattr(self, "_native_spec_target_graphs", None)
+        if not isinstance(cache, dict):
+            cache = {}
+            setattr(self, "_native_spec_target_graphs", cache)
+        cache[(budget, True, int(graph.context_limit))] = graph
+        return True
+
     def verify_target_block_native_cycle(
         self,
         input_token_ids: list[int] | tuple[int, ...],
@@ -25384,6 +26023,7 @@ class Qwen35GGUFResidentSession:
         capture_pre_output_norm_hidden: bool = True,
         capture_lm_head_logits: bool = False,
         defer_linear_state_commit: bool = True,
+        compact_result: bool = False,
     ):
         """Retire cached proposal/N2 graphs behind the target synchronization."""
 
@@ -25404,6 +26044,7 @@ class Qwen35GGUFResidentSession:
             capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
             capture_lm_head_logits=bool(capture_lm_head_logits),
             defer_linear_state_commit=bool(defer_linear_state_commit),
+            compact_result=bool(compact_result),
         )
 
     def run_native_spec_mtp_cycle(
@@ -31743,6 +32384,7 @@ __all__ = [
     "Qwen35GGUFMTPDraftSeed",
     "Qwen35GGUFNextTokenProbeResult",
     "Qwen35GGUFOneLayerProbe",
+    "Qwen35GGUFPackedVerifyDeviceResult",
     "Qwen35GGUFFastPathSafety",
     "Qwen35GGUFResidentSession",
     "qwen35_gguf_current_hidden_seed_contract",

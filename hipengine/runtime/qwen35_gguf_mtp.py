@@ -1035,6 +1035,8 @@ class Qwen35GGUFTransactionalVerifier:
         return_logits: bool = False,
         stream: int = 0,
         device_proposal: Any | None = None,
+        qualification_oracle: bool = True,
+        allow_graph: bool = True,
     ) -> Qwen35GGUFPreparedVerify:
         if self.closed:
             raise RuntimeError("GGUF transactional verifier is closed")
@@ -1093,7 +1095,12 @@ class Qwen35GGUFTransactionalVerifier:
                     "defer_linear_state_commit": True,
                 }
                 device_block = None
-                if not stream and not return_logits and budgets[0] >= batch.rows:
+                if (
+                    bool(allow_graph)
+                    and not stream
+                    and not return_logits
+                    and budgets[0] >= batch.rows
+                ):
                     from hipengine.runtime.gguf_native_spec_cycle import (
                         NativeSpecTargetGraphUnsupportedError,
                     )
@@ -1117,6 +1124,7 @@ class Qwen35GGUFTransactionalVerifier:
                                 transaction_id=int(transaction_id),
                                 request_id=int(batch.request_ids[0]),
                                 remaining_decode=int(budgets[0]),
+                                compact_result=not bool(qualification_oracle),
                                 **native_kwargs,
                             )
                     except NativeSpecTargetGraphUnsupportedError:
@@ -1145,27 +1153,35 @@ class Qwen35GGUFTransactionalVerifier:
                         raise RuntimeError(
                             "native GGUF N2 graph changed the declared root position"
                         )
+                    compact_result = bool(
+                        getattr(device_block, "compact_result", False)
+                    )
                     if device_proposal is not None:
-                        from hipengine.runtime.gguf_native_spec_cycle import (
-                            build_native_b2_target_batch,
-                        )
-
-                        batch = build_native_b2_target_batch(
-                            device_block.input_token_ids,
-                            start_position=initial_position,
-                            request_id=int(batch.request_ids[0]),
-                        )
-                        self._validate_chain(batch)
-                        device_proposal_top1_values = tuple(
-                            float(value) for value in device_block.proposal_top1_values
-                        )
-                        if len(device_proposal_top1_values) != batch.candidate_count:
-                            raise RuntimeError(
-                                "native GGUF N2 graph omitted proposal top-1 values"
+                        if not compact_result:
+                            from hipengine.runtime.gguf_native_spec_cycle import (
+                                build_native_b2_target_batch,
                             )
+
+                            batch = build_native_b2_target_batch(
+                                device_block.input_token_ids,
+                                start_position=initial_position,
+                                request_id=int(batch.request_ids[0]),
+                            )
+                            self._validate_chain(batch)
+                            device_proposal_top1_values = tuple(
+                                float(value)
+                                for value in device_block.proposal_top1_values
+                            )
+                            if (
+                                len(device_proposal_top1_values)
+                                != batch.candidate_count
+                            ):
+                                raise RuntimeError(
+                                    "native GGUF N2 graph omitted proposal top-1 values"
+                                )
                         native_proposal_target_chained = True
                     top1.extend(int(token) for token in device_block.target_top1)
-                    if len(top1) != batch.rows:
+                    if not compact_result and len(top1) != batch.rows:
                         raise RuntimeError("native GGUF N2 graph omitted target top-1 rows")
                     buffers = device_block.verify_buffers
                     device_state_commit_buffers = device_block.state_commit_buffers
@@ -1179,10 +1195,35 @@ class Qwen35GGUFTransactionalVerifier:
                         "next_tokens": (int(device_block.next_token),),
                         "full_accept": (bool(device_block.full_accept),),
                     }
-                    gpu_summary = replace(
-                        TargetAcceptSummary.from_gpu_payload(batch, payload),
-                        transaction_id=int(transaction_id),
-                    )
+                    if compact_result:
+                        accepted_count = int(device_block.accepted_draft_tokens)
+                        gpu_summary = TargetAcceptSummary(
+                            request_ids=batch.request_ids,
+                            accepted_counts=(accepted_count,),
+                            accepted_tokens=(
+                                tuple(
+                                    int(token)
+                                    for token in device_block.token_ids[
+                                        :accepted_count
+                                    ]
+                                ),
+                            ),
+                            commit_rows=(int(device_block.commit_row),),
+                            commit_tokens=(int(device_block.commit_token),),
+                            commit_positions=(int(device_block.commit_position),),
+                            next_tokens=(int(device_block.next_token),),
+                            full_accept=(bool(device_block.full_accept),),
+                            candidate_counts=batch.candidate_counts,
+                            transaction_id=int(transaction_id),
+                            draft_depth=batch.draft_depth,
+                            tree_shape=batch.tree_shape,
+                            mode=batch.mode,
+                        )
+                    else:
+                        gpu_summary = replace(
+                            TargetAcceptSummary.from_gpu_payload(batch, payload),
+                            transaction_id=int(transaction_id),
+                        )
                     expected_visible = (
                         *gpu_summary.accepted_tokens[0],
                         gpu_summary.next_tokens[0],
@@ -1195,9 +1236,11 @@ class Qwen35GGUFTransactionalVerifier:
                         self.journal.mark_initial_state_captured()
                     native_device_accept_commit = True
                 else:
-                    if stream:
+                    if stream or not bool(allow_graph):
                         native_graph_fallback_reason = (
                             "native target graph does not support caller-owned streams"
+                            if stream
+                            else "native target graph disabled by caller"
                         )
                         block = self.target.verify_target_block(
                             batch.tokens,
@@ -1317,19 +1360,23 @@ class Qwen35GGUFTransactionalVerifier:
                 )
             if buffers is None or gpu_summary is None:
                 raise RuntimeError("GGUF target verifier omitted transaction buffers")
-            cpu_result = batch.accept_from_top1(
-                top1,
-                transaction_id=int(transaction_id),
-                remaining_decode=budgets,
-            )
-            cpu_summary = TargetAcceptSummary.from_accept_result(batch, cpu_result)
-            gpu_match = _summary_matches(gpu_summary, cpu_summary)
-            if not gpu_match:
-                raise RuntimeError(
-                    "GGUF GPU accept summary does not match the CPU oracle: "
-                    f"gpu={gpu_summary!r} cpu={cpu_summary!r} "
-                    f"tokens={batch.tokens!r} top1={tuple(top1)!r}"
+            gpu_match = True
+            if bool(qualification_oracle):
+                cpu_result = batch.accept_from_top1(
+                    top1,
+                    transaction_id=int(transaction_id),
+                    remaining_decode=budgets,
                 )
+                cpu_summary = TargetAcceptSummary.from_accept_result(
+                    batch, cpu_result
+                )
+                gpu_match = _summary_matches(gpu_summary, cpu_summary)
+                if not gpu_match:
+                    raise RuntimeError(
+                        "GGUF GPU accept summary does not match the CPU oracle: "
+                        f"gpu={gpu_summary!r} cpu={cpu_summary!r} "
+                        f"tokens={batch.tokens!r} top1={tuple(top1)!r}"
+                    )
             graph_bucket.replay_count += 1
             prepared = Qwen35GGUFPreparedVerify(
                 batch=batch,

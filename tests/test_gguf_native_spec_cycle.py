@@ -18,6 +18,7 @@ from hipengine.core.memory import (
 from hipengine.runtime import gguf_native_spec_cycle as native_cycle_mod
 from hipengine.runtime.gguf_native_spec_cycle import (
     NativeSpecTargetGraphUnsupportedError,
+    Qwen35GGUFNativeAcceptCommitResult,
     build_native_b2_target_batch,
     run_qwen35_gguf_native_mtp_cycle,
     verify_qwen35_gguf_native_b2_target,
@@ -26,6 +27,37 @@ from hipengine.runtime.gguf_native_spec_cycle import (
 from hipengine.speculative.mtp_resident_draft import (
     NativeSpecProposalGraphUnsupportedError,
 )
+
+
+def test_compact_n2_result_validates_commit_from_visible_tokens_without_row_ids() -> None:
+    kwargs = {
+        "input_token_ids": [100, 0, 0],
+        "token_ids": [101, 102, 103],
+        "accepted_draft_tokens": 2,
+        "commit_row": 2,
+        "commit_token": 102,
+        "commit_position": 7,
+        "next_token": 103,
+        "full_accept": True,
+        "start_position": 5,
+        "end_position": 8,
+        "hidden_seed_rows_ptr": 0x1000,
+        "hidden_seed_row_count": 3,
+        "hidden_size": 8,
+        "proposal_device_handoff": True,
+    }
+
+    with pytest.raises(ValueError, match="commit_token"):
+        Qwen35GGUFNativeAcceptCommitResult(**kwargs)
+
+    result = Qwen35GGUFNativeAcceptCommitResult(
+        **kwargs,
+        compact_result=True,
+    )
+
+    assert result.target_top1 == []
+    assert result.proposal_top1_values == ()
+    assert result.compact_result
 
 
 def test_build_native_b2_target_batch_uses_root_prefixed_chain_layout() -> None:
