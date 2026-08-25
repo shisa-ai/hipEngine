@@ -795,20 +795,40 @@ sensitivity template. The deployed file's own metadata names the same source
 model and imatrix family.
 
 The remote XL artifact cannot be loaded unchanged: its dense inventory includes
-`IQ4_NL` and `IQ3_S`, which are not native hipEngine execution formats. The
-candidate projects only unsupported template types upward to native `Q4_K`,
-retains every measured `Q5_K/Q6_K/Q8_0` assignment, and enforces explicit NextN
-floors (Q8 K/V, Q6 Q/output/FFN/`eh_proj`, Q6 LM head). The resulting exact
-per-tensor plan is `360 F32 / 149 Q4_K / 191 Q5_K / 56 Q6_K / 110 Q8_0`,
-**5.2061 effective bpw / 17,779,359,744 tensor bytes**, 4.00% larger than the
-current Q4_K_M payload. A llama.cpp per-tensor/imatrix dry run reports the same
-5.21 bpw and 16,955.72 MiB output.
+`IQ4_NL` and `IQ3_S`, which are not native hipEngine execution formats. The v1
+candidate projected unsupported template types upward to native `Q4_K`, retained
+every measured `Q5_K/Q6_K/Q8_0` assignment, and enforced explicit NextN floors.
+Its Q6 LM head improved BF16-relative KL but narrowly missed the paired
+teacher-token-PPL diagnostic. V2 spent the remaining budget directly on that
+projection (`output.weight: Q6_K -> Q8_0`). Its exact inventory is
+`360 F32 / 149 Q4_K / 191 Q5_K / 55 Q6_K / 111 Q8_0`, **5.2963 effective bpw /
+18,087,276,544 tensor bytes**, 5.80% larger than Q4_K_M. The output SHA-256 is
+`f0beea376a60310844b503760c870d6482117d9a93ea61189b88d5b6cccef3b0`.
 
-Source download and quantization are in progress. No quality/performance/default
-claim exists until the output hash, exact header manifest, BF16-relative logits,
-task packet, full AR/MTP economics, resident memory, and loader/registry gates
-pass. Planning evidence:
-[`2026-08-25-gfx1151-qwen38-omlx-oi7-native-xl-plan.json`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi7-native-xl-plan.json).
+The hipEngine BF16 trunk path was explicitly disqualified as the oracle after it
+generated invalid special-token-heavy trajectories. An independent llama.cpp
+Vulkan capture at `749f688f...` on the verified 54.66-GB BF16 source produced 90
+full-logit rows on the exact prompt IDs. Against it, v2 preserves 100% top-1,
+improves mean KL from Q4_K_M's 0.003983 to 0.002699 (-32.23%), improves max KL
+0.04634 to 0.03627 (-21.73%), and passes the 10,000-sample paired bootstrap as
+`q4-equivalent` (teacher-PPL ratio 95% upper bound +0.9418% inside the +1%
+margin).
+
+Deployment is nevertheless **rejected**. On the full 10-prompt category/heldout
+suite, true AR falls 11.674 -> 4.581 tok/s (-60.76%) and B1/B2/B3 fall
+17.143/20.020/21.052 -> 9.728/11.338/11.843 tok/s (-43.25%/-43.37%/-43.74%).
+Acceptance does not improve materially. Worse, native target verification
+diverges from the candidate's own AR trajectory on held-out
+`general_ja_explain` at token index 9 for every budget. The serial-exact fallback
+restores exactness but is slower than AR (B1/B2/B3 3.725/3.482/2.998 versus AR
+4.606 tok/s on that prompt). Peak HIP allocation also rises 17.926 -> 28.586 GB
+(+59.46%). Keep the planner, independent oracle, and artifact evidence; keep the
+v2 loader admission research-only pending both native batch-composition exactness
+and same-host throughput.
+
+Evidence:
+[`plan`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi7-native-xl-plan.json),
+[`final decision`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi7-native-xl-rejected.json).
 
 ## 14. Campaign scorecard
 
@@ -823,7 +843,7 @@ Update this table as atomic units land. A blank metric is not a pass.
 | `OI-4` | policy retained; post-norm rejected | gfx1151 Qwen3.8 dense B1/B2/B3 | full category/heldout IDs and target acceptance exact | B3 -1.62%; B2 aggregate +2.63% but heldout/Japanese regress | [`artifact`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi4-postnorm-rejected.json) |
 | `OI-5` | not triggered | gfx1151 GDN 2.27-3.10% of target | profile trigger failed | no implementation | [`OI-0`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json) |
 | `OI-6` | not triggered | gfx1151 attention 0.52-0.55% of target | profile trigger failed | no implementation | [`OI-0`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi0-baseline.json) |
-| `OI-7` | source downloading | Qwen3.8 native-XL 5.2061 bpw plan | BF16-relative quant/task/MTP gate pending | 17.779 GB tensor payload (+4.00% vs Q4_K_M) | [`plan`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi7-native-xl-plan.json) |
+| `OI-7` | quality-qualified; deployment rejected | Qwen3.8 native-XL v2 5.2963 bpw | paired BF16 gate passes; native MTP exactness fails held-out Japanese | mean KL -32.23%, but AR -60.76% and B1/B2/B3 -43.25%/-43.37%/-43.74% | [`decision`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi7-native-xl-rejected.json) |
 
 ## 15. Final review conclusions
 

@@ -14,6 +14,7 @@ from hipengine.kernels.hip_gfx1100.linear import (
     dense_dual_gemv_separate_out_bf16,
     dense_dual_gemv_separate_out_fp16,
     build_dense_gemv,
+    dense_gemv_bf16_f32_out,
     dense_gemv_bf16_f32w_bf16_out,
     dense_gemv_out_bf16,
     dense_gemv_out_bf16_wmma,
@@ -49,6 +50,10 @@ def test_dense_gemv_registers_bf16_fp16_and_w4_paro_variants() -> None:
     assert (
         resolve(backend="hip_gfx1100", layer="dense_gemv", quant="bf16", variant="out")
         is dense_gemv_out_bf16
+    )
+    assert (
+        resolve(backend="hip_gfx1100", layer="dense_gemv", quant="bf16", variant="f32_out")
+        is dense_gemv_bf16_f32_out
     )
     assert (
         resolve(backend="hip_gfx1100", layer="dense_dual_gemv", quant="bf16", variant="out")
@@ -139,6 +144,51 @@ def test_dense_gemv_build_plan_is_dry_run_safe(tmp_path) -> None:
     assert artifact.compiler_version == "hipcc dense gemv test version"
     assert any(str(path).endswith("dense_gemv.hip") for path in artifact.sources)
     assert not artifact.cache_dir.exists()
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_dense_gemv_bf16_hidden_weight_f32_output_matches_cpu_reference() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    library = build_dense_gemv(load=True)
+    x_bits = float_array_to_bf16_bits(
+        np.asarray(
+            [[0.25, -0.5, 1.0, -1.5, 2.0, -2.5, 3.0, -3.5] * 8],
+            dtype=np.float32,
+        )
+    )
+    weight_bits = float_array_to_bf16_bits(
+        (np.arange(192, dtype=np.float32).reshape(3, 64) - 95.5) / 31.0
+    )
+    out = np.empty((1, 3), dtype=np.float32)
+    bufs = []
+    try:
+        dx = malloc(x_bits.nbytes, runtime=runtime)
+        dw = malloc(weight_bits.nbytes, runtime=runtime)
+        dout = malloc(out.nbytes, runtime=runtime)
+        bufs.extend((dx, dw, dout))
+        copy_host_to_device(dx, host_array_ptr(x_bits), runtime=runtime)
+        copy_host_to_device(dw, host_array_ptr(weight_bits), runtime=runtime)
+        dense_gemv_bf16_f32_out(
+            dx.ptr,
+            dw.ptr,
+            dout.ptr,
+            rows=1,
+            in_features=64,
+            out_features=3,
+            threads=64,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(out), dout, runtime=runtime)
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    expected = bf16_to_float32(x_bits) @ bf16_to_float32(weight_bits).T
+    np.testing.assert_allclose(out, expected, rtol=2e-6, atol=2e-6)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

@@ -115,6 +115,24 @@ _EXPECTED_DENSE_Q4_K_S_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxy
     }
 )
 
+QWEN38_NATIVE_XL_QUANT_VARIANT = "qwen38_native_xl_v2"
+QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256 = (
+    "a45045f99c2a094c244142876e5760474fc9dabc09d22b0aea622d0c15844c3c"
+)
+_EXPECTED_QWEN38_NATIVE_XL_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxyType(
+    {
+        **_EXPECTED_COMMON_QTYPES,
+        "eh_proj": GGMLQuantizationType.Q6_K,
+        "attn_q": GGMLQuantizationType.Q6_K,
+        "attn_k": GGMLQuantizationType.Q8_0,
+        "attn_v": GGMLQuantizationType.Q8_0,
+        "attn_output": GGMLQuantizationType.Q6_K,
+        "ffn_gate": GGMLQuantizationType.Q6_K,
+        "ffn_up": GGMLQuantizationType.Q6_K,
+        "ffn_down": GGMLQuantizationType.Q6_K,
+    }
+)
+
 
 @dataclass(frozen=True)
 class Qwen35GGUFNextNValidation:
@@ -227,9 +245,21 @@ def validate_qwen35_gguf_nextn_tensor_map(info: GGUFModelInfo) -> Qwen35GGUFNext
 
     slot_names = _slot_names(block_id, config=config)
     dtype_errors: list[str] = []
+    quant_variant = str(info.metadata.get("hipengine.quant.variant", "") or "")
+    if quant_variant == QWEN38_NATIVE_XL_QUANT_VARIANT:
+        manifest_sha256 = str(
+            info.metadata.get("hipengine.quant.output_type_manifest_sha256", "") or ""
+        )
+        if manifest_sha256 != QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256:
+            dtype_errors.append(
+                "hipengine.quant.output_type_manifest_sha256: expected "
+                f"{QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256}, got "
+                f"{manifest_sha256 or '<missing>'}"
+            )
     for slot, expected in _expected_qtypes(
         config,
         file_type_name=info.file_type_name,
+        quant_variant=quant_variant,
     ).items():
         tensor = actual.get(slot_names[slot])
         if tensor is not None and int(tensor.ggml_type) != int(expected):
@@ -318,7 +348,12 @@ def _expected_qtypes(
     config: Qwen35GGUFConfig,
     *,
     file_type_name: str | None = None,
+    quant_variant: str = "",
 ) -> dict[str, GGMLQuantizationType]:
+    if quant_variant == QWEN38_NATIVE_XL_QUANT_VARIANT:
+        if config.is_moe:
+            raise ValueError("Qwen3.8 native-XL quant variant requires a dense model")
+        return dict(_EXPECTED_QWEN38_NATIVE_XL_QTYPES)
     if config.is_moe:
         architecture_qtypes = _EXPECTED_MOE_QTYPES
     elif file_type_name == "MOSTLY_Q4_K_S":

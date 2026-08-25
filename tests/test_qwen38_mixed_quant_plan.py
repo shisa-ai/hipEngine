@@ -19,6 +19,8 @@ def _inventories(*, weak_nextn: bool = False):
     donor = {}
     for name in names:
         qtype = plan.NEXTN_MINIMUMS.get(name, "IQ4_XS")
+        if name == "output.weight":
+            qtype = "Q6_K"
         if weak_nextn and name == "blk.64.nextn.eh_proj.weight":
             qtype = "Q4_K"
         donor[name] = _tensor(name, qtype)
@@ -57,7 +59,11 @@ def test_build_plan_binds_full_inventory_budget_and_nextn_floors(
             "quantize.imatrix.entries_count": 496,
         },
     )
-    monkeypatch.setattr(plan, "_inventory", lambda _paths: (source, {"general.base_model.0.repo_url": "repo"}))
+    monkeypatch.setattr(
+        plan,
+        "_inventory",
+        lambda _paths: (source, {"general.base_model.0.repo_url": "repo"}),
+    )
     monkeypatch.setattr(plan, "load_gguf_index", lambda _path: template_info)
     monkeypatch.setattr(plan, "nbytes_for_shape", lambda shape, _qtype: 128)
     monkeypatch.setattr(plan, "_sha256", lambda _path: "a" * 64)
@@ -81,14 +87,17 @@ def test_build_plan_binds_full_inventory_budget_and_nextn_floors(
     assert manifest["source"]["tensor_count"] == 866
     assert manifest["budget"]["projected_type_counts"] == {
         "Q4_K": 857,
-        "Q6_K": 7,
-        "Q8_0": 2,
+        "Q6_K": 6,
+        "Q8_0": 3,
     }
+    assert manifest["projection"]["explicit_promotions"] == {"output.weight": "Q8_0"}
+    assert manifest["output_types"]["output.weight"] == "Q8_0"
     assert manifest["projection"]["nextn_minimums"] == dict(
         sorted(plan.NEXTN_MINIMUMS.items())
     )
     assert len(manifest["output_types"]) == 866
     assert len(manifest["tensor_inventory_sha256"]) == 64
+    assert len(manifest["tensor_shape_manifest_sha256"]) == 64
     assert len(manifest["output_type_manifest_sha256"]) == 64
     assert manifest["calibration"]["benchmark_prompt_overlap_allowed"] is False
 
