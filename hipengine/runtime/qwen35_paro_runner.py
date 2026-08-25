@@ -2614,6 +2614,7 @@ class Qwen35ParoResidentSession:
         slab,
         *,
         sample: bool = True,
+        final_hidden_row_sink: Any | None = None,
     ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
         """Run a compact c>N native prompt slab, once packed stages exist.
 
@@ -2667,6 +2668,29 @@ class Qwen35ParoResidentSession:
             hidden = self._run_native_prefill_packed_layers(slab, metadata, stream=0)
             self.runtime.stream_synchronize(0)
             results = self._commit_packed_prefill_final_rows(hidden, slab, sample=sample, stream=0)
+            if final_hidden_row_sink is not None:
+                final_rows = self._packed_prefill_final_rows(slab)
+                seed_tokens = {
+                    int(final_row): (
+                        None if result is None else int(result.token_id)
+                    )
+                    for final_row, result in zip(final_rows, results, strict=True)
+                }
+                for row_index, (request_id, prompt_index) in enumerate(
+                    zip(slab.row_to_request, slab.positions, strict=True)
+                ):
+                    hidden_row = Tensor.from_handle(
+                        hidden.ptr + row_index * self.hidden_nbytes,
+                        (1, self.config.hidden_size),
+                        DType.FP16,
+                        self.device,
+                    )
+                    final_hidden_row_sink(
+                        int(request_id),
+                        int(prompt_index),
+                        hidden_row,
+                        seed_tokens.get(row_index),
+                    )
             self._restore_decode_scratch_after_prefill()
             self.last_prefill_execution = {
                 "path": "native_prefill_compact_cN",
@@ -2681,6 +2705,7 @@ class Qwen35ParoResidentSession:
                 "full_attention_prefill_path": getattr(self, "_last_packed_prefill_full_attention_path", "packed_varlen"),
                 "blockers": list(getattr(self, "_last_packed_prefill_blockers", [])),
                 "decode_scratch_released_for_prefill": minimize_prefill_workspace_overlap,
+                "final_hidden_row_sink": final_hidden_row_sink is not None,
             }
             return results
         finally:
