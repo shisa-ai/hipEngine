@@ -1,0 +1,148 @@
+{
+  "schema": 1,
+  "kind": "w7900_mtp_concurrency2_recovery_profile",
+  "date": "2026-08-26",
+  "status": "profiled_ar_raw_rate_nonregressive_strict_widths_blocked_specdec2_c1_only",
+  "performance_claim": false,
+  "decision": "Do not call the current c8 raw rate a retained strict result and do not disable the fast width from this diagnostic alone. The matched raw AR rate is not regressed, but no physical width above c1 passed current same-engine-c1 generated-ID/state binding on the varied D128 screen. Keep existing product policy unchanged pending an explicit production/batch-invariant profile decision. Profile gfx1100 physical SPECDEC2 C2/C4 independently before any capability change.",
+  "source": {
+    "branch": "main",
+    "commit": "469fb538ad2b77a7ae07c9d5198f53ed88c0ecce",
+    "tracked_clean_during_measurement": true
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "gpu_index": 0,
+    "unique_id": "0xe282895b62c2b295",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "rocm": "HIP 7.2.53211-3d9ef42",
+    "compiler_version_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "f24f72d469e5141b6a74086cdf094faf93726def47c5581b9d84acca03b24579",
+    "quant": "gguf_q4_k_m",
+    "kv": "bf16"
+  },
+  "protocol": {
+    "prompt_tokens": 512,
+    "decode_tokens": 128,
+    "prompt_rows": "rows filled with token 9707; final token cycles 9707..9710",
+    "sampling": "greedy top1, ignore EOS",
+    "server": "localhost EngineService SSE/blocking, 20 ms generation window, token_budget, 256-token prefill chunks",
+    "repeats": "one warmup plus three measured",
+    "correctness": "same-engine independent c1 generated IDs; direct state oracles additionally compare every hidden layer, Conv/GDN, and live KV",
+    "old_control_artifact": "benchmarks/results/2026-08-08-gfx1100-context-scoped-c8-server-refresh.json"
+  },
+  "ar": {
+    "old_fixed_control": {
+      "c1_server_tok_s": 72.16914945,
+      "c8_server_tok_s": 158.542397557
+    },
+    "current_c1": {
+      "blocking_tok_s_samples": [77.34703297559832, 76.94883660861477, 77.17631708161186],
+      "blocking_tok_s_median": 77.17631708161186,
+      "streaming_tok_s_samples": [77.00903270106286, 76.92512888982125, 76.83271693303446],
+      "streaming_tok_s_median": 76.92512888982125,
+      "blocking_vs_old_c1": 1.0693809982488556,
+      "streaming_vs_old_c1": 1.0659004502071383,
+      "exact_rows": 3,
+      "total_rows": 3,
+      "verdict": "exact and raw-performance non-regressive"
+    },
+    "current_native_c8_queue1": {
+      "blocking_tok_s_samples": [162.14901793221026, 161.88212697737035, 161.2750093815574],
+      "blocking_tok_s_median": 161.88212697737035,
+      "raw_rate_vs_old_c8": 1.0210652132920448,
+      "exact_rows": 16,
+      "total_rows": 24,
+      "live_exact_rows": 6,
+      "live_total_rows": 8,
+      "repeatable_primary_mismatch": {
+        "prompt_final_token": 9708,
+        "generated_index": 40,
+        "expected": 8554,
+        "observed": 1092
+      },
+      "secondary_mismatch": {
+        "prompt_final_token": 9710,
+        "generated_index": 11,
+        "expected": 64709,
+        "observed": 16,
+        "occurrence": "two of three measured runs"
+      },
+      "verdict": "raw rate is non-regressive but strict speed claim is ineligible"
+    },
+    "current_c8_composed_from_physical_c2": {
+      "physical_width_override": [1, 2],
+      "blocking_tok_s_samples": [62.72347363230272, 61.955078164475005, 62.14776903461106],
+      "blocking_tok_s_median": 62.14776903461106,
+      "raw_rate_vs_old_c8": 0.39199463356334935,
+      "exact_rows": 15,
+      "total_rows": 24,
+      "verdict": "not a strict-safe rollback and far below old fixed c8"
+    },
+    "localization": {
+      "packed_prefill_screen": "A direct packed-prefill oracle diverges at prefill layer 0, but gfx1100 Generation-2 product capability keeps packed prefill max rows at 1; this is diagnostic and not the current service cause.",
+      "independent_c1_prefill": {
+        "initial_state_exact": true,
+        "graph_and_eager_token_divergence_identical": true,
+        "c8_first_mismatch_steps_by_row": [null, null, 16, 108, 4, 40, null, null],
+        "c4_first_mismatch_steps_by_row": [null, null, 16, 108]
+      },
+      "first_model_state_divergence": {
+        "phase": "decode hidden",
+        "step": 1,
+        "row": 0,
+        "layer": 0,
+        "mismatch_elements": 33,
+        "max_abs": 0.0001220703125
+      },
+      "conclusion": "The current physical-width arithmetic differs from c1 before token divergence. It is not caused by graph/PM4, hardware queue count, staged prefill, or LM-head alone. A named production/batch-invariant contract is required; legacy no-profile execution cannot be evaluated as strict merely because it is deterministic."
+    }
+  },
+  "specdec2": {
+    "dense_c1_current": {
+      "model": "Qwen3.6-27B Q4_K_M",
+      "k1_k2_k3_speedup_vs_true_ar": [1.2715595444481163, 1.4069938814048621, 1.4386550323102247],
+      "k1_k2_k3_speedup_vs_direct_mtp": [0.9730489360519347, 0.9685486174081177, 0.9611771452284643],
+      "exact_cells": 90,
+      "total_cells": 90,
+      "zero_allocation_cycles": 899,
+      "bottleneck": "required target/accept synchronization and target graph wall; staged wrapper remains 2.7%-3.9% behind direct MTP"
+    },
+    "packed_paro_c1_current": {
+      "model": "Qwen3.6-35B-A3B PARO W4A16 plus BF16 MTP",
+      "production_speedup_vs_true_ar": 0.9789627149505368,
+      "production_speedup_vs_direct_mtp": 0.9596076504994536,
+      "exact_pairs": 30,
+      "total_pairs": 30,
+      "zero_allocation_cycles": 372,
+      "bottleneck": "target verify/readback dominates; one-sync ordering is operation-wall neutral"
+    },
+    "physical_gfx1100": {
+      "gguf_c2_c4_capability": false,
+      "paro_c2_c4_capability": false,
+      "consequence": "No current-source C>1 MTP performance exists on gfx1100; automatic planner selects K0. Shared physical source and gfx1151 evidence are migration inputs only."
+    }
+  },
+  "ranked_next_actions": [
+    "Treat AR raw performance and AR profile correctness separately: current C1/C8 raw rates are not regressed, but current legacy cN has no valid strict/batch-invariant D128 claim.",
+    "Run one explicit W7900 physical SPECDEC2 C2/C4 mechanics/profile screen behind a diagnostic capability override; do not promote from gfx1151 evidence.",
+    "If physical SPECDEC2 is economically viable, add gfx1100 package capability only after varied-composition state/KV/following-cycle gates; otherwise retain K0 at C>1.",
+    "For C1, attack only complete target synchronization/graph wall that can close the measured 2.7%-4.0% staged-to-direct gap; do not reopen launch-count-only candidates."
+  ],
+  "raw_evidence": {
+    "ar_oldproto_broad_queue2": {"path": "/tmp/mtp-c2-recovery/current-469fb538ad/ar-oldproto-p512d128-c1-c8.json", "size_bytes": 1149336, "sha256": "e853c9d8646e4019f04400c5189786186fae58642f78aa06affed51d0ac4f31a"},
+    "ar_c8_queue1": {"path": "/tmp/mtp-c2-recovery/current-469fb538ad/ar-oldproto-p512d128-c8-q1.json", "size_bytes": 481578, "sha256": "1f19b5f133bef1c73437d99e361acbfc22aef92f27ac8e470bc67c42c8bf6975"},
+    "ar_c8_physical_c2": {"path": "/tmp/mtp-c2-recovery/current-469fb538ad/ar-oldproto-p512d128-c8-c2strict-q1.json", "size_bytes": 472172, "sha256": "8d0ad6b78c1bad69015e30694bdd683b45b677e566a201b3640de3402e2f9bfb"},
+    "ar_c8_graph_oracle": {"path": "/tmp/mtp-c2-recovery/current-469fb538ad/ar-c8-p512d128-independent-prefill-q1.json", "size_bytes": 796332, "sha256": "2b692f8c9cc5cc59406395e5a83ea635a8695ed5c71de330bdd15498c77e182a"},
+    "ar_c8_eager_oracle": {"path": "/tmp/mtp-c2-recovery/current-469fb538ad/ar-c8-p512d128-independent-prefill-eager-q1.json", "size_bytes": 963247, "sha256": "03c652ec2a7dc86b137e87bb1fccabad4244486e88ecf3e830f7362199f76dd5"},
+    "ar_c8_hidden_oracle": {"path": "/tmp/mtp-c2-recovery/current-469fb538ad/ar-c8-p512d4-independent-prefill-eager-hidden-q1.json", "size_bytes": 565103, "sha256": "f1452c3aece9884d6ce366267cdad08f9e3200b8f947dd71af977a08c9de2b78"},
+    "ar_c4_oracle": {"path": "/tmp/mtp-c2-recovery/current-469fb538ad/ar-c4-p512d128-independent-prefill-graph-q1.json", "size_bytes": 7374677, "sha256": "94d46e76b903983f78cb7f88cfc441c99906a6a6fb6d2a894df795055f436c3c"},
+    "specdec2_closure": "benchmarks/results/2026-08-25-w7900-specdec2-perf-campaign-closure.json"
+  }
+}
