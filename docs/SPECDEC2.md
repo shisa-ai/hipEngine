@@ -5,7 +5,7 @@
 - Primary hardware lane: **`hip_gfx1151` / AMD Radeon 8060S Graphics**
 - Primary product target: **Qwen3.8-27B Q4_K_S, BF16 KV**
 - First provider: **dense GGUF NextN/MTP2**
-- Deferred portability lane: **`hip_gfx1100` after the user-prioritized gfx1151 [`SPECDEC2-PERF`](SPECDEC2-PERF.md) follow-up**
+- Independent portability lane: **`hip_gfx1100` active under [`SPECDEC2-GFX1100.md`](SPECDEC2-GFX1100.md), with separate evidence from the concurrent gfx1151 [`SPECDEC2-PERF`](SPECDEC2-PERF.md) follow-up**
 - Normative dependencies: [`PLAN.md`](PLAN.md),
   [`CONCURRENCY2.md`](CONCURRENCY2.md),
   [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
@@ -910,8 +910,9 @@ Every temporary flag introduced by this campaign must be added to
   baseline.
 - If a high-conflict file changes concurrently, stop and coordinate; do not
   force-stage or overwrite another owner.
-- gfx1100 work begins only after the user-visible gfx1151 closure commit unless
-  the user explicitly changes scope.
+- gfx1100 work is now independently active under `SPECDEC2-GFX1100.md`; shared
+  files are serialized through one merge owner and no gfx1151 rates, thresholds,
+  manifests, policies, or physical buckets transfer.
 
 ## 18. Current handoff
 
@@ -932,12 +933,14 @@ Automatic K0 below/near/above load reaches 9.552/11.917/12.242 exact generated
 tok/s but fails only ITL p99 (0.781/0.860/0.827 s versus 0.5 s). No product or
 public performance scope promotes.
 
-The original post-S6 handoff was S7/gfx1100. The user has explicitly deferred
-that portability lane and approved the stable-host gfx1151
-[`SPECDEC2-PERF`](SPECDEC2-PERF.md) campaign first. Its owner begins with the
-common-protocol AR/native/staged bridge, integrates retained streaming NextN
-prompt priming, removes hot allocation, builds the bounded device-resident
-cycle, and profiles R6/R8/R12/R16 before any kernel edit. Automatic K0 and all
-strict fallbacks remain in force until complete performance/product cells pass.
-When S7 resumes, it independently requalifies capabilities and transfers no
-gfx1151 rates, thresholds, graph buckets, or assumed C8 owner.
+Two independent follow-ups are active. The stable-host gfx1151
+[`SPECDEC2-PERF`](SPECDEC2-PERF.md) owner begins with the common-protocol
+AR/native/staged bridge, integrates retained streaming NextN prompt priming,
+removes hot allocation, builds the bounded device-resident cycle, and profiles
+R6/R8/R12/R16 before any kernel edit. The gfx1100
+[`SPECDEC2-GFX1100`](SPECDEC2-GFX1100.md) lane independently qualifies dense
+GGUF and PARO capabilities; its C1 foundations are complete and C2/C4/product
+gates remain. Shared-file work is serialized, while hardware rates, thresholds,
+profile manifests, policy fingerprints, graph buckets, and assumed C8 ownership
+never transfer. Automatic K0 and all strict fallbacks remain in force until each
+lane's complete performance/product cells pass.
