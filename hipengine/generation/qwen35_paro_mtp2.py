@@ -405,6 +405,29 @@ class Qwen35ParoMTP2Adapter:
     def kv_live_spans_owner(self, plan: SpecRequestPlan) -> str:
         return f"paro-resident:{id(self.owner)}:{plan.operation_id}"
 
+    @staticmethod
+    def _verify_target(
+        session: Any,
+        batch: Any,
+        *,
+        chain_attn_mode: str,
+        candidate_token_ids_i32: Tensor | None,
+    ) -> Any:
+        return session.verify_chain_bulk_and_commit(
+            batch,
+            base_slot=0,
+            capture_layer_ids=(),
+            capture_hidden_concat=Tensor.from_handle(
+                0, (2, 0), DType.BF16, Device("hip", 0)
+            ),
+            capture_row_start=0,
+            chain_attn_mode=str(chain_attn_mode),
+            graph_mode="off",
+            canonicalize_after=False,
+            synchronize_after_commit=False,
+            candidate_token_ids_i32=candidate_token_ids_i32,
+        )
+
     def execute_target_frontier(
         self,
         plan: SpecRequestPlan,
@@ -451,22 +474,15 @@ class Qwen35ParoMTP2Adapter:
         if tuple(int(value) for value in cancelled_request_ids()):
             return self._cancelled_result(transaction, state, session)
         target_started = time.perf_counter()
-        verify = session.verify_chain_bulk_and_commit(
+        verify = self._verify_target(
+            session,
             frontier.target_batch,
-            base_slot=0,
-            capture_layer_ids=(),
-            capture_hidden_concat=Tensor.from_handle(
-                0, (2, 0), DType.BF16, Device("hip", 0)
-            ),
-            capture_row_start=0,
             chain_attn_mode=(
                 "c1_loop"
                 if str(getattr(self.generator, "execution_profile", "production"))
                 == "strict"
                 else "decode_batched"
             ),
-            graph_mode="off",
-            canonicalize_after=False,
             candidate_token_ids_i32=(
                 frontier.candidate_graph.token_ids
                 if frontier.candidate_graph is not None
