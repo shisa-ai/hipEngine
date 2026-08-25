@@ -1,0 +1,431 @@
+{
+  "$defs": {
+    "case": {
+      "additionalProperties": false,
+      "properties": {
+        "code_case": {
+          "type": "string"
+        },
+        "expected_result_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "instruction_case": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "read",
+            "search",
+            "lookup",
+            "calculate",
+            "transform",
+            "patch",
+            "test",
+            "code",
+            "instruction",
+            "no_tool",
+            "multiple"
+          ]
+        },
+        "reference_arguments": {
+          "type": "object"
+        },
+        "reference_calls": {
+          "items": {
+            "$ref": "#/$defs/referenceCall"
+          },
+          "minItems": 2,
+          "type": "array"
+        },
+        "setup_patches": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "split": {
+          "enum": [
+            "development",
+            "heldout"
+          ]
+        },
+        "workload_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workload_id",
+        "split",
+        "kind",
+        "expected_result_sha256"
+      ],
+      "type": "object"
+    },
+    "check": {
+      "additionalProperties": false,
+      "properties": {
+        "maximum": {
+          "type": "integer"
+        },
+        "minimum": {
+          "type": "integer"
+        },
+        "prefixes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "terms": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "type": {
+          "enum": [
+            "line_count",
+            "bullet_prefix",
+            "numbered_prefix",
+            "required_terms",
+            "forbidden_terms",
+            "word_count",
+            "line_suffix",
+            "line_prefixes",
+            "json_keys",
+            "single_sentence"
+          ]
+        },
+        "value": {}
+      },
+      "required": [
+        "type"
+      ],
+      "type": "object"
+    },
+    "codeCase": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_imports": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "entry_point": {
+          "type": "string"
+        },
+        "hidden_tests": {
+          "items": {
+            "$ref": "#/$defs/hiddenTest"
+          },
+          "minItems": 4,
+          "type": "array"
+        },
+        "signature": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "entry_point",
+        "signature",
+        "allowed_imports",
+        "hidden_tests"
+      ],
+      "type": "object"
+    },
+    "control": {
+      "additionalProperties": false,
+      "properties": {
+        "class": {
+          "enum": [
+            "malformed",
+            "truncated",
+            "duplicate",
+            "undeclared",
+            "schema_invalid",
+            "content_leak",
+            "reasoning_leak",
+            "required_missing",
+            "tool_none_violation",
+            "ambiguous"
+          ]
+        },
+        "expected": {
+          "additionalProperties": false,
+          "properties": {
+            "accepted": {
+              "const": false
+            },
+            "finish_reason": {
+              "enum": [
+                "invalid_tool_call",
+                "tool_required_not_satisfied"
+              ]
+            },
+            "public_content_empty": {
+              "const": true
+            },
+            "public_tool_call_count": {
+              "const": 0
+            },
+            "session_commit": {
+              "enum": [
+                "none",
+                "prompt_only"
+              ]
+            }
+          },
+          "required": [
+            "accepted",
+            "finish_reason",
+            "public_tool_call_count",
+            "public_content_empty",
+            "session_commit"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "raw_text": {
+          "type": "string"
+        },
+        "split": {
+          "enum": [
+            "development",
+            "heldout"
+          ]
+        },
+        "tools_mode": {
+          "enum": [
+            "auto",
+            "required",
+            "none"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "split",
+        "class",
+        "tools_mode",
+        "raw_text",
+        "expected"
+      ],
+      "type": "object"
+    },
+    "fileRef": {
+      "additionalProperties": false,
+      "properties": {
+        "file_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "file_sha256"
+      ],
+      "type": "object"
+    },
+    "hiddenTest": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "type": "array"
+        },
+        "expected": {},
+        "kwargs": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "args",
+        "kwargs",
+        "expected"
+      ],
+      "type": "object"
+    },
+    "instructionCase": {
+      "additionalProperties": false,
+      "properties": {
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/check"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "checks"
+      ],
+      "type": "object"
+    },
+    "patch": {
+      "additionalProperties": false,
+      "properties": {
+        "new": {
+          "type": "string"
+        },
+        "old": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "test_suite": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "old",
+        "new",
+        "test_suite"
+      ],
+      "type": "object"
+    },
+    "referenceCall": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "type": "object"
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "arguments"
+      ],
+      "type": "object"
+    },
+    "testSuite": {
+      "additionalProperties": false,
+      "properties": {
+        "required_file_sha256": {
+          "additionalProperties": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "minProperties": 1,
+          "type": "object"
+        }
+      },
+      "required": [
+        "required_file_sha256"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://hipengine.dev/schemas/agentic-quality2-oracles.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "cases": {
+      "additionalProperties": {
+        "$ref": "#/$defs/case"
+      },
+      "minProperties": 1,
+      "type": "object"
+    },
+    "code_cases": {
+      "additionalProperties": {
+        "$ref": "#/$defs/codeCase"
+      },
+      "minProperties": 1,
+      "type": "object"
+    },
+    "description": {
+      "type": "string"
+    },
+    "fail_safe_controls": {
+      "items": {
+        "$ref": "#/$defs/control"
+      },
+      "minItems": 8,
+      "type": "array"
+    },
+    "files": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "minProperties": 1,
+      "type": "object"
+    },
+    "instruction_cases": {
+      "additionalProperties": {
+        "$ref": "#/$defs/instructionCase"
+      },
+      "minProperties": 1,
+      "type": "object"
+    },
+    "kind": {
+      "const": "hipengine.agentic_quality2_oracles"
+    },
+    "license": {
+      "const": "AGPL-3.0-only"
+    },
+    "lookups": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "patches": {
+      "additionalProperties": {
+        "$ref": "#/$defs/patch"
+      },
+      "type": "object"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "source_manifest": {
+      "$ref": "#/$defs/fileRef"
+    },
+    "suite": {
+      "const": "agentic-quality2-v1"
+    },
+    "summaries": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "test_suites": {
+      "additionalProperties": {
+        "$ref": "#/$defs/testSuite"
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "kind",
+    "schema_version",
+    "suite",
+    "description",
+    "license",
+    "source_manifest",
+    "files",
+    "summaries",
+    "lookups",
+    "patches",
+    "test_suites",
+    "code_cases",
+    "instruction_cases",
+    "cases",
+    "fail_safe_controls"
+  ],
+  "title": "AGENTIC-QUALITY2 frozen external oracles and fail-safe controls",
+  "type": "object"
+}
