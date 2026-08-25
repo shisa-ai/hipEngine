@@ -123,23 +123,15 @@ to **0.979x AR** with 372 device handoffs and bounded post-target rows. Strict
 D8 allocation falls **1,110 malloc/free pairs → 0** and P4 cycle marker wall is
 **83.469 ms**. Both automatic policies remain K0; physical C2/C4 is not exposed.
 [`P1-P3 checkpoint`](results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json),
-[`dense P3`](results/2026-08-25-w7900-specdec2-perf-p3-dense-stable-slabs.json),
+dense P3 evidence,
 [`packed P4`](results/2026-08-25-w7900-specdec2-perf-p4-paro-device-candidate.json),
 [`corrected dense P4`](results/2026-08-25-w7900-specdec2-perf-p4-dense-device-chain-retained.json).
 
 ## Where detailed evidence lives
 
-| Need | Source |
-| --- | --- |
-| Exact commands, revisions, model fingerprints, correctness gates, samples, profiler summaries | [Compact JSON artifacts](results/) |
-| Reverse-chronological benchmark changes | [`CHANGELOG.md`](CHANGELOG.md) |
-| Superseded benchmark notebook through 2026-07-10 | [`HISTORY.md`](HISTORY.md) |
-| Benchmark rules and reproduction procedures | [`docs/BENCHMARK.md`](../docs/BENCHMARK.md) |
-| Execution-profile numerical calibration | [`2026-08-16 ZBook-local policy artifact`](results/2026-08-16-execution-profile-threshold-calibration.json) and [`docs/EXECUTION-PROFILES.md`](../docs/EXECUTION-PROFILES.md) |
-| MTP-specific protocols and terminology | [`MTP.md`](MTP.md) and [`docs/MTP-LLAMACPP-PARITY.md`](../docs/MTP-LLAMACPP-PARITY.md) |
-| Quantization-quality protocols and current tables | [`quant/README.md`](quant/README.md) |
-| Kernel and implementation decisions | [`worklog/entries/`](../worklog/entries/) and [`WORKLOG-LEGACY.md`](../WORKLOG-LEGACY.md) |
-| Hardware-specific RX 7900 XTX report | [`7900XTX.md`](7900XTX.md) |
+Use result artifacts for commands/samples/profilers,
+[`CHANGELOG.md`](CHANGELOG.md) for rollups, [`docs/BENCHMARK.md`](../docs/BENCHMARK.md)
+for protocols, and [`worklog/entries/`](../worklog/entries/) for decisions.
 
 ## Benchmark harness catalog
 
@@ -427,32 +419,11 @@ These are same-model retained rows, but CUDA and HIP run on different hardware.
 
 CUDA resident batching and serving are not claimed by these c1 rows.
 
-## Current PM4 transport diagnostic
-
-This is a transport diagnostic for the W7900 Qwen3.6-35B-A3B Q4_K_M one-step
-replay path, not a separate model-throughput topline.
-
-| Transport | Replay | Capture | Status |
-| --- | ---: | ---: | --- |
-| HIP graph | **10.726350 ms/token / 93.228 tok/s** | 34.993 ms | Portable oracle and fallback |
-| Stateful PM4, global acquire | **10.052766 / 99.475** | 79.296 ms warm-metadata | Exact comparison path |
-| Stateful PM4, local-cache acquire | **9.964358 / 100.358** | 132.858 ms cold | Scoped default when the measured replay window amortizes capture |
-
-Evidence: [`local-cache capture/replay`](results/2026-08-08-gfx1100-pm4-setup-local-cache-clean.json)
-and [`scoped default`](results/2026-08-08-gfx1100-pm4-scoped-default.json).
-
 ## Reading the tables
 
-- Workload format is `prompt_tokens/decode_tokens`.
-- Prefill, backend decode, full request wall, server wall, and component timing
-  are different scopes. Compare only like with like.
-- Aggregate concurrency throughput is total generated tokens divided by group
-  wall. Per-request throughput is lower when multiple requests share the GPU.
-- PARO, GGUF, and llama.cpp rows may use different quantization or KV formats;
-  raw leaders are descriptive unless the artifact establishes a matched A/B.
-- hipEngine tracked memory and whole-device VRAM/GTT are different scopes.
-- A bold value identifies the reported row, not a universal claim across
-  mismatched hardware, models, or protocols.
+Workloads use `prompt_tokens/decode_tokens`. Compare only matching timing,
+model/quant/KV, concurrency, and memory scopes; bold identifies the reported
+row, not a universal leader.
 
 ## Maintenance contract
 
