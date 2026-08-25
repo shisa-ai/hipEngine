@@ -1,0 +1,443 @@
+{
+  "date": "2026-08-26",
+  "decision": {
+    "c1": "retained explicit graph/device chain",
+    "next": "P5 complete R6/R8/R12/R16 profiling and admit at most one target candidate",
+    "p4": "closed",
+    "physical_c2_c4": "retained structural boundary; performance blocked",
+    "product_automatic": "K0 unchanged"
+  },
+  "evidence": {
+    "c1_full": {
+      "bytes": 1199434,
+      "path": "/tmp/specdec2-p4-full-c1-k2-clean.json",
+      "sha256": "c9eefa08ecb189719d269a07aa20e1006c5bbcd4ad1e976e04f8226c19956066"
+    },
+    "c1_oracle": {
+      "bytes": 72869,
+      "path": "/tmp/specdec2-p4-clean-c1-k1k3-oracle.json",
+      "sha256": "661b092da5d1be9963a32a9e831cfbfbf814a686a57eb62f9f2fbcbec0fccc3d"
+    },
+    "c2_copy": {
+      "bytes": 105054,
+      "path": "/tmp/specdec2-p4-profile-c2-marked/gfx1151/3423394_memory_copy_trace.csv",
+      "sha256": "70939dc08c6e66a10ed1856c6f36a12c6a61ed7d2a780f5d875a85bc5aba7a8d"
+    },
+    "c2_hip": {
+      "bytes": 5871910,
+      "path": "/tmp/specdec2-p4-profile-c2-marked/gfx1151/3423394_hip_api_trace.csv",
+      "sha256": "cadf7cbd1a44450eded17c0faa50540fc3b08c7f98fc08dee05b4cd704745e00"
+    },
+    "c2_kernel": {
+      "bytes": 3899935,
+      "path": "/tmp/specdec2-p4-profile-c2-marked/gfx1151/3423394_kernel_trace.csv",
+      "sha256": "990532a70e218ed5acb2caa24241b3e88d3758a21cf128b1fbbeff4fdc558626"
+    },
+    "c2_marker": {
+      "bytes": 5416,
+      "path": "/tmp/specdec2-p4-profile-c2-marked/gfx1151/3423394_marker_api_trace.csv",
+      "sha256": "ecfdc4b6cffb77cd92959dff713075ae9b2e3c111efd738002843b151d1851b6"
+    },
+    "c2_profile_bridge": {
+      "bytes": 44711,
+      "path": "/tmp/specdec2-p4-profile-child-c2-marked.json",
+      "sha256": "6c251be7b40bfe3e3bc8f8ce3ec100f15658911c1a1a2acf706ff6b68bc17c97"
+    },
+    "c4_copy": {
+      "bytes": 105054,
+      "path": "/tmp/specdec2-p4-profile-c4-marked/gfx1151/3424884_memory_copy_trace.csv",
+      "sha256": "4531fd185fc2baad0cfc23862a64f23b513068f357126f184dbcdeb4a0c0b74b"
+    },
+    "c4_hip": {
+      "bytes": 6091032,
+      "path": "/tmp/specdec2-p4-profile-c4-marked/gfx1151/3424884_hip_api_trace.csv",
+      "sha256": "ea9a1d0cbd7d0e98a159111b3a4d9f4bfd3b94f8d7b1702160be0e18f9211f35"
+    },
+    "c4_kernel": {
+      "bytes": 4187813,
+      "path": "/tmp/specdec2-p4-profile-c4-marked/gfx1151/3424884_kernel_trace.csv",
+      "sha256": "155a9d405a6b5020a3c0cdd0751f34d3ccc853cc89487af29398bc3535f4e88a"
+    },
+    "c4_marker": {
+      "bytes": 7280,
+      "path": "/tmp/specdec2-p4-profile-c4-marked/gfx1151/3424884_marker_api_trace.csv",
+      "sha256": "904a3f14db0a0dc27583aba7d387ef5a5084c2eb0ed0305bc6992f05bc268d9e"
+    },
+    "c4_profile_bridge": {
+      "bytes": 68065,
+      "path": "/tmp/specdec2-p4-profile-child-c4-marked.json",
+      "sha256": "43ac2b2677fe59cfdcdbb954fd5e7a8b445f58258e4c836ef4ec9bea66701de5"
+    },
+    "physical_full": {
+      "bytes": 4290828,
+      "path": "/tmp/specdec2-p4-full-c2c4-k2.json",
+      "sha256": "7a4e0eb9d692dfe5d457a94e25edf913d2f8d5e62948d32f5627a95f423911ec"
+    },
+    "physical_oracle": {
+      "bytes": 318351,
+      "path": "/tmp/specdec2-p4-clean-oracle-c2c4-k123.json",
+      "sha256": "ddf55e7516960f85b8e05d3f344d104259b2cb3485853883237bc3274b3eee3a"
+    }
+  },
+  "hardware": {
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "host": "gfx1151"
+  },
+  "kind": "specdec2_perf_p4_gfx1151_device_cycle",
+  "model": {
+    "execution_profile": "strict_fp32",
+    "kv": "BF16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S"
+  },
+  "oracle_matrix": {
+    "c1_k1_k3": {
+      "all_exact": true,
+      "cells": 2
+    },
+    "c2_c4_k1_k2_k3": {
+      "all_exact": true,
+      "cells": 6
+    }
+  },
+  "profiles": {
+    "c2_k2_r6": {
+      "cycle_windows": [
+        {
+          "copy_events": 0,
+          "hip_device_synchronize": 6,
+          "hip_free": 6,
+          "hip_malloc": 127,
+          "kernels": 1499,
+          "wall_ms": 480.186254
+        },
+        {
+          "copy_events": 0,
+          "hip_device_synchronize": 4,
+          "hip_free": 0,
+          "hip_malloc": 0,
+          "kernels": 1431,
+          "wall_ms": 441.476512
+        }
+      ],
+      "top_kernel_families": [
+        {
+          "duration_ms": 402.442578,
+          "launches": 466,
+          "name": "(anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)"
+        },
+        {
+          "duration_ms": 289.867643,
+          "launches": 256,
+          "name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)"
+        },
+        {
+          "duration_ms": 79.700017,
+          "launches": 120,
+          "name": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)"
+        },
+        {
+          "duration_ms": 36.987681,
+          "launches": 4,
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)"
+        },
+        {
+          "duration_ms": 9.738553,
+          "launches": 2,
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)"
+        },
+        {
+          "duration_ms": 9.42753,
+          "launches": 2,
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_kernel<float, 2>(unsigned short const*, unsigned char const*, float*, long, long, long)"
+        },
+        {
+          "duration_ms": 8.249802,
+          "launches": 96,
+          "name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, unsigned short*, int const*, long const*, float, long, long, long, long, long)"
+        },
+        {
+          "duration_ms": 6.465137,
+          "launches": 738,
+          "name": "__amd_rocclr_copyBuffer"
+        },
+        {
+          "duration_ms": 5.998296,
+          "launches": 4,
+          "name": "(anonymous namespace)::linear_state_pair_commit_chunked_i32_kernel(unsigned long const*, unsigned long const*, long, unsigned long const*, unsigned long const*, long, int const*, long, long)"
+        },
+        {
+          "duration_ms": 3.290574,
+          "launches": 6,
+          "name": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)"
+        },
+        {
+          "duration_ms": 1.814682,
+          "launches": 192,
+          "name": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)"
+        },
+        {
+          "duration_ms": 1.741505,
+          "launches": 134,
+          "name": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)"
+        }
+      ]
+    },
+    "c4_k2_r12": {
+      "cycle_windows": [
+        {
+          "copy_events": 0,
+          "hip_device_synchronize": 6,
+          "hip_free": 6,
+          "hip_malloc": 127,
+          "kernels": 1906,
+          "wall_ms": 592.377456
+        },
+        {
+          "copy_events": 0,
+          "hip_device_synchronize": 4,
+          "hip_free": 0,
+          "hip_malloc": 0,
+          "kernels": 1770,
+          "wall_ms": 520.150282
+        }
+      ],
+      "top_kernel_families": [
+        {
+          "duration_ms": 403.063475,
+          "launches": 466,
+          "name": "(anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)"
+        },
+        {
+          "duration_ms": 292.220551,
+          "launches": 256,
+          "name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)"
+        },
+        {
+          "duration_ms": 153.045327,
+          "launches": 120,
+          "name": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)"
+        },
+        {
+          "duration_ms": 73.740642,
+          "launches": 4,
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)"
+        },
+        {
+          "duration_ms": 29.055678,
+          "launches": 6,
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)"
+        },
+        {
+          "duration_ms": 17.774877,
+          "launches": 96,
+          "name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, float>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, unsigned short*, int const*, long const*, float, long, long, long, long, long)"
+        },
+        {
+          "duration_ms": 13.190451,
+          "launches": 1438,
+          "name": "__amd_rocclr_copyBuffer"
+        },
+        {
+          "duration_ms": 12.088201,
+          "launches": 8,
+          "name": "(anonymous namespace)::linear_state_pair_commit_chunked_i32_kernel(unsigned long const*, unsigned long const*, long, unsigned long const*, unsigned long const*, long, int const*, long, long)"
+        },
+        {
+          "duration_ms": 6.171019,
+          "launches": 6,
+          "name": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)"
+        },
+        {
+          "duration_ms": 2.509142,
+          "launches": 192,
+          "name": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)"
+        },
+        {
+          "duration_ms": 1.732898,
+          "launches": 134,
+          "name": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)"
+        },
+        {
+          "duration_ms": 1.406679,
+          "launches": 152,
+          "name": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)"
+        }
+      ]
+    }
+  },
+  "protocol": {
+    "automatic_policy": "K0",
+    "budget": 2,
+    "counterbalanced": true,
+    "max_tokens": 25,
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "runs": 3,
+    "true_ar_baseline": true
+  },
+  "results": {
+    "c1": {
+      "acceptance": {
+        "accepted": 433,
+        "cycles": 272,
+        "histogram": {
+          "0": 35,
+          "1": 41,
+          "2": 196
+        },
+        "proposed": 538,
+        "rate": 0.8048327137546468,
+        "routes": {
+          "graph": 272
+        }
+      },
+      "all_exact": true,
+      "candidate_d2h_after_target": 0,
+      "category_speedups": {
+        "code": 1.4572210557894933,
+        "general_en": 1.4524625186683904,
+        "general_ja": 1.4231151530740096,
+        "mixed_ja_en": 1.419795896837733
+      },
+      "cells": 30,
+      "legacy_native": {
+        "tok_s": 17.21420199127588,
+        "tokens": 750,
+        "wall_seconds": 43.56867662991863
+      },
+      "memory_after_close": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 23956197527,
+        "peak_allocations": 2305,
+        "total_allocated_bytes": 58438535552,
+        "total_freed_bytes": 58438535552
+      },
+      "nonzero_cycle_allocation_samples": 0,
+      "recoverable_failures": 0,
+      "specdec2": {
+        "tok_s": 15.731844594718806,
+        "tokens": 750,
+        "wall_seconds": 47.67400259291753
+      },
+      "speedup_vs_true_ar": 1.4416030395456747,
+      "true_ar": {
+        "tok_s": 10.912743774233954,
+        "tokens": 750,
+        "wall_seconds": 68.72698704525828
+      }
+    },
+    "c2": {
+      "acceptance": {
+        "accepted": 366,
+        "cycles": 1020,
+        "histogram": {
+          "0": 792,
+          "1": 90,
+          "2": 138
+        },
+        "proposed": 1986,
+        "rate": 0.18429003021148035,
+        "routes": {
+          "eager": 1020
+        }
+      },
+      "all_exact": true,
+      "candidate_d2h_after_target": 0,
+      "category_speedups": {
+        "code": 0.34475170711078923,
+        "general_en": 0.4070596197233451,
+        "general_ja": 0.3370196739896984,
+        "mixed_ja_en": 0.3844946415988068
+      },
+      "cells": 30,
+      "legacy_native": {
+        "tok_s": null,
+        "tokens": 0,
+        "wall_seconds": 0
+      },
+      "memory_after_close": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 24519369244,
+        "peak_allocations": 2276,
+        "total_allocated_bytes": 27088669740,
+        "total_freed_bytes": 27088669740
+      },
+      "nonzero_cycle_allocation_samples": 0,
+      "recoverable_failures": 0,
+      "specdec2": {
+        "tok_s": 5.618125053147956,
+        "tokens": 1500,
+        "wall_seconds": 266.99298890819773
+      },
+      "speedup_vs_true_ar": 0.3617643690912261,
+      "true_ar": {
+        "tok_s": 15.529791027405558,
+        "tokens": 1500,
+        "wall_seconds": 96.58855018415488
+      }
+    },
+    "c4": {
+      "acceptance": {
+        "accepted": 732,
+        "cycles": 2040,
+        "histogram": {
+          "0": 1584,
+          "1": 180,
+          "2": 276
+        },
+        "proposed": 3972,
+        "rate": 0.18429003021148035,
+        "routes": {
+          "eager": 2040
+        }
+      },
+      "all_exact": true,
+      "candidate_d2h_after_target": 0,
+      "category_speedups": {
+        "code": 0.30338878728447277,
+        "general_en": 0.3565439456706034,
+        "general_ja": 0.2970508620839772,
+        "mixed_ja_en": 0.3431463848234755
+      },
+      "cells": 30,
+      "legacy_native": {
+        "tok_s": null,
+        "tokens": 0,
+        "wall_seconds": 0
+      },
+      "memory_after_close": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 24519369244,
+        "peak_allocations": 2276,
+        "total_allocated_bytes": 27088669740,
+        "total_freed_bytes": 27088669740
+      },
+      "nonzero_cycle_allocation_samples": 0,
+      "recoverable_failures": 0,
+      "specdec2": {
+        "tok_s": 9.183305892006063,
+        "tokens": 3000,
+        "wall_seconds": 326.6797420536168
+      },
+      "speedup_vs_true_ar": 0.3192427301195274,
+      "true_ar": {
+        "tok_s": 28.765904515876517,
+        "tokens": 3000,
+        "wall_seconds": 104.29013272793964
+      }
+    }
+  },
+  "schema": 1,
+  "software": {
+    "full_c1_measurement_commit": "77be00d68faa9d1410e1688462fbba53762e3ab1",
+    "full_physical_measurement_commit": "16df9926f8f770829027764f5c05cbcfca13b867",
+    "implementation_commit": "77be00d68faa9d1410e1688462fbba53762e3ab1"
+  },
+  "status": "retained_structural_no_physical_speed_claim"
+}
