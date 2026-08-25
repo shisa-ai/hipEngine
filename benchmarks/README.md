@@ -109,7 +109,8 @@ Device accept/selected-state commit still blocks S4 closure, and this fixed-
 prompt diagnostic is not a promotion suite. Production FP16 state selects K0
 and no automatic/default scope changes. [`S3 artifact`](results/2026-08-25-gfx1151-specdec2-s3-c1.json);
 [`S4 physical artifact`](results/2026-08-25-gfx1151-specdec2-s4-physical-c2-c4.json);
-[`device-candidate artifact`](results/2026-08-25-gfx1151-specdec2-s4-device-candidates.json).
+[`device-candidate artifact`](results/2026-08-25-gfx1151-specdec2-s4-device-candidates.json);
+[`S4 closure artifact`](results/2026-08-25-gfx1151-specdec2-s4-closure.json).
 
 ## Where detailed evidence lives
 

@@ -1,0 +1,414 @@
+{
+  "controlled_neighbor": {
+    "accepted_counts": [
+      0,
+      2
+    ],
+    "health_outputs": [
+      [
+        271,
+        9419,
+        0,
+        2500,
+        628
+      ],
+      [
+        271,
+        9419,
+        0,
+        2500,
+        628
+      ]
+    ],
+    "passed": true,
+    "performance_claim": false
+  },
+  "date": "2026-08-25",
+  "eager_route_binding": {
+    "c2k2": {
+      "passed": true,
+      "repo": {
+        "commit": "d809014cb057921ce996311a157c4291220654e6",
+        "dirty": true,
+        "shared_untracked_files_excluded": true
+      },
+      "routes": [
+        [
+          "eager"
+        ],
+        [
+          "eager"
+        ]
+      ],
+      "wall_seconds": {
+        "ar": 0.8644467410631478,
+        "direct_exact": 2.733405394013971,
+        "staged_cold": 1.9260925530688837,
+        "staged_warm": 1.0496022020233795,
+        "warm_staged_over_direct": 0.3839906822171196
+      }
+    },
+    "c4k3": {
+      "passed": true,
+      "repo": {
+        "commit": "d809014cb057921ce996311a157c4291220654e6",
+        "dirty": true,
+        "shared_untracked_files_excluded": true
+      },
+      "routes": [
+        [
+          "eager"
+        ],
+        [
+          "eager"
+        ],
+        [
+          "eager"
+        ],
+        [
+          "eager"
+        ]
+      ],
+      "wall_seconds": {
+        "ar": 0.9214494829066098,
+        "direct_exact": 4.451654783915728,
+        "staged_cold": 2.2481813608901575,
+        "staged_warm": 1.315533232060261,
+        "warm_staged_over_direct": 0.2955155545334318
+      }
+    }
+  },
+  "host": {
+    "device": "AMD Radeon 8060S Graphics",
+    "hostname": "gfx1151",
+    "queue_mode": "GPU_MAX_HW_QUEUES=2",
+    "target_arch": "gfx1151"
+  },
+  "implementation_commits": [
+    "7ac70a39d4d0ff7b160ca32a9edbbacd8b25b9ea",
+    "4072144a05a333c9324d9fa858ca8ac9a1199897",
+    "60fcd0c2886b3887489086557d6052f8f7715b67",
+    "b3c00bf930cf68412d5c929d7cc85b4fe0ad4fb4",
+    "59b4d5994445fa647d413cb838759360e8e62e07",
+    "f5b7ec39c699d93e4e3aff4bec08c92afee4c09f",
+    "676a4c7a80cc22a453bdb5038c3838eea61e7acc",
+    "d809014cb057921ce996311a157c4291220654e6"
+  ],
+  "kind": "specdec2_gfx1151_s4_closure",
+  "model": {
+    "execution_profile": "strict",
+    "kv": "bf16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "gguf_q4_k_s",
+    "recurrent_state": "fp32"
+  },
+  "performance_claim": false,
+  "physical_matrix": [
+    {
+      "candidate_budget": 1,
+      "concurrency": 2,
+      "device_accept_calls_per_request": 2,
+      "execution_routes": [],
+      "ids_all_equal": true,
+      "logical_rows": 4,
+      "passed": true,
+      "proposal_physical_rows": [
+        2,
+        2
+      ],
+      "repo": {
+        "commit": "4072144a05a333c9324d9fa858ca8ac9a1199897",
+        "dirty": false,
+        "shared_untracked_files_excluded": true
+      },
+      "selected_commit_batch_calls_per_request": 2,
+      "target_physical_rows": [
+        4,
+        4
+      ],
+      "wall_seconds": {
+        "ar": 0.8616531100124121,
+        "direct_exact": 2.6907592940842733,
+        "staged_cold": 2.294340255088173,
+        "staged_warm": 1.4166477939579636,
+        "warm_staged_over_direct": 0.5264862587569659
+      }
+    },
+    {
+      "candidate_budget": 2,
+      "concurrency": 2,
+      "device_accept_calls_per_request": 1,
+      "execution_routes": [],
+      "ids_all_equal": true,
+      "logical_rows": 6,
+      "passed": true,
+      "proposal_physical_rows": [
+        2,
+        2
+      ],
+      "repo": {
+        "commit": "4072144a05a333c9324d9fa858ca8ac9a1199897",
+        "dirty": false,
+        "shared_untracked_files_excluded": true
+      },
+      "selected_commit_batch_calls_per_request": 1,
+      "target_physical_rows": [
+        6
+      ],
+      "wall_seconds": {
+        "ar": 0.8615485280752182,
+        "direct_exact": 2.7372576440684497,
+        "staged_cold": 1.9290522719966248,
+        "staged_warm": 1.05188005103264,
+        "warm_staged_over_direct": 0.38428244170293235
+      }
+    },
+    {
+      "candidate_budget": 3,
+      "concurrency": 2,
+      "device_accept_calls_per_request": 1,
+      "execution_routes": [],
+      "ids_all_equal": true,
+      "logical_rows": 8,
+      "passed": true,
+      "proposal_physical_rows": [
+        2,
+        2,
+        2
+      ],
+      "repo": {
+        "commit": "4072144a05a333c9324d9fa858ca8ac9a1199897",
+        "dirty": false,
+        "shared_untracked_files_excluded": true
+      },
+      "selected_commit_batch_calls_per_request": 1,
+      "target_physical_rows": [
+        8
+      ],
+      "wall_seconds": {
+        "ar": 0.8584656768944114,
+        "direct_exact": 2.8757627739105374,
+        "staged_cold": 1.9809276399901137,
+        "staged_warm": 1.0983592969132587,
+        "warm_staged_over_direct": 0.3819366836784249
+      }
+    },
+    {
+      "candidate_budget": 1,
+      "concurrency": 4,
+      "device_accept_calls_per_request": 2,
+      "execution_routes": [],
+      "ids_all_equal": true,
+      "logical_rows": 8,
+      "passed": true,
+      "proposal_physical_rows": [
+        4,
+        4
+      ],
+      "repo": {
+        "commit": "4072144a05a333c9324d9fa858ca8ac9a1199897",
+        "dirty": false,
+        "shared_untracked_files_excluded": true
+      },
+      "selected_commit_batch_calls_per_request": 2,
+      "target_physical_rows": [
+        8,
+        8
+      ],
+      "wall_seconds": {
+        "ar": 0.9264122740132734,
+        "direct_exact": 4.166558720986359,
+        "staged_cold": 2.53083731001243,
+        "staged_warm": 1.6438688630005345,
+        "warm_staged_over_direct": 0.39453874842099373
+      }
+    },
+    {
+      "candidate_budget": 2,
+      "concurrency": 4,
+      "device_accept_calls_per_request": 1,
+      "execution_routes": [],
+      "ids_all_equal": true,
+      "logical_rows": 12,
+      "passed": true,
+      "proposal_physical_rows": [
+        4,
+        4
+      ],
+      "repo": {
+        "commit": "4072144a05a333c9324d9fa858ca8ac9a1199897",
+        "dirty": false,
+        "shared_untracked_files_excluded": true
+      },
+      "selected_commit_batch_calls_per_request": 1,
+      "target_physical_rows": [
+        12
+      ],
+      "wall_seconds": {
+        "ar": 0.9270185779314488,
+        "direct_exact": 4.226775796036236,
+        "staged_cold": 2.1777820020215586,
+        "staged_warm": 1.2532237719278783,
+        "warm_staged_over_direct": 0.29649639167119296
+      }
+    },
+    {
+      "candidate_budget": 3,
+      "concurrency": 4,
+      "device_accept_calls_per_request": 1,
+      "execution_routes": [],
+      "ids_all_equal": true,
+      "logical_rows": 16,
+      "passed": true,
+      "proposal_physical_rows": [
+        4,
+        4,
+        4
+      ],
+      "repo": {
+        "commit": "4072144a05a333c9324d9fa858ca8ac9a1199897",
+        "dirty": false,
+        "shared_untracked_files_excluded": true
+      },
+      "selected_commit_batch_calls_per_request": 1,
+      "target_physical_rows": [
+        16
+      ],
+      "wall_seconds": {
+        "ar": 0.9505364609649405,
+        "direct_exact": 4.44391639099922,
+        "staged_cold": 2.26672991795931,
+        "staged_warm": 1.3229350690962747,
+        "warm_staged_over_direct": 0.297695760382839
+      }
+    }
+  ],
+  "prefix": {
+    "cached_ids": [
+      264,
+      6669,
+      2020,
+      314,
+      3741
+    ],
+    "matched_tokens": 256,
+    "no_provider_mutation": true,
+    "oracle_final_state_exact": true,
+    "oracle_kl_mean": 0.0,
+    "oracle_lifecycle_exact": true,
+    "oracle_passed": true,
+    "oracle_top1_agreement": 1.0,
+    "oracle_trajectory_exact": true,
+    "passed": true,
+    "reused_tokens": 256,
+    "state_clone_bytes": 158859264
+  },
+  "pressure": {
+    "candidate_error_code": "engine_busy",
+    "candidate_error_status_code": 429,
+    "final_ownership_passed": true,
+    "graph_delta": {
+      "captures": 1,
+      "invalidations": 1,
+      "replays": 128
+    },
+    "memory_recovery_passed": true,
+    "mtp_mutation_counters_by_request": {
+      "0": {
+        "accepts": 0,
+        "cycles": 0,
+        "proposals": 0,
+        "targets": 0
+      },
+      "1": {
+        "accepts": 0,
+        "cycles": 0,
+        "proposals": 0,
+        "targets": 0
+      },
+      "2": {
+        "accepts": 0,
+        "cycles": 0,
+        "proposals": 0,
+        "targets": 0
+      },
+      "3": {
+        "accepts": 0,
+        "cycles": 0,
+        "proposals": 0,
+        "targets": 0
+      },
+      "4": {
+        "accepts": 0,
+        "cycles": 0,
+        "proposals": 0,
+        "targets": 0
+      },
+      "5": {
+        "accepts": 0,
+        "cycles": 0,
+        "proposals": 0,
+        "targets": 0
+      },
+      "6": {
+        "accepts": 0,
+        "cycles": 0,
+        "proposals": 0,
+        "targets": 0
+      }
+    },
+    "passed": true,
+    "pressure_outcomes": {
+      "completed": 1,
+      "rejected": 1
+    },
+    "pressure_passed": true,
+    "regrow_page_table_changed": true,
+    "selected_workloads_passed": true,
+    "source": {
+      "commit": "d809014cb057921ce996311a157c4291220654e6",
+      "dirty": false
+    },
+    "speculative_mtp": true,
+    "status": "measurement_complete"
+  },
+  "profiler": {
+    "command": "rocprofv3 --kernel-trace ... scripts/specdec2_c1_gate.py --concurrency 4 --budget 3",
+    "exact_gate_passed": true,
+    "kernel_trace": {
+      "dflash_accept_chain_i32_kernel": {
+        "calls": 14,
+        "duration_ns": 71335
+      },
+      "linear_state_pair_commit_chunked_i32_kernel": {
+        "calls": 22,
+        "duration_ns": 69646629
+      },
+      "packed_gdn_state_rows": {
+        "calls": 96,
+        "duration_ns": 23432934
+      },
+      "paged_full_attention_prefill": {
+        "calls": 128,
+        "duration_ns": 1593115
+      }
+    }
+  },
+  "promotion": false,
+  "prompt_suite_requirement": {
+    "canonical_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "status": "required_for_s6_product_quality_not_claimed_by_s4"
+  },
+  "schema": 1,
+  "speed_claim_eligible": false,
+  "status": "functional_default_off_s4_complete",
+  "verdict": {
+    "automatic_cells": [],
+    "explicit_default_off_cells": [
+      "gfx1151 Qwen3.8-27B Q4_K_S strict C2/C4 K1-K3 R4-R16 eager"
+    ],
+    "reason_default_off": "complete speculative wall remains slower than true AR; S5 cost/bucket policy not yet qualified",
+    "s4_complete": true
+  }
+}
