@@ -34,9 +34,28 @@ from scripts.gguf_production_load_gate import (
     _run_isolated_reference_worker,
     _run_same_owner_references,
     _select_tuning_candidate,
+    _stream_request_payload,
     _tracked_source_dirty,
     _wait_for_idle,
 )
+
+
+def test_speculative_stream_payload_preserves_raw_greedy_contract() -> None:
+    spec = WorkloadRequest("spec", 1, 16, 4, timeout_ms=250.0)
+
+    payload = _stream_request_payload(
+        spec=spec,
+        prompt={"text": "hello"},
+        served_model_name="model",
+        speculative_mtp=True,
+    )
+
+    assert payload["stream"] is True
+    assert payload["speculative_mtp"] is True
+    assert payload["ignore_eos"] is False
+    assert payload["temperature"] == 0.0
+    assert payload["top_p"] == 1.0
+    assert payload["timeout_ms"] == 250.0
 
 
 def test_local_uvicorn_uses_a_real_socket_and_stops_cleanly() -> None:
