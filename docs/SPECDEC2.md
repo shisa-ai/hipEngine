@@ -638,27 +638,32 @@ true AR and therefore do not promote an automatic cell. Evidence:
 
 ### S5.1 Measurement-first bucket ladder
 
-- [ ] Run the current strict physical decomposition for R={1,2,4,8,16,32} and
+- [x] Run the current strict physical decomposition for R={1,2,4,8,16,32} and
       record target-only plus complete-cycle wall.
-- [ ] Add a native bucket only when its measured premise can beat decomposition
-      and its correctness oracle exists.
-- [ ] Compare R16/R32 complete target wall against two/four R8 sweeps.
-- [ ] Attribute dense projection, attention/KV, Conv/GDN, accept/commit,
+- [x] Add a native bucket only when its measured premise can beat decomposition
+      and its correctness oracle exists. No new bucket was justified.
+- [x] Compare R16/R32 complete target wall against two/four R8 sweeps.
+- [x] Attribute dense projection, attention/KV, Conv/GDN, accept/commit,
       submission, synchronization, and readback.
-- [ ] Update `KERNELS.md` and lineage manifest when a kernel/dispatch path changes.
+- [x] Update `KERNELS.md` and lineage manifest when a kernel/dispatch path changes.
+      S5 retained no new kernel/dispatch family, so neither catalog changed.
 
 ### S5.2 Kernel/graph qualification
 
 For every new/ported family:
 
-- [ ] RED fixture/oracle first;
-- [ ] strict exact/parent-parity or declared production-profile gate;
-- [ ] CPU-reference outer KL/top-1 floor;
-- [ ] registered strict fallback;
-- [ ] `rocprofv3 --kernel-trace` engagement;
-- [ ] graph/eager agreement and miss fallback;
-- [ ] stable pointer/slab ownership; and
-- [ ] complete model/cycle wall, not only microbench speed.
+- [x] RED fixture/oracle first;
+- [x] strict exact/parent-parity or declared production-profile gate;
+- [x] CPU-reference outer KL/top-1 floor;
+- [x] registered strict fallback;
+- [x] `rocprofv3 --kernel-trace` engagement;
+- [x] graph/eager agreement and miss fallback;
+- [x] stable pointer/slab ownership; and
+- [x] complete model/cycle wall, not only microbench speed.
+
+S5 added no kernel family. These gates remain satisfied by the S4-qualified
+strict families and profiler packet; the rejected R32 native premise introduces
+nothing new to qualify.
 
 ### S5.3 Cost table and policy
 
@@ -675,16 +680,19 @@ graph-eager route / sampler class / variant-manifest hash
 Record proposal, target, accept/commit, provider-update, scheduler/readback,
 claims/high-water, accepted-output distribution, TTFT/ITL/E2E, and SLO-goodput.
 
-- [ ] Start with deterministic offline LUT policy.
-- [ ] Permit online acceptance EMA only inside an already-qualified cell.
-- [ ] Select K before mutation and report the exact reason.
-- [ ] Never use prompt text, token IDs, benchmark category, or heldout identity as
+- [x] Start with deterministic offline LUT policy.
+- [x] Permit online acceptance EMA only inside an already-qualified cell. No
+      online EMA is enabled.
+- [x] Select K before mutation and report the exact reason.
+- [x] Never use prompt text, token IDs, benchmark category, or heldout identity as
       a routing feature.
-- [ ] Qualify c1/c2/c4 K choices.
-- [ ] Measure c8 K={0,1,2,3} and retain only winning/SLO-safe cells.
-- [ ] Measure c17/c32 K={0,1}; finish with K0 if larger frontiers lose or lack a
+- [x] Qualify c1/c2/c4 K choices. Automatic K0; explicit K1-K3 remain default-off.
+- [x] Measure c8 K={0,1,2,3} and retain only winning/SLO-safe cells. K1-K3 lack
+      a qualified C8 frontier, so only K0 is retained.
+- [x] Measure c17/c32 K={0,1}; finish with K0 if larger frontiers lose or lack a
       qualified physical path.
-- [ ] Keep AR neighbors within their declared SLO when mixed with speculation.
+- [x] Keep AR neighbors within their declared SLO when mixed with speculation.
+      Automatic cells are K0, so neighbors remain on true AR.
 
 ### S5.4 Performance acceptance
 
@@ -694,6 +702,13 @@ claims/high-water, accepted-output distribution, TTFT/ITL/E2E, and SLO-goodput.
 - Project target: >1.30x. Do not lower the target after seeing results.
 - Exact, same-suite non-regressive wins become the qualified default.
 - Production-arithmetic wins require every binding execution-profile gate.
+
+**Closed 2026-08-25:** R16 is 1.70x faster than two measured R8 target sweeps;
+R32 remains two R16 sweeps because no qualified C8 owner exists. Every complete
+C1/C2/C4 MTP cell misses the >1.10x true-AR threshold, so the fingerprinted
+offline automatic policy selects K0 for C1-C32. Explicit K1-K3 stays
+functional/default-off. Evidence:
+[`S5 cost/policy artifact`](../benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json).
 
 ## 12. S6 — gfx1151 product closure
 
@@ -902,6 +917,7 @@ long-context pressure, eager-fallback, SSE, profiler, and final-ownership gates.
 Closure commits through `d809014cb`; clean C2/K2 and C4/K3 route binds record
 `eager`, and the closure artifact records the full evidence map.
 All physical C2/C4 K1-K3 cells remain explicit/default-off because true AR is
-faster; S5 owns verifier bucket measurement and deterministic K/K0 policy.
-Production Q4_K_S FP16 state still selects K0 before mutation; gfx1100 remains
-deferred.
+faster. S5 is closed with no new native bucket and a fingerprinted automatic K0
+policy for C1-C32. S6 product API, dynamic-serving, quality, soak, and closure
+work is next. Production Q4_K_S FP16 state also selects K0 before mutation;
+gfx1100 remains deferred.

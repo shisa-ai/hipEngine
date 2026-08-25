@@ -110,7 +110,11 @@ prompt diagnostic is not a promotion suite. Production FP16 state selects K0
 and no automatic/default scope changes. [`S3 artifact`](results/2026-08-25-gfx1151-specdec2-s3-c1.json);
 [`S4 physical artifact`](results/2026-08-25-gfx1151-specdec2-s4-physical-c2-c4.json);
 [`device-candidate artifact`](results/2026-08-25-gfx1151-specdec2-s4-device-candidates.json);
-[`S4 closure artifact`](results/2026-08-25-gfx1151-specdec2-s4-closure.json).
+[`S4 closure artifact`](results/2026-08-25-gfx1151-specdec2-s4-closure.json);
+[`S5 cost/policy artifact`](results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json).
+S5 retains no new native bucket: R16 beats two R8 sweeps by **1.70x**, R32 stays
+two R16 diagnostics, and the fingerprinted automatic policy selects K0 for
+C1-C32 because no complete cell clears the >1.10x true-AR gate.
 
 ## Where detailed evidence lives
 
