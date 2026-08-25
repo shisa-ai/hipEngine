@@ -128,6 +128,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             for concurrency in (2, 4):
                 measured: dict[str, tuple[Any, Any, float]] = {}
                 execution_order = counterbalanced_route_order(prompt_index)
+                mtp_rows: list[dict[str, Any]] = []
                 for route in execution_order:
                     measured[route] = _run_group(
                         service,
@@ -135,11 +136,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         concurrency,
                         mtp=route == "mtp",
                     )
+                    if route == "mtp":
+                        snapshot = service.live_loop_snapshot()
+                        recent = snapshot["runner"]["routes"]["recent_completed"]
+                        mtp_rows = [
+                            row
+                            for row in recent[-concurrency:]
+                            if row["specdec2_mtp2_used"]
+                        ]
                 ar_ids, ar_timings, ar_wall = measured["ar"]
                 mtp_ids, mtp_timings, mtp_wall = measured["mtp"]
-                snapshot = service.live_loop_snapshot()
-                recent = snapshot["runner"]["routes"]["recent_completed"]
-                mtp_rows = [row for row in recent[-concurrency:] if row["specdec2_mtp2_used"]]
                 exact = bool(
                     len(set(ar_ids)) == 1
                     and len(set(mtp_ids)) == 1
