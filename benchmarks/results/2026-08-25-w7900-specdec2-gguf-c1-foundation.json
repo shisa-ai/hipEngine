@@ -1,0 +1,106 @@
+{
+  "cells": [
+    {
+      "execution_routes": [
+        "graph"
+      ],
+      "ids_all_equal": true,
+      "k": 1,
+      "sha256": "fad0a3c7713b6eb57eac52794cd39d2d93452ed8f07085220925fcd73dd1f124",
+      "source": "/tmp/specdec2-gfx1100-gguf-c1/k1.json",
+      "staged_repeat_provider_fingerprint": true,
+      "status": "passed",
+      "wall_seconds": {
+        "ar": 12.6305600409396,
+        "direct_exact": 0.7427029302343726,
+        "staged_cold": 1.638108876068145,
+        "staged_warm": 0.4332265770062804,
+        "warm_staged_over_direct": 0.5833107146481412
+      },
+      "warm_staged_over_ar": 0.0342998707580707,
+      "warm_staged_over_direct": 0.5833107146481412
+    },
+    {
+      "execution_routes": [
+        "graph"
+      ],
+      "ids_all_equal": true,
+      "k": 2,
+      "sha256": "e359179bfc7b543c42ce26a28304c2678d8b29f6254769a330368451baa0b969",
+      "source": "/tmp/specdec2-gfx1100-gguf-c1/k2.json",
+      "staged_repeat_provider_fingerprint": true,
+      "status": "passed",
+      "wall_seconds": {
+        "ar": 0.4786841329187155,
+        "direct_exact": 0.714691414963454,
+        "staged_cold": 1.5301194000057876,
+        "staged_warm": 0.3959884219802916,
+        "warm_staged_over_direct": 0.5540690900849014
+      },
+      "warm_staged_over_ar": 0.8272436764632299,
+      "warm_staged_over_direct": 0.5540690900849014
+    },
+    {
+      "execution_routes": [
+        "graph"
+      ],
+      "ids_all_equal": true,
+      "k": 3,
+      "sha256": "14e7e188a0022cb935ea926273e3c09c0b8a9126f7c0f070efc97aacfb1572ab",
+      "source": "/tmp/specdec2-gfx1100-gguf-c1/k3.json",
+      "staged_repeat_provider_fingerprint": true,
+      "status": "passed",
+      "wall_seconds": {
+        "ar": 0.4821565463207662,
+        "direct_exact": 0.6958524030633271,
+        "staged_cold": 1.504104136954993,
+        "staged_warm": 0.4032110250554979,
+        "warm_staged_over_direct": 0.5794490660382229
+      },
+      "warm_staged_over_ar": 0.8362657898815545,
+      "warm_staged_over_direct": 0.5794490660382229
+    }
+  ],
+  "checks": {
+    "all_drained": true,
+    "all_ids_equal": true,
+    "all_staged_repeat_fingerprints": true
+  },
+  "date": "2026-08-25",
+  "decision": {
+    "automatic": "K0 until full category/state/profiler/economics packet",
+    "c2_c4": "absent pending physical qualification",
+    "note": "K2/K3 warm staged beat warm true AR on this short prompt, but this is not a promotable full-suite speed claim",
+    "retain": "explicit strict C1 K1-K3 staged capability"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "hip_visible_devices": "0",
+    "physical_host": "epyc",
+    "target_arch": "gfx1100"
+  },
+  "model": {
+    "execution_profile": "strict",
+    "kv": "bf16",
+    "manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d",
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "recurrent_state": "fp32_strict"
+  },
+  "performance_claim": false,
+  "schema": "hipengine.specdec2_gfx1100_gguf_c1.v1",
+  "scope": {
+    "automatic_policy": "K0 pending complete suite",
+    "candidate_budgets": [
+      1,
+      2,
+      3
+    ],
+    "concurrency": 1,
+    "max_tokens": 8,
+    "prompt": "Write one short greeting."
+  },
+  "speed_claim_eligible": false,
+  "status": "functional_exact_local_economics_positive"
+}
