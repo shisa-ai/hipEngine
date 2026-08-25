@@ -159,6 +159,17 @@ class Qwen35GGUFMTP2Adapter:
                     row.mtp2_prompt_fallback_reason = "prefix_reuse_k0"
             return None
         targets = tuple(row.lease.session for row in rows)
+        context_misses = tuple(
+            (row, target)
+            for row, target in zip(rows, targets, strict=True)
+            if len(row.prompt_ids) + 1
+            >= min(1023, int(target.target_layout.max_sequence_length))
+        )
+        if context_misses:
+            for row, _target in context_misses:
+                row.mtp2_candidate_budget = 0
+                row.mtp2_prompt_fallback_reason = "target_context_k0"
+            return None
         missing = len(ids)
         group = next(
             (

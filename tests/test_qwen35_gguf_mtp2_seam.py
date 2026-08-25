@@ -974,6 +974,45 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
     assert released_pool == []
 
 
+def test_mtp2_long_prompt_selects_k0_before_provider_streaming() -> None:
+    target = SimpleNamespace(
+        target_layout=SimpleNamespace(max_sequence_length=4096),
+        runtime=object(),
+    )
+    row = SimpleNamespace(
+        prompt_ids=tuple(range(1022)),
+        lease=SimpleNamespace(session=target),
+        prefix_reused_tokens=0,
+        mtp2_candidate_budget=2,
+        mtp2_prompt_fallback_reason=None,
+    )
+    acquired: list[str] = []
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(
+            _acquire_dense_mtp_draft_provider=lambda *args, **kwargs: acquired.append(
+                "provider"
+            )
+        ),
+        capacity=1,
+        _shared_runner=SimpleNamespace(hidden_size=4),
+        _row=lambda request_id: row,
+    )
+    adapter = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=2,
+    )
+    adapter.register_request(7, 2)
+
+    assert adapter.begin_prompt_streaming((7,), checkpoints={}) is None
+    assert row.mtp2_candidate_budget == 0
+    assert row.mtp2_prompt_fallback_reason == "target_context_k0"
+    assert acquired == []
+    assert adapter._prompt_streaming_sinks == {}
+    assert adapter._states == {}
+
+
 def test_mtp2_streaming_prompt_failure_drains_provider_and_sink() -> None:
     events: list[tuple[object, ...]] = []
 
