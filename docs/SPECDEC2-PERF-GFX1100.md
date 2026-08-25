@@ -428,6 +428,9 @@ next implementation owner in each lane.
       view.
 - [ ] RED-test pointer reuse and generation invalidation across close/reuse,
       shrink/refill, compaction, prefix restore, pressure, fallback, and failure.
+- [x] Pre-reserve packed-PARO C1 R2 linear/MoE verifier scratch after target /
+      provider prompt priming and before the first speculative plan/mutation,
+      rather than lazily resizing 1,110 workspace allocations in cycle 1.
 - [ ] Replace GGUF cycle-local `hidden_batch` allocation/free with claimed
       provider-group workspace.
 - [ ] Add persistent lane-specific candidate, target result, accept, selected

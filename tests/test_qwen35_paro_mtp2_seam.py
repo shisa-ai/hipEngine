@@ -358,6 +358,30 @@ def test_staged_prefill_uses_packed_target_and_streams_final_hidden_rows(monkeyp
     ]
 
 
+def test_prefill_completion_reserves_c1_verify_scratch_before_first_cycle() -> None:
+    proposer = _ProposerDouble()
+    row = SimpleNamespace(prompt_ids=(10, 11), mtp2_prompt_hidden_buffer=object())
+    calls = []
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(backend="hip_gfx1100"),
+        _row=lambda request_id: row,
+        _session=SimpleNamespace(
+            prepare_specdec2_verify_scratch=lambda *, rows: calls.append(("reserve", rows))
+        ),
+        _release_mtp2_prompt_capture=lambda selected: calls.append(("release", selected)),
+    )
+    adapter = Qwen35ParoMTP2Adapter(owner)
+    adapter._states[7] = _ParoMTP2RequestState(
+        7,
+        proposer,
+        prompt_rows_consumed=2,
+    )
+
+    adapter.observe_prefill_result(7)
+
+    assert calls == [("reserve", 2), ("release", row)]
+
+
 def test_initial_root_k0_keeps_primed_provider_live() -> None:
     proposer = _ProposerDouble()
     row = SimpleNamespace(first_token_emitted=False)
