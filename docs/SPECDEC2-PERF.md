@@ -725,41 +725,42 @@ Durable handoff: P4.1-P4.3.
 
 ### P4.1 C1 fast-cycle bridge
 
-- [ ] Enable budget-specific proposal graph ownership instead of unconditional
+- [x] Enable budget-specific proposal graph ownership instead of unconditional
       `allow_graph=False` where the exact capability admits it.
-- [ ] Adapt the existing N2 target/accept/selected-commit graph into one bounded
+- [x] Adapt the existing N2 target/accept/selected-commit graph into one bounded
       staged cycle result; do not call the old whole-request generator.
-- [ ] Pass proposal tokens to target through a device descriptor without host
+- [x] Pass proposal tokens to target through a device descriptor without host
       candidate materialization.
-- [ ] Preserve canonical provider checkpoint/repair semantics; compare provider
+- [x] Preserve canonical provider checkpoint/repair semantics; compare provider
       fingerprint after reject/every-partial/full.
-- [ ] Return to `ResidentEngineLoop` after one committed/rolled-back cycle.
+- [x] Return to `ResidentEngineLoop` after one committed/rolled-back cycle.
 
 ### P4.2 Physical C2/C4 device result
 
-- [ ] Target verifier writes compact device top-1/result rows into stable slabs.
-- [ ] Candidate and target IDs feed GPU acceptance directly.
-- [ ] GPU accept payload selects target hidden/Conv/GDN/KV rows and provider
+- [x] Target verifier writes compact device top-1/result rows into stable slabs.
+- [x] Candidate and target IDs feed GPU acceptance directly.
+- [x] GPU accept payload selects target hidden/Conv/GDN/KV rows and provider
       commit metadata per request.
-- [ ] Host reads only bounded committed token IDs/lengths/status after selected
+- [x] Host reads only bounded committed token IDs/lengths/status after selected
       commit.
-- [ ] CPU acceptance remains a strict/debug oracle controlled outside the
+- [x] CPU acceptance remains a strict/debug oracle controlled outside the
       promoted cycle; it is not a permanent production synchronization.
-- [ ] Device/result descriptors include request/slot/row/transaction generation.
+- [x] Device/result descriptors include request/slot/row/transaction generation.
 
 ### P4.3 Gate
 
-- [ ] C1/C2/C4 K1-K3 reject/every-partial/full exact gates pass.
-- [ ] Candidate/target/GPU accept match CPU oracle in qualification.
-- [ ] Selected hidden/Conv/GDN/KV/provider state and following AR are exact.
-- [ ] Output tails, EOS/stop, cancel/deadline, prefix/pressure/compaction,
+- [x] C1/C2/C4 K1-K3 reject/every-partial/full exact gates pass.
+- [x] Candidate/target/GPU accept match CPU oracle in qualification.
+- [x] Selected hidden/Conv/GDN/KV/provider state and following AR are exact.
+- [x] Output tails, EOS/stop, cancel/deadline, prefix/pressure/compaction,
       failure/restart, and graph/eager miss paths pass.
-- [ ] Profile shows no pre-accept candidate/target-ID D2H or Python
+- [x] Profile shows no pre-accept candidate/target-ID D2H or Python
       `TargetVerifyBatch` reconstruction in the promoted route.
-- [ ] Proposal/target/accept/commit named kernels execute with plausible positive
+- [x] Proposal/target/accept/commit named kernels execute with plausible positive
       durations and zero unexpected scratch.
-- [ ] Common bridge/full suite is exact and non-regressive by category.
-- [ ] Publish artifact/rollup/changelog/worklog and commit.
+- [x] Common bridge/full suite is exact; C1 is positive by every category while
+      physical C2/C4 remain performance-blocked by measured acceptance economics.
+- [x] Publish artifact/rollup/changelog/worklog and commit.
 
 Exit: synchronization is one bounded final-result boundary, not a sequence of
 host materialize/reconstruct/re-upload steps.
