@@ -73,6 +73,8 @@ Evidence:
 - Dense physical target tuning while draft acceptance is near 12%-18%.
 - Prompt/token-conditioned acceptance policy or single-prompt promotion.
 - gfx1151 rates, thresholds, row policies, or manifests transferred to W7900.
+  P7's after-root provider snapshots are reusable source, but its 4.0x repair /
+  1.2%-1.4% request gain transfers only after an independent W7900 profile.
 
 ## 3. Current bottleneck ledger
 
@@ -83,7 +85,8 @@ Evidence:
 | 2 | Packed PARO C1 | Production trails AR only 2.1%, with 80.92% accepted drafts and qualified T2 verifier | Best candidate for physical C2 once direct C2 ownership is refreshed |
 | 3 | Dense physical C2 | Exact device mechanics but D8 K1 accepts 1/8 and runs at 0.503x AR | Keep K0; do not spend K2/K3/full suite without a proposal-quality premise |
 | 4 | Dense C1 residual | Required target/accept synchronization plus graph wall; no individual target primitive projects the campaign admission threshold | Reprofile only after activation contraction |
-| 5 | Packed physical C2/C4 | gfx1100 direct C2 exists, but request-major MTP proposal/frontier and c4/c8 owner symmetry are unqualified | Implement only after matched AR C2 control and state oracle |
+| 5 | Conditional provider repair | gfx1151 P7 proves after-root snapshots can cut physical repair ~4x, but W7900 C1 repair is only 4.95-6.56 ms/request and dense C2 acceptance is low | Transfer source only after a W7900 operation-complete profile projects >=1% request saving |
+| 6 | Packed physical C2/C4 | gfx1100 direct C2 exists, but request-major MTP proposal/frontier and c4/c8 owner symmetry are unqualified | Implement only after matched AR C2 control and state oracle |
 
 ## 4. Recovery phases
 
@@ -134,7 +137,8 @@ already-positive hot cycle.
    reduces the measured activation owner; hot-cycle-only wins are insufficient.
 
 Target: close the current 2.7%-3.9% staged-to-direct gap before another dense
-kernel candidate.
+kernel candidate. The merged P7 after-root snapshot path remains enabled source,
+but its gfx1151 physical gain does not establish a W7900 C1 activation win.
 
 ### R3 — Recover packed PARO C1, then physical C2
 

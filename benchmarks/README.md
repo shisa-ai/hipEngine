@@ -101,18 +101,15 @@ The exact `Q4_K_M` W8192 DMS sidecar passes 32K/128K at 100% top-1, saves
 3.750 GiB live K/V at 128K, and matches dense c1 decode. It stays default-off
 pending serving gates. [`DMS status`](../docs/DMS.md).
 
-SPECDEC2-PERF now closes its P4 device cycle. Strict C1/K2 runs proposal and
-N2 target→accept→selected commit as graph/device chains at **15.732 tok/s vs
-10.913 true AR (1.442x)** across the full suite, with every category positive.
-Physical C2/C4 completes device-resident candidate→target→GPU accept→selected
-commit with zero candidate D2H, zero warmed allocation/free, exact K1-K3 oracle
-coverage, and zero final ownership. It remains performance-blocked at
-**5.618/9.183 tok/s vs 15.530/28.766 true AR** because acceptance is only
-**18.43%**. P6 retains the exact small-row Q4 route admitted by P5: R6/R8/R12/R16
-target wall improves **1.74–2.35%**, and full-suite C2/C4 improves
-**5.618→5.718 (+1.77%) / 9.183→9.331 tok/s (+1.61%)**, with every category
-positive. Physical performance remains below true AR; automatic/product stays
-K0. [`P6 evidence`](results/2026-08-26-gfx1151-specdec2-perf-p6-q4-route-retained.json).
+SPECDEC2-PERF now retains its P7 conditional provider repair. Strict C1/K2
+remains **15.775 tok/s vs 11.026 true AR (1.431x)** across the full suite.
+Physical C2/C4 is exact, zero-D2H/allocation/final-ownership clean, and keeps the
+P6 Q4 route. P7 reduces mixed K2 repair **127.743→30.518 ms (4.186x) /
+138.779→34.292 ms (4.047x)** and improves full-suite throughput
+**5.718→5.796 (+1.37%) / 9.331→9.445 tok/s (+1.22%)**, with every physical
+category positive. Low **18.43%** acceptance still leaves it below
+**15.752/29.118 true-AR tok/s**; automatic/product stays K0.
+[`P7 evidence`](results/2026-08-26-gfx1151-specdec2-perf-p7-provider-repair-retained.json).
 
 gfx1100 SPECDEC2-PERF now retains corrected C1 device chains. Dense
 Qwen3.6-27B GGUF K1/K2/K3 is exact at **1.272x/1.407x/1.439x true AR**, but

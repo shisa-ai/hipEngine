@@ -1,6 +1,6 @@
 # SPECDEC2-PERF — gfx1151 Activation and Hot-Cycle Campaign
 
-- Status: **P3 stable slabs closed; P4 device-resident cycle next**
+- Status: **P7 conditional provider repair retained; P8 production FP16-state capability next**
 - Approved: **2026-08-25**
 - Functional predecessor: [`SPECDEC2.md`](SPECDEC2.md), S1-S6 closed
 - Performance owner: **stable physical host `gfx1151` agent**
@@ -834,21 +834,29 @@ Durable handoff: P6 checklist below.
 
 Durable handoff: P7 checklist below.
 
-Provider repair measured ~7.2 ms in C2/K2 before earlier phases, far below the
-392.8 ms target. It is revisited only after P2-P6 because relative ownership may
-change.
+P7 retains persistent after-root provider snapshots plus conditional physical
+repair. Reject restores the root snapshot, accepted `K-1` publishes the already-
+current proposal state, full acceptance advances only the last candidate, and
+other depths retain exact checkpoint replay. Cached mixed K2 repair improves
+**127.743→30.518 ms (4.186x)** at C2 and **138.779→34.292 ms (4.047x)** at C4;
+projected request saving is **1.173%/1.020%** and the matched one-prompt wall
+improves **1.345%/1.351%**. Full-suite physical throughput improves
+**5.718→5.796 (+1.37%) / 9.331→9.445 tok/s (+1.22%)**, every category is
+positive, while C1 is neutral/out of scope. Physical remains below true AR and
+automatic/product remains K0. Evidence:
+[`P7 retained`](../benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p7-provider-repair-retained.json).
 
-- [ ] Reprofile repair marker/kernel/synchronization/allocation wall.
-- [ ] Admit only at >=1.10x operation-complete repair and >=1% projected request
+- [x] Reprofile repair marker/kernel/synchronization/allocation wall.
+- [x] Admit only at >=1.10x operation-complete repair and >=1% projected request
       saving, or enough to cross a fixed-cell gate.
-- [ ] Prefer exact prefix-KV/live-cursor commit of already-produced rows over
+- [x] Prefer exact prefix-KV/live-cursor commit of already-produced rows over
       restore plus depth-by-depth replay when the Qwen3.8 NextN state contract
       permits it.
-- [ ] Preserve correction/bonus catch-up and canonical provider fingerprints.
-- [ ] Use persistent group workspace; no cycle malloc/free.
-- [ ] Gate reject/every-partial/full, following proposal/AR, failure rollback,
+- [x] Preserve correction/bonus catch-up and canonical provider fingerprints.
+- [x] Use persistent group workspace; no cycle malloc/free.
+- [x] Gate reject/every-partial/full, following proposal/AR, failure rollback,
       compaction/refill, memory, profile, and complete suite.
-- [ ] Publish retain/reject/no-go evidence and commit.
+- [x] Publish retain/reject/no-go evidence and commit.
 
 ## 17. P8 — production FP16 recurrent-state capability
 
@@ -1054,27 +1062,24 @@ Raw profiler dumps and terminal logs remain outside Git.
 
 ## 24. Current handoff to the gfx1151 agent
 
-Start with P4 from the committed P3 evidence. Do not begin by editing kernels.
-Use the stable claimed pointers to remove host materialization/synchronization
-between proposal, target, accept, and selected commit while preserving selected
-C1 streaming activation, physical replay fallback, long K0, and strict eager
-fallback.
+P1-P7 are closed. Begin P8 with the production FP16 recurrent-state profile;
+do not reopen strict target/provider work or start adaptive K/C8/overlap. The
+first RED contract is a runtime-resolved production manifest with explicit
+FP16-state GDN readers/writers and FP32 strict fallbacks. Then remove the two
+cold MTP2 FP16 capability guards only for that qualified manifest and preserve
+K0 before mutation for every unsupported profile/shape/context.
 
-The first expected implementation touchpoint is the mismatch between:
+Reuse the already-qualified general Qwen3.8 FP16-state kernels and historical
+strict-teacher calibration, but do not treat that evidence as SPECDEC2
+qualification. P8 still requires target-root/parent/candidate/selected-commit,
+rollback/following-AR controls plus fresh speculative category/transition
+numerics, determinism/isolation, task/BF16-relative applicability, profiler
+variant hashes, lifecycle, memory, and complete wall against production FP16
+AR.
 
-- retained `TargetHiddenChunkSink`, `_StreamingNextNPromptSink`, and
-  `Qwen35GGUFNextNExecutor.enqueue_prompt_rows()`; and
-- SPECDEC2 `Qwen35GGUFMTP2Adapter._catch_up_provider{,_batch}()`, which currently
-  consumes a prompt-sized host hidden slab after target prefill.
-
-After P2, eliminate hot allocation before enabling graphs. After stable pointers,
-make target→accept→commit genuinely device-resident. Only then profile the
-physical target and select one candidate. This ordering is binding unless fresh
-stable-host evidence changes it and the campaign ledger is updated before work.
-
-The independent gfx1100 S7 lane is already active with dense-GGUF and PARO C1
-foundations. It may continue concurrently, but shared-file edits—especially
-`qwen35_gguf_mtp2.py`, `qwen35_gguf_nextn.py`, `qwen35_gguf_runner.py`, and the
-SPECDEC2 source-of-truth docs—must be serialized through one merge owner. P10
-publishes reusable architecture and no-repeat lessons to S7, never gfx1151 rates,
-thresholds, profile manifests, policy fingerprints, or assumed graph buckets.
+The independent gfx1100 S7 lane may continue concurrently, but shared-file
+edits—especially `qwen35_gguf_mtp2.py`, `qwen35_gguf_nextn.py`,
+`qwen35_gguf_runner.py`, and the SPECDEC2 source-of-truth docs—must be serialized
+through one merge owner. P10 publishes reusable architecture and no-repeat
+lessons to S7, never gfx1151 rates, thresholds, profile manifests, policy
+fingerprints, or assumed graph buckets.

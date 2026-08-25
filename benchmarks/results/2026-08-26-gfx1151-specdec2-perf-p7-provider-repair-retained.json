@@ -1,0 +1,860 @@
+{
+  "correctness": {
+    "command": "uv run pytest -q tests/test_qwen35_gguf_nextn_checkpoint.py tests/test_qwen35_gguf_nextn_provider.py tests/test_qwen35_gguf_nextn_materialize.py tests/test_qwen35_gguf_mtp2_seam.py tests/test_qwen35_gguf_mtp_session.py tests/test_qwen35_gguf_mtp_e2e.py tests/test_gguf_native_spec_cycle.py tests/test_specdec2_c1_gate.py",
+    "focused_tests": "148 collected; 142 passed, 6 HIP-dependent skipped after final lifecycle/fallback additions",
+    "full_suite_all_exact": true,
+    "physical_k1_k2_k3_all_exact": true,
+    "physical_k1_k2_k3_cells": 6,
+    "zero_candidate_d2h": true,
+    "zero_final_ownership": true,
+    "zero_measured_cycle_allocations": true,
+    "zero_recoverable_failures": true
+  },
+  "date": "2026-08-26",
+  "decision": {
+    "automatic_policy": "K0 unchanged",
+    "next": "P8 production FP16 recurrent-state capability",
+    "physical_specdec2": "still performance_blocked_vs_true_ar",
+    "provider_repair": "retained"
+  },
+  "evidence": {
+    "candidate_c1_full": {
+      "bytes": 1202190,
+      "path": "/tmp/specdec2-p7-full-c1-k2-clean.json",
+      "sha256": "da4e4914a3e8356ed25349c66f98a7324e56d7e1b6fa7a20417575a136803ace"
+    },
+    "candidate_physical_full": {
+      "bytes": 4291330,
+      "path": "/tmp/specdec2-p7-full-c2c4-k2-clean.json",
+      "sha256": "db85c8565904a499cbe33589bd62a32a392b55fec64d3a06ba14257535817cd0"
+    },
+    "p6_artifact": {
+      "bytes": 22343,
+      "path": "/home/lhl/hipEngine/benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p6-q4-route-retained.json",
+      "sha256": "e45acdf7d7315e4310cdcd2b09e54c052d23f67bd4e4e0d2b51fcf9713b8a076"
+    },
+    "physical_k1_k2_k3_oracle": {
+      "bytes": 318334,
+      "path": "/tmp/specdec2-p7-clean-oracle-c2c4-k123.json",
+      "sha256": "b8a530a5bcf3037b220a6f46d315ef6353adf8bd38c73dc8b6fd72dc57f69112"
+    }
+  },
+  "full_suite": {
+    "1": {
+      "acceptance_histogram": {
+        "0": 41,
+        "1": 39,
+        "2": 195
+      },
+      "acceptance_rate": 0.7900552486187845,
+      "accepted_draft_tokens": 429,
+      "all_exact": true,
+      "arms": {
+        "legacy_native": {
+          "tok_s": 17.36966157994081,
+          "tokens": 750,
+          "wall_seconds": 43.17873417097144
+        },
+        "specdec2": {
+          "tok_s": 15.774643109024037,
+          "tokens": 750,
+          "wall_seconds": 47.54465725889895
+        },
+        "true_ar": {
+          "tok_s": 11.025998739606102,
+          "tokens": 750,
+          "wall_seconds": 68.02104895096272
+        }
+      },
+      "candidate_d2h_after_target": 0,
+      "categories": {
+        "code": 16.025885248247448,
+        "general_en": 16.010809053878724,
+        "general_ja": 15.653384613293689,
+        "mixed_ja_en": 15.191904786855664
+      },
+      "category_delta_percent": {
+        "code": -0.08493635723646475,
+        "general_en": -0.5500119553447647,
+        "general_ja": -0.48057091051664225,
+        "mixed_ja_en": 0.7030543116488763
+      },
+      "cells": 30,
+      "commit": "09c8cb6fb8dd0fb9e9632189793c6dba7eb1c871",
+      "generated_draft_tokens": 543,
+      "memory_after_close": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 23956197527,
+        "peak_allocations": 2305,
+        "total_allocated_bytes": 58438535552,
+        "total_freed_bytes": 58438535552
+      },
+      "nonzero_cycle_alloc_samples": 0,
+      "normalized_mtp_ar_ratio_delta_percent": -0.4703640553368027,
+      "p6_baseline": {
+        "all_exact": true,
+        "candidate_d2h_after_target": 0,
+        "cells": 30,
+        "commit": "49702d05d1b499c01d76cf2d3d4d01fac54ec68d",
+        "legacy_native": {
+          "tok_s": 17.30824301805097,
+          "tokens": 750,
+          "wall_seconds": 43.33195456163958
+        },
+        "memory_after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 23956197527,
+          "peak_allocations": 2305,
+          "total_allocated_bytes": 58438535552,
+          "total_freed_bytes": 58438535552
+        },
+        "nonzero_cycle_alloc_samples": 0,
+        "recoverable_failures": 0,
+        "specdec2": {
+          "tok_s": 15.789275974152973,
+          "tokens": 750,
+          "wall_seconds": 47.50059478520416
+        },
+        "specdec2_category_tok_s": {
+          "code": 16.039508622590105,
+          "general_en": 16.099357444557477,
+          "general_ja": 15.728973484382507,
+          "mixed_ja_en": 15.085843116377387
+        },
+        "true_ar": {
+          "tok_s": 10.984316226726827,
+          "tokens": 750,
+          "wall_seconds": 68.2791704571573
+        }
+      },
+      "recoverable_failures": 0,
+      "specdec2_tok_s_delta_percent": -0.09267597293814989,
+      "speculative_cycles": 275
+    },
+    "2": {
+      "acceptance_histogram": {
+        "0": 792,
+        "1": 90,
+        "2": 138
+      },
+      "acceptance_rate": 0.18429003021148035,
+      "accepted_draft_tokens": 366,
+      "all_exact": true,
+      "arms": {
+        "legacy_native": {
+          "tok_s": null,
+          "tokens": 0,
+          "wall_seconds": 0
+        },
+        "specdec2": {
+          "tok_s": 5.795792947817897,
+          "tokens": 1500,
+          "wall_seconds": 258.808417330496
+        },
+        "true_ar": {
+          "tok_s": 15.751798051488302,
+          "tokens": 1500,
+          "wall_seconds": 95.2272239078302
+        }
+      },
+      "candidate_d2h_after_target": 0,
+      "categories": {
+        "code": 5.548384258744068,
+        "general_en": 6.563184539171014,
+        "general_ja": 5.461751160633025,
+        "mixed_ja_en": 5.996177905395338
+      },
+      "category_delta_percent": {
+        "code": 1.39935743499775,
+        "general_en": 1.1998314908074459,
+        "general_ja": 1.4624152856628214,
+        "mixed_ja_en": 1.356787089037037
+      },
+      "cells": 30,
+      "commit": "09c8cb6fb8dd0fb9e9632189793c6dba7eb1c871",
+      "generated_draft_tokens": 1986,
+      "memory_after_close": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 24519369244,
+        "peak_allocations": 2276,
+        "total_allocated_bytes": 27088669740,
+        "total_freed_bytes": 27088669740
+      },
+      "nonzero_cycle_alloc_samples": 0,
+      "normalized_mtp_ar_ratio_delta_percent": 1.218428207727018,
+      "p6_baseline": {
+        "all_exact": true,
+        "candidate_d2h_after_target": 0,
+        "cells": 30,
+        "commit": "49702d05d1b499c01d76cf2d3d4d01fac54ec68d",
+        "legacy_native": {
+          "tok_s": null,
+          "tokens": 0,
+          "wall_seconds": 0
+        },
+        "memory_after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 24519369244,
+          "peak_allocations": 2276,
+          "total_allocated_bytes": 27088669740,
+          "total_freed_bytes": 27088669740
+        },
+        "nonzero_cycle_alloc_samples": 0,
+        "recoverable_failures": 0,
+        "specdec2": {
+          "tok_s": 5.717504786326413,
+          "tokens": 1500,
+          "wall_seconds": 262.3522071354091
+        },
+        "specdec2_category_tok_s": {
+          "code": 5.471814022392469,
+          "general_en": 6.485371015432161,
+          "general_ja": 5.3830289228338515,
+          "mixed_ja_en": 5.9159115808672835
+        },
+        "true_ar": {
+          "tok_s": 15.728358477781372,
+          "tokens": 1500,
+          "wall_seconds": 95.36913862428628
+        }
+      },
+      "recoverable_failures": 0,
+      "specdec2_tok_s_delta_percent": 1.369271463990951,
+      "speculative_cycles": 1020
+    },
+    "4": {
+      "acceptance_histogram": {
+        "0": 1584,
+        "1": 180,
+        "2": 276
+      },
+      "acceptance_rate": 0.18429003021148035,
+      "accepted_draft_tokens": 732,
+      "all_exact": true,
+      "arms": {
+        "legacy_native": {
+          "tok_s": null,
+          "tokens": 0,
+          "wall_seconds": 0
+        },
+        "specdec2": {
+          "tok_s": 9.444923993729372,
+          "tokens": 3000,
+          "wall_seconds": 317.63093085680157
+        },
+        "true_ar": {
+          "tok_s": 29.118192712653972,
+          "tokens": 3000,
+          "wall_seconds": 103.0283723170869
+        }
+      },
+      "candidate_d2h_after_target": 0,
+      "categories": {
+        "code": 9.08818777525787,
+        "general_en": 10.793544987148355,
+        "general_ja": 8.976641176296045,
+        "mixed_ja_en": 9.4993103397301
+      },
+      "category_delta_percent": {
+        "code": 1.2377871066120205,
+        "general_en": 1.1150334358064118,
+        "general_ja": 1.339688471269973,
+        "mixed_ja_en": 1.1283088826683496
+      },
+      "cells": 30,
+      "commit": "09c8cb6fb8dd0fb9e9632189793c6dba7eb1c871",
+      "generated_draft_tokens": 3972,
+      "memory_after_close": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 24519369244,
+        "peak_allocations": 2276,
+        "total_allocated_bytes": 27088669740,
+        "total_freed_bytes": 27088669740
+      },
+      "nonzero_cycle_alloc_samples": 0,
+      "normalized_mtp_ar_ratio_delta_percent": 1.1111408959317837,
+      "p6_baseline": {
+        "all_exact": true,
+        "candidate_d2h_after_target": 0,
+        "cells": 30,
+        "commit": "49702d05d1b499c01d76cf2d3d4d01fac54ec68d",
+        "legacy_native": {
+          "tok_s": null,
+          "tokens": 0,
+          "wall_seconds": 0
+        },
+        "memory_after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 24519369244,
+          "peak_allocations": 2276,
+          "total_allocated_bytes": 27088669740,
+          "total_freed_bytes": 27088669740
+        },
+        "nonzero_cycle_alloc_samples": 0,
+        "recoverable_failures": 0,
+        "specdec2": {
+          "tok_s": 9.331455632563939,
+          "tokens": 3000,
+          "wall_seconds": 321.4932501560543
+        },
+        "specdec2_category_tok_s": {
+          "code": 8.977070750951158,
+          "general_en": 10.674520514301875,
+          "general_ja": 8.857971947329345,
+          "mixed_ja_en": 9.393324623623878
+        },
+        "true_ar": {
+          "tok_s": 29.088033046903337,
+          "tokens": 3000,
+          "wall_seconds": 103.13519635936245
+        }
+      },
+      "recoverable_failures": 0,
+      "specdec2_tok_s_delta_percent": 1.215977074031871,
+      "speculative_cycles": 2040
+    }
+  },
+  "hardware": {
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "compiler": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "device": "AMD Radeon 8060S Graphics",
+    "gpu_max_hw_queues": "2",
+    "host": "gfx1151",
+    "power_policy": "stable physical host; external power cap not pinned",
+    "rocm": "HIP version: 7.15.0-0000000"
+  },
+  "implementation": {
+    "arithmetic_changed": false,
+    "commit": "09c8cb6fb8dd0fb9e9632189793c6dba7eb1c871",
+    "mechanism": "capture after-root provider state/cursor; reject restores root snapshot; accepted K-1 publishes current proposal state; full advances last candidate; other depths retain checkpoint replay",
+    "root_snapshot_commit": "a076d206cc7f2616af1fdb5fa3dbc37fbb908275",
+    "scope": "physical C2/C4 device proposal repair; strict fallback retained"
+  },
+  "kind": "specdec2_perf_p7_gfx1151_conditional_provider_repair",
+  "model": {
+    "execution_profile_manifest_sha256": "0e053fd658cacbc72a67b7e7ccf33927502a0fe9379faf14dac30ae6ee2bb65b",
+    "execution_profile_strict_manifest_sha256": "0e053fd658cacbc72a67b7e7ccf33927502a0fe9379faf14dac30ae6ee2bb65b",
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8060155376,
+        16120310752
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 16121359328,
+      "value": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa"
+    },
+    "kv": "BF16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "profile": "strict_fp32",
+    "quant": "Q4_K_S"
+  },
+  "operation_profiles": {
+    "2": {
+      "baseline": {
+        "accepted_counts": [
+          2,
+          2,
+          0,
+          1,
+          1,
+          2,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1
+        ],
+        "bridge": {
+          "bytes": 60740,
+          "path": "/tmp/specdec2-p7-repair-c2.json",
+          "sha256": "1bd3406782d448c766eb59440a1a9cd8676c13eef329dea3086974977b9d08ba"
+        },
+        "candidate_counts": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          1
+        ],
+        "commit": "232afb5920bdc3a10a8eeb0bb77e469bb0927b57",
+        "complete_wall_ms": 8290.448660030961,
+        "exact": true,
+        "first_cycle_allocation": {
+          "active_delta": 121,
+          "allocated_bytes": 977082292,
+          "current_bytes_delta": 971111076,
+          "freed_bytes": 5971216
+        },
+        "post_first_cycle_nonzero_alloc_samples": 0,
+        "recoverable_failures": 0,
+        "stage_ms": {
+          "arm_complete": 8290.424325037748,
+          "cycle_total": 5660.321075236425,
+          "proposal": 415.42097891215235,
+          "provider_repair_batch_device": 127.74324917700142,
+          "target_accept_commit_provider": 5242.925460101105
+        },
+        "trace": {
+          "api_calls": 1996,
+          "api_duration_ms": 104.139328,
+          "copy_kernel_dispatches": 283,
+          "device_synchronize": 17,
+          "evidence": {
+            "hip_api": {
+              "bytes": 17393390,
+              "path": "/tmp/specdec2-p7-repair-c2/gfx1151/3495746_hip_api_trace.csv",
+              "sha256": "66c98185d50d753eba95f81b97bc7e226887ca4fae3ef200ab61855a63309656"
+            },
+            "kernel": {
+              "bytes": 12163631,
+              "path": "/tmp/specdec2-p7-repair-c2/gfx1151/3495746_kernel_trace.csv",
+              "sha256": "61eb6ff50d38cafd9f0152667ad9204da87a15bbb6d100813fd7e8b28a1ec182"
+            },
+            "marker": {
+              "bytes": 17522,
+              "path": "/tmp/specdec2-p7-repair-c2/gfx1151/3495746_marker_api_trace.csv",
+              "sha256": "cf23a6f231e35da4a1098b51a1d003b124e02e15b4403a28e7f9c617eaafa5aa"
+            },
+            "memory_copy": {
+              "bytes": 110139,
+              "path": "/tmp/specdec2-p7-repair-c2/gfx1151/3495746_memory_copy_trace.csv",
+              "sha256": "27fe51b85034c4c95d670608e2b075018a2a41114c8c86d3dfe920ff69e7f7ce"
+            }
+          },
+          "hip_launch_kernel": 424,
+          "kernel_dispatches": 707,
+          "kernel_duration_ms": 114.974085,
+          "marker_ms": 127.8226,
+          "memory_copy_duration_ms": 0.0,
+          "memory_copy_events": 0,
+          "windows": 13
+        }
+      },
+      "candidate": {
+        "accepted_counts": [
+          2,
+          2,
+          0,
+          1,
+          1,
+          2,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1
+        ],
+        "bridge": {
+          "bytes": 60782,
+          "path": "/tmp/specdec2-p7-candidate-c2.json",
+          "sha256": "ebae107ae8f66252b9527f63e977d66728f4723563f2aa74265fdf4d87dcced7"
+        },
+        "candidate_counts": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          1
+        ],
+        "commit": "a076d206cc7f2616af1fdb5fa3dbc37fbb908275",
+        "complete_wall_ms": 8178.913919953629,
+        "exact": true,
+        "first_cycle_allocation": {
+          "active_delta": 121,
+          "allocated_bytes": 977082292,
+          "current_bytes_delta": 971111076,
+          "freed_bytes": 5971216
+        },
+        "post_first_cycle_nonzero_alloc_samples": 0,
+        "recoverable_failures": 0,
+        "stage_ms": {
+          "arm_complete": 8178.885626955889,
+          "cycle_total": 5545.919824857265,
+          "proposal": 413.94908109214157,
+          "provider_repair_batch_device": 30.51760687958449,
+          "target_accept_commit_provider": 5130.394550273195
+        },
+        "trace": {
+          "api_calls": 496,
+          "api_duration_ms": 25.500353,
+          "copy_kernel_dispatches": 76,
+          "device_synchronize": 4,
+          "evidence": {
+            "hip_api": {
+              "bytes": 17243927,
+              "path": "/tmp/specdec2-p7-candidate-c2/gfx1151/3509003_hip_api_trace.csv",
+              "sha256": "2fad2ce88e22e873d8ac19490a7b6c89322407059c5bccf425f6ea29b90e3007"
+            },
+            "kernel": {
+              "bytes": 12050534,
+              "path": "/tmp/specdec2-p7-candidate-c2/gfx1151/3509003_kernel_trace.csv",
+              "sha256": "d3afaa0926e33cffff11c59a5b00e38ea519accfebb2e34c1b07731197529f80"
+            },
+            "marker": {
+              "bytes": 17522,
+              "path": "/tmp/specdec2-p7-candidate-c2/gfx1151/3509003_marker_api_trace.csv",
+              "sha256": "0652907d056644a5db5b47df63b1d9617b27acc985047079cd8db93b436e8414"
+            },
+            "memory_copy": {
+              "bytes": 110139,
+              "path": "/tmp/specdec2-p7-candidate-c2/gfx1151/3509003_memory_copy_trace.csv",
+              "sha256": "be04dcd57a81f8e0382e6f3caba13c3c00dad21a3481d2e1788e0c02a70f6504"
+            }
+          },
+          "hip_launch_kernel": 104,
+          "kernel_dispatches": 180,
+          "kernel_duration_ms": 27.204525,
+          "marker_ms": 30.566886,
+          "memory_copy_duration_ms": 0.0,
+          "memory_copy_events": 0,
+          "windows": 13
+        }
+      },
+      "complete_wall_reduction_percent": 1.3453402180156004,
+      "projected_request_saving_percent": 1.1727428307487262,
+      "repair_reduction_percent": 76.11019989220785,
+      "repair_speedup": 4.18588684496288
+    },
+    "4": {
+      "baseline": {
+        "accepted_counts": [
+          2,
+          2,
+          0,
+          1,
+          1,
+          2,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1
+        ],
+        "bridge": {
+          "bytes": 90574,
+          "path": "/tmp/specdec2-p7-repair-c4.json",
+          "sha256": "d2b66141ed330188997200b4519b4e9118b8b8da4a0a3bfccd56cb2850c9d4de"
+        },
+        "candidate_counts": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          1
+        ],
+        "commit": "232afb5920bdc3a10a8eeb0bb77e469bb0927b57",
+        "complete_wall_ms": 10245.48338598106,
+        "exact": true,
+        "first_cycle_allocation": {
+          "active_delta": 121,
+          "allocated_bytes": 1954163700,
+          "current_bytes_delta": 1942221268,
+          "freed_bytes": 11942432
+        },
+        "post_first_cycle_nonzero_alloc_samples": 0,
+        "recoverable_failures": 0,
+        "stage_ms": {
+          "arm_complete": 10245.450534974225,
+          "cycle_total": 6679.59280195646,
+          "proposal": 662.9783601965755,
+          "provider_repair_batch_device": 138.77873111050576,
+          "target_accept_commit_provider": 6014.513180009089
+        },
+        "trace": {
+          "api_calls": 2470,
+          "api_duration_ms": 112.13289,
+          "copy_kernel_dispatches": 557,
+          "device_synchronize": 17,
+          "evidence": {
+            "hip_api": {
+              "bytes": 18087679,
+              "path": "/tmp/specdec2-p7-repair-c4/gfx1151/3496584_hip_api_trace.csv",
+              "sha256": "63bf380b4cc46a5173d2da688f3287b3e0dd219e14f7d6bf2ec2ebe2f32d6ab5"
+            },
+            "kernel": {
+              "bytes": 13069344,
+              "path": "/tmp/specdec2-p7-repair-c4/gfx1151/3496584_kernel_trace.csv",
+              "sha256": "0c2235f2d9f80b184493388f5164a6ce5f62be0ccd3371e1c5bac3842129e1fa"
+            },
+            "marker": {
+              "bytes": 22410,
+              "path": "/tmp/specdec2-p7-repair-c4/gfx1151/3496584_marker_api_trace.csv",
+              "sha256": "16782634b9f38edf4bfe9eebc529e1ce96d51453b1fbb153b6967d5530355467"
+            },
+            "memory_copy": {
+              "bytes": 110139,
+              "path": "/tmp/specdec2-p7-repair-c4/gfx1151/3496584_memory_copy_trace.csv",
+              "sha256": "c5a2254ce17b8699c95d1dde5627f3bfb1b537a0fc54b1f99107fcbc7ecdc02b"
+            }
+          },
+          "hip_launch_kernel": 474,
+          "kernel_dispatches": 1031,
+          "kernel_duration_ms": 123.774202,
+          "marker_ms": 138.853631,
+          "memory_copy_duration_ms": 0.0,
+          "memory_copy_events": 0,
+          "windows": 13
+        }
+      },
+      "candidate": {
+        "accepted_counts": [
+          2,
+          2,
+          0,
+          1,
+          1,
+          2,
+          0,
+          0,
+          0,
+          1,
+          0,
+          1,
+          1
+        ],
+        "bridge": {
+          "bytes": 90615,
+          "path": "/tmp/specdec2-p7-candidate-c4.json",
+          "sha256": "4dcbe28b564c2926c82a562dc46e16f6df458e4c99454779a396a9ef5d33b586"
+        },
+        "candidate_counts": [
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          1
+        ],
+        "commit": "a076d206cc7f2616af1fdb5fa3dbc37fbb908275",
+        "complete_wall_ms": 10107.11566300597,
+        "exact": true,
+        "first_cycle_allocation": {
+          "active_delta": 121,
+          "allocated_bytes": 1954163700,
+          "current_bytes_delta": 1942221268,
+          "freed_bytes": 11942432
+        },
+        "post_first_cycle_nonzero_alloc_samples": 0,
+        "recoverable_failures": 0,
+        "stage_ms": {
+          "arm_complete": 10107.0883810753,
+          "cycle_total": 6553.266447852366,
+          "proposal": 660.4911239119247,
+          "provider_repair_batch_device": 34.29238707758486,
+          "target_accept_commit_provider": 5891.043543932028
+        },
+        "trace": {
+          "api_calls": 636,
+          "api_duration_ms": 27.489968,
+          "copy_kernel_dispatches": 152,
+          "device_synchronize": 4,
+          "evidence": {
+            "hip_api": {
+              "bytes": 17906112,
+              "path": "/tmp/specdec2-p7-candidate-c4/gfx1151/3509770_hip_api_trace.csv",
+              "sha256": "e838decbaca29cc5949182df267de5deb8dd576c77d7cd8543646397a7a1a5ce"
+            },
+            "kernel": {
+              "bytes": 12921479,
+              "path": "/tmp/specdec2-p7-candidate-c4/gfx1151/3509770_kernel_trace.csv",
+              "sha256": "014ac90b7e8f89b06d0dc8d84796a9fd60f0fc420e3536e2f0a6ef5772bca668"
+            },
+            "marker": {
+              "bytes": 22410,
+              "path": "/tmp/specdec2-p7-candidate-c4/gfx1151/3509770_marker_api_trace.csv",
+              "sha256": "e5217aa806318562b25c951e701f419f356640ab08466110eebab40e11e8b89f"
+            },
+            "memory_copy": {
+              "bytes": 110139,
+              "path": "/tmp/specdec2-p7-candidate-c4/gfx1151/3509770_memory_copy_trace.csv",
+              "sha256": "06ae97c6f4291178aa2de528db12700cb8bd10af602d470342ede8e7ff973a2e"
+            }
+          },
+          "hip_launch_kernel": 120,
+          "kernel_dispatches": 272,
+          "kernel_duration_ms": 29.255413,
+          "marker_ms": 34.349335,
+          "memory_copy_duration_ms": 0.0,
+          "memory_copy_events": 0,
+          "windows": 13
+        }
+      },
+      "complete_wall_reduction_percent": 1.3505241066948503,
+      "projected_request_saving_percent": 1.0198283487130537,
+      "repair_reduction_percent": 75.28988282053194,
+      "repair_speedup": 4.046925365578244
+    }
+  },
+  "performance_claim": true,
+  "protocol": {
+    "c1_command": [
+      "/home/lhl/miniforge3/bin/python3.13",
+      "scripts/specdec2_perf_bridge.py",
+      "--model",
+      "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--target-arch",
+      "gfx1151",
+      "--quant-label",
+      "Q4_K_S",
+      "--scope",
+      "full",
+      "--concurrency",
+      "1",
+      "--budgets",
+      "2",
+      "--max-tokens",
+      "25",
+      "--runs",
+      "3",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/specdec2-p7-full-c1-k2-clean.json",
+      "--fail-on-fail"
+    ],
+    "physical_command": [
+      "/home/lhl/miniforge3/bin/python3.13",
+      "scripts/specdec2_perf_bridge.py",
+      "--model",
+      "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--target-arch",
+      "gfx1151",
+      "--quant-label",
+      "Q4_K_S",
+      "--scope",
+      "full",
+      "--concurrency",
+      "2,4",
+      "--budgets",
+      "2",
+      "--max-tokens",
+      "25",
+      "--runs",
+      "3",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/specdec2-p7-full-c2c4-k2-clean.json",
+      "--fail-on-fail"
+    ],
+    "profile_protocol": "single mixed_ja_en_translate natural25 cell, no harness warmup; first lazy cycle excluded from warmed-allocation verdict; rocprofv3 kernel/HIP/copy/marker traces",
+    "timing": {
+      "complete_wall": "host route entry through terminal GenerationOutput/reclaim; includes tokenize/admission/activation/decode/publication/reclaim",
+      "decode_only": "sum of Generation-2 staged cycle/ar-tail owners after prefill; legacy uses direct decoder decode_ms",
+      "memory": "process-local hipEngine malloc/free byte counters; library-internal allocations and exact call counts deferred to API trace/P3",
+      "stage_nesting": {
+        "nextn_prompt_prime": "nested inside initial provider_k0_attach or a later provider_open/refill attachment",
+        "proposal_and_target": "nested inside cycle_total",
+        "terminal_reclaim": "may include resident_owner_transition"
+      }
+    }
+  },
+  "provider_gate": {
+    "candidate_passed": true,
+    "captures_compared": 6,
+    "clean_candidate": {
+      "bytes": 76036,
+      "path": "/tmp/specdec2-p7-c2-provider-fingerprint-final.json",
+      "sha256": "7d157717c51fa25c8612f8cdd37671d63a2cee4c97b90df8f806b899f122fe6c"
+    },
+    "direct_cross_width_equal_diagnostic": false,
+    "ids_all_equal": true,
+    "p6_baseline_diagnostic": {
+      "bytes": 75961,
+      "path": "/tmp/specdec2-p7-p6-baseline-provider-fingerprint.json",
+      "sha256": "800f578dd5db048b37420e17966ab66e8ac0a0e7fd733ffdcd3a285aca6a856e"
+    },
+    "p6_to_p7_fingerprints_exact": true,
+    "same_slot_repeat_equal": true
+  },
+  "schema": 1,
+  "speed_claim_eligible": true,
+  "status": "retained",
+  "workload": {
+    "candidate_budget": 2,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "counterbalance": "even prompt+run index true_ar\u2192legacy_native\u2192specdec2; odd index reverse",
+    "heldout_ids": [
+      "code_markdown_table",
+      "general_en_explain",
+      "general_ja_explain",
+      "mixed_ja_en_review"
+    ],
+    "max_tokens": 25,
+    "prompt_file": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "runs": 3,
+    "sampling": "raw greedy; temperature=0, top_p=1"
+  }
+}
