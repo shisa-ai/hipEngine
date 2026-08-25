@@ -439,26 +439,35 @@ class Qwen35GGUFMTP2Adapter:
                             (int(token_id), *((0,) * budget)),
                             request_id=rid,
                         )
-                    draft = DraftBatch(
-                        request_ids=(rid,),
-                        candidate_tokens=(0,) * budget,
-                        parent_positions=tuple(
-                            int(target.position) + depth - 1
-                            for depth in range(1, budget + 1)
-                        ),
-                        draft_depths=tuple(range(1, budget + 1)),
-                        row_to_request=(rid,) * budget,
-                        mode="verify_chain",
-                    )
-                    verify_batch = TargetVerifyBatch.from_draft(
-                        draft,
-                        root_tokens=(int(token_id),),
-                        root_positions=(int(target.position),),
-                    )
-                    state.verifier.graph_bucket(
-                        ("specdec2", "verify_chain", budget + 1, "graph"),
-                        verify_batch,
-                    )
+                    for bucket_budget in range(1, budget + 1):
+                        draft = DraftBatch(
+                            request_ids=(rid,),
+                            candidate_tokens=(0,) * bucket_budget,
+                            parent_positions=tuple(
+                                int(target.position) + depth - 1
+                                for depth in range(1, bucket_budget + 1)
+                            ),
+                            draft_depths=tuple(
+                                range(1, bucket_budget + 1)
+                            ),
+                            row_to_request=(rid,) * bucket_budget,
+                            mode="verify_chain",
+                        )
+                        verify_batch = TargetVerifyBatch.from_draft(
+                            draft,
+                            root_tokens=(int(token_id),),
+                            root_positions=(int(target.position),),
+                        )
+                        for execution_route in ("graph", "eager"):
+                            state.verifier.graph_bucket(
+                                (
+                                    "specdec2",
+                                    "verify_chain",
+                                    bucket_budget + 1,
+                                    execution_route,
+                                ),
+                                verify_batch,
+                            )
                     state.device_chain_prepare_error = None
                 except Exception as exc:
                     state.device_chain_prepare_error = (

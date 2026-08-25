@@ -29,6 +29,30 @@ from hipengine.speculative.mtp_resident_draft import (
 )
 
 
+def test_native_target_binding_signature_covers_linear_commit_tables() -> None:
+    session = SimpleNamespace(
+        _prefill_hidden_a=None,
+        _prefill_hidden_b=None,
+        _verify_lm_out_indices_i32=None,
+        _lm_out_index=None,
+        _verify_linear_state_src_conv_table_buf=SimpleNamespace(ptr=0x1000),
+        _verify_linear_state_src_recurrent_table_buf=SimpleNamespace(ptr=0x2000),
+        _verify_linear_state_dst_conv_table_buf=SimpleNamespace(ptr=0x3000),
+        _verify_linear_state_dst_recurrent_table_buf=SimpleNamespace(ptr=0x4000),
+        scratch=None,
+        _bulk_prefill_scratch=None,
+        _verify_linear_conv_state_rows=(),
+        _verify_linear_recurrent_state_rows=(),
+        _verify_linear_conv_initial_snapshots=(),
+        _verify_linear_recurrent_initial_snapshots=(),
+        _verify_linear_initial_snapshot_users=0,
+    )
+
+    signature = native_cycle_mod._native_target_binding_signature(session)
+
+    assert signature == (0x1000, 0x2000, 0x3000, 0x4000)
+
+
 def test_compact_n2_result_validates_commit_from_visible_tokens_without_row_ids() -> None:
     kwargs = {
         "input_token_ids": [100, 0, 0],
