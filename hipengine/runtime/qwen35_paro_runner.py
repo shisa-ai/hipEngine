@@ -8120,6 +8120,7 @@ class Qwen35ParoResidentSession:
                 self.verify_capture_hidden_concat,
                 self.verify_ancestor_mask_u8,
                 self.verify_cache_slot_buf,
+                self.verify_tree_committed_buf,
             )
         )
     @staticmethod
