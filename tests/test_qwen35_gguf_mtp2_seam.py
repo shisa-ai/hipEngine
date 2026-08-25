@@ -203,6 +203,13 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
     assert adapter.capability(semantics) is None
 
 
+def test_fp16_target_disables_c1_device_proposal_graph() -> None:
+    target = SimpleNamespace(runner=SimpleNamespace(fp16_recurrent_state=True))
+    assert not Qwen35GGUFMTP2Adapter._target_graph_supported(target)
+    target.runner.fp16_recurrent_state = False
+    assert Qwen35GGUFMTP2Adapter._target_graph_supported(target)
+
+
 def test_physical_adapter_returns_device_candidate_graph_before_target(
     monkeypatch,
 ) -> None:

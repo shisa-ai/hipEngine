@@ -225,6 +225,12 @@ class Qwen35GGUFMTP2Adapter:
             "fp16" if bool(getattr(runner, "fp16_recurrent_state", False)) else "fp32"
         )
 
+    @staticmethod
+    def _target_graph_supported(target: Any) -> bool:
+        return not bool(
+            getattr(getattr(target, "runner", None), "fp16_recurrent_state", False)
+        )
+
     def register_request(self, request_id: int, candidate_budget: int) -> None:
         rid = int(request_id)
         budget = min(self.candidate_budget, max(1, int(candidate_budget)))
@@ -966,7 +972,8 @@ class Qwen35GGUFMTP2Adapter:
                     states[0].provider, "launch_device_proposal", None
                 )
                 target_device_ready = bool(
-                    callable(device_ready)
+                    self._target_graph_supported(targets[0])
+                    and callable(device_ready)
                     and device_ready(
                         budgets[0],
                         remaining_decode=remaining_by_id[ids[0]],
