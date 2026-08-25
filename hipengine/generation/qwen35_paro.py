@@ -2201,6 +2201,8 @@ class _ParoResidentLoopRow:
     mtp2_execution_routes: list[str] = field(default_factory=list)
     mtp2_provider_open_ms: float = 0.0
     mtp2_prompt_prime_ms: float = 0.0
+    mtp2_candidate_device_handoffs: int = 0
+    mtp2_candidate_d2h_after_target: int = 0
     mtp2_cycle_allocation_deltas: list[dict[str, int]] = field(default_factory=list)
 
 
@@ -3421,6 +3423,12 @@ class Qwen35ParoResidentModelRunner:
             "specdec2_mtp2_execution_routes": list(row.mtp2_execution_routes),
             "specdec2_mtp2_provider_open_ms": float(row.mtp2_provider_open_ms),
             "specdec2_mtp2_prompt_prime_ms": float(row.mtp2_prompt_prime_ms),
+            "specdec2_mtp2_candidate_device_handoffs": int(
+                row.mtp2_candidate_device_handoffs
+            ),
+            "specdec2_mtp2_candidate_d2h_after_target": int(
+                row.mtp2_candidate_d2h_after_target
+            ),
             "specdec2_mtp2_cycle_allocation_deltas": copy.deepcopy(
                 row.mtp2_cycle_allocation_deltas
             ),
