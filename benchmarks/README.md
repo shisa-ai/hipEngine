@@ -129,10 +129,17 @@ locates the five unique failures at model argument grounding (four) and tool
 selection (one), with zero runtime or unresolved rows.
 The frozen expanded suite and ZBook code sandbox subsequently qualify **34/34
 reference cases**, **10/10 fail-safe policy controls**, and **12/12 isolation
-probes** before any expanded model run or candidate.
+probes**. The clean Qwen3.6 expanded baseline then completes **44/68
+external-oracle observations (64.71%)**: development **20/34** and sealed
+heldout aggregate **24/34**. All 34 normalized response repeat pairs match,
+**56/56** published call blocks are declared/JSON/schema valid, all **10/10**
+policy controls pass, and final transient ownership is zero. Family rates are
+code **14/16**, instruction **4/16**, repository **10/16**, and tool selection
+**16/20**; this remains quality-only with no speed claim.
 [`AQ2 evidence`](results/2026-08-26-zbook-agentic-quality2-aq2-baseline.json) ·
 [`AQ3 taxonomy`](results/2026-08-26-zbook-agentic-quality2-aq3-taxonomy.json) ·
-[`AQ5 validation`](results/2026-08-26-zbook-agentic-quality2-aq5-validation-v2.json).
+[`AQ5 validation`](results/2026-08-26-zbook-agentic-quality2-aq5-validation-v2.json) ·
+[`AQ6 expanded baseline`](results/2026-08-26-zbook-agentic-quality2-aq6-expanded-baseline.json).
 
 ## Where detailed evidence lives
 
