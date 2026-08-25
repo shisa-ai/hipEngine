@@ -925,20 +925,18 @@ Strict C1/C2/C4 K1-K3 is exact and functional/default-off through R16; C8 lacks
 a speculative owner. Production FP16-state and every automatic C1-C32 cell
 select K0 before mutation.
 
-S6 performance did not justify promotion. The current-source P1 common bridge
-now gives a sharper verdict: strict C1 K1/K2/K3 is exact at
-**1.138x/1.300x/1.273x true AR**, with K2 positive in every category, while
-physical C2/C4 K2 remains **2.786x/3.142x true-AR wall**. Draft acceptance falls
-from **90.42% at C1/K2 to 18.43%** at C2/C4, and the physical cells require
-**67.37%/71.07%** wall reduction for 1.10x. This retains a C1 performance
-premise but promotes no automatic/product scope. Automatic K0 and the S6 load
-verdict remain in force.
+P2 now retains exact streaming prompt activation only for strict C1/K2:
+full-suite staged throughput improves **14.294→16.237 tok/s (+13.59%)**, every
+category is positive, and staged reaches **1.486x true AR** with one 10 KiB
+carried row. Physical C2/C4 streaming is rejected by category non-regression and
+keeps exact replay; contexts above 1023 select K0 before provider mutation after
+p4K/p16K eager diagnostics regress. This improves the C1 premise but promotes no
+automatic/product scope. Automatic K0 and the S6 load verdict remain in force.
 
 Two independent follow-ups are active. The stable-host gfx1151
-[`SPECDEC2-PERF`](SPECDEC2-PERF.md) owner has closed P1 and next integrates
-retained streaming NextN prompt priming, removes hot allocation, builds the
-bounded device-resident cycle, and profiles the remaining physical target
-ladder before any kernel edit. The gfx1100
+[`SPECDEC2-PERF`](SPECDEC2-PERF.md) owner has closed P2 and next removes hot
+allocation, builds the bounded device-resident cycle, and profiles the remaining
+physical target ladder before any kernel edit. The gfx1100
 [`SPECDEC2-GFX1100`](SPECDEC2-GFX1100.md) lane independently qualifies dense
 GGUF and PARO capabilities; its C1 foundations are complete and C2/C4/product
 gates remain. Shared-file work is serialized, while hardware rates, thresholds,

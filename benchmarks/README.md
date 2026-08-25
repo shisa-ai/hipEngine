@@ -101,13 +101,13 @@ The exact `Q4_K_M` W8192 DMS sidecar passes 32K/128K at 100% top-1, saves
 3.750 GiB live K/V at 128K, and matches dense c1 decode. It stays default-off
 pending serving gates. [`DMS status`](../docs/DMS.md).
 
-SPECDEC2-PERF P1 rebaselines current gfx1151 source with common complete/decode
-timing. Strict C1 K1/K2/K3 is exact at **1.138x/1.300x/1.273x true AR**;
-K2 is positive in every category and becomes the retained performance premise.
-Physical C2/C4 K2 remains blocked at **2.786x/3.142x true-AR wall** with only
-**18.43%** draft acceptance versus **90.42%** at C1/K2, requiring
-**67.37%/71.07%** total-wall reduction to reach 1.10x. Automatic policy remains
-K0; no product scope promotes. [`P1 evidence`](results/2026-08-25-gfx1151-specdec2-perf-p1-bridge.json).
+SPECDEC2-PERF P2 retains exact streaming prompt activation for strict C1/K2:
+full-suite throughput improves **14.294→16.237 tok/s (+13.59%)**, every category
+is positive, and staged reaches **1.486x true AR** with one 10 KiB carried row.
+Physical C2/C4 streaming is rejected because `general_en` regresses despite
+aggregate gains; exact replay remains. p4K/p16K eager streaming is also rejected
+and those contexts select K0 before provider mutation. Automatic/product policy
+remains K0; no public scope promotes. [`P2 evidence`](results/2026-08-25-gfx1151-specdec2-perf-p2-streaming-activation.json).
 
 gfx1100 S7 now retains two exact C1 foundations, both automatic K0: dense
 Qwen3.6-27B GGUF K1-K3 staged IDs match true AR/direct control, while packed
