@@ -1,6 +1,6 @@
 # AGENTIC-QUALITY2 — ZBook Agent Quality Campaign
 
-- **Status:** approved; active; AQ0-AQ2 complete, AQ3 failure taxonomy next
+- **Status:** approved; active; AQ0-AQ3 complete, AQ4 expanded-suite freeze next
 - **Approved:** 2026-08-25
 - **Execution host:** `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 - **Primary model:** Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV
@@ -558,13 +558,46 @@ unique failure classifications; AQ2 admits no implementation mechanism.
 
 ### AQ3 / Task #43 — failure taxonomy
 
-- [ ] Classify every AQ2 row under Section 6.
-- [ ] Compare public response, raw generated IDs/text where retained, independent
+- [x] Classify every AQ2 row under Section 6.
+- [x] Compare public response, raw generated IDs/text where retained, independent
       parser, tokenizer/template controls, finish details, and oracle execution.
-- [ ] Record earliest bad boundary and runtime/model/unresolved owner.
-- [ ] Add classifier tests and a compact taxonomy artifact.
-- [ ] Name candidate classes by aggregate failure evidence only; no implementation.
-- [ ] Commit.
+- [x] Record earliest bad boundary and runtime/model/unresolved owner.
+- [x] Add classifier tests and a compact taxonomy artifact.
+- [x] Name candidate classes by aggregate failure evidence only; no implementation.
+- [x] Commit.
+
+#### AQ3 result — five model-quality failures, zero runtime/unresolved
+
+The tested standalone classifier joins all 48 normalized rows one-to-one with
+raw checkpoint responses, verifies response-owned IDs, reconstructs pre-parser
+text from the exact GGUF tokenizer, and parses the generic Qwen envelope without
+calling the server parser. The compact result is
+[`2026-08-26-zbook-agentic-quality2-aq3-taxonomy.json`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq3-taxonomy.json).
+
+| Primary outcome / earliest bad boundary | Independent task blocks | Repeated observations | Owner |
+| --- | ---: | ---: | --- |
+| `passed` / none | 19 | 38 | none |
+| `wrong_arguments` / model-generated arguments | 4 | 8 | model quality |
+| `wrong_tool` / model tool selection | 1 | 2 | model quality |
+| Runtime implementation failure | **0** | **0** | — |
+| Unresolved | **0** | **0** | — |
+
+All 48 prompt token sequences decode→encode exactly. All 48 raw model texts are
+single canonical `<tool_call>` envelopes accepted by the independent parser,
+and every parsed tool/argument projection equals the public OpenAI response.
+All calls are schema-valid, terminate with `tool_calls`, contain empty public
+content, use zero repair attempts, and execute their external oracle. Final
+request-owned state remains zero; requests are stateless, so there is no session
+commit scope.
+
+The four argument failures are concrete model substitutions: query prose for
+`ValueError`, a file path for the requested directory, `release_validation` for
+`release_check_ja`, and `docs/release.md` for `docs/release_ja.md`. The selection
+failure chooses valid declared `read` instead of expected `grep`. Therefore AQ3
+nominates only aggregate classes `model_argument_grounding` (4/24) and
+`model_tool_selection` (1/24). It admits no implementation. The detokenization
+and persistent-ownership defects remain separately recorded pre-evidence
+runtime repairs and do not relabel model answers.
 
 ### AQ4 / Task #44 — freeze expanded suite
 
@@ -861,10 +894,10 @@ weights, caches, or profiler data.
 
 ## 18. Current handoff
 
-Start AQ3 / Task #43 from the qualified AQ2 compact artifact and raw checkpoint.
-Classify the five unique failed task blocks at their earliest bad boundary using
-public responses, response-owned IDs, reconstructed raw model text, independent
-parser/template controls, finish details, and executable oracle evidence. Keep
-the two repaired harness/runtime blockers separate from model-quality failures.
-Do not select or implement a mechanism until every AQ2 failure has an explicit
-runtime/model/unresolved owner and the compact taxonomy artifact is committed.
+Start AQ4 / Task #44 with the AQ3 conclusion frozen: current v2 has four
+model-argument-grounding failures and one model-tool-selection failure, with no
+runtime or unresolved row. Audit source/license/revision and choose a bounded
+original versus upstream-derived expanded suite honestly. Commit development
+and heldout IDs, prompts, schemas, external oracles, source records, and hashes
+before any candidate code. Do not use the public v2 failure strings as candidate
+conditions or inspect future heldout token streams during mechanism selection.
