@@ -165,7 +165,7 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
     assert capability.max_requests == 4
     assert capability.max_candidates_per_request == 3
     assert capability.max_frontier_rows == 16
-    assert capability.max_context_tokens == 4096
+    assert capability.max_context_tokens == 1023
 
     target.runner = SimpleNamespace(fp16_recurrent_state=True)
     assert adapter.capability(semantics) is None
