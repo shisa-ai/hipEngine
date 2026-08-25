@@ -118,6 +118,7 @@ class Qwen35GGUFMTP2Adapter:
         self._provider_groups: dict[tuple[int, ...], _MTP2ProviderGroup] = {}
         self._disabled_requests: set[int] = set()
         self._active_claims: ResourceClaimSet | None = None
+        self._active_prompt_claims: ResourceClaimSet | None = None
         self._transaction_sequence = 0
         self._batch_accept_workspace: RuntimeWorkspace | None = None
         self._batch_accept_owner: TargetVerifyBufferOwner | None = None
@@ -178,6 +179,17 @@ class Qwen35GGUFMTP2Adapter:
                 row.mtp2_candidate_budget = 0
                 row.mtp2_prompt_fallback_reason = "target_context_k0"
             return None
+        if self._active_prompt_claims is not None:
+            raise RuntimeError("GGUF MTP2 prompt activation claims are already reserved")
+        self._active_prompt_claims = ResourceClaimSet.from_mapping(
+            "gguf-mtp2-prompt:" + ",".join(str(request_id) for request_id in ids),
+            {
+                "gguf_mtp2.prompt_rows": sum(len(row.prompt_ids) for row in rows),
+                "gguf_mtp2.carried_hidden_rows": len(rows),
+                "gguf_mtp2.provider_request_slots": len(rows),
+            },
+            lifetime=ClaimLifetime.WORK_ITEM,
+        )
         missing = len(ids)
         group = next(
             (
@@ -205,6 +217,7 @@ class Qwen35GGUFMTP2Adapter:
             )
             if not callable(getattr(provider.executor, "enqueue_prompt_rows", None)):
                 self.generator._release_mtp_draft_runner(pool_key, provider)
+                self._active_prompt_claims = None
                 for row in rows:
                     row.mtp2_prompt_fallback_reason = "provider_no_streaming_prompt_abi"
                 return None
@@ -241,6 +254,7 @@ class Qwen35GGUFMTP2Adapter:
             self._abort_prompt_streaming(tuple(created), stream=0)
             if acquired and not group.request_ids:
                 self._provider_groups.pop(group.key, None)
+            self._active_prompt_claims = None
             raise
         return tuple(self._prompt_streaming_sinks[request_id] for request_id in ids)
 
@@ -323,6 +337,7 @@ class Qwen35GGUFMTP2Adapter:
                 self._prompt_streaming_group_keys.pop(request_id, None)
                 if sink is not None:
                     sink.close()
+            self._active_prompt_claims = None
 
     def _abort_prompt_streaming(
         self,
@@ -356,6 +371,7 @@ class Qwen35GGUFMTP2Adapter:
                     group.provider_pool_key,
                     group.provider,
                 )
+        self._active_prompt_claims = None
 
     def observe_prefill_result(self, request_id: int, prompt_ids: Sequence[int], result: Any) -> None:
         rid = int(request_id)
@@ -1746,6 +1762,7 @@ class Qwen35GGUFMTP2Adapter:
         self._prompt_hidden_rows.clear()
         self._disabled_requests.clear()
         self._active_claims = None
+        self._active_prompt_claims = None
         if self._batch_accept_workspace is not None:
             self._batch_accept_workspace.free()
             self._batch_accept_workspace = None
