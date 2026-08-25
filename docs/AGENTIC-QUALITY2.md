@@ -1,6 +1,6 @@
 # AGENTIC-QUALITY2 — ZBook Agent Quality Campaign
 
-- **Status:** approved; active; AQ0-AQ3 complete, AQ4 expanded-suite freeze next
+- **Status:** approved; active; AQ0-AQ4 complete, AQ5 fixture/oracle/sandbox validation next
 - **Approved:** 2026-08-25
 - **Execution host:** `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 - **Primary model:** Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV
@@ -601,15 +601,41 @@ runtime repairs and do not relabel model answers.
 
 ### AQ4 / Task #44 — freeze expanded suite
 
-- [ ] Audit public dataset source/license/revision and local availability.
-- [ ] Choose bounded original versus upstream-derived tasks honestly.
-- [ ] Freeze development/heldout IDs before candidate code.
-- [ ] Add tool, repository, patch, code, instruction, Japanese/mixed, and
+- [x] Audit public dataset source/license/revision and local availability.
+- [x] Choose bounded original versus upstream-derived tasks honestly.
+- [x] Freeze development/heldout IDs before candidate code.
+- [x] Add tool, repository, patch, code, instruction, Japanese/mixed, and
       fail-safe rows under the minimum coverage rule.
-- [ ] Add external oracle source data without expected answer leakage into
+- [x] Add external oracle source data without expected answer leakage into
       prompts.
-- [ ] Record canonical hashes and generation/adaptation process.
-- [ ] Commit suite/schema/oracle/docs/worklog as one unit.
+- [x] Record canonical hashes and generation/adaptation process.
+- [x] Commit suite/schema/oracle/docs/worklog as one unit.
+
+#### AQ4 result — project-original 17/17 split frozen
+
+[`AGENTIC-QUALITY2-SUITE.md`](AGENTIC-QUALITY2-SUITE.md) is the fixture card.
+It pins the exact six input/schema hashes, source/license revisions, creation
+method, split IDs, heldout policy, and AQ6 checkpoint plan. BFCL (Apache-2.0),
+HumanEval (MIT), MBPP (CC-BY-4.0), and IFEval (Apache-2.0) were audited at exact
+revisions; local HumanEval/MBPP copies exist under read-only `/home/lhl/omlx/`,
+but no upstream task, solution, assertion, test, or evaluator byte is imported.
+The suite is AGPL project-original and claims no official upstream score.
+
+The frozen suite contains 34 independent one-turn blocks: 17 development and 17
+heldout, with 5/5 tool-selection, 4/4 repository, 4/4 code, and 4/4 instruction
+rows. It includes single/nested/enum/optional/multiple/irrelevant automatic-tool
+shapes, read/search/patch/test, eight code entry points, eight behavioral
+instruction cases, 12 Japanese/mixed heldout blocks, five heldout patch/code
+blocks, and ten separate fail-safe controls. Expected result hashes, hidden code
+cases, patch replacement text, and reference results remain oracle-only;
+machine-readable instruction checks mirror public request constraints but store
+no reference prose. Expected code source and exact response prose are not stored.
+
+AQ4 executes no generated code and admits no mechanism. AQ5 must RED-test the
+new loader/schema relationships, independently prove every oracle, and establish
+or fail closed on the sandbox. Once qualified, AQ6 is 68 repeated model
+observations plus controls, estimated at 15–45 minutes after cached startup with
+atomic development→heldout→control checkpoints.
 
 ### AQ5 / Task #45 — fixture/oracle/sandbox validation
 
@@ -849,12 +875,15 @@ A no-go decision is a valid AQ8–AQ13 path.
 | Path | Campaign role |
 | --- | --- |
 | `docs/AGENTIC-QUALITY2.md` | This source-of-truth ledger. |
+| `docs/AGENTIC-QUALITY2-SUITE.md` | Frozen v1 source/license, split, hash, and execution card. |
 | `docs/AGENTIC-OPT.md` | Historical A0-A6 status and pointer to this follow-up. |
 | `hipengine/benchmark/agentic_quality.py` | Normalization, classification, aggregation, compact artifact. |
 | `scripts/agentic_coding_quality.py` | Live collector; no performance rollups. |
-| `benchmarks/prompts/agentic-quality-v*.json` | Versioned semantic task suites. |
-| `benchmarks/oracles/agentic-quality-v*.json` | Independent hermetic oracles. |
-| `benchmarks/schemas/agentic-coding-quality-*.schema.json` | Records/summary contracts. |
+| `benchmarks/prompts/agentic-quality*.json` | Versioned semantic task suites. |
+| `benchmarks/oracles/agentic-quality*.json` | Independent hermetic oracles. |
+| `benchmarks/sources/agentic-quality2-*.json` | Public-source audit and original-authorship record. |
+| `benchmarks/schemas/agentic-quality2-*.schema.json` | Expanded source/suite/oracle contracts. |
+| `benchmarks/schemas/agentic-coding-quality-*.schema.json` | Live records/summary contracts. |
 | `tests/test_agentic_coding_quality*.py` | Loader/oracle/classifier/artifact RED gates. |
 | `tests/test_agentic_server_conformance.py` | Public compatibility and fail-safe contract. |
 | `tests/fixtures/agentic_traces/` | Deterministic envelope/replay fixtures. |
@@ -894,10 +923,12 @@ weights, caches, or profiler data.
 
 ## 18. Current handoff
 
-Start AQ4 / Task #44 with the AQ3 conclusion frozen: current v2 has four
-model-argument-grounding failures and one model-tool-selection failure, with no
-runtime or unresolved row. Audit source/license/revision and choose a bounded
-original versus upstream-derived expanded suite honestly. Commit development
-and heldout IDs, prompts, schemas, external oracles, source records, and hashes
-before any candidate code. Do not use the public v2 failure strings as candidate
-conditions or inspect future heldout token streams during mechanism selection.
+Start AQ5 / Task #45 against the exact hashes in
+[`AGENTIC-QUALITY2-SUITE.md`](AGENTIC-QUALITY2-SUITE.md). RED duplicate IDs,
+split overlap, missing language, malformed counts, broken source/oracle links,
+unknown cases, expected-answer prompt leakage, and large-raw/compact coupling.
+Then implement the minimum loader/evaluator and independently prove all 34
+reference cases plus ten fail-safe controls. Before any generated code executes,
+RED network/filesystem/process/resource escapes and prove the full sandbox
+contract; if the host cannot provide it, mark code rows `blocked_sandbox` rather
+than weakening isolation. No GPU run or candidate mechanism belongs in AQ5.
