@@ -496,6 +496,36 @@ def test_packed_owner_commits_selected_linear_rows_once_for_the_group(
     assert [session._position for session in sessions] == [8, 9]
 
 
+def test_adapter_recovers_only_precommit_failure_with_canonical_target_cursors() -> None:
+    rows = {
+        10: SimpleNamespace(
+            slot=SimpleNamespace(seq_position=7),
+            lease=SimpleNamespace(session=SimpleNamespace(position=7)),
+            mtp2_recoverable_failures=0,
+            mtp2_failure_reasons=[],
+        ),
+        20: SimpleNamespace(
+            slot=SimpleNamespace(seq_position=9),
+            lease=SimpleNamespace(session=SimpleNamespace(position=9)),
+            mtp2_recoverable_failures=0,
+            mtp2_failure_reasons=[],
+        ),
+    }
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(_row=lambda request_id: rows[request_id])
+    plan = SimpleNamespace(speculative_request_ids=(10, 20))
+
+    assert adapter.recover_cycle_failure(plan, RuntimeError("injected")) is True
+    assert all(row.mtp2_recoverable_failures == 1 for row in rows.values())
+    assert all(
+        row.mtp2_failure_reasons == ["precommit_failure_ar_fallback"]
+        for row in rows.values()
+    )
+
+    rows[20].lease.session.position = 10
+    assert adapter.recover_cycle_failure(plan, RuntimeError("late")) is False
+
+
 @pytest.mark.parametrize(
     ("accepted", "expected_inputs", "full_tail"),
     [

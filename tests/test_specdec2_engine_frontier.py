@@ -187,6 +187,32 @@ def test_engine_drives_claims_proposal_and_frontier_before_target_commit() -> No
     assert loop.completed[request_id].generated_tokens == (1, 2, 8000)
 
 
+def test_recoverable_target_failure_falls_back_to_ar_without_killing_driver() -> None:
+    class RecoveringRunner(_StagedCycleRunner):
+        def recover_speculative_cycle_failure(self, plan, error):
+            self.stage_order.append("recover")
+            assert plan.request_ids == (0,)
+            assert "injected target frontier failure" in str(error)
+            return True
+
+    runner = RecoveringRunner(fail_target_once=True)
+    loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)
+    request_id = loop.submit_speculative(
+        [10],
+        max_new_tokens=2,
+        desired_candidate_count=1,
+    )
+
+    events = loop.poll(max_ticks=3)
+
+    assert runner.stage_order[-3:] == ["rollback", "release", "recover"]
+    assert runner.active_claims is None
+    assert loop.completed[request_id].generated_tokens == (9000, 9001)
+    assert [event.request_id for event in events if event.kind == "completed"] == [
+        request_id
+    ]
+
+
 def test_target_failure_rolls_back_releases_and_next_tick_runs_healthy_ar() -> None:
     runner = _StagedCycleRunner(fail_target_once=True)
     loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)

@@ -4817,6 +4817,8 @@ class _GGUFResidentLoopRow:
     mtp2_device_accept_calls: int = 0
     mtp2_selected_commit_batch_calls: int = 0
     mtp2_execution_routes: list[str] = field(default_factory=list)
+    mtp2_recoverable_failures: int = 0
+    mtp2_failure_reasons: list[str] = field(default_factory=list)
 
 
 def _compact_live_execution_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
@@ -6062,6 +6064,13 @@ class Qwen35GGUFResidentModelRunner:
         if adapter is not None:
             with hip_target_arch_environment(self.generator.target_arch):
                 adapter.rollback_cycle(plan, candidate_graph, error)
+
+    def recover_speculative_cycle_failure(self, plan, error) -> bool:
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            return False
+        with hip_target_arch_environment(self.generator.target_arch):
+            return bool(adapter.recover_cycle_failure(plan, error))
 
     def register_batch(
         self,
@@ -8138,6 +8147,9 @@ class Qwen35GGUFResidentModelRunner:
                         row.mtp2_candidate_readback_ms
                     ),
                     "specdec2_mtp2_k0_catchups": float(row.mtp2_k0_catchups),
+                    "specdec2_mtp2_recoverable_failures": float(
+                        row.mtp2_recoverable_failures
+                    ),
                 }
             )
         return GenerationOutput(
@@ -8260,6 +8272,10 @@ class Qwen35GGUFResidentModelRunner:
                 row.mtp2_selected_commit_batch_calls
             ),
             "specdec2_mtp2_execution_routes": list(row.mtp2_execution_routes),
+            "specdec2_mtp2_recoverable_failures": int(
+                row.mtp2_recoverable_failures
+            ),
+            "specdec2_mtp2_failure_reasons": list(row.mtp2_failure_reasons),
             "prefix_eligible": bool(row.prefix_eligible),
             "prefix_lookup": bool(row.prefix_lookup),
             "prefix_matched_tokens": int(row.prefix_matched_tokens),
