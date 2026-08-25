@@ -34,6 +34,12 @@ PROJECTION = {
     "Q3_K": "Q4_K",
     "IQ3_S": "Q4_K",
 }
+EXPLICIT_PROMOTIONS = {
+    # Spend the final <=5.30 bpw headroom on the trunk output projection. The
+    # Q6_K OI-7 artifact improved BF16-relative KL but narrowly missed the
+    # teacher-token PPL diagnostic; this is the direct convergence seam.
+    "output.weight": "Q8_0",
+}
 NEXTN_MINIMUMS = {
     "blk.64.attn_k.weight": "Q8_0",
     "blk.64.attn_output.weight": "Q6_K",
@@ -43,7 +49,11 @@ NEXTN_MINIMUMS = {
     "blk.64.ffn_gate.weight": "Q6_K",
     "blk.64.ffn_up.weight": "Q6_K",
     "blk.64.nextn.eh_proj.weight": "Q6_K",
-    "output.weight": "Q6_K",
+    # The 90-row BF16-teacher gate showed that Q6_K improves distributional KL
+    # over Q4_K_M but narrowly regresses teacher-token PPL. Q8_0 spends the
+    # remaining <=5.30 bpw budget on the final projection where it directly
+    # controls that diagnostic.
+    "output.weight": "Q8_0",
 }
 _TYPE_RANK = {"Q4_K": 4, "Q5_K": 5, "Q6_K": 6, "Q8_0": 8, "F32": 32}
 
@@ -141,6 +151,12 @@ def build_plan(
         if tuple(src.shape) != tuple(donor.shape):
             raise ValueError(f"shape mismatch for {name}")
         output_type = _project_type(donor.ggml_type_name)
+        explicit_minimum = EXPLICIT_PROMOTIONS.get(name)
+        if (
+            explicit_minimum is not None
+            and _TYPE_RANK[output_type] < _TYPE_RANK[explicit_minimum]
+        ):
+            output_type = explicit_minimum
         nparams = int(prod(int(dim) for dim in src.shape))
         nbytes = int(nbytes_for_shape(src.shape, GGMLQuantizationType[output_type]))
         total_params += nparams
@@ -164,6 +180,9 @@ def build_plan(
 
     effective_bpw = 8.0 * projected_bytes / total_params
     inventory_sha256 = hashlib.sha256("\n".join(inventory_records).encode()).hexdigest()
+    shape_manifest_sha256 = hashlib.sha256(
+        "\n".join(record.rsplit("\0", 1)[0] for record in inventory_records).encode()
+    ).hexdigest()
     type_manifest_sha256 = hashlib.sha256(
         "\n".join(f"{name}={output_types[name]}" for name in sorted(output_types)).encode()
     ).hexdigest()
@@ -214,11 +233,16 @@ def build_plan(
         "projection": {
             "native_types": sorted(NATIVE_TYPES),
             "unsupported_type_map": dict(sorted(PROJECTION.items())),
-            "policy": "promote unsupported sensitivity-template codecs; never requantize a quantized source",
+            "policy": (
+                "promote unsupported sensitivity-template codecs and declared quality "
+                "seams; never requantize a quantized source"
+            ),
+            "explicit_promotions": dict(sorted(EXPLICIT_PROMOTIONS.items())),
             "nextn_minimums": dict(sorted(NEXTN_MINIMUMS.items())),
             "promotions": promotions,
         },
         "tensor_inventory_sha256": inventory_sha256,
+        "tensor_shape_manifest_sha256": shape_manifest_sha256,
         "output_type_manifest_sha256": type_manifest_sha256,
         "sensitivity_template_types": template_types,
         "output_types": output_types,

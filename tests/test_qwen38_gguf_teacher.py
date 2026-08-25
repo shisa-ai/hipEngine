@@ -24,6 +24,7 @@ def test_qwen38_gguf_teacher_parser_requires_model_identity(tmp_path: Path) -> N
     assert args.model.name == "teacher.gguf"
     assert args.model_sha256 == "a" * 64
     assert args.backend == "hip_gfx1151"
+    assert args.allow_unqualified_diagnostic is False
 
 
 def test_qwen38_teacher_prompt_hash_is_canonical() -> None:

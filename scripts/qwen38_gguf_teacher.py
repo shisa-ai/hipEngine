@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture a Qwen3.8 GGUF BF16 teacher fixture and full-logit cache."""
+"""Capture an unqualified hipEngine BF16 diagnostic (not a quality oracle)."""
 
 from __future__ import annotations
 
@@ -48,6 +48,11 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def capture(args: argparse.Namespace) -> int:
+    if not args.allow_unqualified_diagnostic:
+        raise RuntimeError(
+            "hipEngine Qwen3.8 BF16 trunk execution is not a qualified quality oracle; "
+            "use scripts/qwen38_llama_teacher.py or pass the explicit diagnostic override"
+        )
     model = Path(args.model).resolve()
     prompts_path = Path(args.prompts).resolve()
     output_dir = Path(args.output_dir).resolve()
@@ -119,7 +124,7 @@ def capture(args: argparse.Namespace) -> int:
                     "id": str(row["id"]),
                     "category": str(row["category"]),
                     "split": "heldout" if str(row["id"]) in HELDOUT_PROMPT_IDS else "train",
-                    "messages": row["messages"],
+                    "prompt": str(row["prompt"]),
                     "prompt_token_ids": list(prompt_ids),
                     "prompt_token_ids_sha256": _sha256_json(prompt_ids),
                     "teacher_token_ids": teacher,
@@ -151,7 +156,7 @@ def capture(args: argparse.Namespace) -> int:
         "schema": 1,
         "kind": "quant_quality_full_logits_cache",
         "protocol_id": PROTOCOL_ID,
-        "name": "Qwen3.8 merged BF16 GGUF / hipEngine",
+        "name": "UNQUALIFIED Qwen3.8 merged BF16 GGUF / hipEngine diagnostic",
         "runtime": f"hipEngine ({args.backend})",
         "model_path": str(model),
         "model_sha256": str(args.model_sha256),
@@ -162,7 +167,7 @@ def capture(args: argparse.Namespace) -> int:
         "shape": [n_rows, vocab_size],
         "dtype": "float16",
         "elapsed_seconds": elapsed,
-        "role": "reference",
+        "role": "diagnostic_not_reference",
         "teacher_generation": "greedy argmax",
     }
     _write_json(manifest_path, manifest)
@@ -174,10 +179,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--model-sha256", required=True)
-    parser.add_argument("--prompts", type=Path, default=Path("benchmarks/prompts/mtpbench-code-general-ja.jsonl"))
+    parser.add_argument(
+        "--prompts",
+        type=Path,
+        default=Path("benchmarks/prompts/mtpbench-code-general-ja.jsonl"),
+    )
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument(
+        "--allow-unqualified-diagnostic",
+        action="store_true",
+        help="capture the known-unqualified hipEngine BF16 path for debugging only",
+    )
     parser.add_argument("--output-dir", type=Path, required=True)
     return parser
 
