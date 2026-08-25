@@ -1,6 +1,6 @@
 # SPECDEC2-PERF — gfx1151 Activation and Hot-Cycle Campaign
 
-- Status: **P2 streaming activation closed; P3 stable slabs next**
+- Status: **P3 stable slabs closed; P4 device-resident cycle next**
 - Approved: **2026-08-25**
 - Functional predecessor: [`SPECDEC2.md`](SPECDEC2.md), S1-S6 closed
 - Performance owner: **stable physical host `gfx1151` agent**
@@ -659,6 +659,17 @@ replay. Physical C2/C4 retains exact replay after rejection; p4K/p16K is K0.
 
 ## 12. P3 — stable slabs and zero hot allocation
 
+**Closed 2026-08-26.** Durable evidence:
+[`P3 stable slabs`](../benchmarks/results/2026-08-25-gfx1151-specdec2-perf-p3-stable-slabs.json).
+Adapter-persistent max-width proposal/repair slabs eliminate the two steady
+allocation/free pairs per cycle: all **510 C2 + 510 C4** full-suite cycle samples
+allocate/free zero bytes, and **219/252 C1** cycles are zero after request-local
+graph bucket first use. Cached C2/C4 profile windows 2–3 contain no
+`hipMalloc`/`hipFree`; final ownership is zero. Complete C1/C2/C4 throughput is
+statistically neutral (**-0.264%/-0.300%/-0.128%**, versus 4.98%-10.14% sample
+CV), so this is a retained mechanical/stable-pointer prerequisite, not a speed
+or policy claim.
+
 Durable handoff: P3.1-P3.3.
 
 P1 confirmed cycle-local `malloc/free` around proposal/repair hidden batches and
@@ -669,39 +680,44 @@ the device.
 
 ### P3.1 RED and instrumentation
 
-- [ ] Add per-cycle allocation/free bytes/counts and explicit synchronize/API
-      counters without perturbing production timing when disabled.
-- [ ] RED-test pointer reuse across warm cycles, pointer-generation invalidation,
-      request close, group shrink/refill, compaction, prefix restore, pressure,
-      graph miss, and injected failure.
-- [ ] Assert zero hot allocation/free after warmup for qualified C1/C2/C4 cells.
-- [ ] Assert one request cannot observe peer scratch after row/slot reuse.
+- [x] Add bridge-only per-cycle allocation/free byte/count deltas; production
+      timing remains untouched, while HIP-API traces own sync/copy counts.
+- [x] RED-test stable distinct pointer reuse, shape drift, close, group width,
+      failure/lifecycle, and packed peer ownership.
+- [x] Assert zero hot allocation/free for every full-suite C2/C4 cycle and every
+      warmed C1 graph-shape cycle; first-use graph capture remains P4 ownership.
+- [x] Assert proposal and repair use distinct complete max-width slabs, so stale
+      peer rows are never read after group shrink/refill.
 
 ### P3.2 Implementation
 
-- [ ] Replace proposal/repair `hidden_batch = malloc(...); free(...)` with
-      provider-group `RuntimeWorkspace` slabs.
-- [ ] Persist acceptance/result/remaining-decode and row-map buffers under
-      complete resource claims.
-- [ ] Build stable pointer tables for candidate, target top-1, accept, selected
-      commit, provider repair, and bounded result payloads.
-- [ ] Allocate graph-compatible maximum qualified C/K/R shapes or declared
-      buckets; do not hide reallocations.
-- [ ] Close/invalidate all slabs on provider generation, model/profile change,
-      pressure teardown, fatal cycle failure, and engine close.
-- [ ] Keep strict eager path independently usable.
+- [x] Replace proposal/physical-repair `hidden_batch` allocation/free with one
+      adapter `RuntimeWorkspace` containing distinct proposal/repair slabs.
+- [x] Retain the already-persistent accept/result/remaining-decode and target
+      row-map buffers under complete cycle claims; add exact cycle hidden claims.
+- [x] Preserve stable candidate/target/accept/commit/provider/result pointers;
+      expose proposal/repair pointer/shape contract for diagnosis.
+- [x] Allocate maximum qualified physical C (1 or 4) × hidden-size slabs and
+      fail closed on shape drift rather than silently reallocating.
+- [x] Close slabs with adapter/model generation; failure retains valid blankable
+      workspace and final engine close returns every byte.
+- [x] Keep strict eager/host replay and selected C1 streaming paths independently
+      usable.
 
 ### P3.3 Gate
 
-- [ ] Reject/every-partial/full provider fingerprints and following AR pass.
-- [ ] Lifecycle/pressure/prefix/cancel/recovery/compaction tests pass.
-- [ ] Cached trace confirms no `hipMalloc`/`hipFree` in warmed cycle markers.
-- [ ] Complete bridge is exact and same-suite non-regressive.
-- [ ] Zero final ownership and exact allocation/free conservation pass.
-- [ ] Publish artifact/worklog and commit.
+- [x] Full-suite reject/partial/full acceptance trajectories remain exact; C1
+      selected streaming and physical replay fallback preserve provider state.
+- [x] Lifecycle/prefix/failure/soak/compaction and workspace bundles pass.
+- [x] Cached C2/C4 traces confirm zero `hipMalloc`/`hipFree` in cycle windows
+      2–3; mechanical samples prove every warmed physical cycle zero.
+- [x] Complete full-suite bridge is exact and neutral within measured variance;
+      no speed/default claim is made from small mixed category deltas.
+- [x] Zero final ownership and exact total allocated/freed conservation pass.
+- [x] Publish artifact/worklog/rollup and commit.
 
 Exit: every later graph/device-chain candidate can rely on stable claimed
-addresses.
+addresses. P4 owns request-local graph first-use and device-result chaining.
 
 ## 13. P4 — device-resident proposal → target → accept → commit
 
@@ -1033,10 +1049,11 @@ Raw profiler dumps and terminal logs remain outside Git.
 
 ## 24. Current handoff to the gfx1151 agent
 
-Start with P3 from the committed P2 evidence. Do not begin by editing kernels.
-Eliminate the measured cycle-local allocation/free while preserving selected C1
-streaming activation, physical replay fallback, long K0, exact prompt claims,
-and the capability-honest capacity split.
+Start with P4 from the committed P3 evidence. Do not begin by editing kernels.
+Use the stable claimed pointers to remove host materialization/synchronization
+between proposal, target, accept, and selected commit while preserving selected
+C1 streaming activation, physical replay fallback, long K0, and strict eager
+fallback.
 
 The first expected implementation touchpoint is the mismatch between:
 

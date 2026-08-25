@@ -106,8 +106,11 @@ full-suite throughput improves **14.294→16.237 tok/s (+13.59%)**, every catego
 is positive, and staged reaches **1.486x true AR** with one 10 KiB carried row.
 Physical C2/C4 streaming is rejected because `general_en` regresses despite
 aggregate gains; exact replay remains. p4K/p16K eager streaming is also rejected
-and those contexts select K0 before provider mutation. Automatic/product policy
-remains K0; no public scope promotes. [`P2 evidence`](results/2026-08-25-gfx1151-specdec2-perf-p2-streaming-activation.json).
+and those contexts select K0 before provider mutation. P3 additionally removes
+the two steady proposal/repair allocation pairs: every physical full-suite cycle
+and warmed profiler window is allocation-free, with complete wall neutral within
+noise. Automatic/product policy remains K0; no public scope promotes.
+[`P3 evidence`](results/2026-08-25-gfx1151-specdec2-perf-p3-stable-slabs.json).
 
 gfx1100 S7 now retains two exact C1 foundations, both automatic K0: dense
 Qwen3.6-27B GGUF K1-K3 staged IDs match true AR/direct control, while packed
