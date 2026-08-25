@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-25**
+Last updated: **2026-08-26**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -118,6 +118,14 @@ PARO K1 production/strict staged IDs match AR with streaming NextN prompt
 priming. PARO remains performance-blocked on the short screen (`0.731 s` staged
 vs `0.670 s` AR); physical C2/C4 is not yet exposed for either lane.
 [`S7 plan`](../docs/SPECDEC2-GFX1100.md).
+
+The current Strix Halo Qwen3.6 automatic-tool quality denominator completes
+**38/48 external-oracle observations (79.17%)**, with **48/48 valid calls**,
+**46/48 correct tools**, and exact normalized equality across 24 repeat pairs.
+All patch/test observations pass and final request-owned state is zero. This is
+a quality-only current-source baseline, not a speed row or a same-protocol
+comparison with the historical W7900 packet.
+[`AQ2 evidence`](results/2026-08-26-zbook-agentic-quality2-aq2-baseline.json).
 
 ## Where detailed evidence lives
 

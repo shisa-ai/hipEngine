@@ -176,6 +176,8 @@
         "kv_pinned_pages": {"const": 0},
         "graph_owners": {"const": 0},
         "workspace_owners": {"const": 0},
+        "cache_resident_entries": {"type": "integer", "minimum": 0},
+        "cache_resident_pages": {"type": "integer", "minimum": 0},
         "cache_resident_bytes": {"type": "integer", "minimum": 0},
         "allowed_cache_bytes": {"type": "integer", "minimum": 0}
       }

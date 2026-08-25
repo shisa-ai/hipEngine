@@ -1,0 +1,610 @@
+{
+  "campaign": {
+    "name": "AGENTIC-QUALITY2",
+    "next_phase": "AQ3_failure_taxonomy",
+    "phase": "AQ2",
+    "task_id": 42
+  },
+  "coverage": {
+    "blocked": 0,
+    "complete_observations": 48,
+    "families": 4,
+    "generated_response_owned_tokens": 856,
+    "observations": 48,
+    "task_blocks": 24,
+    "unscorable": 0,
+    "workloads": 6
+  },
+  "date": "2026-08-26",
+  "determinism": {
+    "evaluated": true,
+    "expected_repetitions": 2,
+    "incomplete_rows": [],
+    "mismatches": [],
+    "passed": true,
+    "task_rows": 24
+  },
+  "excluded_attempts": [
+    {
+      "directory": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-180246",
+      "reason": "pre-generation Qwen detokenize HTTP 500; no quality row"
+    },
+    {
+      "directory": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r1-180806",
+      "reason": "require-cached AOTriton miss and old absolute-ownership timeout; warm outputs excluded"
+    }
+  ],
+  "failure_nominations": [
+    {
+      "expected_tool": "grep",
+      "external_oracle_error": null,
+      "finish": {
+        "detail_reason": "tool_calls",
+        "reason": "tool_calls"
+      },
+      "generated_token_ids_sha256": "36e58c67aaea762ed7e4cb2d34994e4c08cf21006e5a8c981c87095caa9a7fcb",
+      "outcome": "oracle_failed",
+      "selected_tool": "grep",
+      "taxonomy_status": "pending_aq3",
+      "turn_index": 0,
+      "workload_id": "repository_scheduler_en"
+    },
+    {
+      "expected_tool": "grep",
+      "external_oracle_error": "ValueError: selected tool 'read' is not 'grep'",
+      "finish": {
+        "detail_reason": "tool_calls",
+        "reason": "tool_calls"
+      },
+      "generated_token_ids_sha256": "79fdc1f60d59d31bd22a78b7a782d4bc8f62c52a9903b06952141ba648940a6c",
+      "outcome": "wrong_tool",
+      "selected_tool": "read",
+      "taxonomy_status": "pending_aq3",
+      "turn_index": 0,
+      "workload_id": "repository_cache_en"
+    },
+    {
+      "expected_tool": "grep",
+      "external_oracle_error": null,
+      "finish": {
+        "detail_reason": "tool_calls",
+        "reason": "tool_calls"
+      },
+      "generated_token_ids_sha256": "111fc70d07199eaf0d2273fa9a0d625e0d0d330c157e1de68c62803665c183f4",
+      "outcome": "oracle_failed",
+      "selected_tool": "grep",
+      "taxonomy_status": "pending_aq3",
+      "turn_index": 1,
+      "workload_id": "general_en_release"
+    },
+    {
+      "expected_tool": "lookup",
+      "external_oracle_error": null,
+      "finish": {
+        "detail_reason": "tool_calls",
+        "reason": "tool_calls"
+      },
+      "generated_token_ids_sha256": "b9d593c231074cf48593b216275741978c30bb973f57f5cd5adb2aca14f82748",
+      "outcome": "oracle_failed",
+      "selected_tool": "lookup",
+      "taxonomy_status": "pending_aq3",
+      "turn_index": 0,
+      "workload_id": "general_ja_operations"
+    },
+    {
+      "expected_tool": "grep",
+      "external_oracle_error": null,
+      "finish": {
+        "detail_reason": "tool_calls",
+        "reason": "tool_calls"
+      },
+      "generated_token_ids_sha256": "9741629d2fa1181c95e8c8b1247a62e2ef53a1b02a56b244a25fc091762df25a",
+      "outcome": "oracle_failed",
+      "selected_tool": "grep",
+      "taxonomy_status": "pending_aq3",
+      "turn_index": 0,
+      "workload_id": "mixed_ja_en_release"
+    }
+  ],
+  "host": {
+    "backend": "hip_gfx1151",
+    "compiler_version_file_sha256": "ad3918eb84fce2726c18e70b7fc64dbe4257e3082fec4996e22f3dc3b2522214",
+    "device": "AMD Radeon 8060S Graphics",
+    "gpu_max_hw_queues": 1,
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git c47eb2110e548756a7cfbc3abc6e7a0c749d5cf5)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "kernel": "7.2.0-1-cachyos",
+    "name": "zbook",
+    "physical_host_identity_sha256": "2b6361f2712ebb5bf2643b6c2d764154dd6163d4980f311f4787145633011b15",
+    "power_policy": {
+      "fast_w": 71,
+      "slow_w": 60,
+      "stapm_w": 71,
+      "thermal_c": 100
+    },
+    "rocm": "HIP version: 7.15.0-0000000",
+    "target_arch": "gfx1151",
+    "total_ttm_bytes": 133143986176,
+    "visible_device": "HIP_VISIBLE_DEVICES=0; ROCR_VISIBLE_DEVICES unset"
+  },
+  "inputs": {
+    "expected_answer_in_prompt": false,
+    "fixture_mutation_after_aq0": false,
+    "oracle_path": "benchmarks/oracles/agentic-quality-v2.json",
+    "oracle_sha256": "1252c2b0af2492f24c3d4bce5437e1806b6a771753574ed27af5ecff60f3f2b9",
+    "suite": "agentic-quality-v2",
+    "workload_ids_sha256": {
+      "general_en_operations": "0370049c2614e3d79aeaae1d55c2ecbff698237aa82f788a0edec3722c9f5c56",
+      "general_en_release": "6ef8056ffafc8d17da5198662a49f71b09e3e5083a0434c27faf54c89ff897e2",
+      "general_ja_operations": "d5fb3dd97338e8e70d0e70453d63b10a51d539d30c7f442b3f1266486edd98ce",
+      "mixed_ja_en_release": "e5554bc0852932b251af72169182b16e3006a744ecefa4ba7b9216b465e71b0e",
+      "repository_cache_en": "fe13a5b7fc79a5c95c430c2c8de0dc399bb9cf529e96514c17405dd8d536ed55",
+      "repository_scheduler_en": "a1bcbd0b57bcff7457c94a1ec38352a20bfc6d9165b3e97e8e97da1229bcdeca"
+    },
+    "workload_path": "benchmarks/prompts/agentic-quality-v2.json",
+    "workload_sha256": "74903e7225deebcab4427f08eb9a5d4a64015d86c24d134ecbcbde78abb50652"
+  },
+  "interpretation": {
+    "decision": "retain as the current ZBook v2 denominator and proceed to failure taxonomy",
+    "historical_w7900_comparison": "not an old-to-new comparison: host, backend, source, constraints, and corrected broad-oracle scoring differ",
+    "implementation_decision": "none; AQ3 must classify the five unique failed task blocks before any candidate is selected"
+  },
+  "kind": "hipengine_agentic_quality_campaign_baseline",
+  "model": {
+    "chat_template_json_sha256": "c016c3260e41e4909b42f77a01de1013b1689f5ffcab35e52a81060c512da289",
+    "execution_profile": "strict",
+    "execution_profile_manifest_sha256": "6f6af11c059dbd02d458405bfa9d70ef0ea4a38daaa47a884c4f52b7a489fc41",
+    "gguf_architecture": "qwen35moe",
+    "kv_storage": "bf16",
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "sampled_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 22663387424,
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+    },
+    "served_name": "Qwen3.6-35B-A3B",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "size_bytes": 22663387424,
+    "tokenizer_merges_json_sha256": "7e299304d9ad9dc312acdbcb1f6ccf0dce1256bf1aa986d651f13814dfd27e7b",
+    "tokenizer_pre": "qwen35",
+    "tokenizer_vocab_json_sha256": "5ee0f927bcaa4b9fe85c244776ae9487468e427f83e053fc81f2a186f14936a3"
+  },
+  "ownership": {
+    "final_request_session_deltas": {
+      "active_requests": 0,
+      "allowed_cache_bytes": 0,
+      "cache_resident_bytes": 0,
+      "graph_owners": 0,
+      "kv_pinned_pages": 0,
+      "kv_refcounted_pages": 0,
+      "model_active_requests": 0,
+      "pending_requests": 0,
+      "session_count": 0,
+      "stream_producers": 0,
+      "workspace_owners": 0
+    },
+    "initial_persistent": {
+      "kv_pinned_pages": 128,
+      "kv_refcounted_pages": 128
+    },
+    "shutdown_no_dev_kfd_owner": true
+  },
+  "performance_claim": false,
+  "protocol": {
+    "collector_command": [
+      "/home/lhl/hipEngine/.venv/bin/python",
+      "scripts/agentic_coding_quality.py",
+      "--base-url",
+      "http://127.0.0.1:18240/v1",
+      "--workloads",
+      "benchmarks/prompts/agentic-quality-v2.json",
+      "--all-workloads",
+      "--model",
+      "Qwen3.6-35B-A3B",
+      "--model-path",
+      "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--target-arch",
+      "gfx1151",
+      "--device-name",
+      "AMD Radeon 8060S Graphics",
+      "--quant",
+      "gguf_q4_k_m",
+      "--kv-dtype",
+      "bf16",
+      "--compiler-version-file",
+      "/tmp/agentic-quality2-hipcc-version.txt",
+      "--require-clean-provenance",
+      "--concurrency",
+      "1",
+      "--runs",
+      "2",
+      "--max-tokens",
+      "128",
+      "--cache-mode",
+      "off",
+      "--timeout-s",
+      "600",
+      "--idle-timeout-s",
+      "60",
+      "--records-json",
+      "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/v2-records.json",
+      "--checkpoint-json",
+      "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/v2-checkpoint.json",
+      "--json",
+      "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/v2-summary.json"
+    ],
+    "concurrency": 1,
+    "enable_thinking": false,
+    "endpoint_sha256": {
+      "capabilities": "d3cad36ce393fb898d087000dcad998c18d706e9f95a019944c0ca1142da2fe0",
+      "models": "4dfdb93bba45e6c456124bf69529347ec7e47838e3a55bc82779557b1866e71c",
+      "ready": "fee41507985fc919badb30349d29c8363e3290ba4c4b159c22347c51c854b7a1"
+    },
+    "max_tokens": 128,
+    "native_sampler": false,
+    "performance_fields_prohibited": true,
+    "prefix_cache": "off",
+    "repetitions": 2,
+    "request_surface": "real localhost blocking OpenAI chat completions",
+    "server_capabilities_sha256": "8d33ac2b39d9a1f275a5fa7f81beb1a8d39958c77f336506a423d5da13fe2f79",
+    "server_command": [
+      "env -u ROCR_VISIBLE_DEVICES",
+      "HIP_VISIBLE_DEVICES=0",
+      "HIPENGINE_HIP_ARCH=gfx1151",
+      "GPU_MAX_HW_QUEUES=1",
+      "HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-quality2-hipcc-version.txt",
+      "HIPENGINE_REQUIRE_CACHED_BUILD=1",
+      "HIPENGINE_QWEN35_NATIVE_SAMPLER=0",
+      "PYTHONPATH=.",
+      "/home/lhl/hipEngine/.venv/bin/python -m hipengine.server",
+      "--model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "--served-model-name Qwen3.6-35B-A3B",
+      "--backend hip_gfx1151",
+      "--quant gguf_q4_k_m",
+      "--execution-profile strict",
+      "--kv-storage bf16",
+      "--max-context-tokens 4096",
+      "--max-active-requests 1",
+      "--generation-batch-window-ms 0",
+      "--prefix-cache off",
+      "--speculative-mtp-serving off",
+      "--no-startup-chat-smoke",
+      "--host 127.0.0.1",
+      "--port 18240",
+      "--log-level info"
+    ],
+    "speculative_mtp": false,
+    "temperature": 0.0,
+    "tool_choice": "auto"
+  },
+  "quality": {
+    "attempts": 48,
+    "correct_tool_rate": 0.9583333333333334,
+    "correct_tools": 46,
+    "exact_arguments": 38,
+    "exact_arguments_rate": 0.7916666666666666,
+    "external_oracle": {
+      "attempts": 48,
+      "pass_rate": 0.7916666666666666,
+      "passes": 38,
+      "patch_attempts": 6,
+      "patch_success_rate": 1.0,
+      "patch_successes": 6,
+      "test_attempts": 8,
+      "test_success_rate": 1.0,
+      "test_successes": 8
+    },
+    "families": {
+      "general_en": {
+        "attempts": 16,
+        "correct_tool_rate": 1.0,
+        "correct_tools": 16,
+        "exact_arguments": 14,
+        "exact_arguments_rate": 0.875,
+        "external_oracle": {
+          "attempts": 16,
+          "pass_rate": 0.875,
+          "passes": 14,
+          "patch_attempts": 0,
+          "patch_success_rate": 0.0,
+          "patch_successes": 0,
+          "test_attempts": 2,
+          "test_success_rate": 1.0,
+          "test_successes": 2
+        },
+        "outcomes": {
+          "oracle_failed": 2,
+          "passed": 14
+        },
+        "repair_attempts": 0,
+        "success_rate": 0.875,
+        "successes": 14,
+        "valid_call_rate": 1.0,
+        "valid_calls": 16
+      },
+      "general_ja": {
+        "attempts": 8,
+        "correct_tool_rate": 1.0,
+        "correct_tools": 8,
+        "exact_arguments": 6,
+        "exact_arguments_rate": 0.75,
+        "external_oracle": {
+          "attempts": 8,
+          "pass_rate": 0.75,
+          "passes": 6,
+          "patch_attempts": 0,
+          "patch_success_rate": 0.0,
+          "patch_successes": 0,
+          "test_attempts": 0,
+          "test_success_rate": 0.0,
+          "test_successes": 0
+        },
+        "outcomes": {
+          "oracle_failed": 2,
+          "passed": 6
+        },
+        "repair_attempts": 0,
+        "success_rate": 0.75,
+        "successes": 6,
+        "valid_call_rate": 1.0,
+        "valid_calls": 8
+      },
+      "mixed_ja_en": {
+        "attempts": 8,
+        "correct_tool_rate": 1.0,
+        "correct_tools": 8,
+        "exact_arguments": 6,
+        "exact_arguments_rate": 0.75,
+        "external_oracle": {
+          "attempts": 8,
+          "pass_rate": 0.75,
+          "passes": 6,
+          "patch_attempts": 2,
+          "patch_success_rate": 1.0,
+          "patch_successes": 2,
+          "test_attempts": 2,
+          "test_success_rate": 1.0,
+          "test_successes": 2
+        },
+        "outcomes": {
+          "oracle_failed": 2,
+          "passed": 6
+        },
+        "repair_attempts": 0,
+        "success_rate": 0.75,
+        "successes": 6,
+        "valid_call_rate": 1.0,
+        "valid_calls": 8
+      },
+      "repository": {
+        "attempts": 16,
+        "correct_tool_rate": 0.875,
+        "correct_tools": 14,
+        "exact_arguments": 12,
+        "exact_arguments_rate": 0.75,
+        "external_oracle": {
+          "attempts": 16,
+          "pass_rate": 0.75,
+          "passes": 12,
+          "patch_attempts": 4,
+          "patch_success_rate": 1.0,
+          "patch_successes": 4,
+          "test_attempts": 4,
+          "test_success_rate": 1.0,
+          "test_successes": 4
+        },
+        "outcomes": {
+          "oracle_failed": 2,
+          "passed": 12,
+          "wrong_tool": 2
+        },
+        "repair_attempts": 0,
+        "success_rate": 0.75,
+        "successes": 12,
+        "valid_call_rate": 1.0,
+        "valid_calls": 16
+      }
+    },
+    "outcomes": {
+      "oracle_failed": 8,
+      "passed": 38,
+      "wrong_tool": 2
+    },
+    "primary_metric": "external_oracle_task_success",
+    "repair_attempts": 0,
+    "success_rate": 0.7916666666666666,
+    "successes": 38,
+    "unique_task_blocks": 24,
+    "unique_task_successes": 19,
+    "valid_call_rate": 1.0,
+    "valid_calls": 48,
+    "workloads": {
+      "general_en_operations": {
+        "external_oracle_passes": 4,
+        "outcomes": {
+          "passed": 4
+        },
+        "successes": 4,
+        "task_blocks": 4
+      },
+      "general_en_release": {
+        "external_oracle_passes": 3,
+        "outcomes": {
+          "oracle_failed": 1,
+          "passed": 3
+        },
+        "successes": 3,
+        "task_blocks": 4
+      },
+      "general_ja_operations": {
+        "external_oracle_passes": 3,
+        "outcomes": {
+          "oracle_failed": 1,
+          "passed": 3
+        },
+        "successes": 3,
+        "task_blocks": 4
+      },
+      "mixed_ja_en_release": {
+        "external_oracle_passes": 3,
+        "outcomes": {
+          "oracle_failed": 1,
+          "passed": 3
+        },
+        "successes": 3,
+        "task_blocks": 4
+      },
+      "repository_cache_en": {
+        "external_oracle_passes": 3,
+        "outcomes": {
+          "passed": 3,
+          "wrong_tool": 1
+        },
+        "successes": 3,
+        "task_blocks": 4
+      },
+      "repository_scheduler_en": {
+        "external_oracle_passes": 3,
+        "outcomes": {
+          "oracle_failed": 1,
+          "passed": 3
+        },
+        "successes": 3,
+        "task_blocks": 4
+      }
+    }
+  },
+  "raw_evidence": {
+    "committed_raw_records": false,
+    "directory": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806",
+    "files": {
+      "capabilities.json": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/capabilities.json",
+        "sha256": "d3cad36ce393fb898d087000dcad998c18d706e9f95a019944c0ca1142da2fe0"
+      },
+      "collector.log": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/collector.log",
+        "sha256": "e5af5a892f8486aaa396af943baa15ba74d21cb451f706e053702b38e909d4f1"
+      },
+      "detokenize-smoke.json": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/detokenize-smoke.json",
+        "sha256": "2ee5d3b0700caa7189d24180b5015ba4593f8d7ae0247be2de082627dc470586"
+      },
+      "git-commits.txt": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/git-commits.txt",
+        "sha256": "1c563827107a678f533e55f6dc149679e84b1a1a7c1627386c8d5c6b951d8fbd"
+      },
+      "git-status.txt": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/git-status.txt",
+        "sha256": "1a331e272ba9a29e80af04f20165c6e8ce3be8064adee0515f61887986feccae"
+      },
+      "input-sha256.txt": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/input-sha256.txt",
+        "sha256": "4ef2a92eec8df6ff498c7bfd8ed6ada99501007053b8ff25f95a3568979fbcb9"
+      },
+      "kfd-after.txt": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/kfd-after.txt",
+        "sha256": "db3afd177eccf8e2e48a941e236c15fe328beae014ec87bb2e367b1f89cb64e0"
+      },
+      "model-sha256.txt": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/model-sha256.txt",
+        "sha256": "8ac856a55e97574c85e8c65b111f98c3cedff14b340114791b0dc1cc647db3bd"
+      },
+      "model-stat.txt": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/model-stat.txt",
+        "sha256": "8e8470f8b1a63cf8e660ddde6fefc7a58d892199578ba23d85b8786f10a83e4e"
+      },
+      "models.json": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/models.json",
+        "sha256": "4dfdb93bba45e6c456124bf69529347ec7e47838e3a55bc82779557b1866e71c"
+      },
+      "power-after-collection.txt": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/power-after-collection.txt",
+        "sha256": "e60b469ccb2ff6086bfab51d36939e2939d307df9c0e8fbc64aff37f8876cbe9"
+      },
+      "power-before.txt": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/power-before.txt",
+        "sha256": "02046c18c522c3f41b36eeadf53d7cf2ce39897994f533672729da549b45a05a"
+      },
+      "power-collection-start.txt": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/power-collection-start.txt",
+        "sha256": "221a9a915645204eb5b8d82b9f991eafd322ff06ad59c955805519061713352e"
+      },
+      "ready-final.json": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/ready-final.json",
+        "sha256": "420cf8162f992ac6f9b8a84b618027211d97477e14f13f28881372a6cb6de9e3"
+      },
+      "ready.json": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/ready.json",
+        "sha256": "fee41507985fc919badb30349d29c8363e3290ba4c4b159c22347c51c854b7a1"
+      },
+      "server.log": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/server.log",
+        "sha256": "0fe3e111d5befd8a83ef0e7ce347da70288d057a937be1b3a23d44afdcb5b4cc"
+      },
+      "sessions-final.json": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/sessions-final.json",
+        "sha256": "d3aa9414dc7a6b94393c87c6ac5a039c594c4c1f31f4259459c525fe3ca63835"
+      },
+      "tokenize-smoke.json": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/tokenize-smoke.json",
+        "sha256": "4ea7a9c67befd900bebe72a8455c1f4b66ccccbd8d0c1a276a5e8f6a17523235"
+      },
+      "v2-checkpoint.json": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/v2-checkpoint.json",
+        "sha256": "056dbda2d6f6d70c6d80199e0a235214eedd4c54c991363f226da44e78ee08d7"
+      },
+      "v2-records.json": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/v2-records.json",
+        "sha256": "613e9b26ac37aaff6423b2ce4f723e5bd1b8122f402eb00d29e75294dcb3f84b"
+      },
+      "v2-summary.json": {
+        "path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/v2-summary.json",
+        "sha256": "978ed4eae62ab3d3fc570f7e048e229aa5719927f70f1a824c596e5128f133ff"
+      }
+    },
+    "large_token_arrays_excluded_from_compact_artifact": true
+  },
+  "schema_version": 1,
+  "source": {
+    "branch": "agentic-quality2",
+    "clean": true,
+    "hipengine_commit": "fef66d0fdfa705fb58994ecfd668417e873f9a8a",
+    "runtime_repairs": [
+      {
+        "change": "restore Qwen GGUF model-owned detokenization",
+        "commit": "693a011caeff38fd5456cf229aafa1b00fab3085"
+      },
+      {
+        "change": "normalize request ownership against idle persistent allocation",
+        "commit": "fef66d0fdfa705fb58994ecfd668417e873f9a8a"
+      }
+    ],
+    "schema_followup": "raw final-ownership cache entry/page fields admitted by the AQ2 publication commit",
+    "worktree": "/home/lhl/hipEngine-agentic-quality2"
+  },
+  "status": "qualified_current_v2_baseline",
+  "validation": {
+    "artifact_invariants": "passed",
+    "benchmark_json_schema": "passed",
+    "final_ownership": "passed",
+    "independent_oracle_fixture_cases": "24/24 passed",
+    "normalized_repeat_equality": "passed",
+    "performance_metrics_present": false,
+    "raw_markup_leaks": 0,
+    "records_json_schema": "passed",
+    "response_owned_ids": "48/48",
+    "runtime_errors": 0,
+    "server_shutdown": "passed"
+  }
+}

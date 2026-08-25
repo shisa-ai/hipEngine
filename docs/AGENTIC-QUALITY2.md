@@ -1,6 +1,6 @@
 # AGENTIC-QUALITY2 — ZBook Agent Quality Campaign
 
-- **Status:** approved; active; AQ0-AQ1 complete, AQ2 current-main v2 live baseline next
+- **Status:** approved; active; AQ0-AQ2 complete, AQ3 failure taxonomy next
 - **Approved:** 2026-08-25
 - **Execution host:** `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 - **Primary model:** Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV
@@ -510,18 +510,51 @@ in the AQ1 worklog.
 
 ### AQ2 / Task #42 — current v2 baseline
 
-- [ ] Start one clean Qwen3.6 server with frozen settings and explicit compiler
+- [x] Start one clean Qwen3.6 server with frozen settings and explicit compiler
       version/cache.
-- [ ] Run all six v2 workloads twice (24 turns/run).
-- [ ] Require response-owned IDs, normalized repeat equality, valid artifact,
+- [x] Run all six v2 workloads twice (24 turns/run).
+- [x] Require response-owned IDs, normalized repeat equality, valid artifact,
       and zero final request/session ownership relative to the recorded idle
       persistent-allocation baseline.
-- [ ] Keep raw records/logs under `/tmp/hipengine-agentic-quality2/<run-tag>/`.
-- [ ] Publish compact baseline artifact with no performance fields.
-- [ ] Update campaign/worklog/quality rollup and commit.
+- [x] Keep raw records/logs under `/tmp/hipengine-agentic-quality2/<run-tag>/`.
+- [x] Publish compact baseline artifact with no performance fields.
+- [x] Update campaign/worklog/quality rollup and commit.
 
-Expected GPU time: about 30–90 minutes after cached startup. This assigned
-campaign authorizes the run; state reason/duration before starting it.
+#### AQ2 result — qualified current ZBook denominator
+
+The retained run uses commit `fef66d0fd...` and raw directory
+`/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/`.
+Its compact artifact is
+[`2026-08-26-zbook-agentic-quality2-aq2-baseline.json`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq2-baseline.json).
+It contains no latency, throughput, goodput, speedup, or profiler result.
+
+| Scope | External-oracle success | Valid call | Correct tool | Exact arguments |
+| --- | ---: | ---: | ---: | ---: |
+| Overall, 48 repeated observations | **38/48 (79.17%)** | **48/48 (100%)** | **46/48 (95.83%)** | **38/48 (79.17%)** |
+| Repository | 12/16 (75%) | 16/16 | 14/16 | 12/16 |
+| General English | **14/16 (87.5%)** | 16/16 | 16/16 | 14/16 |
+| General Japanese | 6/8 (75%) | 8/8 | 8/8 | 6/8 |
+| Mixed Japanese/English | 6/8 (75%) | 8/8 | 8/8 | 6/8 |
+
+The 24 independent task blocks are 19/24 successful: all four
+`general_en_operations` turns pass; the other five workloads are 3/4. The five
+unique failures repeat exactly: four selected the expected tool but failed the
+executable result oracle, and one selected the wrong declared tool. There are
+no malformed/invalid/schema-invalid/no-call/content-leak/raw-marker/runtime
+failures, no repair attempts, and all six patch plus all eight test observations
+pass. The 24 normalized repeat pairs are exact after excluding random call IDs;
+all 856 generated IDs are response-owned.
+
+Initial model-lifetime ownership is 128 refcounted/128 pinned KV pages and final
+request/session/KV/graph/workspace/stream deltas are all zero. Server shutdown
+leaves no `/dev/kfd` owner. The first two pre-evidence attempts are excluded: one
+found the repaired Qwen detokenization surface, and one populated a missing
+AOTriton cache then exposed absolute-versus-baseline ownership accounting. No
+partial attempt contributes a quality row.
+
+This is not an old→new comparison with the historical W7900 row: host, backend,
+source, constraint stack, and broad-oracle scoring differ. AQ3 owns the five
+unique failure classifications; AQ2 admits no implementation mechanism.
 
 ### AQ3 / Task #43 — failure taxonomy
 
@@ -828,9 +861,10 @@ weights, caches, or profiler data.
 
 ## 18. Current handoff
 
-Start Task #41 from the committed AQ0 source. Before changing the collector,
-prove which current template/parser/constraint paths a real Qwen3.6 request
-uses. The most likely stale issue is provenance and restartability, not model
-math. AQ1 may repair benchmark tooling but must not change tool prompts, oracle
-answers, or runtime behavior. AQ2 then establishes the first current ZBook
-quality denominator.
+Start AQ3 / Task #43 from the qualified AQ2 compact artifact and raw checkpoint.
+Classify the five unique failed task blocks at their earliest bad boundary using
+public responses, response-owned IDs, reconstructed raw model text, independent
+parser/template controls, finish details, and executable oracle evidence. Keep
+the two repaired harness/runtime blockers separate from model-quality failures.
+Do not select or implement a mechanism until every AQ2 failure has an explicit
+runtime/model/unresolved owner and the compact taxonomy artifact is committed.
