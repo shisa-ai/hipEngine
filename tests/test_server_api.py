@@ -6781,7 +6781,7 @@ def test_completions_enabled_mode_falls_back_to_ar_when_engine_not_dense_default
     assert len(fake.mtp_calls) == 1
 
 
-def test_completions_endpoint_rejects_explicit_speculative_mtp_non_greedy_sampling() -> None:
+def test_completions_endpoint_routes_explicit_non_greedy_mtp_to_k0() -> None:
     fake = SpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -6804,12 +6804,15 @@ def test_completions_endpoint_rejects_explicit_speculative_mtp_non_greedy_sampli
         },
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 200
     body = response.json()
-    assert body["error"]["code"] == "unsupported_parameter"
-    assert body["error"]["param"] == "speculative_mtp"
-    assert body["error"]["hipengine"]["speculative_mtp"]["blockers"] == ["temperature"]
-    assert fake.calls == []
+    assert body["choices"][0]["text"] == "generated:one"
+    decision = body["hipengine"]["generation_shape"]["route_decision"]
+    assert decision["selected_route"] == "default"
+    assert decision["reason"] == "unsupported_sampling_k0"
+    assert decision["selected_candidate_count"] == 0
+    assert decision["sampling_blockers"] == ["temperature"]
+    assert len(fake.calls) == 1
     assert fake.mtp_calls == []
 
 
@@ -6920,7 +6923,7 @@ def test_chat_completion_thinking_policy_request_override_selects_policy() -> No
     assert len(fake.mtp_calls) == 1
 
     # Config is hint but the request opts in to hard -> thinking stays a hard
-    # blocker and an explicit MTP request is rejected.
+    # blocker and deterministically selects K0 before provider mutation.
     fake2 = SpeculativeMTPFakeLLM(token_map={_THINKING_CLOSE_MARKER: [42, 43]})
     app2 = create_app(
         ServerConfig(
@@ -6946,10 +6949,14 @@ def test_chat_completion_thinking_policy_request_override_selects_policy() -> No
         },
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 200
     body = response.json()
-    assert body["error"]["code"] == "unsupported_parameter"
-    assert body["error"]["hipengine"]["speculative_mtp"]["blockers"] == ["thinking_budget"]
+    assert body["hipengine"]["generation_shape"]["route"] == "default"
+    assert body["hipengine"]["generation_shape"]["route_decision"]["sampling_blockers"] == [
+        "thinking_budget"
+    ]
+    assert fake2.mtp_calls == []
+    assert len(fake2.calls) == 1
 
 
 def test_completions_preserve_structured_finish_details() -> None:
