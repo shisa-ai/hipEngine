@@ -312,21 +312,21 @@
       "long_k0_rows": [
         {
           "actual": 4085,
-          "ar_seconds": 7.8510258118622005,
+          "ar_seconds": 7.819848879240453,
           "cycles": 0,
           "exact": true,
           "fallback": "target_context_k0",
-          "staged_seconds": 7.528980060014874,
+          "staged_seconds": 7.551783143077046,
           "streaming": false,
           "target": 4096
         },
         {
           "actual": 16374,
-          "ar_seconds": 34.65554937021807,
+          "ar_seconds": 34.82562311319634,
           "cycles": 0,
           "exact": true,
           "fallback": "target_context_k0",
-          "staged_seconds": 33.753115492872894,
+          "staged_seconds": 33.79224405111745,
           "streaming": false,
           "target": 16384
         }
@@ -335,7 +335,7 @@
       "short_rows": [
         {
           "actual": 121,
-          "ar_seconds": 1.1598171261139214,
+          "ar_seconds": 1.202754323836416,
           "carried_bytes": 10240,
           "cycles": 9,
           "exact": true,
@@ -343,21 +343,21 @@
           "routes": [
             "eager"
           ],
-          "staged_seconds": 2.5041439291089773,
+          "staged_seconds": 2.5234564542770386,
           "streaming": true,
           "target": 128
         },
         {
-          "actual": 502,
-          "ar_seconds": 1.7609026138670743,
+          "actual": 505,
+          "ar_seconds": 1.7882332019507885,
           "carried_bytes": 10240,
           "cycles": 8,
           "exact": true,
-          "primed_rows": 502,
+          "primed_rows": 505,
           "routes": [
             "eager"
           ],
-          "staged_seconds": 2.292410844936967,
+          "staged_seconds": 2.2976339729502797,
           "streaming": true,
           "target": 512
         }
@@ -392,11 +392,11 @@
       "timing": "complete request, counterbalanced AR/direct/staged"
     },
     "raw_packets": {
-      "p128_p512": {
+      "corrected_strict_context": {
         "committed": false,
-        "path": "/tmp/specdec2-perf-gfx1100-p2/current-20cba31f3/dense-context-p128-p512-d24.json",
-        "sha256": "76a832b8c4f459d9c763724dda94d38cc6694cfbe6012bbb22b66095c9459f4f",
-        "size_bytes": 7468
+        "path": "/tmp/specdec2-perf-gfx1100-p2/current-a60cc1955/dense-context-strict-corrected.json",
+        "sha256": "ed1ad980bfcd871a0b2bd95c429da6c21e0aa63faa71cccdfc065a62f8b238a3",
+        "size_bytes": 12705
       },
       "p1_replay": {
         "committed": false,
@@ -409,12 +409,6 @@
         "path": "/tmp/specdec2-perf-gfx1100-p2/current-1e91e896b/dense-streaming-natural25-full-3run.json",
         "sha256": "46ee0171a6fdc1277d001fca157eeb42bcbbc1b7d9d395420ba9c8d6f956994c",
         "size_bytes": 3456825
-      },
-      "p4k_p16k": {
-        "committed": false,
-        "path": "/tmp/specdec2-perf-gfx1100-p2/current-20cba31f3/dense-context-p4k-p16k-k0.json",
-        "sha256": "973f76d38942ac05bbdfea8003f59629c24926d139c2272118dc1a5bf9882f2b",
-        "size_bytes": 5742
       }
     },
     "source_commit": "1e91e896b02d7420ce65427afb8d344aa7e43a18"
@@ -1475,6 +1469,10 @@
     {
       "kind": "dense_synthetic_context_failed_attempts",
       "result": "no retained rows; failed D8/D24 repeated and varied fixtures are mechanics diagnostics only"
+    },
+    {
+      "kind": "dense_context_missing_strict_fp32_env",
+      "result": "superseded; earlier custom p128-p16K packets omitted HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 and are not evidence"
     }
   ],
   "schema": 1,
