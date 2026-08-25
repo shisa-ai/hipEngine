@@ -1360,11 +1360,11 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
             "policy": configured_mode,
             "request_field": "speculative_mtp",
             "default_enabled": default_enabled,
-            "streaming_compatible": False,
+            "streaming_compatible": True,
             "batch_route": _SPECULATIVE_MTP_BATCH_ROUTE,
-            "physical_concurrency": "serialized_target_slot",
-            "max_physical_target_slots": 1,
-            "route_coalescing_is_physical_concurrency": False,
+            "physical_concurrency": "generation2_target_frontier",
+            "max_physical_target_slots": 4,
+            "route_coalescing_is_physical_concurrency": True,
             "circuit_breaker": deepcopy(
                 getattr(
                     engine,
@@ -3047,6 +3047,16 @@ async def _stream_engine_text(
         if detailed_streamer is None:
             raise NotImplementedError(
                 "speculative provider streaming is not supported by this engine"
+            )
+    elif str(route) == _SPECULATIVE_MTP_BATCH_ROUTE:
+        detailed_streamer = getattr(
+            engine,
+            "stream_speculative_mtp_detailed",
+            None,
+        )
+        if not callable(detailed_streamer):
+            raise NotImplementedError(
+                "speculative MTP streaming is not supported by this engine"
             )
     else:
         detailed_streamer = getattr(engine, "stream_detailed", None)
@@ -11484,15 +11494,6 @@ def _speculative_mtp_route_for_request(
             raise OpenAIHTTPError(
                 400,
                 "speculative_mtp is disabled for this server",
-                code="unsupported_parameter",
-                param="speculative_mtp",
-            )
-        return _SPECULATIVE_MTP_DEFAULT_ROUTE
-    if bool(getattr(request, "stream", False)):
-        if explicit_requested:
-            raise OpenAIHTTPError(
-                400,
-                "speculative_mtp does not support streaming requests yet",
                 code="unsupported_parameter",
                 param="speculative_mtp",
             )

@@ -224,6 +224,31 @@ class SpeculativeMTPFakeLLM(FakeLLM):
         super().__init__(token_map=token_map)
         self.mtp_calls: list[tuple[tuple[str, ...], SamplingParams]] = []
 
+    def stream_speculative_mtp_detailed(
+        self,
+        prompts,
+        sampling_params: SamplingParams,
+    ):
+        prompt_tuple = (
+            (str(prompts),)
+            if isinstance(prompts, str)
+            else tuple(str(prompt) for prompt in prompts)
+        )
+        self.mtp_calls.append((prompt_tuple, sampling_params))
+        yield GenerationStreamChunk(
+            text=f"mtp:{prompt_tuple[0]}",
+            generated_token_ids=(901,),
+            telemetry=GenerationTelemetry.from_decode_counts(
+                prompt_tokens=1,
+                generated_tokens=1,
+                row_index=0,
+                request_id="0",
+                phase="answer",
+                sampler_mode="greedy_fast",
+                execution_path="speculative_mtp_server",
+            ),
+        )
+
     def generate_speculative_mtp_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
         prompt_tuple = tuple(str(prompt) for prompt in prompts)
         self.mtp_calls.append((prompt_tuple, sampling_params))
@@ -1676,11 +1701,11 @@ def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_su
         "policy": "opt_in",
         "request_field": "speculative_mtp",
         "default_enabled": False,
-        "streaming_compatible": False,
+        "streaming_compatible": True,
         "batch_route": "speculative_mtp",
-        "physical_concurrency": "serialized_target_slot",
-        "max_physical_target_slots": 1,
-        "route_coalescing_is_physical_concurrency": False,
+        "physical_concurrency": "generation2_target_frontier",
+        "max_physical_target_slots": 4,
+        "route_coalescing_is_physical_concurrency": True,
         "circuit_breaker": {
             "state": "closed",
             "operator_disabled": False,
@@ -6441,7 +6466,7 @@ def test_chat_auto_fallback_reports_stable_route_reason() -> None:
 
 
 @pytest.mark.parametrize("endpoint", ["/v1/completions", "/v1/chat/completions"])
-def test_explicit_mtp_streaming_rejects_before_generation(endpoint: str) -> None:
+def test_explicit_mtp_streaming_uses_committed_speculative_chunks(endpoint: str) -> None:
     fake = SpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -6467,11 +6492,23 @@ def test_explicit_mtp_streaming_rejects_before_generation(endpoint: str) -> None
 
     assert response.status_code == 200
     payloads = _sse_payloads(response.text)
-    error = next(item["error"] for item in payloads if item.get("error"))
-    assert error["code"] == "unsupported_parameter"
-    assert error["param"] == "speculative_mtp"
+    assert not any(item.get("error") for item in payloads)
+    if endpoint.endswith("chat/completions"):
+        text = "".join(
+            item["choices"][0]["delta"].get("content", "")
+            for item in payloads
+            if item.get("choices")
+        )
+        assert text.startswith("mtp:")
+    else:
+        text = "".join(
+            item["choices"][0].get("text", "")
+            for item in payloads
+            if item.get("choices")
+        )
+        assert text == "mtp:hello"
     assert fake.calls == []
-    assert fake.mtp_calls == []
+    assert len(fake.mtp_calls) == 1
 
 
 def test_mtp_summary_honors_batch_timing_ownership() -> None:
