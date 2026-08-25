@@ -507,8 +507,11 @@ For each lane independently:
 
 - [ ] Profile every currently admitted complete target row bucket with ROCTX,
       kernel, HIP API, copies, allocations, queue gaps, resources, and exact
-      physical decomposition.
-- [ ] Reconcile marker wall, kernel-family interval union, and complete cycle.
+      physical decomposition. Packed production/strict R2 is complete; dense
+      R2/R3/R4 and future physical buckets remain.
+- [x] Reconcile packed R2 marker wall, kernel-family interval union, API/copies,
+      and complete cycle. One post-commit sync/cycle is removed, but operation
+      wall is neutral because accept readback absorbs queued work.
 - [ ] Admit at most one target candidate with a named operation-complete owner,
       RED oracle, strict fallback, exact C/K/R/context/profile scope, and either
       `>=1.10x` projected operation speed plus `>=1%` request saving or enough
