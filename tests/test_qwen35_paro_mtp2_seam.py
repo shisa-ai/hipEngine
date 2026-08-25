@@ -400,6 +400,27 @@ def test_prefill_completion_reserves_c1_verify_scratch_before_first_cycle() -> N
     assert calls[-2:] == [("reserve", 2, "c1_loop", 10), ("release", row)]
 
 
+def test_staged_target_commit_defers_host_sync_to_stream_order() -> None:
+    calls = []
+    session = SimpleNamespace(
+        verify_chain_bulk_and_commit=lambda batch, **kwargs: calls.append(kwargs)
+        or "verify"
+    )
+
+    result = Qwen35ParoMTP2Adapter._verify_target(
+        session,
+        "batch",
+        chain_attn_mode="decode_batched",
+        candidate_token_ids_i32=Tensor.from_handle(
+            0x7000, (1,), DType.INT32, Device("hip", 0)
+        ),
+    )
+
+    assert result == "verify"
+    assert calls[0]["synchronize_after_commit"] is False
+    assert calls[0]["candidate_token_ids_i32"].ptr == 0x7000
+
+
 def test_initial_root_k0_keeps_primed_provider_live() -> None:
     proposer = _ProposerDouble()
     row = SimpleNamespace(first_token_emitted=False)
