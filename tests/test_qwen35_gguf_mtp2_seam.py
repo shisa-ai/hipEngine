@@ -1332,6 +1332,91 @@ def test_provider_batch_device_repair_never_materializes_candidate_ids() -> None
     assert provider.last_results == {}
 
 
+def test_provider_batch_device_repair_uses_root_snapshot_and_kminus1_state() -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class Executor:
+        hidden_size = 8
+        runtime = SimpleNamespace(memcpy=lambda *args: None)
+
+        def restore_request_root_state(self, request_id):
+            calls.append(("root_snapshot", int(request_id)))
+
+        def restore_request_checkpoint(self, checkpoint):
+            calls.append(("checkpoint", checkpoint))
+
+        def advance_state_batch_only(self, request_ids, token_ids, positions, hidden):
+            calls.append(("host", tuple(request_ids), tuple(token_ids), tuple(positions)))
+
+        def advance_state_batch_only_device(self, request_ids, token_ids, positions, hidden):
+            calls.append(
+                (
+                    "device",
+                    tuple(request_ids),
+                    tuple(token.ptr for token in token_ids),
+                    tuple(positions),
+                )
+            )
+
+    executor = Executor()
+    provider = SimpleNamespace(executor=executor, last_results={})
+    proposal = Qwen35GGUFNextNBatchDeviceProposal(
+        request_ids=(1, 2, 3),
+        root_tokens=(90, 190, 290),
+        root_positions=(5, 8, 11),
+        candidate_counts=(2, 2, 2),
+        token_ids=Tensor.from_handle(0x5000, (6,), DType.INT32, Device("hip", 0)),
+        hidden_rows=tuple(
+            (
+                Tensor.from_handle(0x6000 + row * 0x1000, (1, 8), DType.BF16, Device("hip", 0)),
+                Tensor.from_handle(0x6100 + row * 0x1000, (1, 8), DType.BF16, Device("hip", 0)),
+            )
+            for row in range(3)
+        ),
+    )
+    states = tuple(
+        _MTP2RequestState(
+            request_id=request_id,
+            provider=provider,
+            provider_pool_key=None,
+            provider_group_key=(1, 2, 3),
+            verifier=None,
+            root_hidden_buffer=SimpleNamespace(ptr=1),
+            proposal_checkpoint=f"checkpoint-{request_id}",
+            proposal_context=MtpProposalContext(
+                request_ids=(request_id,),
+                root_tokens=(proposal.root_tokens[row],),
+                root_positions=(proposal.root_positions[row],),
+                target_hidden=Tensor.from_handle(
+                    0xA000 + row * 0x100,
+                    (1, 8),
+                    DType.BF16,
+                    Device("hip", 0),
+                ),
+            ),
+            proposal_device_batch=proposal,
+        )
+        for row, request_id in enumerate(proposal.request_ids)
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(capacity=3)
+    adapter._cycle_hidden_tensors = lambda runtime, hidden_size: (
+        Tensor.from_handle(0xD000, (3, 8), DType.BF16, Device("hip", 0)),
+        Tensor.from_handle(0xE000, (3, 8), DType.BF16, Device("hip", 0)),
+    )
+
+    adapter._repair_provider_states_batch_device(
+        states,
+        proposal,
+        accepted_counts=(2, 1, 0),
+    )
+
+    assert calls == [
+        ("root_snapshot", 3),
+        ("device", (1,), (0x5004,), (7,)),
+    ]
+
+
 def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
     calls = []
     executor = SimpleNamespace(
