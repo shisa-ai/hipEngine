@@ -1,0 +1,192 @@
+{
+  "schema": 1,
+  "date": "2026-08-25",
+  "kind": "specdec2_perf_gfx1100_p4_dense_device_chain_retained",
+  "status": "retained_exact_operation_win_product_blocked",
+  "performance_claim": true,
+  "speed_claim_eligible": true,
+  "hardware": {
+    "hostname": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "gpu_index": 0,
+    "gpu_max_hw_queues": null,
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "bf16",
+    "recurrent_state": "fp32_strict"
+  },
+  "source": {
+    "commit": "58c80ea0b54381de771fc2760ab83bbd20702bd5",
+    "tracked_clean": true,
+    "corrected_shared_p4": "e2e8178cd + 16df9926f merged with independent gfx1100 package/context guards"
+  },
+  "protocol": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "runs": 3,
+    "outputs": 25,
+    "concurrency": 1,
+    "candidate_budgets": [1, 2, 3],
+    "arms": ["true_ar", "legacy_native", "specdec2"],
+    "sampling": "raw greedy",
+    "warmup": true,
+    "command": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --scope full --concurrency 1 --budgets 1,2,3 --max-tokens 25 --runs 3 --max-sequence-length 1024 --compiler-version-file /tmp/specdec2-perf-gfx1100-p1/hipcc-version.txt --require-cached-build --output /tmp/specdec2-perf-gfx1100-p4/current-58c80ea0b5/dense-device-chain-natural25-full-3run.json --fail-on-fail"
+  },
+  "cells": {
+    "c1_k1": {
+      "exact_cells": 30,
+      "total_cells": 30,
+      "cycles": 381,
+      "device_handoffs": 381,
+      "device_accept_calls": 381,
+      "pre_target_candidate_d2h": 0,
+      "zero_allocation_cycles": 381,
+      "recoverable_failures": 0,
+      "true_ar_wall_seconds": 34.746730104554445,
+      "direct_wall_seconds": 26.380332866683602,
+      "p3_staged_wall_seconds": 27.4973916830495,
+      "p4_staged_wall_seconds": 27.290805488824844,
+      "p4_wall_reduction_fraction": 0.0075129378308272,
+      "staged_speedup_vs_ar": 1.273202805200553,
+      "staged_speedup_vs_direct": 0.9666381183760199,
+      "all_categories_non_regressive_vs_p3": true
+    },
+    "c1_k2": {
+      "exact_cells": 30,
+      "total_cells": 30,
+      "cycles": 285,
+      "device_handoffs": 261,
+      "device_accept_calls": 261,
+      "pre_target_candidate_d2h": 0,
+      "zero_allocation_cycles": 285,
+      "recoverable_failures": 0,
+      "true_ar_wall_seconds": 34.77662493288517,
+      "direct_wall_seconds": 24.04275842057541,
+      "p3_staged_wall_seconds": 25.46796338027343,
+      "p4_staged_wall_seconds": 24.612984098494053,
+      "p4_wall_reduction_fraction": 0.033570775527407,
+      "staged_speedup_vs_ar": 1.4129381790407518,
+      "staged_speedup_vs_direct": 0.9768323224995082,
+      "category_speedups_vs_ar": {
+        "code": 1.4083017202046675,
+        "general_en": 1.4720674577744293,
+        "general_ja": 1.4777342483860116,
+        "mixed_ja_en": 1.3140868345545609
+      },
+      "all_categories_non_regressive_vs_p3": true
+    },
+    "c1_k3": {
+      "exact_cells": 30,
+      "total_cells": 30,
+      "cycles": 232,
+      "device_handoffs": 217,
+      "device_accept_calls": 217,
+      "pre_target_candidate_d2h": 0,
+      "zero_allocation_cycles": 232,
+      "recoverable_failures": 0,
+      "true_ar_wall_seconds": 34.85709219519049,
+      "direct_wall_seconds": 23.330768974497914,
+      "p3_staged_wall_seconds": 24.584764948580414,
+      "p4_staged_wall_seconds": 24.20525539945811,
+      "p4_wall_reduction_fraction": 0.0154367776106893,
+      "staged_speedup_vs_ar": 1.4400629788839512,
+      "staged_speedup_vs_direct": 0.963872043053106,
+      "category_speedups_vs_ar": {
+        "code": 1.4247583399519093,
+        "general_en": 1.5116941213654278,
+        "general_ja": 1.511584772518474,
+        "mixed_ja_en": 1.344490400149396
+      },
+      "all_categories_non_regressive_vs_p3": true
+    }
+  },
+  "profiles": {
+    "r2": {
+      "exact": true,
+      "cycles": 4,
+      "device_handoffs": 4,
+      "device_accept_calls": 4,
+      "pre_target_candidate_d2h": 0,
+      "zero_allocation_cycles": 4,
+      "cycle_wall_ms": [42.46, 41.301, 41.263, 41.552],
+      "proposal_wall_ms": [0.54, 0.685, 0.495, 0.619],
+      "target_wall_ms": [41.751, 40.425, 40.61, 40.751],
+      "files": {
+        "packet": "97ad1bfee1f9e26479d1653bae0ec71ffbdc607727fc7024f77b1c9f6dbe87db",
+        "marker": "15d5e04085c863206f3f071d98957616e12bd98c6aab2a7ad6eeb0cee3c4dfbc",
+        "kernel": "ef8c5952e5dae1b9d978fef12aaab21ff71a3190371fc45b5c34a21e289f782c",
+        "hip_api": "a5ef1b9b3fe7f8df07a50b9bc7258ca391c68c032b1802d6d41c3946daf843dc",
+        "allocation": "fcdb851fbbca89cc404af7100bf501644e4d90e7683e81f73dd158d9e8dc93f5",
+        "copy": "2b9662756c7db7e4093bc7d748b5e74ed93b16bc2965b5fe544aa7f46e33922e"
+      }
+    },
+    "r3": {
+      "exact": true,
+      "cycles": 3,
+      "device_handoffs": 3,
+      "device_accept_calls": 3,
+      "pre_target_candidate_d2h": 0,
+      "zero_allocation_cycles": 3,
+      "cycle_wall_ms": [46.909, 45.528, 44.931],
+      "proposal_wall_ms": [0.493, 0.7, 0.517],
+      "target_wall_ms": [46.209, 44.642, 44.26],
+      "files": {
+        "packet": "ee8ee93496ca91d6a5f35112db4fe2fa1cb1daad3f0db0bd720ab3f4dde9841d",
+        "marker": "c8f8a306fc86d9060ba4bbf0b5eb250c02db1e5e42dcb82b6519e9c636f27039",
+        "kernel": "da9632f01023c5243309ed6e6ce9c8550f05c9ca728900904cbe1cdc061440f5",
+        "hip_api": "8f1352a98c78d18d146ba6f2c9979dfa11cd4bf546ff6bed558cc3def1b9048a",
+        "allocation": "bb9f0a4833c02d8e96e1b1d0c251331d0c42a76316a6d59d56b3ab9fc35369ce",
+        "copy": "08960b959f64ed755ffaa1aa205690a171114c680a171114c0a3fc4492a3803104a"
+      }
+    },
+    "r4": {
+      "exact": true,
+      "cycles": 3,
+      "device_handoffs": 2,
+      "device_accept_calls": 2,
+      "pre_target_candidate_d2h": 0,
+      "zero_allocation_cycles": 3,
+      "cycle_wall_ms": [52.117, 50.331, 55.823],
+      "proposal_wall_ms": [0.477, 0.598, 3.241],
+      "target_wall_ms": [51.487, 49.569, 52.405],
+      "files": {
+        "packet": "5a70c6651718a95e658d55941d99876037bcb09c4895d57472f42f2c40fd577e",
+        "marker": "d298449ec6f4d9b49a514a436f2654e5783ae8422213b788623023f7c14f9e76",
+        "kernel": "214e744f2cf152812fd32234316c0c68f7e78d89b7e17fca570f1d2bcf2a666e",
+        "hip_api": "f6e172e33217de3cb7b3455540742ddc5f1f571f4281552c9da5e509aa9af60c",
+        "allocation": "08c95f76ff9ba1279d797b63de6484f055a148e120aab73e54ed3daa4434f932",
+        "copy": "11414a81ac14a12f374b52f6a1233d9afd5bcd2ea6b3dfee59c4fa8911939572"
+      }
+    }
+  },
+  "raw_packet": {
+    "path": "/tmp/specdec2-perf-gfx1100-p4/current-58c80ea0b5/dense-device-chain-natural25-full-3run.json",
+    "size_bytes": 3647650,
+    "sha256": "6ef422e144ddc1fb8894e1416e2fbf91acf9548a55b5c144bba6be1679b0fcd7",
+    "committed": false
+  },
+  "supersedes": {
+    "artifact": "benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-dense-device-chain-rejected.json",
+    "scope": "only the older abed6101d/312602b39 candidate",
+    "fixes": [
+      "pre-capture proposal/N2 target graphs during activation",
+      "keep accept/selected commit/provider repair device-resident",
+      "bind target graphs to persistent commit tables"
+    ]
+  },
+  "decision": {
+    "corrected_device_chain": "retain",
+    "older_candidate_rejection": "retain as superseded history",
+    "automatic_policy": "K0",
+    "product_promotion": false,
+    "reason": "all staged cells beat AR but remain 2.3-3.6% behind direct; serving/SLO and physical C2/C4 are unqualified",
+    "next": "P8/P9 no-product closure with fixed K0 table and retained explicit C1 K1-K3"
+  }
+}
