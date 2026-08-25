@@ -21,6 +21,7 @@ from hipengine.kernels.backends import backend_package_capability
 from hipengine.runtime import qwen35_gguf_runner as runner_mod
 from hipengine.runtime.qwen35_gguf_nextn import (
     Qwen35GGUFNextNBatchDeviceProposal,
+    Qwen35GGUFNextNDeviceProposal,
 )
 from hipengine.speculative import (
     DraftBatch,
@@ -182,6 +183,251 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
 
     target.runner = SimpleNamespace(fp16_recurrent_state=True)
     assert adapter.capability(semantics) is None
+
+
+def test_c1_target_ready_proposal_miss_captures_graph_once() -> None:
+    calls = []
+    draft = DraftBatch(
+        request_ids=(7,),
+        candidate_tokens=(101, 102),
+        parent_positions=(5, 6),
+        draft_depths=(1, 2),
+        row_to_request=(7, 7),
+    )
+    state = _MTP2RequestState(
+        request_id=7,
+        provider=SimpleNamespace(
+            launch_device_proposal=lambda context, candidate_budget: None,
+            propose=lambda context, **kwargs: calls.append(kwargs) or draft,
+        ),
+        provider_pool_key=None,
+        provider_group_key=(7,),
+        verifier=SimpleNamespace(
+            device_proposal_ready=lambda budget, remaining_decode: True
+        ),
+        root_hidden_buffer=SimpleNamespace(ptr=1),
+    )
+
+    actual, device = Qwen35GGUFMTP2Adapter._propose_c1(
+        state,
+        MtpProposalContext(
+            request_ids=(7,),
+            root_tokens=(100,),
+            root_positions=(5,),
+            target_hidden=Tensor.from_handle(
+                0x1000, (1, 8), DType.BF16, Device("hip", 0)
+            ),
+        ),
+        candidate_budget=2,
+        remaining_decode=8,
+    )
+
+    assert actual is draft
+    assert device is None
+    assert calls == [
+        {"candidate_budget": 2, "return_logits": False, "allow_graph": True}
+    ]
+
+
+def test_c1_adapter_launches_cached_device_proposal_before_target() -> None:
+    runtime = SimpleNamespace(memcpy=lambda *args: None)
+    target = SimpleNamespace(
+        position=5,
+        last_target_hidden=Tensor.from_handle(
+            0x1100, (1, 8), DType.BF16, Device("hip", 0)
+        ),
+        runtime=runtime,
+    )
+    device = Qwen35GGUFNextNDeviceProposal(
+        request_id=7,
+        root_token=100,
+        root_position=5,
+        budget=2,
+        result_ptr=0x5000,
+        result_nbytes=16,
+        completion_event=11,
+        stream=12,
+        final_hidden=Tensor.from_handle(
+            0x6000, (1, 8), DType.BF16, Device("hip", 0)
+        ),
+    )
+    calls = []
+    placeholder = DraftBatch(
+        request_ids=(7,),
+        candidate_tokens=(0, 0),
+        parent_positions=(5, 6),
+        draft_depths=(1, 2),
+        row_to_request=(7, 7),
+    )
+    provider = SimpleNamespace(
+        executor=SimpleNamespace(
+            hidden_size=8,
+            capture_request_checkpoint=lambda request_id: "checkpoint",
+        ),
+        launch_device_proposal=lambda context, candidate_budget: (
+            calls.append(("device", candidate_budget)) or device
+        ),
+        placeholder_device_proposal=lambda proposal: placeholder,
+        propose=lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("cached C1 must not materialize host candidates")
+        ),
+    )
+    row = SimpleNamespace(
+        lease=SimpleNamespace(session=target),
+        slot=SimpleNamespace(generated_ids=[100], seq_position=5),
+        mtp2_candidate_device_handoffs=0,
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(
+        capacity=1,
+        _row=lambda request_id: row,
+        _flush_row_owner=lambda selected: None,
+    )
+    adapter._states = {
+        7: _MTP2RequestState(
+            request_id=7,
+            provider=provider,
+            provider_pool_key=None,
+            provider_group_key=(7,),
+            verifier=SimpleNamespace(
+                device_proposal_ready=lambda budget, remaining_decode: True
+            ),
+            root_hidden_buffer=SimpleNamespace(ptr=1),
+        )
+    }
+    adapter._cycle_hidden_tensors = lambda runtime, hidden_size: (
+        DeviceBuffer(0x7000, 8 * 2),
+        DeviceBuffer(0x8000, 8 * 2),
+    )
+    plan = SimpleNamespace(
+        speculative_request_ids=(7,),
+        request_ids=(7,),
+        candidate_counts=(2,),
+        provider_key="nextn",
+        cycle_id=3,
+        resident_slots=(0,),
+    )
+    semantics = (
+        SpeculativeRequestSemantics(7, "greedy", "verify_chain", 6, 8),
+    )
+
+    graph = adapter.propose_batch(plan, semantics)
+
+    assert calls == [("device", 2)]
+    assert graph.candidate_tokens == (0, 0)
+    assert graph.token_ids is None
+    assert dict(graph.provider_metadata)["candidate_handoff"] == "device_event"
+    assert adapter._states[7].proposal_device_batch is device
+    assert row.mtp2_candidate_device_handoffs == 1
+
+
+def test_c1_device_proposal_materializes_only_after_target_retirement() -> None:
+    device = Qwen35GGUFNextNDeviceProposal(
+        request_id=7,
+        root_token=100,
+        root_position=5,
+        budget=2,
+        result_ptr=0x5000,
+        result_nbytes=16,
+        completion_event=11,
+        stream=12,
+        final_hidden=Tensor.from_handle(
+            0x6000, (1, 8), DType.BF16, Device("hip", 0)
+        ),
+    )
+    actual_draft = DraftBatch(
+        request_ids=(7,),
+        candidate_tokens=(101, 102),
+        parent_positions=(5, 6),
+        draft_depths=(1, 2),
+        row_to_request=(7, 7),
+    )
+    actual_batch = TargetVerifyBatch.from_draft(
+        actual_draft,
+        root_tokens=(100,),
+        root_positions=(5,),
+    )
+    calls = []
+    state = _MTP2RequestState(
+        request_id=7,
+        provider=SimpleNamespace(
+            finish_device_proposal=lambda proposal, **kwargs: calls.append(
+                (proposal, kwargs)
+            )
+        ),
+        provider_pool_key=None,
+        provider_group_key=(7,),
+        verifier=object(),
+        root_hidden_buffer=SimpleNamespace(ptr=1),
+        proposal_device_batch=device,
+    )
+    row = SimpleNamespace(mtp2_candidate_d2h_after_target=0)
+    prepared = SimpleNamespace(
+        batch=actual_batch,
+        native_proposal_target_chained=True,
+        device_proposal_top1_values=(0.5, 0.25),
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+
+    adapter._finish_c1_device_proposal(state, prepared, row)
+
+    assert calls == [
+        (
+            device,
+            {"token_ids": (101, 102), "top1_values": (0.5, 0.25)},
+        )
+    ]
+    assert row.mtp2_candidate_d2h_after_target == 2
+
+
+def test_c1_device_proposal_is_retired_before_provider_rollback() -> None:
+    calls = []
+    device = Qwen35GGUFNextNDeviceProposal(
+        request_id=7,
+        root_token=100,
+        root_position=5,
+        budget=1,
+        result_ptr=0x5000,
+        result_nbytes=8,
+        completion_event=11,
+        stream=12,
+        final_hidden=Tensor.from_handle(
+            0x6000, (1, 8), DType.BF16, Device("hip", 0)
+        ),
+    )
+    runtime = SimpleNamespace(
+        stream_wait_event=lambda stream, event: calls.append(("wait", stream, event)),
+        stream_synchronize=lambda stream: calls.append(("sync", stream)),
+    )
+    executor = SimpleNamespace(
+        runtime=runtime,
+        restore_request_checkpoint=lambda checkpoint: calls.append(
+            ("restore", checkpoint)
+        ),
+        release_request_checkpoint=lambda checkpoint: calls.append(
+            ("release", checkpoint)
+        ),
+    )
+    state = _MTP2RequestState(
+        request_id=7,
+        provider=SimpleNamespace(executor=executor),
+        provider_pool_key=None,
+        provider_group_key=(7,),
+        verifier=object(),
+        root_hidden_buffer=SimpleNamespace(ptr=1),
+        proposal_checkpoint="checkpoint",
+        proposal_device_batch=device,
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+
+    adapter._restore_provider_checkpoint(state)
+
+    assert calls == [
+        ("wait", 0, 11),
+        ("sync", 0),
+        ("restore", "checkpoint"),
+        ("release", "checkpoint"),
+    ]
 
 
 def test_physical_adapter_returns_device_candidate_graph_before_target(
