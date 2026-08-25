@@ -174,10 +174,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         == 1
     )
+    direct_provider_fingerprints_equal = bool(
+        len(normalized_provider_fingerprints) >= 3 * int(args.concurrency)
+        and normalized_provider_fingerprints[staged_capture_count]
+        == normalized_provider_fingerprints[staged_capture_count - 1]
+    )
     provider_gate_passed = bool(
         not args.provider_fingerprint
         or (
             staged_provider_fingerprints_equal
+            and direct_provider_fingerprints_equal
             and normalized_provider_fingerprints[0]["visible_kv_bytes"] > 0
         )
     )
@@ -263,11 +269,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "enabled": bool(args.provider_fingerprint),
             "captures": len(provider_fingerprints),
             "staged_repeat_equal": staged_provider_fingerprints_equal,
-            "direct_equal_to_staged": bool(
-                len(normalized_provider_fingerprints) >= 3 * int(args.concurrency)
-                and normalized_provider_fingerprints[staged_capture_count]
-                == normalized_provider_fingerprints[staged_capture_count - 1]
-            ),
+            "direct_equal_to_staged": direct_provider_fingerprints_equal,
             "passed": provider_gate_passed,
         },
         "resident_snapshot": resident_snapshot,

@@ -2262,6 +2262,9 @@ class Qwen35GGUFNextNExecutor:
         visible_rows = min(max(0, context), max_positions)
         kv_hash = hashlib.sha256()
         kv_bytes = 0
+        physical_slots = int(getattr(self.scratch, "slot_count", 1))
+        if physical_slots <= 0:
+            raise RuntimeError("GGUF NextN KV cache has no physical slots")
         for pair in zip(
             slot_scratch.full_key_caches,
             slot_scratch.full_value_caches,
@@ -2270,12 +2273,17 @@ class Qwen35GGUFNextNExecutor:
             for cache in pair:
                 if cache is None:
                     continue
-                if int(cache.nbytes) % max_positions:
-                    raise RuntimeError("GGUF NextN KV cache is not position divisible")
-                count = visible_rows * (int(cache.nbytes) // max_positions)
+                slot_nbytes, remainder = divmod(int(cache.nbytes), physical_slots)
+                if remainder or slot_nbytes % max_positions:
+                    raise RuntimeError("GGUF NextN KV cache is not slot/position divisible")
+                count = visible_rows * (slot_nbytes // max_positions)
                 if count <= 0:
                     continue
-                digest, count = read_digest(cache, nbytes=count)
+                slot_cache = DeviceBuffer(
+                    int(cache.ptr) + int(slot) * slot_nbytes,
+                    slot_nbytes,
+                )
+                digest, count = read_digest(slot_cache, nbytes=count)
                 kv_hash.update(bytes.fromhex(digest))
                 kv_bytes += count
         return {
