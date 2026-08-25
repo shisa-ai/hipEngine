@@ -886,7 +886,10 @@ staggered finish, and late refill execute with shared provider/target backbones
 and exact short-trajectory IDs. Clean commit `174ad16dc` measures best warm K2
 aggregate C1→C2→C4 at 6.876→9.500→16.053 tok/s, but C2/C4 wall is 21.8%/34.5%
 slower than true AR; the fixed-prompt diagnostic is default-off and not a speed
-promotion. Cached C4/K3 profiling confirms packed GDN/full-attention engagement.
+promotion. Commit `7ac70a39d` subsequently removes pre-target candidate D2H
+for all clean C2/C4 K1-K3 cells with neutral complete wall; see the
+[`device-candidate artifact`](../benchmarks/results/2026-08-25-gfx1151-specdec2-s4-device-candidates.json).
+Cached C4/K3 profiling confirms packed GDN/full-attention engagement.
 S4 remains open for one physical selected-state/KV accept/commit payload,
 rejecting/full-accept neighbor and
 remaining cancellation/prefix/pressure lifecycle gates, profiler evidence, and

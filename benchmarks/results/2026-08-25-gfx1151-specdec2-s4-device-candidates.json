@@ -1,0 +1,204 @@
+{
+  "correctness": {
+    "all_6_cells_clean_tracked_tree": true,
+    "all_6_cells_exact_ar_staged_direct_ids": true,
+    "all_staged_requests_device_handoff_then_post_target_d2h": true
+  },
+  "date": "2026-08-25",
+  "host": {
+    "architecture": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "hostname": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "implementation_commit": "7ac70a39d4d0ff7b160ca32a9edbbacd8b25b9ea",
+  "kind": "specdec2_gfx1151_s4_device_candidate_handoff",
+  "matrix": [
+    {
+      "ar_wall_seconds": 0.8586876899935305,
+      "candidate_budget": 1,
+      "candidate_d2h_after_target_per_request": 2,
+      "candidate_device_handoffs_per_request": 2,
+      "concurrency": 2,
+      "direct_exact_wall_seconds": 2.6847468360792845,
+      "ids_all_equal": true,
+      "logical_target_rows": 4,
+      "prior_host_candidate_staged_warm_wall_seconds": 1.4159056950593367,
+      "proposal_physical_rows": [
+        2,
+        2
+      ],
+      "staged_cold_wall_seconds": 2.2823169929906726,
+      "staged_warm_wall_delta_fraction": 0.005396639807339287,
+      "staged_warm_wall_seconds": 1.4235468280967325,
+      "target_physical_rows": [
+        4,
+        4
+      ],
+      "tracked_tree_dirty": false
+    },
+    {
+      "ar_wall_seconds": 0.8585768819320947,
+      "candidate_budget": 2,
+      "candidate_d2h_after_target_per_request": 1,
+      "candidate_device_handoffs_per_request": 1,
+      "concurrency": 2,
+      "direct_exact_wall_seconds": 2.7120818190742284,
+      "ids_all_equal": true,
+      "logical_target_rows": 6,
+      "prior_host_candidate_staged_warm_wall_seconds": 1.052577428985387,
+      "proposal_physical_rows": [
+        2,
+        2
+      ],
+      "staged_cold_wall_seconds": 1.9216279980028048,
+      "staged_warm_wall_delta_fraction": 0.0013564057215813552,
+      "staged_warm_wall_seconds": 1.0540051510324702,
+      "target_physical_rows": [
+        6
+      ],
+      "tracked_tree_dirty": false
+    },
+    {
+      "ar_wall_seconds": 0.8573834999697283,
+      "candidate_budget": 3,
+      "candidate_d2h_after_target_per_request": 1,
+      "candidate_device_handoffs_per_request": 1,
+      "concurrency": 2,
+      "direct_exact_wall_seconds": 2.8731168679660186,
+      "ids_all_equal": true,
+      "logical_target_rows": 8,
+      "prior_host_candidate_staged_warm_wall_seconds": 1.0981593370670453,
+      "proposal_physical_rows": [
+        2,
+        2,
+        2
+      ],
+      "staged_cold_wall_seconds": 1.9767976719886065,
+      "staged_warm_wall_delta_fraction": -0.0019894645899869445,
+      "staged_warm_wall_seconds": 1.0959745879517868,
+      "target_physical_rows": [
+        8
+      ],
+      "tracked_tree_dirty": false
+    },
+    {
+      "ar_wall_seconds": 0.9224604460177943,
+      "candidate_budget": 1,
+      "candidate_d2h_after_target_per_request": 2,
+      "candidate_device_handoffs_per_request": 2,
+      "concurrency": 4,
+      "direct_exact_wall_seconds": 4.144728187005967,
+      "ids_all_equal": true,
+      "logical_target_rows": 8,
+      "prior_host_candidate_staged_warm_wall_seconds": 1.6390587190398946,
+      "proposal_physical_rows": [
+        4,
+        4
+      ],
+      "staged_cold_wall_seconds": 2.5325115129817277,
+      "staged_warm_wall_delta_fraction": 0.0012283940486863543,
+      "staged_warm_wall_seconds": 1.6410721290158108,
+      "target_physical_rows": [
+        8,
+        8
+      ],
+      "tracked_tree_dirty": false
+    },
+    {
+      "ar_wall_seconds": 0.9206120650051162,
+      "candidate_budget": 2,
+      "candidate_d2h_after_target_per_request": 1,
+      "candidate_device_handoffs_per_request": 1,
+      "concurrency": 4,
+      "direct_exact_wall_seconds": 4.217156453989446,
+      "ids_all_equal": true,
+      "logical_target_rows": 12,
+      "prior_host_candidate_staged_warm_wall_seconds": 1.2458409449318424,
+      "proposal_physical_rows": [
+        4,
+        4
+      ],
+      "staged_cold_wall_seconds": 2.153259871993214,
+      "staged_warm_wall_delta_fraction": 0.001985116236330464,
+      "staged_warm_wall_seconds": 1.248314084019512,
+      "target_physical_rows": [
+        12
+      ],
+      "tracked_tree_dirty": false
+    },
+    {
+      "ar_wall_seconds": 0.9202821330400184,
+      "candidate_budget": 3,
+      "candidate_d2h_after_target_per_request": 1,
+      "candidate_device_handoffs_per_request": 1,
+      "concurrency": 4,
+      "direct_exact_wall_seconds": 4.434485639911145,
+      "ids_all_equal": true,
+      "logical_target_rows": 16,
+      "prior_host_candidate_staged_warm_wall_seconds": 1.320123384008184,
+      "proposal_physical_rows": [
+        4,
+        4,
+        4
+      ],
+      "staged_cold_wall_seconds": 2.262294334010221,
+      "staged_warm_wall_delta_fraction": 0.0019812239597565284,
+      "staged_warm_wall_seconds": 1.322738844086416,
+      "target_physical_rows": [
+        16
+      ],
+      "tracked_tree_dirty": false
+    }
+  ],
+  "model": {
+    "execution_profile": "strict",
+    "execution_profile_manifest_sha256": "0e053fd658cacbc72a67b7e7ccf33927502a0fe9379faf14dac30ae6ee2bb65b",
+    "kv_storage": "bf16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "recurrent_state": "fp32_strict"
+  },
+  "performance_claim": false,
+  "promotion": false,
+  "protocol": {
+    "arms": [
+      "true_ar",
+      "staged_cold",
+      "staged_warm",
+      "direct_exact"
+    ],
+    "baseline_artifact": "benchmarks/results/2026-08-25-gfx1151-specdec2-s4-physical-c2-c4.json",
+    "candidate_budgets": [
+      1,
+      2,
+      3
+    ],
+    "command_template": "env HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt .venv/bin/python scripts/specdec2_c1_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --concurrency {2,4} --budget {1,2,3} --max-tokens 5 --execution-profile strict --output /tmp/specdec2-s4-device-clean-c{C}k{K}.json --fail-on-fail",
+    "concurrency": [
+      2,
+      4
+    ],
+    "max_tokens": 5,
+    "prompt": "Write one short greeting.",
+    "sampling": "greedy",
+    "scope": "short fixed-prompt implementation diagnostic only; not an anti-gaming promotion suite"
+  },
+  "remaining_s4_blockers": [
+    "device accept/selected-state/KV commit payload",
+    "rejecting row beside full-accept row",
+    "slot permutation/compaction and neighbor substitution",
+    "prefix restore/COW and pressure rejection",
+    "eager/graph fallback and full category/heldout quality gates"
+  ],
+  "result": {
+    "c2_k2_wall_delta_fraction": 0.0013564057215813552,
+    "c4_k2_wall_delta_fraction": 0.001985116236330464,
+    "candidate_readback_phase": "after_packed_target_execution",
+    "performance_verdict": "neutral_within_single-run_noise",
+    "pre_target_candidate_d2h_per_cycle": 0
+  },
+  "schema": 1,
+  "speed_claim_eligible": false,
+  "status": "retained_default_off_s4_open"
+}

@@ -102,11 +102,14 @@ recurrent state. The S4 physical foundation now runs C2/C4, K1-K3, and target R4
 R16 with exact short-trajectory AR/staged/direct IDs and cached profiler
 engagement under strict manifest `0e053fd6...e2bb65b`. Best warm K2 aggregate
 scales **6.876→9.500→16.053 tok/s** at C1→C2→C4, but C2/C4 complete wall remains
-**21.8%/34.5% slower** than same-cell true AR. Candidate handoff and selected-
-state commit still have host/request-local gaps; this fixed-prompt diagnostic is
-not a promotion suite. Production FP16 state selects K0 and no automatic/default
-scope changes. [`S3 artifact`](results/2026-08-25-gfx1151-specdec2-s3-c1.json);
-[`S4 artifact`](results/2026-08-25-gfx1151-specdec2-s4-physical-c2-c4.json).
+**21.8%/34.5% slower** than same-cell true AR. Candidate IDs now remain on
+device through packed target execution for all C2/C4 K1-K3 cells; the bounded
+readback moved after target and complete wall is neutral within single-run noise.
+Device accept/selected-state commit still blocks S4 closure, and this fixed-
+prompt diagnostic is not a promotion suite. Production FP16 state selects K0
+and no automatic/default scope changes. [`S3 artifact`](results/2026-08-25-gfx1151-specdec2-s3-c1.json);
+[`S4 physical artifact`](results/2026-08-25-gfx1151-specdec2-s4-physical-c2-c4.json);
+[`device-candidate artifact`](results/2026-08-25-gfx1151-specdec2-s4-device-candidates.json).
 
 ## Where detailed evidence lives
 
