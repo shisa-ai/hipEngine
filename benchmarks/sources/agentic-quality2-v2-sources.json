@@ -1,0 +1,78 @@
+{
+  "created_at": "2026-08-26T00:00:00Z",
+  "creation": {
+    "adaptation": "none",
+    "hashing": "sha256_exact_file_bytes",
+    "method": "A bounded matrix was authored from new synthetic telemetry scenarios, then serialized deterministically. Oracle expected-result hashes were computed from the declared reference action and hidden checker behavior before any model run or candidate implementation. V2 corrects two fail-safe control specifications found during pre-model fake-endpoint validation: schema detail reason and malformed closing-only reasoning leakage.",
+    "serialization": "utf8_json_indent2_sort_keys_ensure_ascii_false_trailing_newline"
+  },
+  "kind": "hipengine.agentic_quality2_sources",
+  "project_original": {
+    "answer_leakage_policy": "Prompts contain the complete user-visible task and instruction constraints. Expected result hashes, hidden code tests, patch replacement text, and reference result objects remain oracle-only. Machine-readable instruction checks mirror explicit prompt constraints but contain no reference response prose.",
+    "authorship": "All agentic-quality2-v1 task text, repository content, solutions-as-behavior, hidden tests, and instruction checks were authored for hipEngine; no upstream task row was adapted.",
+    "license": "AGPL-3.0-only",
+    "license_path": "LICENSE"
+  },
+  "public_source_audit": [
+    {
+      "id": "bfcl",
+      "license": "Apache-2.0",
+      "license_evidence_url": "https://github.com/ShishirPatil/gorilla/blob/6ea57973c7a6097fd7c5915698c54c17c5b1b6c8/LICENSE",
+      "local_availability": {
+        "available": false,
+        "paths": []
+      },
+      "revision": "6ea57973c7a6097fd7c5915698c54c17c5b1b6c8",
+      "url": "https://github.com/ShishirPatil/gorilla/tree/6ea57973c7a6097fd7c5915698c54c17c5b1b6c8/berkeley-function-call-leaderboard",
+      "use": "conceptual_style_only_no_copied_tasks_solutions_or_tests"
+    },
+    {
+      "id": "human_eval",
+      "license": "MIT",
+      "license_evidence_url": "https://github.com/openai/human-eval/blob/6d43fb980f9fee3c892a914eda09951f772ad10d/LICENSE",
+      "local_availability": {
+        "available": true,
+        "paths": [
+          "/home/lhl/omlx/omlx/eval/data/humaneval.jsonl"
+        ]
+      },
+      "revision": "6d43fb980f9fee3c892a914eda09951f772ad10d",
+      "url": "https://github.com/openai/human-eval/tree/6d43fb980f9fee3c892a914eda09951f772ad10d",
+      "use": "conceptual_style_only_no_copied_tasks_solutions_or_tests"
+    },
+    {
+      "id": "mbpp",
+      "license": "CC-BY-4.0",
+      "license_evidence_url": "https://huggingface.co/datasets/google-research-datasets/mbpp/blob/4bb6404fdc6cacfda99d4ac4205087b89d32030c/README.md",
+      "local_availability": {
+        "available": true,
+        "paths": [
+          "/home/lhl/omlx/omlx/eval/data/mbpp.jsonl"
+        ]
+      },
+      "revision": "4bb6404fdc6cacfda99d4ac4205087b89d32030c",
+      "url": "https://huggingface.co/datasets/google-research-datasets/mbpp/tree/4bb6404fdc6cacfda99d4ac4205087b89d32030c",
+      "use": "conceptual_style_only_no_copied_tasks_solutions_or_tests"
+    },
+    {
+      "id": "ifeval",
+      "license": "Apache-2.0",
+      "license_evidence_url": "https://github.com/google-research/google-research/blob/e6890f85757dd84e27ca6df2dd30651dafad28e0/LICENSE",
+      "local_availability": {
+        "available": false,
+        "paths": []
+      },
+      "revision": "e6890f85757dd84e27ca6df2dd30651dafad28e0",
+      "url": "https://github.com/google-research/google-research/tree/e6890f85757dd84e27ca6df2dd30651dafad28e0/instruction_following_eval",
+      "use": "conceptual_style_only_no_copied_tasks_solutions_or_tests"
+    }
+  ],
+  "schema_version": 1,
+  "selection": {
+    "mode": "project_original_bounded_style_tasks",
+    "official_score_claimed": false,
+    "reason": "Public suites were audited for concepts and licensing, but AQ2 v1 uses new hermetic prompts, files, code tasks, instructions, tests, and expected values so scope and anti-overfit ownership remain explicit.",
+    "upstream_bytes_imported": false
+  },
+  "suite": "agentic-quality2-v2"
+}

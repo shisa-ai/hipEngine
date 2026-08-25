@@ -127,8 +127,12 @@ a quality-only current-source baseline, not a speed row or a same-protocol
 comparison with the historical W7900 packet. Independent raw-token taxonomy
 locates the five unique failures at model argument grounding (four) and tool
 selection (one), with zero runtime or unresolved rows.
+The frozen expanded suite and ZBook code sandbox subsequently qualify **34/34
+reference cases**, **10/10 fail-safe policy controls**, and **12/12 isolation
+probes** before any expanded model run or candidate.
 [`AQ2 evidence`](results/2026-08-26-zbook-agentic-quality2-aq2-baseline.json) ·
-[`AQ3 taxonomy`](results/2026-08-26-zbook-agentic-quality2-aq3-taxonomy.json).
+[`AQ3 taxonomy`](results/2026-08-26-zbook-agentic-quality2-aq3-taxonomy.json) ·
+[`AQ5 validation`](results/2026-08-26-zbook-agentic-quality2-aq5-validation-v2.json).
 
 ## Where detailed evidence lives
 

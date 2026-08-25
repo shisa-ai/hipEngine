@@ -1,6 +1,6 @@
 # AGENTIC-QUALITY2 — ZBook Agent Quality Campaign
 
-- **Status:** approved; active; AQ0-AQ4 complete, AQ5 fixture/oracle/sandbox validation next
+- **Status:** approved; active; AQ0-AQ5 complete, AQ6 expanded primary baseline next
 - **Approved:** 2026-08-25
 - **Execution host:** `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 - **Primary model:** Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV
@@ -621,8 +621,12 @@ revisions; local HumanEval/MBPP copies exist under read-only `/home/lhl/omlx/`,
 but no upstream task, solution, assertion, test, or evaluator byte is imported.
 The suite is AGPL project-original and claims no official upstream score.
 
-The frozen suite contains 34 independent one-turn blocks: 17 development and 17
-heldout, with 5/5 tool-selection, 4/4 repository, 4/4 code, and 4/4 instruction
+Fake-endpoint validation superseded v1 with v2 before any model or candidate
+run: the schema-invalid control now expects public `schema_violation`, and the
+reasoning-leak control is genuinely malformed (`</think>` without an opener).
+No task prompt, oracle answer, split ID, or result was changed. The frozen v2
+suite contains 34 independent one-turn blocks: 17 development and 17 heldout,
+with 5/5 tool-selection, 4/4 repository, 4/4 code, and 4/4 instruction
 rows. It includes single/nested/enum/optional/multiple/irrelevant automatic-tool
 shapes, read/search/patch/test, eight code entry points, eight behavioral
 instruction cases, 12 Japanese/mixed heldout blocks, five heldout patch/code
@@ -639,13 +643,41 @@ atomic development→heldout→control checkpoints.
 
 ### AQ5 / Task #45 — fixture/oracle/sandbox validation
 
-- [ ] RED loaders and schemas for duplicate IDs, split overlap, missing language,
+- [x] RED loaders and schemas for duplicate IDs, split overlap, missing language,
       oracle mismatch, expected-answer prompt leakage, and malformed counts.
-- [ ] RED sandbox network/filesystem/process/resource escapes.
-- [ ] Prove every committed oracle independently.
-- [ ] Prove deterministic artifact aggregation and large-raw/compact separation.
-- [ ] Run focused tests, fixture checker, Ruff/compile, Worklog2/sync/diff.
-- [ ] Commit.
+- [x] RED sandbox network/filesystem/process/resource escapes.
+- [x] Prove every committed oracle independently.
+- [x] Prove deterministic artifact aggregation and large-raw/compact separation.
+- [x] Run focused tests, fixture checker, Ruff/compile, Worklog2/sync/diff.
+- [x] Commit.
+
+#### AQ5 result — fixture and generated-code sandbox qualified
+
+The fail-closed loader cross-validates exact file references, 17/17 membership,
+family/language/executable cardinalities, one-to-one same-split cases, tool and
+argument shapes, code/instruction references, source-use policy, fail-safe
+classes, and hidden-answer leakage. It rejects duplicate IDs, overlap, missing
+language, malformed counts, unknown/mismatched oracle cases, bad hashes, and
+hidden expected material in user-visible prompts. Every **34/34** reference case
+and **10/10** independent fail-safe policy controls passes.
+
+The ZBook sandbox is qualified with unprivileged bubblewrap + `prlimit` +
+`python -I -S`: a new user/PID/network/session namespace per hidden input; only
+read-only `/usr`, `/lib`, `/lib64`, candidate source, generic runner, and that
+input are mounted; `/tmp`/`/work` are private; environment is cleared; and
+wall/CPU/address-space/file/process/FD/core/output bounds apply. Hidden expected
+values remain host-only and never enter the namespace. Probes block network,
+`/etc`, home/repository/model paths, `/dev/kfd`, inherited secrets, and child
+processes; wall timeout kills the process group; memory/file/output limits fail
+closed; valid code passes. Missing bubblewrap returns `blocked_sandbox` without
+execution.
+
+The compact qualification artifact is
+[`2026-08-26-zbook-agentic-quality2-aq5-validation-v2.json`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq5-validation-v2.json).
+Aggregation is order-independent, checks repeat fingerprints, keeps blocked and
+unscorable counts explicit/outside the scored denominator, seals heldout detail
+by default, and excludes raw token arrays. AQ5 runs no model or GPU and admits no
+candidate mechanism.
 
 ### AQ6 / Task #46 — expanded primary baseline
 
@@ -923,12 +955,13 @@ weights, caches, or profiler data.
 
 ## 18. Current handoff
 
-Start AQ5 / Task #45 against the exact hashes in
-[`AGENTIC-QUALITY2-SUITE.md`](AGENTIC-QUALITY2-SUITE.md). RED duplicate IDs,
-split overlap, missing language, malformed counts, broken source/oracle links,
-unknown cases, expected-answer prompt leakage, and large-raw/compact coupling.
-Then implement the minimum loader/evaluator and independently prove all 34
-reference cases plus ten fail-safe controls. Before any generated code executes,
-RED network/filesystem/process/resource escapes and prove the full sandbox
-contract; if the host cannot provide it, mark code rows `blocked_sandbox` rather
-than weakening isolation. No GPU run or candidate mechanism belongs in AQ5.
+Start AQ6 / Task #46 from the clean AQ5-qualified source and the exact v1 hashes
+in [`AGENTIC-QUALITY2-SUITE.md`](AGENTIC-QUALITY2-SUITE.md). Extend the live
+collector only as required to represent single/multiple/no-tool outcomes and to
+join repository/code/instruction oracle results through the qualified sandbox;
+RED fake transports before GPU. Then run 68 observations with per-turn atomic
+checkpoints: development first, heldout second, fail-safe controls last. Keep
+heldout model-output detail local and publish aggregates only. Use the frozen
+192-token cap/settings, response-owned IDs, deterministic repeats, explicit
+blocked/unscorable denominators, and zero final request ownership. No mechanism
+selection or prompt change belongs in AQ6.

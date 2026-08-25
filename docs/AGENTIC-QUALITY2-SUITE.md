@@ -2,12 +2,17 @@
 
 - **Status:** frozen before candidate code
 - **Campaign phase:** AQ4
-- **Suite ID:** `agentic-quality2-v1`
+- **Suite ID:** `agentic-quality2-v2`
 - **License:** project-original `AGPL-3.0-only`
 - **Official upstream score reproduced:** no
 - **Upstream task/solution/test bytes imported:** no
 
 This card records the immutable input boundary for AGENTIC-QUALITY2 AQ5–AQ13.
+V1 was superseded before any model/candidate run after fake-endpoint validation
+found two fail-safe specification errors. V2 changes only the schema-invalid
+public detail reason (`schema_violation`) and makes the reasoning-leak control
+actually malformed (`</think>` without an opener); task IDs/prompts/oracles and
+all split membership are otherwise unchanged.
 The suite is intentionally bounded. It measures automatic tool selection,
 argument grounding, hermetic repository work, Python function behavior,
 instruction constraints, Japanese/mixed-language behavior, and fail-safe
@@ -17,12 +22,12 @@ semantics. It does not claim an official BFCL, HumanEval, MBPP, or IFEval score.
 
 | File | Exact SHA-256 |
 | --- | --- |
-| `benchmarks/prompts/agentic-quality2-v1.json` | `631519bee6acf04097341d31d46e2e0c8793b7b1e8c688265c80d9bd0f181df9` |
-| `benchmarks/oracles/agentic-quality2-v1.json` | `f633f4f84e0dfd31053af0688278b3d172934db2eccf58cbedf55c4073ec585f` |
-| `benchmarks/sources/agentic-quality2-v1-sources.json` | `eacab37e9ace592e326a17052e154adc167191cb971f9d62b9c476b8cdb64e35` |
-| `benchmarks/schemas/agentic-quality2-suite.schema.json` | `43ef716613de843bbaa209c28ed9d5a93b59a29f757cd1856adfb8b21d5e3f0f` |
-| `benchmarks/schemas/agentic-quality2-oracles.schema.json` | `3ef2248c13313a71f2bfe48d84fb389c85066612c075143d63d50aae8581d491` |
-| `benchmarks/schemas/agentic-quality2-sources.schema.json` | `1387383df17ec1c463825ff4f4475238a589848145a5f04210df6af8fb9a8fad` |
+| `benchmarks/prompts/agentic-quality2-v2.json` | `dbe4668667ba3ca57649408f4dc9a5004ee771ce61dc95f7816cf6799b62cbdd` |
+| `benchmarks/oracles/agentic-quality2-v2.json` | `c6fd180a2fe7156307995b9567a149f8c50f7448da003bdbe4cc0abe41f0706a` |
+| `benchmarks/sources/agentic-quality2-v2-sources.json` | `b5d7ed2573b78ca05b14e34616c562fce4dba154fb938a414b5b96ed1ad1fdf8` |
+| `benchmarks/schemas/agentic-quality2-v2-suite.schema.json` | `6a2a36e81e82a64430bd5bcdeb62d7e45e11a81cba65809093677547da6060f1` |
+| `benchmarks/schemas/agentic-quality2-v2-oracles.schema.json` | `c7deefcf776cf053046cc19e41d951de55ea1bb1dd3698df213abbb866e19a97` |
+| `benchmarks/schemas/agentic-quality2-v2-sources.schema.json` | `db1df4e2ac0e25bd9df494503def97ae4a0c612637a7762fc4af5f508a323cfb` |
 
 Any fixture change after this freeze creates a new suite version and reruns both
 baseline and candidate. Do not update these hashes in place after observing a
@@ -96,15 +101,20 @@ The separate oracle fixture owns reference actions, synthetic file state, patch
 regions, file-hash suites, code entry points and hidden inputs/outputs,
 machine-readable instruction checks, expected canonical result hashes, and
 fail-safe outputs. Expected code source and exact instruction response prose are
-intentionally not stored; instruction checks mirror only the public constraints. AQ5 must implement and RED-test a loader/evaluator that proves every
-reference result and rejects split overlap, duplicate IDs, malformed counts,
-missing language, oracle mismatch, and prompt leakage.
+intentionally not stored; instruction checks mirror only public constraints.
+AQ5's fail-closed loader proves every reference result and rejects split overlap,
+duplicate IDs, malformed counts, missing language, oracle mismatch, and prompt
+leakage.
 
-Generated code remains **data only** at AQ4. It must not execute until AQ5 proves
-the sandbox contract in `docs/AGENTIC-QUALITY2.md`: no network, secrets, device
-files, GPU, home/repository/model access, or orphan process; strict resource and
-output limits; fresh directory; complete process-group kill; fail closed when
-isolation is unavailable.
+Generated code remained **data only** at AQ4. AQ5 has now qualified the ZBook
+bubblewrap sandbox: one fresh user/PID/network/session namespace per hidden
+input; expected values retained by the host; read-only runtime/source/input;
+private work/tmp/proc/dev; cleared environment; strict wall/CPU/address-space/
+file/process/FD/core/output limits; complete timeout process-group kill; and
+fail-closed `blocked_sandbox` when isolation is unavailable. The qualification
+artifact is
+[`2026-08-26-zbook-agentic-quality2-aq5-validation-v2.json`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq5-validation-v2.json).
+Generated code may execute only through this path.
 
 ## Frozen collection settings
 

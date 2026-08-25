@@ -8,21 +8,21 @@ from pathlib import Path
 
 import pytest
 
-SUITE = Path("benchmarks/prompts/agentic-quality2-v1.json")
-ORACLE = Path("benchmarks/oracles/agentic-quality2-v1.json")
-SOURCES = Path("benchmarks/sources/agentic-quality2-v1-sources.json")
+SUITE = Path("benchmarks/prompts/agentic-quality2-v2.json")
+ORACLE = Path("benchmarks/oracles/agentic-quality2-v2.json")
+SOURCES = Path("benchmarks/sources/agentic-quality2-v2-sources.json")
 SCHEMAS = {
-    "suite": Path("benchmarks/schemas/agentic-quality2-suite.schema.json"),
-    "oracle": Path("benchmarks/schemas/agentic-quality2-oracles.schema.json"),
-    "sources": Path("benchmarks/schemas/agentic-quality2-sources.schema.json"),
+    "suite": Path("benchmarks/schemas/agentic-quality2-v2-suite.schema.json"),
+    "oracle": Path("benchmarks/schemas/agentic-quality2-v2-oracles.schema.json"),
+    "sources": Path("benchmarks/schemas/agentic-quality2-v2-sources.schema.json"),
 }
 FROZEN_SHA256 = {
-    SUITE: "631519bee6acf04097341d31d46e2e0c8793b7b1e8c688265c80d9bd0f181df9",
-    ORACLE: "f633f4f84e0dfd31053af0688278b3d172934db2eccf58cbedf55c4073ec585f",
-    SOURCES: "eacab37e9ace592e326a17052e154adc167191cb971f9d62b9c476b8cdb64e35",
-    SCHEMAS["suite"]: "43ef716613de843bbaa209c28ed9d5a93b59a29f757cd1856adfb8b21d5e3f0f",
-    SCHEMAS["oracle"]: "3ef2248c13313a71f2bfe48d84fb389c85066612c075143d63d50aae8581d491",
-    SCHEMAS["sources"]: "1387383df17ec1c463825ff4f4475238a589848145a5f04210df6af8fb9a8fad",
+    SUITE: "dbe4668667ba3ca57649408f4dc9a5004ee771ce61dc95f7816cf6799b62cbdd",
+    ORACLE: "c6fd180a2fe7156307995b9567a149f8c50f7448da003bdbe4cc0abe41f0706a",
+    SOURCES: "b5d7ed2573b78ca05b14e34616c562fce4dba154fb938a414b5b96ed1ad1fdf8",
+    SCHEMAS["suite"]: "6a2a36e81e82a64430bd5bcdeb62d7e45e11a81cba65809093677547da6060f1",
+    SCHEMAS["oracle"]: "c7deefcf776cf053046cc19e41d951de55ea1bb1dd3698df213abbb866e19a97",
+    SCHEMAS["sources"]: "db1df4e2ac0e25bd9df494503def97ae4a0c612637a7762fc4af5f508a323cfb",
 }
 
 
@@ -57,9 +57,7 @@ def test_agentic_quality2_v1_split_and_minimum_coverage_are_explicit() -> None:
     assert development.isdisjoint(heldout)
     assert development | heldout == set(workload_ids)
     assert len(development) == len(heldout) == 17
-    assert development == {
-        row["id"] for row in workloads if row["split"] == "development"
-    }
+    assert development == {row["id"] for row in workloads if row["split"] == "development"}
     assert heldout == {row["id"] for row in workloads if row["split"] == "heldout"}
     assert Counter((row["family"], row["split"]) for row in workloads) == Counter(
         {
@@ -73,14 +71,13 @@ def test_agentic_quality2_v1_split_and_minimum_coverage_are_explicit() -> None:
             ("instruction", "heldout"): 4,
         }
     )
-    assert sum(
-        row["split"] == "heldout" and row["language"] != "en"
-        for row in workloads
-    ) == 12
-    assert sum(
-        row["split"] == "heldout" and row["task_kind"] in {"patch", "code"}
-        for row in workloads
-    ) == 5
+    assert sum(row["split"] == "heldout" and row["language"] != "en" for row in workloads) == 12
+    assert (
+        sum(
+            row["split"] == "heldout" and row["task_kind"] in {"patch", "code"} for row in workloads
+        )
+        == 5
+    )
     assert {row["task_kind"] for row in workloads if row["family"] == "tool_selection"} == {
         "nested",
         "optional",
@@ -130,13 +127,9 @@ def test_agentic_quality2_v1_has_no_reference_code_or_prose() -> None:
     }
     assert "reference_source" not in oracle_text
     assert "reference_response" not in oracle_text
+    assert not any(case["expected_result_sha256"] in visible for case in oracle["cases"].values())
     assert not any(
-        case["expected_result_sha256"] in visible
-        for case in oracle["cases"].values()
-    )
-    assert not any(
-        patch["old"] in visible or patch["new"] in visible
-        for patch in oracle["patches"].values()
+        patch["old"] in visible or patch["new"] in visible for patch in oracle["patches"].values()
     )
 
 

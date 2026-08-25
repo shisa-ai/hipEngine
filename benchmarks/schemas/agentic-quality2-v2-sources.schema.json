@@ -1,0 +1,174 @@
+{
+  "$defs": {
+    "source": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "license": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "license_evidence_url": {
+          "format": "uri",
+          "type": "string"
+        },
+        "local_availability": {
+          "additionalProperties": false,
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "available",
+            "paths"
+          ],
+          "type": "object"
+        },
+        "revision": {
+          "minLength": 7,
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "type": "string"
+        },
+        "use": {
+          "const": "conceptual_style_only_no_copied_tasks_solutions_or_tests"
+        }
+      },
+      "required": [
+        "id",
+        "url",
+        "revision",
+        "license",
+        "license_evidence_url",
+        "local_availability",
+        "use"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://hipengine.dev/schemas/agentic-quality2-v2-sources.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "creation": {
+      "additionalProperties": false,
+      "properties": {
+        "adaptation": {
+          "const": "none"
+        },
+        "hashing": {
+          "const": "sha256_exact_file_bytes"
+        },
+        "method": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "serialization": {
+          "const": "utf8_json_indent2_sort_keys_ensure_ascii_false_trailing_newline"
+        }
+      },
+      "required": [
+        "method",
+        "adaptation",
+        "serialization",
+        "hashing"
+      ],
+      "type": "object"
+    },
+    "kind": {
+      "const": "hipengine.agentic_quality2_sources"
+    },
+    "project_original": {
+      "additionalProperties": false,
+      "properties": {
+        "answer_leakage_policy": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "authorship": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "license": {
+          "const": "AGPL-3.0-only"
+        },
+        "license_path": {
+          "const": "LICENSE"
+        }
+      },
+      "required": [
+        "license",
+        "license_path",
+        "authorship",
+        "answer_leakage_policy"
+      ],
+      "type": "object"
+    },
+    "public_source_audit": {
+      "items": {
+        "$ref": "#/$defs/source"
+      },
+      "minItems": 4,
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "selection": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "const": "project_original_bounded_style_tasks"
+        },
+        "official_score_claimed": {
+          "const": false
+        },
+        "reason": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "upstream_bytes_imported": {
+          "const": false
+        }
+      },
+      "required": [
+        "mode",
+        "upstream_bytes_imported",
+        "official_score_claimed",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "suite": {
+      "const": "agentic-quality2-v2"
+    }
+  },
+  "required": [
+    "kind",
+    "schema_version",
+    "suite",
+    "created_at",
+    "selection",
+    "project_original",
+    "creation",
+    "public_source_audit"
+  ],
+  "title": "AGENTIC-QUALITY2 source and license audit",
+  "type": "object"
+}
