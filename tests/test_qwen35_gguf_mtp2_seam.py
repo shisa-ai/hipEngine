@@ -955,8 +955,15 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
     adapter.physical_prompt_streaming = True
 
     sinks = adapter.begin_prompt_streaming((7, 8), checkpoints={})
+    assert adapter._active_prompt_claims is not None
+    assert adapter._active_prompt_claims.units_by_pool() == {
+        "gguf_mtp2.carried_hidden_rows": 2,
+        "gguf_mtp2.prompt_rows": 4,
+        "gguf_mtp2.provider_request_slots": 2,
+    }
     adapter.finish_prompt_streaming((7, 8), success=True, stream=0)
 
+    assert adapter._active_prompt_claims is None
     assert tuple(sink.request_id for sink in sinks) == (7, 8)
     assert provider.reset == [7, 8]
     assert finish_calls == [(7, False), (8, False)]
@@ -1085,6 +1092,11 @@ def test_mtp2_streaming_prompt_failure_drains_provider_and_sink() -> None:
     adapter = object.__new__(Qwen35GGUFMTP2Adapter)
     adapter._prompt_streaming_sinks = {7: Sink()}
     adapter._prompt_streaming_group_keys = {7: (7,)}
+    adapter._active_prompt_claims = mtp2_module.ResourceClaimSet.from_mapping(
+        "prompt",
+        {"rows": 1},
+        lifetime=mtp2_module.ClaimLifetime.WORK_ITEM,
+    )
     adapter._provider_groups = {(7,): group}
     adapter.generator = SimpleNamespace(
         _release_mtp_draft_runner=lambda key, owned: events.append(
@@ -1102,4 +1114,5 @@ def test_mtp2_streaming_prompt_failure_drains_provider_and_sink() -> None:
     ]
     assert adapter._prompt_streaming_sinks == {}
     assert adapter._prompt_streaming_group_keys == {}
+    assert adapter._active_prompt_claims is None
     assert adapter._provider_groups == {}
