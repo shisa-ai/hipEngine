@@ -2286,6 +2286,9 @@ class Qwen35GGUFMTP2Adapter:
             )
 
         restored: list[tuple[_MTP2RequestState, MtpProposalContext]] = []
+        root_snapshot_restore = getattr(executor, "restore_request_root_state", None)
+        root_snapshot_requests: set[int] = set()
+        keep_proposal_state: set[int] = set()
         for state, accepted_count, candidate_count in zip(
             states,
             accepted,
@@ -2296,7 +2299,16 @@ class Qwen35GGUFMTP2Adapter:
             context = state.proposal_context
             if checkpoint is None or context is None:
                 raise RuntimeError("GGUF MTP2 device repair has no checkpoint")
-            if accepted_count < int(candidate_count):
+            count = int(candidate_count)
+            if accepted_count == 0 and callable(root_snapshot_restore):
+                root_snapshot_restore(state.request_id)
+                root_snapshot_requests.add(int(state.request_id))
+            elif count > 1 and accepted_count == count - 1:
+                # A K-token proposal has already advanced provider state through
+                # candidate K-1. Publishing that state is exact and needs no
+                # restore/replay.
+                keep_proposal_state.add(int(state.request_id))
+            elif accepted_count < count:
                 executor.restore_request_checkpoint(checkpoint)
                 restored.append((state, context))
         if restored:
@@ -2342,7 +2354,10 @@ class Qwen35GGUFMTP2Adapter:
             root_position = int(proposal.root_positions[
                 proposal.request_ids.index(state.request_id)
             ])
-            if accepted_count == int(candidate_count):
+            request_id = int(state.request_id)
+            if request_id in root_snapshot_requests or request_id in keep_proposal_state:
+                candidate_indices = ()
+            elif accepted_count == int(candidate_count):
                 candidate_indices = (int(candidate_count) - 1,)
             else:
                 candidate_indices = tuple(range(accepted_count))

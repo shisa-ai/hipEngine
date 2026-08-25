@@ -36,6 +36,47 @@ def _choice_rows(response: dict[str, Any]) -> tuple[tuple[int, ...], ...]:
     )
 
 
+def _physical_staged_row_passes(row: dict[str, Any]) -> bool:
+    """Validate the post-P4 device-resident physical-cycle contract."""
+
+    return bool(
+        int(row["specdec2_mtp2_proposal_batch_calls"]) > 0
+        and int(row["specdec2_mtp2_target_batch_calls"]) > 0
+        and int(row["specdec2_mtp2_candidate_device_handoffs"]) > 0
+        and int(row["specdec2_mtp2_candidate_d2h_after_target"]) == 0
+        and int(row["specdec2_mtp2_device_accept_calls"])
+        == int(row["specdec2_mtp2_target_batch_calls"])
+        and int(row["specdec2_mtp2_selected_commit_batch_calls"])
+        == int(row["specdec2_mtp2_target_batch_calls"])
+        and row["specdec2_mtp2_execution_routes"]
+        == ["eager"] * int(row["specdec2_mtp2_target_batch_calls"])
+    )
+
+
+def _provider_fingerprint_verdicts(
+    fingerprints: Sequence[dict[str, Any]],
+    *,
+    concurrency: int,
+) -> tuple[bool, bool]:
+    """Return same-slot repeat and diagnostic direct-oracle equality."""
+
+    rows = int(concurrency)
+    if rows <= 0:
+        raise ValueError("provider fingerprint concurrency must be positive")
+    repeat_equal = bool(
+        len(fingerprints) >= 2 * rows
+        and all(fingerprints[index] == fingerprints[rows + index] for index in range(rows))
+    )
+    direct_equal = bool(
+        len(fingerprints) >= 3 * rows
+        and all(
+            fingerprints[rows + index] == fingerprints[2 * rows + index]
+            for index in range(rows)
+        )
+    )
+    return repeat_equal, direct_equal
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     from fastapi.testclient import TestClient
 
@@ -144,18 +185,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         }
         for fingerprint in provider_fingerprints
     ]
-    staged_capture_count = 2 * int(args.concurrency)
-    staged_provider_fingerprints_equal = bool(
-        len(normalized_provider_fingerprints) >= staged_capture_count
-        and len(
-            {
-                json.dumps(fingerprint, sort_keys=True)
-                for fingerprint in normalized_provider_fingerprints[
-                    :staged_capture_count
-                ]
-            }
+    staged_provider_fingerprints_equal, direct_provider_fingerprints_equal = (
+        _provider_fingerprint_verdicts(
+            normalized_provider_fingerprints,
+            concurrency=int(args.concurrency),
         )
-        == 1
     )
     provider_gate_passed = bool(
         not args.provider_fingerprint
@@ -174,17 +208,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         and (
             int(args.concurrency) == 1
             or all(
-                int(row["specdec2_mtp2_proposal_batch_calls"]) > 0
-                and int(row["specdec2_mtp2_target_batch_calls"]) > 0
-                and int(row["specdec2_mtp2_candidate_device_handoffs"]) > 0
-                and int(row["specdec2_mtp2_candidate_d2h_after_target"])
-                == int(row["specdec2_mtp2_candidate_device_handoffs"])
-                and int(row["specdec2_mtp2_device_accept_calls"])
-                == int(row["specdec2_mtp2_target_batch_calls"])
-                and int(row["specdec2_mtp2_selected_commit_batch_calls"])
-                == int(row["specdec2_mtp2_target_batch_calls"])
-                and row["specdec2_mtp2_execution_routes"]
-                == ["eager"] * int(row["specdec2_mtp2_target_batch_calls"])
+                _physical_staged_row_passes(row)
                 for row in staged_rows[-int(args.concurrency) :]
             )
         )
@@ -256,11 +280,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "enabled": bool(args.provider_fingerprint),
             "captures": len(provider_fingerprints),
             "staged_repeat_equal": staged_provider_fingerprints_equal,
-            "direct_equal_to_staged": bool(
-                len(normalized_provider_fingerprints) >= 3 * int(args.concurrency)
-                and normalized_provider_fingerprints[staged_capture_count]
-                == normalized_provider_fingerprints[staged_capture_count - 1]
-            ),
+            "direct_equal_to_staged": direct_provider_fingerprints_equal,
             "passed": provider_gate_passed,
         },
         "resident_snapshot": resident_snapshot,

@@ -388,6 +388,17 @@ class Qwen35GGUFNextNExecutor:
             ),
         )
         self.scratch.zero_states(self.runtime)
+        root_state_buffers = (
+            *self.scratch.layer_conv_states,
+            *self.scratch.layer_recurrent_states,
+        )
+        self._provider_root_state_snapshots = tuple(
+            None
+            if state is None
+            else malloc(int(state.nbytes), runtime=self.runtime)
+            for state in root_state_buffers
+        )
+        self._provider_root_state_metadata: dict[int, tuple[int, int, int]] = {}
         self._request_slots: dict[int, int] = {}
         # Pageable host token arrays backing nonblocking prompt-prime H2D
         # copies stay alive until the target prefill's completion boundary.
@@ -469,6 +480,7 @@ class Qwen35GGUFNextNExecutor:
                 self._lm_head_top1_result,
                 self._proposal_target_hidden,
                 self._proposal_results,
+                *self._provider_root_state_snapshots,
             )
             if buffer is not None
         )
@@ -1321,6 +1333,9 @@ class Qwen35GGUFNextNExecutor:
                     ),
                 )
                 step_tokens, step_hidden = token, (hidden,)
+            if depth == 0:
+                for source_row in active:
+                    self.capture_request_root_state(ids[source_row])
             for packed_row, source_row in enumerate(active):
                 self.runtime.memcpy(
                     self._batch_candidate_tokens_i32.ptr
@@ -2024,6 +2039,93 @@ class Qwen35GGUFNextNExecutor:
         self._set_batch_session_position(slot, int(position) + 1)
         self.runtime.device_synchronize()
 
+    def capture_request_root_state(self, request_id: int) -> None:
+        """Persist the exact provider state/cursor immediately after its root."""
+
+        rid = int(request_id)
+        slot = self._request_slots.get(rid)
+        if slot is None:
+            raise ValueError("GGUF NextN root snapshot requires an active request")
+        owner_states = (
+            *self.scratch.layer_conv_states,
+            *self.scratch.layer_recurrent_states,
+        )
+        for state, snapshot in zip(
+            owner_states,
+            self._provider_root_state_snapshots,
+            strict=True,
+        ):
+            if state is None or snapshot is None:
+                continue
+            row_nbytes, remainder = divmod(int(state.nbytes), self.max_requests)
+            if remainder:
+                raise ValueError("GGUF NextN root snapshot state is not slot-major")
+            self.runtime.memcpy(
+                int(snapshot.ptr) + int(slot) * row_nbytes,
+                int(state.ptr) + int(slot) * row_nbytes,
+                row_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
+        slot_scratch = self.scratch.for_slot(slot, span_role="decode")
+        sessions = getattr(self, "_batch_sessions", None)
+        logical_position = int(
+            slot_scratch.position_host[0]
+            if sessions is None
+            else sessions[slot].position
+        )
+        context_length = int(slot_scratch.context_host[0])
+        self._provider_root_state_metadata[rid] = (
+            int(slot),
+            logical_position,
+            context_length,
+        )
+
+    def restore_request_root_state(self, request_id: int) -> None:
+        """Commit the captured after-root provider state without model replay."""
+
+        rid = int(request_id)
+        metadata = self._provider_root_state_metadata.get(rid)
+        slot = self._request_slots.get(rid)
+        if metadata is None or slot is None or int(metadata[0]) != int(slot):
+            raise RuntimeError("GGUF NextN after-root snapshot is unavailable")
+        owner_states = (
+            *self.scratch.layer_conv_states,
+            *self.scratch.layer_recurrent_states,
+        )
+        for state, snapshot in zip(
+            owner_states,
+            self._provider_root_state_snapshots,
+            strict=True,
+        ):
+            if state is None or snapshot is None:
+                continue
+            row_nbytes, remainder = divmod(int(state.nbytes), self.max_requests)
+            if remainder:
+                raise ValueError("GGUF NextN root snapshot state is not slot-major")
+            self.runtime.memcpy(
+                int(state.ptr) + int(slot) * row_nbytes,
+                int(snapshot.ptr) + int(slot) * row_nbytes,
+                row_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
+        _slot, logical_position, context_length = metadata
+        slot_scratch = self.scratch.for_slot(slot, span_role="decode")
+        slot_scratch.position_host[0] = int(logical_position)
+        slot_scratch.context_host[0] = int(context_length)
+        self._set_batch_session_position(slot, int(logical_position))
+        copy_host_to_device(
+            slot_scratch.position_buf,
+            host_array_ptr(slot_scratch.position_host),
+            slot_scratch.position_host.nbytes,
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            slot_scratch.context_buf,
+            host_array_ptr(slot_scratch.context_host),
+            slot_scratch.context_host.nbytes,
+            runtime=self.runtime,
+        )
+
     def capture_request_checkpoint(
         self,
         request_id: int,
@@ -2160,6 +2262,9 @@ class Qwen35GGUFNextNExecutor:
         visible_rows = min(max(0, context), max_positions)
         kv_hash = hashlib.sha256()
         kv_bytes = 0
+        physical_slots = int(getattr(self.scratch, "slot_count", 1))
+        if physical_slots <= 0:
+            raise RuntimeError("GGUF NextN KV cache has no physical slots")
         for pair in zip(
             slot_scratch.full_key_caches,
             slot_scratch.full_value_caches,
@@ -2168,12 +2273,17 @@ class Qwen35GGUFNextNExecutor:
             for cache in pair:
                 if cache is None:
                     continue
-                if int(cache.nbytes) % max_positions:
-                    raise RuntimeError("GGUF NextN KV cache is not position divisible")
-                count = visible_rows * (int(cache.nbytes) // max_positions)
+                slot_nbytes, remainder = divmod(int(cache.nbytes), physical_slots)
+                if remainder or slot_nbytes % max_positions:
+                    raise RuntimeError("GGUF NextN KV cache is not slot/position divisible")
+                count = visible_rows * (slot_nbytes // max_positions)
                 if count <= 0:
                     continue
-                digest, count = read_digest(cache, nbytes=count)
+                slot_cache = DeviceBuffer(
+                    int(cache.ptr) + int(slot) * slot_nbytes,
+                    slot_nbytes,
+                )
+                digest, count = read_digest(slot_cache, nbytes=count)
                 kv_hash.update(bytes.fromhex(digest))
                 kv_bytes += count
         return {
@@ -2188,6 +2298,7 @@ class Qwen35GGUFNextNExecutor:
         }
 
     def reset_request(self, request_id: int) -> None:
+        self._provider_root_state_metadata.pop(int(request_id), None)
         slot = self._request_slots.get(int(request_id))
         if slot is None:
             return
