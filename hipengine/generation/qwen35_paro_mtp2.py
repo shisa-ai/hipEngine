@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-import os
 import time
 from typing import Any, Mapping, Sequence
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
-from hipengine.core.memory import memory_stats
 from hipengine.core.tensor import Tensor
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.runtime.qwen35_paro_runner import (
@@ -41,31 +39,6 @@ from hipengine.speculative.transaction import (
 
 
 _PROPOSER_CAPACITY_FLOOR = 256
-_CYCLE_ALLOCATION_TELEMETRY_ENV = "HIPENGINE_SPECDEC2_CYCLE_ALLOC_TELEMETRY"
-
-
-def _cycle_allocation_telemetry_enabled() -> bool:
-    return os.environ.get(_CYCLE_ALLOCATION_TELEMETRY_ENV, "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-
-
-def _memory_delta(
-    before: Mapping[str, int],
-    after: Mapping[str, int],
-) -> dict[str, int]:
-    return {
-        f"delta_{name}": int(after[name]) - int(before[name])
-        for name in (
-            "active_allocations",
-            "current_allocated_bytes",
-            "total_allocated_bytes",
-            "total_freed_bytes",
-        )
-    }
 
 
 def _proposer_capacity_bucket(required_tokens: int) -> int:
@@ -447,9 +420,6 @@ class Qwen35ParoMTP2Adapter:
         session = self.owner._session
         if session is None or row.model_slot != 0:
             raise RuntimeError("PARO MTP2 C1 requires resident target slot 0")
-        cycle_memory_before = (
-            memory_stats() if _cycle_allocation_telemetry_enabled() else None
-        )
         transaction = SpecCycleTransaction(
             operation_id=plan.operation_id,
             transaction_id=int(frontier.provider_transaction_id or 0),
@@ -542,10 +512,6 @@ class Qwen35ParoMTP2Adapter:
         row.mtp2_candidate_counts.append(1)
         row.mtp2_accepted_counts.append(accepted)
         row.mtp2_execution_routes.append("eager")
-        if cycle_memory_before is not None:
-            row.mtp2_cycle_allocation_deltas.append(
-                _memory_delta(cycle_memory_before, memory_stats())
-            )
         accept = AcceptResult(
             request_ids=plan.request_ids,
             accepted_counts=(accepted,),

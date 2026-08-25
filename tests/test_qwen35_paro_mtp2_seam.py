@@ -8,7 +8,6 @@ from hipengine.generation.qwen35_paro import Qwen35ParoResidentModelRunner
 from hipengine.generation.qwen35_paro_mtp2 import (
     Qwen35ParoMTP2Adapter,
     _ParoMTP2RequestState,
-    _memory_delta,
 )
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
@@ -80,28 +79,6 @@ class _ProposerDouble:
 
     def device_candidate_token_ids(self):
         return Tensor.from_handle(0x7000, (1,), DType.INT32, Device("hip", 0))
-
-
-def test_cycle_memory_delta_reports_tracked_allocation_and_release() -> None:
-    assert _memory_delta(
-        {
-            "active_allocations": 10,
-            "current_allocated_bytes": 1000,
-            "total_allocated_bytes": 5000,
-            "total_freed_bytes": 4000,
-        },
-        {
-            "active_allocations": 11,
-            "current_allocated_bytes": 1100,
-            "total_allocated_bytes": 5300,
-            "total_freed_bytes": 4200,
-        },
-    ) == {
-        "delta_active_allocations": 1,
-        "delta_current_allocated_bytes": 100,
-        "delta_total_allocated_bytes": 300,
-        "delta_total_freed_bytes": 200,
-    }
 
 
 def test_gfx1100_package_exposes_only_paro_c1_scope() -> None:
