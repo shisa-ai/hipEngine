@@ -21,6 +21,7 @@ from hipengine.kernels.backends import backend_package_capability
 from hipengine.runtime import qwen35_gguf_runner as runner_mod
 from hipengine.runtime.qwen35_gguf_nextn import (
     Qwen35GGUFNextNBatchDeviceProposal,
+    Qwen35GGUFNextNDeviceProposal,
 )
 from hipengine.speculative import (
     DraftBatch,
@@ -300,6 +301,340 @@ def test_physical_adapter_returns_device_candidate_graph_before_target(
     )
 
 
+def test_c1_adapter_warms_budget_graph_before_device_handoff() -> None:
+    calls: list[tuple[object, ...]] = []
+    target = SimpleNamespace(
+        position=5,
+        last_target_hidden=Tensor.from_handle(
+            0x1100, (1, 8), DType.BF16, Device("hip", 0)
+        ),
+        runtime=SimpleNamespace(memcpy=lambda *args: None),
+    )
+    row = SimpleNamespace(
+        lease=SimpleNamespace(session=target),
+        slot=SimpleNamespace(generated_ids=[100], seq_position=5),
+    )
+    draft = DraftBatch(
+        request_ids=(10,),
+        candidate_tokens=(101, 102),
+        parent_positions=(5, 6),
+        draft_depths=(1, 2),
+        row_to_request=(10, 10),
+        tree_parents=(-1, 0),
+        active_mask=(True, True),
+    )
+    provider = SimpleNamespace(
+        executor=SimpleNamespace(
+            hidden_size=8,
+            capture_request_checkpoint=lambda request_id: "checkpoint",
+        ),
+        propose=lambda context, **kwargs: (
+            calls.append(("propose", kwargs["allow_graph"])) or draft
+        ),
+    )
+    state = _MTP2RequestState(
+        request_id=10,
+        provider=provider,
+        provider_pool_key=None,
+        provider_group_key=(10,),
+        verifier=SimpleNamespace(
+            device_proposal_ready=lambda budget, remaining_decode: True
+        ),
+        root_hidden_buffer=SimpleNamespace(ptr=1),
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(
+        capacity=1,
+        _row=lambda request_id: row,
+        _flush_row_owner=lambda owned: None,
+    )
+    adapter._states = {10: state}
+    adapter._cycle_hidden_tensors = lambda runtime, hidden_size: (
+        Tensor.from_handle(0x2000, (1, 8), DType.BF16, Device("hip", 0)),
+        Tensor.from_handle(0x3000, (1, 8), DType.BF16, Device("hip", 0)),
+    )
+    plan = SimpleNamespace(
+        speculative_request_ids=(10,),
+        request_ids=(10,),
+        candidate_counts=(2,),
+        provider_key="nextn",
+        cycle_id=3,
+        resident_slots=(0,),
+    )
+
+    graph = adapter.propose_batch(
+        plan,
+        (SpeculativeRequestSemantics(10, "greedy", "verify_chain", 6, 8),),
+    )
+
+    assert calls == [("propose", True)]
+    assert graph.candidate_tokens == (101, 102)
+    assert state.proposal_device is None
+
+
+def test_c1_adapter_carries_cached_proposal_descriptor_without_materializing_ids() -> None:
+    target = SimpleNamespace(
+        position=5,
+        last_target_hidden=Tensor.from_handle(
+            0x1100, (1, 8), DType.BF16, Device("hip", 0)
+        ),
+        runtime=SimpleNamespace(memcpy=lambda *args: None),
+    )
+    row = SimpleNamespace(
+        lease=SimpleNamespace(session=target),
+        slot=SimpleNamespace(generated_ids=[100], seq_position=5),
+        mtp2_candidate_device_handoffs=0,
+    )
+    proposal = Qwen35GGUFNextNDeviceProposal(
+        request_id=10,
+        root_token=100,
+        root_position=5,
+        budget=2,
+        result_ptr=0x5000,
+        result_nbytes=16,
+        completion_event=0x6000,
+        stream=0x7000,
+        final_hidden=Tensor.from_handle(
+            0x8000, (1, 8), DType.BF16, Device("hip", 0)
+        ),
+        hidden_rows=Tensor.from_handle(
+            0x9000, (2, 8), DType.BF16, Device("hip", 0)
+        ),
+    )
+    calls: list[tuple[object, ...]] = []
+    provider = SimpleNamespace(
+        executor=SimpleNamespace(
+            hidden_size=8,
+            capture_request_checkpoint=lambda request_id: "checkpoint",
+        ),
+        launch_device_proposal=lambda context, candidate_budget: (
+            calls.append(("device", int(candidate_budget))) or proposal
+        ),
+        propose=lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("cached device proposal must not materialize candidates")
+        ),
+    )
+    state = _MTP2RequestState(
+        request_id=10,
+        provider=provider,
+        provider_pool_key=None,
+        provider_group_key=(10,),
+        verifier=SimpleNamespace(
+            device_proposal_ready=lambda budget, remaining_decode: True
+        ),
+        root_hidden_buffer=SimpleNamespace(ptr=1),
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(
+        capacity=1,
+        _row=lambda request_id: row,
+        _flush_row_owner=lambda owned: None,
+    )
+    adapter._states = {10: state}
+    adapter._cycle_hidden_tensors = lambda runtime, hidden_size: (
+        Tensor.from_handle(0x2000, (1, 8), DType.BF16, Device("hip", 0)),
+        Tensor.from_handle(0x3000, (1, 8), DType.BF16, Device("hip", 0)),
+    )
+    plan = SimpleNamespace(
+        speculative_request_ids=(10,),
+        request_ids=(10,),
+        candidate_counts=(2,),
+        provider_key="nextn",
+        cycle_id=3,
+        resident_slots=(0,),
+    )
+
+    graph = adapter.propose_batch(
+        plan,
+        (SpeculativeRequestSemantics(10, "greedy", "verify_chain", 6, 8),),
+    )
+
+    assert calls == [("device", 2)]
+    assert graph.candidate_tokens == ()
+    assert graph.token_ids is not None
+    assert graph.token_ids.ptr == proposal.result_ptr
+    assert graph.token_ids.shape == (2,)
+    assert graph.token_ids.strides == (2,)
+    assert state.proposal_device is proposal
+
+
+def test_packed_target_device_result_binds_identity_and_only_device_rows() -> None:
+    result = runner_mod.Qwen35GGUFPackedVerifyDeviceResult(
+        request_id=10,
+        resident_slot=3,
+        transaction_id=7,
+        start_position=5,
+        row_start=2,
+        row_end=5,
+        input_token_ids=Tensor.from_handle(
+            0x1000, (3,), DType.INT64, Device("hip", 0)
+        ),
+        target_top1=Tensor.from_handle(
+            0x2000, (3,), DType.INT32, Device("hip", 0)
+        ),
+        hidden_seeds=Tensor.from_handle(
+            0x3000, (3, 8), DType.FP32, Device("hip", 0)
+        ),
+        deferred_packed_state=object(),
+    )
+
+    assert result.rows == 3
+    assert result.request_id == 10
+    assert result.transaction_id == 7
+    assert not hasattr(result, "token_ids")
+
+
+def test_physical_accept_enqueue_keeps_candidate_and_target_ids_on_device(
+    monkeypatch,
+) -> None:
+    draft = DraftBatch(
+        request_ids=(10, 20),
+        candidate_tokens=(0, 0),
+        parent_positions=(5, 8),
+        draft_depths=(1, 1),
+        row_to_request=(10, 20),
+        tree_parents=(-1, -1),
+        active_mask=(True, True),
+    )
+    batch = TargetVerifyBatch.from_draft(
+        draft,
+        root_tokens=(100, 200),
+        root_positions=(5, 8),
+    )
+    proposal = Qwen35GGUFNextNBatchDeviceProposal(
+        request_ids=(10, 20),
+        root_tokens=(100, 200),
+        root_positions=(5, 8),
+        candidate_counts=(1, 1),
+        token_ids=Tensor.from_handle(
+            0x5000, (2,), DType.INT32, Device("hip", 0)
+        ),
+        hidden_rows=(
+            (Tensor.from_handle(0x6000, (1, 8), DType.BF16, Device("hip", 0)),),
+            (Tensor.from_handle(0x7000, (1, 8), DType.BF16, Device("hip", 0)),),
+        ),
+    )
+    results = (
+        runner_mod.Qwen35GGUFPackedVerifyDeviceResult(
+            request_id=10,
+            resident_slot=0,
+            transaction_id=7,
+            start_position=5,
+            row_start=0,
+            row_end=2,
+            input_token_ids=Tensor.from_handle(
+                0x8000, (2,), DType.INT64, Device("hip", 0)
+            ),
+            target_top1=Tensor.from_handle(
+                0x9000, (2,), DType.INT32, Device("hip", 0)
+            ),
+            hidden_seeds=Tensor.from_handle(
+                0xA000, (2, 8), DType.FP32, Device("hip", 0)
+            ),
+            deferred_packed_state=object(),
+        ),
+        runner_mod.Qwen35GGUFPackedVerifyDeviceResult(
+            request_id=20,
+            resident_slot=1,
+            transaction_id=7,
+            start_position=8,
+            row_start=2,
+            row_end=4,
+            input_token_ids=Tensor.from_handle(
+                0x8100, (2,), DType.INT64, Device("hip", 0)
+            ),
+            target_top1=Tensor.from_handle(
+                0x9100, (2,), DType.INT32, Device("hip", 0)
+            ),
+            hidden_seeds=Tensor.from_handle(
+                0xA100, (2, 8), DType.FP32, Device("hip", 0)
+            ),
+            deferred_packed_state=object(),
+        ),
+    )
+    pointer = iter(range(0xB000, 0xD000, 0x100))
+
+    def tensor(shape, dtype=DType.INT32):
+        return Tensor.from_handle(next(pointer), shape, dtype, Device("hip", 0))
+
+    buffers = TargetVerifyBuffers.for_batch(
+        batch,
+        token_ids=tensor((4,)),
+        positions=tensor((4,)),
+        parent_rows=tensor((4,)),
+        draft_depths=tensor((4,)),
+        row_to_request=tensor((4,)),
+        active_mask=tensor((4,), DType.BOOL),
+        target_top1=tensor((4,)),
+        accepted_counts=tensor((2,)),
+        commit_rows=tensor((2,)),
+        commit_tokens=tensor((2,)),
+        commit_positions=tensor((2,)),
+        next_tokens=tensor((2,)),
+        full_accept=tensor((2,), DType.BOOL),
+        committed_output_ids=Tensor.from_handle(
+            next(pointer),
+            (2, 4),
+            DType.INT32,
+            Device("hip", 0),
+            strides=(16, 1),
+        ),
+        committed_output_lengths=tensor((2,)),
+        transaction_id=7,
+    )
+    owner = SimpleNamespace(bind=lambda bound, transaction_id: buffers)
+    remaining = tensor((4,))
+    payload = tensor((4, 7))
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.generator = SimpleNamespace(
+        backend="hip_gfx1151",
+        compiler_version=None,
+        require_cached_build=True,
+    )
+    adapter._batch_accept_library = object()
+    adapter._batch_accept_resources = lambda runtime: (owner, remaining, payload)
+    uploads: list[tuple[int, tuple[int, ...]]] = []
+    adapter._upload_accept_array = lambda tensor, values, runtime: uploads.append(
+        (int(tensor.ptr), tuple(int(value) for value in np.asarray(values).reshape(-1)))
+    )
+    launches: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        mtp2_module,
+        "dflash_accept_chain_i32_packed",
+        lambda *args, **kwargs: launches.append(args),
+    )
+
+    class Runtime:
+        def __init__(self) -> None:
+            self.device_copies: list[tuple[int, int, int]] = []
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream):
+            self.device_copies.append((int(dst), int(src), int(nbytes)))
+
+        def device_synchronize(self):
+            raise AssertionError("accept enqueue must not synchronize")
+
+    runtime = Runtime()
+
+    pending = adapter._enqueue_target_batch_accept(
+        batch,
+        proposal=proposal,
+        target_results=results,
+        remaining_decode=(3, 3),
+        transaction_id=7,
+        runtime=runtime,
+    )
+
+    assert pending.buffers is buffers
+    assert len(launches) == 1
+    assert proposal.token_ids.ptr in {src for _dst, src, _nbytes in runtime.device_copies}
+    assert {result.target_top1.ptr for result in results}.issubset(
+        {src for _dst, src, _nbytes in runtime.device_copies}
+    )
+    assert (buffers.token_ids.ptr, (100, 200)) in uploads
+    assert all(ptr != buffers.target_top1.ptr for ptr, _values in uploads)
+
+
 def test_physical_adapter_emits_one_gpu_accept_payload_for_the_group(
     monkeypatch,
 ) -> None:
@@ -516,6 +851,118 @@ def test_packed_owner_commits_selected_linear_rows_once_for_the_group(
     assert [session._position for session in sessions] == [8, 9]
 
 
+def test_packed_owner_device_commit_selects_from_accept_buffers_before_readback(
+    monkeypatch,
+) -> None:
+    class PackedState:
+        pass
+
+    monkeypatch.setattr(runner_mod, "_GGUFPackedTargetState", PackedState)
+    packed = PackedState()
+    calls: list[tuple[object, ...]] = []
+    owner = object.__new__(runner_mod.Qwen35GGUFResidentSession)
+    owner.runner = SimpleNamespace(
+        weights=SimpleNamespace(
+            config=SimpleNamespace(layer_types=(runner_mod.FULL_ATTENTION,))
+        )
+    )
+    owner._packed_verify_max_written_positions = (0, 0)
+    owner._copy_session_packed_kv_segments = (
+        lambda session, packed_state, slot_index, layer_id, **kwargs: calls.append(
+            (
+                "kv",
+                session.request_id,
+                packed_state,
+                int(slot_index),
+                int(layer_id),
+                int(kwargs["rows"]),
+            )
+        )
+    )
+    sessions = tuple(
+        SimpleNamespace(
+            request_id=request_id,
+            runner=owner.runner,
+            scratch=object(),
+            _commit_external_verify_state_row_device=(
+                lambda source_owner, *, request_id=request_id, **kwargs: calls.append(
+                    (
+                        "state",
+                        request_id,
+                        source_owner,
+                        int(kwargs["row_start"]),
+                        int(kwargs["rows"]),
+                        int(kwargs["commit_row_i32_ptr"]),
+                        int(kwargs["commit_position_i32_ptr"]),
+                    )
+                )
+            ),
+        )
+        for request_id in (10, 20)
+    )
+    results = tuple(
+        runner_mod.Qwen35GGUFPackedVerifyDeviceResult(
+            request_id=request_id,
+            resident_slot=index,
+            transaction_id=7,
+            start_position=start,
+            row_start=index * 3,
+            row_end=index * 3 + 3,
+            input_token_ids=Tensor.from_handle(
+                0x1000 + index * 0x100,
+                (3,),
+                DType.INT64,
+                Device("hip", 0),
+            ),
+            target_top1=Tensor.from_handle(
+                0x2000 + index * 0x100,
+                (3,),
+                DType.INT32,
+                Device("hip", 0),
+            ),
+            hidden_seeds=Tensor.from_handle(
+                0x3000 + index * 0x100,
+                (3, 8),
+                DType.FP32,
+                Device("hip", 0),
+            ),
+            deferred_packed_state=SimpleNamespace(
+                owner=owner,
+                packed_state=packed,
+                slot_index=index,
+                row_start=index * 3,
+                row_end=index * 3 + 3,
+                start_position=start,
+                end_position=start + 3,
+            ),
+        )
+        for index, (request_id, start) in enumerate(((10, 5), (20, 8)))
+    )
+    accept_buffers = SimpleNamespace(
+        accepted_counts=Tensor.from_handle(
+            0xA000, (2,), DType.INT32, Device("hip", 0)
+        ),
+        commit_positions=Tensor.from_handle(
+            0xB000, (2,), DType.INT32, Device("hip", 0)
+        ),
+    )
+
+    contract = owner._commit_deferred_packed_verify_states_batch_device(
+        results,
+        sessions,
+        accept_buffers=accept_buffers,
+    )
+
+    assert contract["requests"] == 2
+    assert contract["accepted_counts_device_ptr"] == 0xA000
+    assert calls == [
+        ("kv", 10, packed, 0, 0, 3),
+        ("state", 10, owner, 0, 3, 0xA000, 0xB000),
+        ("kv", 20, packed, 1, 0, 3),
+        ("state", 20, owner, 3, 3, 0xA004, 0xB004),
+    ]
+
+
 def test_adapter_recovers_only_precommit_failure_with_canonical_target_cursors() -> None:
     rows = {
         10: SimpleNamespace(
@@ -538,7 +985,8 @@ def test_adapter_recovers_only_precommit_failure_with_canonical_target_cursors()
     assert adapter.recover_cycle_failure(plan, RuntimeError("injected")) is True
     assert all(row.mtp2_recoverable_failures == 1 for row in rows.values())
     assert all(
-        row.mtp2_failure_reasons == ["precommit_failure_ar_fallback"]
+        row.mtp2_failure_reasons
+        == ["precommit_failure_ar_fallback", "RuntimeError:injected"]
         for row in rows.values()
     )
 
@@ -609,6 +1057,85 @@ def test_provider_repair_restores_and_replays_only_committed_prefix(
         assert calls[0] == ("restore", "checkpoint")
         actual_inputs = [(call[2], call[3]) for call in calls[1:]]
         assert actual_inputs == expected_inputs
+
+
+@pytest.mark.parametrize(
+    ("accepted", "expected"),
+    [
+        (0, [("restore", "checkpoint"), ("host", 90, 10)]),
+        (
+            1,
+            [
+                ("restore", "checkpoint"),
+                ("host", 90, 10),
+                ("device", 0x5000, 11, 0x6000),
+            ],
+        ),
+        (2, [("device", 0x5008, 12, 0x6010)]),
+    ],
+)
+def test_provider_c1_device_repair_uses_only_retained_device_rows(
+    accepted,
+    expected,
+) -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class Executor:
+        def restore_request_checkpoint(self, checkpoint):
+            calls.append(("restore", checkpoint))
+
+        def advance_state_only(self, request_id, token_id, position, hidden):
+            calls.append(("host", int(token_id), int(position)))
+
+        def advance_state_only_device(self, request_id, token_id, position, hidden):
+            calls.append(
+                ("device", int(token_id.ptr), int(position), int(hidden.ptr))
+            )
+
+    proposal = Qwen35GGUFNextNDeviceProposal(
+        request_id=7,
+        root_token=90,
+        root_position=10,
+        budget=2,
+        result_ptr=0x5000,
+        result_nbytes=16,
+        completion_event=0x7000,
+        stream=0x8000,
+        final_hidden=Tensor.from_handle(
+            0x6020, (1, 8), DType.BF16, Device("hip", 0)
+        ),
+        hidden_rows=Tensor.from_handle(
+            0x6000, (2, 8), DType.BF16, Device("hip", 0)
+        ),
+    )
+    state = _MTP2RequestState(
+        request_id=7,
+        provider=SimpleNamespace(executor=Executor(), last_results={}),
+        provider_pool_key=None,
+        provider_group_key=(7,),
+        verifier=SimpleNamespace(),
+        root_hidden_buffer=SimpleNamespace(ptr=1),
+        proposal_checkpoint="checkpoint",
+        proposal_context=MtpProposalContext(
+            request_ids=(7,),
+            root_tokens=(90,),
+            root_positions=(10,),
+            target_hidden=Tensor.from_handle(
+                0x9000, (1, 8), DType.BF16, Device("hip", 0)
+            ),
+        ),
+        proposal_device=proposal,
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+
+    adapter._repair_provider_state_device(
+        state,
+        proposal,
+        accepted_count=accepted,
+    )
+
+    assert calls == expected
+    assert state.provider.last_results == {}
 
 
 def test_provider_batch_repair_shares_full_accept_tail_and_rejected_root(
@@ -698,6 +1225,111 @@ def test_provider_batch_repair_shares_full_accept_tail_and_rejected_root(
         ("restore", "checkpoint-2"),
         ("batch", (1, 2), (102, 190), (7, 8), (2, 8)),
     ]
+
+
+def test_provider_batch_device_repair_never_materializes_candidate_ids() -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class Executor:
+        hidden_size = 8
+        runtime = SimpleNamespace(memcpy=lambda *args: None)
+
+        def restore_request_checkpoint(self, checkpoint):
+            calls.append(("restore", checkpoint))
+
+        def advance_state_batch_only(self, request_ids, token_ids, positions, hidden):
+            calls.append(
+                (
+                    "host",
+                    tuple(request_ids),
+                    tuple(token_ids),
+                    tuple(positions),
+                    hidden.shape,
+                )
+            )
+
+        def advance_state_batch_only_device(
+            self,
+            request_ids,
+            token_ids,
+            positions,
+            hidden,
+        ):
+            calls.append(
+                (
+                    "device",
+                    tuple(request_ids),
+                    tuple((token.ptr, token.shape) for token in token_ids),
+                    tuple(positions),
+                    hidden.shape,
+                )
+            )
+
+    executor = Executor()
+    provider = SimpleNamespace(executor=executor, last_results={})
+    proposal = Qwen35GGUFNextNBatchDeviceProposal(
+        request_ids=(1, 2),
+        root_tokens=(90, 190),
+        root_positions=(5, 8),
+        candidate_counts=(2, 2),
+        token_ids=Tensor.from_handle(
+            0x5000, (4,), DType.INT32, Device("hip", 0)
+        ),
+        hidden_rows=(
+            (
+                Tensor.from_handle(0x6000, (1, 8), DType.BF16, Device("hip", 0)),
+                Tensor.from_handle(0x6100, (1, 8), DType.BF16, Device("hip", 0)),
+            ),
+            (
+                Tensor.from_handle(0x7000, (1, 8), DType.BF16, Device("hip", 0)),
+                Tensor.from_handle(0x7100, (1, 8), DType.BF16, Device("hip", 0)),
+            ),
+        ),
+    )
+    states = tuple(
+        _MTP2RequestState(
+            request_id=request_id,
+            provider=provider,
+            provider_pool_key=None,
+            provider_group_key=(1, 2),
+            verifier=None,
+            root_hidden_buffer=SimpleNamespace(ptr=1),
+            proposal_checkpoint=f"checkpoint-{request_id}",
+            proposal_context=MtpProposalContext(
+                request_ids=(request_id,),
+                root_tokens=((90,) if request_id == 1 else (190,)),
+                root_positions=((5,) if request_id == 1 else (8,)),
+                target_hidden=Tensor.from_handle(
+                    0x8000 + request_id * 0x100,
+                    (1, 8),
+                    DType.BF16,
+                    Device("hip", 0),
+                ),
+            ),
+            proposal_device_batch=proposal,
+        )
+        for request_id in (1, 2)
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(capacity=2)
+    adapter._cycle_hidden_tensors = lambda runtime, hidden_size: (
+        Tensor.from_handle(0x9000, (2, 8), DType.BF16, Device("hip", 0)),
+        Tensor.from_handle(0xA000, (2, 8), DType.BF16, Device("hip", 0)),
+    )
+
+    adapter._repair_provider_states_batch_device(
+        states,
+        proposal,
+        accepted_counts=(2, 0),
+    )
+
+    assert calls[0] == ("restore", "checkpoint-2")
+    assert calls[1][:4] == ("host", (2,), (190,), (8,))
+    assert calls[2][0] == "device"
+    assert calls[2][1] == (1,)
+    assert calls[2][2] == ((0x5004, (1,)),)
+    assert calls[2][3] == (7,)
+    assert provider.last_results == {}
 
 
 def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
