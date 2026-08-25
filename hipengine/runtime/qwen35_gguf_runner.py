@@ -2814,12 +2814,13 @@ class Qwen35GGUFFullStackRunner:
         return cache[cache_key]
 
     def _gdn_chain_output_fusion_for_weight(self, weight):
-        """Resolve a weight-plugin chain GDN FP32+BF16 boundary owner.
+        """Resolve the strict FP32 chain fusion or FP16's unfused boundary."""
 
-        The chain-journal path writes FP32 state through the fused owner, so it
-        is incompatible with the fp16-state route until fp16 variants exist.
-        """
-
+        if self.fp16_recurrent_state:
+            # gfx1151 intentionally excludes the verifier-chain Q5 fusion.
+            # The typed FP16 row writer plus the existing exact standalone cast
+            # preserve the qualified consumer-owned rollback path.
+            return None
         quant = str(weight.spec.quant_key)
         cache = self.__dict__.setdefault(
             "_gguf_gdn_chain_output_fusion_fn_cache",
@@ -2827,29 +2828,20 @@ class Qwen35GGUFFullStackRunner:
         )
         cache_key = (str(self.backend), quant)
         if cache_key not in cache:
-            fn = resolve(
+            cache[cache_key] = resolve(
                 backend=self.backend,
                 layer="gdn_chain_recurrent_rmsnorm_gate+cast",
                 quant=quant,
                 variant="bf16_c1_exact_state_rows_tloop_f32_bf16_out",
                 missing="none",
             )
-            if fn is not None and self.fp16_recurrent_state:
-                raise RuntimeError(
-                    "fp16 recurrent state is incompatible with the chain-journal "
-                    "output fusion (FP32-state writer); the chain-journal path is "
-                    "gated off under HIPENGINE_GGUF_FP16_RECURRENT_STATE"
-                )
-            cache[cache_key] = fn
         return cache[cache_key]
 
     def _gdn_chain_snapshot_output_fusion_for_weight(self, weight):
-        """Resolve the rollback-capturing sibling of a fused chain GDN.
+        """Resolve strict producer-folded capture; FP16 keeps consumer copies."""
 
-        FP32-state writer; gated off under the fp16-state route (see
-        ``_gdn_chain_output_fusion_for_weight``).
-        """
-
+        if self.fp16_recurrent_state:
+            return None
         quant = str(weight.spec.quant_key)
         cache = self.__dict__.setdefault(
             "_gguf_gdn_chain_snapshot_output_fusion_fn_cache",
@@ -2857,19 +2849,13 @@ class Qwen35GGUFFullStackRunner:
         )
         cache_key = (str(self.backend), quant)
         if cache_key not in cache:
-            fn = resolve(
+            cache[cache_key] = resolve(
                 backend=self.backend,
                 layer="gdn_chain_recurrent_rmsnorm_gate+cast+snapshot",
                 quant=quant,
                 variant="bf16_c1_exact_state_rows_tloop_f32_bf16_out",
                 missing="none",
             )
-            if fn is not None and self.fp16_recurrent_state:
-                raise RuntimeError(
-                    "fp16 recurrent state is incompatible with the chain-journal "
-                    "snapshot output fusion (FP32-state writer)"
-                )
-            cache[cache_key] = fn
         return cache[cache_key]
 
     def _full_attn_decode_batch_native_fn(self):
@@ -5526,7 +5512,10 @@ class Qwen35GGUFFullStackRunner:
 
         if self.weights is None:
             return False
-        plan = _resolve_gguf_linear_attention_chain_journal_plan(self.backend)
+        plan = _resolve_gguf_linear_attention_chain_journal_plan(
+            self.backend,
+            use_fp16_state=self.fp16_recurrent_state,
+        )
         if not plan.available or not plan.snapshot_available:
             return False
         for layer_id, layer_type in enumerate(self.weights.config.layer_types):
@@ -5561,7 +5550,10 @@ class Qwen35GGUFFullStackRunner:
         rows = int(rows)
         if rows <= 1:
             return False
-        plan = _resolve_gguf_linear_attention_chain_journal_plan(self.backend)
+        plan = _resolve_gguf_linear_attention_chain_journal_plan(
+            self.backend,
+            use_fp16_state=self.fp16_recurrent_state,
+        )
         if not plan.available:
             return False
         assert self.weights is not None
@@ -29222,6 +29214,12 @@ _GDN_CHAIN_JOURNAL_BF16_KEY = KernelKey(
     "gguf_qwen35",
     "bf16_c1_exact_state_rows_tloop",
 )
+_GDN_CHAIN_JOURNAL_BF16_FP16STATE_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_chain_recurrent_rmsnorm_gate",
+    "gguf_qwen35",
+    "bf16_c1_exact_state_rows_tloop_fp16state",
+)
 _LINEAR_ATTN_CHAIN_CONV_SNAPSHOT_BF16_KEY = KernelKey(
     "hip_gfx1100",
     "linear_attn_chain_conv_decode+snapshot",
@@ -30080,6 +30078,8 @@ def _gguf_full_attention_split_gate_bf16_fn(
 
 def _resolve_gguf_linear_attention_chain_journal_plan(
     backend: str = "hip_gfx1100",
+    *,
+    use_fp16_state: bool = False,
 ) -> _GGUFLinearAttentionChainJournalPlan:
     def _resolve_exact(key: KernelKey):
         backend_key = KernelKey(backend, key.layer, key.quant, key.variant)
@@ -30095,9 +30095,21 @@ def _resolve_gguf_linear_attention_chain_journal_plan(
 
     return _GGUFLinearAttentionChainJournalPlan(
         conv=_resolve_exact(_LINEAR_ATTN_CHAIN_CONV_JOURNAL_BF16_KEY),
-        gdn=_resolve_exact(_GDN_CHAIN_JOURNAL_BF16_KEY),
-        conv_snapshot=_resolve_exact(_LINEAR_ATTN_CHAIN_CONV_SNAPSHOT_BF16_KEY),
-        gdn_snapshot=_resolve_exact(_GDN_CHAIN_SNAPSHOT_BF16_KEY),
+        gdn=_resolve_exact(
+            _GDN_CHAIN_JOURNAL_BF16_FP16STATE_KEY
+            if use_fp16_state
+            else _GDN_CHAIN_JOURNAL_BF16_KEY
+        ),
+        conv_snapshot=(
+            None
+            if use_fp16_state
+            else _resolve_exact(_LINEAR_ATTN_CHAIN_CONV_SNAPSHOT_BF16_KEY)
+        ),
+        gdn_snapshot=(
+            None
+            if use_fp16_state
+            else _resolve_exact(_GDN_CHAIN_SNAPSHOT_BF16_KEY)
+        ),
     )
 
 

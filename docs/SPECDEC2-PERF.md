@@ -868,20 +868,22 @@ state. A strict-only speed win cannot become the normal product default.
 
 ### P8.1 RED/profile contract
 
-Audit checkpoint: the existing FP16 scalar/segmented/indexed/chain-row and
-compact-peer writers are reusable, but SPECDEC2 native rollback still lacks a
-typed FP16 initial-state snapshot producer and Q5 chain fused-output siblings.
-Production profile currently resolves by strict fallback, so the two cold MTP2
-FP16 guards remain correct until a real production manifest plus those owners
-land. Durable details:
-[`P8 audit`](../worklog/entries/20260825T215042.972658Z-gfx1151-agent-specdec2-perf-p8-fp16-audit-a613ab.md).
+P8.1 retains the existing typed FP16 chain-row writer under a non-fallback
+production manifest with explicit FP32 strict fallback. GREEN bring-up corrected
+the audit's initial snapshot premise: gfx1151 intentionally excludes
+producer-folded snapshot/Q5-chain aliases, so production preserves P4's
+consumer-owned dtype-sized D2D rollback and exact unfused cast. C1/C2/C4
+production-FP16 smokes match production AR and execute graph/eager staged cycles
+without recovery; automatic policy remains K0 pending P8.2. Durable details:
+[`P8 audit`](../worklog/entries/20260825T215042.972658Z-gfx1151-agent-specdec2-perf-p8-fp16-audit-a613ab.md),
+[`P8 capability`](../worklog/entries/20260825T221958.712228Z-gfx1151-agent-specdec2-perf-p8-fp16-capability-4f8ea6.md).
 
-- [ ] Resolve a runtime production manifest and strict fallback manifest.
-- [ ] Add FP16 resident-state-aware root/parent/candidate readers with declared
+- [x] Resolve a runtime production manifest and strict fallback manifest.
+- [x] Add FP16 resident-state-aware root/parent/candidate readers with declared
       FP32 accumulation/scratch.
 - [ ] Add exact control ownership and numerical fixtures for root, every parent
       depth, selected commit, rollback, and following AR.
-- [ ] Keep unsupported profile/shape/context K0 before mutation.
+- [x] Keep unsupported profile/shape/context K0 before mutation.
 
 ### P8.2 Binding gates
 
