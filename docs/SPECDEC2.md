@@ -616,7 +616,7 @@ old route is a strict oracle rather than the migrated server owner.
 - [x] Rejecting row beside full-accept row.
 - [x] Staggered finish and refill into a future cycle.
 - [x] Cancel one row while peers continue.
-- [ ] Slot permutation/compaction and neighbor substitution.
+- [x] Slot permutation/compaction and neighbor substitution.
 - [ ] Prefix restore/COW boundaries and pressure rejection.
 - [ ] Eager/graph fallback and later health.
 
@@ -892,7 +892,7 @@ promotion. Commit `7ac70a39d` subsequently removes pre-target candidate D2H
 for all clean C2/C4 K1-K3 cells with neutral complete wall; see the
 [`device-candidate artifact`](../benchmarks/results/2026-08-25-gfx1151-specdec2-s4-device-candidates.json).
 Cached C4/K3 profiling confirms packed GDN/full-attention engagement.
-S4 remains open for slot permutation/compaction, prefix/pressure and eager/
-graph fallback lifecycle gates, plus
+S4 remains open for prefix/pressure and eager/graph fallback lifecycle gates,
+plus
 a clean same-host packet. Production Q4_K_S FP16 state still selects K0 before
 mutation; gfx1100 remains deferred.

@@ -502,6 +502,12 @@ class EngineService:
             if not consumed and not handle.done:
                 handle.cancel(reason="disconnect")
 
+    def compact(self, order: Sequence[int] | None = None) -> tuple[Any, ...]:
+        """Serialize scheduler/model compaction on the sole driver thread."""
+
+        requested = None if order is None else tuple(int(value) for value in order)
+        return tuple(self._control("compact", requested))
+
     def live_loop_snapshot(self) -> dict[str, object]:
         payload = self._control("live_loop_snapshot")
         snapshot = dict(payload) if isinstance(payload, dict) else {}

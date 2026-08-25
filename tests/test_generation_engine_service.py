@@ -155,6 +155,9 @@ class _FakeSoleDriver:
             raise RuntimeError("driver must be idle")
         self.reconfigurations.append((threading.get_ident(), config))
 
+    def compact(self, order=None):
+        return ((threading.get_ident(), None if order is None else tuple(order)),)
+
     def close(self) -> None:
         self.closed = True
         self._active.clear()
@@ -171,6 +174,17 @@ def test_engine_service_serializes_idle_reconfiguration_on_driver_thread() -> No
         service.close()
 
     assert driver.reconfigurations == [(service.driver_thread_id, config)]
+
+
+def test_engine_service_serializes_compaction_on_driver_thread() -> None:
+    driver = _FakeSoleDriver()
+    service = EngineService(driver, command_queue_size=8, idle_wait_seconds=0.001)
+    try:
+        moves = service.compact((3, 1))
+    finally:
+        service.close()
+
+    assert moves == ((service.driver_thread_id, (3, 1)),)
 
 
 def test_engine_service_speculative_submission_uses_shared_child_lifecycle() -> None:
