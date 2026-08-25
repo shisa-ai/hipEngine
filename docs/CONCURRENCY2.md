@@ -1,6 +1,6 @@
 # Concurrency and KV Architecture, Generation 2
 
-Last updated: 2026-08-25.
+Last updated: 2026-08-26.
 
 _Status: Generation-2 implementation spans C2-0 through C2-8. Dense gfx1100
 short/long serving and the canonical W7900 production load are the declared
@@ -37,7 +37,7 @@ Related source-of-truth documents:
 | C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed. Independent gfx1151 mechanical support passes, but final c32 streaming is 0/3 SLO (TTFT/ITL 18.617/2.125 s) and c2 64K remains unsupported; production closure is blocked. Matched external GPU comparison remains unavailable/invalid. |
 | C2-7 compact DMS | Strict schema-v1/v2 metadata, compact extents, no-shadow host/device BF16 pack/decode, c1-c32 lifecycle, fixture-qualified INT8 composition, and the frozen Qwen3.8 W8192 sidecar with wave-cooperative attention. | Source-disjoint 32K/128K quality, explicit c1 post-pack savings, and 128K dense-decode parity pass; sampled peak controls, public admission, c>N lifecycle/soak, and serving SLOs remain open, so dense stays default. |
 | C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Actual model-produced BF16 KV host restore economics, pressure, cancellation, and drain pass; integrated GPU rehydrate/request-SLO policy remains default-off. |
-| C2-S MTP/SpecDec integration | Reusable `NativeSpecCycle` ABI/graphs, SPEC-C0 records/simulator, one EngineService, compatible packing, committed streaming/tail/RNG, and generic provider/tree metadata. | SPEC-C0–C4 correctness is closed; SPEC-C5 blocks promotion because C=10 public-service MTP is 0.579× true AR despite exact/direct decode wins. |
+| C2-S MTP/SpecDec integration | SPEC-C0–C4 plus staged Generation-2 proposal/frontier/accept/commit execution; exact C1 device chains are retained independently on both gfx11 targets. | The original synchronous C=10 route was 0.579× AR and is superseded as an execution design. gfx1100 physical C2/C4 remains unexposed: a clean diagnostic C2/K1 refill reaches exact device mechanics but only 0.503× AR at 12.5% draft acceptance. Automatic remains K0. |
 
 Executable source-to-evidence audit:
 [`2026-08-22-concurrency2-completion-audit.json`](../benchmarks/results/2026-08-22-concurrency2-completion-audit.json).
@@ -62,11 +62,11 @@ The remaining work is not all “tuning,” however. Keep these scopes distinct:
 - **Backend qualification:** gfx1151 inherits the common host scheduler, ledger,
   pool, transaction, and output code, but independently qualifies physical
   widths, kernels, graphs, cost maps, lifecycle, and production load.
-- **Feature/product closure:** real-checkpoint DMS model qualification and C2-S
-  continuous MTP/SpecDec integration remain implementation campaigns rather
-  than tuning of the dense AR core. Tiering now has realistic host-byte
-  economics but remains default-off until integrated GPU rehydrate/request-SLO
-  policy is qualified.
+- **Feature/product closure:** real-checkpoint DMS qualification and C2-S
+  product promotion remain separate from dense AR. SpecDec now has real staged
+  C1 execution and shared physical source, but gfx1100 C2/C4 capability and
+  workload economics remain blocked. Tiering stays default-off until integrated
+  GPU rehydrate/request-SLO policy is qualified.
 - **Comparison coverage:** the current same-host audit finds vLLM/SGLang absent,
   llama.cpp HIP incompatible with this CPU/ROCm generation, and the available
   llama.cpp Vulkan binary CPU-only (`no usable GPU found`). Its p128/d8 packet
@@ -1696,11 +1696,13 @@ transaction coordinator. Proposal and verification may be separate physical
 executions, but they are bounded work items in the same scheduling rounds as
 prefill and autoregressive decode.
 
-The current implementation is a migration input, not full product support. It
-has reusable native target/cycle components and a guarded non-streaming greedy
-GGUF MTP route, but remains phase-serial at the slot level; draft-side
-cross-request batching, streaming, generic provider integration, wider/tree
-verification, and exact/default serving gates are open.
+The current staged implementation is real but not full product support. Dense
+GGUF C1 now executes proposal, target frontier, GPU accept/selected commit, and
+provider repair from the Generation-2 loop with streaming publication. Shared
+physical C2/C4 source also executes on independently qualified packages, while
+legacy whole-request routes remain controls. gfx1100 physical capability,
+draft-side workload economics, wider/tree providers, and automatic serving
+remain open.
 
 ### Distinguish request count from verifier-row count
 
@@ -1971,7 +1973,7 @@ Implement in this order:
 3. ~~**SPEC-C2 — continuous packing and cost policy.**~~ **DONE (2026-08-22).** Compatible children enter one driver call and multi-request `VERIFY_CHAIN` work item. Verifier-only cost maps reject AR-D2 evidence; explicit draft/verify/cycle/transaction/work-item/deadline budgets preserve fairness, stable refill, and pre-mutation AR fallback. Actual Qwen3.8 c2 p16/d4 is 2/2 exact against the direct route with C=2/V=6/depth3 and final drain. Evidence: [`SPEC-C2 gate`](../benchmarks/results/2026-08-22-concurrency2-spec-c2-continuous-packing.json).
 4. ~~**SPEC-C3 — streaming and sampling.**~~ **DONE (2026-08-22).** Only committed speculative tokens can form output events; EOS/stop/sequence/length tails and per-request stochastic acceptance RNG deltas are explicit. Blocking and streaming share normalization, collector, disconnect/backpressure, cancel/rollback, and finish semantics. Actual Qwen3.8 p16/d4 blocking/streaming IDs match 4/4 in one committed chunk with final drain. Processed samplers remain pre-launch guarded until provider-native probabilities exist. Evidence: [`SPEC-C3 gate`](../benchmarks/results/2026-08-22-concurrency2-spec-c3-streaming-sampling.json).
 5. ~~**SPEC-C4 — generic providers and trees.**~~ **DONE (2026-08-22).** Provider capabilities explicitly declare attached/independent ownership, artifact/modes/max-V/transactions/resources/fallback. Qwen NextN declares model-attached chain; Laguna DFlash declares independent chain and explicit tree unsupported. The provider-neutral compiler qualifies a bounded nonuniform C=2/V=5 tree with exact parent/depth/slot/request maps, target lowering, branch acceptance, and corrections. Evidence: [`SPEC-C4 gate`](../benchmarks/results/2026-08-22-concurrency2-spec-c4-generic-providers-trees.json).
-6. **SPEC-C5 — product promotion: BLOCKED (2026-08-22).** Full 10-prompt/category/train/heldout direct protocol passes exact IDs, GPU/CPU acceptance, graph/profiler, memory/drain, and true-AR economics; B3 is 53.521 tok/s / 1.8012× true AR and every category exceeds 1.52×. The public C=10 EngineService path is also 10/10 exact with C=10/V=30 and perfect drain, but request wall is **10.150 s MTP vs 5.874 s AR (0.579×)** because provider execution remains phase-serial. Do not default or advertise full continuous SpecDec; retain explicit MTP plus exact AR fallback and rerun only after service economics improve. Evidence: [`SPEC-C5 blocker`](../benchmarks/results/2026-08-22-concurrency2-spec-c5-product-blocked.json).
+6. **SPEC-C5 — product promotion: BLOCKED (updated 2026-08-26).** The initial full direct protocol passed at 53.521 tok/s / 1.8012× AR, while its synchronous public C=10 wrapper fell to **0.579× AR**; that wrapper is now historical baseline evidence. Staged campaigns subsequently close exact C1 ownership on both gfx11 targets, but not a winning gfx1100 physical cell. The clean C2/K1 diagnostic reaches C2 proposal and R4 device target/accept exactly with zero hot allocation, yet is **0.503× AR** at only **1/8 accepted drafts**. Keep automatic K0 and rerun full product gates only after a workload-general physical acceptance/activation premise changes. Evidence: [`initial SPEC-C5 blocker`](../benchmarks/results/2026-08-22-concurrency2-spec-c5-product-blocked.json), [`gfx1100 C1 closure`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-campaign-closure.json), and [`C2 refill diagnostic`](../benchmarks/results/2026-08-26-w7900-specdec2-c2-provider-refill.json).
 
 ### Full-support acceptance gate
 
