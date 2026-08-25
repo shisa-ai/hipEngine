@@ -931,12 +931,14 @@ category is positive, and staged reaches **1.486x true AR** with one 10 KiB
 carried row. Physical C2/C4 streaming is rejected by category non-regression and
 keeps exact replay; contexts above 1023 select K0 before provider mutation after
 p4K/p16K eager diagnostics regress. This improves the C1 premise but promotes no
-automatic/product scope. Automatic K0 and the S6 load verdict remain in force.
+automatic/product scope. P3 then removes steady proposal/repair allocation/free:
+all 1,020 physical full-suite cycle samples are zero-allocation and complete wall
+is neutral within noise. Automatic K0 and the S6 load verdict remain in force.
 
 Two independent follow-ups are active. The stable-host gfx1151
-[`SPECDEC2-PERF`](SPECDEC2-PERF.md) owner has closed P2 and next removes hot
-allocation, builds the bounded device-resident cycle, and profiles the remaining
-physical target ladder before any kernel edit. The gfx1100
+[`SPECDEC2-PERF`](SPECDEC2-PERF.md) owner has closed P3 and next builds the
+bounded device-resident cycle before profiling the remaining physical target
+ladder. The gfx1100
 [`SPECDEC2-GFX1100`](SPECDEC2-GFX1100.md) lane independently qualifies dense
 GGUF and PARO capabilities; its C1 foundations are complete and C2/C4/product
 gates remain. Shared-file work is serialized, while hardware rates, thresholds,
