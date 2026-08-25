@@ -166,13 +166,29 @@ def test_expanded_live_collector_handles_single_multiple_and_no_tool_rows() -> N
     assert len(records["records"]) == 6
     assert summary["aggregation"]["overall"]["passed"] == 6
     assert summary["aggregation"]["outcomes"] == {"passed": 6}
-    assert summary["aggregation"]["determinism"]["passed"] is True
+    assert summary["aggregation"]["determinism"] == {
+        "basis": "normalized_response_v1",
+        "evaluated": True,
+        "mismatches": [],
+        "passed": True,
+    }
+    assert summary["fail_safe_controls"]["passed"] is True
+    assert summary["fail_safe_controls"]["passed_count"] == 10
+    assert summary["fail_safe_controls"]["total"] == 10
+    assert summary["quality_metrics"]["observations"] == {
+        "attempted": 6,
+        "terminal": 6,
+    }
+    assert summary["quality_metrics"]["tool_selection"]["correct"] == 6
+    assert summary["quality_metrics"]["external_oracle"]["passed"] == 6
     assert summary["final_ownership"]["kv_refcounted_pages"] == 0
     assert summary["configuration"]["persistent_ownership_baseline"] == {
         "kv_refcounted_pages": 7,
         "kv_pinned_pages": 7,
     }
-    assert len(checkpoints) == 7
+    assert len(checkpoints) == 8
+    assert checkpoints[-2]["status"] == "controls_complete"
+    assert checkpoints[-2]["fail_safe_controls"]["passed_count"] == 10
     assert checkpoints[-1]["status"] == "complete"
     assert checkpoints[-1]["progress"] == {"completed": 6, "total": 6}
     assert all(request["tool_choice"] == "auto" for request in transport.requests)
@@ -216,6 +232,51 @@ def test_expanded_live_collector_seals_heldout_details_but_preserves_local_raw()
     assert summary["aggregation"]["heldout_details_sealed"] is True
     assert records["records"][0]["calls"][0]["arguments"]["query"] == "wrong query"
     assert "wrong query" not in json.dumps(summary, ensure_ascii=False)
+
+
+def test_expanded_live_collector_detects_distinct_passing_responses() -> None:
+    class AlternatingTransport(_ExpandedTransport):
+        def __init__(self):
+            super().__init__({})
+            self.index = 0
+
+        def chat_json(self, payload):
+            self.requests.append(copy.deepcopy(dict(payload)))
+            responses = (
+                _response(content="Hello there.\nThanks for visiting.", finish_reason="stop"),
+                _response(content="Welcome friend.\nHave a good day.", finish_reason="stop"),
+            )
+            response = responses[self.index]
+            self.index += 1
+            return copy.deepcopy(response)
+
+    _suite, records, summary = collect_live_quality2_records(
+        AlternatingTransport(),
+        suite_path=SUITE,
+        workload_ids=("aq2_dev_tool_irrelevant_en",),
+        model="fake-model",
+        backend="fake",
+        repetitions=2,
+        max_tokens=192,
+        cache_mode="off",
+        idle_timeout_s=1.0,
+        sandbox=AgenticQuality2Sandbox(),
+    )
+
+    assert summary["aggregation"]["overall"]["passed"] == 2
+    assert records["records"][0]["normalized_response_sha256"] != records["records"][1][
+        "normalized_response_sha256"
+    ]
+    assert summary["aggregation"]["determinism"]["basis"] == "normalized_response_v1"
+    assert summary["aggregation"]["determinism"]["passed"] is False
+    assert summary["aggregation"]["determinism"]["mismatches"] == [
+        {
+            "workload_id": "aq2_dev_tool_irrelevant_en",
+            "fingerprints": sorted(
+                record["normalized_response_sha256"] for record in records["records"]
+            ),
+        }
+    ]
 
 
 def test_expanded_live_collector_routes_code_through_sandbox() -> None:
