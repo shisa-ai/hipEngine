@@ -17,16 +17,31 @@ via a capacity-conditional scratch cap (4K grows to the 4,096-row plateau;
 performance set is `512/128`, `1024/128`, and `4096/128`. The current model
 representation is Qwen3.8-27B Q4_K_S on Radeon 8060S / `gfx1151`.
 
-The immediate objective is to beat current clean llama.cpp HIP and Vulkan at
-all three working shapes for prompt processing, true autoregressive decode, and
-valid exact MTP, while minimizing resident and whole-process memory. The
-separate native INT8 K/V lane found no representation that transfers through
-1K/8 under the quality contract; BF16 therefore remains the supported route. A
+A separate Generation-2 concurrency extension finished on 2026-08-24 without
+reopening the serial G1-G6 closure. It retains explicit queue2, the calibrated
+FP16 recurrent-state serving profile with FP32 strict fallback, and an exact
+scoped Q5 col8 rowtile. The Q5 family improves 11-13% at c8/c17/c32 and complete
+marked owner wall improves 1.21-2.23%; supported context, pressure, graph,
+prefix, load-control, lifecycle, and memory mechanics pass. Product closure is
+still blocked: final c32 streaming is 10.590 tok/s with TTFT/ITL
+18.617/2.125 s and 0/3 SLO, while c2 64K remains unsupported. Evidence:
+[`queue decision`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-policy-decision.json),
+[`Q5 col8`](../benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-retained.json),
+[`closure blocker`](../benchmarks/results/2026-08-24-gfx1151-qwen38-production-closure-blocked.json), and
+[`final manifest`](../benchmarks/results/2026-08-24-gfx1151-qwen38-concurrency2-campaign-final.json).
+
+The historical serial-campaign objective was to beat clean llama.cpp HIP and
+Vulkan at all three working shapes for prompt processing, true autoregressive
+decode, and valid exact MTP, while minimizing resident and whole-process
+memory. The separate native INT8 K/V lane found no representation that
+transfers through 1K/8 under the quality contract; BF16 therefore remains the
+supported route. A
 post-closure research agenda for additional INT8 / dtype directions (gfx1151
 INT8 K/V revalidation, fp16 recurrent state, lm_head/embed_tokens int8, cheap
 MTP drafts, int8 activations for prefill/concurrency, KVarN 4/2-bit K/V) is
-recorded in Section 12; nothing there is retained until a full
-production-profile gate passes.
+recorded in Section 12. R2 was subsequently retained for the scoped gfx1151
+Q4_K_S concurrency profile after its production serving gate; the other rows
+remain closed.
 
 The clean retained P4 publication is
 `399.031/391.276/385.330` prefill tok/s at 512/1K/4K. It beats clean llama HIP
@@ -1359,8 +1374,9 @@ change the architectural source of truth.
 
 ## 12. Post-closure research agenda — additional INT8 / dtype (closed)
 
-Status: **Closed research, nothing retained.** The G1-G6 campaign is closed on
-BF16. This lane explores whether additional INT8 / dtype reduction makes sense
+Status: **Closed research; R2 retained only in the later concurrency profile.**
+The serial G1-G6 campaign remains closed on BF16/FP32 state. This lane explores
+whether additional INT8 / dtype reduction makes sense
 for hipEngine, prompted by the external `syv-ai/qwen38-27b-rtx3090` vLLM
 reference (W4A16 AutoRound body, fp8 K/V, lm_head/embed_tokens int8, fp16
 recurrent state, int8 activations, cheap MTP drafts, KVarN 4/2-bit K/V on an
@@ -1372,14 +1388,16 @@ T1/T2 production-profile arithmetic change, so none can ride the strict-parity
 path; each needs the full profile gate, a registered strict fallback, and the
 complete multi-prompt natural suite before any retention.
 
-**All six R-rows are now assessed and nothing was retained.** R1 re-closed
-native INT8 K/V on the Q4_K_S head (rejected at 512/8), R2's fp16 recurrent
-state is quality-neutral but deferred for c=1 (GDN gate is 1.43% of decode
-wall), R3's lm_head/embed int8 is a non-starter (GGUF already stores both below
-int8), R4's cheaper MTP drafts are deferred (draft stage is 2.08% of decode
-wall), R5's KVarN 4/2-bit K/V is not pursued (context not binding on this
-hardware), and R6's int8-activation prefill is not pursued (no dispatchable
-W8A8 dense prefill path; decode is already W8A8).
+**All six R-rows are assessed.** R1 re-closed native INT8 K/V on the Q4_K_S
+head (rejected at 512/8). R2 remained deferred for serial c1, then the c=N lane
+implemented and retained FP16 recurrent state for the scoped gfx1151 Q4_K_S
+production profile after 1,170-row numerical/isolation and serving/lifecycle
+gates; FP32 remains its registered strict fallback. R3's lm_head/embed int8 is
+a non-starter (GGUF already stores both below int8), R4's cheaper MTP drafts are
+deferred (draft stage is 2.08% of decode wall), R5's KVarN 4/2-bit K/V is not
+pursued (context not binding on this hardware), and R6's int8-activation
+prefill is not pursued (no dispatchable W8A8 dense prefill path; decode is
+already W8A8).
 
 ### R1 — gfx1151 INT8 K/V revalidation (start here)
 
@@ -1427,10 +1445,10 @@ Reopen only with a new angle, then re-run the K0-K3 shape stop rule (512 -> 1K
    context, W7900 reaches the 256K model limit) is the evidence and admission
    pattern to replicate, not the older gfx1151 rejection.
 
-### R2 — fp16 recurrent state (worth testing; measure the quality tradeoff)
+### R2 — fp16 recurrent state (retained for scoped concurrency serving)
 
-Today the DeltaNet recurrent state and conv state are allocated **FP32**
-(`DType.FP32` over `time_step_rank x ssm_state_size x value_dim`, 48/64
+Opening state: the DeltaNet recurrent state and conv state were allocated
+**FP32** (`DType.FP32` over `time_step_rank x ssm_state_size x value_dim`, 48/64
 layers, read + written every decode step). Halving to fp16 halves state
 traffic on a memory-bound decode — the same lever that unblocked the external
 stack's concurrency (their fp32 -> fp16 state was PPL-free; they deliberately
@@ -1692,11 +1710,12 @@ KL/top-1 gate on activation quantization. Evidence:
   command + result + correctness gate; retention updates `benchmarks/README.md`
   and `benchmarks/CHANGELOG.md` with an artifact under `benchmarks/results/`.
 
-### Working order
+### Final disposition
 
-1. R1 — gfx1151 INT8 K/V revalidation (stated start).
-2. R2 — fp16 recurrent state + quality tradeoff.
-3. R3 — lm_head / embed_tokens int8.
-4. R4 — cheaper MTP drafts (deferred, see assessed note above).
-5. R6 — int8 activations poke (prefill / concurrency) (decided: not pursued — see assessed note above).
-6. R5 — KVarN 4/2-bit K/V (decided: not pursued — see assessed note above).
+1. R1 — rejected on current gfx1151 Q4_K_S.
+2. R2 — retained for scoped concurrency serving; serial c1 stays on the strict
+   FP32 fallback outside that profile.
+3. R3 — not applicable: existing GGUF head/embed storage is already below int8.
+4. R4 — deferred; no operation-complete MTP premise.
+5. R6 — not pursued; no dispatchable W8A8 dense prefill path.
+6. R5 — not pursued; context capacity is not the binding gfx1151 limit.

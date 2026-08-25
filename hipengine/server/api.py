@@ -68,6 +68,10 @@ from hipengine.generation import (
 from hipengine.generation.constraints import JsonObjectConstraintState, ToolCallConstraintSpec
 from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kvcache import resolve_prefix_cache_mode
+from hipengine.speculative.policy import (
+    DEFAULT_AUTO_DEPTH_POLICY,
+    select_offline_speculative_depth,
+)
 from hipengine.tokenization.identity import token_ids_sha256
 
 
@@ -245,6 +249,7 @@ _SPECULATIVE_MTP_THINKING_MODES = ("hint", "hard")
 _SPECULATIVE_MTP_DEFAULT_ROUTE = "default"
 _SPECULATIVE_MTP_BATCH_ROUTE = "speculative_mtp"
 _SPECULATIVE_MTP_AUTO_ROUTE = "speculative_mtp_auto"
+_SPECULATIVE_MTP_K0_ROUTE = "speculative_mtp_k0"
 
 
 class _SpeculativeMTPRouteReason(str, Enum):
@@ -255,7 +260,7 @@ _SPECULATIVE_MTP_AUTO_REJECTION_REASON = (
     _SpeculativeMTPRouteReason.AUTOMATIC_SCOPE_NOT_PROMOTED.value
 )
 _SPECULATIVE_MTP_AUTO_EVIDENCE = (
-    "benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf2-long-target-graphs.json"
+    "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json"
 )
 _SPECULATIVE_PROVIDER_ROUTE = "speculative"
 _SPECULATIVE_PROVIDER_ALLOWED_REQUEST_KEYS = frozenset(
@@ -1360,11 +1365,11 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
             "policy": configured_mode,
             "request_field": "speculative_mtp",
             "default_enabled": default_enabled,
-            "streaming_compatible": False,
+            "streaming_compatible": True,
             "batch_route": _SPECULATIVE_MTP_BATCH_ROUTE,
-            "physical_concurrency": "serialized_target_slot",
-            "max_physical_target_slots": 1,
-            "route_coalescing_is_physical_concurrency": False,
+            "physical_concurrency": "generation2_target_frontier",
+            "max_physical_target_slots": 4,
+            "route_coalescing_is_physical_concurrency": True,
             "circuit_breaker": deepcopy(
                 getattr(
                     engine,
@@ -1387,6 +1392,9 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
         payload["auto_route"] = {
             "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
             "reason": _SPECULATIVE_MTP_AUTO_REJECTION_REASON,
+            "selected_candidate_count": 0,
+            "policy_key": DEFAULT_AUTO_DEPTH_POLICY.policy_key,
+            "policy_fingerprint": DEFAULT_AUTO_DEPTH_POLICY.fingerprint,
             "exact_default_required": True,
             "compatibility_mtp_explicit_only": True,
             "evidence": _SPECULATIVE_MTP_AUTO_EVIDENCE,
@@ -2035,21 +2043,64 @@ def _resolve_realized_generation_route(
     """
 
     route = str(requested_route)
+    if route == _SPECULATIVE_MTP_K0_ROUTE:
+        blockers = tuple(speculative_mtp_sampling_blockers(sampling))
+        return (
+            _SPECULATIVE_MTP_DEFAULT_ROUTE,
+            {
+                "requested_route": _SPECULATIVE_MTP_BATCH_ROUTE,
+                "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
+                "reason": "unsupported_sampling_k0",
+                "policy_cell": "compatibility-pre-mutation-k0",
+                "selected_candidate_count": 0,
+                "policy_reason": "unsupported_sampling",
+                "sampling_blockers": list(blockers),
+                "realized_group_rows": int(group_rows),
+                "output_horizon_tokens": int(sampling.max_tokens),
+                "exact_default_required": True,
+                "evidence": "docs/SPECDEC2.md#12-s6--gfx1151-product-closure",
+            },
+        )
     if route != _SPECULATIVE_MTP_AUTO_ROUTE:
         return route, None
     rows = int(group_rows)
     if rows < 1:
         raise ValueError("automatic generation route requires a positive realized group")
+    decision = select_offline_speculative_depth(
+        DEFAULT_AUTO_DEPTH_POLICY,
+        concurrency=rows,
+        output_horizon_tokens=int(sampling.max_tokens),
+    )
+    if decision.selected_k != 0:
+        return (
+            _SPECULATIVE_MTP_BATCH_ROUTE,
+            {
+                "requested_route": _SPECULATIVE_MTP_AUTO_ROUTE,
+                "selected_route": _SPECULATIVE_MTP_BATCH_ROUTE,
+                "reason": decision.reason,
+                "policy_cell": decision.cell_key,
+                "selected_candidate_count": decision.selected_k,
+                "policy_fingerprint": decision.policy_fingerprint,
+                "realized_group_rows": rows,
+                "output_horizon_tokens": int(sampling.max_tokens),
+                "exact_default_required": True,
+                "evidence": decision.evidence,
+            },
+        )
     return (
         _SPECULATIVE_MTP_DEFAULT_ROUTE,
         {
             "requested_route": _SPECULATIVE_MTP_AUTO_ROUTE,
             "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
             "reason": _SPECULATIVE_MTP_AUTO_REJECTION_REASON,
+            "policy_cell": decision.cell_key,
+            "selected_candidate_count": 0,
+            "policy_reason": decision.reason,
+            "policy_fingerprint": decision.policy_fingerprint,
             "realized_group_rows": rows,
             "output_horizon_tokens": int(sampling.max_tokens),
             "exact_default_required": True,
-            "evidence": _SPECULATIVE_MTP_AUTO_EVIDENCE,
+            "evidence": decision.evidence,
         },
     )
 
@@ -3047,6 +3098,16 @@ async def _stream_engine_text(
         if detailed_streamer is None:
             raise NotImplementedError(
                 "speculative provider streaming is not supported by this engine"
+            )
+    elif str(route) == _SPECULATIVE_MTP_BATCH_ROUTE:
+        detailed_streamer = getattr(
+            engine,
+            "stream_speculative_mtp_detailed",
+            None,
+        )
+        if not callable(detailed_streamer):
+            raise NotImplementedError(
+                "speculative MTP streaming is not supported by this engine"
             )
     else:
         detailed_streamer = getattr(engine, "stream_detailed", None)
@@ -11488,15 +11549,6 @@ def _speculative_mtp_route_for_request(
                 param="speculative_mtp",
             )
         return _SPECULATIVE_MTP_DEFAULT_ROUTE
-    if bool(getattr(request, "stream", False)):
-        if explicit_requested:
-            raise OpenAIHTTPError(
-                400,
-                "speculative_mtp does not support streaming requests yet",
-                code="unsupported_parameter",
-                param="speculative_mtp",
-            )
-        return _SPECULATIVE_MTP_DEFAULT_ROUTE
     if not _engine_supports_speculative_mtp(engine):
         if explicit_requested:
             raise OpenAIHTTPError(
@@ -11525,22 +11577,11 @@ def _speculative_mtp_route_for_request(
         sampling = relax_thinking_budget_for_mtp(sampling)
     blockers = speculative_mtp_sampling_blockers(sampling)
     if blockers:
-        if explicit_requested:
-            raise OpenAIHTTPError(
-                400,
-                "speculative_mtp requires raw greedy-fast sampling",
-                code="unsupported_parameter",
-                param="speculative_mtp",
-                extra={
-                    "hipengine": {
-                        "speculative_mtp": {
-                            "blockers": list(blockers),
-                            "compatibility_guard": "supports_speculative_mtp_sampling",
-                        }
-                    }
-                },
-            )
-        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+        return (
+            _SPECULATIVE_MTP_K0_ROUTE
+            if explicit_requested
+            else _SPECULATIVE_MTP_DEFAULT_ROUTE
+        )
     if not supports_speculative_mtp_sampling(sampling):
         return _SPECULATIVE_MTP_DEFAULT_ROUTE
     if explicit_requested:

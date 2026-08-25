@@ -177,7 +177,7 @@ GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layou
 | Q4_K pack8/raw | `quant/gguf_q4_k_gemv.{hip,py}` | `linear`, `linear_pair`, `linear_pair_silu`, `linear+residual` | Raw GGUF math and lossless pack8 layouts; pair/SiLU and exact rounded-BF16 residual composites where registered. Primitive projection+add fallbacks remain available. |
 | Q4_K/Q6_K prefill WMMA | `quant/gguf_q4_k_prefill.{hip,py}` | `linear` | Resident pack8/raw prefill consumers; exact scalar/pack8 routes remain fallbacks. The p512 pack8-Q4 rounded-residual output-store sibling is rejected (0.958x core / 0.952x public complete-model prefill) and is not registered. |
 | Q8_0 T16 prefill | `quant/gguf_q8_0_t16_prefill.{hip,py}` | `linear`, `linear_pair` | WMMA/T16 Q8 prefill and architecture-specific wave schedules. gfx1151 rows512/K1024/N16+N16 alpha/beta uses the exact two-wave dual owner; singleton WMMA remains the fallback. |
-| Q4/Q5/Q6 T16 selected | `quant/gguf_t16_selected_gemv.{hip,py}` | `linear`, `linear_pair_silu`, `moe_linear`, `moe_linear+weighted_sum`, `linear+residual` | c=1 and selected-prefill T16/qmicro/interleaved consumers, including weighted/residual composites. |
+| Q4/Q5/Q6 T16 selected | `quant/gguf_t16_selected_gemv.{hip,py}` | `linear`, `linear_pair_silu`, `moe_linear`, `moe_linear+weighted_sum`, `linear+residual` | c=1 and selected-prefill T16/qmicro/interleaved consumers, including weighted/residual composites. gfx1151 Qwen3.8 Q5 K6144/N5120, K17408/N5120, and K5120/N10240 rows2-8 use the exact col8 rowtile; the registered col4 parent remains the strict fallback and all other shapes/backends retain prior policy. |
 | Q6/Q4 mixed and narrow K/V grids | `fused/gguf_q6_q4_pair.{hip,py}` | `linear_pair` (standard-Q6+Q4, Q4, Q4+planar-Q6) | Exact block-parallel rows1 pairs; gfx1151 qualifies Qwen3.8 recurrent K5120/N10240+N6144 and full-attention K/V K5120/N1024+N1024 while primitive projections remain fallbacks. |
 | Dense Q6_K T16/qmicro | `quant/gguf_q6_k_t16_gemv.{hip,py}` | `linear`, `linear+argmax`, `linear+residual` | Exact dense Q6 decode/prefill/root families. gfx1100 planar row8 uses the exact DPP reduction (VGPR136→112, bpermute320→0), admitted on all 55 actual-operation rows and retained by a 1.634% complete-owner wall win; rows1-7 keep the generic reduction. gfx1151 rows>=512 uses 128-thread/four-wave shared-weight WMMA for standard K5120/N10240 QKV (2.96-3.55x) and planar K17408/N5120 FFN-down (1.42-1.50x); both use 24 KiB LDS / 248 VGPR. Rows<512, narrow V, root, shape misses, and peer backends retain exact one-wave/16x16 primitives. |
 | IQ2/IQ3/IQ4 decode | `quant/gguf_iq_gemv.{hip,py}` | `moe_linear` | Raw IQ selected-expert projection families. IQ3 tile4 remains scoped to the retained gfx1100 explicit-DFlash route; gfx1151 excludes it after a complete-route rejection and keeps tile1. |
@@ -305,7 +305,7 @@ No decode concurrency below 512 silently falls to WMMA prefill:
 | rows | Q4 single proj | Q4 gate/up | Q5 single | Q6 lm_head |
 | --- | --- | --- | --- | --- |
 | 1 | `dense_single_local32` | `dense_dual_local32` | `t16_gemv_decode` (direct) | `t16_gemv_decode` (direct) |
-| 2-8 | `dense_rowtile`/`_col4` (gfx1151 qualified H5120-package row8 shapes use `dense_rowtile16_w2`) | `dense_dual_q8_1x2_rowtile8` | `t16_gemv_rowtile` (per-shape cap) | `t16_gemv_rowtile` |
+| 2-8 | `dense_rowtile`/`_col4` (gfx1151 qualified H5120-package row8 shapes use `dense_rowtile16_w2`) | `dense_dual_q8_1x2_rowtile8` | `t16_gemv_rowtile` (per-shape cap; qualified gfx1151 Qwen3.8 shapes use col8 ownership) | `t16_gemv_rowtile` |
 | 9-511 | rowtile8 chunked (8+2, 8+8, ...) | dual rowtile8 chunked | `t16_gemv_decode` (direct grid.y=rows) | chunked (max 8) |
 | >=512 | WMMA prefill (bulk) | WMMA prefill | WMMA prefill | WMMA prefill |
 
@@ -825,6 +825,29 @@ rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-smoke -- \
     --compiler-version-file /tmp/hipengine-hipcc-version.txt \
     --require-cached-build
 ```
+
+For Generation-2 GGUF owner profiling, use the mechanical isolated-cache
+workflow instead of mutating the shared cache:
+
+```bash
+python3 scripts/gguf_continuous_owner_rocprof.py \
+  --source-root /path/to/clean/source \
+  --model /models/gguf/model.gguf --backend hip_gfx1151 \
+  --compiler-version-file /tmp/hipcc-version.txt \
+  --cache-root /tmp/lane/cache/<commit>/<compiler>/<profile> \
+  --run-root /tmp/lane/profiles --run-tag c8-owner \
+  --gpu-max-hw-queues 2 --rebuild --profile \
+  --out /tmp/lane/profiles/c8-owner.json
+```
+
+`--rebuild` requires a new/empty scoped cache and never deletes the shared cache.
+The workflow runs an unprofiled build child, snapshots every cache file and
+build manifest, runs an unprofiled `HIPENGINE_REQUIRE_CACHED_BUILD=1` warm child,
+then wraps only the final direct child in rocprof. A PATH compiler guard,
+descendant-process monitor, and pre/post content/mode/mtime tree hashes reject
+compiler activity or cache mutation. `HIPENGINE_BUILD_CACHE_ROOT` and
+`HIPENGINE_REQUIRE_CACHED_BUILD` apply this policy to all HIP/CUDA builders in
+the child, including lazy libraries that do not expose per-call cache flags.
 
 Check expected kernel identity, plausible duration, workgroup/grid, VGPR, LDS, and scratch. `Scratch_Size > 0` on a hot path is a review trigger. Some profiler versions expose start/end timestamps instead of `DurationNs`; subtract them. Raw profiler dumps stay outside Git.
 

@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
+from hipengine.speculative.provider import (
+    StagedSpeculativeProvider,
+    validate_staged_speculative_provider,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,8 +152,10 @@ class SpeculativeTextProvider(Protocol):
 
 
 SpeculativeProviderFactory = Callable[..., SpeculativeTextProvider]
+StagedSpeculativeProviderFactory = Callable[..., StagedSpeculativeProvider]
 
 _REGISTRY: dict[SpeculativeProviderKey, SpeculativeProviderFactory] = {}
+_STAGED_REGISTRY: dict[SpeculativeProviderKey, StagedSpeculativeProviderFactory] = {}
 _BUILTINS_REGISTERED = False
 
 
@@ -195,6 +201,72 @@ def registered_speculative_providers() -> tuple[SpeculativeProviderKey, ...]:
     return tuple(sorted(_REGISTRY, key=lambda key: (key.provider, key.target_model, key.backend, key.quant)))
 
 
+def register_staged_speculative_provider(
+    key: SpeculativeProviderKey,
+    factory: StagedSpeculativeProviderFactory,
+    *,
+    replace: bool = False,
+) -> None:
+    """Register one exact staged-provider factory without aliasing legacy routes."""
+
+    if not isinstance(key, SpeculativeProviderKey):
+        raise TypeError("key must be a SpeculativeProviderKey")
+    if not callable(factory):
+        raise TypeError("staged speculative provider factory must be callable")
+    if key in _STAGED_REGISTRY and not replace:
+        raise KeyError(f"staged speculative provider already registered: {key}")
+    _STAGED_REGISTRY[key] = factory
+
+
+def resolve_staged_speculative_provider(
+    *,
+    provider: str,
+    target_model: str,
+    backend: str,
+    quant: str,
+) -> StagedSpeculativeProviderFactory:
+    """Resolve one exact staged factory or fail closed."""
+
+    key = SpeculativeProviderKey(
+        provider=provider,
+        target_model=target_model,
+        backend=backend,
+        quant=quant,
+    )
+    try:
+        return _STAGED_REGISTRY[key]
+    except KeyError as exc:
+        raise KeyError(f"unregistered staged speculative provider: {key}") from exc
+
+
+def registered_staged_speculative_providers() -> tuple[SpeculativeProviderKey, ...]:
+    return tuple(
+        sorted(
+            _STAGED_REGISTRY,
+            key=lambda key: (key.provider, key.target_model, key.backend, key.quant),
+        )
+    )
+
+
+def construct_staged_speculative_provider(
+    *,
+    provider: str,
+    target_model: str,
+    backend: str,
+    quant: str,
+    **factory_kwargs: Any,
+) -> StagedSpeculativeProvider:
+    """Construct and validate one bounded provider at the cold boundary."""
+
+    factory = resolve_staged_speculative_provider(
+        provider=provider,
+        target_model=target_model,
+        backend=backend,
+        quant=quant,
+    )
+    return validate_staged_speculative_provider(factory(**factory_kwargs))
+
+
 def register_builtin_speculative_providers() -> None:
     """Import built-in adapters once without eagerly loading model weights."""
 
@@ -210,10 +282,15 @@ __all__ = [
     "SpeculativeProviderCapabilities",
     "SpeculativeProviderConfig",
     "SpeculativeProviderFactory",
+    "StagedSpeculativeProviderFactory",
     "SpeculativeProviderKey",
     "SpeculativeTextProvider",
+    "construct_staged_speculative_provider",
     "register_builtin_speculative_providers",
     "register_speculative_provider",
+    "register_staged_speculative_provider",
     "registered_speculative_providers",
+    "registered_staged_speculative_providers",
     "resolve_speculative_provider",
+    "resolve_staged_speculative_provider",
 ]

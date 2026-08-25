@@ -20,6 +20,8 @@ _ENV_CUDA_ARCH = "HIPENGINE_CUDA_ARCH"
 _ENV_CUDA_TARGET_ARCH = "HIPENGINE_CUDA_TARGET_ARCH"
 _ENV_ROCM_DEVICE_LIB_PATH = "HIPENGINE_ROCM_DEVICE_LIB_PATH"
 _ENV_HIP_DEVICE_LIB_PATH = "HIP_DEVICE_LIB_PATH"
+_ENV_BUILD_CACHE_ROOT = "HIPENGINE_BUILD_CACHE_ROOT"
+_ENV_REQUIRE_CACHED_BUILD = "HIPENGINE_REQUIRE_CACHED_BUILD"
 
 CompilerKind = Literal["hip", "cuda"]
 ProfileName = Literal["decode", "prefill", "baseline"]
@@ -69,6 +71,26 @@ CUDA_PROFILES: dict[ProfileName, BuildProfile] = {
 }
 
 
+def _resolve_cache_root(cache_root: str | Path | None) -> Path:
+    if cache_root is not None:
+        return Path(cache_root).expanduser()
+    environment_root = (os.environ.get(_ENV_BUILD_CACHE_ROOT) or "").strip()
+    return Path(environment_root).expanduser() if environment_root else DEFAULT_CACHE_ROOT
+
+
+def _environment_requires_cached_build() -> bool:
+    raw = (os.environ.get(_ENV_REQUIRE_CACHED_BUILD) or "").strip().lower()
+    if not raw:
+        return False
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(
+        f"invalid {_ENV_REQUIRE_CACHED_BUILD}={raw!r}; expected a boolean value"
+    )
+
+
 def plan_hip_build(
     *,
     sources: Sequence[str | Path],
@@ -113,7 +135,7 @@ def plan_hip_build(
         compiler=compiler,
         compiler_version=compiler_version,
     )
-    root = Path(cache_root).expanduser() if cache_root is not None else DEFAULT_CACHE_ROOT
+    root = _resolve_cache_root(cache_root)
     cache_dir = root / f"{family}-{cache_key[:16]}"
     output_path = cache_dir / (output_name or f"{family}.so")
     command = (
@@ -180,7 +202,7 @@ def plan_cuda_build(
         compiler=compiler,
         compiler_version=compiler_version,
     )
-    root = Path(cache_root).expanduser() if cache_root is not None else DEFAULT_CACHE_ROOT
+    root = _resolve_cache_root(cache_root)
     cache_dir = root / f"{family}-{cache_key[:16]}"
     output_path = cache_dir / (output_name or f"{family}.so")
     command = (
@@ -236,8 +258,12 @@ def build_hip(
     This is useful under ``rocprofv3`` because the profiler preloads into child processes and
     can hang or abort when a profiled Python process spawns ``hipcc``/clang. Pair it with an
     explicit ``compiler_version`` or ``HIPENGINE_COMPILER_VERSION_FILE`` so the cache key can be
-    computed without probing ``hipcc --version``.
+    computed without probing ``hipcc --version``. ``HIPENGINE_BUILD_CACHE_ROOT``
+    scopes implicit cache roots, and ``HIPENGINE_REQUIRE_CACHED_BUILD=1`` makes
+    every HIP builder in the process fail closed without per-call plumbing.
     """
+
+    require_cached = bool(require_cached or _environment_requires_cached_build())
 
     # Process-level loaded-library cache. Without it, every ``build_hip(load=True)``
     # re-hashes the sources (plan_hip_build) and rebuilds a fresh ``ctypes.CDLL``,
@@ -261,7 +287,7 @@ def build_hip(
             profile,
             output_name,
             tuple(str(Path(s)) for s in sources),
-            None if cache_root is None else str(cache_root),
+            str(_resolve_cache_root(cache_root)),
             resolved_target_arch,
             compiler,
             version,
@@ -325,6 +351,7 @@ def build_cuda(
 ) -> ctypes.CDLL | BuildArtifact:
     """Build or reuse a CUDA shared object and optionally load it."""
 
+    require_cached = bool(require_cached or _environment_requires_cached_build())
     version = _resolve_compiler_version(
         compiler=compiler,
         compiler_version=compiler_version,
@@ -341,7 +368,7 @@ def build_cuda(
             profile,
             output_name,
             tuple(str(Path(source)) for source in sources),
-            None if cache_root is None else str(cache_root),
+            str(_resolve_cache_root(cache_root)),
             resolved_target_arch,
             compiler,
             version,

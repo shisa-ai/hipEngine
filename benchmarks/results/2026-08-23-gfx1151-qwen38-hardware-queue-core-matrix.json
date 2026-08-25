@@ -1,0 +1,1069 @@
+{
+  "compiler": "clang 23.0.0git aa451e1f + PATCHED:440716f8",
+  "created_at": "2026-08-23T16:02:25.944031+00:00",
+  "excluded_diagnostic_run_tags": {
+    "core-c17-c32-20260823a": "server dependency failure before GPU work (fastapi absent)",
+    "core-c17-c32-20260823b": "streaming native-c1 retirement host false negative; no device failure",
+    "core-c17-c32-20260823c": "production cross-admission ID equality misbound; exact controls passed"
+  },
+  "hardware": "AMD Radeon 8060S Graphics / gfx1151",
+  "kind": "gfx1151_qwen38_hardware_queue_core_matrix",
+  "limitations": [
+    "This is a p128/d8 c17/c32 core screen, not the required full-width, arrival, soak, graph, eviction, or long-context policy decision.",
+    "All policies miss the fixed ITL SLO; c32 also misses TTFT. Product-gate false is retained, not hidden.",
+    "Production generated-ID equality across differing HTTP admission composition is diagnostic; exact controls and the external identical-schedule numerical repeat gate are binding.",
+    "Runtime queue IDs/count were not observed mechanically; configured/effective environment identity is recorded for every server child."
+  ],
+  "model": {
+    "kv_storage": "bf16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S (registry gguf_q4_k_m)",
+    "recurrent_state": "fp16",
+    "sampled_fingerprint": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa"
+  },
+  "paired_comparisons_percent": {
+    "q1_vs_q8": {
+      "17": {
+        "block_percent": [
+          0.9176395452773933,
+          0.00398301984587679
+        ],
+        "both_blocks_same_sign": true,
+        "median_percent": 0.46081128256163506
+      },
+      "32": {
+        "block_percent": [
+          -2.994375969994667,
+          2.195921633016673
+        ],
+        "both_blocks_same_sign": false,
+        "median_percent": -0.399227168488997
+      }
+    },
+    "q8_vs_q2": {
+      "17": {
+        "block_percent": [
+          -0.46230841254104593,
+          -0.0874400726877056
+        ],
+        "both_blocks_same_sign": true,
+        "median_percent": -0.27487424261437576
+      },
+      "32": {
+        "block_percent": [
+          3.7914771126768887,
+          1.7596374815423088
+        ],
+        "both_blocks_same_sign": true,
+        "median_percent": 2.7755572971095988
+      }
+    },
+    "q8_vs_unset": {
+      "17": {
+        "block_percent": [
+          0.1682155819206832,
+          0.12530242046007167
+        ],
+        "both_blocks_same_sign": true,
+        "median_percent": 0.14675900119037744
+      },
+      "32": {
+        "block_percent": [
+          3.243193688363455,
+          9.53037510823651
+        ],
+        "both_blocks_same_sign": true,
+        "median_percent": 6.386784398299983
+      }
+    }
+  },
+  "performance_claim": true,
+  "physical_host": "gfx1151",
+  "policy_promotion_claim": false,
+  "production_correctness_bundle": {
+    "generated_id_equality_binding": false,
+    "path": "benchmarks/results/2026-08-23-gfx1151-qwen38-fp16-serving-correctness-bundle-v3.json",
+    "sha256": "73a63f689ceb5adf60491398f9fb33c3f8540d0b90a292067b9482ac3445ef98"
+  },
+  "protocol": {
+    "command": [
+      "/home/lhl/hipEngine/.venv/bin/python",
+      "scripts/server_f1_hwqueue_matrix.py",
+      "--source-root",
+      "/tmp/hipengine-gfx1151-hwqueue-v2-src",
+      "--python",
+      "/home/lhl/hipEngine/.venv/bin/python",
+      "--model",
+      "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--quant",
+      "gguf_q4_k_m",
+      "--production-correctness-artifact",
+      "/home/lhl/hipEngine/benchmarks/results/2026-08-23-gfx1151-qwen38-fp16-serving-correctness-bundle-v3.json",
+      "--compiler-version-file",
+      "/tmp/c2-gfx1151-hwqueue-v2/manifests/hipcc-version.txt",
+      "--lane-root",
+      "/tmp/c2-gfx1151-hwqueue-v2",
+      "--run-tag",
+      "core-c17-c32-20260823d",
+      "--suite",
+      "core",
+      "--queue-policies",
+      "1,2,4,8,unset",
+      "--order-blocks",
+      "2",
+      "--concurrencies",
+      "17,32",
+      "--live-concurrency",
+      "32",
+      "--prompt-length",
+      "128",
+      "--decode-tokens",
+      "8",
+      "--ctx-per-seq",
+      "256",
+      "--warmup-runs",
+      "1",
+      "--measured-runs",
+      "3",
+      "--stream-warmup-runs",
+      "1",
+      "--stream-measured-runs",
+      "3",
+      "--max-idle-temperature-c",
+      "45",
+      "--idle-stable-samples",
+      "4",
+      "--idle-sample-interval-seconds",
+      "15",
+      "--child-timeout-seconds",
+      "1800"
+    ],
+    "command_shell": "/home/lhl/hipEngine/.venv/bin/python scripts/server_f1_hwqueue_matrix.py --source-root /tmp/hipengine-gfx1151-hwqueue-v2-src --python /home/lhl/hipEngine/.venv/bin/python --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --production-correctness-artifact /home/lhl/hipEngine/benchmarks/results/2026-08-23-gfx1151-qwen38-fp16-serving-correctness-bundle-v3.json --compiler-version-file /tmp/c2-gfx1151-hwqueue-v2/manifests/hipcc-version.txt --lane-root /tmp/c2-gfx1151-hwqueue-v2 --run-tag core-c17-c32-20260823d --suite core --queue-policies 1,2,4,8,unset --order-blocks 2 --concurrencies 17,32 --live-concurrency 32 --prompt-length 128 --decode-tokens 8 --ctx-per-seq 256 --warmup-runs 1 --measured-runs 3 --stream-warmup-runs 1 --stream-measured-runs 3 --max-idle-temperature-c 45 --idle-stable-samples 4 --idle-sample-interval-seconds 15 --child-timeout-seconds 1800",
+    "concurrencies": [
+      17,
+      32
+    ],
+    "counterbalanced_blocks": [
+      [
+        "1",
+        "2",
+        "4",
+        "8",
+        "unset"
+      ],
+      [
+        "unset",
+        "8",
+        "4",
+        "2",
+        "1"
+      ]
+    ],
+    "decode_tokens": 8,
+    "fixed_slo_seconds": {
+      "end_to_end_p95": 30.0,
+      "itl_p99": 0.5,
+      "ttft_p95": 10.0
+    },
+    "measured_runs_per_width": 3,
+    "prefill_chunk_tokens": 256,
+    "prefill_decode_policy": "fair",
+    "primary_metric": "production-correctness-qualified streaming completion tok/s",
+    "prompt_tokens": 128,
+    "queue_policies": [
+      "1",
+      "2",
+      "4",
+      "8",
+      "unset"
+    ],
+    "stream_measured_runs_per_width": 3,
+    "stream_warmup_runs_per_width": 1,
+    "warmup_runs_per_width": 1
+  },
+  "raw_matrix": {
+    "all_product_gates_passed": false,
+    "mechanical_passed": true,
+    "path": "/tmp/c2-gfx1151-hwqueue-v2/matrices/core-c17-c32-20260823d.json",
+    "sha256": "225771535cf5bd513336388ad4e46842a2e373e0417aa0941e91d59afd0023b0",
+    "status": "complete"
+  },
+  "rocm": "HIP 7.15.0",
+  "runs": [
+    {
+      "block_index": 0,
+      "leaf": "/tmp/c2-gfx1151-hwqueue-v2/runs/6d33fa5349f18692be40bcf8be7191bf5e196592/fp16-production/hwq-1/core/core-c17-c32-20260823d-block00",
+      "mechanical_passed": true,
+      "queue_environment": {
+        "effective_value": "1",
+        "report_sha256": "60df429616e231a69bf0bf94b2402116b310918eea491d5e0277397f8c6f5693",
+        "requested_policy": "explicit",
+        "runtime_queue_count": null,
+        "runtime_queue_ids": null,
+        "source": "explicit_environment"
+      },
+      "queue_policy": "1",
+      "result_sha256": "97077f84b1562bc29a2c8a7161163f18f4a7f5c2e0464f912687d2d57bad8d40",
+      "spec_sha256": "e1cc2a4226793ac9b7f9fc2afadb8bc01dfee8918bd6185031a79b0ff139b577",
+      "thermal_and_health": {
+        "postflight": {
+          "edge_temperature_c": 44.0,
+          "gpu_use_percent": 4.0,
+          "kfd_pids": [],
+          "observed_at": "2026-08-23T14:35:36.139103+00:00"
+        },
+        "preflight_edge_temperature_c_max": 44.0,
+        "preflight_edge_temperature_c_min": 43.0,
+        "preflight_final_gpu_use_percent": 0.0,
+        "preflight_kfd_pids": [],
+        "preflight_samples": 4
+      },
+      "widths": {
+        "17": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 11.108880840840811,
+          "correctness_qualified_tok_s_samples": [
+            11.081493083113797,
+            11.116604476587913,
+            11.108880840840811
+          ],
+          "end_to_end_p95_seconds_median": 12.241451991023496,
+          "generated_id_repeat_mismatch_count_diagnostic": 0,
+          "itl_p99_seconds_median": 1.1146665039705113,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 8.969256878946908
+        },
+        "32": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 10.365723703006543,
+          "correctness_qualified_tok_s_samples": [
+            10.631743141132045,
+            10.365723703006543,
+            10.265377131225215
+          ],
+          "end_to_end_p95_seconds_median": 24.69475553801749,
+          "generated_id_repeat_mismatch_count_diagnostic": 6,
+          "itl_p99_seconds_median": 2.269632750074379,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 18.957255721092224
+        }
+      }
+    },
+    {
+      "block_index": 0,
+      "leaf": "/tmp/c2-gfx1151-hwqueue-v2/runs/6d33fa5349f18692be40bcf8be7191bf5e196592/fp16-production/hwq-2/core/core-c17-c32-20260823d-block00",
+      "mechanical_passed": true,
+      "queue_environment": {
+        "effective_value": "2",
+        "report_sha256": "12040ebc3fb1459945e176eb535ae6d05ee33b9eca003c6d480291c8160e1bc3",
+        "requested_policy": "explicit",
+        "runtime_queue_count": null,
+        "runtime_queue_ids": null,
+        "source": "explicit_environment"
+      },
+      "queue_policy": "2",
+      "result_sha256": "f852c799dae7f09049f353c29d97cc0ea0293ceb8d4ca5d733431907b9b7fdd4",
+      "spec_sha256": "1f56ed2fced402bdc2c111b2323e9e5c20265a4aef332cf66527e8e1037dfc75",
+      "thermal_and_health": {
+        "postflight": {
+          "edge_temperature_c": 44.0,
+          "gpu_use_percent": 4.0,
+          "kfd_pids": [],
+          "observed_at": "2026-08-23T14:44:01.898323+00:00"
+        },
+        "preflight_edge_temperature_c_max": 45.0,
+        "preflight_edge_temperature_c_min": 38.0,
+        "preflight_final_gpu_use_percent": 0.0,
+        "preflight_kfd_pids": [],
+        "preflight_samples": 5
+      },
+      "widths": {
+        "17": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 11.058994952342168,
+          "correctness_qualified_tok_s_samples": [
+            10.991266829291936,
+            11.058994952342168,
+            11.097001165368672
+          ],
+          "end_to_end_p95_seconds_median": 12.297405805089511,
+          "generated_id_repeat_mismatch_count_diagnostic": 1,
+          "itl_p99_seconds_median": 1.18453970993869,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 8.966202944051474
+        },
+        "32": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 10.295347787636953,
+          "correctness_qualified_tok_s_samples": [
+            10.295347787636953,
+            10.174400836724718,
+            10.679499968123752
+          ],
+          "end_to_end_p95_seconds_median": 24.864452169975266,
+          "generated_id_repeat_mismatch_count_diagnostic": 8,
+          "itl_p99_seconds_median": 2.2619371679611504,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 19.247564985067584
+        }
+      }
+    },
+    {
+      "block_index": 0,
+      "leaf": "/tmp/c2-gfx1151-hwqueue-v2/runs/6d33fa5349f18692be40bcf8be7191bf5e196592/fp16-production/hwq-4/core/core-c17-c32-20260823d-block00",
+      "mechanical_passed": true,
+      "queue_environment": {
+        "effective_value": "4",
+        "report_sha256": "ede6e4da33d83b8826f3153ebc8d24f76080f296b43a2720e468dde49417490f",
+        "requested_policy": "explicit",
+        "runtime_queue_count": null,
+        "runtime_queue_ids": null,
+        "source": "explicit_environment"
+      },
+      "queue_policy": "4",
+      "result_sha256": "62cf47d939202b8eedc0dbd73c7bcf6a5b5ab17178431b716d15dd73ed8f00f5",
+      "spec_sha256": "20c368b86984868aa5d025780ad2279d8cd4dbca558fb2d3410acc92e9683185",
+      "thermal_and_health": {
+        "postflight": {
+          "edge_temperature_c": 44.0,
+          "gpu_use_percent": 4.0,
+          "kfd_pids": [],
+          "observed_at": "2026-08-23T14:52:18.205902+00:00"
+        },
+        "preflight_edge_temperature_c_max": 44.0,
+        "preflight_edge_temperature_c_min": 38.0,
+        "preflight_final_gpu_use_percent": 0.0,
+        "preflight_kfd_pids": [],
+        "preflight_samples": 5
+      },
+      "widths": {
+        "17": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 10.999409304974,
+          "correctness_qualified_tok_s_samples": [
+            10.999409304974,
+            11.008505213133146,
+            10.998927255122739
+          ],
+          "end_to_end_p95_seconds_median": 12.363834246061742,
+          "generated_id_repeat_mismatch_count_diagnostic": 1,
+          "itl_p99_seconds_median": 1.2274013248970732,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 8.966544078080915
+        },
+        "32": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 10.591701358285844,
+          "correctness_qualified_tok_s_samples": [
+            10.693347848269317,
+            10.591701358285844,
+            10.418683727408133
+          ],
+          "end_to_end_p95_seconds_median": 24.168523691012524,
+          "generated_id_repeat_mismatch_count_diagnostic": 10,
+          "itl_p99_seconds_median": 2.248788875993341,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 18.43832276703324
+        }
+      }
+    },
+    {
+      "block_index": 0,
+      "leaf": "/tmp/c2-gfx1151-hwqueue-v2/runs/6d33fa5349f18692be40bcf8be7191bf5e196592/fp16-production/hwq-8/core/core-c17-c32-20260823d-block00",
+      "mechanical_passed": true,
+      "queue_environment": {
+        "effective_value": "8",
+        "report_sha256": "6043947992ca5070931040728e2d396b240446b1c0b408f50fb9d3ef9bf093a8",
+        "requested_policy": "explicit",
+        "runtime_queue_count": null,
+        "runtime_queue_ids": null,
+        "source": "explicit_environment"
+      },
+      "queue_policy": "8",
+      "result_sha256": "4b44ecee87e21702852faf53236edaca5eb86f7c2512fccf365948f44f1abe85",
+      "spec_sha256": "a33cdb2c9f3d02df51fa332b88127af44a8a0134956db4d42deac9f7dbd857c3",
+      "thermal_and_health": {
+        "postflight": {
+          "edge_temperature_c": 44.0,
+          "gpu_use_percent": 4.0,
+          "kfd_pids": [],
+          "observed_at": "2026-08-23T15:00:35.798809+00:00"
+        },
+        "preflight_edge_temperature_c_max": 44.0,
+        "preflight_edge_temperature_c_min": 38.0,
+        "preflight_final_gpu_use_percent": 0.0,
+        "preflight_kfd_pids": [],
+        "preflight_samples": 5
+      },
+      "widths": {
+        "17": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 11.007868288335,
+          "correctness_qualified_tok_s_samples": [
+            10.971430396713432,
+            11.031190188636732,
+            11.007868288335
+          ],
+          "end_to_end_p95_seconds_median": 12.35423371696379,
+          "generated_id_repeat_mismatch_count_diagnostic": 0,
+          "itl_p99_seconds_median": 1.2115416610613465,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 8.972933347919025
+        },
+        "32": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 10.685693542675695,
+          "correctness_qualified_tok_s_samples": [
+            10.685693542675695,
+            10.214288628189454,
+            10.784279979668817
+          ],
+          "end_to_end_p95_seconds_median": 23.956498275976628,
+          "generated_id_repeat_mismatch_count_diagnostic": 8,
+          "itl_p99_seconds_median": 2.17254177108407,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 18.330376046942547
+        }
+      }
+    },
+    {
+      "block_index": 0,
+      "leaf": "/tmp/c2-gfx1151-hwqueue-v2/runs/6d33fa5349f18692be40bcf8be7191bf5e196592/fp16-production/hwq-unset/core/core-c17-c32-20260823d-block00",
+      "mechanical_passed": true,
+      "queue_environment": {
+        "effective_value": null,
+        "report_sha256": "9c7ec137d00d1b7624d3a92f08690a23e8e0da7b1bd496ed8ed5933b5e07167d",
+        "requested_policy": "runtime_default",
+        "runtime_queue_count": null,
+        "runtime_queue_ids": null,
+        "source": "rocm_runtime_default"
+      },
+      "queue_policy": "unset",
+      "result_sha256": "30a729c49189891f20398f0fe43061659db084c912c567c17d32efafe49ba6e1",
+      "spec_sha256": "f6684328217cd00cb12f2a32b28c55c242d0f981a78473aea0fbdac4aa83c5dc",
+      "thermal_and_health": {
+        "postflight": {
+          "edge_temperature_c": 44.0,
+          "gpu_use_percent": 4.0,
+          "kfd_pids": [],
+          "observed_at": "2026-08-23T15:08:57.312343+00:00"
+        },
+        "preflight_edge_temperature_c_max": 44.0,
+        "preflight_edge_temperature_c_min": 38.0,
+        "preflight_final_gpu_use_percent": 0.0,
+        "preflight_kfd_pids": [],
+        "preflight_samples": 5
+      },
+      "widths": {
+        "17": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 10.989382434722943,
+          "correctness_qualified_tok_s_samples": [
+            10.989382434722943,
+            11.007944601238746,
+            10.98852335280263
+          ],
+          "end_to_end_p95_seconds_median": 12.374929880956188,
+          "generated_id_repeat_mismatch_count_diagnostic": 3,
+          "itl_p99_seconds_median": 1.233527947915718,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 8.975757075008005
+        },
+        "32": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 10.350022273555531,
+          "correctness_qualified_tok_s_samples": [
+            10.654447354470612,
+            10.350022273555531,
+            10.169104467255657
+          ],
+          "end_to_end_p95_seconds_median": 24.733263571979478,
+          "generated_id_repeat_mismatch_count_diagnostic": 7,
+          "itl_p99_seconds_median": 2.28078169899527,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 18.954276695032604
+        }
+      }
+    },
+    {
+      "block_index": 1,
+      "leaf": "/tmp/c2-gfx1151-hwqueue-v2/runs/6d33fa5349f18692be40bcf8be7191bf5e196592/fp16-production/hwq-unset/core/core-c17-c32-20260823d-block01",
+      "mechanical_passed": true,
+      "queue_environment": {
+        "effective_value": null,
+        "report_sha256": "9c7ec137d00d1b7624d3a92f08690a23e8e0da7b1bd496ed8ed5933b5e07167d",
+        "requested_policy": "runtime_default",
+        "runtime_queue_count": null,
+        "runtime_queue_ids": null,
+        "source": "rocm_runtime_default"
+      },
+      "queue_policy": "unset",
+      "result_sha256": "6ef508f7987997324b9871bdeb68793617f7925848ffc93723cdce8780d5eb86",
+      "spec_sha256": "41125a0688d90f508a8519ef463f8ac46118d4e10574a30e82adaa4b9617f4d5",
+      "thermal_and_health": {
+        "postflight": {
+          "edge_temperature_c": 44.0,
+          "gpu_use_percent": 4.0,
+          "kfd_pids": [],
+          "observed_at": "2026-08-23T15:17:21.291524+00:00"
+        },
+        "preflight_edge_temperature_c_max": 44.0,
+        "preflight_edge_temperature_c_min": 38.0,
+        "preflight_final_gpu_use_percent": 0.0,
+        "preflight_kfd_pids": [],
+        "preflight_samples": 5
+      },
+      "widths": {
+        "17": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 10.986982633646587,
+          "correctness_qualified_tok_s_samples": [
+            10.986982633646587,
+            10.97719987853319,
+            10.991499434818264
+          ],
+          "end_to_end_p95_seconds_median": 12.377823211951181,
+          "generated_id_repeat_mismatch_count_diagnostic": 0,
+          "itl_p99_seconds_median": 1.2362256210763007,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 8.969339941977523
+        },
+        "32": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 10.002166954614015,
+          "correctness_qualified_tok_s_samples": [
+            10.368521473376244,
+            10.002166954614015,
+            9.926075506523278
+          ],
+          "end_to_end_p95_seconds_median": 25.593052157084458,
+          "generated_id_repeat_mismatch_count_diagnostic": 8,
+          "itl_p99_seconds_median": 2.2297758570639417,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 19.87257538503036
+        }
+      }
+    },
+    {
+      "block_index": 1,
+      "leaf": "/tmp/c2-gfx1151-hwqueue-v2/runs/6d33fa5349f18692be40bcf8be7191bf5e196592/fp16-production/hwq-8/core/core-c17-c32-20260823d-block01",
+      "mechanical_passed": true,
+      "queue_environment": {
+        "effective_value": "8",
+        "report_sha256": "6043947992ca5070931040728e2d396b240446b1c0b408f50fb9d3ef9bf093a8",
+        "requested_policy": "explicit",
+        "runtime_queue_count": null,
+        "runtime_queue_ids": null,
+        "source": "explicit_environment"
+      },
+      "queue_policy": "8",
+      "result_sha256": "d7e2966bd968f046a29062876bf64fc91901d3603e707fabee84ae0194be4421",
+      "spec_sha256": "4c37d77642b46a995ddc0d6a90f190d10fea5f35b15a1c6878f1f8cf0c508d56",
+      "thermal_and_health": {
+        "postflight": {
+          "edge_temperature_c": 44.0,
+          "gpu_use_percent": 4.0,
+          "kfd_pids": [],
+          "observed_at": "2026-08-23T15:25:39.121775+00:00"
+        },
+        "preflight_edge_temperature_c_max": 44.0,
+        "preflight_edge_temperature_c_min": 38.0,
+        "preflight_final_gpu_use_percent": 0.0,
+        "preflight_kfd_pids": [],
+        "preflight_samples": 5
+      },
+      "widths": {
+        "17": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 11.000749588822073,
+          "correctness_qualified_tok_s_samples": [
+            11.000511997627498,
+            11.000749588822073,
+            11.070440885371822
+          ],
+          "end_to_end_p95_seconds_median": 12.36241095198784,
+          "generated_id_repeat_mismatch_count_diagnostic": 1,
+          "itl_p99_seconds_median": 1.2326489710249007,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 8.969520278042182
+        },
+        "32": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 10.955410984340807,
+          "correctness_qualified_tok_s_samples": [
+            10.955410984340807,
+            11.106580296387014,
+            10.027936337781021
+          ],
+          "end_to_end_p95_seconds_median": 23.36629226000514,
+          "generated_id_repeat_mismatch_count_diagnostic": 8,
+          "itl_p99_seconds_median": 2.2651044100057334,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 17.634990122984163
+        }
+      }
+    },
+    {
+      "block_index": 1,
+      "leaf": "/tmp/c2-gfx1151-hwqueue-v2/runs/6d33fa5349f18692be40bcf8be7191bf5e196592/fp16-production/hwq-4/core/core-c17-c32-20260823d-block01",
+      "mechanical_passed": true,
+      "queue_environment": {
+        "effective_value": "4",
+        "report_sha256": "ede6e4da33d83b8826f3153ebc8d24f76080f296b43a2720e468dde49417490f",
+        "requested_policy": "explicit",
+        "runtime_queue_count": null,
+        "runtime_queue_ids": null,
+        "source": "explicit_environment"
+      },
+      "queue_policy": "4",
+      "result_sha256": "791618c4d3bbff5053efa51a10484a0b01a0eb38bcdce266cad458270dcfd4bc",
+      "spec_sha256": "47adc4d0b3e75b58d5c0449bd397b2bce0e868edfe06718300af5745fd2daf70",
+      "thermal_and_health": {
+        "postflight": {
+          "edge_temperature_c": 44.0,
+          "gpu_use_percent": 4.0,
+          "kfd_pids": [],
+          "observed_at": "2026-08-23T15:34:00.279562+00:00"
+        },
+        "preflight_edge_temperature_c_max": 44.0,
+        "preflight_edge_temperature_c_min": 38.0,
+        "preflight_final_gpu_use_percent": 0.0,
+        "preflight_kfd_pids": [],
+        "preflight_samples": 5
+      },
+      "widths": {
+        "17": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 11.00951366311074,
+          "correctness_qualified_tok_s_samples": [
+            11.008371456276379,
+            11.048527629889804,
+            11.00951366311074
+          ],
+          "end_to_end_p95_seconds_median": 12.352467820979655,
+          "generated_id_repeat_mismatch_count_diagnostic": 1,
+          "itl_p99_seconds_median": 1.2085979740368202,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 8.972202097065747
+        },
+        "32": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 10.608451322089122,
+          "correctness_qualified_tok_s_samples": [
+            10.18530262266352,
+            10.663118710341486,
+            10.608451322089122
+          ],
+          "end_to_end_p95_seconds_median": 24.12953058304265,
+          "generated_id_repeat_mismatch_count_diagnostic": 8,
+          "itl_p99_seconds_median": 2.2232486839639023,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 18.431893248925917
+        }
+      }
+    },
+    {
+      "block_index": 1,
+      "leaf": "/tmp/c2-gfx1151-hwqueue-v2/runs/6d33fa5349f18692be40bcf8be7191bf5e196592/fp16-production/hwq-2/core/core-c17-c32-20260823d-block01",
+      "mechanical_passed": true,
+      "queue_environment": {
+        "effective_value": "2",
+        "report_sha256": "12040ebc3fb1459945e176eb535ae6d05ee33b9eca003c6d480291c8160e1bc3",
+        "requested_policy": "explicit",
+        "runtime_queue_count": null,
+        "runtime_queue_ids": null,
+        "source": "explicit_environment"
+      },
+      "queue_policy": "2",
+      "result_sha256": "677f05edce3bc3936fa42a47b6cc7960a23614b1ba1aeafa2a7635777a141161",
+      "spec_sha256": "c9896dc0c55b01d5423fa0c37e50680190aae481292a112bc48e77889cdbda30",
+      "thermal_and_health": {
+        "postflight": {
+          "edge_temperature_c": 44.0,
+          "gpu_use_percent": 4.0,
+          "kfd_pids": [],
+          "observed_at": "2026-08-23T15:42:12.274944+00:00"
+        },
+        "preflight_edge_temperature_c_max": 44.0,
+        "preflight_edge_temperature_c_min": 38.0,
+        "preflight_final_gpu_use_percent": 0.0,
+        "preflight_kfd_pids": [],
+        "preflight_samples": 5
+      },
+      "widths": {
+        "17": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 11.010377070535739,
+          "correctness_qualified_tok_s_samples": [
+            11.010377070535739,
+            11.119266122576777,
+            10.999101176649527
+          ],
+          "end_to_end_p95_seconds_median": 12.351324904942885,
+          "generated_id_repeat_mismatch_count_diagnostic": 0,
+          "itl_p99_seconds_median": 1.246477864915505,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 8.972857616026886
+        },
+        "32": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 10.765968959282068,
+          "correctness_qualified_tok_s_samples": [
+            10.72526600625955,
+            10.765968959282068,
+            11.132307601198956
+          ],
+          "end_to_end_p95_seconds_median": 23.777544669923373,
+          "generated_id_repeat_mismatch_count_diagnostic": 11,
+          "itl_p99_seconds_median": 2.1966083790175617,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 18.064620999037288
+        }
+      }
+    },
+    {
+      "block_index": 1,
+      "leaf": "/tmp/c2-gfx1151-hwqueue-v2/runs/6d33fa5349f18692be40bcf8be7191bf5e196592/fp16-production/hwq-1/core/core-c17-c32-20260823d-block01",
+      "mechanical_passed": true,
+      "queue_environment": {
+        "effective_value": "1",
+        "report_sha256": "60df429616e231a69bf0bf94b2402116b310918eea491d5e0277397f8c6f5693",
+        "requested_policy": "explicit",
+        "runtime_queue_count": null,
+        "runtime_queue_ids": null,
+        "source": "explicit_environment"
+      },
+      "queue_policy": "1",
+      "result_sha256": "f2126db41629f569e697216cc6374ae070fa9020c680a0b19ed07814d419f056",
+      "spec_sha256": "72e62d9f503b893709e3903479e4a450d639cd2091e347155f8ff2ee7d34dca8",
+      "thermal_and_health": {
+        "postflight": {
+          "edge_temperature_c": 43.0,
+          "gpu_use_percent": 4.0,
+          "kfd_pids": [],
+          "observed_at": "2026-08-23T15:50:25.995368+00:00"
+        },
+        "preflight_edge_temperature_c_max": 43.0,
+        "preflight_edge_temperature_c_min": 38.0,
+        "preflight_final_gpu_use_percent": 0.0,
+        "preflight_kfd_pids": [],
+        "preflight_samples": 5
+      },
+      "widths": {
+        "17": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 11.00118775086139,
+          "correctness_qualified_tok_s_samples": [
+            11.006116353438848,
+            10.998327596261598,
+            11.00118775086139
+          ],
+          "end_to_end_p95_seconds_median": 12.361419168999419,
+          "generated_id_repeat_mismatch_count_diagnostic": 0,
+          "itl_p99_seconds_median": 1.2311790769454092,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 8.971421658992767
+        },
+        "32": {
+          "all_binding_correctness_route_control_passed": true,
+          "correctness_qualified_tok_s_median": 11.195983224131831,
+          "correctness_qualified_tok_s_samples": [
+            11.429234255301592,
+            11.195983224131831,
+            10.363446048049997
+          ],
+          "end_to_end_p95_seconds_median": 22.862875327002257,
+          "generated_id_repeat_mismatch_count_diagnostic": 6,
+          "itl_p99_seconds_median": 2.2515757529763505,
+          "memory_final_delta_bytes": 0,
+          "ttft_p95_seconds_median": 17.09739941195585
+        }
+      }
+    }
+  ],
+  "schema_version": 1,
+  "source_commit": "6d33fa5349f18692be40bcf8be7191bf5e196592",
+  "status": "retained_core_screen",
+  "summary": {
+    "1": {
+      "17": {
+        "block_values": [
+          {
+            "block_index": 0,
+            "correctness_qualified_tok_s_median": 11.108880840840811,
+            "end_to_end_p95_seconds_median": 12.241451991023496,
+            "itl_p99_seconds_median": 1.1146665039705113
+          },
+          {
+            "block_index": 1,
+            "correctness_qualified_tok_s_median": 11.00118775086139,
+            "end_to_end_p95_seconds_median": 12.361419168999419,
+            "itl_p99_seconds_median": 1.2311790769454092
+          }
+        ],
+        "both_blocks_control_route_memory_passed": true,
+        "generated_id_mismatch_count_diagnostic_total": 0,
+        "median_across_block_medians": {
+          "correctness_qualified_tok_s_median": 11.055034295851101,
+          "end_to_end_p95_seconds_median": 12.301435580011457,
+          "itl_p99_seconds_median": 1.1729227904579602,
+          "ttft_p95_seconds_median": 8.970339268969838
+        },
+        "slo_passed_runs_total": 0
+      },
+      "32": {
+        "block_values": [
+          {
+            "block_index": 0,
+            "correctness_qualified_tok_s_median": 10.365723703006543,
+            "end_to_end_p95_seconds_median": 24.69475553801749,
+            "itl_p99_seconds_median": 2.269632750074379
+          },
+          {
+            "block_index": 1,
+            "correctness_qualified_tok_s_median": 11.195983224131831,
+            "end_to_end_p95_seconds_median": 22.862875327002257,
+            "itl_p99_seconds_median": 2.2515757529763505
+          }
+        ],
+        "both_blocks_control_route_memory_passed": true,
+        "generated_id_mismatch_count_diagnostic_total": 12,
+        "median_across_block_medians": {
+          "correctness_qualified_tok_s_median": 10.780853463569187,
+          "end_to_end_p95_seconds_median": 23.778815432509873,
+          "itl_p99_seconds_median": 2.260604251525365,
+          "ttft_p95_seconds_median": 18.027327566524036
+        },
+        "slo_passed_runs_total": 0
+      }
+    },
+    "2": {
+      "17": {
+        "block_values": [
+          {
+            "block_index": 0,
+            "correctness_qualified_tok_s_median": 11.058994952342168,
+            "end_to_end_p95_seconds_median": 12.297405805089511,
+            "itl_p99_seconds_median": 1.18453970993869
+          },
+          {
+            "block_index": 1,
+            "correctness_qualified_tok_s_median": 11.010377070535739,
+            "end_to_end_p95_seconds_median": 12.351324904942885,
+            "itl_p99_seconds_median": 1.246477864915505
+          }
+        ],
+        "both_blocks_control_route_memory_passed": true,
+        "generated_id_mismatch_count_diagnostic_total": 1,
+        "median_across_block_medians": {
+          "correctness_qualified_tok_s_median": 11.034686011438954,
+          "end_to_end_p95_seconds_median": 12.324365355016198,
+          "itl_p99_seconds_median": 1.2155087874270976,
+          "ttft_p95_seconds_median": 8.96953028003918
+        },
+        "slo_passed_runs_total": 0
+      },
+      "32": {
+        "block_values": [
+          {
+            "block_index": 0,
+            "correctness_qualified_tok_s_median": 10.295347787636953,
+            "end_to_end_p95_seconds_median": 24.864452169975266,
+            "itl_p99_seconds_median": 2.2619371679611504
+          },
+          {
+            "block_index": 1,
+            "correctness_qualified_tok_s_median": 10.765968959282068,
+            "end_to_end_p95_seconds_median": 23.777544669923373,
+            "itl_p99_seconds_median": 2.1966083790175617
+          }
+        ],
+        "both_blocks_control_route_memory_passed": true,
+        "generated_id_mismatch_count_diagnostic_total": 19,
+        "median_across_block_medians": {
+          "correctness_qualified_tok_s_median": 10.53065837345951,
+          "end_to_end_p95_seconds_median": 24.32099841994932,
+          "itl_p99_seconds_median": 2.229272773489356,
+          "ttft_p95_seconds_median": 18.656092992052436
+        },
+        "slo_passed_runs_total": 0
+      }
+    },
+    "4": {
+      "17": {
+        "block_values": [
+          {
+            "block_index": 0,
+            "correctness_qualified_tok_s_median": 10.999409304974,
+            "end_to_end_p95_seconds_median": 12.363834246061742,
+            "itl_p99_seconds_median": 1.2274013248970732
+          },
+          {
+            "block_index": 1,
+            "correctness_qualified_tok_s_median": 11.00951366311074,
+            "end_to_end_p95_seconds_median": 12.352467820979655,
+            "itl_p99_seconds_median": 1.2085979740368202
+          }
+        ],
+        "both_blocks_control_route_memory_passed": true,
+        "generated_id_mismatch_count_diagnostic_total": 2,
+        "median_across_block_medians": {
+          "correctness_qualified_tok_s_median": 11.00446148404237,
+          "end_to_end_p95_seconds_median": 12.358151033520699,
+          "itl_p99_seconds_median": 1.2179996494669467,
+          "ttft_p95_seconds_median": 8.96937308757333
+        },
+        "slo_passed_runs_total": 0
+      },
+      "32": {
+        "block_values": [
+          {
+            "block_index": 0,
+            "correctness_qualified_tok_s_median": 10.591701358285844,
+            "end_to_end_p95_seconds_median": 24.168523691012524,
+            "itl_p99_seconds_median": 2.248788875993341
+          },
+          {
+            "block_index": 1,
+            "correctness_qualified_tok_s_median": 10.608451322089122,
+            "end_to_end_p95_seconds_median": 24.12953058304265,
+            "itl_p99_seconds_median": 2.2232486839639023
+          }
+        ],
+        "both_blocks_control_route_memory_passed": true,
+        "generated_id_mismatch_count_diagnostic_total": 18,
+        "median_across_block_medians": {
+          "correctness_qualified_tok_s_median": 10.600076340187483,
+          "end_to_end_p95_seconds_median": 24.149027137027588,
+          "itl_p99_seconds_median": 2.2360187799786218,
+          "ttft_p95_seconds_median": 18.43510800797958
+        },
+        "slo_passed_runs_total": 0
+      }
+    },
+    "8": {
+      "17": {
+        "block_values": [
+          {
+            "block_index": 0,
+            "correctness_qualified_tok_s_median": 11.007868288335,
+            "end_to_end_p95_seconds_median": 12.35423371696379,
+            "itl_p99_seconds_median": 1.2115416610613465
+          },
+          {
+            "block_index": 1,
+            "correctness_qualified_tok_s_median": 11.000749588822073,
+            "end_to_end_p95_seconds_median": 12.36241095198784,
+            "itl_p99_seconds_median": 1.2326489710249007
+          }
+        ],
+        "both_blocks_control_route_memory_passed": true,
+        "generated_id_mismatch_count_diagnostic_total": 1,
+        "median_across_block_medians": {
+          "correctness_qualified_tok_s_median": 11.004308938578536,
+          "end_to_end_p95_seconds_median": 12.358322334475815,
+          "itl_p99_seconds_median": 1.2220953160431236,
+          "ttft_p95_seconds_median": 8.971226812980603
+        },
+        "slo_passed_runs_total": 0
+      },
+      "32": {
+        "block_values": [
+          {
+            "block_index": 0,
+            "correctness_qualified_tok_s_median": 10.685693542675695,
+            "end_to_end_p95_seconds_median": 23.956498275976628,
+            "itl_p99_seconds_median": 2.17254177108407
+          },
+          {
+            "block_index": 1,
+            "correctness_qualified_tok_s_median": 10.955410984340807,
+            "end_to_end_p95_seconds_median": 23.36629226000514,
+            "itl_p99_seconds_median": 2.2651044100057334
+          }
+        ],
+        "both_blocks_control_route_memory_passed": true,
+        "generated_id_mismatch_count_diagnostic_total": 16,
+        "median_across_block_medians": {
+          "correctness_qualified_tok_s_median": 10.820552263508251,
+          "end_to_end_p95_seconds_median": 23.661395267990883,
+          "itl_p99_seconds_median": 2.218823090544902,
+          "ttft_p95_seconds_median": 17.982683084963355
+        },
+        "slo_passed_runs_total": 0
+      }
+    },
+    "unset": {
+      "17": {
+        "block_values": [
+          {
+            "block_index": 0,
+            "correctness_qualified_tok_s_median": 10.989382434722943,
+            "end_to_end_p95_seconds_median": 12.374929880956188,
+            "itl_p99_seconds_median": 1.233527947915718
+          },
+          {
+            "block_index": 1,
+            "correctness_qualified_tok_s_median": 10.986982633646587,
+            "end_to_end_p95_seconds_median": 12.377823211951181,
+            "itl_p99_seconds_median": 1.2362256210763007
+          }
+        ],
+        "both_blocks_control_route_memory_passed": true,
+        "generated_id_mismatch_count_diagnostic_total": 3,
+        "median_across_block_medians": {
+          "correctness_qualified_tok_s_median": 10.988182534184766,
+          "end_to_end_p95_seconds_median": 12.376376546453685,
+          "itl_p99_seconds_median": 1.2348767844960093,
+          "ttft_p95_seconds_median": 8.972548508492764
+        },
+        "slo_passed_runs_total": 0
+      },
+      "32": {
+        "block_values": [
+          {
+            "block_index": 0,
+            "correctness_qualified_tok_s_median": 10.350022273555531,
+            "end_to_end_p95_seconds_median": 24.733263571979478,
+            "itl_p99_seconds_median": 2.28078169899527
+          },
+          {
+            "block_index": 1,
+            "correctness_qualified_tok_s_median": 10.002166954614015,
+            "end_to_end_p95_seconds_median": 25.593052157084458,
+            "itl_p99_seconds_median": 2.2297758570639417
+          }
+        ],
+        "both_blocks_control_route_memory_passed": true,
+        "generated_id_mismatch_count_diagnostic_total": 15,
+        "median_across_block_medians": {
+          "correctness_qualified_tok_s_median": 10.176094614084773,
+          "end_to_end_p95_seconds_median": 25.163157864531968,
+          "itl_p99_seconds_median": 2.2552787780296057,
+          "ttft_p95_seconds_median": 19.41342604003148
+        },
+        "slo_passed_runs_total": 0
+      }
+    }
+  },
+  "verdict": {
+    "control_route_or_memory_failures": 0,
+    "core_findings": [
+      "At c17 all policy medians are within 0.61%; no material queue-count benefit is established.",
+      "At c32 queue8 beats queue2 in both counterbalanced blocks (+3.79%, +1.76%; median paired +2.78%).",
+      "At c32 queue8 beats truly unset in both blocks (+3.24%, +9.53%; median paired +6.39%).",
+      "Queue1 versus queue8 crosses by block at c32; neither is selected by this core screen.",
+      "Unset is a true ROCm runtime default (GPU_MAX_HW_QUEUES absent), but runtime queue IDs/count remain unobserved until the cache-only rocprof task."
+    ],
+    "fixed_slo_passed": false,
+    "kfd_survivors": 0,
+    "lockups_or_timeouts": 0,
+    "mechanical_stability_passed": true,
+    "next": "Carry queue1 and queue8 as core finalists, retain queue2 as current-default control, and continue full-width/arrival/context stability sweeps before policy adjudication.",
+    "performance_effect_observed": true,
+    "runs_completed": 10,
+    "slo_goodput_tok_s": 0.0
+  }
+}

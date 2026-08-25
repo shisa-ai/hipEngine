@@ -2,6 +2,7 @@
 
 - Status: **campaign execution concluded on gfx1151; RF0–RF7 closed; production-readiness criteria failed; no automatic MTP scope promoted; `auto` routes AR and explicit diagnostic MTP remains available**
 - Created: 2026-08-21
+- Last updated: 2026-08-24
 - Primary scope: Qwen3.6/Qwen3.8 dense GGUF NextN MTP on `hip_gfx1151`, then independently on `hip_gfx1100`
 - Authority: [`PLAN.md`](PLAN.md), [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), [`TESTING.md`](TESTING.md), and [`BENCHMARK.md`](BENCHMARK.md) remain normative
 
@@ -15,6 +16,8 @@ request/cycle records.
 
 Related design and historical evidence:
 
+- [`SPECDEC2.md`](SPECDEC2.md) — approved continuous speculative successor and implementation punchlist;
+- [`SPECDEC2-RESEARCH.md`](SPECDEC2-RESEARCH.md) — external engine audit and architecture rationale;
 - [`MTP.md`](MTP.md) — implementation history, economics, and provider design;
 - [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) — N0–N5 ownership milestones;
 - [`MTP-LLAMACPP-PARITY.md`](MTP-LLAMACPP-PARITY.md) — external comparison protocol;
@@ -1109,3 +1112,292 @@ The sole unmet production criterion is quality across every canonical/long task
 scope. Consequently there is no canary/default rollout, no production speed
 claim, and no basis for changing `auto` away from AR. Completing RF0–RF7 means
 this rejection and rollback posture is durable—not that MTP was enabled.
+
+## 14. Dense C2 serving baseline on gfx1151
+
+The MTP campaign runs on top of the common Generation-2 concurrency, admission,
+KV, graph, and lifecycle substrate. This section freezes the post-campaign dense
+AR baseline that an eventual MTP serving promotion must beat. It is a compact
+cross-reference snapshot, not a new benchmark claim and not evidence that RF6
+passed. [`CONCURRENCY2.md`](CONCURRENCY2.md) remains authoritative if the dense
+C2 implementation or benchmark rollup moves.
+
+Here, **C2** means the Generation-2 architecture; lowercase `c2`, `c8`, and so
+on mean logical request concurrency. The retained gfx1151 result is
+**mechanically qualified / product blocked**: ownership, native routes, graphs,
+prefix reuse, pressure, cancellation, overload, memory, and drain pass, but c32
+latency, heavy-load goodput, and c2 64K do not meet the declared product gate.
+
+### 14.1 What SLO and SLO-goodput mean
+
+**SLO** means **Service-Level Objective**. It is the predeclared latency or
+availability target used to decide whether a request is useful at the product
+level; it is not a guarantee that the implementation currently meets the
+target. The canonical production-load protocol declares all four objectives;
+focused F1 rows bind the three client-visible TTFT/ITL/E2E thresholds and
+report queue latency only where available:
+
+| Objective | Meaning | Threshold |
+| --- | --- | ---: |
+| Queue p99 | 99th-percentile time waiting before service | <= 10 s |
+| TTFT p95 | 95th-percentile time to first streamed token | <= 10 s |
+| ITL p99 | 99th-percentile inter-token latency | <= 0.5 s |
+| End-to-end p95 | 95th-percentile request completion latency | <= 30 s |
+
+Per [`BENCHMARK.md`](BENCHMARK.md), generated-token **SLO-goodput** counts only
+response-owned IDs from profile-qualified completed requests whose own queue,
+TTFT, every ITL, and end-to-end latency satisfy all applicable thresholds.
+Aggregate tok/s can therefore be nonzero while SLO-goodput is zero. That is
+exactly the final gfx1151 c32 outcome: requests finish correctly at useful
+aggregate throughput, but none of the three measured runs satisfies the
+binding TTFT/ITL objectives. Long-context rows use their separately declared
+context gate and must not be relabelled with the short p128/d8 thresholds.
+
+### 14.2 Current retained gfx1151 configuration
+
+| Component | Retained setting |
+| --- | --- |
+| Hardware | AMD Radeon 8060S Graphics / `gfx1151` |
+| Model | Qwen3.8-27B `Q4_K_S`, sampled fingerprint `029f5dcc...970aa` |
+| KV storage | BF16 |
+| Recurrent state | FP16 scoped production arithmetic; FP32 strict fallback |
+| Physical AR widths | Native `1,2,3,4,5,6,7,8` |
+| Logical widths | c1-c32 through deterministic ceiling composition |
+| Scheduler | `fair`, 256-token prefill chunks |
+| Hardware-queue policy | Explicit `GPU_MAX_HW_QUEUES=2` backend default |
+| Retained Q5 owner | Exact scoped col8 rowtile for three Qwen3.8 shapes |
+| Q5 fallback | Registered exact col4 parent |
+| Product status | **Mechanically qualified / product blocked** |
+
+The inherited common path uses one `EngineService`, an atomic admission ledger,
+backend-owned global KV, independent completion/reclaim, native physical groups,
+live refill, middle-hole compaction, changed-page graphs, and prefix/pressure
+ownership. Direct numeric queue overrides remain available. DMS, tiering, and
+continuous MTP remain separate optional/default-off scopes rather than forks of
+this scheduler.
+
+### 14.3 Correctness and lifecycle qualification
+
+| Gate | Retained result |
+| --- | ---: |
+| gfx1151 host/backend C2 bundle | **191 passed** |
+| Direct-width numerical rows | **1,950** |
+| Direct-width KL mean / max | **5.20e-5 / 0.001118** |
+| Direct-width top-1 agreement | **99.487%** |
+| FP16-state vs FP32-teacher rows | **1,170** |
+| FP16 KL mean / p99 / max | **1.025e-4 / 0.001050 / 0.032866** |
+| FP16 top-1 agreement | **99.829% (1,168/1,170)** |
+| Same-schedule repeat determinism | **3/3 passed** |
+| Q5-col8 actual-layer pairs | **93/93 wins, zero BF16 mismatches** |
+| Scoped production-correctness gates | **8/8 passed** |
+| c13 lifecycle | **8+5 -> 8+3 -> 8+5 passed** |
+| Compaction | **11 moves; final ownership and memory clean** |
+| Fixed-width matrix | **130 executions mechanically passed** |
+| Load matrix | **90 workloads / 2,100 request records mechanically passed** |
+| Context/graph/prefix matrix | **20/20 children passed** |
+| Final tracked-memory delta | **0 bytes** |
+
+The sole FP16 row above the KL review boundary has KL `0.032866`, retains the
+same rank-1/top-1 candidate, improves teacher NLL, and remains below the hard
+`0.05` ceiling. The packet is scoped production-correctness evidence, not a
+named public production-profile promotion. A full BF16/full-precision Qwen3.8
+teacher was unavailable, so that relative gate is explicitly not applicable
+rather than inferred.
+
+### 14.4 Fixed-width HTTP benchmark
+
+Protocol: Qwen3.8-27B Q4_K_S, BF16 KV, FP16 state, p128/d8, localhost HTTP,
+queue2, one warmup plus three blocking and streaming measurements in each of
+two counterbalanced blocks. This is the last complete width sweep, measured
+immediately before the final Q5-col8 promotion:
+
+| Logical C | Aggregate tok/s | TTFT p95 | ITL p99 | E2E p95 | SLO runs |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | **6.543** | 0.651 s | 0.119 s | 1.222 s | **6/6** |
+| 2 | **7.474** | 1.294 s | 0.205 s | 2.141 s | **6/6** |
+| 4 | **10.103** | 2.216 s | 0.308 s | 3.176 s | **6/6** |
+| 8 | **11.241** | 4.340 s | 0.547 s | 5.696 s | **1/6** |
+| 17 | **11.000** | 8.975 s | 1.231 s | 12.363 s | **0/6** |
+| 32 | **10.859** | 17.804 s | 2.254 s | 23.583 s | **0/6** |
+
+Thus c1-c4 are SLO-clean, c8 is partial, and c9+ retain correct native routing
+and ownership but fail the fixed latency objective. Aggregate throughput
+saturates near 11 tok/s while per-request latency grows.
+
+The retained post-Q5 matched packet records:
+
+| Width | Q5 candidate | Matched queue2 control | Delta |
+| ---: | ---: | ---: | ---: |
+| c17 | **11.084 tok/s** | 11.041 | **+0.39%** |
+| c32 | **10.696 tok/s** | 10.536 | **+1.52%** |
+
+The final committed-source c32 streaming precondition is the binding closure
+row:
+
+| Metric | Final c32 result |
+| --- | ---: |
+| Streaming throughput | **10.590 tok/s** |
+| TTFT p95 | **18.617 s** |
+| ITL p99 | **2.125 s** |
+| E2E p95 | **24.171 s** |
+| SLO passes / goodput | **0/3 / 0 tok/s** |
+| Live admission during first request | **Yes** |
+| Control, route, repeat, memory | **Passed** |
+
+TTFT is 1.86x the ten-second objective and ITL is 4.25x the half-second
+objective. E2E remains below 30 seconds, but the applicable objectives are
+conjunctive, so the TTFT and ITL failures reject the run.
+
+### 14.5 Context, graph, prefix, and load state
+
+The retained queue2 c2 context packet uses eight generated tokens and the
+context-specific gate:
+
+| Context | Tok/s | TTFT p95 | ITL p99 | E2E p95 | Context gate |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 1K | **1.757** | 8.062 s | 1.085 s | 9.107 s | Pass |
+| 4K | **0.469** | 32.104 s | 1.114 s | 34.118 s | Pass |
+| 16K | **0.111** | 141.850 s | 1.283 s | 143.961 s | Pass |
+| 32K | **0.0513** | 310.710 s | 1.496 s | 311.977 s | **SLO blocked** |
+| 64K | -- | -- | -- | -- | **Unsupported** |
+
+Mechanically, 32K is exact/native; a 32K pressure source completes; the next 4K
+request is rejected as `engine_busy` with exact **1,166/1,166-page** capacity
+metadata; regrowth changes the page table and invalidates/rebuilds graph replay;
+and active/completed prefix reuse plus eviction drain to zero references. c2
+64K produced no valid retained completion and remains unclaimed.
+
+Across queue policies `1,2,4,8,unset`, full-width normalized throughput versus
+queue2 is `-0.75%/-0.64%/-0.50%/-0.42%`; load is
+`-0.57%/+0.47%/-0.67%/-0.09%`; and context stays within `+/-0.09%`. Every
+policy is mechanically stable, but none repairs c32, long-context, or
+heavy-load SLOs. The cache-only direct child observed Queue_Id 1 under queue2
+and unset; that identifies the queue used by the child, not maximum allocatable
+runtime queues.
+
+### 14.6 Retained optimization and current owner
+
+Separate same-host packets establish the causal units below; their absolute
+rates must not be chained as one perfectly counterbalanced cumulative A/B.
+
+| Retained unit | Measured effect |
+| --- | --- |
+| Packed prefill | c17 **9.673 -> 10.956 tok/s (+13.27%)**; TTFT **11.030 -> 9.406 s** |
+| Fused packed-state transfer | c17 marked owner **420.496 -> 410.878 ms (-2.29%)** |
+| Direct resident Conv/GDN state | Owner **410.878 -> 368.413 ms (-10.33%)**; c17 **10.965 -> 11.271**, c32 **10.478 -> 10.732 tok/s** |
+| Exact Q4 row8 two-wave | Owner **368.413 -> 362.290 ms (-1.66%)**; c32 **10.732 -> 11.041 tok/s** |
+| Exact Q5 col8 rowtile | Q5 family **-12.56/-13.05/-11.17%** and complete owner **-1.21/-1.95/-2.23%** at c8/c17/c32 |
+
+The exact Q5 path halves output groups from N/4 to N/8 with no launch,
+workspace, or resident-byte increase. Its three qualified shapes retain the
+registered col4 parent as strict fallback.
+
+Post-Q5 owner profiling is:
+
+| Width | Kernel sum | Marked wall | Uncovered |
+| ---: | ---: | ---: | ---: |
+| c8 | 129.854 ms | **136.560 ms** | 6.706 ms |
+| c17 | 336.867 ms | **353.961 ms** | 17.094 ms |
+| c32 | 515.889 ms | **549.797 ms** | 33.907 ms |
+
+c32 marked wall is only **0.65%** above four independent c8 groups, and its
+kernel sum is **0.68% below** four c8 sums. Only 7.08 ms / 1.29% of c32 wall is
+extra uncovered time. Dense projections own roughly 88-92% of GPU duration;
+the pre-screen Q4 qmicro dual rowtile alone was 43.1% of c32 wall. The c32 gap
+therefore requires a materially faster operation-complete c8 projection path or
+a scheduling/prefill mechanism, not another grouping or queue-count tweak.
+
+### 14.7 Observed W7900/gfx1100 multipliers
+
+The closest server comparison uses the same harness family and p128/d8 shape,
+but it is **not a pure hardware multiplier**. W7900 runs
+Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, and token-budget scheduling; gfx1151 runs
+Qwen3.8-27B `Q4_K_S`, BF16 KV, FP16 recurrent state, and fair scheduling. The
+models, quant files, host CPUs, ROCm/compiler versions, state arithmetic, and
+physical hosts differ. Ratios are therefore descriptive **observed package
+multipliers**, never a same-host old-to-new claim.
+
+For a coherent table, gfx1151 uses the complete pre-Q5 width sweep:
+
+| Logical C | gfx1151 tok/s | W7900 tok/s | W7900/gfx1151 | gfx1151/W7900 | gfx1151 scale vs c1 | W7900 scale vs c1 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 6.543 | 27.443 | **4.194x** | 0.238x | 1.000x | 1.000x |
+| 2 | 7.474 | 34.394 | **4.602x** | 0.217x | 1.142x | 1.253x |
+| 4 | 10.103 | 43.337 | **4.289x** | 0.233x | 1.544x | 1.579x |
+| 8 | 11.241 | 46.158 | **4.106x** | 0.244x | 1.718x | 1.682x |
+| 17 | 11.000 | 45.797 | **4.163x** | 0.240x | 1.681x | 1.669x |
+| 32 | 10.859 | 44.320 | **4.081x** | 0.245x | 1.660x | 1.615x |
+
+Substituting the post-Q5 matched c17/c32 rates yields observed
+W7900/gfx1151 ratios of **4.132x / 4.143x**. The wider-width package gap is
+therefore consistently about 4.1x, while each system reaches roughly 1.6-1.7x
+its own c1 HTTP throughput. This supports a narrow inference that relative C2
+batching saturation is similar; it does not assign the absolute gap to GPU
+silicon alone.
+
+The canonical load packets expose the product gap more strongly through
+SLO-goodput:
+
+| Workload | gfx1151 queue2 goodput | W7900 goodput | W7900/gfx1151 |
+| --- | ---: | ---: | ---: |
+| Static c1 | 9.006 | 49.068 | **5.45x** |
+| Static c8 | 19.135 | 95.909 | **5.01x** |
+| Ragged burst | 2.746 | 80.319 | **29.25x** |
+| Continuous fixed | 2.142 | 53.196 | **24.83x** |
+| Continuous Poisson | 2.791 | 43.296 | **15.51x** |
+| Cancel/disconnect | 4.727 | 60.525 | **12.80x** |
+| Bounded overload | 11.597 | 51.304 | **4.42x** |
+| Idle recovery | 8.166 | 30.775 | **3.77x** |
+| 60-second soak | 0.449 | 43.652 | **97.17x** |
+
+The large heavy-load ratios are SLO-filter effects, not raw-compute
+multipliers. gfx1151 remains exact and mechanically controlled, but latency
+misses and bounded `engine_busy` rejections remove most generated IDs from
+qualified goodput. Per block, overload completes 16 and rejects 24; soak
+completes 81-84 and rejects 36-39. W7900 completes all 120 soak requests within
+the gate.
+
+A separate W7900 Qwen3.8-27B Q4_K_M direct graph packet reaches:
+
+| Direct physical C | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Aggregate tok/s | 30.303 | 53.788 | 75.474 | 93.490 | 105.673 | 115.295 | 122.364 | 127.323 |
+| Scale vs c1 | 1.000x | 1.775x | 2.491x | 3.085x | 3.487x | 3.805x | 4.038x | 4.202x |
+
+That row is graph model-step timing, not HTTP/prefill/server timing. It must not
+be divided by the gfx1151 HTTP table or used as an MTP speed denominator.
+
+### 14.8 Consequences for MTP-FIX
+
+The dense substrate is correct enough to support explicit MTP diagnostics, but
+its gfx1151 product envelope is not closed at high concurrency. Any future MTP
+promotion must therefore:
+
+1. use a true no-MTP AR denominator on the same host/model/quant/KV/profile and
+   the same C2 request schedule;
+2. report TTFT, ITL, E2E, queue delay, goodput, acceptance, memory, ownership,
+   and fallback—not only direct decode tok/s;
+3. avoid claiming a speculative win by inheriting or hiding the dense c32 and
+   heavy-load SLO failures;
+4. retain the current `auto -> AR` zero-scope policy until the complete RF6
+   quality and serving packet passes; and
+5. keep W7900 rates as independent descriptive context rather than a gfx1151
+   promotion baseline.
+
+The next valid dense-C2 work is a new operation-complete Q4/c8 capacity
+mechanism, a c2 64K ownership/capacity mechanism, or a scheduling change large
+enough to close c32 TTFT/ITL. Queue expansion, native c9/c16, captured-cost D2,
+fair burst1, eight-wave merging, paired-Q qmicro, and Q4 launch-bound hints are
+measured negative and require a new premise before reopening.
+
+Primary retained evidence:
+
+- [`gfx1151 final C2 manifest`](../benchmarks/results/2026-08-24-gfx1151-qwen38-concurrency2-campaign-final.json)
+- [`gfx1151 full-width matrix`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-full-width-matrix.json)
+- [`gfx1151 load stability`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-load-stability-matrix.json)
+- [`gfx1151 context/graph/prefix`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-context-graph-prefix-matrix.json)
+- [`gfx1151 queue decision`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-policy-decision.json)
+- [`gfx1151 Q5 col8`](../benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-retained.json)
+- [`gfx1151 production blocker`](../benchmarks/results/2026-08-24-gfx1151-qwen38-production-closure-blocked.json)
+- [`W7900 c1-c32 server packet`](../benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json)
+- [`W7900 canonical load`](../benchmarks/results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json)

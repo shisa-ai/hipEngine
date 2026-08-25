@@ -37,6 +37,7 @@ from hipengine.generation.sampling import (
 )
 from hipengine.server import ServerConfig, create_app, render_chat_prompt
 from hipengine.server.__main__ import build_parser
+from hipengine.speculative.policy import DEFAULT_AUTO_DEPTH_POLICY
 from hipengine.server.api import (
     ChatCompletionRequest,
     CompletionRequest,
@@ -223,6 +224,31 @@ class SpeculativeMTPFakeLLM(FakeLLM):
     def __init__(self, token_map: dict[str, list[int]] | None = None) -> None:
         super().__init__(token_map=token_map)
         self.mtp_calls: list[tuple[tuple[str, ...], SamplingParams]] = []
+
+    def stream_speculative_mtp_detailed(
+        self,
+        prompts,
+        sampling_params: SamplingParams,
+    ):
+        prompt_tuple = (
+            (str(prompts),)
+            if isinstance(prompts, str)
+            else tuple(str(prompt) for prompt in prompts)
+        )
+        self.mtp_calls.append((prompt_tuple, sampling_params))
+        yield GenerationStreamChunk(
+            text=f"mtp:{prompt_tuple[0]}",
+            generated_token_ids=(901,),
+            telemetry=GenerationTelemetry.from_decode_counts(
+                prompt_tokens=1,
+                generated_tokens=1,
+                row_index=0,
+                request_id="0",
+                phase="answer",
+                sampler_mode="greedy_fast",
+                execution_path="speculative_mtp_server",
+            ),
+        )
 
     def generate_speculative_mtp_detailed(self, prompts, sampling_params: SamplingParams) -> list[GenerationOutput]:
         prompt_tuple = tuple(str(prompt) for prompt in prompts)
@@ -1676,11 +1702,11 @@ def test_capabilities_endpoint_reports_speculative_mtp_when_config_and_engine_su
         "policy": "opt_in",
         "request_field": "speculative_mtp",
         "default_enabled": False,
-        "streaming_compatible": False,
+        "streaming_compatible": True,
         "batch_route": "speculative_mtp",
-        "physical_concurrency": "serialized_target_slot",
-        "max_physical_target_slots": 1,
-        "route_coalescing_is_physical_concurrency": False,
+        "physical_concurrency": "generation2_target_frontier",
+        "max_physical_target_slots": 4,
+        "route_coalescing_is_physical_concurrency": True,
         "circuit_breaker": {
             "state": "closed",
             "operator_disabled": False,
@@ -1716,9 +1742,12 @@ def test_capabilities_endpoint_defaults_to_auto_exact_fallback() -> None:
     assert payload["auto_route"] == {
         "selected_route": "default",
         "reason": "automatic_mtp_scope_not_promoted",
+        "selected_candidate_count": 0,
+        "policy_key": DEFAULT_AUTO_DEPTH_POLICY.policy_key,
+        "policy_fingerprint": DEFAULT_AUTO_DEPTH_POLICY.fingerprint,
         "exact_default_required": True,
         "compatibility_mtp_explicit_only": True,
-        "evidence": "benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf2-long-target-graphs.json",
+        "evidence": "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
     }
 
 
@@ -6441,7 +6470,7 @@ def test_chat_auto_fallback_reports_stable_route_reason() -> None:
 
 
 @pytest.mark.parametrize("endpoint", ["/v1/completions", "/v1/chat/completions"])
-def test_explicit_mtp_streaming_rejects_before_generation(endpoint: str) -> None:
+def test_explicit_mtp_streaming_uses_committed_speculative_chunks(endpoint: str) -> None:
     fake = SpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -6467,11 +6496,23 @@ def test_explicit_mtp_streaming_rejects_before_generation(endpoint: str) -> None
 
     assert response.status_code == 200
     payloads = _sse_payloads(response.text)
-    error = next(item["error"] for item in payloads if item.get("error"))
-    assert error["code"] == "unsupported_parameter"
-    assert error["param"] == "speculative_mtp"
+    assert not any(item.get("error") for item in payloads)
+    if endpoint.endswith("chat/completions"):
+        text = "".join(
+            item["choices"][0]["delta"].get("content", "")
+            for item in payloads
+            if item.get("choices")
+        )
+        assert text.startswith("mtp:")
+    else:
+        text = "".join(
+            item["choices"][0].get("text", "")
+            for item in payloads
+            if item.get("choices")
+        )
+        assert text == "mtp:hello"
     assert fake.calls == []
-    assert fake.mtp_calls == []
+    assert len(fake.mtp_calls) == 1
 
 
 def test_mtp_summary_honors_batch_timing_ownership() -> None:
@@ -6612,10 +6653,14 @@ def test_completions_default_auto_keeps_compatibility_mtp_explicit_only() -> Non
         "requested_route": "speculative_mtp_auto",
         "selected_route": "default",
         "reason": "automatic_mtp_scope_not_promoted",
+        "policy_cell": "auto-c2-measured-k0",
+        "selected_candidate_count": 0,
+        "policy_reason": "measured_speedup_below_1p10",
+        "policy_fingerprint": DEFAULT_AUTO_DEPTH_POLICY.fingerprint,
         "realized_group_rows": 2,
         "output_horizon_tokens": 24,
         "exact_default_required": True,
-        "evidence": "benchmarks/results/2026-08-22-gfx1151-qwen36-27b-rf2-long-target-graphs.json",
+        "evidence": "benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json",
     }
     explicit_response = client.post(
         "/v1/completions",
@@ -6736,7 +6781,7 @@ def test_completions_enabled_mode_falls_back_to_ar_when_engine_not_dense_default
     assert len(fake.mtp_calls) == 1
 
 
-def test_completions_endpoint_rejects_explicit_speculative_mtp_non_greedy_sampling() -> None:
+def test_completions_endpoint_routes_explicit_non_greedy_mtp_to_k0() -> None:
     fake = SpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -6759,12 +6804,15 @@ def test_completions_endpoint_rejects_explicit_speculative_mtp_non_greedy_sampli
         },
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 200
     body = response.json()
-    assert body["error"]["code"] == "unsupported_parameter"
-    assert body["error"]["param"] == "speculative_mtp"
-    assert body["error"]["hipengine"]["speculative_mtp"]["blockers"] == ["temperature"]
-    assert fake.calls == []
+    assert body["choices"][0]["text"] == "generated:one"
+    decision = body["hipengine"]["generation_shape"]["route_decision"]
+    assert decision["selected_route"] == "default"
+    assert decision["reason"] == "unsupported_sampling_k0"
+    assert decision["selected_candidate_count"] == 0
+    assert decision["sampling_blockers"] == ["temperature"]
+    assert len(fake.calls) == 1
     assert fake.mtp_calls == []
 
 
@@ -6875,7 +6923,7 @@ def test_chat_completion_thinking_policy_request_override_selects_policy() -> No
     assert len(fake.mtp_calls) == 1
 
     # Config is hint but the request opts in to hard -> thinking stays a hard
-    # blocker and an explicit MTP request is rejected.
+    # blocker and deterministically selects K0 before provider mutation.
     fake2 = SpeculativeMTPFakeLLM(token_map={_THINKING_CLOSE_MARKER: [42, 43]})
     app2 = create_app(
         ServerConfig(
@@ -6901,10 +6949,14 @@ def test_chat_completion_thinking_policy_request_override_selects_policy() -> No
         },
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 200
     body = response.json()
-    assert body["error"]["code"] == "unsupported_parameter"
-    assert body["error"]["hipengine"]["speculative_mtp"]["blockers"] == ["thinking_budget"]
+    assert body["hipengine"]["generation_shape"]["route"] == "default"
+    assert body["hipengine"]["generation_shape"]["route_decision"]["sampling_blockers"] == [
+        "thinking_budget"
+    ]
+    assert fake2.mtp_calls == []
+    assert len(fake2.calls) == 1
 
 
 def test_completions_preserve_structured_finish_details() -> None:

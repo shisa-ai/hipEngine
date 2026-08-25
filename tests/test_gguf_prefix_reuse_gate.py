@@ -62,6 +62,21 @@ def test_compare_states_reports_exact_component_and_layer() -> None:
     ]
 
 
+def test_workspace_lease_pages_are_not_prefix_lifecycle_leaks() -> None:
+    assert _lifecycle_exact(
+        "active",
+        source_refcount_before_release=2,
+        source_refcount_after_release=1,
+        shared_refcount_after_admission=2,
+        shared_refcount_after_continuation_release=0,
+        final_refcounted_pages=32,
+        final_pinned_pages=32,
+        workspace_lease_pages=32,
+        source_session_reset=True,
+        snapshot_evicted=False,
+    )
+
+
 def test_completed_source_lifecycle_and_metadata_fail_closed() -> None:
     assert _lifecycle_exact(
         "completed",

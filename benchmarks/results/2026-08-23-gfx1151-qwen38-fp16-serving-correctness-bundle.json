@@ -1,0 +1,211 @@
+{
+  "configuration": {
+    "backend": "hip_gfx1151",
+    "candidate_environment": {
+      "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "1",
+      "HIPENGINE_GGUF_GDN_PREFILL_MODE": "auto",
+      "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS": null
+    },
+    "candidate_variant_manifest_sha256": "3f365c66635ac43929abdd23fa3dc8509fe9f6890ddb5ecdc53d71ecb02cb7ec",
+    "kv_storage": "bf16",
+    "model_file_type": "MOSTLY_Q4_K_S",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8060155376,
+        16120310752
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 16121359328,
+      "value": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa"
+    },
+    "model_path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "gguf_q4_k_m",
+    "queue_used_for_qualification": {
+      "GPU_MAX_HW_QUEUES": "2",
+      "policy": "explicit",
+      "role": "qualification environment only; queue comparison remains task #6"
+    },
+    "strict_fallback_environment": {
+      "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0"
+    }
+  },
+  "correctness_profile": "production",
+  "created_at": "2026-08-23T13:48:49.379409+00:00",
+  "gates": {
+    "bf16_relative": {
+      "applicable": false,
+      "bounded_layer0_evidence": {
+        "device_bf16_output_rounding_rms": 0.000102,
+        "fp16_state_vs_fp32_state_rms": 4.72e-06,
+        "positions": 64,
+        "ratio": 0.05,
+        "role": "supporting applicability record, not a whole-model BF16 teacher substitute"
+      },
+      "passed": true,
+      "reason": "No BF16/full-precision Qwen3.8-27B teacher artifact is available on this host; docs/EXECUTION-PROFILES.md makes this gate binding where available.",
+      "verdict": "not_applicable_pass"
+    },
+    "control_ownership": {
+      "c1_cn_arithmetic_binding": "numerical profile; not byte exact",
+      "declared_widths_only": true,
+      "no_serial_fallback": true,
+      "passed": true,
+      "request_owned_resources_exact_across_compaction": true,
+      "same_run_state_kv_exact_across_compaction": true,
+      "tokens_exact": true
+    },
+    "isolation": {
+      "neighbor_substitution": true,
+      "passed": true,
+      "row_permutation": true,
+      "sparse_and_width_transition_manifest": true
+    },
+    "lifecycle": {
+      "compaction_moves": 11,
+      "final_active_requests": 0,
+      "final_available_sessions": 13,
+      "final_scheduler_active": 0,
+      "graph_handles_closed": true,
+      "graph_invalidation_delta": 2,
+      "logical_schedule": "8+5 -> 8+3 -> 8+5",
+      "masks": [
+        [
+          "11111111",
+          "11111"
+        ],
+        [
+          "11111111",
+          "111"
+        ],
+        [
+          "11111111",
+          "11111"
+        ]
+      ],
+      "passed": true,
+      "tracked_active_allocation_delta": 0,
+      "tracked_memory_delta_bytes": 0
+    },
+    "numerical": {
+      "candidate": "same-model Q4_K_S FP16 recurrent-state route",
+      "direct_width_support": {
+        "passed": true,
+        "rows": 1950,
+        "static_widths": [
+          3,
+          5,
+          6,
+          7
+        ],
+        "summary": {
+          "kl_max": 0.0011175924514045844,
+          "kl_mean": 5.199979969540048e-05,
+          "kl_p95": 0.0002724956674681842,
+          "kl_p99": 0.0006706765408078594,
+          "top1_agreement": 0.9948717948717949
+        }
+      },
+      "manual_review": {
+        "candidate_teacher_nll": 0.01252834001462111,
+        "evidence": "Same top-1/rank-1 candidate, finite exact repeats, and improved teacher NLL; below the 0.05 hard ceiling.",
+        "hard_max": 0.05,
+        "kl": 0.03286571255372825,
+        "passed": true,
+        "review_boundary": 0.02,
+        "row": "long_c8_p512/general_en_plan/teacher_step2",
+        "rows_reviewed": 1,
+        "same_top1": true,
+        "strict_margin": 2.976787567138672,
+        "strict_teacher_nll": 0.05100421957170397,
+        "strict_top1_candidate_rank": 1,
+        "topk_overlap": 0.8
+      },
+      "passed": true,
+      "requires_outlier_review": true,
+      "scope_failures": [],
+      "summary": {
+        "kl_max": 0.03286571255372825,
+        "kl_mean": 0.00010249953022477523,
+        "kl_p95": 0.0003192126281601045,
+        "kl_p99": 0.0010501767207584248,
+        "rows": 1170,
+        "top1_agreement": 0.9982905982905983,
+        "top1_matches": 1168
+      },
+      "teacher": "same-model Q4_K_S FP32 recurrent-state route"
+    },
+    "repeat_determinism": {
+      "binding": "same manifest and schedule",
+      "passed": true,
+      "runs": 3
+    },
+    "strict_fallback": {
+      "fallback": "FP32 recurrent-state storage via HIPENGINE_GGUF_FP16_RECURRENT_STATE=0",
+      "passed": true,
+      "registered": true,
+      "same_model_quant_and_kv": true
+    },
+    "task_quality": {
+      "applicable": false,
+      "categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "complete_prompt_and_heldout_suite": true,
+      "external_task_score_claim": false,
+      "passed": true,
+      "reason": "This scoped queue-policy serving campaign makes no new model capability/task-score claim; all four prompt categories and heldouts remain binding through the full-vocabulary per-scope numerical gate.",
+      "verdict": "not_applicable_pass"
+    }
+  },
+  "generated_id_equality_binding": false,
+  "host": {
+    "backend": "hip_gfx1151",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "physical_host": "gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "target_arch": "gfx1151"
+  },
+  "kind": "hipengine_server_production_correctness_bundle",
+  "performance_claim": false,
+  "profile_qualification_claim": false,
+  "qualification_limits": [
+    "Scoped legacy/default-candidate serving evidence only; not a named public production-profile qualification.",
+    "No BF16/full-precision Qwen3.8 teacher exists on this host, so BF16-relative is explicitly not applicable rather than fabricated.",
+    "No external task-score claim is made; generated-ID equality across production arithmetic is diagnostic.",
+    "Queue2 is the qualification environment, not the selected queue policy; task #6 compares 1,2,4,8,unset."
+  ],
+  "runtime_scope": "scoped_legacy_default_candidate",
+  "schema_version": 1,
+  "source_artifacts": [
+    {
+      "path": "/tmp/c2-gfx1151-hwqueue-v2/task9-production/current-direct-1950.json",
+      "role": "direct_width_numerical_gate",
+      "sha256": "38f3a1574211794b0813ef7bad8a9fe53a20375fd140721fbc4bae032e7d6b0b"
+    },
+    {
+      "path": "/tmp/c2-gfx1151-hwqueue-v2/task9-production/fp16-state-batch-1170.json",
+      "role": "fp16_state_numerical_isolation_gate",
+      "sha256": "e3e63683f952241a1d0a632280948dbc4e26f192053bc2b411ea2a95327530f1"
+    },
+    {
+      "path": "/tmp/c2-gfx1151-hwqueue-v2/task9-production/c13-lifecycle-fp16.json",
+      "role": "fp16_c13_lifecycle_control_gate",
+      "sha256": "621932f4fffe049b4c01f416ce5d004bdc24b55595158a32a44d116376ce5055"
+    },
+    {
+      "path": "/home/lhl/hipEngine/worklog/entries/20260818T092624.046425Z-pi-qwen38-gfx1151-r2-fp16-recurrent-state-dd26e5.md",
+      "role": "bf16_relative_applicability_record",
+      "sha256": "ea339f77e344deee92dc2bcf79b791928de2b5bd976f96c866d31c92d788c994"
+    }
+  ],
+  "source_commit": "528113718488779a04937dc9abc3be402289275e",
+  "status": "passed"
+}

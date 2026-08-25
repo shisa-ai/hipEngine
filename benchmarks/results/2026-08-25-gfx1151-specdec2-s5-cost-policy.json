@@ -1,0 +1,390 @@
+{
+  "acceptance": {
+    "auto_required_speedup": 1.1,
+    "c17_c32_k_values_measured": [
+      0
+    ],
+    "c8_k_values_measured": [
+      0
+    ],
+    "explicit_default_off_cells": [
+      "C1/C2/C4 K1-K3"
+    ],
+    "larger_k_reason": "qualified physical path absent; finish K0 by contract",
+    "project_target_speedup": 1.3,
+    "promoted_auto_cells": []
+  },
+  "attribution_c2_k2_ms": {
+    "accept_and_cpu_oracle": 0.4173929337412119,
+    "candidate_readback": 0.14205696061253548,
+    "complete_warm_wall": 1053.526304080151,
+    "proposal": 32.3482200037688,
+    "provider_repair": 7.206070004031062,
+    "selected_state_kv_commit": 0.4121930105611682,
+    "target": 392.81867700628936
+  },
+  "bucket_decision": {
+    "kernels_catalog_or_lineage_change_required": false,
+    "new_kernel_family_added": false,
+    "r16_speedup_over_two_r8": 1.702052234816901,
+    "r16_target_ms": 479.94467697571963,
+    "r16_vs_two_r8_ratio": 0.5875260344801201,
+    "r32_native_added": false,
+    "r32_reason": "no qualified C8 physical proposal/target owner; two R16 remains diagnostic decomposition",
+    "two_r8_target_ms": 816.8909100349993
+  },
+  "date": "2026-08-25",
+  "hardware_policy_gate": {
+    "automatic_ar_rows_have_zero_spec_cycles": true,
+    "explicit_c2_k2_exact": true,
+    "explicit_execution_route": [
+      "eager"
+    ],
+    "passed": true,
+    "source": {
+      "commit": "fc27ab712b54c67fc87f51c7f7cbc072ca6efba1",
+      "dirty": false,
+      "shared_untracked_files_excluded": true
+    }
+  },
+  "host": {
+    "arch": "gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "hostname": "gfx1151",
+    "queue_mode": 2
+  },
+  "kind": "specdec2_gfx1151_s5_cost_policy",
+  "measured_cells": [
+    {
+      "candidate_budget": 1,
+      "complete_warm_wall_seconds": 0.734941142029129,
+      "concurrency": 1,
+      "ids_exact": true,
+      "logical_rows": 2,
+      "mtp_over_ar_wall_ratio": 1.028555908364888,
+      "proposal_ms_per_cycle": 6.417856027837843,
+      "provider_update_ms_per_cycle": 2.491494524292648,
+      "repo": {
+        "commit": "ef001eb3a18a9220d315c552e8c8ed678f9d8583",
+        "dirty": false,
+        "shared_untracked_files_excluded": true
+      },
+      "target_ms_per_physical_call": 133.26278049498796,
+      "true_ar_wall_seconds": 0.7145368920173496
+    },
+    {
+      "candidate_budget": 2,
+      "complete_warm_wall_seconds": 0.7290295209968463,
+      "concurrency": 1,
+      "ids_exact": true,
+      "logical_rows": 3,
+      "mtp_over_ar_wall_ratio": 1.0019922330433984,
+      "proposal_ms_per_cycle": 13.016098993830383,
+      "provider_update_ms_per_cycle": 2.123072976246476,
+      "repo": {
+        "commit": "ef001eb3a18a9220d315c552e8c8ed678f9d8583",
+        "dirty": false,
+        "shared_untracked_files_excluded": true
+      },
+      "target_ms_per_physical_call": 188.76704305876046,
+      "true_ar_wall_seconds": 0.7275800120551139
+    },
+    {
+      "candidate_budget": 3,
+      "complete_warm_wall_seconds": 0.7484356869244948,
+      "concurrency": 1,
+      "ids_exact": true,
+      "logical_rows": 4,
+      "mtp_over_ar_wall_ratio": 1.0456907819012735,
+      "proposal_ms_per_cycle": 19.104260951280594,
+      "provider_update_ms_per_cycle": 5.141897010616958,
+      "repo": {
+        "commit": "ef001eb3a18a9220d315c552e8c8ed678f9d8583",
+        "dirty": false,
+        "shared_untracked_files_excluded": true
+      },
+      "target_ms_per_physical_call": 198.8711910089478,
+      "true_ar_wall_seconds": 0.7157332740025595
+    },
+    {
+      "candidate_budget": 1,
+      "complete_warm_wall_seconds": 1.4166477939579636,
+      "concurrency": 2,
+      "ids_exact": true,
+      "logical_rows": 4,
+      "mtp_over_ar_wall_ratio": 1.6441045445046405,
+      "proposal_ms_per_cycle": 16.848796454723924,
+      "provider_update_ms_per_cycle": 7.449005555827171,
+      "repo": {
+        "commit": "4072144a05a333c9324d9fa858ca8ac9a1199897",
+        "dirty": false,
+        "shared_untracked_files_excluded": true
+      },
+      "target_ms_per_physical_call": 373.20512102451175,
+      "true_ar_wall_seconds": 0.8616531100124121
+    },
+    {
+      "candidate_budget": 2,
+      "complete_warm_wall_seconds": 1.05188005103264,
+      "concurrency": 2,
+      "ids_exact": true,
+      "logical_rows": 6,
+      "mtp_over_ar_wall_ratio": 1.2209179364308598,
+      "proposal_ms_per_cycle": 32.47635194566101,
+      "provider_update_ms_per_cycle": 7.298478041775525,
+      "repo": {
+        "commit": "4072144a05a333c9324d9fa858ca8ac9a1199897",
+        "dirty": false,
+        "shared_untracked_files_excluded": true
+      },
+      "target_ms_per_physical_call": 393.146303948015,
+      "true_ar_wall_seconds": 0.8615485280752182
+    },
+    {
+      "candidate_budget": 3,
+      "complete_warm_wall_seconds": 1.0983592969132587,
+      "concurrency": 2,
+      "ids_exact": true,
+      "logical_rows": 8,
+      "mtp_over_ar_wall_ratio": 1.2794446260061174,
+      "proposal_ms_per_cycle": 48.82955306675285,
+      "provider_update_ms_per_cycle": 21.519987960346043,
+      "repo": {
+        "commit": "4072144a05a333c9324d9fa858ca8ac9a1199897",
+        "dirty": false,
+        "shared_untracked_files_excluded": true
+      },
+      "target_ms_per_physical_call": 408.4454550174996,
+      "true_ar_wall_seconds": 0.8584656768944114
+    },
+    {
+      "candidate_budget": 1,
+      "complete_warm_wall_seconds": 1.6438688630005345,
+      "concurrency": 4,
+      "ids_exact": true,
+      "logical_rows": 8,
+      "mtp_over_ar_wall_ratio": 1.7744463335737082,
+      "proposal_ms_per_cycle": 28.249393042642623,
+      "provider_update_ms_per_cycle": 8.16739845322445,
+      "repo": {
+        "commit": "4072144a05a333c9324d9fa858ca8ac9a1199897",
+        "dirty": false,
+        "shared_untracked_files_excluded": true
+      },
+      "target_ms_per_physical_call": 412.30777197051793,
+      "true_ar_wall_seconds": 0.9264122740132734
+    },
+    {
+      "candidate_budget": 2,
+      "complete_warm_wall_seconds": 1.2532237719278783,
+      "concurrency": 4,
+      "ids_exact": true,
+      "logical_rows": 12,
+      "mtp_over_ar_wall_ratio": 1.3518863610309995,
+      "proposal_ms_per_cycle": 52.84022004343569,
+      "provider_update_ms_per_cycle": 7.706333068199456,
+      "repo": {
+        "commit": "4072144a05a333c9324d9fa858ca8ac9a1199897",
+        "dirty": false,
+        "shared_untracked_files_excluded": true
+      },
+      "target_ms_per_physical_call": 446.09918899368495,
+      "true_ar_wall_seconds": 0.9270185779314488
+    },
+    {
+      "candidate_budget": 3,
+      "complete_warm_wall_seconds": 1.3229350690962747,
+      "concurrency": 4,
+      "ids_exact": true,
+      "logical_rows": 16,
+      "mtp_over_ar_wall_ratio": 1.3917772998978835,
+      "proposal_ms_per_cycle": 78.0190039658919,
+      "provider_update_ms_per_cycle": 23.168771993368864,
+      "repo": {
+        "commit": "4072144a05a333c9324d9fa858ca8ac9a1199897",
+        "dirty": false,
+        "shared_untracked_files_excluded": true
+      },
+      "target_ms_per_physical_call": 479.94467697571963,
+      "true_ar_wall_seconds": 0.9505364609649405
+    }
+  ],
+  "model": {
+    "execution_profile": "strict",
+    "kv": "bf16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "state": "fp32"
+  },
+  "performance_claim": false,
+  "policy": {
+    "cells": [
+      {
+        "cell_key": "auto-c1-measured-k0",
+        "evidence": "benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json",
+        "max_concurrency": 1,
+        "min_concurrency": 1,
+        "reason": "measured_speedup_below_1p10",
+        "selected_k": 0
+      },
+      {
+        "cell_key": "auto-c2-measured-k0",
+        "evidence": "benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json",
+        "max_concurrency": 2,
+        "min_concurrency": 2,
+        "reason": "measured_speedup_below_1p10",
+        "selected_k": 0
+      },
+      {
+        "cell_key": "auto-c3-unqualified-k0",
+        "evidence": "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
+        "max_concurrency": 3,
+        "min_concurrency": 3,
+        "reason": "no_qualified_physical_frontier",
+        "selected_k": 0
+      },
+      {
+        "cell_key": "auto-c4-measured-k0",
+        "evidence": "benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json",
+        "max_concurrency": 4,
+        "min_concurrency": 4,
+        "reason": "measured_speedup_below_1p10",
+        "selected_k": 0
+      },
+      {
+        "cell_key": "auto-c5-c8-unqualified-k0",
+        "evidence": "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
+        "max_concurrency": 8,
+        "min_concurrency": 5,
+        "reason": "no_qualified_physical_frontier",
+        "selected_k": 0
+      },
+      {
+        "cell_key": "auto-c9-c17-unqualified-k0",
+        "evidence": "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
+        "max_concurrency": 17,
+        "min_concurrency": 9,
+        "reason": "no_qualified_physical_frontier",
+        "selected_k": 0
+      },
+      {
+        "cell_key": "auto-c18-c32-unqualified-k0",
+        "evidence": "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
+        "max_concurrency": 32,
+        "min_concurrency": 18,
+        "reason": "no_qualified_physical_frontier",
+        "selected_k": 0
+      }
+    ],
+    "fingerprint": "sha256:7fef31f392e182bcb0840057f5b8f3f7d7202a0f605d601a4a64529fea74f8ea",
+    "forbidden_features": [
+      "prompt_text",
+      "token_ids",
+      "category",
+      "heldout_identity"
+    ],
+    "policy_key": "specdec2:auto:strict:v1",
+    "routing_features": [
+      "realized_concurrency",
+      "output_horizon_tokens"
+    ]
+  },
+  "profiler": {
+    "command": "rocprofv3 --kernel-trace ... scripts/specdec2_c1_gate.py --concurrency 4 --budget 3",
+    "exact_gate_passed": true,
+    "kernel_trace": {
+      "dflash_accept_chain_i32_kernel": {
+        "calls": 14,
+        "duration_ns": 71335
+      },
+      "linear_state_pair_commit_chunked_i32_kernel": {
+        "calls": 22,
+        "duration_ns": 69646629
+      },
+      "packed_gdn_state_rows": {
+        "calls": 96,
+        "duration_ns": 23432934
+      },
+      "paged_full_attention_prefill": {
+        "calls": 128,
+        "duration_ns": 1593115
+      }
+    }
+  },
+  "promotion": false,
+  "schema": 1,
+  "speed_claim_eligible": false,
+  "status": "complete_k0_auto_explicit_mtp_default_off",
+  "target_ladder": [
+    {
+      "decomposition": [
+        1
+      ],
+      "logical_rows": 1,
+      "source": "clean AR telemetry probe; four post-prefill target steps",
+      "status": "measured_ar",
+      "target_ms": 77.4725
+    },
+    {
+      "decomposition": [
+        2
+      ],
+      "logical_rows": 2,
+      "source_cell": {
+        "candidate_budget": 1,
+        "concurrency": 1
+      },
+      "status": "measured_existing_physical",
+      "target_ms": 133.26278049498796
+    },
+    {
+      "decomposition": [
+        4
+      ],
+      "logical_rows": 4,
+      "source_cell": {
+        "candidate_budget": 3,
+        "concurrency": 1
+      },
+      "status": "measured_existing_physical",
+      "target_ms": 198.8711910089478
+    },
+    {
+      "decomposition": [
+        8
+      ],
+      "logical_rows": 8,
+      "source_cell": {
+        "candidate_budget": 3,
+        "concurrency": 2
+      },
+      "status": "measured_existing_physical",
+      "target_ms": 408.4454550174996
+    },
+    {
+      "decomposition": [
+        16
+      ],
+      "logical_rows": 16,
+      "source_cell": {
+        "candidate_budget": 3,
+        "concurrency": 4
+      },
+      "status": "measured_existing_physical",
+      "target_ms": 479.94467697571963
+    },
+    {
+      "decomposition": [
+        16,
+        16
+      ],
+      "logical_rows": 32,
+      "source_cell": {
+        "candidate_budget": 3,
+        "concurrency": 4
+      },
+      "status": "diagnostic_composed_no_qualified_native_bucket",
+      "target_ms": 959.8893539514393
+    }
+  ]
+}

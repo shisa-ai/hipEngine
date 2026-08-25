@@ -19,7 +19,12 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Iterable, Protocol, Sequence
 
 from hipengine.dispatch import RequestState, SlotMove, WorkItem, WorkKind
-from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
+from hipengine.generation.batch_scheduler import (
+    CompletedRequest,
+    GeneratedToken,
+    PerRowSamplingParams,
+    ResidentBatchScheduler,
+)
 from hipengine.generation.deadline import GenerationCancelled, generation_deadline_expired
 from hipengine.kvcache import (
     PREFIX_CACHE_CHOICES,
@@ -32,6 +37,19 @@ from hipengine.generation.registry import (
     GenerationRequest,
     GenerationStreamChunk,
     TextGenerator,
+)
+from hipengine.generation.sampling import speculative_mtp_sampling_blockers
+from hipengine.speculative.frontier import (
+    CandidateGraph,
+    SpeculativeCapability,
+    TargetFrontier,
+)
+from hipengine.speculative.policy import plan_speculative_requests
+from hipengine.speculative.provider import SpeculativeRequestSemantics
+from hipengine.speculative.transaction import (
+    SpecCycleResult,
+    SpecCycleStage,
+    compose_speculative_claims,
 )
 
 PREFILL_DECODE_POLICIES = ("protect_decode", "protect_ttft", "fair", "token_budget")
@@ -241,6 +259,23 @@ class EngineLoopRunner(Protocol):
     def rollback_admission(self, request: RequestState) -> None:
         """Release an unpublished reservation after slot-commit failure."""
 
+    def speculative_capability(
+        self,
+        request_semantics: Sequence[SpeculativeRequestSemantics],
+    ) -> SpeculativeCapability | None:
+        """Return one cold composed capability or None for target-only AR."""
+
+    def speculative_claims_fit(self, plan) -> bool:
+        """Check complete target/provider/transient fit without mutation."""
+
+    def execute_speculative_cycle(
+        self,
+        plan,
+        *,
+        commit: bool,
+    ) -> SpecCycleResult:
+        """Execute exactly one bounded planned cycle."""
+
 
 class SubmitPollTextGenerator:
     """Run a ``TextGenerator`` through the resident ``submit``/``poll`` loop.
@@ -368,12 +403,23 @@ class SubmitPollTextGenerator:
 
     @property
     def supports_speculative_mtp(self) -> bool:
-        """Whether the wrapped model exposes its out-of-band MTP route."""
+        """Whether staged or legacy speculative MTP is available."""
 
+        if self._supports_staged_speculative_mtp:
+            return True
         supports = getattr(self._inner, "supports_speculative_mtp", None)
         return bool(supports) and callable(
             getattr(self._inner, "generate_speculative_mtp_detailed", None)
         )
+
+    @property
+    def _supports_staged_speculative_mtp(self) -> bool:
+        if not self._has_resident_runner:
+            return False
+        capability = callable(getattr(self._runner, "speculative_capability", None))
+        opaque = callable(getattr(self._runner, "execute_speculative_cycle", None))
+        staged = callable(getattr(self._runner, "execute_target_frontier", None))
+        return capability and (opaque or staged)
 
     @property
     def last_speculative_submission(self) -> GenerationSubmission | None:
@@ -412,6 +458,22 @@ class SubmitPollTextGenerator:
             )
         if any(len(request.prompts) != 1 for request in normalized):
             raise ValueError("one speculative child requires exactly one prompt")
+        if self._supports_staged_speculative_mtp:
+            with self._submission_priority.submission(self._loop_lock):
+                staged_submissions: list[GenerationSubmission] = []
+                try:
+                    for request in normalized:
+                        staged_submissions.append(
+                            self._submit_staged_speculative_detailed_locked(request)
+                        )
+                except Exception:
+                    for submission in staged_submissions:
+                        self._abort_submission_locked(submission, reason="cancel")
+                    raise
+                submissions = tuple(staged_submissions)
+                if submissions:
+                    self._last_speculative_submission = submissions[-1]
+                return submissions
         compatibility = tuple(
             replace(request, prompts=(), cancellation_token=None)
             for request in normalized
@@ -496,6 +558,10 @@ class SubmitPollTextGenerator:
         if len(request.prompts) != 1:
             raise ValueError("one speculative submission requires exactly one prompt")
         with self._submission_priority.submission(self._loop_lock):
+            if self._supports_staged_speculative_mtp:
+                submission = self._submit_staged_speculative_detailed_locked(request)
+                self._last_speculative_submission = submission
+                return submission
             outputs = list(self._inner.generate_speculative_mtp_detailed(request))
             if len(outputs) != 1:
                 raise RuntimeError("one speculative submission must produce one output")
@@ -531,6 +597,100 @@ class SubmitPollTextGenerator:
             self._last_speculative_submission = submission
             self._register_submission_cancellation_locked(submission)
             return submission
+
+    def _submit_staged_speculative_detailed_locked(
+        self,
+        request: GenerationRequest,
+    ) -> GenerationSubmission:
+        """Admit one staged child without running provider or target work."""
+
+        prompt = request.prompts[0]
+        tokenize_started = time.perf_counter() if isinstance(prompt, str) else None
+        prompt_row = tuple(self._runner.prompt_tokens(prompt))
+        tokenize_ms = (
+            max(0.0, float(getattr(prompt, "tokenize_ms", 0.0)))
+            if tokenize_started is None
+            else max(0.0, (time.perf_counter() - tokenize_started) * 1_000.0)
+        )
+        max_new_tokens = int(self._runner.scheduler_max_new_tokens(request))
+        desired_depth = getattr(
+            self._runner,
+            "speculative_desired_candidate_count",
+            None,
+        )
+        desired = (
+            int(desired_depth(request))
+            if callable(desired_depth)
+            else min(3, max_new_tokens)
+        )
+        token = request.cancellation_token
+
+        def cancel_requested() -> bool:
+            return generation_deadline_expired(request.deadline_at) or bool(
+                token is not None
+                and (
+                    getattr(token, "cancel_requested", False)
+                    or getattr(token, "cancelled", False)
+                )
+            )
+
+        request_id: int | None = None
+        try:
+            request_id = self._loop.submit_speculative(
+                prompt_row,
+                max_new_tokens=max_new_tokens,
+                desired_candidate_count=max(1, desired),
+                cancel_requested=cancel_requested,
+                sampling=PerRowSamplingParams.from_generation_request(request),
+            )
+            runner_request = replace(request, deadline_at=None)
+            self._runner.register_batch(
+                (request_id,),
+                runner_request,
+                prompt_rows=(prompt_row,),
+            )
+            register_speculative = getattr(
+                self._runner,
+                "register_speculative_request",
+                None,
+            )
+            if callable(register_speculative):
+                register_speculative(request_id, max(1, desired))
+            timing_observer = getattr(
+                self._runner,
+                "record_prompt_tokenize_ms",
+                None,
+            )
+            if callable(timing_observer):
+                timing_observer((request_id,), (tokenize_ms,))
+        except Exception:
+            if request_id is not None:
+                self._loop.cancel(request_id)
+                self._loop.release_completed(request_id)
+                self._runner.discard((request_id,))
+            raise
+        assert request_id is not None
+        submission = GenerationSubmission(
+            request_ids=(request_id,),
+            request=request,
+            max_ticks=_submit_poll_max_ticks(
+                (prompt_row,),
+                self._prefill_chunk_size,
+                max_new_tokens=max_new_tokens,
+                prefill_decode_policy=self._loop.prefill_decode_policy,
+            ),
+            work_kind=WorkKind.VERIFY_CHAIN.value,
+            execution_route="engine_service_specdec2",
+            work_item=None,
+        )
+        self._register_submission_cancellation_locked(submission)
+        return submission
+
+    @staticmethod
+    def _is_staged_speculative_submission(
+        submission: GenerationSubmission,
+    ) -> bool:
+        return submission.execution_route == "engine_service_specdec2"
 
     def __getattr__(self, name: str):
         return getattr(self._inner, name)
@@ -687,10 +847,13 @@ class SubmitPollTextGenerator:
 
     def generation_complete(self, submission: GenerationSubmission) -> bool:
         with self._loop_lock:
-            if submission.work_kind in {
-                WorkKind.VERIFY_CHAIN.value,
-                WorkKind.VERIFY_TREE.value,
-            }:
+            if (
+                submission.work_kind in {
+                    WorkKind.VERIFY_CHAIN.value,
+                    WorkKind.VERIFY_TREE.value,
+                }
+                and not self._is_staged_speculative_submission(submission)
+            ):
                 return all(
                     request_id in self._speculative_outputs_by_request
                     for request_id in submission.request_ids
@@ -825,10 +988,13 @@ class SubmitPollTextGenerator:
         """Consume one completed submission in original prompt order."""
 
         with self._loop_lock:
-            if submission.work_kind in {
-                WorkKind.VERIFY_CHAIN.value,
-                WorkKind.VERIFY_TREE.value,
-            }:
+            if (
+                submission.work_kind in {
+                    WorkKind.VERIFY_CHAIN.value,
+                    WorkKind.VERIFY_TREE.value,
+                }
+                and not self._is_staged_speculative_submission(submission)
+            ):
                 if not all(
                     request_id in self._speculative_outputs_by_request
                     for request_id in submission.request_ids
@@ -872,6 +1038,13 @@ class SubmitPollTextGenerator:
         with self._loop_lock:
             self._loop.reconfigure(config)
             self._prefill_chunk_size = int(self._loop.prefill_chunk_size)
+
+    def compact(self, order: Sequence[int] | None = None) -> tuple[SlotMove, ...]:
+        """Serialize scheduler/model compaction with submit/poll ownership."""
+
+        requested = None if order is None else tuple(int(value) for value in order)
+        with self._loop_lock:
+            return tuple(self._loop.compact(order=requested))
 
     def live_loop_snapshot(self) -> dict[str, object]:
         """Return one lock-consistent scheduler plus model-runner snapshot."""
@@ -1095,10 +1268,13 @@ class SubmitPollTextGenerator:
         *,
         reason: str,
     ) -> None:
-        if submission.work_kind in {
-            WorkKind.VERIFY_CHAIN.value,
-            WorkKind.VERIFY_TREE.value,
-        }:
+        if (
+            submission.work_kind in {
+                WorkKind.VERIFY_CHAIN.value,
+                WorkKind.VERIFY_TREE.value,
+            }
+            and not self._is_staged_speculative_submission(submission)
+        ):
             for request_id in submission.request_ids:
                 self._speculative_outputs_by_request.pop(request_id, None)
             self._unregister_submission_cancellation_locked(submission)
@@ -1699,6 +1875,9 @@ class ResidentEngineLoop:
             max_pending_requests=resolved_config.max_pending_requests,
             reclaim_callback=self._reclaim_runner_state,
         )
+        self._speculative_candidate_counts: dict[int, int] = {}
+        self._speculative_cancel_probes: dict[int, Callable[[], bool]] = {}
+        self._speculative_cycle_sequence = 0
 
     def reconfigure(self, config: EngineLoopConfig) -> None:
         """Apply an idle resource/policy generation without replacing the loop."""
@@ -1787,6 +1966,7 @@ class ResidentEngineLoop:
         *,
         max_new_tokens: int,
         request_id: int | None = None,
+        sampling: PerRowSamplingParams | None = None,
     ) -> int:
         max_pending = self.scheduler.max_pending_requests
         pending = self.scheduler.pending_count
@@ -1802,12 +1982,45 @@ class ResidentEngineLoop:
             prompt_tokens,
             max_new_tokens=max_new_tokens,
             request_id=request_id,
+            sampling=sampling,
         )
+
+    def submit_speculative(
+        self,
+        prompt_tokens: Iterable[int],
+        *,
+        max_new_tokens: int,
+        desired_candidate_count: int,
+        request_id: int | None = None,
+        cancel_requested: Callable[[], bool] | None = None,
+        sampling: PerRowSamplingParams | None = None,
+    ) -> int:
+        """Submit speculative intent into the ordinary Generation-2 lifecycle."""
+
+        desired = int(desired_candidate_count)
+        if desired <= 0:
+            raise ValueError("desired_candidate_count must be positive")
+        if cancel_requested is not None and not callable(cancel_requested):
+            raise TypeError("cancel_requested must be callable")
+        selected = self.submit(
+            prompt_tokens,
+            max_new_tokens=max_new_tokens,
+            request_id=request_id,
+            sampling=sampling,
+        )
+        self._speculative_candidate_counts[selected] = desired
+        if cancel_requested is not None:
+            self._speculative_cancel_probes[selected] = cancel_requested
+        return selected
 
     def cancel(self, request_id: int, *, reason: str = "cancel") -> bool:
         """Cancel a pending or active request and reclaim active scheduler state."""
 
-        return self.scheduler.cancel(request_id, reason=reason) is not None
+        completed = self.scheduler.cancel(request_id, reason=reason)
+        if completed is not None:
+            self._speculative_candidate_counts.pop(int(request_id), None)
+            self._speculative_cancel_probes.pop(int(request_id), None)
+        return completed is not None
 
     def compact(self, order: Sequence[int] | None = None) -> tuple[SlotMove, ...]:
         """Compact scheduler slots and commit the same moves to the runner."""
@@ -2035,6 +2248,9 @@ class ResidentEngineLoop:
         return (EngineLoopEvent(kind="work", request_ids=work.request_ids, work_kind=work.kind),)
 
     def _run_decode(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
+        speculative = self._maybe_run_speculative_cycle(work)
+        if speculative is not None:
+            return speculative
         start = time.perf_counter()
         decode_batch = getattr(self.runner, "decode_batch", None)
         if callable(decode_batch):
@@ -2043,6 +2259,287 @@ class ResidentEngineLoop:
             generated = tuple(self.runner.decode(work))
         self.scheduler.record_work_duration(work, time.perf_counter() - start)
         generated_events = self.scheduler.record_generated_events(generated)
+        return self._decode_events(work, generated_events)
+
+    def _maybe_run_speculative_cycle(
+        self,
+        work: WorkItem,
+    ) -> tuple[EngineLoopEvent, ...] | None:
+        desired = tuple(
+            self._speculative_candidate_counts.get(int(request_id), 0)
+            for request_id in work.request_ids
+        )
+        if not any(desired):
+            return None
+        semantics: list[SpeculativeRequestSemantics] = []
+        sampler_block = self.scheduler.sampler_params_block(work.request_ids)
+        for request_id in work.request_ids:
+            request = self.scheduler.active_batch.requests[int(request_id)]
+            params = sampler_block.params_for(int(request_id))
+            sampling_mode = (
+                "greedy"
+                if not speculative_mtp_sampling_blockers(params)
+                else "processed"
+            )
+            semantics.append(
+                SpeculativeRequestSemantics(
+                    request_id=int(request_id),
+                    sampling_mode=sampling_mode,
+                    mode="verify_chain",
+                    context_tokens=max(1, int(request.context_len)),
+                    remaining_decode=int(request.remaining_decode),
+                )
+            )
+        resolve_capability = getattr(self.runner, "speculative_capability", None)
+        capability = (
+            resolve_capability(tuple(semantics))
+            if callable(resolve_capability)
+            else None
+        )
+        if capability is not None and not isinstance(capability, SpeculativeCapability):
+            raise TypeError("runner speculative_capability must return SpeculativeCapability or None")
+        self._speculative_cycle_sequence += 1
+        operation_id = f"specdec2-cycle:{self._speculative_cycle_sequence}"
+        graph_available = self._speculative_runner_flag(
+            "speculative_graph_available",
+            work,
+            default=True,
+        )
+        target_available = self._speculative_runner_flag(
+            "speculative_target_physical_available",
+            work,
+            default=True,
+        )
+        plan = plan_speculative_requests(
+            capability,
+            tuple(semantics),
+            resident_slots=work.slot_ids,
+            desired_candidate_counts=desired,
+            operation_id=operation_id,
+            cycle_id=self._speculative_cycle_sequence,
+            context_bucket_size=self.scheduler.context_bucket_size,
+            graph_available=graph_available,
+            target_physical_available=target_available,
+        )
+        claims_fit = getattr(self.runner, "speculative_claims_fit", None)
+        if plan.has_speculative_rows and callable(claims_fit) and not bool(claims_fit(plan)):
+            plan = plan_speculative_requests(
+                capability,
+                tuple(semantics),
+                resident_slots=work.slot_ids,
+                desired_candidate_counts=desired,
+                operation_id=operation_id,
+                cycle_id=self._speculative_cycle_sequence,
+                context_bucket_size=self.scheduler.context_bucket_size,
+                claims_fit=False,
+                graph_available=graph_available,
+                target_physical_available=target_available,
+            )
+        if plan.is_ar_only:
+            prepare_k0 = getattr(self.runner, "prepare_speculative_k0", None)
+            if callable(prepare_k0):
+                prepare_k0(plan, tuple(semantics), stream=None)
+            return None
+        start = time.perf_counter()
+        try:
+            result = self._run_staged_speculative_cycle(
+                plan,
+                tuple(semantics),
+                capability,
+            )
+        except BaseException as exc:
+            recover = getattr(
+                self.runner,
+                "recover_speculative_cycle_failure",
+                None,
+            )
+            if not callable(recover) or not bool(recover(plan, exc)):
+                raise
+            return None
+        if result is None:
+            execute = getattr(self.runner, "execute_speculative_cycle", None)
+            if not callable(execute):
+                return None
+            result = execute(plan, commit=True)
+        elapsed = time.perf_counter() - start
+        if not isinstance(result, SpecCycleResult):
+            raise TypeError("execute_speculative_cycle must return SpecCycleResult")
+        if result.stage not in {
+            SpecCycleStage.COMMITTED,
+            SpecCycleStage.CANCELLED,
+        }:
+            raise RuntimeError("runner returned a non-terminal speculative cycle")
+        if result.transaction.request_ids != plan.request_ids:
+            raise ValueError("speculative result request_ids must match plan")
+        if result.transaction.cycle_id != plan.cycle_id:
+            raise ValueError("speculative result cycle_id must match plan")
+        row_to_request = tuple(
+            request_id
+            for request_id, count in zip(
+                plan.request_ids, plan.candidate_counts, strict=True
+            )
+            for _ in range(count)
+        )
+        spec_work = WorkItem(
+            kind=WorkKind(plan.mode),
+            request_ids=plan.request_ids,
+            row_to_request=row_to_request,
+            draft_depth=plan.max_candidate_count,
+            slot_ids=work.slot_ids,
+            active_mask=work.active_mask,
+        )
+        self.scheduler.record_work_duration(spec_work, elapsed)
+        if result.stage is SpecCycleStage.CANCELLED:
+            return self._cancelled_speculative_events(spec_work, result)
+        pending = self._pending_speculative_cancellations(plan.request_ids)
+        if pending:
+            raise RuntimeError(
+                "runner committed speculative output despite pending cancellation"
+            )
+        generated_events = self.scheduler.record_speculative_cycle_result(result)
+        return self._decode_events(spec_work, generated_events)
+
+    def _pending_speculative_cancellations(
+        self,
+        request_ids: Sequence[int],
+    ) -> tuple[int, ...]:
+        cancelled: list[int] = []
+        for request_id in request_ids:
+            probe = self._speculative_cancel_probes.get(int(request_id))
+            if probe is not None and bool(probe()):
+                cancelled.append(int(request_id))
+        return tuple(cancelled)
+
+    def _cancelled_speculative_events(
+        self,
+        work: WorkItem,
+        result: SpecCycleResult,
+    ) -> tuple[EngineLoopEvent, ...]:
+        self._last_work_kind = work.kind
+        self._consecutive_prefill_chunks = 0
+        self._cold_prefill_cohort_request_ids = frozenset()
+        events: list[EngineLoopEvent] = [
+            EngineLoopEvent(
+                kind="work",
+                request_ids=work.request_ids,
+                work_kind=work.kind,
+            )
+        ]
+        for request_id in result.cancelled_request_ids:
+            completed = self.scheduler.cancel(int(request_id), reason="cancel")
+            if completed is not None:
+                events.append(
+                    EngineLoopEvent(
+                        kind="completed",
+                        request_id=completed.request_id,
+                        request_ids=(completed.request_id,),
+                        completed=completed,
+                    )
+                )
+        return tuple(events)
+
+    def _run_staged_speculative_cycle(
+        self,
+        plan,
+        semantics: tuple[SpeculativeRequestSemantics, ...],
+        capability: SpeculativeCapability,
+    ) -> SpecCycleResult | None:
+        component_claims = getattr(self.runner, "speculative_component_claims", None)
+        reserve_claims = getattr(self.runner, "reserve_speculative_claims", None)
+        release_claims = getattr(self.runner, "release_speculative_claims", None)
+        prepare = getattr(self.runner, "prepare_speculative_requests", None)
+        propose = getattr(self.runner, "propose_speculative_batch", None)
+        execute_target = getattr(self.runner, "execute_target_frontier", None)
+        required = (
+            component_claims,
+            reserve_claims,
+            release_claims,
+            prepare,
+            propose,
+            execute_target,
+        )
+        if not all(callable(method) for method in required):
+            return None
+        components = component_claims(plan)
+        complete_claims = compose_speculative_claims(plan.operation_id, components)
+        reservation = reserve_claims(complete_claims)
+        candidate_graph: CandidateGraph | None = None
+        try:
+            prepare(plan, semantics, stream=None)
+            candidate_graph = propose(plan, semantics, stream=None)
+            if not isinstance(candidate_graph, CandidateGraph):
+                raise TypeError("propose_speculative_batch must return CandidateGraph")
+            if candidate_graph.request_ids != plan.request_ids:
+                raise ValueError("candidate graph request_ids must match plan")
+            if candidate_graph.resident_slots != plan.resident_slots:
+                raise ValueError("candidate graph resident_slots must match plan")
+            if candidate_graph.candidate_counts != plan.candidate_counts:
+                raise ValueError("candidate graph counts must match plan")
+            root_tokens: list[int] = []
+            root_positions: list[int] = []
+            for request_id in plan.request_ids:
+                request = self.scheduler.active_batch.requests[int(request_id)]
+                root_tokens.append(
+                    int(request.generated_tokens[-1])
+                    if request.generated_tokens
+                    else int(request.prompt_tokens[-1])
+                )
+                root_positions.append(int(request.context_len) - 1)
+            if tuple(root_positions) != candidate_graph.root_positions:
+                raise ValueError("candidate graph root positions must match scheduler state")
+            live_spans_owner = getattr(
+                self.runner,
+                "speculative_kv_live_spans_owner",
+                None,
+            )
+            owner = (
+                live_spans_owner(plan)
+                if callable(live_spans_owner)
+                else f"{plan.operation_id}:target-live-spans"
+            )
+            frontier = TargetFrontier.from_candidate_graph(
+                operation_id=plan.operation_id,
+                candidate_graph=candidate_graph,
+                root_tokens=tuple(root_tokens),
+                physical_row_decomposition=plan.target_row_decomposition,
+                transaction_mode=plan.target_transaction_mode,
+                kv_storage_view_key=capability.kv_backend_key,
+                kv_live_spans_owner=str(owner),
+                execution_route=plan.execution_route,
+            )
+            result = execute_target(
+                plan,
+                frontier,
+                complete_claims,
+                commit=True,
+                cancelled_request_ids=lambda: self._pending_speculative_cancellations(
+                    plan.request_ids
+                ),
+            )
+            if not isinstance(result, SpecCycleResult):
+                raise TypeError("execute_target_frontier must return SpecCycleResult")
+            if result.transaction.reserved_claims != complete_claims:
+                raise ValueError("target result must own the complete speculative claims")
+            return result
+        except BaseException as exc:
+            rollback = getattr(self.runner, "rollback_speculative_cycle", None)
+            if callable(rollback):
+                rollback(plan, candidate_graph, exc)
+            raise
+        finally:
+            release_claims(reservation)
+
+    def _speculative_runner_flag(
+        self,
+        name: str,
+        work: WorkItem,
+        *,
+        default: bool,
+    ) -> bool:
+        value = getattr(self.runner, name, default)
+        return bool(value(work) if callable(value) else value)
+
+    def _decode_events(self, work: WorkItem, generated_events) -> tuple[EngineLoopEvent, ...]:
         self._last_work_kind = work.kind
         self._consecutive_prefill_chunks = 0
         self._cold_prefill_cohort_request_ids = frozenset()
@@ -2069,6 +2566,8 @@ class ResidentEngineLoop:
         return tuple(events)
 
     def _reclaim_runner_state(self, completed: CompletedRequest) -> None:
+        self._speculative_candidate_counts.pop(int(completed.request_id), None)
+        self._speculative_cancel_probes.pop(int(completed.request_id), None)
         reclaim = getattr(self.runner, "reclaim", None)
         if callable(reclaim):
             reclaim(completed)

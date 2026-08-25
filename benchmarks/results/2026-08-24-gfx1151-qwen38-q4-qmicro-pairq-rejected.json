@@ -1,0 +1,321 @@
+{
+  "candidate": {
+    "launch_count_delta": 0,
+    "mechanism": "Load each existing qmicro packed-Q byte once per adjacent column pair and derive low/high dp4a words. Preserve local128/four-wave eight-column ownership and all arithmetic/reduction/BF16 boundaries.",
+    "not_rejected_eight_wave_merge": true,
+    "resident_bytes_delta": 0,
+    "strict_fallbacks_unchanged": true,
+    "workspace_bytes_delta": 0
+  },
+  "candidate_workflows": {
+    "17": {
+      "cache_tree_sha256": "a93c9add2bafc604c33ffef0f58620dd6ca63aeddc3d7103f2f4d3a7e588b904",
+      "compiler_guard_invoked": false,
+      "immutable_cache_only": true,
+      "path": "/tmp/c2-gfx1151-hwqueue-v2/task19-qmicro-pairq/owner-profile/c17-workflow.json",
+      "runtime_queue_ids": [
+        1
+      ],
+      "sha256": "68bf7784d1ea4c8cc6c61ac04fdde3255a89537136d20626a01cc2c4e0cece01"
+    },
+    "32": {
+      "cache_tree_sha256": "a93c9add2bafc604c33ffef0f58620dd6ca63aeddc3d7103f2f4d3a7e588b904",
+      "compiler_guard_invoked": false,
+      "immutable_cache_only": true,
+      "path": "/tmp/c2-gfx1151-hwqueue-v2/task19-qmicro-pairq/owner-profile/c32-workflow.json",
+      "runtime_queue_ids": [
+        1
+      ],
+      "sha256": "1e92804ddc1629c977c03c136218b4b26f49259fb4497e43484be227c800ce17"
+    },
+    "8": {
+      "cache_tree_sha256": "a93c9add2bafc604c33ffef0f58620dd6ca63aeddc3d7103f2f4d3a7e588b904",
+      "compiler_guard_invoked": false,
+      "immutable_cache_only": true,
+      "path": "/tmp/c2-gfx1151-hwqueue-v2/task19-qmicro-pairq/owner-profile/c8-workflow.json",
+      "runtime_queue_ids": [
+        1
+      ],
+      "sha256": "c2fc260c576faa6e007a031d71cf6284c94d93655692165edf10a937ea57efe9"
+    }
+  },
+  "created_at": "2026-08-24T09:29:26.361023+00:00",
+  "decision": {
+    "next": "Screen a different exact instruction/metadata mechanism; do not repeat paired-Q or eight-wave/16-column merge.",
+    "reason": [
+      "Leaf gate is clearly positive and exact across layers 0/8/63.",
+      "Binding c8 target family regresses 63.116 -> 64.511 ms (+2.21%) and complete marker regresses +2.10%.",
+      "Binding c32 target family is effectively flat 242.346 -> 242.010 ms (-0.14%); complete wall improvement is from uncovered host/profile variance while kernel sum regresses +0.53%.",
+      "c17 improves, but an isolated c17 win cannot override failed c8/c32 primary dense-owner gates."
+    ],
+    "retain": false,
+    "serving_run_skipped": true,
+    "source_removed": true
+  },
+  "hardware": "AMD Radeon 8060S Graphics / gfx1151",
+  "kind": "gfx1151_qwen38_q4_qmicro_pairq_screen",
+  "limitations": [
+    "Owner controls are the retained Task #18 traces and candidate uses the same workflow/order/cache contract; each trace is one synchronized marker.",
+    "Leaf timing includes only the target launch after one shared Q8 quantization; owner profiling adjudicates complete behavior."
+  ],
+  "model": {
+    "kv_storage": "bf16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "recurrent_state": "fp16",
+    "sampled_fingerprint": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa"
+  },
+  "owner_profiles": {
+    "17": {
+      "candidate": {
+        "dispatches": 3619,
+        "kernel_sum_ms": 334.571397,
+        "kernel_trace_sha256": "cd4bc4f93efc89f81b5223b07c1f1993a53efb5777e78d1960e69597a0e59b81",
+        "kernel_union_ms": 334.571397,
+        "marker_trace_sha256": "3a043e80e1e3476bfb6760ae7bbd40883b740508bf1ee93a31c2d463c6af32ae",
+        "marker_wall_ms": 350.557079,
+        "target_dispatches": 128,
+        "target_ms": 122.001835,
+        "target_shapes": [
+          {
+            "count": 128,
+            "grid": [
+              278528,
+              1,
+              1
+            ],
+            "lds_bytes": 1024,
+            "scratch_bytes": 0,
+            "vgpr": 152,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          }
+        ],
+        "uncovered_ms": 15.985682
+      },
+      "control": {
+        "dispatches": 3619,
+        "kernel_sum_ms": 344.577753,
+        "kernel_trace_sha256": "7c719423776c9e9ff96ad8fa44789d6f3808f2698b520a1af81fa10cb98e6b5b",
+        "kernel_union_ms": 344.577753,
+        "marker_trace_sha256": "0ae03ae0423f7bb5b3de4fe65eaf2f6b60b765b2fe99d8e373f19da40973cb1c",
+        "marker_wall_ms": 360.999395,
+        "target_dispatches": 128,
+        "target_ms": 129.569384,
+        "target_shapes": [
+          {
+            "count": 128,
+            "grid": [
+              278528,
+              1,
+              1
+            ],
+            "lds_bytes": 1024,
+            "scratch_bytes": 0,
+            "vgpr": 152,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          }
+        ],
+        "uncovered_ms": 16.421642
+      },
+      "delta_percent": {
+        "kernel_sum_ms": -2.9039471970786157,
+        "marker_wall_ms": -2.892613157980506,
+        "target_ms": -5.84053791596324,
+        "uncovered_ms": -2.6547893322726113
+      }
+    },
+    "32": {
+      "candidate": {
+        "dispatches": 5860,
+        "kernel_sum_ms": 520.975484,
+        "kernel_trace_sha256": "a490616ff80aa6cebc7da3c6f1baa5ae30b40870ea0da47fd75b73aca11966fd",
+        "kernel_union_ms": 520.975484,
+        "marker_trace_sha256": "f5110ebf39b36292134ead22190dd52e882ecefa9cebb22090b8b249fe1b5627",
+        "marker_wall_ms": 548.156056,
+        "target_dispatches": 256,
+        "target_ms": 242.009711,
+        "target_shapes": [
+          {
+            "count": 256,
+            "grid": [
+              278528,
+              1,
+              1
+            ],
+            "lds_bytes": 1024,
+            "scratch_bytes": 0,
+            "vgpr": 152,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          }
+        ],
+        "uncovered_ms": 27.180572
+      },
+      "control": {
+        "dispatches": 5860,
+        "kernel_sum_ms": 518.222733,
+        "kernel_trace_sha256": "e473e1c046b073858900da9b27ffade124dc081efe408bf2a713849ed57b0a98",
+        "kernel_union_ms": 518.222733,
+        "marker_trace_sha256": "050824045be76cccdff5c4dca9516b1a782edc776ad76950ad81a2684f6c13c3",
+        "marker_wall_ms": 562.329843,
+        "target_dispatches": 256,
+        "target_ms": 242.345564,
+        "target_shapes": [
+          {
+            "count": 256,
+            "grid": [
+              278528,
+              1,
+              1
+            ],
+            "lds_bytes": 1024,
+            "scratch_bytes": 0,
+            "vgpr": 152,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          }
+        ],
+        "uncovered_ms": 44.10711
+      },
+      "delta_percent": {
+        "kernel_sum_ms": 0.5311907071433142,
+        "marker_wall_ms": -2.5205468243306384,
+        "target_ms": -0.13858433983960916,
+        "uncovered_ms": -38.37598518696872
+      }
+    },
+    "8": {
+      "candidate": {
+        "dispatches": 945,
+        "kernel_sum_ms": 134.015843,
+        "kernel_trace_sha256": "db370792c8ac0a64c60cae6858ee284c0972b45bcee9b6f48eddeb40d7a3bd5e",
+        "kernel_union_ms": 134.015843,
+        "marker_trace_sha256": "3d4918ba883a4cc388910e0efc524553a303323e4965a562d96c82fbbfd3e3d3",
+        "marker_wall_ms": 141.137691,
+        "target_dispatches": 64,
+        "target_ms": 64.510593,
+        "target_shapes": [
+          {
+            "count": 64,
+            "grid": [
+              278528,
+              1,
+              1
+            ],
+            "lds_bytes": 1024,
+            "scratch_bytes": 0,
+            "vgpr": 152,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          }
+        ],
+        "uncovered_ms": 7.121848
+      },
+      "control": {
+        "dispatches": 945,
+        "kernel_sum_ms": 131.492109,
+        "kernel_trace_sha256": "161618d47263abba93de688799a8a336de7ab3b9a63aca09c84646bc04d5810b",
+        "kernel_union_ms": 131.492109,
+        "marker_trace_sha256": "fe1b341deed3badde7476ff6b92a7e2cac1194f489cbff513e8dab04c96576da",
+        "marker_wall_ms": 138.234364,
+        "target_dispatches": 64,
+        "target_ms": 63.1162,
+        "target_shapes": [
+          {
+            "count": 64,
+            "grid": [
+              278528,
+              1,
+              1
+            ],
+            "lds_bytes": 1024,
+            "scratch_bytes": 0,
+            "vgpr": 152,
+            "workgroup": [
+              128,
+              1,
+              1
+            ]
+          }
+        ],
+        "uncovered_ms": 6.742255
+      },
+      "delta_percent": {
+        "kernel_sum_ms": 1.9193045264792152,
+        "marker_wall_ms": 2.100293238228379,
+        "target_ms": 2.209247388150737,
+        "uncovered_ms": 5.630059972516621
+      }
+    }
+  },
+  "performance_claim": false,
+  "physical_host": "gfx1151",
+  "schema_version": 1,
+  "software": {
+    "compiler": "clang 23.0.0git aa451e1f + PATCHED:440716f8",
+    "rocm": "HIP 7.15.0"
+  },
+  "source": {
+    "base_commit": "1aa25878e",
+    "candidate_patch_sha256": "9f6755e6f75623a75396fad39ffd28b96f66a8638a9cec4d63d2e09df446df5f",
+    "diagnostic_candidate_commit": "a65ea7f5fc0abe3316bd4e16c914d34693aad425",
+    "final_source_restored": true
+  },
+  "status": "rejected_removed",
+  "strict_correctness": {
+    "actual_layer_row8_leaves": [
+      {
+        "candidate_median_ms": 0.966762638092041,
+        "candidate_wins": 30,
+        "control_median_ms": 1.0009861946105958,
+        "delta_percent": -3.418983868390757,
+        "layer": 0,
+        "mismatches": 0,
+        "path": "/tmp/c2-gfx1151-hwqueue-v2/task19-qmicro-pairq/pairq-layer0-row8-ab.json",
+        "samples": 31,
+        "sha256": "9dcba465b5dc1feaae96ca8ed72ee8b73c08bda56b55564ab56159f85033c141"
+      },
+      {
+        "candidate_median_ms": 0.9916500091552735,
+        "candidate_wins": 27,
+        "control_median_ms": 1.0220667839050293,
+        "delta_percent": -2.9760065808558833,
+        "layer": 8,
+        "mismatches": 0,
+        "path": "/tmp/c2-gfx1151-hwqueue-v2/task19-qmicro-pairq/pairq-layer8-row8-ab.json",
+        "samples": 31,
+        "sha256": "297336592b8224358aded3ef121299cd41f34ace144d1577268e04866a697480"
+      },
+      {
+        "candidate_median_ms": 0.9837947845458984,
+        "candidate_wins": 28,
+        "control_median_ms": 1.0066514015197754,
+        "delta_percent": -2.270559295836627,
+        "layer": 63,
+        "mismatches": 0,
+        "path": "/tmp/c2-gfx1151-hwqueue-v2/task19-qmicro-pairq/pairq-layer63-row8-ab.json",
+        "samples": 31,
+        "sha256": "54e45b76297f41f08d3caa35319ec4430d00bad6a97937236a203e581dc9f102"
+      }
+    ],
+    "all_bf16_exact": true,
+    "rows_2_through_8_serial_c1_nodes_passed": 7
+  }
+}

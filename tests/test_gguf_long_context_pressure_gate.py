@@ -7,6 +7,12 @@ def test_server_identity_matches_reused_production_workload_driver() -> None:
     assert gate._SERVED_MODEL_NAME == "qwen35-production-load"
 
 
+def test_long_context_gate_accepts_explicit_speculative_route() -> None:
+    args = gate.build_parser().parse_args(["--speculative-mtp"])
+
+    assert args.speculative_mtp is True
+
+
 def test_pool_plan_covers_mixed_and_forces_pressure_rejection() -> None:
     plan = gate.build_pool_plan(
         decode_tokens=32,
@@ -27,6 +33,19 @@ def test_pool_plan_covers_mixed_and_forces_pressure_rejection() -> None:
 
     assert plan.pressure_high_water_pages - plan.initial_pages == plan.pages_by_context[32_768]
     assert plan.pages_by_context[4_096] > plan.initial_pages
+
+
+def test_pressure_capacity_accounts_for_packed_workspace_lease() -> None:
+    plan = gate.build_pool_plan(decode_tokens=32, longer_context_tokens=None)
+
+    assert gate._pressure_config_high_water(plan) == 134
+    assert gate._effective_pressure_high_water(plan, workspace_lease_pages=32) == 166
+    assert gate._required_admission(plan, workspace_lease_pages=32) == {
+        "resource": "device_kv_pool",
+        "requested_units": 17,
+        "current_units": 166,
+        "capacity_units": 166,
+    }
 
 
 def test_workload_plan_covers_each_concurrent_context_and_mixed_rows() -> None:

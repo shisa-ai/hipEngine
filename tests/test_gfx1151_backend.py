@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -281,6 +282,15 @@ def test_gfx1151_hip_process_environment_preserves_explicit_queue_override() -> 
 
     assert applied == {}
     assert env["GPU_MAX_HW_QUEUES"] == "4"
+
+
+def test_gfx1151_retired_matrix_policy_cannot_suppress_queue2_default() -> None:
+    env = {"HIPENGINE_GPU_MAX_HW_QUEUES_POLICY": "runtime_default"}
+
+    applied = configure_hip_process_environment(detected_arches=["gfx1151"], env=env)
+
+    assert applied == {"GPU_MAX_HW_QUEUES": "2"}
+    assert env["GPU_MAX_HW_QUEUES"] == "2"
 
 
 def test_gfx1100_hip_process_environment_caps_reclaimable_scratch() -> None:
@@ -684,6 +694,40 @@ def test_gfx1151_backend_declares_q4_two_wave_shape_and_row_policy() -> None:
             "dense_rowtile16_w2_bf16_bf16_out",
         )
     )
+
+
+def test_gfx1151_backend_overrides_q5_rowtile_with_scoped_col8_wrapper(
+    monkeypatch,
+) -> None:
+    assert resolve(
+        backend="hip_gfx1151",
+        layer="linear",
+        quant="gguf_q5_k_t16_v1",
+        variant="t16_gemv_rowtile_bf16_bf16_out",
+    ) is gfx1151_backend._gguf_q5_k_t16_gemv_rowtile_gfx1151_bf16_bf16_out
+    assert is_registered(
+        KernelKey(
+            "hip_gfx1151",
+            "linear",
+            "gguf_q5_k_t16_v1",
+            "t16_gemv_rowtile_col8_bf16_bf16_out",
+        )
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("col8"),
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("col4"),
+    )
+    wrapper = gfx1151_backend._gguf_q5_k_t16_gemv_rowtile_gfx1151_bf16_bf16_out
+    wrapper(1, 2, 3, 8, 6_144, 5_120)
+    wrapper(1, 2, 3, 4, 2_048, 1_024)
+    assert calls == ["col8", "col4"]
 
 
 def test_gfx1151_backend_declares_generation2_physical_widths() -> None:

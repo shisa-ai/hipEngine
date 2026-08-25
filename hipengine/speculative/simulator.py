@@ -3,12 +3,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from enum import Enum
 from typing import Mapping, Sequence
 
 from hipengine.generation.concurrency2_simulator import SimulatedResourceLedger
-from hipengine.kvcache import ClaimConfidence, ResourceClaim, ResourceClaimSet
+from hipengine.kvcache import ResourceClaimSet
+from hipengine.speculative.frontier import SpecPlanReason, SpecTransactionMode
 from hipengine.speculative.interfaces import AcceptResult, DraftBatch
+from hipengine.speculative.transaction import (
+    SpecCycleResult,
+    SpecCycleStage,
+    SpecCycleTelemetry,
+    SpecCycleTransaction,
+    compose_speculative_claims,
+)
+
+# Compatibility aliases retained while callers migrate to the production names.
+SpecTransaction = SpecCycleTransaction
+SpeculativeCycleResult = SpecCycleResult
 
 
 def _required_text(value: object, label: str) -> str:
@@ -59,107 +70,6 @@ class SpeculativeRequestState:
             raise ValueError("finished request cannot retain a pending transaction")
 
 
-class SpecCycleStage(str, Enum):
-    NEW = "new"
-    RESERVED = "reserved"
-    TARGET_OPEN = "target_open"
-    PROVIDER_OPEN = "provider_open"
-    DRAFTED = "drafted"
-    VERIFIED = "verified"
-    ACCEPTED = "accepted"
-    COMMITTED = "committed"
-    ROLLED_BACK = "rolled_back"
-    CANCELLED = "cancelled"
-
-
-@dataclass(frozen=True, slots=True)
-class SpecTransaction:
-    """Both provisional state owners plus their pre-transaction checkpoints."""
-
-    operation_id: str
-    transaction_id: int
-    cycle_id: int
-    request_ids: tuple[int, ...]
-    reserved_claims: ResourceClaimSet
-    pre_target_cursors: tuple[int, ...]
-    pre_provider_cursors: tuple[int, ...]
-    pre_rng_counters: tuple[int, ...]
-    target_open: bool = False
-    provider_open: bool = False
-    target_committed: bool = False
-    provider_committed: bool = False
-    rolled_back: bool = False
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "operation_id", _required_text(self.operation_id, "operation_id"))
-        if min(int(self.transaction_id), int(self.cycle_id)) < 0:
-            raise ValueError("transaction_id/cycle_id must be non-negative")
-        if not self.request_ids or len(set(self.request_ids)) != len(self.request_ids):
-            raise ValueError("transaction request_ids must be non-empty and unique")
-        lengths = (
-            len(self.pre_target_cursors), len(self.pre_provider_cursors), len(self.pre_rng_counters)
-        )
-        if any(length != len(self.request_ids) for length in lengths):
-            raise ValueError("transaction checkpoints must align with request_ids")
-        if self.rolled_back and (self.target_committed or self.provider_committed):
-            raise ValueError("rolled-back transaction cannot be committed")
-        if self.target_committed != self.provider_committed:
-            raise ValueError("target/provider commit outcomes must match")
-
-
-@dataclass(frozen=True, slots=True)
-class SpeculativeCycleResult:
-    stage: SpecCycleStage
-    transaction: SpecTransaction
-    accept_result: AcceptResult | None = None
-    cancelled_request_ids: tuple[int, ...] = ()
-
-
-def compose_speculative_claims(
-    claim_id: str,
-    components: Mapping[str, ResourceClaimSet],
-) -> ResourceClaimSet:
-    """Atomically compose provider, target, and transient ownership vectors."""
-
-    identity = _required_text(claim_id, "claim_id")
-    if not components:
-        raise ValueError("speculative claim composition requires components")
-    entries: dict[tuple[str, object], ResourceClaim] = {}
-    confidence_order = {
-        ClaimConfidence.EXACT: 0,
-        ClaimConfidence.BOUNDED: 1,
-        ClaimConfidence.UNKNOWN: 2,
-    }
-    request_ids = {claims.request_id for claims in components.values() if claims.request_id is not None}
-    if len(request_ids) > 1:
-        raise ValueError("speculative claim components belong to different requests")
-    for component, claims in sorted(components.items()):
-        _required_text(component, "component name")
-        if not isinstance(claims, ResourceClaimSet):
-            raise TypeError("speculative claim components must be ResourceClaimSet")
-        for claim in claims.claims:
-            current = entries.get(claim.key)
-            if current is None:
-                entries[claim.key] = claim
-                continue
-            confidence = max(
-                (current.confidence, claim.confidence), key=confidence_order.__getitem__
-            )
-            entries[claim.key] = ResourceClaim(
-                claim.pool_id,
-                current.units + claim.units,
-                claim.lifetime,
-                confidence,
-            )
-    names = tuple(sorted(str(name) for name in components))
-    return ResourceClaimSet(
-        claim_id=identity,
-        request_id=next(iter(request_ids), None),
-        claims=tuple(entries[key] for key in sorted(entries, key=lambda item: (item[0], str(item[1])))),
-        metadata=(("component_count", len(names)), ("components", ",".join(names))),
-    )
-
-
 class SpeculativeCycleSimulator:
     """Fake target/provider transaction coordinator with exact rollback semantics."""
 
@@ -185,6 +95,38 @@ class SpeculativeCycleSimulator:
     def state(self, request_id: int) -> SpeculativeRequestState:
         return self._states[int(request_id)]
 
+    def reclaim_finished(self, request_id: int) -> SpeculativeRequestState:
+        """Remove one terminal request so its resident slot can be refilled."""
+
+        if self._active_owner is not None:
+            raise RuntimeError("cannot reclaim during an active speculative cycle")
+        state = self.state(request_id)
+        if not state.finished or state.pending_transaction_id is not None:
+            raise ValueError("only transaction-free finished requests may be reclaimed")
+        del self._states[state.target_request_id]
+        return state
+
+    def admit_states(self, states: Sequence[SpeculativeRequestState]) -> None:
+        """Admit new request owners between cycles for refill simulation."""
+
+        if self._active_owner is not None:
+            raise RuntimeError("cannot admit during an active speculative cycle")
+        incoming = tuple(states)
+        if not incoming:
+            raise ValueError("admit_states requires at least one request")
+        request_ids = tuple(state.target_request_id for state in incoming)
+        slots = tuple(state.resident_slot for state in incoming)
+        if len(request_ids) != len(set(request_ids)) or any(
+            request_id in self._states for request_id in request_ids
+        ):
+            raise ValueError("admitted request ids must be new and unique")
+        occupied = {state.resident_slot for state in self._states.values()}
+        if len(slots) != len(set(slots)) or any(slot in occupied for slot in slots):
+            raise ValueError("admitted resident slots must be free and unique")
+        self._states.update(
+            (state.target_request_id, state) for state in incoming
+        )
+
     def assert_conserved(self) -> None:
         self.ledger.assert_conserved()
         if self._active_owner is not None:
@@ -201,9 +143,13 @@ class SpeculativeCycleSimulator:
         correction_or_bonus_tokens: Sequence[int | None],
         cancel_at: SpecCycleStage | None = None,
         cancel_request_id: int | None = None,
+        fail_at: SpecCycleStage | None = None,
+        failure_message: str = "injected speculative cycle failure",
     ) -> SpeculativeCycleResult:
         if self._active_owner is not None:
             raise RuntimeError("a speculative cycle is already active")
+        if cancel_at is not None and fail_at is not None:
+            raise ValueError("cancel_at and fail_at are mutually exclusive")
         request_ids = tuple(int(request_id) for request_id in draft.request_ids)
         states = tuple(self.state(request_id) for request_id in request_ids)
         if any(state.finished for state in states):
@@ -223,6 +169,12 @@ class SpeculativeCycleSimulator:
             sum(1 for owner, active in zip(draft.row_to_request, draft.active_mask or (True,) * draft.draft_rows, strict=True) if owner == request_id and active)
             for request_id in request_ids
         )
+        planned_counts = tuple(
+            sum(1 for owner in draft.row_to_request if owner == request_id)
+            for request_id in request_ids
+        )
+        if not any(available):
+            raise ValueError("speculative cycle requires at least one active candidate")
         if any(count < 0 or count > maximum for count, maximum in zip(counts, available, strict=True)):
             raise ValueError("accepted counts exceed active draft candidates")
         if any(token is not None and int(token) < 0 for token in corrections):
@@ -235,15 +187,37 @@ class SpeculativeCycleSimulator:
         claims = compose_speculative_claims(operation_id, component_claims)
         self.ledger.reserve(owner, claims)
         self._active_owner = owner
-        transaction = SpecTransaction(
+        provider_states = tuple(
+            state
+            for state, candidate_count in zip(states, planned_counts, strict=True)
+            if candidate_count > 0
+        )
+        transaction = SpecCycleTransaction(
             operation_id=operation_id,
             transaction_id=transaction_id,
             cycle_id=draft.cycle_id,
             request_ids=request_ids,
             reserved_claims=claims,
             pre_target_cursors=tuple(state.target_cursor for state in states),
-            pre_provider_cursors=tuple(state.provider_cursor for state in states),
+            pre_provider_cursors=tuple(
+                state.provider_cursor for state in provider_states
+            ),
             pre_rng_counters=tuple(state.rng_counter for state in states),
+            target_transaction_mode=SpecTransactionMode.PACKED_SCRATCH,
+            provider_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
+            target_owner=f"{operation_id}:target",
+            provider_owner=f"{operation_id}:provider",
+            provider_request_ids=tuple(
+                state.target_request_id for state in provider_states
+            ),
+            target_checkpoint_ids=tuple(
+                f"target:{state.target_request_id}:{state.target_cursor}"
+                for state in states
+            ),
+            provider_checkpoint_ids=tuple(
+                f"provider:{state.target_request_id}:{state.provider_cursor}"
+                for state in provider_states
+            ),
         )
         for state in states:
             self._states[state.target_request_id] = replace(
@@ -251,29 +225,67 @@ class SpeculativeCycleSimulator:
             )
 
         stage = SpecCycleStage.RESERVED
-        cancelled = self._cancel_if_requested(
-            stage, cancel_at, cancel_request_id, transaction, request_ids
+        interrupted = self._interrupt_if_requested(
+            stage,
+            cancel_at,
+            cancel_request_id,
+            fail_at,
+            failure_message,
+            transaction,
+            request_ids,
         )
-        if cancelled is not None:
-            return cancelled
+        if interrupted is not None:
+            return interrupted
         transaction = replace(transaction, target_open=True)
         stage = SpecCycleStage.TARGET_OPEN
-        cancelled = self._cancel_if_requested(stage, cancel_at, cancel_request_id, transaction, request_ids)
-        if cancelled is not None:
-            return cancelled
+        interrupted = self._interrupt_if_requested(
+            stage,
+            cancel_at,
+            cancel_request_id,
+            fail_at,
+            failure_message,
+            transaction,
+            request_ids,
+        )
+        if interrupted is not None:
+            return interrupted
         transaction = replace(transaction, provider_open=True)
         stage = SpecCycleStage.PROVIDER_OPEN
-        cancelled = self._cancel_if_requested(stage, cancel_at, cancel_request_id, transaction, request_ids)
-        if cancelled is not None:
-            return cancelled
+        interrupted = self._interrupt_if_requested(
+            stage,
+            cancel_at,
+            cancel_request_id,
+            fail_at,
+            failure_message,
+            transaction,
+            request_ids,
+        )
+        if interrupted is not None:
+            return interrupted
         stage = SpecCycleStage.DRAFTED
-        cancelled = self._cancel_if_requested(stage, cancel_at, cancel_request_id, transaction, request_ids)
-        if cancelled is not None:
-            return cancelled
+        interrupted = self._interrupt_if_requested(
+            stage,
+            cancel_at,
+            cancel_request_id,
+            fail_at,
+            failure_message,
+            transaction,
+            request_ids,
+        )
+        if interrupted is not None:
+            return interrupted
         stage = SpecCycleStage.VERIFIED
-        cancelled = self._cancel_if_requested(stage, cancel_at, cancel_request_id, transaction, request_ids)
-        if cancelled is not None:
-            return cancelled
+        interrupted = self._interrupt_if_requested(
+            stage,
+            cancel_at,
+            cancel_request_id,
+            fail_at,
+            failure_message,
+            transaction,
+            request_ids,
+        )
+        if interrupted is not None:
+            return interrupted
 
         accepted_tokens = self._accepted_tokens(draft, counts)
         visible = tuple(
@@ -302,11 +314,31 @@ class SpeculativeCycleSimulator:
             finish_reasons=finish_reasons,
         )
         stage = SpecCycleStage.ACCEPTED
-        cancelled = self._cancel_if_requested(
-            stage, cancel_at, cancel_request_id, transaction, request_ids, accept_result
+        interrupted = self._interrupt_if_requested(
+            stage,
+            cancel_at,
+            cancel_request_id,
+            fail_at,
+            failure_message,
+            transaction,
+            request_ids,
+            accept_result,
         )
-        if cancelled is not None:
-            return cancelled
+        if interrupted is not None:
+            return interrupted
+        for stage in (SpecCycleStage.READBACK, SpecCycleStage.COMMITTING):
+            interrupted = self._interrupt_if_requested(
+                stage,
+                cancel_at,
+                cancel_request_id,
+                fail_at,
+                failure_message,
+                transaction,
+                request_ids,
+                accept_result,
+            )
+            if interrupted is not None:
+                return interrupted
 
         for state, tokens, target_delta, provider_delta, finish_reason in zip(
             states, visible, target_deltas, provider_deltas, finish_reasons, strict=True
@@ -325,10 +357,163 @@ class SpeculativeCycleSimulator:
             transaction, target_committed=True, provider_committed=True
         )
         self._release_active_owner()
-        return SpeculativeCycleResult(
-            stage=SpecCycleStage.COMMITTED,
-            transaction=transaction,
-            accept_result=accept_result,
+        candidate_counts = planned_counts
+        telemetry = SpecCycleTelemetry(
+            operation_id=operation_id,
+            request_ids=request_ids,
+            candidate_counts=candidate_counts,
+            plan_reasons=tuple(
+                SpecPlanReason.SPECULATIVE_QUALIFIED
+                if candidate_count > 0
+                else SpecPlanReason.POLICY_SELECTED_AR
+                for candidate_count in candidate_counts
+            ),
+            proposal_widths=(len(provider_states),),
+            target_row_decomposition=(len(request_ids) + draft.draft_rows,),
+            execution_route="eager",
+        )
+        return SpecCycleResult.committed(
+            transaction,
+            accept_result,
+            telemetry=telemetry,
+        )
+
+    def run_k0_cycle(
+        self,
+        request_ids: Sequence[int],
+        *,
+        component_claims: Mapping[str, ResourceClaimSet],
+        output_tokens: Sequence[int],
+        reasons: Sequence[SpecPlanReason] | None = None,
+        cancel_at: SpecCycleStage | None = None,
+        cancel_request_id: int | None = None,
+        fail_at: SpecCycleStage | None = None,
+        failure_message: str = "injected K0 cycle failure",
+    ) -> SpecCycleResult:
+        """Run one target-only AR transition through production K0 ownership."""
+
+        if self._active_owner is not None:
+            raise RuntimeError("a speculative cycle is already active")
+        if cancel_at is not None and fail_at is not None:
+            raise ValueError("cancel_at and fail_at are mutually exclusive")
+        ids = tuple(int(request_id) for request_id in request_ids)
+        if not ids or len(ids) != len(set(ids)):
+            raise ValueError("K0 request_ids must be non-empty and unique")
+        states = tuple(self.state(request_id) for request_id in ids)
+        if any(state.finished for state in states):
+            raise ValueError("K0 cycle cannot include finished requests")
+        tokens = tuple(int(token) for token in output_tokens)
+        if len(tokens) != len(ids) or any(token < 0 for token in tokens):
+            raise ValueError("output_tokens must be non-negative and align with request_ids")
+        plan_reasons = (
+            (SpecPlanReason.POLICY_SELECTED_AR,) * len(ids)
+            if reasons is None
+            else tuple(SpecPlanReason(reason) for reason in reasons)
+        )
+        if len(plan_reasons) != len(ids) or any(
+            reason is SpecPlanReason.SPECULATIVE_QUALIFIED for reason in plan_reasons
+        ):
+            raise ValueError("K0 reasons must align and remain non-speculative")
+        cycle_id = max(state.cycle_id for state in states) + 1
+        self._transaction_sequence += 1
+        transaction_id = self._transaction_sequence
+        operation_id = f"k0-cycle:{cycle_id}:{transaction_id}"
+        claims = compose_speculative_claims(operation_id, component_claims)
+        self.ledger.reserve(operation_id, claims)
+        self._active_owner = operation_id
+        transaction = SpecCycleTransaction(
+            operation_id=operation_id,
+            transaction_id=transaction_id,
+            cycle_id=cycle_id,
+            request_ids=ids,
+            reserved_claims=claims,
+            pre_target_cursors=tuple(state.target_cursor for state in states),
+            pre_rng_counters=tuple(state.rng_counter for state in states),
+            target_transaction_mode=SpecTransactionMode.RESERVED_APPEND,
+            target_owner=f"{operation_id}:target",
+            target_checkpoint_ids=tuple(
+                f"target:{state.target_request_id}:{state.target_cursor}"
+                for state in states
+            ),
+        )
+        for state in states:
+            self._states[state.target_request_id] = replace(
+                state, pending_transaction_id=transaction_id
+            )
+        for stage in (SpecCycleStage.RESERVED,):
+            interrupted = self._interrupt_if_requested(
+                stage,
+                cancel_at,
+                cancel_request_id,
+                fail_at,
+                failure_message,
+                transaction,
+                ids,
+            )
+            if interrupted is not None:
+                return interrupted
+        transaction = replace(transaction, target_open=True)
+        for stage in (
+            SpecCycleStage.TARGET_OPEN,
+            SpecCycleStage.VERIFIED,
+            SpecCycleStage.ACCEPTED,
+            SpecCycleStage.READBACK,
+            SpecCycleStage.COMMITTING,
+        ):
+            interrupted = self._interrupt_if_requested(
+                stage,
+                cancel_at,
+                cancel_request_id,
+                fail_at,
+                failure_message,
+                transaction,
+                ids,
+            )
+            if interrupted is not None:
+                return interrupted
+        finish_reasons = tuple(
+            "length"
+            if state.output_limit and len(state.visible_tokens) + 1 >= state.output_limit
+            else None
+            for state in states
+        )
+        accept_result = AcceptResult(
+            request_ids=ids,
+            accepted_counts=(0,) * len(ids),
+            accepted_tokens=((),) * len(ids),
+            transaction_id=transaction_id,
+            correction_or_bonus_tokens=tokens,
+            target_cursor_deltas=(1,) * len(ids),
+            provider_cursor_deltas=(0,) * len(ids),
+            finish_reasons=finish_reasons,
+        )
+        for state, token, finish_reason in zip(
+            states, tokens, finish_reasons, strict=True
+        ):
+            self._states[state.target_request_id] = replace(
+                state,
+                target_cursor=state.target_cursor + 1,
+                cycle_id=cycle_id,
+                pending_transaction_id=None,
+                rng_counter=state.rng_counter + 1,
+                visible_tokens=(*state.visible_tokens, token),
+                finished=finish_reason is not None,
+            )
+        transaction = replace(transaction, target_committed=True)
+        self._release_active_owner()
+        telemetry = SpecCycleTelemetry(
+            operation_id=operation_id,
+            request_ids=ids,
+            candidate_counts=(0,) * len(ids),
+            plan_reasons=plan_reasons,
+            proposal_widths=(),
+            target_row_decomposition=(len(ids),),
+            execution_route="ar",
+        )
+        return SpecCycleResult.committed(
+            transaction,
+            accept_result,
+            telemetry=telemetry,
         )
 
     def _accepted_tokens(
@@ -350,6 +535,67 @@ class SpeculativeCycleSimulator:
                 selected.append(draft.candidate_tokens[rows[0]])
             result.append(tuple(selected))
         return tuple(result)
+
+    def _interrupt_if_requested(
+        self,
+        stage: SpecCycleStage,
+        cancel_at: SpecCycleStage | None,
+        cancel_request_id: int | None,
+        fail_at: SpecCycleStage | None,
+        failure_message: str,
+        transaction: SpecTransaction,
+        request_ids: tuple[int, ...],
+        accept_result: AcceptResult | None = None,
+    ) -> SpecCycleResult | None:
+        cancelled = self._cancel_if_requested(
+            stage,
+            cancel_at,
+            cancel_request_id,
+            transaction,
+            request_ids,
+            accept_result,
+        )
+        if cancelled is not None:
+            return cancelled
+        return self._fail_if_requested(
+            stage,
+            fail_at,
+            failure_message,
+            transaction,
+            request_ids,
+            accept_result,
+        )
+
+    def _fail_if_requested(
+        self,
+        stage: SpecCycleStage,
+        fail_at: SpecCycleStage | None,
+        failure_message: str,
+        transaction: SpecTransaction,
+        request_ids: tuple[int, ...],
+        accept_result: AcceptResult | None = None,
+    ) -> SpecCycleResult | None:
+        if fail_at is None or SpecCycleStage(fail_at) is not stage:
+            return None
+        for request_id in request_ids:
+            state = self.state(request_id)
+            self._states[request_id] = replace(
+                state,
+                pending_transaction_id=None,
+            )
+        rolled_back = replace(
+            transaction,
+            target_open=False,
+            provider_open=False,
+            rolled_back=True,
+        )
+        self._release_active_owner()
+        return SpecCycleResult(
+            stage=SpecCycleStage.FAILED,
+            transaction=rolled_back,
+            accept_result=accept_result,
+            error=str(failure_message),
+        )
 
     def _cancel_if_requested(
         self,
@@ -380,7 +626,7 @@ class SpeculativeCycleSimulator:
             rolled_back=True,
         )
         self._release_active_owner()
-        return SpeculativeCycleResult(
+        return SpecCycleResult(
             stage=SpecCycleStage.CANCELLED,
             transaction=rolled_back,
             accept_result=accept_result,

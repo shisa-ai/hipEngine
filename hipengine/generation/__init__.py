@@ -145,8 +145,12 @@ def register_builtin_generators() -> None:
     from hipengine.generation.qwen36_gguf_profiles import (
         register_qwen36_gguf_gfx1151_profiles,
     )
+    from hipengine.generation.qwen38_gguf_profiles import (
+        register_qwen38_gguf_gfx1151_profiles,
+    )
 
     register_qwen36_gguf_gfx1151_profiles()
+    register_qwen38_gguf_gfx1151_profiles()
 
     _BUILTINS_REGISTERED = True
 
