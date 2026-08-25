@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-25**
+Last updated: **2026-08-26**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -108,8 +108,11 @@ Physical C2/C4 completes device-resident candidate→target→GPU accept→selec
 commit with zero candidate D2H, zero warmed allocation/free, exact K1-K3 oracle
 coverage, and zero final ownership. It remains performance-blocked at
 **5.618/9.183 tok/s vs 15.530/28.766 true AR** because acceptance is only
-**18.43%**. Automatic/product remains K0; P5 owns complete R6/R8/R12/R16 target
-profiling. [`P4 evidence`](results/2026-08-26-gfx1151-specdec2-perf-p4-device-cycle.json).
+**18.43%**. P5 profiles R6/R8/R12/R16 and admits one default-off P6 route:
+for four exact standard-Q4 shapes at rows 6/8/12/16, use the existing exact
+single-wave parent instead of the overprovisioned 256-row shared-B owner. The
+operation owner projects **1.145x** and **23.0–23.1 ms** target saving.
+Automatic/product remains K0. [`P5 evidence`](results/2026-08-26-gfx1151-specdec2-perf-p5-target-admission.json).
 
 gfx1100 S7 now retains two exact C1 foundations, both automatic K0: dense
 Qwen3.6-27B GGUF K1-K3 staged IDs match true AR/direct control, while packed
