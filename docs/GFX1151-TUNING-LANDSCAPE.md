@@ -1,20 +1,30 @@
 # gfx1151 Non-Overlapping Tuning Landscape
 
-Last updated: 2026-08-21
+Last updated: 2026-08-25
 Host: HP ZBook Ultra G1a / Radeon 8060S / `gfx1151` (60 W power-limited lane)
 Model: `Qwen/Qwen3.6-35B-A3B` GGUF Q4_K_M (MTP-bearing UD file) — c1 decode, BF16 KV unless explicitly noted.
 
-**Review verdict (2026-08-20): P3-FULLATTN remains the next optimization lane,
-but decode core+gate is first.** The durable c1 profile gives it the largest
-remaining non-overlapping GPU-side ceiling (2.386 ms/token, ~8.9% of the
-post-PN6 26.83-ms wall), while selected-expert kernel math is smaller (~1.8 ms)
-and already near its practical bandwidth ceiling. P3-FULLATTN must begin with a
-fresh route/profile confirmation and target the active gfx1151 BF16 fixed256
-context-batch kernel's own math (the separate gate launch was screened: fusing
-it into the leaf is a measured no-win — see candidate 1a below). It is **not**
-a direct
-Laguna-WMMA wiring task and **not** a generic inherited-256-thread task; the
-current route facts and candidate boundary are recorded below.
+**Review verdict (2026-08-25): current-main AR ownership is refreshed; no new
+non-overlapping implementation is admitted.** A clean detached `822a8b00f`
+ZBook/gfx1151 run records exact p512/d128 AR at **30.003 tok/s** over five
+repeats and 24 marked rocprof steps with positive durations. Kernel-time owners
+are GDN input Q8 **4.200 ms/token**, selected-Q4 gate/up **2.435**, Q6 LM head
+**2.268**, selected-down **1.774**, and GDN output Q8 **1.487**. The order matches
+the independent high-power SH closeout; absolute rates are not compared across
+those physical hosts.
+
+That stable order is a closure result, not permission to repeat the old ladder.
+The completed SH campaign already rejected exact GDN DPP/raw-layout completion,
+selected-Q4 tile/thread/DP4A/raw/half-sequential routes, Q6 LM-head tile8,
+shared-expert composite, and cross-queue branch overlap; Q5 selected-down tile8
+is already retained. The fresh marker window contains **17.831 ms/token** of
+traced-kernel interval union and **16.751 ms/token** without a traced kernel, but
+that residual is not labeled recoverable: prior exact MoE graph replay removed
+about 64% of FFN launches and still regressed wall **0.84%**. Reopen only for a
+materially new exact representation/dataflow with either >=1.15x
+operation-complete leaf speedup or >=0.5 ms/token projected saving, or after
+SPECDEC2/MTP2 changes the actual route/kernel identity. Evidence:
+[`current-main refresh`](../benchmarks/results/2026-08-25-zbook-gfx1151-qwen36-35b-ar-moe-profile-refresh.json).
 
 This doc records the **current gfx1151 performance-tuning surface split across
 active agents** so new work lands in the open slots and does not collide with
@@ -28,17 +38,21 @@ concurrent ownership. It is a coordination + decision record, not a protocol
 | --- | --- | --- |
 | **Agent 1 — recurrent state** | GDN / linear-attention state: state cache, SSM output, decay projections | `gdn_attention_core` 5.19, `gdn_decay_projections` 3.85, `gdn_input_projections` 2.29, `gdn_output_projection` 2.14 ≈ **13.5 ms/token** |
 | **Agent 2 — concurrency / KV** | KV cache layout, paged/continuous batching scaling (gfx1100 first, global effects) | scheduler / KV-pool axis; not in the c1 stage ranking |
-| **OPEN — this lane** | MoE dispatch (selected + shared expert GEMV, router, combine), full-attention math, LM-head | see table below |
+| **Profile-only — no candidate admitted** | AR-only MoE/GDN/LM-head ownership outside SPECDEC2/MTP2 | current clean rank above; prior mechanisms below are closed unless a materially new premise appears |
 
 \* Durable pre-PN5/PN6 ranking from `scripts/pn3_stage_ranking_from_trace.py`
 (2026-08-17), ROCTX nested-exclusive GPU-visible wall. It admits candidates but
 must not be added directly to the 26.83-ms post-PN6 wall.
 
-## The open (non-overlapping) c1 surface
+## Historical pre-PN5/PN6 c1 surface
+
+These rows preserve the campaign's earlier stage-wall history; they are not the
+current candidate selector. The positive-duration 2026-08-25 role ranking above
+supersedes them for new work.
 
 | Stage | ms/token* | Notes |
 | --- | ---: | --- |
-| `moe_router_combine` | **10.657** | largest open cost; includes router + group scatter/gather + weighted-sum combine + residual. Much is host-dispatch idle (see PN5/PN6) |
+| `moe_router_combine` | **10.657** | historical stage wall; includes router + group scatter/gather + weighted-sum combine + residual. Much is host-dispatch idle (see PN5/PN6) |
 | `shared_expert_gate_up` | 3.054 | shared-expert GEMV |
 | `shared_expert_down` | 2.936 | shared-expert GEMV |
 | `selected_expert_down` | 2.895 | selected-expert GEMV (the per-expert W4 path) |
@@ -201,7 +215,7 @@ Systematic sweep for gfx1100-tuned cutoffs/geometry inherited by gfx1151:
    registered unfused chain retained as strict fallback. Only then consider
    128/512-thread or split-policy variants. QKV/output projections remain the
    separately owned `launch_gguf_linear` family and are not bundled into this
-   candidate. **Next target.**
+   candidate. **Closed after candidates 1a-1d; the 2026-08-25 refresh does not reopen it.**
 
    **Candidate 1a closed 2026-08-20 (measured no-win):** the fused fixed256
    context-batch+gate leaf was implemented, RED-tested bit-exact, and measured.
@@ -232,14 +246,17 @@ Systematic sweep for gfx1100-tuned cutoffs/geometry inherited by gfx1151:
    leaf is at its practical gfx1151 optimum; remaining full-attention headroom
    is the QKV/output projection family (separate owner). See
    `worklog/entries/20260820T124504.891610Z-lhl-pn3-fullattn-splitk-wmma-close-c418f6.md`.
-2. **P3-EXPGEMV — selected-expert W4 GEMV shape tuning** (thread/tiling/dequant
-   for 40 CU + 32 MiB MALL). Kernel-side; gated on the do-not-repeat ledger
-   (DP4A/Q8_1, row-compact GEMV, one-plane Q8_1 already rejected). The host
-   dispatch above it is closed (no-win), leaving the kernel math as the only
-   lever (~1.8 ms).
-3. **P3-MOECOMBINE — MoE combine / residual kernel tuning** (GPU math visible
-   once host-idle removed).
-4. **P3-LMHEAD — LM-head/sample** — smallest (0.12 ms), only after the above.
+2. **P3-EXPGEMV — closed pending a materially new dataflow.** Current selected-
+   Q4 gate/up is 2.435 ms/token, but local128 tile8 already reached only 1.1466x
+   / 0.2958 ms projected and missed both frozen gates; tile4, launch-width,
+   half-sequential, DP4A/raw, and graph routes are rejected. Q5 tile8 is already
+   retained and Q6 variants missed.
+3. **P3-MOECOMBINE — closed under current ownership.** Current router/combine is
+   1.009 ms/token. The exact shared-expert composite measured 0.899x and genuine
+   cross-queue selected/shared overlap regressed complete wall 2.058%.
+4. **P3-LMHEAD — closed under current Q6T16 ownership.** The refresh measures
+   2.268 ms/token including Q6 projection and two-stage argmax; exact tile8 was
+   0.9978x and was removed.
 
 ## Do-not-repeat ledger (MoE family, already closed)
 
@@ -294,6 +311,8 @@ coordinate with agent 2 on the KV boundary).
 
 ## Source
 
+- Current-main ownership refresh: `benchmarks/results/2026-08-25-zbook-gfx1151-qwen36-35b-ar-moe-profile-refresh.json`
+- Completed SH residual audit: `benchmarks/results/2026-08-06-gfx1151-gguf-sh17-c0-post-sh16-residual-audit.json`
 - Stage ranking: `benchmarks/results/2026-08-17-zbook-qwen36-pn3-laq1-declaration-red.json`
 - PN5/PN6: `benchmarks/results/2026-08-18-zbook-qwen36-pn{5,6}-*-hoist.json`
 - Selected-expert closeout: `benchmarks/results/2026-08-20-gfx1151-qwen36-35b-pn3-moeselect-no-win.json`
