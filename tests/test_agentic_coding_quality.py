@@ -14,8 +14,12 @@ from hipengine.benchmark.agentic_quality import (
     normalize_chat_quality_turn,
     validate_agentic_quality_artifact,
 )
-from scripts.agentic_coding_quality import collect_live_quality_records
-
+from hipengine.tokenization.identity import token_ids_sha256
+from scripts.agentic_coding_quality import (
+    _atomic_write_json,
+    _quality_build_profile,
+    collect_live_quality_records,
+)
 
 WORKLOADS = Path("benchmarks/prompts/agentic-coding-v1.json")
 
@@ -205,6 +209,38 @@ def test_quality_artifact_reports_rates_without_performance_rollups() -> None:
     assert "rollup" not in artifact
 
 
+def test_quality_artifact_checks_normalized_repeat_determinism() -> None:
+    suite = load_agentic_workload_suite(WORKLOADS)
+    payload = _records_payload(suite)
+    payload["configuration"]["repetitions"] = 2
+    repeated = []
+    for record in payload["turn_records"]:
+        copy_record = copy.deepcopy(record)
+        copy_record["run_id"] = "run-1"
+        copy_record["request_id"] = f"repeat-{record['request_id']}"
+        copy_record["quality"]["call_id"] = f"repeat-{record['quality']['call_id']}"
+        repeated.append(copy_record)
+    payload["turn_records"].extend(repeated)
+
+    artifact = build_agentic_quality_artifact(suite, payload)
+    assert artifact["quality"]["determinism"] == {
+        "evaluated": True,
+        "expected_repetitions": 2,
+        "task_rows": 4,
+        "passed": True,
+        "mismatches": [],
+        "incomplete_rows": [],
+    }
+
+    payload["turn_records"][-1]["output"]["generated_token_ids"][-1] += 1
+    payload["turn_records"][-1]["output"]["generated_token_ids_sha256"] = (
+        token_ids_sha256(payload["turn_records"][-1]["output"]["generated_token_ids"])
+    )
+    artifact = build_agentic_quality_artifact(suite, payload)
+    assert artifact["quality"]["determinism"]["passed"] is False
+    assert artifact["quality"]["determinism"]["mismatches"][0]["turn_index"] == 3
+
+
 def test_quality_json_schemas_pin_separate_non_performance_kinds() -> None:
     schemas = {
         "agentic-coding-quality-records.schema.json": AGENTIC_QUALITY_RECORDS_KIND,
@@ -217,9 +253,13 @@ def test_quality_json_schemas_pin_separate_non_performance_kinds() -> None:
         assert payload["$schema"] == "https://json-schema.org/draft/2020-12/schema"
         assert payload["properties"]["kind"]["const"] == kind
         if filename.endswith("records.schema.json"):
-            assert payload["$defs"]["configuration"]["properties"]["performance_claim"]["const"] is False
+            performance_claim = payload["$defs"]["configuration"]["properties"][
+                "performance_claim"
+            ]
+            assert performance_claim["const"] is False
         else:
             assert payload["properties"]["performance_claim"]["const"] is False
+            assert "determinism" in payload["properties"]["quality"]["properties"]
 
 
 def test_quality_artifact_rejects_false_claims_and_tampering() -> None:
@@ -227,12 +267,28 @@ def test_quality_artifact_rejects_false_claims_and_tampering() -> None:
 
     false_claim = _records_payload(suite)
     false_claim["configuration"]["performance_claim"] = True
-    with pytest.raises(AgenticBenchmarkError, match="quality artifacts cannot make performance claims"):
+    with pytest.raises(
+        AgenticBenchmarkError,
+        match="quality artifacts cannot make performance claims",
+    ):
         build_agentic_quality_artifact(suite, false_claim)
+
+    capabilities_mismatch = _records_payload(suite)
+    capabilities_mismatch["configuration"].update(
+        {
+            "server_capabilities": {"model": {"id": "fake-model"}},
+            "server_capabilities_sha256": "0" * 64,
+        }
+    )
+    with pytest.raises(AgenticBenchmarkError, match="server capabilities hash mismatch"):
+        build_agentic_quality_artifact(suite, capabilities_mismatch)
 
     artifact = build_agentic_quality_artifact(suite, _records_payload(suite))
     artifact["turn_records"][0]["quality"]["success"] = False
-    with pytest.raises(AgenticBenchmarkError, match="turn_records_sha256 does not match turn_records"):
+    with pytest.raises(
+        AgenticBenchmarkError,
+        match="turn_records_sha256 does not match turn_records",
+    ):
         validate_agentic_quality_artifact(artifact)
 
 
@@ -243,7 +299,15 @@ class _FakeQualityTransport:
         self.tool_choices: list[object] = []
 
     def capabilities(self):
-        return {"cache": {"prefix_cache": "off"}}
+        return {
+            "object": "hipengine.capabilities",
+            "model": {"id": "fake-model", "backend": "fake"},
+            "tokenizer": {"tokenize": True, "detokenize": True},
+            "features": {
+                "tools": {"enabled": True, "strict_result_validation": True},
+            },
+            "cache": {"prefix_cache": "off"},
+        }
 
     def tokenize(self, text):
         return list(text.encode("utf-8"))
@@ -278,6 +342,7 @@ class _FakeQualityTransport:
 def test_live_quality_collector_keeps_failed_turn_and_uses_auto_tool_choice() -> None:
     suite = load_agentic_workload_suite(WORKLOADS)
     transport = _FakeQualityTransport(suite)
+    checkpoints: list[dict[str, object]] = []
 
     loaded_suite, records = collect_live_quality_records(
         transport,
@@ -290,6 +355,7 @@ def test_live_quality_collector_keeps_failed_turn_and_uses_auto_tool_choice() ->
         max_tokens=32,
         cache_mode="off",
         idle_timeout_s=1.0,
+        checkpoint_callback=lambda payload: checkpoints.append(copy.deepcopy(dict(payload))),
     )
     artifact = build_agentic_quality_artifact(loaded_suite, records)
 
@@ -297,3 +363,59 @@ def test_live_quality_collector_keeps_failed_turn_and_uses_auto_tool_choice() ->
     assert artifact["quality"]["successes"] == 3
     assert artifact["quality"]["outcomes"] == {"invalid_tool_call": 1, "passed": 3}
     assert transport.tool_choices == ["auto"] * 4
+    assert records["configuration"]["repetitions"] == 1
+    assert records["configuration"]["max_tokens"] == 32
+    assert len(records["configuration"]["server_capabilities_sha256"]) == 64
+    assert records["configuration"]["server_capabilities"]["model"]["id"] == "fake-model"
+    assert [row["progress"]["completed_turns"] for row in checkpoints] == [1, 2, 3, 4, 4]
+    assert [row["status"] for row in checkpoints] == [
+        "in_progress",
+        "in_progress",
+        "in_progress",
+        "in_progress",
+        "complete",
+    ]
+    assert checkpoints[-1]["raw_turns"][1]["response"]["choices"][0][
+        "finish_details"
+    ] == {"reason": "invalid_tool_call"}
+
+
+def test_live_quality_collector_rejects_wrong_served_model_before_generation() -> None:
+    suite = load_agentic_workload_suite(WORKLOADS)
+    transport = _FakeQualityTransport(suite)
+    transport.capabilities = lambda: {
+        **_FakeQualityTransport.capabilities(transport),
+        "model": {"id": "other-model", "backend": "fake"},
+    }
+
+    with pytest.raises(AgenticBenchmarkError, match="served model.*other-model"):
+        collect_live_quality_records(
+            transport,
+            workloads_path=WORKLOADS,
+            workload_id="small_repo",
+            model="fake-model",
+            backend="fake",
+            concurrency=1,
+            runs=1,
+            max_tokens=32,
+            cache_mode="off",
+            idle_timeout_s=1.0,
+        )
+    assert transport.tool_choices == []
+
+
+def test_quality_build_profile_is_backend_neutral() -> None:
+    assert _quality_build_profile("hip_gfx1151") == "hip_gfx1151_agentic_auto_tool_quality"
+    assert _quality_build_profile("hip_gfx1100") == "hip_gfx1100_agentic_auto_tool_quality"
+
+
+def test_atomic_json_writer_replaces_complete_payload(tmp_path: Path) -> None:
+    output = tmp_path / "nested" / "quality.json"
+    _atomic_write_json(output, {"status": "first", "rows": [1]})
+    _atomic_write_json(output, {"status": "complete", "rows": [1, 2]})
+
+    assert json.loads(output.read_text(encoding="utf-8")) == {
+        "rows": [1, 2],
+        "status": "complete",
+    }
+    assert list(output.parent.glob(f".{output.name}.*.tmp")) == []

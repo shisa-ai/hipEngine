@@ -13,7 +13,6 @@ from hipengine.benchmark.agentic_quality import (
 from hipengine.benchmark.agentic_quality_oracle import evaluate_quality_oracle
 from scripts.agentic_coding_quality import collect_live_quality_records
 
-
 WORKLOADS = Path("benchmarks/prompts/agentic-quality-v2.json")
 ORACLE = Path("benchmarks/oracles/agentic-quality-v2.json")
 FAMILIES = {"repository", "general_en", "general_ja", "mixed_ja_en"}
@@ -178,6 +177,33 @@ def test_external_oracle_executes_every_tool_family_and_equivalent_results() -> 
     assert test_result["tests_passed"] is True
 
 
+def test_external_oracle_success_does_not_require_exact_argument_text() -> None:
+    suite = load_agentic_workload_suite(WORKLOADS)
+    workload_id = "general_en_operations"
+    turn_index = 1
+    payload = _quality_response(suite, workload_id, turn_index)
+    payload["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"] = (
+        json.dumps({"expression": "19 * 37"})
+    )
+
+    record = normalize_chat_quality_turn(
+        suite,
+        workload_id=workload_id,
+        turn_index=turn_index,
+        run_id="run-0",
+        agent_id="agent-0",
+        session_id="session-0",
+        request_id="equivalent-calculation",
+        prompt_token_ids=[1] * 128,
+        payload=payload,
+    )
+
+    assert record["quality"]["exact_arguments"] is False
+    assert record["quality"]["external_oracle"]["passed"] is True
+    assert record["quality"]["success"] is True
+    assert record["quality"]["outcome"] == "passed"
+
+
 def test_extended_quality_record_and_rollup_report_oracle_patch_test_and_families() -> None:
     suite = load_agentic_workload_suite(WORKLOADS)
     records = []
@@ -259,7 +285,15 @@ class _BroadQualityTransport:
         self.system_messages: list[str] = []
 
     def capabilities(self):
-        return {"cache": {"prefix_cache": "off"}}
+        return {
+            "object": "hipengine.capabilities",
+            "model": {"id": "fake-model", "backend": "fake"},
+            "tokenizer": {"tokenize": True, "detokenize": True},
+            "features": {
+                "tools": {"enabled": True, "strict_result_validation": True},
+            },
+            "cache": {"prefix_cache": "off"},
+        }
 
     def tokenize(self, text):
         return list(text.encode("utf-8"))
@@ -315,4 +349,7 @@ def test_live_quality_collector_runs_all_workloads_without_tool_name_hinting() -
     assert artifact["quality"]["successes"] == 24
     assert transport.tool_choices == ["auto"] * 24
     assert all("Choose the appropriate tool" in message for message in transport.system_messages)
-    assert all("specifically requested tool" not in message for message in transport.system_messages)
+    assert all(
+        "specifically requested tool" not in message
+        for message in transport.system_messages
+    )

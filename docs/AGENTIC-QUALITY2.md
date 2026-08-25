@@ -1,6 +1,6 @@
 # AGENTIC-QUALITY2 — ZBook Agent Quality Campaign
 
-- **Status:** approved; active; AQ0 plan frozen, no live quality row yet
+- **Status:** approved; active; AQ0-AQ1 complete, AQ2 current-main v2 live baseline next
 - **Approved:** 2026-08-25
 - **Execution host:** `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 - **Primary model:** Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV
@@ -444,17 +444,65 @@ No GPU run.
 
 ### AQ1 / Task #41 — current stack audit
 
-- [ ] Create a clean campaign worktree from current `origin/main` and record
+- [x] Create a clean campaign worktree from current `origin/main` and record
       exact base.
-- [ ] Audit server parser, Qwen/Poolside templates, tokenizer constraints,
+- [x] Audit server parser, Qwen/Poolside templates, tokenizer constraints,
       structured validation, repair queues, commit policy, collector, schema,
       and capabilities.
-- [ ] Diff relevant behavior since `878d07a9...`; do not assume all 31 historical
+- [x] Diff relevant behavior since `878d07a9...`; do not assume all historical
       path commits affect the live row.
-- [ ] Verify v2 oracle cases independently.
-- [ ] RED malformed/stale provenance and any discovered harness bug.
-- [ ] Fix only harness/provenance correctness needed for AQ2.
-- [ ] Run focused benchmark/agentic tests; publish worklog and commit.
+- [x] Verify v2 oracle cases independently.
+- [x] RED malformed/stale provenance and the discovered exact-argument scoring
+      bug.
+- [x] Fix only harness/provenance correctness needed for AQ2.
+- [x] Run focused benchmark/agentic tests; publish worklog and commit.
+
+#### AQ1 result — current live contract and harness repairs
+
+The clean campaign worktree is `/home/lhl/hipEngine-agentic-quality2`, branch
+`agentic-quality2`, starting at AQ0 commit `58d055872...`. The path audit found
+36 commits touching the broad server/sampling/tokenization/quality path since
+the old A6 source, but most are lifecycle, SPECDEC2, merge, or other-model work.
+The quality-relevant current Qwen contract is:
+
+- Qwen uses the generic canonical `<tool_call>` parser, not the later
+  Poolside/Laguna model-owned parser.
+- With tokenizer support, `tool_choice=auto` constrains a started tool branch to
+  one declared tool name plus a canonical envelope and syntactically valid root
+  argument object. It still permits a plain-text branch, as OpenAI auto
+  semantics require.
+- Full declared JSON Schema validation is post-generation. The decode-time
+  prefix anchor reaches the first required string key only for required/specific
+  single-tool shapes; it does not make automatic multi-tool arguments
+  schema-complete.
+- Close repair is bounded to a tokenizer-safe marker/object suffix once the
+  current prefix is structurally completable. There is no automatic second
+  generation/repair request.
+- Invalid, undeclared, malformed, schema-violating, content-leaking, and
+  required-tool-missing outputs are withheld/fail closed; unsafe session commits
+  downgrade to prompt-only or none. Blocking and SSE contract coverage exists.
+- Native sampling and speculative MTP remain incompatible with the dynamic tool
+  processor surface; AQ2 explicitly disables both.
+
+The old collector was not valid for AQ2 unchanged. AQ1 observed and fixed one
+RED scoring defect: broad external-oracle rows still required exact argument
+text before consulting the oracle, so semantically equivalent successful
+arguments were labeled `wrong_arguments`. External-oracle success now decides
+broad task success; exact arguments remain diagnostic. Legacy suites without an
+external oracle still require exact arguments.
+
+AQ1 also replaces the hardcoded `gfx1100` provenance label with the selected
+backend, binds and hashes the live server capability payload (served model,
+backend, tokenizer, tools, and cache checked before generation), records output
+cap/repetition count, emits flushed per-turn progress, atomically checkpoints
+normalized rows plus local raw responses/prompt IDs, atomically writes final
+JSON, and computes normalized deterministic repeat equality while ignoring
+random call IDs. The checkpoint supplies the response-owned IDs needed to
+reconstruct pre-parser model text during AQ3.
+
+All 24 committed v2 oracle cases execute independently. Focused quality/oracle,
+server-conformance, and harness-trace tests pass; exact commands and counts are
+in the AQ1 worklog.
 
 ### AQ2 / Task #42 — current v2 baseline
 
@@ -629,15 +677,34 @@ python3 scripts/agentic_coding_quality.py \
   --json /tmp/hipengine-agentic-quality2/RUN/v2-summary.json
 ```
 
-The exact server command is not frozen until AQ1 audits current CLI and public
-capabilities. It must explicitly select `hip_gfx1151`, the primary model,
-context cap, one active request, cache off, native sampler off, and automatic
-MTP off; set one model-owning process; use cached builds; and preserve raw
-startup/readiness/capability hashes. Do not infer settings from defaults.
+AQ1 froze the AQ2 server command surface. Use a free port and run from the clean
+campaign worktree:
 
-Long runs emit immediate progress and atomic checkpoints. The v2 collector does
-not currently checkpoint each turn; AQ1 must either add that property or record
-why the bounded 48-turn rerun is restartable enough before AQ2.
+```bash
+env -u ROCR_VISIBLE_DEVICES \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 \
+  GPU_MAX_HW_QUEUES=1 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-quality2-hipcc-version.txt \
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 \
+  HIPENGINE_QWEN35_NATIVE_SAMPLER=0 \
+  PYTHONPATH=. /home/lhl/hipEngine/.venv/bin/python -m hipengine.server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --served-model-name Qwen3.6-35B-A3B \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --execution-profile strict --kv-storage bf16 \
+  --max-context-tokens 4096 --max-active-requests 1 \
+  --generation-batch-window-ms 0 --prefix-cache off \
+  --speculative-mtp-serving off --no-startup-chat-smoke \
+  --host 127.0.0.1 --port PORT --log-level info
+```
+
+If a required JIT object is absent, perform one untimed startup without
+`HIPENGINE_REQUIRE_CACHED_BUILD`, stop it, then restart the exact command above.
+Do not let compilation overlap collection. Before the collector starts, hash
+`/ready`, `/v1/models`, and `/v1/hipengine/capabilities`; its own capability
+preflight now rejects the wrong served model, backend, cache, tokenizer, or tool
+contract. Long runs print immediate progress and atomically checkpoint each
+turn, including local raw responses and prompt IDs.
 
 ## 14. Artifact contract
 
