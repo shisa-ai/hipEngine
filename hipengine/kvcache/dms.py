@@ -6,14 +6,14 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from math import ceil
+from math import ceil, prod
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 
-from hipengine.core import DType, Device, Tensor
+from hipengine.core import Device, DType, Tensor
 from hipengine.kvcache.backend import (
     ClaimLifetime,
     KVBackendSpec,
@@ -23,26 +23,157 @@ from hipengine.kvcache.backend import (
     KVPoolPlan,
     KVPoolSpec,
     KVStorageView,
+    ResourceChange,
     ResourceClaim,
     ResourceClaimSet,
     ResourceDelta,
 )
-from hipengine.kvcache.ledger import FitAwareAdmissionController, ResourceLedger
 from hipengine.kvcache.dms_device import (
+    DMSDevicePayloadSnapshot,
     DMSDevicePayloadStore,
     DMSDeviceUnavailable,
     device_payloads_requested,
 )
+from hipengine.kvcache.ledger import FitAwareAdmissionController, ResourceLedger
 from hipengine.kvcache.spans import KVLiveSpans, KVScaleMetadata
 
 _CPU = Device("cpu", 0)
 _DMS_SCHEMA_VERSION = 1
+_DMS_SCHEMA_VERSIONS = {1, 2}
+_DMS_BORROWED_QUERY_SOURCE = "borrowed_query_channel_v1"
+_DMS_EXTERNAL_LINEAR_SOURCE = "external_linear_sidecar_v1"
+_DMS_EXTERNAL_INPUT_STAGE = "post_attn_rmsnorm_pre_q_projection"
+_DMS_PREFILL_SELECTION_MODES = {"threshold", "exact_budget"}
 _DMS_CODECS = {"bf16", "int8_per_token_head"}
+_HEX_DIGITS = frozenset("0123456789abcdef")
+
+
+def _validated_hex(value: object, *, length: int, label: str) -> str:
+    text = str(value)
+    if len(text) != int(length) or any(char not in _HEX_DIGITS for char in text):
+        raise ValueError(f"DMS {label} must be {length} lowercase hexadecimal characters")
+    return text
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class DMSLinearSidecarSpec:
+    """Strict external linear-decision sidecar tensor contract."""
+
+    path: str
+    format: str
+    dtype: str
+    weight_shape: tuple[int, ...]
+    bias_shape: tuple[int, ...]
+    sha256: str
+    weight_tensor: str = "weight"
+    bias_tensor: str = "bias"
+    resolved_path: str = ""
+
+    def __post_init__(self) -> None:
+        for name in ("path", "format", "dtype", "weight_tensor", "bias_tensor"):
+            value = str(getattr(self, name))
+            if not value or value != value.strip():
+                raise ValueError(f"DMS sidecar {name} must be a non-empty trimmed string")
+            object.__setattr__(self, name, value)
+        declared_path = Path(self.path)
+        if declared_path.is_absolute() or ".." in declared_path.parts:
+            raise ValueError("DMS sidecar path must stay relative to its metadata directory")
+        if self.format != "safetensors":
+            raise ValueError("DMS external sidecar format must be safetensors")
+        if self.dtype != "bfloat16":
+            raise ValueError("DMS external sidecar dtype must be bfloat16")
+        if self.weight_tensor == self.bias_tensor:
+            raise ValueError("DMS sidecar weight and bias tensor names must differ")
+        for name in ("weight_shape", "bias_shape"):
+            shape = tuple(int(dim) for dim in getattr(self, name))
+            if not shape or any(dim <= 0 for dim in shape):
+                raise ValueError(f"DMS sidecar {name} must contain positive dimensions")
+            object.__setattr__(self, name, shape)
+        object.__setattr__(
+            self,
+            "sha256",
+            _validated_hex(self.sha256, length=64, label="sidecar sha256"),
+        )
+        if self.resolved_path:
+            object.__setattr__(self, "resolved_path", str(Path(self.resolved_path).resolve()))
+
+    def fingerprint_payload(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "format": self.format,
+            "dtype": self.dtype,
+            "weight_tensor": self.weight_tensor,
+            "bias_tensor": self.bias_tensor,
+            "weight_shape": list(self.weight_shape),
+            "bias_shape": list(self.bias_shape),
+            "sha256": self.sha256,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class DMSTrainingProvenance:
+    """Immutable provenance required to admit a trained external sidecar."""
+
+    method: str
+    data_manifest_sha256: str
+    trainer_commit: str
+    fastdms_reference_commit: str
+    seed: int
+
+    def __post_init__(self) -> None:
+        method = str(self.method)
+        if method != "future_attention_distillation_v1":
+            raise ValueError("unsupported DMS external-sidecar training method")
+        object.__setattr__(self, "method", method)
+        object.__setattr__(
+            self,
+            "data_manifest_sha256",
+            _validated_hex(
+                self.data_manifest_sha256,
+                length=64,
+                label="training data manifest sha256",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "trainer_commit",
+            _validated_hex(self.trainer_commit, length=40, label="trainer commit"),
+        )
+        object.__setattr__(
+            self,
+            "fastdms_reference_commit",
+            _validated_hex(
+                self.fastdms_reference_commit,
+                length=40,
+                label="FastDMS reference commit",
+            ),
+        )
+        seed = int(self.seed)
+        if seed < 0:
+            raise ValueError("DMS training seed must be non-negative")
+        object.__setattr__(self, "seed", seed)
+
+    def fingerprint_payload(self) -> dict[str, object]:
+        return {
+            "method": self.method,
+            "data_manifest_sha256": self.data_manifest_sha256,
+            "trainer_commit": self.trainer_commit,
+            "fastdms_reference_commit": self.fastdms_reference_commit,
+            "seed": self.seed,
+        }
 
 
 @dataclass(frozen=True, slots=True)
 class DMSRetrofitConfig:
-    """Checkpoint-bound DMS decision-neuron and retention metadata."""
+    """Checkpoint-bound borrowed-channel or external-sidecar DMS metadata."""
 
     artifact_fingerprint: str
     model_family: str
@@ -54,13 +185,21 @@ class DMSRetrofitConfig:
     target_compression_ratio: int
     alpha_scale: float
     alpha_offset: float
-    borrowed_query_channel: int
+    borrowed_query_channel: int | None
     corrected_mask: bool
     trained_checkpoint: bool
     evidence_source: str
     source_path: str
     source_kind: str = "packaged_metadata"
     schema_version: int = _DMS_SCHEMA_VERSION
+    decision_source: str = _DMS_BORROWED_QUERY_SOURCE
+    physical_layer_ids: tuple[int, ...] = ()
+    hidden_size: int | None = None
+    input_stage: str | None = None
+    zero_borrowed_query_channel: bool = True
+    sidecar: DMSLinearSidecarSpec | None = None
+    training: DMSTrainingProvenance | None = None
+    prefill_selection_mode: str = "threshold"
 
     def __post_init__(self) -> None:
         for name in (
@@ -69,16 +208,19 @@ class DMSRetrofitConfig:
             "evidence_source",
             "source_path",
             "source_kind",
+            "decision_source",
         ):
             value = str(getattr(self, name))
             if not value or value != value.strip():
                 raise ValueError(f"DMS {name} must be a non-empty trimmed string")
             object.__setattr__(self, name, value)
-        if int(self.schema_version) != _DMS_SCHEMA_VERSION:
+        schema_version = int(self.schema_version)
+        if schema_version not in _DMS_SCHEMA_VERSIONS:
             raise ValueError(
                 f"unsupported DMS metadata schema {self.schema_version}; "
-                f"expected {_DMS_SCHEMA_VERSION}"
+                f"expected one of {sorted(_DMS_SCHEMA_VERSIONS)}"
             )
+        object.__setattr__(self, "schema_version", schema_version)
         for name in (
             "num_layers",
             "num_q_heads",
@@ -93,20 +235,96 @@ class DMSRetrofitConfig:
             object.__setattr__(self, name, value)
         if self.num_q_heads % self.num_kv_heads:
             raise ValueError("DMS query heads must be divisible by KV heads")
-        channel = int(self.borrowed_query_channel)
-        if channel not in {-1, self.head_dim - 1}:
-            raise ValueError("DMS borrowed query channel must be the last head channel")
-        object.__setattr__(self, "borrowed_query_channel", self.head_dim - 1)
         if not np.isfinite(float(self.alpha_scale)) or float(self.alpha_scale) == 0.0:
             raise ValueError("DMS alpha_scale must be finite and non-zero")
         if not np.isfinite(float(self.alpha_offset)):
             raise ValueError("DMS alpha_offset must be finite")
         object.__setattr__(self, "alpha_scale", float(self.alpha_scale))
         object.__setattr__(self, "alpha_offset", float(self.alpha_offset))
-        if not bool(self.corrected_mask):
-            raise ValueError("DMS runtime requires corrected-mask metadata")
+        selection_mode = str(self.prefill_selection_mode)
+        if selection_mode not in _DMS_PREFILL_SELECTION_MODES:
+            raise ValueError(
+                "DMS prefill_selection_mode must be one of "
+                f"{sorted(_DMS_PREFILL_SELECTION_MODES)}"
+            )
+        if schema_version == 1 and selection_mode != "threshold":
+            raise ValueError("DMS schema v1 only supports threshold prefill selection")
+        object.__setattr__(self, "prefill_selection_mode", selection_mode)
+        object.__setattr__(
+            self,
+            "physical_layer_ids",
+            tuple(int(layer_id) for layer_id in self.physical_layer_ids),
+        )
         if not bool(self.trained_checkpoint):
             raise ValueError("DMS runtime requires a trained/retrofitted checkpoint")
+
+        if schema_version == 1:
+            self._validate_borrowed_query_schema()
+        else:
+            self._validate_external_sidecar_schema()
+
+    def _validate_borrowed_query_schema(self) -> None:
+        if self.decision_source != _DMS_BORROWED_QUERY_SOURCE:
+            raise ValueError("DMS schema v1 only supports borrowed query decisions")
+        if self.borrowed_query_channel is None:
+            raise ValueError("DMS schema v1 requires a borrowed query channel")
+        channel = int(self.borrowed_query_channel)
+        if channel not in {-1, self.head_dim - 1}:
+            raise ValueError("DMS borrowed query channel must be the last head channel")
+        object.__setattr__(self, "borrowed_query_channel", self.head_dim - 1)
+        if not bool(self.corrected_mask):
+            raise ValueError("DMS runtime requires corrected-mask metadata")
+        if not bool(self.zero_borrowed_query_channel):
+            raise ValueError("DMS schema v1 must zero its borrowed query channel")
+        if self.sidecar is not None or self.training is not None:
+            raise ValueError("DMS schema v1 cannot declare an external sidecar")
+
+    def _validate_external_sidecar_schema(self) -> None:
+        if self.decision_source != _DMS_EXTERNAL_LINEAR_SOURCE:
+            raise ValueError("DMS schema v2 requires external_linear_sidecar_v1")
+        object.__setattr__(
+            self,
+            "artifact_fingerprint",
+            _validated_hex(
+                self.artifact_fingerprint,
+                length=64,
+                label="artifact fingerprint",
+            ),
+        )
+        if self.borrowed_query_channel is not None:
+            raise ValueError("external DMS sidecars cannot declare a borrowed query channel")
+        if bool(self.zero_borrowed_query_channel):
+            raise ValueError("external DMS sidecars must preserve ordinary query channels")
+        if bool(self.corrected_mask):
+            raise ValueError("external DMS sidecars cannot claim corrected-mask semantics")
+        if self.source_kind == "training_log_diagnostic":
+            raise ValueError("DMS schema v2 cannot load from a training-log fallback")
+        layer_ids = self.physical_layer_ids
+        if (
+            len(layer_ids) != self.num_layers
+            or len(set(layer_ids)) != len(layer_ids)
+            or any(layer_id < 0 for layer_id in layer_ids)
+            or tuple(sorted(layer_ids)) != layer_ids
+        ):
+            raise ValueError(
+                "DMS schema v2 physical_layer_ids must be unique, sorted, non-negative, "
+                "and match num_layers"
+            )
+        if self.hidden_size is None or int(self.hidden_size) <= 0:
+            raise ValueError("DMS schema v2 hidden_size must be positive")
+        object.__setattr__(self, "hidden_size", int(self.hidden_size))
+        if self.input_stage != _DMS_EXTERNAL_INPUT_STAGE:
+            raise ValueError(
+                f"DMS schema v2 input_stage must be {_DMS_EXTERNAL_INPUT_STAGE!r}"
+            )
+        if self.sidecar is None or self.training is None:
+            raise ValueError("DMS schema v2 requires sidecar and training provenance")
+        expected_weight = (self.num_layers, self.num_kv_heads, self.hidden_size)
+        expected_bias = (self.num_layers, self.num_kv_heads)
+        if self.sidecar.weight_shape != expected_weight:
+            raise ValueError(f"DMS sidecar weight_shape must be {expected_weight}")
+        if self.sidecar.bias_shape != expected_bias:
+            raise ValueError(f"DMS sidecar bias_shape must be {expected_bias}")
 
     @property
     def group_size(self) -> int:
@@ -114,24 +332,160 @@ class DMSRetrofitConfig:
 
     @property
     def fingerprint(self) -> str:
-        payload = {
-            "schema_version": self.schema_version,
-            "artifact_fingerprint": self.artifact_fingerprint,
-            "model_family": self.model_family,
-            "num_layers": self.num_layers,
-            "num_q_heads": self.num_q_heads,
-            "num_kv_heads": self.num_kv_heads,
-            "head_dim": self.head_dim,
-            "window_size": self.window_size,
-            "target_compression_ratio": self.target_compression_ratio,
-            "alpha_scale": self.alpha_scale,
-            "alpha_offset": self.alpha_offset,
-            "borrowed_query_channel": self.borrowed_query_channel,
-            "corrected_mask": self.corrected_mask,
-            "trained_checkpoint": self.trained_checkpoint,
-        }
+        if self.schema_version == 1:
+            # Preserve the schema-v1 identity byte-for-byte. Existing compact
+            # backend artifacts use this fingerprint as a compatibility key.
+            payload: dict[str, object] = {
+                "schema_version": self.schema_version,
+                "artifact_fingerprint": self.artifact_fingerprint,
+                "model_family": self.model_family,
+                "num_layers": self.num_layers,
+                "num_q_heads": self.num_q_heads,
+                "num_kv_heads": self.num_kv_heads,
+                "head_dim": self.head_dim,
+                "window_size": self.window_size,
+                "target_compression_ratio": self.target_compression_ratio,
+                "alpha_scale": self.alpha_scale,
+                "alpha_offset": self.alpha_offset,
+                "borrowed_query_channel": self.borrowed_query_channel,
+                "corrected_mask": self.corrected_mask,
+                "trained_checkpoint": self.trained_checkpoint,
+            }
+        else:
+            payload = {
+                "schema_version": self.schema_version,
+                "artifact_fingerprint": self.artifact_fingerprint,
+                "model_family": self.model_family,
+                "decision_source": self.decision_source,
+                "physical_layer_ids": list(self.physical_layer_ids),
+                "num_layers": self.num_layers,
+                "num_q_heads": self.num_q_heads,
+                "num_kv_heads": self.num_kv_heads,
+                "head_dim": self.head_dim,
+                "hidden_size": self.hidden_size,
+                "input_stage": self.input_stage,
+                "prefill_selection_mode": self.prefill_selection_mode,
+                "window_size": self.window_size,
+                "target_compression_ratio": self.target_compression_ratio,
+                "alpha_scale": self.alpha_scale,
+                "alpha_offset": self.alpha_offset,
+                "borrowed_query_channel": self.borrowed_query_channel,
+                "zero_borrowed_query_channel": self.zero_borrowed_query_channel,
+                "corrected_mask": self.corrected_mask,
+                "trained_checkpoint": self.trained_checkpoint,
+            }
+            assert self.sidecar is not None and self.training is not None
+            payload["sidecar"] = self.sidecar.fingerprint_payload()
+            payload["training"] = self.training.fingerprint_payload()
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         return hashlib.sha256(encoded).hexdigest()
+
+
+def _resolve_sidecar_path(source: Path, declared_path: str) -> Path:
+    base = source.parent.resolve()
+    resolved = (base / declared_path).resolve()
+    try:
+        resolved.relative_to(base)
+    except ValueError as exc:
+        raise ValueError("DMS sidecar path escapes its metadata directory") from exc
+    if not resolved.is_file():
+        raise FileNotFoundError(f"DMS sidecar file is missing: {resolved}")
+    return resolved
+
+
+def _validate_safetensors_sidecar(spec: DMSLinearSidecarSpec) -> None:
+    path = Path(spec.resolved_path)
+    size = path.stat().st_size
+    with path.open("rb") as handle:
+        prefix = handle.read(8)
+        if len(prefix) != 8:
+            raise ValueError("DMS sidecar is not a complete safetensors file")
+        header_size = int.from_bytes(prefix, "little", signed=False)
+        if header_size <= 1 or header_size > size - 8:
+            raise ValueError("DMS sidecar safetensors header length is invalid")
+        try:
+            header = json.loads(handle.read(header_size).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("DMS sidecar safetensors header is invalid") from exc
+    if not isinstance(header, Mapping):
+        raise TypeError("DMS sidecar safetensors header must be an object")
+    tensor_names = {name for name in header if name != "__metadata__"}
+    expected_names = {spec.weight_tensor, spec.bias_tensor}
+    if tensor_names != expected_names:
+        raise ValueError(
+            f"DMS sidecar tensors must be exactly {sorted(expected_names)}, "
+            f"got {sorted(tensor_names)}"
+        )
+    data_size = size - 8 - header_size
+    ranges: list[tuple[int, int, str]] = []
+    for name, expected_shape in (
+        (spec.weight_tensor, spec.weight_shape),
+        (spec.bias_tensor, spec.bias_shape),
+    ):
+        descriptor = header.get(name)
+        if not isinstance(descriptor, Mapping):
+            raise TypeError(f"DMS sidecar tensor descriptor is invalid for {name}")
+        if descriptor.get("dtype") != "BF16":
+            raise ValueError(f"DMS sidecar tensor dtype mismatch for {name}; expected BF16")
+        shape_raw = descriptor.get("shape")
+        if not isinstance(shape_raw, list) or tuple(int(dim) for dim in shape_raw) != expected_shape:
+            raise ValueError(
+                f"DMS sidecar tensor shape mismatch for {name}; expected {expected_shape}"
+            )
+        offsets = descriptor.get("data_offsets")
+        if (
+            not isinstance(offsets, list)
+            or len(offsets) != 2
+            or any(not isinstance(value, int) for value in offsets)
+        ):
+            raise ValueError(f"DMS sidecar tensor offsets are invalid for {name}")
+        start, end = (int(offsets[0]), int(offsets[1]))
+        expected_bytes = prod(expected_shape) * 2
+        if start < 0 or end - start != expected_bytes or end > data_size:
+            raise ValueError(f"DMS sidecar tensor byte range is invalid for {name}")
+        ranges.append((start, end, name))
+    cursor = 0
+    for start, end, name in sorted(ranges):
+        if start != cursor:
+            raise ValueError(f"DMS sidecar tensor ranges are not contiguous at {name}")
+        cursor = end
+    if cursor != data_size:
+        raise ValueError("DMS sidecar contains undeclared trailing tensor bytes")
+
+
+def _load_external_sidecar_spec(source: Path, raw: Mapping[str, Any]) -> DMSLinearSidecarSpec:
+    sidecar_raw = raw.get("sidecar")
+    if not isinstance(sidecar_raw, Mapping):
+        raise TypeError("DMS schema v2 sidecar must be an object")
+    declared_path = str(sidecar_raw.get("path", ""))
+    resolved_path = _resolve_sidecar_path(source, declared_path)
+    spec = DMSLinearSidecarSpec(
+        path=declared_path,
+        format=str(sidecar_raw.get("format", "")),
+        dtype=str(sidecar_raw.get("dtype", "")),
+        weight_tensor=str(sidecar_raw.get("weight_tensor", "weight")),
+        bias_tensor=str(sidecar_raw.get("bias_tensor", "bias")),
+        weight_shape=tuple(sidecar_raw.get("weight_shape", ())),
+        bias_shape=tuple(sidecar_raw.get("bias_shape", ())),
+        sha256=str(sidecar_raw.get("sha256", "")),
+        resolved_path=str(resolved_path),
+    )
+    if _sha256_file(resolved_path) != spec.sha256:
+        raise ValueError("DMS sidecar hash does not match metadata")
+    return spec
+
+
+def _load_training_provenance(raw: Mapping[str, Any]) -> DMSTrainingProvenance:
+    training_raw = raw.get("training")
+    if not isinstance(training_raw, Mapping):
+        raise TypeError("DMS schema v2 training provenance must be an object")
+    return DMSTrainingProvenance(
+        method=str(training_raw.get("method", "")),
+        data_manifest_sha256=str(training_raw.get("data_manifest_sha256", "")),
+        trainer_commit=str(training_raw.get("trainer_commit", "")),
+        fastdms_reference_commit=str(training_raw.get("fastdms_reference_commit", "")),
+        seed=int(training_raw.get("seed", -1)),
+    )
 
 
 def load_dms_retrofit_config(
@@ -139,6 +493,7 @@ def load_dms_retrofit_config(
     *,
     metadata_path: str | Path | None = None,
     expected_artifact_fingerprint: str | None = None,
+    expected_physical_layer_ids: Sequence[int] | None = None,
     allow_training_log_fallback: bool = False,
 ) -> DMSRetrofitConfig:
     """Load strict checkpoint metadata; never infer DMS from an ordinary model."""
@@ -164,7 +519,13 @@ def load_dms_retrofit_config(
     payload = json.loads(source.read_text(encoding="utf-8"))
     raw = payload.get("dms", payload.get("config", payload))
     if not isinstance(raw, Mapping):
-        raise ValueError("DMS metadata must contain an object")
+        raise TypeError("DMS metadata must contain an object")
+    schema_version = int(payload.get("schema_version", raw.get("schema_version", 1)))
+    if schema_version not in _DMS_SCHEMA_VERSIONS:
+        raise ValueError(
+            f"unsupported DMS metadata schema {schema_version}; "
+            f"expected one of {sorted(_DMS_SCHEMA_VERSIONS)}"
+        )
     artifact = str(
         raw.get("artifact_fingerprint", payload.get("artifact_fingerprint", ""))
     )
@@ -172,27 +533,70 @@ def load_dms_retrofit_config(
         expected_artifact_fingerprint
     ):
         raise ValueError("DMS metadata artifact fingerprint does not match checkpoint")
+
+    sidecar = None
+    training_provenance = None
+    borrowed_query_channel: int | None
+    if schema_version == 2:
+        sidecar = _load_external_sidecar_spec(source, raw)
+        training_provenance = _load_training_provenance(raw)
+        borrowed_raw = raw.get("borrowed_query_channel")
+        borrowed_query_channel = None if borrowed_raw is None else int(borrowed_raw)
+    else:
+        borrowed_query_channel = int(raw.get("borrowed_query_channel", -1))
+
     config = DMSRetrofitConfig(
-        schema_version=int(payload.get("schema_version", raw.get("schema_version", 1))),
+        schema_version=schema_version,
         artifact_fingerprint=artifact,
         model_family=str(raw.get("model_family", "")),
+        decision_source=str(
+            raw.get(
+                "decision_source",
+                _DMS_EXTERNAL_LINEAR_SOURCE
+                if schema_version == 2
+                else _DMS_BORROWED_QUERY_SOURCE,
+            )
+        ),
+        physical_layer_ids=tuple(raw.get("physical_layer_ids", ())),
         num_layers=int(raw.get("num_layers", 0)),
         num_q_heads=int(raw.get("num_q_heads", 0)),
         num_kv_heads=int(raw.get("num_kv_heads", 0)),
         head_dim=int(raw.get("head_dim", 0)),
+        hidden_size=(None if raw.get("hidden_size") is None else int(raw["hidden_size"])),
+        input_stage=(None if raw.get("input_stage") is None else str(raw["input_stage"])),
+        prefill_selection_mode=str(raw.get("prefill_selection_mode", "threshold")),
         window_size=int(raw.get("window_size", raw.get("dms_window_size", 0))),
         target_compression_ratio=int(
             raw.get("target_compression_ratio", raw.get("target_cr", 0))
         ),
         alpha_scale=float(raw.get("alpha_scale", raw.get("dms_alpha_scale", 0.0))),
         alpha_offset=float(raw.get("alpha_offset", raw.get("dms_alpha_offset", 0.0))),
-        borrowed_query_channel=int(raw.get("borrowed_query_channel", -1)),
+        borrowed_query_channel=borrowed_query_channel,
+        zero_borrowed_query_channel=bool(
+            raw.get("zero_borrowed_query_channel", schema_version == 1)
+        ),
         corrected_mask=bool(raw.get("corrected_mask", False)),
         trained_checkpoint=bool(raw.get("trained_checkpoint", False)),
         evidence_source=str(raw.get("evidence_source", "")),
         source_path=str(source),
         source_kind=source_kind,
+        sidecar=sidecar,
+        training=training_provenance,
     )
+    if schema_version == 2:
+        if model.is_file():
+            if _sha256_file(model) != config.artifact_fingerprint:
+                raise ValueError("DMS model artifact hash does not match metadata")
+        elif expected_artifact_fingerprint is None:
+            raise ValueError(
+                "DMS schema v2 requires a verified model artifact fingerprint for non-file models"
+            )
+        if expected_physical_layer_ids is not None and config.physical_layer_ids != tuple(
+            int(layer_id) for layer_id in expected_physical_layer_ids
+        ):
+            raise ValueError("DMS metadata physical layer map does not match model capability")
+        assert config.sidecar is not None
+        _validate_safetensors_sidecar(config.sidecar)
     if source_kind == "training_log_diagnostic" and not allow_training_log_fallback:
         raise AssertionError("unreachable DMS training-log admission")
     return config
@@ -276,6 +680,12 @@ def extract_dms_eviction_decisions(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Extract one decision channel per GQA group and zero it before attention."""
 
+    if config.decision_source != _DMS_BORROWED_QUERY_SOURCE:
+        raise ValueError(
+            "external DMS sidecars require hidden-state projection, not borrowed-Q extraction"
+        )
+    if config.borrowed_query_channel is None:
+        raise AssertionError("borrowed-query DMS config lacks its decision channel")
     array = np.asarray(q)
     if array.ndim == 2:
         expected = config.num_q_heads * config.head_dim
@@ -303,6 +713,60 @@ def extract_dms_eviction_decisions(
         evict = decisions * config.alpha_scale - config.alpha_offset > 0.0
     grouped[:, :, 0, config.borrowed_query_channel] = 0
     return cleaned, np.asarray(evict, dtype=np.bool_)
+
+
+def build_dms_exact_budget_eviction(
+    eviction_logits: np.ndarray,
+    *,
+    current_position: int,
+    window_size: int,
+    target_compression_ratio: int,
+    positions: np.ndarray | None = None,
+) -> np.ndarray:
+    """Select exact per-layer/head historical eviction counts from learned ranks."""
+
+    logits = np.asarray(eviction_logits, dtype=np.float32)
+    if logits.ndim != 3 or any(int(dim) <= 0 for dim in logits.shape):
+        raise ValueError("DMS eviction logits must be non-empty [tokens,layers,heads]")
+    if not np.all(np.isfinite(logits)):
+        raise ValueError("DMS eviction logits must be finite")
+    tokens = int(logits.shape[0])
+    pos = (
+        np.arange(tokens, dtype=np.int64)
+        if positions is None
+        else np.asarray(positions, dtype=np.int64)
+    )
+    if pos.shape != (tokens,) or np.any(np.diff(pos) <= 0):
+        raise ValueError("DMS exact-budget positions must be strictly increasing [tokens]")
+    current = int(current_position)
+    window = int(window_size)
+    target_cr = int(target_compression_ratio)
+    if window < 0:
+        raise ValueError("DMS exact-budget window_size must be non-negative")
+    if target_cr <= 0:
+        raise ValueError("DMS exact-budget target_compression_ratio must be positive")
+    if current < int(pos[-1]):
+        raise ValueError("DMS exact-budget current_position cannot precede positions")
+
+    eligible_indices = np.flatnonzero((current - pos) > window)
+    eligible_count = int(eligible_indices.size)
+    historical_live = ceil(eligible_count / target_cr)
+    evict_count = eligible_count - historical_live
+    evict = np.zeros(logits.shape, dtype=np.bool_)
+    if evict_count <= 0:
+        return evict
+    eligible_positions = pos[eligible_indices]
+    for layer in range(int(logits.shape[1])):
+        for head in range(int(logits.shape[2])):
+            # Positive/high logits predict eviction. Oldest position wins exact ties.
+            order = np.lexsort(
+                (
+                    eligible_positions,
+                    -logits[eligible_indices, layer, head],
+                )
+            )
+            evict[eligible_indices[order[:evict_count]], layer, head] = True
+    return evict
 
 
 def build_dms_live_mask(
@@ -447,6 +911,43 @@ class CompactExtentPool:
         self.high_water_slots = max(self.high_water_slots, used)
         return result
 
+    def shrink(
+        self,
+        owner_id: str,
+        new_lengths: np.ndarray,
+    ) -> tuple[CompactExtent, ...]:
+        identifier = str(owner_id)
+        try:
+            current = self._owners[identifier]
+        except KeyError as exc:
+            raise KeyError(f"unknown compact extent owner {owner_id!r}") from exc
+        lengths = np.asarray(new_lengths, dtype=np.int32)
+        heads = len(current) // self.num_layers
+        if lengths.shape != (self.num_layers, heads):
+            raise ValueError("compact DMS shrink lengths shape mismatch")
+        updated: list[CompactExtent] = []
+        for extent in current:
+            length = int(lengths[extent.layer_id, extent.head_id])
+            if length <= 0 or length > extent.length:
+                raise ValueError("compact DMS shrink length must be within the owned extent")
+            if length < extent.length:
+                self._give(
+                    extent.layer_id,
+                    extent.start + length,
+                    extent.length - length,
+                )
+            updated.append(
+                CompactExtent(
+                    extent.layer_id,
+                    extent.head_id,
+                    extent.start,
+                    length,
+                )
+            )
+        result = tuple(updated)
+        self._owners[identifier] = result
+        return result
+
     def release(self, owner_id: str) -> tuple[CompactExtent, ...]:
         try:
             extents = self._owners.pop(str(owner_id))
@@ -549,6 +1050,8 @@ class DMSOperation:
         dict[tuple[int, int], np.ndarray],
     ]
     logical_tokens: int
+    device_snapshot: DMSDevicePayloadSnapshot | None
+    counter_snapshot: tuple[int, int, int, int]
 
 
 class DMSCompactBackend:
@@ -566,6 +1069,7 @@ class DMSCompactBackend:
         generation: int = 1,
         codec_qualification: DMSCodecQualification | None = None,
         device_payloads: bool | None = None,
+        device_backend: str = "hip_gfx1100",
     ) -> None:
         if codec not in _DMS_CODECS:
             raise ValueError(f"unsupported compact DMS codec {codec!r}")
@@ -581,6 +1085,7 @@ class DMSCompactBackend:
         self.retrofit = retrofit
         self.codec = codec
         self.codec_qualification = codec_qualification
+        self.device_backend = str(device_backend)
         self.slots_per_layer = int(slots_per_layer)
         self.max_request_rows = int(max_request_rows)
         self.max_pack_rows = int(max_pack_rows)
@@ -592,6 +1097,11 @@ class DMSCompactBackend:
             self.generation,
         ) <= 0:
             raise ValueError("compact DMS capacities/generation must be positive")
+        decision_bundle = (
+            ""
+            if retrofit.schema_version == 1
+            else f"_{retrofit.decision_source}"
+        )
         self.spec = KVBackendSpec(
             topology_key="dms_compact",
             hot_codec_key=codec,
@@ -602,7 +1112,7 @@ class DMSCompactBackend:
             artifact_fingerprint=retrofit.artifact_fingerprint,
             prefix_mode="unsupported",
             transaction_mode="journal",
-            kernel_bundle_key=f"dms_compact_{codec}_streaming_v1",
+            kernel_bundle_key=f"dms_compact_{codec}{decision_bundle}_streaming_v1",
             physical_widths=physical_widths,
             max_context_tokens=self.slots_per_layer,
         )
@@ -618,6 +1128,7 @@ class DMSCompactBackend:
         self.pack_calls = 0
         self.decode_appends = 0
         self.evicted_tokens = 0
+        self.released_provisional_slots = 0
         self._device_store: DMSDevicePayloadStore | None = None
         if device_payloads_requested(device_payloads):
             try:
@@ -625,6 +1136,7 @@ class DMSCompactBackend:
                     retrofit=retrofit,
                     slots_per_layer=self.slots_per_layer,
                     max_pack_rows=self.max_pack_rows,
+                    backend=self.device_backend,
                 )
             except DMSDeviceUnavailable:
                 # Host parent remains the registered fallback.
@@ -672,16 +1184,40 @@ class DMSCompactBackend:
                 ),
                 metadata=(("workspace_rows", workspace_rows),),
             )
-        logical_prompt = int(stage_map.get("tokens", len(prompt_tokens)))
+        logical_prompt = int(
+            stage_map.get(
+                "logical_prompt_tokens",
+                stage_map.get("tokens", len(prompt_tokens)),
+            )
+        )
         max_new = int(stage_map.get("max_new_tokens", getattr(request, "max_new_tokens", 1)))
         if logical_prompt < 0 or max_new < 0:
             raise ValueError("compact DMS token counts must be non-negative")
-        retained_prompt = min(
+        protected_prompt = min(
             logical_prompt,
-            ceil(logical_prompt / self.retrofit.target_compression_ratio)
-            + self.retrofit.window_size,
+            self.retrofit.window_size + 1,
         )
-        per_head = max(1, min(logical_prompt + max_new, retained_prompt + max_new))
+        eligible_prompt = logical_prompt - protected_prompt
+        retained_prompt = protected_prompt + ceil(
+            eligible_prompt / self.retrofit.target_compression_ratio
+        )
+        projected_per_head = max(
+            1,
+            min(logical_prompt + max_new, retained_prompt + max_new),
+        )
+        # Streaming pack must be safe even when a newly trained sidecar
+        # under-compresses. Reserve the full prompt provisionally by default,
+        # then shrink extents after pack. An integrated owner that has already
+        # produced and counted exact device decisions may provide an explicit
+        # uniform per-head bound before allocating compact payloads.
+        exact_per_head = stage_map.get("per_head_slots")
+        per_head = (
+            max(1, logical_prompt + max_new)
+            if exact_per_head is None
+            else int(exact_per_head)
+        )
+        if per_head <= 0:
+            raise ValueError("compact DMS per_head_slots must be positive")
         total_slots = (
             self.retrofit.num_layers * self.retrofit.num_kv_heads * per_head
         )
@@ -701,6 +1237,7 @@ class DMSCompactBackend:
             claims=tuple(claims),
             metadata=(
                 ("per_head_slots", per_head),
+                ("projected_per_head_slots", projected_per_head),
                 ("logical_prompt_tokens", logical_prompt),
                 ("max_new_tokens", max_new),
                 ("prefix_mode", "off"),
@@ -833,8 +1370,126 @@ class DMSCompactBackend:
                     np.ascontiguousarray(state.base_offsets[layer, :]),
                     np.ascontiguousarray(state.range_capacity[layer, :]),
                 )
+        self._shrink_after_streaming_pack(state)
         state.logical_tokens = tokens
         self.pack_calls += 1
+
+    def device_streaming_pack_layer(
+        self,
+        request_id: int,
+        compact_layer_index: int,
+        *,
+        k_ptr: int,
+        v_ptr: int,
+        evict_ptr: int,
+        tokens: int,
+        row_start: int = 0,
+        stream: int = 0,
+    ) -> None:
+        """Pack one layer from device-resident dense K/V and decision pointers."""
+
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        state = self.state_for_request(request_id)
+        layer = int(compact_layer_index)
+        if layer < 0 or layer >= self.retrofit.num_layers:
+            raise ValueError("compact DMS layer index is out of range")
+        self._device_store.configure_layer(
+            layer,
+            base=state.base_offsets[layer],
+            capacity=state.range_capacity[layer],
+            live=np.zeros((self.retrofit.num_kv_heads,), dtype=np.int32),
+        )
+        self._device_store.pack_layer_device(
+            layer,
+            k_ptr=int(k_ptr),
+            v_ptr=int(v_ptr),
+            evict_ptr=int(evict_ptr),
+            tokens=int(tokens),
+            row_start=int(row_start),
+            stream=int(stream),
+        )
+
+    def finalize_device_streaming_pack(
+        self,
+        request_id: int,
+        *,
+        eviction: np.ndarray,
+        tokens: int,
+    ) -> None:
+        """Commit host control metadata after all direct device layer packs."""
+
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        state = self.state_for_request(request_id)
+        evict = np.asarray(eviction, dtype=np.bool_)
+        expected = (
+            int(tokens),
+            self.retrofit.num_layers,
+            self.retrofit.num_kv_heads,
+        )
+        if evict.shape != expected:
+            raise ValueError("DMS direct pack eviction metadata shape mismatch")
+        positions = np.arange(int(tokens), dtype=np.int32)
+        for layer in range(self.retrofit.num_layers):
+            device_live = self._device_store.live_counts(layer)
+            for head in range(self.retrofit.num_kv_heads):
+                keep = build_dms_live_mask(
+                    evict[:, layer, head][None, :],
+                    current_position=max(0, int(tokens) - 1),
+                    window_size=self.retrofit.window_size,
+                    positions=positions,
+                )[0]
+                selected = positions[keep]
+                live = int(selected.size)
+                if live != int(device_live[head]):
+                    raise RuntimeError("DMS direct pack device/host live-count mismatch")
+                capacity = int(state.range_capacity[layer, head])
+                if live > capacity:
+                    raise MemoryError("DMS direct packed rows exceed reserved extent")
+                state.live_counts[layer, head] = live
+                state.token_positions[layer, head, :live] = selected
+                state.token_positions[layer, head, live:capacity] = -1
+                state.evict_mask[layer, head, :live] = evict[keep, layer, head]
+                state.evict_mask[layer, head, live:capacity] = False
+        self._shrink_after_streaming_pack(state)
+        for layer in range(self.retrofit.num_layers):
+            self._device_store.configure_layer(
+                layer,
+                base=state.base_offsets[layer],
+                capacity=state.range_capacity[layer],
+                live=state.live_counts[layer],
+            )
+        state.logical_tokens = int(tokens)
+        self.pack_calls += 1
+
+    def _shrink_after_streaming_pack(self, state: DMSSequenceState) -> None:
+        metadata = state.lease.claims.metadata_dict()
+        max_new_tokens = int(metadata.get("max_new_tokens", 0))
+        current = np.asarray(state.range_capacity, dtype=np.int32)
+        committed = np.maximum(
+            1,
+            np.minimum(current, state.live_counts + max_new_tokens),
+        ).astype(np.int32)
+        released = int(np.sum(current - committed))
+        if released <= 0:
+            return
+        delta = ResourceDelta(
+            operation_id=f"dms-pack-shrink:{state.request_id}",
+            lease_id=state.lease.lease_id,
+            request_id=state.request_id,
+            changes=tuple(
+                ResourceChange(pool_id, -released, ClaimLifetime.LEASE)
+                for pool_id in self.reservation_pool_ids
+            ),
+        )
+        self.ledger.apply_delta(state.lease.lease_id, delta)
+        state.extents = self.extents.shrink(
+            state.lease.lease_id,
+            committed,
+        )
+        state.range_capacity[...] = committed
+        self.released_provisional_slots += released
 
     def append_decode(
         self,
@@ -975,6 +1630,81 @@ class DMSCompactBackend:
         state.logical_tokens = max(state.logical_tokens, int(position) + 1)
         self.decode_appends += 1
 
+    def device_append_layer(
+        self,
+        request_id: int,
+        compact_layer_index: int,
+        *,
+        k_ptr: int,
+        v_ptr: int,
+        evict_ptr: int,
+        position: int,
+        stream: int = 0,
+    ) -> None:
+        """Append one layer directly from device-resident decode pointers."""
+
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        self.state_for_request(request_id)
+        self._device_store.append_layer_device(
+            int(compact_layer_index),
+            k_ptr=int(k_ptr),
+            v_ptr=int(v_ptr),
+            evict_ptr=int(evict_ptr),
+            row_position=int(position),
+            stream=int(stream),
+        )
+
+    def finalize_device_append(
+        self,
+        request_id: int,
+        *,
+        eviction: np.ndarray,
+        position: int,
+    ) -> None:
+        """Synchronize compact control metadata once after all layer appends."""
+
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        state = self.state_for_request(request_id)
+        evict_new = np.asarray(eviction, dtype=np.bool_)
+        expected = (self.retrofit.num_layers, self.retrofit.num_kv_heads)
+        if evict_new.shape != expected:
+            raise ValueError("DMS direct append eviction metadata shape mismatch")
+        for layer in range(self.retrofit.num_layers):
+            device_live = self._device_store.live_counts(layer)
+            for head in range(self.retrofit.num_kv_heads):
+                live = int(state.live_counts[layer, head])
+                prior_positions = state.token_positions[layer, head, :live]
+                prior_evict = state.evict_mask[layer, head, :live]
+                keep = (~prior_evict) | (
+                    int(position) - prior_positions <= self.retrofit.window_size
+                )
+                removed = int(live - np.count_nonzero(keep))
+                combined_positions = np.concatenate(
+                    (
+                        prior_positions[keep],
+                        np.asarray([int(position)], dtype=np.int32),
+                    )
+                )
+                combined_evict = np.concatenate(
+                    (prior_evict[keep], np.asarray([evict_new[layer, head]]))
+                )
+                final_live = int(combined_positions.size)
+                if final_live != int(device_live[head]):
+                    raise RuntimeError("DMS direct append device/host live-count mismatch")
+                capacity = int(state.range_capacity[layer, head])
+                if final_live > capacity:
+                    raise MemoryError("DMS direct append exceeded committed extent")
+                state.live_counts[layer, head] = final_live
+                state.token_positions[layer, head, :final_live] = combined_positions
+                state.token_positions[layer, head, final_live:capacity] = -1
+                state.evict_mask[layer, head, :final_live] = combined_evict
+                state.evict_mask[layer, head, final_live:capacity] = False
+                self.evicted_tokens += removed
+        state.logical_tokens = max(state.logical_tokens, int(position) + 1)
+        self.decode_appends += 1
+
     def compact_decode_attention(
         self,
         request_id: int,
@@ -1023,6 +1753,67 @@ class DMSCompactBackend:
             scale=scale,
         )
         return out
+
+    def device_compact_decode_attention(
+        self,
+        request_id: int,
+        compact_layer_index: int,
+        *,
+        q_ptr: int,
+        out_ptr: int,
+        scale: float | None = None,
+        stream: int = 0,
+    ) -> None:
+        """Attend directly from device pointers and persistent live metadata."""
+
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        state = self.state_for_request(request_id)
+        layer = int(compact_layer_index)
+        if layer < 0 or layer >= self.retrofit.num_layers:
+            raise ValueError("compact DMS layer index is out of range")
+        self._device_store.attention_layer_device(
+            layer,
+            q_ptr=int(q_ptr),
+            out_ptr=int(out_ptr),
+            score_capacity=max(1, int(np.max(state.range_capacity[layer]))),
+            scale=scale,
+            stream=int(stream),
+        )
+
+    def device_layer_kernel_view(
+        self,
+        request_id: int,
+        compact_layer_index: int,
+    ) -> dict[str, Any]:
+        """Expose compact device pointers/capacity to the integrated model owner."""
+
+        if self._device_store is None:
+            raise ValueError("device payloads are not enabled on this backend")
+        state = self.state_for_request(request_id)
+        layer = int(compact_layer_index)
+        if layer < 0 or layer >= self.retrofit.num_layers:
+            raise ValueError("compact DMS layer index is out of range")
+        k_ptr, v_ptr, base_ptr, live_ptr = self._device_store.layer_device_ptrs(
+            layer
+        )
+        score_capacity = max(1, int(np.max(state.range_capacity[layer])))
+        num_splits = self._device_store.ensure_split_workspace(score_capacity)
+        partial_out_ptr, partial_m_ptr, partial_l_ptr = (
+            self._device_store.split_workspace_ptrs
+        )
+        return {
+            "k_ptr": k_ptr,
+            "v_ptr": v_ptr,
+            "base_ptr": base_ptr,
+            "live_ptr": live_ptr,
+            "score_capacity": score_capacity,
+            "chunk_size": 256,
+            "num_splits": num_splits,
+            "partial_out_ptr": partial_out_ptr,
+            "partial_m_ptr": partial_m_ptr,
+            "partial_l_ptr": partial_l_ptr,
+        }
 
     def device_layer_view(self, request_id: int, layer: int) -> Any:
         """Read back one layer's device slot buffers (test/observability)."""
@@ -1098,6 +1889,20 @@ class DMSCompactBackend:
                 {key: value.copy() for key, value in state.v_scales.items()},
             ),
             logical_tokens=int(state.logical_tokens),
+            device_snapshot=(
+                None
+                if self._device_store is None
+                else self._device_store.snapshot(
+                    state.base_offsets,
+                    state.range_capacity,
+                )
+            ),
+            counter_snapshot=(
+                int(self.pack_calls),
+                int(self.decode_appends),
+                int(self.evicted_tokens),
+                int(self.released_provisional_slots),
+            ),
         )
 
     def commit(self, operation: Any, result: Any) -> ResourceDelta:
@@ -1130,6 +1935,16 @@ class DMSCompactBackend:
             key: value.copy() for key, value in operation.payload_snapshot[3].items()
         }
         state.logical_tokens = int(operation.logical_tokens)
+        if operation.device_snapshot is not None:
+            if self._device_store is None:
+                raise RuntimeError("DMS device store disappeared before rollback")
+            self._device_store.restore(operation.device_snapshot)
+        (
+            self.pack_calls,
+            self.decode_appends,
+            self.evicted_tokens,
+            self.released_provisional_slots,
+        ) = operation.counter_snapshot
         return ResourceDelta(
             operation_id=f"rollback:{operation.operation_id}",
             lease_id=operation.lease.lease_id,
@@ -1190,9 +2005,12 @@ class DMSCompactBackend:
                 "codec": self.codec,
                 "artifact_fingerprint": self.retrofit.artifact_fingerprint,
                 "retrofit_fingerprint": self.retrofit.fingerprint,
+                "decision_source": self.retrofit.decision_source,
+                "physical_layer_ids": list(self.retrofit.physical_layer_ids),
                 "prefix_mode": "off",
                 "no_dense_shadow": True,
                 "device_payloads": self.device_payloads_enabled,
+                "device_backend": self.device_backend,
                 "physical_widths": list(self.spec.physical_widths),
             },
             "capacity": {
@@ -1213,6 +2031,7 @@ class DMSCompactBackend:
                 "streaming_pack_calls": self.pack_calls,
                 "decode_appends": self.decode_appends,
                 "evicted_tokens": self.evicted_tokens,
+                "released_provisional_slots": self.released_provisional_slots,
             },
             "extent_pool": self.extents.snapshot(),
             "ledger": self.ledger.snapshot(),
@@ -1440,9 +2259,11 @@ __all__ = [
     "DMSCodecQualification",
     "DMSCompactBackend",
     "DMSCompactResidentRunnerAdapter",
+    "DMSLinearSidecarSpec",
     "DMSOperation",
     "DMSRetrofitConfig",
     "DMSSequenceState",
+    "DMSTrainingProvenance",
     "build_dms_live_mask",
     "compact_attention_reference",
     "create_dms_bf16_backend",

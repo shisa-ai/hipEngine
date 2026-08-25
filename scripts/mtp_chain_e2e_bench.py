@@ -16,7 +16,7 @@ import argparse
 import json
 import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -78,7 +78,7 @@ def build_mtp_readiness_artifact(target_model: str | Path, *, draft_budgets: tup
         status = "blocked_native_mtp_proposal_kernels_not_ported"
     return {
         "schema_version": 1,
-        "date": datetime.now(UTC).date().isoformat(),
+        "date": datetime.now(timezone.utc).date().isoformat(),
         "title": "MTP chain verifier readiness diagnostic",
         "status": status,
         "performance_claim": False,

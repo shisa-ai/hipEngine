@@ -93,8 +93,18 @@ Rows use different models and tests; compare only matching protocols. The RX 790
 llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
+## Explicit long-context DMS (`Q4_K_M`, c1, default-off)
+
+| Context | DMS median decode | Matched dense | Live-KV compression | Quality |
+| --- | ---: | ---: | ---: | ---: |
+| 32K | **104.62 ms/token (9.56 tok/s)** | 99.96 ms/token | 1.5997x | max KL 0.003784, 100% top-1 |
+| 128K | **136.27 ms/token (7.34 tok/s)** | 137.43 ms/token | 1.8822x / 3.750 GiB saved | max KL 0.002899, 100% top-1 |
+
+These are pooled medians from 32 strict-teacher c1 decode rows per context, not concurrent serving throughput.
+
 ## Current default notes
-Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with explicit FP32 rollback; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json) and the promotion inventory.
+Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). Exact Qwen3.8-27B `Q4_K_M` frozen W8192 external DMS passes source-disjoint four-category finals with the retained wave-cooperative kernel at 32K (**max KL 0.003784, 100% top-1, 1.599688x live CR**) and 128K (**max KL 0.002899, 100% top-1, 1.882225x live CR, 3.750 GiB payload saved**). DMS reaches matched-dense c1 decode parity at 128K (**136.27 vs 137.43 ms/token**) but stays default-off pending real c1-c32 lifecycle/soak, sampled memory controls, bounded-peak prefill, and public admission. [`DMS evidence`](../docs/DMS.md).
+
 ## Where detailed evidence lives
 
 | Need | Source |

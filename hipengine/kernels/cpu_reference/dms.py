@@ -15,6 +15,32 @@ from hipengine.kvcache.dms import (
 )
 
 
+def external_dms_linear_decision_reference(
+    hidden: np.ndarray,
+    weight: np.ndarray,
+    bias: np.ndarray,
+    *,
+    alpha_scale: float,
+    alpha_offset: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Project normalized hidden rows without borrowing or mutating Q channels."""
+
+    values = np.asarray(hidden, dtype=np.float32)
+    weights = np.asarray(weight, dtype=np.float32)
+    biases = np.asarray(bias, dtype=np.float32)
+    if values.ndim != 2 or weights.ndim != 2:
+        raise ValueError("external DMS hidden/weight tensors must be rank-2")
+    if values.shape[1] != weights.shape[1] or biases.shape != (weights.shape[0],):
+        raise ValueError("external DMS hidden/weight/bias shapes do not align")
+    if not np.isfinite(float(alpha_scale)) or float(alpha_scale) == 0.0:
+        raise ValueError("external DMS alpha_scale must be finite and non-zero")
+    if not np.isfinite(float(alpha_offset)):
+        raise ValueError("external DMS alpha_offset must be finite")
+    logits = np.ascontiguousarray(values @ weights.T + biases, dtype=np.float32)
+    decisions = logits * float(alpha_scale) - float(alpha_offset) > 0.0
+    return logits, np.asarray(decisions, dtype=np.bool_)
+
+
 def dms_streaming_pack_reference(
     k: np.ndarray,
     v: np.ndarray,
@@ -55,6 +81,16 @@ def dms_streaming_pack_reference(
 
 
 def register_dms_cpu_reference_kernels(*, replace: bool = True) -> None:
+    register(
+        KernelKey(
+            "cpu_reference",
+            "dms_decision_source",
+            "bf16",
+            "external_linear_sidecar_v1",
+        ),
+        external_dms_linear_decision_reference,
+        replace=replace,
+    )
     register(
         KernelKey("cpu_reference", "dms_extract_decision", "bf16", "corrected_mask"),
         extract_dms_eviction_decisions,
@@ -105,5 +141,6 @@ def register_dms_cpu_reference_kernels(*, replace: bool = True) -> None:
 __all__ = [
     "DMSRetrofitConfig",
     "dms_streaming_pack_reference",
+    "external_dms_linear_decision_reference",
     "register_dms_cpu_reference_kernels",
 ]

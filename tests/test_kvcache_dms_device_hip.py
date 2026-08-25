@@ -338,6 +338,73 @@ def test_device_append_overflow_fail_closed() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
+def test_device_transaction_rollback_restores_payload_bytes_and_counters() -> None:
+    layers, heads, dim, window = 1, 2, 16, 2
+    backend = _make_backend(
+        num_layers=layers,
+        heads=heads,
+        dim=dim,
+        window=window,
+        slots=64,
+        device=True,
+    )
+    try:
+        rng = np.random.default_rng(8787)
+        tokens = 6
+        k = rng.standard_normal((tokens, layers, heads, dim)).astype(np.float32)
+        v = rng.standard_normal(k.shape).astype(np.float32)
+        evict = np.ones((tokens, layers, heads), dtype=np.bool_)
+        _admit(backend, request_id=0, tokens=tokens)
+        backend.streaming_pack(0, k, v, evict)
+        state = backend.state_for_request(0)
+        operation = backend.begin_transaction((state.lease,), None)
+        before_view = backend.device_layer_view(0, 0)
+        before_metadata = (
+            state.live_counts.copy(),
+            state.token_positions.copy(),
+            state.evict_mask.copy(),
+            int(state.logical_tokens),
+        )
+        before_counters = (
+            backend.pack_calls,
+            backend.decode_appends,
+            backend.evicted_tokens,
+        )
+        k_new = rng.standard_normal((layers, heads, dim)).astype(np.float32)
+        v_new = rng.standard_normal((layers, heads, dim)).astype(np.float32)
+        backend.append_decode(
+            0,
+            k_new,
+            v_new,
+            np.ones((layers, heads), dtype=np.bool_),
+            position=tokens,
+        )
+        assert backend.decode_appends == before_counters[1] + 1
+
+        backend.rollback(operation)
+
+        after_view = backend.device_layer_view(0, 0)
+        for name, before, after in (
+            ("k", before_view.k_bits, after_view.k_bits),
+            ("v", before_view.v_bits, after_view.v_bits),
+            ("positions", before_view.positions, after_view.positions),
+            ("evict", before_view.evict, after_view.evict),
+        ):
+            np.testing.assert_array_equal(before, after, err_msg=f"rollback {name}")
+        np.testing.assert_array_equal(state.live_counts, before_metadata[0])
+        np.testing.assert_array_equal(state.token_positions, before_metadata[1])
+        np.testing.assert_array_equal(state.evict_mask, before_metadata[2])
+        assert state.logical_tokens == before_metadata[3]
+        assert (
+            backend.pack_calls,
+            backend.decode_appends,
+            backend.evicted_tokens,
+        ) == before_counters
+    finally:
+        backend.close()
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime not available")
 def test_device_determinism_across_backends() -> None:
     layers, heads, dim, window = 1, 2, 16, 2
     data = _fixture_data([6], layers, heads, dim, seed=7)

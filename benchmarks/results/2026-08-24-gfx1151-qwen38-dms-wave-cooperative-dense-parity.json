@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_dms_wave_cooperative_decode_optimization",
+  "status": "retained_matching_dms_route",
+  "date": "2026-08-24",
+  "host": {
+    "identity": "zbook",
+    "hardware": "AMD Ryzen AI Max+ PRO 395 / Radeon 8060S",
+    "backend": "hip_gfx1151",
+    "rocm": "7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "policy": {
+    "sidecar_sha256": "e52fc60a4e8f86f00719be107b44a73567795dfdd88dbbce15cf955409fcd764",
+    "metadata_sha256": "62c1f2d2c590aff2756796f01bddfaf1b602750ceada4b3ac23639902ff8edfe",
+    "window_size": 8192,
+    "prefill_selection_mode": "exact_budget",
+    "unchanged": true
+  },
+  "implementation": {
+    "base_commit": "299227295f517aeb03dcdbde8a22673403099d8f",
+    "source": "hipengine/kernels/hip_gfx1100/attention/dms_compact.hip",
+    "source_sha256": "1aac317d7235601dfd378532e02805dcb295da42cc5d93c502d0ffcfbcc1c836",
+    "wrapper_sha256": "1aac4c9606f0dc1669e79756c13fecaf018a48c2230d95a5489b2b63d3a81ff5",
+    "test_sha256": "69b99d06abf52e036ad5675daa6c66240ca55b7adf22cf24ca56a0a017ae0979",
+    "benchmark_script_sha256": "65d7166759edf2ae66491a2a3d50201def8222a9a8e13e5f435aba10cc7a7493",
+    "profile": "production T1 arithmetic with generic grouped producer and CPU-reference strict fallbacks",
+    "change": "For exact 24Q/4KV/D256 group-6 geometry, one wave scores one compact token cooperatively using four BF16 dimensions per lane and a wave reduction. Six query heads share each K load and retain independent score, softmax, value, and split-reduction state.",
+    "dispatch_scope": {
+      "q_heads": 24,
+      "kv_heads": 4,
+      "q_per_kv": 6,
+      "head_dim": 256
+    },
+    "qualified_backend": "gfx1151",
+    "compile_scope": "HIPENGINE_DMS_ENABLE_WAVE_GROUP6=1 only in native gfx1151 build plans; gfx1100 cross-build omits it",
+    "unsupported_shape_or_backend_fallback": "dms_compact_attn_splitk_grouped_producer_kernel",
+    "no_prompt_conditioned_behavior": true
+  },
+  "microbenchmark": {
+    "geometry": {
+      "rows": 1,
+      "q_heads": 24,
+      "kv_heads": 4,
+      "gqa_group": 6,
+      "head_dim": 256,
+      "live_rows_per_kv_head": 69641,
+      "chunk_size": 256,
+      "num_splits": 273,
+      "logical_kv_bytes": 285249536
+    },
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/dms_compact_attn_long_bench.py --live 69641 --warmup 3 --repeats 9 --burst 5 --compiler-version-file /tmp/hipengine-dms-hipcc-version.txt --output /home/lhl/dms-artifacts/qwen38-external-v4-128k-final/dms-attn-wave-group6-scoped-69641.json",
+    "artifact_sha256": "b664da67e27e6971c1c8e4351becae107588ab75304dd21f903f45d3966d9ae4",
+    "parent_median_ms": 46.785563151041664,
+    "grouped_median_ms": 13.920138549804687,
+    "wave_cooperative": {
+      "samples_ms": [1.4230950355529786, 1.436279582977295, 1.4432939529418944, 1.4185358047485352, 1.4136241912841796, 1.415219211578369, 1.4137364387512208, 1.425337028503418, 1.4216099739074708],
+      "median_ms": 1.4216099739074708,
+      "speedup_over_grouped": 9.791812666833973,
+      "latency_delta_vs_grouped_percent": -89.78738631931635,
+      "speedup_over_parent": 32.91026653565588,
+      "finite_output": true
+    }
+  },
+  "rocprof": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-dms-wave-group6-scoped-rocprof -- python3 scripts/dms_compact_attn_long_bench.py --live 69641 --warmup 1 --repeats 1 --burst 1 --compiler-version-file /tmp/hipengine-dms-hipcc-version.txt --require-cached-build --output /tmp/dms-wave-group6-scoped-profile-bench.json",
+    "trace_sha256": "0ccca85444686861a6472764ec12aba5e97f23cea3d396e6c954ccfec4c55a99",
+    "producer": {
+      "kernel": "dms_compact_attn_splitk_group6_wave_producer_kernel<6>",
+      "measured_duration_ns": 1472037,
+      "workgroups": 1092,
+      "workgroup_size": 256,
+      "vgpr": 56,
+      "lds_bytes": 12800,
+      "scratch_bytes": 0
+    },
+    "reducer": {
+      "kernel": "dms_compact_attn_splitk_reduce_kernel",
+      "measured_duration_ns": 95139,
+      "workgroups": 24,
+      "workgroup_size": 256,
+      "vgpr": 16,
+      "lds_bytes": 1024,
+      "scratch_bytes": 0
+    }
+  },
+  "full_model": {
+    "protocol": "Four categories, strict dense-teacher input trajectory, d8, max KL 0.05, per-category top-1 at least 90%; medians pool the 32 candidate or teacher decode rows in each unchanged suite.",
+    "context_32k": {
+      "quality_artifact_sha256": "6d8b50dec6810749c2f19d5e66cddd71082ad8c796afa777f88cfe5675087ed2",
+      "grouped_artifact_sha256": "45a8ebb2748f941d9f6cfee5fb0845c89d1f6efee2b180fad3303f7c7adf8304",
+      "grouped_median_decode_seconds_per_token": 0.19273880100809038,
+      "wave_median_decode_seconds_per_token": 0.10461873048916459,
+      "wave_decode_tokens_per_second": 9.558517822997006,
+      "speedup_over_grouped": 1.842297264618905,
+      "latency_delta_vs_grouped_percent": -45.71994329010425,
+      "parent_median_decode_seconds_per_token": 0.3916791728752287,
+      "speedup_over_parent": 3.7438723548245987,
+      "dense_median_decode_seconds_per_token": 0.09995525347767398,
+      "dms_over_dense_latency_ratio": 1.04665564689436,
+      "max_kl": 0.003784030598410638,
+      "mean_kl": 0.00033291149941080196,
+      "p95_kl": 0.0007062278405344337,
+      "p99_kl": 0.0028560452212079016,
+      "top1_agreement": 1.0,
+      "all_categories_passed": true,
+      "actual_compression_ratio": 1.5996876372687783,
+      "peak_tracked_bytes": 24406914140,
+      "final_tracked_bytes": 0
+    },
+    "context_128k": {
+      "quality_artifact_sha256": "a5fb5932ff03a1dd285b132fb950236a449d2625d25887e9c47f296efef4c2fa",
+      "grouped_artifact_sha256": "e6ee4c5c5ca2e3c59cf4c201ea7ccc468089b6a44f996737cf294c6f79bdc8ca",
+      "grouped_median_decode_seconds_per_token": 0.3579646419675555,
+      "wave_median_decode_seconds_per_token": 0.1362749070103746,
+      "wave_decode_tokens_per_second": 7.338108107634739,
+      "speedup_over_grouped": 2.626783241468686,
+      "latency_delta_vs_grouped_percent": -61.93062357741857,
+      "parent_median_decode_seconds_per_token": 0.9360386479365843,
+      "speedup_over_parent": 6.868752791482909,
+      "dense_median_decode_seconds_per_token": 0.13742980049573816,
+      "dms_over_dense_latency_ratio": 0.991596484305459,
+      "dense_parity_delta_percent": -0.8403515694541003,
+      "max_kl": 0.002898992455188684,
+      "mean_kl": 0.00032107155863889613,
+      "p95_kl": 0.0010672338556189786,
+      "p99_kl": 0.0024191963117817187,
+      "top1_agreement": 1.0,
+      "all_categories_passed": true,
+      "actual_compression_ratio": 1.882224551629069,
+      "compact_payload_bytes": 4563992576,
+      "saved_payload_gib": 3.74993896484375,
+      "peak_tracked_bytes": 34200820316,
+      "final_tracked_bytes": 0
+    }
+  },
+  "quality_commands": {
+    "context_32k": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen38_dms_integrated_quality_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /home/lhl/dms-artifacts/qwen38-external-v3-final/qualified-w8192/dms_metadata.json --data-manifest /home/lhl/dms-artifacts/qwen38-external-v3-final/long-data-manifest-32k.json --prompt-tokens 32768 --prompt-split validation --categories code,general_en,general_ja,mixed_ja_en --decode-steps 8 --modes sidecar --backend hip_gfx1151 --max-kl 0.05 --min-top1 0.9 --output /home/lhl/dms-artifacts/qwen38-external-v4-128k-final/quality-w8192-wave-group6-32k-d8.json --fail-on-fail",
+    "context_128k": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen38_dms_integrated_quality_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /home/lhl/dms-artifacts/qwen38-external-v3-final/qualified-w8192/dms_metadata.json --data-manifest /home/lhl/dms-artifacts/qwen38-external-v4-128k-final/long-data-manifest-128k.json --prompt-tokens 131072 --prompt-split validation --categories code,general_en,general_ja,mixed_ja_en --decode-steps 8 --modes sidecar --backend hip_gfx1151 --max-kl 0.05 --min-top1 0.9 --output /home/lhl/dms-artifacts/qwen38-external-v4-128k-final/quality-w8192-wave-group6-128k-final-d8.json --fail-on-fail"
+  },
+  "correctness": {
+    "production_digest": "baf26fe9f59a19a3be1d92c9a88b027caeee508f0d635e84895a297c8972964d",
+    "deterministic_repeat": true,
+    "cpu_reference_outer_gate": "KL <= 0.05 and top-1 >= 0.90",
+    "hip_tests": "14 passed after backend scoping: complete compact-attention file, direct device pipeline, and c1-c32 device pack/append/attention/reclaim nodes",
+    "gfx1100_cross_build": "passed; target gfx1100 artifact contains no wave-group6 compile define",
+    "quality_path_equivalence": "The post-quality compile guard is constant true for the measured gfx1151 build, preserves the production digest, kernel identity, launch geometry, and resources, and introduces no runtime branch. It only prevents unqualified gfx1100 selection.",
+    "production_profile": "Complete frozen four-category 32K and fresh sealed 128K suites passed"
+  },
+  "disposition": {
+    "retain": true,
+    "default_scope": "Matching explicit Qwen3.8 DMS route on gfx1151; gfx1100/unsupported shapes retain generic grouped and CPU-reference fallbacks; dense remains the general product default.",
+    "performance_closed_for_explicit_c1_128k": true,
+    "remaining_blockers": [
+      "real c1-c32 model lifecycle and long soak",
+      "same-host sampled process/device memory controls",
+      "streaming prefill without the temporary dense KV peak",
+      "public model-plugin DMS admission and portable package policy"
+    ]
+  }
+}

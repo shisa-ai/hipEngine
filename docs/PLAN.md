@@ -1281,7 +1281,7 @@ hipEngine defaults to **RadixCache** for better prefix sharing in multi-turn cha
 
 See [docs/KVCACHE.md](KVCACHE.md) for the staged delivery order: finish the artifact-scoped compact c>N dense-INT8 campaign in [`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md), then add FastDMS-derived compact DMS over the same `KVLiveSpans` ABI.
 
-Dynamic Memory Sparsification (DMS) trains per-head learned KV token eviction via logit distillation. Compact DMS saves real allocator memory (5–8× vs BF16 KV at 8K context, up to 49× at max context per `~/FastDMS` benchmarks) while maintaining or improving decode speed. The reference open implementation is `~/FastDMS` (shisa-ai). Validated checkpoints: `shisa-ai/Llama-3.2-1B-DMS-8x`, `nvidia/Qwen3-8B-DMS-8x`.
+Dynamic Memory Sparsification (DMS) trains per-head learned KV token eviction via logit distillation. Compact DMS saves real allocator memory (5–8× vs BF16 KV at 8K context, up to 49× at max context per `~/FastDMS` benchmarks) while maintaining or improving decode speed. The reference open implementation is `~/FastDMS` (shisa-ai). Validated borrowed-channel checkpoints: `shisa-ai/Llama-3.2-1B-DMS-8x`, `nvidia/Qwen3-8B-DMS-8x`. hipEngine's local schema-v2 exact-Qwen3.8 Q4_K_M route now executes no-shadow c1 decode at 128K/256K, but its 768-token-trained CR2 candidate is rejected at integrated 32K quality (max KL 6.0177, 62.5% top-1; no-evict max KL 7.76e-7/100%). The implementation remains default-off while a firewall-safe long-context sidecar is trained and all product gates close.
 
 #### Why DMS is "major surgery" inside vLLM
 
@@ -1305,7 +1305,7 @@ From `~/FastDMS/README.md`, a DMS port touches seven vLLM subsystems:
 | `KVCacheBackend.estimate()` returns atomic `ResourceClaimSet` vectors | Dense, DMS, mixed-tier, and quantized formats claim every payload/metadata/workspace plane without scheduler formulas. |
 | Fusion planner with chain-matching (not hardcoded ops) | DMS needs fused `rotate + dms_decide + compact_store + decode` kernels. These register as fused composites for `(quant, layer="rotate+dms+store+attn"`. |
 | Retention topology and hot codec/layout are resolved composition keys | DMS + BF16, DMS + FP8, DMS + int4/HIGGS-like, and DMS + AQUA can share topology/lifecycle code while owning different planes and kernels. (`~/kvcache-quantization-research/` showed DMS + AQUA + HIGGS hitting 25.6× at +0.09% PPL.) |
-| Model plugin accepts "DMS-trained" as a model subtype | DMS-trained checkpoints carry per-head eviction head weights (borrowed query channel, alpha scale/offset). Loader gets a `dms_config` sub-block. |
+| Model plugin accepts a qualified DMS decision source | Schema-v1 checkpoints carry corrected borrowed-query-channel decisions. Schema-v2 hybrid models may carry an exact-hash external linear sidecar over a declared normalized hidden stage and physical compact-layer map; this source preserves ordinary Q channels. |
 | `KVCacheBackend` storage views + registered compact attention/store bundles | A resolved `dms_compact+fp8` or later compressed composition routes without engine-wide branches. |
 
 #### Phase 4 DMS delivery
@@ -1320,7 +1320,10 @@ With the Phase-0/C2 groundwork, adding DMS is:
    - `dms_rope_store_compact_decode` (fuses RoPE + eviction decision + compact store at decode)
    - `compact_decode_grouped_splitk` (attention over variable per-head live spans)
    - `streaming_pack_scatter` (prefill surviving-K/V pack)
-3. **Model-plugin extension**: `DMSRetrofitConfig` dataclass loaded from the checkpoint, wires per-head eviction heads into the attention layer.
+3. **Model-plugin extension**: `DMSRetrofitConfig` loads either strict schema-v1
+   borrowed-channel metadata or strict schema-v2 external-sidecar metadata. The
+   latter binds model/sidecar hashes, physical layer IDs, hidden input stage,
+   tensor shapes, and training provenance before a plugin can resolve it.
 4. **No scheduler subclass or glue branch**: the common scheduler consumes the
    DMS backend's claims, maintenance work, transactions, and resource deltas.
 
