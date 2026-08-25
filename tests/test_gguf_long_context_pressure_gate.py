@@ -7,6 +7,12 @@ def test_server_identity_matches_reused_production_workload_driver() -> None:
     assert gate._SERVED_MODEL_NAME == "qwen35-production-load"
 
 
+def test_long_context_gate_accepts_explicit_speculative_route() -> None:
+    args = gate.build_parser().parse_args(["--speculative-mtp"])
+
+    assert args.speculative_mtp is True
+
+
 def test_pool_plan_covers_mixed_and_forces_pressure_rejection() -> None:
     plan = gate.build_pool_plan(
         decode_tokens=32,

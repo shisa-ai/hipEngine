@@ -35,6 +35,7 @@ from hipengine.speculative.frontier import (
     CandidateGraph,
     ProviderAttachment,
     ProviderCatchupMode,
+    SpecPlanReason,
     SpecRequestPlan,
     SpecTransactionMode,
     SpeculativeCapability,
@@ -178,7 +179,8 @@ class Qwen35GGUFMTP2Adapter:
             ):
                 return None
         max_context = min(
-            int(target.target_layout.max_sequence_length) for target in targets
+            1023,
+            *(int(target.target_layout.max_sequence_length) for target in targets),
         )
         profile = str(getattr(self.generator, "execution_profile", None) or "legacy_exact")
         max_requests = min(4, max(1, int(getattr(self.owner, "capacity", 4))))
@@ -238,6 +240,7 @@ class Qwen35GGUFMTP2Adapter:
         stream: int | None = None,
     ) -> None:
         del request_semantics, stream
+        reason_by_id = dict(zip(plan.request_ids, plan.reasons, strict=True))
         ids = tuple(
             int(request_id)
             for request_id in plan.request_ids
@@ -245,12 +248,22 @@ class Qwen35GGUFMTP2Adapter:
             and int(request_id) not in self._disabled_requests
             and int(request_id) in self._prompt_hidden_rows
         )
-        if ids:
-            for request_id in ids:
-                if request_id not in self._states:
-                    self.owner._flush_row_owner(self.owner._row(request_id))
-            self._ensure_request_states(ids)
+        attach = tuple(
+            request_id
+            for request_id in ids
+            if request_id not in self._states
+            and reason_by_id[request_id] is SpecPlanReason.NO_PROVIDER
+        )
+        if attach:
+            for request_id in attach:
+                self.owner._flush_row_owner(self.owner._row(request_id))
+            self._ensure_request_states(attach)
         for rid in ids:
+            if reason_by_id[rid] not in {
+                SpecPlanReason.NO_PROVIDER,
+                SpecPlanReason.POLICY_SELECTED_AR,
+            }:
+                continue
             state = self._states.get(rid)
             if state is None:
                 continue
