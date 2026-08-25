@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+import hashlib
+import json
 from typing import Sequence
 
 from hipengine.speculative.frontier import (
@@ -11,6 +14,197 @@ from hipengine.speculative.frontier import (
     SpeculativeCapability,
 )
 from hipengine.speculative.provider import SpeculativeRequestSemantics
+
+
+@dataclass(frozen=True, slots=True)
+class OfflineSpeculativeDepthCell:
+    """Prompt-independent automatic K/K0 cell selected before mutation."""
+
+    cell_key: str
+    min_concurrency: int
+    max_concurrency: int
+    selected_k: int
+    reason: str
+    evidence: str
+
+    def __post_init__(self) -> None:
+        key = str(self.cell_key).strip()
+        reason = str(self.reason).strip()
+        evidence = str(self.evidence).strip()
+        lower = int(self.min_concurrency)
+        upper = int(self.max_concurrency)
+        selected = int(self.selected_k)
+        if not key or not reason or not evidence:
+            raise ValueError("offline depth cell text fields must be non-empty")
+        if lower <= 0 or upper < lower:
+            raise ValueError("offline depth cell concurrency range is invalid")
+        if selected < 0:
+            raise ValueError("offline depth cell selected_k must be non-negative")
+        object.__setattr__(self, "cell_key", key)
+        object.__setattr__(self, "min_concurrency", lower)
+        object.__setattr__(self, "max_concurrency", upper)
+        object.__setattr__(self, "selected_k", selected)
+        object.__setattr__(self, "reason", reason)
+        object.__setattr__(self, "evidence", evidence)
+
+    def matches(self, concurrency: int) -> bool:
+        value = int(concurrency)
+        return self.min_concurrency <= value <= self.max_concurrency
+
+
+@dataclass(frozen=True, slots=True)
+class OfflineSpeculativeDepthPolicy:
+    """Ordered immutable cells with a canonical content fingerprint."""
+
+    policy_key: str
+    cells: tuple[OfflineSpeculativeDepthCell, ...]
+
+    def __post_init__(self) -> None:
+        key = str(self.policy_key).strip()
+        cells = tuple(self.cells)
+        if not key or not cells:
+            raise ValueError("offline depth policy requires a key and cells")
+        if len({cell.cell_key for cell in cells}) != len(cells):
+            raise ValueError("offline depth policy cell keys must be unique")
+        prior = 0
+        for cell in cells:
+            if cell.min_concurrency <= prior:
+                raise ValueError("offline depth policy cells must be ordered and disjoint")
+            prior = cell.max_concurrency
+        object.__setattr__(self, "policy_key", key)
+        object.__setattr__(self, "cells", cells)
+
+    @property
+    def fingerprint(self) -> str:
+        payload = {
+            "policy_key": self.policy_key,
+            "cells": [
+                {
+                    "cell_key": cell.cell_key,
+                    "min_concurrency": cell.min_concurrency,
+                    "max_concurrency": cell.max_concurrency,
+                    "selected_k": cell.selected_k,
+                    "reason": cell.reason,
+                    "evidence": cell.evidence,
+                }
+                for cell in self.cells
+            ],
+        }
+        encoded = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+@dataclass(frozen=True, slots=True)
+class OfflineSpeculativeDepthDecision:
+    selected_k: int
+    cell_key: str
+    reason: str
+    evidence: str
+    policy_fingerprint: str
+    concurrency: int
+    output_horizon_tokens: int
+
+
+DEFAULT_AUTO_DEPTH_POLICY = OfflineSpeculativeDepthPolicy(
+    policy_key="specdec2:auto:strict:v1",
+    cells=(
+        OfflineSpeculativeDepthCell(
+            "auto-c1-measured-k0",
+            1,
+            1,
+            0,
+            "measured_speedup_below_1p10",
+            "benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json",
+        ),
+        OfflineSpeculativeDepthCell(
+            "auto-c2-measured-k0",
+            2,
+            2,
+            0,
+            "measured_speedup_below_1p10",
+            "benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json",
+        ),
+        OfflineSpeculativeDepthCell(
+            "auto-c3-unqualified-k0",
+            3,
+            3,
+            0,
+            "no_qualified_physical_frontier",
+            "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
+        ),
+        OfflineSpeculativeDepthCell(
+            "auto-c4-measured-k0",
+            4,
+            4,
+            0,
+            "measured_speedup_below_1p10",
+            "benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json",
+        ),
+        OfflineSpeculativeDepthCell(
+            "auto-c5-c8-unqualified-k0",
+            5,
+            8,
+            0,
+            "no_qualified_physical_frontier",
+            "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
+        ),
+        OfflineSpeculativeDepthCell(
+            "auto-c9-c17-unqualified-k0",
+            9,
+            17,
+            0,
+            "no_qualified_physical_frontier",
+            "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
+        ),
+        OfflineSpeculativeDepthCell(
+            "auto-c18-c32-unqualified-k0",
+            18,
+            32,
+            0,
+            "no_qualified_physical_frontier",
+            "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
+        ),
+    ),
+)
+
+
+def select_offline_speculative_depth(
+    policy: OfflineSpeculativeDepthPolicy,
+    *,
+    concurrency: int,
+    output_horizon_tokens: int,
+) -> OfflineSpeculativeDepthDecision:
+    """Select one deterministic cell using shape only, never prompt content."""
+
+    count = int(concurrency)
+    horizon = int(output_horizon_tokens)
+    if count <= 0 or horizon < 0:
+        raise ValueError("concurrency must be positive and output horizon non-negative")
+    cell = next((candidate for candidate in policy.cells if candidate.matches(count)), None)
+    if cell is None:
+        return OfflineSpeculativeDepthDecision(
+            selected_k=0,
+            cell_key="auto-outside-qualified-concurrency-k0",
+            reason="outside_qualified_concurrency",
+            evidence=policy.cells[-1].evidence,
+            policy_fingerprint=policy.fingerprint,
+            concurrency=count,
+            output_horizon_tokens=horizon,
+        )
+    selected = min(int(cell.selected_k), max(0, horizon - 1))
+    return OfflineSpeculativeDepthDecision(
+        selected_k=selected,
+        cell_key=cell.cell_key,
+        reason=cell.reason,
+        evidence=cell.evidence,
+        policy_fingerprint=policy.fingerprint,
+        concurrency=count,
+        output_horizon_tokens=horizon,
+    )
 
 
 def _physical_groups(total: int, installed_widths: Sequence[int]) -> tuple[int, ...]:
@@ -242,4 +436,11 @@ def plan_speculative_requests(
     )
 
 
-__all__ = ["plan_speculative_requests"]
+__all__ = [
+    "DEFAULT_AUTO_DEPTH_POLICY",
+    "OfflineSpeculativeDepthCell",
+    "OfflineSpeculativeDepthDecision",
+    "OfflineSpeculativeDepthPolicy",
+    "plan_speculative_requests",
+    "select_offline_speculative_depth",
+]

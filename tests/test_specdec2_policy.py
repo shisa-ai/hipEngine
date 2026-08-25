@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import pytest
 
+from hipengine.speculative.policy import (
+    DEFAULT_AUTO_DEPTH_POLICY,
+    select_offline_speculative_depth,
+)
 from hipengine.speculative import (
     ProviderAttachment,
     ProviderCatchupMode,
@@ -142,6 +146,46 @@ def test_graph_miss_uses_qualified_eager_or_k0_when_no_route_exists() -> None:
     k0 = _plan(graph_only, semantics, (2,), graph_available=False)
     assert k0.candidate_counts == (0,)
     assert k0.reasons == (SpecPlanReason.TARGET_PHYSICAL_BUCKET_MISS,)
+
+
+@pytest.mark.parametrize(
+    ("concurrency", "cell_key", "reason"),
+    [
+        (1, "auto-c1-measured-k0", "measured_speedup_below_1p10"),
+        (2, "auto-c2-measured-k0", "measured_speedup_below_1p10"),
+        (4, "auto-c4-measured-k0", "measured_speedup_below_1p10"),
+        (8, "auto-c5-c8-unqualified-k0", "no_qualified_physical_frontier"),
+        (17, "auto-c9-c17-unqualified-k0", "no_qualified_physical_frontier"),
+        (32, "auto-c18-c32-unqualified-k0", "no_qualified_physical_frontier"),
+    ],
+)
+def test_default_offline_depth_policy_selects_k0_with_stable_cell_reason(
+    concurrency: int,
+    cell_key: str,
+    reason: str,
+) -> None:
+    decision = select_offline_speculative_depth(
+        DEFAULT_AUTO_DEPTH_POLICY,
+        concurrency=concurrency,
+        output_horizon_tokens=24,
+    )
+
+    assert decision.selected_k == 0
+    assert decision.cell_key == cell_key
+    assert decision.reason == reason
+    assert decision.policy_fingerprint.startswith("sha256:")
+
+
+def test_offline_depth_policy_fails_closed_outside_qualified_concurrency() -> None:
+    decision = select_offline_speculative_depth(
+        DEFAULT_AUTO_DEPTH_POLICY,
+        concurrency=33,
+        output_horizon_tokens=24,
+    )
+
+    assert decision.selected_k == 0
+    assert decision.cell_key == "auto-outside-qualified-concurrency-k0"
+    assert decision.reason == "outside_qualified_concurrency"
 
 
 def test_policy_caps_k_and_decomposes_c8_deterministically() -> None:
