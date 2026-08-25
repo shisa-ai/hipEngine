@@ -126,6 +126,12 @@ D8 allocation falls **1,110 malloc/free pairs → 0** and P4 cycle marker wall i
 **83.469 ms**. Both automatic policies remain K0; physical C2/C4 is not exposed.
 [`gfx1100 closure`](results/2026-08-25-w7900-specdec2-perf-campaign-closure.json).
 
+P512/d128 recovery keeps C1 exact at **77.176 vs old 72.169 tok/s**.
+Native C8 raw wall is **161.882 vs 158.542**, but only **16/24** rows
+match C1, so that rate is diagnostic. The p128/d8 scoreboard is unchanged;
+D128 C8 needs a production/batch-invariant gate.
+[`Evidence`](results/2026-08-26-w7900-mtp-concurrency2-recovery-profile.json).
+
 ## Where detailed evidence lives
 
 Use result artifacts for commands/samples/profilers,
