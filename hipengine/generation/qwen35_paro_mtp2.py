@@ -45,6 +45,7 @@ class _ParoMTP2RequestState:
     prompt_rows_consumed: int = 0
     checkpoint: NativeMtpStateSnapshot | None = None
     last_proposal_seconds: float = 0.0
+    prompt_prime_seconds: float = 0.0
 
 
 class Qwen35ParoMTP2Adapter:
@@ -147,6 +148,7 @@ class Qwen35ParoMTP2Adapter:
             if final
             else int(row.prompt_ids[index + 1])
         )
+        started = time.perf_counter()
         state.proposer.advance_with_target_hidden(
             input_token=input_token,
             target_hidden_ptr=int(target_hidden_ptr),
@@ -154,6 +156,9 @@ class Qwen35ParoMTP2Adapter:
             read_expert_topk=False,
             read_lm_head_value=False,
         )
+        elapsed = time.perf_counter() - started
+        state.prompt_prime_seconds += elapsed
+        row.mtp2_prompt_prime_ms += elapsed * 1000.0
         state.prompt_rows_consumed += 1
 
     def observe_prefill_result(self, request_id: int) -> None:

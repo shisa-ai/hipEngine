@@ -305,6 +305,7 @@ def test_paro_direct_attachment_uses_raw_ids_manifests_and_activation_timing(
         "results": [
             {
                 "name": "code_merge_intervals",
+                "tokenization_seconds": 0.05,
                 "economics_json": str(economics_child),
             }
         ],
@@ -320,14 +321,15 @@ def test_paro_direct_attachment_uses_raw_ids_manifests_and_activation_timing(
     assert len(attached["rows"]) == 3
     direct = next(row for row in attached["rows"] if row["arm"] == "direct")
     assert direct["generated_token_ids"] == [1, 2, 3]
-    assert direct["timing"]["complete_request_seconds"] == pytest.approx(0.6)
+    assert direct["timing"]["complete_request_seconds"] == pytest.approx(0.65)
+    assert direct["timing"]["top_level_stage_seconds"]["tokenize"] == 0.05
     assert direct["timing"]["top_level_stage_seconds"]["target_prefill"] == 0.2
     assert direct["timing"]["top_level_stage_seconds"]["provider_prompt_prime"] == 0.1
     assert direct["timing"]["top_level_stage_seconds"]["cycle_total"] == 0.3
     assert direct["reload_boundary"]["unavoidable_reload"] is True
     assert attached["aggregate"]["cells"]["paro:production:c1:k1"][
         "staged_speedup_vs_direct"
-    ] == pytest.approx(0.6)
+    ] == pytest.approx(0.65)
 
 
 def test_paro_direct_attachment_rejects_source_commit_mismatch(tmp_path: Path) -> None:
@@ -364,6 +366,7 @@ def test_child_timing_uses_nonoverlapping_scheduler_windows_and_residual() -> No
     timing = resolve_arm_timing(
         complete_request_seconds=1.0,
         output_timing={
+            "specdec2_mtp2_prompt_prime_ms": 100.0,
             "specdec2_mtp2_proposal_ms": 50.0,
             "specdec2_mtp2_target_ms": 400.0,
             "specdec2_mtp2_provider_update_ms": 10.0,
@@ -376,7 +379,8 @@ def test_child_timing_uses_nonoverlapping_scheduler_windows_and_residual() -> No
     )
 
     assert timing["decode_only_seconds"] == 0.6
-    assert timing["top_level_stage_seconds"]["target_prefill"] == 0.2
+    assert timing["top_level_stage_seconds"]["target_prefill"] == 0.1
+    assert timing["top_level_stage_seconds"]["provider_prompt_prime"] == 0.1
     assert timing["top_level_stage_seconds"]["cycle_total"] == 0.6
     assert timing["top_level_stage_seconds"]["resident_owner_transition"] == 0.0
     assert timing["unattributed_seconds"] == pytest.approx(0.2)

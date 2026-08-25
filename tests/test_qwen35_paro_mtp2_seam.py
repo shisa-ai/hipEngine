@@ -164,7 +164,7 @@ def test_paro_capability_is_c1_k1_and_profile_specific() -> None:
 
 def test_streaming_prompt_priming_uses_shifted_tokens_and_final_root() -> None:
     proposer = _ProposerDouble()
-    row = SimpleNamespace(prompt_ids=(10, 11, 12))
+    row = SimpleNamespace(prompt_ids=(10, 11, 12), mtp2_prompt_prime_ms=0.0)
     owner = SimpleNamespace(
         generator=SimpleNamespace(backend="hip_gfx1100"),
         _row=lambda request_id: row,
@@ -179,6 +179,8 @@ def test_streaming_prompt_priming_uses_shifted_tokens_and_final_root() -> None:
     assert [row["input_token"] for row in proposer.advances] == [11, 12, 99]
     assert [row["position"] for row in proposer.advances] == [1, 2, 3]
     assert adapter._states[7].prompt_rows_consumed == 3
+    assert adapter._states[7].prompt_prime_seconds > 0.0
+    assert row.mtp2_prompt_prime_ms > 0.0
 
 
 def test_initial_root_k0_keeps_primed_provider_live() -> None:

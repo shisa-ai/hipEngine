@@ -372,10 +372,12 @@ work never begins from failing upstream gates.
       prompt scopes, repeats, immediate progress, and atomic checkpoints.
 - [ ] Emit complete/decode-only attribution, exact accounting, physical shapes,
       trajectories, fingerprints, allocation/synchronization counters, and drain.
-- [ ] Attribute resident-owner transition separately: packed-AR
-      flush/scatter/discard, graph close/invalidation, root-hidden handoff,
-      provider attach, and staged-owner activation counts must reconcile rather
-      than disappear into residual.
+- [x] Add named packed-PARO target-prompt, provider-prompt-prime, tokenize, and
+      decode timing; loaded/direct rows preserve non-overlapping ownership and
+      keep unresolved admission/transition/publication work as residual.
+- [ ] Complete resident-owner transition instrumentation: packed-AR
+      flush/scatter/discard, graph close/invalidation, root-hidden handoff, and
+      provider attach counts must reconcile rather than disappear into residual.
 - [ ] Add cached single-child profiler mode; never profile a nested parent.
 - [ ] Run GGUF C1 K1-K3 d8 and ten-prompt D24 packets.
 - [ ] Run PARO C1/K1 production and strict d8 and ten-prompt D24 packets.

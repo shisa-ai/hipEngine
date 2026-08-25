@@ -472,6 +472,9 @@ def attach_paro_direct_rows(
         if not child_path.is_file():
             raise ValueError(f"PARO per-prompt economics JSON is missing: {child_path}")
         child = json.loads(child_path.read_text(encoding="utf-8"))
+        tokenization_seconds = float(result.get("tokenization_seconds") or 0.0)
+        if not math.isfinite(tokenization_seconds) or tokenization_seconds < 0.0:
+            raise ValueError("PARO direct tokenization timing is invalid")
         budget = child.get("by_budget", {}).get("1")
         child_runs = budget.get("runs") if isinstance(budget, Mapping) else None
         if not isinstance(child_runs, list) or len(child_runs) != runs:
@@ -507,13 +510,19 @@ def attach_paro_direct_rows(
             target_prefill = float(mtp.get("target_prefill_seconds") or 0.0)
             provider_prefill = float(mtp.get("proposal_prefill_seconds") or 0.0)
             decode = float(mtp.get("decode_seconds") or 0.0)
-            complete = target_prefill + provider_prefill + decode
+            complete = tokenization_seconds + target_prefill + provider_prefill + decode
             if not all(
                 math.isfinite(value) and value >= 0.0
-                for value in (target_prefill, provider_prefill, decode)
+                for value in (
+                    tokenization_seconds,
+                    target_prefill,
+                    provider_prefill,
+                    decode,
+                )
             ) or complete <= 0.0 or decode <= 0.0:
                 raise ValueError("PARO direct activation/decode timing is invalid")
             stages = {name: 0.0 for name in REQUIRED_TOP_LEVEL_STAGES}
+            stages["tokenize"] = tokenization_seconds
             stages["target_prefill"] = target_prefill
             stages["provider_prompt_prime"] = provider_prefill
             stages["cycle_total"] = decode
