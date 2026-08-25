@@ -249,6 +249,7 @@ _SPECULATIVE_MTP_THINKING_MODES = ("hint", "hard")
 _SPECULATIVE_MTP_DEFAULT_ROUTE = "default"
 _SPECULATIVE_MTP_BATCH_ROUTE = "speculative_mtp"
 _SPECULATIVE_MTP_AUTO_ROUTE = "speculative_mtp_auto"
+_SPECULATIVE_MTP_K0_ROUTE = "speculative_mtp_k0"
 
 
 class _SpeculativeMTPRouteReason(str, Enum):
@@ -2042,6 +2043,24 @@ def _resolve_realized_generation_route(
     """
 
     route = str(requested_route)
+    if route == _SPECULATIVE_MTP_K0_ROUTE:
+        blockers = tuple(speculative_mtp_sampling_blockers(sampling))
+        return (
+            _SPECULATIVE_MTP_DEFAULT_ROUTE,
+            {
+                "requested_route": _SPECULATIVE_MTP_BATCH_ROUTE,
+                "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
+                "reason": "unsupported_sampling_k0",
+                "policy_cell": "compatibility-pre-mutation-k0",
+                "selected_candidate_count": 0,
+                "policy_reason": "unsupported_sampling",
+                "sampling_blockers": list(blockers),
+                "realized_group_rows": int(group_rows),
+                "output_horizon_tokens": int(sampling.max_tokens),
+                "exact_default_required": True,
+                "evidence": "docs/SPECDEC2.md#12-s6--gfx1151-product-closure",
+            },
+        )
     if route != _SPECULATIVE_MTP_AUTO_ROUTE:
         return route, None
     rows = int(group_rows)
@@ -11558,22 +11577,11 @@ def _speculative_mtp_route_for_request(
         sampling = relax_thinking_budget_for_mtp(sampling)
     blockers = speculative_mtp_sampling_blockers(sampling)
     if blockers:
-        if explicit_requested:
-            raise OpenAIHTTPError(
-                400,
-                "speculative_mtp requires raw greedy-fast sampling",
-                code="unsupported_parameter",
-                param="speculative_mtp",
-                extra={
-                    "hipengine": {
-                        "speculative_mtp": {
-                            "blockers": list(blockers),
-                            "compatibility_guard": "supports_speculative_mtp_sampling",
-                        }
-                    }
-                },
-            )
-        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+        return (
+            _SPECULATIVE_MTP_K0_ROUTE
+            if explicit_requested
+            else _SPECULATIVE_MTP_DEFAULT_ROUTE
+        )
     if not supports_speculative_mtp_sampling(sampling):
         return _SPECULATIVE_MTP_DEFAULT_ROUTE
     if explicit_requested:
