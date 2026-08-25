@@ -349,6 +349,7 @@ class _StageLedger:
         self._active_arm: str | None = None
         self._counter = 0
         self._samples: dict[str, list[float]] = defaultdict(list)
+        self._allocation_samples: dict[str, list[dict[str, int]]] = defaultdict(list)
         self._markers: dict[str, list[str]] = defaultdict(list)
         self._restores: list[tuple[Any, str, Any]] = []
 
@@ -373,6 +374,7 @@ class _StageLedger:
             self._active_arm = str(arm)
             self._counter = 0
             self._samples.clear()
+            self._allocation_samples.clear()
             self._markers.clear()
         try:
             with self.measure("arm_complete"):
@@ -398,15 +400,40 @@ class _StageLedger:
         if not enabled:
             yield
             return
+        allocation_before = memory_stats() if str(phase) == "cycle_total" else None
         self._roctx.push(marker_name)
         started = time.perf_counter()
         try:
             yield
         finally:
             elapsed = time.perf_counter() - started
+            allocation_after = (
+                memory_stats() if allocation_before is not None else None
+            )
             self._roctx.pop()
             with self._lock:
                 self._samples[str(phase)].append(elapsed)
+                if allocation_before is not None and allocation_after is not None:
+                    self._allocation_samples[str(phase)].append(
+                        {
+                            "allocated_bytes": int(
+                                allocation_after["total_allocated_bytes"]
+                                - allocation_before["total_allocated_bytes"]
+                            ),
+                            "freed_bytes": int(
+                                allocation_after["total_freed_bytes"]
+                                - allocation_before["total_freed_bytes"]
+                            ),
+                            "active_delta": int(
+                                allocation_after["active_allocations"]
+                                - allocation_before["active_allocations"]
+                            ),
+                            "current_bytes_delta": int(
+                                allocation_after["current_allocated_bytes"]
+                                - allocation_before["current_allocated_bytes"]
+                            ),
+                        }
+                    )
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -422,6 +449,10 @@ class _StageLedger:
                 "call_counts": {
                     phase: len(samples)
                     for phase, samples in sorted(self._samples.items())
+                },
+                "allocation_samples": {
+                    phase: [dict(sample) for sample in samples]
+                    for phase, samples in sorted(self._allocation_samples.items())
                 },
                 "marker_names": {
                     phase: list(names)
