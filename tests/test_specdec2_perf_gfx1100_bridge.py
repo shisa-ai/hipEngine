@@ -18,6 +18,7 @@ from scripts.specdec2_perf_gfx1100_child import (
     build_bridge_row,
     resolve_arm_timing,
     validate_child_scope,
+    validate_loaded_arm_ids,
 )
 
 
@@ -215,6 +216,50 @@ def test_child_scope_is_paro_k1_only_and_dense_uses_shared_bridge() -> None:
         validate_child_scope(lane="paro", profile="production", candidate_budget=2)
     with pytest.raises(ValueError, match="dense uses the shared bridge"):
         validate_child_scope(lane="gguf", profile="strict", candidate_budget=1)
+
+
+def test_loaded_strict_packet_rejects_ar_staged_id_divergence() -> None:
+    timing = resolve_arm_timing(
+        complete_request_seconds=1.0,
+        output_timing={},
+        scheduler_observability={"prefill_seconds": 0.25, "decode_seconds": 0.5},
+    )
+    common = {
+        "lane": "paro",
+        "profile": "strict",
+        "prompt_id": "general_ja_explain",
+        "run_index": 0,
+        "candidate_budget": 1,
+        "max_tokens": 25,
+        "timing": timing,
+        "selected_manifest_sha256": _STRICT_MANIFEST,
+        "strict_manifest_sha256": _STRICT_MANIFEST,
+        "commit": _COMMIT,
+    }
+    rows = [
+        build_bridge_row(
+            **common,
+            arm="true_ar",
+            order_index=0,
+            generated_token_ids=(1, 2, 3),
+            physical_target_rows=(1,),
+            physical_proposal_widths=(),
+            route_name="true_ar",
+        ),
+        build_bridge_row(
+            **common,
+            arm="staged",
+            order_index=2,
+            generated_token_ids=(1, 2, 4),
+            physical_target_rows=(2,),
+            physical_proposal_widths=(1,),
+            route_name="eager",
+        ),
+    ]
+
+    with pytest.raises(RuntimeError, match="strict AR/staged generated IDs diverged"):
+        validate_loaded_arm_ids(rows, profile="strict")
+    validate_loaded_arm_ids(rows, profile="production")
 
 
 def test_paro_direct_attachment_uses_raw_ids_manifests_and_activation_timing(
