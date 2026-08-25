@@ -127,6 +127,7 @@ class Qwen35GGUFMTP2Adapter:
         self.target_verify_mode = str(target_verify_mode)
         self.candidate_budget = int(candidate_budget)
         self.quant = str(quant)
+        self.physical_prompt_streaming = False
         if self.candidate_budget not in {1, 2, 3}:
             raise ValueError("MTP2 candidate budget must be 1, 2, or 3")
         self._intents: dict[int, int] = {}
@@ -137,12 +138,17 @@ class Qwen35GGUFMTP2Adapter:
         self._provider_groups: dict[tuple[int, ...], _MTP2ProviderGroup] = {}
         self._disabled_requests: set[int] = set()
         self._active_claims: ResourceClaimSet | None = None
+        self._active_prompt_claims: ResourceClaimSet | None = None
         self._transaction_sequence = 0
         self._batch_accept_workspace: RuntimeWorkspace | None = None
         self._batch_accept_owner: TargetVerifyBufferOwner | None = None
         self._batch_accept_remaining: Tensor | None = None
         self._batch_accept_payload: Tensor | None = None
         self._batch_accept_library: Any | None = None
+        self._cycle_workspace: RuntimeWorkspace | None = None
+        self._cycle_proposal_hidden: Tensor | None = None
+        self._cycle_repair_hidden: Tensor | None = None
+        self._cycle_workspace_shape: tuple[int, int] | None = None
 
     def register_request(self, request_id: int, candidate_budget: int) -> None:
         rid = int(request_id)
@@ -173,6 +179,13 @@ class Qwen35GGUFMTP2Adapter:
         ):
             raise RuntimeError("streaming prompt ownership is only opened once per request")
         rows = tuple(self.owner._row(request_id) for request_id in ids)
+        if (
+            int(getattr(self.owner, "capacity", 1)) > 1
+            and not bool(self.physical_prompt_streaming)
+        ):
+            for row in rows:
+                row.mtp2_prompt_fallback_reason = "physical_streaming_category_rejected"
+            return None
         if any(row.lease is None or int(row.prefix_reused_tokens) > 0 for row in rows):
             for row in rows:
                 if int(getattr(row, "prefix_reused_tokens", 0)) > 0:
@@ -190,6 +203,17 @@ class Qwen35GGUFMTP2Adapter:
                 row.mtp2_candidate_budget = 0
                 row.mtp2_prompt_fallback_reason = "target_context_k0"
             return None
+        if self._active_prompt_claims is not None:
+            raise RuntimeError("GGUF MTP2 prompt activation claims are already reserved")
+        self._active_prompt_claims = ResourceClaimSet.from_mapping(
+            "gguf-mtp2-prompt:" + ",".join(str(request_id) for request_id in ids),
+            {
+                "gguf_mtp2.prompt_rows": sum(len(row.prompt_ids) for row in rows),
+                "gguf_mtp2.carried_hidden_rows": len(rows),
+                "gguf_mtp2.provider_request_slots": len(rows),
+            },
+            lifetime=ClaimLifetime.WORK_ITEM,
+        )
         missing = len(ids)
         group = next(
             (
@@ -217,6 +241,7 @@ class Qwen35GGUFMTP2Adapter:
             )
             if not callable(getattr(provider.executor, "enqueue_prompt_rows", None)):
                 self.generator._release_mtp_draft_runner(pool_key, provider)
+                self._active_prompt_claims = None
                 for row in rows:
                     row.mtp2_prompt_fallback_reason = "provider_no_streaming_prompt_abi"
                 return None
@@ -253,6 +278,7 @@ class Qwen35GGUFMTP2Adapter:
             self._abort_prompt_streaming(tuple(created), stream=0)
             if acquired and not group.request_ids:
                 self._provider_groups.pop(group.key, None)
+            self._active_prompt_claims = None
             raise
         return tuple(self._prompt_streaming_sinks[request_id] for request_id in ids)
 
@@ -341,6 +367,7 @@ class Qwen35GGUFMTP2Adapter:
                 self._prompt_streaming_group_keys.pop(request_id, None)
                 if sink is not None:
                     sink.close()
+            self._active_prompt_claims = None
 
     def _abort_prompt_streaming(
         self,
@@ -374,6 +401,7 @@ class Qwen35GGUFMTP2Adapter:
                     group.provider_pool_key,
                     group.provider,
                 )
+        self._active_prompt_claims = None
 
     def observe_prefill_result(self, request_id: int, prompt_ids: Sequence[int], result: Any) -> None:
         rid = int(request_id)
@@ -556,6 +584,79 @@ class Qwen35GGUFMTP2Adapter:
             )
             row.mtp2_k0_catchups += 1
 
+    def _cycle_hidden_tensors(
+        self,
+        runtime: Any,
+        *,
+        hidden_size: int,
+    ) -> tuple[Tensor, Tensor]:
+        """Return stable max-width proposal and repair BF16 slabs."""
+
+        shape = (
+            min(4, max(1, int(getattr(self.owner, "capacity", 1)))),
+            int(hidden_size),
+        )
+        if shape[1] <= 0:
+            raise ValueError("cycle hidden workspace requires positive hidden_size")
+        if getattr(self, "_cycle_workspace", None) is None:
+            workspace = RuntimeWorkspace(
+                device=Device("hip", 0),
+                runtime=runtime,
+            )
+            proposal = workspace.reserve_tensor(
+                "gguf_mtp2/cycle/proposal_hidden",
+                shape,
+                DType.BF16,
+            )
+            repair = workspace.reserve_tensor(
+                "gguf_mtp2/cycle/repair_hidden",
+                shape,
+                DType.BF16,
+            )
+            self._cycle_workspace = workspace
+            self._cycle_proposal_hidden = proposal
+            self._cycle_repair_hidden = repair
+            self._cycle_workspace_shape = shape
+        elif getattr(self, "_cycle_workspace_shape", None) != shape:
+            raise RuntimeError(
+                "GGUF MTP2 cycle workspace shape changed after allocation"
+            )
+        if (
+            self._cycle_proposal_hidden is None
+            or self._cycle_repair_hidden is None
+        ):
+            raise RuntimeError("GGUF MTP2 cycle hidden workspace is incomplete")
+        return self._cycle_proposal_hidden, self._cycle_repair_hidden
+
+    def _close_cycle_workspace(self) -> None:
+        workspace = getattr(self, "_cycle_workspace", None)
+        if workspace is not None:
+            workspace.free()
+        self._cycle_workspace = None
+        self._cycle_proposal_hidden = None
+        self._cycle_repair_hidden = None
+        self._cycle_workspace_shape = None
+
+    def cycle_workspace_contract(self) -> dict[str, Any]:
+        return {
+            "allocated": self._cycle_workspace is not None,
+            "shape": (
+                None
+                if self._cycle_workspace_shape is None
+                else list(self._cycle_workspace_shape)
+            ),
+            "proposal_ptr": (
+                0
+                if self._cycle_proposal_hidden is None
+                else int(self._cycle_proposal_hidden.ptr)
+            ),
+            "repair_ptr": (
+                0
+                if self._cycle_repair_hidden is None
+                else int(self._cycle_repair_hidden.ptr)
+            ),
+        }
+
     def component_claims(
         self,
         plan: SpecRequestPlan,
@@ -576,7 +677,11 @@ class Qwen35GGUFMTP2Adapter:
             ),
             "transient": ResourceClaimSet.from_mapping(
                 f"{plan.operation_id}:transient",
-                {"gguf_mtp2.result_rows": requests},
+                {
+                    "gguf_mtp2.result_rows": requests,
+                    "gguf_mtp2.cycle_hidden_rows": 2
+                    * min(4, max(1, int(getattr(self.owner, "capacity", 1)))),
+                },
                 lifetime=ClaimLifetime.WORK_ITEM,
             ),
         }
@@ -654,9 +759,9 @@ class Qwen35GGUFMTP2Adapter:
         counts_by_id = dict(zip(plan.request_ids, plan.candidate_counts, strict=True))
         budgets = tuple(int(counts_by_id[request_id]) for request_id in ids)
         hidden_size = int(states[0].provider.executor.hidden_size)
-        hidden_batch = malloc(
-            len(ids) * hidden_size * DType.BF16.itemsize,
-            runtime=targets[0].runtime,
+        hidden_batch, _repair_hidden = self._cycle_hidden_tensors(
+            targets[0].runtime,
+            hidden_size=hidden_size,
         )
         try:
             row_nbytes = hidden_size * DType.BF16.itemsize
@@ -733,8 +838,6 @@ class Qwen35GGUFMTP2Adapter:
                 state.provider.executor.restore_request_checkpoint(checkpoint)
                 state.provider.executor.release_request_checkpoint(checkpoint)
             raise
-        finally:
-            free(hidden_batch, runtime=targets[0].runtime)
         if device_draft is None:
             assert draft is not None
             enabled = draft.active_mask or (True,) * draft.draft_rows
@@ -1611,52 +1714,49 @@ class Qwen35GGUFMTP2Adapter:
             operations.append(replay)
         hidden_size = int(executor.hidden_size)
         hidden_nbytes = hidden_size * DType.BF16.itemsize
-        hidden_batch = malloc(
-            len(states) * hidden_nbytes,
-            runtime=executor.runtime,
+        _proposal_hidden, hidden_batch = self._cycle_hidden_tensors(
+            executor.runtime,
+            hidden_size=hidden_size,
         )
-        try:
-            for depth in range(max(len(rows) for rows in operations)):
-                active = tuple(
-                    index for index, rows in enumerate(operations) if depth < len(rows)
+        for depth in range(max(len(rows) for rows in operations)):
+            active = tuple(
+                index for index, rows in enumerate(operations) if depth < len(rows)
+            )
+            for packed_row, state_index in enumerate(active):
+                executor.runtime.memcpy(
+                    hidden_batch.ptr + packed_row * hidden_nbytes,
+                    operations[state_index][depth][2].ptr,
+                    hidden_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
                 )
-                for packed_row, state_index in enumerate(active):
-                    executor.runtime.memcpy(
-                        hidden_batch.ptr + packed_row * hidden_nbytes,
-                        operations[state_index][depth][2].ptr,
-                        hidden_nbytes,
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
-                    )
-                ids = tuple(states[index].request_id for index in active)
-                tokens = tuple(operations[index][depth][0] for index in active)
-                positions = tuple(operations[index][depth][1] for index in active)
-                hidden = Tensor.from_handle(
-                    hidden_batch.ptr,
-                    (len(active), hidden_size),
-                    DType.BF16,
-                    Device("hip", 0),
+            ids = tuple(states[index].request_id for index in active)
+            tokens = tuple(operations[index][depth][0] for index in active)
+            positions = tuple(operations[index][depth][1] for index in active)
+            hidden = Tensor.from_handle(
+                hidden_batch.ptr,
+                (len(active), hidden_size),
+                DType.BF16,
+                Device("hip", 0),
+            )
+            if len(active) == 1:
+                executor.advance_state_only(
+                    ids[0],
+                    tokens[0],
+                    positions[0],
+                    Tensor.from_handle(
+                        hidden.ptr,
+                        (1, hidden_size),
+                        DType.BF16,
+                        Device("hip", 0),
+                    ),
                 )
-                if len(active) == 1:
-                    executor.advance_state_only(
-                        ids[0],
-                        tokens[0],
-                        positions[0],
-                        Tensor.from_handle(
-                            hidden.ptr,
-                            (1, hidden_size),
-                            DType.BF16,
-                            Device("hip", 0),
-                        ),
-                    )
-                else:
-                    executor.advance_state_batch_only(
-                        ids,
-                        tokens,
-                        positions,
-                        hidden,
-                    )
-        finally:
-            free(hidden_batch, runtime=executor.runtime)
+            else:
+                executor.advance_state_batch_only(
+                    ids,
+                    tokens,
+                    positions,
+                    hidden,
+                )
 
     def _repair_provider_state(
         self,
@@ -1777,6 +1877,8 @@ class Qwen35GGUFMTP2Adapter:
         self._prompt_hidden_rows.clear()
         self._disabled_requests.clear()
         self._active_claims = None
+        self._active_prompt_claims = None
+        self._close_cycle_workspace()
         if self._batch_accept_workspace is not None:
             self._batch_accept_workspace.free()
             self._batch_accept_workspace = None

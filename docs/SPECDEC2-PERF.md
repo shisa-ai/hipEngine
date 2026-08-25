@@ -1,6 +1,6 @@
 # SPECDEC2-PERF — gfx1151 Activation and Hot-Cycle Campaign
 
-- Status: **P1 common bridge/baseline closed; P2 streaming activation next**
+- Status: **P3 stable slabs closed; P4 device-resident cycle next**
 - Approved: **2026-08-25**
 - Functional predecessor: [`SPECDEC2.md`](SPECDEC2.md), S1-S6 closed
 - Performance owner: **stable physical host `gfx1151` agent**
@@ -592,55 +592,83 @@ assuming target kernels alone close C2/C4.
 
 ## 11. P2 — streaming exact NextN prompt activation
 
+**Closed 2026-08-25.** Durable evidence:
+[`P2 activation`](../benchmarks/results/2026-08-25-gfx1151-specdec2-perf-p2-streaming-activation.json).
+Strict C1/K2 streams every target prompt row into NextN, retains one 10 KiB
+carried row, and improves full-suite staged throughput **14.294→16.237 tok/s
+(+13.59%)**; every category is positive and staged reaches **1.486x true AR**.
+The physical C2/C4 streaming candidate is rejected despite aggregate gains
+because `general_en` regresses **11.86%/10.16%**; those widths retain exact
+host-replay fallback. Exact p4K/p16K eager streaming also regresses versus the
+direct control, so contexts above the qualified short bucket select K0 before
+provider mutation. Automatic/product policy remains K0.
+
 Durable handoff: P2.1-P2.3. Source mechanism: retained commit `51e990ee8`.
 
 ### P2.1 RED contracts
 
-- [ ] One-shot and chunked target prefill produce identical shifted NextN KV and
+- [x] One-shot and chunked target prefill produce identical shifted NextN KV and
       cursor (`token[0]+zero`, `token[i>0]+target_hidden[i-1]`).
-- [ ] Chunk sizes 1/2/7/8/9, ragged C2/C4 tails, warm offsets, and page/context
-      transitions are exact.
-- [ ] Cancel before/mid/after activation leaves target/provider owners terminal
-      and reusable.
-- [ ] Prefix reuse/COW and pressure rejection do not publish or leak provider
-      state.
-- [ ] Target hidden chunk source remains live until NextN consumption completes.
-- [ ] No prompt-sized host hidden slab is allocated or retained.
+- [x] Chunk sizes 1/2/7/8/9, ragged packed offsets, warm offsets, and context
+      transitions are exact in focused contracts.
+- [x] Cancel/failure during activation drains target/provider/sink/claim owners
+      and leaves later reuse healthy.
+- [x] Prefix reuse and contexts beyond the qualified bucket select K0 before
+      provider mutation; retained S6 prefix/pressure ownership remains binding.
+- [x] Target hidden chunk source remains live until NextN consumption completes.
+- [x] Selected C1 allocates no prompt-sized host hidden slab; telemetry reports
+      one 10,240-byte carried row independent of prompt length.
 
 ### P2.2 Implementation
 
-- [ ] Wire `TargetHiddenChunkSink` and `_StreamingNextNPromptSink` into the
+- [x] Wire `TargetHiddenChunkSink` and `_StreamingNextNPromptSink` into the
       Generation-2 target prefill owner before provider catch-up is needed.
-- [ ] Feed `Qwen35GGUFNextNExecutor.enqueue_prompt_rows()` on the target prefill
-      stream as chunks complete.
-- [ ] Retain one request-owned BF16 carried hidden row only.
-- [ ] Remove SPECDEC2 `_prompt_hidden_rows` and post-prefill host F32→BF16/H2D
-      replay when the streaming capability is selected.
-- [ ] Decouple provider activation capacity from the short 1023-token reusable
-      target-graph cap. Longer activation may qualify strict eager/K0 routing,
-      but it does not auto-admit an unqualified long target graph.
-- [ ] Preserve an explicit strict fallback for unsupported prefill ownership.
-- [ ] Keep provider/resource claims complete before mutation; no hidden lazy
-      allocation.
-- [ ] Update `REFACTOR.md` for any temporary migration flag/path.
+- [x] Feed `Qwen35GGUFNextNExecutor.enqueue_prompt_rows()` on the target prefill
+      stream as chunks complete and publish the exact batch-session cursor.
+- [x] Retain one request-owned BF16 carried hidden row only.
+- [x] Remove `_prompt_hidden_rows` and post-prefill F32→BF16/H2D replay from the
+      selected C1 path; keep internal strict/physical fallback only.
+- [x] Keep long target/session capacity independent, but select K0 above the
+      currently qualified 1023-token speculative bucket after measured eager
+      regressions; no long graph/eager scope is auto-admitted.
+- [x] Preserve exact host-replay fallback for physical C2/C4 after its category
+      gate rejects streaming selection.
+- [x] Reserve exact prompt-row/carried-row/provider-slot work-item claims before
+      provider mutation and release them on every terminal path.
+- [x] Update `REFACTOR.md` with rollback/fallback removal triggers.
 
 ### P2.3 Gate
 
-- [ ] Focused tests and CPU deterministic bundle pass.
-- [ ] p128/p512/p4K/p16K activation first token, cursor, NextN KV, target state,
-      and following generation are exact.
-- [ ] Stable-host counterbalanced activation wall is non-regressive at every
-      required length; report OI-3 historical 12.6-20.8% only as context.
-- [ ] Full ten-prompt bridge is exact and every category non-regressive.
-- [ ] Tracked prompt transient is O(hidden), not O(prompt×hidden).
-- [ ] Final allocations/claims/provider states are zero.
-- [ ] Publish artifact/rollup/changelog/worklog and commit retained or rejected
-      unit.
+- [x] Focused sink/provider/adapter/prefill/bridge bundles pass.
+- [x] p128/p512 streaming is exact; p4K/p16K diagnostics are exact and final
+      policy proves pre-mutation `target_context_k0` with no provider streaming.
+- [x] p128/p512 staged wall beats the current direct activation control by
+      **50.4%/17.4%**; exact p4K/p16K streaming was rejected at
+      **1.202x/1.231x direct wall** and replaced by K0.
+- [x] Full ten-prompt C1 bridge is exact and every category improves
+      **10.50%-18.21%**. Physical streaming fails this gate and is unselected.
+- [x] Selected prompt transient is O(hidden): exactly 10,240 carried bytes from
+      p128 through p512 and in long diagnostics.
+- [x] Final allocations, prompt claims, provider states, and request owners are
+      zero in selected/fallback/current-commit gates.
+- [x] Publish artifact/rollup/changelog/worklog and commit the scoped retain/
+      reject/K0 verdict.
 
-Exit: prompt activation is no longer a post-prefill full-prompt replay on every
-qualified SPECDEC2 request.
+Exit: qualified C1 prompt activation no longer performs post-prefill full-prompt
+replay. Physical C2/C4 retains exact replay after rejection; p4K/p16K is K0.
 
 ## 12. P3 — stable slabs and zero hot allocation
+
+**Closed 2026-08-26.** Durable evidence:
+[`P3 stable slabs`](../benchmarks/results/2026-08-25-gfx1151-specdec2-perf-p3-stable-slabs.json).
+Adapter-persistent max-width proposal/repair slabs eliminate the two steady
+allocation/free pairs per cycle: all **510 C2 + 510 C4** full-suite cycle samples
+allocate/free zero bytes, and **219/252 C1** cycles are zero after request-local
+graph bucket first use. Cached C2/C4 profile windows 2–3 contain no
+`hipMalloc`/`hipFree`; final ownership is zero. Complete C1/C2/C4 throughput is
+statistically neutral (**-0.264%/-0.300%/-0.128%**, versus 4.98%-10.14% sample
+CV), so this is a retained mechanical/stable-pointer prerequisite, not a speed
+or policy claim.
 
 Durable handoff: P3.1-P3.3.
 
@@ -652,39 +680,44 @@ the device.
 
 ### P3.1 RED and instrumentation
 
-- [ ] Add per-cycle allocation/free bytes/counts and explicit synchronize/API
-      counters without perturbing production timing when disabled.
-- [ ] RED-test pointer reuse across warm cycles, pointer-generation invalidation,
-      request close, group shrink/refill, compaction, prefix restore, pressure,
-      graph miss, and injected failure.
-- [ ] Assert zero hot allocation/free after warmup for qualified C1/C2/C4 cells.
-- [ ] Assert one request cannot observe peer scratch after row/slot reuse.
+- [x] Add bridge-only per-cycle allocation/free byte/count deltas; production
+      timing remains untouched, while HIP-API traces own sync/copy counts.
+- [x] RED-test stable distinct pointer reuse, shape drift, close, group width,
+      failure/lifecycle, and packed peer ownership.
+- [x] Assert zero hot allocation/free for every full-suite C2/C4 cycle and every
+      warmed C1 graph-shape cycle; first-use graph capture remains P4 ownership.
+- [x] Assert proposal and repair use distinct complete max-width slabs, so stale
+      peer rows are never read after group shrink/refill.
 
 ### P3.2 Implementation
 
-- [ ] Replace proposal/repair `hidden_batch = malloc(...); free(...)` with
-      provider-group `RuntimeWorkspace` slabs.
-- [ ] Persist acceptance/result/remaining-decode and row-map buffers under
-      complete resource claims.
-- [ ] Build stable pointer tables for candidate, target top-1, accept, selected
-      commit, provider repair, and bounded result payloads.
-- [ ] Allocate graph-compatible maximum qualified C/K/R shapes or declared
-      buckets; do not hide reallocations.
-- [ ] Close/invalidate all slabs on provider generation, model/profile change,
-      pressure teardown, fatal cycle failure, and engine close.
-- [ ] Keep strict eager path independently usable.
+- [x] Replace proposal/physical-repair `hidden_batch` allocation/free with one
+      adapter `RuntimeWorkspace` containing distinct proposal/repair slabs.
+- [x] Retain the already-persistent accept/result/remaining-decode and target
+      row-map buffers under complete cycle claims; add exact cycle hidden claims.
+- [x] Preserve stable candidate/target/accept/commit/provider/result pointers;
+      expose proposal/repair pointer/shape contract for diagnosis.
+- [x] Allocate maximum qualified physical C (1 or 4) × hidden-size slabs and
+      fail closed on shape drift rather than silently reallocating.
+- [x] Close slabs with adapter/model generation; failure retains valid blankable
+      workspace and final engine close returns every byte.
+- [x] Keep strict eager/host replay and selected C1 streaming paths independently
+      usable.
 
 ### P3.3 Gate
 
-- [ ] Reject/every-partial/full provider fingerprints and following AR pass.
-- [ ] Lifecycle/pressure/prefix/cancel/recovery/compaction tests pass.
-- [ ] Cached trace confirms no `hipMalloc`/`hipFree` in warmed cycle markers.
-- [ ] Complete bridge is exact and same-suite non-regressive.
-- [ ] Zero final ownership and exact allocation/free conservation pass.
-- [ ] Publish artifact/worklog and commit.
+- [x] Full-suite reject/partial/full acceptance trajectories remain exact; C1
+      selected streaming and physical replay fallback preserve provider state.
+- [x] Lifecycle/prefix/failure/soak/compaction and workspace bundles pass.
+- [x] Cached C2/C4 traces confirm zero `hipMalloc`/`hipFree` in cycle windows
+      2–3; mechanical samples prove every warmed physical cycle zero.
+- [x] Complete full-suite bridge is exact and neutral within measured variance;
+      no speed/default claim is made from small mixed category deltas.
+- [x] Zero final ownership and exact total allocated/freed conservation pass.
+- [x] Publish artifact/worklog/rollup and commit.
 
 Exit: every later graph/device-chain candidate can rely on stable claimed
-addresses.
+addresses. P4 owns request-local graph first-use and device-result chaining.
 
 ## 13. P4 — device-resident proposal → target → accept → commit
 
@@ -1016,9 +1049,11 @@ Raw profiler dumps and terminal logs remain outside Git.
 
 ## 24. Current handoff to the gfx1151 agent
 
-Start with P2 from the committed P1 evidence. Do not begin by editing kernels.
-Integrate the retained OI-3 streaming sink while preserving the now-measured
-initial K0 provider-attach boundary and capability-honest capacity split.
+Start with P4 from the committed P3 evidence. Do not begin by editing kernels.
+Use the stable claimed pointers to remove host materialization/synchronization
+between proposal, target, accept, and selected commit while preserving selected
+C1 streaming activation, physical replay fallback, long K0, and strict eager
+fallback.
 
 The first expected implementation touchpoint is the mismatch between:
 

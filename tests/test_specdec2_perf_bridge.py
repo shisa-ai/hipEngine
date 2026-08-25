@@ -310,6 +310,14 @@ def test_bridge_stage_ledger_records_nested_cycle_owners_and_restores() -> None:
     snapshot = ledger.snapshot()
     assert snapshot["call_counts"] == {"arm_complete": 1, "cycle_total": 1}
     assert snapshot["totals_seconds"]["cycle_total"] >= 0.0
+    assert snapshot["allocation_samples"]["cycle_total"] == [
+        {
+            "allocated_bytes": 0,
+            "freed_bytes": 0,
+            "active_delta": 0,
+            "current_bytes_delta": 0,
+        }
+    ]
     assert _decode_only_seconds(
         "specdec2",
         snapshot,

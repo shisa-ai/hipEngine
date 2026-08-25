@@ -187,7 +187,12 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
 def test_physical_adapter_returns_device_candidate_graph_before_target(
     monkeypatch,
 ) -> None:
-    runtime = SimpleNamespace(memcpy=lambda *args: None)
+    runtime_ptrs = iter((0x9000, 0xA000))
+    runtime = SimpleNamespace(
+        memcpy=lambda *args: None,
+        malloc=lambda nbytes: next(runtime_ptrs),
+        free=lambda ptr: None,
+    )
     targets = (
         SimpleNamespace(
             position=5,
@@ -245,6 +250,7 @@ def test_physical_adapter_returns_device_candidate_graph_before_target(
         for target, token in zip(targets, (100, 200), strict=True)
     )
     owner = SimpleNamespace(
+        capacity=2,
         _row=lambda request_id: rows[(10, 20).index(request_id)],
         _flush_row_owner=lambda row: None,
     )
@@ -612,7 +618,12 @@ def test_provider_batch_repair_shares_full_accept_tail_and_rejected_root(
 
     class Executor:
         hidden_size = 8
-        runtime = SimpleNamespace(memcpy=lambda *args: None)
+        _ptrs = iter((0x3000, 0x4000))
+        runtime = SimpleNamespace(
+            memcpy=lambda *args: None,
+            malloc=lambda nbytes: next(Executor._ptrs),
+            free=lambda ptr: None,
+        )
 
         def restore_request_checkpoint(self, checkpoint):
             calls.append(("restore", checkpoint))
@@ -675,6 +686,7 @@ def test_provider_batch_repair_shares_full_accept_tail_and_rejected_root(
     )
     monkeypatch.setattr(mtp2_module, "free", lambda buffer, runtime: None)
     adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(capacity=2)
 
     adapter._repair_provider_states_batch(
         states,
@@ -965,10 +977,18 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
     )
     adapter.register_request(7, 2)
     adapter.register_request(8, 2)
+    adapter.physical_prompt_streaming = True
 
     sinks = adapter.begin_prompt_streaming((7, 8), checkpoints={})
+    assert adapter._active_prompt_claims is not None
+    assert adapter._active_prompt_claims.units_by_pool() == {
+        "gguf_mtp2.carried_hidden_rows": 2,
+        "gguf_mtp2.prompt_rows": 4,
+        "gguf_mtp2.provider_request_slots": 2,
+    }
     adapter.finish_prompt_streaming((7, 8), success=True, stream=0)
 
+    assert adapter._active_prompt_claims is None
     assert tuple(sink.request_id for sink in sinks) == (7, 8)
     assert provider.reset == [7, 8]
     assert finish_calls == [(7, False), (8, False)]
@@ -985,6 +1005,98 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
     adapter.observe_prefill_result(7, rows[7].prompt_ids, SimpleNamespace(token_id=9))
     assert adapter._states[7].root_hidden_buffer is carried[7]
     assert released_pool == []
+
+
+def test_mtp2_cycle_hidden_workspace_reuses_stable_distinct_slabs() -> None:
+    class Runtime:
+        def __init__(self) -> None:
+            self.next_ptr = 0x1000
+            self.malloc_calls: list[int] = []
+            self.free_calls: list[int] = []
+
+        def malloc(self, nbytes: int) -> int:
+            ptr = self.next_ptr
+            self.next_ptr += 0x1000
+            self.malloc_calls.append(int(nbytes))
+            return ptr
+
+        def free(self, ptr: int) -> None:
+            self.free_calls.append(int(ptr))
+
+    runtime = Runtime()
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(capacity=4)
+    adapter._cycle_workspace = None
+    adapter._cycle_proposal_hidden = None
+    adapter._cycle_repair_hidden = None
+    adapter._cycle_workspace_shape = None
+
+    proposal_a, repair_a = adapter._cycle_hidden_tensors(
+        runtime,
+        hidden_size=8,
+    )
+    proposal_b, repair_b = adapter._cycle_hidden_tensors(
+        runtime,
+        hidden_size=8,
+    )
+
+    assert proposal_a is proposal_b
+    assert repair_a is repair_b
+    assert proposal_a.ptr != repair_a.ptr
+    assert proposal_a.shape == repair_a.shape == (4, 8)
+    assert runtime.malloc_calls == [64, 64]
+    with pytest.raises(RuntimeError, match="shape changed"):
+        adapter._cycle_hidden_tensors(runtime, hidden_size=16)
+
+    adapter._close_cycle_workspace()
+
+    assert runtime.free_calls == [repair_a.ptr, proposal_a.ptr]
+    assert adapter._cycle_workspace is None
+
+
+def test_mtp2_physical_prompt_streaming_is_rejected_before_provider_open() -> None:
+    rows = {
+        request_id: SimpleNamespace(
+            prompt_ids=(11, 22),
+            lease=SimpleNamespace(
+                session=SimpleNamespace(
+                    target_layout=SimpleNamespace(max_sequence_length=1024),
+                    runtime=object(),
+                )
+            ),
+            prefix_reused_tokens=0,
+            mtp2_candidate_budget=2,
+            mtp2_prompt_fallback_reason=None,
+        )
+        for request_id in (7, 8)
+    }
+    acquired: list[str] = []
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(
+            _acquire_dense_mtp_draft_provider=lambda *args, **kwargs: acquired.append(
+                "provider"
+            )
+        ),
+        capacity=4,
+        _shared_runner=SimpleNamespace(hidden_size=4),
+        _row=lambda request_id: rows[int(request_id)],
+    )
+    adapter = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=2,
+    )
+    for request_id in rows:
+        adapter.register_request(request_id, 2)
+
+    assert adapter.begin_prompt_streaming((7, 8), checkpoints={}) is None
+    assert acquired == []
+    assert all(
+        row.mtp2_prompt_fallback_reason == "physical_streaming_category_rejected"
+        for row in rows.values()
+    )
+    assert all(row.mtp2_candidate_budget == 2 for row in rows.values())
 
 
 def test_mtp2_long_prompt_selects_k0_before_provider_streaming() -> None:
@@ -1052,6 +1164,11 @@ def test_mtp2_streaming_prompt_failure_drains_provider_and_sink() -> None:
     adapter = object.__new__(Qwen35GGUFMTP2Adapter)
     adapter._prompt_streaming_sinks = {7: Sink()}
     adapter._prompt_streaming_group_keys = {7: (7,)}
+    adapter._active_prompt_claims = mtp2_module.ResourceClaimSet.from_mapping(
+        "prompt",
+        {"rows": 1},
+        lifetime=mtp2_module.ClaimLifetime.WORK_ITEM,
+    )
     adapter._provider_groups = {(7,): group}
     adapter.generator = SimpleNamespace(
         _release_mtp_draft_runner=lambda key, owned: events.append(
@@ -1069,4 +1186,5 @@ def test_mtp2_streaming_prompt_failure_drains_provider_and_sink() -> None:
     ]
     assert adapter._prompt_streaming_sinks == {}
     assert adapter._prompt_streaming_group_keys == {}
+    assert adapter._active_prompt_claims is None
     assert adapter._provider_groups == {}
