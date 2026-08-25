@@ -23482,6 +23482,16 @@ class Qwen35GGUFResidentSession:
         ):
             return False
         n_entries = len(copies)
+        linear_layer_count = sum(
+            layer_type == LINEAR_ATTENTION
+            for layer_type in self.runner.weights.config.layer_types
+        )
+        # Repeated one-slot packed imports can fault in either pointer-table
+        # commit leaf on gfx1151 even while every source/destination range is
+        # live and in bounds. Return the existing strict per-layer D2D chain for
+        # this activation-only shape. Multi-slot imports retain the fused helper.
+        if n_entries == linear_layer_count:
+            return False
         tables_ready = (
             self._verify_linear_state_src_conv_table_buf is not None
             and self._verify_linear_state_src_recurrent_table_buf is not None
