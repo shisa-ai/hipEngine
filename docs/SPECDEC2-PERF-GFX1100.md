@@ -596,6 +596,30 @@ For both lanes:
       checks; broad isolated failures use the repository focused-repair rule.
 - [x] Commit, sync origin, push, and verify local/remote equality.
 
+### Post-closure Generation-2 recovery checkpoint — 2026-08-26
+
+A current p512/d128 audit finds no raw AR-rate regression versus the old fixed-C
+server: exact C1 is `77.176` blocking / `76.925` SSE tok/s versus `72.169`, and
+native C8 raw wall is `161.882` versus `158.542`. The C8 rate is not strict-
+eligible: varied D128 IDs differ from C1, and hidden drift begins at decode step
+1/layer 0 under both eager and graph submission. Treat AR profile qualification
+separately from scheduler performance; do not attribute this to CONCURRENCY2
+host overhead or publish the raw C8 rate as strict.
+
+Physical gfx1100 C2 remains unexposed. A process-local capability diagnostic
+after provider-group refill reaches exact C2/K1 proposal and R4 target/accept
+with zero D2H/recovery/hot allocation, but is only `0.503x` AR at `1/8` accepted
+drafts. K2/K3/full-suite spending is rejected from this premise. The refill fix
+is retained for lifecycle correctness; both physical capability constants and
+automatic policy remain false/K0.
+
+C1 attribution also changes the tuning order: sampled K2 staged decode is
+`416.6 ms` versus direct `433.5 ms`, while staged target prefill plus NextN
+priming is `339.3 + 25.3 ms` versus direct prefill `305.9 ms`. Activation and
+shared prompt/provider ownership rank ahead of more hot target-leaf tuning.
+Evidence: [`recovery profile`](../benchmarks/results/2026-08-26-w7900-mtp-concurrency2-recovery-profile.json)
+and [`C2 refill`](../benchmarks/results/2026-08-26-w7900-specdec2-c2-provider-refill.json).
+
 ## 15. Stop and no-chase rules
 
 - Stop on ownership, rollback, state/KV, isolation, determinism, or manifest
