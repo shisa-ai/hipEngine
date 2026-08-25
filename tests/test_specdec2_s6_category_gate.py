@@ -5,7 +5,18 @@ from pathlib import Path
 
 import pytest
 
-from scripts.specdec2_s6_category_gate import _HELDOUT_IDS, load_prompt_suite
+from scripts.specdec2_s6_category_gate import (
+    _HELDOUT_IDS,
+    counterbalanced_route_order,
+    load_prompt_suite,
+)
+
+
+def test_category_route_order_is_balanced_and_prompt_content_independent() -> None:
+    orders = tuple(counterbalanced_route_order(index) for index in range(10))
+
+    assert orders.count(("ar", "mtp")) == 5
+    assert orders.count(("mtp", "ar")) == 5
 
 
 def test_specdec2_category_gate_loads_canonical_train_and_heldout_contract() -> None:

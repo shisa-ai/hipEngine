@@ -75,6 +75,12 @@ def load_prompt_suite(path: Path) -> tuple[dict[str, Any], ...]:
     return tuple(rows)
 
 
+def counterbalanced_route_order(prompt_index: int) -> tuple[str, str]:
+    """Alternate AR→MTP and MTP→AR without consulting prompt content."""
+
+    return ("ar", "mtp") if int(prompt_index) % 2 == 0 else ("mtp", "ar")
+
+
 def _request(prompt: str, max_tokens: int) -> GenerationRequest:
     return GenerationRequest(
         prompts=(prompt,),
@@ -115,23 +121,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     started = time.perf_counter()
     try:
         service = llm._get_text_generator()
-        for prompt in prompts:
+        for prompt_index, prompt in enumerate(prompts):
             request = _request(prompt["rendered_prompt"], int(args.max_tokens))
             cells: dict[str, Any] = {}
             all_ids: list[tuple[int, ...]] = []
             for concurrency in (2, 4):
-                ar_ids, ar_timings, ar_wall = _run_group(
-                    service,
-                    request,
-                    concurrency,
-                    mtp=False,
-                )
-                mtp_ids, mtp_timings, mtp_wall = _run_group(
-                    service,
-                    request,
-                    concurrency,
-                    mtp=True,
-                )
+                measured: dict[str, tuple[Any, Any, float]] = {}
+                execution_order = counterbalanced_route_order(prompt_index)
+                for route in execution_order:
+                    measured[route] = _run_group(
+                        service,
+                        request,
+                        concurrency,
+                        mtp=route == "mtp",
+                    )
+                ar_ids, ar_timings, ar_wall = measured["ar"]
+                mtp_ids, mtp_timings, mtp_wall = measured["mtp"]
                 snapshot = service.live_loop_snapshot()
                 recent = snapshot["runner"]["routes"]["recent_completed"]
                 mtp_rows = [row for row in recent[-concurrency:] if row["specdec2_mtp2_used"]]
@@ -145,6 +150,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 cells[f"c{concurrency}"] = {
                     "concurrency": concurrency,
                     "candidate_budget": int(args.budget),
+                    "execution_order": execution_order,
                     "ar_ids": [list(row) for row in ar_ids],
                     "mtp_ids": [list(row) for row in mtp_ids],
                     "exact": exact,
@@ -233,6 +239,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "true_ar_baseline": True,
             "same_prompt_suite": True,
             "same_process": True,
+            "counterbalanced_order": "even prompts AR→MTP; odd prompts MTP→AR",
         },
         "results": results,
         "category_passed": category_passed,
