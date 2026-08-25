@@ -594,7 +594,7 @@ For both lanes:
 - [x] Do not export the public root README because no product scope promotes.
 - [x] Run milestone tests plus Worklog2, benchmark sync, registry, JSON, and diff
       checks; broad isolated failures use the repository focused-repair rule.
-- [ ] Commit, sync origin, push, and verify local/remote equality.
+- [x] Commit, sync origin, push, and verify local/remote equality.
 
 ## 15. Stop and no-chase rules
 
