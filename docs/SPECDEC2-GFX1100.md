@@ -187,8 +187,9 @@ no performance/default promotion; automatic remains K0. Evidence:
 
 **Performance checkpoint retained 2026-08-25:** dense C1 K1/K2/K3 streaming is
 exact at `1.259x/1.365x/1.419x` true AR but trails direct; packed production is
-exact with zero allocation in 372/372 cycles but remains `0.933x` AR.  p128/
-p512 streaming is exact but slower, and p4K/p16K selects K0 before provider
+exact with zero allocation in 372/372 cycles but remains `0.933x` AR. Dense
+proposal/repair stable slabs are exact and wall-neutral; graph first use remains
+P4. p128/p512 streaming is exact but slower, and p4K/p16K selects K0 before provider
 mutation.  No automatic/product scope promotes. Evidence:
 [`gfx1100 P1-P3 checkpoint`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json).
 

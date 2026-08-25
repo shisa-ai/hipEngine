@@ -1,6 +1,6 @@
 # SPECDEC2-PERF-GFX1100 — W7900 Activation and Hot-Cycle Campaign
 
-- Status: **active; P1 measured, dense/PARO P2 retained, packed P3 zero-cycle-allocation complete**
+- Status: **active; P1 measured, dense/PARO P2 retained, dense/packed P3 stable slabs retained**
 - Approved: **2026-08-25**
 - Functional predecessor: [`SPECDEC2-GFX1100.md`](SPECDEC2-GFX1100.md), G1/P1 foundations complete
 - Mechanism reference: [`SPECDEC2-PERF.md`](SPECDEC2-PERF.md), with no gfx1151 evidence transfer
@@ -392,11 +392,13 @@ Exit: current-source common attribution, not historical mixed timing, chooses th
 next implementation owner in each lane.
 
 **Retained W7900 checkpoint:**
-[`2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json).
+[`2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json)
+and [`dense P3 stable slabs`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p3-dense-stable-slabs.json).
 Dense streaming is exact at `1.259x/1.365x/1.419x` AR for K1/K2/K3 but remains
 behind direct; p128/p512 is exact but slow and p4K/p16K is pre-mutation K0.
 Packed production is exact with 372/372 zero-allocation cycles but remains
-`0.933x` AR.  No product cell promotes; both automatic policies remain K0.
+`0.933x` AR. Dense P3 stable slabs are exact/wall-neutral; request-local graph
+first use remains P4. No product cell promotes; both automatic policies remain K0.
 
 ## 8. P2 — streaming prompt activation
 
@@ -446,8 +448,9 @@ Packed production is exact with 372/372 zero-allocation cycles but remains
       provider prompt priming and before the first speculative plan/mutation,
       rather than lazily resizing 1,110 strict or 41 production workspace
       allocations in cycle 1.
-- [ ] Replace GGUF cycle-local `hidden_batch` allocation/free with claimed
-      provider-group workspace.
+- [x] Replace GGUF cycle-local proposal/repair `hidden_batch` allocation/free
+      with one claimed provider-group workspace; W7900 K1/K2/K3 wall is neutral
+      and remaining allocation is persistent request-local graph first use.
 - [ ] Add persistent lane-specific candidate, target result, accept, selected
       commit, provider update, row-map, and bounded result slabs.
 - [x] Bucket packed-PARO proposer token/KV/snapshot capacity by a content-agnostic

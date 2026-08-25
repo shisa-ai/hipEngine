@@ -115,11 +115,14 @@ noise. Automatic/product policy remains K0; no public scope promotes.
 gfx1100 SPECDEC2-PERF now retains a clean C1 streaming checkpoint. Dense
 Qwen3.6-27B GGUF K1/K2/K3 is exact at **1.259x/1.365x/1.419x true AR**, but
 remains **3.6%/6.2%/5.3%** behind direct MTP. Exact p128/p512 streaming loses
-AR, while p4K/p16K stays pre-mutation K0. Packed PARO production is exact and
-zero-allocation across **372/372** cycles, but staged remains **0.933x AR**;
+AR, while p4K/p16K stays pre-mutation K0. Dense P3 stable slabs are exact with
+K1/K2/K3 wall neutral at **+0.75%/+0.21%/+0.03%**; only persistent graph-bucket
+first use remains. Packed PARO production is exact and zero-allocation across
+**372/372** cycles, but staged remains **0.933x AR**;
 strict D8 cycle allocation fell **1,110 malloc/free pairs → 0** and marker wall
 **137.157 → 97.263 ms**. Both automatic policies remain K0; physical C2/C4 is
-not exposed. [`P1-P3 checkpoint`](results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json).
+not exposed. [`P1-P3 checkpoint`](results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json),
+[`dense P3`](results/2026-08-25-w7900-specdec2-perf-p3-dense-stable-slabs.json).
 
 ## Where detailed evidence lives
 
