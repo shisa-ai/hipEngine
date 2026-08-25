@@ -1,0 +1,1128 @@
+{
+  "composition": {
+    "c17_vs_two_c8_marker_overhead_ms": 84.530667,
+    "c17_vs_two_c8_ratio": 1.3057512783145586,
+    "c32_vs_four_c8_marker_overhead_ms": 9.392386999999985,
+    "c32_vs_four_c8_ratio": 1.016986346101321
+  },
+  "created_at": "2026-08-24T08:49:37.694051+00:00",
+  "hardware": "AMD Radeon 8060S Graphics / gfx1151",
+  "kind": "gfx1151_qwen38_queue2_c8_c17_c32_owner_profile",
+  "limitations": [
+    "rocprof marker wall is synchronized diagnostic wall and not a server throughput replacement.",
+    "HIP API durations overlap device execution and cannot be added to kernel wall.",
+    "Queue_Id 1 reports the queue used in this child, not maximum runtime queue capacity.",
+    "Hardware counters were not requested by this workflow; no bandwidth/occupancy counter claim is made."
+  ],
+  "model": {
+    "kv_storage": "bf16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S (registry gguf_q4_k_m)",
+    "recurrent_state": "fp16",
+    "sampled_fingerprint": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa"
+  },
+  "performance_claim": false,
+  "physical_host": "gfx1151",
+  "profile_family_fields": [
+    "family",
+    "duration_ms",
+    "dispatches",
+    "gpu_duration_share"
+  ],
+  "profile_top_kernel_fields": [
+    "kernel",
+    "dispatches",
+    "duration_ms",
+    "marker_wall_share",
+    "grid",
+    "workgroup",
+    "vgpr",
+    "lds_bytes",
+    "scratch_bytes"
+  ],
+  "profiles": {
+    "17": {
+      "kernel_families": [
+        [
+          "dense_projection",
+          304.502769,
+          1203,
+          0.8836982839109755
+        ],
+        [
+          "norm_residual",
+          16.44804,
+          451,
+          0.04773389998860431
+        ],
+        [
+          "linear_attention_state",
+          12.955801,
+          288,
+          0.03759906403475793
+        ],
+        [
+          "metadata_lifecycle",
+          3.406495,
+          1065,
+          0.009885998066741123
+        ],
+        [
+          "moe_selected_combine",
+          3.222811,
+          12,
+          0.00935292824896911
+        ],
+        [
+          "full_attention_core",
+          2.6438,
+          256,
+          0.0076725789084822315
+        ],
+        [
+          "other",
+          1.278613,
+          335,
+          0.0037106661381009123
+        ],
+        [
+          "lm_head_sampler",
+          0.10688,
+          6,
+          0.0003101767280953858
+        ],
+        [
+          "embedding",
+          0.012544,
+          3,
+          3.6403975273470425e-05
+        ]
+      ],
+      "marker_accounting": {
+        "hip_api_calls": 6200,
+        "hip_api_time_ms": 307.437397,
+        "hip_api_time_ns": 307437397,
+        "kernel_count": 3619,
+        "kernel_interval_union_ms": 344.577753,
+        "kernel_interval_union_ns": 344577753,
+        "kernel_sum_ms": 344.577753,
+        "kernel_sum_ns": 344577753,
+        "marker_wall_ms": 360.999395,
+        "marker_wall_ns": 360999395,
+        "memory_copy_ops": 0,
+        "memory_copy_time_ns": 0,
+        "uncovered_ms": 16.421642,
+        "uncovered_ns": 16421642
+      },
+      "profile_child": {
+        "all_rows_equal": true,
+        "fallback_reasons": {},
+        "final_requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 17,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 17
+        },
+        "marked_wall_ms": 360.98385602235794,
+        "marker_name": "hipengine_c2_production_owner_c17_decode_transition_3",
+        "observed_physical_c_transitions": 7,
+        "path": "runs/c17/profile-child.json",
+        "physical_groups": [
+          [
+            8,
+            8
+          ],
+          [
+            8,
+            8
+          ],
+          [
+            1,
+            1
+          ]
+        ],
+        "sha256": "dc117c39dcebfe946c089f533f8bd543f3e1383a614d07b60876e27adeb1c24b"
+      },
+      "top_kernels": [
+        [
+          "q4_k_qmicro_t16_dense_dual_q8_1x2_rowtile8_dp4a_silu_gemv_kernel",
+          128,
+          129.569384,
+          0.3589185627305553,
+          [
+            278528,
+            1,
+            1
+          ],
+          [
+            128,
+            1,
+            1
+          ],
+          152,
+          1024,
+          0
+        ],
+        [
+          "q4_k_t16_dense_rowtile16_w2_gemv_kernel",
+          360,
+          59.623726,
+          0.1651629526969152,
+          [
+            20480,
+            1,
+            1
+          ],
+          [
+            64,
+            1,
+            1
+          ],
+          224,
+          0,
+          0
+        ],
+        [
+          "q4_k_qmicro_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_gemv_kernel",
+          64,
+          29.880553,
+          0.08277175367565366,
+          [
+            139264,
+            1,
+            1
+          ],
+          [
+            128,
+            1,
+            1
+          ],
+          120,
+          512,
+          0
+        ],
+        [
+          "q5_k_t16_dense_rowtile_col4_gemv_kernel",
+          120,
+          29.069505,
+          0.08052507955034108,
+          [
+            163840,
+            1,
+            1
+          ],
+          [
+            128,
+            1,
+            1
+          ],
+          80,
+          512,
+          0
+        ],
+        [
+          "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel",
+          4,
+          19.602225,
+          0.05429988324495669,
+          [
+            3973120,
+            1,
+            1
+          ],
+          [
+            128,
+            1,
+            1
+          ],
+          72,
+          512,
+          0
+        ],
+        [
+          "q4_k_t16_dense_single_local32_gemv_kernel",
+          125,
+          14.509989,
+          0.040193942707300104,
+          [
+            24576,
+            1,
+            1
+          ],
+          [
+            32,
+            1,
+            1
+          ],
+          96,
+          0,
+          0
+        ],
+        [
+          "q4_k_t16_dense_single_local32_residual_gemv_kernel",
+          56,
+          13.034058,
+          0.03610548433190588,
+          [
+            20480,
+            1,
+            1
+          ],
+          [
+            32,
+            1,
+            1
+          ],
+          96,
+          0,
+          0
+        ],
+        [
+          "qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel",
+          96,
+          10.177102,
+          0.028191465528633365,
+          [
+            1024,
+            48,
+            1
+          ],
+          [
+            128,
+            1,
+            1
+          ],
+          64,
+          0,
+          0
+        ],
+        [
+          "q4_k_t16_dense_rowtile_gemv_kernel",
+          64,
+          10.02525,
+          0.027770822164397257,
+          [
+            20480,
+            1,
+            1
+          ],
+          [
+            32,
+            1,
+            1
+          ],
+          224,
+          0,
+          0
+        ],
+        [
+          "q5_k_t16_dense_tile8_gemv_kernel",
+          48,
+          5.154911,
+          0.014279555787067178,
+          [
+            81920,
+            1,
+            1
+          ],
+          [
+            128,
+            1,
+            1
+          ],
+          56,
+          512,
+          0
+        ]
+      ],
+      "traces": {
+        "hip_api": {
+          "path": "runs/c17/trace/gfx1151/1818326_hip_api_trace.csv",
+          "sha256": "e51ae0e47db3540e2b8cdcf3f92d5a656c87882ebe7214644de474371deac348"
+        },
+        "kernel": {
+          "path": "runs/c17/trace/gfx1151/1818326_kernel_trace.csv",
+          "sha256": "7c719423776c9e9ff96ad8fa44789d6f3808f2698b520a1af81fa10cb98e6b5b"
+        },
+        "marker": {
+          "path": "runs/c17/trace/gfx1151/1818326_marker_api_trace.csv",
+          "sha256": "0ae03ae0423f7bb5b3de4fe65eaf2f6b60b765b2fe99d8e373f19da40973cb1c"
+        },
+        "memory_copy": {
+          "path": "runs/c17/trace/gfx1151/1818326_memory_copy_trace.csv",
+          "sha256": "4c2517c085dbd19f82b42575a5c20ce0d9192d10e11c04886906d0567c5f30c8"
+        }
+      },
+      "workflow": {
+        "cache_tree_sha256": "674e49f954bb638f412e14916da4bb3adc00599762efa87d8115ea504eeb1cfb",
+        "compiler_guard_invoked": false,
+        "immutable_cache_only": true,
+        "path": "c17-workflow.json",
+        "runtime_queue_observation": {
+          "kernel_trace_files": [
+            "/tmp/c2-gfx1151-hwqueue-v2/task18-owner-profile-v2/runs/c17/trace/gfx1151/1818326_kernel_trace.csv"
+          ],
+          "observed": true,
+          "reason": null,
+          "runtime_queue_count": 1,
+          "runtime_queue_ids": [
+            1
+          ]
+        },
+        "sha256": "af5b62a7c94e65d3e5f82947df200588795a01875a9f89fdfa92434a3538bbb2",
+        "status": "profiled"
+      }
+    },
+    "32": {
+      "kernel_families": [
+        [
+          "dense_projection",
+          477.422793,
+          1928,
+          0.9212694901209593
+        ],
+        [
+          "linear_attention_state",
+          22.350124,
+          384,
+          0.043128412894229404
+        ],
+        [
+          "metadata_lifecycle",
+          6.841471,
+          2124,
+          0.013201796378932686
+        ],
+        [
+          "norm_residual",
+          6.468655,
+          772,
+          0.012482383708936983
+        ],
+        [
+          "full_attention_core",
+          4.156844,
+          384,
+          0.008021346296284535
+        ],
+        [
+          "other",
+          0.785314,
+          256,
+          0.0015153985921339348
+        ],
+        [
+          "lm_head_sampler",
+          0.178416,
+          8,
+          0.0003442843947951623
+        ],
+        [
+          "embedding",
+          0.019116,
+          4,
+          3.688761372805311e-05
+        ]
+      ],
+      "marker_accounting": {
+        "hip_api_calls": 9645,
+        "hip_api_time_ms": 364.819282,
+        "hip_api_time_ns": 364819282,
+        "kernel_count": 5860,
+        "kernel_interval_union_ms": 518.222733,
+        "kernel_interval_union_ns": 518222733,
+        "kernel_sum_ms": 518.222733,
+        "kernel_sum_ns": 518222733,
+        "marker_wall_ms": 562.329843,
+        "marker_wall_ns": 562329843,
+        "memory_copy_ops": 0,
+        "memory_copy_time_ns": 0,
+        "uncovered_ms": 44.10711,
+        "uncovered_ns": 44107110
+      },
+      "profile_child": {
+        "all_rows_equal": true,
+        "fallback_reasons": {},
+        "final_requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 32,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 32
+        },
+        "marked_wall_ms": 562.3094849288464,
+        "marker_name": "hipengine_c2_production_owner_c32_decode_transition_3",
+        "observed_physical_c_transitions": 7,
+        "path": "runs/c32/profile-child.json",
+        "physical_groups": [
+          [
+            8,
+            8
+          ],
+          [
+            8,
+            8
+          ],
+          [
+            8,
+            8
+          ],
+          [
+            8,
+            8
+          ]
+        ],
+        "sha256": "df7122bfdb7f195f3b9811828088dd2b8c139e15eee18763052a51061914c16d"
+      },
+      "top_kernels": [
+        [
+          "q4_k_qmicro_t16_dense_dual_q8_1x2_rowtile8_dp4a_silu_gemv_kernel",
+          256,
+          242.345564,
+          0.43096692629204814,
+          [
+            278528,
+            1,
+            1
+          ],
+          [
+            128,
+            1,
+            1
+          ],
+          152,
+          1024,
+          0
+        ],
+        [
+          "q4_k_t16_dense_rowtile16_w2_gemv_kernel",
+          720,
+          117.04959,
+          0.20815112599314775,
+          [
+            20480,
+            1,
+            1
+          ],
+          [
+            64,
+            1,
+            1
+          ],
+          224,
+          0,
+          0
+        ],
+        [
+          "q5_k_t16_dense_rowtile_col4_gemv_kernel",
+          240,
+          55.525798,
+          0.0987423994852786,
+          [
+            163840,
+            1,
+            1
+          ],
+          [
+            128,
+            1,
+            1
+          ],
+          80,
+          512,
+          0
+        ],
+        [
+          "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel",
+          8,
+          38.461914,
+          0.06839742631265615,
+          [
+            3973120,
+            1,
+            1
+          ],
+          [
+            128,
+            1,
+            1
+          ],
+          72,
+          512,
+          0
+        ],
+        [
+          "qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel",
+          192,
+          19.964893,
+          0.035503883083082256,
+          [
+            1024,
+            48,
+            1
+          ],
+          [
+            128,
+            1,
+            1
+          ],
+          64,
+          0,
+          0
+        ],
+        [
+          "q4_k_t16_dense_rowtile_gemv_kernel",
+          128,
+          19.462993,
+          0.03461134642288583,
+          [
+            20480,
+            1,
+            1
+          ],
+          [
+            32,
+            1,
+            1
+          ],
+          224,
+          0,
+          0
+        ],
+        [
+          "__amd_rocclr_copyBuffer",
+          2088,
+          6.799151,
+          0.012091037110402835,
+          [
+            10240,
+            1,
+            1
+          ],
+          [
+            512,
+            1,
+            1
+          ],
+          16,
+          0,
+          0
+        ],
+        [
+          "dense_gemv_bf16_f32w_bf16_out_kernel",
+          384,
+          4.274769,
+          0.007601888914865932,
+          [
+            12288,
+            8,
+            1
+          ],
+          [
+            256,
+            1,
+            1
+          ],
+          24,
+          1024,
+          0
+        ],
+        [
+          "qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
+          64,
+          3.364591,
+          0.005983305068872185,
+          [
+            6144,
+            8,
+            1
+          ],
+          [
+            256,
+            1,
+            1
+          ],
+          40,
+          0,
+          0
+        ],
+        [
+          "gguf_add_rmsnorm_bf16_f32_weight_kernel",
+          256,
+          3.311848,
+          0.005889511362817712,
+          [
+            2048,
+            1,
+            1
+          ],
+          [
+            256,
+            1,
+            1
+          ],
+          24,
+          0,
+          0
+        ]
+      ],
+      "traces": {
+        "hip_api": {
+          "path": "runs/c32/trace/gfx1151/1821015_hip_api_trace.csv",
+          "sha256": "14bf957f4fb76658a0353a7c5c9427c67de319d06548385b1eec0820aca77255"
+        },
+        "kernel": {
+          "path": "runs/c32/trace/gfx1151/1821015_kernel_trace.csv",
+          "sha256": "e473e1c046b073858900da9b27ffade124dc081efe408bf2a713849ed57b0a98"
+        },
+        "marker": {
+          "path": "runs/c32/trace/gfx1151/1821015_marker_api_trace.csv",
+          "sha256": "050824045be76cccdff5c4dca9516b1a782edc776ad76950ad81a2684f6c13c3"
+        },
+        "memory_copy": {
+          "path": "runs/c32/trace/gfx1151/1821015_memory_copy_trace.csv",
+          "sha256": "bf60bde10917ca87e5506dc372f0d08f2377747d4532dfc50f3a3af52a33d90e"
+        }
+      },
+      "workflow": {
+        "cache_tree_sha256": "674e49f954bb638f412e14916da4bb3adc00599762efa87d8115ea504eeb1cfb",
+        "compiler_guard_invoked": false,
+        "immutable_cache_only": true,
+        "path": "c32-workflow.json",
+        "runtime_queue_observation": {
+          "kernel_trace_files": [
+            "/tmp/c2-gfx1151-hwqueue-v2/task18-owner-profile-v2/runs/c32/trace/gfx1151/1821015_kernel_trace.csv"
+          ],
+          "observed": true,
+          "reason": null,
+          "runtime_queue_count": 1,
+          "runtime_queue_ids": [
+            1
+          ]
+        },
+        "sha256": "e62526f73089fbe89a2e2009c94be2f5dcd2224b4c0411fdb3d65bd4055275d9",
+        "status": "profiled"
+      }
+    },
+    "8": {
+      "kernel_families": [
+        [
+          "dense_projection",
+          122.865348,
+          482,
+          0.9343933178530127
+        ],
+        [
+          "linear_attention_state",
+          5.617182,
+          96,
+          0.04271877637919702
+        ],
+        [
+          "norm_residual",
+          1.664609,
+          193,
+          0.012659383233407566
+        ],
+        [
+          "full_attention_core",
+          1.072693,
+          96,
+          0.008157850749811915
+        ],
+        [
+          "other",
+          0.198056,
+          64,
+          0.001506219662200414
+        ],
+        [
+          "lm_head_sampler",
+          0.049533,
+          2,
+          0.0003766994109129393
+        ],
+        [
+          "metadata_lifecycle",
+          0.019959,
+          11,
+          0.00015178857614946308
+        ],
+        [
+          "embedding",
+          0.004729,
+          1,
+          3.5964135307921785e-05
+        ]
+      ],
+      "marker_accounting": {
+        "hip_api_calls": 1883,
+        "hip_api_time_ms": 119.802077,
+        "hip_api_time_ns": 119802077,
+        "kernel_count": 945,
+        "kernel_interval_union_ms": 131.492109,
+        "kernel_interval_union_ns": 131492109,
+        "kernel_sum_ms": 131.492109,
+        "kernel_sum_ns": 131492109,
+        "marker_wall_ms": 138.234364,
+        "marker_wall_ns": 138234364,
+        "memory_copy_ops": 0,
+        "memory_copy_time_ns": 0,
+        "uncovered_ms": 6.742255,
+        "uncovered_ns": 6742255
+      },
+      "profile_child": {
+        "all_rows_equal": true,
+        "fallback_reasons": {},
+        "final_requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 8,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 8
+        },
+        "marked_wall_ms": 138.21907504461706,
+        "marker_name": "hipengine_c2_production_owner_c8_decode_transition_3",
+        "observed_physical_c_transitions": 7,
+        "path": "runs/c8/profile-child.json",
+        "physical_groups": [
+          [
+            8,
+            8
+          ]
+        ],
+        "sha256": "20b75f140256e541438fcf627861d658da38bd04bd36a3693b7bd0953c3dc662"
+      },
+      "top_kernels": [
+        [
+          "q4_k_qmicro_t16_dense_dual_q8_1x2_rowtile8_dp4a_silu_gemv_kernel",
+          64,
+          63.1162,
+          0.45658834875530663,
+          [
+            278528,
+            1,
+            1
+          ],
+          [
+            128,
+            1,
+            1
+          ],
+          152,
+          1024,
+          0
+        ],
+        [
+          "q4_k_t16_dense_rowtile16_w2_gemv_kernel",
+          180,
+          29.777431,
+          0.2154126523850466,
+          [
+            20480,
+            1,
+            1
+          ],
+          [
+            64,
+            1,
+            1
+          ],
+          224,
+          0,
+          0
+        ],
+        [
+          "q5_k_t16_dense_rowtile_col4_gemv_kernel",
+          60,
+          14.305237,
+          0.10348538949403348,
+          [
+            163840,
+            1,
+            1
+          ],
+          [
+            128,
+            1,
+            1
+          ],
+          80,
+          512,
+          0
+        ],
+        [
+          "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel",
+          2,
+          9.548558,
+          0.06907513966642911,
+          [
+            3973120,
+            1,
+            1
+          ],
+          [
+            128,
+            1,
+            1
+          ],
+          72,
+          512,
+          0
+        ],
+        [
+          "qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_kernel",
+          48,
+          4.986957,
+          0.03607610188737151,
+          [
+            1024,
+            48,
+            1
+          ],
+          [
+            128,
+            1,
+            1
+          ],
+          64,
+          0,
+          0
+        ],
+        [
+          "q4_k_t16_dense_rowtile_gemv_kernel",
+          32,
+          4.95045,
+          0.03581200691891634,
+          [
+            20480,
+            1,
+            1
+          ],
+          [
+            32,
+            1,
+            1
+          ],
+          224,
+          0,
+          0
+        ],
+        [
+          "dense_gemv_bf16_f32w_bf16_out_kernel",
+          96,
+          1.090088,
+          0.00788579603838594,
+          [
+            12288,
+            8,
+            1
+          ],
+          [
+            256,
+            1,
+            1
+          ],
+          24,
+          1024,
+          0
+        ],
+        [
+          "qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
+          16,
+          0.866546,
+          0.006268672817129611,
+          [
+            6144,
+            8,
+            1
+          ],
+          [
+            256,
+            1,
+            1
+          ],
+          40,
+          0,
+          0
+        ],
+        [
+          "gguf_add_rmsnorm_bf16_f32_weight_kernel",
+          64,
+          0.853125,
+          0.006171584078760619,
+          [
+            2048,
+            1,
+            1
+          ],
+          [
+            256,
+            1,
+            1
+          ],
+          24,
+          0,
+          0
+        ],
+        [
+          "qwen35_linear_attn_conv_decode_indexed_lowp_kernel",
+          48,
+          0.630225,
+          0.00455910514407257,
+          [
+            10240,
+            8,
+            1
+          ],
+          [
+            256,
+            1,
+            1
+          ],
+          16,
+          0,
+          0
+        ]
+      ],
+      "traces": {
+        "hip_api": {
+          "path": "runs/c8/trace/gfx1151/1819601_hip_api_trace.csv",
+          "sha256": "bff8cb0f8572f7a8a6a3e4accdb98cc2088d99719861d50f86cc057c9c6eb382"
+        },
+        "kernel": {
+          "path": "runs/c8/trace/gfx1151/1819601_kernel_trace.csv",
+          "sha256": "161618d47263abba93de688799a8a336de7ab3b9a63aca09c84646bc04d5810b"
+        },
+        "marker": {
+          "path": "runs/c8/trace/gfx1151/1819601_marker_api_trace.csv",
+          "sha256": "fe1b341deed3badde7476ff6b92a7e2cac1194f489cbff513e8dab04c96576da"
+        },
+        "memory_copy": {
+          "path": "runs/c8/trace/gfx1151/1819601_memory_copy_trace.csv",
+          "sha256": "61194ebe218a23f0a2cd04ecf0f0359f364208cbd1a62b117d66339bea0071be"
+        }
+      },
+      "workflow": {
+        "cache_tree_sha256": "674e49f954bb638f412e14916da4bb3adc00599762efa87d8115ea504eeb1cfb",
+        "compiler_guard_invoked": false,
+        "immutable_cache_only": true,
+        "path": "c8-workflow.json",
+        "runtime_queue_observation": {
+          "kernel_trace_files": [
+            "/tmp/c2-gfx1151-hwqueue-v2/task18-owner-profile-v2/runs/c8/trace/gfx1151/1819601_kernel_trace.csv"
+          ],
+          "observed": true,
+          "reason": null,
+          "runtime_queue_count": 1,
+          "runtime_queue_ids": [
+            1
+          ]
+        },
+        "sha256": "ca9b9e771956c6dbb604841bdae2c7fe75a95568a9a793084268cabbbb6cfb57",
+        "status": "profiled"
+      }
+    }
+  },
+  "protocol": {
+    "cache_root": "/tmp/c2-gfx1151-hwqueue-v2/task18-owner-profile-v2",
+    "command_template": "scripts/gguf_continuous_owner_rocprof.py --gpu-max-hw-queues 2 --fp16-recurrent-state --profile; c17 uses --rebuild, c8/c32 reuse immutable cache",
+    "concurrencies": [
+      8,
+      17,
+      32
+    ],
+    "decode_tokens": 8,
+    "marked_transition_index": 3,
+    "profiled_process_compiler_activity_forbidden": true,
+    "prompt_tokens": 128,
+    "selected_queue": "2",
+    "workflow": "unprofiled isolated cache build, unprofiled cache-only warm, direct-child-only cache-only rocprof"
+  },
+  "ranked_ceiling": {
+    "c17_tail_targets": [
+      {
+        "kernel_duration_ms": 29.880553,
+        "mechanism": "Task #21 c1 tail of 8+8+1",
+        "share_of_marker_wall": 0.08277175367565366,
+        "target": "Q4 split-weight qmicro tail"
+      },
+      {
+        "kernel_duration_ms": 27.544047,
+        "mechanism": "structural c17 tail cost",
+        "share_of_marker_wall": 0.07629942703920597,
+        "target": "Q4 local32 single + residual"
+      }
+    ],
+    "c32_marker_wall_ms": 562.329843,
+    "c32_targets": [
+      {
+        "kernel_duration_ms": 242.345564,
+        "mechanism": "Task #19 dual rowtile tuning; dominant repeated Q4 selected gate/up work",
+        "rank": 1,
+        "share_of_marker_wall": 0.43096692629204814,
+        "target": "Q4 qmicro dual rowtile8 dp4a+SiLU"
+      },
+      {
+        "kernel_duration_ms": 117.04959,
+        "mechanism": "rowtile scheduling/dequant reduction after qmicro",
+        "rank": 2,
+        "share_of_marker_wall": 0.20815112599314775,
+        "target": "Q4 dense rowtile16_w2"
+      },
+      {
+        "kernel_duration_ms": 55.525798,
+        "mechanism": "Task #20",
+        "rank": 3,
+        "share_of_marker_wall": 0.0987423994852786,
+        "target": "Q5 rowtile col4"
+      },
+      {
+        "kernel_duration_ms": 38.461914,
+        "mechanism": "already retained; comparator/ceiling",
+        "rank": 4,
+        "share_of_marker_wall": 0.06839742631265615,
+        "target": "Q6 planar qmicro rowtile col8"
+      },
+      {
+        "kernel_duration_ms": 19.964893,
+        "mechanism": "state bandwidth; numerically qualified",
+        "rank": 5,
+        "share_of_marker_wall": 0.035503883083082256,
+        "target": "GDN indexed FP16-state recurrence"
+      }
+    ]
+  },
+  "schema_version": 1,
+  "software": {
+    "compiler": "clang 23.0.0git aa451e1f + PATCHED:440716f8",
+    "rocm": "HIP 7.15.0",
+    "rocprofv3": "rocprofiler-sdk 1.0.0.715"
+  },
+  "source_commit": "8969778338b6d499a28fc7efe3ea15511cabc855",
+  "status": "retained_profile_ranked",
+  "verdict": {
+    "actual_kernel_identity_recorded": true,
+    "cache_immutable_all_profiles": true,
+    "cache_tree_sha256": "674e49f954bb638f412e14916da4bb3adc00599762efa87d8115ea504eeb1cfb",
+    "compiler_guard_never_invoked": true,
+    "findings": [
+      "c32 is four dense c8 groups and is near-linear: marker wall is only 1.69% above 4*c8.",
+      "c17 8+8+1 is 30.59% above 2*c8 because the native c1 tail activates split-weight/single kernel families and additional metadata/API work.",
+      "Dense projection owns 88-93% of GPU duration. The Q4 qmicro dual rowtile8 kernel alone owns 43.10% of c32 marker wall and 35.89% of c17.",
+      "No multi-stream overlap appears inside marked transitions: kernel sum equals kernel interval union; Queue_Id 1 is used.",
+      "Profiled markers contain no memory-copy trace operations; copyBuffer kernels are device-side metadata/state movement and remain explicitly attributed."
+    ],
+    "memory_copy_trace_ops_in_markers": 0,
+    "next": "Restore lineage references, then tune Q4 qmicro dual rowtile8 first. Keep c8 and c32 as the primary dense target; use c17 to bind tail regressions.",
+    "profile_valid": true,
+    "runtime_queue_ids_used": [
+      1
+    ],
+    "selected_queue_confirmed": "2"
+  }
+}

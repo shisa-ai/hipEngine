@@ -2883,17 +2883,19 @@ void q4_k_t16_dense_rowtile_residual_gemv_kernel(
 
 // Exact dense Q5T16 small-B rowtile. The 128-thread arithmetic partitions,
 // per-thread K sequence, wave32 tree, and ordered wave-0..3 reduction match the
-// one-expert direct producer. Four-column groups reuse decoded weights across
-// verifier rows 2-4 without changing any row's accumulation order.
-template <typename scalar_t, int ROW_TILE>
+// one-expert direct producer. Four- or eight-column groups reuse decoded
+// weights across rows 2-8 without changing any row's accumulation order.
+template <typename scalar_t, int ROW_TILE, int TILE_COLS>
 __global__ __launch_bounds__(128, 2)
-void q5_k_t16_dense_rowtile_col4_gemv_kernel(
+void q5_k_t16_dense_rowtile_gemv_kernel(
     const scalar_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
     scalar_t* __restrict__ out,
     int64_t in_features,
     int64_t out_features) {
-  constexpr int kTileCols = 4;
+  static_assert(TILE_COLS == 4 || TILE_COLS == 8,
+                "Q5 rowtile columns must be 4 or 8");
+  constexpr int kTileCols = TILE_COLS;
   constexpr int kGroupsPerTile = T16_COLS / kTileCols;
   const int64_t out_group = blockIdx.x;
   const int64_t out_tile = out_group / kGroupsPerTile;
@@ -6197,8 +6199,8 @@ int launch_q5_dense_tile8(
   return hipGetLastError();
 }
 
-template <typename scalar_t>
-int launch_q5_dense_rowtile_col4(
+template <typename scalar_t, int TILE_COLS>
+int launch_q5_dense_rowtile(
     const void* x,
     const void* tiles,
     void* out,
@@ -6206,34 +6208,36 @@ int launch_q5_dense_rowtile_col4(
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
+  static_assert(TILE_COLS == 4 || TILE_COLS == 8,
+                "Q5 rowtile columns must be 4 or 8");
   if (!x || !tiles || !out || rows < 2 || rows > 8 ||
       in_features <= 0 || (in_features % QK_K) != 0 ||
       out_features <= 0 || (out_features % T16_COLS) != 0) {
     return hipErrorInvalidValue;
   }
   const dim3 block(128);
-  const dim3 grid(static_cast<unsigned int>(out_features / 4));
-#define Q5_T16_DENSE_ROWTILE_COL4_CASE(N)                                   \
+  const dim3 grid(static_cast<unsigned int>(out_features / TILE_COLS));
+#define Q5_T16_DENSE_ROWTILE_CASE(N)                                        \
   case N:                                                                    \
     hipLaunchKernelGGL(                                                       \
-        (q5_k_t16_dense_rowtile_col4_gemv_kernel<scalar_t, N>),              \
+        (q5_k_t16_dense_rowtile_gemv_kernel<scalar_t, N, TILE_COLS>),        \
         grid, block, 0, stream,                                               \
         reinterpret_cast<const scalar_t*>(x),                                \
         reinterpret_cast<const uint8_t*>(tiles),                             \
         reinterpret_cast<scalar_t*>(out), in_features, out_features);        \
     break
   switch (rows) {
-    Q5_T16_DENSE_ROWTILE_COL4_CASE(2);
-    Q5_T16_DENSE_ROWTILE_COL4_CASE(3);
-    Q5_T16_DENSE_ROWTILE_COL4_CASE(4);
-    Q5_T16_DENSE_ROWTILE_COL4_CASE(5);
-    Q5_T16_DENSE_ROWTILE_COL4_CASE(6);
-    Q5_T16_DENSE_ROWTILE_COL4_CASE(7);
-    Q5_T16_DENSE_ROWTILE_COL4_CASE(8);
+    Q5_T16_DENSE_ROWTILE_CASE(2);
+    Q5_T16_DENSE_ROWTILE_CASE(3);
+    Q5_T16_DENSE_ROWTILE_CASE(4);
+    Q5_T16_DENSE_ROWTILE_CASE(5);
+    Q5_T16_DENSE_ROWTILE_CASE(6);
+    Q5_T16_DENSE_ROWTILE_CASE(7);
+    Q5_T16_DENSE_ROWTILE_CASE(8);
     default:
       return hipErrorInvalidValue;
   }
-#undef Q5_T16_DENSE_ROWTILE_COL4_CASE
+#undef Q5_T16_DENSE_ROWTILE_CASE
   return hipGetLastError();
 }
 
@@ -7424,7 +7428,16 @@ hipengine_gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out(
     const void* x, const void* tiles, void* out,
     int64_t rows, int64_t in_features, int64_t out_features,
     hipStream_t stream) {
-  return launch_q5_dense_rowtile_col4<uint16_t>(
+  return launch_q5_dense_rowtile<uint16_t, 4>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out(
+    const void* x, const void* tiles, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_dense_rowtile<uint16_t, 8>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 

@@ -52,6 +52,25 @@ def _temporary_env(updates: dict[str, str]) -> Iterator[None]:
 
 
 _DEFAULT_CERT_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
+_LIFECYCLE_ENV_KEYS = (
+    "HIPENGINE_HIP_ARCH",
+    "HIP_VISIBLE_DEVICES",
+    "HIPENGINE_COMPILER_VERSION_FILE",
+    "HIPENGINE_BUILD_CACHE_ROOT",
+    "HIPENGINE_REQUIRE_CACHED_BUILD",
+    "HIPENGINE_GGUF_FP16_RECURRENT_STATE",
+    "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
+    "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT",
+    "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL",
+    "HIPENGINE_GGUF_ROUTER_F32W_COOP",
+    "GPU_MAX_HW_QUEUES",
+)
+
+
+def _lifecycle_environment_snapshot(args: argparse.Namespace) -> dict[str, str | None]:
+    environment = {key: os.environ.get(key) for key in _LIFECYCLE_ENV_KEYS}
+    environment["HIPENGINE_GGUF_GDN_PREFILL_MODE"] = str(args.gdn_prefill_mode)
+    return environment
 
 
 def _resolve_widths() -> tuple[int, ...]:
@@ -472,7 +491,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "HIPENGINE_MAX_ACTIVE_REQUESTS": str(logical_c),
         "HIPENGINE_PREFILL_DECODE_POLICY": "protect_ttft",
         "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
-        "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
+        "HIPENGINE_GGUF_GDN_PREFILL_MODE": str(args.gdn_prefill_mode),
     }
     if compiler_version_file is not None:
         env["HIPENGINE_COMPILER_VERSION_FILE"] = str(compiler_version_file)
@@ -921,25 +940,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 quant="gguf_q4_k_m",
                 kv_dtype="bf16",
                 command=[sys.executable, *sys.argv],
-                environment={
-                    "HIPENGINE_HIP_ARCH": os.environ.get("HIPENGINE_HIP_ARCH"),
-                    "HIP_VISIBLE_DEVICES": os.environ.get("HIP_VISIBLE_DEVICES"),
-                    "HIPENGINE_GGUF_GDN_PREFILL_MODE": os.environ.get(
-                        "HIPENGINE_GGUF_GDN_PREFILL_MODE"
-                    ),
-                    "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS": os.environ.get(
-                        "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS"
-                    ),
-                    "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT": os.environ.get(
-                        "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT"
-                    ),
-                    "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": os.environ.get(
-                        "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
-                    ),
-                    "HIPENGINE_GGUF_ROUTER_F32W_COOP": os.environ.get(
-                        "HIPENGINE_GGUF_ROUTER_F32W_COOP"
-                    ),
-                },
+                environment=_lifecycle_environment_snapshot(args),
                 build_profile="gguf_arbitrary_c_lifecycle",
                 timing_protocol="none_correctness_only_v1",
                 warmups=0,
@@ -1079,6 +1080,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--newcomer-max-tokens", type=int, default=3)
     parser.add_argument("--prefill-chunk-size", type=int, default=256)
     parser.add_argument(
+        "--gdn-prefill-mode",
+        choices=("exact", "auto"),
+        default="exact",
+        help="pin strict exact prefill or use the backend production policy",
+    )
+    parser.add_argument(
         "--compact-after-middle-hole",
         action="store_true",
         help="compact survivor slots after the middle-hole transition",
@@ -1112,16 +1119,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload["command"] = shlex.join(
         [sys.executable, "scripts/gguf_arbitrary_c_lifecycle.py", *command_args]
     )
-    payload["environment"] = {
-        key: os.environ.get(key)
-        for key in (
-            "HIPENGINE_HIP_ARCH",
-            "HIP_VISIBLE_DEVICES",
-            "HIPENGINE_COMPILER_VERSION_FILE",
-            "HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
-            "HIPENGINE_GGUF_AR_D2_COST_ARTIFACT",
-        )
-    }
+    payload["environment"] = _lifecycle_environment_snapshot(args)
     text = json.dumps(payload, indent=2, allow_nan=False)
     print(text)
     if args.json is not None:

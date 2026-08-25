@@ -80,6 +80,7 @@ _PROVENANCE_ENV_KEYS = (
     "HIPENGINE_BACKEND",
     "HIPENGINE_HIP_ARCH",
     "HIPENGINE_COMPILER_VERSION_FILE",
+    "HIPENGINE_GGUF_FP16_RECURRENT_STATE",
     "HIP_VISIBLE_DEVICES",
     "ROCR_VISIBLE_DEVICES",
     "GPU_MAX_HW_QUEUES",
@@ -249,12 +250,37 @@ def _pressure_specs(*, decode_tokens: int) -> tuple[WorkloadRequest, WorkloadReq
     )
 
 
-def _required_admission(plan: LongContextPoolPlan) -> dict[str, Any]:
+def _pressure_config_high_water(plan: LongContextPoolPlan) -> int:
+    """Return dynamic request pages; the global pool adds workspace pages."""
+
+    return int(plan.pressure_high_water_pages)
+
+
+def _effective_pressure_high_water(
+    plan: LongContextPoolPlan,
+    *,
+    workspace_lease_pages: int,
+) -> int:
+    workspace_pages = int(workspace_lease_pages)
+    if workspace_pages < 0:
+        raise ValueError("workspace lease pages must be non-negative")
+    return int(plan.pressure_high_water_pages) + workspace_pages
+
+
+def _required_admission(
+    plan: LongContextPoolPlan,
+    *,
+    workspace_lease_pages: int = 0,
+) -> dict[str, Any]:
+    effective_capacity = _effective_pressure_high_water(
+        plan,
+        workspace_lease_pages=int(workspace_lease_pages),
+    )
     return {
         "resource": "device_kv_pool",
         "requested_units": int(plan.pages_by_context[4_096]),
-        "current_units": int(plan.pressure_high_water_pages),
-        "capacity_units": int(plan.pressure_high_water_pages),
+        "current_units": effective_capacity,
+        "capacity_units": effective_capacity,
     }
 
 
@@ -289,15 +315,22 @@ def evaluate_packet(
         and pressure.get("candidate_done_sentinel") is True
     ):
         reasons.append("pressure_accept_reject_contract_failed")
-    if pressure.get("candidate_admission") != _required_admission(plan):
+    workspace_lease_pages = int(pressure.get("workspace_lease_pages", 0))
+    effective_capacity = _effective_pressure_high_water(
+        plan,
+        workspace_lease_pages=workspace_lease_pages,
+    )
+    if pressure.get("candidate_admission") != _required_admission(
+        plan,
+        workspace_lease_pages=workspace_lease_pages,
+    ):
         reasons.append("pressure_admission_metadata_mismatch")
     if not (
-        int(final_pool.get("current_pages", -1))
-        == int(plan.pressure_high_water_pages)
+        int(final_pool.get("current_pages", -1)) == effective_capacity
         and int(final_pool.get("free_pages", -1))
         == int(plan.pressure_high_water_pages)
-        and int(final_pool.get("refcounted_pages", -1)) == 0
-        and int(final_pool.get("pinned_pages", -1)) == 0
+        and int(final_pool.get("refcounted_pages", -1)) == workspace_lease_pages
+        and int(final_pool.get("pinned_pages", -1)) == workspace_lease_pages
         and int(final_pool.get("grow_events", -1)) == 0
         and int(final_pool.get("grow_failures", 0)) > 0
         and int(final_pool.get("shrink_events", -1)) == 0
@@ -362,26 +395,6 @@ def _final_pool_from_idle_snapshot(final_idle: Mapping[str, Any]) -> dict[str, A
     runner = runner if isinstance(runner, Mapping) else {}
     pool = runner.get("kv_pool")
     return copy.deepcopy(dict(pool)) if isinstance(pool, Mapping) else {}
-
-
-def _wait_for_pressure_allocation(
-    llm: LLM,
-    runner: Any,
-    *,
-    expected_pages: int,
-    timeout_seconds: float,
-) -> dict[str, Any]:
-    deadline = time.monotonic() + float(timeout_seconds)
-    last: dict[str, Any] = {}
-    while time.monotonic() < deadline:
-        snapshot = llm.live_loop_snapshot() or {}
-        pool = _pool_json(runner)
-        active = int(snapshot.get("loop", {}).get("requests", {}).get("active", 0))
-        last = {"pool": pool, "active_requests": active}
-        if int(pool.get("refcounted_pages", 0)) == int(expected_pages) and active >= 1:
-            return last
-        time.sleep(0.01)
-    raise TimeoutError(f"pressure source was not admitted at the expected page count: {last}")
 
 
 def _capture_runtime(adapter: Any, runner: Any):
@@ -482,6 +495,8 @@ def _execute_pressure_workload(
     slos: SLOThresholds,
     idle_timeout_seconds: float,
     request_timeout_seconds: float,
+    workspace_lease_pages: int,
+    speculative_mtp: bool = False,
 ) -> tuple[dict[str, Any], tuple[int, ...], tuple[int, ...]]:
     long_spec, candidate_spec = _pressure_specs(decode_tokens=plan.decode_tokens)
     before_ids = set(reclaimed)
@@ -502,14 +517,21 @@ def _execute_pressure_workload(
                 workload_start=workload_start,
                 served_model_name=_SERVED_MODEL_NAME,
                 request_timeout_seconds=float(request_timeout_seconds),
+                speculative_mtp=bool(speculative_mtp),
             )
             start_event.set()
-            admission_barrier = _wait_for_pressure_allocation(
-                llm,
-                runner,
-                expected_pages=plan.pages_by_context[32_768],
-                timeout_seconds=float(idle_timeout_seconds),
-            )
+            # EngineService control RPCs serialize behind synchronous model
+            # work, so a live-loop poll cannot observe a long prefill while it
+            # is active. Preserve source-first submission order instead: the
+            # 32K source reserves before the candidate is admitted after the
+            # model thread returns from prefill.
+            candidate_delay_seconds = 0.1
+            time.sleep(candidate_delay_seconds)
+            admission_barrier = {
+                "mode": "source_first_submission_delay",
+                "delay_seconds": candidate_delay_seconds,
+                "pool_before_candidate": _pool_json(runner),
+            }
             candidate_start = threading.Event()
             candidate_start.set()
             candidate_trace = executor.submit(
@@ -522,6 +544,7 @@ def _execute_pressure_workload(
                 workload_start=time.perf_counter(),
                 served_model_name=_SERVED_MODEL_NAME,
                 request_timeout_seconds=float(request_timeout_seconds),
+                speculative_mtp=bool(speculative_mtp),
             ).result(timeout=float(request_timeout_seconds))
             long_trace = long_future.result(timeout=float(request_timeout_seconds))
         idle = _wait_for_idle(llm, batcher, timeout_seconds=float(idle_timeout_seconds))
@@ -570,7 +593,11 @@ def _execute_pressure_workload(
             "passed": bool(
                 summary["passed"]
                 and metrics_exact
-                and admission == _required_admission(plan)
+                and admission
+                == _required_admission(
+                    plan,
+                    workspace_lease_pages=int(workspace_lease_pages),
+                )
             ),
             "long_outcome": row_by_label[long_spec.label].outcome,
             "candidate_outcome": row_by_label[candidate_spec.label].outcome,
@@ -578,6 +605,11 @@ def _execute_pressure_workload(
             "candidate_error_status_code": candidate_trace.error_status_code,
             "candidate_done_sentinel": candidate_trace.done_sentinel,
             "candidate_admission": admission,
+            "workspace_lease_pages": int(workspace_lease_pages),
+            "effective_pressure_high_water_pages": _effective_pressure_high_water(
+                plan,
+                workspace_lease_pages=int(workspace_lease_pages),
+            ),
             "candidate_error_payload": copy.deepcopy(candidate_trace.error_payload),
             "admission_barrier": admission_barrier,
             "metrics": {
@@ -597,7 +629,10 @@ def _execute_pressure_workload(
         summary["failure_reasons"] = sorted(
             set([*summary["failure_reasons"], "pressure_server_counter_accounting_failed"])
         )
-    if admission != _required_admission(plan):
+    if admission != _required_admission(
+        plan,
+        workspace_lease_pages=int(workspace_lease_pages),
+    ):
         summary["failure_reasons"] = sorted(
             set([*summary["failure_reasons"], "pressure_admission_metadata_mismatch"])
         )
@@ -626,6 +661,18 @@ def _allocation_for_workload(
         return (), ()
     selected = max(candidates, key=lambda row: len(row.block_ids))
     return tuple(selected.block_ids), tuple(selected.pointers)
+
+
+def _llm_construction_kwargs(
+    args: argparse.Namespace,
+    model: Path,
+) -> dict[str, Any]:
+    return {
+        "model": model,
+        "backend": str(args.backend),
+        "quant": str(args.quant),
+        "max_active_requests": int(args.max_active_requests),
+    }
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -673,6 +720,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     )
     env = {
         **_EXACT_ENV,
+        "HIPENGINE_GGUF_GDN_PREFILL_MODE": str(args.gdn_mode),
         "HIPENGINE_PREFILL_DECODE_POLICY": "token_budget",
         "HIPENGINE_MAX_ACTIVE_REQUESTS": str(int(args.max_active_requests)),
         "HIPENGINE_MAX_PENDING_REQUESTS": str(int(args.max_pending_requests)),
@@ -689,7 +737,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     ).strip()
     source_dirty = bool(
         subprocess.check_output(
-            ["git", "status", "--porcelain"], cwd=REPO_ROOT, text=True
+            [
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=no",
+            ],
+            cwd=REPO_ROOT,
+            text=True,
         ).strip()
     )
     started_at = time.perf_counter()
@@ -700,11 +755,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     regrow_block_ids: tuple[int, ...] = ()
     regrow_pointers: tuple[int, ...] = ()
     with _temporary_environment(env):
-        llm = LLM(
-            model,
-            backend=str(args.backend),
-            max_active_requests=int(args.max_active_requests),
-        )
+        llm = LLM(**_llm_construction_kwargs(args, model))
         try:
             adapter = llm._get_text_generator()
             llm.prepare(
@@ -793,6 +844,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         stream_queue_limit=int(args.stream_queue_max_chunks),
                         idle_timeout_seconds=float(args.idle_timeout_seconds),
                         request_timeout_seconds=float(args.request_timeout_seconds),
+                        speculative_mtp=bool(args.speculative_mtp),
                     )
                     workload_results[name] = summary
                     print(
@@ -802,11 +854,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         flush=True,
                     )
                 if run_pressure:
+                    workspace_lease_pages = int(
+                        runner.kv_pool_memory_snapshot().get(
+                            "packed_workspace_lease_pages", 0
+                        )
+                    )
                     pressure_config = replace(
                         adapter._loop.config,
                         kv_pool_initial_pages=plan.initial_pages,
                         kv_pool_low_water_pages=plan.low_water_pages,
-                        kv_pool_high_water_pages=plan.pressure_high_water_pages,
+                        kv_pool_high_water_pages=_pressure_config_high_water(plan),
                         kv_pool_chunk_pages=plan.chunk_pages,
                         kv_pool_idle_grace_seconds=0.0,
                     )
@@ -836,6 +893,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             slos=slos,
                             idle_timeout_seconds=float(args.idle_timeout_seconds),
                             request_timeout_seconds=float(args.request_timeout_seconds),
+                            workspace_lease_pages=workspace_lease_pages,
+                            speculative_mtp=bool(args.speculative_mtp),
                         )
                     )
                     print(
@@ -862,6 +921,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         stream_queue_limit=int(args.stream_queue_max_chunks),
                         idle_timeout_seconds=float(args.idle_timeout_seconds),
                         request_timeout_seconds=float(args.request_timeout_seconds),
+                        speculative_mtp=bool(args.speculative_mtp),
                     )
                     workload_results["graph_regrow_32k_c1"] = summary
                     regrow_block_ids, regrow_pointers = _allocation_for_workload(
@@ -971,6 +1031,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "quant": str(args.quant),
             "kv_dtype": "bf16",
             "decode_tokens": int(args.decode_tokens),
+            "speculative_mtp": bool(args.speculative_mtp),
             "graph_decode_tokens": _graph_output_tokens(
                 str(args.backend), int(args.decode_tokens)
             ),
@@ -1036,6 +1097,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", choices=_SUPPORTED_BACKENDS, default="hip_gfx1151")
     parser.add_argument("--quant", default="gguf_q4_k_m")
+    parser.add_argument(
+        "--gdn-mode",
+        default="exact",
+        help="GGUF GDN prefill execution mode (exact or a qualified profile route)",
+    )
     parser.add_argument("--decode-tokens", type=int, default=32)
     parser.add_argument(
         "--longer-context-tokens",
@@ -1052,6 +1118,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma-separated workload subset; subsets are diagnostic only.",
     )
     parser.add_argument("--skip-pressure", action="store_true")
+    parser.add_argument(
+        "--speculative-mtp",
+        action="store_true",
+        help=(
+            "Send workloads through the explicit speculative API route; "
+            "long contexts must select K0 before provider mutation."
+        ),
+    )
     parser.add_argument("--max-active-requests", type=int, default=3)
     parser.add_argument("--max-pending-requests", type=int, default=8)
     parser.add_argument("--max-queued-requests", type=int, default=8)

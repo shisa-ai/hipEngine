@@ -67,10 +67,7 @@ def fp16_state_environment(enabled: bool) -> Iterator[None]:
     """Apply/remove the fp16 recurrent-state flag, restoring the caller exactly."""
 
     previous = os.environ.get(FP16_STATE_ENV)
-    if enabled:
-        os.environ[FP16_STATE_ENV] = "1"
-    else:
-        os.environ.pop(FP16_STATE_ENV, None)
+    os.environ[FP16_STATE_ENV] = "1" if enabled else "0"
     try:
         yield
     finally:

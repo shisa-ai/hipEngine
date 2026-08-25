@@ -42,8 +42,9 @@ CUDA_TARGET_ARCH_BACKEND: dict[str, str] = {
 # On gfx1100, rocprof identifies repeated 300-MiB use-once allocations for the
 # 3,200-byte/thread AOTriton prefill kernel; 8 MiB preserves measured
 # full-engine behavior while materially reducing whole-device peak.
-# ROCm's documented default is four hardware queues. Clean Laguna branch-
-# concurrency evidence admits two on gfx1151. Explicit user values always win.
+# ROCm's documented default is four hardware queues. Complete Qwen3.8
+# fixed-width, arrival/soak, context/graph, prefix, and pressure matrices retain
+# two on gfx1151. Explicit user values always win.
 HIP_BACKEND_PROCESS_ENV_DEFAULTS: dict[str, dict[str, str]] = {
     "hip_gfx1100": {_ENV_HSA_SCRATCH_SINGLE_LIMIT: "8388608"},
     "hip_gfx1151": {_ENV_GPU_MAX_HW_QUEUES: "2"},
@@ -137,8 +138,8 @@ def configure_hip_process_environment(
     """Apply hardware-local HIP defaults before ``libamdhip64`` is loaded.
 
     gfx1100 caps reclaimable single-dispatch scratch at 8 MiB instead of
-    ROCr's much larger default threshold; gfx1151 uses two hardware queues for
-    the admitted Laguna shared/routed MoE overlap while remaining below ROCm's
+    ROCr's much larger default threshold; gfx1151 uses two hardware queues after
+    complete same-host queue-policy validation while remaining below ROCm's
     documented default of four. The policy is applied only when all recognized
     visible HIP architectures map to the same backend. Existing environment
     values are never overwritten, so users retain explicit rollback/control.
@@ -161,16 +162,26 @@ def configure_hip_process_environment(
         backend_hint = (env_map.get(_ENV_BACKEND) or "").strip()
         if backend_hint in HIP_BACKEND_TARGET_ARCH:
             backends.add(backend_hint)
-    if len(backends) != 1:
-        return {}
 
-    backend = next(iter(backends))
+    queue_before = env_map.get(_ENV_GPU_MAX_HW_QUEUES)
+    if queue_before is not None:
+        try:
+            if int(queue_before) < 1:
+                raise ValueError
+        except ValueError as exc:
+            raise ValueError(
+                f"{_ENV_GPU_MAX_HW_QUEUES} must be a positive integer"
+            ) from exc
+
     applied: dict[str, str] = {}
-    for name, value in HIP_BACKEND_PROCESS_ENV_DEFAULTS.get(backend, {}).items():
-        if name in env_map:
-            continue
-        env_map[name] = value
-        applied[name] = value
+    backend = next(iter(backends)) if len(backends) == 1 else None
+    if backend is not None:
+        for name, value in HIP_BACKEND_PROCESS_ENV_DEFAULTS.get(backend, {}).items():
+            if name in env_map:
+                continue
+            env_map[name] = value
+            applied[name] = value
+
     return applied
 
 

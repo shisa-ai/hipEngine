@@ -967,6 +967,33 @@ def _force_disconnect(response: Any, connection: http.client.HTTPConnection) -> 
         connection.close()
 
 
+def _stream_request_payload(
+    *,
+    spec: WorkloadRequest,
+    prompt: Mapping[str, Any],
+    served_model_name: str,
+    speculative_mtp: bool,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "model": str(served_model_name),
+        "prompt": str(prompt["text"]),
+        "max_tokens": int(spec.max_tokens),
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "ignore_eos": not bool(speculative_mtp),
+        "stream": True,
+        "stream_options": {
+            "include_hipengine": True,
+            "include_usage": True,
+        },
+    }
+    if speculative_mtp:
+        payload["speculative_mtp"] = True
+    if spec.timeout_ms is not None:
+        payload["timeout_ms"] = float(spec.timeout_ms)
+    return payload
+
+
 def _stream_request(
     host: str,
     port: int,
@@ -977,6 +1004,7 @@ def _stream_request(
     workload_start: float,
     served_model_name: str,
     request_timeout_seconds: float,
+    speculative_mtp: bool = False,
 ) -> _HTTPTrace:
     start_event.wait(timeout=30.0)
     target = float(workload_start) + float(spec.arrival_offset_seconds)
@@ -984,21 +1012,12 @@ def _stream_request(
     if remaining > 0.0:
         time.sleep(remaining)
     started_at = time.perf_counter()
-    payload: dict[str, Any] = {
-        "model": str(served_model_name),
-        "prompt": str(prompt["text"]),
-        "max_tokens": int(spec.max_tokens),
-        "temperature": 0.0,
-        "top_p": 1.0,
-        "ignore_eos": True,
-        "stream": True,
-        "stream_options": {
-            "include_hipengine": True,
-            "include_usage": True,
-        },
-    }
-    if spec.timeout_ms is not None:
-        payload["timeout_ms"] = float(spec.timeout_ms)
+    payload = _stream_request_payload(
+        spec=spec,
+        prompt=prompt,
+        served_model_name=served_model_name,
+        speculative_mtp=bool(speculative_mtp),
+    )
     connection = http.client.HTTPConnection(host, int(port), timeout=float(request_timeout_seconds))
     status_code = 0
     request_id: int | None = None
@@ -1244,11 +1263,24 @@ def _occupancy_summary(
             for plan in plans
         }
     )
+    declared_widths_passed = all(
+        all(
+            int(group.get("physical_rows", 0)) in declared
+            for group in plan.get("groups", ())
+        )
+        for plan in plans
+        for declared in (
+            {
+                int(width)
+                for width in plan.get("physical_bucket_widths", (1, 2, 4, 8))
+            },
+        )
+    )
     routes_passed = bool(
         plans
         and execution_paths
         and set(execution_paths) <= _NATIVE_EXECUTION_PATHS
-        and all(width in {1, 2, 4, 8} for _c, widths, _masks in logical_shapes for width in widths)
+        and declared_widths_passed
     )
     max_stream_depth = max(stream_depths, default=0)
     return {
@@ -1480,6 +1512,7 @@ def _execute_workload(
     idle_timeout_seconds: float,
     request_timeout_seconds: float,
     require_rejects: bool = False,
+    speculative_mtp: bool = False,
 ) -> dict[str, Any]:
     if not specs:
         raise ValueError(f"workload {name} has no requests")
@@ -1509,6 +1542,7 @@ def _execute_workload(
                     workload_start=workload_start,
                     served_model_name="qwen35-production-load",
                     request_timeout_seconds=float(request_timeout_seconds),
+                    speculative_mtp=bool(speculative_mtp),
                 )
                 for spec in specs
             ]
@@ -2330,6 +2364,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             idle_timeout_seconds=float(args.idle_timeout_seconds),
                             request_timeout_seconds=float(args.request_timeout_seconds),
                             require_rejects=(name == "overload"),
+                            speculative_mtp=bool(args.speculative_mtp),
                         )
                         workload_results[name] = summary
                         print(
@@ -2449,8 +2484,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "selected_fair_prefill_burst_chunks": (
                 None if selected is None else int(selected.fair_prefill_burst_chunks)
             ),
-            "sampling": "greedy_top1_ignore_eos",
-            "speculative_decode": False,
+            "sampling": (
+                "raw_greedy_top1"
+                if args.speculative_mtp
+                else "greedy_top1_ignore_eos"
+            ),
+            "speculative_decode": bool(args.speculative_mtp),
             "slo_thresholds": asdict(slos),
         },
         "tuning": {
@@ -2564,6 +2603,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fixed-rate-per-second", type=float, default=2.0)
     parser.add_argument("--poisson-rate-per-second", type=float, default=2.0)
     parser.add_argument("--poisson-seed", type=int, default=1234)
+    parser.add_argument(
+        "--speculative-mtp",
+        action="store_true",
+        help="Send measured workloads through explicit SPECDEC2 MTP; incompatible cells select K0 before mutation.",
+    )
     parser.add_argument("--soak-seconds", type=float, default=60.0)
     parser.add_argument("--soak-rate-per-second", type=float, default=2.0)
     parser.add_argument("--idle-recovery-seconds", type=float, default=1.0)

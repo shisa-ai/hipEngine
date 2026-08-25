@@ -52,6 +52,16 @@ from hipengine.speculative.dflash_drafter import (
     dflash_silu_mul_bf16,
 )
 from hipengine.speculative.generic import TreeDraftRequest, compile_tree_draft
+from hipengine.speculative.frontier import (
+    CandidateGraph,
+    ProviderAttachment,
+    ProviderCatchupMode,
+    SpecPlanReason,
+    SpecRequestPlan,
+    SpecTransactionMode,
+    SpeculativeCapability,
+    TargetFrontier,
+)
 from hipengine.speculative.mtp_budget import (
     MtpAdaptiveBudgetConfig,
     MtpAdaptiveBudgetPolicy,
@@ -71,16 +81,26 @@ from hipengine.speculative.mtp import (
     compile_mtp_chain,
 )
 from hipengine.speculative.mtp_native import NativeMtpChainProposer, NativeMtpStateSnapshot, NativeMtpStepResult
+from hipengine.speculative.provider import (
+    SpeculativeRequestSemantics,
+    StagedSpeculativeProvider,
+    validate_staged_speculative_provider,
+)
 from hipengine.speculative.registry import (
     SpeculativeProviderCapabilities,
     SpeculativeProviderConfig,
     SpeculativeProviderFactory,
+    StagedSpeculativeProviderFactory,
     SpeculativeProviderKey,
     SpeculativeTextProvider,
+    construct_staged_speculative_provider,
     register_builtin_speculative_providers,
     register_speculative_provider,
+    register_staged_speculative_provider,
     registered_speculative_providers,
+    registered_staged_speculative_providers,
     resolve_speculative_provider,
+    resolve_staged_speculative_provider,
 )
 from hipengine.speculative.verify_graph import (
     DFlashVerifyGraphAddresses,
@@ -137,6 +157,7 @@ from hipengine.speculative.interfaces import (
     TargetVerifyBuffers,
     Verifier,
 )
+from hipengine.speculative.policy import plan_speculative_requests
 from hipengine.speculative.packing import (
     SpeculativePackedGroup,
     SpeculativePackingBudget,
@@ -152,6 +173,11 @@ from hipengine.speculative.streaming import (
     StochasticAcceptanceAccounting,
     stochastic_acceptance_accounting,
     trim_speculative_output,
+)
+from hipengine.speculative.transaction import (
+    SpecCycleResult,
+    SpecCycleTelemetry,
+    SpecCycleTransaction,
 )
 from hipengine.speculative.simulator import (
     SpecCycleStage,
@@ -207,12 +233,20 @@ __all__ = [
     "SpeculativeProviderCapabilities",
     "SpeculativeProviderConfig",
     "SpeculativeProviderFactory",
+    "StagedSpeculativeProviderFactory",
     "SpeculativeProviderKey",
     "SpeculativeTextProvider",
+    "SpeculativeRequestSemantics",
+    "StagedSpeculativeProvider",
+    "validate_staged_speculative_provider",
+    "construct_staged_speculative_provider",
     "register_builtin_speculative_providers",
     "register_speculative_provider",
+    "register_staged_speculative_provider",
     "registered_speculative_providers",
+    "registered_staged_speculative_providers",
     "resolve_speculative_provider",
+    "resolve_staged_speculative_provider",
     "AdaptiveBudgetController",
     "AdaptiveBudgetDecision",
     "TargetVerifyBufferOwner",
@@ -224,6 +258,14 @@ __all__ = [
     "compile_chain_draft",
     "TreeDraftRequest",
     "compile_tree_draft",
+    "CandidateGraph",
+    "ProviderAttachment",
+    "ProviderCatchupMode",
+    "SpecPlanReason",
+    "SpecRequestPlan",
+    "SpecTransactionMode",
+    "SpeculativeCapability",
+    "TargetFrontier",
     "DFLASH_CHAIN_CANDIDATE_BUDGETS",
     "DFlashChainCompiler",
     "DFlashDraftKVAppendPlan",
@@ -330,11 +372,15 @@ __all__ = [
     "VerifierCostMap",
     "VerifierCostRecord",
     "pack_speculative_requests",
+    "plan_speculative_requests",
     "SpeculativeCommitEvent",
     "SpeculativeOutputTail",
     "StochasticAcceptanceAccounting",
     "stochastic_acceptance_accounting",
     "trim_speculative_output",
+    "SpecCycleResult",
+    "SpecCycleTelemetry",
+    "SpecCycleTransaction",
     "SpecCycleStage",
     "SpecTransaction",
     "SpeculativeCycleResult",

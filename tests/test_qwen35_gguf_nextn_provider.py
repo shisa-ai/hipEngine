@@ -21,6 +21,7 @@ from hipengine.loading.gguf import MissingGGUFTensorError
 from hipengine.loading.qwen35_gguf_nextn import build_qwen35_gguf_nextn_tensor_map
 from hipengine.runtime import qwen35_gguf_nextn as nextn_mod
 from hipengine.runtime.qwen35_gguf_nextn import (
+    Qwen35GGUFNextNBatchDeviceProposal,
     Qwen35GGUFNextNDeviceProposal,
     Qwen35GGUFNextNDraftProvider,
     Qwen35GGUFNextNExecutor,
@@ -154,6 +155,213 @@ def test_nextn_provider_emits_only_candidate_rows_under_locked_abi() -> None:
     assert len(executor.calls) == 12
     with pytest.raises(ValueError, match="one of 1, 2, 3, 4, 5"):
         provider.propose(context, candidate_budget=6)
+
+
+def test_nextn_provider_keeps_physical_batch_candidates_device_resident_until_materialized() -> None:
+    calls = []
+    device = Qwen35GGUFNextNBatchDeviceProposal(
+        request_ids=(10, 20),
+        root_tokens=(100, 200),
+        root_positions=(5, 8),
+        candidate_counts=(1, 2),
+        token_ids=Tensor.from_handle(
+            0x5000,
+            (3,),
+            DType.INT32,
+            Device("hip", 0),
+        ),
+        hidden_rows=(
+            (Tensor.from_handle(0x6000, (1, 8), DType.BF16, Device("hip", 0)),),
+            (
+                Tensor.from_handle(0x7000, (1, 8), DType.BF16, Device("hip", 0)),
+                Tensor.from_handle(0x8000, (1, 8), DType.BF16, Device("hip", 0)),
+            ),
+        ),
+    )
+
+    class DeviceExecutor:
+        hidden_size = 8
+
+        def run_batch_proposal_device(self, context, *, candidate_counts):
+            calls.append(("launch", tuple(context.request_ids), tuple(candidate_counts)))
+            return device
+
+        def materialize_batch_device_proposal(self, pending):
+            calls.append(("materialize", pending.token_ids.ptr))
+            return (101, 201, 202)
+
+    provider = Qwen35GGUFNextNDraftProvider(DeviceExecutor())
+    context = MtpProposalContext(
+        request_ids=(10, 20),
+        root_tokens=(100, 200),
+        root_positions=(5, 8),
+        target_hidden=Tensor.from_handle(
+            0x1000,
+            (2, 8),
+            DType.BF16,
+            Device("hip", 0),
+        ),
+    )
+
+    pending = provider.propose_batch_device(
+        context,
+        candidate_counts=(1, 2),
+    )
+
+    assert pending is device
+    assert provider.last_results == {}
+    assert calls == [("launch", (10, 20), (1, 2))]
+
+    draft = provider.materialize_batch_device_proposal(pending)
+
+    assert calls[-1] == ("materialize", 0x5000)
+    assert draft.candidate_tokens == (101, 0, 201, 202)
+    assert draft.active_mask == (True, False, True, True)
+    assert tuple(row.token_id for row in provider.last_results[10]) == (101,)
+    assert tuple(row.token_id for row in provider.last_results[20]) == (201, 202)
+
+
+def test_nextn_provider_physically_batches_one_backbone_per_depth() -> None:
+    calls = []
+
+    class BatchExecutor:
+        hidden_size = 8
+        runtime = SimpleNamespace(memcpy=lambda *args: None)
+        _batch_input_hidden = SimpleNamespace(ptr=4000)
+        _final_hidden_buf = SimpleNamespace(ptr=5000)
+
+        def run_step_batch(self, request_ids, token_ids, positions, target_hidden):
+            calls.append((tuple(request_ids), tuple(token_ids), tuple(positions)))
+            return tuple(
+                Qwen35GGUFNextNStepResult(
+                    request_id=request_id,
+                    input_token=token_id,
+                    position=position,
+                    token_id=token_id + 1,
+                    logit=1.0,
+                    hidden=Tensor.from_handle(
+                        6000 + row * 16,
+                        (1, 8),
+                        DType.BF16,
+                        Device("hip", 0),
+                    ),
+                )
+                for row, (request_id, token_id, position) in enumerate(
+                    zip(request_ids, token_ids, positions, strict=True)
+                )
+            )
+
+        def _preserve_proposal_hidden(self, request_id, depth, hidden):
+            return hidden
+
+    provider = Qwen35GGUFNextNDraftProvider(BatchExecutor())
+    context = MtpProposalContext(
+        request_ids=(10, 20, 30, 40),
+        root_tokens=(100, 200, 300, 400),
+        root_positions=(5, 6, 7, 8),
+        target_hidden=Tensor.from_handle(
+            1000,
+            (4, 8),
+            DType.BF16,
+            Device("hip", 0),
+        ),
+    )
+
+    draft = provider.propose_batch(
+        context,
+        candidate_counts=(2, 2, 2, 2),
+    )
+
+    assert len(calls) == 2
+    assert all(len(call[0]) == 4 for call in calls)
+    assert calls[0] == (
+        (10, 20, 30, 40),
+        (100, 200, 300, 400),
+        (5, 6, 7, 8),
+    )
+    assert calls[1][1] == (101, 201, 301, 401)
+    assert draft.request_ids == (10, 20, 30, 40)
+    assert draft.draft_rows == 8
+    assert draft.row_to_request == (10, 10, 20, 20, 30, 30, 40, 40)
+
+
+def test_nextn_provider_batches_shared_depth_and_runs_only_ragged_tail_alone() -> None:
+    calls = []
+
+    class RaggedExecutor:
+        hidden_size = 8
+        runtime = SimpleNamespace(memcpy=lambda *args: None)
+        _batch_input_hidden = SimpleNamespace(ptr=4000)
+
+        def run_step_batch(self, request_ids, token_ids, positions, target_hidden):
+            calls.append(("batch", tuple(request_ids), tuple(positions)))
+            return tuple(
+                Qwen35GGUFNextNStepResult(
+                    request_id=request_id,
+                    input_token=token_id,
+                    position=position,
+                    token_id=token_id + 1,
+                    logit=1.0,
+                    hidden=Tensor.from_handle(
+                        6000 + row * 16,
+                        (1, 8),
+                        DType.BF16,
+                        Device("hip", 0),
+                    ),
+                )
+                for row, (request_id, token_id, position) in enumerate(
+                    zip(request_ids, token_ids, positions, strict=True)
+                )
+            )
+
+        def run_step(self, request_id, token_id, position, target_hidden, *, return_logits):
+            calls.append(("single", request_id, position))
+            return Qwen35GGUFNextNStepResult(
+                request_id=request_id,
+                input_token=token_id,
+                position=position,
+                token_id=token_id + 1,
+                logit=1.0,
+                hidden=Tensor.from_handle(
+                    7000,
+                    (1, 8),
+                    DType.BF16,
+                    Device("hip", 0),
+                ),
+            )
+
+        def _preserve_proposal_hidden(self, request_id, depth, hidden):
+            return hidden
+
+    provider = Qwen35GGUFNextNDraftProvider(RaggedExecutor())
+    draft = provider.propose_batch(
+        MtpProposalContext(
+            request_ids=(10, 20),
+            root_tokens=(100, 200),
+            root_positions=(5, 8),
+            target_hidden=Tensor.from_handle(
+                1000,
+                (2, 8),
+                DType.BF16,
+                Device("hip", 0),
+            ),
+        ),
+        candidate_counts=(1, 2),
+    )
+
+    assert calls == [("batch", (10, 20), (5, 8)), ("single", 20, 9)]
+    assert draft.active_mask == (True, False, True, True)
+    assert tuple(
+        (request_id, depth, token)
+        for request_id, depth, token, active in zip(
+            draft.row_to_request,
+            draft.draft_depths,
+            draft.candidate_tokens,
+            draft.active_mask,
+            strict=True,
+        )
+        if active
+    ) == ((10, 1, 101), (20, 1, 201), (20, 2, 202))
 
 
 def test_nextn_provider_prefers_an_executor_chain_without_changing_draft_abi() -> None:

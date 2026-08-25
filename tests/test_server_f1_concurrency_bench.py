@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import socket
 import sys
 from pathlib import Path
 
@@ -359,6 +361,20 @@ def test_stream_route_summary_requires_native_nonserial_hipengine_cn() -> None:
     summary = SCRIPT._stream_route_summary("hipengine", concurrency=13, samples=[sample])
 
     assert summary["passed"] is True
+
+    # Streaming completion can retire to a native c1 tail. The response ending
+    # on that tail reports native_caware_decode=False without a serial fallback.
+    sample["records"][0]["native_caware_decode"] = False
+    assert SCRIPT._stream_route_summary(
+        "hipengine", concurrency=13, samples=[sample]
+    )["passed"] is True
+
+    for record in sample["records"]:
+        record["native_caware_decode"] = False
+    assert SCRIPT._stream_route_summary(
+        "hipengine", concurrency=13, samples=[sample]
+    )["passed"] is False
+
     sample["records"][0]["serial_decode_fallback"] = True
     assert SCRIPT._stream_route_summary(
         "hipengine", concurrency=13, samples=[sample]
@@ -598,6 +614,8 @@ def test_hipengine_parser_locks_the_retained_prefill_decode_policy(tmp_path: Pat
     args = SCRIPT.build_parser().parse_args(
         ["--engine", "hipengine", "--json", str(tmp_path / "result.json")]
     )
+    assert args.correctness_profile == "strict"
+    assert args.production_correctness_artifact is None
     assert args.hipengine_prefill_decode_policy == "protect_ttft"
     assert args.hipengine_kv_storage == "bf16"
     assert args.hipengine_kv_scale_dtype == "fp16"
@@ -822,3 +840,294 @@ def test_correctness_summary_matches_each_prompt_to_c1_oracle() -> None:
     assert failed["passed"] is False
     assert failed["mismatch_count"] == 1
     assert failed["mismatches"][0]["first_mismatch_index"] == 1
+
+
+def test_effective_server_environment_records_revalidation_axes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    compiler_version = tmp_path / "hipcc-version.txt"
+    monkeypatch.setenv("HIPENGINE_HIP_ARCH", "gfx1151")
+    monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "0")
+    monkeypatch.setenv("HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS", "1,2,3")
+    monkeypatch.setenv("HIPENGINE_EXECUTION_PROFILE", "strict")
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "5")
+    args = SCRIPT.build_parser().parse_args(
+        [
+            "--engine",
+            "hipengine",
+            "--gpu",
+            "7",
+            "--gpu-max-hw-queues",
+            "2",
+            "--compiler-version-file",
+            str(compiler_version),
+            "--hipengine-prefill-decode-policy",
+            "fair",
+            "--concurrencies",
+            "17",
+            "--json",
+            str(tmp_path / "result.json"),
+        ]
+    )
+
+    environment = SCRIPT._effective_server_environment(args, engine="hipengine")
+
+    assert environment["HIPENGINE_HIP_ARCH"] == "gfx1151"
+    assert environment["HIPENGINE_GGUF_FP16_RECURRENT_STATE"] == "0"
+    assert environment["HIPENGINE_GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS"] == "1,2,3"
+    assert environment["HIPENGINE_EXECUTION_PROFILE"] == "strict"
+    assert environment["GPU_MAX_HW_QUEUES"] == "2"
+    assert environment["HIPENGINE_COMPILER_VERSION_FILE"] == str(compiler_version)
+    assert environment["HIP_VISIBLE_DEVICES"] == "7"
+    assert environment["ROCR_VISIBLE_DEVICES"] is None
+    assert environment["HIPENGINE_PREFILL_DECODE_POLICY"] == "fair"
+    assert environment["HIPENGINE_GGUF_AR_PACKED_DECODE"] == "1"
+
+
+def test_hardware_queue_cli_defaults_to_retained_queue2_and_rejects_unset(
+    tmp_path: Path,
+) -> None:
+    parser = SCRIPT.build_parser()
+    args = parser.parse_args(
+        [
+            "--engine",
+            "hipengine",
+            "--work-dir",
+            str(tmp_path),
+            "--json",
+            str(tmp_path / "result.json"),
+        ]
+    )
+
+    _command, environment, _cwd = SCRIPT._server_command_and_env(
+        args,
+        engine="hipengine",
+        concurrency=8,
+        port=19108,
+    )
+
+    assert args.gpu_max_hw_queues == 2
+    assert environment["GPU_MAX_HW_QUEUES"] == "2"
+    assert "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY" not in environment
+    assert "HIPENGINE_PROCESS_ENV_REPORT_PATH" not in environment
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "--engine",
+                "hipengine",
+                "--gpu-max-hw-queues",
+                "unset",
+                "--json",
+                str(tmp_path / "rejected.json"),
+            ]
+        )
+
+
+def test_production_correctness_treats_c1_id_equality_as_diagnostic() -> None:
+    prompt = [1, 2, 3]
+    prompt_hash = SCRIPT.token_ids_sha256(prompt)
+    summary = SCRIPT.correctness_summary(
+        [
+            {
+                "request_index": 0,
+                "prompt_token_ids_sha256": prompt_hash,
+                "generated_token_ids": [7, 99],
+            }
+        ],
+        oracle={prompt_hash: [7, 8]},
+        expected_tokens=2,
+        profile="production",
+    )
+
+    assert summary["passed"] is True
+    assert summary["control_passed"] is True
+    assert summary["generated_id_equality_binding"] is False
+    assert summary["generated_id_equality_passed"] is False
+    assert summary["generated_id_mismatch_count"] == 1
+    assert summary["mismatch_count"] == 0
+
+    broken_control = SCRIPT.correctness_summary(
+        [
+            {
+                "request_index": 0,
+                "prompt_token_ids_sha256": prompt_hash,
+                "generated_token_ids": [7],
+            }
+        ],
+        oracle={prompt_hash: [7, 8]},
+        expected_tokens=2,
+        profile="production",
+    )
+    assert broken_control["passed"] is False
+    assert broken_control["control_passed"] is False
+    assert broken_control["control_mismatch_count"] == 1
+
+
+def test_production_stream_goodput_uses_profile_correctness_not_exact_ids() -> None:
+    rows = [
+        {
+            "request_index": 0,
+            "completion_tokens": 2,
+            "client_ttft_seconds": 0.5,
+            "client_inter_token_seconds": [0.1],
+            "wall_seconds": 1.5,
+            "stream_exact": False,
+            "stream_correctness_passed": True,
+            "stream_protocol_complete": True,
+        },
+        {
+            "request_index": 1,
+            "completion_tokens": 2,
+            "client_ttft_seconds": 0.7,
+            "client_inter_token_seconds": [0.2],
+            "wall_seconds": 1.6,
+            "stream_exact": False,
+            "stream_correctness_passed": True,
+            "stream_protocol_complete": True,
+        },
+    ]
+
+    summary = SCRIPT._stream_batch_summary(
+        rows,
+        batch_wall_seconds=2.0,
+        ttft_p95_limit=1.0,
+        itl_p99_limit=0.25,
+        e2e_p95_limit=2.0,
+    )
+
+    assert summary["passed"] is True
+    assert summary["exact_generated_tok_s_aggregate"] == 0.0
+    assert summary["correctness_qualified_tok_s_aggregate"] == pytest.approx(2.0)
+    assert summary["slo_goodput_tok_s_aggregate"] == pytest.approx(2.0)
+
+
+def test_repeat_determinism_is_schedule_local_and_binding() -> None:
+    base = {
+        "request_index": 0,
+        "prompt_token_ids_sha256": "prompt-a",
+        "generated_token_ids": [4, 5],
+    }
+    passed = SCRIPT.repeat_determinism_summary(
+        [{"records": [dict(base)]} for _ in range(3)]
+    )
+    assert passed["passed"] is True
+    assert passed["runs"] == 3
+
+    changed = [{"records": [dict(base)]} for _ in range(3)]
+    changed[2]["records"][0]["generated_token_ids"] = [4, 6]
+    failed = SCRIPT.repeat_determinism_summary(changed)
+    assert failed["passed"] is False
+    assert failed["mismatch_count"] == 1
+    assert failed["generated_id_equality_binding"] is True
+
+    production = SCRIPT.repeat_determinism_summary(changed, profile="production")
+    assert production["passed"] is True
+    assert production["control_passed"] is True
+    assert production["generated_id_equality_binding"] is False
+    assert production["generated_id_equality_passed"] is False
+    assert production["generated_id_mismatch_count"] == 1
+
+
+def test_production_correctness_runtime_paths_cover_fp16_gate_dependency() -> None:
+    assert (
+        "scripts/execution_profile_gguf_fp16_state_gate.py"
+        in SCRIPT._CORRECTNESS_RUNTIME_PATHS
+    )
+
+
+def test_production_correctness_bundle_is_fail_closed_and_matching(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"model-fixture")
+    numerical = tmp_path / "numerical.json"
+    numerical.write_text('{"passed":true}\n', encoding="utf-8")
+    fingerprint = SCRIPT.collect_model_identity(model)["fingerprint"]
+    head = str(
+        SCRIPT._capture(["git", "rev-parse", "HEAD"], cwd=SCRIPT.REPO_ROOT)[
+            "stdout"
+        ]
+    ).strip()
+    bundle = {
+        "schema_version": 1,
+        "kind": "hipengine_server_production_correctness_bundle",
+        "status": "passed",
+        "correctness_profile": "production",
+        "runtime_scope": "scoped_legacy_default_candidate",
+        "profile_qualification_claim": False,
+        "source_commit": head,
+        "host": {"physical_host": socket.gethostname()},
+        "configuration": {
+            "backend": "hip_gfx1151",
+            "model_fingerprint": fingerprint,
+            "quant": "gguf_q4_k_m",
+            "kv_storage": "bf16",
+            "candidate_environment": {
+                "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "1"
+            },
+        },
+        "generated_id_equality_binding": False,
+        "gates": {
+            "numerical": {
+                "passed": True,
+                "summary": {
+                    "kl_mean": 0.0001,
+                    "kl_p95": 0.0003,
+                    "kl_p99": 0.001,
+                    "kl_max": 0.01,
+                    "top1_agreement": 0.999,
+                },
+                "scope_failures": [],
+                "requires_outlier_review": False,
+            },
+            "repeat_determinism": {"passed": True, "runs": 3},
+            "isolation": {"passed": True},
+            "control_ownership": {"passed": True},
+            "lifecycle": {"passed": True},
+            "bf16_relative": {"passed": True},
+            "task_quality": {"passed": True},
+            "strict_fallback": {"passed": True, "registered": True},
+        },
+        "source_artifacts": [
+            {
+                "path": str(numerical),
+                "sha256": SCRIPT.file_sha256(numerical),
+            }
+        ],
+    }
+    bundle_path = tmp_path / "bundle.json"
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "1")
+    args = SCRIPT.build_parser().parse_args(
+        [
+            "--engine",
+            "hipengine",
+            "--model",
+            str(model),
+            "--correctness-profile",
+            "production",
+            "--production-correctness-artifact",
+            str(bundle_path),
+            "--json",
+            str(tmp_path / "result.json"),
+        ]
+    )
+
+    contract = SCRIPT._resolve_correctness_contract(args, engine="hipengine")
+
+    assert contract["profile"] == "production"
+    assert contract["generated_id_equality_binding"] is False
+    assert contract["bundle_sha256"] == SCRIPT.file_sha256(bundle_path)
+    assert contract["public_profile_qualification_claim"] is False
+
+    monkeypatch.delenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE")
+    with pytest.raises(ValueError, match="explicit HIPENGINE_GGUF_FP16_RECURRENT_STATE=1"):
+        SCRIPT._resolve_correctness_contract(args, engine="hipengine")
+    monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "1")
+
+    bundle["gates"]["task_quality"]["passed"] = False
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+    with pytest.raises(ValueError, match="task_quality"):
+        SCRIPT._resolve_correctness_contract(args, engine="hipengine")

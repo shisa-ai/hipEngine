@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -33,9 +34,34 @@ from scripts.gguf_production_load_gate import (
     _run_isolated_reference_worker,
     _run_same_owner_references,
     _select_tuning_candidate,
+    _stream_request_payload,
     _tracked_source_dirty,
     _wait_for_idle,
 )
+
+
+def test_production_gate_accepts_explicit_speculative_workloads() -> None:
+    args = build_parser().parse_args(["--speculative-mtp"])
+
+    assert args.speculative_mtp is True
+
+
+def test_speculative_stream_payload_preserves_raw_greedy_contract() -> None:
+    spec = WorkloadRequest("spec", 1, 16, 4, timeout_ms=250.0)
+
+    payload = _stream_request_payload(
+        spec=spec,
+        prompt={"text": "hello"},
+        served_model_name="model",
+        speculative_mtp=True,
+    )
+
+    assert payload["stream"] is True
+    assert payload["speculative_mtp"] is True
+    assert payload["ignore_eos"] is False
+    assert payload["temperature"] == 0.0
+    assert payload["top_p"] == 1.0
+    assert payload["timeout_ms"] == 250.0
 
 
 def test_local_uvicorn_uses_a_real_socket_and_stops_cleanly() -> None:
@@ -292,6 +318,38 @@ def test_occupancy_route_uses_live_snapshot_plan_when_hook_timeline_is_empty() -
     ]
 
 
+def test_occupancy_route_accepts_promoted_direct_physical_widths() -> None:
+    plan = {
+        "logical_c": 7,
+        "physical_bucket_widths": list(range(1, 9)),
+        "groups": [
+            {
+                "physical_rows": 7,
+                "active_mask": [True] * 7,
+                "execution_path": "packed_native",
+            }
+        ],
+    }
+
+    summary = _occupancy_summary(
+        [
+            {
+                "active": 7,
+                "pending": 0,
+                "occupancy_ratio": 1.0,
+                "generation_queue_depth": 0,
+                "stream_queue_max_depth": 1,
+                "physical_group_plan": plan,
+            }
+        ],
+        [],
+        stream_queue_limit=4,
+    )
+
+    assert summary["route_passed"] is True
+    assert summary["logical_physical_shapes"][0]["physical_widths"] == [7]
+
+
 def test_poisson_offsets_are_seeded_monotonic_and_start_at_zero() -> None:
     first = _poisson_arrival_offsets(count=8, rate_per_second=4.0, seed=1234)
     second = _poisson_arrival_offsets(count=8, rate_per_second=4.0, seed=1234)
@@ -344,6 +402,34 @@ def test_load_gate_ignores_untracked_files_for_source_cleanliness(
     assert _tracked_source_dirty(repo) is True
 
 
+def test_long_context_gate_passes_declared_quant_to_llm() -> None:
+    from scripts import gguf_long_context_pressure_gate as long_gate
+
+    args = long_gate.build_parser().parse_args(
+        [
+            "--model",
+            "/tmp/Qwen3.8-Q4_K_S.gguf",
+            "--backend",
+            "hip_gfx1151",
+            "--quant",
+            "gguf_q4_k_s",
+            "--gdn-mode",
+            "auto",
+            "--max-active-requests",
+            "3",
+        ]
+    )
+    assert long_gate._llm_construction_kwargs(args, args.model) == {
+        "model": Path("/tmp/Qwen3.8-Q4_K_S.gguf"),
+        "backend": "hip_gfx1151",
+        "quant": "gguf_q4_k_s",
+        "max_active_requests": 3,
+    }
+    assert args.gdn_mode == "auto"
+    assert "HIPENGINE_GGUF_FP16_RECURRENT_STATE" in long_gate._PROVENANCE_ENV_KEYS
+    assert "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY" not in long_gate._PROVENANCE_ENV_KEYS
+
+
 def test_load_gate_passes_declared_quant_and_records_fp16_state_env() -> None:
     parser = build_parser()
     args = parser.parse_args(
@@ -367,6 +453,7 @@ def test_load_gate_passes_declared_quant_and_records_fp16_state_env() -> None:
     }
     assert "HIPENGINE_GGUF_FP16_RECURRENT_STATE" in _PROVENANCE_ENV_KEYS
     assert "HIPENGINE_EXECUTION_PROFILE" in _PROVENANCE_ENV_KEYS
+    assert "HIPENGINE_GPU_MAX_HW_QUEUES_POLICY" not in _PROVENANCE_ENV_KEYS
 
 
 def test_force_disconnect_shutdowns_socket_before_closing_http_wrappers() -> None:

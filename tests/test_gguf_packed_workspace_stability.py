@@ -152,6 +152,24 @@ def test_packed_workspace_growth_keeps_union_geometry(monkeypatch) -> None:
     assert reused_scratch is grown_scratch
 
 
+def test_packed_workspace_long_packed_prefill_covers_total_rows(monkeypatch) -> None:
+    """Scratch capacity covers packed rows even when per-slot context is smaller."""
+
+    recorder = _AllocRecorder(monkeypatch)
+    recorder.install()
+    owner = _make_owner(recorder)
+
+    _state, scratch = owner._ensure_packed_verify_workspace(
+        slot_count=2,
+        rows=4096,
+        max_sequence_length=1024,
+        runtime=SimpleNamespace(),
+    )
+
+    assert int(scratch.rows) >= 4096
+    assert int(scratch.max_positions) >= 4096
+
+
 def test_packed_workspace_growth_invalidates_live_graph_first(monkeypatch) -> None:
     """Growth closes binding graphs before freeing; a close-less graph fails closed."""
 

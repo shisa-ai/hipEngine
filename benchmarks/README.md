@@ -93,23 +93,24 @@ Rows use different models and tests; compare only matching protocols. The RX 790
 llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
-## Explicit long-context DMS (`Q4_K_M`, c1, default-off)
-
-| Context | DMS median decode | Matched dense | Live-KV compression | Quality |
-| --- | ---: | ---: | ---: | ---: |
-| 32K | **104.62 ms/token (9.56 tok/s)** | 99.96 ms/token | 1.5997x | max KL 0.003784, 100% top-1 |
-| 128K | **136.27 ms/token (7.34 tok/s)** | 137.43 ms/token | 1.8822x / 3.750 GiB saved | max KL 0.002899, 100% top-1 |
-
-These are pooled medians from 32 strict-teacher c1 decode rows per context, not concurrent serving throughput.
-
 ## Current default notes
-Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). Exact Qwen3.8-27B `Q4_K_M` frozen W8192 external DMS passes source-disjoint four-category finals with the retained wave-cooperative kernel at 32K (**max KL 0.003784, 100% top-1, 1.599688x live CR**) and 128K (**max KL 0.002899, 100% top-1, 1.882225x live CR, 3.750 GiB payload saved**). DMS reaches matched-dense c1 decode parity at 128K (**136.27 vs 137.43 ms/token**) but stays default-off pending real c1-c32 lifecycle/soak, sampled memory controls, bounded-peak prefill, and public admission. [`DMS evidence`](../docs/DMS.md).
+
+Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback
+([`evidence`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json)).
+The exact `Q4_K_M` W8192 DMS sidecar passes 32K/128K at 100% top-1, saves
+3.750 GiB live K/V at 128K, and matches dense c1 decode. It stays default-off
+pending serving gates. [`DMS status`](../docs/DMS.md).
+
+SPECDEC2 is closed on gfx1151 with no promoted scope.
+Explicit C1/C2/C4 K1-K3 stays default-off; automatic C1-C32 selects K0. Full
+gates are exact, but C2/C4 K2 wall is **2.121x/2.312x true AR** at **49.15%**
+acceptance and automatic load misses ITL-p99. [`S6 closure`](../docs/SPECDEC2.md#12-s6-gfx1151-product-closure).
 
 ## Where detailed evidence lives
 
 | Need | Source |
 | --- | --- |
-| Exact commands, revisions, model fingerprints, correctness gates, samples, profiler summaries | [`benchmarks/results/`](results/) compact JSON artifacts |
+| Exact commands, revisions, model fingerprints, correctness gates, samples, profiler summaries | [Compact JSON artifacts](results/) |
 | Reverse-chronological benchmark changes | [`CHANGELOG.md`](CHANGELOG.md) |
 | Superseded benchmark notebook through 2026-07-10 | [`HISTORY.md`](HISTORY.md) |
 | Benchmark rules and reproduction procedures | [`docs/BENCHMARK.md`](../docs/BENCHMARK.md) |
@@ -145,7 +146,7 @@ tok/s · **Mem** = tracked/HIP/GTT memory usage · **Conc** = per-concurrency
 | `gguf_ar_mtp_suite.py` | One-command AR-vs-MTP decode ratio over the category suite under one enforced decode config | ✓ | ✓ | | ✓ | | | `--scope partial --output <json>` |
 | `qwen35_batch_retained_bench.py` | **PARO-path** compact c>N batch decode; aggregate + per-request tok/s, equality vs c1, optional MTP draft depth | ✓ | ✓ | | ✓ | ✓ | ✓ | `--batch-size 8 --decode-tokens 128` |
 | `qwen35_batch_gguf_diagnostic.py` | GGUF c>N generated-token **correctness** equality vs independent c1 (no throughput claim) | ✓ | | | | | ✓ | `--rows 8 --execute` |
-| `server_f1_concurrency_bench.py` | Matched gfx1151 F1 HTTP concurrency (c=1..8) for hipEngine vs llama.cpp HIP/Vulkan; combined throughput + memory | ✓ | | | ✓ | ✓ | ✓ | `--engine hipengine --model <model> --concurrencies 1,2,4,8` |
+| `server_f1_concurrency_bench.py` | Matched gfx1151 F1 HTTP concurrency through c32; profile-aware throughput, SLOs, routes, control, and memory | ✓ | | | ✓ | ✓ | ✓ | `--engine hipengine --model <model> --concurrencies 1,2,4,8,17,32` |
 | `gguf_concurrency_baseline.py` | GGUF c1 + explicit serial c2/c4 timing controls (Phase-A route baseline) | ✓ | | ✓ | ✓ | | ✓ | `--model <model> --concurrencies 1,2,4` |
 | `mtp-bench.py` | llama.cpp-compatible MTP prompt-suite benchmark (server economics); can wrap hipEngine verifier economics | ✓ | ✓ | | ✓ | | | `--mode hipengine-current` |
 | `exact_token_generation.py` | Direct/HTTP generated-token identity gate (correctness, not throughput) | ✓ | ✓ | | | | | `direct --model-path ...` then `http --oracle ...` |
@@ -185,35 +186,20 @@ scheduling, and same-loaded-server c1 oracles:
 | Aggregate HTTP tok/s | **27.443** | **43.337** | **46.158** | **45.797** | **44.320** |
 | Exact rows | 1/1 | 4/4 | 8/8 | 17/17 | 32/32 |
 
-The canonical load packet passes all nine fixed/ragged/Poisson/cancel/overload/
-recovery/soak workloads with **210/210** correctness-accounted rows, bounded
-`engine_busy` overload, **271/271** admission/reclaim, zero final refs/pins, and
-zero tracked-memory delta. Physical c1/c2/c4/c8 and logical c1-c32 are retained
-for this package. [`Canonical artifact`](results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json).
+The canonical W7900 packet retains physical c1/c2/c4/c8 and logical c1-c32:
+all nine fixed/ragged/load/cancel/overload/recovery/soak workloads pass 210/210
+correctness-accounted rows, bounded overload, complete admission/reclaim, and
+zero final ownership or tracked-memory delta. Exact Qwen3.8 physical c1-c8 and
+its planar-Q6 row8 kernel are also retained; detailed rows remain in the
+benchmark changelog and result artifacts.
 
-On Radeon 8060S/gfx1151, Qwen3.8 `Q4_K_S` packed prefill improves exact c17
-streaming from **9.673→10.956 tok/s (+13.27%)** and TTFT p95
-**11.030→9.406 s (-14.72%)**. A subsequent exact fused packed-state transfer
-reduces the marked c17 owner **420.496→410.878 ms (-2.29%)**. Direct canonical
-resident state then reaches **368.413 ms**, c17 **11.271 tok/s**, and ITL p99
-**0.4542 s** (3/3 fixed-SLO passes). The exact row8 Q4 two-wave owner then
-reaches c17 **11.297 tok/s / 0.448 s ITL** and c32 **11.041 tok/s / 0.802 s
-ITL**; c32 live admission overlaps, but c32 fixed SLO remains blocked, so
-gfx1151 canonical production is not yet promoted.
-
-The separate W7900 Qwen3.8-27B `Q4_K_M` direct graph packet qualifies physical
-`(1,2,3,4,5,6,7,8)`: c1-c8 reaches **30.30/53.79/75.47/93.49/105.67/
-115.30/122.36/127.32 tok/s**, all exact and repeatable. Q5 and planar-Q6 true
-rowtiles own rows 5-8; dynamic compaction, state/KV, graph invalidation, cancel/
-refill, memory recovery, and drain pass. Logical c>8 uses deterministic ceiling
-composition; artifact-backed D2 remains explicit research only.
-[`Width and lifecycle evidence`](results/2026-08-20-concurrency2-qwen38-direct-width-lifecycle.json).
-
-The exact gfx1100 planar-Q6 row8 DPP reduction improves the marked production-
-owner physical-c8 transition **58.693→57.734 ms (-1.634%)** median with identical
-8×32 token IDs, route, graph transport, and drain. This is a steady-transition
-kernel result, not a replacement for the direct-width throughput packet.
-The detailed promotion evidence is retained in the benchmark changelog/artifacts.
+On Radeon 8060S/gfx1151, the final Qwen3.8 `Q4_K_S` package retains queue2,
+exact physical c1-c8/logical c1-c32 mechanics, packed prefill, direct resident
+state, Q4 row8 two-wave, and scoped Q5 col8. The 130-row width, 2,100-request
+load, context/graph/prefix/pressure, and lifecycle packets pass. Product closure
+remains blocked at c32: **10.590 tok/s**, **18.617 s TTFT p95**, **2.125 s ITL
+p99**, **24.171 s E2E p95**, and **0/3 SLO runs**; C2 64K and heavy-load SLOs
+also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen38-concurrency2-campaign-final.json).
 
 ## Current Qwen3.6-35B quantization quality
 
@@ -400,34 +386,6 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production/default B1 fast, raw D24 | 110.830 | **115.770** | **1.0446x** | Exact `720/720`; complete 10-prompt numerical/repeat/task/state gate passes. Fast improves strict MTP 10.33% overall and every category. [`artifact`](results/2026-08-24-w7900-paro-fast-d24-3run-default.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |
-
-#### Exact MTP prompt activation (`gfx1151`, Qwen3.8-27B `Q4_K_M`)
-
-| Prompt | Prior TTFT | Streaming TTFT | Delta | Removed prompt-hidden temporary |
-| ---: | ---: | ---: | ---: | ---: |
-| 512 | 13.079 s | **10.356 s** | **-20.82%** | **5 MiB** |
-| 4K | 105.741 s | **85.574 s** | **-19.07%** | **40 MiB** |
-| 16K | 535.653 s | **467.949 s** | **-12.64%** | **160 MiB** |
-
-The request-owned exact path retains one 10,240-byte BF16 hidden row instead of
-the full prompt slab; generated IDs and B1/B2/B3 acceptance remain exact on the
-complete category/heldout suite. [`artifact`](results/2026-08-25-gfx1151-qwen38-omlx-oi3-streaming-prompt-priming.json)
-
-A post-output-norm draft-hidden policy is rejected for Qwen3.8: B3 falls
-**21.052 -> 20.710 tok/s (-1.62%)** with worse acceptance, while B2's repeat
-aggregate gain (**+2.63%**) fails heldout (**-0.71%**) and Japanese (**-4.50%**)
-category speed gates. Pre-output-norm remains the strict/default policy.
-[`artifact`](results/2026-08-25-gfx1151-qwen38-omlx-oi4-postnorm-rejected.json)
-
-The packed-PARO production route uses the corrected final-normalized/borrowed-
-W8A16 provider plus fast `decode_batched` verification. Its complete D64 gate
-covers 10 prompts, 704 canonical rows, and 30 deterministic captures at
-`702/704 = 99.716%` top-1 with all KL/scopes passing; paired task review passes
-`10/10`, and the applicable B1 state/lifecycle packet passes three identical
-runs. Strict `c1_loop` remains the registered strict profile/fallback.
-[`numerical`](results/2026-08-24-w7900-paro-fast-verifier-full-numerical-repeat-review.json),
-[`task`](results/2026-08-24-w7900-paro-fast-verifier-complete-task-review.json),
-and [`state`](results/2026-08-24-w7900-paro-fast-state-lifecycle-review.json)
 
 MTP ratios always use a true no-MTP AR path from the same protocol. Verifier
 `off`/`B0` diagnostics are not speedup denominators. The full category suite,

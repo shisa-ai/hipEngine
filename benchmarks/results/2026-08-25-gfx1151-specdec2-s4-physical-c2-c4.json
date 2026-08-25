@@ -1,0 +1,240 @@
+{
+  "schema": 1,
+  "kind": "specdec2_gfx1151_s4_physical_c2_c4_diagnostic",
+  "status": "physical_foundation_qualified_default_off_s4_open",
+  "date": "2026-08-25",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "promotion": false,
+  "implementation_commit": "174ad16dc0dbf44c44cc43b12a09461f3d104ad0",
+  "host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "kv_storage": "bf16",
+    "recurrent_state": "fp32_strict",
+    "execution_profile": "strict",
+    "execution_profile_manifest_sha256": "0e053fd658cacbc72a67b7e7ccf33927502a0fe9379faf14dac30ae6ee2bb65b"
+  },
+  "protocol": {
+    "prompt": "Write one short greeting.",
+    "max_tokens": 5,
+    "sampling": "greedy",
+    "concurrency": [1, 2, 4],
+    "candidate_budgets": [1, 2, 3],
+    "arms": ["true_ar", "staged_cold", "staged_warm", "direct_exact"],
+    "scope": "short fixed-prompt implementation diagnostic only; not an anti-gaming promotion suite",
+    "command_template": "env HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python scripts/specdec2_c1_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --concurrency {1,2,4} --budget {1,2,3} --max-tokens 5 --execution-profile strict --output /tmp/specdec2-s4-clean-c{C}k{K}.json --fail-on-fail"
+  },
+  "matrix": [
+    {
+      "concurrency": 1,
+      "candidate_budget": 1,
+      "logical_target_rows": 2,
+      "ar_wall_seconds": 0.7123913809191436,
+      "staged_cold_wall_seconds": 1.5692291049053892,
+      "staged_warm_wall_seconds": 0.7291620690375566,
+      "direct_exact_wall_seconds": 1.1391565189696848,
+      "ar_aggregate_tok_s": 7.018613832116956,
+      "staged_warm_aggregate_tok_s": 6.857186093894946,
+      "staged_warm_wall_over_ar": 1.0235413967204028,
+      "candidate_counts": [1, 1],
+      "accepted_counts": [1, 1],
+      "ids_all_equal": true
+    },
+    {
+      "concurrency": 1,
+      "candidate_budget": 2,
+      "logical_target_rows": 3,
+      "ar_wall_seconds": 0.7117831710493192,
+      "staged_cold_wall_seconds": 1.5760433840332553,
+      "staged_warm_wall_seconds": 0.7271308299386874,
+      "direct_exact_wall_seconds": 1.1714292620308697,
+      "ar_aggregate_tok_s": 7.024611150371736,
+      "staged_warm_aggregate_tok_s": 6.876341635000687,
+      "staged_warm_wall_over_ar": 1.0215622671532716,
+      "candidate_counts": [2],
+      "accepted_counts": [2],
+      "ids_all_equal": true
+    },
+    {
+      "concurrency": 1,
+      "candidate_budget": 3,
+      "logical_target_rows": 4,
+      "ar_wall_seconds": 0.7129604779183865,
+      "staged_cold_wall_seconds": 1.5850549710448831,
+      "staged_warm_wall_seconds": 0.7431562780402601,
+      "direct_exact_wall_seconds": 1.2956778469961137,
+      "ar_aggregate_tok_s": 7.0130114569581465,
+      "staged_warm_aggregate_tok_s": 6.728059962280407,
+      "staged_warm_wall_over_ar": 1.0423526984413436,
+      "candidate_counts": [3],
+      "accepted_counts": [2],
+      "ids_all_equal": true
+    },
+    {
+      "concurrency": 2,
+      "candidate_budget": 1,
+      "logical_target_rows": 4,
+      "ar_wall_seconds": 0.8576664800057188,
+      "staged_cold_wall_seconds": 2.284694427042268,
+      "staged_warm_wall_seconds": 1.4159056950593367,
+      "direct_exact_wall_seconds": 2.692659297026694,
+      "ar_aggregate_tok_s": 11.659543928932983,
+      "staged_warm_aggregate_tok_s": 7.062617259676272,
+      "staged_warm_wall_over_ar": 1.6508814650770725,
+      "proposal_physical_rows": [2, 2],
+      "target_physical_rows": [4, 4],
+      "candidate_counts": [1, 1],
+      "accepted_counts": [1, 0],
+      "ids_all_equal": true
+    },
+    {
+      "concurrency": 2,
+      "candidate_budget": 2,
+      "logical_target_rows": 6,
+      "ar_wall_seconds": 0.8640124050434679,
+      "staged_cold_wall_seconds": 1.9262566670076922,
+      "staged_warm_wall_seconds": 1.052577428985387,
+      "direct_exact_wall_seconds": 2.7218318730592728,
+      "ar_aggregate_tok_s": 11.573907899501636,
+      "staged_warm_aggregate_tok_s": 9.500488728548282,
+      "staged_warm_wall_over_ar": 1.2182434220171094,
+      "proposal_physical_rows": [2, 2],
+      "target_physical_rows": [6],
+      "candidate_counts": [2],
+      "accepted_counts": [2],
+      "ids_all_equal": true
+    },
+    {
+      "concurrency": 2,
+      "candidate_budget": 3,
+      "logical_target_rows": 8,
+      "ar_wall_seconds": 0.8623666139319539,
+      "staged_cold_wall_seconds": 1.9910054659703746,
+      "staged_warm_wall_seconds": 1.0981593370670453,
+      "direct_exact_wall_seconds": 2.877271358971484,
+      "ar_aggregate_tok_s": 11.595996225323564,
+      "staged_warm_aggregate_tok_s": 9.106146678776065,
+      "staged_warm_wall_over_ar": 1.2734251527433282,
+      "proposal_physical_rows": [2, 2, 2],
+      "target_physical_rows": [8],
+      "candidate_counts": [3],
+      "accepted_counts": [2],
+      "ids_all_equal": true
+    },
+    {
+      "concurrency": 4,
+      "candidate_budget": 1,
+      "logical_target_rows": 8,
+      "ar_wall_seconds": 0.9211292000254616,
+      "staged_cold_wall_seconds": 2.5381853049620986,
+      "staged_warm_wall_seconds": 1.6390587190398946,
+      "direct_exact_wall_seconds": 4.143004773999564,
+      "ar_aggregate_tok_s": 21.712480724145067,
+      "staged_warm_aggregate_tok_s": 12.202125383107278,
+      "staged_warm_wall_over_ar": 1.7794015421447809,
+      "proposal_physical_rows": [4, 4],
+      "target_physical_rows": [8, 8],
+      "candidate_counts": [1, 1],
+      "accepted_counts": [1, 0],
+      "ids_all_equal": true
+    },
+    {
+      "concurrency": 4,
+      "candidate_budget": 2,
+      "logical_target_rows": 12,
+      "ar_wall_seconds": 0.9265720060793683,
+      "staged_cold_wall_seconds": 2.1484433569712564,
+      "staged_warm_wall_seconds": 1.2458409449318424,
+      "direct_exact_wall_seconds": 4.205083318985999,
+      "ar_aggregate_tok_s": 21.584938751416196,
+      "staged_warm_aggregate_tok_s": 16.053413625038758,
+      "staged_warm_wall_over_ar": 1.3445700245180148,
+      "proposal_physical_rows": [4, 4],
+      "target_physical_rows": [12],
+      "candidate_counts": [2],
+      "accepted_counts": [2],
+      "ids_all_equal": true
+    },
+    {
+      "concurrency": 4,
+      "candidate_budget": 3,
+      "logical_target_rows": 16,
+      "ar_wall_seconds": 0.9262797809205949,
+      "staged_cold_wall_seconds": 2.2527773820329458,
+      "staged_warm_wall_seconds": 1.320123384008184,
+      "direct_exact_wall_seconds": 4.4252960870508105,
+      "ar_aggregate_tok_s": 21.5917484241346,
+      "staged_warm_aggregate_tok_s": 15.150099030346402,
+      "staged_warm_wall_over_ar": 1.4251885998160974,
+      "proposal_physical_rows": [4, 4, 4],
+      "target_physical_rows": [16],
+      "candidate_counts": [3],
+      "accepted_counts": [2],
+      "ids_all_equal": true
+    }
+  ],
+  "headline": {
+    "best_c2_budget": 2,
+    "c1_k2_warm_aggregate_tok_s": 6.876341635000687,
+    "c2_k2_warm_aggregate_tok_s": 9.500488728548282,
+    "c2_k2_aggregate_gain_over_c1": 0.3816196508024914,
+    "c2_k2_warm_wall_over_c1": 1.4475763997988391,
+    "c2_k2_warm_wall_over_ar": 1.2182434220171094,
+    "c4_k2_warm_aggregate_tok_s": 16.053413625038758,
+    "c4_k2_warm_wall_over_ar": 1.3445700245180148
+  },
+  "correctness": {
+    "all_9_cells_clean_tracked_tree": true,
+    "all_9_cells_exact_ar_staged_warm_direct_ids": true,
+    "physical_c2_c4_rows_observed": true
+  },
+  "profiler": {
+    "command": "rocprofv3 --kernel-trace -d /tmp/specdec2-s4-clean-rocprof -o specdec2-s4-c4k3 -f csv -- env HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt python scripts/specdec2_c1_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --concurrency 4 --budget 3 --max-tokens 5 --execution-profile strict --output /tmp/specdec2-s4-prof-c4k3.json --fail-on-fail",
+    "gate_passed": true,
+    "tracked_tree_dirty": false,
+    "trace_rows": 39166,
+    "kernel_families": 69,
+    "total_kernel_duration_ns": 6577689982,
+    "c4_k3_warm_physical_contract": {
+      "proposal_batch_calls": 3,
+      "proposal_physical_rows": [4, 4, 4],
+      "target_batch_calls": 1,
+      "target_physical_rows": [16]
+    },
+    "selected_engagement": {
+      "packed_gdn_state_rows": {
+        "kernel_match": "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows",
+        "calls": 96,
+        "duration_ns": 23281834
+      },
+      "packed_full_attention": {
+        "kernel_match": "qwen35_paged_full_attn_prefill_gqa_gate_bf16",
+        "calls": 128,
+        "duration_ns": 1587779
+      },
+      "row_argmax_stage1": {
+        "kernel_match": "argmax_rows_stage1_i32",
+        "calls": 24,
+        "duration_ns": 673383
+      },
+      "device_i32_to_i64": {
+        "kernel_match": "copy_i32_to_i64",
+        "calls": 36,
+        "duration_ns": 50416
+      }
+    }
+  },
+  "blockers": [
+    "every C2/C4 warm staged cell loses to same-cell true AR complete wall",
+    "candidate IDs still materialize on host before target lowering",
+    "selected target state/KV commit remains request-local after physical verification",
+    "full category/heldout quality and remaining prefix/pressure gates are not complete"
+  ]
+}

@@ -1,15 +1,13 @@
 # Concurrency and KV Architecture, Generation 2
 
-Last updated: 2026-08-23.
+Last updated: 2026-08-25.
 
-_Status: merged and committed on local `main`; Generation-2 implementation spans
-C2-0 through C2-8. Dense gfx1100 short/long serving and the canonical W7900
-production load are the declared default. The gfx1100 closure boundary is
-`7fad69fb5`; later commits are the independent physical-gfx1151 pass. Local
-`main` is currently a clean fast-forward of `origin/main` (ahead, not diverged),
-so upstream integration/push remains an operational step rather than a code or
-correctness blocker. DMS product training and gfx1151 c32 SLO closure remain
-open. This document is the source of truth for scheduler, request lifecycle,
+_Status: Generation-2 implementation spans C2-0 through C2-8. Dense gfx1100
+short/long serving and the canonical W7900 production load are the declared
+default. The gfx1100 closure boundary is `7fad69fb5`; later commits include the
+independent physical-gfx1151 pass and the integrated DMS campaign. gfx1151 c32
+SLO closure and DMS product admission remain open. This document is the source
+of truth for scheduler, request lifecycle,
 shared KV-pool architecture, and the post-merge handoff. [`CONCURRENCY.md`](CONCURRENCY.md)
 remains the historical c=N kernel/resident-runner record._
 
@@ -36,8 +34,8 @@ Related source-of-truth documents:
 | C2-3 global pool/dense | Stable `GlobalKVPoolSet`; gfx1100 Qwen GGUF BF16 uses `global-arbitrary-pages:g1`. | Dense short route retained; legacy chunk path remains for unported packages. |
 | C2-4 prefix cache | Generation-checked immutable snapshots, COW, quotas, LRU/TTL, pressure eviction. | Dense host conformance closed; DMS prefix remains deliberately off. |
 | C2-5 token budget/c1-c32 | Logical c1-c32, certified physical c1-c8 grouping on gfx1100 Qwen3.8 (other models/backends retain their own registered sets), same-round prefill/decode fairness. | Physical c1-c8 and direct-width lifecycle are qualified; cost-aware D2 is explicit-config pending the actual-server c1-c32 SLO/performance gate. |
-| C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed. Independent gfx1151 c17 fixed SLO now passes; c32 ITL remains blocked. Matched external GPU comparison remains unavailable/invalid. |
-| C2-7 compact DMS | Strict schema-v1/v2 metadata, compact extents, no-shadow host/device BF16 pack/decode, c1-c32 lifecycle, fixture-qualified INT8 composition, and an exact-Qwen3.8 external CR2 trained candidate. | CR2 exact-Q4 quality passes broad long category-heldouts and repository category+heldout controls; integrated no-shadow GGUF serving savings/lifecycle/soak/profiler/SLO remain open, so dense stays default. |
+| C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed. Independent gfx1151 mechanical support passes, but final c32 streaming is 0/3 SLO (TTFT/ITL 18.617/2.125 s) and c2 64K remains unsupported; production closure is blocked. Matched external GPU comparison remains unavailable/invalid. |
+| C2-7 compact DMS | Strict schema-v1/v2 metadata, compact extents, no-shadow host/device BF16 pack/decode, c1-c32 lifecycle, fixture-qualified INT8 composition, and the frozen Qwen3.8 W8192 sidecar with wave-cooperative attention. | Source-disjoint 32K/128K quality, explicit c1 post-pack savings, and 128K dense-decode parity pass; sampled peak controls, public admission, c>N lifecycle/soak, and serving SLOs remain open, so dense stays default. |
 | C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Actual model-produced BF16 KV host restore economics, pressure, cancellation, and drain pass; integrated GPU rehydrate/request-SLO policy remains default-off. |
 | C2-S MTP/SpecDec integration | Reusable `NativeSpecCycle` ABI/graphs, SPEC-C0 records/simulator, one EngineService, compatible packing, committed streaming/tail/RNG, and generic provider/tree metadata. | SPEC-C0–C4 correctness is closed; SPEC-C5 blocks promotion because C=10 public-service MTP is 0.579× true AR despite exact/direct decode wins. |
 
@@ -107,31 +105,82 @@ The user-scoped core deliverable is complete at `7fad69fb5` and audited in
 
 #### gfx1151 post-merge lane
 
-Resume only on a physical Radeon 8060S/gfx1151 host. The current lane used host
-`gfx1151`, checkout `/home/lhl/hipEngine-gfx1151-c2-20260822`, Qwen3.8-27B
-`Q4_K_S`, strict FP32 recurrent state, BF16 KV, and fair:256. Before any new
-measurement, transfer current clean `main`, verify the host/model fingerprint,
-prebuild JIT libraries outside profiling, and require cached builds inside
-`rocprofv3`.
+Run only on the physical Radeon 8060S/gfx1151 host. The resumed lane uses clean
+detached sources under `/tmp/hipengine-gfx1151-hwqueue-v2-src`, lane root
+`/tmp/c2-gfx1151-hwqueue-v2`, Qwen3.8-27B `Q4_K_S`, FP16 recurrent state with
+explicit FP32 rollback, BF16 KV, and fair:256. JIT/cache and rocprof work remain
+isolated; profiled children require cached builds.
 
-Retained state at handoff:
+Current retained state:
 
-- physical widths 1..8 and c13 hole/refill/compaction lifecycle pass;
-- packed prefill, fused state transfer, and direct canonical resident Conv/GDN
-  state are defaults for the qualified gfx1151 package;
-- c17 fixed SLO passes at **11.297 tok/s / 0.448 s ITL** after the exact Q4 row8
-  two-wave owner;
-- c32 improves to **11.041 tok/s / 0.802 s ITL**, and live admission overlaps,
-  but fixed c32 ITL still fails; therefore gfx1151 production is not closed;
-- D2 captured-cost composition, physical c9/c16, Q4 dual eight-wave merge,
-  fair-burst1, and FP16-state serving are rejected; do not repeat them without a
-  materially new mechanism; and
-- next measured family is Q4 qmicro dual rowtile (~127.6 ms marked), followed by
-  Q5 rowtile and Q4 split-weight. Every candidate needs actual kernel identity,
-  exact parent parity, clean marked-family improvement, c17/c32 serving, and
-  lifecycle/memory checks.
+- physical widths 1..8 and c13 hole/refill/compaction lifecycle pass; the fresh
+  production packet passes 1,950 direct-width rows and 1,170 FP16-state rows,
+  including all numerical scopes, repeat/isolation, exact control ownership,
+  11 compaction moves, graph closure, and zero tracked-memory delta;
+- packed prefill, fused state transfer, direct canonical resident Conv/GDN
+  state, and the exact Q4 row8 two-wave owner remain package defaults;
+- the first counterbalanced hardware-queue core screen completes all 10
+  `GPU_MAX_HW_QUEUES=1,2,4,8,unset` c17/c32 children with no lockup, surviving
+  KFD process, fallback, control/route failure, or memory leak;
+- the core screen found c17 neutral and a queue8 c32 signal, but the completed
+  130-execution full-width matrix supersedes that finalist interpretation:
+  queue2 has the highest normalized 13-width throughput; queue1/4/8/unset are
+  0.75%/0.64%/0.50%/0.42% lower, and queue8 loses c32 to queue2 in both blocks
+  (-3.68%/-6.90%). No queue policy is promoted or removed;
+- all five policies pass all six SLO measurements through c7, c8 is partial,
+  and c9+ has zero SLO-passing runs. Control, native route, memory, shutdown,
+  and GPU health pass for every policy/width, so gfx1151 production/load closure
+  remains a capacity blocker rather than a queue-stability failure; and
+- the completed arrival/stability matrix adds 10 children, 90 workloads, and
+  2,100 request records across ragged, fixed/Poisson, disconnect/timeout,
+  overload, recovery, and 60-second soak. Every policy passes exact
+  control/accounting, declared native routes, bounded stream queues, memory/
+  drain, and GPU/process health. Product SLOs and bounded `engine_busy` capacity
+  remain blockers for every policy, not queue-stability failures; and
+- final context/graph/prefix evidence completes 20/20 children: c2
+  1K/4K/16K is exact/native/SLO-clean, 32K is exact but SLO-blocked, all
+  policies pass 32K pressure rejection plus graph changed-page regrow, and
+  active/completed prefix reuse and eviction are exact. C2 64K is blocked and
+  unclaimed. Context throughput is queue-neutral within 0.09% versus queue2;
+  and
+- joined adjudication retains the existing explicit queue2 gfx1151 backend
+  default. Alternatives are stable but none has a generic, repeatable,
+  SLO-qualified advantage; temporary runtime-default/report/matrix surfaces are
+  removed while direct numeric user overrides remain; and
+- cache-only queue2 c8/c17/c32 profiling measures 138.234/360.999/562.330 ms
+  marked wall. c32 is near-linear at +1.69% over four c8 groups; c17 pays a
+  +30.59% c1-tail premium over two c8 groups. Q4 qmicro dual rowtile8 owns
+  242.346 ms / 43.10% of c32 wall. Paired-Q and launch-bound candidates are
+  rejected and removed; and
+- the next ranked exact Q5 col8 rowtile is retained for three gfx1151 Qwen3.8
+  shapes. Q5 marked c8/c17/c32 time improves 12.56%/13.05%/11.17%, complete
+  marker wall 1.21%/1.95%/2.23%, production serving reaches 11.084/10.696
+  tok/s, and c13 lifecycle/memory close;
+- Q4 split-weight tuning closes as a durable skip after every bounded exact
+  mechanism is already rejected or below owner admission; and
+- structural c32 tuning closes without code: post-Q5 c32 is only 0.65% above
+  four c8 marker walls, its kernel sum is 0.68% lower, and all extra uncovered
+  time is only 7.08 ms / 1.29% of c32 wall. Wider owners, D2, queue expansion,
+  packed-state copies, fair-burst1, and eight-wave merging are measured closed;
+  and
+- final committed-source c32 streaming passes production control/repeat/native
+  route/live admission but fails 0/3 SLO: 10.590 tok/s, TTFT p95 18.617 s,
+  ITL p99 2.125 s, E2E p95 24.171 s, goodput zero. C2 64K and heavy-load SLOs
+  also remain blocked, so the protocol correctly forbids the expensive complete
+  closure rerun and no gfx1151 production-closure claim is made.
 
 Primary retained evidence:
+[`FP16 serving correctness`](../benchmarks/results/2026-08-23-gfx1151-qwen38-fp16-serving-correctness-bundle-v3.json),
+[`hardware-queue core matrix`](../benchmarks/results/2026-08-23-gfx1151-qwen38-hardware-queue-core-matrix.json),
+[`hardware-queue full-width matrix`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-full-width-matrix.json),
+[`hardware-queue load stability`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-load-stability-matrix.json),
+[`hardware-queue context/graph/prefix`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-context-graph-prefix-matrix.json),
+[`hardware-queue decision`](../benchmarks/results/2026-08-24-gfx1151-qwen38-hardware-queue-policy-decision.json),
+[`queue2 c8/c17/c32 owner profile`](../benchmarks/results/2026-08-24-gfx1151-qwen38-queue2-c8-c17-c32-owner-profile.json),
+[`gfx1151 Q5 col8 rowtile`](../benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-retained.json),
+[`gfx1151 structural c32 adjudication`](../benchmarks/results/2026-08-24-gfx1151-qwen38-structural-c32-skip.json),
+[`gfx1151 production closure blocker`](../benchmarks/results/2026-08-24-gfx1151-qwen38-production-closure-blocked.json),
+[`gfx1151 final campaign manifest`](../benchmarks/results/2026-08-24-gfx1151-qwen38-concurrency2-campaign-final.json),
 [`gfx1151 physical widths`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-physical-widths.json),
 [`packed prefill`](../benchmarks/results/2026-08-22-concurrency2-gfx1151-qwen38-packed-prefill-c17.json),
 [`direct resident state`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json), and
@@ -374,9 +423,12 @@ The measured order is therefore:
    **70.003→68.681 ms (-1.89%)**, c17 ITL **0.4542→0.4482 s**, and c32
    throughput **10.732→11.041 tok/s** / ITL **0.8206→0.8019 s**; c32 live
    admission now overlaps. Evidence: [`Q4 row8 two-wave`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-q4-row8-two-wave.json);
-3. tune the remaining Q4 qmicro dual family (~127.6 ms marked; the eight-wave
-   block-merge mechanism is rejected), then Q5 rowtile and Q4 split-weight.
-   c32 remains substantially capacity-bound, so production is still open.
+3. ~~tune the remaining Q4 qmicro/Q5/split-weight ladder~~ **CLOSED**: Q4
+   paired-Q and launch-bound candidates are rejected; exact Q5 col8 is retained
+   at -11.17% c32 family / -2.23% complete marker wall; split-weight is a durable
+   c17-only skip. Post-Q5 c32 is only +0.65% over four c8 marker walls, so no new
+   structural owner is justified. Production closure must retain the c32 SLO
+   blocker rather than reopen measured-negative grouping mechanisms.
 
 Device-kernel priorities after those owner-level measurements are:
 

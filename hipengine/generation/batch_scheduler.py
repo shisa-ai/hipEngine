@@ -29,7 +29,15 @@ from hipengine.generation.sampling import (
     thinking_budget_state_from_params,
 )
 from hipengine.kvcache import KVTransaction
-from hipengine.speculative import DraftBatch, TargetAcceptSummary, TargetCommitPlan, TargetStateCommitBuffers, TargetVerifyBatch, TargetVerifyBuffers
+from hipengine.speculative.interfaces import (
+    DraftBatch,
+    TargetAcceptSummary,
+    TargetCommitPlan,
+    TargetStateCommitBuffers,
+    TargetVerifyBatch,
+    TargetVerifyBuffers,
+)
+from hipengine.speculative.transaction import SpecCycleResult, SpecCycleStage
 
 SPECULATIVE_TARGET_SAMPLING_POLICY = "raw_target_top1"
 SPECULATIVE_TARGET_COMPATIBLE_SAMPLING_MODES = ("greedy_fast",)
@@ -179,6 +187,41 @@ class PerRowSamplingParams:
         object.__setattr__(self, "thinking_soft_close_window", int(self.thinking_soft_close_window))
         object.__setattr__(self, "logprobs", bool(self.logprobs))
         object.__setattr__(self, "top_logprobs", int(self.top_logprobs))
+
+    @classmethod
+    def from_generation_request(cls, request) -> "PerRowSamplingParams":
+        """Project the torch-free public request into scheduler row semantics."""
+
+        return cls(
+            temperature=request.temperature,
+            top_k=request.top_k,
+            top_p=request.top_p,
+            min_p=request.min_p,
+            repetition_penalty=request.repetition_penalty,
+            presence_penalty=request.presence_penalty,
+            frequency_penalty=request.frequency_penalty,
+            logit_bias=request.logit_bias,
+            suppress_tokens=request.suppress_token_ids,
+            min_tokens=request.min_tokens,
+            eos_token_id=request.eos_token_id,
+            ignore_eos=request.ignore_eos,
+            seed=request.seed,
+            stop_tokens=request.stop_token_ids,
+            stop_token_sequences=request.stop_token_sequences,
+            forced_tokens_pending=request.forced_tokens_pending,
+            forced_token_reason=request.forced_token_reason,
+            post_thinking_forced_tokens_pending=request.post_thinking_forced_tokens_pending,
+            post_thinking_forced_token_reason=request.post_thinking_forced_token_reason,
+            force_sequence_completion_token_sequences=request.force_sequence_completion_token_sequences,
+            force_sequence_completion_reason=request.force_sequence_completion_reason,
+            json_object_close_forcing=request.json_object_close_forcing,
+            tool_call_constraint=request.tool_call_constraint,
+            thinking_close_token_ids=request.thinking_close_token_ids,
+            thinking_hard_token_cap=request.thinking_hard_token_cap,
+            thinking_soft_close_window=request.thinking_soft_close_window,
+            logprobs=request.logprobs,
+            top_logprobs=request.top_logprobs,
+        )
 
     def resolved_seed(self, *, request_id: int, row_index: int) -> int:
         base = int(self.seed) if self.seed is not None else 0
@@ -1473,7 +1516,11 @@ class ResidentBatchScheduler:
             raise ValueError("work duration must be non-negative")
         if work.kind is WorkKind.PREFILL:
             field = "prefill_seconds"
-        elif work.kind is WorkKind.DECODE:
+        elif work.kind in {
+            WorkKind.DECODE,
+            WorkKind.VERIFY_CHAIN,
+            WorkKind.VERIFY_TREE,
+        }:
             field = "decode_seconds"
         else:
             return
@@ -1578,6 +1625,83 @@ class ResidentBatchScheduler:
                     completed=done,
                 )
             )
+        return tuple(events)
+
+    def record_speculative_cycle_result(
+        self,
+        result: SpecCycleResult,
+    ) -> tuple[GeneratedTokenEvent, ...]:
+        """Publish one committed multi-request cycle through canonical token events."""
+
+        if not isinstance(result, SpecCycleResult):
+            raise TypeError("result must be a SpecCycleResult")
+        if result.stage is not SpecCycleStage.COMMITTED:
+            raise ValueError("only committed speculative cycle results may publish")
+        request_ids = result.transaction.request_ids
+        if not result.committed_output_ids or len(result.committed_output_ids) != len(request_ids):
+            raise ValueError("committed speculative output ids must align with requests")
+        finish_reasons = result.finish_reasons or (None,) * len(request_ids)
+        requests_by_id: dict[int, RequestState] = {}
+        for request_id, output_ids in zip(
+            request_ids, result.committed_output_ids, strict=True
+        ):
+            if request_id not in self.active_batch.requests:
+                raise KeyError(request_id)
+            if not output_ids:
+                raise ValueError("one committed cycle must publish at least one token per request")
+            request = self.active_batch.requests[request_id]
+            requests_by_id[int(request_id)] = request
+            if len(output_ids) > request.remaining_decode:
+                raise ValueError("committed speculative output exceeds remaining decode budget")
+
+        events: list[GeneratedTokenEvent] = []
+        for request_id, output_ids, finish_reason in zip(
+            request_ids,
+            result.committed_output_ids,
+            finish_reasons,
+            strict=True,
+        ):
+            for index, token_id in enumerate(output_ids):
+                final_token = index == len(output_ids) - 1
+                explicitly_finished = final_token and finish_reason is not None
+                completed, stream_chunk = self._append_generated_token_with_stream_chunk(
+                    GeneratedToken(
+                        request_id,
+                        int(token_id),
+                        finished=explicitly_finished,
+                    )
+                )
+                if completed is not None and finish_reason is not None:
+                    details = _finish_details_for_scheduler_reason(
+                        finish_reason,
+                        requests_by_id[int(request_id)],
+                    )
+                    observed = replace(
+                        completed.observability,
+                        finish_reason=str(finish_reason),
+                        finish_details=details,
+                    )
+                    completed = replace(
+                        completed,
+                        finish_reason=str(finish_reason),
+                        finish_details=details,
+                        observability=observed,
+                    )
+                    self._completed[int(request_id)] = completed
+                    stream_chunk = replace(stream_chunk, finish_details=details)
+                events.append(
+                    GeneratedTokenEvent(
+                        request_id=int(request_id),
+                        token_id=int(token_id),
+                        finished=completed is not None,
+                        stream_chunk=stream_chunk,
+                        completed=completed,
+                    )
+                )
+                if completed is not None:
+                    if not final_token:
+                        raise ValueError("request completed before committed cycle output ended")
+                    break
         return tuple(events)
 
     def cancel(self, request_id: int, *, reason: str = "cancel") -> CompletedRequest | None:

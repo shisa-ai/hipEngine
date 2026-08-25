@@ -1,0 +1,53 @@
+{
+  "correctness": {
+    "rows_2_through_8_serial_c1_nodes_passed": 7
+  },
+  "created_at": "2026-08-24T09:33:19.628369+00:00",
+  "decision": {
+    "next": "Close Task #19 after documenting paired-Q owner failure and launch-bound no-op; advance to Q5/structural work.",
+    "reason": "The compiler retains exactly VGPR152/LDS1024/scratch0, identical to the incumbent resource record. The predeclared occupancy premise fails, so leaf/owner timing is skipped.",
+    "retain": false,
+    "serving_skipped": true,
+    "source_removed": true
+  },
+  "hardware": "AMD Radeon 8060S Graphics / gfx1151",
+  "kind": "gfx1151_qwen38_q4_qmicro_launch_bound2_screen",
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "recurrent_state": "fp16"
+  },
+  "performance_claim": false,
+  "physical_host": "gfx1151",
+  "rocprof": {
+    "cache_after_sha256": "f59c3c61b68d75a682711390df19f01af31af2dfd883221ed0146c2931ab8c54",
+    "cache_before_sha256": "f59c3c61b68d75a682711390df19f01af31af2dfd883221ed0146c2931ab8c54",
+    "cache_immutable": true,
+    "command": "cache-only rocprofv3 kernel trace of actual layer0 rows8 leaf under compiler guard",
+    "compiler_guard_invoked": false,
+    "grid": [
+      278528,
+      1,
+      1
+    ],
+    "lds_bytes": 1024,
+    "scratch_bytes": 0,
+    "target_dispatches": 13,
+    "target_kernel": "void (anonymous namespace)::q4_k_qmicro_t16_dense_dual_q8_1x2_rowtile8_dp4a_silu_gemv_kernel<unsigned short, 8>((anonymous namespace)::gguf_q8_1_block const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)",
+    "trace_path": "/tmp/c2-gfx1151-hwqueue-v2/task19-qmicro-launchbound/trace/gfx1151/1869084_kernel_trace.csv",
+    "trace_sha256": "311f62154af78d05711f0b8cd936011f75956684c0569a1f6ad9786840519c70",
+    "vgpr": 152,
+    "workgroup": [
+      128,
+      1,
+      1
+    ]
+  },
+  "schema_version": 1,
+  "source": {
+    "base_commit": "30935b372",
+    "change": "__launch_bounds__(128,1) -> (128,2) on qmicro dual rowtile8 only",
+    "final_source_restored": true
+  },
+  "status": "rejected_removed"
+}
