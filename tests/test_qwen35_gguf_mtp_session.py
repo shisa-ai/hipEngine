@@ -130,6 +130,18 @@ def test_ineligible_cached_target_graph_never_launches_device_proposal() -> None
 
 def test_b4_native_request_falls_back_to_serial_exact_target_rows() -> None:
     assert mtp_module._effective_target_verify_mode("native", rows=4) == "native"
+    assert (
+        mtp_module._effective_target_verify_mode(
+            "native", rows=3, backend="hip_gfx1100", end_position=127
+        )
+        == "native"
+    )
+    assert (
+        mtp_module._effective_target_verify_mode(
+            "native", rows=4, backend="hip_gfx1100", end_position=128
+        )
+        == "serial_exact"
+    )
     assert mtp_module._effective_target_verify_mode("native", rows=5) == "serial_exact"
     assert mtp_module._effective_target_verify_mode("serial_exact", rows=5) == "serial_exact"
     assert mtp_module._initial_state_only_journal_applies(

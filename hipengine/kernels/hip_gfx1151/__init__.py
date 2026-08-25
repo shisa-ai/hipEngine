@@ -1182,6 +1182,7 @@ GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8
 GGUF_SPECDEC2_MTP2_C1 = True
 GGUF_SPECDEC2_MTP2_C4 = True
 GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT = 65544
+GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT = 65544
 # F4's clean all-candidate, all-workload production gate selects fair:256 at
 # +5.90% exact mixed-load SLO goodput over fair:128. Scope the default to the
 # measured Q4_K_M generator registry entry; other quants/backends retain their
@@ -2344,6 +2345,7 @@ __all__ = [
     "GGUF_SPECDEC2_MTP2_C1",
     "GGUF_SPECDEC2_MTP2_C4",
     "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
+    "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT",
     "GGUF_FUSED_LINEAR_STATE_TRANSFER",
     "GGUF_DIRECT_RESIDENT_LINEAR_STATE",
     "GGUF_C2_PACKED_PREFILL_MAX_ROWS",

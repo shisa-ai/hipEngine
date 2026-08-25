@@ -25,6 +25,7 @@ from hipengine.generation.deadline import (
     GenerationDeadlineExceeded,
     generation_deadline_expired,
 )
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import gguf_rmsnorm_bf16_f32_weight
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import build_dflash_accept
 from hipengine.kernels.hip_gfx1100.speculative.dflash_commit import build_dflash_commit
@@ -341,12 +342,29 @@ class _StreamingNextNPromptSink:
             free(self._pending_hidden, runtime=self.runtime)
 
 
-def _effective_target_verify_mode(requested: str, *, rows: int) -> str:
-    """Keep unproven root-plus-four target rows on the scalar exact oracle."""
+def _effective_target_verify_mode(
+    requested: str,
+    *,
+    rows: int,
+    backend: str | None = None,
+    end_position: int | None = None,
+) -> str:
+    """Select only locally qualified native target rows before mutation."""
 
-    if str(requested) == "native" and int(rows) > 4:
+    selected = str(requested)
+    if selected == "native" and int(rows) > 4:
         return "serial_exact"
-    return str(requested)
+    if selected == "native" and backend is not None and end_position is not None:
+        native_context_limit = int(
+            backend_package_capability(
+                str(backend),
+                "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT",
+                int(end_position),
+            )
+        )
+        if int(end_position) > native_context_limit:
+            return "serial_exact"
+    return selected
 
 
 def _initial_state_only_journal_applies(
@@ -1064,6 +1082,8 @@ class Qwen35GGUFTransactionalVerifier:
         effective_verify_mode = _effective_target_verify_mode(
             self.target_verify_mode,
             rows=batch.rows,
+            backend=self.backend,
+            end_position=initial_position + int(batch.rows),
         )
         self.journal.capture_initial(
             stream=stream,
