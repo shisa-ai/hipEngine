@@ -1,6 +1,6 @@
 # SPECDEC2 S7 / gfx1100 Integration Plan
 
-- Status: **active; C1 foundations plus W7900 performance P1-P3 checkpoint retained**
+- Status: **active; W7900 P1-P3 plus packed-PARO P4 device candidate retained**
 - Started: **2026-08-25**
 - Hardware lanes: **AMD Radeon Pro W7900** (binding/default) and **RX 7900 XTX** (independent diagnostic)
 - Shared architecture base: [`SPECDEC2.md`](SPECDEC2.md) S1-S6 at `82af2b6a4`
@@ -190,8 +190,11 @@ exact at `1.259x/1.365x/1.419x` true AR but trails direct; packed production is
 exact with zero allocation in 372/372 cycles but remains `0.933x` AR. Dense
 proposal/repair stable slabs are exact and wall-neutral; graph first use remains
 P4. p128/p512 streaming is exact but slower, and p4K/p16K selects K0 before provider
-mutation.  No automatic/product scope promotes. Evidence:
-[`gfx1100 P1-P3 checkpoint`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json).
+mutation. Packed P4 keeps all 372 production candidates on device through target
+and improves staged wall 4.33%, but remains below AR/direct. No automatic/product
+scope promotes. Evidence:
+[`gfx1100 P1-P3 checkpoint`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json),
+[`packed P4`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-paro-device-candidate.json).
 
 ## 8. P2 — gfx1100 packed PARO physical C2/C4 K1
 

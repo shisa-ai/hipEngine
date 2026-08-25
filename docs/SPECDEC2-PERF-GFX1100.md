@@ -1,6 +1,6 @@
 # SPECDEC2-PERF-GFX1100 — W7900 Activation and Hot-Cycle Campaign
 
-- Status: **active; P1 measured, dense/PARO P2 retained, dense/packed P3 stable slabs retained**
+- Status: **active; P1-P3 retained, packed P4 device candidate retained, dense P4 device chain rejected**
 - Approved: **2026-08-25**
 - Functional predecessor: [`SPECDEC2-GFX1100.md`](SPECDEC2-GFX1100.md), G1/P1 foundations complete
 - Mechanism reference: [`SPECDEC2-PERF.md`](SPECDEC2-PERF.md), with no gfx1151 evidence transfer
@@ -392,12 +392,14 @@ Exit: current-source common attribution, not historical mixed timing, chooses th
 next implementation owner in each lane.
 
 **Retained W7900 checkpoint:**
-[`2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json)
-and [`dense P3 stable slabs`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p3-dense-stable-slabs.json).
+[`2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json),
+[`dense P3 stable slabs`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p3-dense-stable-slabs.json),
+and [`packed P4 device candidate`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-paro-device-candidate.json).
 Dense streaming is exact at `1.259x/1.365x/1.419x` AR for K1/K2/K3 but remains
 behind direct; p128/p512 is exact but slow and p4K/p16K is pre-mutation K0.
-Packed production is exact with 372/372 zero-allocation cycles but remains
-`0.933x` AR. Dense P3 stable slabs are exact/wall-neutral; request-local graph
+Packed production device candidate is exact with 372/372 zero-allocation cycles
+and improves to `0.979x` AR, still below product promotion. Dense P3 stable slabs
+are exact/wall-neutral; request-local graph
 first use remains P4. No product cell promotes; both automatic policies remain K0.
 
 ## 8. P2 — streaming prompt activation
@@ -486,7 +488,9 @@ first use remains P4. No product cell promotes; both automatic policies remain K
 - [x] Existing explicit N4 supplies gfx1100 target/accept fixed buffers and an
       independently gated selected linear-state commit primitive; it is a
       reusable oracle/primitive, not a promoted current-provider route.
-- [ ] Replace bounded host-I32 candidate handoff with a device descriptor.
+- [x] Replace bounded host-I32 candidate handoff with a stable borrowed-W8A16
+      INT32 device descriptor; target consumes it before accept and bounded
+      candidate materialization occurs only after target synchronization.
 - [ ] Keep target top-1/selected-row/provider-update metadata in stable slabs.
 - [ ] Run GPU accept directly and read back only bounded committed IDs/lengths/
       status after selected target/provider commit.
