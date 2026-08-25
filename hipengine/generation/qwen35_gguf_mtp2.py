@@ -27,7 +27,11 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
 )
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.loading.materialize import float_array_to_bf16_bits
-from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFTransactionalVerifier
+from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.runtime.qwen35_gguf_mtp import (
+    Qwen35GGUFTransactionalVerifier,
+    _StreamingNextNPromptSink,
+)
 from hipengine.runtime.qwen35_gguf_nextn import (
     Qwen35GGUFNextNBatchDeviceProposal,
 )
@@ -107,6 +111,8 @@ class Qwen35GGUFMTP2Adapter:
             raise ValueError("MTP2 candidate budget must be 1, 2, or 3")
         self._intents: dict[int, int] = {}
         self._prompt_hidden_rows: dict[int, np.ndarray] = {}
+        self._prompt_streaming_sinks: dict[int, _StreamingNextNPromptSink] = {}
+        self._prompt_streaming_group_keys: dict[int, tuple[int, ...]] = {}
         self._states: dict[int, _MTP2RequestState] = {}
         self._provider_groups: dict[tuple[int, ...], _MTP2ProviderGroup] = {}
         self._disabled_requests: set[int] = set()
@@ -124,6 +130,225 @@ class Qwen35GGUFMTP2Adapter:
         self._intents[rid] = budget
         self._disabled_requests.discard(rid)
 
+    def begin_prompt_streaming(
+        self,
+        request_ids: Sequence[int],
+        *,
+        checkpoints: Mapping[int, Callable[[], None] | None] | None = None,
+    ) -> tuple[_StreamingNextNPromptSink, ...] | None:
+        """Open exact shifted NextN sinks before target prompt prefill."""
+
+        ids = tuple(int(value) for value in request_ids)
+        if not ids or len(set(ids)) != len(ids):
+            raise ValueError("streaming prompt request IDs must be non-empty and unique")
+        if any(request_id not in self._intents for request_id in ids):
+            return None
+        if any(request_id in self._disabled_requests for request_id in ids):
+            return None
+        existing = tuple(self._prompt_streaming_sinks.get(request_id) for request_id in ids)
+        if all(sink is not None for sink in existing):
+            return tuple(sink for sink in existing if sink is not None)
+        if any(sink is not None for sink in existing) or any(
+            request_id in self._states for request_id in ids
+        ):
+            raise RuntimeError("streaming prompt ownership is only opened once per request")
+        rows = tuple(self.owner._row(request_id) for request_id in ids)
+        if any(row.lease is None or int(row.prefix_reused_tokens) > 0 for row in rows):
+            for row in rows:
+                if int(getattr(row, "prefix_reused_tokens", 0)) > 0:
+                    row.mtp2_prompt_fallback_reason = "prefix_reuse_k0"
+            return None
+        targets = tuple(row.lease.session for row in rows)
+        context_misses = tuple(
+            (row, target)
+            for row, target in zip(rows, targets, strict=True)
+            if len(row.prompt_ids) + 1
+            >= min(1023, int(target.target_layout.max_sequence_length))
+        )
+        if context_misses:
+            for row, _target in context_misses:
+                row.mtp2_candidate_budget = 0
+                row.mtp2_prompt_fallback_reason = "target_context_k0"
+            return None
+        missing = len(ids)
+        group = next(
+            (
+                candidate
+                for candidate in self._provider_groups.values()
+                if len(candidate.request_ids) + missing
+                <= int(candidate.provider.executor.max_requests)
+            ),
+            None,
+        )
+        acquired = group is None
+        if group is None:
+            max_positions = min(
+                int(target.target_layout.max_sequence_length) for target in targets
+            )
+            provider_capacity = max(
+                len(ids),
+                min(4, int(getattr(self.owner, "capacity", len(ids)))),
+            )
+            provider, pool_key, _reused = self.generator._acquire_dense_mtp_draft_provider(
+                targets[0],
+                max_positions=max_positions,
+                pool_enabled=self.owner._shared_runner is not None,
+                max_requests=provider_capacity,
+            )
+            if not callable(getattr(provider.executor, "enqueue_prompt_rows", None)):
+                self.generator._release_mtp_draft_runner(pool_key, provider)
+                for row in rows:
+                    row.mtp2_prompt_fallback_reason = "provider_no_streaming_prompt_abi"
+                return None
+            group = _MTP2ProviderGroup(
+                key=tuple(sorted(ids)),
+                provider=provider,
+                provider_pool_key=pool_key,
+                request_ids=set(),
+            )
+            self._provider_groups[group.key] = group
+        created: list[int] = []
+        checkpoint_by_id = {} if checkpoints is None else dict(checkpoints)
+        try:
+            for request_id, row, target in zip(ids, rows, targets, strict=True):
+                group.provider.reset_request(request_id)
+                checkpoint = checkpoint_by_id.get(request_id)
+                if checkpoint is None:
+                    checkpoint = lambda row=row: raise_if_generation_deadline_expired(
+                        row.request
+                    )
+                sink = _StreamingNextNPromptSink(
+                    request_id=request_id,
+                    prompt_tokens=row.prompt_ids,
+                    hidden_size=int(group.provider.executor.hidden_size),
+                    executor=group.provider.executor,
+                    runtime=target.runtime,
+                    checkpoint=checkpoint,
+                )
+                self._prompt_streaming_sinks[request_id] = sink
+                self._prompt_streaming_group_keys[request_id] = group.key
+                group.request_ids.add(request_id)
+                created.append(request_id)
+        except Exception:
+            self._abort_prompt_streaming(tuple(created), stream=0)
+            if acquired and not group.request_ids:
+                self._provider_groups.pop(group.key, None)
+            raise
+        return tuple(self._prompt_streaming_sinks[request_id] for request_id in ids)
+
+    def finish_prompt_streaming(
+        self,
+        request_ids: Sequence[int],
+        *,
+        success: bool,
+        stream: int = 0,
+    ) -> None:
+        """Commit carried prompt rows or roll back every provider/sink owner."""
+
+        ids = tuple(int(value) for value in request_ids)
+        if not success:
+            self._abort_prompt_streaming(ids, stream=int(stream))
+            return
+        buffers: dict[int, DeviceBuffer] = {}
+        try:
+            for request_id in ids:
+                sink = self._prompt_streaming_sinks[request_id]
+                group = self._provider_groups[
+                    self._prompt_streaming_group_keys[request_id]
+                ]
+                finish = getattr(group.provider.executor, "finish_prompt_priming", None)
+                if callable(finish):
+                    finish(request_id, stream=int(stream), synchronize=False)
+                buffers[request_id] = sink.take_final_pending_buffer()
+            pending_states: dict[int, _MTP2RequestState] = {}
+            for request_id in ids:
+                row = self.owner._row(request_id)
+                target = row.lease.session
+                group_key = self._prompt_streaming_group_keys[request_id]
+                group = self._provider_groups[group_key]
+                verifier = (
+                    Qwen35GGUFTransactionalVerifier(
+                        target,
+                        max_candidate_budget=self.candidate_budget,
+                        quant=self.quant,
+                        target_verify_mode=self.target_verify_mode,
+                    )
+                    if len(ids) == 1 and int(getattr(self.owner, "capacity", 1)) == 1
+                    else None
+                )
+                pending_states[request_id] = _MTP2RequestState(
+                    request_id=request_id,
+                    provider=group.provider,
+                    provider_pool_key=group.provider_pool_key,
+                    provider_group_key=group_key,
+                    verifier=verifier,
+                    root_hidden_buffer=buffers[request_id],
+                )
+            for request_id, state in pending_states.items():
+                row = self.owner._row(request_id)
+                target = row.lease.session
+                target._last_target_hidden_ptr = int(state.root_hidden_buffer.ptr)
+                self._states[request_id] = state
+                row.mtp2_prompt_streaming = True
+                row.mtp2_prompt_prime_rows = len(row.prompt_ids)
+                row.mtp2_prompt_carried_bytes = int(state.root_hidden_buffer.nbytes)
+                row.mtp2_prompt_fallback_reason = None
+                self._prompt_hidden_rows.pop(request_id, None)
+        except Exception:
+            for state in locals().get("pending_states", {}).values():
+                if state.verifier is not None:
+                    state.verifier.close()
+            for request_id, buffer in buffers.items():
+                target = self.owner._row(request_id).lease.session
+                if request_id in self._states:
+                    self._states.pop(request_id, None)
+                    if int(getattr(target, "_last_target_hidden_ptr", 0)) == int(
+                        buffer.ptr
+                    ):
+                        target._last_target_hidden_ptr = 0
+                free(buffer, runtime=target.runtime)
+            self._abort_prompt_streaming(ids, stream=int(stream))
+            raise
+        finally:
+            for request_id in ids:
+                sink = self._prompt_streaming_sinks.pop(request_id, None)
+                self._prompt_streaming_group_keys.pop(request_id, None)
+                if sink is not None:
+                    sink.close()
+
+    def _abort_prompt_streaming(
+        self,
+        request_ids: Sequence[int],
+        *,
+        stream: int,
+    ) -> None:
+        groups: set[tuple[int, ...]] = set()
+        for request_id in tuple(int(value) for value in request_ids):
+            sink = self._prompt_streaming_sinks.pop(request_id, None)
+            group_key = self._prompt_streaming_group_keys.pop(request_id, None)
+            if group_key is None:
+                if sink is not None:
+                    sink.close()
+                continue
+            group = self._provider_groups.get(group_key)
+            if group is not None:
+                finish = getattr(group.provider.executor, "finish_prompt_priming", None)
+                if callable(finish):
+                    finish(request_id, stream=int(stream), synchronize=True)
+                group.provider.release_request(request_id)
+                group.request_ids.discard(request_id)
+                groups.add(group_key)
+            if sink is not None:
+                sink.close()
+        for group_key in groups:
+            group = self._provider_groups.get(group_key)
+            if group is not None and not group.request_ids:
+                self._provider_groups.pop(group_key, None)
+                self.generator._release_mtp_draft_runner(
+                    group.provider_pool_key,
+                    group.provider,
+                )
+
     def observe_prefill_result(self, request_id: int, prompt_ids: Sequence[int], result: Any) -> None:
         rid = int(request_id)
         if rid not in self._intents:
@@ -131,6 +356,8 @@ class Qwen35GGUFMTP2Adapter:
         hidden = getattr(result, "hidden_seeds", None)
         if hidden is None:
             self._prompt_hidden_rows.pop(rid, None)
+            if rid in self._states:
+                return
             return
         rows = np.ascontiguousarray(hidden, dtype=np.float32)
         expected_rows = len(tuple(prompt_ids))
@@ -160,7 +387,10 @@ class Qwen35GGUFMTP2Adapter:
                 or not row.first_token_emitted
                 or row.lease is None
                 or row.slot is None
-                or rid not in self._prompt_hidden_rows
+                or (
+                    rid not in self._states
+                    and rid not in self._prompt_hidden_rows
+                )
             ):
                 return None
             target = row.lease.session
@@ -178,6 +408,9 @@ class Qwen35GGUFMTP2Adapter:
                 or int(getattr(self.owner, "capacity", 1)) > 1
             ):
                 return None
+        # Streaming activation is retained only through the already-qualified
+        # short target context. Longer requests stay K0 until an exact shifted-
+        # page eager target owner is qualified independently of graph capture.
         max_context = min(
             1023,
             *(int(target.target_layout.max_sequence_length) for target in targets),
@@ -246,7 +479,10 @@ class Qwen35GGUFMTP2Adapter:
             for request_id in plan.request_ids
             if int(request_id) in self._intents
             and int(request_id) not in self._disabled_requests
-            and int(request_id) in self._prompt_hidden_rows
+            and (
+                int(request_id) in self._states
+                or int(request_id) in self._prompt_hidden_rows
+            )
         )
         attach = tuple(
             request_id
@@ -1483,12 +1719,19 @@ class Qwen35GGUFMTP2Adapter:
 
     def release_request(self, request_id: int) -> None:
         rid = int(request_id)
+        if rid in self._prompt_streaming_sinks:
+            self._abort_prompt_streaming((rid,), stream=0)
         self._drop_request(rid, disable=False)
         self._intents.pop(rid, None)
         self._prompt_hidden_rows.pop(rid, None)
         self._disabled_requests.discard(rid)
 
     def close(self) -> None:
+        if self._prompt_streaming_sinks:
+            self._abort_prompt_streaming(
+                tuple(self._prompt_streaming_sinks),
+                stream=0,
+            )
         for request_id in tuple(self._states):
             self._drop_request(request_id, disable=False)
         self._intents.clear()

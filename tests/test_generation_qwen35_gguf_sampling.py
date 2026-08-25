@@ -4797,6 +4797,32 @@ def test_gguf_prepare_request_scratch_warms_ar_packed_prefill_widths(monkeypatch
     assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
 
 
+def test_specdec2_streaming_prompt_operator_rollback_is_default_on(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT", raising=False)
+    assert qwen35_gguf._gguf_specdec2_streaming_prompt_enabled()
+
+    monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT", "0")
+    assert not qwen35_gguf._gguf_specdec2_streaming_prompt_enabled()
+
+
+def test_specdec2_streaming_prompt_rollback_selects_k0_before_prefill(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT", "0")
+    row = SimpleNamespace(
+        mtp2_candidate_budget=2,
+        prefix_reused_tokens=0,
+        mtp2_prompt_fallback_reason=None,
+    )
+    runner = object.__new__(qwen35_gguf.Qwen35GGUFResidentModelRunner)
+
+    assert runner._begin_mtp2_prompt_streaming((row,)) == (None,)
+    assert row.mtp2_candidate_budget == 0
+    assert row.mtp2_prompt_fallback_reason == "operator_disabled_streaming_prompt_k0"
+
+
 def test_gguf_prepare_request_scratch_warms_mtp_hidden_seed_prefill_when_enabled(monkeypatch) -> None:
     calls: list[tuple] = []
 

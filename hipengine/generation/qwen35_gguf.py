@@ -197,6 +197,7 @@ _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
 )
 _GGUF_DECODE_GRAPH_ENV = "HIPENGINE_GGUF_DECODE_GRAPH"
 _GGUF_MTP_SERVER_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL"
+_GGUF_SPECDEC2_STREAMING_PROMPT_ENV = "HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT"
 _GGUF_MTP_SERVER_STARTUP_WARMUP_ENV = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
 _GGUF_MTP_SERVER_STREAM_DRAFT_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT"
 _GGUF_MTP_SERVER_STREAM_VERIFY_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY"
@@ -340,6 +341,13 @@ def _gguf_decode_graph_enabled() -> bool:
 
 def _gguf_mtp_server_packed_prefill_enabled() -> bool:
     return os.environ.get(_GGUF_MTP_SERVER_PACKED_PREFILL_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _gguf_specdec2_streaming_prompt_enabled() -> bool:
+    return os.environ.get(
+        _GGUF_SPECDEC2_STREAMING_PROMPT_ENV,
+        "1",
+    ).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _gguf_mtp_server_startup_warmup_enabled() -> bool:
@@ -4798,6 +4806,10 @@ class _GGUFResidentLoopRow:
     prefix_admission_fallback: bool = False
     prefix_fallback_reason: str | None = None
     mtp2_candidate_budget: int = 0
+    mtp2_prompt_streaming: bool = False
+    mtp2_prompt_prime_rows: int = 0
+    mtp2_prompt_carried_bytes: int = 0
+    mtp2_prompt_fallback_reason: str | None = None
     mtp2_cycles: int = 0
     mtp2_candidate_counts: list[int] = field(default_factory=list)
     mtp2_accepted_counts: list[int] = field(default_factory=list)
@@ -6194,15 +6206,42 @@ class Qwen35GGUFResidentModelRunner:
         if not callable(prefill_batch):
             return False
         started = time.perf_counter()
-        capture_mtp2_hidden = any(row.mtp2_candidate_budget > 0 for row in rows)
-        with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-            results = prefill_batch(
-                chunks,
-                sessions=[lease.session for lease in leases],
-                full_prompt_lengths=[len(chunk) for chunk in chunks],
-                return_logits=False,
-                return_hidden_seeds=capture_mtp2_hidden,
+        streaming_sinks = self._begin_mtp2_prompt_streaming(rows)
+        streaming = any(sink is not None for sink in streaming_sinks)
+        capture_mtp2_hidden = bool(
+            not streaming and any(row.mtp2_candidate_budget > 0 for row in rows)
+        )
+        streaming_kwargs = (
+            {
+                "target_hidden_chunk_sinks": streaming_sinks,
+                "target_hidden_request_ids": tuple(row.request_id for row in rows),
+                "target_hidden_chunk_starts": (0,) * len(rows),
+            }
+            if streaming
+            else {}
+        )
+        try:
+            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                results = prefill_batch(
+                    chunks,
+                    sessions=[lease.session for lease in leases],
+                    full_prompt_lengths=[len(chunk) for chunk in chunks],
+                    return_logits=False,
+                    return_hidden_seeds=capture_mtp2_hidden,
+                    **streaming_kwargs,
+                )
+        except Exception:
+            self._finish_mtp2_prompt_streaming(
+                rows,
+                streaming_sinks,
+                success=False,
             )
+            raise
+        self._finish_mtp2_prompt_streaming(
+            rows,
+            streaming_sinks,
+            success=True,
+        )
         result_rows = [] if results is None else list(results)
         if len(result_rows) != len(rows):
             raise RuntimeError(
@@ -6726,6 +6765,62 @@ class Qwen35GGUFResidentModelRunner:
             raise KeyError(f"request_id {rid} is not registered with the GGUF resident runner")
         return self._rows[rid]
 
+    def _begin_mtp2_prompt_streaming(
+        self,
+        rows: Sequence[_GGUFResidentLoopRow],
+    ) -> tuple[Any | None, ...]:
+        selected = tuple(
+            row for row in rows
+            if row.mtp2_candidate_budget > 0 and not row.prefix_reused_tokens
+        )
+        if not _gguf_specdec2_streaming_prompt_enabled():
+            for row in selected:
+                row.mtp2_candidate_budget = 0
+                row.mtp2_prompt_fallback_reason = "operator_disabled_streaming_prompt_k0"
+            return (None,) * len(tuple(rows))
+        if not selected:
+            return (None,) * len(tuple(rows))
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            return (None,) * len(tuple(rows))
+        checkpoints = {
+            int(row.request_id): (
+                lambda row=row: raise_if_generation_deadline_expired(row.request)
+            )
+            for row in selected
+        }
+        sinks = adapter.begin_prompt_streaming(
+            tuple(row.request_id for row in selected),
+            checkpoints=checkpoints,
+        )
+        if sinks is None:
+            return (None,) * len(tuple(rows))
+        by_id = {
+            int(row.request_id): sink
+            for row, sink in zip(selected, sinks, strict=True)
+        }
+        return tuple(by_id.get(int(row.request_id)) for row in rows)
+
+    def _finish_mtp2_prompt_streaming(
+        self,
+        rows: Sequence[_GGUFResidentLoopRow],
+        sinks: Sequence[Any | None],
+        *,
+        success: bool,
+        stream: int = 0,
+    ) -> None:
+        ids = tuple(
+            int(row.request_id)
+            for row, sink in zip(rows, sinks, strict=True)
+            if sink is not None
+        )
+        if not ids:
+            return
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            raise RuntimeError("GGUF MTP2 streaming prompt adapter disappeared")
+        adapter.finish_prompt_streaming(ids, success=bool(success), stream=int(stream))
+
     def _prefill_native_row(self, row: _GGUFResidentLoopRow) -> None:
         if row.slot is not None:
             return
@@ -6753,14 +6848,41 @@ class Qwen35GGUFResidentModelRunner:
                 raise RuntimeError(
                     "GGUF KV route requires block-table-aware single-row prefill"
                 )
-            with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
-                results = prefill_batch(
-                    [row.prompt_ids],
-                    sessions=[lease.session],
-                    full_prompt_lengths=[len(row.prompt_ids)],
-                    return_logits=False,
-                    return_hidden_seeds=row.mtp2_candidate_budget > 0,
+            streaming_sinks = self._begin_mtp2_prompt_streaming((row,))
+            streaming = streaming_sinks[0] is not None
+            streaming_kwargs = (
+                {
+                    "target_hidden_chunk_sinks": streaming_sinks,
+                    "target_hidden_request_ids": (row.request_id,),
+                    "target_hidden_chunk_starts": (0,),
+                }
+                if streaming
+                else {}
+            )
+            try:
+                with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+                    results = prefill_batch(
+                        [row.prompt_ids],
+                        sessions=[lease.session],
+                        full_prompt_lengths=[len(row.prompt_ids)],
+                        return_logits=False,
+                        return_hidden_seeds=bool(
+                            row.mtp2_candidate_budget > 0 and not streaming
+                        ),
+                        **streaming_kwargs,
+                    )
+            except Exception:
+                self._finish_mtp2_prompt_streaming(
+                    (row,),
+                    streaming_sinks,
+                    success=False,
                 )
+                raise
+            self._finish_mtp2_prompt_streaming(
+                (row,),
+                streaming_sinks,
+                success=True,
+            )
             result_list = [] if results is None else list(results)
             if len(result_list) != 1:
                 raise RuntimeError(
@@ -7145,6 +7267,19 @@ class Qwen35GGUFResidentModelRunner:
             return
         start = time.perf_counter()
         sample_kwargs = {} if final_chunk else {"sample_output": False}
+        streaming_sinks = self._begin_mtp2_prompt_streaming((row,))
+        streaming = streaming_sinks[0] is not None
+        chunk_start = max(0, int(row.prefill_tokens_seen) - len(chunk))
+        streaming_kwargs = (
+            {
+                "target_hidden_chunk_sinks": streaming_sinks,
+                "target_hidden_request_ids": (row.request_id,),
+                "target_hidden_chunk_starts": (chunk_start,),
+                "finish_target_hidden_sinks": bool(final_chunk),
+            }
+            if streaming
+            else {}
+        )
         try:
             with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
                 results = prefill_batch(
@@ -7153,11 +7288,32 @@ class Qwen35GGUFResidentModelRunner:
                     full_prompt_lengths=[len(row.prompt_ids)],
                     return_logits=False,
                     return_hidden_seeds=False,
+                    **streaming_kwargs,
                     **sample_kwargs,
                 )
         except NotImplementedError:
+            self._finish_mtp2_prompt_streaming(
+                (row,),
+                streaming_sinks,
+                success=False,
+            )
+            row.mtp2_candidate_budget = 0
+            row.mtp2_prompt_fallback_reason = "incremental_streaming_unsupported_k0"
             self._disable_incremental_prefill(row, final_chunk=final_chunk)
             return
+        except Exception:
+            self._finish_mtp2_prompt_streaming(
+                (row,),
+                streaming_sinks,
+                success=False,
+            )
+            raise
+        if final_chunk:
+            self._finish_mtp2_prompt_streaming(
+                (row,),
+                streaming_sinks,
+                success=True,
+            )
         result_list = [] if results is None else list(results)
         if len(result_list) != 1:
             raise RuntimeError(
@@ -8130,6 +8286,20 @@ class Qwen35GGUFResidentModelRunner:
                 )
             )
         )
+        if row.mtp2_candidate_budget > 0:
+            timing.update(
+                {
+                    "specdec2_mtp2_prompt_streaming": float(
+                        row.mtp2_prompt_streaming
+                    ),
+                    "specdec2_mtp2_prompt_prime_rows": float(
+                        row.mtp2_prompt_prime_rows
+                    ),
+                    "specdec2_mtp2_prompt_carried_bytes": float(
+                        row.mtp2_prompt_carried_bytes
+                    ),
+                }
+            )
         if row.mtp2_cycles > 0:
             timing.update(
                 {
@@ -8233,6 +8403,12 @@ class Qwen35GGUFResidentModelRunner:
                 slot is not None and slot.serial_decode_steps > 0
             ),
             "specdec2_mtp2_used": bool(row.mtp2_cycles > 0),
+            "specdec2_mtp2_prompt_streaming": bool(row.mtp2_prompt_streaming),
+            "specdec2_mtp2_prompt_prime_rows": int(row.mtp2_prompt_prime_rows),
+            "specdec2_mtp2_prompt_carried_bytes": int(
+                row.mtp2_prompt_carried_bytes
+            ),
+            "specdec2_mtp2_prompt_fallback_reason": row.mtp2_prompt_fallback_reason,
             "specdec2_mtp2_cycles": int(row.mtp2_cycles),
             "specdec2_mtp2_candidate_counts": list(row.mtp2_candidate_counts),
             "specdec2_mtp2_accepted_counts": list(row.mtp2_accepted_counts),
