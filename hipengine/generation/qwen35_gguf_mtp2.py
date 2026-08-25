@@ -397,9 +397,13 @@ class Qwen35GGUFMTP2Adapter:
                 or int(getattr(self.owner, "capacity", 1)) > 1
             ):
                 return None
+        # Provider streaming activation and the qualified eager target path are
+        # valid through the resident session capacity. The reusable native
+        # target graph keeps its own shorter context key/fallback; do not let
+        # that graph bucket incorrectly disable long eager SPECDEC2 before
+        # mutation.
         max_context = min(
-            1023,
-            *(int(target.target_layout.max_sequence_length) for target in targets),
+            int(target.target_layout.max_sequence_length) for target in targets
         )
         profile = str(getattr(self.generator, "execution_profile", None) or "legacy_exact")
         max_requests = min(4, max(1, int(getattr(self.owner, "capacity", 4))))
