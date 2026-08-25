@@ -777,12 +777,12 @@ all fail only the inherited 0.5-second ITL-p99 SLO. Evidence:
 
 ## 13. S7 — gfx1100 portability follow-up
 
-S7 starts only after S6 is committed. It is intentionally not part of the
-current implementation campaign.
+S7 is active under the independent [`SPECDEC2-GFX1100.md`](SPECDEC2-GFX1100.md)
+ledger. It qualifies dense GGUF MTP2 and packed-PARO MTP2 as separate lanes.
 
-- [ ] Create a separate gfx1100 plan/worklog and select an exact clean base.
-- [ ] Run backend-neutral suites unchanged.
-- [ ] Resolve independent gfx1100 capabilities and strict fallbacks.
+- [x] Create a separate gfx1100 plan/worklog and select an exact clean base.
+- [x] Run backend-neutral suites unchanged (61 focused tests pass).
+- [ ] Resolve independent gfx1100 GGUF and PARO capabilities and strict fallbacks.
 - [ ] Requalify c1/c2/c4, physical R buckets, graph/eager, and dynamic K.
 - [ ] Run independent quality, lifecycle, profiler, memory, and performance
       packets on the exact gfx1100 host/model/artifact.
