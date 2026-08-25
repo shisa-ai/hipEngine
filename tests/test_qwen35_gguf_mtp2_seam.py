@@ -952,6 +952,7 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
     )
     adapter.register_request(7, 2)
     adapter.register_request(8, 2)
+    adapter.physical_prompt_streaming = True
 
     sinks = adapter.begin_prompt_streaming((7, 8), checkpoints={})
     adapter.finish_prompt_streaming((7, 8), success=True, stream=0)
@@ -972,6 +973,51 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
     adapter.observe_prefill_result(7, rows[7].prompt_ids, SimpleNamespace(token_id=9))
     assert adapter._states[7].root_hidden_buffer is carried[7]
     assert released_pool == []
+
+
+def test_mtp2_physical_prompt_streaming_is_rejected_before_provider_open() -> None:
+    rows = {
+        request_id: SimpleNamespace(
+            prompt_ids=(11, 22),
+            lease=SimpleNamespace(
+                session=SimpleNamespace(
+                    target_layout=SimpleNamespace(max_sequence_length=1024),
+                    runtime=object(),
+                )
+            ),
+            prefix_reused_tokens=0,
+            mtp2_candidate_budget=2,
+            mtp2_prompt_fallback_reason=None,
+        )
+        for request_id in (7, 8)
+    }
+    acquired: list[str] = []
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(
+            _acquire_dense_mtp_draft_provider=lambda *args, **kwargs: acquired.append(
+                "provider"
+            )
+        ),
+        capacity=4,
+        _shared_runner=SimpleNamespace(hidden_size=4),
+        _row=lambda request_id: rows[int(request_id)],
+    )
+    adapter = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=2,
+    )
+    for request_id in rows:
+        adapter.register_request(request_id, 2)
+
+    assert adapter.begin_prompt_streaming((7, 8), checkpoints={}) is None
+    assert acquired == []
+    assert all(
+        row.mtp2_prompt_fallback_reason == "physical_streaming_category_rejected"
+        for row in rows.values()
+    )
+    assert all(row.mtp2_candidate_budget == 2 for row in rows.values())
 
 
 def test_mtp2_long_prompt_selects_k0_before_provider_streaming() -> None:
