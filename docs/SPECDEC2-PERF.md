@@ -868,6 +868,14 @@ state. A strict-only speed win cannot become the normal product default.
 
 ### P8.1 RED/profile contract
 
+Audit checkpoint: the existing FP16 scalar/segmented/indexed/chain-row and
+compact-peer writers are reusable, but SPECDEC2 native rollback still lacks a
+typed FP16 initial-state snapshot producer and Q5 chain fused-output siblings.
+Production profile currently resolves by strict fallback, so the two cold MTP2
+FP16 guards remain correct until a real production manifest plus those owners
+land. Durable details:
+[`P8 audit`](../worklog/entries/20260825T215042.972658Z-gfx1151-agent-specdec2-perf-p8-fp16-audit-a613ab.md).
+
 - [ ] Resolve a runtime production manifest and strict fallback manifest.
 - [ ] Add FP16 resident-state-aware root/parent/candidate readers with declared
       FP32 accumulation/scratch.
