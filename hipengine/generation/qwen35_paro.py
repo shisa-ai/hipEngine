@@ -12,6 +12,10 @@ import time
 from typing import Any, ClassVar
 import uuid
 
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
+from hipengine.core.memory import DeviceBuffer, free, malloc
+from hipengine.core.tensor import Tensor
 from hipengine.dispatch import (
     BatchWidthGroup,
     NativeBatchWidthProfile,
@@ -2189,6 +2193,12 @@ class _ParoResidentLoopRow:
     native_decode_steps: int = 0
     serial_decode_steps: int = 0
     last_execution_path: str = "paro_resident_model_loop"
+    mtp2_candidate_budget: int = 0
+    mtp2_prompt_hidden_buffer: DeviceBuffer | None = None
+    mtp2_cycles: int = 0
+    mtp2_candidate_counts: list[int] = field(default_factory=list)
+    mtp2_accepted_counts: list[int] = field(default_factory=list)
+    mtp2_execution_routes: list[str] = field(default_factory=list)
 
 
 class Qwen35ParoResidentModelRunner:
@@ -2226,6 +2236,8 @@ class Qwen35ParoResidentModelRunner:
         self._last_width_plan: dict[str, Any] = {}
         self._last_execution_manifest: dict[str, Any] = {}
         self._recent_completed_routes: deque[dict[str, Any]] = deque(maxlen=1024)
+        self._mtp2_adapter: Any | None = None
+        self._mtp2_adapter_resolved = False
         self._closed = False
 
     @property
@@ -2339,6 +2351,128 @@ class Qwen35ParoResidentModelRunner:
                 release_after_probe=release_after_probe,
             )
         )
+
+    def _resolved_mtp2_adapter(self):
+        if self._mtp2_adapter is not None:
+            return self._mtp2_adapter
+        if self._mtp2_adapter_resolved:
+            return None
+        self._mtp2_adapter_resolved = True
+        enabled = bool(
+            backend_package_capability(
+                self.generator.backend,
+                "PARO_SPECDEC2_MTP2_C1",
+                False,
+            )
+        )
+        if not enabled or int(self.capacity) != 1:
+            return None
+        from hipengine.generation.qwen35_paro_mtp2 import Qwen35ParoMTP2Adapter
+
+        self._mtp2_adapter = Qwen35ParoMTP2Adapter(self, enabled=True)
+        return self._mtp2_adapter
+
+    def register_speculative_request(
+        self,
+        request_id: int,
+        candidate_budget: int,
+    ) -> None:
+        row = self._row(request_id)
+        row.mtp2_candidate_budget = 1
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is not None:
+            adapter.register_request(request_id, candidate_budget)
+
+    def speculative_desired_candidate_count(self, request: GenerationRequest) -> int:
+        return 1 if int(request.max_tokens) > 1 else 0
+
+    def speculative_capability(self, request_semantics):
+        adapter = self._resolved_mtp2_adapter()
+        return None if adapter is None else adapter.capability(request_semantics)
+
+    def speculative_graph_available(self, work) -> bool:
+        del work
+        return False
+
+    def speculative_claims_fit(self, plan) -> bool:
+        adapter = self._resolved_mtp2_adapter()
+        return bool(adapter is not None and adapter.claims_fit(plan))
+
+    def prepare_speculative_k0(self, plan, request_semantics, *, stream=None) -> None:
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is not None:
+            adapter.prepare_k0(plan, request_semantics, stream=stream)
+
+    def speculative_component_claims(self, plan):
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            raise RuntimeError("PARO MTP2 adapter is unavailable")
+        return adapter.component_claims(plan)
+
+    def reserve_speculative_claims(self, claims):
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            raise RuntimeError("PARO MTP2 adapter is unavailable")
+        return adapter.reserve_claims(claims)
+
+    def release_speculative_claims(self, reservation) -> None:
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            raise RuntimeError("PARO MTP2 adapter is unavailable")
+        adapter.release_claims(reservation)
+
+    def prepare_speculative_requests(self, plan, request_semantics, *, stream=None) -> None:
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            raise RuntimeError("PARO MTP2 adapter is unavailable")
+        adapter.prepare_requests(plan, request_semantics, stream=stream)
+
+    def propose_speculative_batch(self, plan, request_semantics, *, stream=None):
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            raise RuntimeError("PARO MTP2 adapter is unavailable")
+        return adapter.propose_batch(plan, request_semantics, stream=stream)
+
+    def speculative_kv_live_spans_owner(self, plan) -> str:
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            return f"paro-resident:{id(self)}:{plan.operation_id}"
+        return adapter.kv_live_spans_owner(plan)
+
+    def execute_target_frontier(
+        self,
+        plan,
+        frontier,
+        complete_claims,
+        *,
+        commit: bool,
+        cancelled_request_ids,
+    ):
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            raise RuntimeError("PARO MTP2 adapter is unavailable")
+        return adapter.execute_target_frontier(
+            plan,
+            frontier,
+            complete_claims,
+            commit=commit,
+            cancelled_request_ids=cancelled_request_ids,
+        )
+
+    def rollback_speculative_cycle(self, plan, candidate_graph, error) -> None:
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is not None:
+            adapter.rollback_cycle(plan, candidate_graph, error)
+
+    def recover_speculative_cycle_failure(self, plan, error) -> bool:
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            return False
+        recovered = bool(adapter.recover_cycle_failure(plan, error))
+        if recovered:
+            reason = f"specdec2_mtp2_recovered:{type(error).__name__}:{error}"
+            self._fallback_reasons[reason] += len(plan.request_ids)
+        return recovered
 
     def register_batch(
         self,
@@ -2455,6 +2589,10 @@ class Qwen35ParoResidentModelRunner:
                 if result is None:
                     raise RuntimeError("PARO final prefill chunk did not produce a token")
                 self._record_step(row, result)
+                if row.mtp2_candidate_budget > 0:
+                    adapter = self._resolved_mtp2_adapter()
+                    if adapter is not None:
+                        adapter.observe_prefill_result(row.request_id)
 
     def decode_batch(self, work: WorkItem, *, commit: bool) -> tuple[GeneratedToken, ...]:
         if not commit:
@@ -2540,6 +2678,9 @@ class Qwen35ParoResidentModelRunner:
         self._recent_completed_routes.append(
             {"request_id": request_id, **copy.deepcopy(metadata)}
         )
+        if self._mtp2_adapter is not None:
+            self._mtp2_adapter.close_requests((request_id,))
+        self._release_mtp2_prompt_capture(row)
         self._release_model_slot(row)
         self._rows.pop(request_id, None)
         self._route_counts["reclaims"] += 1
@@ -2562,6 +2703,9 @@ class Qwen35ParoResidentModelRunner:
             rid = int(request_id)
             row = self._rows.pop(rid, None)
             if row is not None:
+                if self._mtp2_adapter is not None:
+                    self._mtp2_adapter.close_requests((rid,))
+                self._release_mtp2_prompt_capture(row)
                 self._release_model_slot(row)
             self._outputs.pop(rid, None)
             self._completed_metadata.pop(rid, None)
@@ -2649,6 +2793,11 @@ class Qwen35ParoResidentModelRunner:
                 "scale_dtype": owned_summary.get("kv_scale_dtype"),
                 "scale_granularity": owned_summary.get("kv_scale_granularity"),
             },
+            "specdec2_mtp2": (
+                None
+                if self._mtp2_adapter is None
+                else self._mtp2_adapter.observability_snapshot()
+            ),
             "routes": {
                 "counts": {
                     "admissions": int(self._route_counts["admissions"]),
@@ -2677,7 +2826,11 @@ class Qwen35ParoResidentModelRunner:
     def close(self) -> None:
         if self._closed:
             return
+        if self._mtp2_adapter is not None:
+            self._mtp2_adapter.close()
+            self._mtp2_adapter = None
         for row in tuple(self._rows.values()):
+            self._release_mtp2_prompt_capture(row)
             self._release_model_slot(row)
         self._rows.clear()
         self._outputs.clear()
@@ -2734,7 +2887,15 @@ class Qwen35ParoResidentModelRunner:
         requested_capacity = _session_capacity_for(required)
         kwargs: dict[str, Any] = {
             "max_sequence_length": requested_capacity,
-            "max_batch_size": self.capacity,
+            "max_batch_size": (
+                max(2, self.capacity)
+                if backend_package_capability(
+                    self.generator.backend,
+                    "PARO_SPECDEC2_MTP2_C1",
+                    False,
+                )
+                else self.capacity
+            ),
             "kv_policy": kv_policy.create_policy(),
             "kv_scale_dtype": kv_policy.scale_dtype,
             "kv_scale_granularity": kv_policy.scale_granularity,
@@ -2782,11 +2943,20 @@ class Qwen35ParoResidentModelRunner:
             self._clear_session_sampler()
         try:
             try:
-                results = self._session.prefill_native_packed(
-                    slab,
-                    sample=bool(final_chunk),
-                )
-                row.native_prefill = True
+                if row.mtp2_candidate_budget > 0:
+                    results = self._prefill_row_serial_with_mtp2_capture(
+                        row,
+                        chunk,
+                        start_position=int(start_position),
+                        sample_final=bool(final_chunk),
+                    )
+                    row.native_prefill = False
+                else:
+                    results = self._session.prefill_native_packed(
+                        slab,
+                        sample=bool(final_chunk),
+                    )
+                    row.native_prefill = True
             except NotImplementedError:
                 self._fallback_reasons["packed_prefill_unavailable"] += 1
                 results = self._prefill_row_serial(
@@ -2804,6 +2974,68 @@ class Qwen35ParoResidentModelRunner:
             return result_tuple[0]
         finally:
             self._clear_session_sampler()
+
+    def _prefill_row_serial_with_mtp2_capture(
+        self,
+        row: _ParoResidentLoopRow,
+        chunk: tuple[int, ...],
+        *,
+        start_position: int,
+        sample_final: bool,
+    ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
+        assert self._session is not None and row.model_slot == 0
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            raise RuntimeError("PARO MTP2 prompt capture has no staged adapter")
+        adapter.begin_prompt(row.request_id)
+        if row.mtp2_prompt_hidden_buffer is None:
+            row.mtp2_prompt_hidden_buffer = malloc(
+                self._session.hidden_nbytes,
+                runtime=self._session.runtime,
+            )
+        capture = Tensor.from_handle(
+            row.mtp2_prompt_hidden_buffer.ptr,
+            (1, self._session.config.hidden_size),
+            DType.BF16,
+            Device("hip", 0),
+        )
+        empty_capture = Tensor.from_handle(
+            0,
+            (1, 0),
+            DType.BF16,
+            Device("hip", 0),
+        )
+        final_result: Qwen35ParoAutoregressiveStepResult | None = None
+        for offset, token_id in enumerate(chunk):
+            sample = bool(sample_final and offset == len(chunk) - 1)
+            result = self._session.step_with_hidden_taps(
+                int(token_id),
+                position=int(start_position) + offset,
+                capture_layer_ids=(),
+                capture_hidden_concat=empty_capture,
+                capture_row=0,
+                sample=sample,
+                capture_final_hidden_bf16=capture,
+            )
+            adapter.consume_prompt_row(
+                row.request_id,
+                prompt_index=int(start_position) + offset,
+                target_hidden_ptr=int(capture.ptr),
+                seed_token=(
+                    None if not sample else int(result.token_id) if result is not None else None
+                ),
+            )
+            if sample:
+                final_result = result
+        return (final_result,)
+
+    def _release_mtp2_prompt_capture(self, row: _ParoResidentLoopRow) -> None:
+        buffer = row.mtp2_prompt_hidden_buffer
+        if buffer is None:
+            return
+        assert self._session is not None
+        free(buffer, runtime=self._session.runtime)
+        row.mtp2_prompt_hidden_buffer = None
 
     def _prefill_row_serial(
         self,
@@ -3117,6 +3349,11 @@ class Qwen35ParoResidentModelRunner:
                 not row.native_greedy or row.serial_decode_steps > 0
             ),
             "stable_model_slot": row.model_slot,
+            "specdec2_mtp2_used": bool(row.mtp2_cycles),
+            "specdec2_mtp2_cycles": int(row.mtp2_cycles),
+            "specdec2_mtp2_candidate_counts": list(row.mtp2_candidate_counts),
+            "specdec2_mtp2_accepted_counts": list(row.mtp2_accepted_counts),
+            "specdec2_mtp2_execution_routes": list(row.mtp2_execution_routes),
             "scheduler_chunks": copy.deepcopy(row.scheduler_chunks),
         }
 

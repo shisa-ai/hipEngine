@@ -1,0 +1,85 @@
+{
+  "checks": {
+    "production_ids_exact": true,
+    "production_proposer_reuse": true,
+    "staged_engaged": true,
+    "strict_ids_exact": true
+  },
+  "date": "2026-08-25",
+  "decision": {
+    "automatic": "K0; no performance promotion",
+    "c2_c4": "absent; target verifier remains singleton",
+    "performance_blocker": "warm staged production wall 0.731 s vs AR 0.670 s on short d8 (~9.1% slower); complete suite/state/profiler still required",
+    "retain": "explicit staged C1/K1 provider+target adapter"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "hip_visible_devices": "0",
+    "physical_host": "epyc",
+    "target_arch": "gfx1100"
+  },
+  "model": {
+    "kv": "bf16",
+    "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "production_manifest_sha256": "920737601cca41bc64963437ce1daece0e4ebca1bc52ba5bdd22ae817aba9561",
+    "quant": "w4_paro+mtp_bf16",
+    "strict_manifest_sha256": "3199678e604dca83d40f3d538deb3c05ceed3144b0100ef89b3ecfb94aed5723"
+  },
+  "performance_claim": false,
+  "profiles": [
+    {
+      "adapter": {
+        "active_claim": false,
+        "disabled_requests": [],
+        "enabled": true,
+        "intents": 0,
+        "pooled_proposers": 1,
+        "proposer_builds": 1,
+        "proposer_reuses": 1,
+        "states": 0
+      },
+      "ids_all_equal": true,
+      "profile": "production",
+      "sha256": "bce9629d72f9b08cd90c5083333cb284aa4f0bc788d1301130a4db3b0101764d",
+      "source": "/tmp/specdec2-gfx1100-paro-c1/production-recycle.json",
+      "staged_rows": 2,
+      "status": "passed",
+      "wall_seconds": {
+        "ar": 0.6696641859598458,
+        "staged_cold": 2.378208136651665,
+        "staged_warm": 0.7306757010519505
+      }
+    },
+    {
+      "adapter": null,
+      "ids_all_equal": true,
+      "profile": "strict",
+      "sha256": "4b7a6b7f40e3f02fb7cbbe4fb23e2d33ecdb84d4fe0599050a60fd83a32a02de",
+      "source": "/tmp/specdec2-gfx1100-paro-c1/strict-debug.json",
+      "staged_rows": 2,
+      "status": "passed",
+      "wall_seconds": {
+        "ar": 0.6548710721544921,
+        "staged_cold": 2.4309746101498604,
+        "staged_warm": 2.349372586235404
+      }
+    }
+  ],
+  "schema": "hipengine.specdec2_gfx1100_paro_c1.v1",
+  "scope": {
+    "automatic_policy": "K0 pending complete staged parity/economics",
+    "candidate_budget": 1,
+    "concurrency": 1,
+    "logical_rows": 2,
+    "max_tokens": 8,
+    "prompt": "Write one short greeting.",
+    "proposal": "streaming final-normalized BF16 prompt priming",
+    "target": {
+      "production": "decode_batched",
+      "strict": "c1_loop"
+    }
+  },
+  "speed_claim_eligible": false,
+  "status": "functional_exact_default_off"
+}
