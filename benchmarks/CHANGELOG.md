@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-25 SPECDEC2 gfx1151 S5 cost/policy closure; automatic K0] Measured strict R1/R2/R4/R8/R16 and composed R32: R16 target wall **479.945 ms vs two R8 816.891 ms (1.70x)**, so no R32 native bucket is justified without a C8 owner. Complete C1/C2/C4 K1-K3 cells fail the >1.10x true-AR requirement; fingerprinted shape-only policy `sha256:7fef31f…` selects K0 for C1-C32 while explicit K1-K3 remains default-off. `benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json`.
+
 - [2026-08-25 SPECDEC2 gfx1151 S4 closure; functional/default-off] Closed physical C2/C4 K1-K3 with device candidate handoff, one GPU accept/group commit, reject-vs-full neighbor, refill/cancel/compaction, exact completed-snapshot prefix COW with pre-mutation K0, long-context/global-KV pressure rejection and regrow, eager fallback, SSE, profiler engagement, and final drain. **No performance promotion:** true AR remains faster; S5 owns buckets/policy. `benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json`.
 
 - [2026-08-25 SPECDEC2 gfx1151 S4 device-candidate handoff; retained/default-off] Clean strict C2/C4 K1-K3 keeps request-major NextN top-1 IDs on device through packed target staging; 6/6 AR/staged/direct ID gates pass and every staged row reports zero pre-target candidate D2H plus bounded post-target readback. Complete wall versus the host-candidate foundation is neutral (**C2 K2 1.0526→1.0540 s, +0.14%; C4 K2 1.2458→1.2483 s, +0.20%**). Device accept/selected commit remains open. `benchmarks/results/2026-08-25-gfx1151-specdec2-s4-device-candidates.json`.
