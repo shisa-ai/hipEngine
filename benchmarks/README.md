@@ -97,24 +97,17 @@ The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains 
 
 Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with explicit FP32 rollback after the complete packed and serving gates; see the [`retained artifact`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json). The broader default-off review remains in the [`promotion inventory`](results/2026-08-20-valid-faster-default-off-inventory.json).
 
-SPECDEC2 S3 functionally qualifies staged dense MTP2 c1 under strict FP32
-recurrent state. The S4 physical foundation now runs C2/C4, K1-K3, and target R4-
-R16 with exact short-trajectory AR/staged/direct IDs and cached profiler
-engagement under strict manifest `0e053fd6...e2bb65b`. Best warm K2 aggregate
-scales **6.876→9.500→16.053 tok/s** at C1→C2→C4, but C2/C4 complete wall remains
-**21.8%/34.5% slower** than same-cell true AR. Candidate IDs now remain on
-device through packed target execution for all C2/C4 K1-K3 cells; the bounded
-readback moved after target and complete wall is neutral within single-run noise.
-Device accept/selected-state commit still blocks S4 closure, and this fixed-
-prompt diagnostic is not a promotion suite. Production FP16 state selects K0
-and no automatic/default scope changes. [`S3 artifact`](results/2026-08-25-gfx1151-specdec2-s3-c1.json);
-[`S4 physical artifact`](results/2026-08-25-gfx1151-specdec2-s4-physical-c2-c4.json);
-[`device-candidate artifact`](results/2026-08-25-gfx1151-specdec2-s4-device-candidates.json);
-[`S4 closure artifact`](results/2026-08-25-gfx1151-specdec2-s4-closure.json);
-[`S5 cost/policy artifact`](results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json).
-S5 retains no new native bucket: R16 beats two R8 sweeps by **1.70x**, R32 stays
-two R16 diagnostics, and the fingerprinted automatic policy selects K0 for
-C1-C32 because no complete cell clears the >1.10x true-AR gate.
+SPECDEC2 is product-functionally closed on gfx1151 under strict FP32 recurrent
+state, but no performance scope promotes. Explicit C1/C2/C4 K1-K3 is exact and
+default-off through R16; production FP16 state and the fingerprinted automatic
+C1-C32 policy select K0 before mutation. Best short fixed-prompt K2 aggregate
+scales **6.876→9.500→16.053 tok/s** at C1→C2→C4, while C2/C4 complete wall is
+**21.8%/34.5% slower** than same-cell true AR. On the full ten-prompt
+counterbalanced K2 suite, exact C2/C4 MTP wall is **2.121x/2.312x true AR** with
+**49.15%** draft-token acceptance. API/SSE, lifecycle, pressure, recovery,
+110-request soak, and below/near/above automatic-K0 load gates pass exactness and
+drain; all load rows fail only the inherited 0.5-second ITL-p99 SLO. No root
+README export changes. [`S6 closure`](results/2026-08-25-gfx1151-specdec2-s6-product-closure.json).
 
 ## Where detailed evidence lives
 
@@ -197,116 +190,20 @@ scheduling, and same-loaded-server c1 oracles:
 | Aggregate HTTP tok/s | **27.443** | **43.337** | **46.158** | **45.797** | **44.320** |
 | Exact rows | 1/1 | 4/4 | 8/8 | 17/17 | 32/32 |
 
-The canonical load packet passes all nine fixed/ragged/Poisson/cancel/overload/
-recovery/soak workloads with **210/210** correctness-accounted rows, bounded
-`engine_busy` overload, **271/271** admission/reclaim, zero final refs/pins, and
-zero tracked-memory delta. Physical c1/c2/c4/c8 and logical c1-c32 are retained
-for this package. [`Canonical artifact`](results/2026-08-18-concurrency2-c2-6-w7900-canonical-production-accepted.json).
+The canonical W7900 packet retains physical c1/c2/c4/c8 and logical c1-c32:
+all nine fixed/ragged/load/cancel/overload/recovery/soak workloads pass 210/210
+correctness-accounted rows, bounded overload, complete admission/reclaim, and
+zero final ownership or tracked-memory delta. Exact Qwen3.8 physical c1-c8 and
+its planar-Q6 row8 kernel are also retained; detailed rows remain in the
+benchmark changelog and result artifacts.
 
-On Radeon 8060S/gfx1151, Qwen3.8 `Q4_K_S` packed prefill improves exact c17
-streaming from **9.673→10.956 tok/s (+13.27%)** and TTFT p95
-**11.030→9.406 s (-14.72%)**. A subsequent exact fused packed-state transfer
-reduces the marked c17 owner **420.496→410.878 ms (-2.29%)**. Direct canonical
-resident state then reaches **368.413 ms**, c17 **11.271 tok/s**, and ITL p99
-**0.4542 s** (3/3 fixed-SLO passes). The exact row8 Q4 two-wave owner then
-reaches c17 **11.297 tok/s / 0.448 s ITL** and c32 **11.041 tok/s / 0.802 s
-ITL**; c32 live admission overlaps, but c32 fixed SLO remains blocked, so
-gfx1151 canonical production is not yet promoted.
-
-The clean FP16-state hardware-queue core screen completes all 10
-counterbalanced `1,2,4,8,unset` server children without a lockup, surviving KFD
-process, control/route failure, or memory leak. c17 throughput is effectively
-flat (**11.055/11.035/11.004/11.004/10.988 tok/s**, median of two block
-medians). At c32, queue8 beats queue2 in both blocks (**+3.79%/+1.76%**, median
-**+2.78%**) and truly unset in both (**+3.24%/+9.53%**, median **+6.39%**), but
-queue1 versus queue8 crosses by block. Every policy still has zero fixed-SLO
-goodput. This retains queue1/queue8 as finalists; it does not promote a queue
-policy before full-width, arrival/soak, and context/graph sweeps.
-[`Core matrix`](results/2026-08-23-gfx1151-qwen38-hardware-queue-core-matrix.json).
-
-The subsequent 130-row full-width matrix supersedes the core finalist
-interpretation. All five policies remain mechanically stable, but no queue
-count wins generically: queue2 has the highest normalized 13-width throughput;
-queue1/4/8/unset are **0.75%/0.64%/0.50%/0.42% lower**. The core queue8 c32
-win reverses in both full-width blocks (**-3.68%/-6.90% vs queue2**, paired
-median **-5.29%**). All policies pass all six SLO measurements through c7, c8
-is partial, and c9+ has zero SLO-passing runs. This fixed-width packet favors
-queue2 but does not stand alone as policy adjudication.
-[`Full-width matrix`](results/2026-08-24-gfx1151-qwen38-hardware-queue-full-width-matrix.json).
-
-The canonical arrival/stability matrix also finds no queue-stability failure:
-all **10 children / 90 workload executions / 2,100 request records** across
-ragged, fixed/Poisson, disconnect/timeout, overload, recovery, and 60-second
-soak pass exact control/accounting, declared native routes, bounded stream
-queues, memory recovery, drain, and GPU/process health. Every policy completes
-16/rejects 24 overload requests and completes 81-84/rejects 36-39 soak requests
-as bounded `engine_busy`. Static c1/c8 and recovery are SLO-clean; every policy
-fails the heavier workload SLOs. Normalized load throughput versus queue2 is
-q1/q4/q8/unset **-0.57%/+0.47%/-0.67%/-0.09%**; it adds no alternative policy
-winner.
-[`Load stability`](results/2026-08-24-gfx1151-qwen38-hardware-queue-load-stability-matrix.json).
-
-The final context/graph/prefix matrix completes **20/20** children across all
-queue policies. C2 1K/4K/16K is exact/native and SLO-clean; 32K is exact/native
-but exceeds TTFT/E2E SLO for every policy. Context throughput is queue-neutral
-versus queue2 (q1/q4/q8/unset geometric **-0.09%/-0.03%/-0.07%/+0.03%**).
-Every policy completes a 32K pressure source, rejects 4K with exact
-**1166/1166-page** metadata, and captures/replays/invalidates then regrows on a
-changed page table. Active shared-prefix and completed snapshot-hit/explicit
-snapshot-eviction gates pass with zero request/cache refs. C2 64K remains
-blocked and is not claimed.
-[`Context/graph/prefix`](results/2026-08-24-gfx1151-qwen38-hardware-queue-context-graph-prefix-matrix.json).
-
-Joined adjudication retains the existing explicit **queue2** gfx1151 backend
-default. All alternatives are stable, but none has a generic, repeatable,
-SLO-qualified advantage; unset is below queue2 in full-width and load rollups.
-Direct cache-only queue2 and unset profiles each use Queue_Id 1 in their measured
-single-stream scope. The temporary runtime-default suppression/report/matrix
-surfaces are removed; direct numeric user overrides remain.
-[`Policy decision`](results/2026-08-24-gfx1151-qwen38-hardware-queue-policy-decision.json).
-
-Cache-only queue2 owner profiling ranks the next optimization. Synchronized
-c8/c17/c32 marker wall is **138.234/360.999/562.330 ms**; c32 is only **1.69%**
-above four c8 groups, while c17 is **30.59%** above two c8 groups because of its
-native c1 tail. Dense projections own 88-93% of GPU duration. The Q4 qmicro
-dual rowtile8 kernel alone is **63.116/129.569/242.346 ms**, or **43.10%** of
-c32 marker wall. No marked multi-stream overlap or memory-copy trace operations
-appear; Queue_Id 1 is used. Q4 qmicro is the first tuning target.
-[`Owner profile`](results/2026-08-24-gfx1151-qwen38-queue2-c8-c17-c32-owner-profile.json).
-
-The first retained post-profile kernel win is a scoped exact Q5T16 col8
-rowtile. It halves output groups for the three gfx1151 Qwen3.8 Q5 shapes while
-keeping the col4 parent as strict fallback. Q5 marked time improves
-**12.56%/13.05%/11.17%** at c8/c17/c32 and complete marker wall improves
-**1.21%/1.95%/2.23%**. Actual rows8 improves 16.04-16.31% with 93/93 wins and
-BF16-bit parity. Three-repeat serving reaches **11.084/10.696 tok/s** at
-c17/c32, c13 lifecycle and memory close exactly, and c32 product SLO remains a
-separate blocker.
-[`Q5 col8`](results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-retained.json).
-
-Final gfx1151 production closure remains **blocked** at current c32. The
-committed-source/cache-only p128/d8 queue2 row passes production control,
-repeatability, native route, live admission, and memory/lifecycle support, but
-streaming reaches **10.590 tok/s** with **18.617 s TTFT p95**, **2.125 s ITL
-p99**, **24.171 s E2E p95**, and **0/3 SLO runs / 0 goodput**. C2 64K and heavy
-load SLOs also remain blocked. Per protocol, the expensive complete closure
-matrix was not repeated after this failed precondition.
-[`Closure blocker`](results/2026-08-24-gfx1151-qwen38-production-closure-blocked.json).
-[`Campaign final`](results/2026-08-24-gfx1151-qwen38-concurrency2-campaign-final.json).
-
-The separate W7900 Qwen3.8-27B `Q4_K_M` direct graph packet qualifies physical
-`(1,2,3,4,5,6,7,8)`: c1-c8 reaches **30.30/53.79/75.47/93.49/105.67/
-115.30/122.36/127.32 tok/s**, all exact and repeatable. Q5 and planar-Q6 true
-rowtiles own rows 5-8; dynamic compaction, state/KV, graph invalidation, cancel/
-refill, memory recovery, and drain pass. Logical c>8 uses deterministic ceiling
-composition; artifact-backed D2 remains explicit research only.
-[`Width and lifecycle evidence`](results/2026-08-20-concurrency2-qwen38-direct-width-lifecycle.json).
-
-The exact gfx1100 planar-Q6 row8 DPP reduction improves the marked production-
-owner physical-c8 transition **58.693→57.734 ms (-1.634%)** median with identical
-8×32 token IDs, route, graph transport, and drain. This is a steady-transition
-kernel result, not a replacement for the direct-width throughput packet.
-The detailed promotion evidence is retained in the benchmark changelog/artifacts.
+On Radeon 8060S/gfx1151, the final Qwen3.8 `Q4_K_S` package retains queue2,
+exact physical c1-c8/logical c1-c32 mechanics, packed prefill, direct resident
+state, Q4 row8 two-wave, and scoped Q5 col8. The 130-row width, 2,100-request
+load, context/graph/prefix/pressure, and lifecycle packets pass. Product closure
+remains blocked at c32: **10.590 tok/s**, **18.617 s TTFT p95**, **2.125 s ITL
+p99**, **24.171 s E2E p95**, and **0/3 SLO runs**; C2 64K and heavy-load SLOs
+also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen38-concurrency2-campaign-final.json).
 
 ## Current Qwen3.6-35B quantization quality
 

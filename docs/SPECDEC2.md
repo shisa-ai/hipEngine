@@ -714,56 +714,66 @@ functional/default-off. Evidence:
 
 ### S6.1 API and semantics
 
-- [ ] Blocking completion/chat, SSE completion/chat, and multi-prompt children.
-- [ ] Exact committed token accounting per choice and all choices.
-- [ ] Multiple accepted tokens stream once and in order.
-- [ ] EOS/stop token/stop string/output length through cycle tails.
-- [ ] Supported sampling semantics or deterministic K0 fallback before mutation.
-- [ ] Stable direct reason, route, K, C/R, physical bucket, graph, and profile
+- [x] Blocking completion/chat, SSE completion/chat, and multi-prompt children.
+- [x] Exact committed token accounting per choice and all choices.
+- [x] Multiple accepted tokens stream once and in order.
+- [x] EOS/stop token/stop string/output length through cycle tails.
+- [x] Supported sampling semantics or deterministic K0 fallback before mutation.
+- [x] Stable direct reason, route, K, C/R, physical bucket, graph, and profile
       reporting.
-- [ ] Circuit breaker, operator rollback, restart reset, and subsequent health.
+- [x] Circuit breaker, operator rollback, restart reset, and subsequent health.
 
 ### S6.2 Dynamic serving matrix
 
-- [ ] Fixed c1/c2/c4/c8.
-- [ ] Ragged prompt and decode lengths.
-- [ ] Delayed admission and refill.
-- [ ] Mixed AR/K0 and MTP2 requests.
-- [ ] Cancellation/disconnect/deadline with survivor continuation.
-- [ ] Prefix hit/miss/COW/eviction.
-- [ ] KV pressure, retryable rejection, regrow, and graph-pointer invalidation.
-- [ ] Poisson offered load at below/near/above saturation.
-- [ ] Overload and bounded pending/output queues.
-- [ ] Recovery after provider/target/graph/readback failure.
-- [ ] 100+ request alternating/mixed soak and clean shutdown.
-- [ ] Zero final allocations, claims, pages, transactions, collectors, and
+- [x] Fixed c1/c2/c4/c8. Explicit MTP is qualified through C4; C8 is automatic
+      K0 because no physical C8 speculative owner exists.
+- [x] Ragged prompt and decode lengths.
+- [x] Delayed admission and refill.
+- [x] Mixed AR/K0 and MTP2 requests.
+- [x] Cancellation/disconnect/deadline with survivor continuation.
+- [x] Prefix hit/miss/COW/eviction.
+- [x] KV pressure, retryable rejection, regrow, and graph-pointer invalidation.
+- [x] Poisson offered load at below/near/above saturation.
+- [x] Overload and bounded pending/output queues.
+- [x] Recovery after provider/target/graph/readback failure.
+- [x] 100+ request alternating/mixed soak and clean shutdown.
+- [x] Zero final allocations, claims, pages, transactions, collectors, and
       background owners.
 
 ### S6.3 Quality and benchmark packet
 
-- [ ] Full `mtp-bench` code/general_en/general_ja/mixed_ja_en categories.
-- [ ] Category heldouts and applicable long/task fixtures.
-- [ ] True no-MTP AR baseline from the exact same protocol.
-- [ ] Deterministic repeats and batch-composition isolation.
-- [ ] Same-host counterbalanced benchmark with model/quant/KV/profile/command.
-- [ ] Aggregate and per-request tok/s, TTFT/ITL/E2E/queue, SLO-goodput, memory,
+- [x] Full `mtp-bench` code/general_en/general_ja/mixed_ja_en categories.
+- [x] Category heldouts and applicable long/task fixtures.
+- [x] True no-MTP AR baseline from the exact same protocol.
+- [x] Deterministic repeats and batch-composition isolation.
+- [x] Same-host counterbalanced benchmark with model/quant/KV/profile/command.
+- [x] Aggregate and per-request tok/s, TTFT/ITL/E2E/queue, SLO-goodput, memory,
       occupancy, acceptance, K/reason histogram, graph/fallback, and health.
-- [ ] Compact schema-valid result artifact.
-- [ ] `benchmarks/README.md` row/Last-updated and `benchmarks/CHANGELOG.md` entry
+- [x] Compact schema-valid result artifact.
+- [x] `benchmarks/README.md` row/Last-updated and `benchmarks/CHANGELOG.md` entry
       for every retained result.
-- [ ] Public `README.md` export only if a product scope promotes; no campaign
-      diary or internal implementation detail.
+- [x] Public `README.md` export only if a product scope promotes; no scope
+      promoted, so no public export was made.
 
 ### S6.4 Closure verdict
 
-- [ ] List every promoted automatic cell.
-- [ ] List every explicit/default-off functional cell.
-- [ ] List every rejected cell with reason/artifact.
-- [ ] Remove or demote superseded whole-request server routes per `REFACTOR.md`.
-- [ ] Preserve strict oracles/fallbacks required by profile contracts.
-- [ ] Run milestone validation according to `TESTING.md`; use focused repair after
+- [x] List every promoted automatic cell. There are none.
+- [x] List every explicit/default-off functional cell.
+- [x] List every rejected cell with reason/artifact.
+- [x] Remove or demote superseded whole-request server routes per `REFACTOR.md`.
+- [x] Preserve strict oracles/fallbacks required by profile contracts.
+- [x] Run milestone validation according to `TESTING.md`; use focused repair after
       isolated broad-suite failures unless the fix can affect prior passes.
-- [ ] Commit immutable closure worklog and update this punchlist/status.
+- [x] Commit immutable closure worklog and update this punchlist/status.
+
+**Closed 2026-08-25:** gfx1151 SPECDEC2 is product-functionally complete but
+not performance-promoted. Explicit strict C1/C2/C4 K1-K3 passes exact API,
+quality, lifecycle, pressure, recovery, and soak gates and remains default-off.
+The fingerprinted automatic policy selects K0 for C1-C32. Counterbalanced K2
+category wall is 2.121x/2.312x true AR at C2/C4 despite 49.15% draft-token
+acceptance. Automatic below/near/above Poisson rows are exact and drained, but
+all fail only the inherited 0.5-second ITL-p99 SLO. Evidence:
+[`S6 product closure artifact`](../benchmarks/results/2026-08-25-gfx1151-specdec2-s6-product-closure.json).
 
 ## 13. S7 — gfx1100 portability follow-up
 
@@ -902,22 +912,27 @@ Every temporary flag introduced by this campaign must be added to
 
 ## 18. Current handoff
 
-S1-S3 are complete. S4 now has a strict/default-off physical C2/C4 foundation:
-C={2,4}, K={1,2,3}, R through 16, mixed prompt lengths, independent acceptance,
-staggered finish, and late refill execute with shared provider/target backbones
-and exact short-trajectory IDs. Clean commit `174ad16dc` measures best warm K2
-aggregate C1→C2→C4 at 6.876→9.500→16.053 tok/s, but C2/C4 wall is 21.8%/34.5%
-slower than true AR; the fixed-prompt diagnostic is default-off and not a speed
-promotion. Commit `7ac70a39d` subsequently removes pre-target candidate D2H
-for all clean C2/C4 K1-K3 cells with neutral complete wall; see the
-[`device-candidate artifact`](../benchmarks/results/2026-08-25-gfx1151-specdec2-s4-device-candidates.json).
-Cached C4/K3 profiling confirms packed GDN/full-attention engagement.
-S4 is closed by clean strict physical, neighbor, compaction, prefix/COW,
-long-context pressure, eager-fallback, SSE, profiler, and final-ownership gates.
-Closure commits through `d809014cb`; clean C2/K2 and C4/K3 route binds record
-`eager`, and the closure artifact records the full evidence map.
-All physical C2/C4 K1-K3 cells remain explicit/default-off because true AR is
-faster. S5 is closed with no new native bucket and a fingerprinted automatic K0
-policy for C1-C32. S6 product API, dynamic-serving, quality, soak, and closure
-work is next. Production Q4_K_S FP16 state also selects K0 before mutation;
-gfx1100 remains deferred.
+S1-S6 are complete on gfx1151. The retained architecture includes the
+backend-neutral frontier/provider/transaction/policy/scheduler contracts, the
+one-cycle Generation-2 owner, strict C1 and physical C2/C4 proposal/target
+adapters, device candidate/accept/selected commit, deterministic lifecycle and
+failure recovery, API streaming, and a fingerprinted automatic K0 policy.
+Strict C1/C2/C4 K1-K3 is exact and functional/default-off through R16; C8 lacks
+a speculative owner. Production FP16-state and every automatic C1-C32 cell
+select K0 before mutation.
+
+Performance does not justify promotion. Best short fixed-prompt K2 aggregate
+scales 6.876→9.500→16.053 tok/s at C1→C2→C4, but C2/C4 complete wall is
+21.8%/34.5% slower than true AR. The full ten-prompt counterbalanced K2 suite is
+still 2.121x/2.312x true-AR wall at C2/C4, with exact IDs and 49.15% acceptance.
+Automatic K0 below/near/above load reaches 9.552/11.917/12.242 exact generated
+tok/s but fails only ITL p99 (0.781/0.860/0.827 s versus 0.5 s). No product or
+public performance scope promotes.
+
+The next owner starts S7 as an independent gfx1100 lane from this committed S6
+base. Run backend-neutral suites unchanged, resolve gfx1100 capabilities rather
+than copying gfx1151 registrations, and independently requalify strict C1/C2/C4,
+physical R buckets, profiler engagement, quality, lifecycle, memory, load, and
+same-host true-AR economics. Do not transfer gfx1151 absolute rates, policy
+thresholds, or an assumed C8 owner. Start with the S3 C1 adapter and strict
+fallbacks; retain automatic K0 until complete gfx1100 cells pass their own gates.
