@@ -53,6 +53,30 @@ def _physical_staged_row_passes(row: dict[str, Any]) -> bool:
     )
 
 
+def _provider_fingerprint_verdicts(
+    fingerprints: Sequence[dict[str, Any]],
+    *,
+    concurrency: int,
+) -> tuple[bool, bool]:
+    """Return same-slot repeat and diagnostic direct-oracle equality."""
+
+    rows = int(concurrency)
+    if rows <= 0:
+        raise ValueError("provider fingerprint concurrency must be positive")
+    repeat_equal = bool(
+        len(fingerprints) >= 2 * rows
+        and all(fingerprints[index] == fingerprints[rows + index] for index in range(rows))
+    )
+    direct_equal = bool(
+        len(fingerprints) >= 3 * rows
+        and all(
+            fingerprints[rows + index] == fingerprints[2 * rows + index]
+            for index in range(rows)
+        )
+    )
+    return repeat_equal, direct_equal
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     from fastapi.testclient import TestClient
 
@@ -161,29 +185,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         }
         for fingerprint in provider_fingerprints
     ]
-    staged_capture_count = 2 * int(args.concurrency)
-    staged_provider_fingerprints_equal = bool(
-        len(normalized_provider_fingerprints) >= staged_capture_count
-        and len(
-            {
-                json.dumps(fingerprint, sort_keys=True)
-                for fingerprint in normalized_provider_fingerprints[
-                    :staged_capture_count
-                ]
-            }
+    staged_provider_fingerprints_equal, direct_provider_fingerprints_equal = (
+        _provider_fingerprint_verdicts(
+            normalized_provider_fingerprints,
+            concurrency=int(args.concurrency),
         )
-        == 1
-    )
-    direct_provider_fingerprints_equal = bool(
-        len(normalized_provider_fingerprints) >= 3 * int(args.concurrency)
-        and normalized_provider_fingerprints[staged_capture_count]
-        == normalized_provider_fingerprints[staged_capture_count - 1]
     )
     provider_gate_passed = bool(
         not args.provider_fingerprint
         or (
             staged_provider_fingerprints_equal
-            and direct_provider_fingerprints_equal
             and normalized_provider_fingerprints[0]["visible_kv_bytes"] > 0
         )
     )

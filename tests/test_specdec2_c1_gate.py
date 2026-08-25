@@ -6,6 +6,7 @@ from scripts.specdec2_c1_gate import (
     _choice_ids,
     _choice_rows,
     _physical_staged_row_passes,
+    _provider_fingerprint_verdicts,
 )
 
 
@@ -49,3 +50,21 @@ def test_specdec2_physical_gate_requires_device_resident_candidates() -> None:
     assert _physical_staged_row_passes(row)
     row["specdec2_mtp2_candidate_d2h_after_target"] = 3
     assert not _physical_staged_row_passes(row)
+
+
+def test_provider_fingerprint_gate_compares_same_slot_repeats() -> None:
+    slot0 = {"kv": "slot0"}
+    slot1 = {"kv": "slot1"}
+    direct = {"kv": "direct"}
+
+    repeat_equal, direct_equal = _provider_fingerprint_verdicts(
+        (slot0, slot1, slot0.copy(), slot1.copy(), direct, direct.copy()),
+        concurrency=2,
+    )
+
+    assert repeat_equal
+    assert not direct_equal
+    assert _provider_fingerprint_verdicts(
+        (slot0, slot1, slot0.copy(), slot1.copy(), slot0.copy(), slot1.copy()),
+        concurrency=2,
+    ) == (True, True)
