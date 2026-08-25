@@ -107,6 +107,14 @@ def test_resident_runner_delegates_staged_methods_without_backend_branches() -> 
     assert runner.speculative_kv_live_spans_owner(SimpleNamespace(operation_id="op"))
 
 
+def test_physical_specdec2_uses_qualified_eager_when_graph_is_uncached() -> None:
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._mtp2_adapter = SimpleNamespace()
+    runner._mtp2_adapter_resolved = True
+
+    assert runner.speculative_graph_available(object()) is False
+
+
 def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
     target = SimpleNamespace(
         target_layout=SimpleNamespace(max_sequence_length=4096),

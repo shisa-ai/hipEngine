@@ -183,6 +183,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 == int(row["specdec2_mtp2_target_batch_calls"])
                 and int(row["specdec2_mtp2_selected_commit_batch_calls"])
                 == int(row["specdec2_mtp2_target_batch_calls"])
+                and row["specdec2_mtp2_execution_routes"]
+                == ["eager"] * int(row["specdec2_mtp2_target_batch_calls"])
                 for row in staged_rows[-int(args.concurrency) :]
             )
         )
