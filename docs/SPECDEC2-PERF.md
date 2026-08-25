@@ -771,19 +771,19 @@ Durable handoff: P5.1-P5.3. Stable-GPU cost: approximately 15-45 minutes after c
 
 ### P5.1 Required profiles
 
-- [ ] Mark complete R6 (C2/K2), R8 (C2/K3 or C4/K1), R12 (C4/K2), and R16
+- [x] Mark complete R6 (C2/K2), R8 (C2/K3 or C4/K1), R12 (C4/K2), and R16
       (C4/K3) target windows.
-- [ ] Capture kernel, HIP API, memory-copy, and marker traces from final cached
+- [x] Capture kernel, HIP API, memory-copy, and marker traces from final cached
       children.
-- [ ] Attribute exact Q4_K_S projection weights/shapes/row routes rather than
+- [x] Attribute exact Q4_K_S projection weights/shapes/row routes rather than
       grouping all GEMV by symbol alone.
-- [ ] Separate dense projection, Conv/GDN provisional state, attention/KV,
+- [x] Separate dense projection, Conv/GDN provisional state, attention/KV,
       LM-head/top-1, accept, selected commit, and other.
-- [ ] Record call counts, interval union, queue gaps, workgroup/grid, VGPR/SGPR,
+- [x] Record call counts, interval union, queue gaps, workgroup/grid, VGPR/SGPR,
       LDS, scratch, and bytes where known.
-- [ ] Compare target marker, kernel family sum, and complete cycle; do not infer
+- [x] Compare target marker, kernel family sum, and complete cycle; do not infer
       savings from launch count or kernel sum alone.
-- [ ] Reconcile R16 versus two R8 under the current post-P4 path.
+- [x] Reconcile R16 versus two R8 under the current post-P4 path.
 
 ### P5.2 Candidate ladder
 
@@ -800,13 +800,15 @@ attention tiny and packed GDN modest; the complete profile decides.
 
 ### P5.3 Admission
 
-- [ ] Admit at most one candidate meeting the general admission gate.
-- [ ] Record expected operation-complete and projected request saving.
-- [ ] Name RED oracle, strict fallback, exact C/K/R/context/profile scope, and
+- [x] Admit at most one candidate meeting the general admission gate.
+- [x] Record expected operation-complete and projected request saving.
+- [x] Name RED oracle, strict fallback, exact C/K/R/context/profile scope, and
       profiler kernel expected.
-- [ ] If none qualifies, publish a no-go artifact and skip P6 runtime code.
-- [ ] Update `KERNELS.md`/lineage only if dispatch/kernel ownership changes.
-- [ ] Commit profile/admission decision before implementation.
+- [x] If none qualifies, publish a no-go artifact and skip P6 runtime code.
+      Not applicable: one existing-route candidate qualifies.
+- [x] Update `KERNELS.md`/lineage only if dispatch/kernel ownership changes.
+      No kernel body/lineage changes in P5; P6 owns any scoped dispatch update.
+- [x] Commit profile/admission decision before implementation.
 
 ## 15. P6 — one physical target optimization
 
