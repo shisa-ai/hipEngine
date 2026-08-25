@@ -4,6 +4,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -78,6 +79,42 @@ def test_load_prompt_suite_preserves_legacy_json(tmp_path: Path) -> None:
     assert suite["source"] == "legacy"
     assert suite["source_format"] == "json"
     assert suite["prompts"] == [{"name": "one", "prompt": "Hello"}]
+
+
+def test_economics_command_forwards_registered_execution_profile(tmp_path: Path) -> None:
+    tool = _load_tool()
+    args = SimpleNamespace(
+        model=tmp_path / "model",
+        decode_tokens=24,
+        runs=3,
+        proposal_impl="persistent_device",
+        backend="hip_gfx1100",
+        hip_arch="gfx1100",
+        execution_profile="production",
+        chain_attn_mode="decode_batched",
+        graph_mode="off",
+        small_batch_decode_threshold=7,
+        active_budget_cap=0,
+        verify_gpu_accept=None,
+        acceptance_diagnostics=True,
+        confidence_threshold=0.0,
+        ar_fallback_zero_streak=0,
+        ar_fallback_tokens=1,
+        ar_fallback_until_end=False,
+        llama_target_cycle_cost=2.0,
+        candidate_budgets="1",
+        prompt_budget_map_resolved={},
+    )
+
+    command = tool._economics_command(
+        args,
+        prompt_name="code_merge_intervals",
+        prompt_tokens_file=tmp_path / "tokens.txt",
+        prompt_raw_root=tmp_path / "raw",
+        out_path=tmp_path / "economics.json",
+    )
+
+    assert command[command.index("--execution-profile") + 1] == "production"
 
 
 def test_load_prompt_suite_rejects_non_user_jsonl_messages(tmp_path: Path) -> None:
