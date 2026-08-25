@@ -35,7 +35,6 @@ from hipengine.runtime.qwen35_gguf_mtp import (
 )
 from hipengine.runtime.qwen35_gguf_nextn import (
     Qwen35GGUFNextNBatchDeviceProposal,
-    Qwen35GGUFNextNDeviceProposal,
 )
 from hipengine.speculative.frontier import (
     CandidateGraph,
@@ -107,9 +106,7 @@ class _MTP2RequestState:
     last_proposal_seconds: float = 0.0
     proposal_checkpoint: Any | None = None
     proposal_context: MtpProposalContext | None = None
-    proposal_device_batch: (
-        Qwen35GGUFNextNBatchDeviceProposal | Qwen35GGUFNextNDeviceProposal | None
-    ) = None
+    proposal_device_batch: Qwen35GGUFNextNBatchDeviceProposal | None = None
 
 
 class Qwen35GGUFMTP2Adapter:
@@ -740,41 +737,6 @@ class Qwen35GGUFMTP2Adapter:
         else:
             self._open_batch_requests(ids)
 
-    @staticmethod
-    def _propose_c1(
-        state: _MTP2RequestState,
-        context: MtpProposalContext,
-        *,
-        candidate_budget: int,
-        remaining_decode: int,
-    ) -> tuple[Any, Qwen35GGUFNextNDeviceProposal | None]:
-        ready = bool(
-            state.verifier is not None
-            and state.verifier.device_proposal_ready(
-                int(candidate_budget),
-                remaining_decode=int(remaining_decode),
-            )
-        )
-        device_draft = (
-            state.provider.launch_device_proposal(
-                context,
-                candidate_budget=int(candidate_budget),
-            )
-            if ready
-            else None
-        )
-        if isinstance(device_draft, Qwen35GGUFNextNDeviceProposal):
-            return state.provider.placeholder_device_proposal(device_draft), device_draft
-        return (
-            state.provider.propose(
-                context,
-                candidate_budget=int(candidate_budget),
-                return_logits=False,
-                allow_graph=ready,
-            ),
-            None,
-        )
-
     def propose_batch(
         self,
         plan: SpecRequestPlan,
@@ -796,7 +758,6 @@ class Qwen35GGUFMTP2Adapter:
             raise RuntimeError("GGUF MTP2 row has no committed root token")
         counts_by_id = dict(zip(plan.request_ids, plan.candidate_counts, strict=True))
         budgets = tuple(int(counts_by_id[request_id]) for request_id in ids)
-        semantics_by_id = {item.request_id: item for item in request_semantics}
         hidden_size = int(states[0].provider.executor.hidden_size)
         hidden_batch, _repair_hidden = self._cycle_hidden_tensors(
             targets[0].runtime,
@@ -839,16 +800,12 @@ class Qwen35GGUFMTP2Adapter:
             proposal_started = time.perf_counter()
             device_draft = None
             if len(ids) == 1:
-                state = states[0]
-                semantic = semantics_by_id[ids[0]]
-                draft, device_draft = self._propose_c1(
-                    state,
+                draft = states[0].provider.propose(
                     context,
                     candidate_budget=budgets[0],
-                    remaining_decode=int(semantic.remaining_decode),
+                    return_logits=False,
+                    allow_graph=False,
                 )
-                if isinstance(device_draft, Qwen35GGUFNextNDeviceProposal):
-                    rows[0].mtp2_candidate_device_handoffs += 1
             else:
                 draft = None
                 device_draft = states[0].provider.propose_batch_device(
@@ -881,7 +838,7 @@ class Qwen35GGUFMTP2Adapter:
                 state.provider.executor.restore_request_checkpoint(checkpoint)
                 state.provider.executor.release_request_checkpoint(checkpoint)
             raise
-        if not isinstance(device_draft, Qwen35GGUFNextNBatchDeviceProposal):
+        if device_draft is None:
             assert draft is not None
             enabled = draft.active_mask or (True,) * draft.draft_rows
             active_indices = tuple(
@@ -898,14 +855,7 @@ class Qwen35GGUFMTP2Adapter:
             )
             candidate_token_ids = None
             draft_mode = draft.mode
-            draft_metadata = (
-                (
-                    ("candidate_handoff", "device_event"),
-                    ("candidate_rows", int(device_draft.budget)),
-                )
-                if isinstance(device_draft, Qwen35GGUFNextNDeviceProposal)
-                else draft.provider_metadata
-            )
+            draft_metadata = draft.provider_metadata
         else:
             candidate_tokens = ()
             draft_depths = tuple(
@@ -941,6 +891,7 @@ class Qwen35GGUFMTP2Adapter:
         offsets = [0]
         for count in counts:
             offsets.append(offsets[-1] + count)
+        semantics_by_id = {item.request_id: item for item in request_semantics}
         return CandidateGraph(
             provider_key=str(plan.provider_key),
             method_key="mtp2",
@@ -964,32 +915,6 @@ class Qwen35GGUFMTP2Adapter:
             mode=draft_mode,
             provider_metadata=draft_metadata,
         )
-
-    @staticmethod
-    def _finish_c1_device_proposal(
-        state: _MTP2RequestState,
-        prepared: Any,
-        row: Any,
-    ) -> None:
-        proposal = state.proposal_device_batch
-        if not isinstance(proposal, Qwen35GGUFNextNDeviceProposal):
-            return
-        if not bool(prepared.native_proposal_target_chained):
-            raise RuntimeError("C1 device proposal was not retired by the target graph")
-        token_ids = tuple(
-            int(prepared.batch.tokens[index])
-            for index in prepared.batch.candidate_rows
-        )
-        if len(token_ids) != int(proposal.budget):
-            raise RuntimeError("target-retired C1 proposal omitted a candidate row")
-        state.provider.finish_device_proposal(
-            proposal,
-            token_ids=token_ids,
-            top1_values=tuple(
-                float(value) for value in prepared.device_proposal_top1_values
-            ),
-        )
-        row.mtp2_candidate_d2h_after_target += len(token_ids)
 
     def execute_target_frontier(
         self,
@@ -1092,16 +1017,7 @@ class Qwen35GGUFMTP2Adapter:
                 graph_bucket=bucket,
                 remaining_decode=(remaining,),
                 return_logits=False,
-                device_proposal=(
-                    state.proposal_device_batch
-                    if isinstance(
-                        state.proposal_device_batch,
-                        Qwen35GGUFNextNDeviceProposal,
-                    )
-                    else None
-                ),
             )
-            self._finish_c1_device_proposal(state, prepared, row)
             target_seconds = time.perf_counter() - target_started
             cancelled = tuple(int(value) for value in cancelled_request_ids())
             if cancelled:
@@ -1882,20 +1798,10 @@ class Qwen35GGUFMTP2Adapter:
                 proposal_row.hidden,
             )
 
-    @staticmethod
-    def _retire_c1_device_proposal(state: _MTP2RequestState) -> None:
-        proposal = state.proposal_device_batch
-        if not isinstance(proposal, Qwen35GGUFNextNDeviceProposal):
-            return
-        runtime = state.provider.executor.runtime
-        runtime.stream_wait_event(0, int(proposal.completion_event))
-        runtime.stream_synchronize(0)
-
     def _restore_provider_checkpoint(self, state: _MTP2RequestState) -> None:
         checkpoint = state.proposal_checkpoint
         if checkpoint is None:
             return
-        self._retire_c1_device_proposal(state)
         try:
             state.provider.executor.restore_request_checkpoint(checkpoint)
         finally:

@@ -473,9 +473,11 @@ first use remains P4. No product cell promotes; both automatic policies remain K
       packed target lowering; gfx1100 package capability remains false.
 - [ ] Adapt budget-specific C1 N3P proposal ownership to one bounded staged cycle
       rather than calling `provider.propose(..., allow_graph=False)` and
-      materializing host candidates.
+      materializing host candidates.  The first cached-device adapter is rejected:
+      clean K1 failed following-AR state safety on one heldout prompt.
 - [ ] Keep C1 candidates on device into the existing target/accept/selected
-      commit owner and remove intermediate reconstruction/D2H.
+      commit owner and remove intermediate reconstruction/D2H. Reopen only with
+      a focused state/KV fixture and full clean exact gate.
 - [ ] Preserve canonical checkpoint/repair fingerprints for reject/every
       partial/full acceptance.
 
