@@ -382,6 +382,10 @@ GGUF_Q6_LM_HEAD_MAX_CHUNK = 6
 # layer hidden versus independent c1, with resolution provenance recorded.
 # Promoted 2026-08-20 after direct c3/c5/c6/c7 lifecycle certification (#36).
 GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
+# SPECDEC2 S7 exposes only the independently-qualified dense GGUF C1 adapter on
+# gfx1100. Physical C2/C4 remains absent until its own frontier/economics gate.
+GGUF_SPECDEC2_MTP2_C1 = True
+GGUF_SPECDEC2_MTP2_C4 = False
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X
 # selected-dual Q4T16 prefill after the predeclared borderline-decode repeat.
 GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
@@ -870,6 +874,8 @@ __all__ = [
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
+    "GGUF_SPECDEC2_MTP2_C1",
+    "GGUF_SPECDEC2_MTP2_C4",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
     "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",

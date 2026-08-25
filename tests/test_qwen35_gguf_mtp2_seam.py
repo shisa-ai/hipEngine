@@ -65,7 +65,7 @@ class _AdapterDouble:
         self.calls.append(("rollback", args))
 
 
-def test_gfx1151_package_exposes_c1_and_physical_c4_adapter_scopes() -> None:
+def test_backend_packages_expose_independently_qualified_adapter_scopes() -> None:
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_SPECDEC2_MTP2_C1", False
     ) is True
@@ -74,7 +74,7 @@ def test_gfx1151_package_exposes_c1_and_physical_c4_adapter_scopes() -> None:
     ) is True
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_C1", False
-    ) is False
+    ) is True
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_C4", False
     ) is False
