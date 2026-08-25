@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 from types import SimpleNamespace
 
 import numpy as np
@@ -15,10 +16,17 @@ from hipengine.generation.qwen35_gguf_mtp2 import (
     _MTP2RequestState,
 )
 from hipengine.kernels.backends import backend_package_capability
+from hipengine.runtime import qwen35_gguf_runner as runner_mod
 from hipengine.runtime.qwen35_gguf_nextn import (
     Qwen35GGUFNextNBatchDeviceProposal,
 )
-from hipengine.speculative import MtpProposalContext, SpeculativeRequestSemantics
+from hipengine.speculative import (
+    DraftBatch,
+    MtpProposalContext,
+    SpeculativeRequestSemantics,
+    TargetVerifyBatch,
+    TargetVerifyBuffers,
+)
 
 
 class _AdapterDouble:
@@ -262,6 +270,222 @@ def test_physical_adapter_returns_device_candidate_graph_before_target(
         state.proposal_device_batch is device_draft
         for state in adapter._states.values()
     )
+
+
+def test_physical_adapter_emits_one_gpu_accept_payload_for_the_group(
+    monkeypatch,
+) -> None:
+    draft = DraftBatch(
+        request_ids=(10, 20),
+        candidate_tokens=(101, 201),
+        parent_positions=(5, 8),
+        draft_depths=(1, 1),
+        row_to_request=(10, 20),
+        tree_parents=(-1, -1),
+        active_mask=(True, True),
+    )
+    batch = TargetVerifyBatch.from_draft(
+        draft,
+        root_tokens=(100, 200),
+        root_positions=(5, 8),
+    )
+    target_top1 = (101, 999, 303, 404)
+    remaining = (3, 3)
+    expected_accept = batch.accept_from_top1(
+        target_top1,
+        transaction_id=7,
+        remaining_decode=remaining,
+    )
+    expected = mtp2_module.TargetAcceptSummary.from_accept_result(
+        batch,
+        expected_accept,
+    )
+    payload_host = np.asarray(
+        [
+            [
+                expected.accepted_counts[index],
+                expected.commit_rows[index],
+                expected.commit_tokens[index],
+                expected.commit_positions[index],
+                -1 if expected.next_tokens[index] is None else expected.next_tokens[index],
+                int(expected.full_accept[index]),
+                expected.accepted_counts[index] + 1,
+            ]
+            for index in range(2)
+        ],
+        dtype=np.int32,
+    )
+    pointer = iter(range(0x1000, 0x3000, 0x100))
+
+    def tensor(shape, dtype=DType.INT32):
+        return Tensor.from_handle(next(pointer), shape, dtype, Device("hip", 0))
+
+    buffers = TargetVerifyBuffers.for_batch(
+        batch,
+        token_ids=tensor((4,)),
+        positions=tensor((4,)),
+        parent_rows=tensor((4,)),
+        draft_depths=tensor((4,)),
+        row_to_request=tensor((4,)),
+        active_mask=tensor((4,), DType.BOOL),
+        target_top1=tensor((4,)),
+        accepted_counts=tensor((2,)),
+        commit_rows=tensor((2,)),
+        commit_tokens=tensor((2,)),
+        commit_positions=tensor((2,)),
+        next_tokens=tensor((2,)),
+        full_accept=tensor((2,), DType.BOOL),
+        committed_output_ids=tensor((2, 4)),
+        committed_output_lengths=tensor((2,)),
+        transaction_id=7,
+    )
+    owner = SimpleNamespace(bind=lambda bound, transaction_id: buffers)
+    remaining_tensor = tensor((4,))
+    payload_tensor = tensor((4, 7))
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.generator = SimpleNamespace(
+        backend="hip_gfx1151",
+        compiler_version=None,
+        require_cached_build=True,
+    )
+    adapter._batch_accept_library = object()
+    adapter._batch_accept_resources = lambda runtime: (
+        owner,
+        remaining_tensor,
+        payload_tensor,
+    )
+    adapter._upload_accept_array = lambda tensor, values, runtime: None
+    calls = []
+    monkeypatch.setattr(
+        mtp2_module,
+        "dflash_accept_chain_i32_packed",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        mtp2_module,
+        "copy_device_to_host",
+        lambda destination, source, nbytes, *, runtime: ctypes.memmove(
+            destination,
+            payload_host.ctypes.data,
+            nbytes,
+        ),
+    )
+    runtime = SimpleNamespace(device_synchronize=lambda: calls.append(("sync",)))
+
+    summary, actual_buffers = adapter._accept_target_batch_on_device(
+        batch,
+        target_top1,
+        remaining,
+        transaction_id=7,
+        runtime=runtime,
+    )
+
+    assert actual_buffers is buffers
+    assert summary.accepted_counts == (1, 0)
+    assert summary.accepted_tokens == ((101,), ())
+    assert summary.commit_rows == expected.commit_rows
+    assert summary.next_tokens == expected.next_tokens
+    assert len([call for call in calls if call != ("sync",)]) == 1
+
+
+def test_packed_owner_commits_selected_linear_rows_once_for_the_group(
+    monkeypatch,
+) -> None:
+    class Buffer:
+        def __init__(self, ptr, nbytes):
+            self.ptr = int(ptr)
+            self.nbytes = int(nbytes)
+
+    class PackedState:
+        pass
+
+    monkeypatch.setattr(runner_mod, "_GGUFPackedTargetState", PackedState)
+    monkeypatch.setattr(runner_mod, "set_decode_position_i64", lambda *args, **kwargs: None)
+    copies = []
+    runtime = SimpleNamespace(memcpy_async=lambda *args: None)
+    owner = object.__new__(runner_mod.Qwen35GGUFResidentSession)
+    weights = SimpleNamespace(
+        config=SimpleNamespace(layer_types=(runner_mod.LINEAR_ATTENTION,))
+    )
+    owner.runner = SimpleNamespace(weights=weights, hidden_size=2)
+    owner.runtime = runtime
+    owner._verify_hidden_seed_buf = Buffer(0x1000, 6 * 8)
+    owner._packed_verify_max_written_positions = (0, 0)
+    owner._verify_linear_state_row_pair = lambda layer_id: (
+        Buffer(0x2000, 6 * 16),
+        Buffer(0x3000, 6 * 32),
+    )
+    owner._fused_linear_state_pair_copy = lambda entries, **kwargs: (
+        copies.extend(entries) or True
+    )
+    sessions = []
+    for index in range(2):
+        session = SimpleNamespace(
+            runner=owner.runner,
+            scratch=SimpleNamespace(
+                hidden_seed_fp32=Buffer(0x4000 + index * 0x100, 8),
+                layer_conv_states=(Buffer(0x5000 + index * 0x100, 16),),
+                layer_recurrent_states=(Buffer(0x6000 + index * 0x100, 32),),
+                position_host=np.asarray([0], dtype=np.int64),
+                context_host=np.asarray([1], dtype=np.int64),
+                position_buf=Buffer(0x7000 + index * 0x100, 8),
+                context_buf=Buffer(0x8000 + index * 0x100, 8),
+            ),
+            _runtime_state_library=object(),
+            _verify_hidden_seed_buf=None,
+            _ensure_verify_block_buffers=lambda rows, runtime, session_index=index: None,
+            _verify_hidden_seed_rows_populated=0,
+            _hidden_seed_fp32_populated=False,
+            _position=0,
+        )
+        session._verify_hidden_seed_buf = Buffer(0x9000 + index * 0x100, 3 * 8)
+        sessions.append(session)
+    packed = PackedState()
+    results = (
+        SimpleNamespace(
+            token_ids=[1, 2, 3],
+            deferred_packed_state=SimpleNamespace(
+                owner=owner,
+                packed_state=packed,
+                row_start=0,
+                row_end=3,
+                slot_index=0,
+                start_position=5,
+            ),
+        ),
+        SimpleNamespace(
+            token_ids=[4, 5, 6],
+            deferred_packed_state=SimpleNamespace(
+                owner=owner,
+                packed_state=packed,
+                row_start=3,
+                row_end=6,
+                slot_index=1,
+                start_position=8,
+            ),
+        ),
+    )
+    accept_buffers = SimpleNamespace(
+        accepted_counts=Tensor.from_handle(
+            0xA000, (2,), DType.INT32, Device("hip", 0)
+        )
+    )
+
+    contract = owner._commit_deferred_packed_verify_states_batch(
+        results,
+        sessions,
+        accepted_counts=(2, 0),
+        accept_buffers=accept_buffers,
+    )
+
+    assert contract["requests"] == 2
+    assert contract["fused_linear_state_commit"] is True
+    assert len(copies) == 2
+    assert copies[0][0] == 0x2000 + 2 * 16
+    assert copies[0][2] == 0x3000 + 2 * 32
+    assert copies[1][0] == 0x2000 + 3 * 16
+    assert copies[1][2] == 0x3000 + 3 * 32
+    assert [session._position for session in sessions] == [8, 9]
 
 
 @pytest.mark.parametrize(
