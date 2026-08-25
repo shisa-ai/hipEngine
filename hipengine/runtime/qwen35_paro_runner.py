@@ -4079,14 +4079,22 @@ class Qwen35ParoResidentSession:
         self._verify_linear_scratch_cache.clear()
         self._verify_mlp_scratch_cache.clear()
 
-    def prepare_specdec2_verify_scratch(self, *, rows: int) -> None:
-        """Reserve fixed-address linear/MoE verifier scratch before mutation."""
+    def prepare_specdec2_verify_scratch(
+        self,
+        *,
+        rows: int,
+        chain_attn_mode: str,
+    ) -> None:
+        """Reserve fixed-address C1 verifier scratch before mutation."""
 
         count = int(rows)
+        mode = str(chain_attn_mode)
         if self.closed:
             raise RuntimeError("session is closed")
         if count <= 1 or count > self.max_batch_size:
             raise ValueError("SPECDEC2 verifier rows must be in (1, max_batch_size]")
+        if mode not in {"c1_loop", "decode_batched"}:
+            raise ValueError("SPECDEC2 C1 chain attention mode is unsupported")
         for layer_id, state in enumerate(self.states):
             if self.config.layer_types[layer_id] != "linear_attention":
                 continue
@@ -4100,6 +4108,9 @@ class Qwen35ParoResidentSession:
                 state,
                 rows=count,
             )
+        if mode == "decode_batched":
+            self._ensure_full_prefill_scratch(tokens=count)
+            self._ensure_moe_c1_prefill_scratch(tokens=count)
 
     def _verify_scratch_generation_stamp_enabled(self) -> bool:
         return _env_flag("HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP", True)

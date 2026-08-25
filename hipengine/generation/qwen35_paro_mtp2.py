@@ -212,7 +212,15 @@ class Qwen35ParoMTP2Adapter:
         session = self.owner._session
         if session is None:
             raise RuntimeError("PARO MTP2 target session is unavailable after prefill")
-        session.prepare_specdec2_verify_scratch(rows=2)
+        session.prepare_specdec2_verify_scratch(
+            rows=2,
+            chain_attn_mode=(
+                "c1_loop"
+                if str(getattr(self.generator, "execution_profile", "production"))
+                == "strict"
+                else "decode_batched"
+            ),
+        )
         self.owner._release_mtp2_prompt_capture(row)
 
     def capability(

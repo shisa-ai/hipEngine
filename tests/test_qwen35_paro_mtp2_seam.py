@@ -366,7 +366,9 @@ def test_prefill_completion_reserves_c1_verify_scratch_before_first_cycle() -> N
         generator=SimpleNamespace(backend="hip_gfx1100"),
         _row=lambda request_id: row,
         _session=SimpleNamespace(
-            prepare_specdec2_verify_scratch=lambda *, rows: calls.append(("reserve", rows))
+            prepare_specdec2_verify_scratch=lambda *, rows, chain_attn_mode: calls.append(
+                ("reserve", rows, chain_attn_mode)
+            )
         ),
         _release_mtp2_prompt_capture=lambda selected: calls.append(("release", selected)),
     )
@@ -379,7 +381,11 @@ def test_prefill_completion_reserves_c1_verify_scratch_before_first_cycle() -> N
 
     adapter.observe_prefill_result(7)
 
-    assert calls == [("reserve", 2), ("release", row)]
+    assert calls == [("reserve", 2, "decode_batched"), ("release", row)]
+
+    owner.generator.execution_profile = "strict"
+    adapter.observe_prefill_result(7)
+    assert calls[-2:] == [("reserve", 2, "c1_loop"), ("release", row)]
 
 
 def test_initial_root_k0_keeps_primed_provider_live() -> None:
