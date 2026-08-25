@@ -101,10 +101,13 @@ The exact `Q4_K_M` W8192 DMS sidecar passes 32K/128K at 100% top-1, saves
 3.750 GiB live K/V at 128K, and matches dense c1 decode. It stays default-off
 pending serving gates. [`DMS status`](../docs/DMS.md).
 
-SPECDEC2 is closed on gfx1151 with no promoted scope.
-Explicit C1/C2/C4 K1-K3 stays default-off; automatic C1-C32 selects K0. Full
-gates are exact, but C2/C4 K2 wall is **2.121x/2.312x true AR** at **49.15%**
-acceptance and automatic load misses ITL-p99. [`S6 closure`](../docs/SPECDEC2.md#12-s6-gfx1151-product-closure).
+SPECDEC2-PERF P1 rebaselines current gfx1151 source with common complete/decode
+timing. Strict C1 K1/K2/K3 is exact at **1.138x/1.300x/1.273x true AR**;
+K2 is positive in every category and becomes the retained performance premise.
+Physical C2/C4 K2 remains blocked at **2.786x/3.142x true-AR wall** with only
+**18.43%** draft acceptance versus **90.42%** at C1/K2, requiring
+**67.37%/71.07%** total-wall reduction to reach 1.10x. Automatic policy remains
+K0; no product scope promotes. [`P1 evidence`](results/2026-08-25-gfx1151-specdec2-perf-p1-bridge.json).
 
 gfx1100 S7 now retains two exact C1 foundations, both automatic K0: dense
 Qwen3.6-27B GGUF K1-K3 staged IDs match true AR/direct control, while packed
@@ -151,6 +154,7 @@ tok/s · **Mem** = tracked/HIP/GTT memory usage · **Conc** = per-concurrency
 | `gguf_mtp_category_bench.py` | MTP category matrix over budgets 1..8 with guarded objective extraction; attach a true-AR baseline for ratios | | ✓ | | ✓ | | | `--budgets 1,3,5 --objective-budget b5` |
 | `gguf_mtp_long_context_gate.py` | Eager-native MTP correctness vs serial-exact teacher across context/page/budget/acceptance boundaries; optional real host-proposal AR-ID gate (no speed claim) | ✓ | ✓ | | | | | `--cycle-ends 1016-1032,4K --candidate-budgets 1,2,3 --fail-on-fail` |
 | `gguf_ar_mtp_suite.py` | One-command AR-vs-MTP decode ratio over the category suite under one enforced decode config | ✓ | ✓ | | ✓ | | | `--scope partial --output <json>` |
+| `specdec2_perf_bridge.py` | Current-source Generation-2 true AR vs staged SPECDEC2 plus C1 direct control; complete/decode timing, ownership stages, physical C/K, exact IDs, and ROCTX leaf mode | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | `--backend hip_gfx1151 --concurrency 1 --budgets 1,2,3 ...` then separate `--concurrency 2,4 --budgets 2 ...` |
 | `qwen35_batch_retained_bench.py` | **PARO-path** compact c>N batch decode; aggregate + per-request tok/s, equality vs c1, optional MTP draft depth | ✓ | ✓ | | ✓ | ✓ | ✓ | `--batch-size 8 --decode-tokens 128` |
 | `qwen35_batch_gguf_diagnostic.py` | GGUF c>N generated-token **correctness** equality vs independent c1 (no throughput claim) | ✓ | | | | | ✓ | `--rows 8 --execute` |
 | `server_f1_concurrency_bench.py` | Matched gfx1151 F1 HTTP concurrency through c32; profile-aware throughput, SLOs, routes, control, and memory | ✓ | | | ✓ | ✓ | ✓ | `--engine hipengine --model <model> --concurrencies 1,2,4,8,17,32` |
