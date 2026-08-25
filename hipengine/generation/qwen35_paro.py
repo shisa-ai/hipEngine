@@ -2199,6 +2199,7 @@ class _ParoResidentLoopRow:
     mtp2_candidate_counts: list[int] = field(default_factory=list)
     mtp2_accepted_counts: list[int] = field(default_factory=list)
     mtp2_execution_routes: list[str] = field(default_factory=list)
+    mtp2_provider_open_ms: float = 0.0
     mtp2_prompt_prime_ms: float = 0.0
 
 
@@ -3282,6 +3283,9 @@ class Qwen35ParoResidentModelRunner:
             "request_total_ms": (time.perf_counter() - row.submitted_at) * 1000.0,
         }
         if row.mtp2_candidate_budget > 0:
+            timing["specdec2_mtp2_provider_open_ms"] = float(
+                row.mtp2_provider_open_ms
+            )
             timing["specdec2_mtp2_prompt_prime_ms"] = float(
                 row.mtp2_prompt_prime_ms
             )
@@ -3360,6 +3364,7 @@ class Qwen35ParoResidentModelRunner:
             "specdec2_mtp2_candidate_counts": list(row.mtp2_candidate_counts),
             "specdec2_mtp2_accepted_counts": list(row.mtp2_accepted_counts),
             "specdec2_mtp2_execution_routes": list(row.mtp2_execution_routes),
+            "specdec2_mtp2_provider_open_ms": float(row.mtp2_provider_open_ms),
             "specdec2_mtp2_prompt_prime_ms": float(row.mtp2_prompt_prime_ms),
             "scheduler_chunks": copy.deepcopy(row.scheduler_chunks),
         }

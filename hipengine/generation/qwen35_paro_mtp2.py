@@ -88,6 +88,7 @@ class Qwen35ParoMTP2Adapter:
         session = self.owner._session
         if session is None:
             raise RuntimeError("PARO MTP2 target session is unavailable")
+        started = time.perf_counter()
         required_tokens = len(row.prompt_ids) + 2 * int(row.request.max_tokens) + 8
         proposer = None
         while self._proposer_pool:
@@ -122,6 +123,7 @@ class Qwen35ParoMTP2Adapter:
             self._proposer_builds += 1
         proposer.reset()
         self._states[rid] = _ParoMTP2RequestState(rid, proposer)
+        row.mtp2_provider_open_ms += (time.perf_counter() - started) * 1000.0
 
     def consume_prompt_row(
         self,
