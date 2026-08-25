@@ -731,6 +731,17 @@ def test_rf2_context_bucket_selection_is_power_of_two_and_capability_bounded(
     assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) is None
 
 
+def test_gfx1100_target_graph_fails_closed_above_local_context_gate() -> None:
+    session = SimpleNamespace(
+        position=124,
+        backend="hip_gfx1100",
+        scratch=SimpleNamespace(max_positions=1024, block_size=256),
+    )
+
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=3) == 1023
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) is None
+
+
 def test_rf2_context_bucket_respects_split_kernel_family_boundary(monkeypatch) -> None:
     from hipengine.runtime import qwen35_gguf_runner as runner_module
 

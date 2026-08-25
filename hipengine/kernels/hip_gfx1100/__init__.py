@@ -386,6 +386,10 @@ GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
 # gfx1100. Physical C2/C4 remains absent until its own frontier/economics gate.
 GGUF_SPECDEC2_MTP2_C1 = True
 GGUF_SPECDEC2_MTP2_C4 = False
+# W7900 P2 p128 found deterministic native target-graph NaN/sentinel output;
+# eager/serial target verification remains exact above the locally-qualified
+# natural25 context envelope.  This is graph admission, not model policy.
+GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT = 127
 # Packed-PARO S7 starts with the independently-qualified singleton K1/R2
 # frontier only. C2/C4 remains absent until physical multi-request kernels pass.
 PARO_SPECDEC2_MTP2_C1 = True
@@ -880,6 +884,7 @@ __all__ = [
     "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
     "GGUF_SPECDEC2_MTP2_C1",
     "GGUF_SPECDEC2_MTP2_C4",
+    "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
     "PARO_SPECDEC2_MTP2_C1",
     "PARO_SPECDEC2_MTP2_C4",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",

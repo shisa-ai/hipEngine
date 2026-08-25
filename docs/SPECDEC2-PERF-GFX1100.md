@@ -404,7 +404,10 @@ next implementation owner in each lane.
       qualified capability.
 - [ ] Prove O(hidden), not O(prompt×hidden), transient ownership.
 - [ ] Run p128/p512/p4K/p16K activation and full category bridge exactness,
-      state/KV/following generation, wall, and drain gates.
+      state/KV/following generation, wall, and drain gates.  W7900 native target
+      graph is now fail-closed above 127 live tokens after deterministic p128
+      NaN/sentinel; streaming activation continues through eager/serial fallback
+      while p4K/p16K stay pre-mutation K0 above the 1023 capability cap.
 
 ### Packed PARO
 
