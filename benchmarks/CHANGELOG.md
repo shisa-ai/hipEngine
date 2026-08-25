@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-26 AGENTIC-QUALITY2 campaign closure; quality only] AQ0-AQ13 close with frozen 34-task external/sandbox oracles; Qwen3.6/Qwen3.8/Ornith complete **44/68, 50/68, and 42/68** with exact repeat/control/ownership gates. AQ3/AQ6 find zero scored runtime/unresolved boundaries and AQ8 retains **no implementation**; AQ9-AQ12 are not applicable, so no post-change or speed row is claimed. `benchmarks/results/2026-08-26-zbook-agentic-quality2-campaign-final.json`.
+
 - [2026-08-26 AGENTIC-QUALITY2 AQ8 mechanism decision; retained no-go] AQ3/AQ6/AQ7 admit **no implementation**: all **7/7** unique primary development failures are deterministic model selection/grounding behavior, while parser/template/runtime/unresolved boundaries, malformed/schema-invalid published calls, leaks, truncations, and patch failures are all zero. The 44/68 primary baseline remains unchanged; no post-change or speed row is claimed. `benchmarks/results/2026-08-26-zbook-agentic-quality2-aq8-no-go-decision.json`.
 
 - [2026-08-26 AGENTIC-QUALITY2 gfx1151 AQ7 comparison models; quality only] The identical frozen 68-observation protocol independently admits strict Qwen3.8-27B Q4_K_M/BF16-KV at **50/68 (73.53%; Qwen3.6 reference 44→50, +13.64%, +8.82 pp)** and Ornith-1.5-35B-A3B Q4_K_M/BF16-KV at **42/68 (61.76%; 44→42, -4.55%, -2.94 pp)**. Both pass 34/34 normalized repeat pairs, 10/10 controls, clean safety/runtime, and zero final ownership; differences are model-product quality, not implementation or speed. `benchmarks/results/2026-08-26-zbook-agentic-quality2-aq7-{qwen38,ornith15}-comparison.json`.
