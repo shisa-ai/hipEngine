@@ -151,11 +151,39 @@ def _quality_chat_payload(
     }
 
 
+def _idle_persistent_ownership_baseline(
+    transport: LiveHTTPTransport,
+    *,
+    cache_mode: str,
+) -> dict[str, int]:
+    ready = transport.ready()
+    kv_capacity = ready.get("kv_capacity") if isinstance(ready, Mapping) else None
+    pool = kv_capacity.get("pool") if isinstance(kv_capacity, Mapping) else None
+    if not isinstance(pool, Mapping):
+        raise AgenticBenchmarkError("server readiness omits KV pool ownership")
+    try:
+        baseline = {
+            "kv_refcounted_pages": int(pool.get("refcounted_pages", 0)),
+            "kv_pinned_pages": int(pool.get("pinned_pages", 0)),
+        }
+    except (TypeError, ValueError) as exc:
+        raise AgenticBenchmarkError("server KV ownership is not integral") from exc
+    final_ownership_from_server(
+        ready,
+        transport.sessions(),
+        cache_mode=cache_mode,
+        persistent_refcounted_pages=baseline["kv_refcounted_pages"],
+        persistent_pinned_pages=baseline["kv_pinned_pages"],
+    )
+    return baseline
+
+
 def _wait_for_final_ownership(
     transport: LiveHTTPTransport,
     *,
     cache_mode: str,
     timeout_s: float,
+    persistent_ownership: Mapping[str, int],
 ) -> dict[str, int]:
     deadline = time.monotonic() + float(timeout_s)
     last_error: AgenticBenchmarkError | None = None
@@ -165,6 +193,12 @@ def _wait_for_final_ownership(
                 transport.ready(),
                 transport.sessions(),
                 cache_mode=cache_mode,
+                persistent_refcounted_pages=int(
+                    persistent_ownership["kv_refcounted_pages"]
+                ),
+                persistent_pinned_pages=int(
+                    persistent_ownership["kv_pinned_pages"]
+                ),
             )
         except AgenticBenchmarkError as exc:
             last_error = exc
@@ -227,6 +261,10 @@ def collect_live_quality_records(
     capabilities_payload = json.loads(
         json.dumps(capabilities, sort_keys=True, ensure_ascii=False)
     )
+    persistent_ownership = _idle_persistent_ownership_baseline(
+        transport,
+        cache_mode=cache_mode,
+    )
     tools = build_openai_tools(suite)
     records: list[dict[str, Any]] = []
     raw_turns: list[dict[str, Any]] = []
@@ -252,6 +290,7 @@ def collect_live_quality_records(
                 "max_tokens": int(max_tokens),
                 "workloads": list(selected_workloads),
                 "server_capabilities_sha256": _canonical_sha256(capabilities_payload),
+                "persistent_ownership_baseline": dict(persistent_ownership),
             },
             "progress": {
                 "completed_turns": len(records),
@@ -348,6 +387,7 @@ def collect_live_quality_records(
         transport,
         cache_mode=cache_mode,
         timeout_s=idle_timeout_s,
+        persistent_ownership=persistent_ownership,
     )
     checkpoint(status="complete", final_ownership=ownership)
     return suite, {
@@ -375,6 +415,7 @@ def collect_live_quality_records(
             "max_tokens": int(max_tokens),
             "server_capabilities_sha256": _canonical_sha256(capabilities_payload),
             "server_capabilities": capabilities_payload,
+            "persistent_ownership_baseline": dict(persistent_ownership),
         },
         "turn_records": records,
         "final_ownership": ownership,

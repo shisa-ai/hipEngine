@@ -332,7 +332,7 @@ class _FakeQualityTransport:
         return {
             "ready": True,
             "queue": {"depth": 0, "worker_active": False, "active_requests": 0},
-            "kv_capacity": {"pool": {"refcounted_pages": 0, "pinned_pages": 0}},
+            "kv_capacity": {"pool": {"refcounted_pages": 128, "pinned_pages": 128}},
         }
 
     def sessions(self):
@@ -365,6 +365,10 @@ def test_live_quality_collector_keeps_failed_turn_and_uses_auto_tool_choice() ->
     assert transport.tool_choices == ["auto"] * 4
     assert records["configuration"]["repetitions"] == 1
     assert records["configuration"]["max_tokens"] == 32
+    assert records["configuration"]["persistent_ownership_baseline"] == {
+        "kv_refcounted_pages": 128,
+        "kv_pinned_pages": 128,
+    }
     assert len(records["configuration"]["server_capabilities_sha256"]) == 64
     assert records["configuration"]["server_capabilities"]["model"]["id"] == "fake-model"
     assert [row["progress"]["completed_turns"] for row in checkpoints] == [1, 2, 3, 4, 4]

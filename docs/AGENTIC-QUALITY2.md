@@ -498,7 +498,11 @@ cap/repetition count, emits flushed per-turn progress, atomically checkpoints
 normalized rows plus local raw responses/prompt IDs, atomically writes final
 JSON, and computes normalized deterministic repeat equality while ignoring
 random call IDs. The checkpoint supplies the response-owned IDs needed to
-reconstruct pre-parser model text during AQ3.
+reconstruct pre-parser model text during AQ3. AQ2 live startup additionally
+proved that Qwen keeps a fixed prepared KV allocation pinned while idle; the
+collector records those pre-request refcounted/pinned pages and still requires
+strictly zero request-owned deltas at completion rather than mislabeling stable
+model-lifetime allocation as a leak.
 
 All 24 committed v2 oracle cases execute independently. Focused quality/oracle,
 server-conformance, and harness-trace tests pass; exact commands and counts are
@@ -510,7 +514,8 @@ in the AQ1 worklog.
       version/cache.
 - [ ] Run all six v2 workloads twice (24 turns/run).
 - [ ] Require response-owned IDs, normalized repeat equality, valid artifact,
-      and zero final ownership.
+      and zero final request/session ownership relative to the recorded idle
+      persistent-allocation baseline.
 - [ ] Keep raw records/logs under `/tmp/hipengine-agentic-quality2/<run-tag>/`.
 - [ ] Publish compact baseline artifact with no performance fields.
 - [ ] Update campaign/worklog/quality rollup and commit.
@@ -722,7 +727,8 @@ New committed summaries live under `benchmarks/results/` and record:
 - complete failure taxonomy and runtime/model/unresolved ownership;
 - deterministic repeat verdict and normalized-response hash;
 - raw record/log paths and SHA-256 without committing large token arrays;
-- final resource ownership and shutdown verdict;
+- initial persistent KV refcount/pin baseline, final zero request/session
+  ownership deltas, and shutdown verdict;
 - baseline/candidate relationship, keep/reject/no-go decision, and reason; and
 - links/hashes to prerequisite evidence.
 
