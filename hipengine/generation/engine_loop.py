@@ -1039,6 +1039,13 @@ class SubmitPollTextGenerator:
             self._loop.reconfigure(config)
             self._prefill_chunk_size = int(self._loop.prefill_chunk_size)
 
+    def compact(self, order: Sequence[int] | None = None) -> tuple[SlotMove, ...]:
+        """Serialize scheduler/model compaction with submit/poll ownership."""
+
+        requested = None if order is None else tuple(int(value) for value in order)
+        with self._loop_lock:
+            return tuple(self._loop.compact(order=requested))
+
     def live_loop_snapshot(self) -> dict[str, object]:
         """Return one lock-consistent scheduler plus model-runner snapshot."""
 
