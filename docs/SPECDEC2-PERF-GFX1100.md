@@ -398,7 +398,7 @@ next implementation owner in each lane.
 [`corrected dense P4`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-dense-device-chain-retained.json),
 [`P5 target profiles`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p5-target-profiles.json),
 and [`campaign closure`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-campaign-closure.json).
-Corrected dense P4 is exact at `1.273x/1.413x/1.440x` AR for K1/K2/K3 but
+Corrected dense P4 is exact at `1.272x/1.407x/1.439x` AR for K1/K2/K3 but
 remains behind direct; p128/p512 is exact but slow and p4K/p16K is pre-mutation K0.
 Packed production device candidate is exact with 372/372 zero-allocation cycles
 and improves to `0.979x` AR, still below product promotion. Dense P3 stable slabs
