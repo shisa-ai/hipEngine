@@ -13,6 +13,11 @@ from scripts.specdec2_perf_gfx1100_bridge import (
     build_execution_plan,
     validate_bridge_rows,
 )
+from scripts.specdec2_perf_gfx1100_child import (
+    build_bridge_row,
+    resolve_arm_timing,
+    validate_child_scope,
+)
 
 
 _MANIFEST = "a" * 64
@@ -200,3 +205,78 @@ def test_atomic_checkpoint_replaces_complete_json_without_temp_leak(tmp_path: Pa
         "rows": [1, 2],
     }
     assert list(tmp_path.iterdir()) == [output]
+
+
+def test_child_scope_is_paro_k1_only_and_dense_uses_shared_bridge() -> None:
+    validate_child_scope(lane="paro", profile="production", candidate_budget=1)
+    validate_child_scope(lane="paro", profile="strict", candidate_budget=1)
+    with pytest.raises(ValueError, match="PARO staged bridge is K1-only"):
+        validate_child_scope(lane="paro", profile="production", candidate_budget=2)
+    with pytest.raises(ValueError, match="dense uses the shared bridge"):
+        validate_child_scope(lane="gguf", profile="strict", candidate_budget=1)
+
+
+def test_child_timing_uses_nonoverlapping_scheduler_windows_and_residual() -> None:
+    timing = resolve_arm_timing(
+        complete_request_seconds=1.0,
+        output_timing={
+            "specdec2_mtp2_proposal_ms": 50.0,
+            "specdec2_mtp2_target_ms": 400.0,
+            "specdec2_mtp2_provider_update_ms": 10.0,
+        },
+        scheduler_observability={
+            "prefill_seconds": 0.2,
+            "decode_seconds": 0.6,
+            "queue_seconds": 0.01,
+        },
+    )
+
+    assert timing["decode_only_seconds"] == 0.6
+    assert timing["top_level_stage_seconds"]["target_prefill"] == 0.2
+    assert timing["top_level_stage_seconds"]["cycle_total"] == 0.6
+    assert timing["top_level_stage_seconds"]["resident_owner_transition"] == 0.0
+    assert timing["unattributed_seconds"] == pytest.approx(0.2)
+    assert timing["cycle_detail_seconds"] == {
+        "proposal": 0.05,
+        "target_verify": 0.4,
+        "provider_update": 0.01,
+    }
+
+
+def test_child_row_reports_realized_route_manifests_and_physical_shape() -> None:
+    timing = resolve_arm_timing(
+        complete_request_seconds=1.0,
+        output_timing={},
+        scheduler_observability={"prefill_seconds": 0.25, "decode_seconds": 0.5},
+    )
+    row = build_bridge_row(
+        lane="gguf",
+        arm="staged",
+        profile="strict",
+        prompt_id="code_merge_intervals",
+        run_index=0,
+        order_index=2,
+        candidate_budget=3,
+        max_tokens=25,
+        generated_token_ids=(1, 2, 3),
+        timing=timing,
+        selected_manifest_sha256=_MANIFEST,
+        strict_manifest_sha256=_STRICT_MANIFEST,
+        commit=_COMMIT,
+        physical_target_rows=(4,),
+        physical_proposal_widths=(1,),
+        route_name="graph",
+    )
+
+    assert row["route"] == {
+        "realized": "graph",
+        "true_autoregressive_path": False,
+        "staged_generation2": True,
+        "direct_control": False,
+        "physical_proposal_widths": [1],
+        "physical_target_rows": [4],
+    }
+    assert row["timing"]["timing_owner_id"].endswith(
+        ":staged:c1:k3"
+    )
+    assert row["manifests"]["selected_sha256"] == _MANIFEST

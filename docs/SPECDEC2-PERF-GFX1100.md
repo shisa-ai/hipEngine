@@ -357,9 +357,12 @@ work never begins from failing upstream gates.
 - [x] Add the committed `scripts/specdec2_perf_gfx1100_bridge.py` row contract,
       content-agnostic arm planner, strict validator/aggregator, and atomic
       checkpoint writer.
-- [ ] Wire lane execution into the bridge by reusing the direct dense suite and
-      PARO economics primitives; do not duplicate model execution or add
-      backend/model policy in engine hot paths.
+- [x] Reuse the shared `scripts/specdec2_perf_bridge.py` for dense GGUF after its
+      backend-neutral gfx11 generalization; add `run-loaded-paro` so packed PARO
+      emits AR/staged row-contract checkpoints from one loaded process.
+- [ ] Add the unavoidable-reload PARO direct attachment and parent packet assembly
+      through the qualified economics child; do not add backend/model policy in
+      engine hot paths.
 - [x] Add schema, aggregation, counterbalance, exact-denominator, missing-owner,
       malformed-manifest, incomplete-suite, dirty-provenance, stage-reconciliation,
       and atomic-checkpoint tests.
