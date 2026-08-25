@@ -18,6 +18,7 @@ from scripts.specdec2_perf_bridge import (
     normalize_timing_payloads,
     parse_budgets,
     parse_concurrencies,
+    resolve_platform,
     validate_bridge_artifact,
 )
 
@@ -88,6 +89,55 @@ def _artifact() -> dict[str, object]:
         },
         "cells": cells,
     }
+
+
+def test_bridge_resolves_independent_backend_arch_quant_and_queue_policy() -> None:
+    gfx1151 = resolve_platform(
+        backend="hip_gfx1151",
+        target_arch=None,
+        quant_label="Q4_K_S",
+        gpu_max_hw_queues=None,
+        environ={},
+    )
+    gfx1100 = resolve_platform(
+        backend="hip_gfx1100",
+        target_arch=None,
+        quant_label="Q4_K_M",
+        gpu_max_hw_queues=None,
+        environ={},
+    )
+    explicit = resolve_platform(
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        quant_label="Q4_K_M",
+        gpu_max_hw_queues=1,
+        environ={"GPU_MAX_HW_QUEUES": "8"},
+    )
+
+    assert gfx1151 == {
+        "backend": "hip_gfx1151",
+        "target_arch": "gfx1151",
+        "quant_label": "Q4_K_S",
+        "gpu_max_hw_queues": "2",
+        "queue_source": "gfx1151_campaign_default",
+    }
+    assert gfx1100 == {
+        "backend": "hip_gfx1100",
+        "target_arch": "gfx1100",
+        "quant_label": "Q4_K_M",
+        "gpu_max_hw_queues": None,
+        "queue_source": "unset",
+    }
+    assert explicit["gpu_max_hw_queues"] == "1"
+    assert explicit["queue_source"] == "explicit_cli"
+    with pytest.raises(ValueError, match="does not match backend"):
+        resolve_platform(
+            backend="hip_gfx1100",
+            target_arch="gfx1151",
+            quant_label="Q4_K_M",
+            gpu_max_hw_queues=None,
+            environ={},
+        )
 
 
 def test_bridge_parses_only_supported_physical_cells() -> None:
