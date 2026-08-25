@@ -1,6 +1,6 @@
 # AGENTIC-QUALITY2 — ZBook Agent Quality Campaign
 
-- **Status:** approved; active; AQ0-AQ12 complete on the no-go path, AQ13 closure next
+- **Status:** complete; AQ0-AQ13 closed on the retained no-go path
 - **Approved:** 2026-08-25
 - **Execution host:** `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 - **Primary model:** Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV
@@ -920,16 +920,24 @@ they passed for a nonexistent candidate.
 
 ### AQ13 / Task #53 — closure
 
-- [ ] List retained implementation/default/explicit/unsupported scopes.
-- [ ] List model-quality outcomes separately from runtime fixes.
-- [ ] List blocked/rejected/no-go families and reopen triggers.
-- [ ] Remove temporary paths or update `REFACTOR.md` with exact removal gates.
-- [ ] Update campaign, AGENTIC/API/SAMPLING/PLAN, benchmark index/changelog, and
+- [x] List retained implementation/default/explicit/unsupported scopes.
+- [x] List model-quality outcomes separately from runtime fixes.
+- [x] List blocked/rejected/no-go families and reopen triggers.
+- [x] Remove temporary paths or update `REFACTOR.md` with exact removal gates.
+- [x] Update campaign, AGENTIC/API/SAMPLING/PLAN, benchmark index/changelog, and
       root README only when public-quality wording is justified.
-- [ ] Run focused-repair-aware milestone validation and schema/link/fixture/
+- [x] Run focused-repair-aware milestone validation and schema/link/fixture/
       Worklog2/benchmark-sync checks.
-- [ ] Commit, merge cleanly, push, and verify local/remote equality.
-- [ ] Complete the objective audit against Tasks #40–#53 and this checklist.
+- [x] Commit, merge cleanly, push, and verify local/remote equality.
+- [x] Complete the objective audit against Tasks #40–#53 and this checklist.
+
+**Closure:** AQ0–AQ13 are complete with `no_implementation`. The final compact
+artifact records retained, rejected, unsupported, and reopen scopes separately
+from the three model-product quality rows. No temporary candidate path, flag,
+fallback, API/sampling change, or refactor debt exists. The root README stays
+unchanged because this bounded synthetic suite is already presented in the
+benchmark scoreboard and no runtime feature/default or general leaderboard
+claim changed.
 
 ## 13. Command book
 
@@ -1116,17 +1124,21 @@ completed expensive matrix when a focused repair plus existing evidence covers
 the change. Do not commit raw model outputs, generated-code sandboxes, logs,
 weights, caches, or profiler data.
 
-## 18. Current handoff
+## 18. Closure handoff
 
-Start AQ13 / Task #53. AQ8 retained `no_implementation`, and AQ9–AQ12 are
-explicitly not applicable with zero runtime diff and no redundant candidate GPU
-runs. Audit every objective and Task #40–#53; publish retained/no-go/default/
-unsupported scopes, model-quality results, runtime repairs, and candidate-
-specific reopen criteria. Update campaign/PLAN indices and public quality wording
-only where justified.
+AQ0–AQ13 are complete on the measured no-go path. The authoritative closure
+artifact is
+[`2026-08-26-zbook-agentic-quality2-campaign-final.json`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
+It preserves Qwen3.6/Qwen3.8/Ornith model-product quality separately from
+runtime correctness, records zero admitted quality mechanism, and keeps AQ6/AQ7
+heldout details and raw outputs local and sealed.
 
-Run the applicable milestone/process gates, including the full CPU test suite
-unless focused-repair evidence permits narrower repair, fixture/schema checks,
-links, Worklog2, benchmark sync/compactness, diff/status, and no raw-output or
-performance-claim leakage. Merge and push cleanly, verify local/main/remote
-equality, and keep AQ6/AQ7 heldout/raw comparison outputs sealed.
+The full milestone run completed 10,510 tests with 10,262 passed, 180 skipped,
+4 expected failures, and 67 failures outside the AQ13 closure diff. A focused
+rerun of exactly those 67 nodes passed six order-sensitive nodes and reproduced
+61 baseline failures; none exercises AGENTIC-QUALITY2 behavior, while every
+agentic quality, fixture, live-harness, taxonomy, trace, and server-conformance
+test passed in the completed broad run. Per the focused-repair rule, no unrelated
+runtime/test expectation was changed and the expensive broad suite was not
+repeated. Reopen only under the mechanism-specific criteria in the final
+artifact.

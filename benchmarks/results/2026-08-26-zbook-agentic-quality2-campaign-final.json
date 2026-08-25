@@ -1,0 +1,301 @@
+{
+  "campaign": "AGENTIC-QUALITY2",
+  "closure_decision": {
+    "implementation_admitted": false,
+    "result": "complete_retained_no_go",
+    "runtime_default_changed": false
+  },
+  "date": "2026-08-26",
+  "evidence_artifacts": [
+    {
+      "path": "benchmarks/results/2026-08-26-zbook-agentic-quality2-aq2-baseline.json",
+      "phase": "AQ2",
+      "sha256": "b1f51a65597c850a11cd1ed33abd45176b733aef0ae799f556a90f77d901d3cf"
+    },
+    {
+      "path": "benchmarks/results/2026-08-26-zbook-agentic-quality2-aq3-taxonomy.json",
+      "phase": "AQ3",
+      "sha256": "ca9a9438191257719b8a0e3d7b715f785c8c9a03272f709586a6f78dd68cda4a"
+    },
+    {
+      "path": "benchmarks/results/2026-08-26-zbook-agentic-quality2-aq5-validation-v2.json",
+      "phase": "AQ5",
+      "sha256": "06b52bc3b4877e300466baf7fe3e433983f380c0359f5bdd95475381fc6b8005"
+    },
+    {
+      "path": "benchmarks/results/2026-08-26-zbook-agentic-quality2-aq6-expanded-baseline.json",
+      "phase": "AQ6",
+      "sha256": "0938122b7065249d57bcded0fa4b033514d976810545e14a026e73733005db20"
+    },
+    {
+      "path": "benchmarks/results/2026-08-26-zbook-agentic-quality2-aq7-qwen38-comparison.json",
+      "phase": "AQ7",
+      "sha256": "ca9650589c3c3f6aeb930b674b936a3445a85b57db5f1b92c28989c84918964c"
+    },
+    {
+      "path": "benchmarks/results/2026-08-26-zbook-agentic-quality2-aq7-ornith15-comparison.json",
+      "phase": "AQ7",
+      "sha256": "f0ffd8203856f0251a2dc9ee2311aaf6751eb6115a4fcbb73f532dd2c079b035"
+    },
+    {
+      "path": "benchmarks/results/2026-08-26-zbook-agentic-quality2-aq8-no-go-decision.json",
+      "phase": "AQ8",
+      "sha256": "5f39335e4d570d38013d367bd7f96107ada0ccb7adf4078227163cea028cc18f"
+    }
+  ],
+  "excluded_attempts": [
+    {
+      "phase": "AQ2",
+      "reason": "pre-generation GGUF detokenization failure; fixed before retained baseline",
+      "retained_observations": 0
+    },
+    {
+      "phase": "AQ2",
+      "reason": "cache warm and pre-repair absolute ownership accounting attempt",
+      "retained_observations": 0
+    },
+    {
+      "phase": "AQ6",
+      "reason": "whole-APU DMCUB/SMU/MES hang before request prefill; cold-boot diagnostic and complete rerun passed unchanged default SDMA",
+      "retained_observations": 0
+    }
+  ],
+  "frozen_inputs": {
+    "oracle_sha256": "c6fd180a2fe7156307995b9567a149f8c50f7448da003bdbe4cc0abe41f0706a",
+    "sources_sha256": "b5d7ed2573b78ca05b14e34616c562fce4dba154fb938a414b5b96ed1ad1fdf8",
+    "suite": "agentic-quality2-v2",
+    "suite_sha256": "dbe4668667ba3ca57649408f4dc9a5004ee771ce61dc95f7816cf6799b62cbdd",
+    "workloads": {
+      "development": 17,
+      "heldout": 17,
+      "total": 34
+    }
+  },
+  "harness_and_safety": {
+    "fail_safe_policy_controls": {
+      "passed": 10,
+      "total": 10
+    },
+    "reference_cases": {
+      "passed": 34,
+      "total": 34
+    },
+    "sandbox_probes": {
+      "passed": 12,
+      "total": 12
+    },
+    "sealed_evidence": {
+      "aq6_heldout_detail_local": true,
+      "aq7_raw_and_heldout_detail_local": true,
+      "raw_model_outputs_committed": false,
+      "used_for_mechanism_selection": false
+    }
+  },
+  "kind": "hipengine_agentic_quality2_campaign_final",
+  "model_quality": {
+    "comparison_scope": "same-host same-frozen-suite model-product quality; not runtime implementation correctness, quantization, or speed",
+    "rows": [
+      {
+        "development": {
+          "passed": 20,
+          "total": 34
+        },
+        "family_passed": {
+          "code": "14/16",
+          "instruction": "4/16",
+          "repository": "10/16",
+          "tool_selection": "16/20"
+        },
+        "heldout_sealed": {
+          "passed": 24,
+          "total": 34
+        },
+        "model": "Qwen3.6-35B-A3B UD-Q4_K_M",
+        "overall": {
+          "passed": 44,
+          "success_rate": 0.6470588235294118,
+          "total": 68
+        },
+        "role": "primary"
+      },
+      {
+        "development": {
+          "passed": 22,
+          "total": 34
+        },
+        "family_passed": {
+          "code": "14/16",
+          "instruction": "12/16",
+          "repository": "10/16",
+          "tool_selection": "14/20"
+        },
+        "heldout_sealed": {
+          "passed": 28,
+          "total": 34
+        },
+        "model": "Qwen3.8-27B Q4_K_M",
+        "overall": {
+          "passed": 50,
+          "success_rate": 0.7352941176470589,
+          "total": 68
+        },
+        "role": "comparison"
+      },
+      {
+        "development": {
+          "passed": 16,
+          "total": 34
+        },
+        "family_passed": {
+          "code": "14/16",
+          "instruction": "4/16",
+          "repository": "10/16",
+          "tool_selection": "14/20"
+        },
+        "heldout_sealed": {
+          "passed": 26,
+          "total": 34
+        },
+        "model": "Ornith-1.5-35B-A3B Q4_K_M",
+        "overall": {
+          "passed": 42,
+          "success_rate": 0.6176470588235294,
+          "total": 68
+        },
+        "role": "comparison"
+      }
+    ]
+  },
+  "performance_claim": false,
+  "phase_commits": {
+    "AQ0_campaign_ledger": "58d055872",
+    "AQ1_harness_audit": "07c61d267",
+    "AQ1_ownership_baseline_repair": "fef66d0fd",
+    "AQ1_qwen_detokenization_repair": "693a011ca",
+    "AQ2_current_baseline": "80224563f",
+    "AQ3_failure_taxonomy": "a65061f34",
+    "AQ4_suite_freeze": "0a4695325",
+    "AQ5_fixture_sandbox_qualification": "094bf3d1a",
+    "AQ6_evidence_gate": "8e228965e",
+    "AQ6_expanded_baseline": "1f9c23418",
+    "AQ7_comparison_models": "2031efb95",
+    "AQ8_no_go_decision": "645678fb9",
+    "AQ9_AQ12_no_go_disposition": "24af26535"
+  },
+  "rejected_or_no_go_scopes": {
+    "bounded_invalid_tool_repair": "rejected: zero malformed, invalid, leaked, or truncated primary trigger; retrying valid auto choices would coerce semantics",
+    "complete_argument_schema_constraint": "rejected: all 56 published primary call blocks already strict-schema-valid; schema cannot infer intended valid action/result",
+    "parser_or_template_repair": "rejected: zero independent parser/projection/runtime mismatches",
+    "patch_or_diff_constraint": "rejected: patch is 4/4 with no syntax trigger"
+  },
+  "reopen_criteria": {
+    "bounded_invalid_tool_repair": "independent generic invalid-output RED that is safely repairable from request-declared semantics without retrying valid choices",
+    "complete_argument_schema_constraint": "development failure entering a declared tool envelope and violating a supported strict-schema prefix currently permitted",
+    "parser_or_template_repair": "independent tokenizer/non-server parser proof that public runtime misparses, misprojects, leaks, or assigns wrong finish/session state",
+    "patch_or_diff_constraint": "development failure localized to patch/diff syntax after intended edit semantics are independently established"
+  },
+  "retained_scopes": {
+    "comparison_model_admission": "Qwen3.8 and Ornith exact artifacts independently admitted through registered Qwen routes with strict profiles, deterministic repeats, controls, and zero final ownership",
+    "default_runtime": "unchanged; existing OpenAI tool semantics, generic Qwen protocol, strict post-validation, fail-closed publication/session behavior, and capability blockers remain authoritative",
+    "explicit_runtime": "no new explicit route or flag",
+    "harness": "external-oracle-first scoring, capability-bound provenance, atomic raw checkpoints, normalized response determinism, and idle-baseline ownership accounting",
+    "pre_evidence_runtime_repairs": "Qwen GGUF detokenization restored before AQ2; no failed pre-evidence attempt contributes a retained quality row",
+    "quality_mechanism": "none",
+    "sandbox": "bubblewrap/prlimit per-input isolation remains qualified and fail-closed"
+  },
+  "runtime_correctness": {
+    "aq3_independent_runtime_failure_task_blocks": 0,
+    "aq3_unresolved_task_blocks": 0,
+    "aq6_development_runtime_or_unresolved_task_blocks": 0,
+    "aq8_runtime_mechanism_admitted": false,
+    "aq9_aq12_runtime_path_diff_empty": true,
+    "distinction": "Model task failures are not runtime implementation failures."
+  },
+  "schema_version": 1,
+  "source": {
+    "branch": "agentic-quality2",
+    "closure_base_commit": "24af26535002968d2630148de225faf32bd77c5c",
+    "host": "zbook",
+    "physical_host": "HP ZBook Ultra G1a 14 inch Mobile Workstation PC",
+    "target_arch": "gfx1151"
+  },
+  "status": "complete",
+  "task_audit": {
+    "completed": [
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53
+    ],
+    "not_applicable_on_no_go_path": {
+      "AQ10": "no candidate semantic qualification",
+      "AQ11": "no post-change primary measurement",
+      "AQ12": "no cross-model candidate transfer",
+      "AQ9": "no implementation"
+    },
+    "pending": []
+  },
+  "unsupported_or_unchanged": {
+    "candidate_repair_telemetry": "not added because no repair route exists",
+    "native_sampler_for_frozen_tool_quality": false,
+    "post_change_quality_claim": false,
+    "speculative_mtp_for_frozen_tool_quality": false
+  },
+  "validation": {
+    "agentic_fixture_checker": {
+      "artifact_path": "/tmp/aq13-agentic-quality2-validation.json",
+      "artifact_sha256": "01f8f2aa4fbd95f5110760641de26de6a2826a2b1346e8143763cdc8fe51f102",
+      "controls": "10/10",
+      "references": "34/34",
+      "sandbox_probes": "12/12",
+      "status": "passed"
+    },
+    "benchmark_readme_sync_and_compactness": "passed",
+    "full_pytest": {
+      "collected": 10510,
+      "duration_seconds": 1805.19,
+      "failed": 67,
+      "log_path": "/home/lhl/.local/state/hipengine-agentic-quality2/aq13-full-pytest.log",
+      "passed": 10262,
+      "skipped": 180,
+      "status": "completed_with_out_of_scope_failures",
+      "xfailed": 4
+    },
+    "full_pytest_failure_scope": {
+      "agentic_quality_tests_passed": true,
+      "aq13_closure_diff_failures": 0,
+      "failed_files": 20,
+      "focused_log_path": "/home/lhl/.local/state/hipengine-agentic-quality2/aq13-failed-nodes-focused.log",
+      "focused_nodes_passed": 6,
+      "focused_nodes_reproduced": 61,
+      "focused_nodes_total": 67,
+      "policy": "No unrelated runtime/test expectation was changed and no broad rerun was spent; six order-sensitive failures passed alone and 61 pre-existing or environment-specific baseline failures reproduced outside AGENTIC-QUALITY2 behavior."
+    },
+    "json_schema": {
+      "documents": 3,
+      "draft": "2020-12",
+      "status": "passed"
+    },
+    "final_gpu_cleanup": {
+      "device_owners": 0,
+      "edge_temperature_c": 40.0,
+      "gpu_busy_percent": 0,
+      "model_or_pytest_processes": 0,
+      "note": "The APU's 32% reported VRAM allocation is the idle platform baseline, not a /dev/kfd process owner."
+    },
+    "git_diff_check": "passed",
+    "local_links": "passed",
+    "raw_output_and_performance_leak_scan": "passed",
+    "worklog": "passed"
+  }
+}
