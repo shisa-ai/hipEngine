@@ -1,0 +1,428 @@
+{
+  "api": {
+    "blocking_chat": true,
+    "blocking_completion": true,
+    "circuit_breaker_operator_rollback_restart_tests": true,
+    "incompatible_sampling_k0": true,
+    "multi_prompt_children": true,
+    "sse_chat": true,
+    "sse_completion": true
+  },
+  "commands": {
+    "counterbalanced_k2": "env HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt .venv/bin/python scripts/specdec2_s6_category_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --budget 2 --max-tokens 8 --output /tmp/specdec2-s6-category-k2-counterbalanced.json --fail-on-fail",
+    "automatic_poisson_below": ".venv/bin/python scripts/gguf_production_load_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --gdn-mode exact --workloads continuous_poisson --skip-tuning --max-active-requests 4 --poisson-rate-per-second 0.5 --poisson-seed 1234 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/specdec2-s6-auto-poisson-below.json",
+    "automatic_poisson_near": ".venv/bin/python scripts/gguf_production_load_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --gdn-mode exact --workloads continuous_poisson --skip-tuning --max-active-requests 4 --poisson-rate-per-second 2.0 --poisson-seed 1234 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/specdec2-s6-auto-poisson-near.json",
+    "automatic_poisson_above": ".venv/bin/python scripts/gguf_production_load_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --gdn-mode exact --workloads continuous_poisson --skip-tuning --max-active-requests 4 --poisson-rate-per-second 8.0 --poisson-seed 1234 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/specdec2-s6-auto-poisson-above.json"
+  },
+  "automatic_policy": {
+    "concurrency_scope": "C1-C32",
+    "evidence": "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
+    "fingerprint": "sha256:7fef31f392e182bcb0840057f5b8f3f7d7202a0f605d601a4a64529fea74f8ea",
+    "selected_k": 0
+  },
+  "category_quality": [
+    {
+      "candidate_budget": 1,
+      "timing_order": "ar_then_mtp_quality_only",
+      "category_passed": {
+        "code": true,
+        "general_en": true,
+        "general_ja": true,
+        "mixed_ja_en": true
+      },
+      "cells": {
+        "c2": {
+          "accepted_draft_tokens": 36,
+          "all_exact": true,
+          "ar_wall_seconds_sum": 13.747182329185307,
+          "batch_composition_exact": true,
+          "category_exact": {
+            "code": true,
+            "general_en": true,
+            "general_ja": true,
+            "mixed_ja_en": true
+          },
+          "draft_acceptance": 0.42857142857142855,
+          "heldout_exact": true,
+          "mtp_over_ar_wall_ratio_weighted": 2.361090812429756,
+          "mtp_wall_seconds_sum": 32.45834589423612,
+          "prompt_count": 10,
+          "proposed_draft_tokens": 84,
+          "train_exact": true
+        },
+        "c4": {
+          "accepted_draft_tokens": 72,
+          "all_exact": true,
+          "ar_wall_seconds_sum": 16.482773517956957,
+          "batch_composition_exact": true,
+          "category_exact": {
+            "code": true,
+            "general_en": true,
+            "general_ja": true,
+            "mixed_ja_en": true
+          },
+          "draft_acceptance": 0.42857142857142855,
+          "heldout_exact": true,
+          "mtp_over_ar_wall_ratio_weighted": 2.4964503116041588,
+          "mtp_wall_seconds_sum": 41.14842508500442,
+          "prompt_count": 10,
+          "proposed_draft_tokens": 168,
+          "train_exact": true
+        }
+      },
+      "elapsed_seconds": 145.24125503899995,
+      "full_passed": true,
+      "heldout_passed": true,
+      "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "source_commit": "3b60425725adfd36800001fbabf56fc493f2f12a",
+      "source_dirty": false
+    },
+    {
+      "candidate_budget": 2,
+      "timing_order": "counterbalanced_even_ar_mtp_odd_mtp_ar",
+      "category_passed": {
+        "code": true,
+        "general_en": true,
+        "general_ja": true,
+        "mixed_ja_en": true
+      },
+      "cells": {
+        "c2": {
+          "accepted_draft_tokens": 58,
+          "all_exact": true,
+          "ar_wall_seconds_sum": 13.864354422083125,
+          "batch_composition_exact": true,
+          "category_exact": {
+            "code": true,
+            "general_en": true,
+            "general_ja": true,
+            "mixed_ja_en": true
+          },
+          "draft_acceptance": 0.4915254237288136,
+          "heldout_exact": true,
+          "mtp_over_ar_wall_ratio_weighted": 2.121087937065131,
+          "mtp_wall_seconds_sum": 29.40751491987612,
+          "prompt_count": 10,
+          "proposed_draft_tokens": 118,
+          "train_exact": true
+        },
+        "c4": {
+          "accepted_draft_tokens": 116,
+          "all_exact": true,
+          "ar_wall_seconds_sum": 16.538602915825322,
+          "batch_composition_exact": true,
+          "category_exact": {
+            "code": true,
+            "general_en": true,
+            "general_ja": true,
+            "mixed_ja_en": true
+          },
+          "draft_acceptance": 0.4915254237288136,
+          "heldout_exact": true,
+          "mtp_over_ar_wall_ratio_weighted": 2.3117182181838096,
+          "mtp_wall_seconds_sum": 38.23258966382127,
+          "prompt_count": 10,
+          "proposed_draft_tokens": 236,
+          "train_exact": true
+        }
+      },
+      "elapsed_seconds": 138.81648544908967,
+      "full_passed": true,
+      "heldout_passed": true,
+      "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "source_commit": "706d22ae2f6ec718790fa4475468cb98078af42d",
+      "source_dirty": false
+    },
+    {
+      "candidate_budget": 3,
+      "timing_order": "ar_then_mtp_quality_only",
+      "category_passed": {
+        "code": true,
+        "general_en": true,
+        "general_ja": true,
+        "mixed_ja_en": true
+      },
+      "cells": {
+        "c2": {
+          "accepted_draft_tokens": 66,
+          "all_exact": true,
+          "ar_wall_seconds_sum": 13.73653520096559,
+          "batch_composition_exact": true,
+          "category_exact": {
+            "code": true,
+            "general_en": true,
+            "general_ja": true,
+            "mixed_ja_en": true
+          },
+          "draft_acceptance": 0.5238095238095238,
+          "heldout_exact": true,
+          "mtp_over_ar_wall_ratio_weighted": 2.0567233393247752,
+          "mtp_wall_seconds_sum": 28.252252549282275,
+          "prompt_count": 10,
+          "proposed_draft_tokens": 126,
+          "train_exact": true
+        },
+        "c4": {
+          "accepted_draft_tokens": 132,
+          "all_exact": true,
+          "ar_wall_seconds_sum": 16.426458977162838,
+          "batch_composition_exact": true,
+          "category_exact": {
+            "code": true,
+            "general_en": true,
+            "general_ja": true,
+            "mixed_ja_en": true
+          },
+          "draft_acceptance": 0.5238095238095238,
+          "heldout_exact": true,
+          "mtp_over_ar_wall_ratio_weighted": 2.2583278813567613,
+          "mtp_wall_seconds_sum": 37.0963303000899,
+          "prompt_count": 10,
+          "proposed_draft_tokens": 252,
+          "train_exact": true
+        }
+      },
+      "elapsed_seconds": 136.9189724921016,
+      "full_passed": true,
+      "heldout_passed": true,
+      "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "source_commit": "3b60425725adfd36800001fbabf56fc493f2f12a",
+      "source_dirty": false
+    }
+  ],
+  "closure_verdict": {
+    "automatic_k0_cells": [
+      "C1-C32"
+    ],
+    "explicit_default_off_cells": [
+      "strict C1/C2/C4 K1-K3 through R16"
+    ],
+    "legacy_whole_request_route": "demoted; staged Generation-2 path is selected whenever the resident runner exposes its capability; direct path remains test/oracle fallback",
+    "promoted_automatic_cells": [],
+    "rejected_cells": [
+      {
+        "reason": "complete wall below 1.10x true AR threshold",
+        "scope": "all automatic MTP C1-C4 K1-K3"
+      },
+      {
+        "reason": "no qualified physical owner",
+        "scope": "native R32 / C8 MTP"
+      },
+      {
+        "reason": "profile capability selects K0 before mutation",
+        "scope": "production-profile FP16-state MTP"
+      },
+      {
+        "reason": "automatic true-AR path fails binding ITL-p99 SLO",
+        "scope": "product performance promotion"
+      }
+    ],
+    "strict_oracles_preserved": true
+  },
+  "date": "2026-08-25",
+  "dynamic_lifecycle": {
+    "compaction_neighbor_substitution": {
+      "moves": [
+        {
+          "new_slot": 0,
+          "old_slot": 1,
+          "request_id": 1
+        }
+      ],
+      "passed": true
+    },
+    "kv_pressure": {
+      "candidate_error_code": "engine_busy",
+      "candidate_status": 429,
+      "final_ownership_passed": true,
+      "graph_delta": {
+        "captures": 1,
+        "invalidations": 1,
+        "replays": 128
+      },
+      "memory_recovery_passed": true,
+      "outcomes": {
+        "completed": 1,
+        "rejected": 1
+      },
+      "page_table_changed": true,
+      "passed": true,
+      "source": {
+        "commit": "d809014cb057921ce996311a157c4291220654e6",
+        "dirty": false
+      }
+    },
+    "prefix_cow": {
+      "no_provider_mutation": true,
+      "oracle_kl_mean": 0.0,
+      "oracle_passed": true,
+      "oracle_top1": 1.0,
+      "passed": true,
+      "reused_tokens": 256,
+      "state_clone_bytes": 158859264
+    },
+    "recoverable_failures": {
+      "passed": true,
+      "phases": {
+        "proposal": true,
+        "readback": true,
+        "target": true
+      }
+    },
+    "reject_full_neighbor": {
+      "accepted_counts": [
+        0,
+        2
+      ],
+      "passed": true
+    },
+    "soak": {
+      "c8_exact": true,
+      "elapsed_seconds": 29.106875729979947,
+      "passed": true,
+      "request_scoped_pages": 0,
+      "stream_ids_exact": true,
+      "stream_text_exact": true,
+      "total_requests": 110,
+      "waves": 25
+    }
+  },
+  "evidence_links": [
+    "benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json",
+    "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json"
+  ],
+  "host": {
+    "backend": "hip_gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "hostname": "gfx1151",
+    "queue_mode": 2
+  },
+  "kind": "specdec2_gfx1151_s6_product_closure",
+  "limitations": [
+    "No SPECDEC2 speed or automatic promotion is claimed.",
+    "Poisson below/near/above rows complete exactly but fail inherited strict ITL-p99 SLO.",
+    "Full category runs use 8 output tokens per prompt and exact same-process true AR."
+  ],
+  "model": {
+    "execution_profile": "strict",
+    "execution_profile_manifest_sha256": "0e053fd658cacbc72a67b7e7ccf33927502a0fe9379faf14dac30ae6ee2bb65b",
+    "kv": "bf16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "state": "fp32"
+  },
+  "performance_claim": false,
+  "poisson": [
+    {
+      "all_requests_exact": true,
+      "end_to_end_p95_seconds": 11.622767898021266,
+      "exact_generated_tokens_per_second": 9.551615981304751,
+      "final_ownership_passed": true,
+      "itl_p99_seconds": 0.7813156530028209,
+      "label": "below",
+      "memory_recovery_passed": true,
+      "offered_rate_per_second": 0.5,
+      "occupancy_ratio_p99": 1.0,
+      "generation_queue_depth_p99": 2.0,
+      "stream_queue_max_observed_depth": 0,
+      "outcomes": {
+        "completed": 12
+      },
+      "queue_p99_seconds": 0.0014369479613378644,
+      "slo_checks": {
+        "end_to_end_p95": true,
+        "itl_p99": false,
+        "queue_p99": true,
+        "ttft_p95": true
+      },
+      "slo_goodput_tokens_per_second": 2.9716138608503675,
+      "slo_passed": false,
+      "source": {
+        "commit": "4768fbb2b1857968352b9fed7d8ab323d6a4bad3",
+        "dirty": false
+      },
+      "ttft_p95_seconds": 4.554314920096658
+    },
+    {
+      "all_requests_exact": true,
+      "end_to_end_p95_seconds": 23.69237749907188,
+      "exact_generated_tokens_per_second": 11.916885759318465,
+      "final_ownership_passed": true,
+      "itl_p99_seconds": 0.8597747239982709,
+      "label": "near",
+      "memory_recovery_passed": true,
+      "offered_rate_per_second": 2.0,
+      "occupancy_ratio_p99": 1.0,
+      "generation_queue_depth_p99": 7.0,
+      "stream_queue_max_observed_depth": 1,
+      "outcomes": {
+        "completed": 12
+      },
+      "queue_p99_seconds": 0.0015224280068650842,
+      "slo_checks": {
+        "end_to_end_p95": true,
+        "itl_p99": false,
+        "queue_p99": true,
+        "ttft_p95": true
+      },
+      "slo_goodput_tokens_per_second": 2.118557468323283,
+      "slo_passed": false,
+      "source": {
+        "commit": "4768fbb2b1857968352b9fed7d8ab323d6a4bad3",
+        "dirty": false
+      },
+      "ttft_p95_seconds": 5.167397240991704
+    },
+    {
+      "all_requests_exact": true,
+      "end_to_end_p95_seconds": 27.777871656930074,
+      "exact_generated_tokens_per_second": 12.241923834168015,
+      "final_ownership_passed": true,
+      "itl_p99_seconds": 0.8271403779508546,
+      "label": "above",
+      "memory_recovery_passed": true,
+      "offered_rate_per_second": 8.0,
+      "occupancy_ratio_p99": 1.0,
+      "generation_queue_depth_p99": 7.0,
+      "stream_queue_max_observed_depth": 0,
+      "outcomes": {
+        "completed": 12
+      },
+      "queue_p99_seconds": 0.0019963380182161927,
+      "slo_checks": {
+        "end_to_end_p95": true,
+        "itl_p99": false,
+        "queue_p99": true,
+        "ttft_p95": true
+      },
+      "slo_goodput_tokens_per_second": 1.632256511222402,
+      "slo_passed": false,
+      "source": {
+        "commit": "4768fbb2b1857968352b9fed7d8ab323d6a4bad3",
+        "dirty": false
+      },
+      "ttft_p95_seconds": 4.652931377058849
+    }
+  ],
+  "promotion": false,
+  "schema": 1,
+  "source": {
+    "commit": "706d22ae2f6ec718790fa4475468cb98078af42d",
+    "shared_untracked_files_excluded": true,
+    "tracked_source_clean": true
+  },
+  "slo_verdict": {
+    "all_three_fail_only_itl": true,
+    "automatic_k0_exact_all_loads": true,
+    "binding_itl_p99_seconds": 0.5,
+    "product_promotion_blocked": true,
+    "reason": "inherited true-AR ITL p99 exceeds 0.5 s at below/near/above rates; explicit MTP is slower still"
+  },
+  "speed_claim_eligible": false,
+  "status": "explicit_functional_default_off_auto_k0",
+  "validation": {
+    "focused_specdec2_generation_api_bundle": "passed; one HIP-unavailable skip",
+    "full_suite": "interrupted after independent pre-existing benchmarks/README.md compactness failure and repaired HIP cache-environment leak; focused-repair policy applied",
+    "worklog_check": "passed"
+  }
+}
