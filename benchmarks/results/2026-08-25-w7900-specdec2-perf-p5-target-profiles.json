@@ -1,0 +1,163 @@
+{
+  "schema": 1,
+  "date": "2026-08-25",
+  "kind": "specdec2_perf_gfx1100_p5_target_profiles",
+  "status": "profile_complete_no_target_candidate_admitted",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "hardware": {
+    "hostname": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "gpu_index": 0,
+    "gpu_max_hw_queues": null,
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "source": {
+    "commit": "d94e9ea53103f435120c00661ce3b8ec2d301d59",
+    "tracked_clean": true
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "bf16",
+    "recurrent_state": "fp32_strict"
+  },
+  "protocol": {
+    "prompt": "code_merge_intervals",
+    "outputs": 8,
+    "runs": 1,
+    "warmup": true,
+    "concurrency": 1,
+    "candidate_budgets": [1, 2, 3],
+    "target_rows": [2, 3, 4],
+    "profile": "strict",
+    "cached_build": true,
+    "traces": ["kernel", "marker", "HIP runtime", "memory copy", "memory allocation"],
+    "command": "LD_LIBRARY_PATH=<therock _rocm_sdk_devel/lib> rocprofv3 --kernel-trace --marker-trace --hip-runtime-trace --memory-copy-trace --memory-allocation-trace --output-format csv -- .venv/bin/python3 scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --scope full --limit 1 --concurrency 1 --budgets <K> --max-tokens 8 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/specdec2-perf-gfx1100-p1/hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output <packet> --fail-on-fail"
+  },
+  "profiles": {
+    "r2_k1": {
+      "exact": true,
+      "realized_route": "graph",
+      "cycles": 4,
+      "accepted_counts": [0, 1, 1, 1],
+      "cycle_wall_ms": [79.333, 41.555, 42.094, 42.883],
+      "cycle_wall_sum_ms": 205.865445,
+      "cycle_kernel_sum_ms": 140.34699,
+      "cycle_kernel_union_ms": 21.461139,
+      "target_wall_ms": [75.874, 38.167, 38.649, 39.347],
+      "target_sync_count": 4,
+      "target_sync_ms": 142.163331,
+      "proposal_wall_ms": [3.271, 3.215, 3.275, 3.349],
+      "proposal_device_sync_count": 4,
+      "proposal_device_sync_ms": 6.453905,
+      "provider_update_ms": 6.564233917742968,
+      "allocation_samples": [184813, 0, 0, 0],
+      "allocation_frees_bytes": 0,
+      "top_target_kernels_ms": {
+        "q4_dual_rowtile_silu_r2": 40.358609,
+        "q4_rowtile_r2": 25.232949,
+        "q6_rowtile_col8_r2": 23.300872,
+        "q5_rowtile_r2": 11.653317,
+        "gdn_chain": 5.218841
+      },
+      "files": {
+        "packet": "c1f6765fa2c0fd58c83df317a4850cf63ddb45f36d4c89ee38ecceb12bc148ff",
+        "marker": "f4420a357a0350b5e93ceb131a318923d1ae022bbcbf0daca03734e4b9ce80e3",
+        "kernel": "d85f2bffc278deab0d339f60e297f39567a2b60daf169b58caacdfb98d0de4b0",
+        "hip_api": "dd4fb2c5c605c823b21d06adeeab39f78c98d3bee0079c200f987aab4c225b85",
+        "allocation": "527a32a7c17c161891f8538628d6740a717d11aeb250a5ec5905657c289ae0cd",
+        "copy": "f4a92e8e4291ff6daf399c53ac4bfb6543d5c7a3f9a59f59d1ef80b56a82edb9"
+      }
+    },
+    "r3_k2": {
+      "exact": true,
+      "realized_route": "graph",
+      "cycles": 3,
+      "accepted_counts": [0, 2, 2],
+      "cycle_wall_ms": [83.515, 49.348, 47.569],
+      "cycle_wall_sum_ms": 180.431747,
+      "cycle_kernel_sum_ms": 117.340143,
+      "cycle_kernel_union_ms": 22.819982,
+      "target_wall_ms": [77.098, 41.683, 40.493],
+      "target_sync_count": 3,
+      "target_sync_ms": 112.632941,
+      "proposal_wall_ms": [6.2, 7.423, 6.876],
+      "proposal_device_sync_count": 6,
+      "proposal_device_sync_ms": 9.341349,
+      "provider_update_ms": 6.326331291347742,
+      "allocation_samples": [277152, 0, 0],
+      "allocation_frees_bytes": 0,
+      "top_target_kernels_ms": {
+        "q4_dual_rowtile_silu_r3": 30.596805,
+        "q4_rowtile_r3": 19.637054,
+        "q6_rowtile_col8_r3": 18.491715,
+        "q5_rowtile_r3": 9.246493,
+        "gdn_chain": 5.455193
+      },
+      "files": {
+        "packet": "6261b4a384658c7552d8e7ad839a125d0eb85b55bdc161cda45d3ef2805b5a66",
+        "marker": "b5f330b392078d0d71a9d6697cd4c1b40943dfb1e1e4ce9f1a46c16502d8cbcc",
+        "kernel": "29a60b44f3bedca160339f95f1c76521baf15da10010f05a6fe220855eadc307",
+        "hip_api": "d8db92729a11f1d8d22c13af3c2ae0fa9cc79a5e2eafaa7f3556d7605c1bfb2b",
+        "allocation": "45f73a184668d4ec1edc84dbd5157251d83deedf3097935cadff7939d2d401ef",
+        "copy": "b0a05edc4f44dfa5c5cf1ddd6ae2c16025e6d0e966a3638738d78255c71a754c"
+      }
+    },
+    "r4_k3": {
+      "exact": true,
+      "realized_route": "graph",
+      "cycles": 3,
+      "accepted_counts": [0, 3, 1],
+      "cycle_wall_ms": [86.48, 52.936, 83.442],
+      "cycle_wall_sum_ms": 222.858131,
+      "cycle_kernel_sum_ms": 123.460303,
+      "cycle_kernel_union_ms": 25.484613,
+      "target_wall_ms": [77.22, 43.419, 79.918],
+      "target_sync_count": 3,
+      "target_sync_ms": 116.479005,
+      "proposal_wall_ms": [9.068, 9.312, 3.335],
+      "proposal_device_sync_count": 7,
+      "proposal_device_sync_ms": 11.297684,
+      "provider_update_ms": 4.948402754962444,
+      "allocation_samples": [369491, 0, 184813],
+      "allocation_frees_bytes": 0,
+      "top_target_kernels_ms": {
+        "q4_dual_rowtile_silu_r4": 21.664544,
+        "q4_rowtile_r4": 14.516342,
+        "q6_rowtile_col8_r4": 13.110413,
+        "q4_dual_rowtile_silu_r2_tail": 10.106548,
+        "q5_rowtile_r4": 6.314126,
+        "gdn_chain": 6.044042
+      },
+      "files": {
+        "packet": "b74685bea7c13a1dcefca89328dd70d7cd99a44a48078e2ec320f477ebd8fb84",
+        "marker": "a4a7cb2dfd6a0b68aff4ec22525cb7515bbc5ef89e8aafe2fb667c848f65f5f4",
+        "kernel": "1bd48e5383e68a39a6e94d8adfe0a3ae0bf234536bcc1378575f6272f99d34ce",
+        "hip_api": "a2b918f7a2ada957e0e84d0f1ded081bdfcc9bcb653b11065606c606f9660fe2",
+        "allocation": "4b89d2792eb8f7c634b7551fb3e2821c2d1fe7fe46e60ca18d669d39511bf6d6",
+        "copy": "c2a4b01ec8f7bac8c9923b5385167ee1f22fcfabc517b51a1bdcdf4df53492a5"
+      }
+    }
+  },
+  "attribution": {
+    "target_dominant": true,
+    "target_host_wall_driver": "required accept/readback synchronization plus request-local graph first use",
+    "proposal_driver": "one host-visible top-1 synchronization per draft depth",
+    "kernel_families": "row-tiled Q4/Q5/Q6 projections dominate kernel sum; no single primitive projects >=1.10x operation-complete gain",
+    "provider_repair": "4.95-6.56 ms per request, too small without a new state-safe device-chain premise",
+    "copies": "no profiler memory-copy domain events inside measured markers; HIP memcpy calls are included separately",
+    "queues": [1]
+  },
+  "candidate_decision": {
+    "target_kernel": "none admitted",
+    "reason": "profile does not name one exact operation-complete kernel candidate with >=1.10x projected target speed and >=1% request saving; launch-count-only and shared-KV batching are prior no-gos",
+    "synchronization": "packed-PARO post-commit sync candidate was tested separately and is wall-neutral despite halving sync count",
+    "device_chain": "dense cached device proposal candidate was rejected and reverted after clean following-AR state safety failure",
+    "provider_repair": "no-go until target/device boundary has a new state-safe premise",
+    "automatic_policy": "K0",
+    "next": "P8/P9 no-promotion closure unless a materially new device-chain representation passes the focused state fixture"
+  }
+}
