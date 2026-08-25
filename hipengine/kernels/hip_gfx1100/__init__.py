@@ -386,6 +386,10 @@ GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
 # gfx1100. Physical C2/C4 remains absent until its own frontier/economics gate.
 GGUF_SPECDEC2_MTP2_C1 = True
 GGUF_SPECDEC2_MTP2_C4 = False
+# Packed-PARO S7 starts with the independently-qualified singleton K1/R2
+# frontier only. C2/C4 remains absent until physical multi-request kernels pass.
+PARO_SPECDEC2_MTP2_C1 = True
+PARO_SPECDEC2_MTP2_C4 = False
 # Clean W7900 GPF-3A full-model 512/4K evidence admits byte-exact shared-X
 # selected-dual Q4T16 prefill after the predeclared borderline-decode repeat.
 GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE = "shared_x"
@@ -876,6 +880,8 @@ __all__ = [
     "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
     "GGUF_SPECDEC2_MTP2_C1",
     "GGUF_SPECDEC2_MTP2_C4",
+    "PARO_SPECDEC2_MTP2_C1",
+    "PARO_SPECDEC2_MTP2_C4",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
     "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",
