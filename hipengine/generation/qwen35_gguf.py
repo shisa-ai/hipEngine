@@ -197,6 +197,7 @@ _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
 )
 _GGUF_DECODE_GRAPH_ENV = "HIPENGINE_GGUF_DECODE_GRAPH"
 _GGUF_MTP_SERVER_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL"
+_GGUF_SPECDEC2_STREAMING_PROMPT_ENV = "HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT"
 _GGUF_MTP_SERVER_STARTUP_WARMUP_ENV = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
 _GGUF_MTP_SERVER_STREAM_DRAFT_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT"
 _GGUF_MTP_SERVER_STREAM_VERIFY_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_VERIFY"
@@ -340,6 +341,13 @@ def _gguf_decode_graph_enabled() -> bool:
 
 def _gguf_mtp_server_packed_prefill_enabled() -> bool:
     return os.environ.get(_GGUF_MTP_SERVER_PACKED_PREFILL_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _gguf_specdec2_streaming_prompt_enabled() -> bool:
+    return os.environ.get(
+        _GGUF_SPECDEC2_STREAMING_PROMPT_ENV,
+        "1",
+    ).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _gguf_mtp_server_startup_warmup_enabled() -> bool:
@@ -6765,6 +6773,10 @@ class Qwen35GGUFResidentModelRunner:
             row for row in rows
             if row.mtp2_candidate_budget > 0 and not row.prefix_reused_tokens
         )
+        if not _gguf_specdec2_streaming_prompt_enabled():
+            for row in selected:
+                row.mtp2_prompt_fallback_reason = "operator_disabled_streaming_prompt"
+            return (None,) * len(tuple(rows))
         if not selected:
             return (None,) * len(tuple(rows))
         adapter = self._resolved_mtp2_adapter()

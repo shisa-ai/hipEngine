@@ -201,14 +201,16 @@ fallback count is not a success metric.
 
 - Added 2026-08-25 with SPECDEC2-PERF P2. Fresh strict C1/C2/C4 requests stream
   pre-output-norm target chunks directly into NextN and retain only one 10 KiB
-  carried BF16 row per request. The older prompt-sized FP32 hidden capture plus
-  post-prefill F32→BF16 replay remains only as the strict fallback for prefix
-  reuse or a provider without the streaming prompt ABI.
+  carried BF16 row per request. `HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT=0`
+  temporarily selects the older prompt-sized FP32 hidden capture plus
+  post-prefill F32→BF16 replay for clean A/B and rollback; that fallback also
+  remains for prefix reuse or a provider without the streaming prompt ABI.
 - Removal trigger: qualify streamed prefix restore/COW and every supported
   incremental-prefill/context transition with exact provider fingerprints,
   cancellation/failure cleanup, and complete same-suite non-regression. Then
-  remove `_prompt_hidden_rows` and `_catch_up_provider{,_batch}` from production
-  selection while retaining a focused test oracle if still useful.
+  remove `HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT`, `_prompt_hidden_rows`, and
+  `_catch_up_provider{,_batch}` from production selection while retaining a
+  focused test oracle if still useful.
 
 ## SPECDEC2 dense NextN host/device proposal duplication
 
