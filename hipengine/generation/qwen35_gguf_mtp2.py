@@ -734,6 +734,7 @@ class Qwen35GGUFMTP2Adapter:
             actual_execution_route = (
                 "graph" if native_graph_submitted else "eager"
             )
+            row.mtp2_execution_routes.append(actual_execution_route)
             telemetry = SpecCycleTelemetry(
                 operation_id=plan.operation_id,
                 request_ids=plan.request_ids,
@@ -1191,6 +1192,7 @@ class Qwen35GGUFMTP2Adapter:
             raise RuntimeError("physical selected-state commit omitted requests")
         for row in rows:
             row.mtp2_selected_commit_batch_calls += 1
+            row.mtp2_execution_routes.append("eager")
         output_ids: list[tuple[int, ...]] = []
         next_tokens = accept.next_tokens or (None,) * len(ids)
         for index, (request_id, target, row, accepted, accepted_tokens, next_token) in enumerate(

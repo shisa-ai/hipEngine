@@ -4813,6 +4813,7 @@ class _GGUFResidentLoopRow:
     mtp2_candidate_d2h_after_target: int = 0
     mtp2_device_accept_calls: int = 0
     mtp2_selected_commit_batch_calls: int = 0
+    mtp2_execution_routes: list[str] = field(default_factory=list)
 
 
 def _compact_live_execution_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
@@ -8241,6 +8242,7 @@ class Qwen35GGUFResidentModelRunner:
             "specdec2_mtp2_selected_commit_batch_calls": int(
                 row.mtp2_selected_commit_batch_calls
             ),
+            "specdec2_mtp2_execution_routes": list(row.mtp2_execution_routes),
             "prefix_eligible": bool(row.prefix_eligible),
             "prefix_lookup": bool(row.prefix_lookup),
             "prefix_matched_tokens": int(row.prefix_matched_tokens),
