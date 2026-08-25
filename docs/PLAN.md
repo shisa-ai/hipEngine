@@ -485,8 +485,10 @@ Our host is simpler because **the kernels do the heavy lifting**. The scheduler 
 The active Generation-2 request-lifecycle, scheduler, global device-KV pool,
 prefix-cache, c1-c32, and FastDMS integration design is
 [`CONCURRENCY2.md`](CONCURRENCY2.md). The approved continuous speculative
-execution campaign is [`SPECDEC2.md`](SPECDEC2.md); its source audit and rejected
-alternatives remain in [`SPECDEC2-RESEARCH.md`](SPECDEC2-RESEARCH.md).
+execution campaign is [`SPECDEC2.md`](SPECDEC2.md); the active independent
+GGUF+PARO gfx1100 S7 ledger is [`SPECDEC2-GFX1100.md`](SPECDEC2-GFX1100.md), and
+source audit/rejected alternatives remain in
+[`SPECDEC2-RESEARCH.md`](SPECDEC2-RESEARCH.md).
 [`CONCURRENCY.md`](CONCURRENCY.md) is the legacy retained c=N kernel/resident-
 runner roadmap and evidence history. The batch-shaped, `KVLiveSpans`,
 transactional-KV, and plugin invariants below remain binding while Generation-2
