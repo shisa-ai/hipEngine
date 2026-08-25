@@ -366,6 +366,7 @@ def test_child_timing_uses_nonoverlapping_scheduler_windows_and_residual() -> No
     timing = resolve_arm_timing(
         complete_request_seconds=1.0,
         output_timing={
+            "specdec2_mtp2_provider_open_ms": 50.0,
             "specdec2_mtp2_prompt_prime_ms": 100.0,
             "specdec2_mtp2_proposal_ms": 50.0,
             "specdec2_mtp2_target_ms": 400.0,
@@ -379,7 +380,8 @@ def test_child_timing_uses_nonoverlapping_scheduler_windows_and_residual() -> No
     )
 
     assert timing["decode_only_seconds"] == 0.6
-    assert timing["top_level_stage_seconds"]["target_prefill"] == 0.1
+    assert timing["top_level_stage_seconds"]["target_prefill"] == pytest.approx(0.05)
+    assert timing["top_level_stage_seconds"]["provider_open"] == 0.05
     assert timing["top_level_stage_seconds"]["provider_prompt_prime"] == 0.1
     assert timing["top_level_stage_seconds"]["cycle_total"] == 0.6
     assert timing["top_level_stage_seconds"]["resident_owner_transition"] == 0.0

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import hipengine.generation.qwen35_paro_mtp2 as paro_mtp2_module
 from hipengine.generation.qwen35_paro import Qwen35ParoResidentModelRunner
 from hipengine.generation.qwen35_paro_mtp2 import (
     Qwen35ParoMTP2Adapter,
@@ -160,6 +161,53 @@ def test_paro_capability_is_c1_k1_and_profile_specific() -> None:
 
     row.model_slot = 1
     assert adapter.capability(semantics) is None
+
+
+def test_provider_open_timing_covers_proposer_construction(monkeypatch) -> None:
+    class FakeProposer:
+        closed = False
+
+        def __init__(self, _model, **kwargs) -> None:
+            self.max_positions = kwargs["max_positions"]
+            self.max_mtp_tokens = kwargs["max_mtp_tokens"]
+            self.scoring_head = kwargs["scoring_head"]
+
+        def reset(self) -> None:
+            return None
+
+    ticks = iter((10.0, 10.25))
+    monkeypatch.setattr(paro_mtp2_module, "NativeMtpChainProposer", FakeProposer)
+    monkeypatch.setattr(paro_mtp2_module.time, "perf_counter", lambda: next(ticks))
+    session = SimpleNamespace(
+        max_sequence_length=4096,
+        lm_head_weight=SimpleNamespace(tensor=SimpleNamespace(ptr=0x1000)),
+        lm_head_scale=SimpleNamespace(tensor=SimpleNamespace(ptr=0x2000)),
+        vocab_size=248320,
+        lm_head_threads=256,
+        runtime=object(),
+        compiler_version=None,
+    )
+    row = SimpleNamespace(
+        prompt_ids=(10, 11, 12),
+        request=SimpleNamespace(max_tokens=8),
+        mtp2_provider_open_ms=0.0,
+    )
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(
+            backend="hip_gfx1100",
+            model_path="/tmp/model",
+        ),
+        _row=lambda request_id: row,
+        _session=session,
+    )
+    adapter = Qwen35ParoMTP2Adapter(owner)
+    adapter._intents[7] = 1
+
+    adapter.begin_prompt(7)
+
+    assert row.mtp2_provider_open_ms == 250.0
+    assert adapter._proposer_builds == 1
+    assert 7 in adapter._states
 
 
 def test_streaming_prompt_priming_uses_shifted_tokens_and_final_root() -> None:
