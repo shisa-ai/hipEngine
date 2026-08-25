@@ -25946,7 +25946,19 @@ class Qwen35GGUFResidentSession:
         cache_name = f"_native_spec_b{budget}_target_graph_n2"
         existing = getattr(self, cache_name, None)
         if existing is not None and not bool(getattr(existing, "closed", False)):
-            return True
+            compatible = getattr(existing, "compatible_with", None)
+            if callable(compatible) and compatible(
+                self,
+                context_limit=int(existing.context_limit),
+                bulk_attention_mode="native",
+                use_wmma_prefill=False,
+                capture_linear_state_rows=True,
+                capture_pre_output_norm_hidden=True,
+                defer_linear_state_commit=True,
+                device_accept_commit=True,
+            ):
+                return True
+            existing.close()
         graph = self.capture_native_spec_target_graph(
             tokens,
             request_id=int(request_id),

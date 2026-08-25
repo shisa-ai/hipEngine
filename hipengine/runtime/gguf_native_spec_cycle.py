@@ -657,6 +657,10 @@ def _native_target_binding_signature(session: Any) -> tuple[int, ...]:
         "_prefill_hidden_b",
         "_verify_lm_out_indices_i32",
         "_lm_out_index",
+        "_verify_linear_state_src_conv_table_buf",
+        "_verify_linear_state_src_recurrent_table_buf",
+        "_verify_linear_state_dst_conv_table_buf",
+        "_verify_linear_state_dst_recurrent_table_buf",
     ):
         add(getattr(session, name, None))
     scratch = getattr(session, "scratch", None)
