@@ -15,6 +15,7 @@ from scripts.specdec2_perf_bridge import (
     _summarize,
     arm_order,
     atomic_write_json,
+    bridge_service_capacity,
     bridge_speed_claim_eligible,
     load_prompt_suite,
     normalize_timing_payloads,
@@ -152,6 +153,14 @@ def test_bridge_parses_only_supported_physical_cells() -> None:
         parse_budgets("0,2")
     with pytest.raises(ValueError, match="duplicate"):
         parse_budgets("2,2")
+
+
+def test_bridge_requires_separate_c1_and_physical_service_capacities() -> None:
+    assert bridge_service_capacity((1,)) == 1
+    assert bridge_service_capacity((2, 4)) == 4
+    assert bridge_service_capacity((2,)) == 2
+    with pytest.raises(ValueError, match="separate bridge invocations"):
+        bridge_service_capacity((1, 2, 4))
 
 
 def test_bridge_counterbalance_is_index_only_and_reverses_ar_spec_order() -> None:
