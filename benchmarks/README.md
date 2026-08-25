@@ -118,11 +118,13 @@ remains **3.6%/6.2%/5.3%** behind direct MTP. Exact p128/p512 streaming loses
 AR, while p4K/p16K stays pre-mutation K0. Dense P3 stable slabs are exact with
 K1/K2/K3 wall neutral at **+0.75%/+0.21%/+0.03%**; only persistent graph-bucket
 first use remains. Packed PARO production is exact and zero-allocation across
-**372/372** cycles, but staged remains **0.933x AR**;
-strict D8 cycle allocation fell **1,110 malloc/free pairs → 0** and marker wall
-**137.157 → 97.263 ms**. Both automatic policies remain K0; physical C2/C4 is
-not exposed. [`P1-P3 checkpoint`](results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json),
-[`dense P3`](results/2026-08-25-w7900-specdec2-perf-p3-dense-stable-slabs.json).
+**372/372** cycles; P4 device candidate handoff improves staged wall **4.33%**
+to **0.979x AR** with 372 device handoffs and bounded post-target rows. Strict
+D8 allocation falls **1,110 malloc/free pairs → 0** and P4 cycle marker wall is
+**83.469 ms**. Both automatic policies remain K0; physical C2/C4 is not exposed.
+[`P1-P3 checkpoint`](results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json),
+[`dense P3`](results/2026-08-25-w7900-specdec2-perf-p3-dense-stable-slabs.json),
+[`packed P4`](results/2026-08-25-w7900-specdec2-perf-p4-paro-device-candidate.json).
 
 ## Where detailed evidence lives
 

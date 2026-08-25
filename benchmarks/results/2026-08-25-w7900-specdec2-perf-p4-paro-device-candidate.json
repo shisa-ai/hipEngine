@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "date": "2026-08-25",
+  "kind": "specdec2_perf_gfx1100_p4_paro_device_candidate",
+  "status": "retained_exact_operation_win_product_blocked",
+  "performance_claim": true,
+  "speed_claim_eligible": true,
+  "hardware": {
+    "hostname": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "gpu_index": 0,
+    "gpu_max_hw_queues": null,
+    "sku": "D7070100",
+    "unique_id": "0xe282895b62c2b295",
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "target_quant": "W4A16_PARO",
+    "mtp_quant": "bf16",
+    "kv": "bf16",
+    "production_manifest": "920737601cca41bc64963437ce1daece0e4ebca1bc52ba5bdd22ae817aba9561",
+    "strict_manifest": "3199678e604dca83d40f3d538deb3c05ceed3144b0100ef89b3ecfb94aed5723"
+  },
+  "source": {
+    "commit": "7ef43f3f7fa466ea09feb6db2a5bac3a7d7f1971",
+    "tracked_clean": true
+  },
+  "protocol": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "runs": 3,
+    "outputs": 24,
+    "concurrency": 1,
+    "candidate_budget": 1,
+    "sampling": "raw greedy",
+    "arms": ["true_ar", "staged"],
+    "warmup": true,
+    "command": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_SPECDEC2_CYCLE_ALLOC_TELEMETRY=1 PYTHONPATH=. uv run python scripts/specdec2_perf_gfx1100_bridge.py run-loaded-paro --lane paro --profile <production|strict> --candidate-budget 1 --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --runs 3 --max-tokens 24 --max-sequence-length 1024 --compiler-version-file /tmp/specdec2-perf-gfx1100-p1/hipcc-version.txt --require-cached-build --output <json>"
+  },
+  "device_contract": {
+    "candidate_source": "stable borrowed-W8A16 INT32 argmax scalar",
+    "candidate_handoff": "device_i32 into fixed target i32/i64 metadata",
+    "pre_target_candidate_d2h": 0,
+    "post_target_readback": "one bounded candidate ID per K1 cycle for provider repair",
+    "gpu_accept": true,
+    "selected_target_commit": true,
+    "provider_update": "actual target-retired candidate plus selected target hidden",
+    "candidate_descriptor_stable": true,
+    "cycle_allocation_free": true
+  },
+  "production": {
+    "exact_pairs": 30,
+    "pairs": 30,
+    "cycles": 372,
+    "device_handoffs": 372,
+    "post_target_candidate_rows": 372,
+    "zero_allocation_cycles": 372,
+    "true_ar_wall_seconds": 25.101569518912584,
+    "staged_wall_seconds": 25.641006723046303,
+    "staged_speedup_vs_ar": 0.9789627149505368,
+    "p3_staged_wall_seconds": 26.801662317942828,
+    "p4_wall_reduction_fraction": 0.04330461853661438,
+    "matched_direct_control_wall_seconds": 24.605306201148778,
+    "staged_speedup_vs_matched_direct": 0.9596076504994536,
+    "raw_packet": {
+      "path": "/tmp/specdec2-perf-gfx1100-p4/current-7ef43f3f7/paro-production-loaded-d24-full-3run.json",
+      "size_bytes": 2392825,
+      "sha256": "7af74a1019133e238da468cf04e4616ab1913dcfec5f9324e89b8e531b92c7c0",
+      "committed": false
+    }
+  },
+  "strict": {
+    "exact_pairs": 30,
+    "pairs": 30,
+    "cycles": 372,
+    "device_handoffs": 372,
+    "post_target_candidate_rows": 372,
+    "zero_allocation_cycles": 372,
+    "true_ar_wall_seconds": 25.353462317958474,
+    "staged_wall_seconds": 26.636393880471587,
+    "staged_speedup_vs_ar": 0.9518354155652579,
+    "p3_staged_wall_seconds": 26.51297123124823,
+    "p4_wall_delta_fraction": 0.004655123374299296,
+    "raw_packet": {
+      "path": "/tmp/specdec2-perf-gfx1100-p4/current-7ef43f3f7/paro-strict-loaded-d24-full-3run.json",
+      "size_bytes": 2392076,
+      "sha256": "e12ce27c17af2bb4a3ca036f17821f4f5d8d4bec859de1b2f163b45cd80afae4",
+      "committed": false
+    }
+  },
+  "profile": {
+    "scope": "strict code_merge_intervals D8 one AR/staged pair after warmup",
+    "exact": true,
+    "cycles": 4,
+    "device_handoffs": 4,
+    "post_target_candidate_rows": 4,
+    "zero_allocation_cycles": 4,
+    "proposal_marker_wall_ms": 0.207963,
+    "proposal_api": {
+      "hipMemcpyAsync": 4,
+      "allocation_records": 0,
+      "candidate_d2h": 0
+    },
+    "target_marker_wall_ms": 82.746919,
+    "cycle_marker_wall_ms": 83.468937,
+    "p3_cycle_marker_wall_ms": 97.262723,
+    "cycle_wall_reduction_fraction": 0.14182801726759364,
+    "root": "/tmp/specdec2-perf-gfx1100-profile/paro-strict-d8-device-candidate-7ef43f3f7",
+    "files": {
+      "packet.json": "8dd5ec7add9e1fc7223bb4f809db9b63a3d3ab4435b490321919536cf8dee77e",
+      "marker": "3883b54abfa24422072ebc999d7bceb3abddcb960134ff5534233d909a83177c",
+      "hip_api": "2cf95aac51425f3d1e92326bfbd5599278812ce2a83ad1ec89487515642404cb",
+      "kernel": "8d10793f567e5a3fd49c84b36df1d83966395b5beccef65b0e7276f5ad1aff03",
+      "allocation": "1f16c63e16cd7a65c3ff1b6fceb44cca796479c46e145ea588c328333a57051b",
+      "copy": "b041321fbce4c670f872d328ef3acc789c415f4984ce6581b1d94f9ebbcba839"
+    }
+  },
+  "decision": {
+    "device_candidate": "retain",
+    "default_explicit_staged": true,
+    "automatic_policy": "K0",
+    "product_promotion": false,
+    "blockers": [
+      "production staged complete wall remains 2.1% behind true AR",
+      "production staged complete wall remains 4.2% behind matched direct control",
+      "strict common direct attachment remains blocked by compact-AR versus serial-direct activation arithmetic on one heldout prompt",
+      "remaining P4 selected commit/provider update metadata and lifecycle gates"
+    ],
+    "next": "keep target result/accept/selected commit/provider update metadata in stable slabs and qualify bounded committed-result readback after both commits"
+  }
+}
