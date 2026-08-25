@@ -11,6 +11,7 @@ and validates the complete common row contract.
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 from datetime import datetime, timezone
 import json
 import math
@@ -26,6 +27,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.gguf_mtp_category_bench import load_prompt_rows
+from scripts.specdec2_perf_bridge import _StageLedger, _install_stage_ledger
 from scripts.specdec2_perf_gfx1100_bridge import (
     CANONICAL_PROMPTS,
     REQUIRED_TOP_LEVEL_STAGES,
@@ -316,16 +318,18 @@ def _run_loaded_arm(
     arm: str,
     prompt: str,
     max_tokens: int,
-) -> tuple[Any, float, dict[str, Any], dict[str, Any]]:
+    ledger: _StageLedger | None = None,
+) -> tuple[Any, float, dict[str, Any], dict[str, Any], dict[str, Any]]:
     started = time.perf_counter()
-    if arm == "true_ar":
-        output = llm.generate_detailed((prompt,), _sampling_params(max_tokens))[0]
-    elif arm == "staged":
-        output = llm.generate_speculative_mtp_detailed(
-            (prompt,), _sampling_params(max_tokens)
-        )[0]
-    else:
-        raise ValueError(f"unsupported loaded PARO arm: {arm}")
+    with nullcontext() if ledger is None else ledger.arm(arm):
+        if arm == "true_ar":
+            output = llm.generate_detailed((prompt,), _sampling_params(max_tokens))[0]
+        elif arm == "staged":
+            output = llm.generate_speculative_mtp_detailed(
+                (prompt,), _sampling_params(max_tokens)
+            )[0]
+        else:
+            raise ValueError(f"unsupported loaded PARO arm: {arm}")
     complete = time.perf_counter() - started
     snapshot = llm.live_loop_snapshot()
     return (
@@ -333,6 +337,7 @@ def _run_loaded_arm(
         complete,
         _latest_scheduler_observability(snapshot),
         _latest_route_metadata(snapshot),
+        {} if ledger is None else ledger.snapshot(),
     )
 
 
@@ -382,6 +387,8 @@ def run_loaded_packet(args: argparse.Namespace) -> dict[str, Any]:
     from hipengine import LLM
 
     rows: list[dict[str, Any]] = []
+    stage_instrumentation: dict[str, bool] = {}
+    ledger: _StageLedger | None = None
     started = time.perf_counter()
     llm = LLM(
         str(model),
@@ -394,6 +401,8 @@ def run_loaded_packet(args: argparse.Namespace) -> dict[str, Any]:
         llm.prepare(max_sequence_length=args.max_sequence_length)
         if args.warmup:
             _warm_loaded_arms(llm, max_tokens=args.max_tokens)
+        ledger = _StageLedger(roctx=bool(args.roctx_markers))
+        stage_instrumentation = _install_stage_ledger(llm._get_text_generator(), ledger)
         selected_manifest = str(getattr(llm, "execution_profile_manifest_sha256", "") or "")
         strict_manifest = str(getattr(llm, "execution_profile_strict_manifest_sha256", "") or "")
         if len(selected_manifest) != 64 or len(strict_manifest) != 64:
@@ -419,11 +428,12 @@ def run_loaded_packet(args: argparse.Namespace) -> dict[str, Any]:
                     f"run={plan_row['run_index']} prompt={prompt_id} arm={arm}",
                     flush=True,
                 )
-                output, complete, scheduler, route_metadata = _run_loaded_arm(
+                output, complete, scheduler, route_metadata, stage_ledger = _run_loaded_arm(
                     llm,
                     arm=arm,
                     prompt=prompt,
                     max_tokens=args.max_tokens,
+                    ledger=ledger,
                 )
                 generated_ids = getattr(output, "generated_token_ids", None)
                 if not generated_ids:
@@ -463,6 +473,7 @@ def run_loaded_packet(args: argparse.Namespace) -> dict[str, Any]:
                 )
                 row["route_metadata"] = route_metadata
                 row["output_timing"] = output_timing
+                row["stage_ledger"] = stage_ledger
                 row["reload_boundary"] = {
                     "loaded_process": "paro_generation2_target",
                     "arms_in_process": list(LOADED_ARMS),
@@ -481,6 +492,8 @@ def run_loaded_packet(args: argparse.Namespace) -> dict[str, Any]:
                     },
                 )
     finally:
+        if ledger is not None:
+            ledger.close()
         llm.close()
     return {
         "schema": 1,
@@ -499,6 +512,8 @@ def run_loaded_packet(args: argparse.Namespace) -> dict[str, Any]:
         "max_tokens": int(args.max_tokens),
         "arms": list(LOADED_ARMS),
         "provenance": provenance,
+        "roctx_markers": bool(args.roctx_markers),
+        "stage_instrumentation": stage_instrumentation,
         "total_wall_seconds": time.perf_counter() - started,
         "rows": rows,
     }
@@ -523,6 +538,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-sequence-length", type=int)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument("--roctx-markers", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     return parser
 

@@ -16,6 +16,7 @@ from scripts.specdec2_perf_gfx1100_bridge import (
 )
 from scripts.specdec2_perf_gfx1100_child import (
     build_bridge_row,
+    build_parser as build_child_parser,
     resolve_arm_timing,
     validate_child_scope,
     validate_loaded_arm_ids,
@@ -207,6 +208,24 @@ def test_atomic_checkpoint_replaces_complete_json_without_temp_leak(tmp_path: Pa
         "rows": [1, 2],
     }
     assert list(tmp_path.iterdir()) == [output]
+
+
+def test_loaded_paro_child_exposes_cached_roctx_leaf_mode(tmp_path: Path) -> None:
+    args = build_child_parser().parse_args(
+        [
+            "--profile",
+            "strict",
+            "--candidate-budget",
+            "1",
+            "--roctx-markers",
+            "--require-cached-build",
+            "--output",
+            str(tmp_path / "leaf.json"),
+        ]
+    )
+
+    assert args.roctx_markers is True
+    assert args.require_cached_build is True
 
 
 def test_child_scope_is_paro_k1_only_and_dense_uses_shared_bridge() -> None:
