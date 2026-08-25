@@ -107,6 +107,7 @@ class Qwen35GGUFMTP2Adapter:
         self.target_verify_mode = str(target_verify_mode)
         self.candidate_budget = int(candidate_budget)
         self.quant = str(quant)
+        self.physical_prompt_streaming = False
         if self.candidate_budget not in {1, 2, 3}:
             raise ValueError("MTP2 candidate budget must be 1, 2, or 3")
         self._intents: dict[int, int] = {}
@@ -153,6 +154,13 @@ class Qwen35GGUFMTP2Adapter:
         ):
             raise RuntimeError("streaming prompt ownership is only opened once per request")
         rows = tuple(self.owner._row(request_id) for request_id in ids)
+        if (
+            int(getattr(self.owner, "capacity", 1)) > 1
+            and not bool(self.physical_prompt_streaming)
+        ):
+            for row in rows:
+                row.mtp2_prompt_fallback_reason = "physical_streaming_category_rejected"
+            return None
         if any(row.lease is None or int(row.prefix_reused_tokens) > 0 for row in rows):
             for row in rows:
                 if int(getattr(row, "prefix_reused_tokens", 0)) > 0:
