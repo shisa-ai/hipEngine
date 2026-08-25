@@ -1,6 +1,6 @@
 # AGENTIC-QUALITY2 — ZBook Agent Quality Campaign
 
-- **Status:** approved; active; AQ0-AQ6 complete, AQ7 comparison-model screening next
+- **Status:** approved; active; AQ0-AQ7 complete, AQ8 one-mechanism declaration next
 - **Approved:** 2026-08-25
 - **Execution host:** `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 - **Primary model:** Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV
@@ -395,6 +395,57 @@ A comparison model can be:
 
 No fallback silently substitutes Qwen3.6 for a requested comparison model.
 
+#### AQ7 admitted comparison result
+
+Both comparison artifacts are `admitted_complete` at clean source
+`1f9c23418`: strict profile, BF16 KV, c1, cache/native sampler/automatic MTP
+off, `temperature=0`, reasoning off, and the frozen 192-token cap. Each first
+passed the same two-repetition development smoke with exact normalized equality,
+10/10 independent policy controls, and zero transient ownership. Only one
+model-owning process held `/dev/kfd` at a time.
+
+| Model | Overall | Development | Sealed heldout | Code | Instruction | Repository | Tool selection | Valid calls |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Qwen3.6-35B-A3B `UD-Q4_K_M` (AQ6 reference) | 44/68 (64.71%) | 20/34 | 24/34 | 14/16 | 4/16 | 10/16 | 16/20 | 56/64 |
+| Qwen3.8-27B `Q4_K_M` | **50/68 (73.53%)** | **22/34** | **28/34** | 14/16 | **12/16** | 10/16 | 14/20 | **64/64** |
+| Ornith-1.5-35B-A3B `Q4_K_M` | 42/68 (61.76%) | 16/34 | 26/34 | 14/16 | 4/16 | 10/16 | 14/20 | 60/64 |
+
+All 34 normalized response pairs match for each model, all model-specific rows
+are scored, and neither comparison has a malformed public argument, raw markup
+or content leak, truncation, runtime error, blocked sandbox, or final ownership
+delta. Qwen3.8's +6 passes versus the primary reference are an instruction
+family gain (+8) offset by tool-selection loss (-2). Ornith matches the primary
+code/instruction/repository totals but loses two tool-selection observations.
+These are same-host, same-suite **product-quality** differences between model
+artifacts, not implementation-correctness, quantization, or speed deltas.
+
+Independent metadata admission found:
+
+- Qwen3.8 resolves through the registered `qwen35` dense plugin: 64 AR blocks
+  (48 linear/16 full attention), 851 mapped tensors with zero missing,
+  unexpected, or shape errors, and one complete trailing GGUF MTP block. Its
+  strict manifest is `0e053fd658cacbc72a67b7e7ccf33927502a0fe9379faf14dac30ae6ee2bb65b`.
+- Ornith resolves through the registered `qwen35moe` plugin: 40 blocks (30
+  linear/10 full attention), 256 experts/top-8, and 733 mapped tensors with zero
+  missing, unexpected, or shape errors. No trailing GGUF MTP block is present;
+  speculative serving remained explicitly off. Its strict manifest is
+  `6f6af11c059dbd02d458405bfa9d70ef0ea4a38daaa47a884c4f52b7a489fc41`.
+- Both artifacts have byte-identical Qwen tokenizer vocabulary, merges, and
+  token types to the primary, singleton control IDs `248045/248046` for
+  `<|im_start|>/<|im_end|>`, `248058/248059` for tool-call open/close, and
+  `248068/248069` for think open/close; EOS is `248046`. Embedded GGUF template
+  hashes differ, so admission did not infer one model's template from another.
+  The current Qwen35 generator exposes the server's generic registered Qwen
+  renderer; identical 1,544-token live smoke prompts, exact nested tool calls,
+  public capability manifests, and clean full matrices admit that route for
+  each exact artifact.
+
+Compact quality-only evidence:
+[`Qwen3.8`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq7-qwen38-comparison.json)
+and
+[`Ornith`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq7-ornith15-comparison.json).
+Raw outputs remain local and are not inputs for AQ8 tuning.
+
 ## 11. Candidate admission
 
 AQ8 admits **at most one** mechanism after AQ3/AQ6/AQ7. Candidate order is not a
@@ -727,17 +778,29 @@ unchanged default SDMA route with a clean kernel journal and post-shutdown KFD.
 
 ### AQ7 / Task #47 — comparison models
 
-- [ ] Audit/load Qwen3.8 and Ornith independently.
-- [ ] Run one smoke task before the full matrix.
-- [ ] Run the frozen suite for each admitted model without changing task wording,
+- [x] Audit/load Qwen3.8 and Ornith independently.
+- [x] Run one smoke task before the full matrix.
+- [x] Run the frozen suite for each admitted model without changing task wording,
       tools, output cap, or oracle.
-- [ ] Record exact blocker instead of weakening unsupported paths.
-- [ ] Publish separate artifacts and a cross-model table with no implementation
+- [x] Record exact blocker instead of weakening unsupported paths. Both models
+      are `admitted_complete`; no substitution or weakening was required.
+- [x] Publish separate artifacts and a cross-model table with no implementation
       or speed inference.
-- [ ] Commit.
+- [x] Commit.
 
-AQ6 and AQ7 may execute in parallel only with one model-owning GPU process at a
-time; artifact work can overlap after a process exits.
+#### AQ7 result — both comparison rows complete
+
+Qwen3.8 completes **50/68 (73.53%)**, development **22/34** and sealed heldout
+**28/34**. Ornith completes **42/68 (61.76%)**, development **16/34** and sealed
+heldout **26/34**. Both exact 34/34 normalized repeat pairs, 10/10 independent
+controls, complete response-owned IDs, clean source/log/kernel-journal health,
+and zero final transient ownership pass. No speed fields are retained. Section
+10.2 contains the cross-model table and independent architecture/tokenizer/
+template admission; separate compact artifacts retain commands, full model
+hashes, capability/profile manifests, aggregate quality, and local raw hashes.
+
+AQ6 and AQ7 observed the one-model-owning-process rule. Comparison-model raw
+outputs and heldout details remain local and cannot tune AQ8.
 
 ### AQ8 / Task #48 — one mechanism declaration
 
@@ -989,16 +1052,18 @@ weights, caches, or profiler data.
 
 ## 18. Current handoff
 
-Start AQ7 / Task #47 from clean AQ6 source `8e228965e` and the exact v2 hashes in
-[`AGENTIC-QUALITY2-SUITE.md`](AGENTIC-QUALITY2-SUITE.md). Audit Qwen3.8-27B and
-Ornith-1.5-35B independently: architecture, loader route, tokenizer/template,
-tool controls, EOS, effective execution profile, artifact identity, and public
-capabilities. Run one smoke task before a full matrix and record a precise
-`admitted_*`, `blocked_*`, or `rejected_semantics` result without substituting
-Qwen3.6 or changing suite wording/tools/cap/oracles. Only one model-owning GPU
-process may run at a time.
+Start AQ8 / Task #48 from the committed AQ7 comparison packet and the frozen
+Section 11 order. Join AQ3's independent boundary taxonomy with AQ6's primary
+expanded baseline and AQ7's aggregate cross-model evidence. Declare **at most
+one** model-general mechanism, or a measured no-go, before implementation.
+Complete every declaration field: development premise, exact request/capability
+scope, auto/required/specific/no-tool semantics, RED oracle, fallback/fail-
+closed behavior, telemetry, removal trigger, and keep/reject thresholds.
 
-Keep AQ6 heldout model outputs sealed. AQ7 may publish model-specific aggregates
-but must not use comparison-model output or speed to tune a mechanism. AQ8 joins
-AQ3/AQ6/AQ7 development-level evidence and may declare at most one general
-mechanism before implementation.
+Do not inspect or tune to AQ6/AQ7 heldout model outputs, comparison-model raw
+outputs, workload IDs, or exact answers. The aggregate result is diagnostic:
+Qwen3.8's instruction gain and otherwise shared deterministic model-owned
+selection/grounding failures provide no permission for a model-name, family,
+language, prompt, or fixture-conditioned branch. If no general runtime
+mechanism has a credible development premise without semantic coercion, declare
+no-go rather than implementing one.
