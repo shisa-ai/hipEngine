@@ -1,6 +1,6 @@
 # SPECDEC2 S7 / gfx1100 Integration Plan
 
-- Status: **active; S7.0 audit/backend-neutral gate complete**
+- Status: **active; S7.0 plus dense-GGUF G1 and packed-PARO P1 foundations complete; physical C2/C4 and promotion gates remain**
 - Started: **2026-08-25**
 - Hardware lanes: **AMD Radeon Pro W7900** (binding/default) and **RX 7900 XTX** (independent diagnostic)
 - Shared architecture base: [`SPECDEC2.md`](SPECDEC2.md) S1-S6 at `82af2b6a4`
@@ -103,13 +103,14 @@ P2 cannot use G2 arithmetic or rates.
 
 ### Implementation
 
-- [ ] Register a named gfx1100 dense-GGUF strict execution profile with exact
+- [x] Register a named gfx1100 dense-GGUF strict execution profile with exact
       FP32 recurrent state, BF16 KV, target capture, and stable manifest hash.
-- [ ] Expose only `GGUF_SPECDEC2_MTP2_C1`; keep C4 absent.
-- [ ] Generalize `specdec2_c1_gate.py` hardware/model/quant provenance.
-- [ ] Confirm C1 capacity uses the staged adapter rather than direct whole-
+- [x] Expose only `GGUF_SPECDEC2_MTP2_C1`; keep C4 absent.
+- [x] Generalize the existing c1 gate through model/backend arguments and retain
+      exact W7900 provenance.
+- [x] Confirm C1 capacity uses the staged adapter rather than direct whole-
       request generation.
-- [ ] Keep automatic policy K0; explicit strict K1/K2/K3 only.
+- [x] Keep automatic policy K0; explicit strict K1/K2/K3 only.
 
 ### Gate
 
@@ -122,8 +123,11 @@ For K1/K2/K3:
 - cached profiler proves provider, target, accept, and commit owners;
 - complete same-host staged wall is compared against true AR and direct control.
 
-G1 may promote no automatic cell; it only establishes a truthful exact C1
-capability and its local economics.
+**G1 foundation closed 2026-08-25:** K1/K2/K3 staged cold/warm IDs match true
+AR and direct exact control; repeat provider fingerprints pass and all owners
+drain. Warm staged/direct wall is `0.583/0.554/0.579`; K2/K3 beat warm AR on the
+short d8 screen. This is not a full-suite speed claim, so automatic remains K0.
+Evidence: [`gfx1100 GGUF C1 foundation`](../benchmarks/results/2026-08-25-w7900-specdec2-gguf-c1-foundation.json).
 
 ## 6. G2 — gfx1100 dense GGUF physical C2/C4
 
@@ -142,17 +146,18 @@ capability and its local economics.
 
 ### Implementation
 
-- [ ] Add a `Qwen35ParoMTP2Adapter` implementing bounded capability, claims,
+- [x] Add a `Qwen35ParoMTP2Adapter` implementing bounded capability, claims,
       prepare/propose, target execute, commit/rollback, K0 catch-up, and close.
-- [ ] Add request-owned device storage for prompt final-normalized BF16 hidden
-      rows and provider KV/cursor/checkpoint state.
-- [ ] Extend packed/serial prefill to write final-normalized rows without D2H or
-      duplicate target weights.
-- [ ] Wrap `NativeMtpChainProposer` as one bounded device-candidate proposal.
-- [ ] Lower C1/K1 to R2 and call the qualified fast `decode_batched` verifier;
+- [x] Add request-owned provider KV/cursor/checkpoint state and one carried
+      device BF16 target-hidden row.
+- [x] Stream each final-normalized target row into NextN during prefill without
+      D2H, duplicate target weights, prompt-sized slab, or post-prefill replay.
+- [x] Wrap `NativeMtpChainProposer` as one bounded C1 host-token proposal and
+      pool the heavy proposer owner across requests.
+- [x] Lower C1/K1 to R2 and call the qualified fast `decode_batched` verifier;
       preserve exact `c1_loop` through the strict profile/fallback.
-- [ ] Compose provider/target/result claims before mutation and expose manifest,
-      candidate handoff, accept/commit, repair, and readback telemetry.
+- [x] Compose provider/target/result claims before mutation and expose manifest,
+      candidate handoff, accept/commit, repair, recovery, and route telemetry.
 
 ### Gate
 
@@ -168,6 +173,13 @@ capability and its local economics.
   provider update; and
 - complete staged wall is non-regressive versus the direct fast B1 control before
   any default owner changes.
+
+**P1 foundation closed 2026-08-25:** production-fast and strict staged d8 IDs
+match true AR, actual staged C1/K1 eager rows engage, streaming priming preserves
+the shifted prompt contract, and warm requests reuse one proposer build. Warm
+production staged wall is `0.731 s` versus `0.670 s` AR on the short screen, so
+no performance/default promotion; automatic remains K0. Evidence:
+[`gfx1100 PARO C1 foundation`](../benchmarks/results/2026-08-25-w7900-specdec2-paro-c1-foundation.json).
 
 ## 8. P2 — gfx1100 packed PARO physical C2/C4 K1
 

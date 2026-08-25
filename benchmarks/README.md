@@ -106,6 +106,13 @@ Explicit C1/C2/C4 K1-K3 stays default-off; automatic C1-C32 selects K0. Full
 gates are exact, but C2/C4 K2 wall is **2.121x/2.312x true AR** at **49.15%**
 acceptance and automatic load misses ITL-p99. [`S6 closure`](../docs/SPECDEC2.md#12-s6-gfx1151-product-closure).
 
+gfx1100 S7 now retains two exact C1 foundations, both automatic K0: dense
+Qwen3.6-27B GGUF K1-K3 staged IDs match true AR/direct control, while packed
+PARO K1 production/strict staged IDs match AR with streaming NextN prompt
+priming. PARO remains performance-blocked on the short screen (`0.731 s` staged
+vs `0.670 s` AR); physical C2/C4 is not yet exposed for either lane.
+[`S7 plan`](../docs/SPECDEC2-GFX1100.md).
+
 ## Where detailed evidence lives
 
 | Need | Source |
