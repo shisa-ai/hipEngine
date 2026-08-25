@@ -1035,19 +1035,34 @@ def aggregate_quality2_results(
         kind: rollup([row for row in ordered if row["kind"] == kind])
         for kind in sorted({str(row["kind"]) for row in ordered})
     }
+    normalized_fingerprints = [row.get("normalized_response_sha256") for row in ordered]
+    if any(value is not None for value in normalized_fingerprints) and not all(
+        isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+        for value in normalized_fingerprints
+    ):
+        raise AgenticQuality2Error(
+            "normalized response fingerprints must be complete lowercase SHA-256 values"
+        )
+    normalized_basis = bool(normalized_fingerprints) and all(
+        isinstance(value, str) for value in normalized_fingerprints
+    )
     determinism: list[dict[str, Any]] = []
     for workload_id, values in sorted(grouped.items()):
-        fingerprints = {
-            _canonical_sha256(
-                {
-                    "status": row["status"],
-                    "success": row["success"],
-                    "result_sha256": row.get("result_sha256"),
-                    "error": row.get("error"),
-                }
-            )
-            for row in values
-        }
+        fingerprints = (
+            {str(row["normalized_response_sha256"]) for row in values}
+            if normalized_basis
+            else {
+                _canonical_sha256(
+                    {
+                        "status": row["status"],
+                        "success": row["success"],
+                        "result_sha256": row.get("result_sha256"),
+                        "error": row.get("error"),
+                    }
+                )
+                for row in values
+            }
+        )
         if len(fingerprints) != 1:
             determinism.append({"workload_id": workload_id, "fingerprints": sorted(fingerprints)})
     development_details = [
@@ -1068,6 +1083,9 @@ def aggregate_quality2_results(
         "by_language": by_language,
         "by_kind": by_kind,
         "determinism": {
+            "basis": (
+                "normalized_response_v1" if normalized_basis else "oracle_outcome_v1"
+            ),
             "evaluated": expected_repetitions > 1,
             "passed": not determinism,
             "mismatches": determinism,

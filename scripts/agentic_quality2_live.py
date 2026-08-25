@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import sys
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -26,7 +27,9 @@ from hipengine.benchmark.agentic_live import (  # noqa: E402
 from hipengine.benchmark.agentic_quality2 import (  # noqa: E402
     AgenticQuality2Error,
     AgenticQuality2Suite,
+    _arguments_match_schema,
     aggregate_quality2_results,
+    evaluate_quality2_fail_safe_control,
     evaluate_quality2_oracle,
     load_agentic_quality2_suite,
 )
@@ -168,6 +171,247 @@ def _quality_outcome(
     return "oracle_failed"
 
 
+def _normalized_response_sha256(record: Mapping[str, Any]) -> str:
+    return _canonical_sha256(
+        {
+            "calls": record["calls"],
+            "call_parse_errors": record["call_parse_errors"],
+            "finish": record["finish"],
+            "generated_token_ids": record["output"]["generated_token_ids"],
+            "public_content": record["output"]["public_content"],
+        }
+    )
+
+
+def _expected_calls(workload: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
+    turn = _mapping(workload["turns"][0], label="workload.turn")
+    expected_outcome = str(turn["expected_outcome"])
+    if expected_outcome == "no_tool_call":
+        return ()
+    if expected_outcome == "tool_calls":
+        return tuple(
+            {
+                "tool": str(_mapping(call, label="expected call")["tool"]),
+                "arguments": copy.deepcopy(dict(call["arguments"])),
+            }
+            for call in _sequence(turn["expected_calls"], label="expected calls")
+        )
+    expected_arguments = turn.get("expected_arguments")
+    return (
+        {
+            "tool": str(turn["expected_tool"]),
+            "arguments": (
+                copy.deepcopy(dict(expected_arguments))
+                if isinstance(expected_arguments, Mapping)
+                else None
+            ),
+        },
+    )
+
+
+def _call_fingerprint(call: Mapping[str, Any]) -> str:
+    return _canonical_sha256(
+        {
+            "tool": str(call["tool"]),
+            "arguments": copy.deepcopy(dict(call["arguments"])),
+        }
+    )
+
+
+def _quality_metrics(
+    suite: AgenticQuality2Suite,
+    records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    def ratio(passed: int, denominator: int) -> float:
+        return 0.0 if denominator == 0 else passed / denominator
+
+    public_call_blocks = 0
+    json_valid_calls = 0
+    declared_calls = 0
+    schema_valid_calls = 0
+    tool_expected = 0
+    valid_call_observations = 0
+    correct_tool = 0
+    no_tool_expected = 0
+    correct_no_tool = 0
+    argument_denominator = 0
+    exact_arguments = 0
+    terminal = 0
+    oracle_statuses: Counter[str] = Counter()
+    by_kind: dict[str, Counter[str]] = {}
+    outcomes: Counter[str] = Counter()
+    raw_markup_leaks = 0
+    content_alongside_calls = 0
+    malformed_or_invalid = 0
+    truncated = 0
+
+    for raw_record in records:
+        record = _mapping(raw_record, label="quality record")
+        workload = _mapping(
+            suite.workloads.get(str(record["workload_id"])),
+            label="quality workload",
+        )
+        turn = _mapping(workload["turns"][0], label="quality workload turn")
+        calls = tuple(
+            _mapping(call, label="quality call")
+            for call in _sequence(record["calls"], label="quality calls")
+        )
+        parse_errors = tuple(
+            str(value)
+            for value in _sequence(
+                record["call_parse_errors"],
+                label="quality call parse errors",
+            )
+        )
+        public_call_blocks += len(calls) + len(parse_errors)
+        json_valid_calls += len(calls)
+        calls_declared = [str(call["tool"]) in suite.tools for call in calls]
+        calls_schema_valid = [
+            declared
+            and _arguments_match_schema(
+                _mapping(call["arguments"], label="quality call arguments"),
+                _mapping(suite.tools[str(call["tool"])]["parameters"], label="tool schema"),
+            )
+            for call, declared in zip(calls, calls_declared, strict=True)
+        ]
+        declared_calls += sum(calls_declared)
+        schema_valid_calls += sum(calls_schema_valid)
+        expected = _expected_calls(workload)
+        expected_tools = sorted(str(call["tool"]) for call in expected)
+        actual_tools = sorted(str(call["tool"]) for call in calls)
+        expected_outcome = str(turn["expected_outcome"])
+        if expected_outcome == "no_tool_call":
+            no_tool_expected += 1
+            no_calls = not calls and not parse_errors
+            correct_no_tool += int(no_calls)
+            correct_tool += int(no_calls)
+        else:
+            tool_expected += 1
+            valid_call_observations += int(
+                bool(calls)
+                and not parse_errors
+                and all(calls_declared)
+                and all(calls_schema_valid)
+            )
+            tools_correct = actual_tools == expected_tools and not parse_errors
+            correct_tool += int(tools_correct)
+            arguments_are_explicit = all(
+                isinstance(call.get("arguments"), Mapping) for call in expected
+            )
+            if (
+                str(turn.get("argument_scoring")) != "not_applicable"
+                and arguments_are_explicit
+            ):
+                argument_denominator += 1
+                exact_arguments += int(
+                    tools_correct
+                    and sorted(_call_fingerprint(call) for call in calls)
+                    == sorted(_call_fingerprint(call) for call in expected)
+                )
+        finish = _mapping(record["finish"], label="quality finish")
+        terminal += int(bool(str(finish.get("reason") or "")))
+        truncated += int(str(finish.get("reason") or "") == "length")
+        quality = _mapping(record["quality"], label="quality result")
+        status = str(quality["status"])
+        oracle_statuses[status] += 1
+        kind = str(record["oracle_kind"])
+        by_kind.setdefault(kind, Counter())[status] += 1
+        outcome = str(quality["outcome"])
+        outcomes[outcome] += 1
+        raw_markup_leaks += int(bool(record["output"]["raw_markup_leaked"]))
+        content_alongside_calls += int(outcome == "content_alongside_tool_call")
+        malformed_or_invalid += int(bool(parse_errors))
+
+    observations = len(records)
+    external_scored = oracle_statuses["passed"] + oracle_statuses["failed"]
+    return {
+        "observations": {"attempted": observations, "terminal": terminal},
+        "call_blocks": {
+            "public": public_call_blocks,
+            "json_valid": json_valid_calls,
+            "declared": declared_calls,
+            "strict_schema_valid": schema_valid_calls,
+        },
+        "valid_call": {
+            "denominator": tool_expected,
+            "passed": valid_call_observations,
+            "rate": ratio(valid_call_observations, tool_expected),
+        },
+        "tool_selection": {
+            "denominator": observations,
+            "correct": correct_tool,
+            "rate": ratio(correct_tool, observations),
+            "no_tool_expected": no_tool_expected,
+            "correct_no_tool": correct_no_tool,
+        },
+        "exact_arguments": {
+            "diagnostic_only": True,
+            "denominator": argument_denominator,
+            "passed": exact_arguments,
+            "rate": ratio(exact_arguments, argument_denominator),
+        },
+        "external_oracle": {
+            "passed": oracle_statuses["passed"],
+            "failed": oracle_statuses["failed"],
+            "blocked_sandbox": oracle_statuses["blocked_sandbox"],
+            "unscorable": oracle_statuses["unscorable"],
+            "scored_denominator": external_scored,
+            "success_rate": ratio(oracle_statuses["passed"], external_scored),
+        },
+        "by_oracle_kind": {
+            kind: {
+                "passed": counts["passed"],
+                "failed": counts["failed"],
+                "blocked_sandbox": counts["blocked_sandbox"],
+                "unscorable": counts["unscorable"],
+            }
+            for kind, counts in sorted(by_kind.items())
+        },
+        "outcomes": dict(sorted(outcomes.items())),
+        "safety": {
+            "raw_markup_leak": raw_markup_leaks,
+            "content_alongside_tool_call": content_alongside_calls,
+            "malformed_or_invalid_arguments": malformed_or_invalid,
+            "truncated": truncated,
+            "runtime_error": 0,
+        },
+        "repair": {
+            "telemetry_available": False,
+            "attempted": None,
+            "succeeded": None,
+            "failed": None,
+            "extra_generated_tokens": None,
+        },
+        "generated_response_owned_tokens": sum(
+            int(record["output"]["generated_token_count"]) for record in records
+        ),
+    }
+
+
+def _fail_safe_rollup(suite: AgenticQuality2Suite) -> dict[str, Any]:
+    controls = [
+        evaluate_quality2_fail_safe_control(suite, str(row["id"]))
+        for row in suite.oracle["fail_safe_controls"]
+    ]
+    passed_count = sum(row["passed"] is True for row in controls)
+    return {
+        "mode": "independent_parser_publication_policy",
+        "endpoint_exercised": False,
+        "passed": passed_count == len(controls),
+        "passed_count": passed_count,
+        "total": len(controls),
+        "controls": [
+            {
+                "control_id": str(row["control_id"]),
+                "class": str(row["class"]),
+                "split": str(row["split"]),
+                "passed": bool(row["passed"]),
+            }
+            for row in controls
+        ],
+    }
+
+
 def _normalize_turn(
     suite: AgenticQuality2Suite,
     *,
@@ -219,6 +463,7 @@ def _normalize_turn(
         "family": str(workload["family"]),
         "language": str(workload["language"]),
         "task_kind": str(workload["task_kind"]),
+        "oracle_kind": str(evaluation["kind"]),
         "repetition": int(repetition),
         "request_id": request_id,
         "prompt": {
@@ -250,6 +495,7 @@ def _normalize_turn(
             "sandbox": evaluation.get("sandbox"),
         },
     }
+    record["normalized_response_sha256"] = _normalized_response_sha256(record)
     aggregate_row = {
         "workload_id": workload_id,
         "split": str(workload["split"]),
@@ -261,6 +507,7 @@ def _normalize_turn(
         "success": bool(evaluation["success"]),
         "result_sha256": evaluation.get("result_sha256"),
         "error": evaluation.get("error"),
+        "normalized_response_sha256": record["normalized_response_sha256"],
     }
     return record, aggregate_row
 
@@ -321,6 +568,7 @@ def collect_live_quality2_records(
     records: list[dict[str, Any]] = []
     aggregate_rows: list[dict[str, Any]] = []
     raw_turns: list[dict[str, Any]] = []
+    fail_safe_controls: dict[str, Any] | None = None
     total = repetitions * len(selected)
 
     def checkpoint(status: str, final_ownership: Mapping[str, Any] | None = None) -> None:
@@ -345,6 +593,8 @@ def collect_live_quality2_records(
             "records": records,
             "raw_turns": raw_turns,
         }
+        if fail_safe_controls is not None:
+            payload["fail_safe_controls"] = copy.deepcopy(fail_safe_controls)
         if final_ownership is not None:
             payload["final_ownership"] = dict(final_ownership)
         checkpoint_callback(payload)
@@ -416,6 +666,10 @@ def collect_live_quality2_records(
                 flush=True,
             )
 
+    fail_safe_controls = _fail_safe_rollup(suite)
+    if not fail_safe_controls["passed"]:
+        raise AgenticQuality2Error("expanded fail-safe controls did not pass")
+    checkpoint("controls_complete")
     ownership = _wait_for_final_ownership(
         transport,
         cache_mode=cache_mode,
@@ -451,6 +705,7 @@ def collect_live_quality2_records(
             "persistent_ownership_baseline": dict(persistent_ownership),
         },
         "records": records,
+        "fail_safe_controls": copy.deepcopy(fail_safe_controls),
         "final_ownership": ownership,
     }
     summary = {
@@ -471,6 +726,8 @@ def collect_live_quality2_records(
             ),
         },
         "aggregation": aggregation,
+        "quality_metrics": _quality_metrics(suite, records),
+        "fail_safe_controls": copy.deepcopy(fail_safe_controls),
         "records_sha256": _canonical_sha256(records),
         "final_ownership": ownership,
         "validation": {
@@ -479,7 +736,9 @@ def collect_live_quality2_records(
                 record["output"]["generated_token_ids_source"] == "response" for record in records
             ),
             "heldout_details_sealed": aggregation["heldout_details_sealed"],
+            "determinism_basis": aggregation["determinism"]["basis"],
             "determinism_passed": aggregation["determinism"]["passed"],
+            "fail_safe_controls_passed": fail_safe_controls["passed"],
         },
     }
     return suite, records_payload, summary
@@ -556,12 +815,15 @@ def main(argv: list[str] | None = None) -> int:
                     "HIP_VISIBLE_DEVICES",
                     "ROCR_VISIBLE_DEVICES",
                     "GPU_MAX_HW_QUEUES",
+                    "HSA_ENABLE_SDMA",
+                    "HSA_USE_SVM",
                 )
             },
             build_profile=_quality_build_profile(args.backend),
             timing_protocol=(
                 "real localhost blocking OpenAI chat; expanded external/sandbox "
-                "quality oracles; heldout detail sealed; no performance fields"
+                "quality oracles; independent fail-safe parser/publication controls; "
+                "heldout detail sealed; no performance fields"
             ),
             warmups=0,
             repetitions=args.repetitions,
