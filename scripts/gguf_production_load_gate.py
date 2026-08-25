@@ -967,6 +967,33 @@ def _force_disconnect(response: Any, connection: http.client.HTTPConnection) -> 
         connection.close()
 
 
+def _stream_request_payload(
+    *,
+    spec: WorkloadRequest,
+    prompt: Mapping[str, Any],
+    served_model_name: str,
+    speculative_mtp: bool,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "model": str(served_model_name),
+        "prompt": str(prompt["text"]),
+        "max_tokens": int(spec.max_tokens),
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "ignore_eos": not bool(speculative_mtp),
+        "stream": True,
+        "stream_options": {
+            "include_hipengine": True,
+            "include_usage": True,
+        },
+    }
+    if speculative_mtp:
+        payload["speculative_mtp"] = True
+    if spec.timeout_ms is not None:
+        payload["timeout_ms"] = float(spec.timeout_ms)
+    return payload
+
+
 def _stream_request(
     host: str,
     port: int,
@@ -985,23 +1012,12 @@ def _stream_request(
     if remaining > 0.0:
         time.sleep(remaining)
     started_at = time.perf_counter()
-    payload: dict[str, Any] = {
-        "model": str(served_model_name),
-        "prompt": str(prompt["text"]),
-        "max_tokens": int(spec.max_tokens),
-        "temperature": 0.0,
-        "top_p": 1.0,
-        "ignore_eos": True,
-        "stream": True,
-        "stream_options": {
-            "include_hipengine": True,
-            "include_usage": True,
-        },
-    }
-    if speculative_mtp:
-        payload["speculative_mtp"] = True
-    if spec.timeout_ms is not None:
-        payload["timeout_ms"] = float(spec.timeout_ms)
+    payload = _stream_request_payload(
+        spec=spec,
+        prompt=prompt,
+        served_model_name=served_model_name,
+        speculative_mtp=bool(speculative_mtp),
+    )
     connection = http.client.HTTPConnection(host, int(port), timeout=float(request_timeout_seconds))
     status_code = 0
     request_id: int | None = None
