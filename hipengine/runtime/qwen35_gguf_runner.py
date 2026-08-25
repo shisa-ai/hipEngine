@@ -1189,6 +1189,55 @@ def _build_gguf_packed_verify_layout(
     )
 
 
+def _stage_gguf_packed_verify_token_ids(
+    layout: _GGUFPackedVerifyLayout,
+    jobs: Sequence[Mapping[str, object]],
+    destination: DeviceBuffer,
+    *,
+    runtime: HipRuntime,
+    stream: int,
+    runtime_state_library: object,
+) -> None:
+    """Stage roots on the host and overlay request-major candidates on device."""
+
+    token_ids = np.ascontiguousarray(layout.input_token_ids, dtype=np.int64)
+    if destination.nbytes < token_ids.nbytes:
+        raise ValueError("packed verifier token destination is too small")
+    copy_host_to_device(
+        DeviceBuffer(destination.ptr, token_ids.nbytes),
+        host_array_ptr(token_ids),
+        token_ids.nbytes,
+        runtime=runtime,
+    )
+    if len(jobs) != int(layout.slot_count):
+        raise ValueError("packed verifier jobs must align with layout slots")
+    for slot_index, job in enumerate(jobs):
+        candidate_ids = job.get("candidate_token_ids_device")
+        if candidate_ids is None:
+            continue
+        if not isinstance(candidate_ids, Tensor):
+            raise TypeError("candidate_token_ids_device must be a Tensor")
+        row_start = int(layout.cu_seqlens[slot_index])
+        row_end = int(layout.cu_seqlens[slot_index + 1])
+        candidate_rows = row_end - row_start - 1
+        if (
+            candidate_ids.dtype != DType.INT32
+            or candidate_ids.shape != (candidate_rows,)
+            or candidate_ids.device.kind != "hip"
+        ):
+            raise ValueError(
+                "device candidates must be HIP INT32 [slot_candidate_rows]"
+            )
+        copy_i32_to_i64(
+            candidate_ids.ptr,
+            destination.ptr + (row_start + 1) * DType.INT64.itemsize,
+            candidate_rows,
+            stream=int(stream),
+            library=runtime_state_library,
+            runtime=runtime,
+        )
+
+
 def _rebind_packed_verify_layout_pages(
     layout: _GGUFPackedVerifyLayout,
     packed_state: _GGUFPackedTargetState,
@@ -17403,6 +17452,16 @@ class Qwen35GGUFResidentSession:
             for token in input_token_ids:
                 if token < 0 or token >= int(self.runner.vocab_size):
                     raise ValueError(f"token_id {token} outside [0, {self.runner.vocab_size})")
+            candidate_ids = job.get("candidate_token_ids_device")
+            if candidate_ids is not None and (
+                not isinstance(candidate_ids, Tensor)
+                or candidate_ids.dtype != DType.INT32
+                or candidate_ids.shape != (len(input_token_ids) - 1,)
+                or candidate_ids.device.kind != "hip"
+            ):
+                raise ValueError(
+                    "device candidates must be HIP INT32 and align after the root"
+                )
             slot_blocks.append(
                 _GGUFPackedVerifySlotBlock(
                     input_token_ids=input_token_ids,
@@ -17446,8 +17505,14 @@ class Qwen35GGUFResidentSession:
         add_stage("packed_verify_sync_initial_state", sync_state_start)
         token_upload_start = time.perf_counter()
         packed_scratch = packed_scratch_base.for_packed_verify_layout(layout, runtime=runtime, stream=stream)
-        token_ids = np.ascontiguousarray(layout.input_token_ids, dtype=np.int64)
-        copy_host_to_device(self._prefill_token_buf, host_array_ptr(token_ids), token_ids.nbytes, runtime=runtime)
+        _stage_gguf_packed_verify_token_ids(
+            layout,
+            job_list,
+            self._prefill_token_buf,
+            runtime=runtime,
+            stream=stream,
+            runtime_state_library=self._runtime_state_library,
+        )
         add_stage("packed_verify_token_upload", token_upload_start)
         gpu_stage_recorder = (
             _HipEventStageRecorder(runtime, enabled=True, stream=stream)

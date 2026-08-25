@@ -22,6 +22,9 @@ from hipengine.core.tensor import Tensor
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFTransactionalVerifier
+from hipengine.runtime.qwen35_gguf_nextn import (
+    Qwen35GGUFNextNBatchDeviceProposal,
+)
 from hipengine.speculative.frontier import (
     CandidateGraph,
     ProviderAttachment,
@@ -31,7 +34,11 @@ from hipengine.speculative.frontier import (
     SpeculativeCapability,
     TargetFrontier,
 )
-from hipengine.speculative.interfaces import AcceptResult, TargetCommitPlan
+from hipengine.speculative.interfaces import (
+    AcceptResult,
+    TargetCommitPlan,
+    TargetVerifyBatch,
+)
 from hipengine.speculative.mtp import MtpProposalContext
 from hipengine.speculative.provider import SpeculativeRequestSemantics
 from hipengine.speculative.transaction import (
@@ -61,6 +68,7 @@ class _MTP2RequestState:
     last_proposal_seconds: float = 0.0
     proposal_checkpoint: Any | None = None
     proposal_context: MtpProposalContext | None = None
+    proposal_device_batch: Qwen35GGUFNextNBatchDeviceProposal | None = None
 
 
 class Qwen35GGUFMTP2Adapter:
@@ -379,6 +387,7 @@ class Qwen35GGUFMTP2Adapter:
                     state.provider.executor.capture_request_checkpoint(request_id)
                 )
             proposal_started = time.perf_counter()
+            device_draft = None
             if len(ids) == 1:
                 draft = states[0].provider.propose(
                     context,
@@ -387,7 +396,8 @@ class Qwen35GGUFMTP2Adapter:
                     allow_graph=False,
                 )
             else:
-                draft = states[0].provider.propose_batch(
+                draft = None
+                device_draft = states[0].provider.propose_batch_device(
                     context,
                     candidate_counts=budgets,
                 )
@@ -399,6 +409,7 @@ class Qwen35GGUFMTP2Adapter:
                 for row in rows:
                     row.mtp2_proposal_batch_calls += len(batched_shapes)
                     row.mtp2_proposal_physical_rows.extend(batched_shapes)
+                    row.mtp2_candidate_device_handoffs += 1
             proposal_seconds = time.perf_counter() - proposal_started
             for index, (request_id, state) in enumerate(zip(ids, states, strict=True)):
                 state.last_proposal_seconds = proposal_seconds
@@ -409,6 +420,7 @@ class Qwen35GGUFMTP2Adapter:
                     root_positions=(int(context.root_positions[index]),),
                     target_hidden=targets[index].last_target_hidden,
                 )
+                state.proposal_device_batch = device_draft
         except Exception:
             for request_id, checkpoint in locals().get("checkpoints", {}).items():
                 state = self._states[request_id]
@@ -417,13 +429,42 @@ class Qwen35GGUFMTP2Adapter:
             raise
         finally:
             free(hidden_batch, runtime=targets[0].runtime)
-        enabled = draft.active_mask or (True,) * draft.draft_rows
-        active_indices = tuple(
-            index for index, active in enumerate(enabled) if bool(active)
-        )
-        candidate_tokens = tuple(draft.candidate_tokens[index] for index in active_indices)
-        draft_depths = tuple(draft.draft_depths[index] for index in active_indices)
-        row_to_request = tuple(draft.row_to_request[index] for index in active_indices)
+        if device_draft is None:
+            assert draft is not None
+            enabled = draft.active_mask or (True,) * draft.draft_rows
+            active_indices = tuple(
+                index for index, active in enumerate(enabled) if bool(active)
+            )
+            candidate_tokens = tuple(
+                draft.candidate_tokens[index] for index in active_indices
+            )
+            draft_depths = tuple(
+                draft.draft_depths[index] for index in active_indices
+            )
+            row_to_request = tuple(
+                draft.row_to_request[index] for index in active_indices
+            )
+            candidate_token_ids = None
+            draft_mode = draft.mode
+            draft_metadata = draft.provider_metadata
+        else:
+            candidate_tokens = ()
+            draft_depths = tuple(
+                depth
+                for count in budgets
+                for depth in range(1, count + 1)
+            )
+            row_to_request = tuple(
+                request_id
+                for request_id, count in zip(ids, budgets, strict=True)
+                for _ in range(count)
+            )
+            candidate_token_ids = device_draft.token_ids
+            draft_mode = "verify_chain"
+            draft_metadata = (
+                ("candidate_handoff", "device_i32"),
+                ("candidate_rows", sum(budgets)),
+            )
         parents_list: list[int] = []
         last_row_by_request: dict[int, int] = {}
         for row_index, (request_id, depth) in enumerate(
@@ -458,11 +499,12 @@ class Qwen35GGUFMTP2Adapter:
             row_to_request=row_to_request,
             parent_candidate_rows=parents,
             draft_depths=draft_depths,
-            active_mask=(True,) * len(candidate_tokens),
+            active_mask=(True,) * len(row_to_request),
             candidate_tokens=candidate_tokens,
+            token_ids=candidate_token_ids,
             candidate_ids=(),
-            mode=draft.mode,
-            provider_metadata=draft.provider_metadata,
+            mode=draft_mode,
+            provider_metadata=draft_metadata,
         )
 
     def execute_target_frontier(
@@ -478,15 +520,21 @@ class Qwen35GGUFMTP2Adapter:
             raise ValueError("GGUF MTP2 target frontier requires commit=True")
         if self._active_claims != complete_claims:
             raise RuntimeError("GGUF MTP2 target does not own complete claims")
-        if frontier.target_batch is None:
-            raise NotImplementedError("GGUF MTP2 requires a host-visible chain")
-        if len(plan.speculative_request_ids) > 1:
+        if len(plan.speculative_request_ids) > 1 and (
+            frontier.target_batch is not None
+            or (
+                frontier.candidate_graph is not None
+                and frontier.candidate_graph.token_ids is not None
+            )
+        ):
             return self._execute_target_frontier_batch(
                 plan,
                 frontier,
                 complete_claims,
                 cancelled_request_ids=cancelled_request_ids,
             )
+        if frontier.target_batch is None:
+            raise NotImplementedError("GGUF MTP2 requires a host or device chain")
         if len(plan.speculative_request_ids) != 1:
             raise NotImplementedError("GGUF MTP2 target has no speculative rows")
         rid = int(plan.speculative_request_ids[0])
@@ -697,7 +745,14 @@ class Qwen35GGUFMTP2Adapter:
         rows = tuple(self.owner._row(request_id) for request_id in ids)
         targets = tuple(row.lease.session for row in rows)
         batch = frontier.target_batch
-        assert batch is not None
+        device_draft = states[0].proposal_device_batch
+        if batch is None:
+            if device_draft is None or frontier.candidate_graph is None:
+                raise RuntimeError("device target frontier lost its proposal descriptor")
+            if any(state.proposal_device_batch is not device_draft for state in states):
+                raise RuntimeError("physical requests do not share one device proposal")
+            if frontier.candidate_graph.token_ids is not device_draft.token_ids:
+                raise RuntimeError("candidate graph does not own the device proposal tokens")
         self._transaction_sequence += 1
         transaction_id = self._transaction_sequence
         transaction = SpecCycleTransaction(
@@ -742,39 +797,69 @@ class Qwen35GGUFMTP2Adapter:
                 ),
                 cancelled_request_ids=cancelled,
             )
-        root_row_by_id = dict(zip(batch.request_ids, batch.root_rows, strict=True))
-        candidate_rows_by_id = {
-            request_id: tuple(
-                sorted(
-                    (
-                        row_index
-                        for row_index in batch.candidate_rows
-                        if batch.row_to_request[row_index] == request_id
-                    ),
-                    key=lambda row_index: batch.draft_depths[row_index],
-                )
-            )
-            for request_id in ids
-        }
+        root_row_by_id: dict[int, int] = {}
+        candidate_rows_by_id: dict[int, tuple[int, ...]] = {}
         jobs = []
+        if batch is not None:
+            root_row_by_id = dict(
+                zip(batch.request_ids, batch.root_rows, strict=True)
+            )
+            candidate_rows_by_id = {
+                request_id: tuple(
+                    sorted(
+                        (
+                            row_index
+                            for row_index in batch.candidate_rows
+                            if batch.row_to_request[row_index] == request_id
+                        ),
+                        key=lambda row_index: batch.draft_depths[row_index],
+                    )
+                )
+                for request_id in ids
+            }
+        root_token_by_id = dict(
+            zip(frontier.request_ids, frontier.root_tokens, strict=True)
+        )
+        device_offsets: dict[int, tuple[int, int]] = {}
+        if device_draft is not None:
+            offset = 0
+            for request_id, count in zip(
+                device_draft.request_ids,
+                device_draft.candidate_counts,
+                strict=True,
+            ):
+                device_offsets[int(request_id)] = (offset, int(count))
+                offset += int(count)
         for request_id, target in zip(ids, targets, strict=True):
-            root_row = root_row_by_id[request_id]
-            candidate_rows = candidate_rows_by_id[request_id]
-            block_tokens = (
-                int(batch.tokens[root_row]),
-                *tuple(int(batch.tokens[row]) for row in candidate_rows),
-            )
-            jobs.append(
-                {
-                    "session": target,
-                    "input_token_ids": block_tokens,
-                    "bulk_attention_mode": "bulk",
-                    "use_wmma_prefill": False,
-                    "capture_linear_state_rows": True,
-                    "defer_linear_state_commit": True,
-                    "defer_state_scatter": True,
-                }
-            )
+            job = {
+                "session": target,
+                "bulk_attention_mode": "bulk",
+                "use_wmma_prefill": False,
+                "capture_linear_state_rows": True,
+                "defer_linear_state_commit": True,
+                "defer_state_scatter": True,
+            }
+            if batch is not None:
+                root_row = root_row_by_id[request_id]
+                candidate_rows = candidate_rows_by_id[request_id]
+                job["input_token_ids"] = (
+                    int(batch.tokens[root_row]),
+                    *tuple(int(batch.tokens[row]) for row in candidate_rows),
+                )
+            else:
+                assert device_draft is not None
+                offset, count = device_offsets[request_id]
+                job["input_token_ids"] = (
+                    int(root_token_by_id[request_id]),
+                    *((0,) * count),
+                )
+                job["candidate_token_ids_device"] = Tensor.from_handle(
+                    device_draft.token_ids.ptr + offset * DType.INT32.itemsize,
+                    (count,),
+                    DType.INT32,
+                    device_draft.token_ids.device,
+                )
+            jobs.append(job)
         owner = self.owner._packed_execution_owner(targets[0])
         verify_batch = getattr(owner, "verify_target_blocks_batch", None)
         if not callable(verify_batch):
@@ -788,6 +873,47 @@ class Qwen35GGUFMTP2Adapter:
             row.mtp2_target_physical_rows.append(physical_target_rows)
         if len(results) != len(ids):
             raise RuntimeError("physical target verifier returned wrong result count")
+        if batch is None:
+            assert device_draft is not None
+            materialized = states[0].provider.materialize_batch_device_proposal(
+                device_draft
+            )
+            for row in rows:
+                row.mtp2_candidate_d2h_after_target += 1
+            enabled = materialized.active_mask or (True,) * materialized.draft_rows
+            candidate_tokens = tuple(
+                int(token)
+                for token, active in zip(
+                    materialized.candidate_tokens,
+                    enabled,
+                    strict=True,
+                )
+                if bool(active)
+            )
+            graph = frontier.candidate_graph
+            assert graph is not None
+            host_graph = replace(graph, candidate_tokens=candidate_tokens)
+            batch = TargetVerifyBatch.from_draft(
+                host_graph.to_draft_batch(),
+                root_tokens=frontier.root_tokens,
+                root_positions=frontier.root_positions,
+            )
+            root_row_by_id = dict(
+                zip(batch.request_ids, batch.root_rows, strict=True)
+            )
+            candidate_rows_by_id = {
+                request_id: tuple(
+                    sorted(
+                        (
+                            row_index
+                            for row_index in batch.candidate_rows
+                            if batch.row_to_request[row_index] == request_id
+                        ),
+                        key=lambda row_index: batch.draft_depths[row_index],
+                    )
+                )
+                for request_id in ids
+            }
         target_top1 = [0] * batch.rows
         for request_id, result in zip(ids, results, strict=True):
             rows_for_request = (
@@ -1073,6 +1199,7 @@ class Qwen35GGUFMTP2Adapter:
             state.provider.executor.release_request_checkpoint(checkpoint)
             state.proposal_checkpoint = None
             state.proposal_context = None
+            state.proposal_device_batch = None
 
     def _release_provider_checkpoint(self, state: _MTP2RequestState) -> None:
         checkpoint = state.proposal_checkpoint
@@ -1081,6 +1208,7 @@ class Qwen35GGUFMTP2Adapter:
         state.provider.executor.release_request_checkpoint(checkpoint)
         state.proposal_checkpoint = None
         state.proposal_context = None
+        state.proposal_device_batch = None
 
     def rollback_cycle(
         self,

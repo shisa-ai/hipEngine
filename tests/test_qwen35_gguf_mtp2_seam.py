@@ -5,6 +5,9 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
+from hipengine.core.tensor import Tensor
 from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
 import hipengine.generation.qwen35_gguf_mtp2 as mtp2_module
 from hipengine.generation.qwen35_gguf_mtp2 import (
@@ -12,6 +15,9 @@ from hipengine.generation.qwen35_gguf_mtp2 import (
     _MTP2RequestState,
 )
 from hipengine.kernels.backends import backend_package_capability
+from hipengine.runtime.qwen35_gguf_nextn import (
+    Qwen35GGUFNextNBatchDeviceProposal,
+)
 from hipengine.speculative import MtpProposalContext, SpeculativeRequestSemantics
 
 
@@ -146,6 +152,116 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
 
     target.runner = SimpleNamespace(fp16_recurrent_state=True)
     assert adapter.capability(semantics) is None
+
+
+def test_physical_adapter_returns_device_candidate_graph_before_target(
+    monkeypatch,
+) -> None:
+    runtime = SimpleNamespace(memcpy=lambda *args: None)
+    targets = (
+        SimpleNamespace(
+            position=5,
+            last_target_hidden=Tensor.from_handle(
+                0x1100, (1, 8), DType.BF16, Device("hip", 0)
+            ),
+            runtime=runtime,
+        ),
+        SimpleNamespace(
+            position=8,
+            last_target_hidden=Tensor.from_handle(
+                0x1200, (1, 8), DType.BF16, Device("hip", 0)
+            ),
+            runtime=runtime,
+        ),
+    )
+    device_draft = Qwen35GGUFNextNBatchDeviceProposal(
+        request_ids=(10, 20),
+        root_tokens=(100, 200),
+        root_positions=(5, 8),
+        candidate_counts=(1, 2),
+        token_ids=Tensor.from_handle(
+            0x5000, (3,), DType.INT32, Device("hip", 0)
+        ),
+        hidden_rows=(
+            (Tensor.from_handle(0x6000, (1, 8), DType.BF16, Device("hip", 0)),),
+            (
+                Tensor.from_handle(0x7000, (1, 8), DType.BF16, Device("hip", 0)),
+                Tensor.from_handle(0x8000, (1, 8), DType.BF16, Device("hip", 0)),
+            ),
+        ),
+    )
+    calls = []
+    executor = SimpleNamespace(
+        hidden_size=8,
+        capture_request_checkpoint=lambda request_id: f"checkpoint-{request_id}",
+    )
+    provider = SimpleNamespace(
+        executor=executor,
+        propose_batch_device=lambda context, candidate_counts: (
+            calls.append(("propose", tuple(candidate_counts))) or device_draft
+        ),
+    )
+    rows = tuple(
+        SimpleNamespace(
+            lease=SimpleNamespace(session=target),
+            slot=SimpleNamespace(
+                generated_ids=[token],
+                seq_position=int(target.position),
+            ),
+            mtp2_proposal_batch_calls=0,
+            mtp2_proposal_physical_rows=[],
+            mtp2_candidate_device_handoffs=0,
+        )
+        for target, token in zip(targets, (100, 200), strict=True)
+    )
+    owner = SimpleNamespace(
+        _row=lambda request_id: rows[(10, 20).index(request_id)],
+        _flush_row_owner=lambda row: None,
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = owner
+    adapter._states = {
+        request_id: _MTP2RequestState(
+            request_id=request_id,
+            provider=provider,
+            provider_pool_key=None,
+            provider_group_key=(10, 20),
+            verifier=None,
+            root_hidden_buffer=SimpleNamespace(ptr=1),
+        )
+        for request_id in (10, 20)
+    }
+    monkeypatch.setattr(
+        mtp2_module,
+        "malloc",
+        lambda nbytes, runtime: SimpleNamespace(ptr=0x9000, nbytes=nbytes),
+    )
+    monkeypatch.setattr(mtp2_module, "free", lambda buffer, runtime: None)
+    plan = SimpleNamespace(
+        speculative_request_ids=(10, 20),
+        request_ids=(10, 20),
+        candidate_counts=(1, 2),
+        provider_key="nextn",
+        cycle_id=3,
+        resident_slots=(0, 1),
+    )
+    semantics = (
+        SpeculativeRequestSemantics(10, "greedy", "verify_chain", 6, 8),
+        SpeculativeRequestSemantics(20, "greedy", "verify_chain", 9, 8),
+    )
+
+    graph = adapter.propose_batch(plan, semantics)
+
+    assert graph.candidate_tokens == ()
+    assert graph.token_ids is device_draft.token_ids
+    assert graph.candidate_counts == (1, 2)
+    assert graph.provider_metadata[0] == ("candidate_handoff", "device_i32")
+    assert calls == [("propose", (1, 2))]
+    assert all(row.mtp2_candidate_device_handoffs == 1 for row in rows)
+    assert all(
+        state.proposal_device_batch is device_draft
+        for state in adapter._states.values()
+    )
 
 
 @pytest.mark.parametrize(

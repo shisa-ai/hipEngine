@@ -9,7 +9,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
+from hipengine.core.memory import DeviceBuffer
+from hipengine.core.tensor import Tensor
+from hipengine.runtime import qwen35_gguf_runner as runner_mod
 from hipengine.runtime.qwen35_gguf_runner import (
+    _GGUFPackedVerifySlotBlock,
+    _build_gguf_packed_verify_layout,
+    _stage_gguf_packed_verify_token_ids,
     Qwen35GGUFResidentSession,
     Qwen35GGUFResidentTargetLayout,
 )
@@ -37,6 +45,65 @@ def require_q3_model_vram() -> None:
             f"UD-Q3_K_M target-row parity needs 18 GiB free VRAM; "
             f"only {free_bytes / 1024**3:.2f} GiB available"
         )
+
+
+def test_packed_target_stages_device_candidates_without_host_materialization(
+    monkeypatch,
+) -> None:
+    calls = []
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock((11, 0), 5),
+            _GGUFPackedVerifySlotBlock((22, 0, 0), 8),
+        )
+    )
+    jobs = (
+        {
+            "candidate_token_ids_device": Tensor.from_handle(
+                0x1000,
+                (1,),
+                DType.INT32,
+                Device("hip", 0),
+            )
+        },
+        {
+            "candidate_token_ids_device": Tensor.from_handle(
+                0x2000,
+                (2,),
+                DType.INT32,
+                Device("hip", 0),
+            )
+        },
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "copy_host_to_device",
+        lambda destination, source, nbytes, *, runtime: calls.append(
+            ("roots", destination.ptr, int(nbytes))
+        ),
+    )
+    monkeypatch.setattr(
+        runner_mod,
+        "copy_i32_to_i64",
+        lambda source, destination, rows, **kwargs: calls.append(
+            ("candidates", int(source), int(destination), int(rows))
+        ),
+    )
+
+    _stage_gguf_packed_verify_token_ids(
+        layout,
+        jobs,
+        DeviceBuffer(0x3000, layout.rows * DType.INT64.itemsize),
+        runtime=object(),
+        stream=0,
+        runtime_state_library=object(),
+    )
+
+    assert calls == [
+        ("roots", 0x3000, 5 * DType.INT64.itemsize),
+        ("candidates", 0x1000, 0x3000 + DType.INT64.itemsize, 1),
+        ("candidates", 0x2000, 0x3000 + 3 * DType.INT64.itemsize, 2),
+    ]
 
 
 def test_gguf_resident_target_layout_is_row_shaped() -> None:

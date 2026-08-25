@@ -176,6 +176,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             or all(
                 int(row["specdec2_mtp2_proposal_batch_calls"]) > 0
                 and int(row["specdec2_mtp2_target_batch_calls"]) > 0
+                and int(row["specdec2_mtp2_candidate_device_handoffs"]) > 0
+                and int(row["specdec2_mtp2_candidate_d2h_after_target"])
+                == int(row["specdec2_mtp2_candidate_device_handoffs"])
                 for row in staged_rows[-int(args.concurrency) :]
             )
         )

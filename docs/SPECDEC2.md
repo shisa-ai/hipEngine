@@ -590,9 +590,10 @@ old route is a strict oracle rather than the migrated server owner.
 - [x] Keep per-request RNG, state, positions, stop/output room, and cursors.
 - [x] Prove proposal launch/backbone counts do not scale as one full provider
       call per request unless a declared fallback is being measured.
-- [ ] Keep candidates device-resident through target lowering. The first physical
-      foundation still materializes batched draft top-1 IDs on the host and is
-      therefore functional/default-off rather than S4-complete.
+- [x] Keep candidates device-resident through target lowering. Physical C2/C4
+      proposal writes request-major INT32 top-1 rows, packed target staging
+      consumes them by D2D i32→i64 conversion, and the bounded candidate D2H
+      occurs only after target execution for the still-host accept oracle.
 
 ### S4.2 Physical target frontier
 
@@ -886,8 +887,8 @@ and exact short-trajectory IDs. Clean commit `174ad16dc` measures best warm K2
 aggregate C1→C2→C4 at 6.876→9.500→16.053 tok/s, but C2/C4 wall is 21.8%/34.5%
 slower than true AR; the fixed-prompt diagnostic is default-off and not a speed
 promotion. Cached C4/K3 profiling confirms packed GDN/full-attention engagement.
-S4 remains open for device-resident candidate handoff, one
-physical selected-state/KV commit payload, rejecting/full-accept neighbor and
+S4 remains open for one physical selected-state/KV accept/commit payload,
+rejecting/full-accept neighbor and
 remaining cancellation/prefix/pressure lifecycle gates, profiler evidence, and
 a clean same-host packet. Production Q4_K_S FP16 state still selects K0 before
 mutation; gfx1100 remains deferred.
