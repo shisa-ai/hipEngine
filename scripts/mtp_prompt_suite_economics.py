@@ -369,6 +369,8 @@ def _economics_command(
         "--out",
         str(out_path),
     ]
+    if getattr(args, "execution_profile", None) is not None:
+        cmd += ["--execution-profile", str(args.execution_profile)]
     if args.small_batch_decode_threshold is not None:
         cmd += ["--small-batch-decode-threshold", str(args.small_batch_decode_threshold)]
     if int(getattr(args, "active_budget_cap", 0)) > 0:
@@ -575,6 +577,11 @@ def main() -> int:
     parser.add_argument("--proposal-impl", choices=("persistent_device", "persistent_device_b1", "reload_d2h"), default="persistent_device")
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--hip-arch", default="gfx1151")
+    parser.add_argument(
+        "--execution-profile",
+        choices=("strict", "production"),
+        help="registered PARO MTP route forwarded through every child",
+    )
     parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched", "decode_batched"), default="batched")
     parser.add_argument("--graph-mode", choices=("off", "auto", "validate"), default="off")
     parser.add_argument("--small-batch-decode-threshold", type=int, default=7)
@@ -684,6 +691,7 @@ def main() -> int:
         "proposal_impl": str(args.proposal_impl),
         "backend": str(args.backend),
         "hip_arch": str(args.hip_arch),
+        "execution_profile": args.execution_profile,
         "chain_attn_mode": str(args.chain_attn_mode),
         "graph_mode": str(args.graph_mode),
         "confidence_threshold": float(args.confidence_threshold),

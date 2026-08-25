@@ -287,6 +287,8 @@ def _run_one(
         "--json",
         str(json_path),
     ]
+    if getattr(args, "execution_profile", None) is not None:
+        cmd += ["--execution-profile", str(args.execution_profile)]
     if int(getattr(args, "active_budget_cap", 0)) > 0:
         cmd += ["--active-budget-cap", str(int(args.active_budget_cap))]
     if bool(getattr(args, "acceptance_diagnostics", False)):
@@ -352,6 +354,11 @@ def main() -> int:
     parser.add_argument("--proposal-impl", choices=("persistent_device", "persistent_device_b1", "reload_d2h"), default="persistent_device")
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--hip-arch", default="gfx1151")
+    parser.add_argument(
+        "--execution-profile",
+        choices=("strict", "production"),
+        help="registered PARO MTP route forwarded to the smoke child",
+    )
     parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched", "decode_batched"), default="c1_loop")
     parser.add_argument("--graph-mode", choices=("off", "auto", "validate"), default="off")
     parser.add_argument("--small-batch-decode-threshold", type=int, default=7)
@@ -448,6 +455,7 @@ def main() -> int:
         "model": str(args.model),
         "backend": str(args.backend),
         "hip_arch": str(args.hip_arch),
+        "execution_profile": args.execution_profile,
         "prompt_tokens": prompt_tokens,
         "decode_tokens": int(args.decode_tokens),
         "candidate_budgets": budgets,
