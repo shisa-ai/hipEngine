@@ -713,6 +713,55 @@ def test_streaming_prompt_sink_cancellation_between_chunks_releases_owned_row(
     assert freed == [pending.ptr]
 
 
+def test_streaming_prompt_sink_transfers_final_carried_row_ownership(
+    monkeypatch,
+) -> None:
+    pending = DeviceBuffer(0x1000, 8)
+    freed: list[int] = []
+    monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: pending)
+    monkeypatch.setattr(
+        mtp_module,
+        "free",
+        lambda buffer, *, runtime: freed.append(int(buffer.ptr)),
+    )
+
+    class Runtime:
+        def memset(self, *_args) -> None:
+            pass
+
+        def memcpy_async(self, *_args) -> None:
+            pass
+
+    class Executor:
+        def enqueue_prompt_rows(self, *_args, **_kwargs) -> None:
+            pass
+
+    sink = mtp_module._StreamingNextNPromptSink(
+        request_id=7,
+        prompt_tokens=(11, 22),
+        hidden_size=4,
+        executor=Executor(),
+        runtime=Runtime(),
+        checkpoint=None,
+    )
+    sink.consume(
+        request_id=7,
+        chunk_start=0,
+        hidden_ptr=0x5000,
+        rows=2,
+        stream=0,
+    )
+    sink.finish(request_id=7, total_rows=2, stream=0)
+
+    transferred = sink.take_final_pending_buffer()
+    sink.close()
+
+    assert transferred is pending
+    assert freed == []
+    with pytest.raises(RuntimeError, match="already transferred"):
+        sink.take_final_pending_buffer()
+
+
 def test_mtp_prompt_admission_preserves_target_default_bulk_selector(monkeypatch) -> None:
     allocations = iter((DeviceBuffer(0x1000, 8), DeviceBuffer(0x2000, 8)))
     monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: next(allocations))
