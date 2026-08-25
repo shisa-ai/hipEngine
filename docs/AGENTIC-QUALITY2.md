@@ -1,6 +1,6 @@
 # AGENTIC-QUALITY2 — ZBook Agent Quality Campaign
 
-- **Status:** approved; active; AQ0-AQ5 complete, AQ6 expanded primary baseline next
+- **Status:** approved; active; AQ0-AQ6 complete, AQ7 comparison-model screening next
 - **Approved:** 2026-08-25
 - **Execution host:** `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 - **Primary model:** Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV
@@ -681,15 +681,49 @@ candidate mechanism.
 
 ### AQ6 / Task #46 — expanded primary baseline
 
-- [ ] Run development and heldout Qwen3.6 baseline before candidate code.
-- [ ] Keep heldout row details sealed from implementation selection; publish
+- [x] Run development and heldout Qwen3.6 baseline before candidate code.
+- [x] Keep heldout row details sealed from implementation selection; publish
       aggregate baseline.
-- [ ] Repeat deterministic rows and run fail-safe controls.
-- [ ] Record all metrics in Section 9 and final zero ownership.
-- [ ] Publish compact artifact/rollup/worklog and commit.
+- [x] Repeat deterministic rows and run fail-safe controls.
+- [x] Record all metrics in Section 9 and final zero ownership.
+- [x] Publish compact artifact/rollup/worklog and commit.
 
-Expected GPU time depends on AQ4 size; AQ4 must publish an estimate and staged
-checkpoint plan before this run.
+#### AQ6 result — deterministic expanded baseline
+
+Clean commit `8e228965e` completed all **68/68** observations on the ZBook with
+response-owned IDs and no blocked/unscorable row. External-oracle success is
+**44/68 (64.71%)**: development **20/34 (58.82%)** and sealed heldout aggregate
+**24/34 (70.59%)**. Family totals are code **14/16**, instruction **4/16**,
+repository **10/16**, and tool selection **16/20**; language totals are English
+**20/40**, Japanese **18/18**, and mixed Japanese/English **6/10**.
+
+All **56/56** published call blocks are JSON-valid, declared, and strict-schema
+valid. Valid-call observations are **56/64 (87.50%)**, correct tool/no-tool
+selection is **52/68 (76.47%)**, and exact arguments are **22/32 (68.75%,
+diagnostic only)**. Patch is **4/4**, code **14/16**, and instruction **4/16**;
+multiple-call and repository-test kinds are **0/4** each. There are zero raw
+markup/content leaks, malformed public arguments, truncations, runtime errors,
+or ownership deltas.
+
+All 34 normalized response pairs match exactly under
+`normalized_response_v1`, which hashes response-owned IDs, public content,
+calls/arguments, parse errors, and finish state. All **10/10** frozen independent
+parser/publication fail-safe controls pass; they are not relabeled as live
+endpoint tests, which remain AQ10's responsibility. Per-response repair counters
+are unavailable in this baseline and remain explicit nulls rather than inferred
+zeroes.
+
+The seven unique development failures repeat exactly and are model-owned: two
+no-tool actions, one wrong call count, one wrong tool, and three schema-valid
+outputs/actions that fail their external task oracle. No parser, template,
+runtime, or unresolved development boundary appears. Heldout model-output detail
+remains local and was not inspected for mechanism selection.
+
+The compact quality-only artifact is
+[`2026-08-26-zbook-agentic-quality2-aq6-expanded-baseline.json`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq6-expanded-baseline.json).
+A prior whole-APU DMCUB/SMU/MES hang before request prefill retained zero rows;
+a cold-boot exact diagnostic and the complete baseline then passed under the
+unchanged default SDMA route with a clean kernel journal and post-shutdown KFD.
 
 ### AQ7 / Task #47 — comparison models
 
@@ -955,13 +989,16 @@ weights, caches, or profiler data.
 
 ## 18. Current handoff
 
-Start AQ6 / Task #46 from the clean AQ5-qualified source and the exact v1 hashes
-in [`AGENTIC-QUALITY2-SUITE.md`](AGENTIC-QUALITY2-SUITE.md). Extend the live
-collector only as required to represent single/multiple/no-tool outcomes and to
-join repository/code/instruction oracle results through the qualified sandbox;
-RED fake transports before GPU. Then run 68 observations with per-turn atomic
-checkpoints: development first, heldout second, fail-safe controls last. Keep
-heldout model-output detail local and publish aggregates only. Use the frozen
-192-token cap/settings, response-owned IDs, deterministic repeats, explicit
-blocked/unscorable denominators, and zero final request ownership. No mechanism
-selection or prompt change belongs in AQ6.
+Start AQ7 / Task #47 from clean AQ6 source `8e228965e` and the exact v2 hashes in
+[`AGENTIC-QUALITY2-SUITE.md`](AGENTIC-QUALITY2-SUITE.md). Audit Qwen3.8-27B and
+Ornith-1.5-35B independently: architecture, loader route, tokenizer/template,
+tool controls, EOS, effective execution profile, artifact identity, and public
+capabilities. Run one smoke task before a full matrix and record a precise
+`admitted_*`, `blocked_*`, or `rejected_semantics` result without substituting
+Qwen3.6 or changing suite wording/tools/cap/oracles. Only one model-owning GPU
+process may run at a time.
+
+Keep AQ6 heldout model outputs sealed. AQ7 may publish model-specific aggregates
+but must not use comparison-model output or speed to tune a mechanism. AQ8 joins
+AQ3/AQ6/AQ7 development-level evidence and may declare at most one general
+mechanism before implementation.

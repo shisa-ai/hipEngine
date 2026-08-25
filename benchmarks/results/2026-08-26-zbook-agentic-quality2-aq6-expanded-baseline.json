@@ -1,0 +1,629 @@
+{
+  "command": [
+    "/home/lhl/hipEngine/.venv/bin/python",
+    "scripts/agentic_quality2_live.py",
+    "--base-url",
+    "http://127.0.0.1:18241/v1",
+    "--suite",
+    "benchmarks/prompts/agentic-quality2-v2.json",
+    "--model",
+    "Qwen3.6-35B-A3B",
+    "--model-path",
+    "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "--backend",
+    "hip_gfx1151",
+    "--target-arch",
+    "gfx1151",
+    "--device-name",
+    "AMD Radeon 8060S Graphics",
+    "--quant",
+    "gguf_q4_k_m",
+    "--kv-dtype",
+    "bf16",
+    "--compiler-version-file",
+    "/home/lhl/.local/state/hipengine-agentic-quality2/20260826-aq6-qwen36-retained-r2-213720/hipcc-version.txt",
+    "--require-clean-provenance",
+    "--repetitions",
+    "2",
+    "--max-tokens",
+    "192",
+    "--cache-mode",
+    "off",
+    "--timeout-s",
+    "600",
+    "--idle-timeout-s",
+    "60",
+    "--records-json",
+    "/home/lhl/.local/state/hipengine-agentic-quality2/20260826-aq6-qwen36-retained-r2-213720/v2-records.json",
+    "--checkpoint-json",
+    "/home/lhl/.local/state/hipengine-agentic-quality2/20260826-aq6-qwen36-retained-r2-213720/v2-checkpoint.json",
+    "--json",
+    "/home/lhl/.local/state/hipengine-agentic-quality2/20260826-aq6-qwen36-retained-r2-213720/v2-summary.json"
+  ],
+  "configuration": {
+    "backend": "hip_gfx1151",
+    "build_profile": "hip_gfx1151_agentic_auto_tool_quality",
+    "cache_mode": "off",
+    "compiler_version": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git c47eb2110e548756a7cfbc3abc6e7a0c749d5cf5)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/home/lhl/.local/state/hipengine-agentic-quality2/20260826-aq6-qwen36-retained-r2-213720/hipcc-version.txt",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_QWEN35_NATIVE_SAMPLER": "0",
+      "HIP_VISIBLE_DEVICES": "0",
+      "HSA_ENABLE_SDMA": null,
+      "HSA_USE_SVM": null,
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "execution_profile": "strict",
+    "execution_profile_manifest_sha256": "6f6af11c059dbd02d458405bfa9d70ef0ea4a38daaa47a884c4f52b7a489fc41",
+    "kv_dtype": "bf16",
+    "max_active_requests": 1,
+    "max_context_tokens": 4096,
+    "max_tokens": 192,
+    "model": "Qwen3.6-35B-A3B",
+    "native_sampler": false,
+    "quant": "gguf_q4_k_m",
+    "repetitions": 2,
+    "server_capabilities_sha256": "8d33ac2b39d9a1f275a5fa7f81beb1a8d39958c77f336506a423d5da13fe2f79",
+    "speculative_mtp_serving": false,
+    "temperature": 0.0,
+    "thinking": false,
+    "tool_choice": "auto"
+  },
+  "coverage": {
+    "development": 17,
+    "generated_response_owned_tokens": 2574,
+    "heldout": 17,
+    "observations": 68,
+    "workloads": 34
+  },
+  "date": "2026-08-26",
+  "evidence_scope": "quality-only expanded frozen suite; no speed or cross-host comparison claim",
+  "fail_safe_controls": {
+    "controls": [
+      {
+        "class": "malformed",
+        "control_id": "aq2_dev_control_malformed_json",
+        "passed": true,
+        "split": "development"
+      },
+      {
+        "class": "truncated",
+        "control_id": "aq2_dev_control_truncated",
+        "passed": true,
+        "split": "development"
+      },
+      {
+        "class": "duplicate",
+        "control_id": "aq2_dev_control_duplicate",
+        "passed": true,
+        "split": "development"
+      },
+      {
+        "class": "undeclared",
+        "control_id": "aq2_dev_control_undeclared",
+        "passed": true,
+        "split": "development"
+      },
+      {
+        "class": "schema_invalid",
+        "control_id": "aq2_dev_control_schema_extra",
+        "passed": true,
+        "split": "development"
+      },
+      {
+        "class": "content_leak",
+        "control_id": "aq2_held_control_content_leak",
+        "passed": true,
+        "split": "heldout"
+      },
+      {
+        "class": "reasoning_leak",
+        "control_id": "aq2_held_control_reasoning_leak",
+        "passed": true,
+        "split": "heldout"
+      },
+      {
+        "class": "required_missing",
+        "control_id": "aq2_held_control_required_missing",
+        "passed": true,
+        "split": "heldout"
+      },
+      {
+        "class": "ambiguous",
+        "control_id": "aq2_held_control_ambiguous_missing",
+        "passed": true,
+        "split": "heldout"
+      },
+      {
+        "class": "tool_none_violation",
+        "control_id": "aq2_held_control_none_violation",
+        "passed": true,
+        "split": "heldout"
+      }
+    ],
+    "endpoint_exercised": false,
+    "mode": "independent_parser_publication_policy",
+    "passed": true,
+    "passed_count": 10,
+    "total": 10
+  },
+  "final_ownership": {
+    "active_requests": 0,
+    "allowed_cache_bytes": 0,
+    "cache_resident_bytes": 0,
+    "cache_resident_entries": 0,
+    "cache_resident_pages": 0,
+    "graph_owners": 0,
+    "kv_pinned_pages": 0,
+    "kv_refcounted_pages": 0,
+    "model_active_requests": 0,
+    "pending_requests": 0,
+    "session_count": 0,
+    "stream_producers": 0,
+    "workspace_owners": 0
+  },
+  "hardware_health": {
+    "kernel_serious_amdgpu_markers": 0,
+    "post_shutdown_kfd_idle": true,
+    "post_shutdown_rocminfo_gfx1151": true,
+    "prior_excluded_attempt": "Whole-APU DMCUB/SMU/MES hang before request prefill; excluded with zero retained observations; cold-boot exact diagnostic and this full run passed under unchanged default SDMA."
+  },
+  "kind": "hipengine_agentic_quality2_expanded_baseline",
+  "performance_claim": false,
+  "platform": {
+    "boot_id": "7c7243e2-2b76-4449-aeff-02d42fec42e0",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "host_name": "zbook",
+    "kernel": "7.2.0-1-cachyos",
+    "physical_host": "HP ZBook Ultra G1a 14 inch Mobile Workstation PC",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "target_arch": "gfx1151"
+  },
+  "quality": {
+    "by_family": {
+      "code": {
+        "blocked_sandbox": 0,
+        "failed": 2,
+        "observations": 16,
+        "passed": 14,
+        "scored_denominator": 16,
+        "success_rate": 0.875,
+        "unscorable": 0
+      },
+      "instruction": {
+        "blocked_sandbox": 0,
+        "failed": 12,
+        "observations": 16,
+        "passed": 4,
+        "scored_denominator": 16,
+        "success_rate": 0.25,
+        "unscorable": 0
+      },
+      "repository": {
+        "blocked_sandbox": 0,
+        "failed": 6,
+        "observations": 16,
+        "passed": 10,
+        "scored_denominator": 16,
+        "success_rate": 0.625,
+        "unscorable": 0
+      },
+      "tool_selection": {
+        "blocked_sandbox": 0,
+        "failed": 4,
+        "observations": 20,
+        "passed": 16,
+        "scored_denominator": 20,
+        "success_rate": 0.8,
+        "unscorable": 0
+      }
+    },
+    "by_language": {
+      "en": {
+        "blocked_sandbox": 0,
+        "failed": 20,
+        "observations": 40,
+        "passed": 20,
+        "scored_denominator": 40,
+        "success_rate": 0.5,
+        "unscorable": 0
+      },
+      "ja": {
+        "blocked_sandbox": 0,
+        "failed": 0,
+        "observations": 18,
+        "passed": 18,
+        "scored_denominator": 18,
+        "success_rate": 1.0,
+        "unscorable": 0
+      },
+      "mixed_ja_en": {
+        "blocked_sandbox": 0,
+        "failed": 4,
+        "observations": 10,
+        "passed": 6,
+        "scored_denominator": 10,
+        "success_rate": 0.6,
+        "unscorable": 0
+      }
+    },
+    "by_oracle_kind": {
+      "code": {
+        "blocked_sandbox": 0,
+        "failed": 2,
+        "observations": 16,
+        "passed": 14,
+        "scored_denominator": 16,
+        "success_rate": 0.875,
+        "unscorable": 0
+      },
+      "instruction": {
+        "blocked_sandbox": 0,
+        "failed": 12,
+        "observations": 16,
+        "passed": 4,
+        "scored_denominator": 16,
+        "success_rate": 0.25,
+        "unscorable": 0
+      },
+      "lookup": {
+        "blocked_sandbox": 0,
+        "failed": 0,
+        "observations": 4,
+        "passed": 4,
+        "scored_denominator": 4,
+        "success_rate": 1.0,
+        "unscorable": 0
+      },
+      "multiple": {
+        "blocked_sandbox": 0,
+        "failed": 4,
+        "observations": 4,
+        "passed": 0,
+        "scored_denominator": 4,
+        "success_rate": 0.0,
+        "unscorable": 0
+      },
+      "no_tool": {
+        "blocked_sandbox": 0,
+        "failed": 0,
+        "observations": 4,
+        "passed": 4,
+        "scored_denominator": 4,
+        "success_rate": 1.0,
+        "unscorable": 0
+      },
+      "patch": {
+        "blocked_sandbox": 0,
+        "failed": 0,
+        "observations": 4,
+        "passed": 4,
+        "scored_denominator": 4,
+        "success_rate": 1.0,
+        "unscorable": 0
+      },
+      "read": {
+        "blocked_sandbox": 0,
+        "failed": 0,
+        "observations": 6,
+        "passed": 6,
+        "scored_denominator": 6,
+        "success_rate": 1.0,
+        "unscorable": 0
+      },
+      "search": {
+        "blocked_sandbox": 0,
+        "failed": 2,
+        "observations": 6,
+        "passed": 4,
+        "scored_denominator": 6,
+        "success_rate": 0.6666666666666666,
+        "unscorable": 0
+      },
+      "test": {
+        "blocked_sandbox": 0,
+        "failed": 4,
+        "observations": 4,
+        "passed": 0,
+        "scored_denominator": 4,
+        "success_rate": 0.0,
+        "unscorable": 0
+      },
+      "transform": {
+        "blocked_sandbox": 0,
+        "failed": 0,
+        "observations": 4,
+        "passed": 4,
+        "scored_denominator": 4,
+        "success_rate": 1.0,
+        "unscorable": 0
+      }
+    },
+    "by_split": {
+      "development": {
+        "blocked_sandbox": 0,
+        "failed": 14,
+        "observations": 34,
+        "passed": 20,
+        "scored_denominator": 34,
+        "success_rate": 0.5882352941176471,
+        "unscorable": 0
+      },
+      "heldout": {
+        "blocked_sandbox": 0,
+        "failed": 10,
+        "observations": 34,
+        "passed": 24,
+        "scored_denominator": 34,
+        "success_rate": 0.7058823529411765,
+        "unscorable": 0
+      }
+    },
+    "determinism": {
+      "basis": "normalized_response_v1",
+      "evaluated": true,
+      "mismatches": [],
+      "passed": true
+    },
+    "development_failure_taxonomy": {
+      "classification": "All development failures are complete deterministic model outputs: missing/wrong-count/wrong-tool actions or schema-valid action/content that fails the external oracle. No parser, template, runtime, or unresolved boundary was observed.",
+      "earliest_boundary_owner": {
+        "model": 7,
+        "runtime": 0,
+        "unresolved": 0
+      },
+      "failed_observations": 14,
+      "observations_by_outcome": {
+        "no_tool_call": 4,
+        "oracle_failed": 6,
+        "wrong_call_count": 2,
+        "wrong_tool": 2
+      },
+      "unique_by_outcome": {
+        "no_tool_call": 2,
+        "oracle_failed": 3,
+        "wrong_call_count": 1,
+        "wrong_tool": 1
+      },
+      "unique_failed_task_blocks": 7
+    },
+    "heldout_model_output_details_sealed": true,
+    "outcomes": {
+      "no_tool_call": 8,
+      "oracle_failed": 8,
+      "passed": 44,
+      "wrong_call_count": 4,
+      "wrong_tool": 4
+    },
+    "overall": {
+      "blocked_sandbox": 0,
+      "failed": 24,
+      "observations": 68,
+      "passed": 44,
+      "scored_denominator": 68,
+      "success_rate": 0.6470588235294118,
+      "unscorable": 0
+    },
+    "section9_metrics": {
+      "by_oracle_kind": {
+        "code": {
+          "blocked_sandbox": 0,
+          "failed": 2,
+          "passed": 14,
+          "unscorable": 0
+        },
+        "instruction": {
+          "blocked_sandbox": 0,
+          "failed": 12,
+          "passed": 4,
+          "unscorable": 0
+        },
+        "lookup": {
+          "blocked_sandbox": 0,
+          "failed": 0,
+          "passed": 4,
+          "unscorable": 0
+        },
+        "multiple": {
+          "blocked_sandbox": 0,
+          "failed": 4,
+          "passed": 0,
+          "unscorable": 0
+        },
+        "no_tool": {
+          "blocked_sandbox": 0,
+          "failed": 0,
+          "passed": 4,
+          "unscorable": 0
+        },
+        "patch": {
+          "blocked_sandbox": 0,
+          "failed": 0,
+          "passed": 4,
+          "unscorable": 0
+        },
+        "read": {
+          "blocked_sandbox": 0,
+          "failed": 0,
+          "passed": 6,
+          "unscorable": 0
+        },
+        "search": {
+          "blocked_sandbox": 0,
+          "failed": 2,
+          "passed": 4,
+          "unscorable": 0
+        },
+        "test": {
+          "blocked_sandbox": 0,
+          "failed": 4,
+          "passed": 0,
+          "unscorable": 0
+        },
+        "transform": {
+          "blocked_sandbox": 0,
+          "failed": 0,
+          "passed": 4,
+          "unscorable": 0
+        }
+      },
+      "call_blocks": {
+        "declared": 56,
+        "json_valid": 56,
+        "public": 56,
+        "strict_schema_valid": 56
+      },
+      "exact_arguments": {
+        "denominator": 32,
+        "diagnostic_only": true,
+        "passed": 22,
+        "rate": 0.6875
+      },
+      "external_oracle": {
+        "blocked_sandbox": 0,
+        "failed": 24,
+        "passed": 44,
+        "scored_denominator": 68,
+        "success_rate": 0.6470588235294118,
+        "unscorable": 0
+      },
+      "generated_response_owned_tokens": 2574,
+      "observations": {
+        "attempted": 68,
+        "terminal": 68
+      },
+      "outcomes": {
+        "no_tool_call": 8,
+        "oracle_failed": 8,
+        "passed": 44,
+        "wrong_call_count": 4,
+        "wrong_tool": 4
+      },
+      "repair": {
+        "attempted": null,
+        "extra_generated_tokens": null,
+        "failed": null,
+        "succeeded": null,
+        "telemetry_available": false
+      },
+      "safety": {
+        "content_alongside_tool_call": 0,
+        "malformed_or_invalid_arguments": 0,
+        "raw_markup_leak": 0,
+        "runtime_error": 0,
+        "truncated": 0
+      },
+      "tool_selection": {
+        "correct": 52,
+        "correct_no_tool": 4,
+        "denominator": 68,
+        "no_tool_expected": 4,
+        "rate": 0.7647058823529411
+      },
+      "valid_call": {
+        "denominator": 64,
+        "passed": 56,
+        "rate": 0.875
+      }
+    }
+  },
+  "schema_version": 1,
+  "source": {
+    "dirty": false,
+    "git_branch": "agentic-quality2",
+    "hipengine_commit": "8e228965e10d6bd32cda6dc04fb79de2225d6142",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 22663387424,
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb"
+    },
+    "model_full_sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "raw_artifact_sha256": {
+      "collector.log": "159ff248ca5f99496d8de65de965ce03dfa0489965631d43fec22e9fed85765b",
+      "kernel-final.log": "efba2b9a5bb4d506df095a6a065928fe8d1fb7c7728c45b426c91c577f57c587",
+      "ready-after-collection.json": "2f1e5bbd4c91f1dd004cbb5dbb070604c0ec1b714a43f35330d8170fd9698026",
+      "server.log": "9f06758999576790c34f04301dfb0e342da94db4d952b21aea234f45e4fce7d1",
+      "sessions-after-collection.json": "d3aa9414dc7a6b94393c87c6ac5a039c594c4c1f31f4259459c525fe3ca63835",
+      "v2-checkpoint.json": "afa4f757012909b77254287a56c742307fbf8a62ae4a5f8f7ad03b7b65c274c2",
+      "v2-records.json": "a8f1e4cd9bdb10f5e08daf4364b3ec37e618173fa0bb1fe9d36e6843f27ee274",
+      "v2-summary.json": "c0f65e4a8bcd193d47565f32ad7c85e53325c10df36a9ec11c9567b76583bfeb"
+    },
+    "records_canonical_sha256": "7a84bd8664b59cd58739b0141e3cbfcb31673545daec1086d36b3375611a1511",
+    "run_root": "/home/lhl/.local/state/hipengine-agentic-quality2/20260826-aq6-qwen36-retained-r2-213720",
+    "suite": {
+      "development_ids": [
+        "aq2_dev_tool_nested_alert_en",
+        "aq2_dev_tool_optional_read_en",
+        "aq2_dev_tool_enum_lookup_ja",
+        "aq2_dev_tool_multiple_en",
+        "aq2_dev_tool_irrelevant_en",
+        "aq2_dev_repo_search_ingest_en",
+        "aq2_dev_repo_read_config_en",
+        "aq2_dev_repo_patch_ingest_en",
+        "aq2_dev_repo_test_ingest_en",
+        "aq2_dev_code_clamp_en",
+        "aq2_dev_code_group_en",
+        "aq2_dev_code_rises_en",
+        "aq2_dev_code_label_en",
+        "aq2_dev_instruction_bullets_en",
+        "aq2_dev_instruction_status_en",
+        "aq2_dev_instruction_ja_lines",
+        "aq2_dev_instruction_json_en"
+      ],
+      "file_sha256": "dbe4668667ba3ca57649408f4dc9a5004ee771ce61dc95f7816cf6799b62cbdd",
+      "heldout_ids": [
+        "aq2_held_tool_nested_asset_mixed",
+        "aq2_held_tool_optional_search_ja",
+        "aq2_held_tool_enum_lookup_mixed",
+        "aq2_held_tool_multiple_en",
+        "aq2_held_tool_irrelevant_ja",
+        "aq2_held_repo_search_operator_ja",
+        "aq2_held_repo_read_operator_ja",
+        "aq2_held_repo_patch_retry_en",
+        "aq2_held_repo_test_full_mixed",
+        "aq2_held_code_rolling_ja",
+        "aq2_held_code_ranges_en",
+        "aq2_held_code_station_ja",
+        "aq2_held_code_unique_mixed",
+        "aq2_held_instruction_numbered_en",
+        "aq2_held_instruction_ja_bullets",
+        "aq2_held_instruction_bilingual_mixed",
+        "aq2_held_instruction_sentence_en"
+      ],
+      "oracle_path": "/home/lhl/hipEngine-agentic-quality2/benchmarks/oracles/agentic-quality2-v2.json",
+      "oracle_sha256": "c6fd180a2fe7156307995b9567a149f8c50f7448da003bdbe4cc0abe41f0706a",
+      "path": "/home/lhl/hipEngine-agentic-quality2/benchmarks/prompts/agentic-quality2-v2.json",
+      "sources_path": "/home/lhl/hipEngine-agentic-quality2/benchmarks/sources/agentic-quality2-v2-sources.json",
+      "sources_sha256": "b5d7ed2573b78ca05b14e34616c562fce4dba154fb938a414b5b96ed1ad1fdf8",
+      "suite": "agentic-quality2-v2"
+    }
+  },
+  "status": "complete",
+  "validation": {
+    "all_final_ownership_zero": true,
+    "clean_provenance": true,
+    "complete": true,
+    "complete_checkpoint": true,
+    "determinism_basis": "normalized_response_v1",
+    "determinism_passed": true,
+    "fail_safe_controls_passed": true,
+    "heldout_details_sealed": true,
+    "heldout_raw_details_committed": false,
+    "kernel_health_passed": true,
+    "live_endpoint_controls_deferred_to": "AQ10 / Task #50",
+    "raw_artifacts_local_only": true,
+    "repair_telemetry_limitation": "Per-response repair counters are not exposed in this baseline; null metrics are reported rather than inferred.",
+    "response_owned_ids": true
+  }
+}

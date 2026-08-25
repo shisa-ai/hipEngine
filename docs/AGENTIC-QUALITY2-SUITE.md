@@ -148,3 +148,10 @@ Collection stages are:
 A failure preserves the latest atomic checkpoint. Do not silently drop a row,
 weaken isolation, change output cap/tool wording, or rerun only a favorable
 split.
+
+AQ6 completed this plan at clean commit `8e228965e`: 68/68 observations,
+44/68 external-oracle successes, exact `normalized_response_v1` equality across
+all 34 repeat pairs, 10/10 independent fail-safe policy controls, no blocked or
+unscorable row, sealed heldout details, zero final transient ownership, and a
+clean post-run kernel/KFD boundary. The compact artifact is
+[`2026-08-26-zbook-agentic-quality2-aq6-expanded-baseline.json`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq6-expanded-baseline.json).
