@@ -181,6 +181,18 @@ fallback count is not a success metric.
   direct controls and registered strict/eager/serial kernel fallbacks required
   by the execution-profile contract.
 
+## SPECDEC2 dense NextN host/device proposal duplication
+
+- Added 2026-08-25 with the S4 C2/C4 device-candidate handoff. The exact
+  physically batched NextN model transition currently has host-materialized and
+  device-top1 entry points in `qwen35_gguf_nextn.py`; they deliberately share
+  weights/state/session ownership but duplicate the embedding/norm/fusion/
+  backbone launch sequence while S4 keeps the old host path as an oracle.
+- Removal trigger: after S4 device accept/commit and graph/eager agreement pass,
+  extract one enqueue-only physical transition primitive with host/device result
+  adapters. Keep the strict host materialization oracle callable from tests, but
+  remove duplicate model-launch bodies from production selection.
+
 ## Execution-profile migration seam
 
 - Implemented for campaign P3: public `strict|production|batch_invariant`

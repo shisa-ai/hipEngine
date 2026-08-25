@@ -18,6 +18,7 @@ from hipengine.kernels.backends import resolve_backend
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_rmsnorm_bf16_f32_weight,
 )
+from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32_rows_i32
 from hipengine.kernels.hip_gfx1100.quant.gguf_q3_k_gemv import register_gguf_q3_k_gemv_kernels
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     build_gguf_q6_k_pack8_gemv,
@@ -115,6 +116,67 @@ class Qwen35GGUFNextNDeviceProposal:
             raise ValueError("device proposal result span must cover every top-1 row")
         if self.final_hidden.dtype != DType.BF16 or self.final_hidden.shape[0] != 1:
             raise ValueError("device proposal final hidden row must be rank-2 BF16")
+
+
+@dataclass(frozen=True, slots=True)
+class Qwen35GGUFNextNBatchDeviceProposal:
+    """Request-major physical proposal rows retained on the device.
+
+    ``token_ids`` contains only active candidate rows, ordered by request and
+    then draft depth. ``hidden_rows`` has the same logical ownership and stays
+    device-resident for provider checkpoint repair after target verification.
+    """
+
+    request_ids: tuple[int, ...]
+    root_tokens: tuple[int, ...]
+    root_positions: tuple[int, ...]
+    candidate_counts: tuple[int, ...]
+    token_ids: Tensor
+    hidden_rows: tuple[tuple[Tensor, ...], ...]
+
+    def __post_init__(self) -> None:
+        rows = len(self.request_ids)
+        if rows <= 1 or len(set(self.request_ids)) != rows:
+            raise ValueError("batch device proposal requires unique C>1 requests")
+        if any(
+            len(values) != rows
+            for values in (
+                self.root_tokens,
+                self.root_positions,
+                self.candidate_counts,
+                self.hidden_rows,
+            )
+        ):
+            raise ValueError("batch device proposal fields must align")
+        if any(
+            value < 0
+            for value in (*self.request_ids, *self.root_tokens, *self.root_positions)
+        ):
+            raise ValueError("batch device proposal identity must be non-negative")
+        if any(
+            count <= 0 or count not in MTP_CHAIN_CANDIDATE_BUDGETS
+            for count in self.candidate_counts
+        ):
+            raise ValueError("batch device proposal candidate count is unsupported")
+        candidate_rows = sum(self.candidate_counts)
+        if self.token_ids.dtype != DType.INT32 or self.token_ids.shape != (
+            candidate_rows,
+        ):
+            raise ValueError(
+                "batch device proposal token_ids must be INT32 [candidate_rows]"
+            )
+        for count, hidden in zip(
+            self.candidate_counts,
+            self.hidden_rows,
+            strict=True,
+        ):
+            if len(hidden) != count:
+                raise ValueError("batch device proposal hidden rows must match counts")
+            if any(
+                row.dtype != DType.BF16 or len(row.shape) != 2 or row.shape[0] != 1
+                for row in hidden
+            ):
+                raise ValueError("batch device proposal hidden rows must be BF16 [1,H]")
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,6 +367,12 @@ class Qwen35GGUFNextNExecutor:
         self._enorm_buf = malloc(hidden_bytes, runtime=self.runtime)
         self._hnorm_buf = malloc(hidden_bytes, runtime=self.runtime)
         self._batch_input_hidden = malloc(hidden_bytes, runtime=self.runtime)
+        self._batch_candidate_tokens_i32 = malloc(
+            self.max_requests
+            * _NEXTN_TOP1_RESULT_CAPACITY
+            * DType.INT32.itemsize,
+            runtime=self.runtime,
+        )
         self._fusion_buf = malloc(2 * hidden_bytes, runtime=self.runtime)
         self._fused_buf = malloc(hidden_bytes, runtime=self.runtime)
         self._layer_out_buf = malloc(hidden_bytes, runtime=self.runtime)
@@ -356,6 +424,7 @@ class Qwen35GGUFNextNExecutor:
                 self._enorm_buf,
                 self._hnorm_buf,
                 self._batch_input_hidden,
+                self._batch_candidate_tokens_i32,
                 self._fusion_buf,
                 self._fused_buf,
                 self._layer_out_buf,
@@ -886,6 +955,329 @@ class Qwen35GGUFNextNExecutor:
             for result in results
             if isinstance(result, Qwen35GGUFNextNStateAdvance)
         )
+
+    def _device_top1_rows(self, rows: int) -> Tensor:
+        owner = self._batch_session
+        owner._ensure_verify_lm_head_buffers(int(rows), runtime=self.runtime)
+        if (
+            owner._verify_lm_block_values is None
+            or owner._verify_lm_block_indices_i32 is None
+            or owner._verify_lm_out_indices_i32 is None
+            or owner._verify_lm_out_values is None
+        ):
+            raise RuntimeError("GGUF NextN device top-1 buffers are unavailable")
+        argmax_f32_rows_i32(
+            self._logits_buf.ptr,
+            owner._verify_lm_block_values.ptr,
+            owner._verify_lm_block_indices_i32.ptr,
+            owner._verify_lm_out_indices_i32.ptr,
+            owner._verify_lm_out_values.ptr,
+            int(rows),
+            self.vocab_size,
+            threads=owner._lm_head_threads,
+            library=owner._lm_head_library,
+            runtime=self.runtime,
+        )
+        return Tensor.from_handle(
+            owner._verify_lm_out_indices_i32.ptr,
+            (int(rows),),
+            DType.INT32,
+            Device("hip", 0),
+        )
+
+    def _run_step_batch_device_top1(
+        self,
+        request_ids: tuple[int, ...],
+        positions: tuple[int, ...],
+        target_hidden: Tensor,
+    ) -> tuple[Tensor, tuple[Tensor, ...]]:
+        """Consume pre-staged INT64 tokens and leave row top-1 IDs on device."""
+
+        ids = tuple(int(value) for value in request_ids)
+        pos = tuple(int(value) for value in positions)
+        rows = len(ids)
+        if rows <= 1 or rows > self.max_requests or len(pos) != rows:
+            raise ValueError("device NextN batch rows must be in [2, max_requests]")
+        if len(set(ids)) != rows:
+            raise ValueError("device NextN batch request IDs must be unique")
+        if target_hidden.dtype != DType.BF16 or target_hidden.shape != (
+            rows,
+            self.hidden_size,
+        ):
+            raise ValueError("device target_hidden must be BF16 [rows,H]")
+        slots = tuple(self._slot(request_id) for request_id in ids)
+        sessions = tuple(self._batch_sessions[slot] for slot in slots)
+        if tuple(int(session.position) for session in sessions) != pos:
+            raise ValueError("device NextN batch positions do not match provider cursors")
+        launch_gguf_embedding(
+            self.weights.fallback("token_embedding"),
+            self._token_buf.ptr,
+            self._embedding_buf.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            vocab_size=self.vocab_size,
+            runtime=self.runtime,
+        )
+        gguf_rmsnorm_bf16_f32_weight(
+            self._embedding_buf.ptr,
+            self.weights.nextn("enorm").allocation().tensor.ptr,
+            self._enorm_buf.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            eps=self.weights.config.rms_norm_eps,
+            runtime=self.runtime,
+        )
+        gguf_rmsnorm_bf16_f32_weight(
+            target_hidden.ptr,
+            self.weights.nextn("hnorm").allocation().tensor.ptr,
+            self._hnorm_buf.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            eps=self.weights.config.rms_norm_eps,
+            runtime=self.runtime,
+        )
+        hidden_nbytes = self.hidden_size * DType.BF16.itemsize
+        for row in range(rows):
+            destination = self._fusion_buf.ptr + row * 2 * hidden_nbytes
+            self.runtime.memcpy_async(
+                destination,
+                self._enorm_buf.ptr + row * hidden_nbytes,
+                hidden_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                0,
+            )
+            self.runtime.memcpy_async(
+                destination + hidden_nbytes,
+                self._hnorm_buf.ptr + row * hidden_nbytes,
+                hidden_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                0,
+            )
+        launch_gguf_linear(
+            self.weights.nextn("eh_proj"),
+            self._fusion_buf.ptr,
+            self._fused_buf.ptr,
+            rows=rows,
+            in_features=2 * self.hidden_size,
+            out_features=self.hidden_size,
+            runtime=self.runtime,
+        )
+        self._batch_session.step_hidden_batch_native(
+            self._fused_buf.ptr,
+            sessions=sessions,
+            positions=pos,
+            output_hidden_ptr=self._final_hidden_buf.ptr,
+            logits_ptr=self._logits_buf.ptr,
+            score_output=True,
+        )
+        token_ids = self._device_top1_rows(rows)
+        hidden = tuple(
+            Tensor.from_handle(
+                self._final_hidden_buf.ptr + row * hidden_nbytes,
+                (1, self.hidden_size),
+                DType.BF16,
+                Device("hip", 0),
+            )
+            for row in range(rows)
+        )
+        self.last_lm_head_path = "physical_batch_device_top1"
+        return token_ids, hidden
+
+    def _run_step_device_top1(
+        self,
+        request_id: int,
+        position: int,
+        target_hidden: Tensor,
+    ) -> tuple[Tensor, Tensor]:
+        """Consume one pre-staged slot token without a candidate host readback."""
+
+        rid = int(request_id)
+        slot = self._slot(rid)
+        if int(self._batch_sessions[slot].position) != int(position):
+            raise ValueError("device NextN position does not match provider cursor")
+        layer_out_ptr, final_hidden_ptr = self._run_block(
+            rid,
+            0,
+            int(position),
+            target_hidden,
+            token_ready=True,
+        )
+        self._set_batch_session_position(slot, int(position) + 1)
+        gguf_rmsnorm_bf16_f32_weight(
+            layer_out_ptr,
+            self.weights.fallback("output_norm").allocation().tensor.ptr,
+            final_hidden_ptr,
+            rows=1,
+            hidden_size=self.hidden_size,
+            eps=self.weights.config.rms_norm_eps,
+            runtime=self.runtime,
+        )
+        launch_gguf_linear(
+            self.weights.fallback("lm_head"),
+            final_hidden_ptr,
+            self._logits_buf.ptr,
+            rows=1,
+            in_features=self.hidden_size,
+            out_features=self.vocab_size,
+            output_dtype=GGUF_OUTPUT_F32,
+            runtime=self.runtime,
+        )
+        token_ids = self._device_top1_rows(1)
+        self.last_lm_head_path = "physical_singleton_device_top1"
+        return token_ids, Tensor.from_handle(
+            final_hidden_ptr,
+            (1, self.hidden_size),
+            DType.BF16,
+            Device("hip", 0),
+        )
+
+    def run_batch_proposal_device(
+        self,
+        context: MtpProposalContext,
+        *,
+        candidate_counts: Sequence[int],
+    ) -> Qwen35GGUFNextNBatchDeviceProposal:
+        """Run shared proposal depths without reading candidate IDs to the host."""
+
+        ids = tuple(int(value) for value in context.request_ids)
+        counts = tuple(int(value) for value in candidate_counts)
+        rows = len(ids)
+        if rows <= 1 or len(counts) != rows or any(count <= 0 for count in counts):
+            raise ValueError("device batch proposal requires aligned C>1 positive depths")
+        if max(counts) not in MTP_CHAIN_CANDIDATE_BUDGETS:
+            raise ValueError("device batch proposal budget is unsupported")
+        if any(
+            int(token) < 0 or int(token) >= self.vocab_size
+            for token in context.root_tokens
+        ):
+            raise ValueError("device batch proposal root token is outside the vocabulary")
+        if context.target_hidden is None or context.target_hidden.shape != (
+            rows,
+            self.hidden_size,
+        ):
+            raise ValueError("device batch proposal target hidden rows do not align")
+        offsets = [0]
+        for count in counts:
+            offsets.append(offsets[-1] + count)
+        hidden_nbytes = self.hidden_size * DType.BF16.itemsize
+        current_hidden = [
+            Tensor.from_handle(
+                context.target_hidden.ptr + row * hidden_nbytes,
+                (1, self.hidden_size),
+                DType.BF16,
+                context.target_hidden.device,
+            )
+            for row in range(rows)
+        ]
+        hidden_rows: list[list[Tensor]] = [[] for _ in range(rows)]
+        for depth in range(max(counts)):
+            active = tuple(index for index, count in enumerate(counts) if depth < count)
+            for packed_row, source_row in enumerate(active):
+                self.runtime.memcpy(
+                    self._batch_input_hidden.ptr + packed_row * hidden_nbytes,
+                    current_hidden[source_row].ptr,
+                    hidden_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
+            if depth == 0:
+                root_tokens = np.asarray(
+                    [int(context.root_tokens[index]) for index in active],
+                    dtype=np.int64,
+                )
+                destination = (
+                    self._token_buf.ptr
+                    if len(active) > 1
+                    else self._token_buf.ptr
+                    + self._slot(ids[active[0]]) * DType.INT64.itemsize
+                )
+                copy_host_to_device(
+                    DeviceBuffer(destination, root_tokens.nbytes),
+                    host_array_ptr(root_tokens),
+                    root_tokens.nbytes,
+                    runtime=self.runtime,
+                )
+            else:
+                for packed_row, source_row in enumerate(active):
+                    destination_row = (
+                        packed_row if len(active) > 1 else self._slot(ids[source_row])
+                    )
+                    copy_i32_to_i64(
+                        self._batch_candidate_tokens_i32.ptr
+                        + (offsets[source_row] + depth - 1) * DType.INT32.itemsize,
+                        self._token_buf.ptr
+                        + destination_row * DType.INT64.itemsize,
+                        1,
+                        library=self._batch_session._runtime_state_library,
+                        runtime=self.runtime,
+                    )
+            packed_hidden = Tensor.from_handle(
+                self._batch_input_hidden.ptr,
+                (len(active), self.hidden_size),
+                DType.BF16,
+                Device("hip", 0),
+            )
+            if len(active) > 1:
+                step_tokens, step_hidden = self._run_step_batch_device_top1(
+                    tuple(ids[index] for index in active),
+                    tuple(int(context.root_positions[index]) + depth for index in active),
+                    packed_hidden,
+                )
+            else:
+                source_row = active[0]
+                token, hidden = self._run_step_device_top1(
+                    ids[source_row],
+                    int(context.root_positions[source_row]) + depth,
+                    Tensor.from_handle(
+                        packed_hidden.ptr,
+                        (1, self.hidden_size),
+                        DType.BF16,
+                        Device("hip", 0),
+                    ),
+                )
+                step_tokens, step_hidden = token, (hidden,)
+            for packed_row, source_row in enumerate(active):
+                self.runtime.memcpy(
+                    self._batch_candidate_tokens_i32.ptr
+                    + (offsets[source_row] + depth) * DType.INT32.itemsize,
+                    step_tokens.ptr + packed_row * DType.INT32.itemsize,
+                    DType.INT32.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
+                retained = self._preserve_proposal_hidden(
+                    ids[source_row],
+                    depth,
+                    step_hidden[packed_row],
+                )
+                hidden_rows[source_row].append(retained)
+                current_hidden[source_row] = retained
+        return Qwen35GGUFNextNBatchDeviceProposal(
+            request_ids=ids,
+            root_tokens=tuple(int(value) for value in context.root_tokens),
+            root_positions=tuple(int(value) for value in context.root_positions),
+            candidate_counts=counts,
+            token_ids=Tensor.from_handle(
+                self._batch_candidate_tokens_i32.ptr,
+                (offsets[-1],),
+                DType.INT32,
+                Device("hip", 0),
+            ),
+            hidden_rows=tuple(tuple(rows) for rows in hidden_rows),
+        )
+
+    def materialize_batch_device_proposal(
+        self,
+        proposal: Qwen35GGUFNextNBatchDeviceProposal,
+    ) -> tuple[int, ...]:
+        """Read one bounded request-major candidate vector after target execution."""
+
+        values = np.empty(proposal.token_ids.shape, dtype=np.int32)
+        copy_device_to_host(
+            host_array_ptr(values),
+            DeviceBuffer(proposal.token_ids.ptr, values.nbytes),
+            values.nbytes,
+            runtime=self.runtime,
+        )
+        return tuple(int(value) for value in values)
 
     def _capture_exact_chain_graph(
         self,
@@ -1677,6 +2069,89 @@ class Qwen35GGUFNextNDraftProvider:
             pad_token_id=self.pad_token_id,
         )
 
+    def propose_batch_device(
+        self,
+        context: MtpProposalContext,
+        *,
+        candidate_counts: Sequence[int],
+    ) -> Qwen35GGUFNextNBatchDeviceProposal:
+        """Launch a physical C>1 proposal without materializing candidate IDs."""
+
+        launch = getattr(self.executor, "run_batch_proposal_device", None)
+        if not callable(launch):
+            raise NotImplementedError(
+                "GGUF NextN executor has no device-resident batch proposal"
+            )
+        proposal = launch(
+            context,
+            candidate_counts=tuple(int(value) for value in candidate_counts),
+        )
+        if not isinstance(proposal, Qwen35GGUFNextNBatchDeviceProposal):
+            raise TypeError("device batch proposal returned an invalid descriptor")
+        if proposal.request_ids != tuple(int(value) for value in context.request_ids):
+            raise ValueError("device batch proposal request IDs changed")
+        return proposal
+
+    def materialize_batch_device_proposal(
+        self,
+        proposal: Qwen35GGUFNextNBatchDeviceProposal,
+    ) -> DraftBatch:
+        """Read bounded candidate IDs after target lowering and bind repair rows."""
+
+        materialize = getattr(
+            self.executor,
+            "materialize_batch_device_proposal",
+            None,
+        )
+        if not callable(materialize):
+            raise RuntimeError("GGUF NextN executor cannot materialize a batch proposal")
+        token_ids = tuple(int(value) for value in materialize(proposal))
+        if len(token_ids) != sum(proposal.candidate_counts):
+            raise RuntimeError("device batch proposal omitted candidate IDs")
+        requests: list[MtpDraftRequest] = []
+        cursor = 0
+        for request_id, root_token, root_position, count, hidden_rows in zip(
+            proposal.request_ids,
+            proposal.root_tokens,
+            proposal.root_positions,
+            proposal.candidate_counts,
+            proposal.hidden_rows,
+            strict=True,
+        ):
+            request_tokens = token_ids[cursor : cursor + count]
+            cursor += count
+            current = int(root_token)
+            results: list[Qwen35GGUFNextNStepResult] = []
+            for depth, (token, hidden) in enumerate(
+                zip(request_tokens, hidden_rows, strict=True)
+            ):
+                results.append(
+                    Qwen35GGUFNextNStepResult(
+                        request_id=int(request_id),
+                        input_token=current,
+                        position=int(root_position) + depth,
+                        token_id=int(token),
+                        logit=0.0,
+                        hidden=hidden,
+                        logits=None,
+                    )
+                )
+                current = int(token)
+            self.last_results[int(request_id)] = tuple(results)
+            requests.append(
+                MtpDraftRequest(
+                    request_id=int(request_id),
+                    root_position=int(root_position),
+                    candidate_tokens=request_tokens,
+                    active_count=int(count),
+                )
+            )
+        return compile_mtp_chain(
+            requests,
+            candidate_budget=max(proposal.candidate_counts),
+            pad_token_id=self.pad_token_id,
+        )
+
     def propose_batch(
         self,
         context: MtpProposalContext,
@@ -1935,6 +2410,7 @@ Qwen35GGUFNextNDraftModel = Qwen35GGUFNextNDraftProvider
 
 
 __all__ = [
+    "Qwen35GGUFNextNBatchDeviceProposal",
     "Qwen35GGUFNextNDeviceProposal",
     "Qwen35GGUFNextNRequestCheckpoint",
     "Qwen35GGUFNextNDraftModel",

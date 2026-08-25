@@ -18,6 +18,7 @@ from hipengine.core.memory import DeviceBuffer, copy_device_to_host, free, host_
 from hipengine.core.tensor import Tensor
 from hipengine.runtime import qwen35_gguf_nextn as nextn_mod
 from hipengine.runtime.qwen35_gguf_nextn import (
+    Qwen35GGUFNextNBatchDeviceProposal,
     Qwen35GGUFNextNDeviceProposal,
     Qwen35GGUFNextNDraftProvider,
     Qwen35GGUFNextNExecutor,
@@ -151,6 +152,70 @@ def test_nextn_provider_emits_only_candidate_rows_under_locked_abi() -> None:
     assert len(executor.calls) == 12
     with pytest.raises(ValueError, match="one of 1, 2, 3, 4, 5"):
         provider.propose(context, candidate_budget=6)
+
+
+def test_nextn_provider_keeps_physical_batch_candidates_device_resident_until_materialized() -> None:
+    calls = []
+    device = Qwen35GGUFNextNBatchDeviceProposal(
+        request_ids=(10, 20),
+        root_tokens=(100, 200),
+        root_positions=(5, 8),
+        candidate_counts=(1, 2),
+        token_ids=Tensor.from_handle(
+            0x5000,
+            (3,),
+            DType.INT32,
+            Device("hip", 0),
+        ),
+        hidden_rows=(
+            (Tensor.from_handle(0x6000, (1, 8), DType.BF16, Device("hip", 0)),),
+            (
+                Tensor.from_handle(0x7000, (1, 8), DType.BF16, Device("hip", 0)),
+                Tensor.from_handle(0x8000, (1, 8), DType.BF16, Device("hip", 0)),
+            ),
+        ),
+    )
+
+    class DeviceExecutor:
+        hidden_size = 8
+
+        def run_batch_proposal_device(self, context, *, candidate_counts):
+            calls.append(("launch", tuple(context.request_ids), tuple(candidate_counts)))
+            return device
+
+        def materialize_batch_device_proposal(self, pending):
+            calls.append(("materialize", pending.token_ids.ptr))
+            return (101, 201, 202)
+
+    provider = Qwen35GGUFNextNDraftProvider(DeviceExecutor())
+    context = MtpProposalContext(
+        request_ids=(10, 20),
+        root_tokens=(100, 200),
+        root_positions=(5, 8),
+        target_hidden=Tensor.from_handle(
+            0x1000,
+            (2, 8),
+            DType.BF16,
+            Device("hip", 0),
+        ),
+    )
+
+    pending = provider.propose_batch_device(
+        context,
+        candidate_counts=(1, 2),
+    )
+
+    assert pending is device
+    assert provider.last_results == {}
+    assert calls == [("launch", (10, 20), (1, 2))]
+
+    draft = provider.materialize_batch_device_proposal(pending)
+
+    assert calls[-1] == ("materialize", 0x5000)
+    assert draft.candidate_tokens == (101, 0, 201, 202)
+    assert draft.active_mask == (True, False, True, True)
+    assert tuple(row.token_id for row in provider.last_results[10]) == (101,)
+    assert tuple(row.token_id for row in provider.last_results[20]) == (201, 202)
 
 
 def test_nextn_provider_physically_batches_one_backbone_per_depth() -> None:
