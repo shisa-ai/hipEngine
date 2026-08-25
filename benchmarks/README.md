@@ -109,12 +109,14 @@ Physical C2/C4 K2 remains blocked at **2.786x/3.142x true-AR wall** with only
 **67.37%/71.07%** total-wall reduction to reach 1.10x. Automatic policy remains
 K0; no product scope promotes. [`P1 evidence`](results/2026-08-25-gfx1151-specdec2-perf-p1-bridge.json).
 
-gfx1100 S7 now retains two exact C1 foundations, both automatic K0: dense
-Qwen3.6-27B GGUF K1-K3 staged IDs match true AR/direct control, while packed
-PARO K1 production/strict staged IDs match AR with streaming NextN prompt
-priming. PARO remains performance-blocked on the short screen (`0.731 s` staged
-vs `0.670 s` AR); physical C2/C4 is not yet exposed for either lane.
-[`S7 plan`](../docs/SPECDEC2-GFX1100.md).
+gfx1100 SPECDEC2-PERF now retains a clean C1 streaming checkpoint. Dense
+Qwen3.6-27B GGUF K1/K2/K3 is exact at **1.259x/1.365x/1.419x true AR**, but
+remains **3.6%/6.2%/5.3%** behind direct MTP. Exact p128/p512 streaming loses
+AR, while p4K/p16K stays pre-mutation K0. Packed PARO production is exact and
+zero-allocation across **372/372** cycles, but staged remains **0.933x AR**;
+strict D8 cycle allocation fell **1,110 malloc/free pairs → 0** and marker wall
+**137.157 → 97.263 ms**. Both automatic policies remain K0; physical C2/C4 is
+not exposed. [`P1-P3 checkpoint`](results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json).
 
 ## Where detailed evidence lives
 

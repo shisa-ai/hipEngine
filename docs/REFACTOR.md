@@ -18,6 +18,12 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## Active SPECDEC2 campaign flags
+
+| ID | State | Flag/path | Removal gate |
+| --- | --- | --- | --- |
+| SD2-GFX1100-ALLOC | ready | `HIPENGINE_SPECDEC2_CYCLE_ALLOC_TELEMETRY` in packed-PARO MTP2 | Remove or move into a generic typed profiler plan after P3/P4 stable-slab and device-cycle qualification no longer needs per-cycle tracked deltas. It must remain default-off and diagnostic-only until then. |
+
 ## 2026-08-21 codebase simplification review
 
 This review covers the tracked tree at `a9419949d`. The main conclusion is that
