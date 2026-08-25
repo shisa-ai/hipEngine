@@ -873,8 +873,10 @@ production manifest with explicit FP32 strict fallback. GREEN bring-up corrected
 the audit's initial snapshot premise: gfx1151 intentionally excludes
 producer-folded snapshot/Q5-chain aliases, so production preserves P4's
 consumer-owned dtype-sized D2D rollback and exact unfused cast. C1/C2/C4
-production-FP16 smokes match production AR and execute graph/eager staged cycles
-without recovery; automatic policy remains K0 pending P8.2. Durable details:
+production-FP16 smokes match production AR without recovery. P8.2 subsequently
+proved native target graphs diverge after layer 51 under FP16 state, so all FP16
+target verify/selected commit remains on the exact eager owner; automatic policy
+remains K0 pending the remaining P8.2 gates. Durable details:
 [`P8 audit`](../worklog/entries/20260825T215042.972658Z-gfx1151-agent-specdec2-perf-p8-fp16-audit-a613ab.md),
 [`P8 capability`](../worklog/entries/20260825T221958.712228Z-gfx1151-agent-specdec2-perf-p8-fp16-capability-4f8ea6.md).
 

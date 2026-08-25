@@ -4218,9 +4218,12 @@ should be boring.
   that serving-path issue does not erase the candidate win. See `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json`.
   SPECDEC2 P8 now has a runtime-resolved production-candidate manifest and
   exact FP32 fallback plus clean C1/C2/C4 staged-vs-production-AR smokes.
-  BF16-relative/task, fresh speculative numerics, lifecycle/economics, and
-  gfx1100 named-profile evidence remain unavailable; automatic policy therefore
-  stays K0 and producer-folded chain snapshot/fusion remains excluded.
+  Native target graph FP16 state diverges after layer 51 for accepted rows;
+  exact eager target verify/selected commit is therefore mandatory until a
+  separately qualified graph fix lands. BF16-relative/task, fresh speculative
+  lifecycle/economics, and gfx1100 named-profile evidence remain unavailable;
+  automatic policy stays K0 and producer-folded chain snapshot/fusion remains
+  excluded.
 
 ## gfx1151 c1 short-batch attention thread-geometry (GGUF_SHORT_C1_BATCH_ATTN_THREADS / env)
 

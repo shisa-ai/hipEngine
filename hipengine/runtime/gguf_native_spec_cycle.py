@@ -2292,6 +2292,13 @@ def verify_qwen35_gguf_native_b2_target(
     if sync_stage_timings:
         eager_kwargs["sync_stage_timings"] = True
     rows = len(tuple(input_token_ids))
+    recurrent_state_dtype = _native_target_execution_identity(session)[1]
+    if recurrent_state_dtype == "fp16":
+        reason = "FP16 recurrent state keeps target verify on the eager owner"
+        session.last_native_spec_target_fallback_reason = reason
+        if not fallback:
+            raise NativeSpecTargetGraphUnsupportedError(reason)
+        return session.verify_target_block(input_token_ids, **eager_kwargs)
     if rows not in {2, 3, 4, 5, 6, 7, 8}:
         reason = "native target graph requires two to eight rows (one root plus B1-B7)"
         session.last_native_spec_target_fallback_reason = reason
@@ -2412,6 +2419,10 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
             "device proposal handoff does not support diagnostic logits"
         )
     rows = int(getattr(device_proposal, "budget", -1)) + 1
+    if _native_target_execution_identity(session)[1] == "fp16":
+        reason = "FP16 recurrent state device proposal requires eager selected commit"
+        session.last_native_spec_target_fallback_reason = reason
+        raise NativeSpecTargetGraphUnsupportedError(reason)
     if rows not in {2, 3, 4, 5, 6, 7, 8}:
         raise NativeSpecTargetGraphUnsupportedError(
             "device proposal requires one cached B1-B7 target bucket"
