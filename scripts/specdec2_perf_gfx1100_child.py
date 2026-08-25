@@ -49,6 +49,44 @@ def validate_child_scope(*, lane: str, profile: str, candidate_budget: int) -> N
         raise ValueError("PARO staged bridge is K1-only")
 
 
+def validate_loaded_arm_ids(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    profile: str,
+) -> None:
+    """Fail closed when strict loaded AR/staged rows diverge."""
+
+    if str(profile) != "strict":
+        return
+    cells: dict[tuple[str, int], dict[str, tuple[int, ...]]] = {}
+    for row in rows:
+        arm = str(row.get("arm") or "")
+        if arm not in LOADED_ARMS:
+            continue
+        key = (str(row.get("prompt_id") or ""), int(row.get("run_index", -1)))
+        cells.setdefault(key, {})[arm] = tuple(
+            int(value) for value in row.get("generated_token_ids", ())
+        )
+    for (prompt_id, run_index), arms in cells.items():
+        if set(arms) != set(LOADED_ARMS):
+            continue
+        if arms["true_ar"] != arms["staged"]:
+            mismatch = next(
+                (
+                    index
+                    for index, (ar_token, staged_token) in enumerate(
+                        zip(arms["true_ar"], arms["staged"], strict=False)
+                    )
+                    if ar_token != staged_token
+                ),
+                min(len(arms["true_ar"]), len(arms["staged"])),
+            )
+            raise RuntimeError(
+                "strict AR/staged generated IDs diverged for "
+                f"prompt={prompt_id} run={run_index} token_index={mismatch}"
+            )
+
+
 def _seconds_from_ms(mapping: Mapping[str, Any], *names: str) -> float | None:
     for name in names:
         raw = mapping.get(name)
@@ -432,6 +470,7 @@ def run_loaded_packet(args: argparse.Namespace) -> dict[str, Any]:
                     "direct_attachment_required": True,
                 }
                 rows.append(row)
+                validate_loaded_arm_ids(rows, profile=args.profile)
                 atomic_write_json(
                     args.output,
                     {
