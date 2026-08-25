@@ -38,6 +38,16 @@ from hipengine.speculative.transaction import (
 )
 
 
+_PROPOSER_CAPACITY_FLOOR = 256
+
+
+def _proposer_capacity_bucket(required_tokens: int) -> int:
+    required = int(required_tokens)
+    if required <= 0:
+        raise ValueError("PARO MTP2 proposer capacity requirement must be positive")
+    return 1 << (max(_PROPOSER_CAPACITY_FLOOR, required) - 1).bit_length()
+
+
 @dataclass(slots=True)
 class _ParoMTP2RequestState:
     request_id: int
@@ -90,6 +100,7 @@ class Qwen35ParoMTP2Adapter:
             raise RuntimeError("PARO MTP2 target session is unavailable")
         started = time.perf_counter()
         required_tokens = len(row.prompt_ids) + 2 * int(row.request.max_tokens) + 8
+        proposer_capacity = _proposer_capacity_bucket(required_tokens)
         proposer = None
         while self._proposer_pool:
             candidate = self._proposer_pool.pop()
@@ -115,7 +126,7 @@ class Qwen35ParoMTP2Adapter:
             proposer = NativeMtpChainProposer(
                 self.generator.model_path,
                 max_positions=int(session.max_sequence_length),
-                max_mtp_tokens=required_tokens,
+                max_mtp_tokens=proposer_capacity,
                 runtime=session.runtime,
                 compiler_version=session.compiler_version,
                 scoring_head=scoring_head,
@@ -155,6 +166,8 @@ class Qwen35ParoMTP2Adapter:
             input_token=input_token,
             target_hidden_ptr=int(target_hidden_ptr),
             position=index + 1,
+            need_result=final,
+            read_token_id=False,
             read_expert_topk=False,
             read_lm_head_value=False,
         )
@@ -171,6 +184,19 @@ class Qwen35ParoMTP2Adapter:
         row = self.owner._row(rid)
         if state.prompt_rows_consumed != len(row.prompt_ids):
             raise RuntimeError("PARO MTP2 streaming prompt priming is incomplete")
+        session = self.owner._session
+        if session is None:
+            raise RuntimeError("PARO MTP2 target session is unavailable after prefill")
+        session.prepare_specdec2_verify_scratch(
+            rows=2,
+            chain_attn_mode=(
+                "c1_loop"
+                if str(getattr(self.generator, "execution_profile", "production"))
+                == "strict"
+                else "decode_batched"
+            ),
+            max_context_tokens=len(row.prompt_ids) + int(row.request.max_tokens),
+        )
         self.owner._release_mtp2_prompt_capture(row)
 
     def capability(
@@ -326,10 +352,9 @@ class Qwen35ParoMTP2Adapter:
         state = self._states[rid]
         started = time.perf_counter()
         state.checkpoint = state.proposer.save_state(0)
-        candidate = int(state.proposer.current.token)
+        candidate_token_ids = state.proposer.device_candidate_token_ids()
         state.last_proposal_seconds = time.perf_counter() - started
-        if candidate < 0:
-            raise RuntimeError("PARO MTP2 proposer has no valid candidate")
+        row.mtp2_candidate_device_handoffs += 1
         return CandidateGraph(
             provider_key=plan.provider_key or "qwen_paro_mtp_bf16",
             method_key="mtp2",
@@ -344,13 +369,37 @@ class Qwen35ParoMTP2Adapter:
             parent_candidate_rows=(-1,),
             draft_depths=(1,),
             active_mask=(True,),
-            candidate_tokens=(candidate,),
+            candidate_tokens=(0,),
+            token_ids=candidate_token_ids,
             mode="verify_chain",
-            provider_metadata=(("candidate_handoff", "bounded_host_i32"),),
+            provider_metadata=(("candidate_handoff", "device_i32"),),
         )
 
     def kv_live_spans_owner(self, plan: SpecRequestPlan) -> str:
         return f"paro-resident:{id(self.owner)}:{plan.operation_id}"
+
+    @staticmethod
+    def _verify_target(
+        session: Any,
+        batch: Any,
+        *,
+        chain_attn_mode: str,
+        candidate_token_ids_i32: Tensor | None,
+    ) -> Any:
+        return session.verify_chain_bulk_and_commit(
+            batch,
+            base_slot=0,
+            capture_layer_ids=(),
+            capture_hidden_concat=Tensor.from_handle(
+                0, (2, 0), DType.BF16, Device("hip", 0)
+            ),
+            capture_row_start=0,
+            chain_attn_mode=str(chain_attn_mode),
+            graph_mode="off",
+            canonicalize_after=False,
+            synchronize_after_commit=False,
+            candidate_token_ids_i32=candidate_token_ids_i32,
+        )
 
     def execute_target_frontier(
         self,
@@ -395,24 +444,25 @@ class Qwen35ParoMTP2Adapter:
         if tuple(int(value) for value in cancelled_request_ids()):
             return self._cancelled_result(transaction, state, session)
         target_started = time.perf_counter()
-        verify = session.verify_chain_bulk_and_commit(
+        verify = self._verify_target(
+            session,
             frontier.target_batch,
-            base_slot=0,
-            capture_layer_ids=(),
-            capture_hidden_concat=Tensor.from_handle(
-                0, (2, 0), DType.BF16, Device("hip", 0)
-            ),
-            capture_row_start=0,
             chain_attn_mode=(
                 "c1_loop"
                 if str(getattr(self.generator, "execution_profile", "production"))
                 == "strict"
                 else "decode_batched"
             ),
-            graph_mode="off",
-            canonicalize_after=False,
+            candidate_token_ids_i32=(
+                frontier.candidate_graph.token_ids
+                if frontier.candidate_graph is not None
+                else None
+            ),
         )
         target_seconds = time.perf_counter() - target_started
+        row.mtp2_candidate_d2h_after_target += int(
+            frontier.candidate_graph.candidate_rows
+        )
         accepted = int(verify.accepted_count)
         bonus = int(
             verify.next_token
@@ -423,7 +473,7 @@ class Qwen35ParoMTP2Adapter:
         try:
             if accepted:
                 state.proposer.advance_with_previous_hidden(
-                    input_token=int(frontier.candidate_graph.candidate_tokens[0]),
+                    input_token=int(verify.accepted_tokens[0]),
                     position=state.proposer.position + 1,
                     need_result=False,
                     read_expert_topk=False,
@@ -433,6 +483,7 @@ class Qwen35ParoMTP2Adapter:
                 input_token=bonus,
                 target_hidden_ptr=int(verify.selected_target_hidden_ptr),
                 position=state.proposer.position + 1,
+                read_token_id=False,
                 read_expert_topk=False,
                 read_lm_head_value=False,
             )

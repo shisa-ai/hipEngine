@@ -184,16 +184,16 @@ fallback count is not a success metric.
 
 ## SPECDEC2 gfx1100 packed-PARO C1 bring-up debt
 
-- Added 2026-08-25 for S7 P1. The staged provider now streams target prompt
-  hidden rows directly into NextN and pools the heavy proposer, but C1 proposal
-  still returns one bounded host token, target backup copies the canonical slot
-  into spare slot 1 each cycle, and claim reservation is a logical owner rather
-  than a persistent RuntimeWorkspace slab. The short warm route is ~9.1% slower
-  than AR, so it remains explicit/default-off and automatic K0.
-- Removal/promotion trigger: make candidate/top1/accept/selected-commit device-
-  resident with bounded final readback, move hot backup/scratch to stable claim-
-  backed slabs, prove exact rollback and cached profiler engagement, and pass
-  complete same-suite wall against the qualified direct fast B1 control. C2/C4
+- Added 2026-08-25 for S7 P1. The staged provider streams target prompt hidden
+  rows directly into NextN, pools the heavy proposer, and P4 now carries the K1
+  candidate as a stable borrowed-W8A16 device scalar through target accept.
+  Bounded candidate readback follows target synchronization. Target backup still
+  copies canonical slot 0 into spare slot 1 each cycle, and complete production
+  wall remains below AR/direct, so explicit/default-off and automatic K0 bind.
+- Removal/promotion trigger: move target result/accept/selected-commit/provider-
+  update metadata and hot backup to stable claim-backed slabs, prove exact
+  rollback/lifecycle engagement, and pass complete same-suite wall against the
+  qualified direct fast B1 control. C2/C4
   additionally requires physical multi-request PARO proposal/target ownership;
   do not broaden the singleton adapter.
 

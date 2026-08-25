@@ -114,26 +114,23 @@ target wall improves **1.74–2.35%**, and full-suite C2/C4 improves
 positive. Physical performance remains below true AR; automatic/product stays
 K0. [`P6 evidence`](results/2026-08-26-gfx1151-specdec2-perf-p6-q4-route-retained.json).
 
-gfx1100 S7 now retains two exact C1 foundations, both automatic K0: dense
-Qwen3.6-27B GGUF K1-K3 staged IDs match true AR/direct control, while packed
-PARO K1 production/strict staged IDs match AR with streaming NextN prompt
-priming. PARO remains performance-blocked on the short screen (`0.731 s` staged
-vs `0.670 s` AR); physical C2/C4 is not yet exposed for either lane.
-[`S7 plan`](../docs/SPECDEC2-GFX1100.md).
+gfx1100 SPECDEC2-PERF now retains corrected C1 device chains. Dense
+Qwen3.6-27B GGUF K1/K2/K3 is exact at **1.272x/1.407x/1.439x true AR**, but
+remains **2.7%/3.1%/3.9%** behind direct MTP. Exact p128/p512 streaming loses
+AR, while p4K/p16K stays pre-mutation K0. Corrected dense P4 pre-captures
+commit-bound graphs, keeps all **898 cycles allocation-free**, and improves
+K1/K2/K3 wall **0.75%/3.36%/1.54%**. Packed PARO production is exact across
+**372/372** cycles; P4 device candidate handoff improves staged wall **4.33%**
+to **0.979x AR** with 372 device handoffs and bounded post-target rows. Strict
+D8 allocation falls **1,110 malloc/free pairs → 0** and P4 cycle marker wall is
+**83.469 ms**. Both automatic policies remain K0; physical C2/C4 is not exposed.
+[`gfx1100 closure`](results/2026-08-25-w7900-specdec2-perf-campaign-closure.json).
 
 ## Where detailed evidence lives
 
-| Need | Source |
-| --- | --- |
-| Exact commands, revisions, model fingerprints, correctness gates, samples, profiler summaries | [Compact JSON artifacts](results/) |
-| Reverse-chronological benchmark changes | [`CHANGELOG.md`](CHANGELOG.md) |
-| Superseded benchmark notebook through 2026-07-10 | [`HISTORY.md`](HISTORY.md) |
-| Benchmark rules and reproduction procedures | [`docs/BENCHMARK.md`](../docs/BENCHMARK.md) |
-| Execution-profile numerical calibration | [`2026-08-16 ZBook-local policy artifact`](results/2026-08-16-execution-profile-threshold-calibration.json) and [`docs/EXECUTION-PROFILES.md`](../docs/EXECUTION-PROFILES.md) |
-| MTP-specific protocols and terminology | [`MTP.md`](MTP.md) and [`docs/MTP-LLAMACPP-PARITY.md`](../docs/MTP-LLAMACPP-PARITY.md) |
-| Quantization-quality protocols and current tables | [`quant/README.md`](quant/README.md) |
-| Kernel and implementation decisions | [`worklog/entries/`](../worklog/entries/) and [`WORKLOG-LEGACY.md`](../WORKLOG-LEGACY.md) |
-| Hardware-specific RX 7900 XTX report | [`7900XTX.md`](7900XTX.md) |
+Use result artifacts for commands/samples/profilers,
+[`CHANGELOG.md`](CHANGELOG.md) for rollups, [`docs/BENCHMARK.md`](../docs/BENCHMARK.md)
+for protocols, and [`worklog/entries/`](../worklog/entries/) for decisions.
 
 ## Benchmark harness catalog
 
@@ -421,32 +418,11 @@ These are same-model retained rows, but CUDA and HIP run on different hardware.
 
 CUDA resident batching and serving are not claimed by these c1 rows.
 
-## Current PM4 transport diagnostic
-
-This is a transport diagnostic for the W7900 Qwen3.6-35B-A3B Q4_K_M one-step
-replay path, not a separate model-throughput topline.
-
-| Transport | Replay | Capture | Status |
-| --- | ---: | ---: | --- |
-| HIP graph | **10.726350 ms/token / 93.228 tok/s** | 34.993 ms | Portable oracle and fallback |
-| Stateful PM4, global acquire | **10.052766 / 99.475** | 79.296 ms warm-metadata | Exact comparison path |
-| Stateful PM4, local-cache acquire | **9.964358 / 100.358** | 132.858 ms cold | Scoped default when the measured replay window amortizes capture |
-
-Evidence: [`local-cache capture/replay`](results/2026-08-08-gfx1100-pm4-setup-local-cache-clean.json)
-and [`scoped default`](results/2026-08-08-gfx1100-pm4-scoped-default.json).
-
 ## Reading the tables
 
-- Workload format is `prompt_tokens/decode_tokens`.
-- Prefill, backend decode, full request wall, server wall, and component timing
-  are different scopes. Compare only like with like.
-- Aggregate concurrency throughput is total generated tokens divided by group
-  wall. Per-request throughput is lower when multiple requests share the GPU.
-- PARO, GGUF, and llama.cpp rows may use different quantization or KV formats;
-  raw leaders are descriptive unless the artifact establishes a matched A/B.
-- hipEngine tracked memory and whole-device VRAM/GTT are different scopes.
-- A bold value identifies the reported row, not a universal claim across
-  mismatched hardware, models, or protocols.
+Workloads use `prompt_tokens/decode_tokens`. Compare only matching timing,
+model/quant/KV, concurrency, and memory scopes; bold identifies the reported
+row, not a universal leader.
 
 ## Maintenance contract
 

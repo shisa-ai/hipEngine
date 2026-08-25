@@ -2201,6 +2201,8 @@ class _ParoResidentLoopRow:
     mtp2_execution_routes: list[str] = field(default_factory=list)
     mtp2_provider_open_ms: float = 0.0
     mtp2_prompt_prime_ms: float = 0.0
+    mtp2_candidate_device_handoffs: int = 0
+    mtp2_candidate_d2h_after_target: int = 0
 
 
 class Qwen35ParoResidentModelRunner:
@@ -2892,7 +2894,7 @@ class Qwen35ParoResidentModelRunner:
             "max_batch_size": (
                 max(2, self.capacity)
                 if backend_package_capability(
-                    self.generator.backend,
+                    self._runner.backend,
                     "PARO_SPECDEC2_MTP2_C1",
                     False,
                 )
@@ -2946,27 +2948,34 @@ class Qwen35ParoResidentModelRunner:
         try:
             try:
                 if row.mtp2_candidate_budget > 0:
+                    results = self._prefill_row_packed_with_mtp2_capture(
+                        row,
+                        slab,
+                        sample_final=bool(final_chunk),
+                    )
+                else:
+                    results = self._session.prefill_native_packed(
+                        slab,
+                        sample=bool(final_chunk),
+                    )
+                row.native_prefill = True
+            except NotImplementedError:
+                self._fallback_reasons["packed_prefill_unavailable"] += 1
+                if row.mtp2_candidate_budget > 0:
                     results = self._prefill_row_serial_with_mtp2_capture(
                         row,
                         chunk,
                         start_position=int(start_position),
                         sample_final=bool(final_chunk),
                     )
-                    row.native_prefill = False
                 else:
-                    results = self._session.prefill_native_packed(
-                        slab,
-                        sample=bool(final_chunk),
+                    results = self._prefill_row_serial(
+                        row,
+                        chunk,
+                        start_position=int(start_position),
+                        sample_final=bool(final_chunk),
                     )
-                    row.native_prefill = True
-            except NotImplementedError:
-                self._fallback_reasons["packed_prefill_unavailable"] += 1
-                results = self._prefill_row_serial(
-                    row,
-                    chunk,
-                    start_position=int(start_position),
-                    sample_final=bool(final_chunk),
-                )
+                row.native_prefill = False
             result_tuple = tuple(results)
             if len(result_tuple) != 1:
                 raise RuntimeError(
@@ -2976,6 +2985,53 @@ class Qwen35ParoResidentModelRunner:
             return result_tuple[0]
         finally:
             self._clear_session_sampler()
+
+    def _prefill_row_packed_with_mtp2_capture(
+        self,
+        row: _ParoResidentLoopRow,
+        slab: CompactPromptSlab,
+        *,
+        sample_final: bool,
+    ) -> tuple[Qwen35ParoAutoregressiveStepResult | None, ...]:
+        assert self._session is not None and row.model_slot == 0
+        adapter = self._resolved_mtp2_adapter()
+        if adapter is None:
+            raise RuntimeError("PARO MTP2 prompt capture has no staged adapter")
+        adapter.begin_prompt(row.request_id)
+        if row.mtp2_prompt_hidden_buffer is None:
+            row.mtp2_prompt_hidden_buffer = malloc(
+                self._session.hidden_nbytes,
+                runtime=self._session.runtime,
+            )
+        capture_ptr = int(row.mtp2_prompt_hidden_buffer.ptr)
+
+        def consume_final_hidden_row(
+            request_id: int,
+            prompt_index: int,
+            hidden: Tensor,
+            seed_token: int | None,
+        ) -> None:
+            if int(request_id) != int(row.request_id):
+                raise RuntimeError("PARO MTP2 packed prefill returned a peer request row")
+            self._session._write_final_normalized_hidden_bf16(
+                hidden,
+                destination_ptr=capture_ptr,
+                stream=0,
+            )
+            adapter.consume_prompt_row(
+                row.request_id,
+                prompt_index=int(prompt_index),
+                target_hidden_ptr=capture_ptr,
+                seed_token=seed_token,
+            )
+
+        return tuple(
+            self._session.prefill_native_packed(
+                slab,
+                sample=bool(sample_final),
+                final_hidden_row_sink=consume_final_hidden_row,
+            )
+        )
 
     def _prefill_row_serial_with_mtp2_capture(
         self,
@@ -3366,6 +3422,12 @@ class Qwen35ParoResidentModelRunner:
             "specdec2_mtp2_execution_routes": list(row.mtp2_execution_routes),
             "specdec2_mtp2_provider_open_ms": float(row.mtp2_provider_open_ms),
             "specdec2_mtp2_prompt_prime_ms": float(row.mtp2_prompt_prime_ms),
+            "specdec2_mtp2_candidate_device_handoffs": int(
+                row.mtp2_candidate_device_handoffs
+            ),
+            "specdec2_mtp2_candidate_d2h_after_target": int(
+                row.mtp2_candidate_d2h_after_target
+            ),
             "scheduler_chunks": copy.deepcopy(row.scheduler_chunks),
         }
 

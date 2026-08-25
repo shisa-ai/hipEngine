@@ -1,6 +1,6 @@
 # SPECDEC2 S7 / gfx1100 Integration Plan
 
-- Status: **active; C1 foundations complete and independent W7900 performance campaign P0 open**
+- Status: **closed performance campaign; explicit C1 retained, no product promotion, automatic K0**
 - Started: **2026-08-25**
 - Hardware lanes: **AMD Radeon Pro W7900** (binding/default) and **RX 7900 XTX** (independent diagnostic)
 - Shared architecture base: [`SPECDEC2.md`](SPECDEC2.md) S1-S6 at `82af2b6a4`
@@ -184,6 +184,19 @@ the shifted prompt contract, and warm requests reuse one proposer build. Warm
 production staged wall is `0.731 s` versus `0.670 s` AR on the short screen, so
 no performance/default promotion; automatic remains K0. Evidence:
 [`gfx1100 PARO C1 foundation`](../benchmarks/results/2026-08-25-w7900-specdec2-paro-c1-foundation.json).
+
+**Performance checkpoint retained 2026-08-25:** corrected dense C1 K1/K2/K3
+P4 is exact at `1.272x/1.407x/1.439x` true AR but trails direct; packed production is
+exact with zero allocation in 372/372 cycles but remains `0.933x` AR. Dense
+proposal/repair stable slabs are exact and wall-neutral; graph first use remains
+P4. p128/p512 streaming is exact but slower, and p4K/p16K selects K0 before provider
+mutation. Packed P4 keeps all 372 production candidates on device through target
+and improves staged wall 4.33%, but remains below AR/direct. No automatic/product
+scope promotes. Evidence:
+[`gfx1100 P1-P3 checkpoint`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json),
+[`packed P4`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-paro-device-candidate.json),
+[`corrected dense P4`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-dense-device-chain-retained.json),
+[`campaign closure`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-campaign-closure.json).
 
 ## 8. P2 — gfx1100 packed PARO physical C2/C4 K1
 

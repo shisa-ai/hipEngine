@@ -65,6 +65,7 @@ def test_proposer_target_hidden_reseed_forwards_borrowed_pointer() -> None:
             "target_hidden_ptr": 0xABC000,
             "position": 33,
             "need_result": False,
+            "read_token_id": True,
             "read_expert_topk": False,
             "read_lm_head_value": False,
             "stream": 7,
