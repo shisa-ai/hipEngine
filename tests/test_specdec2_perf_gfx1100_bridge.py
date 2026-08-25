@@ -10,6 +10,7 @@ from scripts.specdec2_perf_gfx1100_bridge import (
     REQUIRED_TOP_LEVEL_STAGES,
     aggregate_bridge_rows,
     atomic_write_json,
+    attach_paro_direct_rows,
     build_execution_plan,
     validate_bridge_rows,
 )
@@ -214,6 +215,149 @@ def test_child_scope_is_paro_k1_only_and_dense_uses_shared_bridge() -> None:
         validate_child_scope(lane="paro", profile="production", candidate_budget=2)
     with pytest.raises(ValueError, match="dense uses the shared bridge"):
         validate_child_scope(lane="gguf", profile="strict", candidate_budget=1)
+
+
+def test_paro_direct_attachment_uses_raw_ids_manifests_and_activation_timing(
+    tmp_path: Path,
+) -> None:
+    timing = resolve_arm_timing(
+        complete_request_seconds=1.0,
+        output_timing={},
+        scheduler_observability={"prefill_seconds": 0.25, "decode_seconds": 0.5},
+    )
+    common = {
+        "lane": "paro",
+        "profile": "production",
+        "prompt_id": "code_merge_intervals",
+        "run_index": 0,
+        "candidate_budget": 1,
+        "max_tokens": 24,
+        "generated_token_ids": (1, 2, 3),
+        "timing": timing,
+        "selected_manifest_sha256": _MANIFEST,
+        "strict_manifest_sha256": _STRICT_MANIFEST,
+        "commit": _COMMIT,
+    }
+    loaded = {
+        "prompt_ids": ["code_merge_intervals"],
+        "runs": 1,
+        "max_tokens": 24,
+        "rows": [
+            build_bridge_row(
+                **common,
+                arm="true_ar",
+                order_index=0,
+                physical_target_rows=(1,),
+                physical_proposal_widths=(),
+                route_name="true_ar",
+            ),
+            build_bridge_row(
+                **common,
+                arm="staged",
+                order_index=2,
+                physical_target_rows=(2,),
+                physical_proposal_widths=(1,),
+                route_name="eager",
+            ),
+        ],
+    }
+    raw = tmp_path / "smoke.json"
+    raw.write_text(
+        json.dumps(
+            {
+                "status": "passed",
+                "exact_ar_match": True,
+                "decode_tokens": 24,
+                "candidate_budget": 1,
+                "ar_tokens": [1, 2, 3],
+                "mtp_tokens": [1, 2, 3],
+                "execution_profile": "production",
+                "execution_profile_manifest_sha256": _MANIFEST,
+                "execution_profile_strict_manifest_sha256": _STRICT_MANIFEST,
+                "mtp": {
+                    "target_prefill_seconds": 0.2,
+                    "proposal_prefill_seconds": 0.1,
+                    "decode_seconds": 0.3,
+                    "verify_seconds": 0.25,
+                    "proposal_decode_update_seconds": 0.04,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    economics_child = tmp_path / "economics.json"
+    economics_child.write_text(
+        json.dumps(
+            {"by_budget": {"1": {"runs": [{"run_idx": 1, "smoke_json": str(raw)}]}}}
+        ),
+        encoding="utf-8",
+    )
+    economics = {
+        "execution_profile": "production",
+        "decode_tokens": 24,
+        "runs_per_prompt": 1,
+        "repo": {
+            "hipengine_commit": _COMMIT,
+            "staged_dirty": False,
+            "unstaged_dirty": False,
+            "untracked_dirty": False,
+        },
+        "results": [
+            {
+                "name": "code_merge_intervals",
+                "economics_json": str(economics_child),
+            }
+        ],
+    }
+
+    attached = attach_paro_direct_rows(
+        loaded,
+        economics,
+        profile="production",
+        require_full_suite=False,
+    )
+
+    assert len(attached["rows"]) == 3
+    direct = next(row for row in attached["rows"] if row["arm"] == "direct")
+    assert direct["generated_token_ids"] == [1, 2, 3]
+    assert direct["timing"]["complete_request_seconds"] == pytest.approx(0.6)
+    assert direct["timing"]["top_level_stage_seconds"]["target_prefill"] == 0.2
+    assert direct["timing"]["top_level_stage_seconds"]["provider_prompt_prime"] == 0.1
+    assert direct["timing"]["top_level_stage_seconds"]["cycle_total"] == 0.3
+    assert direct["reload_boundary"]["unavoidable_reload"] is True
+    assert attached["aggregate"]["cells"]["paro:production:c1:k1"][
+        "staged_speedup_vs_direct"
+    ] == pytest.approx(0.6)
+
+
+def test_paro_direct_attachment_rejects_source_commit_mismatch(tmp_path: Path) -> None:
+    loaded = {
+        "prompt_ids": ["code_merge_intervals"],
+        "runs": 1,
+        "max_tokens": 24,
+        "rows": [],
+    }
+    economics = {
+        "execution_profile": "production",
+        "decode_tokens": 24,
+        "runs_per_prompt": 1,
+        "repo": {
+            "hipengine_commit": "d" * 40,
+            "staged_dirty": False,
+            "unstaged_dirty": False,
+            "untracked_dirty": False,
+        },
+        "results": [],
+    }
+    # Source equality fails before incomplete-row validation.
+    loaded["provenance"] = {"commit": _COMMIT}
+    with pytest.raises(ValueError, match="source commit"):
+        attach_paro_direct_rows(
+            loaded,
+            economics,
+            profile="production",
+            require_full_suite=False,
+        )
 
 
 def test_child_timing_uses_nonoverlapping_scheduler_windows_and_residual() -> None:

@@ -26,6 +26,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Iterable
 
+from hipengine.benchmark.provenance import collect_repo_state
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL = Path("/models/hipengine/Qwen3.6-35B-A3B-PARO-full4096-e5-packed-MTP-BF16")
 DEFAULT_PROMPTS = REPO_ROOT / "benchmarks" / "fixtures" / "llamacpp_mtp_bench_prompts.json"
@@ -43,6 +45,8 @@ SUMMARY_FIELDS = (
     "cycle_wall_ms_per_cycle_mean",
     "verify_ms_per_cycle_mean",
     "proposal_update_ms_per_cycle_mean",
+    "target_prefill_seconds_mean",
+    "proposal_prefill_seconds_mean",
     "proposal_snapshot_saves_mean",
     "proposal_snapshot_skips_mean",
     "proposal_snapshot_saves_per_cycle_mean",
@@ -677,6 +681,7 @@ def main() -> int:
         "performance_claim": False,
         "date": date.today().isoformat(),
         "purpose": "hipEngine MTP verifier economics over the llama.cpp mtp-bench prompt suite.",
+        "repo": collect_repo_state(REPO_ROOT),
         "source_prompt_suite": suite.get("source"),
         "prompt_suite": _prompt_suite_metadata(args.prompts_file, suite, prompts),
         "prompts_file": str(args.prompts_file),

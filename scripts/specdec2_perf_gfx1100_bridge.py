@@ -402,6 +402,183 @@ def aggregate_bridge_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
+def attach_paro_direct_rows(
+    loaded: Mapping[str, Any],
+    economics: Mapping[str, Any],
+    *,
+    profile: str,
+    require_full_suite: bool = True,
+) -> dict[str, Any]:
+    """Attach unavoidable-reload direct PARO rows to loaded AR/staged rows."""
+
+    from scripts.specdec2_perf_gfx1100_child import build_bridge_row
+
+    selected_profile = str(profile)
+    if selected_profile not in {"strict", "production"}:
+        raise ValueError("PARO direct attachment profile must be strict or production")
+    if str(economics.get("execution_profile")) != selected_profile:
+        raise ValueError("PARO economics execution profile does not match loaded rows")
+    loaded_rows = [dict(row) for row in loaded.get("rows", ())]
+    loaded_provenance = loaded.get("provenance")
+    loaded_commit = (
+        str(loaded_provenance.get("commit"))
+        if isinstance(loaded_provenance, Mapping) and loaded_provenance.get("commit")
+        else (
+            str(loaded_rows[0].get("provenance", {}).get("commit"))
+            if loaded_rows
+            else ""
+        )
+    )
+    repo = economics.get("repo")
+    if not isinstance(repo, Mapping):
+        raise ValueError("PARO direct economics is missing source provenance")
+    economics_commit = str(repo.get("hipengine_commit") or "")
+    if loaded_commit != economics_commit:
+        raise ValueError("PARO loaded/direct source commit does not match")
+    if any(bool(repo.get(name)) for name in ("staged_dirty", "unstaged_dirty", "untracked_dirty")):
+        raise ValueError("PARO direct economics has dirty source provenance")
+    max_tokens = int(loaded.get("max_tokens", 0))
+    runs = int(loaded.get("runs", 0))
+    if int(economics.get("decode_tokens", 0)) != max_tokens or int(
+        economics.get("runs_per_prompt", 0)
+    ) != runs:
+        raise ValueError("PARO direct timing horizon/repeats do not match loaded rows")
+    expected_prompts = tuple(str(value) for value in loaded.get("prompt_ids", ()))
+    results = economics.get("results")
+    if not isinstance(results, list):
+        raise ValueError("PARO direct economics has no per-prompt results")
+    by_prompt = {
+        str(result.get("name")): result
+        for result in results
+        if isinstance(result, Mapping)
+    }
+    if set(by_prompt) != set(expected_prompts):
+        raise ValueError("PARO direct economics prompt set does not match loaded rows")
+
+    direct_rows: list[dict[str, Any]] = []
+    loaded_manifests = {
+        (
+            str(row.get("manifests", {}).get("selected_sha256")),
+            str(row.get("manifests", {}).get("strict_sha256")),
+        )
+        for row in loaded_rows
+    }
+    if len(loaded_manifests) != 1:
+        raise ValueError("PARO loaded rows do not share one selected/strict manifest")
+    loaded_selected, loaded_strict = next(iter(loaded_manifests))
+    for prompt_id in expected_prompts:
+        result = by_prompt[prompt_id]
+        child_path = Path(str(result.get("economics_json") or ""))
+        if not child_path.is_file():
+            raise ValueError(f"PARO per-prompt economics JSON is missing: {child_path}")
+        child = json.loads(child_path.read_text(encoding="utf-8"))
+        budget = child.get("by_budget", {}).get("1")
+        child_runs = budget.get("runs") if isinstance(budget, Mapping) else None
+        if not isinstance(child_runs, list) or len(child_runs) != runs:
+            raise ValueError("PARO per-prompt economics run grid is incomplete")
+        for metrics in child_runs:
+            run_index = int(metrics.get("run_idx", 0)) - 1
+            smoke_path = Path(str(metrics.get("smoke_json") or ""))
+            if not smoke_path.is_file():
+                raise ValueError(f"PARO direct smoke JSON is missing: {smoke_path}")
+            smoke = json.loads(smoke_path.read_text(encoding="utf-8"))
+            if (
+                smoke.get("status") != "passed"
+                or smoke.get("exact_ar_match") is not True
+                or int(smoke.get("candidate_budget", 0)) != 1
+                or int(smoke.get("decode_tokens", 0)) != max_tokens
+                or str(smoke.get("execution_profile")) != selected_profile
+            ):
+                raise ValueError("PARO direct smoke does not satisfy the registered exact scope")
+            selected_manifest = str(
+                smoke.get("execution_profile_manifest_sha256") or ""
+            )
+            strict_manifest = str(
+                smoke.get("execution_profile_strict_manifest_sha256") or ""
+            )
+            if (selected_manifest, strict_manifest) != (
+                loaded_selected,
+                loaded_strict,
+            ):
+                raise ValueError("PARO direct smoke manifest does not match loaded rows")
+            mtp = smoke.get("mtp")
+            if not isinstance(mtp, Mapping):
+                raise ValueError("PARO direct smoke has no MTP timing payload")
+            target_prefill = float(mtp.get("target_prefill_seconds") or 0.0)
+            provider_prefill = float(mtp.get("proposal_prefill_seconds") or 0.0)
+            decode = float(mtp.get("decode_seconds") or 0.0)
+            complete = target_prefill + provider_prefill + decode
+            if not all(
+                math.isfinite(value) and value >= 0.0
+                for value in (target_prefill, provider_prefill, decode)
+            ) or complete <= 0.0 or decode <= 0.0:
+                raise ValueError("PARO direct activation/decode timing is invalid")
+            stages = {name: 0.0 for name in REQUIRED_TOP_LEVEL_STAGES}
+            stages["target_prefill"] = target_prefill
+            stages["provider_prompt_prime"] = provider_prefill
+            stages["cycle_total"] = decode
+            timing = {
+                "complete_request_seconds": complete,
+                "decode_only_seconds": decode,
+                "top_level_stage_seconds": stages,
+                "unattributed_seconds": 0.0,
+                "cycle_detail_seconds": {
+                    "target_verify": float(mtp.get("verify_seconds") or 0.0),
+                    "provider_update": float(
+                        mtp.get("proposal_decode_update_seconds") or 0.0
+                    ),
+                },
+            }
+            row = build_bridge_row(
+                lane="paro",
+                arm="direct",
+                profile=selected_profile,
+                prompt_id=prompt_id,
+                run_index=run_index,
+                order_index=1,
+                candidate_budget=1,
+                max_tokens=max_tokens,
+                generated_token_ids=tuple(int(value) for value in smoke["mtp_tokens"]),
+                timing=timing,
+                selected_manifest_sha256=selected_manifest,
+                strict_manifest_sha256=strict_manifest,
+                commit=economics_commit,
+                physical_target_rows=(2,),
+                physical_proposal_widths=(1,),
+                route_name=f"direct_{str(mtp.get('chain_attn_mode') or selected_profile)}",
+            )
+            row["reload_boundary"] = {
+                "unavoidable_reload": True,
+                "reason": "direct and Generation-2 packed-PARO owners cannot coexist in W7900 memory",
+                "source": str(smoke_path),
+            }
+            row["direct_metrics"] = dict(metrics)
+            direct_rows.append(row)
+    all_rows = [*loaded_rows, *direct_rows]
+    validated = validate_bridge_rows(
+        all_rows,
+        lane="paro",
+        profiles=(selected_profile,),
+        candidate_budgets=(1,),
+        runs=runs,
+        max_tokens=max_tokens,
+        require_full_suite=require_full_suite,
+        strict_generated_ids=selected_profile == "strict",
+    )
+    return {
+        "schema": 1,
+        "kind": "specdec2_perf_gfx1100_paro_common_bridge",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": "complete",
+        "performance_claim": False,
+        "speed_claim_eligible": False,
+        "unavoidable_reload": True,
+        "profile": selected_profile,
+        "rows": validated,
+        "aggregate": aggregate_bridge_rows(validated),
+    }
+
+
 def atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
     """Write one complete checkpoint next to its destination, then replace."""
 
@@ -472,6 +649,16 @@ def build_parser() -> argparse.ArgumentParser:
     loaded.add_argument("--compiler-version-file", type=Path)
     loaded.add_argument("--require-cached-build", action="store_true")
     loaded.add_argument("--output", type=Path, required=True)
+
+    attach = subparsers.add_parser(
+        "attach-paro-direct",
+        help="attach registered direct economics to loaded PARO AR/staged rows",
+    )
+    attach.add_argument("--loaded", type=Path, required=True)
+    attach.add_argument("--economics", type=Path, required=True)
+    attach.add_argument("--profile", choices=("strict", "production"), required=True)
+    attach.add_argument("--allow-partial-suite", action="store_true")
+    attach.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -498,6 +685,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.model is None:
             args.model = DEFAULT_MODEL
         payload = run_loaded_packet(args)
+    elif args.command == "attach-paro-direct":
+        loaded = json.loads(args.loaded.read_text(encoding="utf-8"))
+        economics = json.loads(args.economics.read_text(encoding="utf-8"))
+        payload = attach_paro_direct_rows(
+            loaded,
+            economics,
+            profile=args.profile,
+            require_full_suite=not args.allow_partial_suite,
+        )
     else:
         source = json.loads(args.input.read_text(encoding="utf-8"))
         source_rows = source.get("rows") if isinstance(source, dict) else source

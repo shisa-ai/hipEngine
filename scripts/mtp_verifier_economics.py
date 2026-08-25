@@ -103,6 +103,7 @@ def _economics_from_smoke(smoke: dict[str, Any], *, llama_target_cycle_cost: flo
     ar_token_seconds = ar_decode_seconds / decode_tokens if decode_tokens > 0 else 0.0
     cycle_wall_total, cycle_wall_per_cycle = _cycle_wall_seconds(mtp)
     verify_seconds = float(mtp.get("verify_seconds") or 0.0)
+    target_prefill_seconds = float(mtp.get("target_prefill_seconds") or 0.0)
     proposal_update_seconds = float(mtp.get("proposal_decode_update_seconds") or 0.0)
     proposal_prefill_seconds = float(mtp.get("proposal_prefill_seconds") or 0.0)
     proposal_snapshot_saves = int(mtp.get("proposal_snapshot_saves") or 0)
@@ -167,6 +168,7 @@ def _economics_from_smoke(smoke: dict[str, Any], *, llama_target_cycle_cost: flo
         "cycle_wall_ms_per_cycle_values": [v * 1000.0 for v in cycle_wall_per_cycle],
         "verify_ms_per_cycle": avg_verify_seconds * 1000.0,
         "proposal_update_ms_per_cycle": avg_proposal_update_seconds * 1000.0,
+        "target_prefill_seconds": target_prefill_seconds,
         "proposal_prefill_seconds": proposal_prefill_seconds,
         "proposal_snapshot_saves": proposal_snapshot_saves,
         "proposal_snapshot_skips": proposal_snapshot_skips,
@@ -216,6 +218,8 @@ def _aggregate_runs(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "cycle_wall_ms_per_cycle",
         "verify_ms_per_cycle",
         "proposal_update_ms_per_cycle",
+        "target_prefill_seconds",
+        "proposal_prefill_seconds",
         "cycle_cost_ar_tokens",
         "verify_cost_ar_tokens",
         "proposal_update_cost_ar_tokens",
