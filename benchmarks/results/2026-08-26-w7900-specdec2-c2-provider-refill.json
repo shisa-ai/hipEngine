@@ -1,0 +1,88 @@
+{
+  "schema": 1,
+  "kind": "w7900_specdec2_c2_provider_refill",
+  "date": "2026-08-26",
+  "status": "exact_mechanics_retained_economics_rejected_capability_unchanged",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "decision": "Retain the provider-group refill fix. Do not expose gfx1100 physical C2/C4 and do not spend K2/K3/full-suite qualification: this single-prompt screen is only an admission/mechanics diagnostic and its 0.503x AR economics plus 1/8 accepted drafts provide no promotable premise.",
+  "source": {
+    "branch": "main",
+    "commit": "694b96382f25a5dbcd92c993c1c6856af54642ae",
+    "tracked_clean": true
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "gpu_index": 0,
+    "unique_id": "0xe282895b62c2b295",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "bf16",
+    "recurrent_state": "fp32_strict"
+  },
+  "scope": {
+    "concurrency": 2,
+    "candidate_budget": 1,
+    "target_rows": 4,
+    "prompt_id": "code_merge_intervals",
+    "max_tokens": 8,
+    "runs": 1,
+    "warmup": true,
+    "capability_override": "process-local diagnostic GGUF_SPECDEC2_MTP2_C4=True; packaged gfx1100 capability remains false",
+    "anti_gaming": "single-prompt result may reject/rank mechanics only and is ineligible for a speed/promotion claim"
+  },
+  "result": {
+    "exact": true,
+    "true_ar_wall_seconds": 0.8624395183287561,
+    "specdec2_wall_seconds": 1.7132984269410372,
+    "specdec2_speedup_vs_ar": 0.503379624219101,
+    "requests": 2,
+    "cycles_per_request": 4,
+    "proposal_batch_calls_per_request": 4,
+    "proposal_physical_rows": [2, 2, 2, 2],
+    "target_batch_calls_per_request": 4,
+    "target_physical_rows": [4, 4, 4, 4],
+    "device_handoffs_per_request": 4,
+    "device_accept_calls_per_request": 4,
+    "candidate_d2h_after_target": 0,
+    "recoverable_failures": 0,
+    "accepted_drafts": 1,
+    "proposed_drafts": 8,
+    "draft_acceptance": 0.125,
+    "zero_allocation_cycles": 4,
+    "total_allocation_cycles": 4
+  },
+  "bug_and_fix": {
+    "before": "staggered arrivals each opened a separate max-capacity provider; their first joint frontier failed physical NextN proposal requires one provider group and recovered to AR",
+    "after": "newly ready requests attach to any compatible provider group with available executor capacity before opening another group",
+    "red_green": "sequential provider admission RED observed open_batch((8,)); GREEN observes attach(8,(7,)) with membership {7,8}",
+    "default_impact": "none; gfx1100 GGUF/PARO physical capability constants remain false"
+  },
+  "activation_attribution": {
+    "sampled_c1_k2_direct_prefill_ms": 305.9453130699694,
+    "sampled_c1_k2_staged_target_prefill_ms": 339.3268841318786,
+    "sampled_c1_k2_staged_nextn_prime_ms": 25.31059505417943,
+    "sampled_c1_k2_direct_decode_ms": 433.53929789736867,
+    "sampled_c1_k2_staged_cycle_ms": 416.55536042526364,
+    "conclusion": "C1 staged decode is faster on the sampled request; activation/prefill and provider priming lose the complete-request comparison. More target leaf tuning is not the first recovery action."
+  },
+  "validation": {
+    "focused_tests": "96 passed before commit",
+    "raw_packet": {
+      "path": "/tmp/mtp-c2-recovery/current-694b96382d/specdec2-physical-c2-k1-d8-clean.json",
+      "size_bytes": 48141,
+      "sha256": "928e9b57fdaabf7a987d9e40e786c0df4bc56c2c8801f84070f571b1fa9208bc"
+    }
+  },
+  "next": [
+    "Keep C>1 K0 until proposal acceptance/economics has a workload-general materially different premise.",
+    "Profile/optimize dense C1 activation batching and target-hidden/provider priming before more hot target kernels.",
+    "Define gfx1100 AR strict/production/batch-invariant profiles before publishing current physical-width D128 rates as strict."
+  ]
+}

@@ -95,14 +95,11 @@ llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hi
 
 ## Current default notes
 
-Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback.
+Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback
+([`evidence`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json)).
 The exact `Q4_K_M` W8192 DMS sidecar passes 32K/128K at 100% top-1, saves
-3.750 GiB live K/V at 128K, and stays default-off pending serving gates.
-[`DMS status`](../docs/DMS.md).
-
-SPECDEC2-PERF retains strict C1/K2 streaming at **14.294→16.237 tok/s
-(+13.59%)**. Physical C2/C4 and long-context streaming remain rejected;
-automatic/product policy remains K0. [`Status`](../docs/SPECDEC2-PERF.md).
+3.750 GiB live K/V at 128K, and matches dense c1 decode. It stays default-off
+pending serving gates. [`DMS status`](../docs/DMS.md).
 
 ### Agentic quality (quality-only; no speed claim)
 
@@ -124,19 +121,39 @@ quality—not implementation-correctness or quantization deltas.
 AGENTIC-QUALITY2 is complete with **no implementation**: seven development
 failures are model-owned, with no runtime trigger. [`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
 
+SPECDEC2-PERF now retains its P7 conditional provider repair. Strict C1/K2
+remains **15.775 tok/s vs 11.026 true AR (1.431x)** across the full suite.
+Physical C2/C4 is exact, zero-D2H/allocation/final-ownership clean, and keeps the
+P6 Q4 route. P7 reduces mixed K2 repair **127.743→30.518 ms (4.186x) /
+138.779→34.292 ms (4.047x)** and improves full-suite throughput
+**5.718→5.796 (+1.37%) / 9.331→9.445 tok/s (+1.22%)**, with every physical
+category positive. Low **18.43%** acceptance still leaves it below
+**15.752/29.118 true-AR tok/s**; automatic/product stays K0.
+[`P7 evidence`](results/2026-08-26-gfx1151-specdec2-perf-p7-provider-repair-retained.json).
+
+gfx1100 SPECDEC2-PERF now retains corrected C1 device chains. Dense
+Qwen3.6-27B GGUF K1/K2/K3 is exact at **1.272x/1.407x/1.439x true AR**, but
+remains **2.7%/3.1%/3.9%** behind direct MTP. Exact p128/p512 streaming loses
+AR, while p4K/p16K stays pre-mutation K0. Corrected dense P4 pre-captures
+commit-bound graphs, keeps all **898 cycles allocation-free**, and improves
+K1/K2/K3 wall **0.75%/3.36%/1.54%**. Packed PARO production is exact across
+**372/372** cycles; P4 device candidate handoff improves staged wall **4.33%**
+to **0.979x AR** with 372 device handoffs and bounded post-target rows. Strict
+D8 allocation falls **1,110 malloc/free pairs → 0** and P4 cycle marker wall is
+**83.469 ms**. Both automatic policies remain K0; physical C2/C4 is not exposed.
+[`gfx1100 closure`](results/2026-08-25-w7900-specdec2-perf-campaign-closure.json).
+
+P512/d128 recovery keeps C1 exact at **77.176 vs old 72.169 tok/s**.
+Native C8 raw wall is **161.882 vs 158.542**, but only **16/24** rows
+match C1, so that rate is diagnostic. The p128/d8 scoreboard is unchanged;
+D128 C8 needs a production/batch-invariant gate.
+[`Evidence`](results/2026-08-26-w7900-mtp-concurrency2-recovery-profile.json).
+
 ## Where detailed evidence lives
 
-| Need | Source |
-| --- | --- |
-| Exact commands, revisions, model fingerprints, correctness gates, samples, profiler summaries | [Compact JSON artifacts](results/) |
-| Reverse-chronological benchmark changes | [`CHANGELOG.md`](CHANGELOG.md) |
-| Superseded benchmark notebook through 2026-07-10 | [`HISTORY.md`](HISTORY.md) |
-| Benchmark rules and reproduction procedures | [`docs/BENCHMARK.md`](../docs/BENCHMARK.md) |
-| Execution-profile numerical calibration | [`2026-08-16 ZBook-local policy artifact`](results/2026-08-16-execution-profile-threshold-calibration.json) and [`docs/EXECUTION-PROFILES.md`](../docs/EXECUTION-PROFILES.md) |
-| MTP-specific protocols and terminology | [`MTP.md`](MTP.md) and [`docs/MTP-LLAMACPP-PARITY.md`](../docs/MTP-LLAMACPP-PARITY.md) |
-| Quantization-quality protocols and current tables | [`quant/README.md`](quant/README.md) |
-| Kernel and implementation decisions | [`worklog/entries/`](../worklog/entries/) and [`WORKLOG-LEGACY.md`](../WORKLOG-LEGACY.md) |
-| Hardware-specific RX 7900 XTX report | [`7900XTX.md`](7900XTX.md) |
+Use result artifacts for commands/samples/profilers,
+[`CHANGELOG.md`](CHANGELOG.md) for rollups, [`docs/BENCHMARK.md`](../docs/BENCHMARK.md)
+for protocols, and [`worklog/entries/`](../worklog/entries/) for decisions.
 
 ## Benchmark harness catalog
 
@@ -417,16 +434,9 @@ CUDA resident batching and serving are not claimed by these c1 rows.
 
 ## Reading the tables
 
-- Workload format is `prompt_tokens/decode_tokens`.
-- Prefill, backend decode, full request wall, server wall, and component timing
-  are different scopes. Compare only like with like.
-- Aggregate concurrency throughput is total generated tokens divided by group
-  wall. Per-request throughput is lower when multiple requests share the GPU.
-- PARO, GGUF, and llama.cpp rows may use different quantization or KV formats;
-  raw leaders are descriptive unless the artifact establishes a matched A/B.
-- hipEngine tracked memory and whole-device VRAM/GTT are different scopes.
-- A bold value identifies the reported row, not a universal claim across
-  mismatched hardware, models, or protocols.
+Workloads use `prompt_tokens/decode_tokens`. Compare only matching timing,
+model/quant/KV, concurrency, and memory scopes; bold identifies the reported
+row, not a universal leader.
 
 ## Maintenance contract
 

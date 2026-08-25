@@ -166,6 +166,11 @@ def test_gguf_direct_resident_linear_state_maps_owner_slots(monkeypatch) -> None
 def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch) -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     owner._buffers = ()
+    owner.runner = SimpleNamespace(
+        weights=SimpleNamespace(
+            config=SimpleNamespace(layer_types=(LINEAR_ATTENTION,))
+        )
+    )
     owner._dflash_commit_library = None
     owner.compiler_version = "test"
     owner.require_cached_build = True
@@ -222,6 +227,22 @@ def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch
     assert launches == [(64, 128, 2), (64, 128, 2)]
     assert len(allocations) == 5
     assert len(uploads) == 7
+
+
+def test_gguf_single_slot_state_import_uses_strict_unfused_copy() -> None:
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.runner = SimpleNamespace(
+        weights=SimpleNamespace(
+            config=SimpleNamespace(layer_types=(LINEAR_ATTENTION,))
+        )
+    )
+    owner._fused_linear_state_transfer_enabled = MethodType(lambda self: True, owner)
+
+    assert not owner._fused_linear_state_pair_copy(
+        [(0x10, 0x20, 0x30, 0x40, 64, 128)],
+        runtime=object(),
+        stream=0,
+    )
 
 
 def test_gguf_resident_discards_terminal_packed_decode_state_without_scatter() -> None:

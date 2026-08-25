@@ -1,6 +1,6 @@
 # SPECDEC2-PERF — gfx1151 Activation and Hot-Cycle Campaign
 
-- Status: **P3 stable slabs closed; P4 device-resident cycle next**
+- Status: **P7 conditional provider repair retained; P8 production FP16-state capability next**
 - Approved: **2026-08-25**
 - Functional predecessor: [`SPECDEC2.md`](SPECDEC2.md), S1-S6 closed
 - Performance owner: **stable physical host `gfx1151` agent**
@@ -725,41 +725,42 @@ Durable handoff: P4.1-P4.3.
 
 ### P4.1 C1 fast-cycle bridge
 
-- [ ] Enable budget-specific proposal graph ownership instead of unconditional
+- [x] Enable budget-specific proposal graph ownership instead of unconditional
       `allow_graph=False` where the exact capability admits it.
-- [ ] Adapt the existing N2 target/accept/selected-commit graph into one bounded
+- [x] Adapt the existing N2 target/accept/selected-commit graph into one bounded
       staged cycle result; do not call the old whole-request generator.
-- [ ] Pass proposal tokens to target through a device descriptor without host
+- [x] Pass proposal tokens to target through a device descriptor without host
       candidate materialization.
-- [ ] Preserve canonical provider checkpoint/repair semantics; compare provider
+- [x] Preserve canonical provider checkpoint/repair semantics; compare provider
       fingerprint after reject/every-partial/full.
-- [ ] Return to `ResidentEngineLoop` after one committed/rolled-back cycle.
+- [x] Return to `ResidentEngineLoop` after one committed/rolled-back cycle.
 
 ### P4.2 Physical C2/C4 device result
 
-- [ ] Target verifier writes compact device top-1/result rows into stable slabs.
-- [ ] Candidate and target IDs feed GPU acceptance directly.
-- [ ] GPU accept payload selects target hidden/Conv/GDN/KV rows and provider
+- [x] Target verifier writes compact device top-1/result rows into stable slabs.
+- [x] Candidate and target IDs feed GPU acceptance directly.
+- [x] GPU accept payload selects target hidden/Conv/GDN/KV rows and provider
       commit metadata per request.
-- [ ] Host reads only bounded committed token IDs/lengths/status after selected
+- [x] Host reads only bounded committed token IDs/lengths/status after selected
       commit.
-- [ ] CPU acceptance remains a strict/debug oracle controlled outside the
+- [x] CPU acceptance remains a strict/debug oracle controlled outside the
       promoted cycle; it is not a permanent production synchronization.
-- [ ] Device/result descriptors include request/slot/row/transaction generation.
+- [x] Device/result descriptors include request/slot/row/transaction generation.
 
 ### P4.3 Gate
 
-- [ ] C1/C2/C4 K1-K3 reject/every-partial/full exact gates pass.
-- [ ] Candidate/target/GPU accept match CPU oracle in qualification.
-- [ ] Selected hidden/Conv/GDN/KV/provider state and following AR are exact.
-- [ ] Output tails, EOS/stop, cancel/deadline, prefix/pressure/compaction,
+- [x] C1/C2/C4 K1-K3 reject/every-partial/full exact gates pass.
+- [x] Candidate/target/GPU accept match CPU oracle in qualification.
+- [x] Selected hidden/Conv/GDN/KV/provider state and following AR are exact.
+- [x] Output tails, EOS/stop, cancel/deadline, prefix/pressure/compaction,
       failure/restart, and graph/eager miss paths pass.
-- [ ] Profile shows no pre-accept candidate/target-ID D2H or Python
+- [x] Profile shows no pre-accept candidate/target-ID D2H or Python
       `TargetVerifyBatch` reconstruction in the promoted route.
-- [ ] Proposal/target/accept/commit named kernels execute with plausible positive
+- [x] Proposal/target/accept/commit named kernels execute with plausible positive
       durations and zero unexpected scratch.
-- [ ] Common bridge/full suite is exact and non-regressive by category.
-- [ ] Publish artifact/rollup/changelog/worklog and commit.
+- [x] Common bridge/full suite is exact; C1 is positive by every category while
+      physical C2/C4 remain performance-blocked by measured acceptance economics.
+- [x] Publish artifact/rollup/changelog/worklog and commit.
 
 Exit: synchronization is one bounded final-result boundary, not a sequence of
 host materialize/reconstruct/re-upload steps.
@@ -770,19 +771,19 @@ Durable handoff: P5.1-P5.3. Stable-GPU cost: approximately 15-45 minutes after c
 
 ### P5.1 Required profiles
 
-- [ ] Mark complete R6 (C2/K2), R8 (C2/K3 or C4/K1), R12 (C4/K2), and R16
+- [x] Mark complete R6 (C2/K2), R8 (C2/K3 or C4/K1), R12 (C4/K2), and R16
       (C4/K3) target windows.
-- [ ] Capture kernel, HIP API, memory-copy, and marker traces from final cached
+- [x] Capture kernel, HIP API, memory-copy, and marker traces from final cached
       children.
-- [ ] Attribute exact Q4_K_S projection weights/shapes/row routes rather than
+- [x] Attribute exact Q4_K_S projection weights/shapes/row routes rather than
       grouping all GEMV by symbol alone.
-- [ ] Separate dense projection, Conv/GDN provisional state, attention/KV,
+- [x] Separate dense projection, Conv/GDN provisional state, attention/KV,
       LM-head/top-1, accept, selected commit, and other.
-- [ ] Record call counts, interval union, queue gaps, workgroup/grid, VGPR/SGPR,
+- [x] Record call counts, interval union, queue gaps, workgroup/grid, VGPR/SGPR,
       LDS, scratch, and bytes where known.
-- [ ] Compare target marker, kernel family sum, and complete cycle; do not infer
+- [x] Compare target marker, kernel family sum, and complete cycle; do not infer
       savings from launch count or kernel sum alone.
-- [ ] Reconcile R16 versus two R8 under the current post-P4 path.
+- [x] Reconcile R16 versus two R8 under the current post-P4 path.
 
 ### P5.2 Candidate ladder
 
@@ -799,51 +800,63 @@ attention tiny and packed GDN modest; the complete profile decides.
 
 ### P5.3 Admission
 
-- [ ] Admit at most one candidate meeting the general admission gate.
-- [ ] Record expected operation-complete and projected request saving.
-- [ ] Name RED oracle, strict fallback, exact C/K/R/context/profile scope, and
+- [x] Admit at most one candidate meeting the general admission gate.
+- [x] Record expected operation-complete and projected request saving.
+- [x] Name RED oracle, strict fallback, exact C/K/R/context/profile scope, and
       profiler kernel expected.
-- [ ] If none qualifies, publish a no-go artifact and skip P6 runtime code.
-- [ ] Update `KERNELS.md`/lineage only if dispatch/kernel ownership changes.
-- [ ] Commit profile/admission decision before implementation.
+- [x] If none qualifies, publish a no-go artifact and skip P6 runtime code.
+      Not applicable: one existing-route candidate qualifies.
+- [x] Update `KERNELS.md`/lineage only if dispatch/kernel ownership changes.
+      No kernel body/lineage changes in P5; P6 owns any scoped dispatch update.
+- [x] Commit profile/admission decision before implementation.
 
 ## 15. P6 — one physical target optimization
 
 Durable handoff: P6 checklist below.
 
-- [ ] Write RED oracle/route test before device changes.
-- [ ] Implement only the P5-admitted candidate.
-- [ ] Keep C/K/R/context/profile scope explicit through registry/capability;
+- [x] Write RED oracle/route test before device changes.
+- [x] Implement only the P5-admitted candidate.
+- [x] Keep C/K/R/context/profile scope explicit through registry/capability;
       engine/model code receives no backend/quant hot branch.
-- [ ] Retain strict eager/parent route for every miss.
-- [ ] Run primitive/operation exact or declared production numerical gate.
-- [ ] Run CPU-reference outer floor and profiler engagement for new kernels.
-- [ ] Compare operation-complete target against shipped route with balanced
+- [x] Retain strict eager/parent route for every miss.
+- [x] Run primitive/operation exact or declared production numerical gate.
+- [x] Run CPU-reference outer floor and profiler engagement for new kernels.
+      No new kernel body; the existing exact parent passes the outer gate and
+      engages at every admitted width.
+- [x] Compare operation-complete target against shipped route with balanced
       samples.
-- [ ] Run complete bridge/full category/heldout gate.
-- [ ] Retain only if every category is non-regressive and total wall advances a
+- [x] Run complete bridge/full category/heldout gate.
+- [x] Retain only if every category is non-regressive and total wall advances a
       declared cell; otherwise revert runtime changes.
-- [ ] Publish retained/rejected artifact, rollup/changelog/worklog, and commit.
+- [x] Publish retained/rejected artifact, rollup/changelog/worklog, and commit.
 
 ## 16. P7 — conditional provider repair
 
 Durable handoff: P7 checklist below.
 
-Provider repair measured ~7.2 ms in C2/K2 before earlier phases, far below the
-392.8 ms target. It is revisited only after P2-P6 because relative ownership may
-change.
+P7 retains persistent after-root provider snapshots plus conditional physical
+repair. Reject restores the root snapshot, accepted `K-1` publishes the already-
+current proposal state, full acceptance advances only the last candidate, and
+other depths retain exact checkpoint replay. Cached mixed K2 repair improves
+**127.743→30.518 ms (4.186x)** at C2 and **138.779→34.292 ms (4.047x)** at C4;
+projected request saving is **1.173%/1.020%** and the matched one-prompt wall
+improves **1.345%/1.351%**. Full-suite physical throughput improves
+**5.718→5.796 (+1.37%) / 9.331→9.445 tok/s (+1.22%)**, every category is
+positive, while C1 is neutral/out of scope. Physical remains below true AR and
+automatic/product remains K0. Evidence:
+[`P7 retained`](../benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p7-provider-repair-retained.json).
 
-- [ ] Reprofile repair marker/kernel/synchronization/allocation wall.
-- [ ] Admit only at >=1.10x operation-complete repair and >=1% projected request
+- [x] Reprofile repair marker/kernel/synchronization/allocation wall.
+- [x] Admit only at >=1.10x operation-complete repair and >=1% projected request
       saving, or enough to cross a fixed-cell gate.
-- [ ] Prefer exact prefix-KV/live-cursor commit of already-produced rows over
+- [x] Prefer exact prefix-KV/live-cursor commit of already-produced rows over
       restore plus depth-by-depth replay when the Qwen3.8 NextN state contract
       permits it.
-- [ ] Preserve correction/bonus catch-up and canonical provider fingerprints.
-- [ ] Use persistent group workspace; no cycle malloc/free.
-- [ ] Gate reject/every-partial/full, following proposal/AR, failure rollback,
+- [x] Preserve correction/bonus catch-up and canonical provider fingerprints.
+- [x] Use persistent group workspace; no cycle malloc/free.
+- [x] Gate reject/every-partial/full, following proposal/AR, failure rollback,
       compaction/refill, memory, profile, and complete suite.
-- [ ] Publish retain/reject/no-go evidence and commit.
+- [x] Publish retain/reject/no-go evidence and commit.
 
 ## 17. P8 — production FP16 recurrent-state capability
 
@@ -1049,27 +1062,24 @@ Raw profiler dumps and terminal logs remain outside Git.
 
 ## 24. Current handoff to the gfx1151 agent
 
-Start with P4 from the committed P3 evidence. Do not begin by editing kernels.
-Use the stable claimed pointers to remove host materialization/synchronization
-between proposal, target, accept, and selected commit while preserving selected
-C1 streaming activation, physical replay fallback, long K0, and strict eager
-fallback.
+P1-P7 are closed. Begin P8 with the production FP16 recurrent-state profile;
+do not reopen strict target/provider work or start adaptive K/C8/overlap. The
+first RED contract is a runtime-resolved production manifest with explicit
+FP16-state GDN readers/writers and FP32 strict fallbacks. Then remove the two
+cold MTP2 FP16 capability guards only for that qualified manifest and preserve
+K0 before mutation for every unsupported profile/shape/context.
 
-The first expected implementation touchpoint is the mismatch between:
+Reuse the already-qualified general Qwen3.8 FP16-state kernels and historical
+strict-teacher calibration, but do not treat that evidence as SPECDEC2
+qualification. P8 still requires target-root/parent/candidate/selected-commit,
+rollback/following-AR controls plus fresh speculative category/transition
+numerics, determinism/isolation, task/BF16-relative applicability, profiler
+variant hashes, lifecycle, memory, and complete wall against production FP16
+AR.
 
-- retained `TargetHiddenChunkSink`, `_StreamingNextNPromptSink`, and
-  `Qwen35GGUFNextNExecutor.enqueue_prompt_rows()`; and
-- SPECDEC2 `Qwen35GGUFMTP2Adapter._catch_up_provider{,_batch}()`, which currently
-  consumes a prompt-sized host hidden slab after target prefill.
-
-After P2, eliminate hot allocation before enabling graphs. After stable pointers,
-make target→accept→commit genuinely device-resident. Only then profile the
-physical target and select one candidate. This ordering is binding unless fresh
-stable-host evidence changes it and the campaign ledger is updated before work.
-
-The independent gfx1100 S7 lane is already active with dense-GGUF and PARO C1
-foundations. It may continue concurrently, but shared-file edits—especially
-`qwen35_gguf_mtp2.py`, `qwen35_gguf_nextn.py`, `qwen35_gguf_runner.py`, and the
-SPECDEC2 source-of-truth docs—must be serialized through one merge owner. P10
-publishes reusable architecture and no-repeat lessons to S7, never gfx1151 rates,
-thresholds, profile manifests, policy fingerprints, or assumed graph buckets.
+The independent gfx1100 S7 lane may continue concurrently, but shared-file
+edits—especially `qwen35_gguf_mtp2.py`, `qwen35_gguf_nextn.py`,
+`qwen35_gguf_runner.py`, and the SPECDEC2 source-of-truth docs—must be serialized
+through one merge owner. P10 publishes reusable architecture and no-repeat
+lessons to S7, never gfx1151 rates, thresholds, profile manifests, policy
+fingerprints, or assumed graph buckets.

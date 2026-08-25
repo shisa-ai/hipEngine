@@ -14,6 +14,7 @@ from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
 import hipengine.generation.qwen35_gguf_mtp2 as mtp2_module
 from hipengine.generation.qwen35_gguf_mtp2 import (
     Qwen35GGUFMTP2Adapter,
+    _target_verify_mode_for_context,
     _MTP2RequestState,
 )
 from hipengine.kernels.backends import backend_package_capability
@@ -65,6 +66,18 @@ class _AdapterDouble:
 
     def rollback_cycle(self, *args):
         self.calls.append(("rollback", args))
+
+
+def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1100", end_position=95
+    ) == "native"
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1100", end_position=96
+    ) == "serial_exact"
+    assert _target_verify_mode_for_context(
+        "native", backend="hip_gfx1151", end_position=96
+    ) == "native"
 
 
 def test_backend_packages_expose_independently_qualified_adapter_scopes() -> None:
@@ -1319,6 +1332,99 @@ def test_provider_batch_device_repair_never_materializes_candidate_ids() -> None
     assert provider.last_results == {}
 
 
+def test_provider_batch_device_repair_uses_root_snapshot_and_kminus1_state() -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class Executor:
+        hidden_size = 8
+        runtime = SimpleNamespace(memcpy=lambda *args: None)
+
+        def restore_request_root_state(self, request_id):
+            calls.append(("root_snapshot", int(request_id)))
+
+        def restore_request_checkpoint(self, checkpoint):
+            calls.append(("checkpoint", checkpoint))
+
+        def advance_state_batch_only(self, request_ids, token_ids, positions, hidden):
+            calls.append(("host", tuple(request_ids), tuple(token_ids), tuple(positions)))
+
+        def advance_state_batch_only_device(self, request_ids, token_ids, positions, hidden):
+            calls.append(
+                (
+                    "device",
+                    tuple(request_ids),
+                    tuple(token.ptr for token in token_ids),
+                    tuple(positions),
+                )
+            )
+
+    executor = Executor()
+    provider = SimpleNamespace(executor=executor, last_results={})
+    candidate_counts = (2, 2, 2, 3)
+    proposal = Qwen35GGUFNextNBatchDeviceProposal(
+        request_ids=(1, 2, 3, 4),
+        root_tokens=(90, 190, 290, 390),
+        root_positions=(5, 8, 11, 14),
+        candidate_counts=candidate_counts,
+        token_ids=Tensor.from_handle(0x5000, (9,), DType.INT32, Device("hip", 0)),
+        hidden_rows=tuple(
+            tuple(
+                Tensor.from_handle(
+                    0x6000 + row * 0x1000 + depth * 0x100,
+                    (1, 8),
+                    DType.BF16,
+                    Device("hip", 0),
+                )
+                for depth in range(count)
+            )
+            for row, count in enumerate(candidate_counts)
+        ),
+    )
+    states = tuple(
+        _MTP2RequestState(
+            request_id=request_id,
+            provider=provider,
+            provider_pool_key=None,
+            provider_group_key=(1, 2, 3, 4),
+            verifier=None,
+            root_hidden_buffer=SimpleNamespace(ptr=1),
+            proposal_checkpoint=f"checkpoint-{request_id}",
+            proposal_context=MtpProposalContext(
+                request_ids=(request_id,),
+                root_tokens=(proposal.root_tokens[row],),
+                root_positions=(proposal.root_positions[row],),
+                target_hidden=Tensor.from_handle(
+                    0xA000 + row * 0x100,
+                    (1, 8),
+                    DType.BF16,
+                    Device("hip", 0),
+                ),
+            ),
+            proposal_device_batch=proposal,
+        )
+        for row, request_id in enumerate(proposal.request_ids)
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(capacity=4)
+    adapter._cycle_hidden_tensors = lambda runtime, hidden_size: (
+        Tensor.from_handle(0xD000, (4, 8), DType.BF16, Device("hip", 0)),
+        Tensor.from_handle(0xE000, (4, 8), DType.BF16, Device("hip", 0)),
+    )
+
+    adapter._repair_provider_states_batch_device(
+        states,
+        proposal,
+        accepted_counts=(2, 1, 0, 1),
+    )
+
+    assert calls == [
+        ("root_snapshot", 3),
+        ("checkpoint", "checkpoint-4"),
+        ("host", (4,), (390,), (14,)),
+        ("device", (1, 4), (0x5004, 0x5018), (7, 15)),
+    ]
+
+
 def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
     calls = []
     executor = SimpleNamespace(
@@ -1624,6 +1730,36 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
     adapter.observe_prefill_result(7, rows[7].prompt_ids, SimpleNamespace(token_id=9))
     assert adapter._states[7].root_hidden_buffer is carried[7]
     assert released_pool == []
+
+
+def test_mtp2_sequential_physical_admission_reuses_compatible_provider_group() -> None:
+    group = SimpleNamespace(
+        key=(7,),
+        provider=SimpleNamespace(executor=SimpleNamespace(max_requests=4)),
+        request_ids={7},
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(capacity=4)
+    adapter._states = {7: SimpleNamespace(provider_group_key=group.key)}
+    adapter._provider_groups = {group.key: group}
+    calls: list[tuple[object, ...]] = []
+
+    def attach(request_id, selected_group):
+        calls.append(("attach", int(request_id), selected_group.key))
+        selected_group.request_ids.add(int(request_id))
+        return SimpleNamespace(provider_group_key=selected_group.key)
+
+    adapter._attach_request_to_group = attach
+    adapter._open_request = lambda request_id: calls.append(("open", int(request_id)))
+    adapter._open_batch_requests = lambda request_ids: calls.append(
+        ("open_batch", tuple(request_ids))
+    )
+
+    adapter._ensure_request_states((8,))
+
+    assert calls == [("attach", 8, (7,))]
+    assert adapter._states[8].provider_group_key == (7,)
+    assert group.request_ids == {7, 8}
 
 
 def test_mtp2_cycle_hidden_workspace_reuses_stable_distinct_slabs() -> None:

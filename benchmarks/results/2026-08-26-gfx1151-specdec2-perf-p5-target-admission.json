@@ -1,0 +1,1514 @@
+{
+  "automatic_policy": "K0 unchanged",
+  "candidate": {
+    "admitted": true,
+    "candidate_owner": "gguf_q4_t16_dense_wmma_prefill_bf16_kernel<true>",
+    "current_owner": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+    "expected_profiler": "125 of 212 standard-Q4 calls per target shift from shared-B to single-wave; narrow N1024 and K17408/N5120 remain shared-B",
+    "expected_saving": "23.0-23.1 ms per target/cycle; standard-Q4 family 1.145x; target 4.6-5.6%; cycle 4.0-5.2%",
+    "mechanism": "route existing exact single-wave parent for small physical rows where four-wave shared-B 256-row tile is overprovisioned",
+    "name": "q4_t16_physical_single_wave_route",
+    "red_oracle": "BF16-bit exact candidate vs shared-B at every admitted shape/row plus full target/GPU-accept/state/following-AR and category suite",
+    "scope": {
+      "backend": "hip_gfx1151",
+      "cells": [
+        "C2/K2",
+        "C2/K3",
+        "C4/K1",
+        "C4/K2",
+        "C4/K3"
+      ],
+      "context": "projection is context-independent; qualification uses short-context physical target packet",
+      "file_type": "MOSTLY_Q4_K_S",
+      "model_geometry": "qwen35_dense_h5120",
+      "physical_rows": [
+        6,
+        8,
+        12,
+        16
+      ],
+      "profile": "strict",
+      "shapes": [
+        [
+          5120,
+          6144
+        ],
+        [
+          5120,
+          10240
+        ],
+        [
+          5120,
+          12288
+        ],
+        [
+          6144,
+          5120
+        ]
+      ]
+    },
+    "strict_fallback": "current registered four-wave shared-B Q4T16 owner"
+  },
+  "candidate_projection": {
+    "R12": {
+      "current_shared_family_ms": 182.58669056892396,
+      "cycle_marker_projected_saving_fraction": 0.04435272281879105,
+      "hybrid_family_ms": 159.51660928726196,
+      "operation_speedup": 1.1446249477389328,
+      "saving_ms": 23.070081281662,
+      "target_marker_projected_saving_fraction": 0.049359779770109094
+    },
+    "R16": {
+      "current_shared_family_ms": 182.93938562870025,
+      "cycle_marker_projected_saving_fraction": 0.04000913249708808,
+      "hybrid_family_ms": 159.82049820423126,
+      "operation_speedup": 1.144655333228444,
+      "saving_ms": 23.118887424468994,
+      "target_marker_projected_saving_fraction": 0.04634801136927526
+    },
+    "R6": {
+      "current_shared_family_ms": 182.25371673107148,
+      "cycle_marker_projected_saving_fraction": 0.05217276799050828,
+      "hybrid_family_ms": 159.22066509723663,
+      "operation_speedup": 1.1446611946996232,
+      "saving_ms": 23.033051633834845,
+      "target_marker_projected_saving_fraction": 0.056380145587232595
+    },
+    "R8": {
+      "current_shared_family_ms": 182.3092698097229,
+      "cycle_marker_projected_saving_fraction": 0.04883941298137329,
+      "hybrid_family_ms": 159.266090965271,
+      "operation_speedup": 1.1446835211738613,
+      "saving_ms": 23.043178844451916,
+      "target_marker_projected_saving_fraction": 0.05452264792999734
+    }
+  },
+  "date": "2026-08-26",
+  "evidence": {
+    "R12_bridge": {
+      "bytes": 68065,
+      "path": "/tmp/specdec2-p4-profile-child-c4-marked.json",
+      "sha256": "43ac2b2677fe59cfdcdbb954fd5e7a8b445f58258e4c836ef4ec9bea66701de5"
+    },
+    "R12_hip_api_trace": {
+      "bytes": 6091032,
+      "path": "/tmp/specdec2-p4-profile-c4-marked/gfx1151/3424884_hip_api_trace.csv",
+      "sha256": "ea9a1d0cbd7d0e98a159111b3a4d9f4bfd3b94f8d7b1702160be0e18f9211f35"
+    },
+    "R12_kernel_trace": {
+      "bytes": 4187813,
+      "path": "/tmp/specdec2-p4-profile-c4-marked/gfx1151/3424884_kernel_trace.csv",
+      "sha256": "155a9d405a6b5020a3c0cdd0751f34d3ccc853cc89487af29398bc3535f4e88a"
+    },
+    "R12_marker_api_trace": {
+      "bytes": 7280,
+      "path": "/tmp/specdec2-p4-profile-c4-marked/gfx1151/3424884_marker_api_trace.csv",
+      "sha256": "904a3f14db0a0dc27583aba7d387ef5a5084c2eb0ed0305bc6992f05bc268d9e"
+    },
+    "R12_memory_copy_trace": {
+      "bytes": 105054,
+      "path": "/tmp/specdec2-p4-profile-c4-marked/gfx1151/3424884_memory_copy_trace.csv",
+      "sha256": "4531fd185fc2baad0cfc23862a64f23b513068f357126f184dbcdeb4a0c0b74b"
+    },
+    "R16_bridge": {
+      "bytes": 77136,
+      "path": "/tmp/specdec2-p5-profile-child-r16-c4k3-warm.json",
+      "sha256": "e62ad62ddc713bd394f573e03828f844ba368556a1a209e7cfc2e7ce8fa6df71"
+    },
+    "R16_hip_api_trace": {
+      "bytes": 10191826,
+      "path": "/tmp/specdec2-p5-profile-r16-c4k3-warm/gfx1151/3438157_hip_api_trace.csv",
+      "sha256": "ad6d536bc3cac68b73822371a5bb8a3fa44547543429bb498e528d2f4478bd55"
+    },
+    "R16_kernel_trace": {
+      "bytes": 7303033,
+      "path": "/tmp/specdec2-p5-profile-r16-c4k3-warm/gfx1151/3438157_kernel_trace.csv",
+      "sha256": "09dfdbb087a725d1e75cde9cbd2830a6056e1269653e4ab4222ba343d90cd749"
+    },
+    "R16_marker_api_trace": {
+      "bytes": 13010,
+      "path": "/tmp/specdec2-p5-profile-r16-c4k3-warm/gfx1151/3438157_marker_api_trace.csv",
+      "sha256": "65c1be2e2a7ba276cbab0d49a8975740a0a0a61a03fc7864da649071d7bf1124"
+    },
+    "R16_memory_copy_trace": {
+      "bytes": 105054,
+      "path": "/tmp/specdec2-p5-profile-r16-c4k3-warm/gfx1151/3438157_memory_copy_trace.csv",
+      "sha256": "7fe704d4468d99d05bd6336bf77940582bf496d5b1b3d76eb2cc40bc767cebba"
+    },
+    "R6_bridge": {
+      "bytes": 44711,
+      "path": "/tmp/specdec2-p4-profile-child-c2-marked.json",
+      "sha256": "6c251be7b40bfe3e3bc8f8ce3ec100f15658911c1a1a2acf706ff6b68bc17c97"
+    },
+    "R6_hip_api_trace": {
+      "bytes": 5871910,
+      "path": "/tmp/specdec2-p4-profile-c2-marked/gfx1151/3423394_hip_api_trace.csv",
+      "sha256": "cadf7cbd1a44450eded17c0faa50540fc3b08c7f98fc08dee05b4cd704745e00"
+    },
+    "R6_kernel_trace": {
+      "bytes": 3899935,
+      "path": "/tmp/specdec2-p4-profile-c2-marked/gfx1151/3423394_kernel_trace.csv",
+      "sha256": "990532a70e218ed5acb2caa24241b3e88d3758a21cf128b1fbbeff4fdc558626"
+    },
+    "R6_marker_api_trace": {
+      "bytes": 5416,
+      "path": "/tmp/specdec2-p4-profile-c2-marked/gfx1151/3423394_marker_api_trace.csv",
+      "sha256": "ecfdc4b6cffb77cd92959dff713075ae9b2e3c111efd738002843b151d1851b6"
+    },
+    "R6_memory_copy_trace": {
+      "bytes": 105054,
+      "path": "/tmp/specdec2-p4-profile-c2-marked/gfx1151/3423394_memory_copy_trace.csv",
+      "sha256": "70939dc08c6e66a10ed1856c6f36a12c6a61ed7d2a780f5d875a85bc5aba7a8d"
+    },
+    "R8_bridge": {
+      "bytes": 50940,
+      "path": "/tmp/specdec2-p5-profile-child-r8-c2k3-warm.json",
+      "sha256": "0962bff4d5217bc7d60a24b4ca6a97afe8ca2191a3d7f4ba44206057024e822e"
+    },
+    "R8_hip_api_trace": {
+      "bytes": 9763746,
+      "path": "/tmp/specdec2-p5-profile-r8-c2k3-warm/gfx1151/3436704_hip_api_trace.csv",
+      "sha256": "76711e5bd70218943cf44a864458025534e0e36caddb2a6e9e2bade2b8be12d0"
+    },
+    "R8_kernel_trace": {
+      "bytes": 6737183,
+      "path": "/tmp/specdec2-p5-profile-r8-c2k3-warm/gfx1151/3436704_kernel_trace.csv",
+      "sha256": "5233a0695826525ee250b572fc84d911d5cba61582f6abbee7c532582bead970"
+    },
+    "R8_marker_api_trace": {
+      "bytes": 9777,
+      "path": "/tmp/specdec2-p5-profile-r8-c2k3-warm/gfx1151/3436704_marker_api_trace.csv",
+      "sha256": "0f17391ec915cce6371b89aca609ac0d43d961c4fc3e68a49d7ae41440767a95"
+    },
+    "R8_memory_copy_trace": {
+      "bytes": 105054,
+      "path": "/tmp/specdec2-p5-profile-r8-c2k3-warm/gfx1151/3436704_memory_copy_trace.csv",
+      "sha256": "9aaf217c0a846d828759f8136b9dc22bf462b3ae029dbabdda7413f18637c0fd"
+    },
+    "q4_route_micro": {
+      "bytes": 16509,
+      "path": "/tmp/specdec2-p5-q4-route-micro-actual.json",
+      "sha256": "6f12d41185b50f8bc37dfe8e1f48694a1a54a21f65a06ea8d5d194f7dfc6fab2"
+    },
+    "q4_shape_trace": {
+      "bytes": 54747,
+      "path": "/tmp/specdec2-p5-q4-shape-trace.json",
+      "sha256": "96a5e0b9f35b7f16be1103bcd5c1ad3f1e8b0296b58ed6af38827c050a6e3363"
+    }
+  },
+  "hardware": {
+    "arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "host": "gfx1151"
+  },
+  "kind": "specdec2_perf_p5_gfx1151_physical_target_admission",
+  "model": {
+    "kv": "BF16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "profile": "strict_fp32",
+    "quant": "Q4_K_S"
+  },
+  "next": "P6 implement only admitted route and retain/reject by operation-complete plus full-suite evidence",
+  "profiles": {
+    "R12": {
+      "budget": 2,
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "concurrency": 4,
+      "exact": true,
+      "median": {
+        "cycle_marker_ms": 520.150282,
+        "family_calls": {
+          "attention_kv": 17,
+          "device_copy_kernel": 574,
+          "gdn_provisional": 48,
+          "lm_head_top1_accept": 3,
+          "other": 573,
+          "q6_col8": 3,
+          "qmicro_q4_dense": 128,
+          "selected_q5": 60,
+          "selected_state_commit": 4,
+          "standard_q4_shared_b": 219
+        },
+        "family_duration_ms": {
+          "attention_kv": 0.360074,
+          "device_copy_kernel": 6.206913999999993,
+          "gdn_provisional": 8.884554,
+          "lm_head_top1_accept": 0.07566300000000001,
+          "other": 5.447538999999996,
+          "q6_col8": 14.762019000000002,
+          "qmicro_q4_dense": 146.08495,
+          "selected_q5": 76.455374,
+          "selected_state_commit": 6.051313,
+          "standard_q4_shared_b": 189.36101700000003
+        },
+        "proposal_marker_ms": 52.604655,
+        "target_kernel_interval_union_ms": 453.689417,
+        "target_kernel_sum_ms": 453.689417,
+        "target_marker_ms": 467.386228,
+        "target_queue_gap_ms": 13.696811
+      },
+      "resources": {
+        "attention_kv": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 40,
+          "workgroup_grid_examples": [
+            [
+              256,
+              1,
+              1,
+              6144,
+              12,
+              1
+            ],
+            [
+              256,
+              1,
+              1,
+              6144,
+              4,
+              1
+            ]
+          ]
+        },
+        "device_copy_kernel": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 16,
+          "workgroup_grid_examples": [
+            [
+              512,
+              1,
+              1,
+              10240,
+              1,
+              1
+            ],
+            [
+              512,
+              1,
+              1,
+              512,
+              1,
+              1
+            ]
+          ]
+        },
+        "gdn_provisional": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 88,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              512,
+              48,
+              1
+            ]
+          ]
+        },
+        "lm_head_top1_accept": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 24,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              62080,
+              12,
+              1
+            ],
+            [
+              128,
+              1,
+              1,
+              1536,
+              1,
+              1
+            ]
+          ]
+        },
+        "other": {
+          "max_lds_bytes": 1024,
+          "max_scratch_bytes": 20,
+          "max_sgpr": 128,
+          "max_vgpr": 80,
+          "workgroup_grid_examples": [
+            [
+              256,
+              1,
+              1,
+              256,
+              1,
+              1
+            ],
+            [
+              256,
+              1,
+              1,
+              5120,
+              12,
+              1
+            ]
+          ]
+        },
+        "q6_col8": {
+          "max_lds_bytes": 512,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 72,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              3973120,
+              1,
+              1
+            ]
+          ]
+        },
+        "qmicro_q4_dense": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 240,
+          "workgroup_grid_examples": [
+            [
+              32,
+              1,
+              1,
+              11616,
+              1,
+              1
+            ]
+          ]
+        },
+        "selected_q5": {
+          "max_lds_bytes": 512,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 128,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              81920,
+              12,
+              1
+            ],
+            [
+              128,
+              1,
+              1,
+              40960,
+              12,
+              1
+            ]
+          ]
+        },
+        "selected_state_commit": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 16,
+          "workgroup_grid_examples": [
+            [
+              256,
+              1,
+              1,
+              12288,
+              2,
+              48
+            ]
+          ]
+        },
+        "standard_q4_shared_b": {
+          "max_lds_bytes": 24576,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 256,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              16384,
+              1,
+              1
+            ],
+            [
+              128,
+              1,
+              1,
+              13696,
+              1,
+              1
+            ]
+          ]
+        }
+      },
+      "rows": 12,
+      "samples": [
+        {
+          "cycle_device_sync": 4,
+          "cycle_hip_free": 0,
+          "cycle_hip_malloc": 0,
+          "cycle_marker_ms": 520.150282,
+          "cycle_memory_copy_events": 0,
+          "physical_rows": 12,
+          "proposal_marker_ms": 52.604655,
+          "target_kernel_interval_union_ms": 453.689417,
+          "target_kernel_sum_ms": 453.689417,
+          "target_marker_ms": 467.386228,
+          "target_queue_gap_ms": 13.696811,
+          "window_index": 1
+        }
+      ],
+      "source_commits": [
+        "77be00d68faa9d1410e1688462fbba53762e3ab1"
+      ]
+    },
+    "R16": {
+      "budget": 3,
+      "candidate_counts": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        2,
+        1
+      ],
+      "concurrency": 4,
+      "exact": true,
+      "median": {
+        "cycle_marker_ms": 577.8402575,
+        "family_calls": {
+          "attention_kv": 17.0,
+          "device_copy_kernel": 583.0,
+          "gdn_provisional": 48.0,
+          "lm_head_top1_accept": 3.0,
+          "other": 569.0,
+          "q6_col8": 4.0,
+          "qmicro_q4_dense": 128.0,
+          "selected_q5": 60.0,
+          "selected_state_commit": 4.0,
+          "standard_q4_shared_b": 219.0
+        },
+        "family_duration_ms": {
+          "attention_kv": 0.4798005,
+          "device_copy_kernel": 6.255156999999993,
+          "gdn_provisional": 11.6899335,
+          "lm_head_top1_accept": 0.088727,
+          "other": 6.198915500000002,
+          "q6_col8": 19.0658405,
+          "qmicro_q4_dense": 147.91091600000004,
+          "selected_q5": 99.685886,
+          "selected_state_commit": 6.079556500000001,
+          "standard_q4_shared_b": 189.43855899999997
+        },
+        "proposal_marker_ms": 78.584618,
+        "target_kernel_interval_union_ms": 487.00648,
+        "target_kernel_sum_ms": 487.00648,
+        "target_marker_ms": 498.81077400000004,
+        "target_queue_gap_ms": 11.791409
+      },
+      "resources": {
+        "attention_kv": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 40,
+          "workgroup_grid_examples": [
+            [
+              256,
+              1,
+              1,
+              6144,
+              16,
+              1
+            ],
+            [
+              256,
+              1,
+              1,
+              6144,
+              4,
+              1
+            ]
+          ]
+        },
+        "device_copy_kernel": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 16,
+          "workgroup_grid_examples": [
+            [
+              512,
+              1,
+              1,
+              10240,
+              1,
+              1
+            ],
+            [
+              512,
+              1,
+              1,
+              512,
+              1,
+              1
+            ]
+          ]
+        },
+        "gdn_provisional": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 88,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              512,
+              48,
+              1
+            ]
+          ]
+        },
+        "lm_head_top1_accept": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 24,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              62080,
+              16,
+              1
+            ],
+            [
+              128,
+              1,
+              1,
+              2048,
+              1,
+              1
+            ]
+          ]
+        },
+        "other": {
+          "max_lds_bytes": 1024,
+          "max_scratch_bytes": 20,
+          "max_sgpr": 128,
+          "max_vgpr": 80,
+          "workgroup_grid_examples": [
+            [
+              256,
+              1,
+              1,
+              256,
+              1,
+              1
+            ],
+            [
+              256,
+              1,
+              1,
+              5120,
+              16,
+              1
+            ]
+          ]
+        },
+        "q6_col8": {
+          "max_lds_bytes": 512,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 72,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              3973120,
+              1,
+              1
+            ]
+          ]
+        },
+        "qmicro_q4_dense": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 240,
+          "workgroup_grid_examples": [
+            [
+              32,
+              1,
+              1,
+              11616,
+              1,
+              1
+            ]
+          ]
+        },
+        "selected_q5": {
+          "max_lds_bytes": 512,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 128,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              81920,
+              16,
+              1
+            ],
+            [
+              128,
+              1,
+              1,
+              40960,
+              16,
+              1
+            ]
+          ]
+        },
+        "selected_state_commit": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 16,
+          "workgroup_grid_examples": [
+            [
+              256,
+              1,
+              1,
+              12288,
+              2,
+              48
+            ]
+          ]
+        },
+        "standard_q4_shared_b": {
+          "max_lds_bytes": 24576,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 256,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              16384,
+              1,
+              1
+            ],
+            [
+              128,
+              1,
+              1,
+              2816,
+              1,
+              1
+            ]
+          ]
+        }
+      },
+      "rows": 16,
+      "samples": [
+        {
+          "cycle_device_sync": 5,
+          "cycle_hip_free": 0,
+          "cycle_hip_malloc": 0,
+          "cycle_marker_ms": 579.318374,
+          "cycle_memory_copy_events": 0,
+          "physical_rows": 16,
+          "proposal_marker_ms": 80.680143,
+          "target_kernel_interval_union_ms": 486.749142,
+          "target_kernel_sum_ms": 486.749142,
+          "target_marker_ms": 498.462861,
+          "target_queue_gap_ms": 11.713719,
+          "window_index": 1
+        },
+        {
+          "cycle_device_sync": 5,
+          "cycle_hip_free": 0,
+          "cycle_hip_malloc": 0,
+          "cycle_marker_ms": 578.124742,
+          "cycle_memory_copy_events": 0,
+          "physical_rows": 16,
+          "proposal_marker_ms": 78.430859,
+          "target_kernel_interval_union_ms": 487.669262,
+          "target_kernel_sum_ms": 487.669262,
+          "target_marker_ms": 499.538361,
+          "target_queue_gap_ms": 11.869099,
+          "window_index": 2
+        },
+        {
+          "cycle_device_sync": 5,
+          "cycle_hip_free": 0,
+          "cycle_hip_malloc": 0,
+          "cycle_marker_ms": 577.555773,
+          "cycle_memory_copy_events": 0,
+          "physical_rows": 16,
+          "proposal_marker_ms": 78.231605,
+          "target_kernel_interval_union_ms": 487.231844,
+          "target_kernel_sum_ms": 487.231844,
+          "target_marker_ms": 499.157325,
+          "target_queue_gap_ms": 11.925481,
+          "window_index": 3
+        },
+        {
+          "cycle_device_sync": 5,
+          "cycle_hip_free": 0,
+          "cycle_hip_malloc": 0,
+          "cycle_marker_ms": 577.363742,
+          "cycle_memory_copy_events": 0,
+          "physical_rows": 16,
+          "proposal_marker_ms": 78.738377,
+          "target_kernel_interval_union_ms": 486.781116,
+          "target_kernel_sum_ms": 486.781116,
+          "target_marker_ms": 498.464223,
+          "target_queue_gap_ms": 11.683107,
+          "window_index": 4
+        }
+      ],
+      "source_commits": [
+        "b923345a6f56cbb99e55754824aa0cf85cf9fe34"
+      ]
+    },
+    "R6": {
+      "budget": 2,
+      "candidate_counts": [
+        2,
+        2
+      ],
+      "concurrency": 2,
+      "exact": true,
+      "median": {
+        "cycle_marker_ms": 441.476512,
+        "family_calls": {
+          "attention_kv": 17,
+          "device_copy_kernel": 296,
+          "gdn_provisional": 48,
+          "lm_head_top1_accept": 3,
+          "other": 559,
+          "q6_col8": 1,
+          "q6_rowtile": 1,
+          "qmicro_q4_dense": 128,
+          "selected_q5": 60,
+          "selected_state_commit": 2,
+          "standard_q4_shared_b": 219
+        },
+        "family_duration_ms": {
+          "attention_kv": 0.21323800000000004,
+          "device_copy_kernel": 3.115688999999999,
+          "gdn_provisional": 4.094964,
+          "lm_head_top1_accept": 0.044724,
+          "other": 4.060646999999995,
+          "q6_col8": 4.806178,
+          "q6_rowtile": 4.687596,
+          "qmicro_q4_dense": 145.06418600000006,
+          "selected_q5": 40.05491299999999,
+          "selected_state_commit": 3.023313,
+          "standard_q4_shared_b": 189.21353800000003
+        },
+        "proposal_marker_ms": 32.788582,
+        "target_kernel_interval_union_ms": 398.378986,
+        "target_kernel_sum_ms": 398.378986,
+        "target_marker_ms": 408.531255,
+        "target_queue_gap_ms": 10.152269
+      },
+      "resources": {
+        "attention_kv": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 40,
+          "workgroup_grid_examples": [
+            [
+              256,
+              1,
+              1,
+              6144,
+              6,
+              1
+            ],
+            [
+              256,
+              1,
+              1,
+              6144,
+              2,
+              1
+            ]
+          ]
+        },
+        "device_copy_kernel": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 16,
+          "workgroup_grid_examples": [
+            [
+              512,
+              1,
+              1,
+              10240,
+              1,
+              1
+            ],
+            [
+              512,
+              1,
+              1,
+              512,
+              1,
+              1
+            ]
+          ]
+        },
+        "gdn_provisional": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 88,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              256,
+              48,
+              1
+            ]
+          ]
+        },
+        "lm_head_top1_accept": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 24,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              62080,
+              6,
+              1
+            ],
+            [
+              128,
+              1,
+              1,
+              768,
+              1,
+              1
+            ]
+          ]
+        },
+        "other": {
+          "max_lds_bytes": 1024,
+          "max_scratch_bytes": 20,
+          "max_sgpr": 128,
+          "max_vgpr": 80,
+          "workgroup_grid_examples": [
+            [
+              256,
+              1,
+              1,
+              256,
+              1,
+              1
+            ],
+            [
+              256,
+              1,
+              1,
+              5120,
+              6,
+              1
+            ]
+          ]
+        },
+        "q6_col8": {
+          "max_lds_bytes": 512,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 72,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              3973120,
+              1,
+              1
+            ]
+          ]
+        },
+        "q6_rowtile": {
+          "max_lds_bytes": 512,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 96,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              1986560,
+              1,
+              1
+            ]
+          ]
+        },
+        "qmicro_q4_dense": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 240,
+          "workgroup_grid_examples": [
+            [
+              32,
+              1,
+              1,
+              11616,
+              1,
+              1
+            ]
+          ]
+        },
+        "selected_q5": {
+          "max_lds_bytes": 512,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 128,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              81920,
+              6,
+              1
+            ],
+            [
+              128,
+              1,
+              1,
+              40960,
+              6,
+              1
+            ]
+          ]
+        },
+        "selected_state_commit": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 16,
+          "workgroup_grid_examples": [
+            [
+              256,
+              1,
+              1,
+              12288,
+              2,
+              48
+            ]
+          ]
+        },
+        "standard_q4_shared_b": {
+          "max_lds_bytes": 24576,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 256,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              16384,
+              1,
+              1
+            ],
+            [
+              128,
+              1,
+              1,
+              13696,
+              1,
+              1
+            ]
+          ]
+        }
+      },
+      "rows": 6,
+      "samples": [
+        {
+          "cycle_device_sync": 4,
+          "cycle_hip_free": 0,
+          "cycle_hip_malloc": 0,
+          "cycle_marker_ms": 441.476512,
+          "cycle_memory_copy_events": 0,
+          "physical_rows": 6,
+          "proposal_marker_ms": 32.788582,
+          "target_kernel_interval_union_ms": 398.378986,
+          "target_kernel_sum_ms": 398.378986,
+          "target_marker_ms": 408.531255,
+          "target_queue_gap_ms": 10.152269,
+          "window_index": 1
+        }
+      ],
+      "source_commits": [
+        "77be00d68faa9d1410e1688462fbba53762e3ab1"
+      ]
+    },
+    "R8": {
+      "budget": 3,
+      "candidate_counts": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        2,
+        1
+      ],
+      "concurrency": 2,
+      "exact": true,
+      "median": {
+        "cycle_marker_ms": 471.8152295,
+        "family_calls": {
+          "attention_kv": 17.0,
+          "device_copy_kernel": 301.0,
+          "gdn_provisional": 48.0,
+          "lm_head_top1_accept": 3.0,
+          "other": 557.0,
+          "q6_col8": 2.0,
+          "qmicro_q4_dense": 128.0,
+          "selected_q5": 60.0,
+          "selected_state_commit": 2.0,
+          "standard_q4_shared_b": 219.0
+        },
+        "family_duration_ms": {
+          "attention_kv": 0.31046199999999996,
+          "device_copy_kernel": 3.095437500000001,
+          "gdn_provisional": 5.053765,
+          "lm_head_top1_accept": 0.052339,
+          "other": 4.460726000000003,
+          "q6_col8": 9.567913,
+          "qmicro_q4_dense": 145.51214200000004,
+          "selected_q5": 52.1048315,
+          "selected_state_commit": 2.983538,
+          "standard_q4_shared_b": 189.00453499999998
+        },
+        "proposal_marker_ms": 48.9958625,
+        "target_kernel_interval_union_ms": 412.162587,
+        "target_kernel_sum_ms": 412.162587,
+        "target_marker_ms": 422.63499149999996,
+        "target_queue_gap_ms": 10.451596
+      },
+      "resources": {
+        "attention_kv": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 40,
+          "workgroup_grid_examples": [
+            [
+              256,
+              1,
+              1,
+              6144,
+              8,
+              1
+            ],
+            [
+              256,
+              1,
+              1,
+              6144,
+              2,
+              1
+            ]
+          ]
+        },
+        "device_copy_kernel": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 16,
+          "workgroup_grid_examples": [
+            [
+              512,
+              1,
+              1,
+              10240,
+              1,
+              1
+            ],
+            [
+              512,
+              1,
+              1,
+              512,
+              1,
+              1
+            ]
+          ]
+        },
+        "gdn_provisional": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 88,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              256,
+              48,
+              1
+            ]
+          ]
+        },
+        "lm_head_top1_accept": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 24,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              62080,
+              8,
+              1
+            ],
+            [
+              128,
+              1,
+              1,
+              1024,
+              1,
+              1
+            ]
+          ]
+        },
+        "other": {
+          "max_lds_bytes": 1024,
+          "max_scratch_bytes": 20,
+          "max_sgpr": 128,
+          "max_vgpr": 80,
+          "workgroup_grid_examples": [
+            [
+              256,
+              1,
+              1,
+              256,
+              1,
+              1
+            ],
+            [
+              256,
+              1,
+              1,
+              5120,
+              8,
+              1
+            ]
+          ]
+        },
+        "q6_col8": {
+          "max_lds_bytes": 512,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 72,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              3973120,
+              1,
+              1
+            ]
+          ]
+        },
+        "qmicro_q4_dense": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 240,
+          "workgroup_grid_examples": [
+            [
+              32,
+              1,
+              1,
+              11616,
+              1,
+              1
+            ]
+          ]
+        },
+        "selected_q5": {
+          "max_lds_bytes": 512,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 128,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              81920,
+              8,
+              1
+            ],
+            [
+              128,
+              1,
+              1,
+              40960,
+              8,
+              1
+            ]
+          ]
+        },
+        "selected_state_commit": {
+          "max_lds_bytes": 0,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 16,
+          "workgroup_grid_examples": [
+            [
+              256,
+              1,
+              1,
+              12288,
+              2,
+              48
+            ]
+          ]
+        },
+        "standard_q4_shared_b": {
+          "max_lds_bytes": 24576,
+          "max_scratch_bytes": 0,
+          "max_sgpr": 128,
+          "max_vgpr": 256,
+          "workgroup_grid_examples": [
+            [
+              128,
+              1,
+              1,
+              16384,
+              1,
+              1
+            ],
+            [
+              128,
+              1,
+              1,
+              13696,
+              1,
+              1
+            ]
+          ]
+        }
+      },
+      "rows": 8,
+      "samples": [
+        {
+          "cycle_device_sync": 5,
+          "cycle_hip_free": 0,
+          "cycle_hip_malloc": 0,
+          "cycle_marker_ms": 472.16195,
+          "cycle_memory_copy_events": 0,
+          "physical_rows": 8,
+          "proposal_marker_ms": 49.373096,
+          "target_kernel_interval_union_ms": 412.213357,
+          "target_kernel_sum_ms": 412.213357,
+          "target_marker_ms": 422.626561,
+          "target_queue_gap_ms": 10.413204,
+          "window_index": 1
+        },
+        {
+          "cycle_device_sync": 5,
+          "cycle_hip_free": 0,
+          "cycle_hip_malloc": 0,
+          "cycle_marker_ms": 471.740469,
+          "cycle_memory_copy_events": 0,
+          "physical_rows": 8,
+          "proposal_marker_ms": 48.958898,
+          "target_kernel_interval_union_ms": 411.9823,
+          "target_kernel_sum_ms": 411.9823,
+          "target_marker_ms": 422.643422,
+          "target_queue_gap_ms": 10.661122,
+          "window_index": 2
+        },
+        {
+          "cycle_device_sync": 5,
+          "cycle_hip_free": 0,
+          "cycle_hip_malloc": 0,
+          "cycle_marker_ms": 471.475502,
+          "cycle_memory_copy_events": 0,
+          "physical_rows": 8,
+          "proposal_marker_ms": 49.032827,
+          "target_kernel_interval_union_ms": 412.111817,
+          "target_kernel_sum_ms": 412.111817,
+          "target_marker_ms": 422.312371,
+          "target_queue_gap_ms": 10.200554,
+          "window_index": 3
+        },
+        {
+          "cycle_device_sync": 5,
+          "cycle_hip_free": 0,
+          "cycle_hip_malloc": 0,
+          "cycle_marker_ms": 471.88999,
+          "cycle_memory_copy_events": 0,
+          "physical_rows": 8,
+          "proposal_marker_ms": 48.772008,
+          "target_kernel_interval_union_ms": 412.492992,
+          "target_kernel_sum_ms": 412.492992,
+          "target_marker_ms": 422.98298,
+          "target_queue_gap_ms": 10.489988,
+          "window_index": 4
+        }
+      ],
+      "source_commits": [
+        "b923345a6f56cbb99e55754824aa0cf85cf9fe34"
+      ]
+    }
+  },
+  "protocol": {
+    "cached_builds": true,
+    "profile_children": true,
+    "queue": 2,
+    "traces": [
+      "kernel",
+      "hip_api",
+      "memory_copy",
+      "marker",
+      "agent"
+    ],
+    "true_ar_baseline_in_bridge": true,
+    "warm_full_width_only": true
+  },
+  "r16_vs_two_r8": {
+    "cycle_marker_ms": 0.6123586325438866,
+    "target_kernel_interval_union_ms": 0.59079413726603,
+    "target_kernel_sum_ms": 0.59079413726603,
+    "target_marker_ms": 0.5901200610834895
+  },
+  "rejected_ladder": {
+    "attention": "0.21-0.49 ms is not hot",
+    "llama_register_spill": "hot Q4 has 256/240 VGPR but zero scratch; no batch3-8 spill signature; route overprovision is the measured issue",
+    "provisional_state": "GDN 4.1-11.7 ms plus copy traffic lacks >=1.10 operation-complete/request premise",
+    "selected_commit": "3.0-6.1 ms is not material",
+    "stable_target_graph_pm4": "warm target queue gaps 10-14 ms are <3% marker and do not meet admission"
+  },
+  "schema": 1,
+  "standard_q4_call_attribution": [
+    {
+      "admitted_route": "shared_b",
+      "calls_per_target": 31,
+      "in_features": 5120,
+      "out_features": 1024,
+      "shared_over_single_by_rows": {
+        "12": 0.35298642609260183,
+        "16": 0.3551254377516188,
+        "6": 0.3515243095677145,
+        "8": 0.35168423551020755
+      }
+    },
+    {
+      "admitted_route": "single_wave",
+      "calls_per_target": 48,
+      "in_features": 5120,
+      "out_features": 6144,
+      "shared_over_single_by_rows": {
+        "12": 1.1436185826053131,
+        "16": 1.1451370331403379,
+        "6": 1.1439789569855,
+        "8": 1.1461065866302675
+      }
+    },
+    {
+      "admitted_route": "single_wave",
+      "calls_per_target": 45,
+      "in_features": 5120,
+      "out_features": 10240,
+      "shared_over_single_by_rows": {
+        "12": 1.5888086904847183,
+        "16": 1.5908358139675685,
+        "6": 1.5898271816531806,
+        "8": 1.588933985588057
+      }
+    },
+    {
+      "admitted_route": "single_wave",
+      "calls_per_target": 16,
+      "in_features": 5120,
+      "out_features": 12288,
+      "shared_over_single_by_rows": {
+        "12": 1.65125855754382,
+        "16": 1.6428520986736141,
+        "6": 1.6515866254244644,
+        "8": 1.6499080393508685
+      }
+    },
+    {
+      "admitted_route": "single_wave",
+      "calls_per_target": 16,
+      "in_features": 6144,
+      "out_features": 5120,
+      "shared_over_single_by_rows": {
+        "12": 1.145217977950717,
+        "16": 1.1468526013333857,
+        "6": 1.1426929030010224,
+        "8": 1.1445154927019479
+      }
+    },
+    {
+      "admitted_route": "shared_b",
+      "calls_per_target": 56,
+      "in_features": 17408,
+      "out_features": 5120,
+      "shared_over_single_by_rows": {
+        "12": 0.958330035683999,
+        "16": 0.9600495534293176,
+        "6": 0.9591380206951908,
+        "8": 0.959635940021273
+      }
+    }
+  ],
+  "status": "one_candidate_admitted_default_off_not_implemented"
+}

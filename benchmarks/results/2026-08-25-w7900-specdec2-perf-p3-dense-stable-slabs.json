@@ -1,0 +1,127 @@
+{
+  "schema": 1,
+  "date": "2026-08-25",
+  "kind": "specdec2_perf_gfx1100_p3_dense_stable_slabs",
+  "status": "retained_mechanical_wall_neutral",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "hardware": {
+    "hostname": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "gpu_index": 0,
+    "sku": "D7070100",
+    "unique_id": "0xe282895b62c2b295",
+    "gpu_max_hw_queues": null,
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "bf16",
+    "recurrent_state": "fp32_strict",
+    "sampled_fingerprint": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7"
+  },
+  "source": {
+    "commit": "92f7bcf09849110ffb3f889f2419423ea1d2fbaa",
+    "tracked_clean": true,
+    "shared_mechanism_source": "b45d2bda3896a5ab37e3ff8b2921a448e0b19af3",
+    "evidence_transfer": false
+  },
+  "protocol": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "runs": 3,
+    "outputs": 25,
+    "concurrency": 1,
+    "candidate_budgets": [1, 2, 3],
+    "arms": ["true_ar", "legacy_native", "specdec2"],
+    "sampling": "raw greedy",
+    "timing": "complete request, counterbalanced",
+    "command": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --scope full --concurrency 1 --budgets 1,2,3 --max-tokens 25 --runs 3 --max-sequence-length 1024 --compiler-version-file /tmp/specdec2-perf-gfx1100-p1/hipcc-version.txt --require-cached-build --output /tmp/specdec2-perf-gfx1100-p3/current-92f7bcf09/dense-stable-slabs-natural25-full-3run.json --fail-on-fail"
+  },
+  "cells": {
+    "c1_k1": {
+      "exact_cells": 30,
+      "total_cells": 30,
+      "p2_staged_wall_seconds": 27.292150726541877,
+      "p3_staged_wall_seconds": 27.4973916830495,
+      "wall_delta_fraction": 0.00752014594100947,
+      "true_ar_wall_seconds": 34.54881698265672,
+      "direct_wall_seconds": 26.368918182328343,
+      "staged_speedup_vs_ar": 1.256439788212858,
+      "staged_speedup_vs_direct": 0.9589607074835104,
+      "cycle_samples": 381,
+      "zero_allocation_cycles": 351,
+      "persistent_first_use_cycles": 30,
+      "cycle_allocated_bytes": 5544390,
+      "cycle_freed_bytes": 0,
+      "first_use_signature": {
+        "active_allocations": 57,
+        "allocated_bytes": 184813
+      }
+    },
+    "c1_k2": {
+      "exact_cells": 30,
+      "total_cells": 30,
+      "p2_staged_wall_seconds": 25.413561687339097,
+      "p3_staged_wall_seconds": 25.46796338027343,
+      "wall_delta_fraction": 0.0021406559853212044,
+      "true_ar_wall_seconds": 34.70984657853842,
+      "direct_wall_seconds": 23.82244652044028,
+      "staged_speedup_vs_ar": 1.36288269541896,
+      "staged_speedup_vs_direct": 0.9353887534993195,
+      "cycle_samples": 285,
+      "zero_allocation_cycles": 231,
+      "persistent_first_use_cycles": 54,
+      "cycle_allocated_bytes": 12750072,
+      "cycle_freed_bytes": 0,
+      "first_use_allocated_bytes": [184813, 277152]
+    },
+    "c1_k3": {
+      "exact_cells": 30,
+      "total_cells": 30,
+      "p2_staged_wall_seconds": 24.57729331450537,
+      "p3_staged_wall_seconds": 24.584764948580414,
+      "wall_delta_fraction": 0.0003040055704846,
+      "true_ar_wall_seconds": 34.9087040014565,
+      "direct_wall_seconds": 23.271018655970693,
+      "staged_speedup_vs_ar": 1.4199323879837304,
+      "staged_speedup_vs_direct": 0.9465625847813697,
+      "cycle_samples": 231,
+      "zero_allocation_cycles": 186,
+      "persistent_first_use_cycles": 45,
+      "cycle_allocated_bytes": 14410959,
+      "cycle_freed_bytes": 0,
+      "first_use_allocated_bytes": [277152, 369491]
+    }
+  },
+  "ownership": {
+    "stable_cycle_hidden_workspace": true,
+    "proposal_and_repair_pointers_distinct": true,
+    "cycle_hidden_claimed_before_mutation": true,
+    "steady_cycle_alloc_free": 0,
+    "remaining_allocation_owner": "request-local native target graph bucket first use",
+    "remaining_owner_phase": "P4",
+    "final_active_allocations": 0,
+    "final_current_allocated_bytes": 0,
+    "final_allocated_equals_freed": true
+  },
+  "raw_packet": {
+    "path": "/tmp/specdec2-perf-gfx1100-p3/current-92f7bcf09/dense-stable-slabs-natural25-full-3run.json",
+    "size_bytes": 3646611,
+    "sha256": "7e185aa99f0112b51d46766b4c1e8762888f03943bcecb4c751f1ad538cec0f7",
+    "committed": false
+  },
+  "decision": {
+    "stable_slabs": "retain",
+    "complete_wall": "neutral_within_cross_prompt_variance",
+    "speed_policy": "unchanged",
+    "automatic_policy": "K0",
+    "physical_c2_c4": "not_exposed",
+    "next": "P4 removes request-local graph first-use and keeps candidates device-resident through target/accept/selected commit"
+  }
+}

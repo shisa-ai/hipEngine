@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "date": "2026-08-25",
+  "kind": "specdec2_perf_gfx1100_p4_dense_device_chain_rejected",
+  "status": "rejected_state_safety_failure",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "hardware": {
+    "hostname": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "gpu_index": 0,
+    "gpu_max_hw_queues": null
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "bf16",
+    "recurrent_state": "fp32_strict"
+  },
+  "source": {
+    "commit": "312602b390905aff81d06c43b1dc563c55ad325d",
+    "tracked_clean": true
+  },
+  "scope": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "concurrency": 1,
+    "candidate_budgets": [1, 2, 3],
+    "outputs": 25,
+    "runs": 3,
+    "arms": ["true_ar", "legacy_native", "specdec2"],
+    "sampling": "raw greedy",
+    "warmup": true
+  },
+  "candidate": {
+    "mechanism": "C1 cached NextN device proposal event into retained N2 target graph, with capture-once host fallback and bounded post-target candidate materialization for provider repair",
+    "dirty_mechanics": {
+      "exact": true,
+      "prompt_id": "code_merge_intervals",
+      "candidate_budget": 2,
+      "outputs": 25,
+      "cycles": 9,
+      "device_handoffs": 6,
+      "post_target_candidate_rows": 12,
+      "pre_target_candidate_d2h": 0,
+      "routes": ["graph"],
+      "accepted_counts": [0, 2, 2, 2, 2, 2, 2, 2, 1]
+    }
+  },
+  "clean_gate": {
+    "completed_arms": 15,
+    "completed_cells": 5,
+    "first_failing_prompt": "general_en_explain",
+    "candidate_budget": 1,
+    "run": 0,
+    "failure": "following GGUF decode produced invalid token 9223372036854775807 at position 39 (vocab 248320, BF16 KV, physical base row 8192)",
+    "state": "failure occurred after prior exact rows and speculative mutation; no timing row retained"
+  },
+  "raw_packet": {
+    "path": "/tmp/specdec2-perf-gfx1100-p4/current-312602b39/dense-device-chain-natural25-full-3run.json",
+    "size_bytes": 223759,
+    "sha256": "325d14ab9f0b3c047057f3e633d703467390047f17bab5171ff223a9f54947b2",
+    "committed": false
+  },
+  "decision": {
+    "action": "revert production reachability",
+    "reason": "state/following-AR safety failure binds before performance",
+    "retained_control": "P3 host-materialized staged C1 with stable proposal/repair slabs",
+    "reopen_gate": "add a focused state/KV fixture reproducing the general_en_explain transition, localize selected target/provider repair ownership, and pass full clean exact suite before timing",
+    "automatic_policy": "K0",
+    "product_promotion": false
+  }
+}

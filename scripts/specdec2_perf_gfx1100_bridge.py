@@ -455,6 +455,20 @@ def attach_paro_direct_rows(
     if set(by_prompt) != set(expected_prompts):
         raise ValueError("PARO direct economics prompt set does not match loaded rows")
 
+    loaded_tokenization: dict[tuple[str, int], dict[str, float]] = {}
+    for row in loaded_rows:
+        arm = str(row.get("arm") or "")
+        if arm not in {"true_ar", "staged"}:
+            continue
+        timing = row.get("timing")
+        stages = timing.get("top_level_stage_seconds") if isinstance(timing, Mapping) else None
+        tokenize = stages.get("tokenize") if isinstance(stages, Mapping) else None
+        value = float(tokenize) if tokenize is not None else -1.0
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError("PARO loaded tokenization timing is invalid")
+        key = (str(row.get("prompt_id") or ""), int(row.get("run_index", -1)))
+        loaded_tokenization.setdefault(key, {})[arm] = value
+
     direct_rows: list[dict[str, Any]] = []
     loaded_manifests = {
         (
@@ -472,8 +486,11 @@ def attach_paro_direct_rows(
         if not child_path.is_file():
             raise ValueError(f"PARO per-prompt economics JSON is missing: {child_path}")
         child = json.loads(child_path.read_text(encoding="utf-8"))
-        tokenization_seconds = float(result.get("tokenization_seconds") or 0.0)
-        if not math.isfinite(tokenization_seconds) or tokenization_seconds < 0.0:
+        economics_tokenization_seconds = float(result.get("tokenization_seconds") or 0.0)
+        if (
+            not math.isfinite(economics_tokenization_seconds)
+            or economics_tokenization_seconds < 0.0
+        ):
             raise ValueError("PARO direct tokenization timing is invalid")
         budget = child.get("by_budget", {}).get("1")
         child_runs = budget.get("runs") if isinstance(budget, Mapping) else None
@@ -510,6 +527,10 @@ def attach_paro_direct_rows(
             target_prefill = float(mtp.get("target_prefill_seconds") or 0.0)
             provider_prefill = float(mtp.get("proposal_prefill_seconds") or 0.0)
             decode = float(mtp.get("decode_seconds") or 0.0)
+            loaded_cell_tokenization = loaded_tokenization.get((prompt_id, run_index), {})
+            if set(loaded_cell_tokenization) != {"true_ar", "staged"}:
+                raise ValueError("PARO loaded timing has no matched AR/staged tokenization pair")
+            tokenization_seconds = sum(loaded_cell_tokenization.values()) / 2.0
             complete = tokenization_seconds + target_prefill + provider_prefill + decode
             if not all(
                 math.isfinite(value) and value >= 0.0
@@ -561,7 +582,11 @@ def attach_paro_direct_rows(
                 "reason": "direct and Generation-2 packed-PARO owners cannot coexist in W7900 memory",
                 "source": str(smoke_path),
             }
-            row["direct_metrics"] = dict(metrics)
+            row["direct_metrics"] = {
+                **dict(metrics),
+                "economics_tokenization_seconds": economics_tokenization_seconds,
+                "matched_loaded_tokenization_seconds": tokenization_seconds,
+            }
             direct_rows.append(row)
     all_rows = [*loaded_rows, *direct_rows]
     validated = validate_bridge_rows(
@@ -657,6 +682,7 @@ def build_parser() -> argparse.ArgumentParser:
     loaded.add_argument("--max-sequence-length", type=int)
     loaded.add_argument("--compiler-version-file", type=Path)
     loaded.add_argument("--require-cached-build", action="store_true")
+    loaded.add_argument("--roctx-markers", action="store_true")
     loaded.add_argument("--output", type=Path, required=True)
 
     attach = subparsers.add_parser(
