@@ -407,6 +407,85 @@ def test_resident_slot_view_shares_owner_but_resets_slot_local_bookkeeping() -> 
     assert view._resident_slot_index == 2
 
 
+def test_resident_slot_view_releases_view_local_verify_buffers() -> None:
+    slot_scratch = object()
+    target_owner = SimpleNamespace(
+        slot_count=2,
+        for_slot=lambda slot: slot_scratch,
+    )
+    session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    session.max_batch_size = 2
+    session.runner = object()
+    session.scratch = object()
+    session._target_scratch_owner = target_owner
+    session._target_layout = gguf_runner.Qwen35GGUFResidentTargetLayout(
+        max_batch_size=2,
+        hidden_size=8,
+        vocab_size=16,
+        max_sequence_length=256,
+    )
+    session._decode_graphs = []
+    session._decode_graph_submission_contexts = {}
+    session._device_kv_graph_handles = {}
+    session._int8_prefill_oracle_buffers = {}
+    session._linear_state_snapshot_backups = ()
+    session._packed_verify_state = object()
+    session._packed_verify_scratch = object()
+    session._native_sampler_workspace = None
+    session._verify_hidden_seed_buf = DeviceBuffer(0x1000, 64)
+    session._verify_hidden_f32_a = DeviceBuffer(0x2000, 64)
+    session._verify_hidden_f32_b = DeviceBuffer(0x3000, 64)
+    session._verify_token_ids_i64 = DeviceBuffer(0x4000, 16)
+    session._verify_token_counter_i64 = DeviceBuffer(0x5000, 8)
+    session._verify_block_rows_capacity = 2
+    session._verify_hidden_seed_rows_populated = 2
+    session._verify_linear_recurrent_state_rows = (DeviceBuffer(0x6000, 32),)
+    session._verify_linear_conv_state_rows = (DeviceBuffer(0x7000, 32),)
+    session._verify_linear_state_rows_capacity = 2
+    session._verify_linear_recurrent_initial_snapshots = (DeviceBuffer(0x8000, 32),)
+    session._verify_linear_conv_initial_snapshots = (DeviceBuffer(0x9000, 32),)
+
+    view = session.resident_slot_view(1)
+
+    assert view._verify_hidden_seed_buf is None
+    assert view._verify_hidden_f32_a is None
+    assert view._verify_hidden_f32_b is None
+    assert view._verify_token_ids_i64 is None
+    assert view._verify_token_counter_i64 is None
+    assert view._verify_linear_recurrent_state_rows == ()
+    assert view._verify_linear_conv_state_rows == ()
+    assert view._verify_linear_recurrent_initial_snapshots == ()
+    assert view._verify_linear_conv_initial_snapshots == ()
+
+    local_buffers = tuple(
+        DeviceBuffer(0xA000 + index * 0x1000, size)
+        for index, size in enumerate((64, 64, 64, 16, 8, 32, 32, 32, 32))
+    )
+    (
+        view._verify_hidden_seed_buf,
+        view._verify_hidden_f32_a,
+        view._verify_hidden_f32_b,
+        view._verify_token_ids_i64,
+        view._verify_token_counter_i64,
+        recurrent,
+        conv,
+        recurrent_initial,
+        conv_initial,
+    ) = local_buffers
+    view._verify_linear_recurrent_state_rows = (recurrent,)
+    view._verify_linear_conv_state_rows = (conv,)
+    view._verify_linear_recurrent_initial_snapshots = (recurrent_initial,)
+    view._verify_linear_conv_initial_snapshots = (conv_initial,)
+    runtime = _FakeRuntime()
+
+    view._close_resident_slot_view_buffers(runtime=runtime)
+
+    assert sorted(runtime.free_calls) == sorted(buffer.ptr for buffer in local_buffers)
+    assert view._target_scratch_owner is target_owner
+    assert view.scratch is slot_scratch
+    assert view.runner is session.runner
+
+
 def test_gguf_device_kv_binding_rejects_policy_mismatch_before_table_copy(monkeypatch) -> None:
     expected = gguf_runner.Qwen35GGUFKVChunkLayout(
         storage_dtype=DType.INT8_PER_TOKEN_HEAD,
