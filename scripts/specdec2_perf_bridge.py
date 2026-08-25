@@ -381,6 +381,9 @@ def _install_stage_ledger(service: Any, ledger: _StageLedger) -> dict[str, bool]
         "cycle_total": ledger.install(loop, "_run_staged_speculative_cycle", "cycle_total"),
         "target_prefill": ledger.install(runner, "prefill_batch", "target_prefill"),
         "ar_decode": ledger.install(runner, "decode_batch", "ar_decode"),
+        "provider_k0_attach": ledger.install(
+            runner, "prepare_speculative_k0", "provider_k0_attach"
+        ),
         "provider_open": ledger.install(
             runner, "prepare_speculative_requests", "provider_open"
         ),
@@ -1013,7 +1016,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "legacy uses direct decoder decode_ms"
             ),
             "stage_nesting": {
-                "nextn_prompt_prime": "nested inside provider_open",
+                "nextn_prompt_prime": (
+                    "nested inside initial provider_k0_attach or a later "
+                    "provider_open/refill attachment"
+                ),
                 "proposal_and_target": "nested inside cycle_total",
                 "terminal_reclaim": "may include resident_owner_transition",
             },

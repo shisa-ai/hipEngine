@@ -11,6 +11,7 @@ from scripts.specdec2_perf_bridge import (
     _StageLedger,
     _close_preserving_primary,
     _decode_only_seconds,
+    _install_stage_ledger,
     _summarize,
     arm_order,
     atomic_write_json,
@@ -238,6 +239,66 @@ def test_bridge_stage_ledger_records_nested_cycle_owners_and_restores() -> None:
     ) > 0.0
     ledger.close()
     assert owner.cycle == original
+
+
+def test_bridge_installs_initial_k0_attachment_and_refill_owners() -> None:
+    class Adapter:
+        def _catch_up_provider(self) -> None:
+            return None
+
+        def _catch_up_provider_batch(self) -> None:
+            return None
+
+    class Runner:
+        def __init__(self) -> None:
+            self.adapter = Adapter()
+
+        def _resolved_mtp2_adapter(self):
+            return self.adapter
+
+        def prefill_batch(self) -> None:
+            return None
+
+        def decode_batch(self) -> None:
+            return None
+
+        def prepare_speculative_k0(self) -> None:
+            return None
+
+        def prepare_speculative_requests(self) -> None:
+            return None
+
+        def propose_speculative_batch(self) -> None:
+            return None
+
+        def execute_target_frontier(self) -> None:
+            return None
+
+        def _flush_row_owner(self) -> None:
+            return None
+
+        def _close_packed_decode_graphs(self) -> None:
+            return None
+
+        def reclaim(self) -> None:
+            return None
+
+    class Loop:
+        def _run_staged_speculative_cycle(self) -> None:
+            return None
+
+    runner = Runner()
+    driver = type("Driver", (), {"_runner": runner, "_loop": Loop()})()
+    service = type("Service", (), {"inner": driver})()
+    ledger = _StageLedger(roctx=False)
+
+    installed = _install_stage_ledger(service, ledger)
+
+    assert installed["provider_k0_attach"]
+    assert installed["provider_open"]
+    assert installed["nextn_prompt_prime_c1"]
+    assert installed["nextn_prompt_prime_batch"]
+    ledger.close()
 
 
 def test_bridge_teardown_does_not_mask_an_active_measurement_failure() -> None:
