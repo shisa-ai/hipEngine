@@ -617,8 +617,8 @@ old route is a strict oracle rather than the migrated server owner.
 - [x] Staggered finish and refill into a future cycle.
 - [x] Cancel one row while peers continue.
 - [x] Slot permutation/compaction and neighbor substitution.
-- [ ] Prefix restore/COW boundaries and pressure rejection.
-- [ ] Eager/graph fallback and later health.
+- [x] Prefix restore/COW boundaries and pressure rejection.
+- [x] Eager/graph fallback and later health.
 
 ### S4.4 Gate
 
@@ -628,6 +628,11 @@ same-host wall evidence. Merely packing request metadata or running singleton
 cycles in a loop does not pass. MTPLX-style sealed fixed-width execution may be
 used as an intermediate device proof, but S4 closure also requires Generation-2
 late admission and future-round refill.
+
+**Closed 2026-08-25:** all S4 checklist items pass on gfx1151 for the strict
+Qwen3.8-27B Q4_K_S explicit/default-off lane. C2/C4 K1-K3 remain slower than
+true AR and therefore do not promote an automatic cell. Evidence:
+[`S4 closure artifact`](../benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json).
 
 ## 11. S5 — gfx1151 verifier buckets and dynamic K
 
@@ -892,7 +897,11 @@ promotion. Commit `7ac70a39d` subsequently removes pre-target candidate D2H
 for all clean C2/C4 K1-K3 cells with neutral complete wall; see the
 [`device-candidate artifact`](../benchmarks/results/2026-08-25-gfx1151-specdec2-s4-device-candidates.json).
 Cached C4/K3 profiling confirms packed GDN/full-attention engagement.
-S4 remains open for prefix/pressure and eager/graph fallback lifecycle gates,
-plus
-a clean same-host packet. Production Q4_K_S FP16 state still selects K0 before
-mutation; gfx1100 remains deferred.
+S4 is closed by clean strict physical, neighbor, compaction, prefix/COW,
+long-context pressure, eager-fallback, SSE, profiler, and final-ownership gates.
+Closure commits through `d809014cb`; clean C2/K2 and C4/K3 route binds record
+`eager`, and the closure artifact records the full evidence map.
+All physical C2/C4 K1-K3 cells remain explicit/default-off because true AR is
+faster; S5 owns verifier bucket measurement and deterministic K/K0 policy.
+Production Q4_K_S FP16 state still selects K0 before mutation; gfx1100 remains
+deferred.
