@@ -1,6 +1,6 @@
 # SPECDEC2-PERF — gfx1151 Activation and Hot-Cycle Campaign
 
-- Status: **approved; implementation handoff ready**
+- Status: **P1 common bridge/baseline closed; P2 streaming activation next**
 - Approved: **2026-08-25**
 - Functional predecessor: [`SPECDEC2.md`](SPECDEC2.md), S1-S6 closed
 - Performance owner: **stable physical host `gfx1151` agent**
@@ -377,8 +377,9 @@ tokenize
 admission
 claims_reserve
 target_prefill
-nextn_prompt_prime
-provider_open
+provider_k0_attach         # initial provider ownership after prefill
+  nextn_prompt_prime       # nested initial/refill activation work
+provider_open              # later speculative prepare/refill owner
 resident_owner_transition  # packed-AR flush/scatter/discard and SPECDEC2 handoff
 cycle_total
   proposal
@@ -512,63 +513,82 @@ P1-P10 owned by `gfx1151-agent`.
 
 ## 10. P1 — common bridge and current-main baseline
 
-Durable handoff: P1.1-P1.2. Expected stable-GPU cost: 30-90 minutes after harness tests.
+**Closed 2026-08-25.** Durable evidence:
+[`P1 bridge`](../benchmarks/results/2026-08-25-gfx1151-specdec2-perf-p1-bridge.json).
+Strict C1 K1/K2/K3 reaches **1.138x/1.300x/1.273x true AR** on the full
+natural25 suite; K2 is positive in every category but remains a strict premise,
+not an automatic/product promotion. Physical C2/C4 K2 remains blocked at
+**2.786x/3.142x true-AR wall** and requires **67.37%/71.07%** total-wall
+reduction to reach 1.10x. Draft acceptance is **90.42% at C1/K2** but only
+**18.43% at both physical widths**, making proposal quality/cycle count a
+separate physical blocker. All retained cells are exact, cached, clean, and
+zero-final-ownership.
+
+Durable handoff: P1.1-P1.2.
 
 ### P1.1 Harness
 
-- [ ] Add `scripts/specdec2_perf_bridge.py` or an equivalently focused committed
-      harness; do not grow the S6 closure harness into an unreviewable monolith.
-- [ ] Add schema/aggregation/counterbalance unit tests.
-- [ ] Support AR, legacy native, and staged arms in one loaded process where
-      ownership permits; report unavoidable reloads explicitly.
-- [ ] Support C1/C2/C4, K1-K3, output horizon, prompt limit, repeat count, and
+- [x] Add `scripts/specdec2_perf_bridge.py` as the focused committed harness;
+      S6 closure remains unchanged.
+- [x] Add schema/aggregation/counterbalance unit tests.
+- [x] Support AR, legacy native, and staged arms in one loaded process where
+      ownership permits. Strict C1 requires capacity1; physical C2/C4 share
+      capacity4, and mixed-capacity invocations fail before model load.
+- [x] Support C1/C2/C4, K1-K3, output horizon, prompt limit, repeat count, and
       train/full scopes.
-- [ ] Emit immediate progress and atomic checkpoints after each prompt/arm.
-- [ ] Emit complete and decode-only timing, stage attribution, exact accounting,
-      physical shapes, candidate/acceptance trajectories, provider fingerprints,
-      allocation/synchronization counters, and teardown.
-- [ ] Attribute packed-AR owner flush/scatter/discard, graph close/invalidation,
-      root-hidden handoff, and provider attach separately from proposal/target;
-      count each transition and reconcile it into residual.
-- [ ] Add a final single-child profiler mode with cached builds and ROCTX markers.
-- [ ] RED-test malformed/missing timing owners, duplicated batch timing,
-      incomplete prompt suite, invalid AR denominator, and dirty provenance.
+- [x] Emit immediate progress and atomic checkpoints after each prompt/arm.
+- [x] Emit complete and decode-only timing, stage attribution, exact accounting,
+      physical shapes, candidate/acceptance trajectories, allocation/API
+      counters, and teardown. Provider fingerprints remain focused-gate evidence.
+- [x] Attribute packed-AR owner transition, graph close, initial K0 provider
+      attach, NextN priming, later provider-open, proposal, target-cycle, AR
+      tail, and reclaim separately with declared nesting/residual.
+- [x] Add final single-child profiler mode with cached builds and ROCTX markers.
+- [x] RED-test malformed/missing timing owners, duplicated batch timing,
+      incomplete prompt suite, invalid AR denominator, route substitution,
+      mixed capability capacity, and dirty provenance.
 
 ### P1.2 Stable baseline
 
-- [ ] Create a clean worktree/branch from the handoff commit.
-- [ ] Record full platform/model/compiler/prompt/profile provenance.
-- [ ] Run C1 K1-K3 natural25 counterbalanced AR/native/staged packet.
-- [ ] Run C2/C4 K2 natural25 and short activation packet; K3 follows only as a
-      fixed-depth diagnostic.
-- [ ] Run one cached staged C2/K2 and C4/K2 marked/kernel trace.
-- [ ] Verify old-native/staged outputs and acceptance separately; do not require
-      legacy provider fingerprints to equal the canonical staged contract.
-- [ ] Freeze current activation, resident-owner transition, steady-cycle,
-      target, repair, synchronization, and residual ceilings.
-- [ ] Recalculate the exact reduction needed for each candidate cell.
-- [ ] Publish `benchmarks/results/<date>-gfx1151-specdec2-perf-p1-bridge.json`.
-- [ ] Update campaign status/worklog and commit.
+- [x] Run from clean synchronized `main`, serializing shared-file merges with the
+      independent gfx1100 lane.
+- [x] Record full platform/model/compiler/prompt/profile provenance.
+- [x] Run C1 K1-K3 natural25 counterbalanced AR/native/staged packet, three
+      repeats over all ten prompts.
+- [x] Run C2/C4 K2 natural25 and fixed-greeting short activation packets.
+- [x] Run cached staged C2/K2 R6 and C4/K2 R12 marker/kernel/HIP-API traces.
+- [x] Verify old-native/staged outputs and acceptance separately; legacy direct
+      control is C1-only because its C>1 owner is request-serial.
+- [x] Freeze activation, initial K0 provider attach, steady-cycle, target,
+      repair, synchronization/allocation, and residual ceilings.
+- [x] Recalculate exact reduction needed for every measured fixed cell.
+- [x] Publish
+      `benchmarks/results/2026-08-25-gfx1151-specdec2-perf-p1-bridge.json`.
+- [x] Update campaign status/worklog/rollup and commit.
 
-Suggested command shape after harness implementation:
+Retained commands use two capability-honest loads (full commands and hashes are
+in the artifact/worklog):
 
 ```bash
-env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 \
-  GPU_MAX_HW_QUEUES=2 HIPENGINE_REQUIRE_CACHED_BUILD=1 \
-  HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt \
-  .venv/bin/python scripts/specdec2_perf_bridge.py \
-  --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf \
-  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
-  --concurrency 1,2,4 --budgets 1,2,3 \
-  --max-tokens 25 --runs 3 --counterbalanced \
-  --execution-profile strict --require-cached-build \
-  --output /tmp/specdec2-perf-p1-bridge.json --fail-on-fail
+# C1/capacity1, including K1/K2/K3 diagnostics
+.venv/bin/python scripts/specdec2_perf_bridge.py ... \
+  --concurrency 1 --budgets 1,2,3 --max-tokens 25 --runs 3 \
+  --require-cached-build --output /tmp/specdec2-perf-p1-c1-k123-full-fixed.json
+
+# Physical C2/C4/capacity4, retained K2 packet
+.venv/bin/python scripts/specdec2_perf_bridge.py ... \
+  --concurrency 2,4 --budgets 2 --max-tokens 25 --runs 3 \
+  --require-cached-build --output /tmp/specdec2-perf-p1-c2c4-k2-full-fixed.json
 ```
 
-Exact CLI is owned by P1 and must be recorded in its artifact.
+Do not combine C1 with C2/C4 in one invocation: capacity4 correctly declines
+strict C1 and would produce a false K0 row.
 
 Exit: common-protocol attribution identifies activation and steady-cycle costs;
-P2 is admitted without relying on mixed historical timing.
+P2 is admitted. P3 also has a concrete premise: cold profile children observe
+**143 allocation/free API calls inside three C2 and C4 cycle windows**. P4/P5
+must treat the C1→physical acceptance collapse as binding economics rather than
+assuming target kernels alone close C2/C4.
 
 ## 11. P2 — streaming exact NextN prompt activation
 
@@ -624,9 +644,11 @@ qualified SPECDEC2 request.
 
 Durable handoff: P3.1-P3.3.
 
-Current review found cycle-local `malloc/free` around proposal/repair hidden
-batches and workspace creation. Allocation/copy/free outside current stage timers
-must be measured; `hipFree` may synchronize the device.
+P1 confirmed cycle-local `malloc/free` around proposal/repair hidden batches and
+workspace creation: the cold cached C2 and C4 profiler children each record
+**131 `hipMalloc` + 12 `hipFree` calls inside three cycle windows**. Allocation,
+copy, and free outside substage timers remain explicit; `hipFree` may synchronize
+the device.
 
 ### P3.1 RED and instrumentation
 
@@ -994,10 +1016,9 @@ Raw profiler dumps and terminal logs remain outside Git.
 
 ## 24. Current handoff to the gfx1151 agent
 
-Start with P1 from the committed P0 handoff. Do not begin by editing kernels.
-Build the common bridge, run the stable current-main baseline, and
-confirm whether activation and device synchronization explain the complete wall.
-Then integrate the already-retained OI-3 streaming sink in P2.
+Start with P2 from the committed P1 evidence. Do not begin by editing kernels.
+Integrate the retained OI-3 streaming sink while preserving the now-measured
+initial K0 provider-attach boundary and capability-honest capacity split.
 
 The first expected implementation touchpoint is the mismatch between:
 

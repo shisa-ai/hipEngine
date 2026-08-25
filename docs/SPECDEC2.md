@@ -925,19 +925,20 @@ Strict C1/C2/C4 K1-K3 is exact and functional/default-off through R16; C8 lacks
 a speculative owner. Production FP16-state and every automatic C1-C32 cell
 select K0 before mutation.
 
-Performance does not justify promotion. Best short fixed-prompt K2 aggregate
-scales 6.876→9.500→16.053 tok/s at C1→C2→C4, but C2/C4 complete wall is
-21.8%/34.5% slower than true AR. The full ten-prompt counterbalanced K2 suite is
-still 2.121x/2.312x true-AR wall at C2/C4, with exact IDs and 49.15% acceptance.
-Automatic K0 below/near/above load reaches 9.552/11.917/12.242 exact generated
-tok/s but fails only ITL p99 (0.781/0.860/0.827 s versus 0.5 s). No product or
-public performance scope promotes.
+S6 performance did not justify promotion. The current-source P1 common bridge
+now gives a sharper verdict: strict C1 K1/K2/K3 is exact at
+**1.138x/1.300x/1.273x true AR**, with K2 positive in every category, while
+physical C2/C4 K2 remains **2.786x/3.142x true-AR wall**. Draft acceptance falls
+from **90.42% at C1/K2 to 18.43%** at C2/C4, and the physical cells require
+**67.37%/71.07%** wall reduction for 1.10x. This retains a C1 performance
+premise but promotes no automatic/product scope. Automatic K0 and the S6 load
+verdict remain in force.
 
 Two independent follow-ups are active. The stable-host gfx1151
-[`SPECDEC2-PERF`](SPECDEC2-PERF.md) owner begins with the common-protocol
-AR/native/staged bridge, integrates retained streaming NextN prompt priming,
-removes hot allocation, builds the bounded device-resident cycle, and profiles
-R6/R8/R12/R16 before any kernel edit. The gfx1100
+[`SPECDEC2-PERF`](SPECDEC2-PERF.md) owner has closed P1 and next integrates
+retained streaming NextN prompt priming, removes hot allocation, builds the
+bounded device-resident cycle, and profiles the remaining physical target
+ladder before any kernel edit. The gfx1100
 [`SPECDEC2-GFX1100`](SPECDEC2-GFX1100.md) lane independently qualifies dense
 GGUF and PARO capabilities; its C1 foundations are complete and C2/C4/product
 gates remain. Shared-file work is serialized, while hardware rates, thresholds,
