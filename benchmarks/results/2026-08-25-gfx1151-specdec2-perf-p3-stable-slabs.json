@@ -1,0 +1,528 @@
+{
+  "automatic_policy": "unchanged_k0",
+  "correctness": {
+    "c1_first_use_allocation_cycles": 33,
+    "c1_zero_allocation_cycles": 219,
+    "final_ownership_zero": true,
+    "focused_lifecycle_tests": "74 adapter/bridge + 4 failure/prefix/soak + 70 lifecycle/workspace",
+    "full_cells_exact": true,
+    "physical_cycle_samples_zero": true
+  },
+  "date": "2026-08-26",
+  "full_suite": {
+    "c1_k2": {
+      "allocation": {
+        "allocated_bytes": 8868999,
+        "cycles": 252,
+        "first_use_samples": [
+          {
+            "active_delta": 57,
+            "allocated_bytes": 277152,
+            "current_bytes_delta": 277152,
+            "freed_bytes": 0
+          },
+          {
+            "active_delta": 57,
+            "allocated_bytes": 277152,
+            "current_bytes_delta": 277152,
+            "freed_bytes": 0
+          },
+          {
+            "active_delta": 57,
+            "allocated_bytes": 277152,
+            "current_bytes_delta": 277152,
+            "freed_bytes": 0
+          },
+          {
+            "active_delta": 57,
+            "allocated_bytes": 277152,
+            "current_bytes_delta": 277152,
+            "freed_bytes": 0
+          },
+          {
+            "active_delta": 57,
+            "allocated_bytes": 277152,
+            "current_bytes_delta": 277152,
+            "freed_bytes": 0
+          },
+          {
+            "active_delta": 57,
+            "allocated_bytes": 184813,
+            "current_bytes_delta": 184813,
+            "freed_bytes": 0
+          },
+          {
+            "active_delta": 57,
+            "allocated_bytes": 277152,
+            "current_bytes_delta": 277152,
+            "freed_bytes": 0
+          },
+          {
+            "active_delta": 57,
+            "allocated_bytes": 277152,
+            "current_bytes_delta": 277152,
+            "freed_bytes": 0
+          }
+        ],
+        "freed_bytes": 0,
+        "post_first_cycle_nonzero": 3,
+        "zero_cycles": 219
+      },
+      "baseline_tok_s": 16.23660895177381,
+      "categories": {
+        "code": {
+          "baseline_tok_s": 16.913669372229787,
+          "delta": -0.0021498747902638504,
+          "p3_tok_s": 16.877307100835573
+        },
+        "general_en": {
+          "baseline_tok_s": 15.963460040119012,
+          "delta": -0.004366814416540632,
+          "p3_tok_s": 15.89375057267795
+        },
+        "general_ja": {
+          "baseline_tok_s": 16.101251822856966,
+          "delta": -0.001851286314182854,
+          "p3_tok_s": 16.0714437957161
+        },
+        "mixed_ja_en": {
+          "baseline_tok_s": 15.396816801434404,
+          "delta": -0.0026358228661147454,
+          "p3_tok_s": 15.356233519643803
+        }
+      },
+      "delta": -0.0026439477709192527,
+      "exact": true,
+      "p3_tok_s": 16.19368020572848,
+      "sample_cv": 0.04982687862380672
+    },
+    "c2_k2": {
+      "allocation": {
+        "allocated_bytes": 0,
+        "cycles": 510,
+        "first_use_samples": [],
+        "freed_bytes": 0,
+        "post_first_cycle_nonzero": 0,
+        "zero_cycles": 510
+      },
+      "baseline_tok_s": 5.629677771333246,
+      "categories": {
+        "code": {
+          "baseline_tok_s": 5.387221511401686,
+          "delta": -0.00289586599992786,
+          "p3_tok_s": 5.371620839792738
+        },
+        "general_en": {
+          "baseline_tok_s": 6.387394268311822,
+          "delta": -0.003302917238896752,
+          "p3_tok_s": 6.366297233671385
+        },
+        "general_ja": {
+          "baseline_tok_s": 5.294601854590414,
+          "delta": -0.002574588880126405,
+          "p3_tok_s": 5.280970431530888
+        },
+        "mixed_ja_en": {
+          "baseline_tok_s": 5.831875248332227,
+          "delta": -0.0034149670742810168,
+          "p3_tok_s": 5.811959586377858
+        }
+      },
+      "delta": -0.002999610265346786,
+      "exact": true,
+      "p3_tok_s": 5.61279093209976,
+      "sample_cv": 0.10142777402965594
+    },
+    "c4_k2": {
+      "allocation": {
+        "allocated_bytes": 0,
+        "cycles": 510,
+        "first_use_samples": [],
+        "freed_bytes": 0,
+        "post_first_cycle_nonzero": 0,
+        "zero_cycles": 510
+      },
+      "baseline_tok_s": 9.185287269227583,
+      "categories": {
+        "code": {
+          "baseline_tok_s": 8.85608841192929,
+          "delta": -0.0037917652419933168,
+          "p3_tok_s": 8.822508203708917
+        },
+        "general_en": {
+          "baseline_tok_s": 10.535759970043687,
+          "delta": -0.0033899968498044553,
+          "p3_tok_s": 10.500043776934943
+        },
+        "general_ja": {
+          "baseline_tok_s": 8.738610333903935,
+          "delta": -0.004127371466662644,
+          "p3_tok_s": 8.702542842953497
+        },
+        "mixed_ja_en": {
+          "baseline_tok_s": 9.160366499511555,
+          "delta": 0.0088621941825886,
+          "p3_tok_s": 9.241547446213906
+        }
+      },
+      "delta": -0.0012801518676868184,
+      "exact": true,
+      "p3_tok_s": 9.173528706574642,
+      "sample_cv": 0.09950617098884287
+    }
+  },
+  "host": {
+    "backend": "hip_gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "gpu_max_hw_queues": "2",
+    "hostname": "gfx1151",
+    "queue_source": "explicit_cli",
+    "target_arch": "gfx1151"
+  },
+  "kind": "specdec2_gfx1151_perf_p3_stable_slabs",
+  "model": {
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8060155376,
+        16120310752
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 16121359328,
+      "value": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa"
+    },
+    "kv": "bf16",
+    "manifest_sha256": "0e053fd658cacbc72a67b7e7ccf33927502a0fe9379faf14dac30ae6ee2bb65b",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "state": "fp32_strict"
+  },
+  "performance_claim": false,
+  "pre_change_allocation_audit": {
+    "c2": {
+      "cold_records": [
+        {
+          "active_delta": 119,
+          "allocated_bytes": 977082292,
+          "candidate_counts": [
+            2,
+            2
+          ],
+          "current_delta": 971070116,
+          "cycle_id": 2,
+          "freed_bytes": 6012176,
+          "request_count": 2,
+          "target_rows": [
+            6
+          ]
+        }
+      ],
+      "steady_allocated_freed_bytes": [
+        40960
+      ]
+    },
+    "c4": {
+      "cold_records": [
+        {
+          "active_delta": 0,
+          "allocated_bytes": 1954162816,
+          "candidate_counts": [
+            2,
+            2,
+            2,
+            2
+          ],
+          "current_delta": 977040448,
+          "cycle_id": 5,
+          "freed_bytes": 977122368,
+          "request_count": 4,
+          "target_rows": [
+            12
+          ]
+        }
+      ],
+      "steady_allocated_freed_bytes": [
+        81920
+      ]
+    }
+  },
+  "profiles": {
+    "c2_k2": {
+      "allocation_samples": [
+        {
+          "active_delta": 121,
+          "allocated_bytes": 977082292,
+          "current_bytes_delta": 971111076,
+          "freed_bytes": 5971216
+        },
+        {
+          "active_delta": 0,
+          "allocated_bytes": 0,
+          "current_bytes_delta": 0,
+          "freed_bytes": 0
+        },
+        {
+          "active_delta": 0,
+          "allocated_bytes": 0,
+          "current_bytes_delta": 0,
+          "freed_bytes": 0
+        }
+      ],
+      "child_exact": true,
+      "memory_after_close": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 23032982408,
+        "peak_allocations": 1752,
+        "total_allocated_bytes": 24167154716,
+        "total_freed_bytes": 24167154716
+      },
+      "raw": {
+        "hip_api": {
+          "committed": false,
+          "sha256": "da5497845fdc4f5a7391621295ae77467cf9b558432a377580c40ae3d110f186",
+          "size_bytes": 5679139
+        },
+        "kernel": {
+          "committed": false,
+          "sha256": "d6780ae0e06f363cf9030972f0f16e93b0389b18ce217eba959f6f5f8e403635",
+          "size_bytes": 3778016
+        },
+        "marker": {
+          "committed": false,
+          "sha256": "03e82c055dab5952a8a2995d66180813f3210eb5e3fd0d48e6d7fcf414c666d2",
+          "size_bytes": 5822
+        }
+      },
+      "windows": [
+        {
+          "api_calls": 4899,
+          "api_counts": {
+            "hipDeviceSynchronize": 8,
+            "hipFree": 6,
+            "hipLaunchKernel": 1088,
+            "hipMalloc": 127,
+            "hipMemcpy": 43,
+            "hipMemcpyAsync": 361,
+            "hipStreamSynchronize": 0
+          },
+          "index": 0,
+          "marker_wall_ms": 478.69213
+        },
+        {
+          "api_calls": 4702,
+          "api_counts": {
+            "hipDeviceSynchronize": 6,
+            "hipFree": 0,
+            "hipLaunchKernel": 1088,
+            "hipMalloc": 0,
+            "hipMemcpy": 47,
+            "hipMemcpyAsync": 297,
+            "hipStreamSynchronize": 0
+          },
+          "index": 1,
+          "marker_wall_ms": 439.556259
+        },
+        {
+          "api_calls": 4698,
+          "api_counts": {
+            "hipDeviceSynchronize": 6,
+            "hipFree": 0,
+            "hipLaunchKernel": 1088,
+            "hipMalloc": 0,
+            "hipMemcpy": 43,
+            "hipMemcpyAsync": 297,
+            "hipStreamSynchronize": 0
+          },
+          "index": 2,
+          "marker_wall_ms": 440.132271
+        }
+      ]
+    },
+    "c4_k2": {
+      "allocation_samples": [
+        {
+          "active_delta": 121,
+          "allocated_bytes": 1954163700,
+          "current_bytes_delta": 1942221268,
+          "freed_bytes": 11942432
+        },
+        {
+          "active_delta": 0,
+          "allocated_bytes": 0,
+          "current_bytes_delta": 0,
+          "freed_bytes": 0
+        },
+        {
+          "active_delta": 0,
+          "allocated_bytes": 0,
+          "current_bytes_delta": 0,
+          "freed_bytes": 0
+        }
+      ],
+      "child_exact": true,
+      "memory_after_close": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 24495682848,
+        "peak_allocations": 1764,
+        "total_allocated_bytes": 25996881876,
+        "total_freed_bytes": 25996881876
+      },
+      "raw": {
+        "hip_api": {
+          "committed": false,
+          "sha256": "4cb59d0da9975e2ff2a8a410cffdfe38bc384eb39a60f9e1013072ad17a56391",
+          "size_bytes": 5871962
+        },
+        "kernel": {
+          "committed": false,
+          "sha256": "147f312a0e935697a8aae530a10991f84e551b63fcf1e9b31dd6a44327ba3852",
+          "size_bytes": 4048327
+        },
+        "marker": {
+          "committed": false,
+          "sha256": "9d8299cf081f01229718ed3f99ff17ab6361d7bd035a2f483f947c16032c12cf",
+          "size_bytes": 7958
+        }
+      },
+      "windows": [
+        {
+          "api_calls": 5327,
+          "api_counts": {
+            "hipDeviceSynchronize": 8,
+            "hipFree": 6,
+            "hipLaunchKernel": 1101,
+            "hipMalloc": 127,
+            "hipMemcpy": 59,
+            "hipMemcpyAsync": 721,
+            "hipStreamSynchronize": 0
+          },
+          "index": 0,
+          "marker_wall_ms": 591.219197
+        },
+        {
+          "api_calls": 5070,
+          "api_counts": {
+            "hipDeviceSynchronize": 6,
+            "hipFree": 0,
+            "hipLaunchKernel": 1101,
+            "hipMalloc": 0,
+            "hipMemcpy": 67,
+            "hipMemcpyAsync": 593,
+            "hipStreamSynchronize": 0
+          },
+          "index": 1,
+          "marker_wall_ms": 517.927234
+        },
+        {
+          "api_calls": 5062,
+          "api_counts": {
+            "hipDeviceSynchronize": 6,
+            "hipFree": 0,
+            "hipLaunchKernel": 1101,
+            "hipMalloc": 0,
+            "hipMemcpy": 59,
+            "hipMemcpyAsync": 593,
+            "hipStreamSynchronize": 0
+          },
+          "index": 2,
+          "marker_wall_ms": 520.322901
+        }
+      ]
+    }
+  },
+  "promotion": false,
+  "protocol": {
+    "counterbalanced": true,
+    "full_prompt_suite": true,
+    "gpu_max_hw_queues": 2,
+    "max_tokens": 25,
+    "prompt_count": 10,
+    "require_cached_build": true,
+    "runs": 3,
+    "selected_activation": "C1 streaming; physical replay; long K0"
+  },
+  "raw_evidence": {
+    "c1_full": {
+      "committed": false,
+      "sha256": "f2ad47631f19338a0d4cccf1679b8d590898cd63168888c82909148eb2fd704b",
+      "size_bytes": 1183715
+    },
+    "c1_smoke": {
+      "committed": false,
+      "sha256": "c04c38c42bd9312bcd63cdd9a81077d709c56e0bf84dcf1e563f18ac4e14439d",
+      "size_bytes": 48552
+    },
+    "p1": {
+      "committed": true,
+      "sha256": "5014183f6c904b54028b82fae2a3acab77f8bff9b22d17e1d447acef25059593",
+      "size_bytes": 58123
+    },
+    "p2": {
+      "committed": true,
+      "sha256": "448a68e7f8cb5350047ed6800778e51d6ba215cdbd1b84d2b5cc286d320d1820",
+      "size_bytes": 12767
+    },
+    "physical_full": {
+      "committed": false,
+      "sha256": "20d58ddf81530ca9d4f35ebd1b4472741f7de537160fd188b96c11c31195525b",
+      "size_bytes": 4296341
+    },
+    "physical_smoke": {
+      "committed": false,
+      "sha256": "0df8ec70275c420c1f82e5a7637db8ea912ec327f30fd3e472a14b2e7d8f9cbb",
+      "size_bytes": 158755
+    },
+    "pre_audit": {
+      "committed": false,
+      "sha256": "733a754151847db56b152934d6cce581035eea797479077cc8891096ba46086f",
+      "size_bytes": 11742
+    },
+    "profile_c2_child": {
+      "committed": false,
+      "sha256": "6910421d0080a0505436c98bf1ccee502b1889375ade586b561a78411bfe219b",
+      "size_bytes": 45441
+    },
+    "profile_c4_child": {
+      "committed": false,
+      "sha256": "88fef1b61428be82ba216832fd03c11ba0520f0c98100463572058dbde80ca16",
+      "size_bytes": 69300
+    }
+  },
+  "schema": 1,
+  "source": {
+    "commit": "b45d2bda3896a5ab37e3ff8b2921a448e0b19af3",
+    "tracked_clean": true
+  },
+  "stable_workspace": {
+    "close_owner": "adapter/model close",
+    "distinct_proposal_repair_slabs": true,
+    "shape_by_capacity": {
+      "c1": [
+        1,
+        5120
+      ],
+      "c2": [
+        4,
+        5120
+      ],
+      "c4": [
+        4,
+        5120
+      ]
+    },
+    "shape_drift_fails_closed": true,
+    "work_item_claim": "2 * max physical request rows"
+  },
+  "status": "retained_mechanical_complete_wall_neutral",
+  "verdict": {
+    "category": "small mixed signs within same noise; no speed/default policy claim",
+    "complete_wall": "neutral within noise: C1/C2/C4 -0.264%/-0.300%/-0.128%; CV 4.98%/10.14%/9.95%",
+    "mechanical": "retain stable slabs; eliminates 2 malloc/free pairs per physical cycle and steady C1 proposal allocation",
+    "next": "P4 device-resident cycle boundary; do not revert stable pointers"
+  }
+}
