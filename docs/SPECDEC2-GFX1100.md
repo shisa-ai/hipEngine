@@ -1,6 +1,6 @@
 # SPECDEC2 S7 / gfx1100 Integration Plan
 
-- Status: **active; W7900 P1-P5 checkpoint with corrected dense/packed P4 retained**
+- Status: **closed performance campaign; explicit C1 retained, no product promotion, automatic K0**
 - Started: **2026-08-25**
 - Hardware lanes: **AMD Radeon Pro W7900** (binding/default) and **RX 7900 XTX** (independent diagnostic)
 - Shared architecture base: [`SPECDEC2.md`](SPECDEC2.md) S1-S6 at `82af2b6a4`
@@ -195,7 +195,8 @@ and improves staged wall 4.33%, but remains below AR/direct. No automatic/produc
 scope promotes. Evidence:
 [`gfx1100 P1-P3 checkpoint`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json),
 [`packed P4`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-paro-device-candidate.json),
-[`corrected dense P4`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-dense-device-chain-retained.json).
+[`corrected dense P4`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-dense-device-chain-retained.json),
+[`campaign closure`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-campaign-closure.json).
 
 ## 8. P2 — gfx1100 packed PARO physical C2/C4 K1
 

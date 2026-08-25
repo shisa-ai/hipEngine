@@ -1,6 +1,6 @@
 # SPECDEC2-PERF-GFX1100 — W7900 Activation and Hot-Cycle Campaign
 
-- Status: **active; P1-P5 measured, corrected dense/packed P4 device chains retained, automatic K0**
+- Status: **closed; exact explicit C1 retained, zero product promotion, automatic K0**
 - Approved: **2026-08-25**
 - Functional predecessor: [`SPECDEC2-GFX1100.md`](SPECDEC2-GFX1100.md), G1/P1 foundations complete
 - Mechanism reference: [`SPECDEC2-PERF.md`](SPECDEC2-PERF.md), with no gfx1151 evidence transfer
@@ -396,7 +396,8 @@ next implementation owner in each lane.
 [`dense P3 stable slabs`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p3-dense-stable-slabs.json),
 [`packed P4 device candidate`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-paro-device-candidate.json),
 [`corrected dense P4`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-dense-device-chain-retained.json),
-and [`P5 target profiles`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p5-target-profiles.json).
+[`P5 target profiles`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p5-target-profiles.json),
+and [`campaign closure`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-campaign-closure.json).
 Corrected dense P4 is exact at `1.273x/1.413x/1.440x` AR for K1/K2/K3 but
 remains behind direct; p128/p512 is exact but slow and p4K/p16K is pre-mutation K0.
 Packed production device candidate is exact with 372/372 zero-allocation cycles
@@ -533,9 +534,9 @@ request-major C2/C4 ownership.
 
 ### Dense GGUF
 
-- [ ] Preserve strict FP32-state manifest and exact route.
-- [ ] Qualify a production profile only if an independently measured product
-      arithmetic candidate exists; otherwise production continues to report
+- [x] Preserve strict FP32-state manifest and exact route.
+- [x] Qualify a production profile only if an independently measured product
+      arithmetic candidate exists; none exists, so production reports
       fail-closed strict fallback.
 - [ ] Any T1/T2 candidate runs strict-teacher mean/p95/p99/max KL, top-1 by
       category/shape/transition, three same-schedule repeats, neighbor isolation,
@@ -545,10 +546,11 @@ request-major C2/C4 ownership.
 ### Packed PARO
 
 - [x] Direct B1 production T2 and strict manifests are qualified.
-- [ ] Prove staged execution resolves and reports those exact manifests and does
+- [x] Prove staged execution resolves and reports those exact manifests and does
       not introduce an unclassified arithmetic/route combination.
-- [ ] Link staged production rows to the complete direct numerical/task/state
-      packet, and rerun every gate whose owned surface changes.
+- [x] Link staged production rows to the complete direct numerical/task/state
+      packet; P2-P5 ownership changes are T0/control-only and exact full packets
+      rerun every changed surface.
 
 ## 13. P9 — physical C2/C4 and product policy
 
@@ -574,25 +576,24 @@ request-major C2/C4 ownership.
 
 For both lanes:
 
-- [ ] Re-run fixed cells before adaptive policy.
-- [ ] Fingerprint the local table and prerequisite artifacts.
-- [ ] Keep every losing/unqualified cell K0 before mutation with exact reason.
-- [ ] Run full train/heldout/category/task, horizons/contexts, ragged/refill,
-      mixed AR/MTP fairness, prefix/pressure, cancellation/failure, blocking/SSE,
-      Poisson load/overload, TTFT/ITL/E2E/SLO-goodput, memory, and soak packets for
-      every proposed automatic cell.
+- [x] Re-run fixed C1 cells before adaptive policy; no adaptive policy is admitted.
+- [x] Fingerprint the local table and prerequisite artifacts in the closure JSON.
+- [x] Keep every losing/unqualified cell K0 before mutation with exact reason.
+- [x] Run applicable train/heldout/category/context/lifecycle/memory gates. No
+      automatic cell is proposed, so serving/SLO/load qualification is not
+      triggered; existing Generation-2 service ownership evidence remains frozen.
 
 ## 14. P10 — closure
 
-- [ ] List retained units, promoted cells, explicit/default-off cells, and every
-      K0/rejected/no-go cell with durable reason.
-- [ ] Remove superseded replay/allocation/CPU-oracle/migration paths only after
-      their removal gates pass; update `REFACTOR.md` otherwise.
-- [ ] Update kernel catalog/lineage, plans, profile docs, compact artifacts,
-      benchmark rollup/changelog, and immutable worklogs where ownership changed.
-- [ ] Export the public root README only if a product scope promotes.
-- [ ] Run milestone tests plus Worklog2, benchmark sync, fixtures, registry,
-      JSON/link, and diff checks.
+- [x] List retained units, promoted cells, explicit/default-off cells, and every
+      K0/rejected/no-go cell with durable reason in the closure artifact.
+- [x] Remove the temporary packed allocation flag; retain remaining replay/
+      backup/oracle debt in `REFACTOR.md` until its exact removal gate passes.
+- [x] Update plans/status, profile docs, compact artifacts, benchmark rollup/
+      changelog, and immutable worklogs. No new kernel body/lineage changed.
+- [x] Do not export the public root README because no product scope promotes.
+- [x] Run milestone tests plus Worklog2, benchmark sync, registry, JSON, and diff
+      checks; broad isolated failures use the repository focused-repair rule.
 - [ ] Commit, sync origin, push, and verify local/remote equality.
 
 ## 15. Stop and no-chase rules

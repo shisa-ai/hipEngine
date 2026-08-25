@@ -1,0 +1,277 @@
+{
+  "date": "2026-08-25",
+  "decision": "Close zero-promotion campaign. Retain exact explicit C1 device/dataflow units and strict fallbacks; keep automatic K0 because no staged cell matches its direct/product owner.",
+  "evidence_artifacts": {
+    "dense_p3": "benchmarks/results/2026-08-25-w7900-specdec2-perf-p3-dense-stable-slabs.json",
+    "dense_p4_corrected": "benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-dense-device-chain-retained.json",
+    "dense_p4_old_rejection": "benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-dense-device-chain-rejected.json",
+    "p1_p3_checkpoint": "benchmarks/results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json",
+    "p5_profiles": "benchmarks/results/2026-08-25-w7900-specdec2-perf-p5-target-profiles.json",
+    "packed_p4_p5": "benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-paro-device-candidate.json"
+  },
+  "final_cells": {
+    "dense_c1_k1": {
+      "automatic": "K0",
+      "candidate_budget": 1,
+      "cycles": 381,
+      "device_accept_calls": 381,
+      "device_handoffs": 381,
+      "exact_cells": 30,
+      "explicit": "retained",
+      "pre_target_candidate_d2h": 0,
+      "profile": "strict",
+      "staged_speedup_vs_ar": 1.273202805200553,
+      "staged_speedup_vs_direct": 0.9666381183760199,
+      "target_rows": 2,
+      "total_cells": 30,
+      "zero_allocation_cycles": 381
+    },
+    "dense_c1_k2": {
+      "automatic": "K0",
+      "candidate_budget": 2,
+      "cycles": 285,
+      "device_accept_calls": 261,
+      "device_handoffs": 261,
+      "exact_cells": 30,
+      "explicit": "retained",
+      "pre_target_candidate_d2h": 0,
+      "profile": "strict",
+      "staged_speedup_vs_ar": 1.4129381790407518,
+      "staged_speedup_vs_direct": 0.9768323224995082,
+      "target_rows": 3,
+      "total_cells": 30,
+      "zero_allocation_cycles": 285
+    },
+    "dense_c1_k3": {
+      "automatic": "K0",
+      "candidate_budget": 3,
+      "cycles": 232,
+      "device_accept_calls": 217,
+      "device_handoffs": 217,
+      "exact_cells": 30,
+      "explicit": "retained",
+      "pre_target_candidate_d2h": 0,
+      "profile": "strict",
+      "staged_speedup_vs_ar": 1.4400629788839512,
+      "staged_speedup_vs_direct": 0.963872043053106,
+      "target_rows": 4,
+      "total_cells": 30,
+      "zero_allocation_cycles": 232
+    },
+    "dense_over_p1023": {
+      "automatic": "K0",
+      "exact": true,
+      "p16k_actual_tokens": 16374,
+      "p4k_actual_tokens": 4085,
+      "reason": "target_context_k0 before provider mutation"
+    },
+    "dense_p96_p1023": {
+      "automatic": "K0",
+      "p128_actual_tokens": 121,
+      "p128_exact": true,
+      "p128_staged_over_ar_wall": 2.098064753762838,
+      "p512_actual_tokens": 505,
+      "p512_exact": true,
+      "p512_staged_over_ar_wall": 1.2848626065346425,
+      "profile": "strict",
+      "reason": "exact but slower than AR",
+      "target_mode": "serial_exact"
+    },
+    "packed_paro_c1_k1_production": {
+      "automatic": "K0",
+      "cycles": 372,
+      "device_handoffs": 372,
+      "exact_pairs": 30,
+      "explicit": "retained",
+      "pairs": 30,
+      "post_target_candidate_rows": 372,
+      "staged_speedup_vs_ar": 0.9789627149505368,
+      "staged_speedup_vs_matched_direct": 0.9596076504994536,
+      "zero_allocation_cycles": 372
+    },
+    "packed_paro_c1_k1_strict": {
+      "automatic": "K0",
+      "cycles": 372,
+      "device_handoffs": 372,
+      "exact_pairs": 30,
+      "explicit": "retained",
+      "pairs": 30,
+      "post_target_candidate_rows": 372,
+      "staged_speedup_vs_ar": 0.9518354155652579,
+      "zero_allocation_cycles": 372
+    },
+    "physical_c2_c4": {
+      "automatic": "K0",
+      "dense_package_capability": false,
+      "packed_paro_package_capability": false,
+      "reason": "not independently qualified on W7900"
+    }
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "gpu_index": 0,
+    "gpu_max_hw_queues": null,
+    "hostname": "epyc",
+    "rocm": "HIP 7.2.53211-3d9ef42",
+    "sku": "D7070100",
+    "target_arch": "gfx1100",
+    "unique_id": "0xe282895b62c2b295"
+  },
+  "kind": "specdec2_perf_gfx1100_campaign_closure",
+  "lifecycle": {
+    "packed_repeat_packet": {
+      "path": "/tmp/specdec2-perf-gfx1100-closure/packed-lifecycle-5070bebf5.json",
+      "result": "six exact production/strict rows, provider reuse and device handoffs; exposed fixed-buffer leak",
+      "sha256": "02e3f04af537b5dc6290bf0a158eb1d1659b7954861fa2a6a74879d1335da96d"
+    },
+    "packed_zero_residue_packet": {
+      "path": "/tmp/specdec2-perf-gfx1100-closure/packed-residue-growth-fixed.json",
+      "result": "production-strict-production closes each return zero active allocations/current bytes and allocated equals freed",
+      "sha256": "bebc8418f10785c06d78c516919854800a37956304960dd2ab40b4da8e0a42db"
+    }
+  },
+  "models": {
+    "dense": {
+      "kv": "bf16",
+      "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+      "quant": "Q4_K_M",
+      "recurrent_state": "fp32_strict",
+      "sampled_fingerprint": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+      "strict_manifest": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+    },
+    "packed_paro": {
+      "kv": "bf16",
+      "mtp_quant": "bf16",
+      "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+      "production_manifest": "920737601cca41bc64963437ce1daece0e4ebca1bc52ba5bdd22ae817aba9561",
+      "strict_manifest": "3199678e604dca83d40f3d538deb3c05ceed3144b0100ef89b3ecfb94aed5723",
+      "target_quant": "W4A16_PARO"
+    }
+  },
+  "performance_claim": true,
+  "promotion": {
+    "dense_automatic": "K0",
+    "dense_explicit_c1_k1_k3": "retained",
+    "packed_automatic": "K0",
+    "packed_explicit_c1_k1": "retained",
+    "physical_c2_c4": "absent",
+    "product_scope": null,
+    "public_root_readme_export": false
+  },
+  "rejected_or_blocked": [
+    {
+      "mechanism": "older abed6101d dense device chain",
+      "reason": "following-AR state safety failure; corrected shared pre-capture/commit-table source later passed",
+      "status": "superseded_rejection"
+    },
+    {
+      "mechanism": "individual target kernel candidate",
+      "reason": "no single exact primitive projected >=1.10x operation speed and >=1% request saving",
+      "status": "not_admitted"
+    },
+    {
+      "mechanism": "packed post-commit sync removal",
+      "reason": "sync count halved but accept sync absorbed queued work",
+      "status": "retained_mechanical_wall_neutral"
+    },
+    {
+      "mechanism": "packed strict common direct attachment",
+      "reason": "compact product AR versus serial direct differs at one heldout token boundary",
+      "status": "blocked"
+    },
+    {
+      "mechanism": "automatic/product promotion",
+      "reason": "retained staged cells remain slower than direct owner or product AR",
+      "status": "rejected"
+    },
+    {
+      "mechanism": "physical C2/C4",
+      "reason": "package capability remains false independently for dense and packed lanes",
+      "status": "unqualified_K0"
+    }
+  ],
+  "requirements": {
+    "activation_and_decode_walls": {
+      "evidence": "P1-P4 compact artifacts report complete/decode and named activation/cycle owners",
+      "status": "passed"
+    },
+    "artifacts_and_handoff": {
+      "evidence": "compact artifacts, benchmark rollup/changelog, immutable worklogs, refactor debt and closure docs",
+      "status": "passed"
+    },
+    "common_timing_boundaries": {
+      "evidence": "production packed and all dense arms use matched request boundaries; strict packed direct attach fails closed on one compact-AR/serial-direct activation token",
+      "status": "passed_with_strict_direct_blocker"
+    },
+    "device_cycle_residency": {
+      "evidence": "corrected dense and packed device candidates, GPU accept, selected commit, bounded result/provider repair; zero pre-target candidate D2H",
+      "status": "passed_explicit_c1"
+    },
+    "local_policy": {
+      "evidence": "every staged cell trails its direct owner or product AR; no automatic cell proposed",
+      "status": "K0"
+    },
+    "premutation_k0_reasons": {
+      "evidence": "long target_context_k0, absent physical capability, losing p128/p512 and packed product cells",
+      "status": "passed"
+    },
+    "profile_quality_and_state": {
+      "evidence": "dense strict exact; packed selected/strict manifests, complete exact profile rows, direct production numerical/task/state packet unchanged by T0 ownership changes",
+      "status": "passed_for_retained_scope"
+    },
+    "provider_repair": {
+      "evidence": "4.95-6.56 ms/request dense profile; no material state-safe candidate after device chain",
+      "status": "no_candidate"
+    },
+    "registered_manifests_and_fallbacks": {
+      "evidence": "dense strict b27ee5..., packed production 920737... and strict 319967..., registered serial/eager fallbacks",
+      "status": "passed"
+    },
+    "streaming_prompt_priming": {
+      "evidence": "dense and packed selected paths retain one 10240-byte carried row; dense p128/p512 exact, long K0",
+      "status": "retained"
+    },
+    "target_profiles": {
+      "evidence": "cached dense R2/R3/R4 and packed production/strict R2 marker/kernel/HIP/copy/allocation leaves",
+      "status": "passed"
+    },
+    "zero_hot_allocation": {
+      "evidence": "dense corrected P4 898/898 cycles and packed production/strict 372/372 cycles allocate/free zero",
+      "status": "passed"
+    }
+  },
+  "retained_units": [
+    "common lane-aware bridge and packed direct attachment",
+    "dense streaming prompt activation and one-row carry",
+    "packed compact prefill priming and 256-token proposer capacity bucket",
+    "dense and packed stable cycle slabs with zero hot allocation",
+    "corrected dense C1 device proposal/accept/selected commit/provider repair",
+    "packed C1 stable INT32 device candidate descriptor",
+    "packed one-sync stream ordering",
+    "gfx1100 native target p95 scope plus serial and K0 fallbacks"
+  ],
+  "schema": 1,
+  "source": {
+    "branch": "main",
+    "commit": "a98fc17f928dbec6edcef8ce9a60eea5dafc2be4",
+    "tracked_clean": true
+  },
+  "speed_claim_eligible": true,
+  "status": "closed_zero_product_promotion_explicit_c1_retained",
+  "tests": {
+    "affected_bundle": {
+      "command": "uv run pytest -q tests/test_qwen35_gguf_mtp2_seam.py tests/test_gguf_native_spec_cycle.py tests/test_qwen35_gguf_mtp_session.py tests/test_qwen35_paro_mtp2_seam.py tests/test_qwen35_resident_batch_layout.py tests/test_specdec2_perf_bridge.py tests/test_specdec2_perf_gfx1100_bridge.py",
+      "result": "308 passed"
+    },
+    "full_suite": {
+      "broad_result": "reached 100% with 26 failures",
+      "command": "uv run pytest -q",
+      "focused_result": "16 order/global-state nodes passed unchanged; 10 in-scope evidence/compactness/target-digest nodes repaired; final 11-node affected repair bundle passed",
+      "log": "/tmp/specdec2-perf-gfx1100-closure/full-pytest-28fae9ac2.log",
+      "log_sha256": "3c772e2c6c852645517979f79d9d188e9b9813cba95a2dffaa39926545728372",
+      "rerun_policy": "no second broad run per focused-repair rule",
+      "status": "completed_with_focused_repairs"
+    }
+  }
+}

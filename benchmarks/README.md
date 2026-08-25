@@ -115,17 +115,14 @@ noise. Automatic/product policy remains K0; no public scope promotes.
 gfx1100 SPECDEC2-PERF now retains corrected C1 device chains. Dense
 Qwen3.6-27B GGUF K1/K2/K3 is exact at **1.273x/1.413x/1.440x true AR**, but
 remains **3.3%/2.3%/3.6%** behind direct MTP. Exact p128/p512 streaming loses
-AR, while p4K/p16K stays pre-mutation K0. Dense P3 stable slabs are exact with
-K1/K2/K3 wall neutral at **+0.75%/+0.21%/+0.03%**; only persistent graph-bucket
-first use remains. Packed PARO production is exact and zero-allocation across
+AR, while p4K/p16K stays pre-mutation K0. Corrected dense P4 pre-captures
+commit-bound graphs, keeps all **898 cycles allocation-free**, and improves
+K1/K2/K3 wall **0.75%/3.36%/1.54%**. Packed PARO production is exact across
 **372/372** cycles; P4 device candidate handoff improves staged wall **4.33%**
 to **0.979x AR** with 372 device handoffs and bounded post-target rows. Strict
 D8 allocation falls **1,110 malloc/free pairs → 0** and P4 cycle marker wall is
 **83.469 ms**. Both automatic policies remain K0; physical C2/C4 is not exposed.
-[`P1-P3 checkpoint`](results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json),
-dense P3 evidence,
-[`packed P4`](results/2026-08-25-w7900-specdec2-perf-p4-paro-device-candidate.json),
-[`corrected dense P4`](results/2026-08-25-w7900-specdec2-perf-p4-dense-device-chain-retained.json).
+[`gfx1100 closure`](results/2026-08-25-w7900-specdec2-perf-campaign-closure.json).
 
 ## Where detailed evidence lives
 
