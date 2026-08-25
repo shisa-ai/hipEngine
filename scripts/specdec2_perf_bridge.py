@@ -693,11 +693,18 @@ def _run_arm(
     request: GenerationRequest,
     concurrency: int,
     ledger: _StageLedger,
+    legacy_native_supported: bool = True,
 ) -> dict[str, Any]:
-    if arm == "legacy_native" and int(concurrency) != 1:
+    if arm == "legacy_native" and (
+        int(concurrency) != 1 or not bool(legacy_native_supported)
+    ):
         return {
             "status": "skipped",
-            "reason": "dense_direct_legacy_is_request_serial_for_c_gt_1",
+            "reason": (
+                "dense_direct_legacy_requires_strict_fp32_state"
+                if int(concurrency) == 1
+                else "dense_direct_legacy_is_request_serial_for_c_gt_1"
+            ),
             "realized_route": None,
         }
     before_memory = memory_stats()
@@ -775,6 +782,10 @@ def validate_bridge_artifact(payload: Mapping[str, Any]) -> None:
     if not isinstance(workload, Mapping):
         raise BridgeContractError("artifact has no workload contract")
     prompt_ids = tuple(str(value) for value in workload.get("prompt_ids", ()))
+    model = payload.get("model")
+    if not isinstance(model, Mapping):
+        raise BridgeContractError("artifact has no model contract")
+    execution_profile = str(model.get("execution_profile", "strict"))
     if (
         workload.get("scope") == "full"
         and bool(workload.get("selection_complete", True))
@@ -808,7 +819,11 @@ def validate_bridge_artifact(payload: Mapping[str, Any]) -> None:
             if not isinstance(row, Mapping):
                 raise BridgeContractError(f"cell {key} has no {arm} arm")
             if row.get("status") == "skipped":
-                if arm != "legacy_native" or key[2] == 1:
+                allowed_legacy_skip = bool(
+                    arm == "legacy_native"
+                    and (key[2] != 1 or execution_profile == "production")
+                )
+                if not allowed_legacy_skip:
                     raise BridgeContractError(f"cell {key} illegally skipped {arm}")
                 continue
             if row.get("status") != "complete":
@@ -984,6 +999,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--target-arch")
     parser.add_argument("--quant-label", default="Q4_K_S")
+    parser.add_argument(
+        "--execution-profile",
+        choices=("strict", "production"),
+        default="strict",
+    )
     parser.add_argument("--gpu-max-hw-queues", type=int)
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--scope", choices=("train", "full"), default="full")
@@ -1059,9 +1079,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         gpu_max_hw_queues=args.gpu_max_hw_queues,
         environ=os.environ,
     )
+    recurrent_state = "fp16" if args.execution_profile == "production" else "fp32"
     environment = {
         "HIPENGINE_HIP_ARCH": platform_config["target_arch"],
-        "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+        "HIPENGINE_GGUF_FP16_RECURRENT_STATE": (
+            "1" if args.execution_profile == "production" else "0"
+        ),
         "GPU_MAX_HW_QUEUES": platform_config["gpu_max_hw_queues"],
         "HIPENGINE_REQUIRE_CACHED_BUILD": (
             "1" if args.require_cached_build else os.environ.get("HIPENGINE_REQUIRE_CACHED_BUILD")
@@ -1146,8 +1169,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "fingerprint": provenance.get("model_fingerprint"),
             "quant": platform_config["quant_label"],
             "kv": "bf16",
-            "execution_profile": "strict",
-            "recurrent_state": "fp32",
+            "execution_profile": str(args.execution_profile),
+            "recurrent_state": recurrent_state,
         },
         "workload": workload,
         "timing_contract": {
@@ -1187,7 +1210,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 llm = LLM(
                     str(Path(args.model).resolve()),
                     backend=str(platform_config["backend"]),
-                    execution_profile="strict",
+                    execution_profile=str(args.execution_profile),
                     max_active_requests=max(args.concurrency),
                     max_sequence_length=int(args.max_sequence_length),
                 )
@@ -1237,6 +1260,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                     request=warm_request,
                                     concurrency=int(concurrency),
                                     ledger=ledger,
+                                    legacy_native_supported=(
+                                        args.execution_profile == "strict"
+                                    ),
                                 )
                                 payload["warmups"].append(
                                     {
@@ -1307,6 +1333,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                         request=request,
                                         concurrency=int(concurrency),
                                         ledger=ledger,
+                                        legacy_native_supported=(
+                                            args.execution_profile == "strict"
+                                        ),
                                     )
                                     cell["arms"][str(arm)] = result
                                     payload["completed_arms"] = int(
