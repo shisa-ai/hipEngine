@@ -39,6 +39,8 @@ from hipengine.kernels.hip_gfx1100.norm import (
     register_qwen35_rmsnorm_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
+    gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
     register_gguf_k_t16_selected_prefill_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
@@ -424,6 +426,18 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
     assert registered == [
         KernelKey(
             "hip_gfx1151",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "t16_wmma_prefill_single_wave_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "t16_wmma_prefill_shared_b_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151",
             "linear_pair",
             "gguf_q4_k",
             "pack8_dual_decode_bf16_bf16_out",
@@ -694,6 +708,102 @@ def test_gfx1151_backend_declares_q4_two_wave_shape_and_row_policy() -> None:
             "dense_rowtile16_w2_bf16_bf16_out",
         )
     )
+
+
+def test_gfx1151_backend_routes_admitted_physical_q4_shapes_to_single_wave(
+    monkeypatch,
+) -> None:
+    selector = getattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out",
+        None,
+    )
+    rows_policy = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_ROWS",
+        None,
+    )
+    shape_policy = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES",
+        None,
+    )
+    assert callable(selector)
+    assert rows_policy == frozenset({6, 8, 12, 16})
+    assert shape_policy == frozenset(
+        {
+            (5_120, 6_144),
+            (5_120, 10_240),
+            (5_120, 12_288),
+            (6_144, 5_120),
+        }
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("single"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("shared"),
+        raising=False,
+    )
+
+    for rows in sorted(rows_policy):
+        for in_features, out_features in sorted(shape_policy):
+            selector(1, 2, 3, rows, in_features, out_features)
+    for rows, in_features, out_features in (
+        (4, 5_120, 10_240),
+        (7, 5_120, 10_240),
+        (16, 5_120, 1_024),
+        (16, 17_408, 5_120),
+        (16, 5_120, 5_120),
+    ):
+        selector(1, 2, 3, rows, in_features, out_features)
+
+    assert calls == ["single"] * (len(rows_policy) * len(shape_policy)) + [
+        "shared"
+    ] * 5
+
+
+def test_gfx1151_backend_registers_q4_physical_route_and_explicit_fallbacks() -> None:
+    gfx1151_backend.register_gfx1151_kernels(replace=True)
+
+    selected = resolve(
+        backend="hip_gfx1151",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="t16_wmma_prefill_bf16_bf16_out",
+    )
+    single = resolve(
+        backend="hip_gfx1151",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="t16_wmma_prefill_single_wave_bf16_bf16_out",
+    )
+    fallback = resolve(
+        backend="hip_gfx1151",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="t16_wmma_prefill_shared_b_bf16_bf16_out",
+    )
+    peer = resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="t16_wmma_prefill_bf16_bf16_out",
+    )
+
+    assert selected is getattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out",
+    )
+    assert single is gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
+    assert fallback is gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
+    assert peer is gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
 
 
 def test_gfx1151_backend_overrides_q5_rowtile_with_scoped_col8_wrapper(
