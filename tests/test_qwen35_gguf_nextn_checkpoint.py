@@ -46,6 +46,7 @@ def _executor(monkeypatch):
     scratch = SimpleNamespace(for_slot=lambda index, span_role="decode": slot)
     executor = object.__new__(Qwen35GGUFNextNExecutor)
     executor._request_slots = {7: 0}
+    executor._provider_root_state_metadata = {}
     executor.scratch = scratch
     executor.runtime = _Runtime()
     executor.closed = False
@@ -92,6 +93,45 @@ def test_nextn_checkpoint_uses_batch_session_logical_cursor(monkeypatch) -> None
 
     assert checkpoint.position == 18
     assert checkpoint.context_length == 19
+
+
+def test_nextn_root_snapshot_captures_and_restores_slot_state(monkeypatch) -> None:
+    executor, slot, _allocated, _freed = _executor(monkeypatch)
+    executor.max_requests = 2
+    executor._request_slots = {7: 1}
+    executor.scratch.layer_conv_states = (_Buffer(0x10000, 32),)
+    executor.scratch.layer_recurrent_states = (_Buffer(0x20000, 64),)
+    executor._provider_root_state_snapshots = (
+        _Buffer(0x30000, 32),
+        _Buffer(0x40000, 64),
+    )
+    executor._batch_sessions = (
+        SimpleNamespace(position=0, _position=0),
+        SimpleNamespace(position=18, _position=18),
+    )
+
+    executor.capture_request_root_state(7)
+
+    assert executor._provider_root_state_metadata[7] == (1, 18, 18)
+    assert [copy[:3] for copy in executor.runtime.copies[-2:]] == [
+        (0x30010, 0x10010, 16),
+        (0x40020, 0x20020, 32),
+    ]
+
+    slot.position_host[0] = 99
+    slot.context_host[0] = 100
+    executor._batch_sessions[1].position = 99
+    executor.restore_request_root_state(7)
+
+    assert [copy[:3] for copy in executor.runtime.copies[-4:]] == [
+        (0x10010, 0x30010, 16),
+        (0x20020, 0x40020, 32),
+        (0x3000, slot.position_host.ctypes.data, 8),
+        (0x4000, slot.context_host.ctypes.data, 8),
+    ]
+    assert slot.position_host[0] == 18
+    assert slot.context_host[0] == 18
+    assert executor._batch_sessions[1]._position == 18
 
 
 def test_nextn_checkpoint_rejects_wrong_request_owner(monkeypatch) -> None:
