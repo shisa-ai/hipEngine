@@ -409,6 +409,11 @@ next implementation owner in each lane.
 ### Packed PARO
 
 - [x] Streaming final-normalized BF16 priming exists with one carried 10 KiB row.
+- [x] The staged C1 owner now consumes final-layer rows from the same compact
+      packed target prefill as true AR, normalizes through the one-row BF16
+      capture, and primes NextN without serial target replay.  The focused
+      strict `general_ja_explain` D25 gate is exact after the earlier serial /
+      packed activation paths diverged at generated-token index 11.
 - [ ] Revalidate chunk/tail/cancel/prefix/pressure lifetime and activation wall
       under the common bridge; do not reimplement the sink without a failure.
 

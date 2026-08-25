@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import hipengine.generation.qwen35_paro as paro_generation_module
 import hipengine.generation.qwen35_paro_mtp2 as paro_mtp2_module
 from hipengine.generation.qwen35_paro import Qwen35ParoResidentModelRunner
 from hipengine.generation.qwen35_paro_mtp2 import (
@@ -229,6 +230,101 @@ def test_streaming_prompt_priming_uses_shifted_tokens_and_final_root() -> None:
     assert adapter._states[7].prompt_rows_consumed == 3
     assert adapter._states[7].prompt_prime_seconds > 0.0
     assert row.mtp2_prompt_prime_ms > 0.0
+
+
+def test_staged_prefill_uses_packed_target_and_streams_final_hidden_rows(monkeypatch) -> None:
+    calls = []
+    adapter = SimpleNamespace(
+        begin_prompt=lambda request_id: calls.append(("begin", request_id)),
+        consume_prompt_row=lambda request_id, **kwargs: calls.append(
+            ("consume", request_id, kwargs)
+        ),
+    )
+
+    class FakeSession:
+        block_size = 256
+        hidden_nbytes = 16
+        config = SimpleNamespace(hidden_size=8)
+        runtime = object()
+
+        def prefill_native_packed(
+            self,
+            slab,
+            *,
+            sample=True,
+            final_hidden_row_sink=None,
+        ):
+            calls.append(("packed", slab.token_rows, sample))
+            assert final_hidden_row_sink is not None
+            final_hidden_row_sink(7, 0, SimpleNamespace(ptr=0x9000), None)
+            result = SimpleNamespace(token_id=99)
+            final_hidden_row_sink(7, 1, SimpleNamespace(ptr=0x9010), result.token_id)
+            return (result,)
+
+        def _write_final_normalized_hidden_bf16(
+            self,
+            hidden,
+            *,
+            destination_ptr,
+            stream=0,
+        ):
+            calls.append(("normalize", hidden.ptr, destination_ptr, stream))
+
+    runner = object.__new__(Qwen35ParoResidentModelRunner)
+    runner._session = FakeSession()
+    runner._resolved_mtp2_adapter = lambda: adapter
+    runner._clear_session_sampler = lambda: None
+    runner._configure_sampled_row = lambda row: None
+    runner._fallback_reasons = {"packed_prefill_unavailable": 0}
+    runner._route_counts = {"prefill_chunks": 0}
+    row = SimpleNamespace(
+        request_id=7,
+        model_slot=0,
+        prompt_ids=(10, 11),
+        native_greedy=True,
+        mtp2_candidate_budget=1,
+        mtp2_prompt_hidden_buffer=None,
+        native_prefill=False,
+    )
+    monkeypatch.setattr(
+        paro_generation_module,
+        "malloc",
+        lambda nbytes, runtime=None: SimpleNamespace(ptr=0x8000, nbytes=nbytes),
+    )
+
+    result = runner._prefill_row_chunk(
+        row,
+        (10, 11),
+        start_position=0,
+        final_chunk=True,
+    )
+
+    assert result.token_id == 99
+    assert row.native_prefill is True
+    assert calls == [
+        ("begin", 7),
+        ("packed", ((10, 11),), True),
+        ("normalize", 0x9000, 0x8000, 0),
+        (
+            "consume",
+            7,
+            {
+                "prompt_index": 0,
+                "target_hidden_ptr": 0x8000,
+                "seed_token": None,
+            },
+        ),
+        ("normalize", 0x9010, 0x8000, 0),
+        (
+            "consume",
+            7,
+            {
+                "prompt_index": 1,
+                "target_hidden_ptr": 0x8000,
+                "seed_token": 99,
+            },
+        ),
+    ]
 
 
 def test_initial_root_k0_keeps_primed_provider_live() -> None:
