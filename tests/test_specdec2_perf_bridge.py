@@ -14,6 +14,7 @@ from scripts.specdec2_perf_bridge import (
     _summarize,
     arm_order,
     atomic_write_json,
+    bridge_speed_claim_eligible,
     load_prompt_suite,
     normalize_timing_payloads,
     parse_budgets,
@@ -116,6 +117,36 @@ def test_bridge_loads_the_exact_canonical_prompt_contract() -> None:
     assert tuple(row["id"] for row in rows) == FULL_PROMPT_IDS
     assert all(row["rendered_prompt"].endswith("<|im_start|>assistant\n") for row in rows)
     assert all(len(row["prompt_sha256"]) == 64 for row in rows)
+
+
+def test_bridge_speed_claim_gate_accepts_planned_full_k2_shape() -> None:
+    assert bridge_speed_claim_eligible(
+        scope="full",
+        prompt_ids=FULL_PROMPT_IDS,
+        runs=3,
+        concurrencies=(1, 2, 4),
+        tracked_clean=True,
+        unexpected_untracked=(),
+        all_exact=True,
+    )
+    assert not bridge_speed_claim_eligible(
+        scope="full",
+        prompt_ids=FULL_PROMPT_IDS,
+        runs=3,
+        concurrencies=(1,),
+        tracked_clean=True,
+        unexpected_untracked=(),
+        all_exact=True,
+    )
+    assert not bridge_speed_claim_eligible(
+        scope="full",
+        prompt_ids=FULL_PROMPT_IDS,
+        runs=3,
+        concurrencies=(1, 2, 4),
+        tracked_clean=False,
+        unexpected_untracked=(),
+        all_exact=True,
+    )
 
 
 def test_bridge_timing_ownership_counts_one_batch_payload() -> None:
