@@ -193,6 +193,8 @@ class Qwen35ParoMTP2Adapter:
             input_token=input_token,
             target_hidden_ptr=int(target_hidden_ptr),
             position=index + 1,
+            need_result=final,
+            read_token_id=False,
             read_expert_topk=False,
             read_lm_head_value=False,
         )
@@ -377,10 +379,9 @@ class Qwen35ParoMTP2Adapter:
         state = self._states[rid]
         started = time.perf_counter()
         state.checkpoint = state.proposer.save_state(0)
-        candidate = int(state.proposer.current.token)
+        candidate_token_ids = state.proposer.device_candidate_token_ids()
         state.last_proposal_seconds = time.perf_counter() - started
-        if candidate < 0:
-            raise RuntimeError("PARO MTP2 proposer has no valid candidate")
+        row.mtp2_candidate_device_handoffs += 1
         return CandidateGraph(
             provider_key=plan.provider_key or "qwen_paro_mtp_bf16",
             method_key="mtp2",
@@ -395,9 +396,10 @@ class Qwen35ParoMTP2Adapter:
             parent_candidate_rows=(-1,),
             draft_depths=(1,),
             active_mask=(True,),
-            candidate_tokens=(candidate,),
+            candidate_tokens=(0,),
+            token_ids=candidate_token_ids,
             mode="verify_chain",
-            provider_metadata=(("candidate_handoff", "bounded_host_i32"),),
+            provider_metadata=(("candidate_handoff", "device_i32"),),
         )
 
     def kv_live_spans_owner(self, plan: SpecRequestPlan) -> str:
@@ -465,8 +467,16 @@ class Qwen35ParoMTP2Adapter:
             ),
             graph_mode="off",
             canonicalize_after=False,
+            candidate_token_ids_i32=(
+                frontier.candidate_graph.token_ids
+                if frontier.candidate_graph is not None
+                else None
+            ),
         )
         target_seconds = time.perf_counter() - target_started
+        row.mtp2_candidate_d2h_after_target += int(
+            frontier.candidate_graph.candidate_rows
+        )
         accepted = int(verify.accepted_count)
         bonus = int(
             verify.next_token
@@ -477,7 +487,7 @@ class Qwen35ParoMTP2Adapter:
         try:
             if accepted:
                 state.proposer.advance_with_previous_hidden(
-                    input_token=int(frontier.candidate_graph.candidate_tokens[0]),
+                    input_token=int(verify.accepted_tokens[0]),
                     position=state.proposer.position + 1,
                     need_result=False,
                     read_expert_topk=False,
@@ -487,6 +497,7 @@ class Qwen35ParoMTP2Adapter:
                 input_token=bonus,
                 target_hidden_ptr=int(verify.selected_target_hidden_ptr),
                 position=state.proposer.position + 1,
+                read_token_id=False,
                 read_expert_topk=False,
                 read_lm_head_value=False,
             )

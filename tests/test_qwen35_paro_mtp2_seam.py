@@ -10,6 +10,9 @@ from hipengine.generation.qwen35_paro_mtp2 import (
     _ParoMTP2RequestState,
     _memory_delta,
 )
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
+from hipengine.core.tensor import Tensor
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.speculative import SpeculativeRequestSemantics
 
@@ -74,6 +77,9 @@ class _ProposerDouble:
     def advance_with_target_hidden(self, **kwargs):
         self.advances.append(kwargs)
         return self.current
+
+    def device_candidate_token_ids(self):
+        return Tensor.from_handle(0x7000, (1,), DType.INT32, Device("hip", 0))
 
 
 def test_cycle_memory_delta_reports_tracked_allocation_and_release() -> None:
@@ -258,6 +264,8 @@ def test_streaming_prompt_priming_uses_shifted_tokens_and_final_root() -> None:
 
     assert [row["input_token"] for row in proposer.advances] == [11, 12, 99]
     assert [row["position"] for row in proposer.advances] == [1, 2, 3]
+    assert [row["need_result"] for row in proposer.advances] == [False, False, True]
+    assert [row["read_token_id"] for row in proposer.advances] == [False, False, False]
     assert adapter._states[7].prompt_rows_consumed == 3
     assert adapter._states[7].prompt_prime_seconds > 0.0
     assert row.mtp2_prompt_prime_ms > 0.0
@@ -414,9 +422,9 @@ def test_initial_root_k0_keeps_primed_provider_live() -> None:
     assert 7 in adapter._disabled_requests
 
 
-def test_paro_proposal_emits_one_bounded_host_candidate() -> None:
+def test_paro_proposal_emits_one_stable_device_candidate() -> None:
     proposer = _ProposerDouble()
-    row = SimpleNamespace()
+    row = SimpleNamespace(mtp2_candidate_device_handoffs=0)
     owner = SimpleNamespace(
         generator=SimpleNamespace(backend="hip_gfx1100"),
         _row=lambda request_id: row,
@@ -438,6 +446,8 @@ def test_paro_proposal_emits_one_bounded_host_candidate() -> None:
     assert graph.request_ids == (7,)
     assert graph.root_positions == (127,)
     assert graph.candidate_counts == (1,)
-    assert graph.candidate_tokens == (77,)
-    assert graph.provider_metadata == (("candidate_handoff", "bounded_host_i32"),)
+    assert graph.candidate_tokens == (0,)
+    assert graph.token_ids is not None and graph.token_ids.ptr == 0x7000
+    assert graph.provider_metadata == (("candidate_handoff", "device_i32"),)
     assert adapter._states[7].checkpoint == ("snapshot", 0)
+    assert row.mtp2_candidate_device_handoffs == 1
