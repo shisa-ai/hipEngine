@@ -124,8 +124,11 @@ The current Strix Halo Qwen3.6 automatic-tool quality denominator completes
 **46/48 correct tools**, and exact normalized equality across 24 repeat pairs.
 All patch/test observations pass and final request-owned state is zero. This is
 a quality-only current-source baseline, not a speed row or a same-protocol
-comparison with the historical W7900 packet.
-[`AQ2 evidence`](results/2026-08-26-zbook-agentic-quality2-aq2-baseline.json).
+comparison with the historical W7900 packet. Independent raw-token taxonomy
+locates the five unique failures at model argument grounding (four) and tool
+selection (one), with zero runtime or unresolved rows.
+[`AQ2 evidence`](results/2026-08-26-zbook-agentic-quality2-aq2-baseline.json) ·
+[`AQ3 taxonomy`](results/2026-08-26-zbook-agentic-quality2-aq3-taxonomy.json).
 
 ## Where detailed evidence lives
 
