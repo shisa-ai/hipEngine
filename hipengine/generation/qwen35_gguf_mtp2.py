@@ -1457,6 +1457,30 @@ class Qwen35GGUFMTP2Adapter:
                 self._restore_provider_checkpoint(state)
             self._drop_request(int(request_id), disable=True)
 
+    def recover_cycle_failure(
+        self,
+        plan: SpecRequestPlan,
+        error: BaseException,
+    ) -> bool:
+        """Fall back to AR only while every target cursor is still canonical."""
+
+        del error
+        rows = tuple(
+            self.owner._row(int(request_id))
+            for request_id in plan.speculative_request_ids
+        )
+        if not rows:
+            return False
+        for row in rows:
+            if row.slot is None or row.lease is None:
+                return False
+            if int(row.lease.session.position) != int(row.slot.seq_position):
+                return False
+        for row in rows:
+            row.mtp2_recoverable_failures += 1
+            row.mtp2_failure_reasons.append("precommit_failure_ar_fallback")
+        return True
+
     def release_request(self, request_id: int) -> None:
         rid = int(request_id)
         self._drop_request(rid, disable=False)

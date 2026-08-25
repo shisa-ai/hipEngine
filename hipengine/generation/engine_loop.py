@@ -2341,11 +2341,21 @@ class ResidentEngineLoop:
                 prepare_k0(plan, tuple(semantics), stream=None)
             return None
         start = time.perf_counter()
-        result = self._run_staged_speculative_cycle(
-            plan,
-            tuple(semantics),
-            capability,
-        )
+        try:
+            result = self._run_staged_speculative_cycle(
+                plan,
+                tuple(semantics),
+                capability,
+            )
+        except BaseException as exc:
+            recover = getattr(
+                self.runner,
+                "recover_speculative_cycle_failure",
+                None,
+            )
+            if not callable(recover) or not bool(recover(plan, exc)):
+                raise
+            return None
         if result is None:
             execute = getattr(self.runner, "execute_speculative_cycle", None)
             if not callable(execute):
