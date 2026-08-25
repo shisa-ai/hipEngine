@@ -2364,6 +2364,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             idle_timeout_seconds=float(args.idle_timeout_seconds),
                             request_timeout_seconds=float(args.request_timeout_seconds),
                             require_rejects=(name == "overload"),
+                            speculative_mtp=bool(args.speculative_mtp),
                         )
                         workload_results[name] = summary
                         print(
@@ -2483,8 +2484,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "selected_fair_prefill_burst_chunks": (
                 None if selected is None else int(selected.fair_prefill_burst_chunks)
             ),
-            "sampling": "greedy_top1_ignore_eos",
-            "speculative_decode": False,
+            "sampling": (
+                "raw_greedy_top1"
+                if args.speculative_mtp
+                else "greedy_top1_ignore_eos"
+            ),
+            "speculative_decode": bool(args.speculative_mtp),
             "slo_thresholds": asdict(slos),
         },
         "tuning": {
@@ -2598,6 +2603,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fixed-rate-per-second", type=float, default=2.0)
     parser.add_argument("--poisson-rate-per-second", type=float, default=2.0)
     parser.add_argument("--poisson-seed", type=int, default=1234)
+    parser.add_argument(
+        "--speculative-mtp",
+        action="store_true",
+        help="Send measured workloads through explicit SPECDEC2 MTP; incompatible cells select K0 before mutation.",
+    )
     parser.add_argument("--soak-seconds", type=float, default=60.0)
     parser.add_argument("--soak-rate-per-second", type=float, default=2.0)
     parser.add_argument("--idle-recovery-seconds", type=float, default=1.0)

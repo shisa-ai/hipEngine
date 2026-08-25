@@ -40,6 +40,12 @@ from scripts.gguf_production_load_gate import (
 )
 
 
+def test_production_gate_accepts_explicit_speculative_workloads() -> None:
+    args = build_parser().parse_args(["--speculative-mtp"])
+
+    assert args.speculative_mtp is True
+
+
 def test_speculative_stream_payload_preserves_raw_greedy_contract() -> None:
     spec = WorkloadRequest("spec", 1, 16, 4, timeout_ms=250.0)
 
