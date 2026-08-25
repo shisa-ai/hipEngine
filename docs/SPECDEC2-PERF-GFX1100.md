@@ -422,8 +422,10 @@ next implementation owner in each lane.
 - [x] Dense direct N1R/N2/N3P already provide fixed-address graph scratch,
       stable target accept/results, graph generations, and bounded readback;
       shared C2/C4 staged source already has persistent `_batch_accept_resources`.
-- [ ] Add disabled-by-default per-cycle allocation/free byte/count and
-      synchronize/API instrumentation.
+- [x] Add disabled-by-default per-cycle hipEngine allocation/free byte/count
+      telemetry for staged packed-PARO target/accept/commit.  Cached ROCTX/HIP
+      profiling remains the authoritative library-internal allocation and API
+      view.
 - [ ] RED-test pointer reuse and generation invalidation across close/reuse,
       shrink/refill, compaction, prefix restore, pressure, fallback, and failure.
 - [ ] Replace GGUF cycle-local `hidden_batch` allocation/free with claimed
