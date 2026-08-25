@@ -30,6 +30,11 @@ from hipengine.models.qwen35 import (
     Qwen35MoeGGUFModel,
     Qwen35ParoMoeModel,
 )
+from hipengine.models.qwen35_dms import (
+    Qwen35DMSDecisionCapability,
+    register_qwen35_dms_decision_capability,
+    resolve_qwen35_dms_decision_capability,
+)
 from hipengine.models.registry import (
     DuplicateModelError,
     MissingModelError,
@@ -60,6 +65,7 @@ __all__ = [
     "ModelPlugin",
     "MoonshineForConditionalGenerationModel",
     "MoonshineModelSpec",
+    "Qwen35DMSDecisionCapability",
     "Qwen35GGUFModel",
     "Qwen35MoeGGUFModel",
     "Qwen35ParoMoeModel",
@@ -67,7 +73,9 @@ __all__ = [
     "model_artifact_identity",
     "parse_maple_model_spec",
     "register_model",
+    "register_qwen35_dms_decision_capability",
     "registered_models",
     "resolve_kv_capability",
     "resolve_model",
+    "resolve_qwen35_dms_decision_capability",
 ]

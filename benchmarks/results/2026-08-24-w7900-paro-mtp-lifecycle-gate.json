@@ -1,0 +1,89 @@
+{
+  "backend": "hip_gfx1100",
+  "checks": {
+    "after_all_close_matches_final": true,
+    "borrowed_close_returns_to_session_baseline": true,
+    "borrowed_private_head_absent": true,
+    "closed_owner_rejected_before_launch": true,
+    "legacy_close_returns_to_session_baseline": true,
+    "legacy_private_head_present": true,
+    "private_head_saving_gt_900mib": true,
+    "teardown_exact_or_bounded_non_growing_runtime_residue": true
+  },
+  "memory": {
+    "after_all_close": {
+      "active_allocations": 1,
+      "current_allocated_bytes": 8,
+      "peak_allocated_bytes": 23040175342,
+      "peak_allocations": 4445,
+      "total_allocated_bytes": 31163399530,
+      "total_freed_bytes": 31163399522
+    },
+    "after_borrowed_close": {
+      "active_allocations": 4377,
+      "current_allocated_bytes": 19315319098,
+      "peak_allocated_bytes": 22023060494,
+      "peak_allocations": 4444,
+      "total_allocated_bytes": 22023060494,
+      "total_freed_bytes": 2707741396
+    },
+    "after_legacy_close": {
+      "active_allocations": 4377,
+      "current_allocated_bytes": 19315319098,
+      "peak_allocated_bytes": 23040175342,
+      "peak_allocations": 4445,
+      "total_allocated_bytes": 25747916738,
+      "total_freed_bytes": 6432597640
+    },
+    "borrowed_loaded": {
+      "active_allocations": 4444,
+      "current_allocated_bytes": 22023060494,
+      "peak_allocated_bytes": 22023060494,
+      "peak_allocations": 4444,
+      "total_allocated_bytes": 22023060494,
+      "total_freed_bytes": 0
+    },
+    "borrowed_proposer_delta_bytes": 2707741396,
+    "bounded_runtime_residue": true,
+    "initial": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    },
+    "legacy_loaded": {
+      "active_allocations": 4445,
+      "current_allocated_bytes": 23040175342,
+      "peak_allocated_bytes": 23040175342,
+      "peak_allocations": 4445,
+      "total_allocated_bytes": 25747916738,
+      "total_freed_bytes": 2707741396
+    },
+    "legacy_proposer_delta_bytes": 3724856244,
+    "private_head_saving_bytes": 1017114848,
+    "residue_before_reuse": {
+      "active_allocations": 1,
+      "current_allocated_bytes": 8,
+      "peak_allocated_bytes": 23040175342,
+      "peak_allocations": 4445,
+      "total_allocated_bytes": 28455658134,
+      "total_freed_bytes": 28455658126
+    },
+    "session_loaded": {
+      "active_allocations": 4377,
+      "current_allocated_bytes": 19315319098,
+      "peak_allocated_bytes": 19315319098,
+      "peak_allocations": 4377,
+      "total_allocated_bytes": 19315319098,
+      "total_freed_bytes": 0
+    },
+    "teardown_exact": false
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+  "performance_claim": false,
+  "schema": "hipengine.paro_mtp_lifecycle_gate.v1",
+  "seconds": 45.61799761513248,
+  "status": "passed_with_bounded_runtime_residue"
+}

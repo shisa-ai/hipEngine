@@ -123,8 +123,10 @@ def _case(
         dms_streaming_pack_bf16,
     )
 
-    # per_head extent = min(tokens, ceil(tokens/2) + window) per admission;
-    # size the layer slot pools to cover every row's reservation.
+    # Admission reserves the full prompt provisionally, then host pack shrinks
+    # each extent in place. Keep the raw device fixture sized to the global pool:
+    # post-shrink extent starts can contain released gaps and are not packed into
+    # ``sum(range_capacity)`` bytes.
     slots = sum(rows_tokens) * 4 + window + 16
     backend = _backend(
         num_layers=num_layers, heads=heads, dim=dim, window=window, slots=slots
@@ -186,7 +188,7 @@ def _case(
     # Sanity: host pack must fit the reserved extents.
     assert (live_host <= capacity).all()
 
-    total_capacity = int(capacity.sum())
+    total_capacity = int(backend.slots_per_layer)
     k_slot = np.zeros((total_capacity, dim), dtype=np.uint16)
     v_slot = np.zeros_like(k_slot)
     positions = np.full((total_capacity,), -1, dtype=np.int32)

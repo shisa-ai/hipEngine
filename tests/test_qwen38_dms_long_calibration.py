@@ -1,0 +1,161 @@
+from __future__ import annotations
+
+import json
+import struct
+from pathlib import Path
+
+import numpy as np
+
+from scripts.qwen38_dms_build_long_manifest import (
+    _mixed_tokens,
+    _source_digest,
+    _source_exclusions,
+)
+from scripts.qwen38_dms_calibrate_long_bias import (
+    _bf16_float,
+    _live_summary,
+    _target_evict_fraction,
+    _write_bf16_safetensors,
+)
+from scripts.qwen38_dms_integrated_quality import _prompt
+from scripts.qwen38_dms_integrated_quality_suite import _parse_csv
+
+
+def test_long_manifest_mixed_stream_alternates_bounded_chunks() -> None:
+    en = list(range(20))
+    ja = list(range(100, 120))
+
+    mixed = _mixed_tokens(en, ja, target_tokens=12, chunk_tokens=3)
+
+    assert mixed == [0, 1, 2, 100, 101, 102, 3, 4, 5, 103, 104, 105]
+
+
+def test_integrated_quality_suite_parses_category_inputs() -> None:
+    assert _parse_csv("code, general_en,,general_ja") == (
+        "code",
+        "general_en",
+        "general_ja",
+    )
+
+
+def test_integrated_quality_selects_heldout_category_without_cross_split_tokens(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "manifest.json"
+    path.write_text(
+        json.dumps(
+            {
+                "sequences": [
+                    {
+                        "sequence_id": "train-code",
+                        "split": "train",
+                        "category": "code",
+                        "token_ids": [1, 2, 3, 4],
+                    },
+                    {
+                        "sequence_id": "heldout-code",
+                        "split": "validation",
+                        "category": "code",
+                        "token_ids": [5, 6, 7, 8],
+                    },
+                    {
+                        "sequence_id": "heldout-en",
+                        "split": "validation",
+                        "category": "general_en",
+                        "token_ids": [9, 10, 11, 12],
+                    },
+                ]
+            }
+        )
+    )
+
+    tokens, _digest, sequence_ids = _prompt(
+        path, 6, split="validation", category="code"
+    )
+
+    assert tokens == [5, 6, 7, 8, 5, 6]
+    assert sequence_ids == ["heldout-code"]
+
+
+def test_long_manifest_excludes_prior_short_and_long_sources(tmp_path: Path) -> None:
+    short = tmp_path / "short.json"
+    short.write_text(
+        json.dumps(
+            {
+                "python_files": [{"path": "a.py"}],
+                "wikipedia_en": [{"id": "en-old"}],
+                "wikipedia_ja": [{"id": "ja-old"}],
+            }
+        )
+    )
+    long = tmp_path / "long.json"
+    long.write_text(
+        json.dumps(
+            {
+                "sequences": {
+                    "code": [{"dataset": "python-stdlib-long-disjoint", "source_id": "b.py"}],
+                    "en": [{"dataset": "wikimedia-wikipedia-20231101.en-long-disjoint", "source_id": "en-new"}],
+                    "ja": [{"dataset": "wikimedia-wikipedia-20231101.ja-long-disjoint", "source_id": "ja-new"}],
+                }
+            }
+        )
+    )
+
+    code, en, ja = _source_exclusions([short, long])
+
+    assert code == {"a.py", "b.py"}
+    assert en == {"en-old", "en-new"}
+    assert ja == {"ja-old", "ja-new"}
+
+
+def test_long_manifest_source_digest_is_key_order_stable() -> None:
+    left = [{"source_id": "a", "sha256": "1"}, {"source_id": "b", "sha256": "2"}]
+    right = [{"sha256": "1", "source_id": "a"}, {"sha256": "2", "source_id": "b"}]
+
+    assert _source_digest(left) == _source_digest(right)
+
+
+def test_long_calibration_accepts_conservative_fractional_target_cr() -> None:
+    assert _target_evict_fraction(2.0) == 0.5
+    assert np.isclose(_target_evict_fraction(1.5), 1.0 / 3.0)
+
+
+def test_long_calibration_live_summary_counts_per_head_evictions() -> None:
+    scores = np.asarray(
+        [
+            [[0.0, 5.0], [1.0, 4.0], [2.0, 3.0], [3.0, 2.0], [4.0, 1.0], [5.0, 0.0]],
+            [[5.0, 0.0], [4.0, 1.0], [3.0, 2.0], [2.0, 3.0], [1.0, 4.0], [0.0, 5.0]],
+        ],
+        dtype=np.float32,
+    )
+    thresholds = np.full((2, 2), 2.5, dtype=np.float32)
+
+    summary = _live_summary(scores, thresholds, window=2)
+
+    # Only the first four rows are eligible. Per-head evictions are [1,3] and
+    # [3,1], so live counts are [5,3] and [3,5].
+    assert summary["logical_rows"] == 24
+    assert summary["live_rows"] == 16
+    assert summary["per_layer_head_live_counts"] == [[5, 3], [3, 5]]
+    assert summary["live_compression_ratio"] == 24 / 16
+
+
+def test_long_calibration_writes_canonical_bf16_safetensors(tmp_path: Path) -> None:
+    bias = _bf16_float(np.asarray([[0.25, -1.5]], dtype=np.float32))
+    weight = _bf16_float(np.arange(12, dtype=np.float32).reshape(1, 2, 6) / 8)
+    path = tmp_path / "sidecar.safetensors"
+
+    _write_bf16_safetensors(path, bias=bias, weight=weight)
+
+    raw = path.read_bytes()
+    header_size = struct.unpack("<Q", raw[:8])[0]
+    header = json.loads(raw[8 : 8 + header_size].decode().rstrip())
+    assert list(header) == ["bias", "weight"]
+    assert header["bias"] == {
+        "data_offsets": [0, 4],
+        "dtype": "BF16",
+        "shape": [1, 2],
+    }
+    assert header["weight"]["dtype"] == "BF16"
+    assert header["weight"]["shape"] == [1, 2, 6]
+    assert len(raw) == 8 + header_size + bias.nbytes // 2 + weight.nbytes // 2

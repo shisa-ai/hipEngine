@@ -62,6 +62,13 @@ from hipengine.speculative.frontier import (
     SpeculativeCapability,
     TargetFrontier,
 )
+from hipengine.speculative.mtp_budget import (
+    MtpAdaptiveBudgetConfig,
+    MtpAdaptiveBudgetPolicy,
+    MtpBudgetCycleResult,
+    MtpBudgetPolicy,
+    MtpBudgetSequencePolicy,
+)
 from hipengine.speculative.mtp import (
     MTP_CHAIN_CANDIDATE_BUDGETS,
     MissingMtpWeightsError,
@@ -200,6 +207,11 @@ from hipengine.speculative.native_cycle import (
     NativeSpecCycleStatePointers,
     NativeSpecCycleStatus,
 )
+from hipengine.speculative.paro_mtp_profiles import (
+    ParoMtpRoute,
+    paro_mtp_profiles_registered,
+    register_paro_mtp_gfx1100_profiles,
+)
 from hipengine.speculative.ladder import (
     TargetVerifyLadderMismatch,
     TargetVerifyLadderStageComparison,
@@ -211,7 +223,12 @@ from hipengine.speculative.ladder import (
     synthetic_chain_target_verify_snapshots,
 )
 
+register_paro_mtp_gfx1100_profiles()
+
 __all__ = [
+    "ParoMtpRoute",
+    "paro_mtp_profiles_registered",
+    "register_paro_mtp_gfx1100_profiles",
     "AdaptiveBudgetConfig",
     "SpeculativeProviderCapabilities",
     "SpeculativeProviderConfig",
@@ -265,6 +282,11 @@ __all__ = [
     "DFlashVerifyGraphBucketKey",
     "DFlashVerifyGraphValidation",
     "MTP_CHAIN_CANDIDATE_BUDGETS",
+    "MtpAdaptiveBudgetConfig",
+    "MtpAdaptiveBudgetPolicy",
+    "MtpBudgetCycleResult",
+    "MtpBudgetPolicy",
+    "MtpBudgetSequencePolicy",
     "MissingMtpWeightsError",
     "MtpChainCompiler",
     "MtpDraftProvider",

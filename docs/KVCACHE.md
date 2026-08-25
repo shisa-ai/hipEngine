@@ -1215,17 +1215,28 @@ Format/policy development tools:
 
 ## Phase K2 — FastDMS-derived compact DMS
 
+The complete external-sidecar campaign, exact commands/results, capacity and
+speed goals, and ordered production punchlist live in [`DMS.md`](DMS.md).
+This section remains the normative KV ABI and backend design.
+
 ### Goal
 
 After dense INT8 KV lands, port compact DMS semantics from `~/FastDMS` so the
 engine stores and scans fewer live tokens. DMS is the better long-context and
 concurrency lever because it reduces `live_counts`, not just bytes per live row.
 
-DMS is checkpoint-dependent. It is not a drop-in policy for arbitrary models;
-the current Qwen3.6/PARO path needs a DMS-retrofitted checkpoint or a validated
-borrowed-channel metadata block before DMS rows can be quality claims. DMS
-bring-up must use BF16 storage first; the rejected dense INT8 format is not an
-assumed quality-safe DMS storage dtype.
+DMS is model-artifact-dependent. It is not a drop-in policy for arbitrary
+models. Schema v1 represents FastDMS' corrected borrowed-query-channel
+checkpoint format. Schema v2 represents a separately trained external linear
+decision sidecar, including hybrid models whose compact physical-layer map is a
+strict subset of runtime layers; ordinary query channels remain intact for this
+source. Schema-v2 metadata also binds `prefill_selection_mode`: legacy
+`threshold` preserves calibrated decisions, while `exact_budget` treats learned
+logits as per-layer/head eviction ranks, preserves the protected window, and
+evicts exactly the declared historical CR count with deterministic ties. Both
+forms bind exact model and training provenance before DMS rows can be quality
+claims. DMS bring-up must use BF16 storage first; the rejected dense
+INT8 format is not an assumed quality-safe DMS storage dtype.
 
 ### FastDMS reference map
 
@@ -1235,7 +1246,7 @@ host code directly.
 
 | FastDMS file | What to reuse |
 | --- | --- |
-| `fastdms/engine/dms.py` | DMS metadata loading, borrowed-query-channel eviction extraction, alpha scale/offset semantics, and zeroing the decision lane after extraction. |
+| `fastdms/engine/dms.py` | Schema-v1 borrowed-query-channel eviction extraction, alpha scale/offset semantics, and zeroing the borrowed lane. The external schema-v2 decision source is hipEngine-specific and does not zero Q. |
 | `fastdms/engine/compact_kv.py` | Compact allocator, per-layer/per-head `base_offsets`, `range_capacity`, `live_counts`, `token_positions`, `evict_mask`, streaming prefill pack, live-count/rank/scatter structure. |
 | `fastdms/layers/compact_attention.py` | Fused decode preprocessing, compact append/store, inline Q RoPE option, grouped split-K compact attention, split-block tuning knobs. |
 | `fastdms/engine/scheduler.py` | Admission through compact capacity instead of dense pages; releasing dense blocks after pack in non-streaming modes; streaming-pack mode with no dense blocks. |
@@ -1286,12 +1297,47 @@ span_role       prefill | decode | verify_chain | verify_tree
 ### Bring-up sequence
 
 1. **DMS metadata and training checkpoint gate**
-   - Add `DMSRetrofitConfig` loader for `dms_metadata.json` / training-log style
-     metadata.
-   - Require explicit opt-in if metadata is missing; no silent DMS on a
-     non-retrofitted checkpoint.
-   - For the current Qwen3.6/PARO model, train or import an eviction-head
-     retrofit before any quality claim.
+   - Keep schema-v1 corrected borrowed-channel metadata byte-compatible and
+     fail-closed.
+   - Schema v2 requires `decision_source=external_linear_sidecar_v1`, exact GGUF
+     and sidecar SHA-256 values, explicit physical full-attention layer IDs,
+     hidden-stage identity, canonical BF16 tensor names/shapes, and immutable
+     data/trainer/FastDMS provenance.
+   - Require explicit metadata; no silent DMS on an ordinary checkpoint.
+   - Train or import a real model-bound decision artifact before any quality
+     claim. Synthetic metadata remains fixture-only.
+   - The default-off exact-GGUF capture owner streams one checksummed NPZ shard
+     per bounded full-attention chunk: BF16-bit normalized pre-Q hidden rows,
+     FP32 post-head-norm/RoPE Q/K by default, positions/tokens, and final-row
+     teacher top-K/logsumexp. It validates tokenizer/data provenance and rejects
+     the evaluation-only mtp-bench source.
+   - The label builder reconstructs dense causal GQA probabilities from Q/K,
+     accumulates future key-use only after the grace window, and ranks each
+     layer/KV head independently. The target CR applies to eligible history:
+     retain the protected window plus `ceil(eligible/CR)` historical keys. Exact
+     budgets use deterministic `(score, position)` ties; protected-window labels
+     must remain zero. CPU
+     FP64 is normative and a tiled deterministic ROCm/PyTorch path is the
+     practical corpus builder.
+   - The offline trainer owns only `[compact_layers,kv_heads,hidden]` weights and
+     `[compact_layers,kv_heads]` biases. BCE plus a per-head budget penalty,
+     deterministic epoch/token order, sidecar-only AdamW checkpoints, and
+     validation by layer/head/category/context feed a byte-stable BF16
+     safetensors export and schema-v2 metadata. Base GGUF weights never enter the
+     optimizer or checkpoint.
+   - Torch-free replay loads raw BF16 sidecar tensors, projects the captured
+     hidden stage without changing Q, calibrates diagnostic thresholds on
+     train-only rows, and reports no-evict/CR2/CR4/CR8 validation compression,
+     precision/recall, layer/head/category/context slices, suppressed protected
+     decisions, and deterministic repeats. Capture-only replay marks dense-vs-
+     masked logit quality unavailable until exact runtime replay supplies it.
+   - Runtime resolution is a Qwen model-plugin capability plus the registered
+     `dms_decision_source/bf16/external_linear_sidecar_v1` primitive. The
+     torch-free source maps physical→compact layers, preserves Q, and feeds
+     host/device pack/append through scheduler-owned transactions. Prefix and
+     speculative roles fail closed. The device path journals only the request's
+     compact extents and restores K/V/position/eviction bytes, metadata, and
+     counters after post-mutation failure; it does not retain a dense shadow.
 2. **Compact backend and admission**
    - Add the DMS topology's allocator-visible compact pool/extent plans,
      storage views, and registered kernel bundle.
@@ -1301,12 +1347,19 @@ span_role       prefill | decode | verify_chain | verify_tree
      compact allocator/kernels; they are not quality claims.
 3. **Streaming prefill pack**
    - Port FastDMS' count/rank/scatter structure to HIP.
+   - For `exact_budget`, project logits on device, rank independently per
+     layer/head, preserve the protected window, write the exact decision mask
+     back to the device pack owner, and verify device/host live-count parity.
+     The correctness-first implementation may rank on host; production must
+     replace that D2H/H2D control round trip with bounded device selection.
    - Pack surviving K/V directly into compact BF16 storage first; introduce a
      compressed store only after dense/native fidelity passes.
    - Do not retain a second dense BF16 K/V arena after pack.
 4. **Decode append/preprocess**
    - Port fused Q/K RoPE + DMS decision extraction + compact store.
-   - Zero the borrowed query decision lane before attention, matching FastDMS.
+   - Schema v1 zeros the borrowed query decision lane before attention, matching
+     FastDMS. Schema v2 projects its declared normalized hidden input through
+     the external sidecar and preserves every ordinary Q channel.
    - Update `live_counts`, `token_positions`, and `evict_mask` transactionally.
 5. **Compact grouped split-K attention**
    - Port compact decode over variable `live_counts`.
@@ -1356,14 +1409,27 @@ Soak/stability:
 - Enable debug checks for early development: bounds, monotonic positions, live
   count ≤ capacity, no negative slot mappings, and no stale `evict_mask` entries.
 
-C2-7 host/backend implementation status (2026-08-17): strict retrofit metadata,
-atomic compact extents, no-shadow streaming pack, transactional decode metadata,
+C2-7 host/backend implementation status: schema-v1 borrowed-channel metadata
+remains strict and fingerprint-compatible; schema v2 now adds a fail-closed
+external BF16 linear-sidecar contract with exact GGUF/sidecar hashes, hybrid
+physical-layer mapping, tensor-header validation, and training provenance. The
+registered CPU-reference decision primitive, Qwen plugin capability, exact-stage
+GGUF collector, and transactional host/device compact bridge are implemented.
+The correctness-first device journal snapshots request-owned compact extents to
+host transaction scratch and restores every plane byte-for-byte; integrated
+GGUF compact serving and its resource/SLO gate remain open.
+Atomic compact extents, no-shadow streaming pack, transactional decode metadata,
 grouped CPU attention, common c1-c32 scheduling, pressure/fragmentation/drain,
-and a fixture-qualified INT8 codec are implemented. The current Qwen3.6 GGUF
-artifact has no packaged retrofit and therefore fails closed. HIP kernel and
-real-checkpoint quality/capacity/performance gates remain open; no DMS default or
-model claim is made. See
-[`2026-08-17-concurrency2-c2-7-dms-host-blocked.json`](../benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json).
+and a fixture-qualified INT8 codec are implemented. A real external BF16 sidecar
+now exists for exact Qwen3.8-27B Q4_K_M SHA `7e78da5d...fe169`: CR2 passes
+broad 768-token category-heldouts at max KL `0.009691`, 100% top-1, and
+1.54293x total live-cell compression, while CR4/CR8 are rejected at max KL
+`0.08908/0.24993`. The full repository category+heldout suite also passes but is
+inside the protected window. This is **trained candidate complete; product gate
+open**: quality replay retains a dense shadow, and integrated allocator savings,
+serving lifecycle/soak/profiler/SLO gates remain open. Dense paging stays default;
+do not package metadata beside the GGUF. Evidence:
+[`CR2 trained candidate`](../benchmarks/results/2026-08-23-qwen38-external-dms-cr2-trained-candidate.json).
 
 ## Later research: AQUA, HIGGS, TurboQuant-style int4
 
@@ -1420,8 +1486,9 @@ These are deliberately after dense INT8 and DMS:
     quality/capacity matrices.
 20. [ ] Complete `IKV-C7`: compare BF16/serial/direct economics, publish the
     retained decision, and remove the mirrored seam when safe.
-21. [ ] Port FastDMS metadata/compact allocator semantics and train/import a
-    matching DMS retrofit before any DMS quality claim.
+21. [x] Port FastDMS metadata/compact allocator semantics and train/import a
+    matching DMS retrofit before any DMS quality claim. Exact Qwen3.8 external
+    CR2 candidate passes the outer quality floor; product serving remains open.
 22. [ ] Port DMS streaming pack/compact decode and combine DMS with a
     quality-admitted storage dtype; do not assume current dense INT8 is that
     dtype.

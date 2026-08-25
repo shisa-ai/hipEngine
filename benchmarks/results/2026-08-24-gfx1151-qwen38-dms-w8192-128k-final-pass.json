@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_external_dms_w8192_128k_final_gate",
+  "status": "qualified_128k_final",
+  "date": "2026-08-24",
+  "host": "zbook",
+  "hardware": "AMD Ryzen AI Max+ PRO 395 / Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "commit": "a4f9c4a55",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "candidate": {
+    "architecture": "external_linear_sidecar_v1",
+    "sidecar_bytes": 655640,
+    "sidecar_sha256": "e52fc60a4e8f86f00719be107b44a73567795dfdd88dbbce15cf955409fcd764",
+    "metadata_bytes": 2090,
+    "metadata_sha256": "62c1f2d2c590aff2756796f01bddfaf1b602750ceada4b3ac23639902ff8edfe",
+    "prefill_selection_mode": "exact_budget",
+    "window_size": 8192,
+    "target_historical_compression_ratio": 2,
+    "policy_frozen": true
+  },
+  "firewall": {
+    "manifest": "/home/lhl/dms-artifacts/qwen38-external-v4-128k-final/long-data-manifest-128k.json",
+    "manifest_bytes": 14700554,
+    "manifest_sha256": "261722a95e40dd5411bc3b6e3bb2f2a1b30b1b0fb39452a35774f00456a9e6ab",
+    "source_manifest_sha256": "3879e74d9b2b4f87b9fbe801184e3f3078ebf78044b40be2ffaeb95f1022b4a7",
+    "split": "validation",
+    "sequence_tokens": 131072,
+    "source_overlap_v1_v2_v3": 0,
+    "policy_changes_after_32k_final": false
+  },
+  "protocol": {
+    "prompt_tokens": 131072,
+    "decode_steps_per_category": 8,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "teacher": "dense BF16 KV exact-Q4 resident session",
+    "trajectory": "strict dense-teacher input tokens",
+    "max_kl": 0.05,
+    "min_top1_agreement": 0.9,
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen38_dms_integrated_quality_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /home/lhl/dms-artifacts/qwen38-external-v3-final/qualified-w8192/dms_metadata.json --data-manifest /home/lhl/dms-artifacts/qwen38-external-v4-128k-final/long-data-manifest-128k.json --prompt-tokens 131072 --prompt-split validation --categories code,general_en,general_ja,mixed_ja_en --decode-steps 8 --modes sidecar --backend hip_gfx1151 --max-kl 0.05 --min-top1 0.9 --output /home/lhl/dms-artifacts/qwen38-external-v4-128k-final/quality-final-w8192-128k-d8.json --fail-on-fail"
+  },
+  "capacity": {
+    "all_categories_identical": true,
+    "actual_compression_ratio": 1.882224551629069,
+    "live_token_rows": 4457024,
+    "logical_token_rows": 8389120,
+    "max_live_count": 69641,
+    "compact_payload_bytes": 4563992576,
+    "dense_equivalent_payload_bytes": 8590458880,
+    "saved_payload_bytes": 4026466304,
+    "saved_payload_gib": 3.74993896484375
+  },
+  "aggregate": {
+    "rows": 32,
+    "max_kl": 0.0010619093951989799,
+    "mean_kl": 0.00028585766438344803,
+    "p95_kl": 0.000811312317255139,
+    "p99_kl": 0.0010067449076932382,
+    "top1_agreement": 1.0,
+    "all_categories_passed": true
+  },
+  "categories": {
+    "code": {"max_kl": 0.0006891460801852229, "top1_agreement": 1.0, "passed": true},
+    "general_en": {"max_kl": 0.0007518737659614033, "top1_agreement": 1.0, "passed": true},
+    "general_ja": {"max_kl": 0.0005715698044693775, "top1_agreement": 1.0, "passed": true},
+    "mixed_ja_en": {"max_kl": 0.0010619093951989799, "top1_agreement": 1.0, "passed": true}
+  },
+  "timing": {
+    "load_seconds": 43.73576707299799,
+    "total_seconds": 10271.295783537033
+  },
+  "memory": {
+    "peak_tracked_bytes": 34200820316,
+    "current_allocated_bytes_after_close": 0,
+    "active_allocations_after_close": 0
+  },
+  "external_package": {
+    "path": "/home/lhl/dms-artifacts/qwen38-external-v3-final/qualified-w8192",
+    "qualification_128k_sha256": "e22945a9b543bd327d0ff4b8c8c252252dc71b9eb087e17ea75b4ede32bb3856",
+    "quality_artifact_sha256": "7e216bf48bac50e2ed63d8e88bd462db79b07b32ec44bc1d855cd07e9d3dd79e"
+  },
+  "claim_scope": "Semantic quality and allocator-visible compact payload capacity at c1 128K. No throughput, latency, sampled process/device peak, or production-default claim.",
+  "next": "Close c1-c32 lifecycle/soak, sampled memory controls, and same-host dense-vs-DMS performance."
+}

@@ -89,7 +89,15 @@ from hipengine.core.memory import DeviceBuffer, copy_device_to_host, free, host_
 from hipengine.core.tensor import Tensor
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoNextTokenRunner, Qwen35ParoResidentSession
 from hipengine.speculative import MTP_CHAIN_CANDIDATE_BUDGETS, MtpDraftRequest, TargetVerifyBatch, compile_mtp_chain
-from hipengine.speculative.mtp_native import NativeMtpChainProposer
+from hipengine.speculative.mtp_native import NativeMtpChainProposer, NativeMtpW8A16Head
+from hipengine.execution_profiles import resolve_runtime_profile
+from hipengine.speculative.paro_mtp_profiles import (
+    PARO_MTP_BACKEND,
+    PARO_MTP_CHAIN_ATTN_MODE_ENV,
+    PARO_MTP_MODEL,
+    PARO_MTP_MODEL_QUANT,
+    validate_paro_mtp_route_scope,
+)
 from scripts.mtp_native_decode_step_smoke import run_smoke as run_native_mtp_proposal
 from scripts.dflash_chain_e2e_bench import _build_branching_topk_tree_target_batch
 
@@ -337,6 +345,95 @@ def _mtp_overlap_verify_commit_proposer_enabled() -> bool:
     """Run proposer update on a side stream while verifier commit drains."""
 
     return _env_flag("HIPENGINE_MTP_OVERLAP_VERIFY_COMMIT_PROPOSER", False)
+
+
+def _mtp_proposer_target_contract_enabled() -> bool:
+    """Use selected final target hidden plus the target-owned W8 scorer."""
+
+    return _env_flag("HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT", False)
+
+
+def _apply_paro_execution_profile(args: Any) -> None:
+    """Resolve the default/explicit PARO MTP profile before resident construction.
+
+    An explicit legacy ``--chain-attn-mode`` without ``--execution-profile``
+    remains a manual diagnostic route. Omitting both selects qualified
+    production (fast); strict is available through ``--execution-profile strict``.
+    """
+
+    requested = getattr(args, "execution_profile", None)
+    explicit_chain = getattr(args, "chain_attn_mode", None)
+    if requested is None and explicit_chain is not None:
+        return
+    profile = "production" if requested is None else str(requested)
+    resolved = resolve_runtime_profile(
+        model=PARO_MTP_MODEL,
+        backend=PARO_MTP_BACKEND,
+        quant=PARO_MTP_MODEL_QUANT,
+        profile=profile,
+    )
+    if resolved.binder is None:
+        raise RuntimeError("PARO MTP execution profile has no route binder")
+    resolved.binder(args, resolved)
+    selected_chain = os.environ[PARO_MTP_CHAIN_ATTN_MODE_ENV]
+    if explicit_chain is not None and str(explicit_chain) != selected_chain:
+        raise ValueError(
+            f"execution profile {profile!r} requires chain_attn_mode="
+            f"{selected_chain!r}, got {explicit_chain!r}"
+        )
+    args.chain_attn_mode = selected_chain
+    args.execution_profile = profile
+    args.execution_profile_manifest_sha256 = resolved.manifest_sha256
+    args.execution_profile_strict_manifest_sha256 = resolved.strict_manifest_sha256
+    args.execution_profile_fell_back_to_strict = resolved.fell_back_to_strict
+
+
+def _validate_proposer_target_contract_scope(
+    *,
+    enabled: bool,
+    candidate_budget: int,
+    graph_mode: str,
+    tree_mode: str,
+    confidence_threshold: float,
+    draft_p_min: float,
+    ar_fallback_zero_streak: int,
+    overlap_verify_commit_proposer: bool,
+) -> None:
+    if not enabled:
+        return
+    validate_paro_mtp_route_scope(
+        candidate_budget=int(candidate_budget),
+        graph_mode=str(graph_mode),
+        draft_mode=str(tree_mode),
+        confidence_threshold=float(confidence_threshold),
+        draft_p_min=float(draft_p_min),
+        ar_fallback_zero_streak=int(ar_fallback_zero_streak),
+        overlap_verify_commit_proposer=bool(overlap_verify_commit_proposer),
+    )
+
+
+def _advance_proposer_from_selected_target(
+    proposer: Any,
+    *,
+    verify: Any,
+    input_token: int,
+    need_result: bool,
+    read_expert_topk: bool,
+    read_lm_head_value: bool,
+    stream: int,
+) -> Any:
+    target_hidden_ptr = getattr(verify, "selected_target_hidden_ptr", None)
+    if target_hidden_ptr is None or int(target_hidden_ptr) <= 0:
+        raise RuntimeError("verifier did not expose a selected final target hidden row")
+    return proposer.advance_with_target_hidden(
+        input_token=int(input_token),
+        target_hidden_ptr=int(target_hidden_ptr),
+        position=int(proposer.position) + 1,
+        need_result=bool(need_result),
+        read_expert_topk=bool(read_expert_topk),
+        read_lm_head_value=bool(read_lm_head_value),
+        stream=int(stream),
+    )
 
 
 class _OptionalHipStream:
@@ -1013,6 +1110,17 @@ def _run_spec_persistent_device(
     skip_unused_proposer_reads = _mtp_proposer_skip_unused_reads_enabled()
     canonicalize_after_verify = not _mtp_skip_canonicalize_after_verify_enabled()
     overlap_verify_commit_proposer = _mtp_overlap_verify_commit_proposer_enabled()
+    proposer_target_contract = _mtp_proposer_target_contract_enabled()
+    _validate_proposer_target_contract_scope(
+        enabled=proposer_target_contract,
+        candidate_budget=int(candidate_budget),
+        graph_mode=graph_mode,
+        tree_mode=tree_mode,
+        confidence_threshold=float(confidence_threshold),
+        draft_p_min=float(draft_p_min),
+        ar_fallback_zero_streak=int(ar_fallback_zero_streak),
+        overlap_verify_commit_proposer=overlap_verify_commit_proposer,
+    )
     # Always load libroctx64 so range_push/pop markers fire even when the
     # selected-region window is off (rocprofv3 1.1.0 path). The resume/pause
     # path is still gated on rocprof_verify_cycles>0 below.
@@ -1056,11 +1164,23 @@ def _run_spec_persistent_device(
                     capture_hidden_concat=capture,
                     capture_row=pos,
                     sample=(pos == len(prompt_tokens) - 1),
+                    capture_final_hidden_bf16=capture if proposer_target_contract else None,
                 )
             if next_result is None:
                 raise RuntimeError("prompt did not produce a root token")
             root = int(next_result.token_id)
             context = len(prompt_tokens)
+            scoring_head = (
+                NativeMtpW8A16Head(
+                    weight_int8_ptr=int(session.lm_head_weight.tensor.ptr),
+                    scale_f32_ptr=int(session.lm_head_scale.tensor.ptr),
+                    vocab_size=int(session.vocab_size),
+                    threads=int(session.lm_head_threads),
+                    owner=session,
+                )
+                if proposer_target_contract
+                else None
+            )
             with NativeMtpChainProposer(
                 model,
                 max_positions=max_sequence + int(decode_tokens) + 4,
@@ -1068,6 +1188,7 @@ def _run_spec_persistent_device(
                 runtime=session.runtime,
                 compiler_version=session.compiler_version,
                 require_cached_build=bool(require_cached_build),
+                scoring_head=scoring_head,
             ) as proposer, _OptionalHipStream(session.runtime, enabled=overlap_verify_commit_proposer) as proposer_update_stream:
                 draft_vocab_cap = int(proposer.draft_vocab)
                 prefill_started = time.perf_counter()
@@ -1498,13 +1619,24 @@ def _run_spec_persistent_device(
                                 read_lm_head_value=not skip_unused_proposer_reads,
                                 stream=update_stream,
                             )
-                        proposer.advance_with_previous_hidden(
-                            input_token=bonus,
-                            position=proposer.position + 1,
-                            read_expert_topk=not skip_unused_proposer_reads,
-                            read_lm_head_value=not skip_unused_proposer_reads,
-                            stream=update_stream,
-                        )
+                        if proposer_target_contract:
+                            _advance_proposer_from_selected_target(
+                                proposer,
+                                verify=verify,
+                                input_token=bonus,
+                                need_result=True,
+                                read_expert_topk=not skip_unused_proposer_reads,
+                                read_lm_head_value=not skip_unused_proposer_reads,
+                                stream=update_stream,
+                            )
+                        else:
+                            proposer.advance_with_previous_hidden(
+                                input_token=bonus,
+                                position=proposer.position + 1,
+                                read_expert_topk=not skip_unused_proposer_reads,
+                                read_lm_head_value=not skip_unused_proposer_reads,
+                                stream=update_stream,
+                            )
                     rocprof_window.range_pop()
                     proposal_decode_update_seconds += time.perf_counter() - update_started
                     context += len(committed)
@@ -1568,6 +1700,14 @@ def _run_spec_persistent_device(
         "chain_attn_mode": chain_attn_mode,
         "proposal_impl": "persistent_device",
         "proposer_skip_unused_reads": bool(skip_unused_proposer_reads),
+        "proposer_target_contract": bool(proposer_target_contract),
+        "proposer_target_hidden_mode": (
+            "selected_final_norm_bf16" if proposer_target_contract else "previous_mtp_hidden"
+        ),
+        "proposer_scoring_mode": (
+            "borrowed_target_w8a16_full_vocab" if proposer_target_contract else "private_f16_prefix"
+        ),
+        "proposer_private_lm_head_loaded": not proposer_target_contract,
         "canonicalize_after_verify": bool(canonicalize_after_verify),
         "overlap_verify_commit_proposer": bool(overlap_verify_commit_proposer),
         "note": "Persistent native MTP provider: weights/cache resident, target hidden stays on device, and unused proposer metadata/results/snapshots are skipped by default.",
@@ -1678,6 +1818,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "ar": ar,
         "mtp": spec,
         "proposal_impl": str(args.proposal_impl),
+        "execution_profile": getattr(args, "execution_profile", None),
+        "execution_profile_manifest_sha256": getattr(
+            args, "execution_profile_manifest_sha256", None
+        ),
+        "execution_profile_strict_manifest_sha256": getattr(
+            args, "execution_profile_strict_manifest_sha256", None
+        ),
+        "execution_profile_fell_back_to_strict": getattr(
+            args, "execution_profile_fell_back_to_strict", None
+        ),
         "require_cached_build": require_cached_build,
         "decision_reason": "Native MTP proposal rows reached verify_chain_bulk_and_commit and exact AR was checked. persistent_device keeps MTP weights/cache resident, but artifacts remain diagnostic until acceptance and speed gates pass.",
     }
@@ -1688,7 +1838,7 @@ def main() -> int:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--prompt-tokens", default="151646")
     parser.add_argument("--decode-tokens", type=int, default=3)
-    parser.add_argument("--candidate-budget", type=int, default=2)
+    parser.add_argument("--candidate-budget", type=int, default=1)
     parser.add_argument(
         "--active-budget-cap",
         type=int,
@@ -1702,7 +1852,17 @@ def main() -> int:
     )
     parser.add_argument("--proposal-impl", choices=("reload_d2h", "persistent_device", "persistent_device_b1"), default="reload_d2h")
     parser.add_argument("--backend", default="hip_gfx1151")
-    parser.add_argument("--chain-attn-mode", choices=("c1_loop", "batched", "decode_batched"), default="c1_loop")
+    parser.add_argument(
+        "--execution-profile",
+        choices=("strict", "production"),
+        help="registered PARO MTP route; omitted with no manual chain mode defaults to production",
+    )
+    parser.add_argument(
+        "--chain-attn-mode",
+        choices=("c1_loop", "batched", "decode_batched"),
+        default=None,
+        help="manual diagnostic route when --execution-profile is omitted",
+    )
     parser.add_argument("--graph-mode", choices=("off", "auto", "validate"), default="off")
     parser.add_argument("--tree-mode", choices=("chain", "branching_topk"), default="chain", help="reload_d2h only: chain (top-1 verify_chain) or branching_topk (balanced DDTree via verify_tree_bulk_and_commit, reusing the MTP head per-depth top-k + values)")
     parser.add_argument("--tree-top-k", type=int, default=2, help="branch width per depth for --tree-mode branching_topk (1..8)")
@@ -1793,6 +1953,7 @@ def main() -> int:
     parser.add_argument("--json", type=Path)
     parser.add_argument("--out", type=Path, help="alias for --json (artifact path)")
     args = parser.parse_args()
+    _apply_paro_execution_profile(args)
     result = run(args)
     out_path = args.out or args.json
     if out_path:

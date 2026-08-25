@@ -30,6 +30,8 @@ from hipengine.loading.qwen35_gguf import (
     validate_qwen35_gguf_tensor_map,
 )
 from hipengine.loading.qwen35_gguf_nextn import (
+    QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256,
+    QWEN38_NATIVE_XL_QUANT_VARIANT,
     build_qwen35_gguf_nextn_tensor_map,
     required_qwen35_gguf_nextn_tensor_names,
     validate_qwen35_gguf_nextn_tensor_map,
@@ -686,6 +688,37 @@ def test_qwen35_dense_gguf_mtp_maps_architecture_shaped_blk2() -> None:
     assert nextn_map.fallback("lm_head").ggml_type_name == "Q6_K"
 
 
+def test_qwen38_native_xl_nextn_manifest_accepts_exact_mixed_qtypes() -> None:
+    info = _synthetic_qwen35_dense_mtp_info(native_xl=True)
+
+    validation = validate_qwen35_gguf_nextn_tensor_map(info)
+
+    assert validation.passed
+    model_map = build_qwen35_gguf_nextn_tensor_map(info)
+    assert model_map.tensor("attn_q").ggml_type_name == "Q6_K"
+    assert model_map.tensor("attn_k").ggml_type_name == "Q8_0"
+    assert model_map.tensor("attn_v").ggml_type_name == "Q8_0"
+    assert model_map.tensor("ffn_gate").ggml_type_name == "Q6_K"
+    assert model_map.tensor("ffn_down").ggml_type_name == "Q6_K"
+    assert model_map.tensor("eh_proj").ggml_type_name == "Q6_K"
+
+
+def test_qwen38_native_xl_nextn_manifest_rejects_weakened_slot() -> None:
+    info = _synthetic_qwen35_dense_mtp_info(
+        native_xl=True,
+        extra_tensors=[
+            _tensor("blk.2.nextn.eh_proj.weight", (8, 16), GGMLQuantizationType.Q4_K),
+        ],
+    )
+
+    validation = validate_qwen35_gguf_nextn_tensor_map(info)
+
+    assert not validation.passed
+    assert validation.dtype_errors == (
+        "blk.2.nextn.eh_proj.weight: expected Q6_K, got Q4_K",
+    )
+
+
 def test_qwen35_dense_gguf_mtp_plans_dense_ffn_slots_and_materialization() -> None:
     info = _synthetic_qwen35_dense_mtp_info()
 
@@ -870,6 +903,8 @@ def test_qwen35_dense_gguf_nextn_validation_rejects_dense_contract_errors() -> N
 )
 def test_real_qwen36_27b_dense_blk64_strict_maps_and_call_spec() -> None:
     info = scan_gguf(_DENSE_QWEN36_MODEL)
+    if not any(".nextn." in tensor.name for tensor in info.tensors):
+        pytest.skip(f"local GGUF fixture has no trailing NextN block: {_DENSE_QWEN36_MODEL}")
 
     nextn_validation = validate_qwen35_gguf_nextn_tensor_map(info)
     assert nextn_validation.passed
@@ -899,6 +934,7 @@ def _synthetic_qwen35_dense_mtp_info(
     drop_tensors: set[str] | None = None,
     extra_tensors: list[GGUFTensorInfo] | None = None,
     q4ks: bool = False,
+    native_xl: bool = False,
 ) -> GGUFModelInfo:
     metadata = {
         "general.architecture": "qwen35",
@@ -922,6 +958,11 @@ def _synthetic_qwen35_dense_mtp_info(
         "qwen35.ssm.conv_kernel": 4,
         "qwen35.ssm.time_step_rank": 2,
     }
+    if native_xl:
+        metadata["hipengine.quant.variant"] = QWEN38_NATIVE_XL_QUANT_VARIANT
+        metadata["hipengine.quant.output_type_manifest_sha256"] = (
+            QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256
+        )
     tensors = [
         _tensor("token_embd.weight", (11, 8), GGMLQuantizationType.Q4_K),
         _tensor("output_norm.weight", (8,)),
@@ -943,11 +984,19 @@ def _synthetic_qwen35_dense_mtp_info(
     )
     tensors.extend(_dense_mlp_tensors(1))
     tensors.extend(_full_attention_tensors(1))
-    tensors.extend(_dense_mlp_tensors(2, nextn=True, q4ks=q4ks))
-    tensors.extend(_dense_nextn_full_attention_tensors(2, q4ks=q4ks))
+    tensors.extend(
+        _dense_mlp_tensors(2, nextn=True, q4ks=q4ks, native_xl=native_xl)
+    )
+    tensors.extend(
+        _dense_nextn_full_attention_tensors(2, q4ks=q4ks, native_xl=native_xl)
+    )
     tensors.extend(
         [
-            _tensor("blk.2.nextn.eh_proj.weight", (8, 16), GGMLQuantizationType.Q8_0),
+            _tensor(
+                "blk.2.nextn.eh_proj.weight",
+                (8, 16),
+                GGMLQuantizationType.Q6_K if native_xl else GGMLQuantizationType.Q8_0,
+            ),
             _tensor("blk.2.nextn.enorm.weight", (8,)),
             _tensor("blk.2.nextn.hnorm.weight", (8,)),
             _tensor("blk.2.nextn.shared_head_norm.weight", (8,)),
@@ -972,11 +1021,18 @@ def _dense_mlp_tensors(
     *,
     nextn: bool = False,
     q4ks: bool = False,
+    native_xl: bool = False,
 ) -> list[GGUFTensorInfo]:
     prefix = f"blk.{layer_id}"
-    gate_up_qtype = GGMLQuantizationType.Q4_K if nextn else GGMLQuantizationType.F32
+    gate_up_qtype = (
+        GGMLQuantizationType.Q6_K
+        if nextn and native_xl
+        else GGMLQuantizationType.Q4_K if nextn else GGMLQuantizationType.F32
+    )
     if not nextn:
         down_qtype = GGMLQuantizationType.F32
+    elif native_xl:
+        down_qtype = GGMLQuantizationType.Q6_K
     elif q4ks:
         down_qtype = GGMLQuantizationType.Q4_K
     else:
@@ -994,17 +1050,34 @@ def _dense_nextn_full_attention_tensors(
     layer_id: int,
     *,
     q4ks: bool = False,
+    native_xl: bool = False,
 ) -> list[GGUFTensorInfo]:
     prefix = f"blk.{layer_id}"
     return [
-        _tensor(f"{prefix}.attn_q.weight", (16, 8), GGMLQuantizationType.Q4_K),
-        _tensor(f"{prefix}.attn_k.weight", (4, 8), GGMLQuantizationType.Q4_K),
+        _tensor(
+            f"{prefix}.attn_q.weight",
+            (16, 8),
+            GGMLQuantizationType.Q6_K if native_xl else GGMLQuantizationType.Q4_K,
+        ),
+        _tensor(
+            f"{prefix}.attn_k.weight",
+            (4, 8),
+            GGMLQuantizationType.Q8_0 if native_xl else GGMLQuantizationType.Q4_K,
+        ),
         _tensor(
             f"{prefix}.attn_v.weight",
             (4, 8),
-            GGMLQuantizationType.Q4_K if q4ks else GGMLQuantizationType.Q6_K,
+            (
+                GGMLQuantizationType.Q8_0
+                if native_xl
+                else GGMLQuantizationType.Q4_K if q4ks else GGMLQuantizationType.Q6_K
+            ),
         ),
-        _tensor(f"{prefix}.attn_output.weight", (8, 8), GGMLQuantizationType.Q4_K),
+        _tensor(
+            f"{prefix}.attn_output.weight",
+            (8, 8),
+            GGMLQuantizationType.Q6_K if native_xl else GGMLQuantizationType.Q4_K,
+        ),
         _tensor(f"{prefix}.attn_q_norm.weight", (4,)),
         _tensor(f"{prefix}.attn_k_norm.weight", (4,)),
     ]

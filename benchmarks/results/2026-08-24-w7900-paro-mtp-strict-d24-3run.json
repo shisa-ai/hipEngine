@@ -1,0 +1,79 @@
+{
+  "schema": "hipengine.paro_mtp_strict_d24_3run.v1",
+  "date": "2026-08-24",
+  "status": "correctness_repeat_pass_economics_rejected",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "hardware": {
+    "physical_host": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "device_serial": "D7070100",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0"
+  },
+  "model": {
+    "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "quant": "w4_paro+mtp_bf16",
+    "kv_dtype": "bf16"
+  },
+  "scope": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_render": "raw",
+    "prompts": 10,
+    "decode_tokens": 24,
+    "runs_per_prompt": 3,
+    "candidate_budget": 1,
+    "proposal_impl": "persistent_device",
+    "provider_contract": "selected_final_norm_bf16+borrowed_target_w8a16_full_vocab",
+    "verifier": "registered strict c1_loop fallback",
+    "graph_mode": "off"
+  },
+  "correctness": {
+    "exact_prompt_runs": 30,
+    "prompt_runs": 30,
+    "exact_ids": 720,
+    "acceptance_traces_same_schedule_identical": true,
+    "accepted_drafts": 321,
+    "verify_cycles": 390,
+    "draft_acceptance_pooled": 0.823076923076923,
+    "accepted_per_output": 0.44583333333333336
+  },
+  "economics": {
+    "true_ar_decode_seconds_total": 6.514959297608584,
+    "mtp_decode_seconds_total": 6.861808356363326,
+    "true_ar_tok_s_weighted": 110.5148884451645,
+    "mtp_tok_s_weighted": 104.92860811717439,
+    "total_time_mtp_over_ar": 0.9494522375529345,
+    "prompt_mean_mtp_over_ar": 0.9566157342391666,
+    "prompt_mean_ar_tok_s": 110.5404317586994,
+    "prompt_mean_mtp_tok_s": 105.73347572646523,
+    "cycle_wall_ms_prompt_mean": 17.184459676068375,
+    "verify_ms_prompt_mean": 15.353635610479255,
+    "proposal_update_ms_prompt_mean": 1.8069305799256725,
+    "by_category_total_time_mtp_over_ar": {
+      "code": 0.9650202785011087,
+      "general_en": 1.0088560487220366,
+      "general_ja": 0.8722951177285272,
+      "mixed_ja_en": 0.9466618775781005
+    },
+    "by_category_draft_acceptance": {
+      "code": 0.8461538461538461,
+      "general_en": 0.9583333333333334,
+      "general_ja": 0.6785714285714286,
+      "mixed_ja_en": 0.8076923076923077
+    }
+  },
+  "decision": {
+    "three_repeat_correctness_gate": "passed",
+    "provider_default_promotion": "rejected",
+    "reason": "registered strict route is 0.94945x true AR overall and regresses three of four categories; general_en cannot compensate for general_ja/code/mixed regressions",
+    "keep": "explicit/default-off provider spike and registered strict fallback",
+    "clean_slate": "not triggered by proposal quality; the remaining loss is strict verifier wall, while strict D64 heldout evidence reaches 1.022x"
+  },
+  "command": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_GDN_TLOOP_C1_EXACT=1 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=1 HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT=1 HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX=0 HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT=1 /home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-render raw --decode-tokens 24 --candidate-budgets 1 --runs 3 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode c1_loop --graph-mode off --acceptance-diagnostics --raw-root /tmp/paro-spike-d24-strict-3run-raw --out /tmp/paro-spike-d24-strict-3run.json",
+  "raw_source": {
+    "path": "/tmp/paro-spike-d24-strict-3run.json",
+    "sha256": "4fcd335cf67169197da3bc3ee20dfad78485759e7cf9a757d4a6ee38c7171924"
+  }
+}

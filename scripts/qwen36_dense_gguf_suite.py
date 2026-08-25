@@ -33,6 +33,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from hipengine.benchmark.provenance import collect_artifact_provenance
 from hipengine.core.memory import memory_stats, reset_memory_stats
+from hipengine.kernels.backends import HIP_BACKEND_TARGET_ARCH
 from hipengine.loading import load_gguf_index
 from hipengine.runtime.qwen35_gguf_mtp import (
     Qwen35GGUFMTPDecodeSession,
@@ -43,6 +44,11 @@ from hipengine.runtime.qwen35_gguf_nextn import (
     borrow_qwen35_gguf_nextn_fallback_weights,
 )
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+from hipengine.speculative.mtp_budget import (
+    MtpAdaptiveBudgetConfig,
+    MtpAdaptiveBudgetPolicy,
+    MtpBudgetSequencePolicy,
+)
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.gguf_mtp_category_bench import load_prompt_rows
@@ -73,6 +79,32 @@ FULL_PROMPT_IDS = (
 )
 
 
+def parse_budget_sequence(value: str) -> tuple[int, ...]:
+    budgets = tuple(int(item.strip()) for item in str(value).split(",") if item.strip())
+    if not budgets or any(item not in {1, 2, 3} for item in budgets):
+        raise ValueError("budget sequence must be a comma-separated subset of 1,2,3")
+    return budgets
+
+
+def build_budget_policy(args: argparse.Namespace, label: str):
+    if label == "sequence":
+        if args.budget_sequence is None:
+            raise ValueError("sequence policy requires --budget-sequence")
+        return MtpBudgetSequencePolicy(tuple(args.budget_sequence))
+    if label == "adaptive":
+        return MtpAdaptiveBudgetPolicy(
+            MtpAdaptiveBudgetConfig(
+                budgets=(1, 2, 3),
+                ema_alpha=float(args.adaptive_ema_alpha),
+                switch_margin=float(args.adaptive_switch_margin),
+                exploration_samples_per_budget=int(
+                    args.adaptive_exploration_samples
+                ),
+            )
+        )
+    raise ValueError(f"unknown budget policy: {label}")
+
+
 def parse_candidate_budgets(value: str) -> tuple[int, ...]:
     budgets = tuple(int(item.strip()) for item in str(value).split(",") if item.strip())
     if not budgets or any(item not in {1, 2, 3, 4} for item in budgets):
@@ -101,6 +133,22 @@ def suite_speed_claim_eligible(
         and Path(prompts_path).resolve() == DEFAULT_PROMPTS.resolve()
         and tuple(str(prompt_id) for prompt_id in prompt_ids) == FULL_PROMPT_IDS
         and int(max_new_tokens) == 25
+    )
+
+
+def native_hip_speed_claim_hardware_eligible(
+    *,
+    resolved_backend: str,
+    target_arch: str,
+    device_name: str,
+) -> bool:
+    """Accept a concrete native HIP backend/arch pair with named hardware."""
+
+    expected_arch = HIP_BACKEND_TARGET_ARCH.get(str(resolved_backend))
+    return bool(
+        expected_arch is not None
+        and str(target_arch) == expected_arch
+        and str(device_name).strip()
     )
 
 
@@ -359,6 +407,7 @@ def _run_mtp(
     prompt_tokens: Sequence[int],
     *,
     max_new_tokens: int,
+    budget_policy=None,
 ) -> dict[str, object]:
     ledger.reset()
     with ledger.measure("generation"):
@@ -368,6 +417,7 @@ def _run_mtp(
             return_cycle_logits=False,
             use_bulk_prefill=False,
             prefill_draft=True,
+            budget_policy=budget_policy,
         )
     instrumentation = ledger.snapshot()
     totals = instrumentation["totals_seconds"]
@@ -480,6 +530,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-new-tokens", type=int, default=25)
     parser.add_argument("--candidate-budgets", type=parse_candidate_budgets, default=(1, 2, 3))
     parser.add_argument(
+        "--budget-sequence",
+        type=parse_budget_sequence,
+        default=None,
+        help="Optional request-local transition diagnostic, e.g. 1,1,2,1,3,2,2,3,3,1",
+    )
+    parser.add_argument(
+        "--adaptive-budget",
+        action="store_true",
+        help="Evaluate the content-agnostic B1/B2/B3 EMA controller",
+    )
+    parser.add_argument("--adaptive-ema-alpha", type=float, default=0.25)
+    parser.add_argument("--adaptive-switch-margin", type=float, default=0.02)
+    parser.add_argument("--adaptive-exploration-samples", type=int, default=1)
+    parser.add_argument(
+        "--draft-hidden-variant",
+        choices=("pre_output_norm", "post_output_norm"),
+        default="pre_output_norm",
+        help="immutable target-to-draft hidden convention",
+    )
+    parser.add_argument(
         "--target-verify-mode",
         choices=("native", "serial-exact"),
         default="native",
@@ -548,8 +618,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         for prompt in prompts
     }
     max_prompt_tokens = max(len(tokens) for tokens in encoded_prompts.values())
+    requested_max_budget = max(
+        max(args.candidate_budgets),
+        3 if args.budget_sequence is not None or args.adaptive_budget else 1,
+    )
     max_sequence_length = int(args.max_sequence_length) or (
-        max_prompt_tokens + int(args.max_new_tokens) + max(args.candidate_budgets) + 8
+        max_prompt_tokens + int(args.max_new_tokens) + requested_max_budget + 8
     )
     if max_sequence_length < max_prompt_tokens + int(args.max_new_tokens):
         raise ValueError("--max-sequence-length is too small for the selected suite")
@@ -562,9 +636,18 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     reset_memory_stats()
     markers = _RoctxMarkers(bool(args.roctx_markers))
     ledger = _CallLedger(markers)
+    policy_labels = tuple(
+        label
+        for label, enabled in (
+            ("sequence", args.budget_sequence is not None),
+            ("adaptive", bool(args.adaptive_budget)),
+        )
+        if enabled
+    )
     ar_rows: list[dict[str, object]] = []
     mtp_rows: dict[str, list[dict[str, object]]] = {
-        str(budget): [] for budget in args.candidate_budgets
+        **{str(budget): [] for budget in args.candidate_budgets},
+        **{label: [] for label in policy_labels},
     }
     proposal_graph_contract: dict[str, object] = {}
     load_started = time.perf_counter()
@@ -589,9 +672,15 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             require_cached_build=bool(args.require_cached_build),
             borrowed_fallback_weights=borrowed_fallback_weights,
         )
+        decoder_budgets = tuple(
+            sorted(
+                set(args.candidate_budgets)
+                | ({1, 2, 3} if policy_labels else set())
+            )
+        )
         verifier = Qwen35GGUFTransactionalVerifier(
             target,
-            max_candidate_budget=max(args.candidate_budgets),
+            max_candidate_budget=max(decoder_budgets),
             quant=str(args.quant),
             target_verify_mode=str(args.target_verify_mode),
         )
@@ -605,8 +694,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 quant=str(args.quant),
                 verifier=timed_verifier,
                 owns_verifier=False,
+                draft_hidden_variant=str(args.draft_hidden_variant),
             )
-            for budget in args.candidate_budgets
+            for budget in decoder_budgets
         }
         load_seconds = time.perf_counter() - load_started
         try:
@@ -622,7 +712,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 warmup_outputs = min(int(args.max_new_tokens), max(5, max(args.candidate_budgets) + 2))
                 ledger.recording = False
                 _run_ar(target, warmup_tokens, max_new_tokens=warmup_outputs)
-                for budget in args.candidate_budgets:
+                for budget in decoder_budgets:
                     _run_mtp(
                         decoders[int(budget)],
                         ledger,
@@ -671,6 +761,33 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                         mtp_rows[str(budget)].append(mtp)
                         print(
                             f"MTP B{budget} run={run_index} prompt={prompt_id} "
+                            f"tok_s={float(mtp['decode_tok_s_transition_normalized']):.6f} "
+                            f"accepted={int(mtp['accepted_draft_tokens'])} "
+                            f"exact={bool(mtp['exact_greedy_match'])}",
+                            flush=True,
+                        )
+                    for label in policy_labels:
+                        policy = build_budget_policy(args, label)
+                        mtp = _attach_identity(
+                            _run_mtp(
+                                decoders[3],
+                                ledger,
+                                prompt_tokens,
+                                max_new_tokens=int(args.max_new_tokens),
+                                budget_policy=policy,
+                            ),
+                            prompt=prompt,
+                            run_index=run_index,
+                        )
+                        mtp["prompt_tokens"] = len(prompt_tokens)
+                        mtp["exact_greedy_match"] = mtp["token_ids"] == ar["token_ids"]
+                        mtp["speedup_vs_true_ar"] = (
+                            float(mtp["decode_tok_s_transition_normalized"])
+                            / float(ar["decode_tok_s_transition_normalized"])
+                        )
+                        mtp_rows[label].append(mtp)
+                        print(
+                            f"MTP {label} run={run_index} prompt={prompt_id} "
                             f"tok_s={float(mtp['decode_tok_s_transition_normalized']):.6f} "
                             f"accepted={int(mtp['accepted_draft_tokens'])} "
                             f"exact={bool(mtp['exact_greedy_match'])}",
@@ -736,7 +853,11 @@ def run(args: argparse.Namespace) -> dict[str, object]:
                 all_exact=all_exact,
             )
             and not bool(provenance["dirty"])
-            and provenance["device_name"] == "AMD Radeon Pro W7900"
+            and native_hip_speed_claim_hardware_eligible(
+                resolved_backend=str(provenance["resolved_backend"]),
+                target_arch=str(provenance["target_arch"]),
+                device_name=str(provenance["device_name"]),
+            )
         ),
         "provenance": provenance,
         "command": shlex.join([str(Path(sys.executable).resolve()), *sys.argv]),
@@ -764,7 +885,28 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             "max_new_tokens_visible": int(args.max_new_tokens),
             "timed_decode_transitions": timed_transition_count(args.max_new_tokens),
             "candidate_budgets": list(args.candidate_budgets),
+            "budget_policies": {
+                "sequence": (
+                    None
+                    if args.budget_sequence is None
+                    else list(args.budget_sequence)
+                ),
+                "adaptive": (
+                    None
+                    if not args.adaptive_budget
+                    else {
+                        "budgets": [1, 2, 3],
+                        "ema_alpha": float(args.adaptive_ema_alpha),
+                        "switch_margin": float(args.adaptive_switch_margin),
+                        "exploration_samples_per_budget": int(
+                            args.adaptive_exploration_samples
+                        ),
+                    }
+                ),
+            },
             "target_verify_mode": str(args.target_verify_mode),
+            "draft_hidden_variant": str(args.draft_hidden_variant),
+            "draft_hidden_manifest": decoders[min(decoders)].draft_hidden_manifest,
             "runs": int(args.runs),
             "warmup": bool(args.warmup),
             "max_sequence_length": max_sequence_length,

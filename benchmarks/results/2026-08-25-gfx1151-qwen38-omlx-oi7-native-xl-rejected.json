@@ -1,0 +1,504 @@
+{
+  "schema": 1,
+  "kind": "omlx_ideas_oi7_gfx1151_qwen38_native_xl_decision",
+  "created_at": "2026-08-25T00:30:00Z",
+  "status": "quality_passed_deployment_rejected",
+  "performance_claim": false,
+  "decision": "Reject native-XL v2 for deployment/default. It improves BF16-relative distributional quality and passes paired Q4 equivalence, but native MTP violates exact target ownership on a held-out Japanese prompt, true AR is 60.76% slower, B1/B2/B3 are 43.25-43.74% slower, and peak HIP allocation is 59.46% larger. Keep only research tooling/oracle evidence and serial-exact fallback diagnostics.",
+  "hardware": {
+    "host": "zbook",
+    "cpu": "AMD Ryzen AI MAX+ PRO 395",
+    "device": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "arch": "gfx1151"
+  },
+  "source": {
+    "repo": "unsloth/Qwen3.8-27B-GGUF",
+    "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+    "bf16_shards_sha256": [
+      "b9966e82b7a4d87028b5eae061d578ee826305ebf8baea5bfc6e09bad0ba191f",
+      "92e3943c4f9bd6292a7bef82369f65fed9bfed088b9df0fb2fa2ce17c9edfa02"
+    ],
+    "merged_bf16_sha256": "53a3093eae7028f5b84a268b04c4e3278c817983f4fd6165663a09d50f2919f2",
+    "imatrix_sha256": "0ee5b10bd0c2fa2127c6f4b43dbfe1efd71e383b63217af9dade1de36599f1c1",
+    "sensitivity_artifact_sha256": "3f227079003add2511437e5b1e94812e363385225bf6a9b47b0054a72bc8b01e"
+  },
+  "candidate": {
+    "name": "Qwen3.8-27B-hipEngine-native-XL-v2",
+    "sha256": "f0beea376a60310844b503760c870d6482117d9a93ea61189b88d5b6cccef3b0",
+    "file_bytes": 18098273568,
+    "tensor_payload_bytes": 18087276544,
+    "effective_bpw": 5.29628536996621,
+    "types": {
+      "F32": 360,
+      "Q4_K": 149,
+      "Q5_K": 191,
+      "Q6_K": 55,
+      "Q8_0": 111
+    },
+    "plan_sha256": "01c40a880a6a9a3bb970692872f6b557fc313ed22a7f91d801f0ca9e8aa5f0ee",
+    "shape_manifest_sha256": "92d8800e8b84d0eabd1c27f1c43a19b8320f8f7aad7b3ddbcabf0e854a573d1a",
+    "output_type_manifest_sha256": "a45045f99c2a094c244142876e5760474fc9dabc09d22b0aea622d0c15844c3c",
+    "v1_plan_artifact": "benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi7-native-xl-plan.json",
+    "v2_exact_delta": {
+      "output.weight": {
+        "v1": "Q6_K",
+        "v2": "Q8_0"
+      }
+    },
+    "loader_verification_status": "passed"
+  },
+  "baseline": {
+    "name": "Qwen3.8-27B Q4_K_M",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "file_bytes": 17106775008,
+    "tensor_payload_bytes": 17095778304
+  },
+  "quality": {
+    "protocol_id": "qwen36-bf16-teacher-mtpbench-v1",
+    "prompt_source_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "teacher": {
+      "runtime": "llama.cpp Vulkan",
+      "revision": "749f688fcaa4c472ec034b08cb8a907c45cfaa02",
+      "model_sha256": "53a3093eae7028f5b84a268b04c4e3278c817983f4fd6165663a09d50f2919f2",
+      "rows": 90,
+      "fixture_sha256": "cc65bec693db5f1fc6d32281e4420e263c13f9f4134506149aba21de8d99695d",
+      "logits_sha256": "e954829be515d47189d5fee9c896a719d833ca6410ac9864f8982afb1fbf42af",
+      "raw_logits_sha256": "8db7737f3ec17ad58279829b851a2cb6fc83bb16d54a588e852ee23c23b22bb9"
+    },
+    "q4_baseline": {
+      "mean_kl_nats": 0.003982504380443967,
+      "max_kl_nats": 0.04634007191576376,
+      "teacher_ppl": 1.121781604518283,
+      "top1_agreement_pct": 100.0,
+      "top5_set_overlap_pct": 92.8888888888889,
+      "by_category": {
+        "code": {
+          "mean_kl_nats": 0.0025019523451469245,
+          "max_kl_nats": 0.02692692197446564,
+          "teacher_ppl": 1.0379455007215141,
+          "top1_agreement_pct": 100.0,
+          "top5_set_overlap_pct": 92.22222222222223
+        },
+        "general_en": {
+          "mean_kl_nats": 0.004054175930428453,
+          "max_kl_nats": 0.01997705793169946,
+          "teacher_ppl": 1.2403796475832531,
+          "top1_agreement_pct": 100.0,
+          "top5_set_overlap_pct": 98.88888888888889
+        },
+        "general_ja": {
+          "mean_kl_nats": 0.0047572943331869386,
+          "max_kl_nats": 0.02836141046084499,
+          "teacher_ppl": 1.178567409149997,
+          "top1_agreement_pct": 100.0,
+          "top5_set_overlap_pct": 93.33333333333333
+        },
+        "mixed_ja_en": {
+          "mean_kl_nats": 0.006097146948310593,
+          "max_kl_nats": 0.04634007191576376,
+          "teacher_ppl": 1.127933276577272,
+          "top1_agreement_pct": 100.0,
+          "top5_set_overlap_pct": 87.77777777777777
+        }
+      }
+    },
+    "native_xl_v1": {
+      "mean_kl_nats": 0.0027650460008983827,
+      "max_kl_nats": 0.035154183760458486,
+      "teacher_ppl": 1.1247067669230475,
+      "top1_agreement_pct": 100.0,
+      "top5_set_overlap_pct": 94.0,
+      "by_category": {
+        "code": {
+          "mean_kl_nats": 0.0010190019629251759,
+          "max_kl_nats": 0.020643026544658584,
+          "teacher_ppl": 1.0338576129046357,
+          "top1_agreement_pct": 100.0,
+          "top5_set_overlap_pct": 93.88888888888887
+        },
+        "general_en": {
+          "mean_kl_nats": 0.0030735381588903347,
+          "max_kl_nats": 0.013807663362163892,
+          "teacher_ppl": 1.254394345643734,
+          "top1_agreement_pct": 100.0,
+          "top5_set_overlap_pct": 96.66666666666666
+        },
+        "general_ja": {
+          "mean_kl_nats": 0.0034164025166522217,
+          "max_kl_nats": 0.013298412681817112,
+          "teacher_ppl": 1.1818243928225634,
+          "top1_agreement_pct": 100.0,
+          "top5_set_overlap_pct": 94.44444444444444
+        },
+        "mixed_ja_en": {
+          "mean_kl_nats": 0.005297285403099005,
+          "max_kl_nats": 0.035154183760458486,
+          "teacher_ppl": 1.1357638546004518,
+          "top1_agreement_pct": 100.0,
+          "top5_set_overlap_pct": 91.11111111111111
+        }
+      }
+    },
+    "native_xl_v2": {
+      "mean_kl_nats": 0.002699133527160252,
+      "max_kl_nats": 0.03627052573265827,
+      "teacher_ppl": 1.124450062919289,
+      "top1_agreement_pct": 100.0,
+      "top5_set_overlap_pct": 94.0,
+      "by_category": {
+        "code": {
+          "mean_kl_nats": 0.0009037982522316228,
+          "max_kl_nats": 0.015996937005045668,
+          "teacher_ppl": 1.0346047546181654,
+          "top1_agreement_pct": 100.0,
+          "top5_set_overlap_pct": 93.88888888888887
+        },
+        "general_en": {
+          "mean_kl_nats": 0.0028582683174436497,
+          "max_kl_nats": 0.01249296889620121,
+          "teacher_ppl": 1.2513964890360567,
+          "top1_agreement_pct": 100.0,
+          "top5_set_overlap_pct": 96.66666666666666
+        },
+        "general_ja": {
+          "mean_kl_nats": 0.0033293896123902118,
+          "max_kl_nats": 0.016171099454263413,
+          "teacher_ppl": 1.1787877075669715,
+          "top1_agreement_pct": 100.0,
+          "top5_set_overlap_pct": 94.44444444444444
+        },
+        "mixed_ja_en": {
+          "mean_kl_nats": 0.00550041320150415,
+          "max_kl_nats": 0.03627052573265827,
+          "teacher_ppl": 1.1384694864902263,
+          "top1_agreement_pct": 100.0,
+          "top5_set_overlap_pct": 91.11111111111111
+        }
+      }
+    },
+    "v2_vs_q4": {
+      "mean_kl_delta_pct": -32.22522138546011,
+      "max_kl_delta_pct": -21.729673189566356
+    },
+    "paired_noninferiority": {
+      "bootstrap": {
+        "unit": "prompt block (nine teacher rows)",
+        "prompt_count": 10,
+        "samples": 10000,
+        "seed": 1234
+      },
+      "margins": {
+        "mean_kl_candidate_minus_q4_max_nats": 0.005,
+        "top1_candidate_minus_q4_min_pp": -2.0,
+        "teacher_ppl_ratio_candidate_minus_q4_max": 0.01,
+        "teacher_ppl_note": "portable BF16-teacher trajectory diagnostic; not canonical held-out-corpus PPL"
+      },
+      "confidence_intervals": {
+        "mean_kl_candidate_minus_baseline_nats": {
+          "low_95": -0.0027864797659425877,
+          "median": -0.0013037421921483488,
+          "high_95": 0.0003246744911608586
+        },
+        "top1_candidate_minus_baseline_pp": {
+          "low_95": 0.0,
+          "median": 0.0,
+          "high_95": 0.0
+        },
+        "teacher_ppl_ratio_candidate_minus_baseline": {
+          "low_95": -0.00376172891136568,
+          "median": 0.0022110415661116267,
+          "high_95": 0.009418044694255417
+        }
+      },
+      "gates": {
+        "mean_kl_noninferior": true,
+        "top1_noninferior": true,
+        "teacher_ppl_ratio_noninferior_diagnostic": true,
+        "category_point_margin_veto": false,
+        "portable_q4_equivalent": true
+      },
+      "verdict": "q4-equivalent"
+    }
+  },
+  "performance": {
+    "protocol": {
+      "prompt_file": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "prompt_count": 10,
+      "prompt_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review"
+      ],
+      "categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "heldout_ids": [
+        "code_markdown_table",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review"
+      ],
+      "train_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "general_en_plan",
+        "general_ja_plan",
+        "mixed_ja_en_translate"
+      ],
+      "prompt_render": "Qwen chat template; reasoning off",
+      "max_new_tokens_visible": 25,
+      "timed_decode_transitions": 24,
+      "candidate_budgets": [
+        1,
+        2,
+        3
+      ],
+      "budget_policies": {
+        "sequence": null,
+        "adaptive": null
+      },
+      "target_verify_mode": "native",
+      "draft_hidden_variant": "pre_output_norm",
+      "draft_hidden_manifest": {
+        "target_hidden_variant": "pre_output_norm",
+        "prompt_target_hidden": "pre_output_norm",
+        "proposal_target_hidden": "pre_output_norm",
+        "target_commit_hidden": "pre_output_norm",
+        "draft_chain_hidden": "nextn_post_output_norm"
+      },
+      "runs": 1,
+      "warmup": true,
+      "max_sequence_length": 107,
+      "sampling": {
+        "temperature": 0.0,
+        "top_k": 1,
+        "top_p": 1.0,
+        "min_p": 0.0,
+        "seed": 12345
+      }
+    },
+    "baseline_raw": "/tmp/hipengine-omlx-oi3-full.json",
+    "candidate_raw": "/tmp/hipengine-omlx-oi7-native-xl-v2-full.json",
+    "baseline_command": "/home/lhl/miniforge3/bin/python3.13 scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --warmup --compiler-version-file /tmp/hipengine-omlx-oi0-gfx1151/hipcc-version.txt --require-cached-build --output /tmp/hipengine-omlx-oi3-full.json",
+    "candidate_command": "/home/lhl/miniforge3/bin/python3.13 scripts/qwen36_dense_gguf_suite.py --model /home/lhl/models/oi7-qwen38-native-xl/Qwen3.8-27B-hipEngine-native-XL-v2.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --warmup --compiler-version-file /tmp/hipengine-omlx-oi0-gfx1151/hipcc-version.txt --require-cached-build --output /tmp/hipengine-omlx-oi7-native-xl-v2-full.json",
+    "baseline": {
+      "ar": {
+        "decode_tok_s": 11.674074062391353,
+        "decode_seconds": 20.558375655091368,
+        "accepted_draft_tokens": 0,
+        "proposed_draft_tokens": 0,
+        "draft_acceptance": null,
+        "target_forward_rows": 240,
+        "stage_reconciled": true
+      },
+      "b1": {
+        "decode_tok_s": 17.14345232932231,
+        "decode_seconds": 13.99951394792879,
+        "accepted_draft_tokens": 113,
+        "proposed_draft_tokens": 131,
+        "draft_acceptance": 0.8625954198473282,
+        "target_forward_rows": 262,
+        "stage_reconciled": true
+      },
+      "b2": {
+        "decode_tok_s": 20.019617396642058,
+        "decode_seconds": 11.988241095968988,
+        "accepted_draft_tokens": 144,
+        "proposed_draft_tokens": 200,
+        "draft_acceptance": 0.72,
+        "target_forward_rows": 301,
+        "stage_reconciled": true
+      },
+      "b3": {
+        "decode_tok_s": 21.05211741250391,
+        "decode_seconds": 11.400278427929152,
+        "accepted_draft_tokens": 159,
+        "proposed_draft_tokens": 252,
+        "draft_acceptance": 0.6309523809523809,
+        "target_forward_rows": 340,
+        "stage_reconciled": true
+      }
+    },
+    "candidate": {
+      "ar": {
+        "decode_tok_s": 4.581179560290076,
+        "decode_seconds": 52.38825434399769,
+        "accepted_draft_tokens": 0,
+        "proposed_draft_tokens": 0,
+        "draft_acceptance": null,
+        "target_forward_rows": 240,
+        "stage_reconciled": true
+      },
+      "b1": {
+        "decode_tok_s": 9.72828738410571,
+        "decode_seconds": 24.670323822065257,
+        "accepted_draft_tokens": 112,
+        "proposed_draft_tokens": 133,
+        "draft_acceptance": 0.8421052631578947,
+        "target_forward_rows": 266,
+        "stage_reconciled": true
+      },
+      "b2": {
+        "decode_tok_s": 11.337909166050288,
+        "decode_seconds": 21.167924040055368,
+        "accepted_draft_tokens": 143,
+        "proposed_draft_tokens": 199,
+        "draft_acceptance": 0.7185929648241206,
+        "target_forward_rows": 300,
+        "stage_reconciled": true
+      },
+      "b3": {
+        "decode_tok_s": 11.843487973606704,
+        "decode_seconds": 20.264300562033895,
+        "accepted_draft_tokens": 159,
+        "proposed_draft_tokens": 250,
+        "draft_acceptance": 0.636,
+        "target_forward_rows": 337,
+        "stage_reconciled": true
+      }
+    },
+    "candidate_vs_baseline_pct": {
+      "ar": -60.757662356720964,
+      "b1": -43.253627115313506,
+      "b2": -43.36600474716352,
+      "b3": -43.74205814293881
+    },
+    "baseline_peak_hip_allocated_bytes": 17926268100,
+    "candidate_peak_hip_allocated_bytes": 28586371748,
+    "peak_allocation_delta_pct": 59.46638524278236
+  },
+  "correctness": {
+    "native_status": "correctness_failed",
+    "all_exact_greedy": false,
+    "all_gpu_accept_match_cpu": true,
+    "native_mismatches": [
+      {
+        "budget": 1,
+        "prompt_id": "general_ja_explain",
+        "first_mismatch_index": 9,
+        "ar_token_id": 67813,
+        "mtp_token_id": 48213
+      },
+      {
+        "budget": 2,
+        "prompt_id": "general_ja_explain",
+        "first_mismatch_index": 9,
+        "ar_token_id": 67813,
+        "mtp_token_id": 48213
+      },
+      {
+        "budget": 3,
+        "prompt_id": "general_ja_explain",
+        "first_mismatch_index": 9,
+        "ar_token_id": 67813,
+        "mtp_token_id": 48213
+      }
+    ],
+    "serial_exact_fallback": {
+      "raw": "/tmp/hipengine-omlx-oi7-native-xl-v2-general-ja-serial-exact.json",
+      "status": "complete_exact",
+      "all_exact_greedy": true,
+      "decode_tok_s": {
+        "ar": 4.606422882542226,
+        "b1": 3.7251650030310812,
+        "b2": 3.4819322401129456,
+        "b3": 2.9976305308155813
+      }
+    },
+    "cross_quant_ar_diagnostic": {
+      "exact_prompt_count": 7,
+      "equal_token_positions": 221,
+      "total_token_positions": 250,
+      "rows": [
+        {
+          "id": "code_merge_intervals",
+          "exact_25": true,
+          "equal_positions": 25,
+          "first_mismatch_index": null
+        },
+        {
+          "id": "code_topological_sort",
+          "exact_25": true,
+          "equal_positions": 25,
+          "first_mismatch_index": null
+        },
+        {
+          "id": "code_lru_cache",
+          "exact_25": true,
+          "equal_positions": 25,
+          "first_mismatch_index": null
+        },
+        {
+          "id": "code_markdown_table",
+          "exact_25": true,
+          "equal_positions": 25,
+          "first_mismatch_index": null
+        },
+        {
+          "id": "general_en_plan",
+          "exact_25": false,
+          "equal_positions": 17,
+          "first_mismatch_index": 17
+        },
+        {
+          "id": "general_en_explain",
+          "exact_25": true,
+          "equal_positions": 25,
+          "first_mismatch_index": null
+        },
+        {
+          "id": "general_ja_plan",
+          "exact_25": true,
+          "equal_positions": 25,
+          "first_mismatch_index": null
+        },
+        {
+          "id": "general_ja_explain",
+          "exact_25": false,
+          "equal_positions": 9,
+          "first_mismatch_index": 9
+        },
+        {
+          "id": "mixed_ja_en_translate",
+          "exact_25": false,
+          "equal_positions": 20,
+          "first_mismatch_index": 20
+        },
+        {
+          "id": "mixed_ja_en_review",
+          "exact_25": true,
+          "equal_positions": 25,
+          "first_mismatch_index": null
+        }
+      ]
+    }
+  },
+  "kernel_support": {
+    "bf16_hidden_weight_f32_output_cpu_reference": "passed",
+    "rocprof_kernel_name": "void (anonymous namespace)::dense_gemv_out_kernel<unsigned short, float, false>(...)",
+    "rocprof_duration_ns": 1884,
+    "rocprof_trace_local": "/tmp/oi7-dense-bf16-f32-trace/zbook/2889951_kernel_trace.csv"
+  },
+  "local_evidence": {
+    "/models/eval-results/hipengine-qwen38-native-xl-llama-teacher-v1/bf16.manifest.json": "eaec0dc9781330c51e417d218f6eea63d4fa28760e0b9670f2f2a8da8d9f4bf9",
+    "/models/eval-results/hipengine-qwen38-native-xl-llama-teacher-v1/q4km-vs-bf16.json": "e1eb23f2a839ec292011a8f1598dd7c79a3ba711fafbbb748695cd1df48b586f",
+    "/models/eval-results/hipengine-qwen38-native-xl-llama-teacher-v1/native-xl-v2-vs-bf16.json": "759c9abf3d5d205407daf29eb3b05f3384bab2d40fa5bed62d34f7404580aa98",
+    "/models/eval-results/hipengine-qwen38-native-xl-llama-teacher-v1/native-xl-v2-noninferiority.json": "d20a0adf9009a92ec936c17f34d9ec5807366b2e2b2216600bf4e50e81c1f10a",
+    "/home/lhl/models/oi7-qwen38-native-xl/v2-verification.json": "2012b09f99fc75f78ce97144024bac4901daef9cc6a18cf6d05feee84044d3b5",
+    "/tmp/hipengine-omlx-oi7-native-xl-v2-full.json": "632443f8117dfa8290238b9e5829c82ef1eaaa381f74d97749c8bbb7edd1b7ba",
+    "/tmp/hipengine-omlx-oi7-native-xl-v2-general-ja-serial-exact.json": "f76ca0290892bf6b3f74d911878831b5e5b44fbb3700c08200a1a91e0d5606c9"
+  }
+}

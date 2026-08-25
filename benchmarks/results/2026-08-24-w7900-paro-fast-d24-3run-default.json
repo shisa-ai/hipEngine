@@ -1,0 +1,111 @@
+{
+  "command": "env -u HIPENGINE_MTP_DRAFT_VOCAB_CAP HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_BACKEND=hip_gfx1100 HIPENGINE_GDN_TLOOP_C1_EXACT=0 HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS=0 HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT=0 HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX=0 HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT=1 /home/lhl/mambaforge/envs/therock/bin/python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-render raw --decode-tokens 24 --candidate-budgets 1 --runs 3 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode decode_batched --graph-mode off --acceptance-diagnostics --raw-root /tmp/paro-fast-d24-3run-raw --out /tmp/paro-fast-d24-3run.json",
+  "correctness": {
+    "acceptance_traces_same_schedule_identical": true,
+    "accepted_per_output": 0.44166666666666665,
+    "draft_acceptance_pooled": 0.8091603053435115,
+    "exact_ids": 720,
+    "exact_prompt_runs": 30,
+    "prompt_runs": 30
+  },
+  "date": "2026-08-24",
+  "decision": {
+    "production_verifier_default": "fast decode_batched",
+    "provider_default": "corrected target-contract B1 route",
+    "reason": "complete quality/task/state gates pass; fast improves strict MTP 10.33% overall and 8.03%-12.96% in every category, while complete fast MTP beats true AR 1.0446x overall",
+    "strict_profile_and_fallback": "retain c1_loop exact"
+  },
+  "economics": {
+    "cycle_wall_ms_prompt_mean": 15.426069449572651,
+    "fast_minus_strict_total_time_ratio": 0.09512083703570962,
+    "fast_over_strict_by_category": {
+      "code": 1.1295501622540978,
+      "general_en": 1.080295323018444,
+      "general_ja": 1.0898266091974658,
+      "mixed_ja_en": 1.0896395647140413
+    },
+    "fast_over_strict_mtp": 1.1033187139124845,
+    "mtp_decode_seconds_total": 6.219244058709592,
+    "mtp_over_true_ar_by_category": {
+      "code": 1.0805751476925962,
+      "general_en": 1.1003637964570836,
+      "general_ja": 0.9551143693342738,
+      "mixed_ja_en": 1.0202438353719527
+    },
+    "mtp_tok_s_weighted": 115.76969696046793,
+    "prompt_mean_ar_tok_s": 110.8473291602387,
+    "prompt_mean_mtp_over_ar": 1.051786741410627,
+    "prompt_mean_mtp_tok_s": 116.5676108642572,
+    "proposal_update_ms_prompt_mean": 1.8056136292293985,
+    "strict_mtp_tok_s_weighted": 104.92860811717439,
+    "total_time_mtp_over_ar": 1.0445730745886441,
+    "true_ar_decode_seconds_total": 6.496454888023436,
+    "true_ar_tok_s_weighted": 110.82967747953714,
+    "verify_ms_prompt_mean": 13.595870180945031
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "device_serial": "D7070100",
+    "hip_visible_devices": "0",
+    "physical_host": "epyc",
+    "target_arch": "gfx1100"
+  },
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "quant": "w4_paro+mtp_bf16"
+  },
+  "performance_claim": true,
+  "quality_evidence": {
+    "numerical_repeat": "benchmarks/results/2026-08-24-w7900-paro-fast-verifier-full-numerical-repeat-review.json",
+    "state_lifecycle": "benchmarks/results/2026-08-24-w7900-paro-fast-state-lifecycle-review.json",
+    "task": "benchmarks/results/2026-08-24-w7900-paro-fast-verifier-complete-task-review.json"
+  },
+  "raw_source": {
+    "path": "/tmp/paro-fast-d24-3run.json",
+    "sha256": "f27020e2ad357f7dfd156421c4701dc4526d2fae93cb5dc5345f225a571306dd"
+  },
+  "real_model_route_smokes": [
+    {
+      "chain_attn_mode": "decode_batched",
+      "exact_ar_match": true,
+      "execution_profile": "production",
+      "manifest_sha256": "920737601cca41bc64963437ce1daece0e4ebca1bc52ba5bdd22ae817aba9561",
+      "mode": "default_production",
+      "path": "/tmp/paro-default-fast-smoke.json",
+      "sha256": "9b691172a6501611e6d911909280bd30df1cbd0f4dcc8b8704ec68fad3b0cb32",
+      "status": "passed"
+    },
+    {
+      "chain_attn_mode": "c1_loop",
+      "exact_ar_match": true,
+      "execution_profile": "strict",
+      "manifest_sha256": "3199678e604dca83d40f3d538deb3c05ceed3144b0100ef89b3ecfb94aed5723",
+      "mode": "explicit_strict",
+      "path": "/tmp/paro-explicit-strict-smoke.json",
+      "sha256": "b24d2a1c46dc27cfe41e9af870fd8267ed4a94ff863e329e2bb4a9418e769155",
+      "status": "passed"
+    }
+  ],
+  "route_manifests": {
+    "production_selected_variant": "b1_graph_off_fast_d64_candidate",
+    "production_sha256": "920737601cca41bc64963437ce1daece0e4ebca1bc52ba5bdd22ae817aba9561",
+    "strict_fallback_variant": "b1_graph_off_strict_exact",
+    "strict_sha256": "3199678e604dca83d40f3d538deb3c05ceed3144b0100ef89b3ecfb94aed5723"
+  },
+  "schema": "hipengine.paro_mtp_fast_d24_3run_default.v1",
+  "scope": {
+    "candidate_budget": 1,
+    "decode_tokens": 24,
+    "graph_mode": "off",
+    "prompt_render": "raw",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "proposal_impl": "persistent_device",
+    "provider_contract": "selected_final_norm_bf16+borrowed_target_w8a16_full_vocab",
+    "runs_per_prompt": 3,
+    "verifier": "decode_batched fast production"
+  },
+  "status": "accepted_production_default"
+}

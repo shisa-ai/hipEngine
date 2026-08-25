@@ -25,6 +25,7 @@ from hipengine.generation.deadline import (
     GenerationDeadlineExceeded,
     generation_deadline_expired,
 )
+from hipengine.kernels.hip_gfx1100.fused.gguf_ops import gguf_rmsnorm_bf16_f32_weight
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import build_dflash_accept
 from hipengine.kernels.hip_gfx1100.speculative.dflash_commit import build_dflash_commit
 from hipengine.kernels.registry import KernelKey, is_registered, resolve
@@ -34,6 +35,8 @@ from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative import (
+    MtpBudgetCycleResult,
+    MtpBudgetPolicy,
     MtpProposalContext,
     TargetAcceptSummary,
     TargetCommitPlan,
@@ -46,6 +49,39 @@ from hipengine.speculative import (
 
 _GGUF_MTP_CANDIDATE_BUDGETS = (1, 2, 3, 4)
 _GGUF_MTP_TARGET_VERIFY_MODES = ("serial_exact", "native")
+_GGUF_MTP_DRAFT_HIDDEN_VARIANTS = ("pre_output_norm", "post_output_norm")
+
+
+@dataclass(frozen=True, slots=True)
+class Qwen35GGUFDraftHiddenPolicy:
+    """Immutable target-to-draft hidden convention for one decoder."""
+
+    target_hidden_variant: str = "pre_output_norm"
+
+    def __post_init__(self) -> None:
+        variant = str(self.target_hidden_variant).strip()
+        if variant not in _GGUF_MTP_DRAFT_HIDDEN_VARIANTS:
+            raise ValueError(
+                "target_hidden_variant must be 'pre_output_norm' or "
+                "'post_output_norm'"
+            )
+        object.__setattr__(self, "target_hidden_variant", variant)
+
+    @property
+    def requires_target_output_norm(self) -> bool:
+        return self.target_hidden_variant == "post_output_norm"
+
+    def manifest(self) -> dict[str, str]:
+        variant = self.target_hidden_variant
+        return {
+            "target_hidden_variant": variant,
+            "prompt_target_hidden": variant,
+            "proposal_target_hidden": variant,
+            # Target transaction ownership remains strict and pre-output-norm.
+            "target_commit_hidden": "pre_output_norm",
+            # Chained draft depths keep the NextN head's own normalized output.
+            "draft_chain_hidden": "nextn_post_output_norm",
+        }
 
 def _mtp_cycle_checkpoint(checkpoint: Callable[[], None] | None) -> None:
     """Observe cancellation/deadline/shutdown at one owned cycle boundary.
@@ -96,6 +132,197 @@ def _deadline_checkpoint(deadline_at: float | None) -> Callable[[], None] | None
             raise GenerationDeadlineExceeded(deadline_at=boundary)
 
     return _check
+
+
+class _StreamingNextNPromptSink:
+    """Request-owned shifted-hidden consumer for exact NextN prompt priming.
+
+    The sink carries only the newest target trunk row across target-prefill
+    chunks.  Every chunk appends ``token[start]`` against that carried row,
+    appends the remaining tokens against the preceding rows in the current
+    target chunk, then replaces the carried row with the chunk tail.  All
+    copies and draft launches use the target stream, so target buffers may be
+    reused as soon as :meth:`consume` returns without a host synchronization.
+    """
+
+    def __init__(
+        self,
+        *,
+        request_id: int,
+        prompt_tokens: Sequence[int],
+        hidden_size: int,
+        executor: Any,
+        runtime: HipRuntime,
+        checkpoint: Callable[[], None] | None,
+        start_position: int = 0,
+        initial_hidden: Tensor | None = None,
+        transform_hidden_rows: Callable[[int, int, int], int] | None = None,
+    ) -> None:
+        tokens = tuple(int(token) for token in prompt_tokens)
+        if not tokens:
+            raise ValueError("streaming NextN prompt sink requires prompt tokens")
+        if int(request_id) < 0:
+            raise ValueError("streaming NextN prompt sink request_id must be non-negative")
+        if int(hidden_size) <= 0:
+            raise ValueError("streaming NextN prompt sink hidden_size must be positive")
+        if int(start_position) < 0:
+            raise ValueError("streaming NextN prompt sink start_position must be non-negative")
+        if int(start_position) > 0 and initial_hidden is None:
+            raise ValueError("warm streaming NextN prompt priming requires initial_hidden")
+        if initial_hidden is not None and (
+            initial_hidden.dtype != DType.BF16
+            or initial_hidden.shape != (1, int(hidden_size))
+        ):
+            raise ValueError(
+                "streaming NextN initial_hidden must be BF16 with shape (1, hidden_size)"
+            )
+
+        self.request_id = int(request_id)
+        self.prompt_tokens = tokens
+        self.total_rows = len(tokens)
+        self.hidden_size = int(hidden_size)
+        self.start_position = int(start_position)
+        self.executor = executor
+        self.runtime = runtime
+        self.checkpoint = checkpoint
+        self.transform_hidden_rows = transform_hidden_rows
+        self.hidden_nbytes = self.hidden_size * DType.BF16.itemsize
+        self._pending_hidden = malloc(self.hidden_nbytes, runtime=runtime)
+        try:
+            if initial_hidden is None:
+                runtime.memset(self._pending_hidden.ptr, 0, self.hidden_nbytes)
+            else:
+                runtime.memcpy(
+                    self._pending_hidden.ptr,
+                    initial_hidden.ptr,
+                    self.hidden_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
+        except Exception:
+            free(self._pending_hidden, runtime=runtime)
+            raise
+        self.consumed_rows = 0
+        self._stream: int | None = None
+        self._finished = False
+        self._failed = False
+        self._closed = False
+
+    @property
+    def final_pending_hidden(self) -> Tensor:
+        if self._closed:
+            raise RuntimeError("streaming NextN prompt sink is closed")
+        return Tensor.from_handle(
+            self._pending_hidden.ptr,
+            (1, self.hidden_size),
+            DType.BF16,
+            Device("hip", 0),
+        )
+
+    def _validate_owner(self, request_id: int) -> None:
+        if int(request_id) != self.request_id:
+            raise RuntimeError(
+                "streaming NextN prompt sink owner mismatch: "
+                f"expected request {self.request_id}, got {int(request_id)}"
+            )
+
+    def consume(
+        self,
+        *,
+        request_id: int,
+        chunk_start: int,
+        hidden_ptr: int,
+        rows: int,
+        stream: int,
+    ) -> None:
+        """Append one contiguous target-hidden chunk to the draft timeline."""
+
+        self._validate_owner(request_id)
+        if self._closed:
+            raise RuntimeError("streaming NextN prompt sink is closed")
+        if self._failed:
+            raise RuntimeError("streaming NextN prompt sink is failed")
+        if self._finished:
+            raise RuntimeError("streaming NextN prompt sink is already finished")
+        start = int(chunk_start)
+        count = int(rows)
+        stream = int(stream)
+        if start != self.consumed_rows:
+            raise RuntimeError(
+                "streaming NextN prompt chunks must be contiguous: "
+                f"expected {self.consumed_rows}, got {start}"
+            )
+        if count <= 0 or start + count > self.total_rows:
+            raise ValueError("streaming NextN prompt chunk is outside the prompt")
+        if int(hidden_ptr) <= 0:
+            raise ValueError("streaming NextN prompt chunk requires a device hidden pointer")
+        if self._stream is None:
+            self._stream = stream
+        elif stream != self._stream:
+            raise RuntimeError("streaming NextN prompt chunks must use one stream")
+        if self.checkpoint is not None:
+            self.checkpoint()
+
+        tokens = self.prompt_tokens[start : start + count]
+        try:
+            draft_hidden_ptr = int(hidden_ptr)
+            if self.transform_hidden_rows is not None:
+                draft_hidden_ptr = int(
+                    self.transform_hidden_rows(int(hidden_ptr), count, stream)
+                )
+                if draft_hidden_ptr <= 0:
+                    raise RuntimeError(
+                        "streaming NextN hidden transform returned a null pointer"
+                    )
+            self.executor.enqueue_prompt_rows(
+                self.request_id,
+                tokens[:1],
+                position_start=self.start_position + start,
+                target_hidden_base_ptr=self._pending_hidden.ptr,
+                hidden_stride_bytes=self.hidden_nbytes,
+                stream=stream,
+            )
+            if count > 1:
+                self.executor.enqueue_prompt_rows(
+                    self.request_id,
+                    tokens[1:],
+                    position_start=self.start_position + start + 1,
+                    target_hidden_base_ptr=draft_hidden_ptr,
+                    hidden_stride_bytes=self.hidden_nbytes,
+                    stream=stream,
+                )
+            self.runtime.memcpy_async(
+                self._pending_hidden.ptr,
+                draft_hidden_ptr + (count - 1) * self.hidden_nbytes,
+                self.hidden_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+        except Exception:
+            self._failed = True
+            raise
+        self.consumed_rows += count
+
+    def finish(self, *, request_id: int, total_rows: int, stream: int) -> None:
+        """Validate complete request ownership at the target activation seam."""
+
+        self._validate_owner(request_id)
+        if self._closed:
+            raise RuntimeError("streaming NextN prompt sink is closed")
+        if self._failed:
+            raise RuntimeError("streaming NextN prompt sink is failed")
+        if int(total_rows) != self.total_rows or self.consumed_rows != self.total_rows:
+            raise RuntimeError(
+                "streaming NextN prompt sink finished before every row was consumed"
+            )
+        if self._stream is not None and int(stream) != self._stream:
+            raise RuntimeError("streaming NextN prompt finish must use the chunk stream")
+        self._finished = True
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        free(self._pending_hidden, runtime=self.runtime)
 
 
 def _effective_target_verify_mode(requested: str, *, rows: int) -> str:
@@ -220,6 +447,7 @@ class Qwen35GGUFMTPGenerationResult:
     gpu_accept_match_cpu: bool
     graph_stats: dict[str, object]
     cycle_records: tuple[dict[str, object], ...] = ()
+    budget_policy_summary: dict[str, object] | None = None
 
     @property
     def accepted_draft_tokens(self) -> int:
@@ -253,6 +481,7 @@ class Qwen35GGUFMTPGenerationResult:
             "gpu_accept_match_cpu": bool(self.gpu_accept_match_cpu),
             "graph_stats": self.graph_stats,
             "cycle_records": list(self.cycle_records),
+            "budget_policy": self.budget_policy_summary,
         }
 
 
@@ -1296,6 +1525,7 @@ class Qwen35GGUFMTPDecodeSession:
         target_verify_mode: str = "serial_exact",
         verifier: Qwen35GGUFTransactionalVerifier | None = None,
         owns_verifier: bool = True,
+        draft_hidden_variant: str = "pre_output_norm",
     ) -> None:
         if int(candidate_budget) not in _GGUF_MTP_CANDIDATE_BUDGETS:
             raise ValueError("candidate_budget must be 1, 2, 3, or 4")
@@ -1306,6 +1536,9 @@ class Qwen35GGUFMTPDecodeSession:
         self.draft_provider = draft_provider
         self.candidate_budget = int(candidate_budget)
         self.quant = selected_quant
+        self.draft_hidden_policy = Qwen35GGUFDraftHiddenPolicy(
+            target_hidden_variant=str(draft_hidden_variant)
+        )
         self.verifier = verifier or Qwen35GGUFTransactionalVerifier(
             target,
             max_candidate_budget=max(_GGUF_MTP_CANDIDATE_BUDGETS),
@@ -1313,6 +1546,71 @@ class Qwen35GGUFMTPDecodeSession:
             target_verify_mode=target_verify_mode,
         )
         self.owns_verifier = bool(owns_verifier if verifier is not None else True)
+        self._draft_post_norm_hidden: DeviceBuffer | None = None
+        if self.draft_hidden_policy.requires_target_output_norm:
+            if target.runner is None or target.runtime is None:
+                if verifier is None:
+                    self.verifier.close()
+                raise RuntimeError("GGUF target session is closed")
+            try:
+                self._draft_post_norm_hidden = malloc(
+                    target.runner.hidden_size * DType.BF16.itemsize,
+                    runtime=target.runtime,
+                )
+            except Exception:
+                if verifier is None:
+                    self.verifier.close()
+                raise
+
+    @property
+    def draft_hidden_manifest(self) -> dict[str, str]:
+        policy = getattr(self, "draft_hidden_policy", Qwen35GGUFDraftHiddenPolicy())
+        return policy.manifest()
+
+    def _normalize_target_hidden_rows(
+        self,
+        src_ptr: int,
+        dst_ptr: int,
+        rows: int,
+        *,
+        stream: int,
+    ) -> None:
+        if self.target.runner is None or self.target.runner.weights is None:
+            raise RuntimeError("GGUF target session is closed")
+        gguf_rmsnorm_bf16_f32_weight(
+            int(src_ptr),
+            self.target.runner.weights.root("output_norm").allocation().tensor.ptr,
+            int(dst_ptr),
+            rows=int(rows),
+            hidden_size=self.target.runner.hidden_size,
+            eps=self.target.runner.weights.config.rms_norm_eps,
+            stream=int(stream),
+            runtime=self.target.runtime,
+        )
+
+    def _proposal_target_hidden(self) -> Tensor:
+        hidden = self.target.last_target_hidden
+        policy = getattr(self, "draft_hidden_policy", Qwen35GGUFDraftHiddenPolicy())
+        if not policy.requires_target_output_norm:
+            return hidden
+        destination = self._draft_post_norm_hidden
+        if destination is None or self.target.runner is None or self.target.runtime is None:
+            raise RuntimeError("post-output-norm draft hidden storage is closed")
+        self._normalize_target_hidden_rows(
+            hidden.ptr,
+            destination.ptr,
+            1,
+            stream=0,
+        )
+        # Proposal graphs own private streams. Retire the target normalization
+        # before either an eager default-stream proposal or a graph D2D handoff.
+        self.target.runtime.device_synchronize()
+        return Tensor.from_handle(
+            destination.ptr,
+            (1, self.target.runner.hidden_size),
+            DType.BF16,
+            Device("hip", 0),
+        )
 
     def generate(
         self,
@@ -1327,11 +1625,13 @@ class Qwen35GGUFMTPDecodeSession:
         stop_token_ids: Sequence[int] = (),
         checkpoint: Callable[[], None] | None = None,
         lifecycle_hook: Callable[[str], None] | None = None,
+        budget_policy: MtpBudgetPolicy | None = None,
     ) -> Qwen35GGUFMTPGenerationResult:
         """Generate one MTP request, observing cancellation/deadline/shutdown.
 
-        ``checkpoint`` is a no-arg callable polled at every cycle boundary
-        before proposal or target mutation (RF3). It should raise
+        ``checkpoint`` is a no-arg callable polled at every streamed prompt
+        chunk and cycle boundary before the corresponding draft/proposal
+        mutation (RF3). It should raise
         ``GenerationCancelled`` / ``GenerationDeadlineExceeded`` (or any error)
         to stop at the next owned boundary. ``lifecycle_hook`` receives stable
         phase names for fault injection and direct lifecycle evidence; production
@@ -1346,6 +1646,11 @@ class Qwen35GGUFMTPDecodeSession:
         self.draft_provider.reset_request(int(request_id))
         scheduler = ResidentBatchScheduler(capacity=1)
         rid = scheduler.submit(prompt, max_new_tokens=int(max_new_tokens), request_id=int(request_id))
+        if budget_policy is not None:
+            budget_policy.start_request(
+                request_id=rid,
+                max_budget=self.candidate_budget,
+            )
         scheduler.admit_pending()
         scheduler.next_prefill_work(chunk_size=len(prompt))
 
@@ -1355,6 +1660,7 @@ class Qwen35GGUFMTPDecodeSession:
                 prompt,
                 request_id=rid,
                 use_bulk=use_bulk_prefill,
+                checkpoint=checkpoint,
             )
         else:
             first = self.target.prefill(
@@ -1384,6 +1690,9 @@ class Qwen35GGUFMTPDecodeSession:
                 verify_seconds=0.0,
                 gpu_accept_match_cpu=True,
                 graph_stats=scheduler.graph_buckets.stats.to_json_dict(),
+                budget_policy_summary=(
+                    None if budget_policy is None else budget_policy.summary()
+                ),
             )
 
         policy = self._register_kv_policy(rid)
@@ -1397,6 +1706,7 @@ class Qwen35GGUFMTPDecodeSession:
         decode_started = time.perf_counter()
         while rid not in scheduler.completed:
             _mtp_cycle_checkpoint(checkpoint)
+            cycle_started = time.perf_counter()
             cycle_phases: list[str] = []
 
             def lifecycle_phase(name: str) -> None:
@@ -1408,12 +1718,31 @@ class Qwen35GGUFMTPDecodeSession:
             remaining = int(request.remaining_decode)
             if remaining <= 0:
                 break
-            budget = _largest_budget_at_most(min(self.candidate_budget, remaining))
+            max_cycle_budget = _largest_budget_at_most(
+                min(self.candidate_budget, remaining)
+            )
+            budget = max_cycle_budget
+            if budget_policy is not None:
+                budget = int(
+                    budget_policy.choose_budget(
+                        cycle=len(accepted_counts) + 1,
+                        max_budget=max_cycle_budget,
+                        remaining_decode=remaining,
+                    )
+                )
+                if (
+                    budget not in _GGUF_MTP_CANDIDATE_BUDGETS
+                    or budget > max_cycle_budget
+                    or budget > self.candidate_budget
+                ):
+                    raise ValueError(
+                        "budget policy selected an unsupported or oversized budget"
+                    )
             proposal_context = MtpProposalContext(
                 request_ids=(rid,),
                 root_tokens=(root,),
                 root_positions=(int(self.target.position),),
-                target_hidden=self.target.last_target_hidden,
+                target_hidden=self._proposal_target_hidden(),
             )
             proposal_started = time.perf_counter()
             device_proposal = _maybe_launch_device_proposal(
@@ -1595,6 +1924,18 @@ class Qwen35GGUFMTPDecodeSession:
                 )
                 proposal_seconds += time.perf_counter() - proposal_update_started
             lifecycle_phase("after_draft_repair")
+            cycle_wall_ms = (time.perf_counter() - cycle_started) * 1000.0
+            if budget_policy is not None:
+                budget_policy.record_cycle(
+                    MtpBudgetCycleResult(
+                        cycle=len(accepted_counts) + 1,
+                        budget=budget,
+                        accepted_count=accepted,
+                        visible_tokens=accepted + 1,
+                        cycle_wall_ms=cycle_wall_ms,
+                        full_accept=bool(summary.full_accept[0]),
+                    )
+                )
             # Cancellation observed during an in-flight cycle is published only
             # after target commit and draft repair are both terminal. Raising
             # here suppresses the whole non-streaming response without leaving
@@ -1607,6 +1948,7 @@ class Qwen35GGUFMTPDecodeSession:
             record: dict[str, object] = {
                 "cycle": len(accepted_counts),
                 "budget": budget,
+                "cycle_wall_ms": cycle_wall_ms,
                 "root_token": root,
                 "root_position": int(work.target_batch.positions[0]),
                 "draft_tokens": list(draft.candidate_tokens),
@@ -1668,6 +2010,9 @@ class Qwen35GGUFMTPDecodeSession:
             gpu_accept_match_cpu=gpu_match,
             graph_stats=scheduler.graph_buckets.stats.to_json_dict(),
             cycle_records=tuple(records),
+            budget_policy_summary=(
+                None if budget_policy is None else budget_policy.summary()
+            ),
         )
 
     def _prefill_target_and_draft(
@@ -1676,55 +2021,82 @@ class Qwen35GGUFMTPDecodeSession:
         *,
         request_id: int,
         use_bulk: bool | None,
+        checkpoint: Callable[[], None] | None = None,
     ):
-        """Admit one target prompt and catch the shifted NextN state up.
+        """Stream target prompt chunks into the exact shifted NextN state.
 
-        The target owns the public AR prefill policy, including bulk prefill.
-        Retaining each target trunk-hidden row lets the one-layer NextN model
-        consume the same shifted sequence as llama.cpp afterwards: token 0 is
-        paired with zero, then token ``i`` is paired with target hidden
-        ``i - 1``.  Draft catch-up therefore does not force the target back to
-        token-serial prompt arithmetic.
+        The target owns the public AR prefill policy and emits completed
+        pre-output-norm trunk chunks before their hidden buffers are reused.
+        The request sink pairs token 0 with one zero row and token ``i`` with
+        target hidden ``i - 1``, retaining only the latest hidden row across
+        chunk boundaries.  Draft state appends share the target stream and do
+        not score the discarded prompt predictions.
         """
 
         if self.target.runner is None or self.target.runtime is None:
             raise RuntimeError("GGUF target session is closed")
-        hidden_size = int(self.target.runner.hidden_size)
-        hidden_nbytes = hidden_size * DType.BF16.itemsize
-        zero = malloc(hidden_nbytes, runtime=self.target.runtime)
-        hidden_rows = None
+        executor = self.draft_provider.executor
+        policy = getattr(self, "draft_hidden_policy", Qwen35GGUFDraftHiddenPolicy())
+        transformed_rows: DeviceBuffer | None = None
+        transform_hidden_rows = None
+        if policy.requires_target_output_norm:
+            hidden_nbytes = int(self.target.runner.hidden_size) * DType.BF16.itemsize
+            min_bulk_tokens = int(self.target.runner.weights.config.ssm_conv_kernel)
+            run_bulk = len(prompt) >= min_bulk_tokens if use_bulk is None else bool(use_bulk)
+            if run_bulk:
+                hidden_buffer = self.target._prefill_hidden_a
+                if hidden_buffer is None:
+                    raise RuntimeError("GGUF target prefill hidden storage is closed")
+                capacity = min(len(prompt), int(hidden_buffer.nbytes) // hidden_nbytes)
+            else:
+                capacity = 1
+            transformed_rows = malloc(capacity * hidden_nbytes, runtime=self.target.runtime)
+
+            def _transform(src_ptr: int, rows: int, stream: int) -> int:
+                if transformed_rows is None or int(rows) > capacity:
+                    raise RuntimeError("draft hidden transform exceeds its chunk capacity")
+                self._normalize_target_hidden_rows(
+                    src_ptr,
+                    transformed_rows.ptr,
+                    rows,
+                    stream=stream,
+                )
+                return int(transformed_rows.ptr)
+
+            transform_hidden_rows = _transform
+        sink: _StreamingNextNPromptSink | None = None
+        completed = False
         try:
-            hidden_rows = malloc(len(prompt) * hidden_nbytes, runtime=self.target.runtime)
-            self.target.runtime.memset(zero.ptr, 0, zero.nbytes)
+            sink = _StreamingNextNPromptSink(
+                request_id=int(request_id),
+                prompt_tokens=prompt,
+                hidden_size=int(self.target.runner.hidden_size),
+                executor=executor,
+                runtime=self.target.runtime,
+                checkpoint=checkpoint,
+                transform_hidden_rows=transform_hidden_rows,
+            )
             result = self.target.prefill(
                 prompt,
                 use_bulk=use_bulk,
                 return_logits=False,
-                capture_target_hidden_rows=hidden_rows,
+                target_hidden_chunk_sink=sink,
+                target_hidden_request_id=int(request_id),
             )
-            for position, token in enumerate(prompt):
-                previous_hidden_ptr = (
-                    zero.ptr
-                    if position == 0
-                    else hidden_rows.ptr + (position - 1) * hidden_nbytes
-                )
-                self.draft_provider.executor.run_step(
-                    int(request_id),
-                    int(token),
-                    int(position),
-                    Tensor.from_handle(
-                        previous_hidden_ptr,
-                        (1, hidden_size),
-                        DType.BF16,
-                        Device("hip", 0),
-                    ),
-                    return_logits=False,
-                )
+            completed = True
+            return result
         finally:
-            if hidden_rows is not None:
-                free(hidden_rows, runtime=self.target.runtime)
-            free(zero, runtime=self.target.runtime)
-        return result
+            finish_prompt_priming = getattr(executor, "finish_prompt_priming", None)
+            if callable(finish_prompt_priming):
+                finish_prompt_priming(
+                    int(request_id),
+                    stream=0,
+                    synchronize=not completed,
+                )
+            if sink is not None:
+                sink.close()
+            if transformed_rows is not None:
+                free(transformed_rows, runtime=self.target.runtime)
 
     def _register_kv_policy(self, request_id: int) -> FixedPagedKVPolicy:
         owner = self.target._target_scratch_owner
@@ -1760,6 +2132,10 @@ class Qwen35GGUFMTPDecodeSession:
         return policy
 
     def close(self) -> None:
+        hidden = getattr(self, "_draft_post_norm_hidden", None)
+        if hidden is not None:
+            self._draft_post_norm_hidden = None
+            free(hidden, runtime=self.target.runtime)
         if self.owns_verifier:
             self.verifier.close()
 

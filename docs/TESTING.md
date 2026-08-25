@@ -157,6 +157,7 @@ control ownership.
 | Math optimization | Declare T0/T1/T2/T3 and execution profile; add a RED fixture that catches wrong math/control ownership; run representative/edge and applicable strict-teacher/dynamic/task gates; perf gate only after profile correctness passes. |
 | Quant plugin | Round-trip pack/dequant fixture, scale/zero-point edge cases, dtype/shape assertions, and target layer correctness. |
 | KV policy / attention span logic | Deterministic span fixtures for dense and variable-live-span cases; mask/position edge cases; no shortcut around `KVLiveSpans`. |
+| External DMS sidecar | Strict model/sidecar/data/layer/tensor hash binding; causal future-use and protected-window budget fixtures; same-seed byte-stable training/export; train-only threshold calibration; no-evict compact control; broad long category+heldout exact-Q4 KL/top-1 and deterministic repeats. Product promotion additionally requires integrated no-shadow allocator/lifecycle/soak/profiler/SLO gates. |
 | Runtime / memory / build | Import-time no-side-effect tests, fake-runtime tests, dry-run build planning tests, and real HIP smoke only after GPU clearance. |
 | Public API / server behavior | Unit/integration tests for success and failure paths; include user-visible output assertions once `LLM.generate()` exists. |
 | Benchmark matrix / report contract | Synthetic PARO/GGUF direct/server grid; profile/manifest mismatch, binding-vs-diagnostic generated-ID handling, forged denominator, duplicate timing owner, incomplete grid, attachment pointer, and schema checks. |

@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-08-21
+Last updated: 2026-08-23
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -65,6 +65,7 @@ working on.
 | [`TENSOR_PARALLEL.md`](TENSOR_PARALLEL.md) | Tensor-parallel serving design gate, current disabled manifest contract, and multi-GPU validation plan. |
 | [`PREFILL.md`](PREFILL.md) | Native prefill implementation plan and compact/prompt execution details. |
 | [`KVCACHE.md`](KVCACHE.md) | KV cache ABI, policy notes, quantization path, and long-context considerations. |
+| [`DMS.md`](DMS.md) | External DMS architecture, exact-Q4 training campaign, sidecar size/timing/results, reproduction commands, and production punchlist. |
 | [`DFLASH.md`](DFLASH.md) | DFlash draft-model speculative decode plan. |
 | [`MTP.md`](MTP.md) | Multi-token prediction implementation history, economics, and provider design. |
 | [`MTP-FIX.md`](MTP-FIX.md) | Active campaign to make MTP safe and useful across real contexts, lifecycle events, APIs, load, quality, and rollout. |
