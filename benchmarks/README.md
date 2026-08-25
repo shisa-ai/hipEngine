@@ -95,51 +95,31 @@ llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hi
 
 ## Current default notes
 
-Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback
-([`evidence`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json)).
+Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback.
 The exact `Q4_K_M` W8192 DMS sidecar passes 32K/128K at 100% top-1, saves
-3.750 GiB live K/V at 128K, and matches dense c1 decode. It stays default-off
-pending serving gates. [`DMS status`](../docs/DMS.md).
+3.750 GiB live K/V at 128K, and stays default-off pending serving gates.
+[`DMS status`](../docs/DMS.md).
 
-SPECDEC2-PERF P2 retains exact streaming prompt activation for strict C1/K2:
-full-suite throughput improves **14.294→16.237 tok/s (+13.59%)**, every category
-is positive, and staged reaches **1.486x true AR** with one 10 KiB carried row.
-Physical C2/C4 streaming is rejected because `general_en` regresses despite
-aggregate gains; exact replay remains. p4K/p16K eager streaming is also rejected
-and those contexts select K0 before provider mutation. P3 additionally removes
-the two steady proposal/repair allocation pairs: every physical full-suite cycle
-and warmed profiler window is allocation-free, with complete wall neutral within
-noise. Automatic/product policy remains K0; no public scope promotes.
-[`P3 evidence`](results/2026-08-25-gfx1151-specdec2-perf-p3-stable-slabs.json).
+SPECDEC2-PERF retains strict C1/K2 streaming at **14.294→16.237 tok/s
+(+13.59%)**. Physical C2/C4 and long-context streaming remain rejected;
+automatic/product policy remains K0. [`Status`](../docs/SPECDEC2-PERF.md).
 
-gfx1100 S7 now retains two exact C1 foundations, both automatic K0: dense
-Qwen3.6-27B GGUF K1-K3 staged IDs match true AR/direct control, while packed
-PARO K1 production/strict staged IDs match AR with streaming NextN prompt
-priming. PARO remains performance-blocked on the short screen (`0.731 s` staged
-vs `0.670 s` AR); physical C2/C4 is not yet exposed for either lane.
-[`S7 plan`](../docs/SPECDEC2-GFX1100.md).
+### Agentic quality (quality-only; no speed claim)
 
-The current Strix Halo Qwen3.6 automatic-tool quality denominator completes
-**38/48 external-oracle observations (79.17%)**, with **48/48 valid calls**,
-**46/48 correct tools**, and exact normalized equality across 24 repeat pairs.
-All patch/test observations pass and final request-owned state is zero. This is
-a quality-only current-source baseline, not a speed row or a same-protocol
-comparison with the historical W7900 packet. Independent raw-token taxonomy
-locates the five unique failures at model argument grounding (four) and tool
-selection (one), with zero runtime or unresolved rows.
-The frozen expanded suite and ZBook code sandbox subsequently qualify **34/34
-reference cases**, **10/10 fail-safe policy controls**, and **12/12 isolation
-probes**. The clean Qwen3.6 expanded baseline then completes **44/68
-external-oracle observations (64.71%)**: development **20/34** and sealed
-heldout aggregate **24/34**. All 34 normalized response repeat pairs match,
-**56/56** published call blocks are declared/JSON/schema valid, all **10/10**
-policy controls pass, and final transient ownership is zero. Family rates are
-code **14/16**, instruction **4/16**, repository **10/16**, and tool selection
-**16/20**; this remains quality-only with no speed claim.
-[`AQ2 evidence`](results/2026-08-26-zbook-agentic-quality2-aq2-baseline.json) ·
-[`AQ3 taxonomy`](results/2026-08-26-zbook-agentic-quality2-aq3-taxonomy.json) ·
-[`AQ5 validation`](results/2026-08-26-zbook-agentic-quality2-aq5-validation-v2.json) ·
-[`AQ6 expanded baseline`](results/2026-08-26-zbook-agentic-quality2-aq6-expanded-baseline.json).
+| Model | Overall | Development | Sealed heldout | Code / instruction / repository / tool | Valid calls |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Qwen3.6-35B-A3B `UD-Q4_K_M` (reference) | 44/68 (64.71%) | 20/34 | 24/34 | 14/16 · 4/16 · 10/16 · 16/20 | 56/64 |
+| Qwen3.8-27B `Q4_K_M` | **50/68 (73.53%)** | **22/34** | **28/34** | 14/16 · **12/16** · 10/16 · 14/20 | **64/64** |
+| Ornith-1.5-35B-A3B `Q4_K_M` | 42/68 (61.76%) | 16/34 | 26/34 | 14/16 · 4/16 · 10/16 · 14/20 | 60/64 |
+
+The frozen suite, external/sandbox oracles, all 34 normalized repeat pairs,
+10/10 policy controls, response ownership, and zero final transient ownership
+pass for both comparison artifacts. Rows are same-host, same-suite model-product
+quality—not implementation-correctness or quantization deltas.
+[`AQ6 reference`](results/2026-08-26-zbook-agentic-quality2-aq6-expanded-baseline.json) ·
+[`AQ7 Qwen3.8`](results/2026-08-26-zbook-agentic-quality2-aq7-qwen38-comparison.json) ·
+[`AQ7 Ornith`](results/2026-08-26-zbook-agentic-quality2-aq7-ornith15-comparison.json) ·
+[`campaign`](../docs/AGENTIC-QUALITY2.md).
 
 ## Where detailed evidence lives
 
@@ -274,18 +254,9 @@ Evidence: [`PARO boundary`](results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp3-s
 [`package decision`](results/2026-08-16-zbook-qwen36-production-profile-cn-blocked.json), and the
 [`ROCmFPX transfer report`](quant/ROCMFPX-TRANSFER.md).
 
-Current Qwen3.5-0.8B gfx1151 status remains **Vulkan parity blocked**, while
-the exact D08-X package is retained. Its clean three-way exact-core pp512 is
-hipEngine / llama HIP / Vulkan **4896/4848/5510 Q4** and **4997/4640/5704 Q8
-tok/s**. Retained operation-complete units include Q4 pack8 gate+up+SiLU,
-dense-BF16 down+residual, and Q8T16 alpha/beta dual WMMA; the final natural and
-category gate is **1794/1800 top-1, max KL 0.005930**, with all **72/72** graph
-trajectories exact. Rejected projection, GDN-broadcast, and pack8-residual
-candidates remain in artifacts and the changelog. Evidence:
-[`three-way snapshot`](results/2026-08-15-gfx1151-qwen35-08b-post-x3-current-exact-three-way.json),
-[`alpha/beta WMMA`](results/2026-08-15-gfx1151-qwen35-08b-q8t16-alpha-beta-dual-wmma-prefill.json),
-[`cumulative gate`](results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json), and the
-[`campaign`](../docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md).
+Current Qwen3.5-0.8B gfx1151 remains **Vulkan parity blocked** while the exact
+D08-X package is retained: the final gate is **1794/1800 top-1, max KL
+0.005930**, with **72/72** graph trajectories exact. [`Campaign`](../docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md).
 
 ## Current single-request scoreboards
 
@@ -440,20 +411,6 @@ These are same-model retained rows, but CUDA and HIP run on different hardware.
 | RTX PRO 6000 Blackwell | c1 natural+heldout continuation | **402.361 tok/s** | 1,152/1,152 paired wins; 1,296/1,296 positions exact | [`CUDA split-K`](results/2026-08-09-cuda-sm120a-maple-splitk-global-decode-retained.json) |
 
 CUDA resident batching and serving are not claimed by these c1 rows.
-
-## Current PM4 transport diagnostic
-
-This is a transport diagnostic for the W7900 Qwen3.6-35B-A3B Q4_K_M one-step
-replay path, not a separate model-throughput topline.
-
-| Transport | Replay | Capture | Status |
-| --- | ---: | ---: | --- |
-| HIP graph | **10.726350 ms/token / 93.228 tok/s** | 34.993 ms | Portable oracle and fallback |
-| Stateful PM4, global acquire | **10.052766 / 99.475** | 79.296 ms warm-metadata | Exact comparison path |
-| Stateful PM4, local-cache acquire | **9.964358 / 100.358** | 132.858 ms cold | Scoped default when the measured replay window amortizes capture |
-
-Evidence: [`local-cache capture/replay`](results/2026-08-08-gfx1100-pm4-setup-local-cache-clean.json)
-and [`scoped default`](results/2026-08-08-gfx1100-pm4-scoped-default.json).
 
 ## Reading the tables
 

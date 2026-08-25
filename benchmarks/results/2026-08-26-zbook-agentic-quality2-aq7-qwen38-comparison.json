@@ -1,0 +1,667 @@
+{
+  "comparison_to_primary": {
+    "development_pass_delta": 2,
+    "family_pass_deltas": {
+      "code": 0,
+      "instruction": 8,
+      "repository": 0,
+      "tool_selection": -2
+    },
+    "heldout_pass_delta": 4,
+    "observation_delta": 6,
+    "reference": "Qwen3.6-35B-A3B UD-Q4_K_M AQ6",
+    "reference_artifact": "benchmarks/results/2026-08-26-zbook-agentic-quality2-aq6-expanded-baseline.json",
+    "scope": "same-host same-suite product-quality comparison only; not an implementation correctness, quantization, or speed comparison",
+    "success_rate_percentage_point_delta": 8.823529411764708
+  },
+  "configuration": {
+    "backend": "hip_gfx1151",
+    "context_tokens": 4096,
+    "environment": {
+      "GPU_MAX_HW_QUEUES": "1",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/home/lhl/.local/state/hipengine-agentic-quality2/20260826-aq7-qwen38-215214/hipcc-version.txt",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_QWEN35_NATIVE_SAMPLER": "0",
+      "HIP_VISIBLE_DEVICES": "0",
+      "HSA_ENABLE_SDMA": null,
+      "HSA_USE_SVM": null,
+      "ROCR_VISIBLE_DEVICES": null
+    },
+    "execution_profile": "strict",
+    "execution_profile_manifest_sha256": "0e053fd658cacbc72a67b7e7ccf33927502a0fe9379faf14dac30ae6ee2bb65b",
+    "kv_dtype": "bf16",
+    "max_active_requests": 1,
+    "max_tokens": 192,
+    "native_sampler": false,
+    "prefix_cache": "off",
+    "quant": "gguf_q4_k_m",
+    "repetitions": 2,
+    "server_capabilities_sha256": "dc6b0b422a36e14a92607d9a914253e03769c1786294533b7a0a87358b9d5191",
+    "speculative_mtp_serving": false,
+    "temperature": 0.0,
+    "thinking": false,
+    "tool_choice": "auto"
+  },
+  "coverage": {
+    "development": 17,
+    "generated_response_owned_tokens": 2604,
+    "heldout": 17,
+    "observations": 68,
+    "workloads": 34
+  },
+  "date": "2026-08-26",
+  "evidence_scope": "quality-only expanded frozen suite on one physical host; no speed or implementation-correctness inference",
+  "fail_safe_controls": {
+    "controls": [
+      {
+        "class": "malformed",
+        "control_id": "aq2_dev_control_malformed_json",
+        "passed": true,
+        "split": "development"
+      },
+      {
+        "class": "truncated",
+        "control_id": "aq2_dev_control_truncated",
+        "passed": true,
+        "split": "development"
+      },
+      {
+        "class": "duplicate",
+        "control_id": "aq2_dev_control_duplicate",
+        "passed": true,
+        "split": "development"
+      },
+      {
+        "class": "undeclared",
+        "control_id": "aq2_dev_control_undeclared",
+        "passed": true,
+        "split": "development"
+      },
+      {
+        "class": "schema_invalid",
+        "control_id": "aq2_dev_control_schema_extra",
+        "passed": true,
+        "split": "development"
+      },
+      {
+        "class": "content_leak",
+        "control_id": "aq2_held_control_content_leak",
+        "passed": true,
+        "split": "heldout"
+      },
+      {
+        "class": "reasoning_leak",
+        "control_id": "aq2_held_control_reasoning_leak",
+        "passed": true,
+        "split": "heldout"
+      },
+      {
+        "class": "required_missing",
+        "control_id": "aq2_held_control_required_missing",
+        "passed": true,
+        "split": "heldout"
+      },
+      {
+        "class": "ambiguous",
+        "control_id": "aq2_held_control_ambiguous_missing",
+        "passed": true,
+        "split": "heldout"
+      },
+      {
+        "class": "tool_none_violation",
+        "control_id": "aq2_held_control_none_violation",
+        "passed": true,
+        "split": "heldout"
+      }
+    ],
+    "endpoint_exercised": false,
+    "mode": "independent_parser_publication_policy",
+    "passed": true,
+    "passed_count": 10,
+    "total": 10
+  },
+  "failure_taxonomy": {
+    "classification": "All failed observations are deterministic model output/selection/grounding failures under an admitted tokenizer/template/parser/runtime route; no parser, template, runtime, sandbox, truncation, or unresolved boundary was observed.",
+    "earliest_boundary_owner": {
+      "model": 9,
+      "runtime": 0,
+      "unresolved": 0
+    },
+    "failed_observations": 18,
+    "observations_by_outcome": {
+      "oracle_failed": 8,
+      "passed": 50,
+      "unexpected_tool_call": 2,
+      "wrong_call_count": 4,
+      "wrong_tool": 4
+    }
+  },
+  "final_ownership": {
+    "active_requests": 0,
+    "allowed_cache_bytes": 0,
+    "cache_resident_bytes": 0,
+    "cache_resident_entries": 0,
+    "cache_resident_pages": 0,
+    "graph_owners": 0,
+    "kv_pinned_pages": 0,
+    "kv_refcounted_pages": 0,
+    "model_active_requests": 0,
+    "pending_requests": 0,
+    "session_count": 0,
+    "stream_producers": 0,
+    "workspace_owners": 0
+  },
+  "hardware_health": {
+    "end_edge_temperature_c": 47.0,
+    "end_gpu_busy_percent": 0,
+    "end_socket_graphics_power_w": 11.641,
+    "kernel_serious_amdgpu_markers": 0,
+    "post_shutdown_kfd_idle": true,
+    "post_shutdown_rocminfo_gfx1151": true
+  },
+  "kind": "hipengine_agentic_quality2_comparison_baseline",
+  "model": {
+    "admission": "admitted_complete",
+    "chat_protocol": {
+      "assistant_suffix": "riority and tags night, edge; include metadata.<|im_end|>\n<|im_start|>assistant\n",
+      "contains_tool_call_marker": true,
+      "contains_tool_instructions": true,
+      "live_smoke_enable_thinking": false,
+      "live_smoke_prompt_token_ids_sha256": "4a795b488ae776ca7c361a84ac236c51e9a3c4a100ad24fe6038d85efe264a2c",
+      "live_smoke_prompt_tokens": 1544,
+      "rendered_prompt_ids_sha256": "6a3cec9495fb7367cc68f543049ef6193ae82182d7884725056cc256d68423c7",
+      "rendered_prompt_sha256": "46c1552c032448ad77c6a5817c530ae61163d2277829dc056f9377d10f88b3b5",
+      "rendered_prompt_tokens": 1521,
+      "renderer": "hipengine.server.api.render_chat_prompt (generic Qwen protocol; Qwen35 generator has no model-owned render_chat_prompt)",
+      "smoke_workload": "aq2_dev_tool_nested_alert_en"
+    },
+    "chat_protocol_admission": {
+      "family": "qwen",
+      "note": "The Qwen35 runtime uses hipengine.server.api.render_chat_prompt rather than the GGUF embedded template; exact shared tokenizer/control IDs plus a live 2/2 tool smoke admit this generic Qwen protocol for this artifact.",
+      "reasoning_parser": "qwen_tags",
+      "reasoning_tags": true,
+      "tool_call_tags": true
+    },
+    "full_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "loader": {
+      "config": {
+        "architecture": "qwen35",
+        "block_count": 64,
+        "declared_block_count": 65,
+        "expert_count": 0,
+        "expert_feed_forward_length": 0,
+        "expert_shared_feed_forward_length": 0,
+        "expert_used_count": 0,
+        "full_attention_layers": 16,
+        "head_count": 24,
+        "head_count_kv": 4,
+        "hidden_size": 5120,
+        "ignored_block_ids": [
+          64
+        ],
+        "is_moe": false,
+        "linear_attention_layers": 48,
+        "vocab_size": 248320
+      },
+      "gguf_architecture": "qwen35",
+      "model_plugin": "qwen3_5_gguf",
+      "mtp_block_inventory": [
+        {
+          "layer_id": 64,
+          "missing_required": 0,
+          "passed": true,
+          "tensor_count": 15
+        }
+      ],
+      "strict_tensor_map": {
+        "ignored": 15,
+        "mapped_layers": 64,
+        "missing": 0,
+        "passed": true,
+        "present": 851,
+        "shape_errors": 0,
+        "unexpected": 0
+      }
+    },
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sampled_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 17106775008,
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+    },
+    "served_model": "Qwen3.8-27B",
+    "size_bytes": 17106775008,
+    "tokenizer": {
+      "control_token_ids": {
+        "</think>": 248069,
+        "</tool_call>": 248059,
+        "<think>": 248068,
+        "<tool_call>": 248058,
+        "<|im_end|>": 248046,
+        "<|im_start|>": 248045
+      },
+      "embedded_chat_template_length": 9993,
+      "embedded_chat_template_sha256": "12827f24b742ea4e80cdc12dbcf9622227056b9f797252a3149263d4f9aaadce",
+      "embedded_markers": {
+        "</think>": true,
+        "</tool_call>": true,
+        "<think>": true,
+        "<tool_call>": true,
+        "<|im_end|>": true,
+        "<|im_start|>": true,
+        "enable_thinking": true,
+        "tools": true
+      },
+      "eos_token_id": 248046,
+      "merges_sha256": "7e299304d9ad9dc312acdbcb1f6ccf0dce1256bf1aa986d651f13814dfd27e7b",
+      "model": "gpt2",
+      "padding_token_id": 248055,
+      "pre": "qwen35",
+      "roundtrip_text": "AQ7 日本語 tool ✓",
+      "token_types_sha256": "f6fdca1063d1ae1cc77ba1f5087d259f044c2634e64b65e31bc844ec00e9acab",
+      "tokens_sha256": "5ee0f927bcaa4b9fe85c244776ae9487468e427f83e053fc81f2a186f14936a3",
+      "vocab_size": 248320
+    }
+  },
+  "performance_claim": false,
+  "platform": {
+    "boot_id": "7c7243e2-2b76-4449-aeff-02d42fec42e0",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "host_name": "zbook",
+    "kernel": "7.2.0-1-cachyos",
+    "physical_host": "HP ZBook Ultra G1a 14 inch Mobile Workstation PC",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "target_arch": "gfx1151"
+  },
+  "quality": {
+    "by_family": {
+      "code": {
+        "blocked_sandbox": 0,
+        "failed": 2,
+        "observations": 16,
+        "passed": 14,
+        "scored_denominator": 16,
+        "success_rate": 0.875,
+        "unscorable": 0
+      },
+      "instruction": {
+        "blocked_sandbox": 0,
+        "failed": 4,
+        "observations": 16,
+        "passed": 12,
+        "scored_denominator": 16,
+        "success_rate": 0.75,
+        "unscorable": 0
+      },
+      "repository": {
+        "blocked_sandbox": 0,
+        "failed": 6,
+        "observations": 16,
+        "passed": 10,
+        "scored_denominator": 16,
+        "success_rate": 0.625,
+        "unscorable": 0
+      },
+      "tool_selection": {
+        "blocked_sandbox": 0,
+        "failed": 6,
+        "observations": 20,
+        "passed": 14,
+        "scored_denominator": 20,
+        "success_rate": 0.7,
+        "unscorable": 0
+      }
+    },
+    "by_language": {
+      "en": {
+        "blocked_sandbox": 0,
+        "failed": 16,
+        "observations": 40,
+        "passed": 24,
+        "scored_denominator": 40,
+        "success_rate": 0.6,
+        "unscorable": 0
+      },
+      "ja": {
+        "blocked_sandbox": 0,
+        "failed": 0,
+        "observations": 18,
+        "passed": 18,
+        "scored_denominator": 18,
+        "success_rate": 1.0,
+        "unscorable": 0
+      },
+      "mixed_ja_en": {
+        "blocked_sandbox": 0,
+        "failed": 2,
+        "observations": 10,
+        "passed": 8,
+        "scored_denominator": 10,
+        "success_rate": 0.8,
+        "unscorable": 0
+      }
+    },
+    "by_oracle_kind": {
+      "code": {
+        "blocked_sandbox": 0,
+        "failed": 2,
+        "observations": 16,
+        "passed": 14,
+        "scored_denominator": 16,
+        "success_rate": 0.875,
+        "unscorable": 0
+      },
+      "instruction": {
+        "blocked_sandbox": 0,
+        "failed": 4,
+        "observations": 16,
+        "passed": 12,
+        "scored_denominator": 16,
+        "success_rate": 0.75,
+        "unscorable": 0
+      },
+      "lookup": {
+        "blocked_sandbox": 0,
+        "failed": 0,
+        "observations": 4,
+        "passed": 4,
+        "scored_denominator": 4,
+        "success_rate": 1.0,
+        "unscorable": 0
+      },
+      "multiple": {
+        "blocked_sandbox": 0,
+        "failed": 4,
+        "observations": 4,
+        "passed": 0,
+        "scored_denominator": 4,
+        "success_rate": 0.0,
+        "unscorable": 0
+      },
+      "no_tool": {
+        "blocked_sandbox": 0,
+        "failed": 2,
+        "observations": 4,
+        "passed": 2,
+        "scored_denominator": 4,
+        "success_rate": 0.5,
+        "unscorable": 0
+      },
+      "patch": {
+        "blocked_sandbox": 0,
+        "failed": 0,
+        "observations": 4,
+        "passed": 4,
+        "scored_denominator": 4,
+        "success_rate": 1.0,
+        "unscorable": 0
+      },
+      "read": {
+        "blocked_sandbox": 0,
+        "failed": 0,
+        "observations": 6,
+        "passed": 6,
+        "scored_denominator": 6,
+        "success_rate": 1.0,
+        "unscorable": 0
+      },
+      "search": {
+        "blocked_sandbox": 0,
+        "failed": 2,
+        "observations": 6,
+        "passed": 4,
+        "scored_denominator": 6,
+        "success_rate": 0.6666666666666666,
+        "unscorable": 0
+      },
+      "test": {
+        "blocked_sandbox": 0,
+        "failed": 4,
+        "observations": 4,
+        "passed": 0,
+        "scored_denominator": 4,
+        "success_rate": 0.0,
+        "unscorable": 0
+      },
+      "transform": {
+        "blocked_sandbox": 0,
+        "failed": 0,
+        "observations": 4,
+        "passed": 4,
+        "scored_denominator": 4,
+        "success_rate": 1.0,
+        "unscorable": 0
+      }
+    },
+    "by_split": {
+      "development": {
+        "blocked_sandbox": 0,
+        "failed": 12,
+        "observations": 34,
+        "passed": 22,
+        "scored_denominator": 34,
+        "success_rate": 0.6470588235294118,
+        "unscorable": 0
+      },
+      "heldout": {
+        "blocked_sandbox": 0,
+        "failed": 6,
+        "observations": 34,
+        "passed": 28,
+        "scored_denominator": 34,
+        "success_rate": 0.8235294117647058,
+        "unscorable": 0
+      }
+    },
+    "call_blocks": {
+      "declared": 66,
+      "json_valid": 66,
+      "public": 66,
+      "strict_schema_valid": 66
+    },
+    "determinism": {
+      "basis": "normalized_response_v1",
+      "evaluated": true,
+      "mismatches": [],
+      "passed": true
+    },
+    "exact_arguments": {
+      "denominator": 32,
+      "diagnostic_only": true,
+      "passed": 22,
+      "rate": 0.6875
+    },
+    "generated_response_owned_tokens": 2604,
+    "outcomes": {
+      "oracle_failed": 8,
+      "passed": 50,
+      "unexpected_tool_call": 2,
+      "wrong_call_count": 4,
+      "wrong_tool": 4
+    },
+    "overall": {
+      "blocked_sandbox": 0,
+      "failed": 18,
+      "observations": 68,
+      "passed": 50,
+      "scored_denominator": 68,
+      "success_rate": 0.7352941176470589,
+      "unscorable": 0
+    },
+    "safety": {
+      "content_alongside_tool_call": 0,
+      "malformed_or_invalid_arguments": 0,
+      "raw_markup_leak": 0,
+      "runtime_error": 0,
+      "truncated": 0
+    },
+    "tool_selection": {
+      "correct": 58,
+      "correct_no_tool": 2,
+      "denominator": 68,
+      "no_tool_expected": 4,
+      "rate": 0.8529411764705882
+    },
+    "valid_call": {
+      "denominator": 64,
+      "passed": 64,
+      "rate": 1.0
+    }
+  },
+  "raw_evidence": {
+    "collector_log_sha256": "da208579104f54f7c475be524f45502c338ea1f5e6149a8ff208a83397ef86ab",
+    "full_checkpoint_sha256": "ae06627718ada0f05f7f4f58ab9bfafe11d0bf3cada124f5d8ce1dad91433dee",
+    "full_records_sha256": "d56a221d3655d946ffee4b39f57749629f720734ef9b838cae3a754edc0db4a0",
+    "full_summary_sha256": "a69e051239fd7f6d6e40ec51d62591f8668b2cc8b27c29a8b43b1cdebe25bd7a",
+    "records_payload_sha256": "35c658b8f50ae5d2841a87ea4ed7876acf5a89f1eb1e8a5c73ebced1a15df59c",
+    "retention": "local only; raw responses/token arrays/logs are not committed",
+    "root": "/home/lhl/.local/state/hipengine-agentic-quality2/20260826-aq7-qwen38-215214"
+  },
+  "schema_version": 1,
+  "smoke": {
+    "checkpoint_sha256": "23b29483121f81f0a6d7415792d77994818bc84c997efc5c33739345ab73f50e",
+    "determinism": true,
+    "fail_safe_controls": 10,
+    "final_ownership": {
+      "active_requests": 0,
+      "allowed_cache_bytes": 0,
+      "cache_resident_bytes": 0,
+      "cache_resident_entries": 0,
+      "cache_resident_pages": 0,
+      "graph_owners": 0,
+      "kv_pinned_pages": 0,
+      "kv_refcounted_pages": 0,
+      "model_active_requests": 0,
+      "pending_requests": 0,
+      "session_count": 0,
+      "stream_producers": 0,
+      "workspace_owners": 0
+    },
+    "observations": 2,
+    "passed": 2,
+    "records_sha256": "d63f8afc5877db533e0ffb3d14d09665b9e3833dbcda0cc47a4581552aa09925",
+    "summary_sha256": "95b55162b29186d397166fac0e7cd82caeb32c8828e239c3d70e58ab3c131e26",
+    "workload": "aq2_dev_tool_nested_alert_en"
+  },
+  "source": {
+    "audit_artifact": {
+      "path": "/home/lhl/.local/state/hipengine-agentic-quality2/20260826-aq7-model-audit-215137/audit.json",
+      "sha256": "4186d613039f7c7c5bec842751bfcdf67b64891eaa81561b554f611832b53307"
+    },
+    "clean": true,
+    "collector_command": [
+      "/home/lhl/hipEngine/.venv/bin/python",
+      "scripts/agentic_quality2_live.py",
+      "--base-url",
+      "http://127.0.0.1:18241/v1",
+      "--suite",
+      "benchmarks/prompts/agentic-quality2-v2.json",
+      "--model",
+      "Qwen3.8-27B",
+      "--model-path",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--target-arch",
+      "gfx1151",
+      "--device-name",
+      "AMD Radeon 8060S Graphics",
+      "--quant",
+      "gguf_q4_k_m",
+      "--kv-dtype",
+      "bf16",
+      "--compiler-version-file",
+      "/home/lhl/.local/state/hipengine-agentic-quality2/20260826-aq7-qwen38-215214/hipcc-version.txt",
+      "--require-clean-provenance",
+      "--repetitions",
+      "2",
+      "--max-tokens",
+      "192",
+      "--cache-mode",
+      "off",
+      "--timeout-s",
+      "600",
+      "--idle-timeout-s",
+      "60",
+      "--records-json",
+      "/home/lhl/.local/state/hipengine-agentic-quality2/20260826-aq7-qwen38-215214/full-records.json",
+      "--checkpoint-json",
+      "/home/lhl/.local/state/hipengine-agentic-quality2/20260826-aq7-qwen38-215214/full-checkpoint.json",
+      "--json",
+      "/home/lhl/.local/state/hipengine-agentic-quality2/20260826-aq7-qwen38-215214/full-summary.json"
+    ],
+    "git_branch": "agentic-quality2",
+    "hipengine_commit": "1f9c23418fd1e5b48483aec47a2c0754bbc062ac",
+    "suite": {
+      "development_ids": [
+        "aq2_dev_tool_nested_alert_en",
+        "aq2_dev_tool_optional_read_en",
+        "aq2_dev_tool_enum_lookup_ja",
+        "aq2_dev_tool_multiple_en",
+        "aq2_dev_tool_irrelevant_en",
+        "aq2_dev_repo_search_ingest_en",
+        "aq2_dev_repo_read_config_en",
+        "aq2_dev_repo_patch_ingest_en",
+        "aq2_dev_repo_test_ingest_en",
+        "aq2_dev_code_clamp_en",
+        "aq2_dev_code_group_en",
+        "aq2_dev_code_rises_en",
+        "aq2_dev_code_label_en",
+        "aq2_dev_instruction_bullets_en",
+        "aq2_dev_instruction_status_en",
+        "aq2_dev_instruction_ja_lines",
+        "aq2_dev_instruction_json_en"
+      ],
+      "file_sha256": "dbe4668667ba3ca57649408f4dc9a5004ee771ce61dc95f7816cf6799b62cbdd",
+      "heldout_ids": [
+        "aq2_held_tool_nested_asset_mixed",
+        "aq2_held_tool_optional_search_ja",
+        "aq2_held_tool_enum_lookup_mixed",
+        "aq2_held_tool_multiple_en",
+        "aq2_held_tool_irrelevant_ja",
+        "aq2_held_repo_search_operator_ja",
+        "aq2_held_repo_read_operator_ja",
+        "aq2_held_repo_patch_retry_en",
+        "aq2_held_repo_test_full_mixed",
+        "aq2_held_code_rolling_ja",
+        "aq2_held_code_ranges_en",
+        "aq2_held_code_station_ja",
+        "aq2_held_code_unique_mixed",
+        "aq2_held_instruction_numbered_en",
+        "aq2_held_instruction_ja_bullets",
+        "aq2_held_instruction_bilingual_mixed",
+        "aq2_held_instruction_sentence_en"
+      ],
+      "oracle_path": "/home/lhl/hipEngine-agentic-quality2/benchmarks/oracles/agentic-quality2-v2.json",
+      "oracle_sha256": "c6fd180a2fe7156307995b9567a149f8c50f7448da003bdbe4cc0abe41f0706a",
+      "path": "/home/lhl/hipEngine-agentic-quality2/benchmarks/prompts/agentic-quality2-v2.json",
+      "sources_path": "/home/lhl/hipEngine-agentic-quality2/benchmarks/sources/agentic-quality2-v2-sources.json",
+      "sources_sha256": "b5d7ed2573b78ca05b14e34616c562fce4dba154fb938a414b5b96ed1ad1fdf8",
+      "suite": "agentic-quality2-v2"
+    }
+  },
+  "status": "admitted_complete",
+  "validation": {
+    "all_normalized_repeat_pairs": 34,
+    "all_normalized_repeat_pairs_passed": true,
+    "checkpoint_complete": true,
+    "clean_provenance": true,
+    "complete": true,
+    "determinism_basis": "normalized_response_v1",
+    "determinism_passed": true,
+    "fail_safe_controls_passed": true,
+    "heldout_details_sealed": true,
+    "records_sha256_verified": true,
+    "response_owned_ids": true,
+    "server_and_collector_error_scan_clean": true,
+    "smoke_passed": true
+  }
+}
