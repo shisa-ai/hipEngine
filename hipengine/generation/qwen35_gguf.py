@@ -6775,7 +6775,8 @@ class Qwen35GGUFResidentModelRunner:
         )
         if not _gguf_specdec2_streaming_prompt_enabled():
             for row in selected:
-                row.mtp2_prompt_fallback_reason = "operator_disabled_streaming_prompt"
+                row.mtp2_candidate_budget = 0
+                row.mtp2_prompt_fallback_reason = "operator_disabled_streaming_prompt_k0"
             return (None,) * len(tuple(rows))
         if not selected:
             return (None,) * len(tuple(rows))
