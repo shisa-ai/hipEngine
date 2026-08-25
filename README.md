@@ -67,8 +67,8 @@ checkpoint or GGUF for broader compatibility.
 
 | Platform | Requirements |
 | --- | --- |
-| AMD | Linux x86-64, Python 3.10+ and ROCm with `hipcc` and `libamdhip64.so` |
-| NVIDIA Blackwell | Linux x86-64, Python 3.10+ and the CUDA toolkit with `nvcc`; Maple only |
+| AMD | Linux x86-64, Python 3.11+ and ROCm with `hipcc` and `libamdhip64.so` |
+| NVIDIA Blackwell | Linux x86-64, Python 3.11+ and the CUDA toolkit with `nvcc`; Maple only |
 | Published wheel | glibc 2.39 or newer, such as Ubuntu 24.04 |
 
 ROCm 7.x is the safest choice for the current wheel. The first model load
