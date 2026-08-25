@@ -1058,11 +1058,14 @@ class Qwen35GGUFMTP2Adapter:
             row.mtp2_target_physical_rows.append(physical_target_rows)
         if len(results) != len(ids):
             raise RuntimeError("physical target verifier returned wrong result count")
+        candidate_readback_seconds = 0.0
         if batch is None:
             assert device_draft is not None
+            readback_started = time.perf_counter()
             materialized = states[0].provider.materialize_batch_device_proposal(
                 device_draft
             )
+            candidate_readback_seconds = time.perf_counter() - readback_started
             for row in rows:
                 row.mtp2_candidate_d2h_after_target += 1
             enabled = materialized.active_mask or (True,) * materialized.draft_rows
@@ -1117,6 +1120,7 @@ class Qwen35GGUFMTP2Adapter:
             max(0, int(row.request.max_tokens) - len(row.slot.generated_ids))
             for row in rows
         )
+        accept_started = time.perf_counter()
         gpu_summary, accept_buffers = self._accept_target_batch_on_device(
             batch,
             target_top1,
@@ -1149,6 +1153,7 @@ class Qwen35GGUFMTP2Adapter:
             raise RuntimeError(
                 "physical GPU accept payload does not match the CPU oracle"
             )
+        accept_seconds = time.perf_counter() - accept_started
         for row in rows:
             row.mtp2_device_accept_calls += 1
         provider_update_started = time.perf_counter()
@@ -1182,12 +1187,14 @@ class Qwen35GGUFMTP2Adapter:
         )
         if not callable(commit_batch):
             raise RuntimeError("physical target owner has no batch selected-state commit")
+        commit_started = time.perf_counter()
         commit_contract = commit_batch(
             results,
             targets,
             accepted_counts=gpu_summary.accepted_counts,
             accept_buffers=accept_buffers,
         )
+        commit_seconds = time.perf_counter() - commit_started
         if int(commit_contract.get("requests", 0)) != len(ids):
             raise RuntimeError("physical selected-state commit omitted requests")
         for row in rows:
@@ -1225,6 +1232,11 @@ class Qwen35GGUFMTP2Adapter:
             row.mtp2_proposal_ms += float(states[index].last_proposal_seconds) * 1000.0
             row.mtp2_target_ms += float(target_seconds) * 1000.0
             row.mtp2_provider_update_ms += float(provider_update_seconds) * 1000.0
+            row.mtp2_accept_ms += float(accept_seconds) * 1000.0
+            row.mtp2_selected_commit_ms += float(commit_seconds) * 1000.0
+            row.mtp2_candidate_readback_ms += (
+                float(candidate_readback_seconds) * 1000.0
+            )
             output_ids.append(visible)
             self._release_provider_checkpoint(states[index])
         committed_accept = AcceptResult(
@@ -1248,7 +1260,9 @@ class Qwen35GGUFMTP2Adapter:
             execution_route="eager",
             proposal_seconds=max(state.last_proposal_seconds for state in states),
             target_seconds=target_seconds,
+            accept_commit_seconds=accept_seconds + commit_seconds,
             provider_update_seconds=provider_update_seconds,
+            scheduler_readback_seconds=candidate_readback_seconds,
             weight_sweeps=1,
         )
         return SpecCycleResult.committed(

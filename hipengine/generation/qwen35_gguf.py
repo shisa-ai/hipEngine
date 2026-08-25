@@ -4804,6 +4804,9 @@ class _GGUFResidentLoopRow:
     mtp2_proposal_ms: float = 0.0
     mtp2_target_ms: float = 0.0
     mtp2_provider_update_ms: float = 0.0
+    mtp2_accept_ms: float = 0.0
+    mtp2_selected_commit_ms: float = 0.0
+    mtp2_candidate_readback_ms: float = 0.0
     mtp2_k0_catchups: int = 0
     mtp2_proposal_batch_calls: int = 0
     mtp2_proposal_physical_rows: list[int] = field(default_factory=list)
@@ -8127,6 +8130,13 @@ class Qwen35GGUFResidentModelRunner:
                     "specdec2_mtp2_provider_update_ms": float(
                         row.mtp2_provider_update_ms
                     ),
+                    "specdec2_mtp2_accept_ms": float(row.mtp2_accept_ms),
+                    "specdec2_mtp2_selected_commit_ms": float(
+                        row.mtp2_selected_commit_ms
+                    ),
+                    "specdec2_mtp2_candidate_readback_ms": float(
+                        row.mtp2_candidate_readback_ms
+                    ),
                     "specdec2_mtp2_k0_catchups": float(row.mtp2_k0_catchups),
                 }
             )
@@ -8218,6 +8228,13 @@ class Qwen35GGUFResidentModelRunner:
             "specdec2_mtp2_target_ms": float(row.mtp2_target_ms),
             "specdec2_mtp2_provider_update_ms": float(
                 row.mtp2_provider_update_ms
+            ),
+            "specdec2_mtp2_accept_ms": float(row.mtp2_accept_ms),
+            "specdec2_mtp2_selected_commit_ms": float(
+                row.mtp2_selected_commit_ms
+            ),
+            "specdec2_mtp2_candidate_readback_ms": float(
+                row.mtp2_candidate_readback_ms
             ),
             "specdec2_mtp2_k0_catchups": int(row.mtp2_k0_catchups),
             "specdec2_mtp2_proposal_batch_calls": int(
