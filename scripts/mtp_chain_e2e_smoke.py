@@ -1091,6 +1091,7 @@ def _run_spec_persistent_device(
     accepted_lengths: list[int] = []
     proposal_trace: list[dict[str, Any]] = []
     verify_seconds = 0.0
+    target_prefill_seconds = 0.0
     proposal_prefill_seconds = 0.0
     proposal_decode_update_seconds = 0.0
     proposal_snapshot_saves = 0
@@ -1156,6 +1157,7 @@ def _run_spec_persistent_device(
         verifier_no_capture = Tensor.from_handle(0, (int(candidate_budget) + 1, 0), DType.BF16, Device("hip", 0))
         try:
             next_result = None
+            target_prefill_started = time.perf_counter()
             for pos, token in enumerate(prompt_tokens):
                 next_result = session.step_with_hidden_taps(
                     int(token),
@@ -1166,6 +1168,7 @@ def _run_spec_persistent_device(
                     sample=(pos == len(prompt_tokens) - 1),
                     capture_final_hidden_bf16=capture if proposer_target_contract else None,
                 )
+            target_prefill_seconds += time.perf_counter() - target_prefill_started
             if next_result is None:
                 raise RuntimeError("prompt did not produce a root token")
             root = int(next_result.token_id)
@@ -1675,6 +1678,7 @@ def _run_spec_persistent_device(
         "decode_seconds": decode_seconds,
         "tok_s": int(decode_tokens) / seconds if seconds > 0 else None,
         "decode_tok_s": int(decode_tokens) / decode_seconds if decode_seconds > 0 else None,
+        "target_prefill_seconds": target_prefill_seconds,
         "proposal_prefill_seconds": proposal_prefill_seconds,
         "proposal_decode_update_seconds": proposal_decode_update_seconds,
         "proposal_snapshot_saves": int(proposal_snapshot_saves),

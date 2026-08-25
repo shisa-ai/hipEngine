@@ -28,6 +28,8 @@ def test_verifier_economics_forwards_registered_profile_to_smoke(
                         "decode_seconds": 0.01,
                         "decode_tok_s": 200.0,
                         "verify_seconds": 0.008,
+                        "target_prefill_seconds": 0.03,
+                        "proposal_prefill_seconds": 0.01,
                         "proposal_decode_update_seconds": 0.002,
                         "cycle_marker_ns": [
                             {"start_perf_ns": 1, "end_perf_ns": 10_000_001}
@@ -70,3 +72,5 @@ def test_verifier_economics_forwards_registered_profile_to_smoke(
 
     assert captured[captured.index("--execution-profile") + 1] == "production"
     assert metrics["exact_ar_match"] is True
+    assert metrics["target_prefill_seconds"] == 0.03
+    assert metrics["proposal_prefill_seconds"] == 0.01

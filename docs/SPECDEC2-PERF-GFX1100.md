@@ -360,9 +360,11 @@ work never begins from failing upstream gates.
 - [x] Reuse the shared `scripts/specdec2_perf_bridge.py` for dense GGUF after its
       backend-neutral gfx11 generalization; add `run-loaded-paro` so packed PARO
       emits AR/staged row-contract checkpoints from one loaded process.
-- [ ] Add the unavoidable-reload PARO direct attachment and parent packet assembly
-      through the qualified economics child; do not add backend/model policy in
-      engine hot paths.
+- [x] Add unavoidable-reload PARO direct attachment and parent packet assembly
+      through the qualified economics child, including raw exact IDs, selected/
+      strict manifests, target/provider activation, decode, and clean source.
+- [ ] Execute and attach current-source production/strict PARO direct packets;
+      do not add backend/model policy in engine hot paths.
 - [x] Add schema, aggregation, counterbalance, exact-denominator, missing-owner,
       malformed-manifest, incomplete-suite, dirty-provenance, stage-reconciliation,
       and atomic-checkpoint tests.
