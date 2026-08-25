@@ -1,0 +1,1329 @@
+{
+  "collector_policy": {
+    "enable_thinking": false,
+    "expected_answer_in_prompt": false,
+    "max_tokens": 192,
+    "performance_claim": false,
+    "repetitions": 2,
+    "temperature": 0.0,
+    "tool_choice": "auto"
+  },
+  "description": "Frozen project-original automatic-tool and task-quality suite with disjoint development/heldout IDs across tool selection, repository work, Python code, instruction following, Japanese/mixed language, and separate fail-safe controls.",
+  "kind": "hipengine.agentic_quality2_suite",
+  "license": "AGPL-3.0-only",
+  "quality_oracle": {
+    "file_sha256": "c6fd180a2fe7156307995b9567a149f8c50f7448da003bdbe4cc0abe41f0706a",
+    "path": "../oracles/agentic-quality2-v2.json"
+  },
+  "repository_context": {
+    "base": "A project-original synthetic telemetry repository and operations record set. Select tools only when appropriate; executable external oracles, hidden code tests, and deterministic instruction checks decide quality.",
+    "expansion_blocks": [
+      "Synthetic files cover ingest limits, bounded retry, station configuration, and English/Japanese operator guides.",
+      "Tool declarations include single, nested, enum, optional, multiple-call, code, instruction, and no-tool automatic-selection shapes.",
+      "Generated Python is untrusted and remains blocked until AQ5 proves the declared sandbox.",
+      "Heldout model-output detail remains sealed from mechanism selection until candidate behavior is frozen."
+    ],
+    "name": "northwind-telemetry-quality"
+  },
+  "schema_version": 1,
+  "source_manifest": {
+    "file_sha256": "b5d7ed2573b78ca05b14e34616c562fce4dba154fb938a414b5b96ed1ad1fdf8",
+    "path": "../sources/agentic-quality2-v2-sources.json"
+  },
+  "split_policy": {
+    "development_ids": [
+      "aq2_dev_tool_nested_alert_en",
+      "aq2_dev_tool_optional_read_en",
+      "aq2_dev_tool_enum_lookup_ja",
+      "aq2_dev_tool_multiple_en",
+      "aq2_dev_tool_irrelevant_en",
+      "aq2_dev_repo_search_ingest_en",
+      "aq2_dev_repo_read_config_en",
+      "aq2_dev_repo_patch_ingest_en",
+      "aq2_dev_repo_test_ingest_en",
+      "aq2_dev_code_clamp_en",
+      "aq2_dev_code_group_en",
+      "aq2_dev_code_rises_en",
+      "aq2_dev_code_label_en",
+      "aq2_dev_instruction_bullets_en",
+      "aq2_dev_instruction_status_en",
+      "aq2_dev_instruction_ja_lines",
+      "aq2_dev_instruction_json_en"
+    ],
+    "frozen_before_candidate_code": true,
+    "heldout_ids": [
+      "aq2_held_tool_nested_asset_mixed",
+      "aq2_held_tool_optional_search_ja",
+      "aq2_held_tool_enum_lookup_mixed",
+      "aq2_held_tool_multiple_en",
+      "aq2_held_tool_irrelevant_ja",
+      "aq2_held_repo_search_operator_ja",
+      "aq2_held_repo_read_operator_ja",
+      "aq2_held_repo_patch_retry_en",
+      "aq2_held_repo_test_full_mixed",
+      "aq2_held_code_rolling_ja",
+      "aq2_held_code_ranges_en",
+      "aq2_held_code_station_ja",
+      "aq2_held_code_unique_mixed",
+      "aq2_held_instruction_numbered_en",
+      "aq2_held_instruction_ja_bullets",
+      "aq2_held_instruction_bilingual_mixed",
+      "aq2_held_instruction_sentence_en"
+    ],
+    "heldout_selection_policy": "Inputs and oracle definitions are committed before candidate code. AQ6 publishes heldout aggregates only; implementation selection may use development failures and general invariants, not heldout model outputs."
+  },
+  "suite": "agentic-quality2-v2",
+  "tools": [
+    {
+      "description": "Read one declared synthetic repository file in raw or summary mode; optional line_limit bounds raw output.",
+      "name": "read_file",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "line_limit": {
+            "maximum": 20,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "raw",
+              "summary"
+            ],
+            "type": "string"
+          },
+          "path": {
+            "enum": [
+              "config/stations.json",
+              "docs/operator.md",
+              "docs/operator_ja.md",
+              "src/ingest.py",
+              "src/retry.py"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "mode"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    },
+    {
+      "description": "Search literal text under one declared file or directory prefix; case_sensitive defaults to true when omitted.",
+      "name": "search_repo",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "case_sensitive": {
+            "type": "boolean"
+          },
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "query": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "query"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    },
+    {
+      "description": "Retrieve one declared operations record in the requested locale.",
+      "name": "lookup_record",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "enum": [
+              "canary_window",
+              "rotation_policy_ja",
+              "station_owner",
+              "telemetry_retention"
+            ],
+            "type": "string"
+          },
+          "locale": {
+            "enum": [
+              "en",
+              "ja"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "locale"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    },
+    {
+      "description": "Evaluate bounded integer arithmetic using plus, minus, multiplication, division, and parentheses.",
+      "name": "calculate",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "expression": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "expression"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    },
+    {
+      "description": "Normalize or validate one nested alert record; include_metadata is optional.",
+      "name": "transform_record",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "include_metadata": {
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "normalize",
+              "validate"
+            ],
+            "type": "string"
+          },
+          "record": {
+            "additionalProperties": false,
+            "properties": {
+              "priority": {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "type": "string"
+              },
+              "station": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "tags": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 6,
+                "type": "array"
+              }
+            },
+            "required": [
+              "station",
+              "priority",
+              "tags"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "record",
+          "mode"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    },
+    {
+      "description": "Apply one declared exact one-region patch to an isolated synthetic repository copy.",
+      "name": "apply_patch",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "patch_id": {
+            "enum": [
+              "ingest_sample_overflow",
+              "retry_bounded_jitter"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "patch_id"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    },
+    {
+      "description": "Run one declared hermetic file-state validation suite.",
+      "name": "run_fixture_tests",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "suite": {
+            "enum": [
+              "full",
+              "ingest",
+              "retry"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "suite"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    },
+    {
+      "description": "Submit a Python function implementation for isolated compile and hidden-test evaluation.",
+      "name": "submit_code",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "entry_point": {
+            "enum": [
+              "clamp_readings",
+              "count_rises",
+              "group_fixed",
+              "merge_ranges",
+              "normalize_label",
+              "parse_station_code",
+              "rolling_average",
+              "stable_unique"
+            ],
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "entry_point",
+          "source"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    },
+    {
+      "description": "Submit one bounded response for deterministic instruction-constraint checking.",
+      "name": "submit_response",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "strict": true
+    }
+  ],
+  "workloads": [
+    {
+      "family": "tool_selection",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_tool_nested_alert_en",
+      "language": "en",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "nested",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": {
+            "include_metadata": true,
+            "mode": "normalize",
+            "record": {
+              "priority": "high",
+              "station": "west-17",
+              "tags": [
+                "night",
+                "edge"
+              ]
+            }
+          },
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "transform_record",
+          "oracle_case": "aq2_dev_tool_nested_alert_en",
+          "parallel_tool_calls": false,
+          "tool_result": "External oracle evaluated the selected action.",
+          "user": "Normalize station west-17 with high priority and tags night, edge; include metadata."
+        }
+      ]
+    },
+    {
+      "family": "tool_selection",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_tool_optional_read_en",
+      "language": "en",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "optional",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": {
+            "mode": "summary",
+            "path": "config/stations.json"
+          },
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "read_file",
+          "oracle_case": "aq2_dev_tool_optional_read_en",
+          "parallel_tool_calls": false,
+          "tool_result": "External oracle evaluated the selected action.",
+          "user": "Open a summary of config/stations.json. Do not request a raw line limit."
+        }
+      ]
+    },
+    {
+      "family": "tool_selection",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_tool_enum_lookup_ja",
+      "language": "ja",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "enum",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": {
+            "key": "rotation_policy_ja",
+            "locale": "ja"
+          },
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "lookup_record",
+          "oracle_case": "aq2_dev_tool_enum_lookup_ja",
+          "parallel_tool_calls": false,
+          "tool_result": "External oracle evaluated the selected action.",
+          "user": "日本語の当番交代ポリシーを運用レコードから取得してください。"
+        }
+      ]
+    },
+    {
+      "family": "tool_selection",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_tool_multiple_en",
+      "language": "en",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "multiple",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": null,
+          "expected_calls": [
+            {
+              "arguments": {
+                "key": "station_owner",
+                "locale": "en"
+              },
+              "tool": "lookup_record"
+            },
+            {
+              "arguments": {
+                "expression": "18 * 7"
+              },
+              "tool": "calculate"
+            }
+          ],
+          "expected_outcome": "tool_calls",
+          "expected_tool": null,
+          "oracle_case": "aq2_dev_tool_multiple_en",
+          "parallel_tool_calls": true,
+          "tool_result": "Both independent tool results were evaluated.",
+          "user": "Retrieve the owner of west-17 and independently calculate 18 times 7. Use both appropriate tools."
+        }
+      ]
+    },
+    {
+      "family": "tool_selection",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_tool_irrelevant_en",
+      "language": "en",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "irrelevant",
+      "turns": [
+        {
+          "argument_scoring": "not_applicable",
+          "expected_argument_constraints": null,
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "no_tool_call",
+          "expected_tool": null,
+          "oracle_case": "aq2_dev_tool_irrelevant_en",
+          "parallel_tool_calls": false,
+          "tool_result": "No tool call is expected; a safe direct response is accepted.",
+          "user": "Write a friendly two-line greeting. No repository or operations lookup is needed."
+        }
+      ]
+    },
+    {
+      "family": "tool_selection",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_tool_nested_asset_mixed",
+      "language": "mixed_ja_en",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "nested",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": {
+            "mode": "normalize",
+            "record": {
+              "priority": "medium",
+              "station": "north-2",
+              "tags": [
+                "daytime",
+                "core"
+              ]
+            }
+          },
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "transform_record",
+          "oracle_case": "aq2_held_tool_nested_asset_mixed",
+          "parallel_tool_calls": false,
+          "tool_result": "External oracle evaluated the selected action.",
+          "user": "station north-2 を medium priority、tags daytime と core で normalize してください。"
+        }
+      ]
+    },
+    {
+      "family": "tool_selection",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_tool_optional_search_ja",
+      "language": "ja",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "optional",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": {
+            "path": "docs",
+            "query": "rollback snapshot"
+          },
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "search_repo",
+          "oracle_case": "aq2_held_tool_optional_search_ja",
+          "parallel_tool_calls": false,
+          "tool_result": "External oracle evaluated the selected action.",
+          "user": "docs 内で「rollback snapshot」を検索してください。大文字小文字の指定は省略します。"
+        }
+      ]
+    },
+    {
+      "family": "tool_selection",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_tool_enum_lookup_mixed",
+      "language": "mixed_ja_en",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "enum",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": {
+            "key": "canary_window",
+            "locale": "en"
+          },
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "lookup_record",
+          "oracle_case": "aq2_held_tool_enum_lookup_mixed",
+          "parallel_tool_calls": false,
+          "tool_result": "External oracle evaluated the selected action.",
+          "user": "canary rollout window を English locale の運用レコードから取得してください。"
+        }
+      ]
+    },
+    {
+      "family": "tool_selection",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_tool_multiple_en",
+      "language": "en",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "multiple",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": null,
+          "expected_calls": [
+            {
+              "arguments": {
+                "mode": "summary",
+                "path": "docs/operator.md"
+              },
+              "tool": "read_file"
+            },
+            {
+              "arguments": {
+                "expression": "(84 + 42) / 6"
+              },
+              "tool": "calculate"
+            }
+          ],
+          "expected_outcome": "tool_calls",
+          "expected_tool": null,
+          "oracle_case": "aq2_held_tool_multiple_en",
+          "parallel_tool_calls": true,
+          "tool_result": "Both independent tool results were evaluated.",
+          "user": "Read the operator guide summary and separately calculate (84 + 42) divided by 6. Make both calls."
+        }
+      ]
+    },
+    {
+      "family": "tool_selection",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_tool_irrelevant_ja",
+      "language": "ja",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "irrelevant",
+      "turns": [
+        {
+          "argument_scoring": "not_applicable",
+          "expected_argument_constraints": null,
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "no_tool_call",
+          "expected_tool": null,
+          "oracle_case": "aq2_held_tool_irrelevant_ja",
+          "parallel_tool_calls": false,
+          "tool_result": "No tool call is expected; a safe direct response is accepted.",
+          "user": "ツールを使わず、短いお礼の文を一文だけ書いてください。"
+        }
+      ]
+    },
+    {
+      "family": "repository",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_repo_search_ingest_en",
+      "language": "en",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "search",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": {
+            "path": "src/ingest.py",
+            "query": "raise ValueError"
+          },
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "search_repo",
+          "oracle_case": "aq2_dev_repo_search_ingest_en",
+          "parallel_tool_calls": false,
+          "tool_result": "External oracle evaluated the selected action.",
+          "user": "Find the exact ingest line that raises ValueError for excess samples."
+        }
+      ]
+    },
+    {
+      "family": "repository",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_repo_read_config_en",
+      "language": "en",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "read",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": {
+            "mode": "summary",
+            "path": "config/stations.json"
+          },
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "read_file",
+          "oracle_case": "aq2_dev_repo_read_config_en",
+          "parallel_tool_calls": false,
+          "tool_result": "External oracle evaluated the selected action.",
+          "user": "Read a concise summary of the station configuration."
+        }
+      ]
+    },
+    {
+      "family": "repository",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_repo_patch_ingest_en",
+      "language": "en",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "patch",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": {
+            "patch_id": "ingest_sample_overflow"
+          },
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "apply_patch",
+          "oracle_case": "aq2_dev_repo_patch_ingest_en",
+          "parallel_tool_calls": false,
+          "tool_result": "External oracle evaluated the selected action.",
+          "user": "Apply the declared patch that maps excess sample batches to SampleOverflow."
+        }
+      ]
+    },
+    {
+      "family": "repository",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_repo_test_ingest_en",
+      "language": "en",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "test",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": {
+            "suite": "ingest"
+          },
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "run_fixture_tests",
+          "oracle_case": "aq2_dev_repo_test_ingest_en",
+          "parallel_tool_calls": false,
+          "tool_result": "External oracle evaluated the selected action.",
+          "user": "Run the focused ingest file-state suite after the declared ingest patch."
+        }
+      ]
+    },
+    {
+      "family": "repository",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_repo_search_operator_ja",
+      "language": "ja",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "search",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": {
+            "path": "docs/operator_ja.md",
+            "query": "監視"
+          },
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "search_repo",
+          "oracle_case": "aq2_held_repo_search_operator_ja",
+          "parallel_tool_calls": false,
+          "tool_result": "External oracle evaluated the selected action.",
+          "user": "日本語の運用文書で「監視」を含む行を検索してください。"
+        }
+      ]
+    },
+    {
+      "family": "repository",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_repo_read_operator_ja",
+      "language": "ja",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "read",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": {
+            "mode": "summary",
+            "path": "docs/operator_ja.md"
+          },
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "read_file",
+          "oracle_case": "aq2_held_repo_read_operator_ja",
+          "parallel_tool_calls": false,
+          "tool_result": "External oracle evaluated the selected action.",
+          "user": "日本語の運用ガイドを要約モードで読んでください。"
+        }
+      ]
+    },
+    {
+      "family": "repository",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_repo_patch_retry_en",
+      "language": "en",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "patch",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": {
+            "patch_id": "retry_bounded_jitter"
+          },
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "apply_patch",
+          "oracle_case": "aq2_held_repo_patch_retry_en",
+          "parallel_tool_calls": false,
+          "tool_result": "External oracle evaluated the selected action.",
+          "user": "Apply the declared bounded-jitter retry patch."
+        }
+      ]
+    },
+    {
+      "family": "repository",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_repo_test_full_mixed",
+      "language": "mixed_ja_en",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "test",
+      "turns": [
+        {
+          "argument_scoring": "exact_or_external",
+          "expected_argument_constraints": null,
+          "expected_arguments": {
+            "suite": "full"
+          },
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "run_fixture_tests",
+          "oracle_case": "aq2_held_repo_test_full_mixed",
+          "parallel_tool_calls": false,
+          "tool_result": "External oracle evaluated the selected action.",
+          "user": "ingest と retry の両方の declared patches 後に full fixture suite を実行してください。"
+        }
+      ]
+    },
+    {
+      "family": "code",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_code_clamp_en",
+      "language": "en",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "code",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "entry_point": {
+              "const": "clamp_readings"
+            },
+            "source": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_code",
+          "oracle_case": "aq2_dev_code_clamp_en",
+          "parallel_tool_calls": false,
+          "tool_result": "Code is compiled and checked against isolated hidden cases.",
+          "user": "Submit Python source defining clamp_readings(values, low, high), returning a new list with every numeric value clamped inclusively."
+        }
+      ]
+    },
+    {
+      "family": "code",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_code_group_en",
+      "language": "en",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "code",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "entry_point": {
+              "const": "group_fixed"
+            },
+            "source": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_code",
+          "oracle_case": "aq2_dev_code_group_en",
+          "parallel_tool_calls": false,
+          "tool_result": "Code is compiled and checked against isolated hidden cases.",
+          "user": "Submit Python source defining group_fixed(values, size), splitting values into consecutive list chunks and retaining a short final chunk. Assume size is positive."
+        }
+      ]
+    },
+    {
+      "family": "code",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_code_rises_en",
+      "language": "en",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "code",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "entry_point": {
+              "const": "count_rises"
+            },
+            "source": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_code",
+          "oracle_case": "aq2_dev_code_rises_en",
+          "parallel_tool_calls": false,
+          "tool_result": "Code is compiled and checked against isolated hidden cases.",
+          "user": "Submit Python source defining count_rises(values), the number of adjacent positions where the later value is strictly greater."
+        }
+      ]
+    },
+    {
+      "family": "code",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_code_label_en",
+      "language": "en",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "code",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "entry_point": {
+              "const": "normalize_label"
+            },
+            "source": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_code",
+          "oracle_case": "aq2_dev_code_label_en",
+          "parallel_tool_calls": false,
+          "tool_result": "Code is compiled and checked against isolated hidden cases.",
+          "user": "Submit Python source defining normalize_label(text): trim it, lowercase it, treat spaces and underscores as separators, collapse repeated separators, and join words with one hyphen."
+        }
+      ]
+    },
+    {
+      "family": "code",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_code_rolling_ja",
+      "language": "ja",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "code",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "entry_point": {
+              "const": "rolling_average"
+            },
+            "source": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_code",
+          "oracle_case": "aq2_held_code_rolling_ja",
+          "parallel_tool_calls": false,
+          "tool_result": "Code is compiled and checked against isolated hidden cases.",
+          "user": "Python の rolling_average(values, window) を定義する source を提出してください。完全な各連続窓の算術平均を float のリストで返し、完全な窓がなければ空リストです。window は正です。"
+        }
+      ]
+    },
+    {
+      "family": "code",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_code_ranges_en",
+      "language": "en",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "code",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "entry_point": {
+              "const": "merge_ranges"
+            },
+            "source": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_code",
+          "oracle_case": "aq2_held_code_ranges_en",
+          "parallel_tool_calls": false,
+          "tool_result": "Code is compiled and checked against isolated hidden cases.",
+          "user": "Submit Python source defining merge_ranges(ranges). Each input is [start, end]; sort and merge overlapping or touching ranges, returning lists."
+        }
+      ]
+    },
+    {
+      "family": "code",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_code_station_ja",
+      "language": "ja",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "code",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "entry_point": {
+              "const": "parse_station_code"
+            },
+            "source": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_code",
+          "oracle_case": "aq2_held_code_station_ja",
+          "parallel_tool_calls": false,
+          "tool_result": "Code is compiled and checked against isolated hidden cases.",
+          "user": "Python の parse_station_code(text) を定義する source を提出してください。最後のハイフンで地域名と10進整数IDを分け、[region, id] を返します。入力は有効です。"
+        }
+      ]
+    },
+    {
+      "family": "code",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_code_unique_mixed",
+      "language": "mixed_ja_en",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "code",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "entry_point": {
+              "const": "stable_unique"
+            },
+            "source": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_code",
+          "oracle_case": "aq2_held_code_unique_mixed",
+          "parallel_tool_calls": false,
+          "tool_result": "Code is compiled and checked against isolated hidden cases.",
+          "user": "Define stable_unique(values) in Python: 重複を除きながら最初の出現順を保つ新しい list を返してください。"
+        }
+      ]
+    },
+    {
+      "family": "instruction",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_instruction_bullets_en",
+      "language": "en",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "instruction",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "text": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_response",
+          "oracle_case": "aq2_dev_instruction_bullets_en",
+          "parallel_tool_calls": false,
+          "tool_result": "Response is checked by deterministic line, prefix, and word-count rules.",
+          "user": "Submit exactly three bullet lines summarizing safe restart steps. Each line must start with \"- \" and contain at most six words."
+        }
+      ]
+    },
+    {
+      "family": "instruction",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_instruction_status_en",
+      "language": "en",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "instruction",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "text": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_response",
+          "oracle_case": "aq2_dev_instruction_status_en",
+          "parallel_tool_calls": false,
+          "tool_result": "Response is checked by deterministic prefix, term, and word-count rules.",
+          "user": "Submit one line starting with STATUS:. It must include the lowercase words green and cache, must not use maybe, and must contain at most twelve words."
+        }
+      ]
+    },
+    {
+      "family": "instruction",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_instruction_ja_lines",
+      "language": "ja",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "instruction",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "text": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_response",
+          "oracle_case": "aq2_dev_instruction_ja_lines",
+          "parallel_tool_calls": false,
+          "tool_result": "Response is checked by deterministic line, suffix, and required-term rules.",
+          "user": "監視と復旧を含む日本語の文をちょうど2行で提出してください。各行は「。」で終えてください。"
+        }
+      ]
+    },
+    {
+      "family": "instruction",
+      "history_mode": "stable_prefix",
+      "id": "aq2_dev_instruction_json_en",
+      "language": "en",
+      "selection_visibility": "development_detail",
+      "split": "development",
+      "target_prefix_tokens": 512,
+      "task_kind": "instruction",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "text": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_response",
+          "oracle_case": "aq2_dev_instruction_json_en",
+          "parallel_tool_calls": false,
+          "tool_result": "Response is checked as a JSON object with the declared exact key set.",
+          "user": "Submit only one JSON object with exactly the keys action and owner. Choose concise string values."
+        }
+      ]
+    },
+    {
+      "family": "instruction",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_instruction_numbered_en",
+      "language": "en",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "instruction",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "text": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_response",
+          "oracle_case": "aq2_held_instruction_numbered_en",
+          "parallel_tool_calls": false,
+          "tool_result": "Response is checked by deterministic numbering and term rules.",
+          "user": "Submit exactly four numbered lines, prefixed 1. through 4. in order. Across the response include the lowercase words sensor and retry."
+        }
+      ]
+    },
+    {
+      "family": "instruction",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_instruction_ja_bullets",
+      "language": "ja",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "instruction",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "text": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_response",
+          "oracle_case": "aq2_held_instruction_ja_bullets",
+          "parallel_tool_calls": false,
+          "tool_result": "Response is checked by deterministic line, bullet, and term rules.",
+          "user": "「監視」「通知」「復旧」を全体で含む箇条書きをちょうど3行提出してください。各行は「- 」で始めてください。"
+        }
+      ]
+    },
+    {
+      "family": "instruction",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_instruction_bilingual_mixed",
+      "language": "mixed_ja_en",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "instruction",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "text": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_response",
+          "oracle_case": "aq2_held_instruction_bilingual_mixed",
+          "parallel_tool_calls": false,
+          "tool_result": "Response is checked by deterministic bilingual line-prefix and term rules.",
+          "user": "Submit exactly two lines. First starts EN: and includes rollback. Second starts JA: and includes ロールバック."
+        }
+      ]
+    },
+    {
+      "family": "instruction",
+      "history_mode": "stable_prefix",
+      "id": "aq2_held_instruction_sentence_en",
+      "language": "en",
+      "selection_visibility": "heldout_aggregate_only_until_candidate_freeze",
+      "split": "heldout",
+      "target_prefix_tokens": 512,
+      "task_kind": "instruction",
+      "turns": [
+        {
+          "argument_scoring": "external_oracle",
+          "expected_argument_constraints": {
+            "text": {
+              "minLength": 1
+            }
+          },
+          "expected_arguments": null,
+          "expected_calls": [],
+          "expected_outcome": "tool_call",
+          "expected_tool": "submit_response",
+          "oracle_case": "aq2_held_instruction_sentence_en",
+          "parallel_tool_calls": false,
+          "tool_result": "Response is checked by deterministic sentence, word-count, term, and forbidden-character rules.",
+          "user": "Submit one sentence of 8 to 12 words containing telemetry and no colon."
+        }
+      ]
+    }
+  ]
+}
