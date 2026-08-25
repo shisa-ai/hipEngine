@@ -71,6 +71,46 @@ from hipengine.speculative.transaction import (
 )
 
 
+_FP16_SPECDEC2_PROFILE_SELECTIONS = {
+    (
+        "gdn_chain_recurrent_rmsnorm_gate",
+        "specdec2_mtp2_target_state_rows",
+    ): (
+        "bf16_c1_exact_state_rows_tloop_fp16state",
+        "bf16_c1_exact_state_rows_tloop",
+    ),
+}
+
+
+def _fp16_specdec2_profile_authorized(generator: Any) -> bool:
+    """Require a complete non-fallback production manifest before FP16 mutation."""
+
+    profile = getattr(generator, "execution_profile", None)
+    profile = getattr(profile, "value", profile)
+    if str(profile) != "production" or bool(
+        getattr(generator, "execution_profile_fell_back_to_strict", True)
+    ):
+        return False
+    if not str(getattr(generator, "execution_profile_manifest_sha256", "") or ""):
+        return False
+    manifest = getattr(generator, "execution_profile_manifest", None)
+    if not isinstance(manifest, Mapping):
+        return False
+    selections = manifest.get("selections", ())
+    if not isinstance(selections, Sequence) or isinstance(selections, (str, bytes)):
+        return False
+    selected = {}
+    for row in selections:
+        if not isinstance(row, Mapping):
+            return False
+        key = (str(row.get("layer", "")), str(row.get("scope", "")))
+        selected[key] = (
+            str(row.get("selected_variant", "")),
+            str(row.get("strict_fallback_variant", "")),
+        )
+    return all(selected.get(key) == variants for key, variants in _FP16_SPECDEC2_PROFILE_SELECTIONS.items())
+
+
 def _target_verify_mode_for_context(
     requested: str,
     *,
@@ -168,6 +208,23 @@ class Qwen35GGUFMTP2Adapter:
         self._cycle_repair_hidden: Tensor | None = None
         self._cycle_workspace_shape: tuple[int, int] | None = None
 
+    def _target_profile_supported(self, target: Any) -> bool:
+        runner = getattr(target, "runner", None)
+        return bool(
+            not bool(getattr(runner, "fp16_recurrent_state", False))
+            or _fp16_specdec2_profile_authorized(self.generator)
+        )
+
+    def _bind_target_profile_metadata(self, target: Any) -> None:
+        target._specdec2_execution_profile_manifest_sha256 = str(
+            getattr(self.generator, "execution_profile_manifest_sha256", "legacy")
+            or "legacy"
+        )
+        runner = getattr(target, "runner", None)
+        target._specdec2_recurrent_state_dtype = (
+            "fp16" if bool(getattr(runner, "fp16_recurrent_state", False)) else "fp32"
+        )
+
     def register_request(self, request_id: int, candidate_budget: int) -> None:
         rid = int(request_id)
         budget = min(self.candidate_budget, max(1, int(candidate_budget)))
@@ -210,6 +267,10 @@ class Qwen35GGUFMTP2Adapter:
                     row.mtp2_prompt_fallback_reason = "prefix_reuse_k0"
             return None
         targets = tuple(row.lease.session for row in rows)
+        if any(not self._target_profile_supported(target) for target in targets):
+            for row in rows:
+                row.mtp2_prompt_fallback_reason = "target_profile_k0"
+            return None
         context_misses = tuple(
             (row, target)
             for row, target in zip(rows, targets, strict=True)
@@ -540,9 +601,7 @@ class Qwen35GGUFMTP2Adapter:
             ):
                 return None
             target = row.lease.session
-            if bool(
-                getattr(getattr(target, "runner", None), "fp16_recurrent_state", False)
-            ):
+            if not self._target_profile_supported(target):
                 return None
             targets.append(target)
         if len(semantics) == 1:
@@ -648,6 +707,10 @@ class Qwen35GGUFMTP2Adapter:
             for request_id in ids
             if request_id not in self._states
             and reason_by_id[request_id] is SpecPlanReason.NO_PROVIDER
+            and self.owner._row(request_id).lease is not None
+            and self._target_profile_supported(
+                self.owner._row(request_id).lease.session
+            )
         )
         if attach:
             for request_id in attach:
@@ -2686,6 +2749,10 @@ class Qwen35GGUFMTP2Adapter:
     def _open_batch_requests(self, request_ids: tuple[int, ...]) -> None:
         rows = [self.owner._row(request_id) for request_id in request_ids]
         targets = [row.lease.session for row in rows]
+        if any(not self._target_profile_supported(target) for target in targets):
+            raise RuntimeError("GGUF MTP2 target execution profile is unsupported")
+        for target in targets:
+            self._bind_target_profile_metadata(target)
         max_positions = min(
             int(target.target_layout.max_sequence_length) for target in targets
         )
@@ -2748,6 +2815,9 @@ class Qwen35GGUFMTP2Adapter:
     ) -> _MTP2RequestState:
         row = self.owner._row(request_id)
         target = row.lease.session
+        if not self._target_profile_supported(target):
+            raise RuntimeError("GGUF MTP2 target execution profile is unsupported")
+        self._bind_target_profile_metadata(target)
         group.provider.reset_request(request_id)
         root_hidden = self._catch_up_provider(
             group.provider,
@@ -2869,13 +2939,9 @@ class Qwen35GGUFMTP2Adapter:
         if row.lease is None:
             raise RuntimeError("GGUF MTP2 request has no target session")
         target = row.lease.session
-        if bool(
-            getattr(getattr(target, "runner", None), "fp16_recurrent_state", False)
-        ):
-            raise RuntimeError(
-                "GGUF MTP2 strict c1 requires FP32 recurrent state; "
-                "disable HIPENGINE_GGUF_FP16_RECURRENT_STATE"
-            )
+        if not self._target_profile_supported(target):
+            raise RuntimeError("GGUF MTP2 target execution profile is unsupported")
+        self._bind_target_profile_metadata(target)
         max_positions = int(target.target_layout.max_sequence_length)
         provider, pool_key, _reused = self.generator._acquire_dense_mtp_draft_provider(
             target,

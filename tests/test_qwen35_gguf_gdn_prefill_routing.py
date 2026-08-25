@@ -133,6 +133,27 @@ def test_gdn_output_boundary_is_selected_by_ssm_out_weight_plugin() -> None:
     assert runner._gdn_chain_output_fusion_for_weight(dense_bf16) is None
 
 
+def test_fp16_chain_journal_plan_selects_typed_state_and_snapshot_writers() -> None:
+    register_qwen35_linear_attn_gdn_kernels()
+
+    strict = qgr._resolve_gguf_linear_attention_chain_journal_plan(
+        "hip_gfx1151",
+        use_fp16_state=False,
+    )
+    production = qgr._resolve_gguf_linear_attention_chain_journal_plan(
+        "hip_gfx1151",
+        use_fp16_state=True,
+    )
+
+    assert strict.available and not strict.snapshot_available
+    assert production.available and not production.snapshot_available
+    assert production.conv is strict.conv
+    assert strict.conv_snapshot is None
+    assert production.conv_snapshot is None
+    assert production.gdn.__name__.endswith("_fp16state")
+    assert production.gdn_snapshot is None
+
+
 def test_q3_decode_output_width_policy_is_registry_selected() -> None:
     register_qwen35_linear_attn_gdn_kernels()
     runner = object.__new__(qgr.Qwen35GGUFFullStackRunner)

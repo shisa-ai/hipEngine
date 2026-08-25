@@ -184,6 +184,24 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
     target.runner = SimpleNamespace(fp16_recurrent_state=True)
     assert adapter.capability(semantics) is None
 
+    owner.generator.execution_profile = "production"
+    owner.generator.execution_profile_fell_back_to_strict = False
+    owner.generator.execution_profile_manifest_sha256 = "production-manifest"
+    owner.generator.execution_profile_manifest = {
+        "selections": (
+            {
+                "layer": "gdn_chain_recurrent_rmsnorm_gate",
+                "scope": "specdec2_mtp2_target_state_rows",
+                "selected_variant": "bf16_c1_exact_state_rows_tloop_fp16state",
+                "strict_fallback_variant": "bf16_c1_exact_state_rows_tloop",
+            },
+        )
+    }
+    assert adapter.capability(semantics) is not None
+
+    owner.generator.execution_profile_fell_back_to_strict = True
+    assert adapter.capability(semantics) is None
+
 
 def test_physical_adapter_returns_device_candidate_graph_before_target(
     monkeypatch,

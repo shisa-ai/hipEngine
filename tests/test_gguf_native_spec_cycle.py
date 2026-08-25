@@ -368,6 +368,32 @@ def test_device_proposal_handoff_stages_both_token_metadata_columns() -> None:
     )
 
 
+def test_native_target_graph_key_separates_profile_manifest_and_state_dtype() -> None:
+    common = {
+        "bulk_attention_mode": "native",
+        "use_wmma_prefill": False,
+        "capture_linear_state_rows": True,
+        "capture_pre_output_norm_hidden": True,
+        "defer_linear_state_commit": True,
+        "device_accept_commit": True,
+    }
+
+    strict = native_cycle_mod._native_target_configuration_key(
+        **common,
+        execution_profile_manifest_sha256="strict-manifest",
+        recurrent_state_dtype="fp32",
+    )
+    production = native_cycle_mod._native_target_configuration_key(
+        **common,
+        execution_profile_manifest_sha256="production-manifest",
+        recurrent_state_dtype="fp16",
+    )
+
+    assert strict != production
+    assert "strict-manifest" in strict and "fp32" in strict
+    assert "production-manifest" in production and "fp16" in production
+
+
 @pytest.mark.parametrize(
     ("rows", "position", "remaining_decode", "expected_reason"),
     [

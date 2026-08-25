@@ -4180,15 +4180,19 @@ should be boring.
   The packed AR prefill/decode guards that required
   `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN` remain removed. Remaining
   fail-closed guards:
-  chain-journal output and snapshot fusion, the MTP tree/chain verifier, and
-  any `HIPENGINE_GGUF_GDN_PREFILL_MODE` other than the auto
-  `chain_compact_peer_wave32` Q4_K_S route.
+  producer-folded chain-journal output/snapshot fusion under FP16 state, any
+  MTP2 request without the complete non-fallback production manifest, and any
+  `HIPENGINE_GGUF_GDN_PREFILL_MODE` other than the auto
+  `chain_compact_peer_wave32` Q4_K_S route. P8 keeps consumer-owned dtype-sized
+  rollback snapshots and the strict unfused cast instead of enabling the
+  independently excluded gfx1151 producer-folded aliases.
 - Removal triggers: (1) after the c8 fp16-vs-fp32 benchmark and the
   strict-teacher gate validate the production route, decide whether the fp16
   state becomes the default and the flag collapses to a
-  remove/rollback seam; (2) add fp16 variants for the chain-journal writers and
-  the MTP verifier (or permanently gate them off) and delete the remaining
-  fail-closed guards; (3) drop `gdn_effective_mode`/frozen-mode assumptions if
+  remove/rollback seam; (2) complete the SPECDEC2 P8 numerical/task/lifecycle/
+  economics packet for the registered FP16 chain-row manifest, then decide
+  whether the remaining legacy/env MTP guards can collapse; (3) drop
+  `gdn_effective_mode`/frozen-mode assumptions if
   the flag is later allowed beyond the compact-peer-wave32 route.
 - Checkpoint 2026-08-20 (audited): the 450-row c1 numerical capture passes at
   global mean/p95/p99/max KL `5.28e-5/2.80e-4/5.81e-4/1.43e-3` and 99.78%
@@ -4212,8 +4216,11 @@ should be boring.
   `13.0999 -> 13.2738 tok/s` (**+1.33%**), and c8 ITL-p99 improves
   `0.8532 -> 0.8287 s`. Both modes share the absolute 0.5-second SLO failure;
   that serving-path issue does not erase the candidate win. See `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json`.
-  Runtime-manifest, BF16-relative/task, and gfx1100 named-profile evidence
-  remain unavailable, while chain-journal/MTP guards remain.
+  SPECDEC2 P8 now has a runtime-resolved production-candidate manifest and
+  exact FP32 fallback plus clean C1/C2/C4 staged-vs-production-AR smokes.
+  BF16-relative/task, fresh speculative numerics, lifecycle/economics, and
+  gfx1100 named-profile evidence remain unavailable; automatic policy therefore
+  stays K0 and producer-folded chain snapshot/fusion remains excluded.
 
 ## gfx1151 c1 short-batch attention thread-geometry (GGUF_SHORT_C1_BATCH_ATTN_THREADS / env)
 
