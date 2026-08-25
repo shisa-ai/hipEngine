@@ -8,7 +8,7 @@
 - Primary artifact: **Qwen3.8-27B `Q4_K_S`, BF16 KV**
 - Initial profile: **strict FP32 recurrent state**
 - Product profile follow-up: **scoped FP16 recurrent state with FP32 fallback**
-- Selected implementation base: **`9070d59ca` or its clean descendant containing the complete S6 merge and this plan**
+- Selected implementation base: **`ccd077a1f` or its clean descendant containing the complete S6 merge, this plan, and the independent gfx1100 S7 C1 foundations**
 - Automatic policy at entry: **K0 for C1-C32**
 - Explicit functional scope at entry: **strict C1/C2/C4 K1-K3 through R16, default-off**
 - Normative dependencies: [`PLAN.md`](PLAN.md), [`SPECDEC2.md`](SPECDEC2.md),
@@ -29,6 +29,13 @@ it does **not** produce keep/revert wall evidence for this campaign. Every
 performance decision is measured on the stable `gfx1151` host. ZBook and stable
 `gfx1151` absolute rates are independent lanes and are never presented as an
 old-to-new comparison.
+
+The independent [`SPECDEC2-GFX1100`](SPECDEC2-GFX1100.md) S7 lane is active and
+may proceed concurrently in a separate worktree/on separate hardware. It shares
+backend-neutral contracts and some dense-GGUF source files, but no rates,
+thresholds, policy cells, profile manifests, or physical bucket decisions.
+Same-file work is serialized through a designated merge owner before either lane
+continues.
 
 ## 1. Executive decision
 
@@ -92,7 +99,7 @@ whole-request owner.
 ### 2.3 Out of scope until reopened by evidence
 
 - scheduler/frontier/transaction redesign;
-- gfx1100 transfer or policy reuse;
+- gfx1100 execution, qualification, or policy work inside this campaign (the independent S7 lane continues under [`SPECDEC2-GFX1100.md`](SPECDEC2-GFX1100.md));
 - PARO MTP2, DFlash, DFlash2, EAGLE, n-gram, or remote providers;
 - arbitrary trees or sampled speculative decoding;
 - C8/R24/R32 native ownership without a winning fixed-cell premise;
@@ -165,7 +172,32 @@ For automatic promotion, MTP wall must be at most `AR wall / 1.10`.
 The short→full gap proves kernel tuning alone cannot close the campaign.
 Activation and repeated partial-accept cycle economics are binding.
 
-### 3.5 Older native control is diagnostic, not an automatic baseline
+### 3.5 Hot-cycle break-even planning bound
+
+For a non-tail greedy cycle, the first-order value of one target pass is:
+
+```text
+expected visible tokens / request / cycle = 1 + expected accepted draft tokens
+break-even speculative cycle wall
+  <= expected visible tokens * matched physical-AR step wall
+```
+
+At the full-suite K2 draft acceptance of 49.15%, the planning expectation is
+`1 + 2*0.4915 = 1.983` visible tokens per request/cycle. Combining that with the
+S5 short physical-row ladder gives a deliberately rough bound:
+
+| Cell | Current reported proposal+target+repair/other direct stages | Approximate AR-equivalent target budget | Reduction to hot-cycle parity | Reduction to 1.10x hot-cycle speedup |
+| --- | ---: | ---: | ---: | ---: |
+| C2/K2 | ~433.3 ms | `1.983 * R2 133.3 ms = 264.3 ms` | ~39.0% | ~44.5% |
+| C4/K2 | >=506.6 ms | `1.983 * R4 198.9 ms = 394.4 ms` | >=22.2% | >=29.2% |
+
+This is a **planning bound, not retained evidence**: it combines full-suite
+acceptance with the short target ladder, excludes tails/variable active rows,
+and does not resolve activation or asynchronous residual. P1 replaces it with
+cycle-trajectory-weighted committed-token economics from one common protocol.
+A target/kernel candidate is not admitted merely because it meets this estimate.
+
+### 3.6 Older native control is diagnostic, not an automatic baseline
 
 The 2026-08-17 exact native Q4_K_S B3 packet reports 24.193 tok/s, 1.823x its
 true AR, 64.92% draft acceptance, and roughly 111 ms target wall per cycle over
@@ -258,7 +290,24 @@ owner's work. Record:
 - execution/strict fallback variant manifests; and
 - exact environment including `GPU_MAX_HW_QUEUES=2`.
 
-### 5.2 GPU preflight
+### 5.2 Cross-lane coordination
+
+The gfx1151 performance owner fetches `origin/main` before each phase and checks
+for changes from the active gfx1100 S7 lane. Shared-file edits are not developed
+in parallel:
+
+1. identify the designated merge owner for the shared file;
+2. let that owner stage, validate, and commit first;
+3. synchronize the other worktree without discarding local work;
+4. rerun both lanes' affected CPU/seam tests; and
+5. keep hardware evidence independent even when a backend-neutral source change
+   is shared.
+
+A common adapter improvement may be retained once under backend-neutral
+contracts, but it cannot transfer a gfx1151 performance verdict to gfx1100 or a
+gfx1100 correctness capability to gfx1151.
+
+### 5.3 GPU preflight
 
 ```bash
 python3 -c "import ctypes; ctypes.CDLL('libamdhip64.so'); print('hip OK')"
@@ -270,7 +319,7 @@ Before profiling, prebuild outside `rocprofv3`, write one compiler-version file,
 and run children with `HIPENGINE_REQUIRE_CACHED_BUILD=1`. Do not profile a
 parent harness that launches nested children.
 
-### 5.3 GPU lease
+### 5.4 GPU lease
 
 The gfx1151 campaign owner holds the stable GPU lease during every timing or
 profiler packet. No other model load, benchmark, profiler, or power-changing
@@ -330,6 +379,7 @@ claims_reserve
 target_prefill
 nextn_prompt_prime
 provider_open
+resident_owner_transition  # packed-AR flush/scatter/discard and SPECDEC2 handoff
 cycle_total
   proposal
   frontier_lower
@@ -450,18 +500,19 @@ Owner: current planning session. No GPU run.
 - [x] Preserve SPECDEC2 architecture; reject rewrite scope.
 - [x] Freeze current evidence, reduction requirements, priorities, and no-chase
       list.
-- [x] Create the detailed phase/punchlist and structured TaskList handoff.
+- [x] Create the detailed durable phase/punchlist; session-local task trackers
+      may mirror it but are not handoff identifiers.
 - [x] Name OI-3 streaming prompt priming as the first implementation candidate.
-- [x] Defer gfx1100 S7 while this user-approved gfx1151 performance follow-up is
-      active.
+- [x] Coordinate the independently active gfx1100 S7 lane through separate
+      evidence, worktrees/hardware, and serialized ownership of shared files.
 - [x] Commit and push this plan/worklog/pointer unit.
 
-Exit: committed handoff on `origin/main`, no tracked local changes, and tasks
+Exit: committed handoff on `origin/main`, no tracked local changes, and phases
 P1-P10 owned by `gfx1151-agent`.
 
 ## 10. P1 — common bridge and current-main baseline
 
-TaskList: #24-#25. Expected stable-GPU cost: 30-90 minutes after harness tests.
+Durable handoff: P1.1-P1.2. Expected stable-GPU cost: 30-90 minutes after harness tests.
 
 ### P1.1 Harness
 
@@ -476,6 +527,9 @@ TaskList: #24-#25. Expected stable-GPU cost: 30-90 minutes after harness tests.
 - [ ] Emit complete and decode-only timing, stage attribution, exact accounting,
       physical shapes, candidate/acceptance trajectories, provider fingerprints,
       allocation/synchronization counters, and teardown.
+- [ ] Attribute packed-AR owner flush/scatter/discard, graph close/invalidation,
+      root-hidden handoff, and provider attach separately from proposal/target;
+      count each transition and reconcile it into residual.
 - [ ] Add a final single-child profiler mode with cached builds and ROCTX markers.
 - [ ] RED-test malformed/missing timing owners, duplicated batch timing,
       incomplete prompt suite, invalid AR denominator, and dirty provenance.
@@ -490,8 +544,8 @@ TaskList: #24-#25. Expected stable-GPU cost: 30-90 minutes after harness tests.
 - [ ] Run one cached staged C2/K2 and C4/K2 marked/kernel trace.
 - [ ] Verify old-native/staged outputs and acceptance separately; do not require
       legacy provider fingerprints to equal the canonical staged contract.
-- [ ] Freeze current activation, steady-cycle, target, repair, synchronization,
-      and residual ceilings.
+- [ ] Freeze current activation, resident-owner transition, steady-cycle,
+      target, repair, synchronization, and residual ceilings.
 - [ ] Recalculate the exact reduction needed for each candidate cell.
 - [ ] Publish `benchmarks/results/<date>-gfx1151-specdec2-perf-p1-bridge.json`.
 - [ ] Update campaign status/worklog and commit.
@@ -518,7 +572,7 @@ P2 is admitted without relying on mixed historical timing.
 
 ## 11. P2 — streaming exact NextN prompt activation
 
-TaskList: #26-#27. Source mechanism: retained commit `51e990ee8`.
+Durable handoff: P2.1-P2.3. Source mechanism: retained commit `51e990ee8`.
 
 ### P2.1 RED contracts
 
@@ -568,7 +622,7 @@ qualified SPECDEC2 request.
 
 ## 12. P3 — stable slabs and zero hot allocation
 
-TaskList: #28-#29.
+Durable handoff: P3.1-P3.3.
 
 Current review found cycle-local `malloc/free` around proposal/repair hidden
 batches and workspace creation. Allocation/copy/free outside current stage timers
@@ -612,7 +666,7 @@ addresses.
 
 ## 13. P4 — device-resident proposal → target → accept → commit
 
-TaskList: #30-#31.
+Durable handoff: P4.1-P4.3.
 
 ### P4.1 C1 fast-cycle bridge
 
@@ -657,7 +711,7 @@ host materialize/reconstruct/re-upload steps.
 
 ## 14. P5 — physical target profile and candidate admission
 
-TaskList: #32. Stable-GPU cost: approximately 15-45 minutes after cache warmup.
+Durable handoff: P5.1-P5.3. Stable-GPU cost: approximately 15-45 minutes after cache warmup.
 
 ### P5.1 Required profiles
 
@@ -700,7 +754,7 @@ attention tiny and packed GDN modest; the complete profile decides.
 
 ## 15. P6 — one physical target optimization
 
-TaskList: #36-#37.
+Durable handoff: P6 checklist below.
 
 - [ ] Write RED oracle/route test before device changes.
 - [ ] Implement only the P5-admitted candidate.
@@ -718,7 +772,7 @@ TaskList: #36-#37.
 
 ## 16. P7 — conditional provider repair
 
-TaskList: #38.
+Durable handoff: P7 checklist below.
 
 Provider repair measured ~7.2 ms in C2/K2 before earlier phases, far below the
 392.8 ms target. It is revisited only after P2-P6 because relative ownership may
@@ -738,7 +792,7 @@ change.
 
 ## 17. P8 — production FP16 recurrent-state capability
 
-TaskList: #33.
+Durable handoff: P8.1-P8.2.
 
 Automatic Q4_K_S currently selects K0 before mutation because strict chain base
 state readers require FP32, while normal product AR uses scoped FP16 recurrent
@@ -770,7 +824,7 @@ state. A strict-only speed win cannot become the normal product default.
 
 ## 18. P9 — policy and product qualification
 
-TaskList: #34.
+Durable handoff: P9.1-P9.3.
 
 ### P9.1 Fixed cells first
 
@@ -820,7 +874,7 @@ remain K0 with exact measured/unqualified reasons.
 
 ## 19. P10 — closure
 
-TaskList: #35.
+Durable handoff: P10 checklist below.
 
 - [ ] List every retained implementation unit and default scope.
 - [ ] List every promoted automatic `(model/backend/profile/C/K/context/horizon)`
@@ -841,8 +895,9 @@ TaskList: #35.
       checks.
 - [ ] Commit final closure, merge clean campaign branch, push, and verify
       local/remote equality.
-- [ ] Hand gfx1100 S7 a strict functional source and the no-repeat/performance
-      lessons; transfer no absolute rates or thresholds.
+- [ ] Publish retained no-repeat/performance lessons to the already-active
+      gfx1100 S7 ledger; transfer no absolute rates, thresholds, profile
+      manifests, or bucket decisions.
 
 ## 20. Do-not-chase ledger
 
@@ -894,7 +949,7 @@ For every phase:
 
 1. `git status -sb`; preserve unrelated files.
 2. Read the latest campaign/worklog handoff.
-3. Mark the corresponding TaskList item `in_progress`.
+3. Mark the corresponding durable phase checklist (and any session-local mirror) `in_progress`.
 4. Add/identify RED first.
 5. Run narrow failing node.
 6. Implement the minimum scoped change.
@@ -906,7 +961,7 @@ For every phase:
 12. `git diff --check`; explicitly stage only owned paths.
 13. Inspect staged names and full staged diff.
 14. Commit immediately before starting the next phase.
-15. Mark task complete and inspect TaskList for the next unblocked item.
+15. Mark the phase complete and inspect the durable dependency graph before starting the next item.
 
 Do not automatically repeat a completed broad suite after an isolated scoped
 failure; follow `AGENTS.md` focused-repair policy. Do not commit exploratory or
@@ -939,8 +994,8 @@ Raw profiler dumps and terminal logs remain outside Git.
 
 ## 24. Current handoff to the gfx1151 agent
 
-Start with TaskList #24 from the committed P0 handoff. Do not begin by editing
-kernels. Build the common bridge, run the stable current-main baseline, and
+Start with P1 from the committed P0 handoff. Do not begin by editing kernels.
+Build the common bridge, run the stable current-main baseline, and
 confirm whether activation and device synchronization explain the complete wall.
 Then integrate the already-retained OI-3 streaming sink in P2.
 
@@ -956,7 +1011,9 @@ make target→accept→commit genuinely device-resident. Only then profile the
 physical target and select one candidate. This ordering is binding unless fresh
 stable-host evidence changes it and the campaign ledger is updated before work.
 
-The gfx1100 portability task is deferred by explicit user scope while this
-stable gfx1151 performance campaign runs. When P10 closes, gfx1100 receives the
-functional architecture, exact fallbacks, and measured do-not-repeat lessons,
-not gfx1151 rates, thresholds, or assumed graph buckets.
+The independent gfx1100 S7 lane is already active with dense-GGUF and PARO C1
+foundations. It may continue concurrently, but shared-file edits—especially
+`qwen35_gguf_mtp2.py`, `qwen35_gguf_nextn.py`, `qwen35_gguf_runner.py`, and the
+SPECDEC2 source-of-truth docs—must be serialized through one merge owner. P10
+publishes reusable architecture and no-repeat lessons to S7, never gfx1151 rates,
+thresholds, profile manifests, policy fingerprints, or assumed graph buckets.
