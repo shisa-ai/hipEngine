@@ -746,6 +746,29 @@ def _repo_provenance() -> dict[str, Any]:
     }
 
 
+def bridge_speed_claim_eligible(
+    *,
+    scope: str,
+    prompt_ids: Sequence[str],
+    runs: int,
+    concurrencies: Sequence[int],
+    tracked_clean: bool,
+    unexpected_untracked: Sequence[str],
+    all_exact: bool,
+) -> bool:
+    """Gate the retained P1 packet without requiring diagnostic K cells."""
+
+    return bool(
+        str(scope) == "full"
+        and tuple(str(value) for value in prompt_ids) == FULL_PROMPT_IDS
+        and int(runs) >= 3
+        and set(int(value) for value in concurrencies) == {1, 2, 4}
+        and bool(tracked_clean)
+        and not tuple(unexpected_untracked)
+        and bool(all_exact)
+    )
+
+
 def _arm_ratios(cell: Mapping[str, Any]) -> dict[str, float | None]:
     arms = cell["arms"]
     ar = arms["true_ar"]
@@ -1190,19 +1213,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         payload["summary"] = _summarize(payload["cells"])
         payload["status"] = "complete"
         validate_bridge_artifact(payload)
-        full_claim = bool(
-            args.scope == "full"
-            and tuple(row["id"] for row in prompts) == FULL_PROMPT_IDS
-            and int(args.runs) >= 3
-            and set(args.concurrency) == {1, 2, 4}
-            and set(args.budgets) == {1, 2, 3}
-        )
-        payload["speed_claim_eligible"] = bool(
-            full_claim
-            and not bool(repo_gate["staged_dirty"])
-            and not bool(repo_gate["unstaged_dirty"])
-            and not bool(repo_gate["unexpected_untracked"])
-            and all(bool(cell["exact"]) for cell in payload["cells"])
+        payload["speed_claim_eligible"] = bridge_speed_claim_eligible(
+            scope=str(args.scope),
+            prompt_ids=tuple(str(row["id"]) for row in prompts),
+            runs=int(args.runs),
+            concurrencies=args.concurrency,
+            tracked_clean=(
+                not bool(repo_gate["staged_dirty"])
+                and not bool(repo_gate["unstaged_dirty"])
+            ),
+            unexpected_untracked=repo_gate["unexpected_untracked"],
+            all_exact=all(bool(cell["exact"]) for cell in payload["cells"]),
         )
         payload["performance_claim"] = bool(payload["speed_claim_eligible"])
     except BaseException as exc:
