@@ -1,0 +1,171 @@
+{
+  "anti_overfit": {
+    "comparison_raw_outputs_inspected_for_selection": false,
+    "forbidden_inputs": [
+      "prompt text or hash",
+      "token IDs",
+      "fixture, workload, split, family, category, or language ID",
+      "expected tool, arguments, or result",
+      "model name or answer",
+      "generated result hash",
+      "benchmark position"
+    ],
+    "heldout_model_outputs_inspected": false,
+    "selection_basis": "AQ3 independent boundary taxonomy plus AQ6 development aggregates and request-declared semantic invariants; AQ7 aggregate comparison patterns are corroborative only"
+  },
+  "candidate_evaluation": [
+    {
+      "candidate": "parser_or_template_correctness_repair",
+      "decision": "rejected_no_trigger",
+      "evidence": {
+        "aq3_independent_parser_projection_mismatches": 0,
+        "aq3_runtime_failure_task_blocks": 0,
+        "aq6_development_parser_template_runtime_or_unresolved_boundaries": 0
+      },
+      "reason": "No independently reconstructed valid model envelope is mishandled by the runtime. Changing the generic Qwen protocol without such a RED would be speculative and model-prompt tuning."
+    },
+    {
+      "candidate": "complete_token_level_tool_argument_json_schema_constraint",
+      "decision": "rejected_no_trigger_and_no_task_oracle_authority",
+      "evidence": {
+        "aq6_declared_json_strict_schema_valid_call_blocks": 56,
+        "aq6_malformed_or_invalid_argument_observations": 0,
+        "aq6_published_call_blocks": 56,
+        "aq6_unique_development_failures": 7
+      },
+      "reason": "Every published primary call is already declared, JSON-valid, and strict-schema-valid. The remaining failures are no-call, valid wrong-count/wrong-tool choices, or schema-valid actions/content that fail an external oracle; JSON Schema cannot identify the intended action or semantic result."
+    },
+    {
+      "candidate": "bounded_invalid_tool_repair",
+      "decision": "rejected_no_trigger_and_semantic_risk",
+      "evidence": {
+        "aq6_content_leaks": 0,
+        "aq6_malformed_or_invalid_arguments": 0,
+        "aq6_raw_markup_leaks": 0,
+        "aq6_runtime_errors": 0,
+        "aq6_truncations": 0
+      },
+      "reason": "No invalid, malformed, leaked, or truncated primary output exists for a repair to trigger on. Retrying valid model choices would coerce auto semantics and risk benchmark-conditioned reranking."
+    },
+    {
+      "candidate": "bounded_patch_or_diff_constraint",
+      "decision": "rejected_no_trigger",
+      "evidence": {
+        "aq6_patch_observations_passed": 4,
+        "aq6_patch_observations_total": 4,
+        "aq7_ornith_patch_observations_passed": 4,
+        "aq7_qwen38_patch_observations_passed": 4
+      },
+      "reason": "Patch syntax and application have no measured failure premise."
+    },
+    {
+      "candidate": "no_implementation",
+      "decision": "admitted",
+      "reason": "Every measured development failure is deterministic model selection or grounding behavior under an admitted, fail-closed runtime. No model-general runtime mechanism can improve it from request-declared semantics without guessing task intent."
+    }
+  ],
+  "comparison_evidence": {
+    "ornith": {
+      "development_failed_observations": 18,
+      "development_failed_task_blocks": 9,
+      "development_observations": 34,
+      "development_passed": 16,
+      "normalized_repeat_pairs_passed": 34
+    },
+    "policy": "Aggregate comparison evidence corroborates model-dependent quality only; it does not select or tune a mechanism.",
+    "qwen38": {
+      "development_failed_observations": 12,
+      "development_failed_task_blocks": 6,
+      "development_observations": 34,
+      "development_passed": 22,
+      "normalized_repeat_pairs_passed": 34
+    }
+  },
+  "date": "2026-08-26",
+  "decision": {
+    "implementation_admitted": false,
+    "result": "no_implementation",
+    "status": "retained_no_go"
+  },
+  "declaration": {
+    "comparison_model_expectation": "No candidate exists to transfer. Existing admitted routes and capability manifests remain unchanged.",
+    "development_objective": "Not applicable: no candidate has a non-zero runtime-owned development trigger.",
+    "fallback_and_fail_closed_behavior": "Unchanged. Invalid, malformed, undeclared, schema-violating, content-leaking, and required-tool-missing outputs remain withheld or fail closed under existing public policy.",
+    "heldout_gate": "No candidate run is authorized. Heldout model outputs remain sealed; no AQ11 or AQ12 quality rerun is justified while runtime code is unchanged.",
+    "maximum_repair_count": 0,
+    "maximum_repair_tokens": 0,
+    "native_sampler_and_mtp": "Unchanged and disabled for the frozen tool-quality route; no blocker is weakened.",
+    "red_fixture": "None admitted. Reopening requires an independent runtime RED satisfying a candidate-specific criterion below before implementation.",
+    "refactor_removal_trigger": "Not applicable: no flag, alternate path, fallback chain, or runtime code is added.",
+    "request_and_capability_scope": "No runtime scope changes. Current blocking/SSE, tools, Qwen tokenizer/protocol, strict schema validation, and capability truthfulness remain authoritative.",
+    "session_and_continuation_commit": "Unchanged; unsafe outputs retain existing non-commit or prompt-only downgrade behavior.",
+    "streaming_publication": "Unchanged; no envelope/parser/publication path is modified.",
+    "telemetry": "No new route or repair telemetry because no route or repair is added.",
+    "tool_choice_semantics": {
+      "auto": "May produce a declared call or no call; runtime does not infer benchmark-required tool/count from prompt intent.",
+      "none": "Must suppress tool calls under existing fail-closed policy.",
+      "required": "Existing required-tool start/validation semantics remain unchanged.",
+      "specific": "Existing selected-name forcing and strict validation remain unchanged."
+    }
+  },
+  "downstream_phase_disposition": {
+    "AQ10": "not_applicable_no_candidate_semantic_qualification",
+    "AQ11": "not_applicable_no_post_change_primary_run",
+    "AQ12": "not_applicable_no_cross_model_transfer",
+    "AQ13": "required_campaign_closure_and_publication",
+    "AQ9": "not_applicable_no_implementation"
+  },
+  "evidence_inputs": [
+    {
+      "path": "benchmarks/results/2026-08-26-zbook-agentic-quality2-aq3-taxonomy.json",
+      "role": "independent runtime-versus-model boundary taxonomy",
+      "sha256": "ca9a9438191257719b8a0e3d7b715f785c8c9a03272f709586a6f78dd68cda4a"
+    },
+    {
+      "path": "benchmarks/results/2026-08-26-zbook-agentic-quality2-aq6-expanded-baseline.json",
+      "role": "primary expanded development baseline and fail-safe evidence",
+      "sha256": "0938122b7065249d57bcded0fa4b033514d976810545e14a026e73733005db20"
+    },
+    {
+      "path": "benchmarks/results/2026-08-26-zbook-agentic-quality2-aq7-qwen38-comparison.json",
+      "role": "aggregate cross-model corroboration only",
+      "sha256": "ca9650589c3c3f6aeb930b674b936a3445a85b57db5f1b92c28989c84918964c"
+    },
+    {
+      "path": "benchmarks/results/2026-08-26-zbook-agentic-quality2-aq7-ornith15-comparison.json",
+      "role": "aggregate cross-model corroboration only",
+      "sha256": "f0ffd8203856f0251a2dc9ee2311aaf6751eb6115a4fcbb73f532dd2c079b035"
+    }
+  ],
+  "kind": "hipengine_agentic_quality2_mechanism_decision",
+  "performance_claim": false,
+  "primary_development_evidence": {
+    "failed_observations": 14,
+    "failed_task_blocks": 7,
+    "observations": 34,
+    "passed_observations": 20,
+    "repeat_pairs_deterministic": true,
+    "runtime_owned_task_blocks": 0,
+    "unique_failure_outcomes": {
+      "no_tool_call": 2,
+      "oracle_failed": 3,
+      "wrong_call_count": 1,
+      "wrong_tool": 1
+    },
+    "unresolved_task_blocks": 0
+  },
+  "reopen_criteria": {
+    "bounded_invalid_tool_repair": "At least one development output must be independently proven invalid/malformed/truncated at a generic boundary, safely repairable from request-declared semantics, and externally improved without retrying valid choices.",
+    "complete_argument_constraint": "At least one development failure must enter a declared tool envelope and violate a supported strict JSON Schema prefix that the current processor permits.",
+    "parser_or_template_repair": "Independent tokenizer reconstruction and non-server parsing must accept intended model output that the public runtime misparses, misprojects, leaks, or assigns the wrong finish/session state.",
+    "patch_or_diff_constraint": "A development failure must be localized to patch/diff syntax after the intended edit is independently established, with no need to infer hidden expected content."
+  },
+  "schema_version": 1,
+  "source": {
+    "branch": "agentic-quality2",
+    "campaign": "AGENTIC-QUALITY2",
+    "clean_runtime_source_commit": "2031efb955040654eeeb08d977d475af0d465447",
+    "phase": "AQ8",
+    "task_id": 48
+  }
+}

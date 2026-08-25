@@ -121,6 +121,9 @@ quality—not implementation-correctness or quantization deltas.
 [`AQ7 Ornith`](results/2026-08-26-zbook-agentic-quality2-aq7-ornith15-comparison.json) ·
 [`campaign`](../docs/AGENTIC-QUALITY2.md).
 
+AQ8 retains **no implementation**: seven development failures are model-owned,
+with no runtime trigger. [`Decision`](results/2026-08-26-zbook-agentic-quality2-aq8-no-go-decision.json).
+
 ## Where detailed evidence lives
 
 | Need | Source |
