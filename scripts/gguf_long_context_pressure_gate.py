@@ -737,7 +737,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     ).strip()
     source_dirty = bool(
         subprocess.check_output(
-            ["git", "status", "--porcelain"], cwd=REPO_ROOT, text=True
+            [
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=no",
+            ],
+            cwd=REPO_ROOT,
+            text=True,
         ).strip()
     )
     started_at = time.perf_counter()
