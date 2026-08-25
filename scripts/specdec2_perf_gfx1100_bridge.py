@@ -682,6 +682,7 @@ def build_parser() -> argparse.ArgumentParser:
     loaded.add_argument("--max-sequence-length", type=int)
     loaded.add_argument("--compiler-version-file", type=Path)
     loaded.add_argument("--require-cached-build", action="store_true")
+    loaded.add_argument("--roctx-markers", action="store_true")
     loaded.add_argument("--output", type=Path, required=True)
 
     attach = subparsers.add_parser(
