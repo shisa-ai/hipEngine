@@ -1,11 +1,11 @@
 # SPECDEC2 / MTP2 Implementation Plan
 
-- Status: **approved; active implementation campaign**
+- Status: **gfx1151 S1-S6 closed functionally; no automatic cell promoted; stable-hardware performance follow-up approved in [`SPECDEC2-PERF.md`](SPECDEC2-PERF.md)**
 - Approved: **2026-08-24**
 - Primary hardware lane: **`hip_gfx1151` / AMD Radeon 8060S Graphics**
 - Primary product target: **Qwen3.8-27B Q4_K_S, BF16 KV**
 - First provider: **dense GGUF NextN/MTP2**
-- Deferred portability lane: **`hip_gfx1100` after backend-neutral and gfx1151 closure**
+- Deferred portability lane: **`hip_gfx1100` after the user-prioritized gfx1151 [`SPECDEC2-PERF`](SPECDEC2-PERF.md) follow-up**
 - Normative dependencies: [`PLAN.md`](PLAN.md),
   [`CONCURRENCY2.md`](CONCURRENCY2.md),
   [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
@@ -778,7 +778,9 @@ all fail only the inherited 0.5-second ITL-p99 SLO. Evidence:
 ## 13. S7 — gfx1100 portability follow-up
 
 S7 starts only after S6 is committed. It is intentionally not part of the
-current implementation campaign.
+closed functional campaign and is now deferred while the explicitly approved
+stable-host gfx1151 [`SPECDEC2-PERF`](SPECDEC2-PERF.md) activation/hot-cycle
+follow-up runs. No gfx1151 performance constant transfers when S7 resumes.
 
 - [ ] Create a separate gfx1100 plan/worklog and select an exact clean base.
 - [ ] Run backend-neutral suites unchanged.
@@ -929,10 +931,12 @@ Automatic K0 below/near/above load reaches 9.552/11.917/12.242 exact generated
 tok/s but fails only ITL p99 (0.781/0.860/0.827 s versus 0.5 s). No product or
 public performance scope promotes.
 
-The next owner starts S7 as an independent gfx1100 lane from this committed S6
-base. Run backend-neutral suites unchanged, resolve gfx1100 capabilities rather
-than copying gfx1151 registrations, and independently requalify strict C1/C2/C4,
-physical R buckets, profiler engagement, quality, lifecycle, memory, load, and
-same-host true-AR economics. Do not transfer gfx1151 absolute rates, policy
-thresholds, or an assumed C8 owner. Start with the S3 C1 adapter and strict
-fallbacks; retain automatic K0 until complete gfx1100 cells pass their own gates.
+The original post-S6 handoff was S7/gfx1100. The user has explicitly deferred
+that portability lane and approved the stable-host gfx1151
+[`SPECDEC2-PERF`](SPECDEC2-PERF.md) campaign first. Its owner begins with the
+common-protocol AR/native/staged bridge, integrates retained streaming NextN
+prompt priming, removes hot allocation, builds the bounded device-resident
+cycle, and profiles R6/R8/R12/R16 before any kernel edit. Automatic K0 and all
+strict fallbacks remain in force until complete performance/product cells pass.
+When S7 resumes, it independently requalifies capabilities and transfers no
+gfx1151 rates, thresholds, graph buckets, or assumed C8 owner.
