@@ -9,6 +9,7 @@ from scripts.specdec2_perf_bridge import (
     FULL_PROMPT_IDS,
     BridgeContractError,
     _StageLedger,
+    _close_preserving_primary,
     _decode_only_seconds,
     _summarize,
     arm_order,
@@ -206,6 +207,24 @@ def test_bridge_stage_ledger_records_nested_cycle_owners_and_restores() -> None:
     ) > 0.0
     ledger.close()
     assert owner.cycle == original
+
+
+def test_bridge_teardown_does_not_mask_an_active_measurement_failure() -> None:
+    def broken_close() -> None:
+        raise TimeoutError("driver already stopped")
+
+    assert _close_preserving_primary(
+        broken_close,
+        primary_failure_active=True,
+    ) == {
+        "type": "TimeoutError",
+        "message": "driver already stopped",
+    }
+    with pytest.raises(TimeoutError, match="driver already stopped"):
+        _close_preserving_primary(
+            broken_close,
+            primary_failure_active=False,
+        )
 
 
 def test_bridge_summary_uses_group_wall_once_and_preserves_ratios() -> None:
