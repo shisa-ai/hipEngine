@@ -814,19 +814,21 @@ attention tiny and packed GDN modest; the complete profile decides.
 
 Durable handoff: P6 checklist below.
 
-- [ ] Write RED oracle/route test before device changes.
-- [ ] Implement only the P5-admitted candidate.
-- [ ] Keep C/K/R/context/profile scope explicit through registry/capability;
+- [x] Write RED oracle/route test before device changes.
+- [x] Implement only the P5-admitted candidate.
+- [x] Keep C/K/R/context/profile scope explicit through registry/capability;
       engine/model code receives no backend/quant hot branch.
-- [ ] Retain strict eager/parent route for every miss.
-- [ ] Run primitive/operation exact or declared production numerical gate.
-- [ ] Run CPU-reference outer floor and profiler engagement for new kernels.
-- [ ] Compare operation-complete target against shipped route with balanced
+- [x] Retain strict eager/parent route for every miss.
+- [x] Run primitive/operation exact or declared production numerical gate.
+- [x] Run CPU-reference outer floor and profiler engagement for new kernels.
+      No new kernel body; the existing exact parent passes the outer gate and
+      engages at every admitted width.
+- [x] Compare operation-complete target against shipped route with balanced
       samples.
-- [ ] Run complete bridge/full category/heldout gate.
-- [ ] Retain only if every category is non-regressive and total wall advances a
+- [x] Run complete bridge/full category/heldout gate.
+- [x] Retain only if every category is non-regressive and total wall advances a
       declared cell; otherwise revert runtime changes.
-- [ ] Publish retained/rejected artifact, rollup/changelog/worklog, and commit.
+- [x] Publish retained/rejected artifact, rollup/changelog/worklog, and commit.
 
 ## 16. P7 — conditional provider repair
 
