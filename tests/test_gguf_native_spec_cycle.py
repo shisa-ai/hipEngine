@@ -7,6 +7,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import (
     DeviceBuffer,
@@ -14,6 +16,7 @@ from hipengine.core.memory import (
     copy_host_to_device,
     host_array_ptr,
 )
+from hipengine.core.tensor import Tensor
 
 from hipengine.runtime import gguf_native_spec_cycle as native_cycle_mod
 from hipengine.runtime.gguf_native_spec_cycle import (
@@ -29,28 +32,44 @@ from hipengine.speculative.mtp_resident_draft import (
 )
 
 
-def test_native_target_binding_signature_covers_linear_commit_tables() -> None:
+def test_native_target_graph_snapshots_mutable_linear_commit_tables(
+    monkeypatch,
+) -> None:
+    device = Device("hip", 0)
+    next_ptr = iter((0x1000, 0x2000, 0x3000, 0x4000))
+    reservations: list[tuple[str, tuple[int, ...], DType]] = []
+    staged: list[tuple[int, np.ndarray]] = []
+
+    class Workspace:
+        def reserve_tensor(self, name, shape, dtype):
+            parsed = DType.parse(dtype)
+            reservations.append((str(name), tuple(shape), parsed))
+            return Tensor.from_handle(next(next_ptr), shape, parsed, device)
+
+    monkeypatch.setattr(
+        native_cycle_mod,
+        "_copy_array_to_tensor",
+        lambda tensor, values, *, runtime: staged.append(
+            (int(tensor.ptr), np.asarray(values).copy())
+        ),
+    )
     session = SimpleNamespace(
-        _prefill_hidden_a=None,
-        _prefill_hidden_b=None,
-        _verify_lm_out_indices_i32=None,
-        _lm_out_index=None,
-        _verify_linear_state_src_conv_table_buf=SimpleNamespace(ptr=0x1000),
-        _verify_linear_state_src_recurrent_table_buf=SimpleNamespace(ptr=0x2000),
-        _verify_linear_state_dst_conv_table_buf=SimpleNamespace(ptr=0x3000),
-        _verify_linear_state_dst_recurrent_table_buf=SimpleNamespace(ptr=0x4000),
-        scratch=None,
-        _bulk_prefill_scratch=None,
-        _verify_linear_conv_state_rows=(),
-        _verify_linear_recurrent_state_rows=(),
-        _verify_linear_conv_initial_snapshots=(),
-        _verify_linear_recurrent_initial_snapshots=(),
-        _verify_linear_initial_snapshot_users=0,
+        _verify_linear_state_src_conv_host=np.asarray([11, 12], dtype=np.uint64),
+        _verify_linear_state_src_recurrent_host=np.asarray([21, 22], dtype=np.uint64),
+        _verify_linear_state_dst_conv_host=np.asarray([31, 32], dtype=np.uint64),
+        _verify_linear_state_dst_recurrent_host=np.asarray([41, 42], dtype=np.uint64),
     )
 
-    signature = native_cycle_mod._native_target_binding_signature(session)
+    tables = native_cycle_mod._allocate_native_linear_state_tables(
+        Workspace(),
+        session,
+        runtime=object(),
+    )
+    session._verify_linear_state_src_conv_host[:] = 99
 
-    assert signature == (0x1000, 0x2000, 0x3000, 0x4000)
+    assert tuple(table.ptr for table in tables) == (0x1000, 0x2000, 0x3000, 0x4000)
+    assert all(shape == (2,) and dtype is DType.INT64 for _name, shape, dtype in reservations)
+    np.testing.assert_array_equal(staged[0][1], np.asarray([11, 12], dtype=np.uint64))
 
 
 def test_compact_n2_result_validates_commit_from_visible_tokens_without_row_ids() -> None:
@@ -784,6 +803,17 @@ def test_rf2_context_bucket_selection_is_power_of_two_and_capability_bounded(
     session.position = 4092
     assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) == 4096
     session.position = 4093
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) is None
+
+
+def test_gfx1100_target_graph_fails_closed_above_p95() -> None:
+    session = SimpleNamespace(
+        position=92,
+        backend="hip_gfx1100",
+        scratch=SimpleNamespace(max_positions=1024, block_size=256),
+    )
+
+    assert native_cycle_mod._native_target_graph_context_limit(session, rows=3) == 1023
     assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) is None
 
 

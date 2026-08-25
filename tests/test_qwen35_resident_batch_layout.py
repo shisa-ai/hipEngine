@@ -1453,10 +1453,12 @@ def test_qwen35_resident_prefill_native_packed_wires_metadata_layers_and_commit(
     session.blocks = 1
     session.block_size = 256
     session.config = SimpleNamespace(hidden_size=4)
+    session.device = Device("hip", 0)
     session.vocab_size = 100
     session.libraries = {"runtime_state": object()}
     session.embedding = SimpleNamespace(tensor=_tensor(0x1000, (100, 4), DType.FP16))
     session.prefill_hidden = _tensor(0x1800, (8, 4), DType.FP16)
+    session.hidden_nbytes = 8
     calls: list[str] = []
 
     class FakeRuntime:
@@ -1475,7 +1477,7 @@ def test_qwen35_resident_prefill_native_packed_wires_metadata_layers_and_commit(
     hidden = _tensor(0x3000, (3, 4), DType.FP16)
     session._run_native_prefill_packed_layers = lambda slab, metadata, stream=0: calls.append("layers") or hidden
     session._commit_packed_prefill_final_rows = (
-        lambda hidden_arg, slab, sample=True, stream=0: calls.append(f"commit:{sample}") or ("result",)
+        lambda hidden_arg, slab, sample=True, stream=0: calls.append(f"commit:{sample}") or (None, None)
     )
     session._restore_decode_scratch_after_prefill = lambda: calls.append("restore")
     monkeypatch.setattr(runner_module, "embedding_lookup_batch_fp16_i64", lambda *args, **kwargs: calls.append("embed"))
@@ -1487,9 +1489,25 @@ def test_qwen35_resident_prefill_native_packed_wires_metadata_layers_and_commit(
         slot_ids=(0, 1),
     )
 
-    assert session.prefill_native_packed(slab, sample=False) == ("result",)
+    assert session.prefill_native_packed(
+        slab,
+        sample=False,
+        final_hidden_row_sink=lambda request_id, prompt_index, hidden_row, seed_token: calls.append(
+            f"sink:{request_id}:{prompt_index}:{hidden_row.ptr:#x}:{seed_token}"
+        ),
+    ) == (None, None)
 
-    assert calls == ["metadata", "embed", "layers", "sync:0", "commit:False", "restore"]
+    assert calls == [
+        "metadata",
+        "embed",
+        "layers",
+        "sync:0",
+        "commit:False",
+        "sink:10:0:0x3000:None",
+        "sink:10:1:0x3008:None",
+        "sink:11:0:0x3010:None",
+        "restore",
+    ]
     assert session.last_prefill_execution["path"] == "native_prefill_compact_cN"
     assert session.last_prefill_execution["slot_ids"] == [0, 1]
     assert session.last_prefill_execution["linear_attention_prefill_path"] == "packed_segments"

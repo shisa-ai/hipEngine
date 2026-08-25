@@ -12,12 +12,15 @@ from scripts.specdec2_perf_gfx1100_bridge import (
     atomic_write_json,
     attach_paro_direct_rows,
     build_execution_plan,
+    build_parser as build_bridge_parser,
     validate_bridge_rows,
 )
 from scripts.specdec2_perf_gfx1100_child import (
     build_bridge_row,
+    build_parser as build_child_parser,
     resolve_arm_timing,
     validate_child_scope,
+    validate_loaded_arm_ids,
 )
 
 
@@ -208,6 +211,38 @@ def test_atomic_checkpoint_replaces_complete_json_without_temp_leak(tmp_path: Pa
     assert list(tmp_path.iterdir()) == [output]
 
 
+def test_loaded_paro_child_exposes_cached_roctx_leaf_mode(tmp_path: Path) -> None:
+    args = build_child_parser().parse_args(
+        [
+            "--profile",
+            "strict",
+            "--candidate-budget",
+            "1",
+            "--roctx-markers",
+            "--require-cached-build",
+            "--output",
+            str(tmp_path / "leaf.json"),
+        ]
+    )
+
+    assert args.roctx_markers is True
+    assert args.require_cached_build is True
+    parent = build_bridge_parser().parse_args(
+        [
+            "run-loaded-paro",
+            "--profile",
+            "strict",
+            "--candidate-budget",
+            "1",
+            "--roctx-markers",
+            "--require-cached-build",
+            "--output",
+            str(tmp_path / "parent.json"),
+        ]
+    )
+    assert parent.roctx_markers is True
+
+
 def test_child_scope_is_paro_k1_only_and_dense_uses_shared_bridge() -> None:
     validate_child_scope(lane="paro", profile="production", candidate_budget=1)
     validate_child_scope(lane="paro", profile="strict", candidate_budget=1)
@@ -217,12 +252,61 @@ def test_child_scope_is_paro_k1_only_and_dense_uses_shared_bridge() -> None:
         validate_child_scope(lane="gguf", profile="strict", candidate_budget=1)
 
 
-def test_paro_direct_attachment_uses_raw_ids_manifests_and_activation_timing(
-    tmp_path: Path,
-) -> None:
+def test_loaded_strict_packet_rejects_ar_staged_id_divergence() -> None:
     timing = resolve_arm_timing(
         complete_request_seconds=1.0,
         output_timing={},
+        scheduler_observability={"prefill_seconds": 0.25, "decode_seconds": 0.5},
+    )
+    common = {
+        "lane": "paro",
+        "profile": "strict",
+        "prompt_id": "general_ja_explain",
+        "run_index": 0,
+        "candidate_budget": 1,
+        "max_tokens": 25,
+        "timing": timing,
+        "selected_manifest_sha256": _STRICT_MANIFEST,
+        "strict_manifest_sha256": _STRICT_MANIFEST,
+        "commit": _COMMIT,
+    }
+    rows = [
+        build_bridge_row(
+            **common,
+            arm="true_ar",
+            order_index=0,
+            generated_token_ids=(1, 2, 3),
+            physical_target_rows=(1,),
+            physical_proposal_widths=(),
+            route_name="true_ar",
+        ),
+        build_bridge_row(
+            **common,
+            arm="staged",
+            order_index=2,
+            generated_token_ids=(1, 2, 4),
+            physical_target_rows=(2,),
+            physical_proposal_widths=(1,),
+            route_name="eager",
+        ),
+    ]
+
+    with pytest.raises(RuntimeError, match="strict AR/staged generated IDs diverged"):
+        validate_loaded_arm_ids(rows, profile="strict")
+    validate_loaded_arm_ids(rows, profile="production")
+
+
+def test_paro_direct_attachment_uses_raw_ids_manifests_and_activation_timing(
+    tmp_path: Path,
+) -> None:
+    ar_timing = resolve_arm_timing(
+        complete_request_seconds=1.0,
+        output_timing={"tokenize_ms": 40.0},
+        scheduler_observability={"prefill_seconds": 0.25, "decode_seconds": 0.5},
+    )
+    staged_timing = resolve_arm_timing(
+        complete_request_seconds=1.0,
+        output_timing={"tokenize_ms": 60.0},
         scheduler_observability={"prefill_seconds": 0.25, "decode_seconds": 0.5},
     )
     common = {
@@ -233,7 +317,6 @@ def test_paro_direct_attachment_uses_raw_ids_manifests_and_activation_timing(
         "candidate_budget": 1,
         "max_tokens": 24,
         "generated_token_ids": (1, 2, 3),
-        "timing": timing,
         "selected_manifest_sha256": _MANIFEST,
         "strict_manifest_sha256": _STRICT_MANIFEST,
         "commit": _COMMIT,
@@ -246,6 +329,7 @@ def test_paro_direct_attachment_uses_raw_ids_manifests_and_activation_timing(
             build_bridge_row(
                 **common,
                 arm="true_ar",
+                timing=ar_timing,
                 order_index=0,
                 physical_target_rows=(1,),
                 physical_proposal_widths=(),
@@ -254,6 +338,7 @@ def test_paro_direct_attachment_uses_raw_ids_manifests_and_activation_timing(
             build_bridge_row(
                 **common,
                 arm="staged",
+                timing=staged_timing,
                 order_index=2,
                 physical_target_rows=(2,),
                 physical_proposal_widths=(1,),
@@ -305,7 +390,7 @@ def test_paro_direct_attachment_uses_raw_ids_manifests_and_activation_timing(
         "results": [
             {
                 "name": "code_merge_intervals",
-                "tokenization_seconds": 0.05,
+                "tokenization_seconds": 0.25,
                 "economics_json": str(economics_child),
             }
         ],
@@ -326,6 +411,8 @@ def test_paro_direct_attachment_uses_raw_ids_manifests_and_activation_timing(
     assert direct["timing"]["top_level_stage_seconds"]["target_prefill"] == 0.2
     assert direct["timing"]["top_level_stage_seconds"]["provider_prompt_prime"] == 0.1
     assert direct["timing"]["top_level_stage_seconds"]["cycle_total"] == 0.3
+    assert direct["direct_metrics"]["economics_tokenization_seconds"] == 0.25
+    assert direct["direct_metrics"]["matched_loaded_tokenization_seconds"] == 0.05
     assert direct["reload_boundary"]["unavoidable_reload"] is True
     assert attached["aggregate"]["cells"]["paro:production:c1:k1"][
         "staged_speedup_vs_direct"

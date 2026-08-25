@@ -665,7 +665,7 @@ def test_q4_t16_dense_bulk_pair_silu_keeps_unfused_fallback_below_512(
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.parametrize("rows", [16, 33, 512, 1_024, 4_096])
+@pytest.mark.parametrize("rows", [6, 8, 12, 16, 33, 512, 1_024, 4_096])
 def test_q4_t16_dense_wmma_prefill_matches_cpu_reference(rows: int) -> None:
     from hipengine.core.hip import get_hip_runtime
 

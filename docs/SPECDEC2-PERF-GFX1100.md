@@ -1,6 +1,6 @@
 # SPECDEC2-PERF-GFX1100 — W7900 Activation and Hot-Cycle Campaign
 
-- Status: **active; P0 complete, P1 bridge ready**
+- Status: **closed; exact explicit C1 retained, zero product promotion, automatic K0**
 - Approved: **2026-08-25**
 - Functional predecessor: [`SPECDEC2-GFX1100.md`](SPECDEC2-GFX1100.md), G1/P1 foundations complete
 - Mechanism reference: [`SPECDEC2-PERF.md`](SPECDEC2-PERF.md), with no gfx1151 evidence transfer
@@ -364,12 +364,14 @@ work never begins from failing upstream gates.
       through the qualified economics child, including raw exact IDs, selected/
       strict manifests, target/provider activation, decode, and clean source.
 - [ ] Execute and attach current-source production/strict PARO direct packets;
-      do not add backend/model policy in engine hot paths.
+      production is attached; strict was executed but attachment correctly fails
+      exact compact-product-AR versus serial-direct parity on one heldout prompt.
+      Do not add backend/model policy in engine hot paths.
 - [x] Add schema, aggregation, counterbalance, exact-denominator, missing-owner,
       malformed-manifest, incomplete-suite, dirty-provenance, stage-reconciliation,
       and atomic-checkpoint tests.
-- [ ] Support lane-appropriate AR/direct/staged arms, profiles, C/K, horizons,
-      prompt scopes, repeats, immediate progress, and atomic checkpoints.
+- [x] Support lane-appropriate AR/direct/staged arms, profiles, entry C/K,
+      horizons, prompt scopes, repeats, immediate progress, and atomic checkpoints.
 - [ ] Emit complete/decode-only attribution, exact accounting, physical shapes,
       trajectories, fingerprints, allocation/synchronization counters, and drain.
 - [x] Add named packed-PARO target-prompt, provider-prompt-prime, tokenize, and
@@ -378,16 +380,30 @@ work never begins from failing upstream gates.
 - [ ] Complete resident-owner transition instrumentation: packed-AR
       flush/scatter/discard, graph close/invalidation, root-hidden handoff, and
       provider attach counts must reconcile rather than disappear into residual.
-- [ ] Add cached single-child profiler mode; never profile a nested parent.
-- [ ] Run GGUF C1 K1-K3 d8 and ten-prompt D24 packets.
-- [ ] Run PARO C1/K1 production and strict d8 and ten-prompt D24 packets.
-- [ ] Freeze activation, resident-owner transition, cycle, target, update,
-      synchronization, residual, and exact reduction needed for each candidate
-      cell.
-- [ ] Publish independent compact artifacts and commit.
+- [x] Add cached single-child profiler mode; never profile a nested parent.
+- [x] Run GGUF C1 K1-K3 d8 and ten-prompt natural25 retained-horizon packets.
+- [x] Run PARO C1/K1 production and strict d8 and ten-prompt D24 packets.
+- [x] Freeze activation, cycle, target, update, synchronization/allocation,
+      residual, and exact reduction needed for each candidate cell; detailed
+      resident-transition subowners remain an explicit instrumentation follow-up.
+- [x] Publish independent compact checkpoint artifact and commit.
 
 Exit: current-source common attribution, not historical mixed timing, chooses the
 next implementation owner in each lane.
+
+**Retained W7900 checkpoint:**
+[`2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json),
+[`dense P3 stable slabs`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p3-dense-stable-slabs.json),
+[`packed P4 device candidate`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-paro-device-candidate.json),
+[`corrected dense P4`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-dense-device-chain-retained.json),
+[`P5 target profiles`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p5-target-profiles.json),
+and [`campaign closure`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-campaign-closure.json).
+Corrected dense P4 is exact at `1.272x/1.407x/1.439x` AR for K1/K2/K3 but
+remains behind direct; p128/p512 is exact but slow and p4K/p16K is pre-mutation K0.
+Packed production device candidate is exact with 372/372 zero-allocation cycles
+and improves to `0.979x` AR, still below product promotion. Dense P3 stable slabs
+are exact/wall-neutral; request-local graph
+first use remains P4. No product cell promotes; both automatic policies remain K0.
 
 ## 8. P2 — streaming prompt activation
 
@@ -398,17 +414,26 @@ next implementation owner in each lane.
 - [ ] RED-test their staged one-shot/chunked shifted NextN prompt state at chunk
       sizes 1/2/7/8/9, ragged tails, offsets, page transitions, cancellation,
       prefix/COW, and pressure rejection.
-- [ ] Wire retained target hidden chunk ownership into staged provider priming.
-- [ ] Retain one carried BF16 hidden row only.
-- [ ] Remove staged `_prompt_hidden_rows` and post-prefill host replay for the
-      qualified capability.
-- [ ] Prove O(hidden), not O(prompt×hidden), transient ownership.
+- [x] Wire retained target hidden chunk ownership into staged provider priming.
+- [x] Retain one carried BF16 hidden row only.
+- [x] Remove staged `_prompt_hidden_rows` and post-prefill host replay for the
+      qualified streaming capability; keep it only as the documented oracle fallback.
+- [x] Prove O(hidden), not O(prompt×hidden), transient ownership: every retained
+      request carries one 10,240-byte row.
 - [ ] Run p128/p512/p4K/p16K activation and full category bridge exactness,
-      state/KV/following generation, wall, and drain gates.
+      state/KV/following generation, wall, and drain gates.  W7900 native target
+      graph/arithmetic is now fail-closed above 95 live tokens after deterministic p128
+      NaN/sentinel; streaming activation continues through eager/serial fallback
+      while p4K/p16K stay pre-mutation K0 above the 1023 capability cap.
 
 ### Packed PARO
 
 - [x] Streaming final-normalized BF16 priming exists with one carried 10 KiB row.
+- [x] The staged C1 owner now consumes final-layer rows from the same compact
+      packed target prefill as true AR, normalizes through the one-row BF16
+      capture, and primes NextN without serial target replay.  The focused
+      strict `general_ja_explain` D25 gate is exact after the earlier serial /
+      packed activation paths diverged at generated-token index 11.
 - [ ] Revalidate chunk/tail/cancel/prefix/pressure lifetime and activation wall
       under the common bridge; do not reimplement the sink without a failure.
 
@@ -417,20 +442,31 @@ next implementation owner in each lane.
 - [x] Dense direct N1R/N2/N3P already provide fixed-address graph scratch,
       stable target accept/results, graph generations, and bounded readback;
       shared C2/C4 staged source already has persistent `_batch_accept_resources`.
-- [ ] Add disabled-by-default per-cycle allocation/free byte/count and
-      synchronize/API instrumentation.
+- [x] Add common bridge per-cycle allocation/free byte/count telemetry for
+      target/accept/commit; remove the temporary packed-only diagnostic flag
+      after P4 qualification. Cached ROCTX/HIP remains the authoritative
+      library-internal allocation and API view.
 - [ ] RED-test pointer reuse and generation invalidation across close/reuse,
       shrink/refill, compaction, prefix restore, pressure, fallback, and failure.
-- [ ] Replace GGUF cycle-local `hidden_batch` allocation/free with claimed
-      provider-group workspace.
+- [x] Pre-reserve packed-PARO C1 R2 linear/MoE verifier scratch plus the
+      production `decode_batched` full-attention/MoE scratch after target /
+      provider prompt priming and before the first speculative plan/mutation,
+      rather than lazily resizing 1,110 strict or 41 production workspace
+      allocations in cycle 1.
+- [x] Replace GGUF cycle-local proposal/repair `hidden_batch` allocation/free
+      with one claimed provider-group workspace; W7900 K1/K2/K3 wall is neutral
+      and remaining allocation is persistent request-local graph first use.
 - [ ] Add persistent lane-specific candidate, target result, accept, selected
       commit, provider update, row-map, and bounded result slabs.
+- [x] Bucket packed-PARO proposer token/KV/snapshot capacity by a content-agnostic
+      power of two with a 256-token floor, so the warmed provider pool does not
+      rebuild for every larger prompt in one service-capacity cell.
 - [ ] Ensure PARO borrowed target pointers are never owned/freed by provider or
       staged workspace.
 - [ ] Confirm no request observes peer scratch after slot reuse.
-- [ ] Cached traces prove no allocation/free in warmed cycle markers and final
-      conservation remains exact or explicitly bounded by pre-existing runtime
-      residue.
+- [x] Cached strict traces and production/strict full packets prove zero
+      allocation/free in warmed cycle markers (372/372 production cycles) and
+      exact final conservation.
 
 ## 10. P4 — device-resident bounded cycle
 
@@ -440,20 +476,22 @@ next implementation owner in each lane.
       cached proposal→target event retirement with bounded final results.
 - [x] Shared physical C2/C4 staged source can carry device candidate IDs into
       packed target lowering; gfx1100 package capability remains false.
-- [ ] Adapt budget-specific C1 N3P proposal ownership to one bounded staged cycle
-      rather than calling `provider.propose(..., allow_graph=False)` and
-      materializing host candidates.
-- [ ] Keep C1 candidates on device into the existing target/accept/selected
-      commit owner and remove intermediate reconstruction/D2H.
-- [ ] Preserve canonical checkpoint/repair fingerprints for reject/every
-      partial/full acceptance.
+- [x] Adapt budget-specific C1 N3P proposal ownership to one bounded staged
+      cycle. The first `abed6101d` adapter was rejected on following-AR safety;
+      corrected shared pre-capture/commit-table source supersedes it and passes.
+- [x] Keep C1 candidates on device into target/accept/selected commit/provider
+      repair with zero pre-target candidate D2H; bounded tail fallback remains.
+- [x] Preserve canonical checkpoint/repair fingerprints for reject/every
+      partial/full acceptance across the complete exact category packet.
 
 ### Packed PARO
 
 - [x] Existing explicit N4 supplies gfx1100 target/accept fixed buffers and an
       independently gated selected linear-state commit primitive; it is a
       reusable oracle/primitive, not a promoted current-provider route.
-- [ ] Replace bounded host-I32 candidate handoff with a device descriptor.
+- [x] Replace bounded host-I32 candidate handoff with a stable borrowed-W8A16
+      INT32 device descriptor; target consumes it before accept and bounded
+      candidate materialization occurs only after target synchronization.
 - [ ] Keep target top-1/selected-row/provider-update metadata in stable slabs.
 - [ ] Run GPU accept directly and read back only bounded committed IDs/lengths/
       status after selected target/provider commit.
@@ -470,16 +508,23 @@ For each lane independently:
 
 - [ ] Profile every currently admitted complete target row bucket with ROCTX,
       kernel, HIP API, copies, allocations, queue gaps, resources, and exact
-      physical decomposition.
-- [ ] Reconcile marker wall, kernel-family interval union, and complete cycle.
-- [ ] Admit at most one target candidate with a named operation-complete owner,
+      physical decomposition. Packed production/strict R2 is complete; dense
+      R2/R3/R4 and future physical buckets remain.
+- [x] Reconcile packed R2 marker wall, kernel-family interval union, API/copies,
+      and complete cycle. One post-commit sync/cycle is removed, but operation
+      wall is neutral because accept readback absorbs queued work.
+- [x] Admit at most one target candidate with a named operation-complete owner,
       RED oracle, strict fallback, exact C/K/R/context/profile scope, and either
       `>=1.10x` projected operation speed plus `>=1%` request saving or enough
-      projected saving to cross one automatic cell.
-- [ ] Retain/reject the candidate on operation-complete plus complete-category
-      evidence; launch count alone is insufficient.
-- [ ] Reprofile provider repair only after target/device changes; admit it under
-      the same materiality rule or publish no-go.
+      projected saving to cross one automatic cell. No dense/packed target
+      kernel candidate meets this admission rule.
+- [x] Retain/reject the candidate on operation-complete plus complete-category
+      evidence; launch count alone is insufficient. Packed post-commit stream
+      ordering is retained mechanically but wall-neutral; dense device chaining
+      is rejected on state safety.
+- [x] Reprofile provider repair only after target/device changes; admit it under
+      the same materiality rule or publish no-go. Dense repair is 4.95-6.56
+      ms/request and remains no-go without a state-safe device-chain premise.
 
 GGUF required logical target rows are R2/R3/R4 at C1 and, after physical
 admission, R4/R6/R8/R12/R16. PARO begins at R2 and adds R4/R8 only with genuine
@@ -489,9 +534,9 @@ request-major C2/C4 ownership.
 
 ### Dense GGUF
 
-- [ ] Preserve strict FP32-state manifest and exact route.
-- [ ] Qualify a production profile only if an independently measured product
-      arithmetic candidate exists; otherwise production continues to report
+- [x] Preserve strict FP32-state manifest and exact route.
+- [x] Qualify a production profile only if an independently measured product
+      arithmetic candidate exists; none exists, so production reports
       fail-closed strict fallback.
 - [ ] Any T1/T2 candidate runs strict-teacher mean/p95/p99/max KL, top-1 by
       category/shape/transition, three same-schedule repeats, neighbor isolation,
@@ -501,10 +546,11 @@ request-major C2/C4 ownership.
 ### Packed PARO
 
 - [x] Direct B1 production T2 and strict manifests are qualified.
-- [ ] Prove staged execution resolves and reports those exact manifests and does
+- [x] Prove staged execution resolves and reports those exact manifests and does
       not introduce an unclassified arithmetic/route combination.
-- [ ] Link staged production rows to the complete direct numerical/task/state
-      packet, and rerun every gate whose owned surface changes.
+- [x] Link staged production rows to the complete direct numerical/task/state
+      packet; P2-P5 ownership changes are T0/control-only and exact full packets
+      rerun every changed surface.
 
 ## 13. P9 — physical C2/C4 and product policy
 
@@ -530,26 +576,49 @@ request-major C2/C4 ownership.
 
 For both lanes:
 
-- [ ] Re-run fixed cells before adaptive policy.
-- [ ] Fingerprint the local table and prerequisite artifacts.
-- [ ] Keep every losing/unqualified cell K0 before mutation with exact reason.
-- [ ] Run full train/heldout/category/task, horizons/contexts, ragged/refill,
-      mixed AR/MTP fairness, prefix/pressure, cancellation/failure, blocking/SSE,
-      Poisson load/overload, TTFT/ITL/E2E/SLO-goodput, memory, and soak packets for
-      every proposed automatic cell.
+- [x] Re-run fixed C1 cells before adaptive policy; no adaptive policy is admitted.
+- [x] Fingerprint the local table and prerequisite artifacts in the closure JSON.
+- [x] Keep every losing/unqualified cell K0 before mutation with exact reason.
+- [x] Run applicable train/heldout/category/context/lifecycle/memory gates. No
+      automatic cell is proposed, so serving/SLO/load qualification is not
+      triggered; existing Generation-2 service ownership evidence remains frozen.
 
 ## 14. P10 — closure
 
-- [ ] List retained units, promoted cells, explicit/default-off cells, and every
-      K0/rejected/no-go cell with durable reason.
-- [ ] Remove superseded replay/allocation/CPU-oracle/migration paths only after
-      their removal gates pass; update `REFACTOR.md` otherwise.
-- [ ] Update kernel catalog/lineage, plans, profile docs, compact artifacts,
-      benchmark rollup/changelog, and immutable worklogs where ownership changed.
-- [ ] Export the public root README only if a product scope promotes.
-- [ ] Run milestone tests plus Worklog2, benchmark sync, fixtures, registry,
-      JSON/link, and diff checks.
-- [ ] Commit, sync origin, push, and verify local/remote equality.
+- [x] List retained units, promoted cells, explicit/default-off cells, and every
+      K0/rejected/no-go cell with durable reason in the closure artifact.
+- [x] Remove the temporary packed allocation flag; retain remaining replay/
+      backup/oracle debt in `REFACTOR.md` until its exact removal gate passes.
+- [x] Update plans/status, profile docs, compact artifacts, benchmark rollup/
+      changelog, and immutable worklogs. No new kernel body/lineage changed.
+- [x] Do not export the public root README because no product scope promotes.
+- [x] Run milestone tests plus Worklog2, benchmark sync, registry, JSON, and diff
+      checks; broad isolated failures use the repository focused-repair rule.
+- [x] Commit, sync origin, push, and verify local/remote equality.
+
+### Post-closure Generation-2 recovery checkpoint — 2026-08-26
+
+A current p512/d128 audit finds no raw AR-rate regression versus the old fixed-C
+server: exact C1 is `77.176` blocking / `76.925` SSE tok/s versus `72.169`, and
+native C8 raw wall is `161.882` versus `158.542`. The C8 rate is not strict-
+eligible: varied D128 IDs differ from C1, and hidden drift begins at decode step
+1/layer 0 under both eager and graph submission. Treat AR profile qualification
+separately from scheduler performance; do not attribute this to CONCURRENCY2
+host overhead or publish the raw C8 rate as strict.
+
+Physical gfx1100 C2 remains unexposed. A process-local capability diagnostic
+after provider-group refill reaches exact C2/K1 proposal and R4 target/accept
+with zero D2H/recovery/hot allocation, but is only `0.503x` AR at `1/8` accepted
+drafts. K2/K3/full-suite spending is rejected from this premise. The refill fix
+is retained for lifecycle correctness; both physical capability constants and
+automatic policy remain false/K0.
+
+C1 attribution also changes the tuning order: sampled K2 staged decode is
+`416.6 ms` versus direct `433.5 ms`, while staged target prefill plus NextN
+priming is `339.3 + 25.3 ms` versus direct prefill `305.9 ms`. Activation and
+shared prompt/provider ownership rank ahead of more hot target-leaf tuning.
+Evidence: [`recovery profile`](../benchmarks/results/2026-08-26-w7900-mtp-concurrency2-recovery-profile.json)
+and [`C2 refill`](../benchmarks/results/2026-08-26-w7900-specdec2-c2-provider-refill.json).
 
 ## 15. Stop and no-chase rules
 

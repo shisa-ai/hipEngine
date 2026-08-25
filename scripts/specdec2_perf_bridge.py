@@ -323,7 +323,10 @@ class _Roctx:
         self._pop = None
         if not self.enabled:
             return
-        library = ctypes.CDLL("libroctx64.so")
+        try:
+            library = ctypes.CDLL("librocprofiler-sdk-roctx.so.1")
+        except OSError:
+            library = ctypes.CDLL("libroctx64.so")
         self._push = library.roctxRangePushA
         self._pop = library.roctxRangePop
         self._push.argtypes = [ctypes.c_char_p]

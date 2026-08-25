@@ -15,9 +15,11 @@ import os
 
 import numpy as np
 
+from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+from hipengine.core.tensor import Tensor
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import build_dense_gemv, dense_dual_gemv_out_bf16_wmma
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     build_lm_head,
@@ -455,6 +457,7 @@ class NativeMtpChainProposer:
         target_hidden_ptr: int,
         position: int,
         need_result: bool = True,
+        read_token_id: bool = True,
         read_expert_topk: bool = True,
         read_lm_head_value: bool = True,
         stream: int = 0,
@@ -466,6 +469,7 @@ class NativeMtpChainProposer:
             target_hidden_ptr=int(target_hidden_ptr),
             position=int(position),
             need_result=need_result,
+            read_token_id=read_token_id,
             read_expert_topk=read_expert_topk,
             read_lm_head_value=read_lm_head_value,
             stream=stream,
@@ -477,6 +481,7 @@ class NativeMtpChainProposer:
         input_token: int,
         position: int,
         need_result: bool = True,
+        read_token_id: bool = True,
         read_expert_topk: bool = True,
         read_lm_head_value: bool = True,
         stream: int = 0,
@@ -486,9 +491,22 @@ class NativeMtpChainProposer:
             target_hidden_ptr=self.final_hidden_buf.ptr,
             position=int(position),
             need_result=need_result,
+            read_token_id=read_token_id,
             read_expert_topk=read_expert_topk,
             read_lm_head_value=read_lm_head_value,
             stream=stream,
+        )
+
+    def device_candidate_token_ids(self) -> Tensor:
+        """Return the stable packed-PARO top-1 scalar without host readback."""
+
+        if self.scoring_head is None:
+            raise NotImplementedError("device candidate descriptor requires W8A16 scoring")
+        return Tensor.from_handle(
+            self.w8_out_index_buf.ptr,
+            (1,),
+            DType.INT32,
+            Device("hip", 0),
         )
 
     def read_final_hidden_bf16(self, *, stream: int = 0) -> np.ndarray:
@@ -579,6 +597,7 @@ class NativeMtpChainProposer:
         target_hidden_ptr: int,
         position: int,
         need_result: bool = True,
+        read_token_id: bool = True,
         read_expert_topk: bool = True,
         read_lm_head_value: bool = True,
         stream: int = 0,
@@ -949,7 +968,15 @@ class NativeMtpChainProposer:
             index_buf = self.w8_out_index_buf
         # Blocking D2H of the argmax pair implies a stream sync; the explicit
         # device_synchronize on top of it was pure host stall (#107 host-time trim).
-        self._copy_device_to_host_array(index_host, index_buf, nbytes=index_host.nbytes, stream=stream)
+        if read_token_id:
+            self._copy_device_to_host_array(
+                index_host,
+                index_buf,
+                nbytes=index_host.nbytes,
+                stream=stream,
+            )
+        else:
+            index_host[0] = -1
         logit = float("nan")
         if read_lm_head_value:
             self._copy_device_to_host_array(self.out_value_host, self.out_value_buf, nbytes=self.out_value_host.nbytes, stream=stream)
