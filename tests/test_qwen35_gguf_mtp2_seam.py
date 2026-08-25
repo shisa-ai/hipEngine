@@ -1639,6 +1639,36 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
     assert released_pool == []
 
 
+def test_mtp2_sequential_physical_admission_reuses_compatible_provider_group() -> None:
+    group = SimpleNamespace(
+        key=(7,),
+        provider=SimpleNamespace(executor=SimpleNamespace(max_requests=4)),
+        request_ids={7},
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(capacity=4)
+    adapter._states = {7: SimpleNamespace(provider_group_key=group.key)}
+    adapter._provider_groups = {group.key: group}
+    calls: list[tuple[object, ...]] = []
+
+    def attach(request_id, selected_group):
+        calls.append(("attach", int(request_id), selected_group.key))
+        selected_group.request_ids.add(int(request_id))
+        return SimpleNamespace(provider_group_key=selected_group.key)
+
+    adapter._attach_request_to_group = attach
+    adapter._open_request = lambda request_id: calls.append(("open", int(request_id)))
+    adapter._open_batch_requests = lambda request_ids: calls.append(
+        ("open_batch", tuple(request_ids))
+    )
+
+    adapter._ensure_request_states((8,))
+
+    assert calls == [("attach", 8, (7,))]
+    assert adapter._states[8].provider_group_key == (7,)
+    assert group.request_ids == {7, 8}
+
+
 def test_mtp2_cycle_hidden_workspace_reuses_stable_distinct_slabs() -> None:
     class Runtime:
         def __init__(self) -> None:

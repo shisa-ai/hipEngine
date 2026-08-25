@@ -824,6 +824,22 @@ class Qwen35GGUFMTP2Adapter:
                     group,
                 )
             return
+        refill_group = next(
+            (
+                group
+                for group in self._provider_groups.values()
+                if len(group.request_ids) + len(missing)
+                <= int(group.provider.executor.max_requests)
+            ),
+            None,
+        )
+        if refill_group is not None:
+            for request_id in missing:
+                self._states[request_id] = self._attach_request_to_group(
+                    request_id,
+                    refill_group,
+                )
+            return
         if len(ids) == 1 and int(getattr(self.owner, "capacity", 1)) == 1:
             self._states[ids[0]] = self._open_request(ids[0])
         else:
