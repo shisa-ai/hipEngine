@@ -397,6 +397,7 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | W7900 / Qwen3.6-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 29.457 | **60.929** | **2.0684x** | Current clean snapshot; all ten prompts, greedy outputs, and GPU/CPU acceptance agree. The ratio replaces stale historical denominators. [`artifact`](results/2026-08-23-w7900-qwen36-27b-current-default-publication.json) |
 | RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 35.287 | **62.440** | **1.7695x** | Clean idle-card correction; exact greedy and GPU/CPU acceptance, retained fusion improves matched AR 3.764% and B3 0.439% with every category non-regressive. [`artifact`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Exact natural25 B3 | 11.658 | **21.040** | **1.8048x** | Exact T0 two-wave Q4 small-M scope; immediate hot control B3 is 20.947/1.7952x, with every category MTP/AR ratio positive and physical Q4 family -1.724%. [`artifact`](results/2026-08-25-gfx1151-qwen38-omlx-oi1-q4-two-wave-retained.json) |
+| W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production/default B1 fast, raw D24 | 110.830 | **115.770** | **1.0446x** | Exact `720/720`; complete 10-prompt numerical/repeat/task/state gate passes. Fast improves strict MTP 10.33% overall and every category. [`artifact`](results/2026-08-24-w7900-paro-fast-d24-3run-default.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |
 
@@ -417,6 +418,16 @@ A post-output-norm draft-hidden policy is rejected for Qwen3.8: B3 falls
 aggregate gain (**+2.63%**) fails heldout (**-0.71%**) and Japanese (**-4.50%**)
 category speed gates. Pre-output-norm remains the strict/default policy.
 [`artifact`](results/2026-08-25-gfx1151-qwen38-omlx-oi4-postnorm-rejected.json)
+
+The packed-PARO production route uses the corrected final-normalized/borrowed-
+W8A16 provider plus fast `decode_batched` verification. Its complete D64 gate
+covers 10 prompts, 704 canonical rows, and 30 deterministic captures at
+`702/704 = 99.716%` top-1 with all KL/scopes passing; paired task review passes
+`10/10`, and the applicable B1 state/lifecycle packet passes three identical
+runs. Strict `c1_loop` remains the registered strict profile/fallback.
+[`numerical`](results/2026-08-24-w7900-paro-fast-verifier-full-numerical-repeat-review.json),
+[`task`](results/2026-08-24-w7900-paro-fast-verifier-complete-task-review.json),
+and [`state`](results/2026-08-24-w7900-paro-fast-state-lifecycle-review.json)
 
 MTP ratios always use a true no-MTP AR path from the same protocol. Verifier
 `off`/`B0` diagnostics are not speedup denominators. The full category suite,

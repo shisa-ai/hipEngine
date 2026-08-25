@@ -181,6 +181,11 @@ from hipengine.speculative.native_cycle import (
     NativeSpecCycleStatePointers,
     NativeSpecCycleStatus,
 )
+from hipengine.speculative.paro_mtp_profiles import (
+    ParoMtpRoute,
+    paro_mtp_profiles_registered,
+    register_paro_mtp_gfx1100_profiles,
+)
 from hipengine.speculative.ladder import (
     TargetVerifyLadderMismatch,
     TargetVerifyLadderStageComparison,
@@ -192,7 +197,12 @@ from hipengine.speculative.ladder import (
     synthetic_chain_target_verify_snapshots,
 )
 
+register_paro_mtp_gfx1100_profiles()
+
 __all__ = [
+    "ParoMtpRoute",
+    "paro_mtp_profiles_registered",
+    "register_paro_mtp_gfx1100_profiles",
     "AdaptiveBudgetConfig",
     "SpeculativeProviderCapabilities",
     "SpeculativeProviderConfig",

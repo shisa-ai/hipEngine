@@ -1,0 +1,170 @@
+{
+  "schema": "hipengine.paro_mtp_provider_contract_spike.v1",
+  "date": "2026-08-24",
+  "status": "accepted_explicit_spike_pending_promotion_gates",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "purpose": "Test the bounded MTP-PARO S2/S3 repair: final-normalized target hidden, selected-target-hidden cycle reseed, and borrowed target full-vocabulary W8A16 proposal scoring.",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0"
+  },
+  "repo": {
+    "implementation_base": "050b97936",
+    "review_commit": "4d32e6e2e",
+    "plan": "docs/MTP-PARO.md"
+  },
+  "model": {
+    "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "quant": "w4_paro+mtp_bf16",
+    "kv_dtype": "bf16",
+    "target_blob_sha256": "a5c9100b17846ff0b2b507dc16dfc3ff1d622adbfc4782f30b4f1b9fac58cc60",
+    "mtp_sidecar_sha256": "556c607cce302d3c529f0a4a3d1439cd206eca01421dc7b8b370f9a37a23426f"
+  },
+  "scope": {
+    "selector": "HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT=1",
+    "candidate_budget": 1,
+    "graph_mode": "off",
+    "policy": "fixed chain; no confidence gate, AR fallback, tree, or overlap",
+    "default": false,
+    "fallback": "existing private F16 cap65536 proposer and strict verifier primitives"
+  },
+  "implementation": {
+    "target_hidden": [
+      "prompt prefill captures final output-normalized BF16 target hidden",
+      "verifier result exposes the selected row from batch_norm_out_bf16",
+      "cycle repair advances from selected target hidden instead of previous MTP hidden"
+    ],
+    "scoring": [
+      "proposer borrows the target session W8A16 weight and FP32 scale pointers",
+      "fused W8A16 full-vocabulary top-1 covers all 248320 rows",
+      "private F16 lm_head tensor is not loaded in the spike"
+    ],
+    "private_f16_head_bytes_removed": 1017118720,
+    "private_f16_head_mib_removed": 970.0
+  },
+  "d24_canonical": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "ids": 240,
+    "control_fast": {
+      "exact_prompts": 10,
+      "exact_ids": 240,
+      "draft_acceptance_pooled": 0.5231788079470199,
+      "accepted_per_output": 0.32916666666666666,
+      "actual_speedup_prompt_mean": 0.8774609313339511,
+      "total_time_speedup": 0.8699774152363108,
+      "mtp_tok_s_weighted": 97.12286440593081,
+      "cycle_wall_ms_prompt_mean": 15.381615768492063,
+      "proposal_update_ms_prompt_mean": 1.3789919417514096
+    },
+    "spike_fast": {
+      "exact_prompts": 10,
+      "exact_ids": 240,
+      "draft_acceptance_pooled": 0.8091603053435115,
+      "accepted_per_output": 0.44166666666666665,
+      "actual_speedup_prompt_mean": 0.9988296896081662,
+      "total_time_speedup": 0.9906783596483262,
+      "mtp_tok_s_weighted": 109.97333138356288,
+      "cycle_wall_ms_prompt_mean": 16.348215864903846,
+      "proposal_update_ms_prompt_mean": 1.8021965061332312
+    },
+    "delta": {
+      "accepted_drafts": "79 -> 106",
+      "verify_cycles": "151 -> 131",
+      "draft_acceptance_abs": 0.2859814973964916,
+      "accepted_per_output_abs": 0.11249999999999999,
+      "total_time_speedup_abs": 0.12070094441201542,
+      "weighted_mtp_rate_percent": 13.231144958742957,
+      "cycle_wall_ms_prompt_mean": 0.9666000964117831,
+      "proposal_update_ms_prompt_mean": 0.4232045643828216
+    },
+    "per_prompt_actual_speedup": {
+      "code_merge_intervals": 0.9407040861675727,
+      "code_topological_sort": 1.0811786830417685,
+      "code_lru_cache": 1.074788942904107,
+      "code_markdown_table": 1.0610056453332046,
+      "general_en_plan": 0.8845307688566938,
+      "general_en_explain": 0.9694599979405685,
+      "general_ja_plan": 1.1006387248462335,
+      "general_ja_explain": 0.8441653075806008,
+      "mixed_ja_en_translate": 1.0828166951321785,
+      "mixed_ja_en_review": 0.9490080442787349
+    }
+  },
+  "d64_strict_heldout": {
+    "prompt_render": "qwen_chat_thinking_off",
+    "prompts": 4,
+    "ids": 256,
+    "control": {
+      "exact_prompts": 4,
+      "exact_ids": 256,
+      "draft_acceptance_pooled": 0.39779005524861877,
+      "accepted_per_output": 0.28125,
+      "actual_speedup_prompt_mean": 0.841786316681086,
+      "total_time_speedup": 0.8338892673842425,
+      "mtp_tok_s_weighted": 92.45834447420776
+    },
+    "spike": {
+      "exact_prompts": 4,
+      "exact_ids": 256,
+      "draft_acceptance_pooled": 0.8467153284671532,
+      "accepted_per_output": 0.453125,
+      "actual_speedup_prompt_mean": 1.0262768017665052,
+      "total_time_speedup": 1.0219656119617586,
+      "mtp_tok_s_weighted": 113.43204165362752
+    },
+    "delta": {
+      "accepted_drafts": "72 -> 116",
+      "verify_cycles": "181 -> 137",
+      "draft_acceptance_abs": 0.4489252732185344,
+      "accepted_per_output_abs": 0.171875,
+      "total_time_speedup_abs": 0.1880763445775161,
+      "weighted_mtp_rate_percent": 22.684482724293844
+    }
+  },
+  "fast_d64_limit": {
+    "status": "rejected_independently_of_provider",
+    "code_markdown_table": {"exact": true, "actual_speedup": 1.1713114537933955},
+    "general_en_explain": {
+      "exact": false,
+      "first_mismatch_output_index": 24,
+      "ar_token": 13,
+      "fast_token": 4016
+    },
+    "interpretation": "Provider repair improves proposals but does not repair fast verifier state drift. Fast remains a separate T2 qualification/repair lane."
+  },
+  "tests": {
+    "red": "pytest -q tests/test_paro_mtp_provider_contract.py -> 5 failed",
+    "green": "pytest -q tests/test_paro_mtp_provider_contract.py tests/test_mtp_native_vocab_cap.py tests/test_mtp_input_fusion_kernel.py tests/test_mtp_metadata.py -> 22 passed, 1 skipped",
+    "final_real_model_smoke": {
+      "exact_ids": 8,
+      "accepted_lengths": [1, 1, 1, 1],
+      "target_hidden_mode": "selected_final_norm_bf16",
+      "scoring_mode": "borrowed_target_w8a16_full_vocab",
+      "private_lm_head_loaded": false
+    }
+  },
+  "decision": {
+    "spike": "retain explicit/default-off",
+    "clean_slate": "defer; the stitched provider responds strongly to contract repair",
+    "promotion_blockers": [
+      "native versus torch/reference proposal parity on captured final-normalized rows",
+      "three same-schedule D24 repetitions",
+      "request lifecycle/teardown and borrowed-pointer ownership gate",
+      "registered PARO MTP strict/production route manifest",
+      "fast verifier production-profile numerical/task gate; strict remains fallback"
+    ]
+  },
+  "raw_sources": {
+    "/tmp/paro-spike-d24-canonical.json": "f40b9848864a6c8c43ad5afc687fb17e74832ea5e53d3aecaf35f289439406e9",
+    "/tmp/paro-spike-d64-strict.json": "08a723e94fec54da207de1616b020100fee840a251b035c77873b847278ab33a",
+    "/tmp/paro-spike-target-contract-en.json": "1f24dda4d3085cb06f7d43bfaacb249b1bfb02d5563bf19fb6e9d2eb533e39fb",
+    "/tmp/paro-spike-target-contract-ja.json": "fed65cb2de742b34ca17850d78bd57c373f2fd4364796698a07d5de6dcdc15d6",
+    "/tmp/paro-spike-d64-heldout-raw/general_en_explain/raw/mtp-economics-B1-run1.json": "c3b05df780c230f9c62b8ef97809ae87cd33394c0375d3ba6402eb6935991479",
+    "/tmp/paro-spike-final-d8.json": "ffe4919d322224dc7da882658cf5db2e2a26800b02c8476d698fb2b0aaedc1d5"
+  }
+}

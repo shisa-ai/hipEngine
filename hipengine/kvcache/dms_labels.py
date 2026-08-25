@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from math import ceil, sqrt
 from pathlib import Path
 from typing import Any
@@ -352,7 +352,7 @@ def build_dms_label_artifact(
     manifest = {
         "schema_version": _DMS_LABEL_SCHEMA_VERSION,
         "kind": _DMS_LABEL_KIND,
-        "created_at": datetime.now(UTC).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "source_capture": {
             "path": str(capture_path),
             "sha256": _sha256_file(capture_path),

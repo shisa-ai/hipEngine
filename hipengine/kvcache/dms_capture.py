@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -341,7 +341,7 @@ class DMSCaptureWriter:
         manifest = {
             "schema_version": _DMS_CAPTURE_SCHEMA_VERSION,
             "kind": "hipengine_dms_capture_manifest",
-            "created_at": datetime.now(UTC).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "model": {"path": self.model_path, "sha256": self.model_sha256},
             "data_manifest_sha256": self.data_manifest_sha256,
             "capture_provenance": self.capture_provenance,
