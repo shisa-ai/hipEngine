@@ -1595,6 +1595,7 @@ class Qwen35ParoBulkVerifyResult:
     finite_logits: bool
     gpu_accept_match_cpu: bool
     rows: int
+    selected_target_hidden_ptr: int | None = None
     target_forward_calls: int = 1
     graph: dict[str, Any] | None = None
     bucket_seconds: dict[str, float] = field(default_factory=dict)
@@ -1613,6 +1614,7 @@ class Qwen35ParoBulkVerifyResult:
             "finite_logits": self.finite_logits,
             "gpu_accept_match_cpu": self.gpu_accept_match_cpu,
             "rows": self.rows,
+            "selected_target_hidden_available": self.selected_target_hidden_ptr is not None,
             "target_forward_calls": self.target_forward_calls,
             "graph": self.graph,
             "bucket_seconds": dict(self.bucket_seconds),
@@ -10462,6 +10464,35 @@ class Qwen35ParoResidentSession:
             self.progress({"event": event, **fields})
 
 
+    def _write_final_normalized_hidden_bf16(
+        self,
+        hidden: Tensor,
+        *,
+        destination_ptr: int,
+        stream: int = 0,
+    ) -> None:
+        if int(destination_ptr) <= 0:
+            raise ValueError("final target-hidden destination must be non-zero")
+        paro_rmsnorm_out_fp16(
+            hidden.ptr,
+            self.norm_weight.tensor.ptr,
+            self.norm_out.ptr,
+            1,
+            self.config.hidden_size,
+            self.config.rms_norm_eps,
+            stream=stream,
+            library=self.libraries["norm"],
+            runtime=self.runtime,
+        )
+        fp16_to_bf16(
+            self.norm_out.ptr,
+            int(destination_ptr),
+            self.config.hidden_size,
+            stream=stream,
+            library=self.libraries["cast"],
+            runtime=self.runtime,
+        )
+
     def step_with_hidden_taps(
         self,
         token_id: int,
@@ -10471,6 +10502,7 @@ class Qwen35ParoResidentSession:
         capture_hidden_concat: Tensor,
         capture_row: int,
         sample: bool = True,
+        capture_final_hidden_bf16: Tensor | None = None,
     ) -> Qwen35ParoAutoregressiveStepResult | None:
         """Run one token and append DFlash target-hidden taps to a device row.
 
@@ -10493,6 +10525,23 @@ class Qwen35ParoResidentSession:
             capture_hidden_concat=capture_hidden_concat,
             capture_row=capture_row,
         )
+        if capture_final_hidden_bf16 is not None:
+            if (
+                capture_final_hidden_bf16.dtype != DType.BF16
+                or capture_final_hidden_bf16.ndim != 2
+                or int(capture_final_hidden_bf16.shape[1]) != self.config.hidden_size
+            ):
+                raise ValueError("capture_final_hidden_bf16 must be [rows, hidden] BF16")
+            if capture_row < 0 or capture_row >= int(capture_final_hidden_bf16.shape[0]):
+                raise ValueError("capture_row outside capture_final_hidden_bf16")
+            self._write_final_normalized_hidden_bf16(
+                hidden,
+                destination_ptr=(
+                    int(capture_final_hidden_bf16.ptr)
+                    + int(capture_row) * self.hidden_nbytes
+                ),
+                stream=0,
+            )
         if not sample:
             return None
         return self._sample_from_hidden(hidden)
@@ -11007,6 +11056,10 @@ class Qwen35ParoResidentSession:
                 finite_logits=all(math.isfinite(float(value)) for value in target_values) if target_values else True,
                 gpu_accept_match_cpu=bool(gpu_accept_match),
                 rows=rows,
+                selected_target_hidden_ptr=(
+                    int(self.batch_norm_out_bf16.ptr)
+                    + int(selected_row) * self.hidden_nbytes
+                ),
                 graph=graph_info,
                 bucket_seconds=bucket_seconds,
             )

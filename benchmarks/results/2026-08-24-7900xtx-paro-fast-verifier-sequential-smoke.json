@@ -1,0 +1,267 @@
+{
+  "aggregate": {
+    "max_kl": 5.721422864847814e-06,
+    "mean_kl": 9.731899543031777e-07,
+    "p95_kl": 4.148079643259609e-06,
+    "p99_kl": 5.406754220530172e-06,
+    "rows": 8,
+    "top1_agreement": 1.0
+  },
+  "backend": "hip_gfx1100",
+  "candidate": {
+    "chain_attn_mode": "decode_batched",
+    "environment": {
+      "HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD": "off",
+      "HIPENGINE_GDN_TLOOP_C1_EXACT": "0",
+      "HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS": "0",
+      "HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX": "0",
+      "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT": "0"
+    },
+    "source_class": "T2",
+    "strict_fallback": {
+      "chain_attn_mode": "c1_loop",
+      "environment": {
+        "HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD": "off",
+        "HIPENGINE_GDN_TLOOP_C1_EXACT": "1",
+        "HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS": "1",
+        "HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX": "0",
+        "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT": "1"
+      }
+    }
+  },
+  "capture_mode": "sequential_strict_then_fast_replay",
+  "checks": {
+    "finite": true,
+    "max_kl": true,
+    "mean_kl": true,
+    "p95_kl": true,
+    "p99_kl": true,
+    "prefill_root_equal": true,
+    "task_decisions": true,
+    "top1": true
+  },
+  "cycles": [
+    {
+      "candidate": 248068,
+      "candidate_accepted": 1,
+      "candidate_bonus": 198,
+      "candidate_commit_row": 1,
+      "committed": [
+        271,
+        248068
+      ],
+      "context": 28,
+      "cycle": 1,
+      "root": 271,
+      "strict_accepted": 1,
+      "strict_bonus": 198,
+      "strict_commit_position": 29,
+      "strict_commit_row": 1,
+      "strict_target_top1": [
+        248068,
+        198
+      ]
+    },
+    {
+      "candidate": 8160,
+      "candidate_accepted": 1,
+      "candidate_bonus": 579,
+      "candidate_commit_row": 1,
+      "committed": [
+        198,
+        8160
+      ],
+      "context": 30,
+      "cycle": 2,
+      "root": 198,
+      "strict_accepted": 1,
+      "strict_bonus": 579,
+      "strict_commit_position": 31,
+      "strict_commit_row": 1,
+      "strict_target_top1": [
+        8160,
+        579
+      ]
+    },
+    {
+      "candidate": 264,
+      "candidate_accepted": 1,
+      "candidate_bonus": 7047,
+      "candidate_commit_row": 1,
+      "committed": [
+        579,
+        264
+      ],
+      "context": 32,
+      "cycle": 3,
+      "root": 579,
+      "strict_accepted": 1,
+      "strict_bonus": 7047,
+      "strict_commit_position": 33,
+      "strict_commit_row": 1,
+      "strict_target_top1": [
+        264,
+        7047
+      ]
+    },
+    {
+      "candidate": 1817,
+      "candidate_accepted": 1,
+      "candidate_bonus": 25,
+      "candidate_commit_row": 1,
+      "committed": [
+        7047,
+        1817
+      ],
+      "context": 34,
+      "cycle": 4,
+      "root": 7047,
+      "strict_accepted": 1,
+      "strict_bonus": 25,
+      "strict_commit_position": 35,
+      "strict_commit_row": 1,
+      "strict_target_top1": [
+        1817,
+        25
+      ]
+    }
+  ],
+  "first_decision_mismatch": null,
+  "first_top1_mismatch": null,
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon RX 7900 XTX",
+    "hip_visible_devices": "1",
+    "physical_host": "current W7900+XTX workstation",
+    "target_arch": "gfx1100"
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+  "performance_claim": false,
+  "prompt": {
+    "category": "general_en",
+    "decode_tokens": 8,
+    "name": "general_en_explain",
+    "prompt_tokens": 28,
+    "render": "raw",
+    "split": "heldout"
+  },
+  "qualification_scope": "evaluator harness smoke only; not transferable W7900 production evidence",
+  "rows": [
+    {
+      "candidate_top1": 248068,
+      "category": "general_en",
+      "cycle": 1,
+      "kl": 7.214693626369953e-07,
+      "max_abs_logit_delta": 0.026818513870239258,
+      "row": 0,
+      "shape": "c2_b1",
+      "strict_top1": 248068,
+      "top1_equal": true,
+      "top5_overlap": 1.0,
+      "transition": "prefill_to_verify"
+    },
+    {
+      "candidate_top1": 198,
+      "category": "general_en",
+      "cycle": 1,
+      "kl": 5.721422864847814e-06,
+      "max_abs_logit_delta": 0.023162841796875,
+      "row": 1,
+      "shape": "c2_b1",
+      "strict_top1": 198,
+      "top1_equal": true,
+      "top5_overlap": 1.0,
+      "transition": "prefill_to_verify"
+    },
+    {
+      "candidate_top1": 8160,
+      "category": "general_en",
+      "cycle": 2,
+      "kl": 4.185500345243846e-09,
+      "max_abs_logit_delta": 0.029938548803329468,
+      "row": 0,
+      "shape": "c2_b1",
+      "strict_top1": 8160,
+      "top1_equal": true,
+      "top5_overlap": 1.0,
+      "transition": "verify_to_verify"
+    },
+    {
+      "candidate_top1": 579,
+      "category": "general_en",
+      "cycle": 2,
+      "kl": 1.166413237536353e-10,
+      "max_abs_logit_delta": 0.0391387939453125,
+      "row": 1,
+      "shape": "c2_b1",
+      "strict_top1": 579,
+      "top1_equal": true,
+      "top5_overlap": 1.0,
+      "transition": "verify_to_verify"
+    },
+    {
+      "candidate_top1": 264,
+      "category": "general_en",
+      "cycle": 3,
+      "kl": 1.708179764034512e-09,
+      "max_abs_logit_delta": 0.038651466369628906,
+      "row": 0,
+      "shape": "c2_b1",
+      "strict_top1": 264,
+      "top1_equal": true,
+      "top5_overlap": 1.0,
+      "transition": "verify_to_verify"
+    },
+    {
+      "candidate_top1": 7047,
+      "category": "general_en",
+      "cycle": 3,
+      "kl": 3.494577913343744e-10,
+      "max_abs_logit_delta": 0.03113996982574463,
+      "row": 1,
+      "shape": "c2_b1",
+      "strict_top1": 7047,
+      "top1_equal": true,
+      "top5_overlap": 1.0,
+      "transition": "verify_to_verify"
+    },
+    {
+      "candidate_top1": 1817,
+      "category": "general_en",
+      "cycle": 4,
+      "kl": 1.2261565174529497e-06,
+      "max_abs_logit_delta": 0.03146159648895264,
+      "row": 0,
+      "shape": "c2_b1",
+      "strict_top1": 1817,
+      "top1_equal": true,
+      "top5_overlap": 1.0,
+      "transition": "verify_to_verify"
+    },
+    {
+      "candidate_top1": 25,
+      "category": "general_en",
+      "cycle": 4,
+      "kl": 1.1011111026329612e-07,
+      "max_abs_logit_delta": 0.3203573450446129,
+      "row": 1,
+      "shape": "c2_b1",
+      "strict_top1": 25,
+      "top1_equal": true,
+      "top5_overlap": 1.0,
+      "transition": "verify_to_verify"
+    }
+  ],
+  "schema": "hipengine.paro_mtp_verifier_numerics.v2",
+  "seconds": 78.65417620493099,
+  "status": "passed",
+  "teacher_forcing": "strict-owned proposals, commit rows, tokens, positions, and contexts",
+  "thresholds": {
+    "max_kl_max": 0.05,
+    "mean_kl_max": 0.001,
+    "p95_kl_max": 0.005,
+    "p99_kl_max": 0.02,
+    "per_scope_top1_min": 0.97,
+    "top1_min": 0.99
+  }
+}

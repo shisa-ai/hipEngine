@@ -6,6 +6,35 @@
 > its staged safety and qualification gates pass. This document remains the
 > implementation/economics history and provider design reference.
 >
+> **Current packed-PARO review (2026-08-24):** the July N4 `16/214 = 7.48%`
+> acceptance result predates the August 16 grouped PARO GDN-head repair and is
+> superseded for current-route economics. On the repaired current packed model,
+> fast `decode_batched` and strict `c1_loop` produce identical D24 output IDs and
+> acceptance on the canonical ten-prompt suite (`10/10`, `240/240`, `79/151 =
+> 52.32%` draft acceptance). Fast is `1.35 ms/cycle` cheaper, but differs from AR
+> state at cycle 1 (`57/60` linear and `20/20` K/V records) and becomes
+> token-visible on the thinking-off `general_en_explain` D64 heldout exactly at
+> output index 24. Strict remains state-exact through sampled cycles and passes
+> the four-category D64 heldout packet `4/4` / `256/256`, although only at
+> `0.842x` AR. The shared proposer, not strict arithmetic, is now the first repair
+> target: it consumes pre-final-norm taps instead of the final normalized target
+> hidden used by vLLM/nano-vLLM, does not reseed from the selected target hidden
+> after verify/commit, and scores a private cap-65536 F16 head while target AR
+> uses a resident full-vocab W8A16 head. The cap causes `32/72` D24 rejections and
+> `24/30` general-Japanese rejections. Reuse the target hidden/head contract before
+> more verifier tuning; then qualify fast as a T2 production candidate rather
+> than calling it strict. Evidence:
+> [`current PARO fast/strict review`](../benchmarks/results/2026-08-24-w7900-paro-mtp-fast-strict-review.json).
+> The bounded repair spike and clean-slate decision gate are in
+> [`MTP-PARO.md`](MTP-PARO.md). The first explicit provider-contract spike now
+> captures/reseeds final-normalized target hidden and borrows the target W8A16
+> full-vocab scorer. It keeps D24 exact `240/240`, raises pooled acceptance
+> `52.32% -> 80.92%`, and moves total-time MTP/AR `0.8700x -> 0.9907x`; strict
+> D64 heldouts stay exact `256/256` and move `0.8339x -> 1.0220x`. This is a
+> retain signal for the stitched provider, not a default promotion: parity,
+> repeats, lifecycle, registered-profile, and fast-verifier T2 gates remain.
+> Evidence: [`provider spike`](../benchmarks/results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json).
+>
 > Status (2026-06-13): shared ABI, local PARO+MTP-BF16 weights, persistent
 > native proposal, exact B=3 chain verification, verify graph replay, draft vocab
 > cap, and device expert dispatch are landed. The current W7900/gfx1100 35B-A3B
