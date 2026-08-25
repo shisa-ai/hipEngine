@@ -679,6 +679,38 @@ def test_final_ownership_maps_ready_and_session_surfaces() -> None:
     assert radix_ownership["cache_resident_bytes"] == 108_789_760
     assert radix_ownership["allowed_cache_bytes"] == 108_789_760
 
+    persistent_ownership = final_ownership_from_server(
+        {
+            "ready": True,
+            "queue": {"depth": 0, "worker_active": False, "active_requests": 0},
+            "kv_capacity": {
+                "pool": {"refcounted_pages": 128, "pinned_pages": 128}
+            },
+        },
+        {"sessions": [], "continuations": {"active": 0}},
+        cache_mode="off",
+        persistent_refcounted_pages=128,
+        persistent_pinned_pages=128,
+    )
+    assert persistent_ownership["kv_refcounted_pages"] == 0
+    assert persistent_ownership["kv_pinned_pages"] == 0
+    assert persistent_ownership["graph_owners"] == 0
+
+    with pytest.raises(AgenticBenchmarkError, match="server is not idle after agentic run"):
+        final_ownership_from_server(
+            {
+                "ready": True,
+                "queue": {"depth": 0, "worker_active": False, "active_requests": 0},
+                "kv_capacity": {
+                    "pool": {"refcounted_pages": 129, "pinned_pages": 128}
+                },
+            },
+            {"sessions": [], "continuations": {"active": 0}},
+            cache_mode="off",
+            persistent_refcounted_pages=128,
+            persistent_pinned_pages=128,
+        )
+
     with pytest.raises(AgenticBenchmarkError, match="server is not idle after agentic run"):
         final_ownership_from_server(
             {

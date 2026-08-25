@@ -447,6 +447,16 @@ def _validate_quality_records(
         )
         if _canonical_sha256(capabilities) != expected_hash:
             raise AgenticBenchmarkError("quality server capabilities hash mismatch")
+    if "persistent_ownership_baseline" in configuration:
+        baseline = _mapping(
+            configuration.get("persistent_ownership_baseline"),
+            label="configuration.persistent_ownership_baseline",
+        )
+        for field in ("kv_refcounted_pages", "kv_pinned_pages"):
+            _nonnegative_int(
+                baseline.get(field),
+                label=f"configuration.persistent_ownership_baseline.{field}",
+            )
     require_complete = configuration.get("require_complete_workloads")
     if not isinstance(require_complete, bool):
         raise AgenticBenchmarkError("quality require_complete_workloads must be boolean")

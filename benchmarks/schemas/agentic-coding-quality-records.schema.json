@@ -39,7 +39,16 @@
         "repetitions": {"type": "integer", "minimum": 1},
         "max_tokens": {"type": "integer", "minimum": 1},
         "server_capabilities_sha256": {"$ref": "#/$defs/sha256"},
-        "server_capabilities": {"type": "object"}
+        "server_capabilities": {"type": "object"},
+        "persistent_ownership_baseline": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kv_refcounted_pages", "kv_pinned_pages"],
+          "properties": {
+            "kv_refcounted_pages": {"type": "integer", "minimum": 0},
+            "kv_pinned_pages": {"type": "integer", "minimum": 0}
+          }
+        }
       }
     },
     "turnRecord": {
