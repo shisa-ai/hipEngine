@@ -1842,6 +1842,11 @@ class Qwen35GGUFNextNExecutor:
                 token_ready=True,
                 position_ready=True,
             )
+        # _run_block is the state-mutating primitive; unlike run_step/batch it
+        # intentionally omits scoring and cursor publication. Publish the final
+        # request cursor once after the full enqueued span so physical proposal
+        # validates against the same exact prompt timeline as C1.
+        self._set_batch_session_position(slot, start + int(tokens.size))
 
     def finish_prompt_priming(
         self,

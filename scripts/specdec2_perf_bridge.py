@@ -473,6 +473,28 @@ def _install_stage_ledger(service: Any, ledger: _StageLedger) -> dict[str, bool]
         adapter is not None
         and ledger.install(adapter, "_catch_up_provider_batch", "nextn_prompt_prime")
     )
+    begin_streaming = None if adapter is None else getattr(
+        adapter, "begin_prompt_streaming", None
+    )
+    installed["provider_streaming_open"] = callable(begin_streaming)
+    if callable(begin_streaming):
+        wrapped_sink_ids: set[int] = set()
+
+        def wrapped_begin_streaming(*args: Any, **kwargs: Any):
+            with ledger.measure("provider_streaming_open"):
+                sinks = begin_streaming(*args, **kwargs)
+            if sinks is not None:
+                for sink in sinks:
+                    if id(sink) in wrapped_sink_ids:
+                        continue
+                    wrapped_sink_ids.add(id(sink))
+                    ledger.install(sink, "consume", "nextn_prompt_prime")
+            return sinks
+
+        setattr(adapter, "begin_prompt_streaming", wrapped_begin_streaming)
+        ledger._restores.append(
+            (adapter, "begin_prompt_streaming", begin_streaming)
+        )
     return installed
 
 

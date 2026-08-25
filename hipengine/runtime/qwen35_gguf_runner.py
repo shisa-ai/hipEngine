@@ -375,6 +375,57 @@ class TargetHiddenChunkSink(Protocol):
     def finish(self, *, request_id: int, total_rows: int, stream: int) -> None: ...
 
 
+def _consume_packed_target_hidden_sinks(
+    *,
+    sinks: Sequence[TargetHiddenChunkSink | None],
+    request_ids: Sequence[int],
+    prompt_row_starts: Sequence[int],
+    packed_cu_seqlens: Sequence[int],
+    hidden_base_ptr: int,
+    hidden_row_nbytes: int,
+    stream: int,
+    finish: bool,
+) -> None:
+    """Scatter slot-major packed target rows into request-owned stream sinks."""
+
+    sink_tuple = tuple(sinks)
+    ids = tuple(int(value) for value in request_ids)
+    starts = tuple(int(value) for value in prompt_row_starts)
+    cu = tuple(int(value) for value in packed_cu_seqlens)
+    if not (len(sink_tuple) == len(ids) == len(starts)):
+        raise ValueError("packed target hidden sinks, request IDs, and starts must align")
+    if len(cu) != len(sink_tuple) + 1 or not cu or cu[0] != 0:
+        raise ValueError("packed target hidden cu_seqlens must cover every sink")
+    if any(right <= left for left, right in zip(cu[:-1], cu[1:], strict=True)):
+        raise ValueError("packed target hidden sinks require positive contiguous row spans")
+    base_ptr = int(hidden_base_ptr)
+    row_nbytes = int(hidden_row_nbytes)
+    if base_ptr <= 0 or row_nbytes <= 0:
+        raise ValueError("packed target hidden source must be a non-empty device slab")
+    for index, (sink, request_id, chunk_start) in enumerate(
+        zip(sink_tuple, ids, starts, strict=True)
+    ):
+        if sink is None:
+            continue
+        if int(sink.request_id) != request_id:
+            raise ValueError("packed target hidden sink owner does not match request")
+        row_start = cu[index]
+        row_end = cu[index + 1]
+        sink.consume(
+            request_id=request_id,
+            chunk_start=chunk_start,
+            hidden_ptr=base_ptr + row_start * row_nbytes,
+            rows=row_end - row_start,
+            stream=int(stream),
+        )
+        if finish:
+            sink.finish(
+                request_id=request_id,
+                total_rows=int(sink.total_rows),
+                stream=int(stream),
+            )
+
+
 @dataclass(frozen=True)
 class DFlash2HiddenCaptureTargets:
     """Caller-owned BF16 destinations for DFlash2 prefill tap rows.
@@ -20221,6 +20272,10 @@ class Qwen35GGUFResidentSession:
         sample_output: bool = True,
         require_logits: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
+        target_hidden_chunk_sinks: Sequence[TargetHiddenChunkSink | None] | None = None,
+        target_hidden_request_ids: Sequence[int] | None = None,
+        target_hidden_chunk_starts: Sequence[int] | None = None,
+        finish_target_hidden_sinks: bool = True,
         stream: int = 0,
     ) -> list[Qwen35GGUFNextTokenProbeResult | Qwen35GGUFPackedPrefillResult | None]:
         """Run bounded packed prefill and release every transient BF16 oracle."""
@@ -20248,6 +20303,10 @@ class Qwen35GGUFResidentSession:
                 sample_output=sample_output,
                 require_logits=require_logits,
                 capture_layer_output_hidden=capture_layer_output_hidden,
+                target_hidden_chunk_sinks=target_hidden_chunk_sinks,
+                target_hidden_request_ids=target_hidden_request_ids,
+                target_hidden_chunk_starts=target_hidden_chunk_starts,
+                finish_target_hidden_sinks=finish_target_hidden_sinks,
                 stream=stream,
             )
         finally:
@@ -20275,6 +20334,10 @@ class Qwen35GGUFResidentSession:
         sample_output: bool = True,
         require_logits: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
+        target_hidden_chunk_sinks: Sequence[TargetHiddenChunkSink | None] | None = None,
+        target_hidden_request_ids: Sequence[int] | None = None,
+        target_hidden_chunk_starts: Sequence[int] | None = None,
+        finish_target_hidden_sinks: bool = True,
         stream: int = 0,
     ) -> list[Qwen35GGUFNextTokenProbeResult | Qwen35GGUFPackedPrefillResult | None]:
         """Consume one prompt per session through row-bounded packed rounds.
@@ -20300,6 +20363,32 @@ class Qwen35GGUFResidentSession:
             raise ValueError("return_hidden_seeds requires sample_output")
         if len(prompt_tuple) != len(session_tuple):
             raise ValueError("prompt_token_ids and sessions must have the same length")
+        sink_tuple: tuple[TargetHiddenChunkSink | None, ...] = (
+            (None,) * len(prompt_tuple)
+            if target_hidden_chunk_sinks is None
+            else tuple(target_hidden_chunk_sinks)
+        )
+        if len(sink_tuple) != len(prompt_tuple):
+            raise ValueError("target hidden chunk sinks must align with prompts")
+        if any(sink is not None for sink in sink_tuple):
+            if return_hidden_seeds:
+                raise ValueError("streamed target hidden rows replace host hidden-seed return")
+            if target_hidden_request_ids is None:
+                raise ValueError("streamed target hidden rows require request IDs")
+        request_ids = (
+            tuple(range(len(prompt_tuple)))
+            if target_hidden_request_ids is None
+            else tuple(int(value) for value in target_hidden_request_ids)
+        )
+        starts = (
+            (0,) * len(prompt_tuple)
+            if target_hidden_chunk_starts is None
+            else tuple(int(value) for value in target_hidden_chunk_starts)
+        )
+        if not (len(request_ids) == len(starts) == len(prompt_tuple)):
+            raise ValueError("target hidden request IDs and chunk starts must align")
+        if any(start < 0 for start in starts):
+            raise ValueError("target hidden chunk starts must be non-negative")
         logical_lengths_supplied = full_prompt_lengths is not None
         logical_prompt_lengths = (
             tuple(len(prompt) for prompt in prompt_tuple)
@@ -20382,6 +20471,10 @@ class Qwen35GGUFResidentSession:
                 sample_output=sample_output,
                 require_logits=require_logits,
                 capture_layer_output_hidden=capture_layer_output_hidden,
+                target_hidden_chunk_sinks=sink_tuple,
+                target_hidden_request_ids=request_ids,
+                target_hidden_chunk_starts=starts,
+                finish_target_hidden_sinks=bool(finish_target_hidden_sinks),
                 stream=stream,
                 _slot_local_full_attention=bool(aotriton_eligible_slots),
                 _force_aotriton_slot_indices=aotriton_eligible_slots,
@@ -20408,6 +20501,21 @@ class Qwen35GGUFResidentSession:
                 sample_output=sample_output,
                 require_logits=require_logits,
                 capture_layer_output_hidden=capture_layer_output_hidden,
+                target_hidden_chunk_sinks=tuple(
+                    sink_tuple[index] for index in chunk.slot_indices
+                ),
+                target_hidden_request_ids=tuple(
+                    request_ids[index] for index in chunk.slot_indices
+                ),
+                target_hidden_chunk_starts=tuple(
+                    starts[index] + int(offset)
+                    for index, offset in zip(
+                        chunk.slot_indices,
+                        chunk.start_offsets,
+                        strict=True,
+                    )
+                ),
+                finish_target_hidden_sinks=False,
                 stream=stream,
                 _slot_local_full_attention=bool(force_aotriton_slot_indices),
                 _force_aotriton_slot_indices=force_aotriton_slot_indices,
@@ -20421,6 +20529,14 @@ class Qwen35GGUFResidentSession:
                         raise RuntimeError("packed AR prefill chunk did not return hidden seeds")
                     hidden_parts[slot_index].append(
                         np.ascontiguousarray(result.hidden_seeds, dtype=np.float32)
+                    )
+        if bool(finish_target_hidden_sinks):
+            for sink, request_id in zip(sink_tuple, request_ids, strict=True):
+                if sink is not None:
+                    sink.finish(
+                        request_id=request_id,
+                        total_rows=int(sink.total_rows),
+                        stream=int(stream),
                     )
         if not sample_output:
             return [None for _ in prompt_tuple]
@@ -20461,6 +20577,10 @@ class Qwen35GGUFResidentSession:
         sample_output: bool = True,
         require_logits: bool = False,
         capture_layer_output_hidden: list[int] | tuple[int, ...] | set[int] | None = None,
+        target_hidden_chunk_sinks: Sequence[TargetHiddenChunkSink | None] | None = None,
+        target_hidden_request_ids: Sequence[int] | None = None,
+        target_hidden_chunk_starts: Sequence[int] | None = None,
+        finish_target_hidden_sinks: bool = True,
         stream: int = 0,
         _slot_local_full_attention: bool | None = None,
         _force_aotriton_slot_indices: tuple[int, ...] = (),
@@ -20473,6 +20593,30 @@ class Qwen35GGUFResidentSession:
             raise ValueError("prompt_token_ids must be non-empty")
         if len(prompt_tuple) != len(session_tuple):
             raise ValueError("prompt_token_ids and sessions must have the same length")
+        sink_tuple: tuple[TargetHiddenChunkSink | None, ...] = (
+            (None,) * len(prompt_tuple)
+            if target_hidden_chunk_sinks is None
+            else tuple(target_hidden_chunk_sinks)
+        )
+        request_ids = (
+            tuple(range(len(prompt_tuple)))
+            if target_hidden_request_ids is None
+            else tuple(int(value) for value in target_hidden_request_ids)
+        )
+        chunk_starts = (
+            (0,) * len(prompt_tuple)
+            if target_hidden_chunk_starts is None
+            else tuple(int(value) for value in target_hidden_chunk_starts)
+        )
+        if not (
+            len(sink_tuple)
+            == len(request_ids)
+            == len(chunk_starts)
+            == len(prompt_tuple)
+        ):
+            raise ValueError("packed target hidden sink ownership must align with prompts")
+        if any(sink is not None for sink in sink_tuple) and return_hidden_seeds:
+            raise ValueError("streamed target hidden rows replace host hidden-seed return")
         if return_logits and return_hidden_seeds:
             raise ValueError("packed AR prefill cannot return logits and hidden seeds together")
         if return_logits and not sample_output:
@@ -20773,6 +20917,17 @@ class Qwen35GGUFResidentSession:
                     packed_state,
                     runtime=runtime,
                     stream=stream,
+                )
+            if any(sink is not None for sink in sink_tuple):
+                _consume_packed_target_hidden_sinks(
+                    sinks=sink_tuple,
+                    request_ids=request_ids,
+                    prompt_row_starts=chunk_starts,
+                    packed_cu_seqlens=layout.cu_seqlens,
+                    hidden_base_ptr=int(src.ptr),
+                    hidden_row_nbytes=self.runner.hidden_size * DType.BF16.itemsize,
+                    stream=int(stream),
+                    finish=bool(finish_target_hidden_sinks),
                 )
             token_host: np.ndarray | None = None
             if sample_output:
