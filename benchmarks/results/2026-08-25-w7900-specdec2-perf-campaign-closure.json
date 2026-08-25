@@ -2,6 +2,11 @@
   "date": "2026-08-25",
   "decision": "Close zero-promotion campaign. Retain exact explicit C1 device/dataflow units and strict fallbacks; keep automatic K0 because no staged cell matches its direct/product owner.",
   "evidence_artifacts": {
+    "dense_current_source_raw": {
+      "path": "/tmp/specdec2-perf-gfx1100-closure/current-cfea36cfee/dense-final-natural25-full-3run.json",
+      "sha256": "7d2ee87ef47c4fe48cbe59b1c603bdf6a71cc8e119a9f7b3428201f94e9f5e88",
+      "size_bytes": 3648424
+    },
     "dense_p3": "benchmarks/results/2026-08-25-w7900-specdec2-perf-p3-dense-stable-slabs.json",
     "dense_p4_corrected": "benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-dense-device-chain-retained.json",
     "dense_p4_old_rejection": "benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-dense-device-chain-rejected.json",
@@ -20,8 +25,8 @@
       "explicit": "retained",
       "pre_target_candidate_d2h": 0,
       "profile": "strict",
-      "staged_speedup_vs_ar": 1.273202805200553,
-      "staged_speedup_vs_direct": 0.9666381183760199,
+      "staged_speedup_vs_ar": 1.2715595444481163,
+      "staged_speedup_vs_direct": 0.9730489360519347,
       "target_rows": 2,
       "total_cells": 30,
       "zero_allocation_cycles": 381
@@ -29,18 +34,18 @@
     "dense_c1_k2": {
       "automatic": "K0",
       "candidate_budget": 2,
-      "cycles": 285,
-      "device_accept_calls": 261,
-      "device_handoffs": 261,
+      "cycles": 286,
+      "device_accept_calls": 262,
+      "device_handoffs": 262,
       "exact_cells": 30,
       "explicit": "retained",
       "pre_target_candidate_d2h": 0,
       "profile": "strict",
-      "staged_speedup_vs_ar": 1.4129381790407518,
-      "staged_speedup_vs_direct": 0.9768323224995082,
+      "staged_speedup_vs_ar": 1.4069938814048621,
+      "staged_speedup_vs_direct": 0.9685486174081177,
       "target_rows": 3,
       "total_cells": 30,
-      "zero_allocation_cycles": 285
+      "zero_allocation_cycles": 286
     },
     "dense_c1_k3": {
       "automatic": "K0",
@@ -52,8 +57,8 @@
       "explicit": "retained",
       "pre_target_candidate_d2h": 0,
       "profile": "strict",
-      "staged_speedup_vs_ar": 1.4400629788839512,
-      "staged_speedup_vs_direct": 0.963872043053106,
+      "staged_speedup_vs_ar": 1.4386550323102247,
+      "staged_speedup_vs_direct": 0.9611771452284643,
       "target_rows": 4,
       "total_cells": 30,
       "zero_allocation_cycles": 232
@@ -254,15 +259,15 @@
   "schema": 1,
   "source": {
     "branch": "main",
-    "commit": "a98fc17f928dbec6edcef8ce9a60eea5dafc2be4",
+    "commit": "cfea36cfeecf6c72094b9368af21535b7c9b6097",
     "tracked_clean": true
   },
   "speed_claim_eligible": true,
   "status": "closed_zero_product_promotion_explicit_c1_retained",
   "tests": {
     "affected_bundle": {
-      "command": "uv run pytest -q tests/test_qwen35_gguf_mtp2_seam.py tests/test_gguf_native_spec_cycle.py tests/test_qwen35_gguf_mtp_session.py tests/test_qwen35_paro_mtp2_seam.py tests/test_qwen35_resident_batch_layout.py tests/test_specdec2_perf_bridge.py tests/test_specdec2_perf_gfx1100_bridge.py",
-      "result": "308 passed"
+      "command": "uv run pytest -q tests/test_qwen35_gguf_mtp2_seam.py tests/test_gguf_native_spec_cycle.py tests/test_gguf_packed_verify_layout.py tests/test_qwen35_gguf_mtp_session.py tests/test_qwen35_paro_mtp2_seam.py tests/test_qwen35_resident_batch_layout.py tests/test_specdec2_perf_bridge.py tests/test_specdec2_perf_gfx1100_bridge.py",
+      "result": "366 passed on final merged source"
     },
     "full_suite": {
       "broad_result": "reached 100% with 26 failures",

@@ -186,7 +186,7 @@ no performance/default promotion; automatic remains K0. Evidence:
 [`gfx1100 PARO C1 foundation`](../benchmarks/results/2026-08-25-w7900-specdec2-paro-c1-foundation.json).
 
 **Performance checkpoint retained 2026-08-25:** corrected dense C1 K1/K2/K3
-P4 is exact at `1.273x/1.413x/1.440x` true AR but trails direct; packed production is
+P4 is exact at `1.272x/1.407x/1.439x` true AR but trails direct; packed production is
 exact with zero allocation in 372/372 cycles but remains `0.933x` AR. Dense
 proposal/repair stable slabs are exact and wall-neutral; graph first use remains
 P4. p128/p512 streaming is exact but slower, and p4K/p16K selects K0 before provider

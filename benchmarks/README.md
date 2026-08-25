@@ -115,8 +115,8 @@ operation owner projects **1.145x** and **23.0–23.1 ms** target saving.
 Automatic/product remains K0. [`P5 evidence`](results/2026-08-26-gfx1151-specdec2-perf-p5-target-admission.json).
 
 gfx1100 SPECDEC2-PERF now retains corrected C1 device chains. Dense
-Qwen3.6-27B GGUF K1/K2/K3 is exact at **1.273x/1.413x/1.440x true AR**, but
-remains **3.3%/2.3%/3.6%** behind direct MTP. Exact p128/p512 streaming loses
+Qwen3.6-27B GGUF K1/K2/K3 is exact at **1.272x/1.407x/1.439x true AR**, but
+remains **2.7%/3.1%/3.9%** behind direct MTP. Exact p128/p512 streaming loses
 AR, while p4K/p16K stays pre-mutation K0. Corrected dense P4 pre-captures
 commit-bound graphs, keeps all **898 cycles allocation-free**, and improves
 K1/K2/K3 wall **0.75%/3.36%/1.54%**. Packed PARO production is exact across
