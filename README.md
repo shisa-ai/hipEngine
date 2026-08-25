@@ -53,13 +53,13 @@ limits.
 
 ### GGUF or ParoQuant for Qwen?
 
-For Qwen3.6 35B-A3B, the optimized ParoQuant W4 checkpoint is slightly faster
-and uses less memory in our AMD tests. It is a good choice when that exact model
-meets your needs.
+For Qwen3.6 35B-A3B on W7900, the optimized ParoQuant W4 checkpoint currently
+leads short-context generation and uses less memory. GGUF leads prompt
+processing from 1K tokens onward in the current six-shape sweep.
 
 GGUF has a much larger model and quantization ecosystem. Current development is
-therefore focused on GGUF compatibility, while the optimized ParoQuant path
-remains supported.
+therefore focused on GGUF compatibility. Choose PARO for this exact optimized
+checkpoint or GGUF for broader compatibility.
 
 ## Installation
 
@@ -167,8 +167,9 @@ reading the input. Text generation is the speed of producing new tokens.
 
 | Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
 | --- | --- | ---: | ---: |
-| Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2716.648** | **92.833** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **865.179** | **28.368** |
+| Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2852.100** | **115.804** |
+| Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2763.590** | **94.603** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **875.364** | **28.681** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests
@@ -184,7 +185,7 @@ Each value is the total tokens per second across all active requests:
 
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` — MTP-3 | **60.875 tok/s** | **2.9672x** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` — MTP-3 | **60.929 tok/s** | **2.0684x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **122.67 tok/s** | **1.2679x** |
 
 ### RX 7900 XTX (`gfx1100`) — Qwen3.8-27B `Q4_K_M` prefill
@@ -220,7 +221,6 @@ Each value is the total tokens per second across all active requests:
 | Qwen3.8-27B Dense GGUF `Q4_K_S` | 512 input tokens, 128 output tokens | **396.091** | **13.069** |
 | Laguna S 2.1 GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
-
 #### Multiple requests
 
 | Model and interface | 1 request | 2 requests | 4 requests | 8 requests |
@@ -232,6 +232,7 @@ Each value is the total tokens per second across all active requests:
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — exact MTP-3 | **21.040 tok/s** | **1.8048x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
 ### RTX PRO 6000 Blackwell (`sm_120a`)
@@ -241,8 +242,7 @@ Each value is the total tokens per second across all active requests:
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
 
 Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary.
-llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens.
-The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
+llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 Full commands, software versions, model hashes, memory use, and correctness

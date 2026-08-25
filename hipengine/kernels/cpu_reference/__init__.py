@@ -18,6 +18,7 @@ from hipengine.kernels.cpu_reference.dflash2 import (
 )
 from hipengine.kernels.cpu_reference.dms import (
     dms_streaming_pack_reference,
+    external_dms_linear_decision_reference,
     register_dms_cpu_reference_kernels,
 )
 from hipengine.kernels.cpu_reference.fixtures import (
@@ -193,6 +194,7 @@ __all__ = [
     "dequantize_kv_int8_per_token_head",
     "dms_streaming_pack_reference",
     "embed",
+    "external_dms_linear_decision_reference",
     "full_attn_prefill",
     "full_attn_prefill_varlen",
     "gdn_prefill_chunkwise_wy_segments",

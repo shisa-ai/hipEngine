@@ -1028,6 +1028,10 @@ GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE = {
 # D08-P1 admits the existing direct/rowtile/WMMA Q5T16 family only for the
 # exact Qwen3.5-0.8B linear-attention QKV role selected by the materializer.
 GGUF_DENSE_Q5_T16_QKV = True
+# Exact standard-Q4 two-wave/16-column output ownership. The shape map is the
+# independently qualified physical-row8 scope. ``rows_by_shape`` narrows the
+# OI-1 small-M extension to actual-weight winners; unspecified shapes therefore
+# remain row8-only. The WG32/eight-column rowtile is the registered fallback.
 GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
     "gguf_q4_k_t16_v1": {
         "shapes": {
@@ -1035,7 +1039,12 @@ GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
             (5_120, 5_120): "dense_rowtile16_w2_bf16_bf16_out",
             (5_120, 6_144): "dense_rowtile16_w2_bf16_bf16_out",
             (5_120, 10_240): "dense_rowtile16_w2_bf16_bf16_out",
+            (5_120, 12_288): "dense_rowtile16_w2_bf16_bf16_out",
             (17_408, 5_120): "dense_rowtile16_w2_bf16_bf16_out",
+        },
+        "rows_by_shape": {
+            (5_120, 10_240): (3, 4, 8),
+            (5_120, 12_288): (2, 3, 4),
         },
     },
 }

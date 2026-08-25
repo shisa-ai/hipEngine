@@ -95,14 +95,14 @@ def _free(runtime, bufs):
         free(buf, runtime=runtime)
 
 
-# Representative verifier shapes.  hidden_size=2048 + vocab_size=2048..16384 keep
-# the test fast.  The actual W7900 verifier path uses
-# (rows=B+1=5, hidden=2048, vocab=248320), validated separately via the e2e bench.
+# Representative verifier shapes plus the full-vocabulary B1 proposer shape.
+# The latter catches stage-1/block-count issues hidden by the old <=16K tests.
 _SHAPES = (
     (5, 2048, 4096),
     (4, 2048, 8192),
     (1, 2048, 16384),
     (3, 1024, 2048),
+    (1, 2048, 248320),
 )
 
 
@@ -123,6 +123,7 @@ def test_w8a16_lm_head_argmax_rows_matches_unfused(_lm_head_lib, _w8a16_lib, _ru
     weight_scale = (rng.uniform(0.005, 0.02, size=(vocab_size,)).astype(np.float32))
     hidden_bf = _to_bf16(hidden_f32)
 
+    threads = 128 if vocab_size == 248320 else 256
     bufs = []
     try:
         h_dev = _upload(_runtime, bufs, hidden_bf)
@@ -130,7 +131,7 @@ def test_w8a16_lm_head_argmax_rows_matches_unfused(_lm_head_lib, _w8a16_lib, _ru
         s_dev = _upload(_runtime, bufs, weight_scale)
         # Unfused path: full-vocab logits + argmax_rows
         logits_dev = _alloc(_runtime, bufs, rows * vocab_size * 4)
-        s1_blocks = lm_head_argmax_stage1_blocks(vocab_size)
+        s1_blocks = lm_head_argmax_stage1_blocks(vocab_size, threads=threads)
         bv_unfused = _alloc(_runtime, bufs, rows * s1_blocks * 4)
         bi_unfused = _alloc(_runtime, bufs, rows * s1_blocks * 4)
         idx_unfused = _alloc(_runtime, bufs, rows * 4)
@@ -138,13 +139,13 @@ def test_w8a16_lm_head_argmax_rows_matches_unfused(_lm_head_lib, _w8a16_lib, _ru
         w8a16_linear_bf16_f32_multi_row(
             h_dev.ptr, w_dev.ptr, s_dev.ptr, logits_dev.ptr,
             rows, hidden_size, vocab_size,
-            library=_w8a16_lib, runtime=_runtime,
+            threads=threads, library=_w8a16_lib, runtime=_runtime,
         )
         argmax_f32_rows_i32(
             logits_dev.ptr, bv_unfused.ptr, bi_unfused.ptr,
             idx_unfused.ptr, val_unfused.ptr,
             rows, vocab_size,
-            library=_lm_head_lib, runtime=_runtime,
+            threads=threads, library=_lm_head_lib, runtime=_runtime,
         )
 
         # Fused path
@@ -157,7 +158,7 @@ def test_w8a16_lm_head_argmax_rows_matches_unfused(_lm_head_lib, _w8a16_lib, _ru
             bv_fused.ptr, bi_fused.ptr,
             idx_fused.ptr, val_fused.ptr,
             rows, hidden_size, vocab_size,
-            library=_lm_head_lib, runtime=_runtime,
+            threads=threads, library=_lm_head_lib, runtime=_runtime,
         )
         _runtime.device_synchronize()
 

@@ -1,0 +1,226 @@
+{
+  "schema": 1,
+  "kind": "omlx_ideas_oi3_gfx1151_streaming_exact_nextn_prompt_priming",
+  "status": "retained_exact_default_path",
+  "created_at": "2026-08-24T22:03:35.698990+00:00",
+  "performance_claim": true,
+  "performance_claim_scope": "zbook Radeon 8060S/gfx1151, Qwen3.8-27B Q4_K_M SHA 7e78da..., BF16 KV, exact bulk target prefill plus shifted NextN prompt activation at 512/4096/16384 tokens",
+  "decision": "Retain request-owned target-hidden chunk streaming as the sole MTP prompt-admission path. It preserves the exact shifted NextN cache timeline, removes the prompt-sized hidden slab, skips discarded prompt output-head scoring, and wins TTFT at every required length.",
+  "arithmetic_class": "T0; identical target arithmetic and identical NextN block/cache mutations in the same row order; only observational output_norm/LM-head work for discarded prompt predictions is removed",
+  "hardware": {
+    "host": "zbook",
+    "cpu": "AMD Ryzen AI MAX+ PRO 395",
+    "device": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "arch": "gfx1151",
+    "hip_total_bytes": 133143986176
+  },
+  "software": {
+    "base_commit": "c8f021c2ebbc08118075c8ccc72f1cdf738ba231",
+    "candidate_state": "scoped tracked diff over c8f021c2e in the shared main worktree",
+    "rocm": "HIP 7.15.0",
+    "hipcc_version_file": "/tmp/hipengine-omlx-oi0-gfx1151/hipcc-version.txt",
+    "donor": {
+      "repo": "/home/lhl/omlx",
+      "commit": "f244ac0",
+      "paths": [
+        "omlx/patches/mlx_lm_mtp/prompt_priming.py",
+        "omlx/patches/mlx_lm_mtp/batch_generator.py"
+      ],
+      "copied_code": false
+    },
+    "changed_file_sha256": {
+      "hipengine/runtime/qwen35_gguf_mtp.py": "7ac119752baa1848ef6a7a9f54312f988f71560c2713ee1ed9804cb05618721d",
+      "hipengine/runtime/qwen35_gguf_nextn.py": "2d4b47d1b1b81274a136661cd3db0544a6b4b8dba27ae29bc1f7bc990998fd0e",
+      "hipengine/runtime/qwen35_gguf_runner.py": "459c4a5eba78323021773fba4694a741c55fa6dd50ddc5d6ac6a7e9bdca3bc18",
+      "scripts/gguf_mtp_prompt_priming_bench.py": "ef9ec1a7e1caceb9f97ae711a3fbab2bf933b8a74b05a35ff2a396f1c7e54ab0",
+      "tests/test_gguf_mtp_prompt_priming_bench.py": "bbad8ee9d8c4c18759f2ae9fc1fcbb75faab56346b40d92e0649cd8799e45cbc",
+      "tests/test_qwen35_gguf_hidden_seed_contract.py": "2745be4b2a7738c072ea89156633c9f0da8601b860eb77fbfe31e26b90b2e596",
+      "tests/test_qwen35_gguf_mtp_session.py": "e39a469ecfe9bfe172cbf04cdde6ff3cc355c820b4adc9d40ebc28ada2bd4a4c",
+      "tests/test_qwen35_gguf_nextn_provider.py": "9ee776af336f1905a7181593091e432f35209dd1b86d33822fb2174773049c85",
+      "tests/test_qwen35_gguf_runner.py": "1e8fff2ca09624b3b828349c4edeb90b7fdb058e1ed138ae1d2478907ca7b9fe"
+    }
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "hidden_size": 5120,
+    "bf16_hidden_row_bytes": 10240
+  },
+  "protocol": {
+    "environment": {
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_GGUF_DECODE_REPACK": "1",
+      "GPU_MAX_HW_QUEUES": "unset/package default"
+    },
+    "prompt_seed_i64_sha256": "bd6376433fb67932d938fe797423ae22c62468e2740a1bbdc3f632676f610b60",
+    "prompt_lengths": [
+      512,
+      4096,
+      16384
+    ],
+    "runs": 1,
+    "timing_boundary": "after same-process short warmup and one pure-target same-shape pass; target+draft call through first-token blocking readback",
+    "memory_boundary": "reset tracked counters and sample hipMemGetInfo every 10 ms immediately around target+draft prompt activation",
+    "baseline_worktree": "/tmp/hipengine-oi3-baseline detached at c8f021c2e",
+    "measurement_harness": "/tmp/oi3_prompt_bench.py",
+    "measurement_harness_sha256": "7baf687afacedd4c2a0ec59231609e7a984e5185e7385af7b904061ce3df8cc3",
+    "baseline_512_command": "cwd=/tmp/hipengine-oi3-baseline env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 -u /tmp/oi3_prompt_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --lengths 512 --label baseline-c8f021c2e-cached --compiler-version-file /tmp/hipengine-omlx-oi0-gfx1151/hipcc-version.txt --output /tmp/oi3-baseline-512-cached.json",
+    "candidate_512_command": "cwd=/home/lhl/hipEngine env -u GPU_MAX_HW_QUEUES -u HIPENGINE_REQUIRE_CACHED_BUILD HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-omlx-oi0-gfx1151/hipcc-version.txt PYTHONPATH=. HIPENGINE_REQUIRE_CACHED_BUILD=1 python3 -u /tmp/oi3_prompt_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --lengths 512 --label candidate-streaming-cached --compiler-version-file /tmp/hipengine-omlx-oi0-gfx1151/hipcc-version.txt --output /tmp/oi3-candidate-512-cached.json",
+    "full_suite_command": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-omlx-oi0-gfx1151/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. python3 -u scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --warmup --compiler-version-file /tmp/hipengine-omlx-oi0-gfx1151/hipcc-version.txt --require-cached-build --output /tmp/hipengine-omlx-oi3-full.json",
+    "baseline_long_command": "cwd=/tmp/hipengine-oi3-baseline env -u GPU_MAX_HW_QUEUES -u HIPENGINE_REQUIRE_CACHED_BUILD HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-omlx-oi0-gfx1151/hipcc-version.txt PYTHONPATH=. python3 -u /tmp/oi3_prompt_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --lengths 4096,16384 --label baseline-c8f021c2e --compiler-version-file /tmp/hipengine-omlx-oi0-gfx1151/hipcc-version.txt --allow-build --output /tmp/oi3-baseline-long.json",
+    "candidate_long_command": "cwd=/home/lhl/hipEngine env -u GPU_MAX_HW_QUEUES -u HIPENGINE_REQUIRE_CACHED_BUILD HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-omlx-oi0-gfx1151/hipcc-version.txt PYTHONPATH=. python3 -u /tmp/oi3_prompt_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --lengths 4096,16384 --label candidate-streaming --compiler-version-file /tmp/hipengine-omlx-oi0-gfx1151/hipcc-version.txt --allow-build --output /tmp/oi3-candidate-long.json"
+  },
+  "measurements": [
+    {
+      "prompt_length": 512,
+      "first_token_id": 271,
+      "first_token_equal": true,
+      "target_position": 512,
+      "draft_position": 511,
+      "draft_context": 512,
+      "pure_target_prefill_seconds_candidate": 9.456864072009921,
+      "pure_target_prefill_tok_s_candidate": 54.14056880815267,
+      "baseline_full_slab_ttft_seconds": 13.07946544000879,
+      "candidate_streaming_ttft_seconds": 10.356441890005954,
+      "ttft_delta_seconds": -2.7230235500028357,
+      "ttft_delta_percent": -20.819073703680402,
+      "ttft_speedup": 1.2629304136424089,
+      "baseline_tracked_transient_bytes": 5253120,
+      "candidate_tracked_transient_bytes": 10240,
+      "tracked_bytes_removed": 5242880,
+      "baseline_hip_transient_bytes": 6291456,
+      "candidate_hip_transient_bytes": 0,
+      "hip_bytes_removed": 6291456
+    },
+    {
+      "prompt_length": 4096,
+      "first_token_id": 264,
+      "first_token_equal": true,
+      "target_position": 4096,
+      "draft_position": 4095,
+      "draft_context": 4096,
+      "pure_target_prefill_seconds_candidate": 76.5466599049978,
+      "pure_target_prefill_tok_s_candidate": 53.50984621776513,
+      "baseline_full_slab_ttft_seconds": 105.74138191196835,
+      "candidate_streaming_ttft_seconds": 85.57434794603614,
+      "ttft_delta_seconds": -20.167033965932205,
+      "ttft_delta_percent": -19.072035565717904,
+      "ttft_speedup": 1.235666814296379,
+      "baseline_tracked_transient_bytes": 41953280,
+      "candidate_tracked_transient_bytes": 10240,
+      "tracked_bytes_removed": 41943040,
+      "baseline_hip_transient_bytes": 41943040,
+      "candidate_hip_transient_bytes": 0,
+      "hip_bytes_removed": 41943040
+    },
+    {
+      "prompt_length": 16384,
+      "first_token_id": 421,
+      "first_token_equal": true,
+      "target_position": 16384,
+      "draft_position": 16383,
+      "draft_context": 16384,
+      "pure_target_prefill_seconds_candidate": 405.6172093679779,
+      "pure_target_prefill_tok_s_candidate": 40.39276347650318,
+      "baseline_full_slab_ttft_seconds": 535.6526025409694,
+      "candidate_streaming_ttft_seconds": 467.9486353629618,
+      "ttft_delta_seconds": -67.70396717800759,
+      "ttft_delta_percent": -12.639529212934097,
+      "ttft_speedup": 1.1446824759420302,
+      "baseline_tracked_transient_bytes": 167782400,
+      "candidate_tracked_transient_bytes": 10240,
+      "tracked_bytes_removed": 167772160,
+      "baseline_hip_transient_bytes": 167772160,
+      "candidate_hip_transient_bytes": 0,
+      "hip_bytes_removed": 167772160
+    }
+  ],
+  "correctness": {
+    "shift_contract": "token[0] + zero; token[i>0] + target_hidden[i-1]",
+    "partition_gate": "one-shot and chunk sizes 1/2/7/8/9 (boundary-1/boundary/boundary+1), ragged tails, warm offset, cancellation, owner/contiguity failure",
+    "shape_first_tokens_equal": true,
+    "shape_cursors_exact": true,
+    "smoke": {
+      "status": "complete_exact",
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true
+    },
+    "full_suite": {
+      "status": "complete_exact",
+      "prompts": 10,
+      "heldouts": 4,
+      "budgets": [
+        1,
+        2,
+        3
+      ],
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true,
+      "true_ar_tok_s": 11.674074062391353,
+      "mtp": {
+        "1": {
+          "tok_s": 17.14345232932231,
+          "accepted": 113,
+          "proposed": 131,
+          "draft_acceptance": 0.8625954198473282,
+          "mtp_vs_true_ar": 1.46850638754733
+        },
+        "2": {
+          "tok_s": 20.019617396642058,
+          "accepted": 144,
+          "proposed": 200,
+          "draft_acceptance": 0.72,
+          "mtp_vs_true_ar": 1.7148783954640405
+        },
+        "3": {
+          "tok_s": 21.05211741250391,
+          "accepted": 159,
+          "proposed": 252,
+          "draft_acceptance": 0.6309523809523809,
+          "mtp_vs_true_ar": 1.8033222420889397
+        }
+      }
+    },
+    "memory_after_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 17926268100,
+      "total_allocated_bytes": 18736753257,
+      "total_freed_bytes": 18736753257,
+      "active_allocations": 0,
+      "peak_allocations": 1191
+    },
+    "focused_test_repair": "completed bundle had one isolated fake-session fixture miss in test_qwen35_gguf_runner.py; added the existing Q6 prefill-context nullcontext stub, then the failing node and complete changed test file passed"
+  },
+  "raw_sources": {
+    "baseline_512": {
+      "path": "/tmp/oi3-baseline-512-cached.json",
+      "sha256": "8773cb73286e47a161f7ba62f3c80681df4e270b104db6dafcb456b420093560"
+    },
+    "candidate_512": {
+      "path": "/tmp/oi3-candidate-512-cached.json",
+      "sha256": "f2d97f1caebbe81b82d854453fa33304bc22babb17f03749232873104b44e97f"
+    },
+    "baseline_long": {
+      "path": "/tmp/oi3-baseline-long.json",
+      "sha256": "66d9b5dc3437e8e322e12058971678f5e735fa062f1938d4a60e2396ba78c0b0"
+    },
+    "candidate_long": {
+      "path": "/tmp/oi3-candidate-long.json",
+      "sha256": "3ea5db05552f944c9821e2b21da8055d64029aac41a5ce72605466cf78d583e5"
+    },
+    "full_suite": {
+      "path": "/tmp/hipengine-omlx-oi3-full.json",
+      "sha256": "9dfef6d20f7811344d6f26208d37fd47c0134b9e2e78da1fe644c9af88459d43"
+    },
+    "exact_smoke": {
+      "path": "/tmp/hipengine-omlx-oi3-gfx1151-smoke.json",
+      "sha256": "471cbe6624686432338d603e05a9dd1dd07f65df34579381237ae2296e3d6485"
+    },
+    "raw_files_not_committed": true
+  }
+}

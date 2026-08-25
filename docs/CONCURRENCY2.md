@@ -1,15 +1,13 @@
 # Concurrency and KV Architecture, Generation 2
 
-Last updated: 2026-08-24.
+Last updated: 2026-08-25.
 
-_Status: merged and committed on local `main`; Generation-2 implementation spans
-C2-0 through C2-8. Dense gfx1100 short/long serving and the canonical W7900
-production load are the declared default. The gfx1100 closure boundary is
-`7fad69fb5`; later commits are the independent physical-gfx1151 pass. Local
-`main` is currently a clean fast-forward of `origin/main` (ahead, not diverged),
-so upstream integration/push remains an operational step rather than a code or
-correctness blocker. DMS product training and gfx1151 c32 SLO closure remain
-open. This document is the source of truth for scheduler, request lifecycle,
+_Status: Generation-2 implementation spans C2-0 through C2-8. Dense gfx1100
+short/long serving and the canonical W7900 production load are the declared
+default. The gfx1100 closure boundary is `7fad69fb5`; later commits include the
+independent physical-gfx1151 pass and the integrated DMS campaign. gfx1151 c32
+SLO closure and DMS product admission remain open. This document is the source
+of truth for scheduler, request lifecycle,
 shared KV-pool architecture, and the post-merge handoff. [`CONCURRENCY.md`](CONCURRENCY.md)
 remains the historical c=N kernel/resident-runner record._
 
@@ -37,7 +35,7 @@ Related source-of-truth documents:
 | C2-4 prefix cache | Generation-checked immutable snapshots, COW, quotas, LRU/TTL, pressure eviction. | Dense host conformance closed; DMS prefix remains deliberately off. |
 | C2-5 token budget/c1-c32 | Logical c1-c32, certified physical c1-c8 grouping on gfx1100 Qwen3.8 (other models/backends retain their own registered sets), same-round prefill/decode fairness. | Physical c1-c8 and direct-width lifecycle are qualified; cost-aware D2 is explicit-config pending the actual-server c1-c32 SLO/performance gate. |
 | C2-6 production | Exact c1-c32, live refill, actual c2 1K/4K/16K/32K/64K, mixed context, pressure, changed-page graphs, and the canonical W7900 production packet. | W7900 load/default scope closed. Independent gfx1151 mechanical support passes, but final c32 streaming is 0/3 SLO (TTFT/ITL 18.617/2.125 s) and c2 64K remains unsupported; production closure is blocked. Matched external GPU comparison remains unavailable/invalid. |
-| C2-7 compact DMS | Strict retrofit metadata, compact extents, no-shadow host/device BF16 pack/decode, c1-c32 lifecycle, fixture-qualified INT8 composition. | gfx1100 fixture correctness and rocprof identities pass; exact Qwen artifact has no trained DMS retrofit, so product default/quality/savings remain blocked. |
+| C2-7 compact DMS | Strict schema-v1/v2 metadata, compact extents, no-shadow host/device BF16 pack/decode, c1-c32 lifecycle, fixture-qualified INT8 composition, and the frozen Qwen3.8 W8192 sidecar with wave-cooperative attention. | Source-disjoint 32K/128K quality, explicit c1 post-pack savings, and 128K dense-decode parity pass; sampled peak controls, public admission, c>N lifecycle/soak, and serving SLOs remain open, so dense stays default. |
 | C2-8 optional tiering | Fingerprinted KVTC-style host/NVMe objects, quotas/LRU, atomic offload/restore/rollback/drain. | Actual model-produced BF16 KV host restore economics, pressure, cancellation, and drain pass; integrated GPU rehydrate/request-SLO policy remains default-off. |
 | C2-S MTP/SpecDec integration | Reusable `NativeSpecCycle` ABI/graphs, SPEC-C0 records/simulator, one EngineService, compatible packing, committed streaming/tail/RNG, and generic provider/tree metadata. | SPEC-C0–C4 correctness is closed; SPEC-C5 blocks promotion because C=10 public-service MTP is 0.579× true AR despite exact/direct decode wins. |
 
@@ -188,18 +186,24 @@ Primary retained evidence:
 [`direct resident state`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-direct-resident-state.json), and
 [`Q4 row8 two-wave`](../benchmarks/results/2026-08-23-concurrency2-gfx1151-qwen38-q4-row8-two-wave.json).
 
-#### DMS training lane (deferred, separate data campaign)
+#### DMS training lane (candidate complete; product serving open)
 
-Do not block the dense gfx1100 merge on DMS training, and do not synthesize a
-checkpoint to make the gate green. Device extract/pack/append/compact-attention
-mechanics and cached profiler identities are already qualified. Product closure
-waits for a separately generated, valid trained `dms_metadata.json` bound to an
-exact supported model fingerprint. The training output must record corrected-
-mask semantics, borrowed channel, alpha scale/offset, window/compression target,
-training data/provenance, and checkpoint hash. Only then run model quality,
-allocator-visible device savings, c1-c32 pressure/soak, compressed-codec,
-cancellation, and final-drain gates. Dense global paging remains default until
-all of those pass. This is task #67 and blocks only DMS product task #49.
+Do not block the dense gfx1100 merge on DMS, and do not synthesize a checkpoint
+to make the gate green. A real schema-v2 external sidecar now exists for exact
+Qwen3.8-27B Q4_K_M SHA `7e78da5d...fe169`. It binds the physical compact-layer
+map, normalized hidden input stage, preserved-Q semantics, sidecar/model/data/
+trainer hashes, and CR2/window256 threshold. Broad 768-token category-heldouts
+pass at max KL `0.009691`, 100% top-1, deterministic repeats, and 1.54293x total
+live-cell compression; the full repository category+heldout suite passes inside
+the protected window. CR4/CR8 are rejected by max KL `0.08908/0.24993`.
+
+This is **trained candidate complete; product gate open**. Quality replay
+retains dense KV. Product closure still requires sole-owner no-shadow GGUF
+serving, allocator-visible device savings, c1-c32 pressure/cancellation/recovery/
+drain, long c1/c8 soak, serving profiler identities, and production task/SLO
+gates. Dense global paging remains default and DMS prefix/speculative modes stay
+off. Full process, results, capacity/speed goals, and the ordered production
+punchlist: [`DMS.md`](DMS.md). Evidence: [`CR2 trained candidate`](../benchmarks/results/2026-08-23-qwen38-external-dms-cr2-trained-candidate.json).
 
 ### gfx1151 qualification and optimization plan
 
@@ -2704,9 +2708,13 @@ and superseded blocker
 ### C2-7 — FastDMS topology and codec composition
 
 - [x] Implement the strict metadata schema/checkpoint validator and prove that
-      unsupported or missing retrofit metadata fails closed.
-- [ ] Generate a valid trained retrofit checkpoint in the separate DMS data
-      campaign, then run model-quality/savings/soak product qualification.
+      unsupported or missing retrofit metadata fails closed. Schema v1 remains
+      borrowed-channel/fingerprint compatible; schema v2 strictly binds an
+      external linear sidecar, hybrid physical-layer map, and provenance.
+- [x] Generate a valid trained external sidecar in the separate DMS data
+      campaign and pass exact-Q4 CR2 outer quality gates.
+- [ ] Run integrated no-shadow GGUF savings/lifecycle/soak/profiler/SLO product
+      qualification before any default or packaging change.
 - [x] Add global compact pool-set/extent accounting and scheduler-owned atomic
       admission through the existing backend protocol.
 - [x] Port streaming no-shadow prefill pack and compact decode in BF16 first.
@@ -2741,14 +2749,14 @@ c1/c2/c4/c8/c16/c32 pack/append/attention/reclaim with exact tracked-memory
 recovery. A cached-only `rocprofv3 --kernel-trace` run now records all four
 expected kernels with scratch0, resolving the historical profiler hang blocker.
 
-This closes fixture-backed `C2-7.hip` and format-distinct compact conformance,
-not the DMS product gate. No valid trained `dms_metadata.json` exists for the
-available exact Qwen artifacts, so model quality, allocator-visible device
-savings, hardware soak, and product defaulting remain blocked. Dense global
-paging remains the canonical gfx1100 default and DMS prefix reuse remains off.
-Evidence:
+This closes fixture-backed `C2-7.hip`, format-distinct compact conformance, and
+the exact-Qwen CR2 training/outer-quality blocker—not the DMS product gate. The
+qualified candidate metadata stays in a separate artifact directory and is not
+packaged beside the GGUF. Integrated no-shadow device savings, serving lifecycle,
+hardware soak/profiler/SLO, and production-profile quality remain blocked. Dense
+global paging remains canonical and DMS prefix reuse remains off. Evidence:
 [`device qualification`](../benchmarks/results/2026-08-22-concurrency2-c2-7-dms-device-qualified.json)
-and [`metadata blocker`](../benchmarks/results/2026-08-17-concurrency2-c2-7-dms-host-blocked.json).
+and [`CR2 trained candidate`](../benchmarks/results/2026-08-23-qwen38-external-dms-cr2-trained-candidate.json).
 
 ### C2-8 — optional hot/cold tiering
 

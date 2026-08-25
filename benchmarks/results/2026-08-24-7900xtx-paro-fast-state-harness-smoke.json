@@ -1,0 +1,741 @@
+{
+  "audit_cycles": [
+    1,
+    9,
+    13,
+    34
+  ],
+  "backend": "hip_gfx1100",
+  "candidate_review_manifest_sha256": "610d3686ba950b3a5700fd5f50b95902069f11994cea2ebf69e4ffd73dcdab6f",
+  "checks": {
+    "candidate_replay_deterministic": true,
+    "finite_state_and_kv": true,
+    "long_horizon": true,
+    "position_context_exact": true,
+    "reject_and_full_accept_covered": true,
+    "selected_scratch_to_resident_exact": true,
+    "strict_schedule_isolation": true,
+    "teardown_bounded": true
+  },
+  "cycles": [
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 383,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 1,
+      "finite_state": {
+        "kv_cells_checked": 20,
+        "kv_cells_failed": 0,
+        "linear_checked": 60,
+        "linear_failed": 0,
+        "passed": true
+      },
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 68022,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 2,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 10813,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 3,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 16759,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 4,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 2998,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 5,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 332,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 6,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 18092,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 7,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 430,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 8,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 0,
+      "candidate_bonus": 4779,
+      "candidate_commit_row": 0,
+      "candidate_decision_matches_source": true,
+      "cycle": 9,
+      "finite_state": {
+        "kv_cells_checked": 20,
+        "kv_cells_failed": 0,
+        "linear_checked": 60,
+        "linear_failed": 0,
+        "passed": true
+      },
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 0,
+      "strict_commit_row": 0
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 8,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 10,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 1056,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 11,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 48184,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 12,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 0,
+      "candidate_bonus": 4016,
+      "candidate_commit_row": 0,
+      "candidate_decision_matches_source": true,
+      "cycle": 13,
+      "finite_state": {
+        "kv_cells_checked": 20,
+        "kv_cells_failed": 0,
+        "linear_checked": 60,
+        "linear_failed": 0,
+        "passed": true
+      },
+      "forced_to_strict_row": true,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 279,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 14,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 0,
+      "candidate_bonus": 21966,
+      "candidate_commit_row": 0,
+      "candidate_decision_matches_source": true,
+      "cycle": 15,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 0,
+      "strict_commit_row": 0
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 33633,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 16,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 7896,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 17,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 939,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 18,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 8,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 19,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 0,
+      "candidate_bonus": 8070,
+      "candidate_commit_row": 0,
+      "candidate_decision_matches_source": true,
+      "cycle": 20,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 0,
+      "strict_commit_row": 0
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 314,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 21,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 854,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 22,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 11,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 23,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 364,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 24,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 310,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 25,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 40071,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 26,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 466,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 27,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 0,
+      "candidate_bonus": 5158,
+      "candidate_commit_row": 0,
+      "candidate_decision_matches_source": true,
+      "cycle": 28,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 0,
+      "strict_commit_row": 0
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 279,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 29,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 725,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 30,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 65393,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 31,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 4779,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 32,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 39,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 33,
+      "finite_state": null,
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    },
+    {
+      "candidate_accepted": 1,
+      "candidate_bonus": 15328,
+      "candidate_commit_row": 1,
+      "candidate_decision_matches_source": true,
+      "cycle": 34,
+      "finite_state": {
+        "kv_cells_checked": 20,
+        "kv_cells_failed": 0,
+        "linear_checked": 60,
+        "linear_failed": 0,
+        "passed": true
+      },
+      "forced_to_strict_row": false,
+      "next_cycle_strict_schedule_isolation": true,
+      "position_context_exact": true,
+      "scratch_to_resident": {
+        "checked": 60,
+        "failed": 0,
+        "first_mismatch": null,
+        "passed": true
+      },
+      "strict_accepted": 1,
+      "strict_commit_row": 1
+    }
+  ],
+  "failures": {
+    "finite": [],
+    "position": [],
+    "scratch": []
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon RX 7900 XTX",
+    "hip_visible_devices": "1",
+    "physical_host": "epyc",
+    "target_arch": "gfx1100"
+  },
+  "memory": {
+    "final": {
+      "active_allocations": 1,
+      "current_allocated_bytes": 8,
+      "peak_allocated_bytes": 19391626830,
+      "peak_allocations": 4418,
+      "total_allocated_bytes": 19467427594,
+      "total_freed_bytes": 19467427586
+    },
+    "initial": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 0,
+      "peak_allocations": 0,
+      "total_allocated_bytes": 0,
+      "total_freed_bytes": 0
+    }
+  },
+  "model": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+  "performance_claim": false,
+  "prompt": {
+    "category": "general_en",
+    "decode_tokens": 64,
+    "name": "general_en_explain",
+    "prompt_tokens": 40,
+    "prompt_tokens_sha256": "0f65019eb3f00b8ad7657613732c1951e31cffc82c81fb106a6037b630ae48dd",
+    "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "render": "qwen_chat_thinking_off",
+    "split": "heldout"
+  },
+  "qualification_scope": "state harness smoke only; W7900 binding run remains required",
+  "schema": "hipengine.paro_mtp_fast_state_review.v1",
+  "source_capture": "/tmp/paro-fast-full-review/run1/general_en_explain.json",
+  "source_capture_sha256": "2f984aaaf0f192f91500825301c981d45d4d25aff1d6dcac4328634e29306c21",
+  "state_review_sha256": "e6189d4d5e68b9c1e567762f050d51507626bcd7c89ceb6bf3e8e94075c0f19a",
+  "status": "passed"
+}

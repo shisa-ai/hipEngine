@@ -13,9 +13,12 @@ import pytest
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
-from hipengine.core.hip import get_hip_runtime
+from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
+from hipengine.loading import load_gguf_index
+from hipengine.loading.gguf import MissingGGUFTensorError
+from hipengine.loading.qwen35_gguf_nextn import build_qwen35_gguf_nextn_tensor_map
 from hipengine.runtime import qwen35_gguf_nextn as nextn_mod
 from hipengine.runtime.qwen35_gguf_nextn import (
     Qwen35GGUFNextNBatchDeviceProposal,
@@ -618,6 +621,97 @@ def test_nextn_provider_advances_only_a_fully_accepted_tail() -> None:
         provider.advance_full_accept_tail(41, accepted_count=3)
 
 
+def test_nextn_executor_enqueues_prompt_rows_on_target_stream_without_scoring(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    executor.hidden_size = 8
+    executor.compiler_version = None
+    executor.require_cached_build = False
+    executor._proposal_graph_runtime_library = object()
+    executor._prompt_priming_staging = {}
+    executor._token_buf = DeviceBuffer(0x1000, DType.INT64.itemsize)
+    executor._slot = lambda _request_id: 0
+
+    slot_scratch = SimpleNamespace(
+        position_host=np.zeros((1,), dtype=np.int64),
+        context_host=np.zeros((1,), dtype=np.int64),
+        position_buf=DeviceBuffer(0x2000, DType.INT64.itemsize),
+        context_buf=DeviceBuffer(0x3000, DType.INT64.itemsize),
+    )
+    executor.scratch = SimpleNamespace(
+        max_positions=128,
+        for_slot=lambda _slot, **_kwargs: slot_scratch,
+    )
+    runtime_calls: list[tuple[object, ...]] = []
+    executor.runtime = SimpleNamespace(
+        memcpy_async=lambda dst, src, nbytes, kind, stream: runtime_calls.append(
+            ("copy", int(dst), int(nbytes), int(kind), int(stream))
+        ),
+        stream_synchronize=lambda stream: runtime_calls.append(("sync", int(stream))),
+    )
+    metadata_calls: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        nextn_mod,
+        "set_decode_position_i64",
+        lambda _position, _context, value, **kwargs: metadata_calls.append(
+            (int(value), int(kwargs["stream"]))
+        ),
+    )
+    block_calls: list[tuple[int, int, int, int, int, bool, bool]] = []
+
+    def fake_run_block(
+        request_id,
+        token_id,
+        position,
+        target_hidden,
+        *,
+        stream,
+        token_ready,
+        position_ready,
+    ):
+        block_calls.append(
+            (
+                int(request_id),
+                int(token_id),
+                int(position),
+                int(target_hidden.ptr),
+                int(stream),
+                bool(token_ready),
+                bool(position_ready),
+            )
+        )
+        return 0x7000, 0x8000
+
+    executor._run_block = fake_run_block
+
+    executor.enqueue_prompt_rows(
+        7,
+        (11, 22, 33),
+        position_start=9,
+        target_hidden_base_ptr=0x4000,
+        hidden_stride_bytes=32,
+        stream=5,
+    )
+
+    assert runtime_calls == [
+        ("copy", 0x1000, 8, int(HipMemcpyKind.HOST_TO_DEVICE), 5),
+        ("copy", 0x1000, 8, int(HipMemcpyKind.HOST_TO_DEVICE), 5),
+        ("copy", 0x1000, 8, int(HipMemcpyKind.HOST_TO_DEVICE), 5),
+    ]
+    assert metadata_calls == [(9, 5), (10, 5), (11, 5)]
+    assert block_calls == [
+        (7, 11, 9, 0x4000, 5, True, True),
+        (7, 22, 10, 0x4020, 5, True, True),
+        (7, 33, 11, 0x4040, 5, True, True),
+    ]
+    assert len(executor._prompt_priming_staging[7]) == 1
+
+    executor.finish_prompt_priming(7, stream=5, synchronize=False)
+    assert 7 not in executor._prompt_priming_staging
+    assert not any(call[0] == "sync" for call in runtime_calls)
+
+
 def test_nextn_executor_state_only_tail_skips_output_head(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -873,6 +967,10 @@ def _require_real_nextn(model: Path) -> None:
         pytest.skip(f"local GGUF fixture not found: {model}")
     if not _hip_available():
         pytest.skip("HIP runtime is not available")
+    try:
+        build_qwen35_gguf_nextn_tensor_map(load_gguf_index(model))
+    except MissingGGUFTensorError as exc:
+        pytest.skip(f"local GGUF fixture is not MTP-capable: {exc}")
     free_bytes, _ = get_hip_runtime().mem_get_info()
     if free_bytes < 3 * 1024**3:
         pytest.skip(f"GGUF NextN one-step gate needs 3 GiB free VRAM; only {free_bytes / 1024**3:.2f} GiB")

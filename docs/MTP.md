@@ -6,6 +6,35 @@
 > its staged safety and qualification gates pass. This document remains the
 > implementation/economics history and provider design reference.
 >
+> **Current packed-PARO review (2026-08-24):** the July N4 `16/214 = 7.48%`
+> acceptance result predates the August 16 grouped PARO GDN-head repair and is
+> superseded for current-route economics. On the repaired current packed model,
+> fast `decode_batched` and strict `c1_loop` produce identical D24 output IDs and
+> acceptance on the canonical ten-prompt suite (`10/10`, `240/240`, `79/151 =
+> 52.32%` draft acceptance). Fast is `1.35 ms/cycle` cheaper, but differs from AR
+> state at cycle 1 (`57/60` linear and `20/20` K/V records) and becomes
+> token-visible on the thinking-off `general_en_explain` D64 heldout exactly at
+> output index 24. Strict remains state-exact through sampled cycles and passes
+> the four-category D64 heldout packet `4/4` / `256/256`, although only at
+> `0.842x` AR. The shared proposer, not strict arithmetic, is now the first repair
+> target: it consumes pre-final-norm taps instead of the final normalized target
+> hidden used by vLLM/nano-vLLM, does not reseed from the selected target hidden
+> after verify/commit, and scores a private cap-65536 F16 head while target AR
+> uses a resident full-vocab W8A16 head. The cap causes `32/72` D24 rejections and
+> `24/30` general-Japanese rejections. Reuse the target hidden/head contract before
+> more verifier tuning; then qualify fast as a T2 production candidate rather
+> than calling it strict. Evidence:
+> [`current PARO fast/strict review`](../benchmarks/results/2026-08-24-w7900-paro-mtp-fast-strict-review.json).
+> The bounded repair spike and clean-slate decision gate are in
+> [`MTP-PARO.md`](MTP-PARO.md). The first explicit provider-contract spike now
+> captures/reseeds final-normalized target hidden and borrows the target W8A16
+> full-vocab scorer. It keeps D24 exact `240/240`, raises pooled acceptance
+> `52.32% -> 80.92%`, and moves total-time MTP/AR `0.8700x -> 0.9907x`; strict
+> D64 heldouts stay exact `256/256` and move `0.8339x -> 1.0220x`. This is a
+> retain signal for the stitched provider, not a default promotion: parity,
+> repeats, lifecycle, registered-profile, and fast-verifier T2 gates remain.
+> Evidence: [`provider spike`](../benchmarks/results/2026-08-24-w7900-paro-mtp-provider-contract-spike.json).
+>
 > Status (2026-06-13): shared ABI, local PARO+MTP-BF16 weights, persistent
 > native proposal, exact B=3 chain verification, verify graph replay, draft vocab
 > cap, and device expert dispatch are landed. The current W7900/gfx1100 35B-A3B
@@ -482,6 +511,17 @@ oracles are diagnostic bounds only.
 | A3 | AR fallback for zero-accept streaks | Some prompts or phases still lose even at B=1, especially `translation`: the full diagnostics run shows B=1/B=2/B=3 all stuck at `1.240` visible/cycle and ratios `0.807x` / `0.654x` / `0.586x`, with B=1 max zero streak `8`. The same artifact's prompt-mean oracle for B=1-or-AR fallback is `1.050x`, above the B1/B2/B3 prompt oracle (`1.046x`). A short AR fallback/skip-MTP window after repeated zero-accept cycles can improve the tail without changing kernel math or verifier row shape, but only if the target state is exact across the handoff horizon. | **Implemented 2026-06-12 as opt-in policy diagnostics, not a new default.** D32: `--ar-fallback-zero-streak 3 --ar-fallback-tokens 4` resumable windows stayed exact on `translation` but no-held at `0.761x` because proposer realignment made them slower than fixed B=1 translation controls around `0.807-0.812x`; `--ar-fallback-zero-streak 4 --ar-fallback-tokens 1 --ar-fallback-until-end` stayed exact `9/9`, fired only on `translation`, improved that prompt `0.812 -> 0.889x`, and improved same-session total-time speedup `1.019 -> 1.024x`, but prompt mean moved only `1.0284 -> 1.0289x`. D64 repeat: fixed B=1 and fallback-until-end both fail on `translation` at token index `34` (`AR=220`, `MTP=51`) even though fallback triggered (`55` fallback cycles). Retain opt-in code only; next work is a target commit/state audit for the D64 translation zero-accept trace before any longer-horizon default promotion. Artifacts: `benchmarks/results/2026-06-12-hipengine-mtp-ar-fallback-policy-diagnostic.json`, `benchmarks/results/2026-06-12-hipengine-mtp-b1-d64-ar-fallback-nohold.json`. |
 | A4 | Tree or rejection-boundary sibling retest | Full B=3 tree is exact but negative on the current stack. Lower wall does not by itself make tree overhead cheaper, so only revisit if histograms show first-rejection cases a sibling can recover. | Revisit only after the reduced-DAG/proposer wall path stabilizes. Prefer a chain-plus-one-sibling-at-first-rejection diagnostic before reopening full tree search; treat the possible `+0.3-0.5` visible tokens/cycle as a hypothesis, not a claim. Compare against chain at the same B and report added rows, acceptance lift, wall, and ratio. |
 | A5 | Relaxed speculative sampling | This is the known theoretical acceptance ceiling, but it changes the exact top-1 accept contract and needs distribution access from both models. | Out of scope for the exact-default sprint. Treat as explicit opt-in quality tier, never as a default speed row; it needs a separate accept/reject kernel and distribution-read cost model. |
+
+**gfx1151 dense update (2026-08-25):** Qwen3.8-27B `Q4_K_M` now passes a
+request-owned variable-budget transition gate: all nine directed B1/B2/B3
+edges, all accepted depths per budget, exact generated IDs/GPU acceptance, three
+budget-specific proposal/target buckets, deterministic repeat choices, and
+zero teardown. The first content-agnostic EMA scorer remains default-off and is
+rejected economically: **21.089 vs fixed B3 21.211 tok/s (-0.577%)** in the
+primary full suite and **20.832 vs 21.197 (-1.724%)** on matched repeat, with
+material code/general-English losses. Retain the transition seam, not the
+policy. Evidence:
+[`2026-08-25-gfx1151-qwen38-omlx-oi2-adaptive-rejected.json`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi2-adaptive-rejected.json).
 
 For B sweeps, use the ratio gate rather than intuition. The retained fixed B=1
 row is `1.617 / 14.134 = 0.1144` visible tokens/ms, just above AR at about

@@ -1,0 +1,219 @@
+{
+  "schema": "hipengine.paro_mtp_fast_strict_review.v1",
+  "date": "2026-08-24",
+  "status": "diagnostic_review_complete",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "purpose": "Re-evaluate current packed PARO MTP fast and strict verifier routes after the grouped PARO GDN head-layout repair, and separate verifier arithmetic from shared proposer defects.",
+  "hardware": {
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0"
+  },
+  "repo": {
+    "review_base_commit": "484639f11",
+    "grouped_head_fix_commit": "52973ce02",
+    "old_n4_evidence_predates_grouped_head_fix": true
+  },
+  "model": {
+    "path": "/models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16",
+    "quant": "w4_paro+mtp_bf16",
+    "kv_dtype": "bf16",
+    "target_blob_sha256": "a5c9100b17846ff0b2b507dc16dfc3ff1d622adbfc4782f30b4f1b9fac58cc60",
+    "mtp_sidecar_sha256": "556c607cce302d3c529f0a4a3d1439cd206eca01421dc7b8b370f9a37a23426f",
+    "vocab_size": 248320,
+    "default_draft_vocab_cap": 65536
+  },
+  "route_definitions": {
+    "fast": {
+      "chain_attn_mode": "decode_batched",
+      "graph_mode": "off",
+      "environment": {
+        "HIPENGINE_GDN_TLOOP_C1_EXACT": "0",
+        "HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS": "0",
+        "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT": "0",
+        "HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX": "0"
+      }
+    },
+    "strict": {
+      "chain_attn_mode": "c1_loop",
+      "graph_mode": "off",
+      "environment": {
+        "HIPENGINE_GDN_TLOOP_C1_EXACT": "1",
+        "HIPENGINE_LINEAR_OUT_C1_EXACT_ROWS": "1",
+        "HIPENGINE_QWEN35_MOE_C1_FORCE_SMALL_BATCH_SHARED_EXPERT": "1",
+        "HIPENGINE_MTP_DECODE_BATCHED_FULL_ATTN_EXACT_SUFFIX": "0"
+      }
+    }
+  },
+  "canonical_d24_raw": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "decode_tokens_per_prompt": 24,
+    "candidate_budget": 1,
+    "proposal_impl": "persistent_device",
+    "fast": {
+      "exact_prompts": 10,
+      "exact_ids": 240,
+      "observed_speedup_prompt_mean": 0.900969030039958,
+      "actual_speedup_prompt_mean": 0.8774609313339511,
+      "mtp_tok_s_prompt_mean": 97.9503352789424,
+      "cycle_wall_ms_prompt_mean": 15.381615768492063,
+      "verify_ms_prompt_mean": 13.981736441298077,
+      "proposal_update_ms_prompt_mean": 1.3789919417514096
+    },
+    "strict": {
+      "exact_prompts": 10,
+      "exact_ids": 240,
+      "observed_speedup_prompt_mean": 0.8290481431396893,
+      "actual_speedup_prompt_mean": 0.8113799390288469,
+      "mtp_tok_s_prompt_mean": 90.40458355051199,
+      "cycle_wall_ms_prompt_mean": 16.72740736873016,
+      "verify_ms_prompt_mean": 15.333249275905214,
+      "proposal_update_ms_prompt_mean": 1.3734449851991877
+    },
+    "fast_strict_semantics": {
+      "generated_ids_equal": true,
+      "accepted_length_traces_equal": true,
+      "accepted_drafts": 79,
+      "verify_cycles": 151,
+      "draft_acceptance": 0.5231788079470199,
+      "accepted_per_output": 0.32916666666666666,
+      "fast_wall_saving_ms_per_cycle": 1.345791600238097,
+      "fast_mtp_rate_advantage_percent": 8.346647296057007
+    },
+    "rejection_census": {
+      "rejected_drafts": 72,
+      "target_outside_cap": 32,
+      "target_outside_cap_share_of_rejections": 0.4444444444444444,
+      "in_cap_draft_top1_miss": 40,
+      "by_category": {
+        "code": {"accepted": 36, "cycles": 56, "accepted_per_output": 0.375, "cap_rejects": 4, "top1_misses": 16},
+        "general_en": {"accepted": 18, "cycles": 28, "accepted_per_output": 0.375, "cap_rejects": 2, "top1_misses": 8},
+        "general_ja": {"accepted": 8, "cycles": 38, "accepted_per_output": 0.16666666666666666, "cap_rejects": 24, "top1_misses": 6},
+        "mixed_ja_en": {"accepted": 17, "cycles": 29, "accepted_per_output": 0.3541666666666667, "cap_rejects": 2, "top1_misses": 10}
+      }
+    }
+  },
+  "full_vocab_f16_screen": {
+    "scope": "fast route, raw D24, three diagnostic prompts",
+    "general_en_explain": {
+      "cap_acceptance": 0.6428571428571429,
+      "full_acceptance": 0.7692307692307693,
+      "cap_actual_speedup": 0.852250114314381,
+      "full_actual_speedup": 0.8404936949552979,
+      "decision": "acceptance positive, economics negative"
+    },
+    "general_ja_plan": {
+      "cap_acceptance": 0.2777777777777778,
+      "full_acceptance": 0.4117647058823529,
+      "cap_actual_speedup": 0.7852708075471246,
+      "full_actual_speedup": 0.8271286916786338,
+      "decision": "acceptance and economics positive despite the F16 full-head cost"
+    },
+    "general_ja_explain": {
+      "cap_acceptance": 0.15,
+      "full_acceptance": 0.21052631578947367,
+      "cap_actual_speedup": 0.7281912917132637,
+      "full_actual_speedup": 0.7074046419450952,
+      "decision": "acceptance positive, economics negative"
+    },
+    "interpretation": "The cap is a real multilingual defect, but a universal full-vocabulary F16 head is still too expensive. The target already owns a full-vocabulary W8A16 head; sharing its fused scorer is the next candidate."
+  },
+  "state_audit_d24": {
+    "prompt": "general_en_explain",
+    "cycles_checked": [1, 2, 4, 8],
+    "fast": {
+      "status": "state_mismatch",
+      "first_mismatch_cycle": 1,
+      "first_mismatch": "layer-0 recurrent state, max_abs=9.5367431640625e-07",
+      "cycle1_linear_buffers_failed": 57,
+      "cycle1_linear_buffers_checked": 60,
+      "cycle1_kv_buffers_failed": 20,
+      "cycle1_kv_buffers_checked": 20,
+      "scratch_to_resident_commit_failures": 0,
+      "target_tokens_match_through_cycle": 8
+    },
+    "strict": {
+      "status": "passed",
+      "linear_failures_at_all_checked_cycles": 0,
+      "kv_failures_at_all_checked_cycles": 0,
+      "scratch_to_resident_commit_failures": 0,
+      "target_tokens_match_through_cycle": 8
+    }
+  },
+  "d64_thinking_off": {
+    "fast": {
+      "code_markdown_table": {
+        "exact": true,
+        "actual_speedup": 1.0495772745485608,
+        "draft_acceptance": 0.6410256410256411
+      },
+      "general_en_explain": {
+        "exact": false,
+        "first_mismatch_output_index": 24,
+        "ar_token": 13,
+        "fast_token": 4016
+      },
+      "decision": "stopped after the first binding heldout failure; the D24 exact-ID gate ends immediately before this visible divergence"
+    },
+    "strict": {
+      "heldout_prompts": 4,
+      "exact_prompts": 4,
+      "exact_ids": 256,
+      "actual_speedup_prompt_mean": 0.841786316681086,
+      "cycle_wall_ms_prompt_mean": 15.035196031614703,
+      "draft_acceptance_prompt_mean": 0.41296405145242354,
+      "accepted_drafts": 72,
+      "verify_cycles": 181,
+      "draft_acceptance_pooled": 0.39779005524861877,
+      "accepted_per_output": 0.28125,
+      "cap_rejects": 35,
+      "in_cap_top1_misses": 74
+    }
+  },
+  "implementation_review": {
+    "proposer_findings": [
+      "The persistent PARO proposer captures pre-final-norm last-layer BF16 target taps. nano-vLLM-amd@5d8f496da5e3 and upstream vLLM@470229c37efa feed Qwen3.5 MTP final output-normalized target hidden states.",
+      "After target verify/commit, PARO calls advance_with_previous_hidden and never consumes the selected target hidden/final row required by docs/MTP.md. The proposer is seeded from target hidden only during prompt prefill.",
+      "The proposer scores capped F16 lm_head rows, while target AR/verifier uses a full-vocabulary W8A16 head. This changes the draft decision surface, guarantees multilingual cap rejects, and duplicates roughly 1.017 GB of F16 head storage instead of sharing the target scorer."
+    ],
+    "verifier_findings": [
+      "Current grouped-head fast and strict D24 routes have identical target IDs and acceptance, so the old 7.48% strict acceptance artifact is stale rather than evidence that strict arithmetic destroys acceptance.",
+      "Strict c1 is a sound state/token oracle but is about 1.35 ms/cycle slower at D24.",
+      "Fast decode_batched is deterministic enough to stay token-equal through D24 and one D64 code prompt, but state differs immediately and one D64 heldout becomes token-visible at index 24. It requires a production-profile teacher-forced numerical/task gate; it is not a strict route."
+    ]
+  },
+  "decision": {
+    "redesign_entire_engine": false,
+    "keep": [
+      "shared TargetVerifyBatch/KVLiveSpans accept/commit infrastructure",
+      "strict c1-equivalent verifier fallback",
+      "fast decode_batched verifier as an explicit production-profile candidate only"
+    ],
+    "repair_order": [
+      "Fix PARO target-hidden lifecycle: final output-normalized prompt taps and selected target hidden reseed after every verify/commit.",
+      "Replace capped private F16 proposal scoring with the target's resident full-vocabulary W8A16 fused top-1 scorer; gate full category+heldout economics and target-token rank.",
+      "Add a registered PARO strict/production variant manifest instead of manual partial env combinations.",
+      "Build the PARO strict-teacher production numerical/task gate. Promote fast only if all calibrated thresholds, determinism, ownership, and task checks pass.",
+      "Only if the corrected target-hidden and matched-head proposer remains economics-negative should the project replace the stitched sidecar with an integrated target+NextN artifact."
+    ]
+  },
+  "commands": {
+    "canonical_template": "env <FAST_OR_STRICT_FLAGS> python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-render raw --decode-tokens 24 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode <decode_batched|c1_loop> --graph-mode off --acceptance-diagnostics",
+    "state_template": "env <FAST_OR_STRICT_FLAGS> python3 scripts/mtp_state_drift_audit.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-name general_en_explain --prompt-render raw --decode-tokens 24 --candidate-budget 1 --backend hip_gfx1100 --chain-attn-mode <decode_batched|c1_loop> --graph-mode off --compare-after-cycles 1,2,4,8 --max-cycles 8",
+    "d64_strict": "env <STRICT_FLAGS> python3 scripts/mtp_prompt_suite_economics.py --model /models/hipengine/Qwen3.6-35B-A3B-PARO-packed-MTP-BF16 --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --prompt-names code_markdown_table,general_en_explain,general_ja_explain,mixed_ja_en_review --prompt-render qwen_chat_thinking_off --decode-tokens 64 --candidate-budgets 1 --runs 1 --proposal-impl persistent_device --backend hip_gfx1100 --hip-arch gfx1100 --chain-attn-mode c1_loop --graph-mode off --acceptance-diagnostics"
+  },
+  "raw_sources": {
+    "/tmp/paro-review-canonical-fast.json": "aa4c0c969c4238887b8e203352365aea1ca5b35f201ea05b10633a8493ecb53e",
+    "/tmp/paro-review-canonical-strict.json": "182c011abbaa452cd7f096dd50bc5cc9a8b69b8abeaa3c408109c8c1ae93355a",
+    "/tmp/paro-review-fullvocab.json": "2a4fdc15f3d0d25c11083a888b5241fa83861c60eb070b2d9c778df319ab26ed",
+    "/tmp/paro-review-fast-state.json": "8feb2e8c51f0f16df89d9e1f50bdc5280243facd96c74cc70320e296e98f41ea",
+    "/tmp/paro-review-strict-state.json": "07a16186c5f680ac06e90a1503ac00b71a04e23974472bcbc468b64f97c6d500",
+    "/tmp/paro-review-d64-fast-raw/code_markdown_table/economics.json": "3bdac41c94470fa24c43dfaf128ba16e274207a3e5ebfcd1ec39e52dc35cc9f7",
+    "/tmp/paro-review-d64-fast-raw/general_en_explain/raw/mtp-economics-B1-run1.json": "1673656a0c73141d069d662d17f3184aa8825a75e8242f4a1c64d85d69c4cbd6",
+    "/tmp/paro-review-d64-strict.json": "a6f54ebc82a038f23974e62a707edbd581326d5417229f40aa1f53367aed8ac1"
+  }
+}

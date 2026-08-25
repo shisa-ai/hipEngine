@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_external_dms_w8192_final_gate",
+  "status": "qualified_32k_final",
+  "date": "2026-08-23",
+  "host": "zbook",
+  "hardware": "AMD Ryzen AI Max+ PRO 395 / Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "commit": "2fe31c5f4",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "candidate": {
+    "architecture": "external_linear_sidecar_v1",
+    "training_epochs": 20,
+    "sidecar_bytes": 655640,
+    "sidecar_sha256": "e52fc60a4e8f86f00719be107b44a73567795dfdd88dbbce15cf955409fcd764",
+    "metadata_bytes": 2090,
+    "metadata_sha256": "62c1f2d2c590aff2756796f01bddfaf1b602750ceada4b3ac23639902ff8edfe",
+    "prefill_selection_mode": "exact_budget",
+    "window_size": 8192,
+    "target_historical_compression_ratio": 2,
+    "policy_frozen": true
+  },
+  "firewall": {
+    "manifest": "/home/lhl/dms-artifacts/qwen38-external-v3-final/long-data-manifest-32k.json",
+    "manifest_sha256": "8c248fbfe847057c50f2d23e760a32d09ee0eaf7aaf39f287be71006c98fe926",
+    "split": "validation",
+    "source_disjoint_from_training_and_v2": true,
+    "single_use_consumed": true,
+    "post_final_policy_changes_allowed": false
+  },
+  "protocol": {
+    "prompt_tokens": 32768,
+    "decode_steps_per_category": 8,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "teacher": "dense BF16 KV exact-Q4 resident session",
+    "trajectory": "strict dense-teacher input tokens",
+    "max_kl": 0.05,
+    "min_top1_agreement": 0.9,
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen38_dms_integrated_quality_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /home/lhl/dms-artifacts/qwen38-external-v2-long/sidecar-longweights-ft20-exactbudget-w8192/dms_metadata.json --data-manifest /home/lhl/dms-artifacts/qwen38-external-v3-final/long-data-manifest-32k.json --prompt-tokens 32768 --prompt-split validation --categories code,general_en,general_ja,mixed_ja_en --decode-steps 8 --modes sidecar --backend hip_gfx1151 --max-kl 0.05 --min-top1 0.9 --output /home/lhl/dms-artifacts/qwen38-external-v3-final/quality-final-w8192-32k-d8.json --fail-on-fail"
+  },
+  "capacity": {
+    "all_categories_identical": true,
+    "actual_compression_ratio": 1.5996876372687783,
+    "live_token_rows": 1311296,
+    "logical_token_rows": 2097664,
+    "max_live_count": 20489,
+    "payload_bytes": 1342767104
+  },
+  "aggregate": {
+    "rows": 32,
+    "max_kl": 0.0034303524792759373,
+    "mean_kl": 0.00042958368199877715,
+    "p95_kl": 0.0016414144176791839,
+    "p99_kl": 0.002960138920561747,
+    "top1_agreement": 1.0,
+    "all_categories_passed": true
+  },
+  "categories": {
+    "code": {"max_kl": 0.0014187706747386542, "top1_agreement": 1.0, "passed": true},
+    "general_en": {"max_kl": 0.0034303524792759373, "top1_agreement": 1.0, "passed": true},
+    "general_ja": {"max_kl": 0.0005392874812552482, "top1_agreement": 1.0, "passed": true},
+    "mixed_ja_en": {"max_kl": 0.0019135345479398321, "top1_agreement": 1.0, "passed": true}
+  },
+  "timing": {
+    "load_seconds": 43.86746512600803,
+    "total_seconds": 1262.3272923240147
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "active_allocations": 0
+  },
+  "external_package": {
+    "path": "/home/lhl/dms-artifacts/qwen38-external-v3-final/qualified-w8192",
+    "qualification_sha256": "1c5a11b9ccd45cd7c99d4aa1ad2ccf730842d52c6f28b608a4258464fcf7aa39",
+    "quality_artifact_sha256": "4370abc221bc023a5a6e3d05feb373f9213c529d22448da9440b48fa0fd43c54"
+  },
+  "next": "Qualify the frozen policy on a fresh source-disjoint 128K semantic corpus, then close production lifecycle, sampled memory, and performance gates."
+}

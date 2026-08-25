@@ -1,0 +1,169 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_external_dms_integrated_long_capacity",
+  "date": "2026-08-23",
+  "status": "integrated_c1_capacity_passed_quality_and_performance_open",
+  "performance_claim": false,
+  "capacity_claim": "tracked_allocator_net_residency_only",
+  "promotion_eligible": false,
+  "decision": "retain_integrated_execution_and_memory_evidence_keep_default_off",
+  "hardware": {
+    "host": "zbook",
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "memory_model": "unified APU memory",
+    "host_lane": "independent; do not compare absolute rates with gfx1100/W7900"
+  },
+  "model": {
+    "name": "Qwen3.8-27B",
+    "format": "GGUF",
+    "quant": "Q4_K_M",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "context_length": 262144
+  },
+  "sidecar": {
+    "decision_source": "external_linear_sidecar_v1",
+    "target_eligible_history_cr": 2,
+    "window_size": 256,
+    "metadata_path": "/home/lhl/dms-artifacts/qwen38-external-v1/sidecar-cr2-qualified-candidate/dms_metadata.json",
+    "metadata_sha256": "7e1ea739617047da7d687827eca121c2c969fbaf899a76ecc871b72e39b8d225",
+    "artifact_fingerprint": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "retrofit_fingerprint": "439f9e614083ab837da0e3614d8ef97c14c6fcbe40f0859942bb6fd8d06b8acd"
+  },
+  "protocol": {
+    "owner": "Qwen35GGUFResidentSession explicit c1 DMS route",
+    "prefill": "temporary dense BF16 full-attention KV; exact-stage GPU decisions; direct device compact pack; dense owner released before decode",
+    "decode": "GPU external-linear decision, direct compact append, bounded split-K compact attention; no dense KV mirror",
+    "prompt_source": "deterministic repetition of the sorted 40-sequence non-benchmark training/validation data-manifest token stream",
+    "prompt_source_limitation": "capacity stress input only; it is not a broad long-context semantic quality corpus",
+    "memory_primary_scope": "hipEngine tracked allocator snapshots",
+    "memory_missing_scope": "no sampled process/HIP whole-device high-water in these rows",
+    "timing_scope": "single diagnostic run; no no-DMS comparator and therefore no performance claim",
+    "decode_steps": 2,
+    "finite_logits_required": true,
+    "exact_teardown_required": true
+  },
+  "rows": [
+    {
+      "label": "128K prompt plus 2 compact decode steps",
+      "source_commit": "aaeb4bd74c4722920a600479ea6d70eccd242866",
+      "working_tree_clean": true,
+      "prompt_tokens": 131072,
+      "final_context_tokens": 131074,
+      "prompt_token_ids_sha256": "e35e2470ed873d302f0d032ca7bdc20052955816c900e051f0cb9bfba9e4f74c",
+      "logical_layer_head_rows": 8388736,
+      "live_layer_head_rows": 1273955,
+      "mean_live_count": 19905.546875,
+      "max_live_count": 55557,
+      "realized_live_compression_ratio": 6.584797736183774,
+      "logical_live_payload_bytes": 1304529920,
+      "logical_live_payload_gib": 1.2149381637573242,
+      "physical_extent_capacity_slots": 3555776,
+      "physical_plane_capacity": {
+        "k_bytes": 1820557312,
+        "v_bytes": 1820557312,
+        "positions_bytes": 14223104,
+        "eviction_bytes": 3555776,
+        "total_bytes": 3658893504,
+        "total_gib": 3.4076101183891296,
+        "note": "physical buffers retain uniform per-layer max-head slack after logical shrink"
+      },
+      "released_logical_provisional_slots": 2281667,
+      "tracked_memory": {
+        "dense_prefill_owner_bytes": 28840579916,
+        "post_pack_compact_owner_bytes": 23909609308,
+        "net_resident_drop_bytes": 4930970608,
+        "net_resident_drop_gib": 4.5923242419958115,
+        "peak_allocated_bytes": 32527462364,
+        "peak_allocated_gib": 30.29355999454856,
+        "after_close_bytes": 0
+      },
+      "diagnostic_timing": {
+        "construct_seconds": 51.52826281101443,
+        "prefill_seconds": 1248.1739821679948,
+        "prefill_tok_s": 105.01100156913758,
+        "decode_step_seconds": [0.37475898300181143, 0.400834075990133],
+        "decode_step_mean_seconds": 0.3877965294959722,
+        "total_seconds": 1300.5784136760049
+      },
+      "decode": {
+        "input_ids": [21, 20],
+        "output_ids": [20, 15],
+        "finite_logits": [true, true]
+      },
+      "raw_artifact": "/home/lhl/dms-artifacts/qwen38-external-v1/integrated-long-128k-d2.json",
+      "raw_artifact_sha256": "fe316cfa281cfa0b0352d2ba8260a5c3932bbf437f19debe67b61dc143d21fe1",
+      "exact_command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen38_dms_integrated_long.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /home/lhl/dms-artifacts/qwen38-external-v1/sidecar-cr2-qualified-candidate/dms_metadata.json --data-manifest /home/lhl/dms-artifacts/qwen38-external-v1/data_manifest.json --prompt-tokens 131072 --decode-steps 2 --backend hip_gfx1151 --output /home/lhl/dms-artifacts/qwen38-external-v1/integrated-long-128k-d2.json"
+    },
+    {
+      "label": "exact-limit 256K context: 262142 prompt plus 2 compact decode steps",
+      "source_commit": "7d182020c418755ffe96edcce00351f93668c8a4",
+      "working_tree_clean": true,
+      "prompt_tokens": 262142,
+      "final_context_tokens": 262144,
+      "prompt_token_ids_sha256": "f833eed9dc3329129090d58fe7046cb1679dce5d16df35f6ec4371681bd5ae50",
+      "logical_layer_head_rows": 16777216,
+      "live_layer_head_rows": 2323745,
+      "mean_live_count": 36308.515625,
+      "max_live_count": 133221,
+      "realized_live_compression_ratio": 7.219904077254604,
+      "logical_live_payload_bytes": 2379514880,
+      "logical_live_payload_gib": 2.2160959243774414,
+      "physical_extent_capacity_slots": 8526272,
+      "physical_plane_capacity": {
+        "k_bytes": 4365451264,
+        "v_bytes": 4365451264,
+        "positions_bytes": 34105088,
+        "eviction_bytes": 8526272,
+        "total_bytes": 8773533888,
+        "total_gib": 8.17099016904831,
+        "note": "physical buffers retain uniform per-layer max-head slack after logical shrink"
+      },
+      "released_logical_provisional_slots": 6202348,
+      "tracked_memory": {
+        "dense_prefill_owner_bytes": 37704248968,
+        "post_pack_compact_owner_bytes": 29314761368,
+        "net_resident_drop_bytes": 8389487600,
+        "net_resident_drop_gib": 7.813319191336632,
+        "peak_allocated_bytes": 46516257400,
+        "peak_allocated_gib": 43.321640603244305,
+        "after_close_bytes": 0
+      },
+      "diagnostic_timing": {
+        "construct_seconds": 51.668904221005505,
+        "prefill_seconds": 4344.310167949006,
+        "prefill_tok_s": 60.3414558044229,
+        "decode_step_seconds": [0.5532474770152476, 0.5496902129962109],
+        "decode_step_mean_seconds": 0.5514688450057292,
+        "total_seconds": 4397.186690436007
+      },
+      "decode": {
+        "input_ids": [246825, 108592],
+        "output_ids": [108592, 15303],
+        "finite_logits": [true, true]
+      },
+      "raw_artifact": "/home/lhl/dms-artifacts/qwen38-external-v1/integrated-long-256k-d2.json",
+      "raw_artifact_sha256": "55ed515d73bee49efc068168799c6f94a58be5a7cb72114b637b4d1616b0437f",
+      "exact_command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen38_dms_integrated_long.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /home/lhl/dms-artifacts/qwen38-external-v1/sidecar-cr2-qualified-candidate/dms_metadata.json --data-manifest /home/lhl/dms-artifacts/qwen38-external-v1/data_manifest.json --prompt-tokens 262142 --decode-steps 2 --backend hip_gfx1151 --output /home/lhl/dms-artifacts/qwen38-external-v1/integrated-long-256k-d2.json"
+    }
+  ],
+  "gates": {
+    "integrated_c1_full_model_execution": true,
+    "no_dense_decode_shadow": true,
+    "allocator_visible_net_resident_drop": true,
+    "finite_compact_decode": true,
+    "exact_final_tracked_drain": true,
+    "same_host_dense_and_no_evict_controls": false,
+    "long_context_dense_teacher_quality": false,
+    "sampled_process_or_device_peak": false,
+    "performance_comparison": false,
+    "cN_lifecycle_soak": false
+  },
+  "interpretation": {
+    "retained_finding": "The explicit c1 route executes and reclaims at 128K and the exact 256K model limit, removes dense KV before decode, and lowers tracked resident allocation after compact pack.",
+    "quality_blocker": "Realized long-context compression is 6.585x/7.220x rather than the CR2 calibration target. The candidate was calibrated on 768-token sequences; broad 8K/32K/128K dense-teacher quality is mandatory before promotion.",
+    "memory_blocker": "Logical shrink does not physically resize uniform max-head device buffers, leaving 2.79x/3.67x capacity-to-live slot slack. Same-host dense/no-evict controls and sampled peaks are still required for full P7 closure.",
+    "performance_blocker": "Single diagnostic timings lack a true no-DMS baseline, repetitions, profiler attribution, and equivalent quality. They support no speed claim."
+  }
+}

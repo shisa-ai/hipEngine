@@ -118,12 +118,12 @@ __device__ inline void dense_wmma_load_bf16_operands(
                      : dense_wmma_zero_bf16x16();
 }
 
-template <typename scalar_t, bool kFuseResidual>
+template <typename scalar_t, typename out_t, bool kFuseResidual>
 __global__ void dense_gemv_out_kernel(
     const scalar_t* __restrict__ x,
     const scalar_t* __restrict__ weight,
     const scalar_t* __restrict__ residual,
-    scalar_t* __restrict__ out,
+    out_t* __restrict__ out,
     int64_t rows,
     int64_t in_features,
     int64_t out_features) {
@@ -163,12 +163,12 @@ __global__ void dense_gemv_out_kernel(
   }
   if (tid == 0) {
     const int64_t out_index = row * out_features + out_col;
-    const scalar_t projected = float_to_scalar<scalar_t>(sdata[0]);
     if constexpr (kFuseResidual) {
-      out[out_index] = float_to_scalar<scalar_t>(
+      const scalar_t projected = float_to_scalar<scalar_t>(sdata[0]);
+      out[out_index] = float_to_scalar<out_t>(
           scalar_to_float(projected) + scalar_to_float(residual[out_index]));
     } else {
-      out[out_index] = projected;
+      out[out_index] = float_to_scalar<out_t>(sdata[0]);
     }
   }
 }
@@ -1119,7 +1119,35 @@ extern "C" int hipengine_dense_gemv_out_bf16(
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
-      (dense_gemv_out_kernel<uint16_t, false>),
+      (dense_gemv_out_kernel<uint16_t, uint16_t, false>),
+      dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      weight,
+      nullptr,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_gemv_bf16_f32_out(
+    const uint16_t* x,
+    const uint16_t* weight,
+    float* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (rows <= 0 || in_features <= 0 || out_features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (dense_gemv_out_kernel<uint16_t, float, false>),
       dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows)),
       dim3(static_cast<unsigned int>(threads)),
       0,
@@ -1149,7 +1177,7 @@ extern "C" int hipengine_dense_gemv_out_bf16_residual_bf16_out(
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
-      (dense_gemv_out_kernel<uint16_t, true>),
+      (dense_gemv_out_kernel<uint16_t, uint16_t, true>),
       dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows)),
       dim3(static_cast<unsigned int>(threads)),
       0,
@@ -1449,7 +1477,7 @@ extern "C" int hipengine_dense_gemv_out_fp16(
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
-      (dense_gemv_out_kernel<half_t, false>),
+      (dense_gemv_out_kernel<half_t, half_t, false>),
       dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows)),
       dim3(static_cast<unsigned int>(threads)),
       0,
@@ -1477,7 +1505,7 @@ extern "C" int hipengine_dense_gemv_out_f32(
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
-      (dense_gemv_out_kernel<float, false>),
+      (dense_gemv_out_kernel<float, float, false>),
       dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows)),
       dim3(static_cast<unsigned int>(threads)),
       0,

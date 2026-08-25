@@ -1,0 +1,1731 @@
+{
+  "schema_version": 1,
+  "kind": "w7900_qwen36_27b_current_default_publication",
+  "created_at": "2026-08-23T10:15:00+00:00",
+  "status": "accepted_current_snapshot",
+  "performance_claim": true,
+  "performance_claim_class": "current_snapshot",
+  "performance_claim_scope": "W7900/gfx1100 Qwen3.6-27B Q4_K_M/BF16-KV current-default p512/p1K/p4K resident prefill+decode and full ten-prompt natural25 true-AR/MTP B1-B3",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "size_bytes": 17106773120,
+    "architecture": "qwen35",
+    "file_type": "MOSTLY_Q4_K_M",
+    "tensor_inventory_sha256": "3eb93d2971262656afe8aef5e145ace5fbc914b4d8b16f4b77c170e3d98b7e50",
+    "sampled_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+      "size_bytes": 17106773120,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552862272,
+        17105724544
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "hardware": {
+    "host_name": "epyc",
+    "device_name": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "hip_visible_devices": "0"
+  },
+  "software": {
+    "hipengine_commit": "0235f4cadab3a44cfb745100ad25abdbb4d571ce",
+    "git_branch": "main",
+    "clean": true,
+    "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n"
+  },
+  "execution_contract": {
+    "profile": "migration_default",
+    "kv_dtype": "bf16",
+    "single_request_transport": "stateful PM4 graph replay",
+    "mtp_target_verify_mode": "native",
+    "note": "The public profile selector remains in migration; this snapshot records the omitted-selector shipped default and exact generated-ID gates."
+  },
+  "single_request": {
+    "protocol": "one discarded warmup plus three measured persistent-session resets per shape; repeated token 9707; bulk prefill; state-bound one-step graph replay; cached-only build",
+    "rows": {
+      "512": {
+        "prefill_tok_s": {
+          "samples": [
+            879.7363621916968,
+            875.3635014193967,
+            871.4004105912888
+          ],
+          "median": 875.3635014193967,
+          "p95": 875.3635014193967,
+          "min": 871.4004105912888,
+          "max": 879.7363621916968,
+          "stdev": 4.169654049000898,
+          "stdev_pct_of_median": 0.47633400778531765
+        },
+        "decode_tok_s": {
+          "samples": [
+            28.78752852099135,
+            28.680946156084143,
+            28.604482657532618
+          ],
+          "median": 28.680946156084143,
+          "p95": 28.680946156084143,
+          "min": 28.604482657532618,
+          "max": 28.78752852099135,
+          "stdev": 0.09193499084435137,
+          "stdev_pct_of_median": 0.3205437866102232
+        },
+        "tracked_peak_allocated_gib": {
+          "samples": [
+            15.587157256901264,
+            15.587157256901264,
+            15.587157256901264
+          ],
+          "median": 15.587157256901264,
+          "p95": 15.587157256901264,
+          "min": 15.587157256901264,
+          "max": 15.587157256901264,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "hip_used_peak_sampled_gib": {
+          "samples": [
+            15.71435546875,
+            15.71630859375,
+            15.71630859375
+          ],
+          "median": 15.71630859375,
+          "p95": 15.71630859375,
+          "min": 15.71435546875,
+          "max": 15.71630859375,
+          "stdev": 0.0011276372445109878,
+          "stdev_pct_of_median": 0.007174949752255578
+        },
+        "finite_final_logits_all": true,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "command": "/home/lhl/hipEngine-main/scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-w7900-public-refresh/logs/hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-w7900-public-refresh/27b/ar-512.json",
+        "provenance": {
+          "kind": "hipengine_artifact_provenance",
+          "schema_version": 2,
+          "collected_at": "2026-08-23T09:52:32.071706+00:00",
+          "host_name": "epyc",
+          "repo_root": "/home/lhl/hipEngine-main",
+          "hipengine_commit": "0235f4cadab3a44cfb745100ad25abdbb4d571ce",
+          "git_branch": "main",
+          "staged_dirty": false,
+          "unstaged_dirty": false,
+          "untracked_dirty": false,
+          "untracked_count": 0,
+          "dirty": false,
+          "configured_backend": "auto",
+          "resolved_backend": "hip_gfx1100",
+          "target_arch": "gfx1100",
+          "device_name": "AMD Radeon Pro W7900",
+          "model_path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+          "model_revision": null,
+          "model_fingerprint": {
+            "algorithm": "sha256-sampled-v1",
+            "value": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+            "size_bytes": 17106773120,
+            "sampled_bytes": 3145728,
+            "sample_offsets": [
+              0,
+              8552862272,
+              17105724544
+            ],
+            "exists": true,
+            "path_type": "file"
+          },
+          "quant": "gguf_q4_k_m",
+          "kv_dtype": "bf16",
+          "command": [
+            "/home/lhl/hipEngine-main/scripts/qwen35_gguf_bench.py",
+            "--model",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "--quant",
+            "gguf_q4_k_m",
+            "--token-id",
+            "9707",
+            "--prompt-length",
+            "512",
+            "--decode-tokens",
+            "128",
+            "--warmup-decode-tokens",
+            "1",
+            "--warmup-runs",
+            "1",
+            "--measured-runs",
+            "3",
+            "--persistent-session",
+            "--force-bulk-prefill",
+            "--bulk-prefill-attention-mode",
+            "bulk",
+            "--use-wmma-prefill",
+            "--use-gemv-decode",
+            "--graph-replay-decode",
+            "--graph-steps-per-replay",
+            "1",
+            "--compiler-version-file",
+            "/tmp/hipengine-w7900-public-refresh/logs/hipcc-version-713.txt",
+            "--require-cached-build",
+            "--json",
+            "/tmp/hipengine-w7900-public-refresh/27b/ar-512.json"
+          ],
+          "environment": {
+            "HIPENGINE_BACKEND": null,
+            "HIPENGINE_HIP_ARCH": "gfx1100",
+            "HIPENGINE_GGUF_DECODE_REPACK": "1",
+            "HIPENGINE_GGUF_MOE_GRAPH": null
+          },
+          "rocm_version": "HIP version: 7.15.0-0000000",
+          "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+          "build_profile": "qwen35_gguf_resident_bench",
+          "timing_protocol": "resident GGUF session; prefill and decode timed separately; graph capture excluded from decode throughput and reported separately",
+          "warmups": 1,
+          "repetitions": 3,
+          "profiler": {
+            "enabled": false,
+            "reason": "host wall and residency benchmark"
+          }
+        },
+        "source_sha256": "2c15859644d06dfac1421c6ee4bd737c509ff82f39daa58aec2099fbedefb6b9"
+      },
+      "1024": {
+        "prefill_tok_s": {
+          "samples": [
+            918.4286167763178,
+            911.6582403307249,
+            907.111099062075
+          ],
+          "median": 911.6582403307249,
+          "p95": 911.6582403307249,
+          "min": 907.111099062075,
+          "max": 918.4286167763178,
+          "stdev": 5.695037286156778,
+          "stdev_pct_of_median": 0.6246899368880572
+        },
+        "decode_tok_s": {
+          "samples": [
+            29.479144142890448,
+            29.383260074614924,
+            29.330470011180868
+          ],
+          "median": 29.383260074614924,
+          "p95": 29.383260074614924,
+          "min": 29.330470011180868,
+          "max": 29.479144142890448,
+          "stdev": 0.07537079760096577,
+          "stdev_pct_of_median": 0.25650930975518554
+        },
+        "tracked_peak_allocated_gib": {
+          "samples": [
+            15.681153304874897,
+            15.681153304874897,
+            15.681153304874897
+          ],
+          "median": 15.681153304874897,
+          "p95": 15.681153304874897,
+          "min": 15.681153304874897,
+          "max": 15.681153304874897,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "hip_used_peak_sampled_gib": {
+          "samples": [
+            15.8115234375,
+            15.8134765625,
+            15.8134765625
+          ],
+          "median": 15.8134765625,
+          "p95": 15.8134765625,
+          "min": 15.8115234375,
+          "max": 15.8134765625,
+          "stdev": 0.0011276372445109878,
+          "stdev_pct_of_median": 0.007130862337919172
+        },
+        "finite_final_logits_all": true,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "command": "/home/lhl/hipEngine-main/scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 1024 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-w7900-public-refresh/logs/hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-w7900-public-refresh/27b/ar-1024.json",
+        "provenance": {
+          "kind": "hipengine_artifact_provenance",
+          "schema_version": 2,
+          "collected_at": "2026-08-23T09:54:19.610523+00:00",
+          "host_name": "epyc",
+          "repo_root": "/home/lhl/hipEngine-main",
+          "hipengine_commit": "0235f4cadab3a44cfb745100ad25abdbb4d571ce",
+          "git_branch": "main",
+          "staged_dirty": false,
+          "unstaged_dirty": false,
+          "untracked_dirty": false,
+          "untracked_count": 0,
+          "dirty": false,
+          "configured_backend": "auto",
+          "resolved_backend": "hip_gfx1100",
+          "target_arch": "gfx1100",
+          "device_name": "AMD Radeon Pro W7900",
+          "model_path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+          "model_revision": null,
+          "model_fingerprint": {
+            "algorithm": "sha256-sampled-v1",
+            "value": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+            "size_bytes": 17106773120,
+            "sampled_bytes": 3145728,
+            "sample_offsets": [
+              0,
+              8552862272,
+              17105724544
+            ],
+            "exists": true,
+            "path_type": "file"
+          },
+          "quant": "gguf_q4_k_m",
+          "kv_dtype": "bf16",
+          "command": [
+            "/home/lhl/hipEngine-main/scripts/qwen35_gguf_bench.py",
+            "--model",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "--quant",
+            "gguf_q4_k_m",
+            "--token-id",
+            "9707",
+            "--prompt-length",
+            "1024",
+            "--decode-tokens",
+            "128",
+            "--warmup-decode-tokens",
+            "1",
+            "--warmup-runs",
+            "1",
+            "--measured-runs",
+            "3",
+            "--persistent-session",
+            "--force-bulk-prefill",
+            "--bulk-prefill-attention-mode",
+            "bulk",
+            "--use-wmma-prefill",
+            "--use-gemv-decode",
+            "--graph-replay-decode",
+            "--graph-steps-per-replay",
+            "1",
+            "--compiler-version-file",
+            "/tmp/hipengine-w7900-public-refresh/logs/hipcc-version-713.txt",
+            "--require-cached-build",
+            "--json",
+            "/tmp/hipengine-w7900-public-refresh/27b/ar-1024.json"
+          ],
+          "environment": {
+            "HIPENGINE_BACKEND": null,
+            "HIPENGINE_HIP_ARCH": "gfx1100",
+            "HIPENGINE_GGUF_DECODE_REPACK": "1",
+            "HIPENGINE_GGUF_MOE_GRAPH": null
+          },
+          "rocm_version": "HIP version: 7.15.0-0000000",
+          "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+          "build_profile": "qwen35_gguf_resident_bench",
+          "timing_protocol": "resident GGUF session; prefill and decode timed separately; graph capture excluded from decode throughput and reported separately",
+          "warmups": 1,
+          "repetitions": 3,
+          "profiler": {
+            "enabled": false,
+            "reason": "host wall and residency benchmark"
+          }
+        },
+        "source_sha256": "603cd1d532892e969559c17388fbe66ebcbbdb0b60b7761f8e31821fbf7bbad4"
+      },
+      "4096": {
+        "prefill_tok_s": {
+          "samples": [
+            885.1270911259712,
+            878.7213756236617,
+            872.2427481792839
+          ],
+          "median": 878.7213756236617,
+          "p95": 878.7213756236617,
+          "min": 872.2427481792839,
+          "max": 885.1270911259712,
+          "stdev": 6.442205857047002,
+          "stdev_pct_of_median": 0.733134078191136
+        },
+        "decode_tok_s": {
+          "samples": [
+            26.879029830485074,
+            26.747150135133747,
+            26.62498847468622
+          ],
+          "median": 26.747150135133747,
+          "p95": 26.747150135133747,
+          "min": 26.62498847468622,
+          "max": 26.879029830485074,
+          "stdev": 0.12705165339693922,
+          "stdev_pct_of_median": 0.4750100580997988
+        },
+        "tracked_peak_allocated_gib": {
+          "samples": [
+            16.20356035977602,
+            16.20356035977602,
+            16.20356035977602
+          ],
+          "median": 16.20356035977602,
+          "p95": 16.20356035977602,
+          "min": 16.20356035977602,
+          "max": 16.20356035977602,
+          "stdev": 0.0,
+          "stdev_pct_of_median": 0.0
+        },
+        "hip_used_peak_sampled_gib": {
+          "samples": [
+            16.328125,
+            16.330078125,
+            16.330078125
+          ],
+          "median": 16.330078125,
+          "p95": 16.330078125,
+          "min": 16.328125,
+          "max": 16.330078125,
+          "stdev": 0.0011276372445109878,
+          "stdev_pct_of_median": 0.006905277708284006
+        },
+        "finite_final_logits_all": true,
+        "final_token_ids": [
+          9707,
+          9707,
+          9707
+        ],
+        "command": "/home/lhl/hipEngine-main/scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --token-id 9707 --prompt-length 4096 --decode-tokens 128 --warmup-decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --graph-replay-decode --graph-steps-per-replay 1 --compiler-version-file /tmp/hipengine-w7900-public-refresh/logs/hipcc-version-713.txt --require-cached-build --json /tmp/hipengine-w7900-public-refresh/27b/ar-4096.json",
+        "provenance": {
+          "kind": "hipengine_artifact_provenance",
+          "schema_version": 2,
+          "collected_at": "2026-08-23T09:56:23.276398+00:00",
+          "host_name": "epyc",
+          "repo_root": "/home/lhl/hipEngine-main",
+          "hipengine_commit": "0235f4cadab3a44cfb745100ad25abdbb4d571ce",
+          "git_branch": "main",
+          "staged_dirty": false,
+          "unstaged_dirty": false,
+          "untracked_dirty": false,
+          "untracked_count": 0,
+          "dirty": false,
+          "configured_backend": "auto",
+          "resolved_backend": "hip_gfx1100",
+          "target_arch": "gfx1100",
+          "device_name": "AMD Radeon Pro W7900",
+          "model_path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+          "model_revision": null,
+          "model_fingerprint": {
+            "algorithm": "sha256-sampled-v1",
+            "value": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+            "size_bytes": 17106773120,
+            "sampled_bytes": 3145728,
+            "sample_offsets": [
+              0,
+              8552862272,
+              17105724544
+            ],
+            "exists": true,
+            "path_type": "file"
+          },
+          "quant": "gguf_q4_k_m",
+          "kv_dtype": "bf16",
+          "command": [
+            "/home/lhl/hipEngine-main/scripts/qwen35_gguf_bench.py",
+            "--model",
+            "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+            "--quant",
+            "gguf_q4_k_m",
+            "--token-id",
+            "9707",
+            "--prompt-length",
+            "4096",
+            "--decode-tokens",
+            "128",
+            "--warmup-decode-tokens",
+            "1",
+            "--warmup-runs",
+            "1",
+            "--measured-runs",
+            "3",
+            "--persistent-session",
+            "--force-bulk-prefill",
+            "--bulk-prefill-attention-mode",
+            "bulk",
+            "--use-wmma-prefill",
+            "--use-gemv-decode",
+            "--graph-replay-decode",
+            "--graph-steps-per-replay",
+            "1",
+            "--compiler-version-file",
+            "/tmp/hipengine-w7900-public-refresh/logs/hipcc-version-713.txt",
+            "--require-cached-build",
+            "--json",
+            "/tmp/hipengine-w7900-public-refresh/27b/ar-4096.json"
+          ],
+          "environment": {
+            "HIPENGINE_BACKEND": null,
+            "HIPENGINE_HIP_ARCH": "gfx1100",
+            "HIPENGINE_GGUF_DECODE_REPACK": "1",
+            "HIPENGINE_GGUF_MOE_GRAPH": null
+          },
+          "rocm_version": "HIP version: 7.15.0-0000000",
+          "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+          "build_profile": "qwen35_gguf_resident_bench",
+          "timing_protocol": "resident GGUF session; prefill and decode timed separately; graph capture excluded from decode throughput and reported separately",
+          "warmups": 1,
+          "repetitions": 3,
+          "profiler": {
+            "enabled": false,
+            "reason": "host wall and residency benchmark"
+          }
+        },
+        "source_sha256": "36f044f2f06700e52d4ce5a89e271638e53bd5cda1942cd70ec8b93ce6252b49"
+      }
+    }
+  },
+  "natural25": {
+    "status": "complete_exact",
+    "speed_claim_eligible": true,
+    "performance_claim_source": false,
+    "workload": {
+      "prompt_file": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "prompt_count": 10,
+      "prompt_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review"
+      ],
+      "categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "heldout_ids": [
+        "code_markdown_table",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review"
+      ],
+      "train_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "general_en_plan",
+        "general_ja_plan",
+        "mixed_ja_en_translate"
+      ],
+      "prompt_render": "Qwen chat template; reasoning off",
+      "max_new_tokens_visible": 25,
+      "timed_decode_transitions": 24,
+      "candidate_budgets": [
+        1,
+        2,
+        3
+      ],
+      "target_verify_mode": "native",
+      "runs": 1,
+      "warmup": true,
+      "max_sequence_length": 107,
+      "sampling": {
+        "temperature": 0.0,
+        "top_k": 1,
+        "top_p": 1.0,
+        "min_p": 0.0,
+        "seed": 12345
+      }
+    },
+    "timing_contract": {
+      "first_visible_output": "target prefill sample; excluded from decode wall",
+      "decode_numerator": "max_new_tokens - 1 timed transitions",
+      "prefill": "excluded from AR and MTP decode wall",
+      "mtp_complete_wall": "proposal + target_verify + target_commit_finish + scheduler_accept_replay_host_residual",
+      "profile_markers": false,
+      "roctx_marker_prefix": "qwen36_dense_mtp_"
+    },
+    "correctness": {
+      "all_exact_greedy": true,
+      "all_gpu_accept_match_cpu": true
+    },
+    "summary": {
+      "true_ar": {
+        "full": {
+          "prompt_count": 10,
+          "request_count": 10,
+          "prompt_ids": [
+            "code_merge_intervals",
+            "code_topological_sort",
+            "code_lru_cache",
+            "code_markdown_table",
+            "general_en_plan",
+            "general_en_explain",
+            "general_ja_plan",
+            "general_ja_explain",
+            "mixed_ja_en_translate",
+            "mixed_ja_en_review"
+          ],
+          "categories": [
+            "code",
+            "general_en",
+            "general_ja",
+            "mixed_ja_en"
+          ],
+          "visible_outputs": 250,
+          "timed_transitions": 240,
+          "decode_seconds": 8.147509835194796,
+          "decode_tok_s_weighted": 29.45685305751606,
+          "request_wall_seconds": 23.860991226043552,
+          "client_transition_tok_s": 10.058257753267485,
+          "accepted_draft_tokens": 0,
+          "proposed_draft_tokens": 0,
+          "draft_acceptance": null,
+          "accepted_per_output": 0.0,
+          "accepted_per_transition": 0.0,
+          "cycles": 0,
+          "target_passes": 0,
+          "visible_transitions_per_cycle": null,
+          "target_forward_rows": 240,
+          "stage_seconds": {
+            "autoregressive_step": 8.147509835194796
+          },
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_reconciled": true
+        },
+        "train": {
+          "prompt_count": 6,
+          "request_count": 6,
+          "prompt_ids": [
+            "code_merge_intervals",
+            "code_topological_sort",
+            "code_lru_cache",
+            "general_en_plan",
+            "general_ja_plan",
+            "mixed_ja_en_translate"
+          ],
+          "categories": [
+            "code",
+            "general_en",
+            "general_ja",
+            "mixed_ja_en"
+          ],
+          "visible_outputs": 150,
+          "timed_transitions": 144,
+          "decode_seconds": 4.8798477770760655,
+          "decode_tok_s_weighted": 29.509117205758972,
+          "request_wall_seconds": 13.954292953480035,
+          "client_transition_tok_s": 10.319404965916823,
+          "accepted_draft_tokens": 0,
+          "proposed_draft_tokens": 0,
+          "draft_acceptance": null,
+          "accepted_per_output": 0.0,
+          "accepted_per_transition": 0.0,
+          "cycles": 0,
+          "target_passes": 0,
+          "visible_transitions_per_cycle": null,
+          "target_forward_rows": 144,
+          "stage_seconds": {
+            "autoregressive_step": 4.8798477770760655
+          },
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_reconciled": true
+        },
+        "heldout": {
+          "prompt_count": 4,
+          "request_count": 4,
+          "prompt_ids": [
+            "code_markdown_table",
+            "general_en_explain",
+            "general_ja_explain",
+            "mixed_ja_en_review"
+          ],
+          "categories": [
+            "code",
+            "general_en",
+            "general_ja",
+            "mixed_ja_en"
+          ],
+          "visible_outputs": 100,
+          "timed_transitions": 96,
+          "decode_seconds": 3.267662058118731,
+          "decode_tok_s_weighted": 29.378803037933928,
+          "request_wall_seconds": 9.906698272563517,
+          "client_transition_tok_s": 9.69041322938752,
+          "accepted_draft_tokens": 0,
+          "proposed_draft_tokens": 0,
+          "draft_acceptance": null,
+          "accepted_per_output": 0.0,
+          "accepted_per_transition": 0.0,
+          "cycles": 0,
+          "target_passes": 0,
+          "visible_transitions_per_cycle": null,
+          "target_forward_rows": 96,
+          "stage_seconds": {
+            "autoregressive_step": 3.267662058118731
+          },
+          "stage_reconciliation_error_seconds": 0.0,
+          "stage_reconciled": true
+        },
+        "categories": {
+          "code": {
+            "prompt_count": 4,
+            "request_count": 4,
+            "prompt_ids": [
+              "code_merge_intervals",
+              "code_topological_sort",
+              "code_lru_cache",
+              "code_markdown_table"
+            ],
+            "categories": [
+              "code"
+            ],
+            "visible_outputs": 100,
+            "timed_transitions": 96,
+            "decode_seconds": 3.2425208794884384,
+            "decode_tok_s_weighted": 29.60659424192994,
+            "request_wall_seconds": 9.27654591947794,
+            "client_transition_tok_s": 10.3486794366456,
+            "accepted_draft_tokens": 0,
+            "proposed_draft_tokens": 0,
+            "draft_acceptance": null,
+            "accepted_per_output": 0.0,
+            "accepted_per_transition": 0.0,
+            "cycles": 0,
+            "target_passes": 0,
+            "visible_transitions_per_cycle": null,
+            "target_forward_rows": 96,
+            "stage_seconds": {
+              "autoregressive_step": 3.2425208794884384
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true
+          },
+          "general_en": {
+            "prompt_count": 2,
+            "request_count": 2,
+            "prompt_ids": [
+              "general_en_plan",
+              "general_en_explain"
+            ],
+            "categories": [
+              "general_en"
+            ],
+            "visible_outputs": 50,
+            "timed_transitions": 48,
+            "decode_seconds": 1.6296987794339657,
+            "decode_tok_s_weighted": 29.453295667725527,
+            "request_wall_seconds": 4.171326969284564,
+            "client_transition_tok_s": 11.507129590522752,
+            "accepted_draft_tokens": 0,
+            "proposed_draft_tokens": 0,
+            "draft_acceptance": null,
+            "accepted_per_output": 0.0,
+            "accepted_per_transition": 0.0,
+            "cycles": 0,
+            "target_passes": 0,
+            "visible_transitions_per_cycle": null,
+            "target_forward_rows": 48,
+            "stage_seconds": {
+              "autoregressive_step": 1.6296987794339657
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true
+          },
+          "general_ja": {
+            "prompt_count": 2,
+            "request_count": 2,
+            "prompt_ids": [
+              "general_ja_plan",
+              "general_ja_explain"
+            ],
+            "categories": [
+              "general_ja"
+            ],
+            "visible_outputs": 50,
+            "timed_transitions": 48,
+            "decode_seconds": 1.6352003552019596,
+            "decode_tok_s_weighted": 29.354201060011167,
+            "request_wall_seconds": 4.409552508033812,
+            "client_transition_tok_s": 10.885458311823768,
+            "accepted_draft_tokens": 0,
+            "proposed_draft_tokens": 0,
+            "draft_acceptance": null,
+            "accepted_per_output": 0.0,
+            "accepted_per_transition": 0.0,
+            "cycles": 0,
+            "target_passes": 0,
+            "visible_transitions_per_cycle": null,
+            "target_forward_rows": 48,
+            "stage_seconds": {
+              "autoregressive_step": 1.6352003552019596
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true
+          },
+          "mixed_ja_en": {
+            "prompt_count": 2,
+            "request_count": 2,
+            "prompt_ids": [
+              "mixed_ja_en_translate",
+              "mixed_ja_en_review"
+            ],
+            "categories": [
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 50,
+            "timed_transitions": 48,
+            "decode_seconds": 1.6400898210704327,
+            "decode_tok_s_weighted": 29.2666897771928,
+            "request_wall_seconds": 6.003565829247236,
+            "client_transition_tok_s": 7.995248384911694,
+            "accepted_draft_tokens": 0,
+            "proposed_draft_tokens": 0,
+            "draft_acceptance": null,
+            "accepted_per_output": 0.0,
+            "accepted_per_transition": 0.0,
+            "cycles": 0,
+            "target_passes": 0,
+            "visible_transitions_per_cycle": null,
+            "target_forward_rows": 48,
+            "stage_seconds": {
+              "autoregressive_step": 1.6400898210704327
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true
+          }
+        }
+      },
+      "mtp": {
+        "1": {
+          "full": {
+            "prompt_count": 10,
+            "request_count": 10,
+            "prompt_ids": [
+              "code_merge_intervals",
+              "code_topological_sort",
+              "code_lru_cache",
+              "code_markdown_table",
+              "general_en_plan",
+              "general_en_explain",
+              "general_ja_plan",
+              "general_ja_explain",
+              "mixed_ja_en_translate",
+              "mixed_ja_en_review"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 250,
+            "timed_transitions": 240,
+            "decode_seconds": 5.237789157312363,
+            "decode_tok_s_weighted": 45.82085929612902,
+            "request_wall_seconds": 22.34271729271859,
+            "client_transition_tok_s": 10.741755215164233,
+            "accepted_draft_tokens": 115,
+            "proposed_draft_tokens": 126,
+            "draft_acceptance": 0.9126984126984127,
+            "accepted_per_output": 0.46,
+            "accepted_per_transition": 0.4791666666666667,
+            "cycles": 126,
+            "target_passes": 126,
+            "visible_transitions_per_cycle": 1.9047619047619047,
+            "target_forward_rows": 252,
+            "stage_seconds": {
+              "proposal": 0.46563804242759943,
+              "scheduler_accept_replay_host_residual": 0.038246427197009325,
+              "target_commit_finish": 0.002058709505945444,
+              "target_verify": 4.731845978181809
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true,
+            "mtp_vs_true_ar": 1.5555245907178672
+          },
+          "train": {
+            "prompt_count": 6,
+            "request_count": 6,
+            "prompt_ids": [
+              "code_merge_intervals",
+              "code_topological_sort",
+              "code_lru_cache",
+              "general_en_plan",
+              "general_ja_plan",
+              "mixed_ja_en_translate"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 150,
+            "timed_transitions": 144,
+            "decode_seconds": 3.0942408153787255,
+            "decode_tok_s_weighted": 46.53807140165166,
+            "request_wall_seconds": 12.977112208027393,
+            "client_transition_tok_s": 11.096459496660927,
+            "accepted_draft_tokens": 71,
+            "proposed_draft_tokens": 74,
+            "draft_acceptance": 0.9594594594594594,
+            "accepted_per_output": 0.47333333333333333,
+            "accepted_per_transition": 0.4930555555555556,
+            "cycles": 74,
+            "target_passes": 74,
+            "visible_transitions_per_cycle": 1.945945945945946,
+            "target_forward_rows": 148,
+            "stage_seconds": {
+              "proposal": 0.27682859683409333,
+              "scheduler_accept_replay_host_residual": 0.023312521632760763,
+              "target_commit_finish": 0.0011085839942097664,
+              "target_verify": 2.7929911129176617
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true,
+            "mtp_vs_true_ar": 1.5770743352691465
+          },
+          "heldout": {
+            "prompt_count": 4,
+            "request_count": 4,
+            "prompt_ids": [
+              "code_markdown_table",
+              "general_en_explain",
+              "general_ja_explain",
+              "mixed_ja_en_review"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 100,
+            "timed_transitions": 96,
+            "decode_seconds": 2.143548341933638,
+            "decode_tok_s_weighted": 44.78555399100585,
+            "request_wall_seconds": 9.365605084691197,
+            "client_transition_tok_s": 10.250272046695562,
+            "accepted_draft_tokens": 44,
+            "proposed_draft_tokens": 52,
+            "draft_acceptance": 0.8461538461538461,
+            "accepted_per_output": 0.44,
+            "accepted_per_transition": 0.4583333333333333,
+            "cycles": 52,
+            "target_passes": 52,
+            "visible_transitions_per_cycle": 1.8461538461538463,
+            "target_forward_rows": 104,
+            "stage_seconds": {
+              "proposal": 0.1888094455935061,
+              "scheduler_accept_replay_host_residual": 0.014933905564248562,
+              "target_commit_finish": 0.0009501255117356777,
+              "target_verify": 1.9388548652641475
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true,
+            "mtp_vs_true_ar": 1.5244172450858096
+          },
+          "categories": {
+            "code": {
+              "prompt_count": 4,
+              "request_count": 4,
+              "prompt_ids": [
+                "code_merge_intervals",
+                "code_topological_sort",
+                "code_lru_cache",
+                "code_markdown_table"
+              ],
+              "categories": [
+                "code"
+              ],
+              "visible_outputs": 100,
+              "timed_transitions": 96,
+              "decode_seconds": 2.0521303862333298,
+              "decode_tok_s_weighted": 46.7806532391966,
+              "request_wall_seconds": 8.624661919195205,
+              "client_transition_tok_s": 11.130871087983246,
+              "accepted_draft_tokens": 48,
+              "proposed_draft_tokens": 49,
+              "draft_acceptance": 0.9795918367346939,
+              "accepted_per_output": 0.48,
+              "accepted_per_transition": 0.5,
+              "cycles": 49,
+              "target_passes": 49,
+              "visible_transitions_per_cycle": 1.9591836734693877,
+              "target_forward_rows": 98,
+              "stage_seconds": {
+                "proposal": 0.18217998323962092,
+                "scheduler_accept_replay_host_residual": 0.015358495526015759,
+                "target_commit_finish": 0.000999990850687027,
+                "target_verify": 1.853591916617006
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 1.5800754675437856
+            },
+            "general_en": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "general_en_plan",
+                "general_en_explain"
+              ],
+              "categories": [
+                "general_en"
+              ],
+              "visible_outputs": 50,
+              "timed_transitions": 48,
+              "decode_seconds": 1.0295193754136562,
+              "decode_tok_s_weighted": 46.62369756830834,
+              "request_wall_seconds": 3.799004575237632,
+              "client_transition_tok_s": 12.634888705549281,
+              "accepted_draft_tokens": 23,
+              "proposed_draft_tokens": 25,
+              "draft_acceptance": 0.92,
+              "accepted_per_output": 0.46,
+              "accepted_per_transition": 0.4791666666666667,
+              "cycles": 25,
+              "target_passes": 25,
+              "visible_transitions_per_cycle": 1.92,
+              "target_forward_rows": 50,
+              "stage_seconds": {
+                "proposal": 0.09255516296252608,
+                "scheduler_accept_replay_host_residual": 0.007323507685214281,
+                "target_commit_finish": 0.00010200450196862221,
+                "target_verify": 0.9295387002639472
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 1.582970479578551
+            },
+            "general_ja": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "general_ja_plan",
+                "general_ja_explain"
+              ],
+              "categories": [
+                "general_ja"
+              ],
+              "visible_outputs": 50,
+              "timed_transitions": 48,
+              "decode_seconds": 1.0751645569689572,
+              "decode_tok_s_weighted": 44.64432880425195,
+              "request_wall_seconds": 4.090926046483219,
+              "client_transition_tok_s": 11.73328470243636,
+              "accepted_draft_tokens": 22,
+              "proposed_draft_tokens": 26,
+              "draft_acceptance": 0.8461538461538461,
+              "accepted_per_output": 0.44,
+              "accepted_per_transition": 0.4583333333333333,
+              "cycles": 26,
+              "target_passes": 26,
+              "visible_transitions_per_cycle": 1.8461538461538463,
+              "target_forward_rows": 52,
+              "stage_seconds": {
+                "proposal": 0.0943949231877923,
+                "scheduler_accept_replay_host_residual": 0.007731883320957422,
+                "target_commit_finish": 0.00010793190449476242,
+                "target_verify": 0.9729298185557127
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 1.520883798301372
+            },
+            "mixed_ja_en": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "mixed_ja_en_translate",
+                "mixed_ja_en_review"
+              ],
+              "categories": [
+                "mixed_ja_en"
+              ],
+              "visible_outputs": 50,
+              "timed_transitions": 48,
+              "decode_seconds": 1.0809748386964202,
+              "decode_tok_s_weighted": 44.40436380358735,
+              "request_wall_seconds": 5.828124751802534,
+              "client_transition_tok_s": 8.235925283712307,
+              "accepted_draft_tokens": 22,
+              "proposed_draft_tokens": 26,
+              "draft_acceptance": 0.8461538461538461,
+              "accepted_per_output": 0.44,
+              "accepted_per_transition": 0.4583333333333333,
+              "cycles": 26,
+              "target_passes": 26,
+              "visible_transitions_per_cycle": 1.8461538461538463,
+              "target_forward_rows": 52,
+              "stage_seconds": {
+                "proposal": 0.09650797303766012,
+                "scheduler_accept_replay_host_residual": 0.007832540664821863,
+                "target_commit_finish": 0.0008487822487950325,
+                "target_verify": 0.9757855427451432
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 1.517232189278583
+            }
+          }
+        },
+        "2": {
+          "full": {
+            "prompt_count": 10,
+            "request_count": 10,
+            "prompt_ids": [
+              "code_merge_intervals",
+              "code_topological_sort",
+              "code_lru_cache",
+              "code_markdown_table",
+              "general_en_plan",
+              "general_en_explain",
+              "general_ja_plan",
+              "general_ja_explain",
+              "mixed_ja_en_translate",
+              "mixed_ja_en_review"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 250,
+            "timed_transitions": 240,
+            "decode_seconds": 4.2836672849953175,
+            "decode_tok_s_weighted": 56.02676025765674,
+            "request_wall_seconds": 21.384398573078215,
+            "client_transition_tok_s": 11.223135370388524,
+            "accepted_draft_tokens": 151,
+            "proposed_draft_tokens": 182,
+            "draft_acceptance": 0.8296703296703297,
+            "accepted_per_output": 0.604,
+            "accepted_per_transition": 0.6291666666666667,
+            "cycles": 91,
+            "target_passes": 91,
+            "visible_transitions_per_cycle": 2.6373626373626373,
+            "target_forward_rows": 273,
+            "stage_seconds": {
+              "proposal": 0.5328219691291451,
+              "scheduler_accept_replay_host_residual": 0.03131831111386418,
+              "target_commit_finish": 0.002594179008156061,
+              "target_verify": 3.716932825744152
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true,
+            "mtp_vs_true_ar": 1.9019940843056633
+          },
+          "train": {
+            "prompt_count": 6,
+            "request_count": 6,
+            "prompt_ids": [
+              "code_merge_intervals",
+              "code_topological_sort",
+              "code_lru_cache",
+              "general_en_plan",
+              "general_ja_plan",
+              "mixed_ja_en_translate"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 150,
+            "timed_transitions": 144,
+            "decode_seconds": 2.513332274276763,
+            "decode_tok_s_weighted": 57.2944538506901,
+            "request_wall_seconds": 12.39075105683878,
+            "client_transition_tok_s": 11.621571552801283,
+            "accepted_draft_tokens": 93,
+            "proposed_draft_tokens": 106,
+            "draft_acceptance": 0.8773584905660378,
+            "accepted_per_output": 0.62,
+            "accepted_per_transition": 0.6458333333333334,
+            "cycles": 53,
+            "target_passes": 53,
+            "visible_transitions_per_cycle": 2.7169811320754715,
+            "target_forward_rows": 159,
+            "stage_seconds": {
+              "proposal": 0.3126395381987095,
+              "scheduler_accept_replay_host_residual": 0.01901143230497837,
+              "target_commit_finish": 0.0017085862345993519,
+              "target_verify": 2.179972717538476
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true,
+            "mtp_vs_true_ar": 1.9415848143199812
+          },
+          "heldout": {
+            "prompt_count": 4,
+            "request_count": 4,
+            "prompt_ids": [
+              "code_markdown_table",
+              "general_en_explain",
+              "general_ja_explain",
+              "mixed_ja_en_review"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 100,
+            "timed_transitions": 96,
+            "decode_seconds": 1.7703350107185543,
+            "decode_tok_s_weighted": 54.22702450031474,
+            "request_wall_seconds": 8.993647516239434,
+            "client_transition_tok_s": 10.674200854175908,
+            "accepted_draft_tokens": 58,
+            "proposed_draft_tokens": 76,
+            "draft_acceptance": 0.7631578947368421,
+            "accepted_per_output": 0.58,
+            "accepted_per_transition": 0.6041666666666666,
+            "cycles": 38,
+            "target_passes": 38,
+            "visible_transitions_per_cycle": 2.526315789473684,
+            "target_forward_rows": 114,
+            "stage_seconds": {
+              "proposal": 0.22018243093043566,
+              "scheduler_accept_replay_host_residual": 0.012306878808885813,
+              "target_commit_finish": 0.0008855927735567093,
+              "target_verify": 1.536960108205676
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true,
+            "mtp_vs_true_ar": 1.8457874008786803
+          },
+          "categories": {
+            "code": {
+              "prompt_count": 4,
+              "request_count": 4,
+              "prompt_ids": [
+                "code_merge_intervals",
+                "code_topological_sort",
+                "code_lru_cache",
+                "code_markdown_table"
+              ],
+              "categories": [
+                "code"
+              ],
+              "visible_outputs": 100,
+              "timed_transitions": 96,
+              "decode_seconds": 1.623285495210439,
+              "decode_tok_s_weighted": 59.139319782780895,
+              "request_wall_seconds": 8.19454476609826,
+              "client_transition_tok_s": 11.715110813374604,
+              "accepted_draft_tokens": 63,
+              "proposed_draft_tokens": 68,
+              "draft_acceptance": 0.9264705882352942,
+              "accepted_per_output": 0.63,
+              "accepted_per_transition": 0.65625,
+              "cycles": 34,
+              "target_passes": 34,
+              "visible_transitions_per_cycle": 2.823529411764706,
+              "target_forward_rows": 102,
+              "stage_seconds": {
+                "proposal": 0.20110312569886446,
+                "scheduler_accept_replay_host_residual": 0.012715526390820742,
+                "target_commit_finish": 0.0009013526141643524,
+                "target_verify": 1.4085654905065894
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 1.9975049916084449
+            },
+            "general_en": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "general_en_plan",
+                "general_en_explain"
+              ],
+              "categories": [
+                "general_en"
+              ],
+              "visible_outputs": 50,
+              "timed_transitions": 48,
+              "decode_seconds": 0.8375623258762062,
+              "decode_tok_s_weighted": 57.30916794733497,
+              "request_wall_seconds": 3.6047448134049773,
+              "client_transition_tok_s": 13.315783081649005,
+              "accepted_draft_tokens": 30,
+              "proposed_draft_tokens": 36,
+              "draft_acceptance": 0.8333333333333334,
+              "accepted_per_output": 0.6,
+              "accepted_per_transition": 0.625,
+              "cycles": 18,
+              "target_passes": 18,
+              "visible_transitions_per_cycle": 2.6666666666666665,
+              "target_forward_rows": 54,
+              "stage_seconds": {
+                "proposal": 0.10584484785795212,
+                "scheduler_accept_replay_host_residual": 0.0059558977372944355,
+                "target_commit_finish": 0.0008055232465267181,
+                "target_verify": 0.7249560570344329
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 1.9457641886280823
+            },
+            "general_ja": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "general_ja_plan",
+                "general_ja_explain"
+              ],
+              "categories": [
+                "general_ja"
+              ],
+              "visible_outputs": 50,
+              "timed_transitions": 48,
+              "decode_seconds": 0.8443946042098105,
+              "decode_tok_s_weighted": 56.8454603578604,
+              "request_wall_seconds": 3.861218437086791,
+              "client_transition_tok_s": 12.431309127440871,
+              "accepted_draft_tokens": 31,
+              "proposed_draft_tokens": 36,
+              "draft_acceptance": 0.8611111111111112,
+              "accepted_per_output": 0.62,
+              "accepted_per_transition": 0.6458333333333334,
+              "cycles": 18,
+              "target_passes": 18,
+              "visible_transitions_per_cycle": 2.6666666666666665,
+              "target_forward_rows": 54,
+              "stage_seconds": {
+                "proposal": 0.10655438853427768,
+                "scheduler_accept_replay_host_residual": 0.006057057995349169,
+                "target_commit_finish": 0.000802882481366396,
+                "target_verify": 0.7309802751988173
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 1.9365357701831716
+            },
+            "mixed_ja_en": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "mixed_ja_en_translate",
+                "mixed_ja_en_review"
+              ],
+              "categories": [
+                "mixed_ja_en"
+              ],
+              "visible_outputs": 50,
+              "timed_transitions": 48,
+              "decode_seconds": 0.9784248596988618,
+              "decode_tok_s_weighted": 49.0584427860647,
+              "request_wall_seconds": 5.723890556488186,
+              "client_transition_tok_s": 8.385904574221932,
+              "accepted_draft_tokens": 27,
+              "proposed_draft_tokens": 42,
+              "draft_acceptance": 0.6428571428571429,
+              "accepted_per_output": 0.54,
+              "accepted_per_transition": 0.5625,
+              "cycles": 21,
+              "target_passes": 21,
+              "visible_transitions_per_cycle": 2.2857142857142856,
+              "target_forward_rows": 63,
+              "stage_seconds": {
+                "proposal": 0.11931960703805089,
+                "scheduler_accept_replay_host_residual": 0.0065898289903998375,
+                "target_commit_finish": 8.442066609859467e-05,
+                "target_verify": 0.8524310030043125
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 1.676255263562311
+            }
+          }
+        },
+        "3": {
+          "full": {
+            "prompt_count": 10,
+            "request_count": 10,
+            "prompt_ids": [
+              "code_merge_intervals",
+              "code_topological_sort",
+              "code_lru_cache",
+              "code_markdown_table",
+              "general_en_plan",
+              "general_en_explain",
+              "general_ja_plan",
+              "general_ja_explain",
+              "mixed_ja_en_translate",
+              "mixed_ja_en_review"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 250,
+            "timed_transitions": 240,
+            "decode_seconds": 3.9390223119407892,
+            "decode_tok_s_weighted": 60.9288247168496,
+            "request_wall_seconds": 21.048789128195494,
+            "client_transition_tok_s": 11.402081066911002,
+            "accepted_draft_tokens": 169,
+            "proposed_draft_tokens": 219,
+            "draft_acceptance": 0.771689497716895,
+            "accepted_per_output": 0.676,
+            "accepted_per_transition": 0.7041666666666667,
+            "cycles": 76,
+            "target_passes": 76,
+            "visible_transitions_per_cycle": 3.1578947368421053,
+            "target_forward_rows": 295,
+            "stage_seconds": {
+              "proposal": 0.5860985796898603,
+              "scheduler_accept_replay_host_residual": 0.028468362521380186,
+              "target_commit_finish": 0.006256126333028078,
+              "target_verify": 3.3181992433965206
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true,
+            "mtp_vs_true_ar": 2.068409160947466
+          },
+          "train": {
+            "prompt_count": 6,
+            "request_count": 6,
+            "prompt_ids": [
+              "code_merge_intervals",
+              "code_topological_sort",
+              "code_lru_cache",
+              "general_en_plan",
+              "general_ja_plan",
+              "mixed_ja_en_translate"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 150,
+            "timed_transitions": 144,
+            "decode_seconds": 2.2040540096350014,
+            "decode_tok_s_weighted": 65.3341521444145,
+            "request_wall_seconds": 12.089424251113087,
+            "client_transition_tok_s": 11.911237211047645,
+            "accepted_draft_tokens": 104,
+            "proposed_draft_tokens": 123,
+            "draft_acceptance": 0.8455284552845529,
+            "accepted_per_output": 0.6933333333333334,
+            "accepted_per_transition": 0.7222222222222222,
+            "cycles": 43,
+            "target_passes": 43,
+            "visible_transitions_per_cycle": 3.3488372093023258,
+            "target_forward_rows": 166,
+            "stage_seconds": {
+              "proposal": 0.3318594074808061,
+              "scheduler_accept_replay_host_residual": 0.01654938841238618,
+              "target_commit_finish": 0.003120233304798603,
+              "target_verify": 1.8525249804370105
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true,
+            "mtp_vs_true_ar": 2.214032757701879
+          },
+          "heldout": {
+            "prompt_count": 4,
+            "request_count": 4,
+            "prompt_ids": [
+              "code_markdown_table",
+              "general_en_explain",
+              "general_ja_explain",
+              "mixed_ja_en_review"
+            ],
+            "categories": [
+              "code",
+              "general_en",
+              "general_ja",
+              "mixed_ja_en"
+            ],
+            "visible_outputs": 100,
+            "timed_transitions": 96,
+            "decode_seconds": 1.7349683023057878,
+            "decode_tok_s_weighted": 55.332423003011165,
+            "request_wall_seconds": 8.959364877082407,
+            "client_transition_tok_s": 10.715045242276386,
+            "accepted_draft_tokens": 65,
+            "proposed_draft_tokens": 96,
+            "draft_acceptance": 0.6770833333333334,
+            "accepted_per_output": 0.65,
+            "accepted_per_transition": 0.6770833333333334,
+            "cycles": 33,
+            "target_passes": 33,
+            "visible_transitions_per_cycle": 2.909090909090909,
+            "target_forward_rows": 129,
+            "stage_seconds": {
+              "proposal": 0.25423917220905423,
+              "scheduler_accept_replay_host_residual": 0.011918974108994007,
+              "target_commit_finish": 0.003135893028229475,
+              "target_verify": 1.46567426295951
+            },
+            "stage_reconciliation_error_seconds": 0.0,
+            "stage_reconciled": true,
+            "mtp_vs_true_ar": 1.8834131169866215
+          },
+          "categories": {
+            "code": {
+              "prompt_count": 4,
+              "request_count": 4,
+              "prompt_ids": [
+                "code_merge_intervals",
+                "code_topological_sort",
+                "code_lru_cache",
+                "code_markdown_table"
+              ],
+              "categories": [
+                "code"
+              ],
+              "visible_outputs": 100,
+              "timed_transitions": 96,
+              "decode_seconds": 1.4295471888035536,
+              "decode_tok_s_weighted": 67.15413156829494,
+              "request_wall_seconds": 8.005136033054441,
+              "client_transition_tok_s": 11.992300893276665,
+              "accepted_draft_tokens": 70,
+              "proposed_draft_tokens": 81,
+              "draft_acceptance": 0.8641975308641975,
+              "accepted_per_output": 0.7,
+              "accepted_per_transition": 0.7291666666666666,
+              "cycles": 28,
+              "target_passes": 28,
+              "visible_transitions_per_cycle": 3.4285714285714284,
+              "target_forward_rows": 109,
+              "stage_seconds": {
+                "proposal": 0.2169459410943091,
+                "scheduler_accept_replay_host_residual": 0.01131779421120882,
+                "target_commit_finish": 0.0023658936843276024,
+                "target_verify": 1.198917559813708
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 2.2682153516053125
+            },
+            "general_en": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "general_en_plan",
+                "general_en_explain"
+              ],
+              "categories": [
+                "general_en"
+              ],
+              "visible_outputs": 50,
+              "timed_transitions": 48,
+              "decode_seconds": 0.7783595602959394,
+              "decode_tok_s_weighted": 61.66815755657959,
+              "request_wall_seconds": 3.5485198479145765,
+              "client_transition_tok_s": 13.52676666813884,
+              "accepted_draft_tokens": 33,
+              "proposed_draft_tokens": 44,
+              "draft_acceptance": 0.75,
+              "accepted_per_output": 0.66,
+              "accepted_per_transition": 0.6875,
+              "cycles": 15,
+              "target_passes": 15,
+              "visible_transitions_per_cycle": 3.2,
+              "target_forward_rows": 59,
+              "stage_seconds": {
+                "proposal": 0.11799724912270904,
+                "scheduler_accept_replay_host_residual": 0.00550625566393137,
+                "target_commit_finish": 0.0008155521936714649,
+                "target_verify": 0.6540405033156276
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 2.0937608562479006
+            },
+            "general_ja": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "general_ja_plan",
+                "general_ja_explain"
+              ],
+              "categories": [
+                "general_ja"
+              ],
+              "visible_outputs": 50,
+              "timed_transitions": 48,
+              "decode_seconds": 0.8227159562520683,
+              "decode_tok_s_weighted": 58.343343939343136,
+              "request_wall_seconds": 3.844319492112845,
+              "client_transition_tok_s": 12.485954952099757,
+              "accepted_draft_tokens": 34,
+              "proposed_draft_tokens": 45,
+              "draft_acceptance": 0.7555555555555555,
+              "accepted_per_output": 0.68,
+              "accepted_per_transition": 0.7083333333333334,
+              "cycles": 16,
+              "target_passes": 16,
+              "visible_transitions_per_cycle": 3.0,
+              "target_forward_rows": 61,
+              "stage_seconds": {
+                "proposal": 0.12128441967070103,
+                "scheduler_accept_replay_host_residual": 0.005857408512383699,
+                "target_commit_finish": 0.001521809957921505,
+                "target_verify": 0.694052318111062
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 1.9875636819434166
+            },
+            "mixed_ja_en": {
+              "prompt_count": 2,
+              "request_count": 2,
+              "prompt_ids": [
+                "mixed_ja_en_translate",
+                "mixed_ja_en_review"
+              ],
+              "categories": [
+                "mixed_ja_en"
+              ],
+              "visible_outputs": 50,
+              "timed_transitions": 48,
+              "decode_seconds": 0.9083996065892279,
+              "decode_tok_s_weighted": 52.84018140455368,
+              "request_wall_seconds": 5.6508137551136315,
+              "client_transition_tok_s": 8.494351801377814,
+              "accepted_draft_tokens": 32,
+              "proposed_draft_tokens": 49,
+              "draft_acceptance": 0.6530612244897959,
+              "accepted_per_output": 0.64,
+              "accepted_per_transition": 0.6666666666666666,
+              "cycles": 17,
+              "target_passes": 17,
+              "visible_transitions_per_cycle": 2.823529411764706,
+              "target_forward_rows": 66,
+              "stage_seconds": {
+                "proposal": 0.1298709698021412,
+                "scheduler_accept_replay_host_residual": 0.0057869041338562965,
+                "target_commit_finish": 0.0015528704971075058,
+                "target_verify": 0.7711888621561229
+              },
+              "stage_reconciliation_error_seconds": 0.0,
+              "stage_reconciled": true,
+              "mtp_vs_true_ar": 1.8054717430234095
+            }
+          }
+        }
+      }
+    },
+    "memory_after_close": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 17761297407,
+      "total_allocated_bytes": 18587173753,
+      "total_freed_bytes": 18587173753,
+      "active_allocations": 0,
+      "peak_allocations": 570
+    },
+    "command": "/home/lhl/mambaforge/envs/therock/bin/python3.12 /home/lhl/hipEngine-main/scripts/qwen36_dense_gguf_suite.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts /home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 25 --candidate-budgets 1,2,3 --target-verify-mode native --runs 1 --warmup --compiler-version-file /tmp/hipengine-w7900-public-refresh/logs/hipcc-version-713.txt --require-cached-build --output /tmp/hipengine-w7900-public-refresh/27b/natural25.json",
+    "provenance": {
+      "kind": "hipengine_artifact_provenance",
+      "schema_version": 2,
+      "collected_at": "2026-08-23T10:13:30.578289+00:00",
+      "host_name": "epyc",
+      "repo_root": "/home/lhl/hipEngine-main",
+      "hipengine_commit": "0235f4cadab3a44cfb745100ad25abdbb4d571ce",
+      "git_branch": "main",
+      "staged_dirty": false,
+      "unstaged_dirty": false,
+      "untracked_dirty": false,
+      "untracked_count": 0,
+      "dirty": false,
+      "configured_backend": "auto",
+      "resolved_backend": "hip_gfx1100",
+      "target_arch": "gfx1100",
+      "device_name": "AMD Radeon Pro W7900",
+      "model_path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+      "model_revision": null,
+      "model_fingerprint": {
+        "algorithm": "sha256-sampled-v1",
+        "value": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+        "size_bytes": 17106773120,
+        "sampled_bytes": 3145728,
+        "sample_offsets": [
+          0,
+          8552862272,
+          17105724544
+        ],
+        "exists": true,
+        "path_type": "file"
+      },
+      "quant": "gguf_q4_k_m",
+      "kv_dtype": "bf16",
+      "command": [
+        "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+        "/home/lhl/hipEngine-main/scripts/qwen36_dense_gguf_suite.py",
+        "--model",
+        "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+        "--quant",
+        "gguf_q4_k_m",
+        "--prompts",
+        "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "--max-new-tokens",
+        "25",
+        "--candidate-budgets",
+        "1,2,3",
+        "--target-verify-mode",
+        "native",
+        "--runs",
+        "1",
+        "--warmup",
+        "--compiler-version-file",
+        "/tmp/hipengine-w7900-public-refresh/logs/hipcc-version-713.txt",
+        "--require-cached-build",
+        "--output",
+        "/tmp/hipengine-w7900-public-refresh/27b/natural25.json"
+      ],
+      "environment": {
+        "HIP_VISIBLE_DEVICES": "0",
+        "HIPENGINE_HIP_ARCH": "gfx1100",
+        "HIPENGINE_GGUF_DECODE_REPACK": "1",
+        "HIPENGINE_REQUIRE_CACHED_BUILD": null
+      },
+      "rocm_version": "HIP version: 7.15.0-0000000",
+      "hipcc_version": "HIP version: 7.15.0-0000000\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin\n",
+      "build_profile": "qwen36_dense_gguf_ar_mtp_suite",
+      "timing_protocol": "natural25 first-output-from-prefill; 24 transition-normalized decode steps",
+      "warmups": 1,
+      "repetitions": 1,
+      "profiler": {
+        "enabled": false,
+        "kind": "roctx marker leaf"
+      }
+    },
+    "source_sha256": "fb6b0b99ee6d3b4c74f624636d8bf89993651b9243b4f7eb350424bc80257bf1"
+  },
+  "correctness": {
+    "single_request_finite_logits": true,
+    "single_request_stable_ids": true,
+    "natural_all_exact_greedy": true,
+    "natural_all_gpu_accept_match_cpu": true,
+    "active_allocations_after_close": 0,
+    "passed": true
+  },
+  "decision": "Replace the stale pre-compact-peer W7900 single-request row and historical MTP ratio. Current B3 throughput is essentially unchanged, while the current true-AR denominator is substantially faster; publish the measured 2.0684x ratio rather than the obsolete 2.9672x ratio."
+}

@@ -158,7 +158,10 @@ def _device_run(
     capacity = np.ascontiguousarray(
         np.stack([s.range_capacity[0] for s in states]), dtype=np.int32
     )
-    total_capacity = int(capacity.sum())
+    # Host streaming_pack shrinks provisional extents in place; released gaps
+    # remain in the global slot address space, so size the raw device fixture to
+    # the pool rather than to the sum of committed capacities.
+    total_capacity = int(backend.slots_per_layer)
     k_slot = np.zeros((total_capacity, dim), dtype=np.uint16)
     v_slot = np.zeros_like(k_slot)
     positions = np.full((total_capacity,), -1, dtype=np.int32)
@@ -388,10 +391,10 @@ def test_dms_append_decode_overflow_fails_closed() -> None:
 
     heads, dim, window = 2, 16, 1
     backend = _backend(num_layers=1, heads=heads, dim=dim, window=window, slots=32)
-    _admit(backend, request_id=0, tokens=5)  # per_head = min(5, 3+1) = 4
+    _admit(backend, request_id=0, tokens=5)  # provisional full-prompt extent
     state = backend.state_for_request(0)
     live = int(state.range_capacity[0, 0])
-    assert live == 4
+    assert live == 5
     fill_rng = np.random.default_rng(4242)
     k_fill = _bf16_bits(fill_rng.standard_normal((live, heads, dim)))
     v_fill = _bf16_bits(fill_rng.standard_normal((live, heads, dim)))
@@ -424,7 +427,7 @@ def test_dms_append_decode_overflow_fails_closed() -> None:
     )
 
     # Device: same synthetic state -> status=1, extent untouched.
-    total = int(state.range_capacity.sum())
+    total = int(backend.slots_per_layer)
     k_slot = np.zeros((total, dim), dtype=np.uint16)
     v_slot = np.zeros_like(k_slot)
     pos_buf = np.full((total,), -1, dtype=np.int32)
@@ -561,7 +564,7 @@ def test_dms_append_decode_multi_drop_recompute_bit_exact() -> None:
     )
 
     # Device: same synthetic state.
-    total = int(state.range_capacity.sum())
+    total = int(backend.slots_per_layer)
     k_slot = np.zeros((total, dim), dtype=np.uint16)
     v_slot = np.zeros_like(k_slot)
     pos_buf = np.full((total,), -1, dtype=np.int32)

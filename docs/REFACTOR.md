@@ -109,6 +109,7 @@ documentation review:
 | --- | --- | --- |
 | Rejected MTP/llama-compat flag zoo | Multiple Q6 top-1 shapes, shared-Q8, selected X8/raw gate-up, fused rotate, accept-position, and overlap routes are explicitly rejected but still runtime-selectable. | After the final named llama-compat transaction policy is chosen, retain one named compat composition plus the strict control; remove loose env/CLI combinations and demote useful leaf oracles to tests. Do not remove an option still consumed by that named composition before the decision. |
 | Superseded one-off scripts | 405 scripts have no textual owner in live code/tests/current docs/package metadata, and many are per-layer or one-candidate audit copies. | First remove them from the wheel. Then consolidate parameter-only families into one driver and delete/archive superseded copies after preserving command, result hash, and decision in an immutable worklog/artifact. “No textual owner” is a review queue, not sufficient deletion proof. |
+| Qwen3.8 native-XL v2 loader admission | `OI-7` retained the artifact planner/oracle evidence but rejected deployment: native B1/B2/B3 diverged from target AR on `general_ja_explain`, while serial-exact was correct but slower than AR and full-suite native rates regressed 43–61%. | Keep `qwen38_native_xl_v2` research-only. Remove its artifact-specific NextN loader recognition/tests after the local replay window, unless a replacement artifact first passes full native batch-composition exactness and same-host AR/MTP throughput gates. The generic planner, verifier, and independent BF16 oracle are reusable and remain. |
 
 ### Target organization
 
@@ -1799,6 +1800,46 @@ only `22.22 tok/s`; the retained route is one state-bound capture followed by 24
 validated relaunches, not recapture. Keep the gfx1100 admission at 24 until a
 shorter-horizon audit establishes a lower break-even.
 
+## Qwen GGUF external-DMS capture seam
+
+- The default-off `Qwen35GGUFResidentSession.prefill(..., dms_capture=...)`
+  diagnostic synchronously exports normalized pre-Q hidden rows and dense Q/K
+  intermediates to an offline checksummed sink. It is never selected by
+  `LLM.generate()` and intentionally stalls the prefill stream for bounded
+  capture correctness.
+- Removal trigger: after the Qwen3.8 external sidecar is trained and its
+  reproducible capture manifest is retained, either promote this as an explicit
+  model-plugin-owned offline capture API or remove the session keyword and
+  runtime callback. Do not leave a generic synchronous D2H tap in the serving
+  façade, and never make it an environment-selected production path.
+
+## External-DMS compact device transaction journal
+
+- The correctness-first external decision bridge snapshots only the active
+  request's compact K/V/position/eviction extents to bounded host transaction
+  scratch and restores them byte-for-byte on rollback. It is not a persistent
+  dense shadow, but synchronous D2H/H2D journaling is not a production-speed
+  endpoint.
+- Removal trigger: once the integrated gfx1100 compact owner is wired, replace
+  this with a resource-claimed device-local copy/journal or an exactly reversible
+  in-place mutation protocol, then retain the host journal only as the registered
+  strict fallback. Do not remove rollback coverage or restore metadata without
+  restoring payload bytes.
+
+## External-DMS serving control readbacks
+
+- Correctness-first `exact_budget` prefill reads all external-linear logits to
+  host, deterministically ranks them, and uploads the final device mask. Decode
+  also synchronizes after all 16 full-attention layers and reads 64 decision
+  bytes before host metadata finalization. Neither path retains dense KV, but
+  both are production-speed debt and prevent graph-owned control.
+- Removal trigger: implement bounded deterministic per-layer/head device ranking
+  plus device-resident decode live-count/position/eviction finalization. Preserve
+  the current host paths only as strict diagnostic fallbacks until exact mask,
+  rollback, c1-c32 lifecycle, frozen-profile quality, and profiler gates pass.
+  Remove their positive runtime selection once the device owner survives one
+  release window.
+
 ## Cleanup Ledger
 
 | Area | Debt | Current status | Removal trigger |
@@ -1886,6 +1927,7 @@ shorter-horizon audit establishes a lower break-even.
 | MTP P1 verifier | `HIPENGINE_W4_DUAL_OUTPUT_TILED_SPLIT_PREFILL` opt-out around the promoted split-output dual W4 shared-gate/up route. | Default-on after 2026-06-11 D32 9-prompt exact A/B: same acceptance, verify `22.98 -> 22.37 ms/cycle`. | After the next retained MTP gate with defaults-on passes at the target sprint shape, remove the opt-out or demote it to a test-only override. |
 | MTP P1 verifier | `HIPENGINE_LINEAR_OUT_CAST_ROTATE_FUSED` opt-out around promoted `f32_to_fp16 + paro_rotate1` fusion. | Default-on after raw-bit RED test and 2026-06-11 D32 9-prompt exact A/B; removes 30 launches/pass and contributes to the stacked `-0.60 ms/cycle` suite delta. | After the next retained MTP gate with defaults-on passes, collapse the old runtime dispatch branch if no other path still needs it. |
 | MTP P1 verifier | `HIPENGINE_SELECTED_MOE_DOWN_STAGED` opt-in around the superseded staged selected SiLU/down-rotate + down GEMV path. | Flipped default-off on 2026-06-11 after current graph-auto D32 9-prompt exact A/B: identical acceptance, cycle `27.648 -> 27.408 ms/cycle`, verify `22.377 -> 22.131 ms/cycle`. The 2026-06-12 graph-off current-best compound retest also stayed exact but regressed ratio `0.8252x -> 0.8204x`, cycle `21.661 -> 21.763 ms/cycle`, and verify `16.511 -> 16.628 ms/cycle`. The staged path remains available with `=1` for bisection and historical comparison. | After the next retained MTP gate with defaults-on passes, remove the staged runtime branch or demote it to a kernel test-only path unless a new barrier-free implementation beats the fallback. |
+| PARO MTP provider target contract | `HIPENGINE_MTP_PROPOSER_TARGET_CONTRACT` remains a manual-route compatibility selector around the qualified final-normalized/selected-reseed/borrowed-W8A16 provider. Registered production now binds it automatically; strict uses the same corrected provider with c1-loop verification. | Production/default after complete parity, 10-prompt/three-repeat numerical/task/state/lifecycle gates and fast D24 economics (`1.0446x` true AR, +10.33% vs strict MTP). | Remove direct env selection and the private F16/cap scorer after one release window with production/strict profile smokes. Keep corrected provider unconditional for registered B1 routes; preserve strict verifier fallback, not the old provider. |
 | MTP P2 proposer | `HIPENGINE_MTP_PROPOSER_SKIP_UNUSED_READS` opt-out around skipped discarded expert-topk host reads, update-only lm-head/argmax results, and final draft snapshot saves. | Default-on after 2026-06-11 D32 9-prompt exact gates: same acceptance/visible tokens, read/result skip moved actual speed `0.664x -> 0.670x`, cycle wall `27.94 -> 27.68 ms`, proposal/update `2.145 -> 2.052 ms`; final-snapshot skip then stayed exact `9/9`, skipped `142` D2D snapshot saves, and trimmed proposal/update `2.052 -> 2.045 ms` with flat actual ratio within noise. | After the next retained MTP gate with defaults-on passes, remove the opt-out or demote it to a test-only override. Keep the functional code path; it is the desired proposer behavior. |
 | MTP P2 proposer | `HIPENGINE_MTP_PROPOSER_PACK_TOKEN_POSITION` opt-out around the packed token+position metadata H2D copy. | Default-on after 2026-06-11 same-tree D32 9-prompt exact A/B: exact `9/9`, identical acceptance, wall `26.922 -> 26.869 ms/cycle`, proposal/update `1.9766 -> 1.9758 ms/cycle`; ratio is noisy/down because the AR control changed. | After the next retained MTP defaults-only gate passes, remove the opt-out and keep the packed one-copy metadata path. |
 | MTP P2 proposer | `HIPENGINE_MTP_PROPOSER_ROUTE0_ACCUM_INIT` opt-out around route-0 FP32 MoE accumulator initialization. | Default-on after 2026-06-11 D32 9-prompt exact A/B: exact `9/9`, identical acceptance, standalone `moe_accum` memset removed by route 0 overwrite, cycle wall `27.081246 -> 27.079143 ms/cycle`, proposal/update `1.96299 -> 1.95303 ms/cycle`; ratio is noisy/down because AR changed. | After the next retained MTP defaults-only gate passes, remove the opt-out and keep route-0 accumulator initialization as the only proposer MoE accumulation path. |
@@ -4265,3 +4307,53 @@ should be boring.
   -> 184/198ms) in BOTH trees, so neither design scales this model's
   aggregate throughput; rocprof kernel-family audit of the packed step is
   the follow-up.
+
+## RF-OI2 — default-off adaptive MTP budget diagnostic (2026-08-25)
+
+- **State:** rejected for promotion; retained only as explicit diagnostic and
+  transition-contract infrastructure.
+- **Paths:** `hipengine/speculative/mtp_budget.py`, optional `budget_policy` in
+  `runtime/qwen35_gguf_mtp.py`, and `--budget-sequence` / `--adaptive-budget`
+  in `scripts/qwen36_dense_gguf_suite.py`.
+- **Why retained:** the request-owned sequence policy is the first real gfx1151
+  proof of all nine B1/B2/B3 transitions over independent proposal/target graph
+  buckets, including reject/partial/full outcomes and clean teardown. The EMA
+  controller supplies reproducible negative evidence without prompt/token
+  branches, but loses to fixed B3 on aggregate/train/category economics.
+- **Removal trigger:** before exposing adaptive depth in public generation,
+  either (a) replace the rejected EMA controller with a deterministic policy
+  that beats the best fixed budget on full train and every heldout/category
+  gate, then remove the old controller/config, or (b) if no successor campaign
+  consumes variable-budget transitions, move the sequence owner into test
+  support and remove the runtime policy hook and benchmark CLI flags. Never
+  remove the fixed B1/B2/B3 graph buckets or strict transaction fallbacks.
+
+## RF-OI4 — default-off post-norm draft-hidden diagnostic (2026-08-25)
+
+- **State:** immutable policy infrastructure retained; `post_output_norm`
+  rejected for Qwen3.8 promotion, `pre_output_norm` remains strict/default.
+- **Paths:** `Qwen35GGUFDraftHiddenPolicy` and the explicit
+  `draft_hidden_variant` decoder argument in `runtime/qwen35_gguf_mtp.py`, plus
+  `--draft-hidden-variant` in `scripts/qwen36_dense_gguf_suite.py`.
+- **Why retained:** it is the request-owned single source of truth for prompt
+  priming and steady target proposals, preserves strict target commit/rollback
+  ownership, prevents accidental double normalization, and enables future model
+  artifacts to test their declared convention without ad-hoc branches.
+- **Removal trigger:** if no second model/conversion campaign consumes the
+  manifest, move post-norm transformation into benchmark/test support and remove
+  the runtime candidate path. If a future model promotes post-norm, bind the
+  variant to that model/provider manifest and rerun full category, heldout,
+  long/lifecycle, and same-host economics gates; never select by prompt or live
+  acceptance.
+
+## PARO MTP verifier numerical evaluator migration (2026-08-24)
+
+- `scripts/mtp_paro_verifier_numerics.py` temporarily retains the original
+  simultaneous two-session `run()` beside the sequential `run_sequential()`
+  selected by the CLI. The simultaneous owner needs about 85% W7900 VRAM with
+  the proposer and timed out during setup; it remains only for bisection while
+  the sequential strict-capture/fast-replay evaluator is qualified.
+- **Ready:** `run_sequential()` now passes the complete 10-prompt/three-repeat
+  D64 gate plus focused strict schedule/commit and state-owner regressions.
+  Remove the old simultaneous `run()` in the next cleanup unit; keep only the
+  sequential evaluator.

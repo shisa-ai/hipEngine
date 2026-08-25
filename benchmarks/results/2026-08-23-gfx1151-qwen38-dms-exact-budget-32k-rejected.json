@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_external_dms_exact_budget_quality_gate",
+  "status": "rejected_quality",
+  "date": "2026-08-23",
+  "host": "zbook",
+  "hardware": "AMD Ryzen AI Max+ PRO 395 / Radeon 8060S",
+  "backend": "hip_gfx1151",
+  "commit": "7ab49ae722409ed22b3da536ac98daca2be18651",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "candidate": {
+    "architecture": "external_linear_sidecar_v1",
+    "training_epochs": 20,
+    "sidecar_bytes": 655640,
+    "sidecar_sha256": "e52fc60a4e8f86f00719be107b44a73567795dfdd88dbbce15cf955409fcd764",
+    "metadata_sha256": "207b17f6936b67b23ea8f0e46386f4c16bf4b977d700dfe0978d805b07d66e7b",
+    "prefill_selection_mode": "exact_budget",
+    "window_size": 256,
+    "target_compression_ratio": 2
+  },
+  "protocol": {
+    "prompt_tokens": 32768,
+    "decode_steps_per_category": 8,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "split": "reused_v2_development",
+    "teacher": "dense BF16 KV exact-Q4 resident session",
+    "trajectory": "strict dense-teacher input tokens",
+    "max_kl": 0.05,
+    "min_top1_agreement": 0.9,
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen38_dms_integrated_quality_suite.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /home/lhl/dms-artifacts/qwen38-external-v2-long/sidecar-longweights-cr2-ft5/dms_metadata.json --data-manifest /home/lhl/dms-artifacts/qwen38-external-v2-long/long-data-manifest-32k.json --prompt-tokens 32768 --prompt-split validation --categories code,general_en,general_ja,mixed_ja_en --decode-steps 8 --modes sidecar --backend hip_gfx1151 --max-kl 0.05 --min-top1 0.9 --output /home/lhl/dms-artifacts/qwen38-external-v2-long/quality-dev-longweights-ft20-exactbudget-32k-d8.json --fail-on-fail"
+  },
+  "capacity": {
+    "all_categories_identical": true,
+    "actual_compression_ratio": 1.9838992797046184,
+    "live_token_rows": 1057344,
+    "logical_token_rows": 2097664,
+    "max_live_count": 16521,
+    "payload_bytes": 1082720256
+  },
+  "aggregate": {
+    "rows": 32,
+    "max_kl": 0.14179868327964107,
+    "mean_kl": 0.007227871046377572,
+    "p95_kl": 0.0314156371269641,
+    "p99_kl": 0.10837617831763807,
+    "top1_agreement": 0.96875,
+    "all_categories_passed": false
+  },
+  "categories": {
+    "code": {"max_kl": 0.0001700245839399657, "top1_agreement": 1.0, "passed": true},
+    "general_en": {"max_kl": 0.001157673505120478, "top1_agreement": 1.0, "passed": true},
+    "general_ja": {"max_kl": 0.14179868327964107, "top1_agreement": 0.875, "passed": false},
+    "mixed_ja_en": {"max_kl": 0.0015476951985185705, "top1_agreement": 1.0, "passed": true}
+  },
+  "timing": {
+    "load_seconds": 43.5444627229881,
+    "total_seconds": 1259.7349309510028
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "active_allocations": 0
+  },
+  "firewall": {
+    "v3_final_consumed": false
+  },
+  "conclusion": "Exact-budget ranking completely fixes unseen-sequence capacity drift but not the Japanese decode-critical-token miss. Keep default-off; test one predeclared 8K protected-window policy, then pivot to continuation-aware labels if it rejects."
+}

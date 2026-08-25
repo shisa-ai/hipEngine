@@ -111,6 +111,11 @@ def test_qwen35moe_prefill_default_selects_fast_bulk_with_native_fallback(monkey
         "_q8_mmq_prefill_context",
         lambda _self: nullcontext(),
     )
+    monkeypatch.setattr(
+        Qwen35GGUFResidentSession,
+        "_q6_f16_rocblas_prefill_context",
+        lambda _self, **_kwargs: nullcontext(),
+    )
 
     default = session.prefill([760, 4087, 369, 220], return_logits=False)
     native = session.prefill([760, 4087, 369, 220], bulk_attention_mode="native", return_logits=True)

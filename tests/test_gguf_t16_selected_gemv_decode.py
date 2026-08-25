@@ -964,12 +964,14 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
     )
 
 
+@pytest.mark.parametrize("rows", [2, 3, 4, 8])
 def test_q4_t16_dense_rowtile16_w2_matches_rowtile8_bits(
+    rows: int,
     t16_selected_library,
 ) -> None:
-    rng = np.random.default_rng(20260823)
+    rng = np.random.default_rng(20260823 + rows)
     x_bf16 = _f32_to_bf16_u16(
-        rng.normal(0.0, 0.4, size=(8, 512)).astype(np.float32)
+        rng.normal(0.0, 0.4, size=(rows, 512)).astype(np.float32)
     )
     raw = make_q4_k_weight(32, 512)
     tiles = repack_gguf_q4_k_tile16(raw[None, ...]).tiles
@@ -1864,6 +1866,10 @@ def test_p9_h3d_wrappers_validate_args() -> None:
     with pytest.raises(ValueError, match="rows in 2..8"):
         gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out(
             0, 0, 0, 0, 9, 256, 16
+        )
+    with pytest.raises(ValueError, match=r"rows in \{2,3,4,8\}"):
+        gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out(
+            0, 0, 0, 5, 256, 16
         )
     with pytest.raises(ValueError, match="rows in 2..4"):
         gguf_q4_k_qmicro_t16_dense_rowtile_bf16_bf16_out(

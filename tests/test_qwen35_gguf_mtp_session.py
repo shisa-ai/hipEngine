@@ -7,6 +7,7 @@ import pytest
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
+from hipengine.core.hip import HipMemcpyKind
 from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
 from hipengine.generation.deadline import GenerationCancelled
@@ -170,12 +171,12 @@ def test_serial_fallback_forces_consumer_owned_initial_state_snapshot() -> None:
     assert journal.initial_state_captured
 
 
-def test_mtp_prompt_admission_bulk_prefills_target_then_catches_up_shifted_draft(
+def test_mtp_prompt_admission_streams_shifted_draft_without_full_hidden_slab(
     monkeypatch,
 ) -> None:
-    allocations = iter((DeviceBuffer(0x1000, 8), DeviceBuffer(0x2000, 24)))
+    pending = DeviceBuffer(0x1000, 8)
     freed: list[int] = []
-    monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: next(allocations))
+    monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: pending)
     monkeypatch.setattr(
         mtp_module,
         "free",
@@ -184,29 +185,55 @@ def test_mtp_prompt_admission_bulk_prefills_target_then_catches_up_shifted_draft
 
     target_calls: list[tuple[tuple[int, ...], dict[str, object]]] = []
 
+    class Runtime:
+        def memset(self, *_args) -> None:
+            pass
+
+        def memcpy_async(self, *_args) -> None:
+            pass
+
     class Target:
         runner = SimpleNamespace(hidden_size=4)
-        runtime = SimpleNamespace(memset=lambda *_args: None)
+        runtime = Runtime()
 
         def prefill(self, prompt, **kwargs):
             target_calls.append((tuple(prompt), kwargs))
+            sink = kwargs["target_hidden_chunk_sink"]
+            sink.consume(
+                request_id=kwargs["target_hidden_request_id"],
+                chunk_start=0,
+                hidden_ptr=0x2000,
+                rows=len(prompt),
+                stream=0,
+            )
+            sink.finish(
+                request_id=kwargs["target_hidden_request_id"],
+                total_rows=len(prompt),
+                stream=0,
+            )
             return SimpleNamespace(token_id=91)
 
         def step(self, *_args, **_kwargs):
             raise AssertionError("bulk MTP admission must not serial-prefill the target")
 
     draft_calls: list[tuple[int, int, int, int]] = []
+    finish_calls: list[tuple[int, int, bool]] = []
 
     class Executor:
-        def run_step(self, request_id, token_id, position, target_hidden, **_kwargs):
-            draft_calls.append(
-                (
-                    int(request_id),
-                    int(token_id),
-                    int(position),
-                    int(target_hidden.ptr),
+        def enqueue_prompt_rows(self, request_id, token_ids, **kwargs):
+            for index, token in enumerate(token_ids):
+                draft_calls.append(
+                    (
+                        int(request_id),
+                        int(token),
+                        int(kwargs["position_start"]) + index,
+                        int(kwargs["target_hidden_base_ptr"])
+                        + index * int(kwargs["hidden_stride_bytes"]),
+                    )
                 )
-            )
+
+        def finish_prompt_priming(self, request_id, *, stream, synchronize):
+            finish_calls.append((int(request_id), int(stream), bool(synchronize)))
 
     decoder = Qwen35GGUFMTPDecodeSession.__new__(Qwen35GGUFMTPDecodeSession)
     decoder.target = Target()
@@ -219,22 +246,471 @@ def test_mtp_prompt_admission_bulk_prefills_target_then_catches_up_shifted_draft
     )
 
     assert result.token_id == 91
-    assert target_calls == [
-        (
-            (11, 22, 33),
-            {
-                "use_bulk": True,
-                "return_logits": False,
-                "capture_target_hidden_rows": DeviceBuffer(0x2000, 24),
-            },
-        )
-    ]
+    assert len(target_calls) == 1
+    prompt, kwargs = target_calls[0]
+    assert prompt == (11, 22, 33)
+    assert kwargs["use_bulk"] is True
+    assert kwargs["return_logits"] is False
+    assert kwargs["target_hidden_request_id"] == 7
+    assert kwargs["target_hidden_chunk_sink"].total_rows == 3
+    assert "capture_target_hidden_rows" not in kwargs
     assert draft_calls == [
         (7, 11, 0, 0x1000),
         (7, 22, 1, 0x2000),
         (7, 33, 2, 0x2008),
     ]
-    assert freed == [0x2000, 0x1000]
+    assert finish_calls == [(7, 0, False)]
+    assert freed == [0x1000]
+
+
+def test_mtp_streaming_prompt_failure_drains_staging_and_frees_pending_row(
+    monkeypatch,
+) -> None:
+    pending = DeviceBuffer(0x1000, 8)
+    freed: list[int] = []
+    monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: pending)
+    monkeypatch.setattr(
+        mtp_module,
+        "free",
+        lambda buffer, *, runtime: freed.append(int(buffer.ptr)),
+    )
+
+    class Runtime:
+        def memset(self, *_args) -> None:
+            pass
+
+        def memcpy_async(self, *_args) -> None:
+            pass
+
+    class Target:
+        runner = SimpleNamespace(hidden_size=4)
+        runtime = Runtime()
+
+        def prefill(self, prompt, **kwargs):
+            kwargs["target_hidden_chunk_sink"].consume(
+                request_id=kwargs["target_hidden_request_id"],
+                chunk_start=0,
+                hidden_ptr=0x2000,
+                rows=1,
+                stream=0,
+            )
+            raise RuntimeError("injected target failure")
+
+    finish_calls: list[tuple[int, int, bool]] = []
+
+    class Executor:
+        def enqueue_prompt_rows(self, *_args, **_kwargs) -> None:
+            pass
+
+        def finish_prompt_priming(self, request_id, *, stream, synchronize):
+            finish_calls.append((int(request_id), int(stream), bool(synchronize)))
+
+    decoder = Qwen35GGUFMTPDecodeSession.__new__(Qwen35GGUFMTPDecodeSession)
+    decoder.target = Target()
+    decoder.draft_provider = SimpleNamespace(executor=Executor())
+
+    with pytest.raises(RuntimeError, match="injected target failure"):
+        decoder._prefill_target_and_draft(
+            (11, 22),
+            request_id=7,
+            use_bulk=True,
+        )
+
+    assert finish_calls == [(7, 0, True)]
+    assert freed == [pending.ptr]
+
+
+@pytest.mark.parametrize("chunk_size", [1, 2, 7, 8, 9])
+def test_streaming_prompt_sink_preserves_shifted_rows_across_chunk_partitions(
+    monkeypatch,
+    chunk_size: int,
+) -> None:
+    hidden_size = 4
+    hidden_nbytes = hidden_size * DType.BF16.itemsize
+    pending = DeviceBuffer(0x1000, hidden_nbytes)
+    freed: list[int] = []
+    monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: pending)
+    monkeypatch.setattr(
+        mtp_module,
+        "free",
+        lambda buffer, *, runtime: freed.append(int(buffer.ptr)),
+    )
+
+    copies: list[tuple[int, int, int, int, int]] = []
+
+    class Runtime:
+        def memset(self, ptr, value, nbytes) -> None:
+            copies.append((int(ptr), int(value), int(nbytes), -1, -1))
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            copies.append((int(dst), int(src), int(nbytes), int(kind), int(stream)))
+
+    rows: list[tuple[int, int, int, int]] = []
+
+    class Executor:
+        def enqueue_prompt_rows(
+            self,
+            request_id,
+            token_ids,
+            *,
+            position_start,
+            target_hidden_base_ptr,
+            hidden_stride_bytes,
+            stream,
+        ) -> None:
+            for index, token in enumerate(token_ids):
+                rows.append(
+                    (
+                        int(request_id),
+                        int(token),
+                        int(position_start) + index,
+                        int(target_hidden_base_ptr) + index * int(hidden_stride_bytes),
+                    )
+                )
+
+    prompt = tuple(range(101, 124))
+    sink = mtp_module._StreamingNextNPromptSink(
+        request_id=7,
+        prompt_tokens=prompt,
+        hidden_size=hidden_size,
+        executor=Executor(),
+        runtime=Runtime(),
+        checkpoint=None,
+    )
+    source_base = 0x4000
+    chunk_starts: set[int] = set()
+    for start in range(0, len(prompt), chunk_size):
+        count = min(chunk_size, len(prompt) - start)
+        chunk_starts.add(start)
+        sink.consume(
+            request_id=7,
+            chunk_start=start,
+            hidden_ptr=source_base + start * hidden_nbytes,
+            rows=count,
+            stream=3,
+        )
+    sink.finish(request_id=7, total_rows=len(prompt), stream=3)
+
+    assert [(token, position) for _, token, position, _ in rows] == [
+        (token, position) for position, token in enumerate(prompt)
+    ]
+    for _, _, position, hidden_ptr in rows:
+        if position in chunk_starts:
+            assert hidden_ptr == pending.ptr
+        else:
+            assert hidden_ptr == source_base + (position - 1) * hidden_nbytes
+    pending_copies = [copy for copy in copies if copy[3] == int(HipMemcpyKind.DEVICE_TO_DEVICE)]
+    assert pending_copies == [
+        (
+            pending.ptr,
+            source_base + (min(start + chunk_size, len(prompt)) - 1) * hidden_nbytes,
+            hidden_nbytes,
+            int(HipMemcpyKind.DEVICE_TO_DEVICE),
+            3,
+        )
+        for start in range(0, len(prompt), chunk_size)
+    ]
+    assert sink.final_pending_hidden.ptr == pending.ptr
+    sink.close()
+    assert freed == [pending.ptr]
+
+
+def test_streaming_prompt_sink_supports_warm_offset_and_fails_closed_on_owner_mismatch(
+    monkeypatch,
+) -> None:
+    allocations = iter((DeviceBuffer(0x1000, 8),))
+    monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: next(allocations))
+    monkeypatch.setattr(mtp_module, "free", lambda _buffer, *, runtime: None)
+
+    copies: list[tuple[int, int, int, int]] = []
+
+    class Runtime:
+        def memcpy(self, dst, src, nbytes, kind) -> None:
+            copies.append((int(dst), int(src), int(nbytes), int(kind)))
+
+        def memcpy_async(self, dst, src, nbytes, kind, stream) -> None:
+            copies.append((int(dst), int(src), int(nbytes), int(kind)))
+
+    rows: list[tuple[int, int, int, int]] = []
+
+    class Executor:
+        def enqueue_prompt_rows(self, request_id, token_ids, **kwargs) -> None:
+            for index, token in enumerate(token_ids):
+                rows.append(
+                    (
+                        int(request_id),
+                        int(token),
+                        int(kwargs["position_start"]) + index,
+                        int(kwargs["target_hidden_base_ptr"])
+                        + index * int(kwargs["hidden_stride_bytes"]),
+                    )
+                )
+
+    initial = Tensor.from_handle(0x9000, (1, 4), DType.BF16, Device("hip", 0))
+    sink = mtp_module._StreamingNextNPromptSink(
+        request_id=11,
+        prompt_tokens=(50, 51),
+        hidden_size=4,
+        executor=Executor(),
+        runtime=Runtime(),
+        checkpoint=None,
+        start_position=100,
+        initial_hidden=initial,
+    )
+    assert copies[0] == (0x1000, 0x9000, 8, int(HipMemcpyKind.DEVICE_TO_DEVICE))
+    with pytest.raises(RuntimeError, match="owner"):
+        sink.consume(
+            request_id=12,
+            chunk_start=0,
+            hidden_ptr=0x5000,
+            rows=1,
+            stream=0,
+        )
+    sink.consume(
+        request_id=11,
+        chunk_start=0,
+        hidden_ptr=0x5000,
+        rows=1,
+        stream=0,
+    )
+    with pytest.raises(RuntimeError, match="contiguous"):
+        sink.consume(
+            request_id=11,
+            chunk_start=0,
+            hidden_ptr=0x6000,
+            rows=1,
+            stream=0,
+        )
+    sink.consume(
+        request_id=11,
+        chunk_start=1,
+        hidden_ptr=0x6000,
+        rows=1,
+        stream=0,
+    )
+    sink.finish(request_id=11, total_rows=2, stream=0)
+    assert [(token, position) for _, token, position, _ in rows] == [(50, 100), (51, 101)]
+    assert rows[0][3] == rows[1][3] == 0x1000
+    sink.close()
+
+
+def test_draft_hidden_policy_manifest_is_immutable_and_explicit() -> None:
+    strict = mtp_module.Qwen35GGUFDraftHiddenPolicy()
+    candidate = mtp_module.Qwen35GGUFDraftHiddenPolicy(
+        target_hidden_variant="post_output_norm"
+    )
+
+    assert strict.target_hidden_variant == "pre_output_norm"
+    assert strict.manifest()["prompt_target_hidden"] == "pre_output_norm"
+    assert candidate.manifest() == {
+        "target_hidden_variant": "post_output_norm",
+        "prompt_target_hidden": "post_output_norm",
+        "proposal_target_hidden": "post_output_norm",
+        "target_commit_hidden": "pre_output_norm",
+        "draft_chain_hidden": "nextn_post_output_norm",
+    }
+    with pytest.raises(ValueError, match="target_hidden_variant"):
+        mtp_module.Qwen35GGUFDraftHiddenPolicy(target_hidden_variant="adaptive")
+    with pytest.raises(Exception):
+        candidate.target_hidden_variant = "pre_output_norm"
+
+
+def test_post_output_norm_policy_normalizes_each_target_proposal_once(
+    monkeypatch,
+) -> None:
+    calls: list[tuple[int, int, int, int, int]] = []
+    syncs: list[str] = []
+    target_hidden = Tensor.from_handle(0x1000, (1, 4), DType.BF16, Device("hip", 0))
+    output_norm = SimpleNamespace(
+        allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=0x2000))
+    )
+    decoder = Qwen35GGUFMTPDecodeSession.__new__(Qwen35GGUFMTPDecodeSession)
+    decoder.target = SimpleNamespace(
+        last_target_hidden=target_hidden,
+        runner=SimpleNamespace(
+            hidden_size=4,
+            weights=SimpleNamespace(
+                root=lambda name: output_norm,
+                config=SimpleNamespace(rms_norm_eps=1.0e-6),
+            ),
+        ),
+        runtime=SimpleNamespace(device_synchronize=lambda: syncs.append("sync")),
+    )
+    decoder.draft_hidden_policy = mtp_module.Qwen35GGUFDraftHiddenPolicy(
+        target_hidden_variant="post_output_norm"
+    )
+    decoder._draft_post_norm_hidden = DeviceBuffer(0x3000, 8)
+
+    monkeypatch.setattr(
+        mtp_module,
+        "gguf_rmsnorm_bf16_f32_weight",
+        lambda src, weight, dst, **kwargs: calls.append(
+            (
+                int(src),
+                int(weight),
+                int(dst),
+                int(kwargs["rows"]),
+                int(kwargs["hidden_size"]),
+            )
+        ),
+    )
+
+    normalized = decoder._proposal_target_hidden()
+
+    assert normalized.ptr == 0x3000
+    assert calls == [(0x1000, 0x2000, 0x3000, 1, 4)]
+    assert syncs == ["sync"]
+
+    decoder.draft_hidden_policy = mtp_module.Qwen35GGUFDraftHiddenPolicy()
+    strict = decoder._proposal_target_hidden()
+    assert strict.ptr == 0x1000
+    assert calls == [(0x1000, 0x2000, 0x3000, 1, 4)]
+
+
+def test_post_output_norm_decoder_close_frees_owned_policy_row(
+    monkeypatch,
+) -> None:
+    freed: list[int] = []
+    monkeypatch.setattr(
+        mtp_module,
+        "free",
+        lambda buffer, *, runtime: freed.append(int(buffer.ptr)),
+    )
+    verifier_closes: list[str] = []
+    decoder = Qwen35GGUFMTPDecodeSession.__new__(Qwen35GGUFMTPDecodeSession)
+    decoder.target = SimpleNamespace(runtime=object())
+    decoder._draft_post_norm_hidden = DeviceBuffer(0x3000, 8)
+    decoder.owns_verifier = False
+    decoder.verifier = SimpleNamespace(close=lambda: verifier_closes.append("close"))
+
+    decoder.close()
+    decoder.close()
+
+    assert freed == [0x3000]
+    assert verifier_closes == []
+
+
+def test_streaming_prompt_sink_applies_one_consistent_target_hidden_transform(
+    monkeypatch,
+) -> None:
+    pending = DeviceBuffer(0x1000, 8)
+    monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: pending)
+    monkeypatch.setattr(mtp_module, "free", lambda _buffer, *, runtime: None)
+    copies: list[tuple[int, int, int]] = []
+
+    class Runtime:
+        def memset(self, *_args) -> None:
+            pass
+
+        def memcpy_async(self, dst, src, nbytes, _kind, _stream) -> None:
+            copies.append((int(dst), int(src), int(nbytes)))
+
+    rows: list[tuple[int, int, int]] = []
+
+    class Executor:
+        def enqueue_prompt_rows(self, _request_id, token_ids, **kwargs) -> None:
+            for index, token in enumerate(token_ids):
+                rows.append(
+                    (
+                        int(token),
+                        int(kwargs["position_start"]) + index,
+                        int(kwargs["target_hidden_base_ptr"])
+                        + index * int(kwargs["hidden_stride_bytes"]),
+                    )
+                )
+
+    transforms: list[tuple[int, int, int]] = []
+
+    def transform(hidden_ptr: int, count: int, stream: int) -> int:
+        transforms.append((int(hidden_ptr), int(count), int(stream)))
+        return 0x7000
+
+    sink = mtp_module._StreamingNextNPromptSink(
+        request_id=7,
+        prompt_tokens=(11, 22, 33),
+        hidden_size=4,
+        executor=Executor(),
+        runtime=Runtime(),
+        checkpoint=None,
+        transform_hidden_rows=transform,
+    )
+    sink.consume(
+        request_id=7,
+        chunk_start=0,
+        hidden_ptr=0x5000,
+        rows=3,
+        stream=5,
+    )
+    sink.finish(request_id=7, total_rows=3, stream=5)
+
+    assert transforms == [(0x5000, 3, 5)]
+    assert rows == [(11, 0, 0x1000), (22, 1, 0x7000), (33, 2, 0x7008)]
+    assert copies == [(0x1000, 0x7010, 8)]
+    sink.close()
+
+
+def test_streaming_prompt_sink_cancellation_between_chunks_releases_owned_row(
+    monkeypatch,
+) -> None:
+    pending = DeviceBuffer(0x1000, 8)
+    freed: list[int] = []
+    monkeypatch.setattr(mtp_module, "malloc", lambda _nbytes, *, runtime: pending)
+    monkeypatch.setattr(
+        mtp_module,
+        "free",
+        lambda buffer, *, runtime: freed.append(int(buffer.ptr)),
+    )
+
+    class Runtime:
+        def memset(self, *_args) -> None:
+            pass
+
+        def memcpy_async(self, *_args) -> None:
+            pass
+
+    calls: list[tuple[int, ...]] = []
+
+    class Executor:
+        def enqueue_prompt_rows(self, _request_id, token_ids, **_kwargs) -> None:
+            calls.append(tuple(int(token) for token in token_ids))
+
+    checkpoints = 0
+
+    def checkpoint() -> None:
+        nonlocal checkpoints
+        checkpoints += 1
+        if checkpoints == 2:
+            raise GenerationCancelled()
+
+    sink = mtp_module._StreamingNextNPromptSink(
+        request_id=7,
+        prompt_tokens=(1, 2, 3, 4),
+        hidden_size=4,
+        executor=Executor(),
+        runtime=Runtime(),
+        checkpoint=checkpoint,
+    )
+    try:
+        sink.consume(
+            request_id=7,
+            chunk_start=0,
+            hidden_ptr=0x5000,
+            rows=2,
+            stream=0,
+        )
+        with pytest.raises(GenerationCancelled):
+            sink.consume(
+                request_id=7,
+                chunk_start=2,
+                hidden_ptr=0x6000,
+                rows=2,
+                stream=0,
+            )
+        assert sink.consumed_rows == 2
+        assert calls == [(1,), (2,)]
+    finally:
+        sink.close()
+    assert freed == [pending.ptr]
 
 
 def test_mtp_prompt_admission_preserves_target_default_bulk_selector(monkeypatch) -> None:
@@ -317,6 +793,21 @@ def test_mtp_generate_cancellation_precedes_proposal_mutation(monkeypatch) -> No
     proposed: list[tuple[object, ...]] = []
     device_proposals: list[tuple[object, ...]] = []
     prepared: list[tuple[object, ...]] = []
+    budget_events: list[tuple[object, ...]] = []
+
+    class BudgetPolicy:
+        def start_request(self, *, request_id, max_budget):
+            budget_events.append(("start", int(request_id), int(max_budget)))
+
+        def choose_budget(self, **kwargs):
+            budget_events.append(("choose", kwargs))
+            raise AssertionError("cancellation must prevent budget choice")
+
+        def record_cycle(self, result):
+            budget_events.append(("record", result))
+
+        def summary(self):
+            return {"kind": "test"}
 
     class FakeScheduler:
         def __init__(self, capacity: int = 1) -> None:
@@ -353,7 +844,7 @@ def test_mtp_generate_cancellation_precedes_proposal_mutation(monkeypatch) -> No
     decoder.draft_provider = SimpleNamespace(reset_request=lambda _rid: None)
     decoder.verifier = SimpleNamespace()
 
-    def fake_prefill(_prompt, *, request_id, use_bulk):
+    def fake_prefill(_prompt, *, request_id, use_bulk, checkpoint=None):
         return SimpleNamespace(token_id=11)
 
     decoder._prefill_target_and_draft = fake_prefill
@@ -390,8 +881,10 @@ def test_mtp_generate_cancellation_precedes_proposal_mutation(monkeypatch) -> No
             max_new_tokens=4,
             request_id=7,
             checkpoint=cancel_before_first_cycle,
+            budget_policy=BudgetPolicy(),
         )
 
+    assert budget_events == [("start", 7, 2)]
     assert proposed == []
     assert device_proposals == []
     assert prepared == []
