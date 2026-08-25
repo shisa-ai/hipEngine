@@ -1160,6 +1160,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 ledger: _StageLedger | None = None
                 load_row: dict[str, Any] | None = None
                 try:
+                    llm.prepare(
+                        max_sequence_length=int(args.max_sequence_length)
+                    )
                     service = llm._get_text_generator()
                     driver = service.inner
                     direct_generator = driver.inner
