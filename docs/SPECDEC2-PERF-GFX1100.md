@@ -1,6 +1,6 @@
 # SPECDEC2-PERF-GFX1100 — W7900 Activation and Hot-Cycle Campaign
 
-- Status: **active; P0 complete, P1 bridge ready**
+- Status: **active; P1 measured, dense/PARO P2 retained, packed P3 zero-cycle-allocation complete**
 - Approved: **2026-08-25**
 - Functional predecessor: [`SPECDEC2-GFX1100.md`](SPECDEC2-GFX1100.md), G1/P1 foundations complete
 - Mechanism reference: [`SPECDEC2-PERF.md`](SPECDEC2-PERF.md), with no gfx1151 evidence transfer
@@ -364,12 +364,14 @@ work never begins from failing upstream gates.
       through the qualified economics child, including raw exact IDs, selected/
       strict manifests, target/provider activation, decode, and clean source.
 - [ ] Execute and attach current-source production/strict PARO direct packets;
-      do not add backend/model policy in engine hot paths.
+      production is attached; strict was executed but attachment correctly fails
+      exact compact-product-AR versus serial-direct parity on one heldout prompt.
+      Do not add backend/model policy in engine hot paths.
 - [x] Add schema, aggregation, counterbalance, exact-denominator, missing-owner,
       malformed-manifest, incomplete-suite, dirty-provenance, stage-reconciliation,
       and atomic-checkpoint tests.
-- [ ] Support lane-appropriate AR/direct/staged arms, profiles, C/K, horizons,
-      prompt scopes, repeats, immediate progress, and atomic checkpoints.
+- [x] Support lane-appropriate AR/direct/staged arms, profiles, entry C/K,
+      horizons, prompt scopes, repeats, immediate progress, and atomic checkpoints.
 - [ ] Emit complete/decode-only attribution, exact accounting, physical shapes,
       trajectories, fingerprints, allocation/synchronization counters, and drain.
 - [x] Add named packed-PARO target-prompt, provider-prompt-prime, tokenize, and
@@ -378,16 +380,23 @@ work never begins from failing upstream gates.
 - [ ] Complete resident-owner transition instrumentation: packed-AR
       flush/scatter/discard, graph close/invalidation, root-hidden handoff, and
       provider attach counts must reconcile rather than disappear into residual.
-- [ ] Add cached single-child profiler mode; never profile a nested parent.
-- [ ] Run GGUF C1 K1-K3 d8 and ten-prompt D24 packets.
-- [ ] Run PARO C1/K1 production and strict d8 and ten-prompt D24 packets.
-- [ ] Freeze activation, resident-owner transition, cycle, target, update,
-      synchronization, residual, and exact reduction needed for each candidate
-      cell.
-- [ ] Publish independent compact artifacts and commit.
+- [x] Add cached single-child profiler mode; never profile a nested parent.
+- [x] Run GGUF C1 K1-K3 d8 and ten-prompt natural25 retained-horizon packets.
+- [x] Run PARO C1/K1 production and strict d8 and ten-prompt D24 packets.
+- [x] Freeze activation, cycle, target, update, synchronization/allocation,
+      residual, and exact reduction needed for each candidate cell; detailed
+      resident-transition subowners remain an explicit instrumentation follow-up.
+- [x] Publish independent compact checkpoint artifact and commit.
 
 Exit: current-source common attribution, not historical mixed timing, chooses the
 next implementation owner in each lane.
+
+**Retained W7900 checkpoint:**
+[`2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json).
+Dense streaming is exact at `1.259x/1.365x/1.419x` AR for K1/K2/K3 but remains
+behind direct; p128/p512 is exact but slow and p4K/p16K is pre-mutation K0.
+Packed production is exact with 372/372 zero-allocation cycles but remains
+`0.933x` AR.  No product cell promotes; both automatic policies remain K0.
 
 ## 8. P2 — streaming prompt activation
 
@@ -398,11 +407,12 @@ next implementation owner in each lane.
 - [ ] RED-test their staged one-shot/chunked shifted NextN prompt state at chunk
       sizes 1/2/7/8/9, ragged tails, offsets, page transitions, cancellation,
       prefix/COW, and pressure rejection.
-- [ ] Wire retained target hidden chunk ownership into staged provider priming.
-- [ ] Retain one carried BF16 hidden row only.
-- [ ] Remove staged `_prompt_hidden_rows` and post-prefill host replay for the
-      qualified capability.
-- [ ] Prove O(hidden), not O(prompt×hidden), transient ownership.
+- [x] Wire retained target hidden chunk ownership into staged provider priming.
+- [x] Retain one carried BF16 hidden row only.
+- [x] Remove staged `_prompt_hidden_rows` and post-prefill host replay for the
+      qualified streaming capability; keep it only as the documented oracle fallback.
+- [x] Prove O(hidden), not O(prompt×hidden), transient ownership: every retained
+      request carries one 10,240-byte row.
 - [ ] Run p128/p512/p4K/p16K activation and full category bridge exactness,
       state/KV/following generation, wall, and drain gates.  W7900 native target
       graph/arithmetic is now fail-closed above 95 live tokens after deterministic p128
@@ -446,9 +456,9 @@ next implementation owner in each lane.
 - [ ] Ensure PARO borrowed target pointers are never owned/freed by provider or
       staged workspace.
 - [ ] Confirm no request observes peer scratch after slot reuse.
-- [ ] Cached traces prove no allocation/free in warmed cycle markers and final
-      conservation remains exact or explicitly bounded by pre-existing runtime
-      residue.
+- [x] Cached strict traces and production/strict full packets prove zero
+      allocation/free in warmed cycle markers (372/372 production cycles) and
+      exact final conservation.
 
 ## 10. P4 — device-resident bounded cycle
 
