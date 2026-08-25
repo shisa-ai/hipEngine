@@ -394,7 +394,8 @@ next implementation owner in each lane.
 **Retained W7900 checkpoint:**
 [`2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p1-p3-checkpoint.json),
 [`dense P3 stable slabs`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p3-dense-stable-slabs.json),
-and [`packed P4 device candidate`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-paro-device-candidate.json).
+[`packed P4 device candidate`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-paro-device-candidate.json),
+and [`P5 target profiles`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p5-target-profiles.json).
 Dense streaming is exact at `1.259x/1.365x/1.419x` AR for K1/K2/K3 but remains
 behind direct; p128/p512 is exact but slow and p4K/p16K is pre-mutation K0.
 Packed production device candidate is exact with 372/372 zero-allocation cycles
@@ -512,14 +513,18 @@ For each lane independently:
 - [x] Reconcile packed R2 marker wall, kernel-family interval union, API/copies,
       and complete cycle. One post-commit sync/cycle is removed, but operation
       wall is neutral because accept readback absorbs queued work.
-- [ ] Admit at most one target candidate with a named operation-complete owner,
+- [x] Admit at most one target candidate with a named operation-complete owner,
       RED oracle, strict fallback, exact C/K/R/context/profile scope, and either
       `>=1.10x` projected operation speed plus `>=1%` request saving or enough
-      projected saving to cross one automatic cell.
-- [ ] Retain/reject the candidate on operation-complete plus complete-category
-      evidence; launch count alone is insufficient.
-- [ ] Reprofile provider repair only after target/device changes; admit it under
-      the same materiality rule or publish no-go.
+      projected saving to cross one automatic cell. No dense/packed target
+      kernel candidate meets this admission rule.
+- [x] Retain/reject the candidate on operation-complete plus complete-category
+      evidence; launch count alone is insufficient. Packed post-commit stream
+      ordering is retained mechanically but wall-neutral; dense device chaining
+      is rejected on state safety.
+- [x] Reprofile provider repair only after target/device changes; admit it under
+      the same materiality rule or publish no-go. Dense repair is 4.95-6.56
+      ms/request and remains no-go without a state-safe device-chain premise.
 
 GGUF required logical target rows are R2/R3/R4 at C1 and, after physical
 admission, R4/R6/R8/R12/R16. PARO begins at R2 and adds R4/R8 only with genuine
