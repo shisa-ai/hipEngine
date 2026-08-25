@@ -4079,6 +4079,28 @@ class Qwen35ParoResidentSession:
         self._verify_linear_scratch_cache.clear()
         self._verify_mlp_scratch_cache.clear()
 
+    def prepare_specdec2_verify_scratch(self, *, rows: int) -> None:
+        """Reserve fixed-address linear/MoE verifier scratch before mutation."""
+
+        count = int(rows)
+        if self.closed:
+            raise RuntimeError("session is closed")
+        if count <= 1 or count > self.max_batch_size:
+            raise ValueError("SPECDEC2 verifier rows must be in (1, max_batch_size]")
+        for layer_id, state in enumerate(self.states):
+            if self.config.layer_types[layer_id] != "linear_attention":
+                continue
+            self.linear_scratch[layer_id] = self._verify_linear_attention_scratch(
+                layer_id,
+                state,
+                rows=count,
+            )
+            self.moe_scratch[layer_id] = self._verify_mlp_scratch(
+                layer_id,
+                state,
+                rows=count,
+            )
+
     def _verify_scratch_generation_stamp_enabled(self) -> bool:
         return _env_flag("HIPENGINE_VERIFY_SCRATCH_GENERATION_STAMP", True)
 

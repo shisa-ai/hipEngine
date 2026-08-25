@@ -209,6 +209,10 @@ class Qwen35ParoMTP2Adapter:
         row = self.owner._row(rid)
         if state.prompt_rows_consumed != len(row.prompt_ids):
             raise RuntimeError("PARO MTP2 streaming prompt priming is incomplete")
+        session = self.owner._session
+        if session is None:
+            raise RuntimeError("PARO MTP2 target session is unavailable after prefill")
+        session.prepare_specdec2_verify_scratch(rows=2)
         self.owner._release_mtp2_prompt_capture(row)
 
     def capability(
