@@ -486,7 +486,9 @@ def _run_prompt(args: argparse.Namespace, *, prompt: dict[str, str], encoder: Pr
     prompt_name = str(prompt["name"])
     prompt_dir = args.raw_root / _safe_name(prompt_name)
     prompt_dir.mkdir(parents=True, exist_ok=True)
+    tokenize_started = time.perf_counter()
     encoded = encoder.encode(prompt["prompt"])
+    tokenization_seconds = time.perf_counter() - tokenize_started
     token_ids = encoded.token_ids
     prompt_tokens_file = prompt_dir / "prompt-tokens.txt"
     prompt_tokens_file.write_text(",".join(str(token) for token in token_ids), encoding="utf-8")
@@ -513,6 +515,7 @@ def _run_prompt(args: argparse.Namespace, *, prompt: dict[str, str], encoder: Pr
         "rendered_prompt_chars": len(encoded.rendered_text),
         "prompt_chars": len(encoded.rendered_text),
         "prompt_tokens": len(token_ids),
+        "tokenization_seconds": tokenization_seconds,
         "prompt_tokens_file": str(prompt_tokens_file),
         "prompt_source_file": str(source_text_file),
         "prompt_text_file": str(prompt_text_file),

@@ -85,19 +85,29 @@ def resolve_arm_timing(
     if prefill is None:
         prefill = _seconds_from_ms(output_timing, "prefill_ms", "backend_prefill_ms")
     prefill = 0.0 if prefill is None else prefill
+    tokenize = _seconds_from_ms(output_timing, "tokenize_ms") or 0.0
+    provider_prime = (
+        _seconds_from_ms(output_timing, "specdec2_mtp2_prompt_prime_ms") or 0.0
+    )
+    if provider_prime > prefill + max(1e-9, prefill * 1e-6):
+        raise ValueError("provider prompt-prime timing exceeds scheduler prefill wall")
+    target_prefill = max(0.0, prefill - provider_prime)
     decode = _nonnegative_seconds(scheduler_observability, "decode_seconds")
     if decode is None:
         decode = _seconds_from_ms(output_timing, "decode_ms", "backend_decode_ms")
     decode = complete if decode is None or decode <= 0.0 else decode
-    known = prefill + decode
+    known = tokenize + prefill + decode
     tolerance = max(1e-9, complete * 1e-6)
     if known > complete + tolerance:
         raise ValueError(
-            "scheduler prefill/decode timing exceeds complete request wall: "
-            f"prefill={prefill:.9f}s decode={decode:.9f}s complete={complete:.9f}s"
+            "tokenize/prefill/decode timing exceeds complete request wall: "
+            f"tokenize={tokenize:.9f}s prefill={prefill:.9f}s "
+            f"decode={decode:.9f}s complete={complete:.9f}s"
         )
     stages = {name: 0.0 for name in REQUIRED_TOP_LEVEL_STAGES}
-    stages["target_prefill"] = prefill
+    stages["tokenize"] = tokenize
+    stages["target_prefill"] = target_prefill
+    stages["provider_prompt_prime"] = provider_prime
     stages["cycle_total"] = decode
     detail_mapping = {
         "proposal": "specdec2_mtp2_proposal_ms",

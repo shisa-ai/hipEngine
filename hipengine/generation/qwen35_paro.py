@@ -2199,6 +2199,7 @@ class _ParoResidentLoopRow:
     mtp2_candidate_counts: list[int] = field(default_factory=list)
     mtp2_accepted_counts: list[int] = field(default_factory=list)
     mtp2_execution_routes: list[str] = field(default_factory=list)
+    mtp2_prompt_prime_ms: float = 0.0
 
 
 class Qwen35ParoResidentModelRunner:
@@ -3273,6 +3274,17 @@ class Qwen35ParoResidentModelRunner:
             row.sampler_plan,
             vocab_size=getattr(self._session, "vocab_size", None),
         )
+        timing = {
+            "tokenize_ms": float(row.tokenize_ms),
+            "prompt_encode_ms": float(row.prompt_encode_ms),
+            "render_ms": float(row.render_ms),
+            "admission_prepare_ms": float(row.admission_prepare_ms),
+            "request_total_ms": (time.perf_counter() - row.submitted_at) * 1000.0,
+        }
+        if row.mtp2_candidate_budget > 0:
+            timing["specdec2_mtp2_prompt_prime_ms"] = float(
+                row.mtp2_prompt_prime_ms
+            )
         return _telemetry_for_tokens(
             row.prompt_ids,
             tuple(step.token_id for step in visible_steps),
@@ -3294,13 +3306,7 @@ class Qwen35ParoResidentModelRunner:
                 not row.native_greedy or row.serial_decode_steps > 0
             ),
             native_sampler_rows=False,
-            timing={
-                "tokenize_ms": float(row.tokenize_ms),
-                "prompt_encode_ms": float(row.prompt_encode_ms),
-                "render_ms": float(row.render_ms),
-                "admission_prepare_ms": float(row.admission_prepare_ms),
-                "request_total_ms": (time.perf_counter() - row.submitted_at) * 1000.0,
-            },
+            timing=timing,
             diagnostics={
                 "stable_model_slot": row.model_slot,
                 "last_width_plan": copy.deepcopy(self._last_width_plan),
@@ -3354,6 +3360,7 @@ class Qwen35ParoResidentModelRunner:
             "specdec2_mtp2_candidate_counts": list(row.mtp2_candidate_counts),
             "specdec2_mtp2_accepted_counts": list(row.mtp2_accepted_counts),
             "specdec2_mtp2_execution_routes": list(row.mtp2_execution_routes),
+            "specdec2_mtp2_prompt_prime_ms": float(row.mtp2_prompt_prime_ms),
             "scheduler_chunks": copy.deepcopy(row.scheduler_chunks),
         }
 
