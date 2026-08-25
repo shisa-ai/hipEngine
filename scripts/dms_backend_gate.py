@@ -136,12 +136,10 @@ def _run_width(config, args: argparse.Namespace, width: int) -> dict[str, Any]:
 
 
 def _pressure_gate(config, args: argparse.Namespace) -> dict[str, Any]:
-    per_head = min(
-        int(args.prompt_tokens) + int(args.decode_tokens),
-        int(np.ceil(int(args.prompt_tokens) / config.target_compression_ratio))
-        + config.window_size
-        + int(args.decode_tokens),
-    )
+    prompt_tokens = int(args.prompt_tokens)
+    # Admission is correctness-first provisional capacity. Streaming pack
+    # shrinks to protected + compressed history only after actual decisions.
+    per_head = prompt_tokens + int(args.decode_tokens)
     capacity = config.num_kv_heads * per_head
     pressure_args = argparse.Namespace(**vars(args))
     pressure_args.slots_per_layer = capacity

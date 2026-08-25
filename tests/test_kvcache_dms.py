@@ -17,6 +17,7 @@ from hipengine.kvcache import (
     DMSCodecQualification,
     DMSCompactResidentRunnerAdapter,
     DMSRetrofitConfig,
+    build_dms_exact_budget_eviction,
     build_dms_live_mask,
     compact_attention_reference,
     create_dms_bf16_backend,
@@ -127,7 +128,7 @@ def test_dms_metadata_loader_requires_packaged_qualified_checkpoint(tmp_path) ->
     assert config.borrowed_query_channel == 3
     assert config.group_size == 2
     assert config.source_kind == "packaged_metadata"
-    assert len(config.fingerprint) == 64
+    assert config.fingerprint == "029d407abc19685d55317bed54f9ab4bcaa0dc3222f8123c79571ad47a4e8649"
     with pytest.raises(ValueError, match="does not match"):
         load_dms_retrofit_config(
             model,
@@ -215,6 +216,49 @@ def test_dms_extracts_group_decisions_and_zeros_borrowed_channel() -> None:
     )
     assert np.all(cleaned[:, (0, 2), -1] == 0)
     np.testing.assert_array_equal(q, original)
+
+
+def test_dms_exact_budget_eviction_ranks_each_layer_head_and_protects_window() -> None:
+    logits = np.zeros((10, 2, 2), dtype=np.float32)
+    logits[:7, 0, 0] = [1, 9, 2, 8, 3, 7, 4]
+    logits[:7, 0, 1] = [9, 1, 8, 2, 7, 3, 4]
+    logits[:7, 1, 0] = 5.0
+    logits[:7, 1, 1] = np.arange(7, dtype=np.float32)
+    logits[7:] = 1000.0
+
+    evict = build_dms_exact_budget_eviction(
+        logits,
+        current_position=9,
+        window_size=2,
+        target_compression_ratio=2,
+    )
+
+    assert evict.shape == logits.shape
+    assert evict.dtype == np.bool_
+    np.testing.assert_array_equal(evict.sum(axis=0), np.full((2, 2), 3))
+    assert not np.any(evict[7:])
+    np.testing.assert_array_equal(np.flatnonzero(evict[:, 0, 0]), [1, 3, 5])
+    np.testing.assert_array_equal(np.flatnonzero(evict[:, 0, 1]), [0, 2, 4])
+    # Deterministic equal-score ties evict the oldest positions first.
+    np.testing.assert_array_equal(np.flatnonzero(evict[:, 1, 0]), [0, 1, 2])
+    np.testing.assert_array_equal(np.flatnonzero(evict[:, 1, 1]), [4, 5, 6])
+
+
+def test_dms_exact_budget_eviction_rejects_invalid_scores() -> None:
+    with pytest.raises(ValueError, match=r"\[tokens,layers,heads\]"):
+        build_dms_exact_budget_eviction(
+            np.zeros((4, 2), dtype=np.float32),
+            current_position=3,
+            window_size=1,
+            target_compression_ratio=2,
+        )
+    with pytest.raises(ValueError, match="finite"):
+        build_dms_exact_budget_eviction(
+            np.full((4, 1, 1), np.nan, dtype=np.float32),
+            current_position=3,
+            window_size=1,
+            target_compression_ratio=2,
+        )
 
 
 def test_dms_live_mask_keeps_recent_window_and_non_evicted_rows() -> None:
@@ -380,6 +424,20 @@ def test_compact_extent_pool_rolls_back_fragmented_failure_and_coalesces() -> No
     assert len(first) == len(second) == 4
 
 
+def test_dms_admission_applies_target_cr_only_outside_protected_window() -> None:
+    backend = _backend()
+    claims = backend.estimate(
+        _request(1, prompt_tokens=8, max_new_tokens=0),
+        None,
+        {"kind": "admission"},
+    )
+
+    # Window=2 projects positions 5,6,7 plus ceil(5/4)=2 historical rows,
+    # but pack correctness provisionally reserves all eight prompt rows.
+    assert claims.metadata_dict()["per_head_slots"] == 8
+    assert claims.metadata_dict()["projected_per_head_slots"] == 5
+
+
 def test_dms_work_item_claims_pack_workspace_not_dense_pages() -> None:
     backend = _backend()
     claims = backend.estimate(
@@ -441,6 +499,9 @@ def test_dms_streaming_pack_reduces_allocator_visible_live_rows() -> None:
     snapshot = backend.observability_snapshot()
 
     assert np.all(backend.state_for_request(2).live_counts == 6)
+    # Two decode growth credits remain after pack: 6 live + 2 max-new.
+    assert np.all(backend.state_for_request(2).range_capacity == 8)
+    assert snapshot["operations"]["released_provisional_slots"] == 24
     assert snapshot["capacity"]["logical_token_rows"] == 48
     assert snapshot["capacity"]["live_token_rows"] == 24
     assert snapshot["capacity"]["actual_compression_ratio"] == pytest.approx(2.0)

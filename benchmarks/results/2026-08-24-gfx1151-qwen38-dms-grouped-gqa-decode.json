@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "kind": "hipengine_dms_grouped_gqa_decode_optimization",
+  "status": "retained_non_default",
+  "date": "2026-08-24",
+  "host": {
+    "identity": "zbook",
+    "hardware": "AMD Ryzen AI Max+ PRO 395 / Radeon 8060S",
+    "backend": "hip_gfx1151",
+    "rocm": "7.15.0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "policy": {
+    "sidecar_sha256": "e52fc60a4e8f86f00719be107b44a73567795dfdd88dbbce15cf955409fcd764",
+    "metadata_sha256": "62c1f2d2c590aff2756796f01bddfaf1b602750ceada4b3ac23639902ff8edfe",
+    "window_size": 8192,
+    "prefill_selection_mode": "exact_budget",
+    "unchanged": true
+  },
+  "implementation": {
+    "base_commit": "caf48885d8db51af37260e5a6c782500a266fd0b",
+    "source": "hipengine/kernels/hip_gfx1100/attention/dms_compact.hip",
+    "source_sha256": "53c5ea73981b400e173f17abd770c776ac87de08641e60759fd67073f1be5219",
+    "benchmark_script": "scripts/dms_compact_attn_long_bench.py",
+    "benchmark_script_sha256": "65d7166759edf2ae66491a2a3d50201def8222a9a8e13e5f435aba10cc7a7493",
+    "profile": "production T1 arithmetic with CPU-reference strict fallback",
+    "change": "One 256-row split workgroup per KV head computes all GQA query-head scores and weighted values, sharing each K/V scan across groups up to eight. Larger groups retain the per-query-head producer.",
+    "no_prompt_conditioned_behavior": true
+  },
+  "microbenchmark": {
+    "geometry": {
+      "rows": 1,
+      "q_heads": 24,
+      "kv_heads": 4,
+      "gqa_group": 6,
+      "head_dim": 256,
+      "live_rows_per_kv_head": 69641,
+      "chunk_size": 256,
+      "num_splits": 273,
+      "logical_kv_bytes": 285249536
+    },
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/dms_compact_attn_long_bench.py --live 69641 --warmup 3 --repeats 9 --burst 5 --compiler-version-file /tmp/hipengine-dms-hipcc-version.txt --output /home/lhl/dms-artifacts/qwen38-external-v4-128k-final/dms-attn-grouped-retained-69641.json",
+    "baseline": {
+      "artifact_sha256": "dbc036f6771a2e4283f07cbb6646e0fa33e9e3b46106adc178ebbdd14fc4244b",
+      "samples_ms": [43.55463663736979, 46.785563151041664, 45.7315419514974, 50.08086140950521, 50.643697102864586],
+      "median_ms": 46.785563151041664
+    },
+    "grouped": {
+      "artifact_sha256": "7092a379900641991e464b51fb094eacb939615ca9b9377267f43ecde659f877",
+      "samples_ms": [14.031962585449218, 13.920138549804687, 13.674212646484374, 13.599037170410156, 13.46397705078125, 14.227703857421876, 14.018783569335938, 13.600938415527343, 14.565420532226563],
+      "median_ms": 13.920138549804687,
+      "speedup": 3.3609983825698424,
+      "latency_delta_percent": -70.24693599419727,
+      "finite_output": true
+    }
+  },
+  "rocprof": {
+    "prebuild": "hipcc --version > /tmp/hipengine-dms-hipcc-version.txt; HIPENGINE_HIP_ARCH=gfx1151 python3 scripts/dms_compact_attn_long_bench.py --live 69641 --compiler-version-file /tmp/hipengine-dms-hipcc-version.txt",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-dms-hipcc-version.txt rocprofv3 --kernel-trace --output-format csv -d /tmp/dms-attn-profile-retained -- python3 scripts/dms_compact_attn_long_bench.py --live 69641 --warmup 0 --repeats 1 --burst 1 --compiler-version-file /tmp/hipengine-dms-hipcc-version.txt --require-cached-build",
+    "baseline_trace_sha256": "16aa90f24a01bb99383baba0d7926f05680ddc33cdc55b1b5ed02e0ca1c7a716",
+    "retained_trace_sha256": "1ba4cf2caee1f82375d6c2a56c03bdaa2c0916585c6e07f29e4094f4a4d8c325",
+    "baseline_producer": {
+      "duration_ns": 47620309,
+      "workgroups": 6552,
+      "workgroup_size": 256
+    },
+    "grouped_producer": {
+      "kernel": "dms_compact_attn_splitk_grouped_producer_kernel",
+      "duration_ns": 14921062,
+      "workgroups": 1092,
+      "workgroup_size": 256,
+      "vgpr": 16,
+      "lds_bytes": 9216,
+      "scratch_bytes": 0
+    },
+    "reducer": {
+      "duration_ns": 99705,
+      "workgroups": 24,
+      "workgroup_size": 256,
+      "vgpr": 16,
+      "lds_bytes": 1024,
+      "scratch_bytes": 0
+    }
+  },
+  "full_model": {
+    "protocol": "four categories, strict dense-teacher input trajectory, d8, max KL 0.05, per-category top-1 at least 90%",
+    "context_32k": {
+      "baseline_artifact": "/home/lhl/dms-artifacts/qwen38-external-v3-final/qualified-w8192/quality-final-w8192-32k-d8.json",
+      "new_artifact_sha256": "45a8ebb2748f941d9f6cfee5fb0845c89d1f6efee2b180fad3303f7c7adf8304",
+      "baseline_median_decode_seconds_per_token": 0.3916791728752287,
+      "new_median_decode_seconds_per_token": 0.19189782250396092,
+      "speedup": 2.0410819037154218,
+      "latency_delta_percent": -51.00637567852224,
+      "max_kl": 0.0034303524792759373,
+      "top1_agreement": 1.0,
+      "all_categories_passed": true,
+      "actual_compression_ratio": 1.5996876372687783,
+      "final_tracked_bytes": 0
+    },
+    "context_128k": {
+      "baseline_artifact_sha256": "7e216bf48bac50e2ed63d8e88bd462db79b07b32ec44bc1d855cd07e9d3dd79e",
+      "new_artifact_sha256": "e6ee4c5c5ca2e3c59cf4c201ea7ccc468089b6a44f996737cf294c6f79bdc8ca",
+      "baseline_median_decode_seconds_per_token": 0.9360386479365843,
+      "new_median_decode_seconds_per_token": 0.3592140621803992,
+      "speedup": 2.6057962270600106,
+      "latency_delta_percent": -61.62401381906022,
+      "dense_median_decode_seconds_per_token": 0.13770169718918623,
+      "dms_over_dense_latency_ratio": 2.608639323354748,
+      "max_kl": 0.0007396339668413182,
+      "mean_kl": 0.00022154427578403995,
+      "top1_agreement": 1.0,
+      "all_categories_passed": true,
+      "actual_compression_ratio": 1.882224551629069,
+      "saved_payload_gib": 3.74993896484375,
+      "final_tracked_bytes": 0
+    }
+  },
+  "correctness": {
+    "parent_digest": "61378947cd7451b4d4912e98f767bffe7bf1961a13b09f84a04d606ae4f5f923",
+    "hip_tests": "14 passed: complete compact attention file, direct device pipeline, and device c1-c32 lifecycle node",
+    "production_profile": "complete frozen four-category 32K and 128K suites passed",
+    "lineage_check": "attempted; repository-wide check blocked by missing unrelated /home/lhl/amd-gpu-tuning/reference/atlas checkout; this is an in-tree optimization, not an external port"
+  },
+  "disposition": {
+    "retain": true,
+    "default_scope": "explicit matching DMS route only; dense remains product default",
+    "performance_closed": false,
+    "blocker": "At 128K, grouped DMS decode is still 2.61x slower than matched dense decode. Continue profiler-guided compact attention/runtime optimization before production promotion."
+  }
+}

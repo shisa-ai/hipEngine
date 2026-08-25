@@ -1,0 +1,124 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_external_dms_integrated_long_quality",
+  "date": "2026-08-23",
+  "status": "rejected_quality_at_32k",
+  "performance_claim": false,
+  "promotion_eligible": false,
+  "decision": "reject_short_calibrated_sidecar_for_long_context_and_retrain",
+  "hardware": {
+    "host": "zbook",
+    "device": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "host_lane": "independent"
+  },
+  "model": {
+    "name": "Qwen3.8-27B",
+    "format": "GGUF",
+    "quant": "Q4_K_M",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "sidecar": {
+    "decision_source": "external_linear_sidecar_v1",
+    "target_eligible_history_cr": 2,
+    "window_size": 256,
+    "metadata_sha256": "7e1ea739617047da7d687827eca121c2c969fbaf899a76ecc871b72e39b8d225",
+    "training_context_tokens": 768
+  },
+  "protocol": {
+    "source_commit": "dc3106d12c78a1bdbfaa2079f12afe89b5b8f6cc",
+    "working_tree_clean": true,
+    "teacher": "dense BF16 KV exact-Q4 resident session",
+    "trajectory": "strict dense-teacher input token at each candidate step",
+    "candidates": ["integrated compact no_evict", "integrated compact sidecar"],
+    "decode_steps": 8,
+    "logits": "full vocabulary",
+    "thresholds": {
+      "max_kl": 0.05,
+      "min_top1_agreement": 0.9,
+      "finite_logits": true
+    },
+    "prompt_source": "deterministic repetition of sorted 40-sequence training/validation corpus stream",
+    "prompt_limitation": "screening only; not broad long-context quality closure and not eligible for tuning"
+  },
+  "rows": [
+    {
+      "context": "8K",
+      "prompt_tokens": 8192,
+      "prompt_token_ids_sha256": "d71df72562d1fd64d490ceac4957162b47730768fcdacbcde0460308cfa92e11",
+      "status": "passed_outer_floor",
+      "no_evict": {
+        "mean_kl": 0.00014187797479782053,
+        "p95_kl": 0.0006647197359469967,
+        "p99_kl": 0.0009334767034179629,
+        "max_kl": 0.0010006659452857047,
+        "top1_agreement": 1.0,
+        "finite_logits": true,
+        "live_compression_ratio": 1.0,
+        "live_rows": 524800,
+        "logical_rows": 524800
+      },
+      "sidecar": {
+        "mean_kl": 0.004068556782033767,
+        "p95_kl": 0.019550166893088104,
+        "p99_kl": 0.027280545435520658,
+        "max_kl": 0.029213140071128803,
+        "top1_agreement": 1.0,
+        "finite_logits": true,
+        "live_compression_ratio": 3.239946165528652,
+        "live_rows": 161978,
+        "logical_rows": 524800
+      },
+      "total_seconds": 158.80188657401595,
+      "raw_artifact": "/home/lhl/dms-artifacts/qwen38-external-v1/integrated-quality-8k-d8.json",
+      "raw_artifact_sha256": "d741c03776389f0d146d1022be319431a45ea13dbdadf5a8382e5b320c6bf689",
+      "exact_command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen38_dms_integrated_quality.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /home/lhl/dms-artifacts/qwen38-external-v1/sidecar-cr2-qualified-candidate/dms_metadata.json --data-manifest /home/lhl/dms-artifacts/qwen38-external-v1/data_manifest.json --prompt-tokens 8192 --decode-steps 8 --modes no_evict,sidecar --backend hip_gfx1151 --max-kl 0.05 --min-top1 0.9 --output /home/lhl/dms-artifacts/qwen38-external-v1/integrated-quality-8k-d8.json --fail-on-fail"
+    },
+    {
+      "context": "32K",
+      "prompt_tokens": 32768,
+      "prompt_token_ids_sha256": "4f7d0c0ee355da5fd8758008218d96f113aa2ae6794d0c40ff608e224fec0091",
+      "status": "rejected_quality",
+      "no_evict": {
+        "mean_kl": 1.4689280475642808e-7,
+        "p95_kl": 5.812291727969019e-7,
+        "p99_kl": 7.371265207215741e-7,
+        "max_kl": 7.761008577027423e-7,
+        "top1_agreement": 1.0,
+        "finite_logits": true,
+        "live_compression_ratio": 1.0,
+        "live_rows": 2097664,
+        "logical_rows": 2097664
+      },
+      "sidecar": {
+        "mean_kl": 1.644188625169693,
+        "p95_kl": 5.609158553618389,
+        "p99_kl": 5.9360221186622155,
+        "max_kl": 6.017738009923172,
+        "top1_agreement": 0.625,
+        "finite_logits": true,
+        "live_compression_ratio": 4.431743805022744,
+        "live_rows": 473327,
+        "logical_rows": 2097664
+      },
+      "total_seconds": 498.9102494700055,
+      "raw_artifact": "/home/lhl/dms-artifacts/qwen38-external-v1/integrated-quality-32k-d8.json",
+      "raw_artifact_sha256": "abb773cb0587292769e7ab0d8cc128fca43ea57b01d2957f30eb690cab8e5c74",
+      "exact_command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen38_dms_integrated_quality.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /home/lhl/dms-artifacts/qwen38-external-v1/sidecar-cr2-qualified-candidate/dms_metadata.json --data-manifest /home/lhl/dms-artifacts/qwen38-external-v1/data_manifest.json --prompt-tokens 32768 --decode-steps 8 --modes no_evict,sidecar --backend hip_gfx1151 --max-kl 0.05 --min-top1 0.9 --output /home/lhl/dms-artifacts/qwen38-external-v1/integrated-quality-32k-d8.json --fail-on-fail"
+    }
+  ],
+  "gates": {
+    "no_evict_integrated_control": true,
+    "compact_kernel_and_owner_correctness": true,
+    "8k_sidecar_outer_floor": true,
+    "32k_sidecar_outer_floor": false,
+    "128k_quality_run_required_for_this_candidate": false,
+    "reason_to_stop_escalation": "32K binding max-KL/top-1 failure is already decisive"
+  },
+  "interpretation": {
+    "kernel_finding": "The 32K no-evict route has max KL 7.76e-7 and 100% top-1, localizing failure to learned eviction rather than compact attention or ownership.",
+    "candidate_finding": "The predictor calibrated at 768 tokens over-evicts progressively: 3.240x at 8K and 4.432x at 32K against a CR2 target, with catastrophic 32K logit drift.",
+    "next": "Use separate non-benchmark long-context calibration/training and heldout corpora. Do not tune on either screening prompt or the mtpbench suite."
+  }
+}

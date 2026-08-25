@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Cached-only rocprof smoke for all gfx1100 compact-DMS HIP kernels.
+"""Cached-only rocprof smoke for all RDNA3 compact-DMS HIP kernels.
 
 Prebuild ``dms_compact.so`` outside rocprof, then run this child under
 ``rocprofv3 --kernel-trace``.  The child loads the exact cached DSO with
-``require_cached=True``, binds that library into all four registered wrappers,
+``require_cached=True``, binds that library into all registered wrappers,
 and executes representative strict/production-shaped pytest nodes in-process.
 No compiler subprocess can be launched from the profiled process.
 """
@@ -22,20 +22,47 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hipengine.kernels.hip_gfx1100.attention import dms_compact  # noqa: E402
-from hipengine.kernels.registry import KernelKey, register, resolve  # noqa: E402
+from hipengine.kernels.backends import load_backend_kernel_package
+from hipengine.kernels.hip_gfx1100.attention import dms_compact
+from hipengine.kernels.registry import KernelKey, register, resolve
 
 _KERNEL_KEYS = (
     KernelKey("hip_gfx1100", "dms_extract_decision", "bf16", "corrected_mask"),
+    KernelKey(
+        "hip_gfx1100",
+        "dms_decision_source",
+        "bf16",
+        "external_linear_sidecar_v1",
+    ),
+    KernelKey(
+        "hip_gfx1151",
+        "dms_decision_source",
+        "bf16",
+        "external_linear_sidecar_v1",
+    ),
     KernelKey("hip_gfx1100", "dms_streaming_pack", "bf16", "count_rank_scatter"),
     KernelKey("hip_gfx1100", "dms_append_decode", "bf16", "compact_append_evict"),
     KernelKey("hip_gfx1100", "dms_compact_attn_decode", "bf16", "grouped_gqa"),
+    KernelKey(
+        "hip_gfx1100",
+        "dms_compact_attn_decode",
+        "bf16",
+        "grouped_gqa_splitk",
+    ),
+    KernelKey(
+        "hip_gfx1151",
+        "dms_compact_attn_decode",
+        "bf16",
+        "grouped_gqa_splitk",
+    ),
 )
 _TEST_NODES = (
     "tests/test_dms_extract_decision_hip.py::test_dms_extract_decision_production_head_geometry_bit_exact",
+    "tests/test_dms_external_linear_hip.py::test_external_linear_device_projector_matches_bf16_cpu_decisions_production_geometry",
     "tests/test_dms_streaming_pack_hip.py::test_dms_streaming_pack_long_prompt_multi_tile_bit_exact",
     "tests/test_dms_append_decode_hip.py::test_dms_append_decode_batched_rows_bit_exact",
     "tests/test_dms_compact_attn_decode_hip.py::test_dms_compact_attn_decode_kl_top1_gate_production_shape",
+    "tests/test_dms_compact_attn_decode_hip.py::test_dms_compact_attn_decode_splitk_crosses_multiple_256_row_tiles",
 )
 
 
@@ -55,6 +82,7 @@ def main() -> int:
         require_cached=True,
         compiler_version=compiler_version,
     )
+    load_backend_kernel_package("hip_gfx1151")
     for key in _KERNEL_KEYS:
         wrapper = resolve(
             backend=key.backend,

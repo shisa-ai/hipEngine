@@ -1769,6 +1769,46 @@ only `22.22 tok/s`; the retained route is one state-bound capture followed by 24
 validated relaunches, not recapture. Keep the gfx1100 admission at 24 until a
 shorter-horizon audit establishes a lower break-even.
 
+## Qwen GGUF external-DMS capture seam
+
+- The default-off `Qwen35GGUFResidentSession.prefill(..., dms_capture=...)`
+  diagnostic synchronously exports normalized pre-Q hidden rows and dense Q/K
+  intermediates to an offline checksummed sink. It is never selected by
+  `LLM.generate()` and intentionally stalls the prefill stream for bounded
+  capture correctness.
+- Removal trigger: after the Qwen3.8 external sidecar is trained and its
+  reproducible capture manifest is retained, either promote this as an explicit
+  model-plugin-owned offline capture API or remove the session keyword and
+  runtime callback. Do not leave a generic synchronous D2H tap in the serving
+  façade, and never make it an environment-selected production path.
+
+## External-DMS compact device transaction journal
+
+- The correctness-first external decision bridge snapshots only the active
+  request's compact K/V/position/eviction extents to bounded host transaction
+  scratch and restores them byte-for-byte on rollback. It is not a persistent
+  dense shadow, but synchronous D2H/H2D journaling is not a production-speed
+  endpoint.
+- Removal trigger: once the integrated gfx1100 compact owner is wired, replace
+  this with a resource-claimed device-local copy/journal or an exactly reversible
+  in-place mutation protocol, then retain the host journal only as the registered
+  strict fallback. Do not remove rollback coverage or restore metadata without
+  restoring payload bytes.
+
+## External-DMS serving control readbacks
+
+- Correctness-first `exact_budget` prefill reads all external-linear logits to
+  host, deterministically ranks them, and uploads the final device mask. Decode
+  also synchronizes after all 16 full-attention layers and reads 64 decision
+  bytes before host metadata finalization. Neither path retains dense KV, but
+  both are production-speed debt and prevent graph-owned control.
+- Removal trigger: implement bounded deterministic per-layer/head device ranking
+  plus device-resident decode live-count/position/eviction finalization. Preserve
+  the current host paths only as strict diagnostic fallbacks until exact mask,
+  rollback, c1-c32 lifecycle, frozen-profile quality, and profiler gates pass.
+  Remove their positive runtime selection once the device owner survives one
+  release window.
+
 ## Cleanup Ledger
 
 | Area | Debt | Current status | Removal trigger |
