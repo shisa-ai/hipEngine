@@ -883,24 +883,35 @@ remains K0 pending the remaining P8.2 gates. Durable details:
 - [x] Resolve a runtime production manifest and strict fallback manifest.
 - [x] Add FP16 resident-state-aware root/parent/candidate readers with declared
       FP32 accumulation/scratch.
-- [ ] Add exact control ownership and numerical fixtures for root, every parent
+- [x] Add exact control ownership and numerical fixtures for root, every parent
       depth, selected commit, rollback, and following AR.
 - [x] Keep unsupported profile/shape/context K0 before mutation.
 
 ### P8.2 Binding gates
 
-- [ ] strict-teacher mean/p95/p99/max KL and top-1 per category/shape/transition;
-- [ ] same-schedule deterministic repeats and neighbor/permutation isolation;
-- [ ] state/KV/provider/output/cursor ownership and finite values;
+P8.2 profile qualification passes with production FP16 target verification on
+the exact eager owner. The fresh general gate passes 450 strict-teacher rows;
+the SPECDEC2 K1-K3 operation gate passes 36/36 top-1, exact chain-vs-scalar
+logits, reject/partial/full commit/following-logit controls, and post-commit
+rollback. C2/C4 same-width repeats, neighbor substitution, and permutation pass.
+Cached traces bind 288 `_Float16` selected-chain dispatches to production and
+288 `float` dispatches to strict fallback. The rejected FP16 graph path remains
+recorded, not hidden. Evidence:
+[`P8 qualification`](../benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-qualification.json).
+
+- [x] strict-teacher mean/p95/p99/max KL and top-1 per category/shape/transition;
+- [x] same-schedule deterministic repeats and neighbor/permutation isolation;
+- [x] state/KV/provider/output/cursor ownership and finite values;
 - [ ] applicable BF16-relative and external task gates, with explicit N/A only
       when normative docs allow it;
-- [ ] cached profiler expected production+fallback variants and manifest hashes;
+- [x] cached profiler expected production+fallback variants and manifest hashes;
 - [ ] memory high-water/recovery and lifecycle/pressure/prefix/cancel/soak; and
 - [ ] complete wall against **production FP16 AR**, not slower FP32 AR.
 
 - [ ] Retain compatibility only when every profile gate passes.
 - [ ] Promote no cell solely because FP16 is now supported.
-- [ ] Publish artifact/rollup/changelog/worklog and commit.
+- [x] Publish profile-qualification artifact/rollup/changelog/worklog and commit;
+      final P8 economics publication remains P8.2.
 
 ## 18. P9 — policy and product qualification
 
