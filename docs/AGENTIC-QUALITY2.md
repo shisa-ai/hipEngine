@@ -1,6 +1,6 @@
 # AGENTIC-QUALITY2 — ZBook Agent Quality Campaign
 
-- **Status:** approved; active; AQ0-AQ8 complete, AQ9 no-implementation disposition next
+- **Status:** approved; active; AQ0-AQ12 complete on the no-go path, AQ13 closure next
 - **Approved:** 2026-08-25
 - **Execution host:** `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 - **Primary model:** Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV
@@ -857,44 +857,66 @@ create post-change evidence when there is no change.
 
 ### AQ9 / Task #49 — implementation
 
-- [ ] Observe targeted RED first.
-- [ ] Implement the minimum general mechanism.
-- [ ] Preserve torch-free hot path and plugin boundaries.
-- [ ] Preserve invalid-output/hidden-reasoning non-commit.
-- [ ] Emit bounded capability/route/repair/result telemetry.
-- [ ] Keep fail-closed fallback and unsupported sampling/MTP behavior.
-- [ ] Run targeted GREEN and commit only after AQ10 gates are ready/passing.
+- [x] Targeted RED is not applicable: AQ8 admitted no mechanism and named exact
+      independent RED criteria required to reopen each rejected class.
+- [x] Implement no runtime code, prompt, fixture, or model-conditioned behavior.
+- [x] Preserve the torch-free hot path and plugin boundaries by zero diff.
+- [x] Preserve invalid-output/hidden-reasoning non-commit by zero diff.
+- [x] Add no capability/route/repair telemetry because no route exists.
+- [x] Keep fail-closed fallback and sampling/MTP behavior unchanged.
+- [x] Confirm AQ8 changed no `hipengine/`, `kernels/`, `tests/`, `scripts/`, or
+      `docs/REFACTOR.md` path.
+
+**Disposition:** `not_applicable_no_implementation`. There is no AQ9 candidate,
+flag, fallback chain, or code commit to qualify.
 
 ### AQ10 / Task #50 — semantic qualification
 
-- [ ] Unit/fake endpoint success and failure matrix.
-- [ ] Blocking/SSE envelope parity where applicable.
-- [ ] Auto/required/specific/none tool-choice semantics.
-- [ ] malformed/truncated/duplicate/undeclared/schema-invalid controls.
-- [ ] reasoning/content leakage and session commit policy.
-- [ ] cancellation/deadline/continuation/replay/snapshot/restore.
-- [ ] sampler/native/MTP blockers and capability truthfulness.
-- [ ] deterministic repeats and zero ownership on a focused real-model smoke.
-- [ ] old minimal OpenAI client contract.
-- [ ] Commit retained implementation or revert runtime and commit rejection
-      evidence.
+- [x] Candidate unit/fake-endpoint matrix is not applicable.
+- [x] Candidate blocking/SSE parity is not applicable.
+- [x] Auto/required/specific/none semantics are unchanged by zero runtime diff.
+- [x] Malformed/truncated/duplicate/undeclared/schema-invalid behavior is
+      unchanged; AQ5/AQ6 controls remain baseline evidence, not relabeled tests.
+- [x] Reasoning/content/session/cancellation/continuation behavior is unchanged.
+- [x] Sampler/native/MTP capabilities and blockers are unchanged.
+- [x] Do not run a candidate real-model smoke when no candidate exists.
+- [x] No retain/revert action is needed beyond the committed AQ8 no-go.
+
+**Disposition:** `not_applicable_no_candidate_semantic_qualification`. Existing
+semantic evidence remains valid for unchanged source; it is not presented as a
+post-change gate.
 
 ### AQ11 / Task #51 — post-change primary quality
 
-- [ ] Re-run identical development and heldout inputs/settings.
-- [ ] Compare external-oracle success and all secondary metrics by split/family.
-- [ ] Require no heldout/family regression and no safety/lifecycle failure.
-- [ ] Use task-block intervals only where sample size supports them.
-- [ ] Publish keep/reject decision with raw hashes and final ownership.
-- [ ] Commit.
+- [x] Do not rerun unchanged development or heldout inputs as “post-change”.
+- [x] Preserve AQ6 as the primary baseline; there is no candidate denominator.
+- [x] Preserve heldout details sealed and avoid task-block interval theater.
+- [x] Publish no keep/reject quality delta because no runtime delta exists.
+- [x] Carry AQ8's no-go artifact and AQ6 raw hashes into closure.
+
+**Disposition:** `not_applicable_no_post_change_primary_run`. A redundant GPU
+run cannot create post-change evidence from documentation-only commits.
 
 ### AQ12 / Task #52 — cross-model transfer
 
-- [ ] Apply retained candidate unchanged to admitted Qwen3.8/Ornith rows.
-- [ ] Run adversarial/fail-safe controls.
-- [ ] Verify no model-name branches or hidden substitutions.
-- [ ] Retain transfer only when safe; otherwise capability-gate/fail closed.
-- [ ] Publish artifacts/worklog and commit.
+- [x] No candidate exists to apply to Qwen3.8 or Ornith.
+- [x] Do not relabel AQ7 controls as candidate transfer controls.
+- [x] Zero runtime diff proves no model-name branch or substitution was added.
+- [x] No transfer capability gate or fallback is needed.
+- [x] Carry AQ7 aggregate artifacts and AQ8 no-go into closure.
+
+**Disposition:** `not_applicable_no_cross_model_transfer`. Qwen3.8 and Ornith
+remain independently admitted on their unchanged routes; raw outputs stay
+local and sealed from mechanism selection.
+
+#### AQ9–AQ12 no-go-path result
+
+`git diff 2031efb95..645678fb9 -- hipengine kernels tests scripts docs/REFACTOR.md`
+is empty. The only AQ8 paths are the decision artifact,
+campaign/benchmark docs, and immutable worklog. Therefore no candidate endpoint,
+lifecycle, primary post-change, or transfer execution exists to test. Skipping
+those runs follows the focused-repair/no-redundant-rerun rule; it does not claim
+they passed for a nonexistent candidate.
 
 ### AQ13 / Task #53 — closure
 
@@ -1096,16 +1118,15 @@ weights, caches, or profiler data.
 
 ## 18. Current handoff
 
-AQ8 retained `no_implementation`: no candidate has a runtime-owned development
-trigger, and coercing valid automatic-tool choices would violate public
-semantics and the anti-overfit contract. Start AQ9 / Task #49 by recording the
-implementation phase as not applicable with no runtime diff, flag, fallback, or
-`REFACTOR.md` debt. Then disposition AQ10–AQ12 as not applicable because there
-is no candidate to qualify, remeasure, or transfer; do not spend redundant GPU
-runs pretending unchanged source is a post-change row.
+Start AQ13 / Task #53. AQ8 retained `no_implementation`, and AQ9–AQ12 are
+explicitly not applicable with zero runtime diff and no redundant candidate GPU
+runs. Audit every objective and Task #40–#53; publish retained/no-go/default/
+unsupported scopes, model-quality results, runtime repairs, and candidate-
+specific reopen criteria. Update campaign/PLAN indices and public quality wording
+only where justified.
 
-AQ13 still owns campaign closure: audit every objective and Task #40–#53,
-publish retained/no-go/default/unsupported scopes and reopen criteria, run the
-applicable milestone/process gates, update campaign/PLAN indices as needed,
-merge and push cleanly, and verify local/remote equality. AQ6/AQ7 heldout and
-raw comparison outputs remain sealed.
+Run the applicable milestone/process gates, including the full CPU test suite
+unless focused-repair evidence permits narrower repair, fixture/schema checks,
+links, Worklog2, benchmark sync/compactness, diff/status, and no raw-output or
+performance-claim leakage. Merge and push cleanly, verify local/main/remote
+equality, and keep AQ6/AQ7 heldout/raw comparison outputs sealed.
