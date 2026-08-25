@@ -12,6 +12,7 @@ from scripts.specdec2_perf_gfx1100_bridge import (
     atomic_write_json,
     attach_paro_direct_rows,
     build_execution_plan,
+    build_parser as build_bridge_parser,
     validate_bridge_rows,
 )
 from scripts.specdec2_perf_gfx1100_child import (
@@ -226,6 +227,20 @@ def test_loaded_paro_child_exposes_cached_roctx_leaf_mode(tmp_path: Path) -> Non
 
     assert args.roctx_markers is True
     assert args.require_cached_build is True
+    parent = build_bridge_parser().parse_args(
+        [
+            "run-loaded-paro",
+            "--profile",
+            "strict",
+            "--candidate-budget",
+            "1",
+            "--roctx-markers",
+            "--require-cached-build",
+            "--output",
+            str(tmp_path / "parent.json"),
+        ]
+    )
+    assert parent.roctx_markers is True
 
 
 def test_child_scope_is_paro_k1_only_and_dense_uses_shared_bridge() -> None:
