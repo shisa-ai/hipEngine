@@ -731,9 +731,9 @@ def test_rf2_context_bucket_selection_is_power_of_two_and_capability_bounded(
     assert native_cycle_mod._native_target_graph_context_limit(session, rows=4) is None
 
 
-def test_gfx1100_target_graph_fails_closed_above_local_context_gate() -> None:
+def test_gfx1100_target_graph_fails_closed_above_p95() -> None:
     session = SimpleNamespace(
-        position=124,
+        position=92,
         backend="hip_gfx1100",
         scratch=SimpleNamespace(max_positions=1024, block_size=256),
     )

@@ -69,13 +69,13 @@ class _AdapterDouble:
 
 def test_gfx1100_target_mode_resolves_before_verifier_construction() -> None:
     assert _target_verify_mode_for_context(
-        "native", backend="hip_gfx1100", end_position=127
+        "native", backend="hip_gfx1100", end_position=95
     ) == "native"
     assert _target_verify_mode_for_context(
-        "native", backend="hip_gfx1100", end_position=128
+        "native", backend="hip_gfx1100", end_position=96
     ) == "serial_exact"
     assert _target_verify_mode_for_context(
-        "native", backend="hip_gfx1151", end_position=128
+        "native", backend="hip_gfx1151", end_position=96
     ) == "native"
 
 

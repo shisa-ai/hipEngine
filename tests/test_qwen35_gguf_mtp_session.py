@@ -132,13 +132,13 @@ def test_b4_native_request_falls_back_to_serial_exact_target_rows() -> None:
     assert mtp_module._effective_target_verify_mode("native", rows=4) == "native"
     assert (
         mtp_module._effective_target_verify_mode(
-            "native", rows=3, backend="hip_gfx1100", end_position=127
+            "native", rows=3, backend="hip_gfx1100", end_position=95
         )
         == "native"
     )
     assert (
         mtp_module._effective_target_verify_mode(
-            "native", rows=4, backend="hip_gfx1100", end_position=128
+            "native", rows=4, backend="hip_gfx1100", end_position=96
         )
         == "serial_exact"
     )
