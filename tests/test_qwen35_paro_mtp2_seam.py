@@ -208,7 +208,15 @@ def test_provider_open_timing_covers_proposer_construction(monkeypatch) -> None:
 
     assert row.mtp2_provider_open_ms == 250.0
     assert adapter._proposer_builds == 1
+    assert adapter._states[7].proposer.max_mtp_tokens == 256
     assert 7 in adapter._states
+
+
+def test_provider_capacity_bucket_grows_without_prompt_content() -> None:
+    assert paro_mtp2_module._proposer_capacity_bucket(1) == 256
+    assert paro_mtp2_module._proposer_capacity_bucket(255) == 256
+    assert paro_mtp2_module._proposer_capacity_bucket(256) == 256
+    assert paro_mtp2_module._proposer_capacity_bucket(257) == 512
 
 
 def test_streaming_prompt_priming_uses_shifted_tokens_and_final_root() -> None:

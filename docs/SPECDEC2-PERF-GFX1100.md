@@ -430,6 +430,9 @@ next implementation owner in each lane.
       provider-group workspace.
 - [ ] Add persistent lane-specific candidate, target result, accept, selected
       commit, provider update, row-map, and bounded result slabs.
+- [x] Bucket packed-PARO proposer token/KV/snapshot capacity by a content-agnostic
+      power of two with a 256-token floor, so the warmed provider pool does not
+      rebuild for every larger prompt in one service-capacity cell.
 - [ ] Ensure PARO borrowed target pointers are never owned/freed by provider or
       staged workspace.
 - [ ] Confirm no request observes peer scratch after slot reuse.

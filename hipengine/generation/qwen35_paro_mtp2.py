@@ -38,6 +38,16 @@ from hipengine.speculative.transaction import (
 )
 
 
+_PROPOSER_CAPACITY_FLOOR = 256
+
+
+def _proposer_capacity_bucket(required_tokens: int) -> int:
+    required = int(required_tokens)
+    if required <= 0:
+        raise ValueError("PARO MTP2 proposer capacity requirement must be positive")
+    return 1 << (max(_PROPOSER_CAPACITY_FLOOR, required) - 1).bit_length()
+
+
 @dataclass(slots=True)
 class _ParoMTP2RequestState:
     request_id: int
@@ -90,6 +100,7 @@ class Qwen35ParoMTP2Adapter:
             raise RuntimeError("PARO MTP2 target session is unavailable")
         started = time.perf_counter()
         required_tokens = len(row.prompt_ids) + 2 * int(row.request.max_tokens) + 8
+        proposer_capacity = _proposer_capacity_bucket(required_tokens)
         proposer = None
         while self._proposer_pool:
             candidate = self._proposer_pool.pop()
@@ -115,7 +126,7 @@ class Qwen35ParoMTP2Adapter:
             proposer = NativeMtpChainProposer(
                 self.generator.model_path,
                 max_positions=int(session.max_sequence_length),
-                max_mtp_tokens=required_tokens,
+                max_mtp_tokens=proposer_capacity,
                 runtime=session.runtime,
                 compiler_version=session.compiler_version,
                 scoring_head=scoring_head,
