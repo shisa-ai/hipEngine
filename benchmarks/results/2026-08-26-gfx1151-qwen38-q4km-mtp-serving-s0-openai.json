@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_q4km_mtp_serving_s0_openai",
+  "status": "qualified_checkpoint",
+  "created_at": "2026-08-26",
+  "performance_claim": false,
+  "promotion": {
+    "explicit_c1_route_qualified": true,
+    "automatic_policy": "K0",
+    "automatic_promoted": false,
+    "reason": "OpenAI S0 proves explicit blocking completion/chat route truth and accounting only; S1-S4 remain open"
+  },
+  "provenance": {
+    "base_commit": "849bc7674",
+    "code_change_uncommitted_during_green": true,
+    "implementation_diff_sha256": "fb9b663ab316d6e2a41fab1bec550cb62588ef1f989b22eed5bb81f3dc01ac19",
+    "host_name": "zbook",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "execution_profile": "strict",
+    "execution_profile_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+    "kv_dtype": "bf16",
+    "require_cached_build": true,
+    "compiler_overlap": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "served_model_name": "qwen38-q4km-mtp-s0",
+    "quant": "Q4_K_M",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8218,
+    "max_context_tokens": 1024,
+    "max_active_requests": 1,
+    "speculative_mtp_serving": "opt_in",
+    "speculative_candidate_budget": 3,
+    "metrics": "prometheus",
+    "startup_chat_smoke": false,
+    "startup_scratch_probe": false
+  },
+  "red": {
+    "server_capacity": 4,
+    "selected_route": "speculative_mtp",
+    "actual_execution_path": "gguf_packed_ar_server_decode",
+    "reported_used_before_fix": true,
+    "draft_tokens": 0,
+    "draft_cycles": 0,
+    "prometheus_mtp_requests_total": 0,
+    "root_cause": "The physical-C1 MTP2 capability intentionally selected K0 when the resident owner capacity exceeded one, while the public summary inferred MTP use from the selected route label instead of backend telemetry.",
+    "contract": "A selected speculative route that realizes backend K0 reports effective_route=default, selected_route=speculative_mtp, used=false, and decision_reason=backend_k0_fallback."
+  },
+  "green": {
+    "health_after_requests": "ok",
+    "requests_complete": 2,
+    "requests_failed": 0,
+    "completion": {
+      "endpoint": "/v1/completions",
+      "http_status": 200,
+      "wall_seconds": 2.527473,
+      "prompt_tokens": 9,
+      "generated_tokens": 25,
+      "finish_reason": "length",
+      "generation_shape_route": "speculative_mtp",
+      "route_cap": 1,
+      "actual_group_rows": [1],
+      "execution_path": "gguf_specdec2_mtp2",
+      "sampler_mode": "greedy_fast",
+      "timing_owner": true,
+      "draft_cycles": 8,
+      "draft_tokens": 23,
+      "accepted_draft_tokens": 16,
+      "rejected_draft_tokens": 7,
+      "acceptance_rate": 0.6956521739130435,
+      "candidate_readback_ms": 0.0,
+      "recoverable_failures": 0
+    },
+    "chat": {
+      "endpoint": "/v1/chat/completions",
+      "http_status": 200,
+      "wall_seconds": 1.768234,
+      "prompt_tokens": 19,
+      "generated_tokens": 25,
+      "finish_reason": "length",
+      "generation_shape_route": "speculative_mtp",
+      "route_cap": 1,
+      "actual_group_rows": [1],
+      "execution_path": "gguf_specdec2_mtp2",
+      "sampler_mode": "greedy_fast",
+      "timing_owner": true,
+      "draft_cycles": 8,
+      "draft_tokens": 21,
+      "accepted_draft_tokens": 16,
+      "rejected_draft_tokens": 5,
+      "acceptance_rate": 0.7619047619047619,
+      "candidate_readback_ms": 0.0,
+      "recoverable_failures": 0
+    },
+    "prometheus": {
+      "requests_total": 2,
+      "request_completed_total": 2,
+      "request_failed_total": 0,
+      "mtp_requests_total": 2,
+      "mtp_draft_tokens_accepted_total": 32,
+      "mtp_draft_tokens_rejected_total": 12,
+      "mtp_draft_acceptance_rate": 0.7272727272727273,
+      "resident_requests_pending": 0,
+      "resident_requests_admitted": 0,
+      "resident_requests_active": 0
+    },
+    "shutdown": {
+      "application_shutdown_complete": true,
+      "final_gpu_owner": false,
+      "compiler_owner": false
+    }
+  },
+  "validation": {
+    "red_test": "tests/test_server_api.py::test_mtp_summary_reports_selected_mtp_backend_k0_fallback_truthfully",
+    "red_failed_before_fix": true,
+    "focused_route_tests_passed": 6,
+    "affected_bundle": {
+      "command": "uv run pytest -q tests/test_server_api.py tests/test_specdec2_engine_service.py tests/test_qwen35_gguf_mtp2_seam.py --tb=short",
+      "result": "all route/specdec tests passed; one unrelated stale P9 capability-evidence expectation failed",
+      "repair_commit": "849bc7674",
+      "focused_repair_passed": true,
+      "full_bundle_rerun_required": false
+    }
+  },
+  "next": "S1 immutable artifact/profile/KV/C/sampler capability RED/GREEN; automatic remains K0"
+}

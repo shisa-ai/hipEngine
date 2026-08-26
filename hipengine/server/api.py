@@ -13938,7 +13938,8 @@ def _mtp_response_summary(
     accepted = 0
     generated = 0
     cycles = 0
-    used = route == _SPECULATIVE_MTP_BATCH_ROUTE
+    used = False
+    selected_route = "unknown" if route is None else str(route)
     for detail in (details or ()):
         timing, decode_state, timing_owner = _mtp_telemetry_parts(detail)
         if isinstance(decode_state, Mapping):
@@ -13952,6 +13953,11 @@ def _mtp_response_summary(
         row_accepted = timing.get("mtp_accepted_draft_tokens")
         row_generated = timing.get("mtp_generated_draft_tokens")
         row_cycles = timing.get("mtp_cycles_count")
+        if any(
+            value is not None
+            for value in (row_accepted, row_generated, row_cycles)
+        ):
+            used = True
         if row_accepted is not None:
             accepted += max(0, int(row_accepted))
         if row_generated is not None:
@@ -13959,8 +13965,15 @@ def _mtp_response_summary(
         if row_cycles is not None:
             cycles += max(0, int(row_cycles))
     used = used or generated > 0
+    backend_k0_fallback = (
+        selected_route == _SPECULATIVE_MTP_BATCH_ROUTE and not used
+    )
     summary = {
-        "effective_route": "unknown" if route is None else str(route),
+        "effective_route": (
+            _SPECULATIVE_MTP_DEFAULT_ROUTE
+            if backend_k0_fallback
+            else selected_route
+        ),
         "used": bool(used),
         "draft_tokens": generated,
         "accepted_draft_tokens": accepted,
@@ -13968,13 +13981,18 @@ def _mtp_response_summary(
         "acceptance_rate": (float(accepted) / float(generated)) if generated else None,
         "draft_cycles": cycles,
     }
+    if backend_k0_fallback:
+        summary["selected_route"] = selected_route
+        summary["decision_reason"] = "backend_k0_fallback"
     if isinstance(route_decision, Mapping):
         requested_route = route_decision.get("requested_route")
         decision_reason = route_decision.get("reason")
         if requested_route is not None:
             summary["requested_route"] = str(requested_route)
         if decision_reason is not None:
-            summary["decision_reason"] = str(decision_reason)
+            summary[
+                "selection_reason" if backend_k0_fallback else "decision_reason"
+            ] = str(decision_reason)
     if used and thinking_policy is not None:
         policy = str(thinking_policy)
         summary["thinking_policy"] = policy

@@ -6551,6 +6551,67 @@ def test_mtp_summary_honors_batch_timing_ownership() -> None:
     }
 
 
+def test_mtp_summary_treats_owned_zero_draft_timing_as_realized_mtp() -> None:
+    details = [
+        GenerationOutput(
+            text="done",
+            telemetry=GenerationTelemetry.from_decode_counts(
+                prompt_tokens=4,
+                generated_tokens=1,
+                row_index=0,
+                execution_path="resident_verify_chain",
+                timing={
+                    "mtp_cycles_count": 0,
+                    "mtp_generated_draft_tokens": 0,
+                    "mtp_accepted_draft_tokens": 0,
+                },
+                timing_scope="choice",
+                timing_owner=True,
+            ),
+        )
+    ]
+
+    assert _mtp_response_summary("speculative_mtp", details) == {
+        "effective_route": "speculative_mtp",
+        "used": True,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": None,
+        "draft_cycles": 0,
+    }
+
+
+def test_mtp_summary_reports_selected_mtp_backend_k0_fallback_truthfully() -> None:
+    details = [
+        GenerationOutput(
+            text="done",
+            telemetry=GenerationTelemetry.from_decode_counts(
+                prompt_tokens=4,
+                generated_tokens=3,
+                row_index=0,
+                execution_path="gguf_packed_ar_server_decode",
+                timing={"request_total_ms": 1.0},
+                timing_scope="choice",
+                timing_owner=True,
+            ),
+        )
+    ]
+
+    assert _mtp_accepted_rejected_counts(details) is None
+    assert _mtp_response_summary("speculative_mtp", details) == {
+        "effective_route": "default",
+        "selected_route": "speculative_mtp",
+        "used": False,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": None,
+        "draft_cycles": 0,
+        "decision_reason": "backend_k0_fallback",
+    }
+
+
 def test_mtp_metrics_count_owned_zero_draft_request() -> None:
     metrics = _ServerMetrics()
 

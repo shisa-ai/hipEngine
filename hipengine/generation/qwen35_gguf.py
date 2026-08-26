@@ -8372,8 +8372,19 @@ class Qwen35GGUFResidentModelRunner:
                 }
             )
         if row.mtp2_cycles > 0:
+            mtp_generated_draft_tokens = sum(row.mtp2_candidate_counts)
+            mtp_accepted_draft_tokens = sum(row.mtp2_accepted_counts)
             timing.update(
                 {
+                    "mtp_cycles_count": float(row.mtp2_cycles),
+                    "mtp_generated_draft_tokens": float(mtp_generated_draft_tokens),
+                    "mtp_accepted_draft_tokens": float(mtp_accepted_draft_tokens),
+                    "mtp_accept_per_draft": (
+                        float(mtp_accepted_draft_tokens)
+                        / float(mtp_generated_draft_tokens)
+                        if mtp_generated_draft_tokens
+                        else 0.0
+                    ),
                     "specdec2_mtp2_cycles": float(row.mtp2_cycles),
                     "specdec2_mtp2_proposal_ms": float(row.mtp2_proposal_ms),
                     "specdec2_mtp2_target_ms": float(row.mtp2_target_ms),
