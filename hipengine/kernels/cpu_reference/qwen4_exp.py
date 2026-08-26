@@ -40,6 +40,20 @@ class PLEInjectionResult:
     state: PLEConvState
 
 
+@dataclass(frozen=True)
+class QSAPooledKeys:
+    keys: np.ndarray
+    block_starts: np.ndarray
+    member_indices: np.ndarray
+    tail_indices: np.ndarray
+
+
+@dataclass(frozen=True)
+class QSASelection:
+    selected_block_starts: tuple[np.ndarray, ...]
+    selected_positions: tuple[np.ndarray, ...]
+
+
 def grouped_zero_centered_rmsnorm(
     residual: ArrayLike,
     weight: ArrayLike,
@@ -382,6 +396,295 @@ def ple_injection(
     return PLEInjectionResult(updated, gate, gated, conv_output, next_state)
 
 
+def qsa_pool_complete_blocks(
+    raw_keys: ArrayLike,
+    token_positions: ArrayLike,
+    *,
+    compression_ratio: int,
+) -> QSAPooledKeys:
+    """Mean-pool complete logical QSA blocks while retaining physical owners."""
+
+    keys = np.asarray(raw_keys, dtype=np.float32)
+    positions = np.asarray(token_positions, dtype=np.int64)
+    if keys.ndim != 2:
+        raise ValueError("raw_keys must have shape [tokens, index_dim]")
+    if positions.shape != (keys.shape[0],):
+        raise ValueError("token_positions must have shape [tokens]")
+    if positions.size == 0 or np.any(positions < 0):
+        raise ValueError("token_positions must be non-empty and non-negative")
+    if np.unique(positions).size != positions.size:
+        raise ValueError("token_positions must be unique")
+    ratio = int(compression_ratio)
+    if ratio <= 0:
+        raise ValueError("compression_ratio must be positive")
+
+    by_block: dict[int, list[tuple[int, int]]] = {}
+    for physical, position in enumerate(positions.tolist()):
+        by_block.setdefault(position // ratio, []).append((position, physical))
+    highest_block = int(np.max(positions)) // ratio
+    block_starts: list[int] = []
+    members: list[list[int]] = []
+    tail: list[int] = []
+    for block_id in sorted(by_block):
+        entries = sorted(by_block[block_id])
+        expected = list(range(block_id * ratio, (block_id + 1) * ratio))
+        logical = [position for position, _ in entries]
+        if logical == expected:
+            block_starts.append(block_id * ratio)
+            members.append([physical for _, physical in entries])
+            continue
+        if block_id != highest_block:
+            raise ValueError(f"incomplete non-tail QSA block at {block_id * ratio}")
+        expected_tail = list(range(block_id * ratio, int(np.max(positions)) + 1))
+        if logical != expected_tail:
+            raise ValueError("incomplete QSA tail contains logical holes")
+        tail = [physical for _, physical in entries]
+
+    index_dim = keys.shape[1]
+    pooled = np.empty((len(members), index_dim), dtype=np.float32)
+    for block_index, physical_members in enumerate(members):
+        pooled[block_index] = np.mean(
+            keys[np.asarray(physical_members, dtype=np.int64)],
+            axis=0,
+            dtype=np.float32,
+        )
+    member_array = (
+        np.asarray(members, dtype=np.int64)
+        if members
+        else np.empty((0, ratio), dtype=np.int64)
+    )
+    return QSAPooledKeys(
+        pooled,
+        np.asarray(block_starts, dtype=np.int64),
+        member_array,
+        np.asarray(tail, dtype=np.int64),
+    )
+
+
+def qsa_interleaved_rope(
+    values: ArrayLike,
+    *,
+    positions: ArrayLike,
+    rotary_dim: int,
+    theta: float,
+) -> np.ndarray:
+    """Apply text-path pair-interleaved partial RoPE to QSA Q/K values."""
+
+    x = np.asarray(values, dtype=np.float32)
+    pos = np.asarray(positions, dtype=np.int64)
+    if x.ndim < 2:
+        raise ValueError("values must have shape [tokens, ..., head_dim]")
+    if pos.shape != (x.shape[0],) or np.any(pos < 0):
+        raise ValueError("positions must be non-negative with shape [tokens]")
+    rotate = int(rotary_dim)
+    if rotate <= 0 or rotate > x.shape[-1] or rotate % 2:
+        raise ValueError("rotary_dim must be positive, even, and <= head_dim")
+    theta_value = float(theta)
+    if not np.isfinite(theta_value) or theta_value <= 0.0:
+        raise ValueError("theta must be positive and finite")
+    dimensions = np.arange(0, rotate, 2, dtype=np.float32)
+    inverse_frequency = np.reciprocal(
+        np.power(np.float32(theta_value), dimensions / np.float32(rotate))
+    ).astype(np.float32)
+    angles = pos.astype(np.float32)[:, None] * inverse_frequency[None, :]
+    table_shape = (x.shape[0],) + (1,) * (x.ndim - 2) + (rotate // 2,)
+    cosine = np.cos(angles).astype(np.float32).reshape(table_shape)
+    sine = np.sin(angles).astype(np.float32).reshape(table_shape)
+    pairs = x[..., :rotate].reshape(*x.shape[:-1], rotate // 2, 2)
+    rotated = np.empty_like(pairs, dtype=np.float32)
+    rotated[..., 0] = pairs[..., 0] * cosine - pairs[..., 1] * sine
+    rotated[..., 1] = pairs[..., 0] * sine + pairs[..., 1] * cosine
+    return np.concatenate(
+        (rotated.reshape(*x.shape[:-1], rotate), x[..., rotate:]),
+        axis=-1,
+    ).astype(np.float32)
+
+
+def qsa_prepare_index_keys(
+    raw_keys: ArrayLike,
+    token_positions: ArrayLike,
+    norm_weight: ArrayLike,
+    *,
+    compression_ratio: int,
+    rotary_dim: int,
+    theta: float,
+    eps: float = 1e-6,
+) -> QSAPooledKeys:
+    """Pool raw keys in FP32, then RMS-normalize and rotate at block starts."""
+
+    pooled = qsa_pool_complete_blocks(
+        raw_keys,
+        token_positions,
+        compression_ratio=compression_ratio,
+    )
+    gamma = np.asarray(norm_weight, dtype=np.float32)
+    if gamma.shape != (pooled.keys.shape[1],):
+        raise ValueError("norm_weight must have shape [index_dim]")
+    if pooled.keys.shape[0]:
+        variance = np.mean(
+            pooled.keys * pooled.keys,
+            axis=-1,
+            keepdims=True,
+            dtype=np.float32,
+        )
+        normalized = (
+            pooled.keys * np.reciprocal(np.sqrt(variance + np.float32(eps))) * gamma
+        ).astype(np.float32)
+        prepared = qsa_interleaved_rope(
+            normalized[:, None, :],
+            positions=pooled.block_starts,
+            rotary_dim=rotary_dim,
+            theta=theta,
+        )[:, 0, :]
+    else:
+        prepared = pooled.keys.copy()
+    return QSAPooledKeys(
+        prepared,
+        pooled.block_starts,
+        pooled.member_indices,
+        pooled.tail_indices,
+    )
+
+
+def qsa_index_scores(queries: ArrayLike, pooled_keys: ArrayLike) -> np.ndarray:
+    """Rectify each QSA index-head dot product before summing heads."""
+
+    query = np.asarray(queries, dtype=np.float32)
+    keys = np.asarray(pooled_keys, dtype=np.float32)
+    if query.ndim != 3:
+        raise ValueError("queries must have shape [queries, heads, index_dim]")
+    if keys.ndim != 2 or keys.shape[1] != query.shape[2]:
+        raise ValueError("pooled_keys must have shape [blocks, index_dim]")
+    dots = np.einsum("qhd,bd->qhb", query, keys, dtype=np.float32)
+    scores = np.sum(np.maximum(dots, np.float32(0.0)), axis=1, dtype=np.float32)
+    return (scores / np.float32(np.sqrt(query.shape[2]))).astype(np.float32)
+
+
+def qsa_select_positions(
+    scores: ArrayLike,
+    block_starts: ArrayLike,
+    *,
+    query_positions: ArrayLike,
+    available_positions: ArrayLike,
+    compression_ratio: int,
+    block_budget: int,
+) -> QSASelection:
+    """Select complete blocks deterministically and append the incomplete tail."""
+
+    score = np.asarray(scores, dtype=np.float32)
+    starts = np.asarray(block_starts, dtype=np.int64)
+    queries = np.asarray(query_positions, dtype=np.int64)
+    available = np.asarray(available_positions, dtype=np.int64)
+    if score.ndim != 2 or score.shape[1] != starts.size:
+        raise ValueError("scores must have shape [queries, blocks]")
+    if queries.shape != (score.shape[0],):
+        raise ValueError("query_positions must have shape [queries]")
+    if np.unique(available).size != available.size or np.any(available < 0):
+        raise ValueError("available_positions must be unique and non-negative")
+    ratio = int(compression_ratio)
+    budget = int(block_budget)
+    if ratio <= 0 or budget <= 0:
+        raise ValueError("compression_ratio and block_budget must be positive")
+    if starts.size and (np.any(starts < 0) or np.any(starts % ratio != 0)):
+        raise ValueError("block_starts must be non-negative and ratio-aligned")
+    available_set = set(int(value) for value in available.tolist())
+
+    selected_starts: list[np.ndarray] = []
+    selected_positions: list[np.ndarray] = []
+    for row, query_position in enumerate(queries.tolist()):
+        eligible = np.nonzero(starts + ratio - 1 <= query_position)[0]
+        ranking = np.lexsort((starts[eligible], -score[row, eligible]))
+        chosen = eligible[ranking[:budget]]
+        logical_starts = np.sort(starts[chosen]).astype(np.int64)
+        logical_positions: list[int] = []
+        for start in logical_starts.tolist():
+            logical_positions.extend(range(start, start + ratio))
+        if query_position % ratio != ratio - 1:
+            tail_start = query_position // ratio * ratio
+            logical_positions.extend(range(tail_start, query_position + 1))
+        logical_positions = sorted(set(logical_positions))
+        missing = [position for position in logical_positions if position not in available_set]
+        if missing:
+            raise ValueError(f"selected QSA positions are unavailable: {missing[:8]}")
+        selected_starts.append(logical_starts)
+        selected_positions.append(np.asarray(logical_positions, dtype=np.int64))
+    return QSASelection(tuple(selected_starts), tuple(selected_positions))
+
+
+def qsa_sparse_gqa_attention(
+    queries: ArrayLike,
+    keys: ArrayLike,
+    values: ArrayLike,
+    *,
+    query_positions: ArrayLike,
+    key_positions: ArrayLike,
+    selected_positions: Sequence[ArrayLike],
+    scale: float | None = None,
+) -> np.ndarray:
+    """Attend selected logical positions using original uncompressed GQA K/V."""
+
+    query = np.asarray(queries, dtype=np.float32)
+    key = np.asarray(keys, dtype=np.float32)
+    value = np.asarray(values, dtype=np.float32)
+    qpos = np.asarray(query_positions, dtype=np.int64)
+    kpos = np.asarray(key_positions, dtype=np.int64)
+    if query.ndim != 3:
+        raise ValueError("queries must have shape [queries, query_heads, head_dim]")
+    if key.ndim != 3 or value.ndim != 3:
+        raise ValueError("keys and values must have shape [tokens, kv_heads, head_dim]")
+    if key.shape[:2] != value.shape[:2] or key.shape[2] != query.shape[2]:
+        raise ValueError("query/key/value head geometry is incompatible")
+    if qpos.shape != (query.shape[0],) or kpos.shape != (key.shape[0],):
+        raise ValueError("query_positions/key_positions have incompatible shapes")
+    if len(selected_positions) != query.shape[0]:
+        raise ValueError("selected_positions must contain one row per query")
+    if np.unique(kpos).size != kpos.size:
+        raise ValueError("key_positions must be unique")
+    query_heads = query.shape[1]
+    kv_heads = key.shape[1]
+    if query_heads % kv_heads:
+        raise ValueError("query_heads must be divisible by kv_heads")
+    group_size = query_heads // kv_heads
+    attention_scale = (
+        np.float32(1.0 / np.sqrt(query.shape[2]))
+        if scale is None
+        else np.float32(scale)
+    )
+    physical_by_position = {int(position): index for index, position in enumerate(kpos)}
+    output = np.empty(
+        (query.shape[0], query_heads, value.shape[2]),
+        dtype=np.float32,
+    )
+    for row, selected in enumerate(selected_positions):
+        logical = np.asarray(selected, dtype=np.int64)
+        if logical.ndim != 1 or logical.size == 0:
+            raise ValueError("each selected_positions row must be non-empty")
+        if np.any(logical > qpos[row]):
+            raise ValueError("selected_positions cannot include future tokens")
+        try:
+            physical = np.asarray(
+                [physical_by_position[int(position)] for position in logical],
+                dtype=np.int64,
+            )
+        except KeyError as exc:
+            raise ValueError(f"selected key position {exc.args[0]} is unavailable") from exc
+        for head in range(query_heads):
+            kv_head = head // group_size
+            logits = (
+                key[physical, kv_head, :] @ query[row, head, :]
+            ).astype(np.float32) * attention_scale
+            probabilities = _softmax(logits)
+            output[row, head, :] = probabilities @ value[physical, kv_head, :]
+    return output
+
+
+def _softmax(value: np.ndarray) -> np.ndarray:
+    x = np.asarray(value, dtype=np.float32)
+    shifted = x - np.max(x)
+    exponent = np.exp(shifted).astype(np.float32)
+    return (exponent / np.sum(exponent, dtype=np.float32)).astype(np.float32)
+
+
 def _sigmoid(value: np.ndarray) -> np.ndarray:
     x = np.asarray(value, dtype=np.float32)
     return np.reciprocal(np.float32(1.0) + np.exp(-x)).astype(np.float32)
@@ -397,6 +700,8 @@ __all__ = [
     "PLEConvState",
     "PLEHashState",
     "PLEInjectionResult",
+    "QSAPooledKeys",
+    "QSASelection",
     "dilated_depthwise_conv",
     "gr_read",
     "gr_write",
@@ -404,5 +709,11 @@ __all__ = [
     "ple_hash_rows",
     "ple_injection",
     "ple_signed_sqrt_gate",
+    "qsa_index_scores",
+    "qsa_interleaved_rope",
+    "qsa_pool_complete_blocks",
+    "qsa_prepare_index_keys",
+    "qsa_select_positions",
+    "qsa_sparse_gqa_attention",
     "sigmoid_gated_rmsnorm",
 ]
