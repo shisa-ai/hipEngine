@@ -244,11 +244,13 @@ production policy remains MTP at no automatic cell (K0) until those gates pass.
 
 ### T2 — c>1 MTP economics (G2/G3)
 
-- [ ] **T2.1 Repair the SPECDEC2-physical C2/C4 acceptance collapse**
-  (18.43% vs 80.48% at C1, Q4_K_S surface; the serving route does not show
-  it). Provider repair and per-request acceptance must survive physical
-  batching (llama.cpp server model: one target batch, independent per-slot
-  accept).
+- [x] **T2.1 Repair the SPECDEC2-physical C2/C4 acceptance collapse.** Newer
+  retained P9 target-reseed evidence supersedes the 18.43% row: production
+  acceptance is 95.0%/89.82%/77.73% at K1/K2/K3 with zero candidate D2H.
+  Economics still fail: best K3 is only 0.6975x C2 / 0.5843x C4 true AR.
+  Close provider repair; C2/C4 remain K0 unless T2.2 finds a new target-cost
+  premise. Evidence:
+  [`T2.1 closeout`](../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t21-acceptance-closeout.json).
 - [ ] **T2.2 Target-owner continuation.** Only with a new premise, extend the
   retained small-M Q4 WMMA direction to the remaining R6/R8/R12/R16 families;
   prior campaign gates apply (no retry of rejected composites).
