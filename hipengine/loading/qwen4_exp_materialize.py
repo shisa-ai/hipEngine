@@ -5,11 +5,17 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from hipengine.core.dtype import DType
+from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.loading.gguf import GGUFTensorInfo
+from hipengine.loading.materialize import (
+    DeviceTensorAllocation,
+    load_host_array_to_device_as_dtype,
+)
 from hipengine.loading.qwen4_exp_gguf import (
     GDN,
     Qwen4ExpGGUFConfig,
@@ -240,6 +246,112 @@ def _runtime_state_bytes_per_request(config: Qwen4ExpGGUFConfig) -> int:
     return matrix_state + conv_state + ple_history + bf16_residual
 
 
+@dataclass
+class Qwen4ExpResidentWeights:
+    """Physical Qwen4Exp owners with one device allocation per hot tensor."""
+
+    plan: Qwen4ExpResidencyPlan
+    device_weights: Mapping[str, Any]
+    ple_table: "Qwen4ExpPLEMMapTable"
+    ple_staging: "Qwen4ExpPLEStagingRing"
+    runtime: Any | None = None
+    closed: bool = False
+
+    def weight(self, slot_path: str) -> Any:
+        if self.closed:
+            raise RuntimeError("Qwen4Exp resident weights are closed")
+        return self.device_weights[slot_path]
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.ple_staging.close()
+        self.ple_table.close()
+        for allocation in reversed(tuple(self.device_weights.values())):
+            allocation.free(runtime=self.runtime)
+        self.device_weights = MappingProxyType({})
+        self.closed = True
+
+
+def materialize_qwen4_exp_weights(
+    readers: Sequence[Any],
+    *,
+    plan: Qwen4ExpResidencyPlan,
+    runtime: HipRuntime | None = None,
+    device_loader: Any | None = None,
+    pin_ple_staging: bool = True,
+) -> Qwen4ExpResidentWeights:
+    """Materialize hot raw weights once and create the sparse PLE owner."""
+
+    reader_parts = tuple(readers)
+    expected_parts = max(spec.source_ref.part_index for spec in plan.specs) + 1
+    if len(reader_parts) != expected_parts:
+        raise ValueError(
+            f"reader part count {len(reader_parts)} does not match plan {expected_parts}"
+        )
+    load = device_loader or materialize_qwen4_exp_raw_weight
+    active_runtime = runtime
+    if pin_ple_staging and active_runtime is None:
+        active_runtime = get_hip_runtime()
+    allocations: dict[str, Any] = {}
+    table: Qwen4ExpPLEMMapTable | None = None
+    ring: Qwen4ExpPLEStagingRing | None = None
+    try:
+        for spec in plan.device_specs:
+            reader = reader_parts[spec.source_ref.part_index]
+            allocations[spec.slot_path] = load(spec, reader, runtime=active_runtime)
+        ple_ref = plan.ple_spec.source_ref
+        table = Qwen4ExpPLEMMapTable(
+            reader_parts[ple_ref.part_index],
+            ple_ref.tensor,
+            semantic_rows=plan.config.ple_row_count,
+        )
+        ring = Qwen4ExpPLEStagingRing.create(
+            table,
+            row_capacity=plan.staging_row_capacity,
+            runtime=active_runtime if pin_ple_staging else None,
+        )
+    except Exception:
+        if ring is not None:
+            ring.close()
+        if table is not None:
+            table.close()
+        for allocation in reversed(tuple(allocations.values())):
+            allocation.free(runtime=active_runtime)
+        raise
+    return Qwen4ExpResidentWeights(
+        plan=plan,
+        device_weights=MappingProxyType(allocations),
+        ple_table=table,
+        ple_staging=ring,
+        runtime=active_runtime,
+    )
+
+
+def materialize_qwen4_exp_raw_weight(
+    spec: Qwen4ExpGGUFWeightSpec,
+    reader: Any,
+    *,
+    runtime: HipRuntime | None = None,
+) -> DeviceTensorAllocation:
+    raw = reader.tensor_data(spec.source.name)
+    if spec.source.ggml_type_name == "F32":
+        dtype, source_dtype = DType.FP32, "F32"
+    elif spec.source.ggml_type_name == "F16":
+        dtype, source_dtype = DType.FP16, "F16"
+    elif spec.source.ggml_type_name == "BF16":
+        dtype, source_dtype = DType.BF16, "BF16"
+    else:
+        dtype, source_dtype = DType.INT8, "I8"
+    return load_host_array_to_device_as_dtype(
+        spec.source.name,
+        raw,
+        dtype,
+        source_dtype=source_dtype,
+        runtime=runtime,
+    )
+
+
 class Qwen4ExpPLEMMapTable:
     """One lazy GGUF memmap owner that dequantizes only requested PLE rows."""
 
@@ -378,6 +490,9 @@ __all__ = [
     "Qwen4ExpPLEMMapTable",
     "Qwen4ExpPLEStagingRing",
     "Qwen4ExpResidencyPlan",
+    "Qwen4ExpResidentWeights",
+    "materialize_qwen4_exp_raw_weight",
+    "materialize_qwen4_exp_weights",
     "plan_qwen4_exp_memory_admission",
     "plan_qwen4_exp_residency",
 ]
