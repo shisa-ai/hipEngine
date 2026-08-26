@@ -91,6 +91,28 @@ __global__ void gr_write_bf16_f32_kernel(
   }
 }
 
+__global__ void scaled_silu_f32_kernel(
+    const float* __restrict__ input,
+    float* __restrict__ output,
+    int64_t elements,
+    float scale) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < elements) {
+    const float value = input[index] * scale;
+    output[index] = value / (1.0f + expf(-value));
+  }
+}
+
+__global__ void sigmoid_f32_kernel(
+    const float* __restrict__ input,
+    float* __restrict__ output,
+    int64_t elements) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < elements) {
+    output[index] = 1.0f / (1.0f + expf(-input[index]));
+  }
+}
+
 __global__ void sigmoid_gated_rmsnorm_f32_kernel(
     const float* __restrict__ input,
     const float* __restrict__ weight,
@@ -185,6 +207,39 @@ extern "C" int hipengine_qwen4_exp_gr_write_bf16_f32(
       static_cast<const uint16_t*>(residual), static_cast<const float*>(block_output),
       static_cast<const float*>(inject_logits), static_cast<uint16_t*>(output),
       branches, hidden);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_scaled_silu_f32(
+    const void* input,
+    void* output,
+    int64_t elements,
+    float scale,
+    hipStream_t stream) {
+  if (!input || !output || elements <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  const uint32_t blocks = static_cast<uint32_t>((elements + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      scaled_silu_f32_kernel, dim3(blocks), dim3(threads), 0, stream,
+      static_cast<const float*>(input), static_cast<float*>(output), elements, scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_sigmoid_f32(
+    const void* input,
+    void* output,
+    int64_t elements,
+    hipStream_t stream) {
+  if (!input || !output || elements <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  const uint32_t blocks = static_cast<uint32_t>((elements + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      sigmoid_f32_kernel, dim3(blocks), dim3(threads), 0, stream,
+      static_cast<const float*>(input), static_cast<float*>(output), elements);
   return static_cast<int>(hipGetLastError());
 }
 

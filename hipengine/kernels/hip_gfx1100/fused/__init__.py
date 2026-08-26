@@ -100,6 +100,8 @@ from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_gated_mean_f32,
     qwen4_exp_gr_write_bf16_f32,
     qwen4_exp_grouped_rmsnorm_bf16_f32,
+    qwen4_exp_scaled_silu_f32,
+    qwen4_exp_sigmoid_f32,
     qwen4_exp_sigmoid_gated_rmsnorm_f32,
     register_qwen4_exp_gr_kernels,
 )
@@ -195,6 +197,8 @@ __all__ = [
     "qwen4_exp_gated_mean_f32",
     "qwen4_exp_gr_write_bf16_f32",
     "qwen4_exp_grouped_rmsnorm_bf16_f32",
+    "qwen4_exp_scaled_silu_f32",
+    "qwen4_exp_sigmoid_f32",
     "qwen4_exp_sigmoid_gated_rmsnorm_f32",
     "qwen4_exp_ple_dilated_depthwise_conv_f32",
     "qwen4_exp_ple_repeat_gated_value_f32",
