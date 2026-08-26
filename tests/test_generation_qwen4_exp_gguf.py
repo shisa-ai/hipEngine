@@ -60,6 +60,53 @@ def test_qwen4_exp_generators_are_registered_for_local_and_unsloth_q4() -> None:
         )
 
 
+def test_qwen4_exp_generator_closes_resident_when_runner_construction_fails(
+    monkeypatch,
+) -> None:
+    events: list[str] = []
+
+    class Resident:
+        def close(self):
+            events.append("resident.close")
+
+    monkeypatch.setattr(
+        "hipengine.generation.qwen4_exp_gguf.discover_gguf_files",
+        lambda path: (path,),
+    )
+    monkeypatch.setattr(
+        "hipengine.generation.qwen4_exp_gguf.GGUFReader",
+        lambda path: SimpleNamespace(info=SimpleNamespace()),
+    )
+    monkeypatch.setattr(
+        "hipengine.generation.qwen4_exp_gguf.build_qwen4_exp_gguf_tensor_map",
+        lambda infos: SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        "hipengine.generation.qwen4_exp_gguf.plan_qwen4_exp_residency",
+        lambda model_map: SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        "hipengine.generation.qwen4_exp_gguf.materialize_qwen4_exp_weights",
+        lambda readers, plan, backend: Resident(),
+    )
+
+    def fail_runner(*args, **kwargs):
+        raise RuntimeError("injected runner allocation failure")
+
+    monkeypatch.setattr(
+        "hipengine.generation.qwen4_exp_gguf.Qwen4ExpGGUFResidentModelRunner",
+        fail_runner,
+    )
+    with pytest.raises(RuntimeError, match="injected"):
+        Qwen4ExpGGUFTextGenerator(
+            model_path="unused.gguf",
+            weight_index=SimpleNamespace(),
+            model_plugin=SimpleNamespace(),
+            tokenizer=_Tokenizer(),
+        )
+    assert events == ["resident.close"]
+
+
 def test_qwen4_exp_generator_runs_greedy_serial_and_stops_at_eos() -> None:
     runner = _Runner()
     generator = Qwen4ExpGGUFTextGenerator(
