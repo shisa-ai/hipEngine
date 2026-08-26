@@ -78,46 +78,40 @@ Per-request deadlines are opt-in via request `timeout_ms`. Set
 deadline to requests that omit the field. A request-level `timeout_ms` overrides
 the server default.
 
-GGUF MTP serving defaults to the fail-closed `auto` policy while the
-[`MTP-FIX.md`](MTP-FIX.md) real-world readiness campaign is active. Implicit
-compatible requests therefore use exact/default AR; explicit non-streaming,
-greedy requests may still opt into MTP. `enabled` cannot convert a broad dense
-`supports_default_mtp` boolean into default admission: default routing requires
-an immutable model-plugin plan with `automatic_eligible=true`. Dense Qwen models
-with NextN tensors use
-the fast llama.cpp-style **native** verify path when MTP is selected
-(`HIPENGINE_GGUF_MTP_VERIFY_MODE`, default `native`, candidate budget 3 via
-`HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`); set `native` to `serial_exact` for the
-token-exact rollback control that re-runs exact c=1 AR per candidate row but
-cannot beat AR decode speed. MoE MTP is not exact against true AR, so it stays
-request-opt-in: start with
-`--speculative-mtp-serving opt_in` or
-`HIPENGINE_SPECULATIVE_MTP_SERVING=opt_in`, then pass
-`"speculative_mtp": true` on a non-streaming greedy request. That explicitly
-selects the documented MTP contract. Dense gfx1151 eager MTP is strict-AR exact
-through RF1, but RF2 long graph/MTP economics do not meet automatic-promotion
-requirements. The `auto` policy therefore selects exact/default AR with reason
-`automatic_mtp_scope_not_promoted`, group width, output horizon, and retained
-evidence. For the exact Qwen3.8 Q4_K_M/gfx1151/strict/BF16 physical-C1/B3
-natural25 scope, capabilities expose `certified_explicit_scope` with the full
-content hash, runtime/shape key, strict fallback, evidence links, and canonical
-plan fingerprint. The same fingerprint appears in auto/explicit route decisions
-and rollback; wrong artifact, backend, quant, profile/manifest, KV, resident
-capacity, group, B, sampler, context, horizon, or memory fit selects K0 before
-backend mutation. The capabilities manifest reports
+GGUF MTP serving defaults to the fail-closed `auto` policy. Most scopes use
+exact/default AR; `enabled` cannot convert a broad dense `supports_default_mtp`
+boolean into default admission. Default routing requires an immutable
+model-plugin plan with `automatic_eligible=true`.
+
+One exact scope is automatic: content-verified Qwen3.8 Q4_K_M on gfx1151,
+strict profile/manifest, BF16 uniform KV, resident and physical C1, B3,
+max-sequence 1024, prompt context 1-67, natural25 output, raw greedy, and memory
+fit. It uses Generation-2 staged `gguf_specdec2_mtp2` and plan fingerprint
+`sha256:5bee87fc6e6a157aca61d7704795ca97aa667798f1876c958db1d19a831b7ded`.
+Capabilities expose the complete key under `certified_explicit_scope`, include
+it under `certified_default_scopes`, and report
+`automatic_route_promoted=true`/`default_enabled=true`. The same fingerprint
+appears in automatic/explicit route decisions and rollback. Wrong artifact,
+backend, quant, profile/manifest, KV, resident capacity, group, B, sampler,
+context, horizon, or memory fit selects K0 before backend mutation with a stable
+reason. Q4_K_S and all other evidence rows remain K0 automatically.
+
+Operators may still select explicit diagnostics with
+`--speculative-mtp-serving opt_in` plus `"speculative_mtp": true`. Explicit
+false always forces AR. `serial_exact` remains the token-exact slow rollback
+control for the legacy direct hook; MoE and unqualified dense scopes are not
+automatic. The capabilities manifest reports
 `sampling.speculative_mtp.serving_route=true` only when this policy is enabled
 and the loaded engine exposes a real MTP hook, and
 `sampling.speculative_mtp.default_enabled=true` when the default policy routes
 compatible requests through MTP. With a positive
 `--generation-batch-window-ms` and a matching `--max-active-requests`, compatible
-non-streaming MTP requests can coalesce into one backend call. The current dense
-transactional hook nevertheless iterates those rows serially through one
-resident target slot; route coalescing is not physical c>N MTP execution.
-RF5 retains this honest explicit-only policy after c1/c2/c4/c8 offered-load and
-100-request soak qualification. Capabilities report
-`physical_concurrency="serialized_target_slot"`,
-`max_physical_target_slots=1`, and
-`route_coalescing_is_physical_concurrency=false`. Capabilities also expose the
+non-streaming MTP requests can coalesce into one backend call. The promoted
+scope requires resident capacity C1. Other shapes use strict AR or independent
+explicit diagnostics; no route-coalescing row is
+reported as hidden physical concurrency. Capabilities report the Generation-2
+frontier ceiling separately from the admitted plan's `resident_capacity=1` and
+`realized_group_rows=1`. Capabilities also expose the
 restart-scoped circuit breaker. Repeated backend/runtime failures open one
 model/backend/profile/context scope; request cancellation and deadline errors do
 not count. `POST /v1/hipengine/speculative_mtp/rollback` disables MTP for all new
@@ -129,11 +123,10 @@ exact only for the greedy fast path, so host-sampler thinking-budget enforcement
 When MTP is explicitly selected, the default **hint** policy
 (`--speculative-mtp-thinking hint`, env
 `HIPENGINE_SPECULATIVE_MTP_THINKING=hint`) keeps reasoning hints in the rendered
-prompt but relaxes host-sampler enforcement, so `reasoning_effort`
-off/medium/high/xhigh can use the raw-greedy-compatible MTP route. This is an
-explicit policy change rather than equality with the original hard-controlled
-request. RF4 qualifies exact API labeling/fallback behavior; answer-quality,
-closure, and token-use promotion remain RF6 work in [`MTP-FIX.md`](MTP-FIX.md).
+prompt but relaxes host-sampler enforcement, so the request can remain
+raw-greedy-compatible. The complete typed plan still applies: rendered thinking
+prompts beyond context 67 select K0. S3 validates truthful hint/hard/context
+fallback behavior; thinking controls are not a separate promoted scope.
 Responses that realize MTP report `thinking_policy` and
 `thinking_controls="prompt_hint_only"`. Set `--speculative-mtp-thinking hard`
 (or
@@ -675,10 +668,10 @@ the capabilities manifest reports that limitation explicitly.
 Automatic decisions add `route_decision` to the same object. It records
 `requested_route`, `selected_route`, a stable `reason`,
 `realized_group_rows`, `output_horizon_tokens`, the exact-default requirement,
-and the evidence artifact. The current reason is
-`automatic_mtp_scope_not_promoted`, with selected route `default`; explicit MTP
-requests retain route `speculative_mtp` and do not carry this automatic
-fallback record.
+and the evidence artifact. The promoted exact scope reports
+`qualified_automatic_c1_b3` and selects `speculative_mtp`; unqualified scopes
+select `default` with a stable reason such as `context_bucket_not_qualified` or
+`sampling_mode_not_qualified`. Explicit MTP uses the same typed plan.
 
 ### Finish details
 
@@ -1481,26 +1474,20 @@ generated text.
   `post_selection_controls` such as stop token ids and stop token sequences,
   which PARO c=1 native sampling checks after each selected token.
 - The capabilities manifest reports `sampling.speculative_mtp` with
-  `compatibility_guard: "supports_speculative_mtp_sampling"`. When
-  `--speculative-mtp-serving opt_in` or `auto` is set and the loaded GGUF engine
-  has NextN tensors, explicit non-streaming greedy-fast requests can use the
-  llama-compat MTP server hook. `auto` advertises `default_enabled=false` and an
-  `auto_route` exact-AR fallback because the compatibility hook is not
-  serial-prefix-equivalent. Resident-slot c=N explicit serving is supported
-  through the generation batcher when the batch window and active-request cap
-  allow it; c=2 is the target path and c=4/c=8 have functional smoke coverage.
-  Streaming MTP is not implemented yet; non-streaming MTP uses the default
-  `native` verify path (or `serial_exact` via
-  `HIPENGINE_GGUF_MTP_VERIFY_MODE=serial_exact`).
-  Current MTP serving compatibility is greedy-fast only; `logit_bias`,
-  penalties, token suppressions, min-token/EOS policy, explicit EOS finish
-  policy, token stops, `ignore_eos=true`, pending forced-token queues,
+  `compatibility_guard: "supports_speculative_mtp_sampling"`, the complete typed
+  plan, evidence links, strict fallback, and automatic decision. The exact
+  Qwen3.8 Q4_K_M C1/B3/natural25 scope above is automatic; other scopes are K0
+  unless an independent explicit diagnostic exists. Blocking and streaming
+  completion/chat share Generation-2 and report exact IDs/text plus terminal MTP
+  telemetry and usage. Current promoted compatibility is greedy-fast only;
+  `logit_bias`, penalties, token suppressions, min-token/EOS policy, explicit EOS
+  finish policy, token stops, `ignore_eos=true`, pending forced-token queues,
   post-thinking forced-token queues, token-sequence completion repair, JSON
   object close forcing, tool-call constraints, temperature sampling, and
   requested logprobs require autoregressive fallback. The manifest also includes
-  `incompatible_conditions`, for example `temperature > 0` and
-  `eos_token_id set` and `ignore_eos=true`, so inert greedy `top_p` / `top_k` /
-  `min_p` settings are not mistaken for MTP blockers.
+  `incompatible_conditions`, for example `temperature > 0`, `eos_token_id set`,
+  and `ignore_eos=true`, so inert greedy `top_p`/`top_k`/`min_p` settings are not
+  mistaken for MTP blockers.
 - `sampling.speculative` describes the generic draft-model provider configured
   by `--speculative-provider`, `--draft-model`, and
   `--speculative-candidate-budget`. It remains explicit-only through the

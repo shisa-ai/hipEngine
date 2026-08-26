@@ -47,18 +47,21 @@ def _evidence() -> SpeculativeMTPServingEvidence:
     return Qwen35GGUFModel().speculative_mtp_serving_evidence[0]
 
 
-def test_qwen38_q4km_strict_c1_b3_plan_is_explicit_candidate_only() -> None:
+def test_qwen38_q4km_strict_c1_b3_plan_is_automatic_product_scope() -> None:
     decision = resolve_speculative_mtp_serving_plan((_evidence(),), key=_key())
 
     assert decision.admitted is True
     assert decision.selected_route == "speculative_mtp"
     assert decision.selected_candidate_count == 3
-    assert decision.reason == "qualified_explicit_c1_b3"
-    assert decision.automatic_eligible is False
+    assert decision.reason == "qualified_automatic_c1_b3"
+    assert decision.automatic_eligible is True
     assert decision.strict_fallback_key == "gguf_target_ar"
     assert decision.evidence_artifacts == (
         "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0.json",
         "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0-openai.json",
+        "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s1.json",
+        "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s2.json",
+        "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s3.json",
     )
     assert decision.plan_fingerprint.startswith("sha256:")
     assert decision.plan_fingerprint == resolve_speculative_mtp_serving_plan(

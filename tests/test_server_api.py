@@ -318,7 +318,15 @@ class ArtifactScopedSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
             and kwargs["kv_storage"] in {"auto", "bf16"}
             and kwargs["memory_fit"]
         )
-        reason = "qualified_explicit_c1_b3" if admitted else "context_bucket_not_qualified"
+        reason = (
+            "qualified_explicit_c1_b3"
+            if admitted
+            else (
+                "sampling_mode_not_qualified"
+                if kwargs["sampling_mode"] != "greedy_fast"
+                else "context_bucket_not_qualified"
+            )
+        )
         return {
             "schema_version": 1,
             "plan_fingerprint": "sha256:" + ("a" if admitted else "b") * 64,
@@ -351,6 +359,18 @@ class ArtifactScopedSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
             kv_storage="bf16",
             memory_fit=True,
         )
+
+
+class PromotedArtifactScopedSpeculativeMTPFakeLLM(
+    ArtifactScopedSpeculativeMTPFakeLLM
+):
+    @staticmethod
+    def _plan(**kwargs: Any) -> dict[str, Any]:
+        plan = ArtifactScopedSpeculativeMTPFakeLLM._plan(**kwargs)
+        promoted = bool(plan["admitted"])
+        plan["automatic_eligible"] = promoted
+        plan["plan_fingerprint"] = "sha256:" + ("c" if promoted else "d") * 64
+        return plan
 
 
 class SchedulerChunkRowsFakeLLM(FakeLLM):
@@ -6533,6 +6553,74 @@ def test_auto_and_enabled_share_explicit_only_plan_fingerprint_and_k0() -> None:
         fingerprints.append(plan["plan_fingerprint"])
 
     assert fingerprints[0] == fingerprints[1]
+
+
+def test_promoted_artifact_plan_routes_auto_only_inside_exact_scope() -> None:
+    fake = PromotedArtifactScopedSpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="auto",
+            max_active_requests=1,
+            max_context_tokens=1024,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    capability = client.get("/v1/hipengine/capabilities").json()["sampling"]["speculative_mtp"]
+    auto = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "hello",
+            "max_tokens": 25,
+            "temperature": 0.0,
+        },
+    ).json()
+    outside = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": " ".join(f"token{index}" for index in range(68)),
+            "max_tokens": 25,
+            "temperature": 0.0,
+        },
+    ).json()
+    incompatible = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "hello",
+            "max_tokens": 25,
+            "temperature": 0.4,
+        },
+    ).json()
+    disabled = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "hello",
+            "max_tokens": 25,
+            "temperature": 0.0,
+            "speculative_mtp": False,
+        },
+    ).json()
+
+    plan = capability["certified_explicit_scope"]
+    assert capability["automatic_route_promoted"] is True
+    assert capability["default_enabled"] is True
+    assert capability["auto_route"]["selected_route"] == "speculative_mtp"
+    assert capability["auto_route"]["selected_candidate_count"] == 3
+    assert capability["auto_route"]["policy_fingerprint"] == plan["plan_fingerprint"]
+    assert auto["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
+    assert auto["hipengine"]["generation_shape"]["route_decision"]["policy_fingerprint"] == plan["plan_fingerprint"]
+    assert outside["hipengine"]["generation_shape"]["route"] == "default"
+    assert outside["hipengine"]["generation_shape"]["route_decision"]["reason"] == "context_bucket_not_qualified"
+    assert incompatible["hipengine"]["generation_shape"]["route"] == "default"
+    assert incompatible["hipengine"]["generation_shape"]["route_decision"]["reason"] == "sampling_mode_not_qualified"
+    assert disabled["hipengine"]["generation_shape"]["route"] == "default"
 
 
 def test_chat_endpoint_routes_explicit_mtp_and_reports_direct_usage() -> None:

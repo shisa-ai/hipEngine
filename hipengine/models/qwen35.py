@@ -45,13 +45,16 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         max_context_tokens=67,
         min_output_horizon_tokens=25,
         max_output_horizon_tokens=25,
-        reason="qualified_explicit_c1_b3",
+        reason="qualified_automatic_c1_b3",
         evidence_artifacts=(
             "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0.json",
             "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0-openai.json",
+            "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s1.json",
+            "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s2.json",
+            "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s3.json",
         ),
         strict_fallback_key="gguf_target_ar",
-        automatic_eligible=False,
+        automatic_eligible=True,
     ),
 )
 
