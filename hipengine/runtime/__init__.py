@@ -41,6 +41,11 @@ from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFOneLayerProbe,
     Qwen35GGUFResidentSession,
 )
+from hipengine.runtime.qwen4_exp_runner import (
+    Qwen4ExpGRReadDeviceResult,
+    Qwen4ExpGRScratch,
+    run_qwen4_exp_gr_read,
+)
 from hipengine.runtime.qwen35_paro import (
     Qwen35ParoAttentionScratch,
     Qwen35ParoDecodeState,
@@ -86,6 +91,8 @@ __all__ = [
     "Qwen35GGUFNextNStepResult",
     "Qwen35GGUFOneLayerProbe",
     "Qwen35GGUFResidentSession",
+    "Qwen4ExpGRReadDeviceResult",
+    "Qwen4ExpGRScratch",
     "Qwen35ParoAttentionScratch",
     "Qwen35ParoDecodeState",
     "Qwen35ParoGroupedMoeScratch",
@@ -100,6 +107,7 @@ __all__ = [
     "RuntimeWorkspace",
     "launch_gguf_linear",
     "resolve_gguf_linear_dispatch",
+    "run_qwen4_exp_gr_read",
     "WorkspaceAllocation",
     "tensor_nbytes",
 ]
