@@ -235,6 +235,14 @@ class Qwen35GGUFMTP2Adapter:
             getattr(getattr(target, "runner", None), "fp16_recurrent_state", False)
         )
 
+    def _c1_device_proposal_allowed(self, target: Any) -> bool:
+        """Admit FP16 eager-target device proposal only under the oracle flag."""
+
+        return bool(
+            self._target_graph_supported(target)
+            or getattr(self, "device_chain_qualification_oracle", False)
+        )
+
     def register_request(self, request_id: int, candidate_budget: int) -> None:
         rid = int(request_id)
         budget = min(self.candidate_budget, max(1, int(candidate_budget)))
@@ -991,12 +999,24 @@ class Qwen35GGUFMTP2Adapter:
                 launch_device = getattr(
                     states[0].provider, "launch_device_proposal", None
                 )
-                target_device_ready = bool(
+                target_graph_ready = bool(
                     self._target_graph_supported(targets[0])
                     and callable(device_ready)
                     and device_ready(
                         budgets[0],
                         remaining_decode=remaining_by_id[ids[0]],
+                    )
+                )
+                eager_oracle_ready = bool(
+                    getattr(self, "device_chain_qualification_oracle", False)
+                    and not self._target_graph_supported(targets[0])
+                )
+                target_device_ready = bool(
+                    target_graph_ready
+                    or (
+                        eager_oracle_ready
+                        and callable(launch_device)
+                        and self._c1_device_proposal_allowed(targets[0])
                     )
                 )
                 if target_device_ready and callable(launch_device):
