@@ -241,10 +241,7 @@ fallback count is not a success metric.
   commit, then reads only bounded committed output/status. Setting
   `HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE=1` temporarily adds post-commit
   candidate/target-ID materialization and the CPU acceptance oracle for strict
-  qualification; it is never part of default production timing. The 2026-08-27
-  Q4_K_M campaign also allows the flag to feed a device proposal into the
-  retained FP16 **eager** target as a qualification-only diagnostic; target
-  graph eligibility remains false and the default flag-off route is unchanged.
+  qualification; it is never part of default production timing.
 - Removal trigger: after P4 reject/every-partial/full, following-AR,
   cancellation/failure, profile, and full category gates are retained with
   GPU/CPU accept agreement and cache-only traces prove no pre-accept D2H in the

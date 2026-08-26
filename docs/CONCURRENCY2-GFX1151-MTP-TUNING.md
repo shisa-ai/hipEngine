@@ -218,17 +218,23 @@ production policy remains MTP at no automatic cell (K0) until those gates pass.
   capture/hidden-seed/D2H/full-MTP-env variants differ <0.4%. The apparent
   ~113 tok/s field belonged to the forced legacy activation owner and packed
   telemetry bookkeeping, not a prefill kernel. No kernel candidate admitted.
-- [ ] **T1.1 Streaming NextN prompt priming (OI-3) on public serving.** Shared
-  source is already retained and fully gated in staged MTP2; the legacy forced
-  route still uses the slab/catch-up loop. Completion means T0.4 proves the
-  public staged route engages OI-3 and passes the production profile; do not
-  duplicate the sink or optimize the legacy fallback.
-- [ ] **T1.2 Zero-hot-allocation audit for the Q4_K_M serving key.** P3 closed
-  this for Q4_K_S SPECDEC2; verify the promoted Q4_K_M serving route has zero
-  cycle-local malloc/free after warmup.
-- [ ] **T1.3 Device-chain coverage check.** Confirm N2/N3P device proposal /
-  accept / selected-commit engagement on the Q4_K_M route at C1 (P4 retained
-  it for Q4_K_S); fence or repair any host round-trip that remains.
+- [x] **T1.1 Streaming NextN prompt priming (OI-3) on public serving.** 10/10
+  production B3 requests stream all 449 prompt rows, retain exactly one
+  10,240-byte carried row each, and report no prompt fallback/full slab.
+- [x] **T1.2 Zero-hot-allocation audit for the Q4_K_M serving key.** Hot-cycle
+  proposal/repair workspace is persistent at stable pointers/shape `[1,5120]`
+  across all requests after warmup. Each request still allocates/frees
+  83,794,462 bytes of admission/provider state, but active ownership returns to
+  zero and this does not scale with its 6-8 cycles. Track admission allocation
+  as startup debt, not cycle-local malloc.
+- [x] **T1.3 Device-chain coverage check / fence.** Qualified production uses
+  70 eager cycles with zero device handoff/GPU accept/selected-commit calls.
+  An oracle-only FP16 device-proposal/eager-target candidate launched one
+  handoff/request, then failed precommit (`FP16 recurrent state device proposal
+  requires eager selected commit`), recovered all 10 to AR, and regressed
+  6.77%. Candidate source was removed; retain/fence the qualified eager host
+  proposal owner. Evidence:
+  [`T1.1-T1.3 ownership`](../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t11-t13-ownership.json).
 - [x] **T1.4 Candidate-budget sweep on serving C1.** Truthful physical budgets
   under the full suite: B1 12.236 tok/s (+25.59%, 95.65% accept), B2 14.055
   (+44.54%, 91.87%), B3 **14.287 (+46.84%, 79.29%)**. Every category is

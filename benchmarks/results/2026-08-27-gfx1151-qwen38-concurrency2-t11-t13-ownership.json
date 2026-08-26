@@ -1,0 +1,165 @@
+{
+ "schema": 1,
+ "kind": "concurrency2_gfx1151_mtp_t11_t13_ownership",
+ "created_at": "2026-08-27T08:20:00Z",
+ "status": "t11_t12_pass_t13_device_chain_rejected",
+ "passed": true,
+ "performance_claim": false,
+ "decision": {
+  "t1_1": "pass: staged public B3 uses retained OI-3 for every request",
+  "t1_2": "pass for hot-cycle contract: cycle workspace is persistent/stable; 83.8MB request-admission/provider state is allocated/freed once per request with zero residual ownership",
+  "t1_3": "reject device-proposal/eager-target diagnostic: precommit unsupported, 10/10 recover to AR, -6.77%; retain qualified eager host proposal/target owner and record blocker"
+ },
+ "physical_host": "gfx1151 / Radeon 8060S / HIP 7.15.0",
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "quant": "Q4_K_M",
+  "kv": "BF16"
+ },
+ "runtime_profile": {
+  "profile": "production",
+  "manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+  "strict_fallback_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+ },
+ "protocol": {
+  "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "prompts": 10,
+  "c": 1,
+  "budget": 3,
+  "max_tokens": 24,
+  "profile": "production",
+  "surface": "blocking OpenAI complete wall",
+  "warmup": "one AR/MTP arm pair",
+  "runs": 1
+ },
+ "baseline": {
+  "ar_tok_s": 9.742773266939695,
+  "mtp_tok_s": 14.2980719497587,
+  "mtp_vs_ar_pct": 46.75566759083445,
+  "engaged_cells": 10,
+  "exact_diagnostic_cells": 10,
+  "ownership_sums": {
+   "specdec2_mtp2_prompt_prime_rows": 449,
+   "specdec2_mtp2_prompt_carried_bytes": 102400,
+   "specdec2_mtp2_cycles": 70,
+   "specdec2_mtp2_candidate_device_handoffs": 0,
+   "specdec2_mtp2_candidate_d2h_after_target": 0,
+   "specdec2_mtp2_device_accept_calls": 0,
+   "specdec2_mtp2_selected_commit_batch_calls": 0,
+   "specdec2_mtp2_recoverable_failures": 0,
+   "specdec2_mtp2_k0_catchups": 0
+  },
+  "execution_routes": {
+   "eager": 70
+  },
+  "prompt_streaming_rows": 10,
+  "prompt_fallback_reasons": [
+   "None"
+  ]
+ },
+ "t1_1_streaming": {
+  "passed": true,
+  "requests": 10,
+  "prompt_rows": 449,
+  "carried_bytes_per_request": [
+   10240
+  ],
+  "full_prompt_slab_used": false
+ },
+ "t1_2_allocation": {
+  "passed_hot_cycle": true,
+  "cycle_workspace_contract_unique": [
+   {
+    "active_states": 0,
+    "batch_accept_workspace_allocated": false,
+    "cycle_workspace": {
+     "allocated": true,
+     "proposal_ptr": 140204471975936,
+     "repair_ptr": 140204471988224,
+     "shape": [
+      1,
+      5120
+     ]
+    },
+    "prompt_streaming_sinks": 0,
+    "provider_groups": 0
+   }
+  ],
+  "stable_proposal_ptrs": [
+   140204471975936
+  ],
+  "stable_repair_ptrs": [
+   140204471988224
+  ],
+  "request_admission_allocated_bytes_per_request": [
+   83794462
+  ],
+  "request_teardown_freed_bytes_per_request": [
+   83794462
+  ],
+  "active_allocation_delta_per_request": [
+   0
+  ],
+  "post_request_active_states": [
+   0
+  ],
+  "post_request_provider_groups": [
+   0
+  ],
+  "post_request_prompt_sinks": [
+   0
+  ],
+  "interpretation": "Persistent cycle proposal/repair buffers keep one pointer/shape across all requests after warmup. The 83,794,462-byte delta is per-request provider/admission ownership, not per-cycle malloc/free; it is fully freed with zero active-state/group/sink residue."
+ },
+ "t1_3_device_chain": {
+  "baseline": "production uses eager host-materialized C1 proposal/target; zero device handoff/GPU accept/selected commit calls; 70 eager cycles; no recovery",
+  "candidate": {
+   "env": "HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE=1 (diagnostic seam removed after result)",
+   "ar_tok_s": 9.734327722358497,
+   "requested_mtp_arm_tok_s": 9.07544054546749,
+   "vs_ar_pct": -6.768697291520476,
+   "engaged_cells": 0,
+   "exact_diagnostic_cells": 10,
+   "ownership_sums": {
+    "specdec2_mtp2_prompt_prime_rows": 449,
+    "specdec2_mtp2_prompt_carried_bytes": 102400,
+    "specdec2_mtp2_cycles": 0,
+    "specdec2_mtp2_candidate_device_handoffs": 10,
+    "specdec2_mtp2_candidate_d2h_after_target": 0,
+    "specdec2_mtp2_device_accept_calls": 0,
+    "specdec2_mtp2_selected_commit_batch_calls": 0,
+    "specdec2_mtp2_recoverable_failures": 10,
+    "specdec2_mtp2_k0_catchups": 0
+   },
+   "failure_reasons": [
+    "NativeSpecTargetGraphUnsupportedError:FP16 recurrent state device proposal requires eager selected commit",
+    "precommit_failure_ar_fallback"
+   ]
+  },
+  "decision": "rejected and diagnostic source removed; concrete blocker is missing FP16 eager selected commit for a device proposal. Default eager path remains fenced and qualified."
+ },
+ "correctness": {
+  "production_gate": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json",
+  "baseline_hard_gate_passed": true,
+  "device_candidate": "no speed gain and no MTP cycles; safe precommit AR fallback preserved trajectories; no production promotion gate required"
+ },
+ "raw_sources": [
+  {
+   "path": "/tmp/gfx1151-t11-t13-production-b3-workspace.json",
+   "sha256": "d22c90187dd31db472ad071b815cc9c29c289af85e6ea81c9ccbf17d16684218",
+   "size_bytes": 728684,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t13-production-b3-device-oracle.json",
+   "sha256": "3aa6e67cb396f2bf30fe4b6d2ad5a8b62d690b85a6b4172b967eeb5a55ae7b81",
+   "size_bytes": 723470,
+   "retained_in_git": false
+  }
+ ],
+ "limitations": [
+  "T1.2 pass is specifically zero cycle-local allocation after warmup; request admission still allocates/frees 83.8MB and is a future startup optimization surface.",
+  "T1.3 device chain remains a concrete blocker, not silently relabeled numerical drift."
+ ]
+}
