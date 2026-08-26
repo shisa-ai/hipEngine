@@ -134,11 +134,14 @@ class EngineServiceHandle:
                     raise RuntimeError("terminal stream event has no collector result")
                 if result.error is not None:
                     raise result.error
-                if not emitted and result.generation_output is not None:
+                if result.generation_output is not None and (
+                    not emitted
+                    or self._state.execution_mode in {"verify_chain", "verify_tree"}
+                ):
                     output = result.generation_output
                     yield GenerationStreamChunk(
-                        text=output.text,
-                        token_logprobs=output.token_logprobs,
+                        text="" if emitted else output.text,
+                        token_logprobs=() if emitted else output.token_logprobs,
                         finish_details=output.finish_details,
                         telemetry=output.telemetry,
                         generated_token_ids=output.generated_token_ids,
@@ -891,7 +894,19 @@ class EngineService:
                 self._cancel_state(state, reason="client_backpressure")
                 continue
             state.token_ids.append(token_id)
-            chunks = _stop_safe_chunks(state, token_id=token_id, chunk=event.stream_chunk)
+            stream_chunk = event.stream_chunk
+            if state.execution_mode in {"verify_chain", "verify_tree"} and (
+                stream_chunk.finish_details is not None
+                or stream_chunk.generated_token_ids is not None
+            ):
+                # One terminal service chunk owns final speculative IDs, finish,
+                # and authoritative backend telemetry. Live chunks own text only.
+                stream_chunk = replace(
+                    stream_chunk,
+                    finish_details=None,
+                    generated_token_ids=None,
+                )
+            chunks = _stop_safe_chunks(state, token_id=token_id, chunk=stream_chunk)
             for chunk in chunks:
                 accepted = state.collector.publish(
                     EngineOutput(

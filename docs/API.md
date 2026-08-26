@@ -577,10 +577,13 @@ and `decision_reason="backend_k0_fallback"`; it does not claim MTP usage or
 increment MTP request metrics. Speculative Generation-2 streaming publishes
 canonical token IDs and attaches model-tokenizer text to each committed event;
 blocking and stream text/IDs are byte-exact on the qualified C1 scope. Requests
-with `stream_options.include_hipengine` expose per-choice backend telemetry;
-compact MTP streaming summaries remain deferred to the S3 OpenAI packet. Auto
-fallback additionally reports `requested_route` and `decision_reason`; realized
-MTP reports its explicit thinking policy/control mode.
+with `stream_options.include_hipengine` expose per-choice backend telemetry.
+For a selected MTP or K0 request, the terminal SSE choice also reports
+`generation_shape` and the same compact `speculative_mtp` summary as blocking;
+the usage event includes accepted/rejected prediction tokens from the terminal
+owner. Plain non-MTP streams retain their existing compact shape. Auto fallback
+additionally reports `requested_route` and `decision_reason`; realized MTP
+reports its explicit thinking policy/control mode.
 
 Direct response usage, `hipengine.speculative_mtp`, generation-shape, and
 backend cycle records are the campaign's authoritative evidence. When enabled,
