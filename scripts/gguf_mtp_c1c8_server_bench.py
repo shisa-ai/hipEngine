@@ -8,6 +8,7 @@ import concurrent.futures
 import copy
 import hashlib
 import json
+import os
 import subprocess
 import threading
 import time
@@ -140,6 +141,12 @@ def _mtp_engaged(route: str, summary: Mapping[str, Any]) -> bool:
         and int(summary.get("draft_tokens", 0) or 0) > 0
         and int(summary.get("draft_cycles", 0) or 0) > 0
     )
+
+
+def _mtp_budget_conformed(summary: Mapping[str, Any], *, budget: int) -> bool:
+    generated = int(summary.get("draft_tokens", 0) or 0)
+    cycles = int(summary.get("draft_cycles", 0) or 0)
+    return bool(cycles > 0 and generated > 0 and generated <= int(budget) * cycles)
 
 
 def _cell_correctness(
@@ -329,6 +336,9 @@ def summarize(
             }
         exact_cells = sum(bool(cell["exact"]) for cell in selected)
         engaged_cells = sum(bool(cell["mtp_engaged"]) for cell in selected)
+        budget_conformed_cells = sum(
+            bool(cell.get("mtp_budget_conformed", True)) for cell in selected
+        )
         mtp_expected = int(width) in expected
         result[str(width)] = {
             "ar": arms["ar"],
@@ -337,6 +347,7 @@ def summarize(
             "mtp_vs_ar_percent": 100.0 * (arms["mtp"]["tok_s"] / arms["ar"]["tok_s"] - 1.0),
             "exact_cells": exact_cells,
             "engaged_cells": engaged_cells,
+            "budget_conformed_cells": budget_conformed_cells,
             "cells": len(selected),
             "mtp_expected": mtp_expected,
             "route_expectation_passed": bool(
@@ -349,6 +360,14 @@ def summarize(
 def run(args: argparse.Namespace) -> dict[str, Any]:
     prompts = load_prompt_suite(Path(args.prompts).resolve())
     widths = tuple(args.widths)
+    budget_env = "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"
+    existing_budget = os.environ.get(budget_env)
+    if existing_budget is not None and int(existing_budget) != int(args.candidate_budget):
+        raise ValueError(
+            f"{budget_env}={existing_budget!r} conflicts with --candidate-budget "
+            f"{int(args.candidate_budget)}"
+        )
+    os.environ[budget_env] = str(int(args.candidate_budget))
     expected_mtp_widths = (
         widths
         if args.expected_mtp_widths is None
@@ -452,6 +471,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         width=width,
                     )
                     engaged = bool(response_engaged or backend_engaged)
+                    budget_conformed = bool(
+                        not engaged
+                        or all(
+                            _mtp_budget_conformed(
+                                row["mtp"], budget=int(args.candidate_budget)
+                            )
+                            for row in measured["mtp"]["rows"]
+                        )
+                    )
                     cell = {
                         "prompt_id": prompt["id"],
                         "category": prompt["category"],
@@ -464,6 +492,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "correctness": correctness,
                         "exact": correctness["passed"],
                         "mtp_engaged": engaged,
+                        "mtp_budget_conformed": budget_conformed,
                     }
                     cells.append(cell)
                     print(
@@ -475,6 +504,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                 "mtp_tok_s": measured["mtp"]["tok_s"],
                                 "correctness": correctness,
                                 "engaged": engaged,
+                                "budget_conformed": budget_conformed,
                             }
                         ),
                         flush=True,
@@ -488,7 +518,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         expected_mtp_widths=expected_mtp_widths,
     )
     passed = all(
-        int(row["exact_cells"]) == int(row["cells"]) == len(prompts)
+        int(row["exact_cells"])
+        == int(row["budget_conformed_cells"])
+        == int(row["cells"])
+        == len(prompts)
         and bool(row["route_expectation_passed"])
         for row in summary.values()
     )

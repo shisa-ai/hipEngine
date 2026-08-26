@@ -7,6 +7,7 @@ from scripts.gguf_mtp_c1c8_server_bench import (
     _cell_correctness,
     _diagnostic_plan,
     _generated_ids,
+    _mtp_budget_conformed,
     _mtp_engaged,
     _parse_expected_mtp_widths,
     _parse_widths,
@@ -58,6 +59,15 @@ def test_mtp_c1c8_extracts_authoritative_ids_and_engagement() -> None:
     assert not _mtp_engaged(
         "speculative_mtp",
         {"used": False, "draft_tokens": 0, "draft_cycles": 0},
+    )
+    assert _mtp_budget_conformed(
+        {"draft_tokens": 8, "draft_cycles": 4}, budget=2
+    )
+    assert not _mtp_budget_conformed(
+        {"draft_tokens": 9, "draft_cycles": 4}, budget=2
+    )
+    assert not _mtp_budget_conformed(
+        {"draft_tokens": 0, "draft_cycles": 0}, budget=2
     )
 
 
@@ -139,6 +149,7 @@ def test_mtp_c1c8_summary_uses_complete_wall() -> None:
     assert row["mtp"]["tok_s"] == pytest.approx(32.0)
     assert row["mtp_vs_ar_percent"] == pytest.approx(100.0 / 3.0)
     assert row["exact_cells"] == row["engaged_cells"] == row["cells"] == 2
+    assert row["budget_conformed_cells"] == 2
     assert row["mtp_expected"] is True
     assert row["route_expectation_passed"] is True
 
