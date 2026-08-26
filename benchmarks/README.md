@@ -110,9 +110,12 @@ P6 Q4 route. P7 reduces mixed K2 repair **127.743→30.518 ms (4.186x) /
 category positive. Low **18.43%** acceptance still leaves it below
 **15.752/29.118 true-AR tok/s**; automatic/product stays K0.
 [`P7 evidence`](results/2026-08-26-gfx1151-specdec2-perf-p7-provider-repair-retained.json).
-P8 now qualifies the non-fallback production FP16 manifest numerically and
-transactionally on an exact eager target owner; economics/lifecycle remain open,
-so automatic policy is still K0. [`P8 qualification`](results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-qualification.json).
+P8 now retains the non-fallback production FP16 compatibility profile. The full
+10-prompt/three-run D25 K2 packet is exact in all 90 cells: C1 is **15.204 vs
+10.807 tok/s (1.407x)**, while C2/C4 remain blocked at **5.810 vs 15.213
+(0.382x) / 9.469 vs 27.598 tok/s (0.343x)**. Lifecycle, pressure/memory,
+failure recovery, prefix/cancel, and the 110-request soak pass; automatic stays
+K0 until P9 rebuilds K1-K3. [`P8 evidence`](results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-retained.json).
 
 gfx1100 SPECDEC2-PERF now retains corrected C1 device chains. Dense
 Qwen3.6-27B GGUF K1/K2/K3 is exact at **1.272x/1.407x/1.439x true AR**, but

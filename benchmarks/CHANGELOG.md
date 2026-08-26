@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-26 SPECDEC2-PERF gfx1151 P8 production FP16 profile retained; automatic K0] Full D25 K2 is exact **90/90**: C1 reaches **15.204 vs 10.807 tok/s (1.407x)**, while C2/C4 remain blocked at **5.810 vs 15.213 (0.382x) / 9.469 vs 27.598 (0.343x)** with 18.43% acceptance. Memory/lifecycle/pressure/prefix/cancel/failure and 110-request soak pass; P9 owns K1-K3 policy. `benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-retained.json`.
+
 - [2026-08-26 SPECDEC2-PERF gfx1151 P8 FP16 profile qualification; economics pending] Non-fallback production/strict manifests bind FP16/FP32 chain writers. Fresh general **450-row** gate passes at KL mean/p95/p99/max **4.00e-5/1.95e-4/4.28e-4/6.88e-4**, top-1 **99.56%**; SPECDEC2 K1-K3 **36/36** top-1 plus reject/partial/full transaction, rollback, repeat, C2/C4 isolation, and selected/fallback profiler gates pass on exact eager target ownership. Automatic remains K0 pending full economics/lifecycle. `benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-qualification.json`.
 
 - [2026-08-26 SPECDEC2-PERF gfx1151 P7 conditional provider repair; retained] Persistent after-root snapshots and exact K-1/current-state reuse reduce mixed C2/C4 K2 repair **127.743→30.518 ms (4.186x) / 138.779→34.292 ms (4.047x)**. Full-suite physical throughput improves **5.718→5.796 (+1.37%) / 9.331→9.445 tok/s (+1.22%)**, every category positive, exact and D2H/allocation/ownership clean. Physical remains below true AR; automatic K0. `benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p7-provider-repair-retained.json`.

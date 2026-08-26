@@ -1,6 +1,6 @@
 # SPECDEC2-PERF — gfx1151 Activation and Hot-Cycle Campaign
 
-- Status: **P7 conditional provider repair retained; P8 production FP16-state capability next**
+- Status: **P8 production FP16-state compatibility retained; P9 fixed-cell policy rebuild next**
 - Approved: **2026-08-25**
 - Functional predecessor: [`SPECDEC2.md`](SPECDEC2.md), S1-S6 closed
 - Performance owner: **stable physical host `gfx1151` agent**
@@ -862,9 +862,10 @@ automatic/product remains K0. Evidence:
 
 Durable handoff: P8.1-P8.2.
 
-Automatic Q4_K_S currently selects K0 before mutation because strict chain base
-state readers require FP32, while normal product AR uses scoped FP16 recurrent
-state. A strict-only speed win cannot become the normal product default.
+At P8 entry, automatic Q4_K_S selected K0 before mutation because strict chain
+base-state readers required FP32 while normal product AR used scoped FP16
+recurrent state. P8 qualifies the FP16 compatibility surface but deliberately
+does not promote a cell before P9's complete fixed-cell policy gate.
 
 ### P8.1 RED/profile contract
 
@@ -876,7 +877,7 @@ consumer-owned dtype-sized D2D rollback and exact unfused cast. C1/C2/C4
 production-FP16 smokes match production AR without recovery. P8.2 subsequently
 proved native target graphs diverge after layer 51 under FP16 state, so all FP16
 target verify/selected commit remains on the exact eager owner; automatic policy
-remains K0 pending the remaining P8.2 gates. Durable details:
+remains K0 through P8 pending P9's complete fixed-cell rebuild. Durable details:
 [`P8 audit`](../worklog/entries/20260825T215042.972658Z-gfx1151-agent-specdec2-perf-p8-fp16-audit-a613ab.md),
 [`P8 capability`](../worklog/entries/20260825T221958.712228Z-gfx1151-agent-specdec2-perf-p8-fp16-capability-4f8ea6.md).
 
@@ -889,29 +890,47 @@ remains K0 pending the remaining P8.2 gates. Durable details:
 
 ### P8.2 Binding gates
 
-P8.2 profile qualification passes with production FP16 target verification on
-the exact eager owner. The fresh general gate passes 450 strict-teacher rows;
-the SPECDEC2 K1-K3 operation gate passes 36/36 top-1, exact chain-vs-scalar
-logits, reject/partial/full commit/following-logit controls, and post-commit
-rollback. C2/C4 same-width repeats, neighbor substitution, and permutation pass.
-Cached traces bind 288 `_Float16` selected-chain dispatches to production and
-288 `float` dispatches to strict fallback. The rejected FP16 graph path remains
-recorded, not hidden. Evidence:
-[`P8 qualification`](../benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-qualification.json).
+P8.2 retains production FP16 compatibility with target verification on the
+exact eager owner. The fresh general gate passes 450 strict-teacher rows; the
+SPECDEC2 K1-K3 operation gate passes 36/36 top-1, exact chain-vs-scalar logits,
+reject/partial/full commit/following-logit controls, and post-commit rollback.
+C2/C4 same-width repeats, neighbor substitution, and permutation pass. Cached
+traces bind 288 `_Float16` selected-chain dispatches to production and 288
+`float` dispatches to strict fallback. The rejected FP16 graph path remains
+recorded, not hidden.
+
+The final full 10-prompt/three-run D25 K2 packet is exact in all 90 C1/C2/C4
+cells against **production FP16 AR**. C1 reaches **15.204 vs 10.807 tok/s
+(1.407x)** at 90.42% acceptance. Physical C2/C4 remain performance-blocked at
+**5.810 vs 15.213 (0.382x) / 9.469 vs 27.598 tok/s (0.343x)** and 18.43%
+acceptance. No P8 cell promotes: automatic stays K0 until P9 re-runs all K1-K3
+fixed cells.
+
+Production lifecycle passes controlled reject/full, compaction/refill/cancel,
+completed-prefix COW, pressure/memory recovery, proposal/target/postcommit
+readback recovery, and a 25-wave/110-request soak with zero request-scoped pages
+and final ownership. Postcommit accept-readback faults rebuild target state from
+scheduler-owned canonical tokens before AR fallback; this is fault-only and adds
+no normal-cycle work. Evidence:
+[`P8 qualification`](../benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-qualification.json),
+[`P8 retained profile`](../benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-retained.json).
 
 - [x] strict-teacher mean/p95/p99/max KL and top-1 per category/shape/transition;
 - [x] same-schedule deterministic repeats and neighbor/permutation isolation;
 - [x] state/KV/provider/output/cursor ownership and finite values;
-- [ ] applicable BF16-relative and external task gates, with explicit N/A only
-      when normative docs allow it;
+- [x] applicable BF16-relative and external task gates, with explicit normative
+      N/A because model quant/BF16 KV and claimed task capabilities are unchanged;
 - [x] cached profiler expected production+fallback variants and manifest hashes;
-- [ ] memory high-water/recovery and lifecycle/pressure/prefix/cancel/soak; and
-- [ ] complete wall against **production FP16 AR**, not slower FP32 AR.
+- [x] memory high-water/recovery and lifecycle/pressure/prefix/cancel/soak; and
+- [x] complete wall against **production FP16 AR**, not slower FP32 AR.
 
-- [ ] Retain compatibility only when every profile gate passes.
-- [ ] Promote no cell solely because FP16 is now supported.
-- [x] Publish profile-qualification artifact/rollup/changelog/worklog and commit;
-      final P8 economics publication remains P8.2.
+- [x] Retain compatibility only when every profile gate passes.
+- [x] Promote no cell solely because FP16 is now supported.
+- [x] Publish profile qualification plus final economics/lifecycle
+      artifact/rollup/changelog/worklog and commit.
+
+Exit: production FP16 SPECDEC2 is a retained explicit compatibility surface with
+strict FP32 fallback; automatic remains K0 and P9 owns fixed-cell policy.
 
 ## 18. P9 — policy and product qualification
 
@@ -1085,20 +1104,17 @@ Raw profiler dumps and terminal logs remain outside Git.
 
 ## 24. Current handoff to the gfx1151 agent
 
-P1-P7 are closed. Begin P8 with the production FP16 recurrent-state profile;
-do not reopen strict target/provider work or start adaptive K/C8/overlap. The
-first RED contract is a runtime-resolved production manifest with explicit
-FP16-state GDN readers/writers and FP32 strict fallbacks. Then remove the two
-cold MTP2 FP16 capability guards only for that qualified manifest and preserve
-K0 before mutation for every unsupported profile/shape/context.
+P1-P8 are closed. Begin P9.1 by re-running fixed production C1/C2/C4 K1-K3
+from the retained FP16 profile; do not infer K1/K3 from P8's K2 economics and do
+not promote C1/K2 before the complete fixed-cell policy packet. Build the
+fingerprinted deterministic policy only from retained complete evidence.
 
-Reuse the already-qualified general Qwen3.8 FP16-state kernels and historical
-strict-teacher calibration, but do not treat that evidence as SPECDEC2
-qualification. P8 still requires target-root/parent/candidate/selected-commit,
-rollback/following-AR controls plus fresh speculative category/transition
-numerics, determinism/isolation, task/BF16-relative applicability, profiler
-variant hashes, lifecycle, memory, and complete wall against production FP16
-AR.
+C1/K2 has a current **1.407x production FP16 AR** premise. Physical C2/C4 K2
+remain at **0.382x/0.343x** and must select K0 unless the P9 fixed-cell rebuild
+materially overturns their economics. Do not begin adaptive K, C8, R24/R32,
+proposal/target overlap, or broader product SLO/load work before at least one
+fixed cell passes every admission condition. Unsupported profile/shape/context
+continues to select K0 before mutation.
 
 The independent gfx1100 S7 lane may continue concurrently, but shared-file
 edits—especially `qwen35_gguf_mtp2.py`, `qwen35_gguf_nextn.py`,

@@ -1,0 +1,667 @@
+{
+  "commands": {
+    "c1_economics": [
+      "/home/lhl/miniforge3/bin/python3.13",
+      "scripts/specdec2_perf_bridge.py",
+      "--model",
+      "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--target-arch",
+      "gfx1151",
+      "--quant-label",
+      "Q4_K_S",
+      "--execution-profile",
+      "production",
+      "--scope",
+      "full",
+      "--concurrency",
+      "1",
+      "--budgets",
+      "2",
+      "--max-tokens",
+      "25",
+      "--runs",
+      "3",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/specdec2-p8-production-full-c1-k2.json",
+      "--fail-on-fail"
+    ],
+    "compaction": "env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_FP16_RECURRENT_STATE=1 .venv/bin/python scripts/specdec2_s4_compaction_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf --execution-profile production --output /tmp/specdec2-p8-production-compaction-final.json --fail-on-fail",
+    "failure": "env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_FP16_RECURRENT_STATE=1 .venv/bin/python scripts/specdec2_s6_failure_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf --execution-profile production --output /tmp/specdec2-p8-production-failure-final.json --fail-on-fail",
+    "physical_economics": [
+      "/home/lhl/miniforge3/bin/python3.13",
+      "scripts/specdec2_perf_bridge.py",
+      "--model",
+      "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+      "--backend",
+      "hip_gfx1151",
+      "--target-arch",
+      "gfx1151",
+      "--quant-label",
+      "Q4_K_S",
+      "--execution-profile",
+      "production",
+      "--scope",
+      "full",
+      "--concurrency",
+      "2,4",
+      "--budgets",
+      "2",
+      "--max-tokens",
+      "25",
+      "--runs",
+      "3",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/specdec2-p8-production-full-c2c4-k2.json",
+      "--fail-on-fail"
+    ],
+    "prefix": "env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_FP16_RECURRENT_STATE=1 .venv/bin/python scripts/specdec2_s4_prefix_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf --execution-profile production --oracle /tmp/specdec2-p8-fp16-prefix-oracle.json --output /tmp/specdec2-p8-production-prefix-final.json --fail-on-fail",
+    "soak": "env HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_GGUF_FP16_RECURRENT_STATE=1 .venv/bin/python scripts/specdec2_s6_soak_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf --execution-profile production --waves 25 --output /tmp/specdec2-p8-production-soak-final.json --fail-on-fail"
+  },
+  "date": "2026-08-26",
+  "decision": {
+    "automatic_policy": "K0 unchanged pending P9 fixed-cell rebuild",
+    "c1_k2_premise": "positive at 1.407x production FP16 true AR; P9 must re-run K1/K2/K3 before policy selection",
+    "fp16_profile_compatibility": "retained",
+    "next": "P9 fixed C1/C2/C4 K1-K3 rebuild; no adaptive K, C8, R24/R32, or overlap before fixed-cell admission",
+    "p8_promoted_cells": [],
+    "physical_k2": "performance blocked: C2 0.382x and C4 0.343x production FP16 true AR at 18.43% acceptance"
+  },
+  "economics": {
+    "cells": {
+      "1": {
+        "acceptance": {
+          "accepted_draft_tokens": 453,
+          "generated_draft_tokens": 501,
+          "histogram": {
+            "0": 6,
+            "1": 39,
+            "2": 207
+          },
+          "rate": 0.9041916167664671
+        },
+        "all_exact": true,
+        "candidate_budget": 2,
+        "candidate_d2h_after_target": 0,
+        "categories": {
+          "code": {
+            "specdec2_over_true_ar": 1.442882896039666,
+            "specdec2_tok_s": 15.698534121146022,
+            "true_ar_tok_s": 10.879977969268586
+          },
+          "general_en": {
+            "specdec2_over_true_ar": 1.4032846181236334,
+            "specdec2_tok_s": 15.294650507579,
+            "true_ar_tok_s": 10.899179190056152
+          },
+          "general_ja": {
+            "specdec2_over_true_ar": 1.3747387994509068,
+            "specdec2_tok_s": 14.973089625208937,
+            "true_ar_tok_s": 10.891588737576502
+          },
+          "mixed_ja_en": {
+            "specdec2_over_true_ar": 1.3747869681666796,
+            "specdec2_tok_s": 14.432502697770548,
+            "true_ar_tok_s": 10.497992075831743
+          }
+        },
+        "cells": 30,
+        "complete_wall_median_seconds": {
+          "specdec2": 1.6362837605411187,
+          "true_ar": 2.2977655165013857
+        },
+        "decode_only_median_seconds": {
+          "specdec2": 0.9682008304516785,
+          "true_ar": 1.8058500835904852
+        },
+        "memory_after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 20592036463,
+          "peak_allocations": 1820,
+          "total_allocated_bytes": 23974794981,
+          "total_freed_bytes": 23974794981
+        },
+        "recoverable_failures": 0,
+        "specdec2_over_true_ar": 1.406823588159195,
+        "specdec2_tok_s": 15.204162881036584,
+        "speculative_cycles": 252,
+        "true_ar_tok_s": 10.807440967727144
+      },
+      "2": {
+        "acceptance": {
+          "accepted_draft_tokens": 366,
+          "generated_draft_tokens": 1986,
+          "histogram": {
+            "0": 792,
+            "1": 90,
+            "2": 138
+          },
+          "rate": 0.18429003021148035
+        },
+        "all_exact": true,
+        "candidate_budget": 2,
+        "candidate_d2h_after_target": 0,
+        "categories": {
+          "code": {
+            "specdec2_over_true_ar": 0.36391770618948877,
+            "specdec2_tok_s": 5.566297722583157,
+            "true_ar_tok_s": 15.295484742599568
+          },
+          "general_en": {
+            "specdec2_over_true_ar": 0.4281673359178437,
+            "specdec2_tok_s": 6.56431412720963,
+            "true_ar_tok_s": 15.331188478303687
+          },
+          "general_ja": {
+            "specdec2_over_true_ar": 0.35828889316182316,
+            "specdec2_tok_s": 5.480807276649273,
+            "true_ar_tok_s": 15.29717326228652
+          },
+          "mixed_ja_en": {
+            "specdec2_over_true_ar": 0.40419513010538244,
+            "specdec2_tok_s": 6.004780861215976,
+            "true_ar_tok_s": 14.856143515757847
+          }
+        },
+        "cells": 30,
+        "complete_wall_median_seconds": {
+          "specdec2": 8.798732785042375,
+          "true_ar": 3.2731575609650463
+        },
+        "decode_only_median_seconds": {
+          "specdec2": 7.368067849485669,
+          "true_ar": 2.5745518991025165
+        },
+        "memory_after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 22688555548,
+          "peak_allocations": 2276,
+          "total_allocated_bytes": 24495017004,
+          "total_freed_bytes": 24495017004
+        },
+        "recoverable_failures": 0,
+        "specdec2_over_true_ar": 0.3818908378153167,
+        "specdec2_tok_s": 5.809677731001619,
+        "speculative_cycles": 1020,
+        "true_ar_tok_s": 15.212927768147171
+      },
+      "4": {
+        "acceptance": {
+          "accepted_draft_tokens": 732,
+          "generated_draft_tokens": 3972,
+          "histogram": {
+            "0": 1584,
+            "1": 180,
+            "2": 276
+          },
+          "rate": 0.18429003021148035
+        },
+        "all_exact": true,
+        "candidate_budget": 2,
+        "candidate_d2h_after_target": 0,
+        "categories": {
+          "code": {
+            "specdec2_over_true_ar": 0.326522463713065,
+            "specdec2_tok_s": 9.123343790252804,
+            "true_ar_tok_s": 27.940937620359367
+          },
+          "general_en": {
+            "specdec2_over_true_ar": 0.3821348045240229,
+            "specdec2_tok_s": 10.798727016996367,
+            "true_ar_tok_s": 28.25894655276684
+          },
+          "general_ja": {
+            "specdec2_over_true_ar": 0.3205269634264719,
+            "specdec2_tok_s": 9.016298903426314,
+            "true_ar_tok_s": 28.129611334537945
+          },
+          "mixed_ja_en": {
+            "specdec2_over_true_ar": 0.36710768749910344,
+            "specdec2_tok_s": 9.497359464709456,
+            "true_ar_tok_s": 25.87077249569352
+          }
+        },
+        "cells": 30,
+        "complete_wall_median_seconds": {
+          "specdec2": 10.763843377993908,
+          "true_ar": 3.5760102010099217
+        },
+        "decode_only_median_seconds": {
+          "specdec2": 8.593014306447003,
+          "true_ar": 2.5901835379190743
+        },
+        "memory_after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 22688555548,
+          "peak_allocations": 2276,
+          "total_allocated_bytes": 24495017004,
+          "total_freed_bytes": 24495017004
+        },
+        "recoverable_failures": 0,
+        "specdec2_over_true_ar": 0.3431093064100681,
+        "specdec2_tok_s": 9.469265538911886,
+        "speculative_cycles": 2040,
+        "true_ar_tok_s": 27.598393170935054
+      }
+    },
+    "combined_all_exact": true,
+    "combined_cells": 90,
+    "combined_speed_claim_basis": "union of clean tracked C1 and C2/C4 children covers full 10-prompt suite, three runs, C1/C2/C4, exact same-profile IDs",
+    "protocol": {
+      "categories": [
+        "code",
+        "general_en",
+        "general_ja",
+        "mixed_ja_en"
+      ],
+      "counterbalance": "even prompt+run index true_ar\u2192legacy_native\u2192specdec2; odd index reverse",
+      "heldout_ids": [
+        "code_markdown_table",
+        "general_en_explain",
+        "general_ja_explain",
+        "mixed_ja_en_review"
+      ],
+      "max_tokens": 25,
+      "prompt_file": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+      "prompt_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review"
+      ],
+      "runs": 3,
+      "sampling": "raw greedy; temperature=0, top_p=1",
+      "timing": {
+        "complete_wall": "host route entry through terminal GenerationOutput/reclaim; includes tokenize/admission/activation/decode/publication/reclaim",
+        "decode_only": "sum of Generation-2 staged cycle/ar-tail owners after prefill; legacy uses direct decoder decode_ms",
+        "memory": "process-local hipEngine malloc/free byte counters; library-internal allocations and exact call counts deferred to API trace/P3",
+        "stage_nesting": {
+          "nextn_prompt_prime": "nested inside initial provider_k0_attach or a later provider_open/refill attachment",
+          "proposal_and_target": "nested inside cycle_total",
+          "terminal_reclaim": "may include resident_owner_transition"
+        }
+      }
+    }
+  },
+  "evidence": {
+    "c1_economics": {
+      "bytes": 1021881,
+      "path": "/tmp/specdec2-p8-production-full-c1-k2.json",
+      "sha256": "4122af1b272d62868e62bd66b9b83364dbb13a213085aeae21eaa49919aedc7e"
+    },
+    "compaction_refill_cancel": {
+      "bytes": 59872,
+      "path": "/tmp/specdec2-p8-production-compaction-final.json",
+      "sha256": "6bf68d99532917ab062e49280758e0e497e9f9b4fddaa693f85bb241881a9faf"
+    },
+    "controlled_neighbor": {
+      "bytes": 44474,
+      "path": "/tmp/specdec2-p8-neighbor-device-production.json",
+      "sha256": "b5e55f0fca63bb80ea0ac22c1e16040cb21e37b9ac9199fc398e8332d13c93e1"
+    },
+    "failure_recovery": {
+      "bytes": 96964,
+      "path": "/tmp/specdec2-p8-production-failure-final.json",
+      "sha256": "ccd7c0ad5f452ffbf997615fc07fb4e8db03a859f4f92a59c8dbad56c903013d"
+    },
+    "physical_economics": {
+      "bytes": 4290939,
+      "path": "/tmp/specdec2-p8-production-full-c2c4-k2.json",
+      "sha256": "6b676a5da52f146cd350d5164f50a175012190b67999566c58f96acfd058f447"
+    },
+    "prefix_cow": {
+      "bytes": 31210,
+      "path": "/tmp/specdec2-p8-production-prefix-final.json",
+      "sha256": "c2b9366eb965194552f4d0528e3d1603f5c903fc8a64b33401e436df245cc500"
+    },
+    "prefix_oracle": {
+      "bytes": 11399,
+      "path": "/tmp/specdec2-p8-fp16-prefix-oracle.json",
+      "sha256": "df9ba0e6053c81fa722efa4ec63bec41094a1e09896f81f261c51da7a5f6ce12"
+    },
+    "pressure_closure": {
+      "bytes": 10400,
+      "path": "benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json",
+      "sha256": "dbda98d044b1846ea1f456ad8641c615481d6fa26777aa36385a707e8bf04885"
+    },
+    "qualification": {
+      "bytes": 29667,
+      "path": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-qualification.json",
+      "sha256": "f8d8d2722533edca55498536452a0abd618b528f526f6c1ba8f4aca0fc230bb6"
+    },
+    "same_width_isolation": {
+      "bytes": 124054,
+      "path": "/tmp/specdec2-p8-fp16-isolation.json",
+      "sha256": "81c1050c4552f2d9e186f195a061030f34d0ff3c0db7777fd44e20da14f75b2b"
+    },
+    "soak": {
+      "bytes": 408460,
+      "path": "/tmp/specdec2-p8-production-soak-final.json",
+      "sha256": "4aee6bd891e69a43bec2d640e10e07434bb9892939e4a9be83fdb94c7e3683a8"
+    }
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "compiler": "HIP version: 7.15.0-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin\n",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "host": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2",
+    "rocm": "HIP version: 7.15.0-0000000",
+    "target_arch": "gfx1151"
+  },
+  "implementation": {
+    "economics_provenance": {
+      "environment": {
+        "GPU_MAX_HW_QUEUES": "2",
+        "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+        "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "1",
+        "HIPENGINE_HIP_ARCH": "gfx1151",
+        "HIPENGINE_REQUIRE_CACHED_BUILD": "1",
+        "HIP_VISIBLE_DEVICES": null
+      },
+      "excluded_untracked_count": 73,
+      "excluded_untracked_sha256": "67719833e2a60d0617c06ac6db5ba3a6b7cd323ba79a820b0e8a4dcfede74394",
+      "shared_untracked_files_excluded": true,
+      "tracked_clean": true,
+      "unexpected_untracked": [],
+      "warmups": 1
+    },
+    "economics_source_commit": "05e11e91bd0a83de9a325c30b636984e359c02a0",
+    "final_commit": "3e172e72e496cfdee26abfd18b4e1ade30aa77ca",
+    "normal_cycle_effect_of_final_recovery": "none; rebuild runs only after selected-commit/readback failure",
+    "units": [
+      {
+        "commit": "c1bbdf37c",
+        "purpose": "production FP16 SPECDEC2 capability"
+      },
+      {
+        "commit": "59fd77d40",
+        "purpose": "eager FP16 target verification owner"
+      },
+      {
+        "commit": "a259a836c",
+        "purpose": "bounded C1 FP16 proposal fallback"
+      },
+      {
+        "commit": "e50adf986",
+        "purpose": "profile qualification evidence"
+      },
+      {
+        "commit": "05e11e91b",
+        "purpose": "production profile bridge"
+      },
+      {
+        "commit": "73ec2f1a9",
+        "purpose": "refill provider-group reuse"
+      },
+      {
+        "commit": "8254cdef3",
+        "purpose": "device-result neighbor gate and profile-aware lifecycle scripts"
+      },
+      {
+        "commit": "3e172e72e",
+        "purpose": "postcommit target rebuild recovery"
+      }
+    ]
+  },
+  "kind": "specdec2_perf_p8_gfx1151_fp16_profile_retention",
+  "lifecycle": {
+    "alternating_soak": {
+      "c8_exact": true,
+      "elapsed_seconds": 32.94786540302448,
+      "final_active": 0,
+      "final_active_children": 0,
+      "final_pending": 0,
+      "passed": true,
+      "request_scoped_pages": 0,
+      "stream_ids_exact": true,
+      "stream_text_exact": true,
+      "total_requests": 110,
+      "waves": 25
+    },
+    "compaction_refill_cancel": {
+      "final_active": 0,
+      "moves": [
+        {
+          "new_slot": 0,
+          "old_slot": 1,
+          "request_id": 1
+        }
+      ],
+      "passed": true,
+      "substitute_output": [
+        271,
+        9419,
+        0
+      ],
+      "survivor_cancelled": true,
+      "survivor_error": "GenerationCancelled"
+    },
+    "completed_prefix_cow": {
+      "no_provider_mutation": true,
+      "oracle_final_state_exact": true,
+      "oracle_trajectory_exact": true,
+      "passed": true,
+      "reused_tokens": 256,
+      "state_clone_bytes": 83361792
+    },
+    "controlled_reject_full_neighbor": {
+      "accepted_counts": [
+        0,
+        2
+      ],
+      "execution_profile": "production",
+      "health_outputs": [
+        [
+          271,
+          9419,
+          0,
+          2500,
+          628
+        ],
+        [
+          271,
+          9419,
+          0,
+          2500,
+          628
+        ]
+      ],
+      "passed": true
+    },
+    "failure_recovery": {
+      "final_active": 0,
+      "final_active_children": 0,
+      "final_pending": 0,
+      "passed": true,
+      "phases": {
+        "proposal": {
+          "contract": "precommit_exact_ar_recovery",
+          "failure_reasons": [
+            [
+              "precommit_failure_ar_fallback",
+              "RuntimeError:injected SPECDEC2 proposal failure"
+            ],
+            [
+              "precommit_failure_ar_fallback",
+              "RuntimeError:injected SPECDEC2 proposal failure"
+            ]
+          ],
+          "fault_errors": [
+            null,
+            null
+          ],
+          "fault_outputs_exact": true,
+          "health_errors": [
+            null,
+            null
+          ],
+          "health_outputs_exact": true,
+          "passed": true
+        },
+        "readback": {
+          "contract": "postcommit_target_rebuild_ar_recovery",
+          "failure_reasons": [
+            [
+              "postcommit_target_rebuild_ar_fallback",
+              "_PhysicalTargetCommitError:physical target selected commit path failed: RuntimeError:injected SPECDEC2 readback failure"
+            ],
+            [
+              "postcommit_target_rebuild_ar_fallback",
+              "_PhysicalTargetCommitError:physical target selected commit path failed: RuntimeError:injected SPECDEC2 readback failure"
+            ]
+          ],
+          "fault_errors": [
+            null,
+            null
+          ],
+          "fault_outputs_exact": true,
+          "health_errors": [
+            null,
+            null
+          ],
+          "health_outputs_exact": true,
+          "passed": true
+        },
+        "target": {
+          "contract": "precommit_exact_ar_recovery",
+          "failure_reasons": [
+            [
+              "precommit_failure_ar_fallback",
+              "RuntimeError:injected SPECDEC2 target failure"
+            ],
+            [
+              "precommit_failure_ar_fallback",
+              "RuntimeError:injected SPECDEC2 target failure"
+            ]
+          ],
+          "fault_errors": [
+            null,
+            null
+          ],
+          "fault_outputs_exact": true,
+          "health_errors": [
+            null,
+            null
+          ],
+          "health_outputs_exact": true,
+          "passed": true
+        }
+      }
+    },
+    "pressure_memory": {
+      "candidate_error_code": "engine_busy",
+      "candidate_status_code": 429,
+      "final_ownership_passed": true,
+      "memory_recovery_passed": true,
+      "passed": true,
+      "profile_scope": "existing product-default long-context/global-KV packet; all contexts are pre-mutation K0 under the unchanged <=1023 SPECDEC2 capability bound"
+    },
+    "same_width_repeat_neighbor_permutation": {
+      "c2_repeat_permutation_exact": true,
+      "c4_repeat_permutation_exact": true,
+      "neighbor_substitution_covered": true,
+      "passed": true
+    }
+  },
+  "memory": {
+    "all_tracked_bytes_recovered": true,
+    "c1_after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 20592036463,
+      "peak_allocations": 1820,
+      "total_allocated_bytes": 23974794981,
+      "total_freed_bytes": 23974794981
+    },
+    "physical_after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 22688555548,
+      "peak_allocations": 2276,
+      "total_allocated_bytes": 24495017004,
+      "total_freed_bytes": 24495017004
+    },
+    "pressure_recovery_passed": true,
+    "soak_request_scoped_pages": 0
+  },
+  "model": {
+    "execution_profile": "production",
+    "kv": "BF16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "production_manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+    "quant": "Q4_K_S",
+    "recurrent_state": "FP16",
+    "sampled_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8060155376,
+        16120310752
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 16121359328,
+      "value": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa"
+    },
+    "strict_fallback_state": "FP32",
+    "strict_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+  },
+  "performance_claim": true,
+  "qualification": {
+    "bf16_relative": {
+      "reason": "No aligned BF16/full-precision Qwen3.8 teacher is available on this host; model quant and BF16 KV are unchanged, and P8 measures implementation-state drift against FP32-state same-quant strict.",
+      "status": "not_applicable"
+    },
+    "determinism_isolation": "passed",
+    "general_summary": {
+      "candidate_teacher_nll_mean": 0.17187121589669746,
+      "kl_max": 0.0006880802593287258,
+      "kl_mean": 4.0017950178432497e-05,
+      "kl_p50": 1.8720055044184534e-06,
+      "kl_p95": 0.00019545033246957914,
+      "kl_p99": 0.00042783196926578107,
+      "max_abs_logit_delta": 0.5802183151245117,
+      "rows": 450,
+      "strict_margin_min": 0.0042667388916015625,
+      "strict_teacher_nll_mean": 0.17219660999754563,
+      "teacher_delta_p_mean": 0.00017771358253798096,
+      "teacher_nll_delta": -0.0003253941008481698,
+      "top1_agreement": 0.9955555555555555,
+      "top1_matches": 448,
+      "topk_overlap_mean": 0.9920000000000001
+    },
+    "profile_numerics": "passed",
+    "profiler_manifest": "passed",
+    "same_width_isolation_passed": true,
+    "source_artifact_status": "passed_economics_pending",
+    "specdec2_operation_passed": true,
+    "status": "passed",
+    "task_specific": {
+      "reason": "P8 claims no new code execution, structured-output, retrieval, multilingual scoring, or tool-use capability; the complete 10-prompt category/heldout D25 trajectory is exact against production FP16 AR in all 90 cells.",
+      "status": "not_applicable"
+    },
+    "transaction_ownership": "passed_eager_only"
+  },
+  "schema": 1,
+  "speed_claim_eligible": true,
+  "status": "retained_profile_compatibility_automatic_k0"
+}
