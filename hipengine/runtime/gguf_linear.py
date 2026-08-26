@@ -1042,6 +1042,10 @@ _DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
         KernelKey("hip_gfx1100", "linear", "<from-weight>", "gemv_bf16_f32_out"),
         "raw",
     ),
+    (LAYOUT_RAW_GGUF, GGUF_ACTIVATION_F32, GGUF_OUTPUT_F32): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "linear", "<from-weight>", "gemv_f32_f32_out"),
+        "raw",
+    ),
     (LAYOUT_DENSE_BF16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
         KernelKey("hip_gfx1100", "dense_gemv", "bf16", "out"),
         "dense_bf16",
