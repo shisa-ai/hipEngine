@@ -109,16 +109,21 @@ class OfflineSpeculativeDepthDecision:
     output_horizon_tokens: int
 
 
+_P9_FIXED_POLICY_EVIDENCE = (
+    "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json"
+)
+
+
 DEFAULT_AUTO_DEPTH_POLICY = OfflineSpeculativeDepthPolicy(
-    policy_key="specdec2:auto:strict:v1",
+    policy_key="specdec2:auto:qwen38-q4ks:production:p9-fixed:v2",
     cells=(
         OfflineSpeculativeDepthCell(
-            "auto-c1-measured-k0",
+            "auto-c1-product-pending-k0",
             1,
             1,
             0,
-            "measured_speedup_below_1p10",
-            "benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json",
+            "product_qualification_pending",
+            _P9_FIXED_POLICY_EVIDENCE,
         ),
         OfflineSpeculativeDepthCell(
             "auto-c2-measured-k0",
@@ -126,7 +131,7 @@ DEFAULT_AUTO_DEPTH_POLICY = OfflineSpeculativeDepthPolicy(
             2,
             0,
             "measured_speedup_below_1p10",
-            "benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json",
+            _P9_FIXED_POLICY_EVIDENCE,
         ),
         OfflineSpeculativeDepthCell(
             "auto-c3-unqualified-k0",
@@ -134,7 +139,7 @@ DEFAULT_AUTO_DEPTH_POLICY = OfflineSpeculativeDepthPolicy(
             3,
             0,
             "no_qualified_physical_frontier",
-            "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
+            _P9_FIXED_POLICY_EVIDENCE,
         ),
         OfflineSpeculativeDepthCell(
             "auto-c4-measured-k0",
@@ -142,7 +147,7 @@ DEFAULT_AUTO_DEPTH_POLICY = OfflineSpeculativeDepthPolicy(
             4,
             0,
             "measured_speedup_below_1p10",
-            "benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json",
+            _P9_FIXED_POLICY_EVIDENCE,
         ),
         OfflineSpeculativeDepthCell(
             "auto-c5-c8-unqualified-k0",
@@ -150,7 +155,7 @@ DEFAULT_AUTO_DEPTH_POLICY = OfflineSpeculativeDepthPolicy(
             8,
             0,
             "no_qualified_physical_frontier",
-            "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
+            _P9_FIXED_POLICY_EVIDENCE,
         ),
         OfflineSpeculativeDepthCell(
             "auto-c9-c17-unqualified-k0",
@@ -158,7 +163,7 @@ DEFAULT_AUTO_DEPTH_POLICY = OfflineSpeculativeDepthPolicy(
             17,
             0,
             "no_qualified_physical_frontier",
-            "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
+            _P9_FIXED_POLICY_EVIDENCE,
         ),
         OfflineSpeculativeDepthCell(
             "auto-c18-c32-unqualified-k0",
@@ -166,7 +171,7 @@ DEFAULT_AUTO_DEPTH_POLICY = OfflineSpeculativeDepthPolicy(
             32,
             0,
             "no_qualified_physical_frontier",
-            "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
+            _P9_FIXED_POLICY_EVIDENCE,
         ),
     ),
 )

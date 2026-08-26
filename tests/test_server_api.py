@@ -6660,7 +6660,7 @@ def test_completions_default_auto_keeps_compatibility_mtp_explicit_only() -> Non
         "realized_group_rows": 2,
         "output_horizon_tokens": 24,
         "exact_default_required": True,
-        "evidence": "benchmarks/results/2026-08-25-gfx1151-specdec2-s4-closure.json",
+        "evidence": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json",
     }
     explicit_response = client.post(
         "/v1/completions",

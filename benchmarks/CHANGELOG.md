@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-26 SPECDEC2-PERF gfx1151 P9 fixed grid; C1/K2 candidate, automatic K0] Production/strict C1/C2/C4 K1-K3 is exact **540/540**. Production C1 reaches **1.2327x/1.4067x/1.4065x AR**; K2 proceeds to product qualification. Best C2/C4 is only **0.3791x/0.3406x**, so all physical/wider scopes stay K0. `benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json`.
+
 - [2026-08-26 SPECDEC2-PERF gfx1151 P8 production FP16 profile retained; automatic K0] Full D25 K2 is exact **90/90**: C1 reaches **15.204 vs 10.807 tok/s (1.407x)**, while C2/C4 remain blocked at **5.810 vs 15.213 (0.382x) / 9.469 vs 27.598 (0.343x)** with 18.43% acceptance. Memory/lifecycle/pressure/prefix/cancel/failure and 110-request soak pass; P9 owns K1-K3 policy. `benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-retained.json`.
 
 - [2026-08-26 AGENTIC-QUALITY2 campaign closure; quality only] AQ0-AQ13 close with frozen 34-task external/sandbox oracles; Qwen3.6/Qwen3.8/Ornith complete **44/68, 50/68, and 42/68** with exact repeat/control/ownership gates. AQ3/AQ6 find zero scored runtime/unresolved boundaries and AQ8 retains **no implementation**; AQ9-AQ12 are not applicable, so no post-change or speed row is claimed. `benchmarks/results/2026-08-26-zbook-agentic-quality2-campaign-final.json`.
