@@ -2403,6 +2403,13 @@ class ResidentEngineLoop:
                 "runner committed speculative output despite pending cancellation"
             )
         generated_events = self.scheduler.record_speculative_cycle_result(result)
+        decorate_stream = getattr(
+            self.runner,
+            "decorate_speculative_stream_events",
+            None,
+        )
+        if callable(decorate_stream):
+            generated_events = tuple(decorate_stream(generated_events))
         return self._decode_events(spec_work, generated_events)
 
     def _pending_speculative_cancellations(

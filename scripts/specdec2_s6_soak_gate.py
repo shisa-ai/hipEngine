@@ -13,7 +13,7 @@ from hipengine import LLM, SamplingParams
 from hipengine.generation.registry import GenerationRequest
 
 
-def _request(prompt: str, max_tokens: int = 3) -> GenerationRequest:
+def _request(prompt: str, max_tokens: int) -> GenerationRequest:
     return GenerationRequest(
         prompts=(prompt,),
         max_tokens=int(max_tokens),
@@ -35,12 +35,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         str(args.model),
         backend="hip_gfx1151",
         execution_profile=str(args.execution_profile),
-        max_active_requests=4,
-        max_sequence_length=256,
+        max_active_requests=int(args.concurrency),
+        max_sequence_length=int(args.max_sequence_length),
     )
     service = llm._get_text_generator()
-    greeting = _request("Write one short greeting.")
-    farewell = _request("Write one short farewell.")
+    greeting = _request("Write one short greeting.", int(args.max_tokens))
+    farewell = _request("Write one short farewell.", int(args.max_tokens))
+    concurrency = int(args.concurrency)
     wave_results: list[dict[str, Any]] = []
     total_requests = 0
     started = time.perf_counter()
@@ -51,25 +52,27 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "farewell": ar_reference[1],
         }
         for wave in range(int(args.waves)):
-            requests = (greeting, farewell, greeting, farewell)
-            expected = (
-                references["greeting"],
-                references["farewell"],
-                references["greeting"],
-                references["farewell"],
+            requests = tuple(
+                greeting if index % 2 == 0 else farewell
+                for index in range(concurrency)
             )
-            if wave % 5 == 4:
-                first = service.submit_children(requests[:2])
-                second = service.submit_speculative_children(requests[2:])
+            expected = tuple(
+                references["greeting"] if index % 2 == 0 else references["farewell"]
+                for index in range(concurrency)
+            )
+            if wave % 5 == 4 and concurrency > 1:
+                split = max(1, concurrency // 2)
+                first = service.submit_children(requests[:split])
+                second = service.submit_speculative_children(requests[split:])
                 outputs = (*_outputs(first), *_outputs(second))
                 route = "mixed_ar_mtp"
             elif wave % 2 == 0:
                 outputs = _outputs(service.submit_speculative_children(requests))
-                route = "explicit_mtp_c4"
+                route = f"explicit_mtp_c{concurrency}"
             else:
                 outputs = _outputs(service.submit_children(requests))
-                route = "automatic_k0_c4"
-            total_requests += 4
+                route = f"automatic_k0_c{concurrency}"
+            total_requests += concurrency
             wave_results.append(
                 {
                     "wave": wave,
@@ -86,12 +89,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         total_requests += 8
 
-        blocking = service.submit_speculative_child(_request("Write one short greeting.", 5)).result(
+        blocking = service.submit_speculative_child(_request("Write one short greeting.", int(args.max_tokens))).result(
             timeout=180
         )
         stream_chunks = tuple(
             service.stream_speculative_mtp_detailed(
-                _request("Write one short greeting.", 5)
+                _request("Write one short greeting.", int(args.max_tokens))
             )
         )
         streamed_text = "".join(chunk.text for chunk in stream_chunks)
@@ -114,7 +117,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         llm.close()
 
     passed = bool(
-        total_requests >= 100
+        total_requests >= int(args.min_requests)
         and all(row["exact"] for row in wave_results)
         and c8_outputs == c8_expected
         and tuple(int(token) for token in blocking.generated_token_ids) == final_stream_ids
@@ -134,6 +137,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "performance_claim": False,
         "execution_profile": str(args.execution_profile),
         "waves": int(args.waves),
+        "workload": {
+            "concurrency": concurrency,
+            "max_sequence_length": int(args.max_sequence_length),
+            "max_tokens": int(args.max_tokens),
+            "min_requests": int(args.min_requests),
+        },
         "total_requests": total_requests,
         "references": references,
         "wave_results": wave_results,
@@ -141,6 +150,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "c8_expected": c8_expected,
         "blocking_ids": tuple(int(token) for token in blocking.generated_token_ids),
         "stream_ids": final_stream_ids,
+        "blocking_text": blocking.text,
+        "stream_text": streamed_text,
+        "stream_chunks": [
+            {
+                "text": chunk.text,
+                "generated_token_ids": (
+                    None
+                    if chunk.generated_token_ids is None
+                    else tuple(int(token) for token in chunk.generated_token_ids)
+                ),
+                "finish_reason": (
+                    None
+                    if chunk.finish_details is None
+                    else chunk.finish_details.reason
+                ),
+            }
+            for chunk in stream_chunks
+        ],
         "stream_chunk_count": len(stream_chunks),
         "stream_text_exact": streamed_text == blocking.text,
         "request_scoped_pages": request_scoped_pages,
@@ -163,11 +190,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="strict",
     )
     parser.add_argument("--waves", type=int, default=25)
+    parser.add_argument("--concurrency", type=int, choices=(1, 2, 4), default=4)
+    parser.add_argument("--max-sequence-length", type=int, default=256)
+    parser.add_argument("--max-tokens", type=int, default=3)
+    parser.add_argument("--min-requests", type=int, default=100)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--fail-on-fail", action="store_true")
     args = parser.parse_args(argv)
-    if args.waves < 23:
-        raise SystemExit("waves must be >=23 so the packet covers 100+ requests")
+    if args.waves * args.concurrency + 10 < args.min_requests:
+        raise SystemExit("waves/concurrency do not cover the requested minimum requests")
     payload = run(args)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
