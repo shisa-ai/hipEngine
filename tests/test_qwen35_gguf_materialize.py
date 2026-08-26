@@ -52,6 +52,17 @@ UD_Q4_K_XL_MODEL = Path("/models/gguf/Qwen3.5-0.8B-UD-Q4_K_XL.gguf")
 pytestmark = pytest.mark.skipif(not MODEL.exists(), reason=f"local GGUF fixture not found: {MODEL}")
 
 
+def _ar_target_tensor_names(reader: GGUFReader, model_map) -> set[str]:
+    ignored_prefixes = tuple(
+        f"blk.{block_id}." for block_id in model_map.config.ignored_block_ids
+    )
+    return {
+        tensor.name
+        for tensor in reader.info.tensors
+        if not tensor.name.startswith(ignored_prefixes)
+    }
+
+
 def test_qwen35_gguf_materialization_plan_covers_every_tensor() -> None:
     reader = GGUFReader(MODEL)
     model_map = build_qwen35_gguf_tensor_map(reader.info)
@@ -86,7 +97,9 @@ def test_qwen35moe_gguf_materialization_plan_keeps_experts_raw() -> None:
     model_map = build_qwen35_gguf_tensor_map(reader.info)
     plan = plan_qwen35_gguf_materialization(model_map, decode_repack=False)
 
-    assert set(plan.tensor_names) == {tensor.name for tensor in reader.info.tensors}
+    target_names = _ar_target_tensor_names(reader, model_map)
+    assert set(model_map.tensor_names) == target_names
+    assert set(plan.tensor_names) == target_names
     assert plan.root_specs["lm_head"].source.name == "output.weight"
     assert plan.root_specs["lm_head"].layout == LAYOUT_RAW_GGUF
     assert plan.root_specs["lm_head"].quant_key == "gguf_q6_k"
@@ -118,7 +131,9 @@ def test_qwen35moe_decode_repack_plan_replaces_covered_weights(monkeypatch: pyte
     assert gguf_decode_repack_enabled() is True
     plan = plan_qwen35_gguf_materialization(model_map)
 
-    assert set(plan.tensor_names) == {tensor.name for tensor in reader.info.tensors}
+    target_names = _ar_target_tensor_names(reader, model_map)
+    assert set(model_map.tensor_names) == target_names
+    assert set(plan.tensor_names) == target_names
     assert plan.root_specs["lm_head"].layout == LAYOUT_GGUF_Q6_K_T16
     assert plan.root_specs["lm_head"].quant_key == "gguf_q6_k_t16_v1"
     assert plan.root_specs["lm_head"].allocation_names == ("tiles",)

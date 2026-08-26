@@ -232,7 +232,7 @@ Each value is the total tokens per second across all active requests:
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — exact MTP-3 | **21.040 tok/s** | **1.8048x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — exact MTP-3 | **21.158 tok/s** | **1.8095x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
 ### RTX PRO 6000 Blackwell (`sm_120a`)

@@ -21,7 +21,10 @@ from hipengine.loading.qwen35_gguf_materialize import (
 )
 from hipengine.generation.qwen35_gguf import _LLAMA_COMPAT_MTP_ENV
 from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
-from hipengine.loading.qwen35_gguf_nextn import build_qwen35_gguf_nextn_tensor_map
+from hipengine.loading.qwen35_gguf_nextn import (
+    build_qwen35_gguf_nextn_tensor_map,
+    validate_qwen35_gguf_nextn_tensor_map,
+)
 from hipengine.loading.qwen35_gguf_nextn_materialize import (
     plan_qwen35_gguf_nextn_materialization,
 )
@@ -231,6 +234,22 @@ def test_qwen36_llama_compat_plan_has_no_q8_raw_or_other_alternate_layouts(
         dense_q5_t16_ssm_out=True,
         dense_q6_qmicro_planar=True,
     )
+    target_specs = (
+        *tuple(target.root_specs.values()),
+        *(spec for layer in target.layer_specs for spec in layer.values()),
+    )
+    target_census = census_qwen35_gguf_weight_specs(target_specs)
+
+    assert target_census.alternate_layout_nbytes == 0
+    target_census.assert_single_layout()
+
+    nextn_validation = validate_qwen35_gguf_nextn_tensor_map(reader.info)
+    if not nextn_validation.config.ignored_block_ids:
+        assert nextn_validation.missing == (
+            "expected exactly one trailing NextN block",
+        )
+        return
+
     draft = plan_qwen35_gguf_nextn_materialization(
         build_qwen35_gguf_nextn_tensor_map(reader.info),
         decode_repack=True,
@@ -238,17 +257,8 @@ def test_qwen36_llama_compat_plan_has_no_q8_raw_or_other_alternate_layouts(
         dense_q5_t16_ssm_out=True,
         dense_q6_qmicro_planar=True,
     )
-    target_specs = (
-        *tuple(target.root_specs.values()),
-        *(spec for layer in target.layer_specs for spec in layer.values()),
-    )
-
-    target_census = census_qwen35_gguf_weight_specs(target_specs)
     draft_census = census_qwen35_gguf_weight_specs(draft.specs)
-
-    assert target_census.alternate_layout_nbytes == 0
     assert draft_census.alternate_layout_nbytes == 0
-    target_census.assert_single_layout()
     draft_census.assert_single_layout()
 
 

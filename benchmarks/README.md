@@ -80,7 +80,7 @@ Each value is the total tokens per second across all active requests:
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — exact MTP-3 | **21.040 tok/s** | **1.8048x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — exact MTP-3 | **21.158 tok/s** | **1.8095x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
 ### RTX PRO 6000 Blackwell (`sm_120a`)
@@ -111,31 +111,22 @@ pending serving gates. [`DMS status`](../docs/DMS.md).
 
 All 34 repeat pairs, 10 controls, and ownership gates pass; these are same-host
 model-quality rows. The campaign retains **no implementation** because all seven
-development failures are model-owned. [`Final evidence`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json)
+development failures are model-owned. [`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
 
-gfx1151 SPECDEC2-PERF P9 is exact in all **540/540** production/strict fixed
-cells. Production C1 K1/K2/K3 reaches **1.233x/1.4067x/1.4065x AR**; K2 is the
-sole product-qualification candidate. Every C2/C4 cell loses (best
-**0.3791x/0.3406x AR**) and no wider work is admitted. Automatic stays K0 until
-the C1/K2 horizon/context/load/SLO packet passes. [`P9 evidence`](results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json)
+gfx1151 P7 cuts C2/C4 K2 repair **4.186x/4.047x**. P8 retains production FP16:
+90/90 D25 K2 cells are exact; C1 is **1.407x AR**, while C2/C4 remain
+**0.382x/0.343x**. Lifecycle and soak pass; automatic stays K0.
+[`P8`](results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-retained.json) · [`Campaign`](../docs/SPECDEC2-PERF.md).
 
-gfx1100 SPECDEC2-PERF now retains corrected C1 device chains. Dense
-Qwen3.6-27B GGUF K1/K2/K3 is exact at **1.272x/1.407x/1.439x true AR**, but
-remains **2.7%/3.1%/3.9%** behind direct MTP. Exact p128/p512 streaming loses
-AR, while p4K/p16K stays pre-mutation K0. Corrected dense P4 pre-captures
-commit-bound graphs, keeps all **898 cycles allocation-free**, and improves
-K1/K2/K3 wall **0.75%/3.36%/1.54%**. Packed PARO production is exact across
-**372/372** cycles; P4 device candidate handoff improves staged wall **4.33%**
-to **0.979x AR** with 372 device handoffs and bounded post-target rows. Strict
-D8 allocation falls **1,110 malloc/free pairs → 0** and P4 cycle marker wall is
-**83.469 ms**. Both automatic policies remain K0; physical C2/C4 is not exposed.
-[`gfx1100 closure`](results/2026-08-25-w7900-specdec2-perf-campaign-closure.json).
+gfx1100 dense C1 K1/K2/K3 remains exact at **1.272x/1.407x/1.439x AR** but
+2.7%-3.9% behind direct; packed PARO is **0.979x AR**. Automatic stays K0.
+[`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
 
-P512/d128 recovery keeps C1 exact at **77.176 vs old 72.169 tok/s**.
-Native C8 raw wall is **161.882 vs 158.542**, but only **16/24** rows
-match C1, so that rate is diagnostic. The p128/d8 scoreboard is unchanged;
-D128 C8 needs a production/batch-invariant gate.
-[`Evidence`](results/2026-08-26-w7900-mtp-concurrency2-recovery-profile.json).
+Physical C2 target-hidden repair restores D24 K2 acceptance **18.43%→76.92%**,
+but its R6 target cost leaves throughput **16.974 vs 31.230 tok/s (0.544x AR)**.
+Capability stays false/K0. P512/d128 AR recovery keeps C1 exact at **77.176 vs
+old 72.169 tok/s**; C8 raw **161.882** remains profile-diagnostic.
+[`C2 evidence`](results/2026-08-26-w7900-specdec2-c2-acceptance-root-cause.json) · [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
 
 ## Where detailed evidence lives
 
@@ -397,7 +388,7 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | --- | --- | ---: | ---: | ---: | --- |
 | W7900 / Qwen3.6-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 29.457 | **60.929** | **2.0684x** | Current clean snapshot; all ten prompts, greedy outputs, and GPU/CPU acceptance agree. The ratio replaces stale historical denominators. [`artifact`](results/2026-08-23-w7900-qwen36-27b-current-default-publication.json) |
 | RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 35.287 | **62.440** | **1.7695x** | Clean idle-card correction; exact greedy and GPU/CPU acceptance, retained fusion improves matched AR 3.764% and B3 0.439% with every category non-regressive. [`artifact`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) |
-| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Exact natural25 B3 | 11.658 | **21.040** | **1.8048x** | Exact T0 two-wave Q4 small-M scope; immediate hot control B3 is 20.947/1.7952x, with every category MTP/AR ratio positive and physical Q4 family -1.724%. [`artifact`](results/2026-08-25-gfx1151-qwen38-omlx-oi1-q4-two-wave-retained.json) |
+| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Exact natural25 B3 | 11.692 | **21.158** | **1.8095x** | Clean current-main snapshot; all ten prompts and 30 MTP comparisons are exact, GPU/CPU acceptance agrees, and cached profiling confirms the qualified scalar-C1 and native Q4 rows4/2 owners. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
 | W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production/default B1 fast, raw D24 | 110.830 | **115.770** | **1.0446x** | Exact `720/720`; complete 10-prompt numerical/repeat/task/state gate passes. Fast improves strict MTP 10.33% overall and every category. [`artifact`](results/2026-08-24-w7900-paro-fast-d24-3run-default.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |

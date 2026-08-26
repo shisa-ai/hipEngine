@@ -636,6 +636,39 @@ class Qwen35GGUFNextNExecutor:
         if sessions is not None:
             sessions[int(slot)]._position = int(position)
 
+    def _publish_batch_consumed_positions(
+        self,
+        request_ids: Sequence[int],
+        positions: Sequence[int],
+    ) -> None:
+        """Restore c1 cursor semantics after packed hidden-row execution.
+
+        ``step_hidden_batch_native`` advances each session to the next input
+        cursor, but its generic packed-state scatter also publishes that cursor
+        as the last consumed position and increments context once more. NextN
+        checkpoints and after-root snapshots require the c1 convention instead:
+        ``position_host=input_position`` and ``context=input_position+1`` while
+        ``session.position`` remains the next input cursor.
+        """
+
+        ids = tuple(int(value) for value in request_ids)
+        consumed = tuple(int(value) for value in positions)
+        if len(ids) != len(consumed):
+            raise ValueError("batch consumed positions must align with request IDs")
+        for request_id, position in zip(ids, consumed, strict=True):
+            slot = self._slot(request_id)
+            slot_scratch = self.scratch.for_slot(slot, span_role="decode")
+            slot_scratch.position_host[0] = position
+            slot_scratch.context_host[0] = position + 1
+            set_decode_position_i64(
+                slot_scratch.position_buf.ptr,
+                slot_scratch.context_buf.ptr,
+                position,
+                stream=0,
+                library=self._batch_session._runtime_state_library,
+                runtime=self.runtime,
+            )
+
     def _slot(self, request_id: int) -> int:
         request_id = int(request_id)
         slot = self._request_slots.get(request_id)
@@ -938,6 +971,7 @@ class Qwen35GGUFNextNExecutor:
             logits_ptr=self._logits_buf.ptr,
             score_output=bool(score_output),
         )
+        self._publish_batch_consumed_positions(ids, pos)
         if not score_output:
             self.last_lm_head_path = "physical_batch_state_only"
             return tuple(
@@ -1168,6 +1202,7 @@ class Qwen35GGUFNextNExecutor:
             logits_ptr=self._logits_buf.ptr,
             score_output=True,
         )
+        self._publish_batch_consumed_positions(ids, pos)
         token_ids = self._device_top1_rows(rows)
         hidden = tuple(
             Tensor.from_handle(
@@ -2067,16 +2102,15 @@ class Qwen35GGUFNextNExecutor:
                 HipMemcpyKind.DEVICE_TO_DEVICE,
             )
         slot_scratch = self.scratch.for_slot(slot, span_role="decode")
-        sessions = getattr(self, "_batch_sessions", None)
-        logical_position = int(
-            slot_scratch.position_host[0]
-            if sessions is None
-            else sessions[slot].position
-        )
+        consumed_position = int(slot_scratch.position_host[0])
         context_length = int(slot_scratch.context_host[0])
+        if context_length != consumed_position + 1:
+            raise RuntimeError(
+                "GGUF NextN after-root snapshot cursor is inconsistent"
+            )
         self._provider_root_state_metadata[rid] = (
             int(slot),
-            logical_position,
+            consumed_position,
             context_length,
         )
 
@@ -2108,11 +2142,11 @@ class Qwen35GGUFNextNExecutor:
                 row_nbytes,
                 HipMemcpyKind.DEVICE_TO_DEVICE,
             )
-        _slot, logical_position, context_length = metadata
+        _slot, consumed_position, context_length = metadata
         slot_scratch = self.scratch.for_slot(slot, span_role="decode")
-        slot_scratch.position_host[0] = int(logical_position)
+        slot_scratch.position_host[0] = int(consumed_position)
         slot_scratch.context_host[0] = int(context_length)
-        self._set_batch_session_position(slot, int(logical_position))
+        self._set_batch_session_position(slot, int(context_length))
         copy_host_to_device(
             slot_scratch.position_buf,
             host_array_ptr(slot_scratch.position_host),
