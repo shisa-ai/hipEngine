@@ -29,7 +29,12 @@ from hipengine.dispatch import (
     plan_physical_batch_groups,
 )
 from hipengine.dispatch.d2_resolver import d2_partition
-from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken, ResidentBatchScheduler
+from hipengine.generation.batch_scheduler import (
+    CompletedRequest,
+    GeneratedToken,
+    GeneratedTokenEvent,
+    ResidentBatchScheduler,
+)
 from hipengine.generation.constraints import token_sequence_state_for_tokens
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.engine_loop import GenerationAdmissionRejected
@@ -8329,6 +8334,29 @@ class Qwen35GGUFResidentModelRunner:
         slots = [row.slot for row in rows if row.slot is not None]
         if slots:
             self.generator._flush_ar_packed_decode_owners(slots)
+
+    def decorate_speculative_stream_events(
+        self,
+        events: Sequence[GeneratedTokenEvent],
+    ) -> tuple[GeneratedTokenEvent, ...]:
+        """Attach tokenizer-owned text to canonical speculative token events."""
+
+        decorated: list[GeneratedTokenEvent] = []
+        for event in events:
+            chunk = event.stream_chunk
+            if chunk is None:
+                decorated.append(event)
+                continue
+            decorated.append(
+                replace(
+                    event,
+                    stream_chunk=replace(
+                        chunk,
+                        text=self.generator.tokenizer.decode((int(event.token_id),)),
+                    ),
+                )
+            )
+        return tuple(decorated)
 
     def _native_stream_chunk(self, row: _GGUFResidentLoopRow) -> GenerationStreamChunk:
         slot = row.slot

@@ -25,6 +25,7 @@ from hipengine.generation import (
     SubmitPollTextGenerator,
     TokenLogprob,
 )
+from hipengine.generation.batch_scheduler import GeneratedTokenEvent
 from hipengine.generation.sampling import SampleResult, SamplingMode, ToolCallConstraintSpec
 from hipengine.kvcache import DeviceChunkedKVPool
 from hipengine.models.qwen35 import Qwen35GGUFModel
@@ -74,6 +75,35 @@ def test_qwen_gguf_generator_detokenizes_through_model_tokenizer() -> None:
 
     assert generator.detokenize((1, 2, 99), skip_special=False) == "BC<eos>"
     assert generator.detokenize((1, 2, 99), skip_special=True) == "BC"
+
+
+def test_speculative_stream_event_decorator_attaches_tokenizer_text() -> None:
+    runner = qwen35_gguf.Qwen35GGUFResidentModelRunner.__new__(
+        qwen35_gguf.Qwen35GGUFResidentModelRunner
+    )
+    runner.generator = SimpleNamespace(tokenizer=_FakeTokenizer())
+    events = (
+        GeneratedTokenEvent(
+            request_id=0,
+            token_id=1,
+            finished=False,
+            stream_chunk=GenerationStreamChunk(text=""),
+        ),
+        GeneratedTokenEvent(
+            request_id=0,
+            token_id=2,
+            finished=True,
+            stream_chunk=GenerationStreamChunk(
+                text="",
+                generated_token_ids=(1, 2),
+            ),
+        ),
+    )
+
+    decorated = runner.decorate_speculative_stream_events(events)
+
+    assert [event.stream_chunk.text for event in decorated] == ["B", "C"]
+    assert decorated[1].stream_chunk.generated_token_ids == (1, 2)
 
 
 def test_submit_poll_adapter_explicitly_delegates_model_owned_mtp_route() -> None:
