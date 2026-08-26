@@ -1,6 +1,6 @@
 # CONCURRENCY2 MTP Dual-Model Promotion — W7900
 
-- Status: **active; contract frozen, implementation/qualification open**
+- Status: **active; M0 audit complete, 35B adapter and both qualification packets open**
 - Started: **2026-08-27**
 - Binding host: **`epyc` / AMD Radeon Pro W7900 / `gfx1100` / GPU 0**
 - Normative contracts: [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
@@ -131,13 +131,24 @@ policy selection.
 
 ## 5. Implementation sequence
 
-### M0 — current-state audit and RED seams
+### M0 — current-state audit and RED seams — audit complete
 
-- Prove 27B resolves the staged adapter and 35B is rejected solely by the MoE
-  adapter boundary, not by model inventory or target capability.
-- Freeze current same-source AR, direct MTP, and staged MTP route telemetry.
-- Add a RED seam requiring a model-plugin-selected MoE provider while retaining
-  dense behavior and K0 for unsupported models.
+- [x] Prove 27B resolves the staged adapter and 35B is rejected solely by the
+  MoE adapter/profile boundary, not by model inventory or target capability.
+- [x] Freeze current same-source AR, direct MTP, and staged MTP route telemetry.
+- [ ] Add a RED seam requiring a model-plugin-selected MoE provider while
+  retaining dense behavior and K0 for unsupported models.
+
+Current-source W7900 evidence gives the execution order. Dense C1/K3 is already
+real Generation-2 (`engine_service_verify_chain`, no legacy fallback) and the
+complete ten-prompt D24 packet reaches **32.177 vs 22.492 tok/s (1.4306x true
+AR)**, with train/heldout **1.4846x/1.3570x** and every category **1.3217x-
+1.5238x**. It therefore moves directly to production-profile quality/serving
+qualification rather than another kernel optimization. The current 35B MoE
+model has all 22 NextN tensors and reusable device-resident MoE proposal/target
+components, but no strict/production profile and `_resolved_mtp2_adapter()`
+returns `None`; its unmodified MTP request executes K0 AR with zero cycles.
+Evidence: [`current-state audit`](../benchmarks/results/2026-08-27-w7900-dual-concurrency2-mtp-current-state-audit.json).
 
 ### M1 — 35B MoE Generation-2 C1
 
