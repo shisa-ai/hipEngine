@@ -1,0 +1,248 @@
+{
+  "schema": 1,
+  "date": "2026-08-26",
+  "kind": "w7900_old_g1_vs_concurrency2_c1_c8",
+  "status": "accepted_same_host_same_protocol",
+  "performance_claim": true,
+  "hardware": {
+    "physical_host": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "gpu_index": 0,
+    "gpu_max_hw_queues": 1,
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "protocol": {
+    "timing": "real in-process OpenAI completions SSE; simultaneous release through final completion",
+    "prompt_tokens": 512,
+    "decode_tokens_per_request": 128,
+    "concurrencies": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "generation_batch_window_ms": 20,
+    "prefill_chunk_tokens": 256,
+    "sampling": "greedy top1, ignore EOS",
+    "correctness": "every warmup/measured output exact versus independent c1 oracle; repeat variance <=5%; final ownership drained",
+    "live_admission": "skipped; fixed-width comparison only"
+  },
+  "commands": {
+    "old": "env -u HIPENGINE_GGUF_FP16_RECURRENT_STATE -u HIPENGINE_EXECUTION_PROFILE HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/hipEngine-main/.venv/bin/python3 scripts/gguf_live_server_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --configurations c1,packed_c2,packed_c3,packed_c4,packed_c5,packed_c6,packed_c7,packed_c8 --prompt-token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --live-initial-rows 8 --live-tail-rows 1 --live-decode-tokens 128 --prefill-chunk-size 256 --batch-window-ms 20 --skip-live --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --json /tmp/concurrency2-c1c8-compare/old-g1-identical-harness.json",
+    "concurrency2": "env -u HIPENGINE_GGUF_FP16_RECURRENT_STATE -u HIPENGINE_EXECUTION_PROFILE HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. /home/lhl/hipEngine-main/.venv/bin/python3 scripts/gguf_live_server_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --configurations c1,packed_c2,packed_c3,packed_c4,packed_c5,packed_c6,packed_c7,packed_c8 --prompt-token-id 9707 --prompt-length 512 --decode-tokens 128 --warmup-runs 1 --measured-runs 3 --live-initial-rows 8 --live-tail-rows 1 --live-decode-tokens 128 --prefill-chunk-size 256 --batch-window-ms 20 --skip-live --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --json /tmp/concurrency2-c1c8-compare/current-c2-clean-passed.json"
+  },
+  "source": {
+    "old_runtime_parent": "2a1fafb80c70ffdf64851f1b679188fe92020bb2",
+    "old_measurement_commit": "f036658adca7078e201ed5f8e37764f123878539",
+    "concurrency2_runtime_parent": "addf34ba9c82661a3c42677c2ea4905d52577748",
+    "concurrency2_measurement_commit": "5d5ee0b4b8faae62f76f9119b14289d8271fd1be",
+    "identical_harness_sha256": "b8681adf2ef5afb1e605fe74edcfeab32e22e25b46bd623c53024c42871f0c2b",
+    "note": "measurement commits add only the identical tracked benchmark/lifecycle/telemetry gate to their runtime parents"
+  },
+  "results": [
+    {
+      "concurrency": 1,
+      "old_tok_s": 71.10562546762189,
+      "concurrency2_tok_s": 75.18668122658937,
+      "concurrency2_vs_old_ratio": 1.0573942741116285,
+      "concurrency2_vs_old_percent": 5.739427411162845,
+      "old_samples": [
+        71.12557237949721,
+        70.93787050893434,
+        71.10562546762189
+      ],
+      "concurrency2_samples": [
+        75.25853922460605,
+        73.86927612831819,
+        75.18668122658937
+      ],
+      "old_route": "physical c1",
+      "concurrency2_route": "physical c1",
+      "old_exact": true,
+      "concurrency2_exact": true
+    },
+    {
+      "concurrency": 2,
+      "old_tok_s": 98.46807935602152,
+      "concurrency2_tok_s": 99.2812468225145,
+      "concurrency2_vs_old_ratio": 1.0082581834825162,
+      "concurrency2_vs_old_percent": 0.8258183482516168,
+      "old_samples": [
+        98.46807935602152,
+        97.27743456954269,
+        98.47445409785453
+      ],
+      "concurrency2_samples": [
+        99.2812468225145,
+        99.6317696920137,
+        99.08964412640597
+      ],
+      "old_route": "physical c2 graph",
+      "concurrency2_route": "one physical c2 graph",
+      "old_exact": true,
+      "concurrency2_exact": true
+    },
+    {
+      "concurrency": 3,
+      "old_tok_s": 63.44810985799,
+      "concurrency2_tok_s": 116.77024682058764,
+      "concurrency2_vs_old_ratio": 1.8404054444166047,
+      "concurrency2_vs_old_percent": 84.04054444166047,
+      "old_samples": [
+        63.71752566051572,
+        62.72954456562274,
+        63.44810985799
+      ],
+      "concurrency2_samples": [
+        116.94103645569403,
+        116.77024682058764,
+        116.5457955259856
+      ],
+      "old_route": "masked physical c4 eager",
+      "concurrency2_route": "one physical c3 graph",
+      "old_exact": true,
+      "concurrency2_exact": true
+    },
+    {
+      "concurrency": 4,
+      "old_tok_s": 125.90376396260925,
+      "concurrency2_tok_s": 133.0835394395194,
+      "concurrency2_vs_old_ratio": 1.0570259001870856,
+      "concurrency2_vs_old_percent": 5.702590018708564,
+      "old_samples": [
+        125.64559209619297,
+        126.69050338769509,
+        125.90376396260925
+      ],
+      "concurrency2_samples": [
+        132.27128515624256,
+        133.2176573222854,
+        133.0835394395194
+      ],
+      "old_route": "physical c4 graph",
+      "concurrency2_route": "one physical c4 graph",
+      "old_exact": true,
+      "concurrency2_exact": true
+    },
+    {
+      "concurrency": 5,
+      "old_tok_s": 88.09663197359286,
+      "concurrency2_tok_s": 143.2531597245244,
+      "concurrency2_vs_old_ratio": 1.6260912195538284,
+      "concurrency2_vs_old_percent": 62.60912195538284,
+      "old_samples": [
+        88.2934662791506,
+        88.09663197359286,
+        87.72896980081127
+      ],
+      "concurrency2_samples": [
+        143.09585465816787,
+        143.2531597245244,
+        143.32735178744826
+      ],
+      "old_route": "masked physical c8 eager",
+      "concurrency2_route": "one physical c5 graph",
+      "old_exact": true,
+      "concurrency2_exact": true
+    },
+    {
+      "concurrency": 6,
+      "old_tok_s": 98.04531503002345,
+      "concurrency2_tok_s": 152.11811470589032,
+      "concurrency2_vs_old_ratio": 1.5515082455424687,
+      "concurrency2_vs_old_percent": 55.15082455424687,
+      "old_samples": [
+        98.64224001560288,
+        98.04531503002345,
+        98.00275455070687
+      ],
+      "concurrency2_samples": [
+        152.11811470589032,
+        152.83454955562226,
+        151.29865670698393
+      ],
+      "old_route": "masked physical c8 eager",
+      "concurrency2_route": "one physical c6 graph",
+      "old_exact": true,
+      "concurrency2_exact": true
+    },
+    {
+      "concurrency": 7,
+      "old_tok_s": 107.09599120390132,
+      "concurrency2_tok_s": 157.3251663380892,
+      "concurrency2_vs_old_ratio": 1.4690107871410047,
+      "concurrency2_vs_old_percent": 46.90107871410048,
+      "old_samples": [
+        107.09599120390132,
+        108.07702942021227,
+        106.06621949852584
+      ],
+      "concurrency2_samples": [
+        157.2424726215863,
+        157.3251663380892,
+        157.67547174163784
+      ],
+      "old_route": "masked physical c8 eager",
+      "concurrency2_route": "one physical c7 graph",
+      "old_exact": true,
+      "concurrency2_exact": true
+    },
+    {
+      "concurrency": 8,
+      "old_tok_s": 143.9337387338051,
+      "concurrency2_tok_s": 162.21879939165566,
+      "concurrency2_vs_old_ratio": 1.1270380441632761,
+      "concurrency2_vs_old_percent": 12.703804416327614,
+      "old_samples": [
+        144.44724515624543,
+        143.9337387338051,
+        140.67853618867377
+      ],
+      "concurrency2_samples": [
+        161.46738759032434,
+        162.5125531048456,
+        162.21879939165566
+      ],
+      "old_route": "physical c8 graph",
+      "concurrency2_route": "one physical c8 graph",
+      "old_exact": true,
+      "concurrency2_exact": true
+    }
+  ],
+  "summary": {
+    "all_widths_positive": true,
+    "minimum_improvement_percent": 0.8258183482516168,
+    "maximum_improvement_percent": 84.04054444166047,
+    "old_exact_widths": 8,
+    "concurrency2_exact_widths": 8,
+    "mechanism": "Generation 2 captures exact native graphs at every C2-C8; old G1 used eager masked C4 for C3 and eager masked C8 for C5-C7, while C2/C4/C8 were already graph-shaped."
+  },
+  "raw_evidence": {
+    "old": {
+      "path": "/tmp/concurrency2-c1c8-compare/old-g1-identical-harness.json",
+      "bytes": 24537672,
+      "sha256": "27782c4e0281c27a1346a7516c8a17f01f2ee7300bc29edcdda87968d100691c"
+    },
+    "concurrency2": {
+      "path": "/tmp/concurrency2-c1c8-compare/current-c2-clean-passed.json",
+      "bytes": 8421113,
+      "sha256": "15ea8241a76c3f35c2282ebe8c5f6e3fe98dcd93a2c99da20505ca3435fb5218"
+    }
+  },
+  "decision": "Retain CONCURRENCY2. It is faster at every C1-C8 width under the identical protocol; no rollback premise remains. The largest gains are odd widths where Generation 2 replaces padded eager execution with exact native graph buckets."
+}

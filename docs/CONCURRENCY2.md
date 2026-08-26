@@ -560,22 +560,25 @@ current engine was re-run under the **exact old protocol** (p512/d128, SSE
 streaming-primary, 20 ms generation batch window, 256 prefill chunk, ctx 1024,
 1 warmup + 3 measured, independent c1 oracles, W7900 device 0).
 
-### Measured apples-to-apples old-protocol comparison (2026-08-17)
+### Measured full C1-C8 old-versus-CONCURRENCY2 comparison (2026-08-26)
 
-| c | Current G2 (SSE median) | Old G1 (SSE) | Ratio |
-| ---: | ---: | ---: | ---: |
-| 1 | 76.371 tok/s | 72.169 tok/s | **1.058x** |
-| 8 (c2 cap, pre-flip) | 47.239 tok/s | 158.542 tok/s | 0.298x |
-| 8 (c4/c8, post-flip) | ~154.322 tok/s | 158.542 tok/s | **0.973x** |
+Both rows use the identical tracked harness and exact protocol above on W7900
+GPU0. Values are median aggregate generated tok/s across three measured SSE
+bursts after one warmup:
 
-- **c1**: Generation-2 is ~5.8% faster on the identical protocol — the cleanest
-  apples-to-apples point, reflecting graph/workspace improvements.
-- **c8 (pre-flip)**: ~70% slower **entirely because of the physical-c2
-  shared-slot cap**: logical c8 lowered to c2 groups, while the old design ran
-  one physical c8 — a physical-width-composition effect, not a kernel regression.
-- **c8 (post-flip)**: after the shared-slot c4/c8 promotion, c8 reaches
-  **~154-156 tok/s ≈ 0.973x the old design**, closing the c2-cap gap. All c8
-  burst/streaming rows are byte-exact.
+| Implementation | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| OLD (Generation 1) | 71.106 | 98.468 | 63.448 | 125.904 | 88.097 | 98.045 | 107.096 | 143.934 |
+| CONCURRENCY2 | **75.187** | **99.281** | **116.770** | **133.084** | **143.253** | **152.118** | **157.325** | **162.219** |
+| CONCURRENCY2 difference | **+5.74%** | **+0.83%** | **+84.04%** | **+5.70%** | **+62.61%** | **+55.15%** | **+46.90%** | **+12.70%** |
+
+All 16 implementation-width cells pass independent-c1 output equality,
+repeatability, <=5% variance, and final ownership. The large C3/C5/C6/C7 gains
+are structural: OLD executes masked eager C4/C8 groups, while CONCURRENCY2 owns
+one exact native graph at every physical C2-C8. C2/C4/C8 were already graph
+shapes, so their smaller **+0.83%/+5.70%/+12.70%** gains isolate subsequent
+runtime/kernel improvements. The earlier pre-flip C8 `0.298x` row was the
+temporary physical-C2 cap and is superseded by this full-width comparison.
 
 The separate c8 live-admission sub-gate (the new harness's join-after-N-decode
 protocol, which differs from the old live test) hit a server-side request
@@ -584,6 +587,7 @@ fault mechanism is now fixed and the full production packet passes, but this
 specific p512/d128 join-after-N protocol still needs a focused post-fix rerun.
 
 Evidence:
+[`full C1-C8 comparison`](../benchmarks/results/2026-08-26-w7900-old-vs-concurrency2-c1-c8.json),
 [`Generation-2 global/native`](../benchmarks/results/2026-08-16-concurrency2-c2-6-w7900-global-native-accepted.json),
 [`old context-scoped c8 server`](../benchmarks/results/2026-08-08-gfx1100-context-scoped-c8-server-refresh.json),
 [`measured apples-to-apples old-protocol diagnostic`](../benchmarks/results/2026-08-17-concurrency2-oldproto-p512d128-c1-c8-apples-to-apples-diagnostic.json),
