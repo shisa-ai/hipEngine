@@ -677,10 +677,16 @@ class Qwen4ExpQSAIndexDeviceState:
         )
         return output_count, self.selected_positions
 
-    def reset(self) -> None:
+    def restore_count(self, count: int) -> None:
         if self.closed:
             raise RuntimeError("QSA index state is closed")
-        self.count = 0
+        restored = int(count)
+        if restored < 0 or restored > self.capacity:
+            raise ValueError("QSA index restore count exceeds capacity")
+        self.count = restored
+
+    def reset(self) -> None:
+        self.restore_count(0)
 
     def close(self) -> None:
         if self.closed:
@@ -2283,6 +2289,13 @@ def run_qwen4_exp_gdn_token_mixer(
 
 
 @dataclass(frozen=True)
+class Qwen4ExpRunnerSnapshot:
+    decode_state: Qwen4ExpDecodeStateSnapshot
+    position: int
+    ple_hash_states: Mapping[int, PLEHashState]
+
+
+@dataclass(frozen=True)
 class Qwen4ExpTokenResult:
     token_id: int
     logits: np.ndarray
@@ -2419,6 +2432,34 @@ class Qwen4ExpGGUFResidentModelRunner:
     @property
     def logits_buffer(self) -> DeviceBuffer:
         return self._buffers[3]
+
+    def snapshot(self) -> Qwen4ExpRunnerSnapshot:
+        """Capture mutable non-append state plus the shared KV/index cursor."""
+
+        self._require_open()
+        assert self.state is not None
+        return Qwen4ExpRunnerSnapshot(
+            self.state.snapshot(),
+            self.position,
+            MappingProxyType(dict(self._ple_hash_states)),
+        )
+
+    def restore(self, snapshot: Qwen4ExpRunnerSnapshot) -> None:
+        """Rollback request-local state; append-only K/V is bounded by the cursor."""
+
+        self._require_open()
+        assert self.state is not None
+        position = int(snapshot.position)
+        if position < 0 or position > self.max_sequence_length:
+            raise ValueError("Qwen4Exp runner snapshot position exceeds capacity")
+        self.state.restore(snapshot.decode_state)
+        cursor = max(position - 1, 0)
+        for attention in self.attention_states:
+            attention.set_position(cursor)
+        for index in self.index_states:
+            index.restore_count(position)
+        self._ple_hash_states = dict(snapshot.ple_hash_states)
+        self.position = position
 
     def reset(self) -> None:
         self._require_open()
@@ -2681,6 +2722,7 @@ __all__ = [
     "Qwen4ExpGRScratch",
     "Qwen4ExpPLEScratch",
     "Qwen4ExpQSAIndexDeviceState",
+    "Qwen4ExpRunnerSnapshot",
     "Qwen4ExpTokenResult",
     "Qwen4ExpQSALayerDeviceWeights",
     "Qwen4ExpQSALayerScratch",
