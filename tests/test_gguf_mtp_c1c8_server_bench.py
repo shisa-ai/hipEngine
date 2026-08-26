@@ -8,6 +8,7 @@ from scripts.gguf_mtp_c1c8_server_bench import (
     _diagnostic_plan,
     _generated_ids,
     _mtp_engaged,
+    _parse_expected_mtp_widths,
     _parse_widths,
     _render_messages,
     build_parser,
@@ -28,6 +29,8 @@ def test_mtp_c1c8_parser_defaults_to_production_profile() -> None:
 
 def test_mtp_c1c8_parses_complete_widths() -> None:
     assert _parse_widths("1,2,3,4,5,6,7,8") == tuple(range(1, 9))
+    assert _parse_expected_mtp_widths("none") == ()
+    assert _parse_expected_mtp_widths("1,4") == (1, 4)
     with pytest.raises(Exception, match="unique subset"):
         _parse_widths("1,1")
     with pytest.raises(Exception, match="unique subset"):
@@ -133,3 +136,25 @@ def test_mtp_c1c8_summary_uses_complete_wall() -> None:
     assert row["mtp"]["tok_s"] == pytest.approx(32.0)
     assert row["mtp_vs_ar_percent"] == pytest.approx(100.0 / 3.0)
     assert row["exact_cells"] == row["engaged_cells"] == row["cells"] == 2
+    assert row["mtp_expected"] is True
+    assert row["route_expectation_passed"] is True
+
+    k0 = summarize(cells, widths=(2,), expected_mtp_widths=())["2"]
+    assert k0["mtp_expected"] is False
+    assert k0["route_expectation_passed"] is False
+
+
+def test_mtp_c1c8_summary_accepts_expected_k0() -> None:
+    cells = [
+        {
+            "width": 5,
+            "exact": True,
+            "mtp_engaged": False,
+            "ar": {"wall_seconds": 2.0, "generated_tokens": 24},
+            "mtp": {"wall_seconds": 2.0, "generated_tokens": 24},
+        }
+    ]
+    row = summarize(cells, widths=(5,), expected_mtp_widths=())["5"]
+    assert row["exact_cells"] == row["cells"] == 1
+    assert row["engaged_cells"] == 0
+    assert row["route_expectation_passed"] is True
