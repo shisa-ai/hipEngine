@@ -73,11 +73,115 @@ from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
 )
-from hipengine.kernels.cpu_reference.qwen4_exp import PLEHashState, ple_hash_rows
+from hipengine.kernels.cpu_reference.qwen4_exp import (
+    PLEHashState,
+    QSASelection,
+    ple_hash_rows,
+    qsa_index_scores,
+    qsa_prepare_index_keys,
+    qsa_select_positions,
+)
 from hipengine.kernels.registry import resolve
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen4_exp_materialize import Qwen4ExpResidentWeights
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
+
+
+@dataclass(frozen=True)
+class Qwen4ExpHostQSAIndexSnapshot:
+    raw_keys: np.ndarray
+    count: int
+
+
+@dataclass
+class Qwen4ExpHostQSAIndexState:
+    raw_keys: np.ndarray
+    compression_ratio: int
+    block_budget: int
+    count: int = 0
+
+    @classmethod
+    def allocate(
+        cls,
+        *,
+        capacity: int,
+        index_dim: int,
+        compression_ratio: int,
+        block_budget: int,
+    ) -> "Qwen4ExpHostQSAIndexState":
+        if capacity <= 0 or index_dim <= 0:
+            raise ValueError("QSA index capacity and dimension must be positive")
+        if compression_ratio <= 0 or block_budget <= 0:
+            raise ValueError("QSA compression ratio and budget must be positive")
+        return cls(
+            np.empty((capacity, index_dim), dtype=np.float32),
+            int(compression_ratio),
+            int(block_budget),
+        )
+
+    @property
+    def capacity(self) -> int:
+        return int(self.raw_keys.shape[0])
+
+    @property
+    def index_dim(self) -> int:
+        return int(self.raw_keys.shape[1])
+
+    def append(self, key: object, *, position: int) -> None:
+        if int(position) != self.count:
+            raise ValueError("QSA index position must equal contiguous count")
+        if self.count >= self.capacity:
+            raise ValueError("QSA index capacity exceeded")
+        value = np.asarray(key, dtype=np.float32)
+        if value.shape != (self.index_dim,):
+            raise ValueError("QSA index key must have shape [index_dim]")
+        self.raw_keys[self.count] = value
+        self.count += 1
+
+    def snapshot(self) -> Qwen4ExpHostQSAIndexSnapshot:
+        return Qwen4ExpHostQSAIndexSnapshot(self.raw_keys[: self.count].copy(), self.count)
+
+    def restore(self, snapshot: Qwen4ExpHostQSAIndexSnapshot) -> None:
+        if snapshot.count < 0 or snapshot.count > self.capacity:
+            raise ValueError("QSA index snapshot count exceeds capacity")
+        if snapshot.raw_keys.shape != (snapshot.count, self.index_dim):
+            raise ValueError("QSA index snapshot shape mismatch")
+        self.raw_keys[: snapshot.count] = snapshot.raw_keys
+        self.count = int(snapshot.count)
+
+    def select(
+        self,
+        prepared_query: object,
+        *,
+        query_position: int,
+        key_norm_weight: object,
+        rotary_dim: int,
+        theta: float,
+        eps: float = 1e-6,
+    ) -> QSASelection:
+        if self.count <= 0 or int(query_position) != self.count - 1:
+            raise ValueError("QSA query position must identify the latest index key")
+        pooled = qsa_prepare_index_keys(
+            self.raw_keys[: self.count],
+            np.arange(self.count, dtype=np.int64),
+            key_norm_weight,
+            compression_ratio=self.compression_ratio,
+            rotary_dim=rotary_dim,
+            theta=theta,
+            eps=eps,
+        )
+        query = np.asarray(prepared_query, dtype=np.float32)
+        if query.ndim != 2 or query.shape[1] != self.index_dim:
+            raise ValueError("prepared QSA query must have shape [heads, index_dim]")
+        scores = qsa_index_scores(query[None], pooled.keys)
+        return qsa_select_positions(
+            scores,
+            pooled.block_starts,
+            query_positions=[query_position],
+            available_positions=np.arange(self.count),
+            compression_ratio=self.compression_ratio,
+            block_budget=self.block_budget,
+        )
 
 
 @dataclass(frozen=True)
@@ -2157,6 +2261,8 @@ __all__ = [
     "Qwen4ExpGDNMixerDeviceWeights",
     "Qwen4ExpGDNScratch",
     "Qwen4ExpGGUFResidentModelRunner",
+    "Qwen4ExpHostQSAIndexSnapshot",
+    "Qwen4ExpHostQSAIndexState",
     "Qwen4ExpGRDeviceWeights",
     "Qwen4ExpGRReadDeviceResult",
     "Qwen4ExpMoEDeviceResult",
