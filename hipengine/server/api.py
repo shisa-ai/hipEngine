@@ -1340,13 +1340,25 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
     engine_supported = _engine_supports_speculative_mtp(engine)
     configured_mode = str(config.speculative_mtp_serving)
     serving_route = configured_mode != "off" and engine_supported
+    serving_plan = (
+        _engine_speculative_mtp_serving_capability(engine)
+        if serving_route
+        else None
+    )
+    automatic_promoted = bool(
+        serving_plan is not None
+        and serving_plan.get("admitted")
+        and serving_plan.get("automatic_eligible")
+    )
     payload = {
         "serving_route": bool(serving_route),
         "configured_policy": configured_mode,
         "engine_supported": bool(engine_supported),
         "model_has_mtp_tensors": bool(engine_supported),
-        "certified_default_scopes": [],
-        "automatic_route_promoted": False,
+        "certified_default_scopes": (
+            [deepcopy(serving_plan)] if automatic_promoted else []
+        ),
+        "automatic_route_promoted": automatic_promoted,
         "sampling_compatible": bool(serving_route),
         "compatibility_guard": "supports_speculative_mtp_sampling",
         "allowed_execution_modes": ["greedy_fast"],
@@ -1355,11 +1367,11 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
         "thinking_policy": str(config.speculative_mtp_thinking),
         "processed_target_verification": False,
     }
+    if serving_plan is not None:
+        payload["certified_explicit_scope"] = deepcopy(serving_plan)
     if not serving_route:
         return payload
-    default_enabled = bool(
-        configured_mode == "enabled" and _engine_supports_default_mtp(engine)
-    )
+    default_enabled = bool(configured_mode == "enabled" and automatic_promoted)
     payload.update(
         {
             "policy": configured_mode,
@@ -1389,15 +1401,31 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
         }
     )
     if configured_mode == "auto":
+        plan_artifacts = (
+            None if serving_plan is None else serving_plan.get("evidence_artifacts")
+        )
+        plan_evidence = (
+            plan_artifacts[0]
+            if isinstance(plan_artifacts, list) and plan_artifacts
+            else _SPECULATIVE_MTP_AUTO_EVIDENCE
+        )
         payload["auto_route"] = {
             "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
             "reason": _SPECULATIVE_MTP_AUTO_REJECTION_REASON,
             "selected_candidate_count": 0,
-            "policy_key": DEFAULT_AUTO_DEPTH_POLICY.policy_key,
-            "policy_fingerprint": DEFAULT_AUTO_DEPTH_POLICY.fingerprint,
+            "policy_key": (
+                DEFAULT_AUTO_DEPTH_POLICY.policy_key
+                if serving_plan is None
+                else serving_plan.get("evidence_key")
+            ),
+            "policy_fingerprint": (
+                DEFAULT_AUTO_DEPTH_POLICY.fingerprint
+                if serving_plan is None
+                else serving_plan.get("plan_fingerprint")
+            ),
             "exact_default_required": True,
             "compatibility_mtp_explicit_only": True,
-            "evidence": _SPECULATIVE_MTP_AUTO_EVIDENCE,
+            "evidence": plan_evidence,
         }
     return payload
 
@@ -2028,11 +2056,78 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
+def _serving_plan_route_decision(
+    plan: Mapping[str, Any],
+    *,
+    requested_route: str,
+    group_rows: int,
+    output_horizon_tokens: int,
+) -> tuple[str, dict[str, Any]]:
+    """Resolve one pre-mutation model-plugin plan against realized grouping."""
+
+    copied = deepcopy(dict(plan))
+    key = copied.get("key") if isinstance(copied.get("key"), Mapping) else {}
+    admitted = bool(copied.get("admitted"))
+    planned_rows = int(key.get("realized_group_rows", 0) or 0)
+    automatic_eligible = bool(copied.get("automatic_eligible"))
+    route = str(requested_route)
+    reported_requested_route = (
+        _SPECULATIVE_MTP_BATCH_ROUTE
+        if route == _SPECULATIVE_MTP_K0_ROUTE
+        else route
+    )
+    reason = str(copied.get("reason") or "model_plugin_scope_not_qualified")
+    if admitted and planned_rows != int(group_rows):
+        admitted = False
+        reason = "physical_group_not_qualified"
+    if route == _SPECULATIVE_MTP_AUTO_ROUTE:
+        admitted = admitted and automatic_eligible
+        if not admitted and reason == "qualified_explicit_c1_b3":
+            reason = _SPECULATIVE_MTP_AUTO_REJECTION_REASON
+    elif (
+        route == _SPECULATIVE_MTP_K0_ROUTE
+        and admitted
+        and not automatic_eligible
+    ):
+        admitted = False
+        reason = _SPECULATIVE_MTP_AUTO_REJECTION_REASON
+    selected_route = (
+        _SPECULATIVE_MTP_BATCH_ROUTE
+        if admitted and route == _SPECULATIVE_MTP_BATCH_ROUTE
+        else _SPECULATIVE_MTP_DEFAULT_ROUTE
+    )
+    artifacts = copied.get("evidence_artifacts")
+    evidence = (
+        artifacts[0]
+        if isinstance(artifacts, list) and artifacts
+        else "model_plugin_speculative_mtp_serving_plan"
+    )
+    return selected_route, {
+        "requested_route": reported_requested_route,
+        "selected_route": selected_route,
+        "reason": reason,
+        "policy_cell": copied.get("evidence_key"),
+        "selected_candidate_count": (
+            int(copied.get("selected_candidate_count", 0))
+            if selected_route == _SPECULATIVE_MTP_BATCH_ROUTE
+            else 0
+        ),
+        "policy_reason": str(copied.get("reason") or reason),
+        "policy_fingerprint": copied.get("plan_fingerprint"),
+        "realized_group_rows": int(group_rows),
+        "output_horizon_tokens": int(output_horizon_tokens),
+        "exact_default_required": True,
+        "automatic_eligible": automatic_eligible,
+        "evidence": evidence,
+    }
+
+
 def _resolve_realized_generation_route(
     requested_route: str,
     *,
     group_rows: int,
     sampling: SamplingParams,
+    precomputed_decision: Mapping[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any] | None]:
     """Resolve automatic routing only after the batcher's group is known.
 
@@ -2042,17 +2137,36 @@ def _resolve_realized_generation_route(
     """
 
     route = str(requested_route)
+    if (
+        isinstance(precomputed_decision, Mapping)
+        and precomputed_decision.get("plan_fingerprint") is not None
+    ):
+        return _serving_plan_route_decision(
+            precomputed_decision,
+            requested_route=route,
+            group_rows=int(group_rows),
+            output_horizon_tokens=int(sampling.max_tokens),
+        )
     if route == _SPECULATIVE_MTP_K0_ROUTE:
         blockers = tuple(speculative_mtp_sampling_blockers(sampling))
+        reason = (
+            "unsupported_sampling_k0"
+            if blockers
+            else "model_plugin_scope_not_qualified"
+        )
         return (
             _SPECULATIVE_MTP_DEFAULT_ROUTE,
             {
                 "requested_route": _SPECULATIVE_MTP_BATCH_ROUTE,
                 "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
-                "reason": "unsupported_sampling_k0",
+                "reason": reason,
                 "policy_cell": "compatibility-pre-mutation-k0",
                 "selected_candidate_count": 0,
-                "policy_reason": "unsupported_sampling",
+                "policy_reason": (
+                    "unsupported_sampling"
+                    if blockers
+                    else "no_automatic_model_plugin_evidence"
+                ),
                 "sampling_blockers": list(blockers),
                 "realized_group_rows": int(group_rows),
                 "output_horizon_tokens": int(sampling.max_tokens),
@@ -2342,6 +2456,7 @@ class _QueuedGeneration:
     detailed: bool = False
     include_batch_metadata: bool = False
     route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE
+    route_decision: dict[str, Any] | None = None
     cancelled: bool = False
     finished: bool = False
     producer_task: asyncio.Task[None] | None = None
@@ -2482,11 +2597,15 @@ class _GenerationBatcher:
 
     def _group_key(self, item: _QueuedGeneration) -> tuple[str, tuple[Any, ...]]:
         route = str(item.route)
+        decision = item.route_decision or {}
         return (
             route,
-            _sampling_key(
-                item.sampling,
-                include_cancellation_token=False,
+            (
+                decision.get("plan_fingerprint"),
+                _sampling_key(
+                    item.sampling,
+                    include_cancellation_token=False,
+                ),
             ),
         )
 
@@ -2539,6 +2658,7 @@ class _GenerationBatcher:
         detailed: bool = False,
         include_batch_metadata: bool = False,
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
+        route_decision: Mapping[str, Any] | None = None,
         error_extra: Mapping[str, Any] | None = None,
     ) -> list[Any] | _QueuedBatchResult:
         prompt_tuple = tuple(normalize_prompt_input(prompt) for prompt in prompts)
@@ -2553,6 +2673,9 @@ class _GenerationBatcher:
                 detailed=bool(detailed),
                 include_batch_metadata=bool(include_batch_metadata),
                 route=str(route),
+                route_decision=(
+                    None if route_decision is None else deepcopy(dict(route_decision))
+                ),
             )
         )
         if self._worker is None or self._worker.done():
@@ -2572,6 +2695,7 @@ class _GenerationBatcher:
         sampling: SamplingParams,
         *,
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
+        route_decision: Mapping[str, Any] | None = None,
         error_extra: Mapping[str, Any] | None = None,
     ) -> AsyncIterator[GenerationStreamChunk]:
         """Yield generated stream chunks through a per-request queue owned by the batcher."""
@@ -2585,6 +2709,9 @@ class _GenerationBatcher:
             sampling=sampling,
             stream_queue=queue,
             route=str(route),
+            route_decision=(
+                None if route_decision is None else deepcopy(dict(route_decision))
+            ),
         )
         self._queue.append(item)
         if self._worker is None or self._worker.done():
@@ -2796,6 +2923,7 @@ class _GenerationBatcher:
                 requested_route,
                 group_rows=len(prompts),
                 sampling=group_sampling,
+                precomputed_decision=group[0].route_decision,
             )
             breaker = self._mtp_circuit_breaker
             if (
@@ -4662,12 +4790,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         sampling,
                         row_seeds=_row_seeds_for_request(request.seed, len(prompts)),
                     )
-                generation_route = _generation_route_for_request(
-                    config,
-                    request,
-                    engine=engine,
-                    sampling=sampling,
-                    prompt_count=len(prompts),
+                generation_route, generation_route_decision = (
+                    _generation_route_for_request(
+                        config,
+                        request,
+                        engine=engine,
+                        sampling=sampling,
+                        prompts=prompts,
+                    )
                 )
                 await ensure_resident_context(
                     engine,
@@ -4696,6 +4826,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     (time.perf_counter() - admission_started) * 1_000.0,
                 )
             if _request_logprobs_enabled(request):
+                generation_route, generation_route_decision = (
+                    _resolve_realized_generation_route(
+                        generation_route,
+                        group_rows=len(prompts),
+                        sampling=sampling,
+                        precomputed_decision=generation_route_decision,
+                    )
+                )
                 raw_outputs = await _generate_detailed(engine, tuple(prompts), sampling)
                 scheduler_token_chunks = _backend_scheduler_token_chunks(engine)
                 direct_backend_groups = (
@@ -4712,6 +4850,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     item_prompt_offset=0,
                     item_prompt_rows=len(prompts),
                     backend_groups=direct_backend_groups,
+                    route_decision=generation_route_decision,
                 )
             else:
                 queued_result = await generation_batcher.submit(
@@ -4720,6 +4859,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     detailed=True,
                     include_batch_metadata=True,
                     route=generation_route,
+                    route_decision=generation_route_decision,
                     error_extra=route_rejection_extra(
                         requested_model=request.model,
                         reason="engine_busy",
@@ -4878,7 +5018,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 route_unsupported_grammar=True,
             )
 
-            async def prepare_stream() -> tuple[Any, SamplingParams, str, PromptInput]:
+            async def prepare_stream() -> tuple[
+                Any,
+                SamplingParams,
+                str,
+                dict[str, Any] | None,
+                PromptInput,
+            ]:
                 async with session_lock:
                     engine = get_llm()
                     generation_prompt = _prepare_prompt_input(engine, prompt)
@@ -4890,12 +5036,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         deadline_at=control.deadline_at,
                         cancellation_token=control.cancellation_token,
                     )
-                    generation_route = _generation_route_for_request(
-                        config,
-                        request,
-                        engine=engine,
-                        sampling=sampling,
-                        prompt_count=1,
+                    generation_route, generation_route_decision = (
+                        _generation_route_for_request(
+                            config,
+                            request,
+                            engine=engine,
+                            sampling=sampling,
+                            prompts=(generation_prompt,),
+                        )
                     )
                     await ensure_resident_context(
                         engine,
@@ -4922,13 +5070,23 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         (generation_prompt,),
                         (time.perf_counter() - admission_started) * 1_000.0,
                     )[0]
-                    return engine, sampling, generation_route, generation_prompt
+                    return (
+                        engine,
+                        sampling,
+                        generation_route,
+                        generation_route_decision,
+                        generation_prompt,
+                    )
 
-            engine, sampling, generation_route, generation_prompt = (
-                await _await_with_request_control(
-                    prepare_stream(),
-                    control,
-                )
+            (
+                engine,
+                sampling,
+                generation_route,
+                generation_route_decision,
+                generation_prompt,
+            ) = await _await_with_request_control(
+                prepare_stream(),
+                control,
             )
             if include_hipengine:
                 routing_metadata = _routing_response_metadata(
@@ -4942,6 +5100,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     (generation_prompt,),
                     sampling,
                     route=generation_route,
+                    route_decision=generation_route_decision,
                     error_extra=route_rejection_extra(
                         requested_model=request.model,
                         reason="engine_busy",
@@ -5935,6 +6094,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             "object": "hipengine.speculative_mtp.rollback",
             "new_requests_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
             "in_flight_policy": "retire_owned_cycle_then_cancel_or_complete",
+            "serving_plan": _engine_speculative_mtp_serving_capability(engine),
             "circuit_breaker": mtp_circuit_breaker.snapshot(),
         }
 
@@ -7207,7 +7367,13 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
         buffer_tool_output = bool(request.tools)
 
         try:
-            async def prepare_stream() -> tuple[Any, SamplingParams, str, PromptInput]:
+            async def prepare_stream() -> tuple[
+                Any,
+                SamplingParams,
+                str,
+                dict[str, Any] | None,
+                PromptInput,
+            ]:
                 async with session_lock:
                     engine = get_llm()
                     admission_started = time.perf_counter()
@@ -7220,12 +7386,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         prepared_thinking=prepared_thinking,
                         resident_session_key=resident_session_key,
                     )
-                    generation_route = _generation_route_for_request(
-                        config,
-                        request,
-                        engine=engine,
-                        sampling=sampling,
-                        prompt_count=1,
+                    generation_route, generation_route_decision = (
+                        _generation_route_for_request(
+                            config,
+                            request,
+                            engine=engine,
+                            sampling=sampling,
+                            prompts=(generation_prompt,),
+                        )
                     )
                     await ensure_resident_context(
                         engine,
@@ -7252,13 +7420,23 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                         (generation_prompt,),
                         (time.perf_counter() - admission_started) * 1_000.0,
                     )[0]
-                    return engine, sampling, generation_route, admitted_prompt
+                    return (
+                        engine,
+                        sampling,
+                        generation_route,
+                        generation_route_decision,
+                        admitted_prompt,
+                    )
 
-            engine, sampling, generation_route, generation_prompt = (
-                await _await_with_request_control(
-                    prepare_stream(),
-                    control,
-                )
+            (
+                engine,
+                sampling,
+                generation_route,
+                generation_route_decision,
+                generation_prompt,
+            ) = await _await_with_request_control(
+                prepare_stream(),
+                control,
             )
             if include_hipengine:
                 routing_metadata = _routing_response_metadata(
@@ -7280,6 +7458,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                     (generation_prompt,),
                     sampling,
                     route=generation_route,
+                    route_decision=generation_route_decision,
                     error_extra=route_rejection_extra(
                         requested_model=request.model,
                         reason="engine_busy",
@@ -9934,16 +10113,30 @@ def _engine_supports_speculative_mtp(engine: Any | None) -> bool:
     return _engine_speculative_mtp_callable(engine) is not None
 
 
+def _engine_speculative_mtp_serving_capability(
+    engine: Any | None,
+) -> dict[str, Any] | None:
+    if engine is None:
+        return None
+    raw = getattr(engine, "speculative_mtp_serving_capability", None)
+    value = raw() if callable(raw) else raw
+    if value is None:
+        return None
+    payload = value.as_dict() if callable(getattr(value, "as_dict", None)) else value
+    if not isinstance(payload, Mapping):
+        raise TypeError("engine speculative_mtp_serving_capability must be a mapping")
+    return deepcopy(dict(payload))
+
+
 def _engine_supports_default_mtp(engine: Any | None) -> bool:
-    """Whether default-on MTP serving is safe for this engine.
+    """Whether immutable model-plugin evidence admits automatic MTP."""
 
-    The engine reports ``supports_default_mtp`` only for dense Qwen models
-    whose MTP route is validated for serving (native verify by default, or
-    the token-exact serial_exact rollback control). MoE and other models keep
-    MTP request-opt-in.
-    """
-
-    return bool(getattr(engine, "supports_default_mtp", False))
+    plan = _engine_speculative_mtp_serving_capability(engine)
+    return bool(
+        plan is not None
+        and plan.get("admitted")
+        and plan.get("automatic_eligible")
+    )
 
 
 def _chat_live_many_streaming_allowed(request: ChatCompletionRequest) -> bool:
@@ -11563,9 +11756,9 @@ def _speculative_mtp_route_for_request(
         and not explicit_requested
         and not _engine_supports_default_mtp(engine)
     ):
-        # Default-on MTP is admitted only for exact dense routes; MoE and other
-        # models stay on plain AR unless a request explicitly opts in.
-        return _SPECULATIVE_MTP_DEFAULT_ROUTE
+        # A broad dense-model boolean is not default evidence. Keep the K0
+        # reason visible so enabled/capabilities/response reporting agree.
+        return _SPECULATIVE_MTP_K0_ROUTE
     thinking_policy = _request_speculative_mtp_thinking(config, request)
     if thinking_policy == "hint":
         # The host-sampler thinking budget is relaxed to prompt-hint-only for
@@ -11694,29 +11887,90 @@ def _speculative_provider_route_for_request(
     return _SPECULATIVE_PROVIDER_ROUTE
 
 
+def _engine_speculative_mtp_serving_plan(
+    config: ServerConfig,
+    request: CompletionRequest | ChatCompletionRequest,
+    *,
+    engine: Any | None,
+    sampling: SamplingParams,
+    prompts: Sequence[PromptInput],
+) -> dict[str, Any] | None:
+    """Return a model-plugin plan using mechanical request identity only."""
+
+    resolver = getattr(engine, "resolve_speculative_mtp_serving_plan", None)
+    if not callable(resolver) or not prompts:
+        return None
+    effective_sampling = sampling
+    if _request_speculative_mtp_thinking(config, request) == "hint":
+        effective_sampling = relax_thinking_budget_for_mtp(sampling)
+    sampling_mode = (
+        "greedy_fast"
+        if supports_speculative_mtp_sampling(effective_sampling)
+        else "processed_argmax"
+    )
+    decision = resolver(
+        realized_group_rows=len(prompts),
+        sampling_mode=sampling_mode,
+        context_tokens=max(_prompt_token_count(engine, prompt) for prompt in prompts),
+        output_horizon_tokens=int(effective_sampling.max_tokens),
+        kv_storage=str(effective_sampling.kv_storage),
+        memory_fit=True,
+    )
+    if decision is None:
+        return None
+    payload = decision.as_dict() if callable(getattr(decision, "as_dict", None)) else decision
+    if not isinstance(payload, Mapping):
+        raise TypeError("speculative MTP serving plan must be a mapping")
+    return deepcopy(dict(payload))
+
+
 def _generation_route_for_request(
     config: ServerConfig,
     request: CompletionRequest | ChatCompletionRequest,
     *,
     engine: Any | None,
     sampling: SamplingParams,
-    prompt_count: int,
-) -> str:
+    prompts: Sequence[PromptInput],
+) -> tuple[str, dict[str, Any] | None]:
     provider_route = _speculative_provider_route_for_request(
         config,
         request,
         engine=engine,
         sampling=sampling,
-        prompt_count=prompt_count,
+        prompt_count=len(prompts),
     )
     if provider_route is not None:
-        return provider_route
-    return _speculative_mtp_route_for_request(
+        return provider_route, None
+    route = _speculative_mtp_route_for_request(
         config,
         request,
         engine=engine,
         sampling=sampling,
     )
+    if route not in {
+        _SPECULATIVE_MTP_BATCH_ROUTE,
+        _SPECULATIVE_MTP_AUTO_ROUTE,
+        _SPECULATIVE_MTP_K0_ROUTE,
+    }:
+        return route, None
+    plan = _engine_speculative_mtp_serving_plan(
+        config,
+        request,
+        engine=engine,
+        sampling=sampling,
+        prompts=prompts,
+    )
+    if plan is None:
+        return route, None
+    if route == _SPECULATIVE_MTP_BATCH_ROUTE and not bool(plan.get("admitted")):
+        route = _SPECULATIVE_MTP_K0_ROUTE
+    elif (
+        route == _SPECULATIVE_MTP_BATCH_ROUTE
+        and _request_speculative_mtp_enabled(request) is not True
+        and not bool(plan.get("automatic_eligible"))
+    ):
+        route = _SPECULATIVE_MTP_K0_ROUTE
+    return route, plan
 
 
 def _unsupported_agentic_request_param(

@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-26 gfx1151 Qwen3.8 Q4_K_M artifact-scoped MTP serving plan; automatic K0] The content-verified strict/BF16/C1/B3 natural25 plan is bound to capabilities, `auto`, explicit routing, K0 reasons, and rollback under fingerprint `sha256:1948983a…84740`. A real auto/explicit twin is exact; context 68 falls back before MTP and does not increment MTP metrics. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s1.json`.
+
 - [2026-08-26 gfx1151 Qwen3.8 Q4_K_M OpenAI C1 route truth; automatic K0] A real strict opt-in completion/chat pair executes `gguf_specdec2_mtp2` with **16 cycles, 32/44 accepted drafts**, one timing owner each, correct usage/Prometheus accounting, health, and clean shutdown. A capacity-4 K0 control no longer reports MTP use; it returns `backend_k0_fallback`. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0-openai.json`.
 
 - [2026-08-26 gfx1151 Qwen3.8 Q4_K_M public C1/B3 serving premise; automatic K0] The complete public LLM boundary reaches **12.940 vs 9.025 true-AR tok/s (1.4337x)** across 30/30 exact cells; every category/heldout is positive and every cell is **1.2995x–1.5515x**, with zero recovery/readback/final ownership. Advance artifact-scoped explicit qualification only; automatic remains K0. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0.json`.

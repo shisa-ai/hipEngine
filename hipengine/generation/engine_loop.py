@@ -396,6 +396,12 @@ class SubmitPollTextGenerator:
         return self._inner
 
     @property
+    def resident_capacity(self) -> int:
+        """Return the immutable physical owner capacity used for admission."""
+
+        return int(self._runner.capacity)
+
+    @property
     def canonical_token_events(self) -> bool:
         """Whether scheduler token events are real generated-token events."""
 

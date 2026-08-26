@@ -81,8 +81,10 @@ the server default.
 GGUF MTP serving defaults to the fail-closed `auto` policy while the
 [`MTP-FIX.md`](MTP-FIX.md) real-world readiness campaign is active. Implicit
 compatible requests therefore use exact/default AR; explicit non-streaming,
-greedy requests may still opt into MTP, and operators may deliberately select
-`enabled` for controlled validation. Dense Qwen models with NextN tensors use
+greedy requests may still opt into MTP. `enabled` cannot convert a broad dense
+`supports_default_mtp` boolean into default admission: default routing requires
+an immutable model-plugin plan with `automatic_eligible=true`. Dense Qwen models
+with NextN tensors use
 the fast llama.cpp-style **native** verify path when MTP is selected
 (`HIPENGINE_GGUF_MTP_VERIFY_MODE`, default `native`, candidate budget 3 via
 `HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`); set `native` to `serial_exact` for the
@@ -95,8 +97,14 @@ request-opt-in: start with
 selects the documented MTP contract. Dense gfx1151 eager MTP is strict-AR exact
 through RF1, but RF2 long graph/MTP economics do not meet automatic-promotion
 requirements. The `auto` policy therefore selects exact/default AR with reason
-`automatic_mtp_scope_not_promoted`, group width, output horizon, and the RF2
-evidence artifact. The capabilities manifest reports
+`automatic_mtp_scope_not_promoted`, group width, output horizon, and retained
+evidence. For the exact Qwen3.8 Q4_K_M/gfx1151/strict/BF16 physical-C1/B3
+natural25 scope, capabilities expose `certified_explicit_scope` with the full
+content hash, runtime/shape key, strict fallback, evidence links, and canonical
+plan fingerprint. The same fingerprint appears in auto/explicit route decisions
+and rollback; wrong artifact, backend, quant, profile/manifest, KV, resident
+capacity, group, B, sampler, context, horizon, or memory fit selects K0 before
+backend mutation. The capabilities manifest reports
 `sampling.speculative_mtp.serving_route=true` only when this policy is enabled
 and the loaded engine exposes a real MTP hook, and
 `sampling.speculative_mtp.default_enabled=true` when the default policy routes

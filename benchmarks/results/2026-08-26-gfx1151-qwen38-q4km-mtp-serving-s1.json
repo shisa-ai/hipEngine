@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_q4km_mtp_serving_s1",
+  "status": "qualified_checkpoint",
+  "created_at": "2026-08-26",
+  "performance_claim": false,
+  "promotion": {
+    "explicit_scope_admitted": true,
+    "automatic_policy": "K0",
+    "automatic_promoted": false,
+    "reason": "The immutable artifact-scoped plan is explicit-only; S2-S4 lifecycle, streaming, load, and product qualification remain open"
+  },
+  "provenance": {
+    "base_commit": "41f2a75c4",
+    "code_change_uncommitted_during_green": true,
+    "implementation_diff_sha256": "584265e96b0c77651e1ef4ab98af8ca92ae9128df167a3ca143e429c39ac48f4",
+    "host_name": "zbook",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "execution_profile": "strict",
+    "execution_profile_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+    "kv_dtype": "bf16",
+    "require_cached_build": true,
+    "compiler_overlap": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "served_model_name": "qwen38-q4km-mtp-s1",
+    "quant": "Q4_K_M",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "content_verified": true
+  },
+  "serving_plan": {
+    "plan_fingerprint": "sha256:1948983ad884f41d9dce4453a3b2ab8f9a357b5005b9a2cabd18556b60084740",
+    "evidence_key": "qwen38-q4km-gfx1151-strict-bf16-c1-b3-natural25-s0",
+    "admitted": true,
+    "selected_route": "speculative_mtp",
+    "selected_candidate_count": 3,
+    "reason": "qualified_explicit_c1_b3",
+    "automatic_eligible": false,
+    "strict_fallback_key": "gguf_target_ar",
+    "key": {
+      "artifact_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+      "artifact_size_bytes": 17106775008,
+      "content_verified": true,
+      "backend": "hip_gfx1151",
+      "target_arch": "gfx1151",
+      "weight_quant": "gguf_q4_k_m",
+      "execution_profile": "strict",
+      "execution_profile_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+      "kv_storage": "bf16",
+      "kv_layout": "uniform",
+      "realized_group_rows": 1,
+      "resident_capacity": 1,
+      "candidate_budget": 3,
+      "sampling_mode": "greedy_fast",
+      "max_sequence_length": 1024,
+      "context_bucket_tokens": "1-67",
+      "output_horizon_tokens": 25,
+      "memory_fit": true
+    },
+    "forbidden_inputs_absent": [
+      "prompt_text",
+      "prompt_hash",
+      "prompt_token_ids",
+      "category",
+      "heldout",
+      "task_result",
+      "oracle"
+    ]
+  },
+  "real_server": {
+    "configured_policy": "auto",
+    "max_context_tokens": 1024,
+    "max_active_requests": 1,
+    "candidate_budget": 3,
+    "auto": {
+      "actual_execution_path": "gguf_packed_ar_server_decode",
+      "generated_tokens": 25,
+      "selected_route": "default",
+      "reason": "automatic_mtp_scope_not_promoted",
+      "policy_fingerprint": "sha256:1948983ad884f41d9dce4453a3b2ab8f9a357b5005b9a2cabd18556b60084740",
+      "mtp_used": false
+    },
+    "explicit": {
+      "actual_execution_path": "gguf_specdec2_mtp2",
+      "generated_tokens": 25,
+      "selected_route": "speculative_mtp",
+      "reason": "qualified_explicit_c1_b3",
+      "policy_fingerprint": "sha256:1948983ad884f41d9dce4453a3b2ab8f9a357b5005b9a2cabd18556b60084740",
+      "mtp_used": true,
+      "draft_cycles": 8,
+      "draft_tokens": 23,
+      "accepted_draft_tokens": 16,
+      "rejected_draft_tokens": 7,
+      "candidate_readback_ms": 0.0,
+      "recoverable_failures": 0,
+      "timing_owner": true
+    },
+    "auto_explicit_generated_ids_exact": true,
+    "context68": {
+      "prompt_tokens": 68,
+      "selected_route": "default",
+      "actual_execution_path": "gguf_packed_ar_server_decode",
+      "reason": "context_bucket_not_qualified",
+      "selected_candidate_count": 0,
+      "mtp_used": false,
+      "mtp_requests_total_before": 1,
+      "mtp_requests_total_after": 1
+    },
+    "rollback": {
+      "new_requests_route": "default",
+      "circuit_breaker_state": "operator_disabled",
+      "serving_plan_fingerprint": "sha256:1948983ad884f41d9dce4453a3b2ab8f9a357b5005b9a2cabd18556b60084740"
+    },
+    "requests_total": 3,
+    "requests_completed": 3,
+    "requests_failed": 0,
+    "health_after_requests": "ok",
+    "shutdown_complete": true,
+    "final_gpu_owner": false,
+    "compiler_owner": false
+  },
+  "tests": {
+    "core_capability_tests": 21,
+    "focused_integration_and_repair_tests": 29,
+    "affected_broad_bundle": {
+      "command": "uv run pytest -q tests/test_server_api.py tests/test_generation_engine_service.py tests/test_specdec2_engine_service.py tests/test_speculative_mtp_serving_capability.py --tb=short",
+      "result": "all other tests passed; three purpose/expectation nodes reflected the retired broad-default contract",
+      "focused_repairs_passed": 3,
+      "full_rerun_required": false
+    }
+  },
+  "next": "S2 exact control/state/lifecycle/fault packet; automatic remains K0"
+}

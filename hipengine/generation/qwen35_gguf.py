@@ -1600,6 +1600,63 @@ class Qwen35GGUFBringupGenerator:
 
         return _gguf_info_has_mtp_tensors(self.weight_index)
 
+    def resolve_speculative_mtp_serving_plan(
+        self,
+        *,
+        execution_profile_manifest_sha256: str,
+        realized_group_rows: int,
+        resident_capacity: int,
+        candidate_budget: int,
+        sampling_mode: str,
+        max_sequence_length: int,
+        context_tokens: int,
+        output_horizon_tokens: int,
+        kv_storage: str,
+        memory_fit: bool,
+    ):
+        """Resolve the model-plugin-owned exact serving plan before mutation."""
+
+        from hipengine.speculative.serving import (
+            SpeculativeMTPServingKey,
+            resolve_speculative_mtp_serving_plan,
+        )
+
+        requested_kv = str(kv_storage or "auto")
+        effective_kv = "bf16" if requested_kv == "auto" else requested_kv
+        artifact = self._kv_model_artifact_identity()
+        key = SpeculativeMTPServingKey(
+            artifact_sha256=artifact.sha256,
+            artifact_size_bytes=artifact.size_bytes,
+            content_verified=artifact.content_verified,
+            backend=str(self.backend),
+            target_arch=str(self.target_arch),
+            weight_quant=self._kv_weight_quant_key(),
+            execution_profile=str(
+                getattr(self, "execution_profile", None) or "legacy_exact"
+            ),
+            execution_profile_manifest_sha256=(
+                execution_profile_manifest_sha256
+            ),
+            kv_storage=effective_kv,
+            kv_layout="uniform",
+            realized_group_rows=int(realized_group_rows),
+            resident_capacity=int(resident_capacity),
+            candidate_budget=int(candidate_budget),
+            sampling_mode=str(sampling_mode),
+            max_sequence_length=int(max_sequence_length),
+            context_tokens=int(context_tokens),
+            output_horizon_tokens=int(output_horizon_tokens),
+            memory_fit=bool(memory_fit),
+        )
+        resolver = getattr(
+            self.model_plugin,
+            "resolve_speculative_mtp_serving_plan",
+            None,
+        )
+        if callable(resolver):
+            return resolver(key=key)
+        return resolve_speculative_mtp_serving_plan((), key=key)
+
     @property
     def supports_default_mtp(self) -> bool:
         """Whether default-on MTP serving is safe for this model.

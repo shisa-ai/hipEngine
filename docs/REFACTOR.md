@@ -18,6 +18,15 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-08-26 speculative-MTP default capability migration
+
+- Dense generators still expose the legacy broad `supports_default_mtp`
+  boolean for compatibility and bisection, but OpenAI default admission now
+  requires an immutable model-plugin `SpeculativeMTPServingDecision` with
+  `automatic_eligible=true`. Remove the broad property and its remaining tests
+  after every model/plugin and non-server caller has migrated to the typed plan;
+  do not remove the independent explicit diagnostic hook or strict AR fallback.
+
 ## 2026-08-21 codebase simplification review
 
 This review covers the tracked tree at `a9419949d`. The main conclusion is that

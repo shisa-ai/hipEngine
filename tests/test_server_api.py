@@ -303,6 +303,56 @@ class SpeculativeMTPFakeLLM(FakeLLM):
         ]
 
 
+class ArtifactScopedSpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
+    def __init__(self) -> None:
+        super().__init__()
+        self.plan_calls: list[dict[str, Any]] = []
+
+    @staticmethod
+    def _plan(**kwargs: Any) -> dict[str, Any]:
+        admitted = bool(
+            kwargs["realized_group_rows"] == 1
+            and kwargs["sampling_mode"] == "greedy_fast"
+            and 1 <= kwargs["context_tokens"] <= 67
+            and kwargs["output_horizon_tokens"] == 25
+            and kwargs["kv_storage"] in {"auto", "bf16"}
+            and kwargs["memory_fit"]
+        )
+        reason = "qualified_explicit_c1_b3" if admitted else "context_bucket_not_qualified"
+        return {
+            "schema_version": 1,
+            "plan_fingerprint": "sha256:" + ("a" if admitted else "b") * 64,
+            "key": {
+                "realized_group_rows": kwargs["realized_group_rows"],
+                "context_tokens": kwargs["context_tokens"],
+                "output_horizon_tokens": kwargs["output_horizon_tokens"],
+            },
+            "admitted": admitted,
+            "selected_route": "speculative_mtp" if admitted else "default",
+            "selected_candidate_count": 3 if admitted else 0,
+            "reason": reason,
+            "strict_fallback_key": "gguf_target_ar",
+            "evidence_key": "fake-qwen38-q4km-c1-b3",
+            "evidence_artifacts": ["benchmarks/results/fake-qwen38-q4km-s0.json"],
+            "automatic_eligible": False,
+        }
+
+    def resolve_speculative_mtp_serving_plan(self, **kwargs: Any):
+        self.plan_calls.append(dict(kwargs))
+        return self._plan(**kwargs)
+
+    @property
+    def speculative_mtp_serving_capability(self):
+        return self._plan(
+            realized_group_rows=1,
+            sampling_mode="greedy_fast",
+            context_tokens=67,
+            output_horizon_tokens=25,
+            kv_storage="bf16",
+            memory_fit=True,
+        )
+
+
 class SchedulerChunkRowsFakeLLM(FakeLLM):
     def __init__(
         self,
@@ -1751,7 +1801,7 @@ def test_capabilities_endpoint_defaults_to_auto_exact_fallback() -> None:
     }
 
 
-def test_capabilities_endpoint_reports_enabled_default_mtp_when_dense() -> None:
+def test_capabilities_endpoint_does_not_infer_default_mtp_from_dense_boolean() -> None:
     fake = SpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -1767,7 +1817,9 @@ def test_capabilities_endpoint_reports_enabled_default_mtp_when_dense() -> None:
     payload = client.get("/v1/hipengine/capabilities").json()["sampling"]["speculative_mtp"]
 
     assert payload["policy"] == "enabled"
-    assert payload["default_enabled"] is True
+    assert payload["default_enabled"] is False
+    assert payload["automatic_route_promoted"] is False
+    assert payload["certified_default_scopes"] == []
     assert "auto_route" not in payload
 
 
@@ -2754,7 +2806,7 @@ def test_lazy_startup_logs_pending_then_effective_mtp_state(caplog, monkeypatch)
     ) in caplog.text
     assert (
         "EFFECTIVE_MTP: serving=enabled engine_supported=True "
-        "default_enabled=True policy=enabled thinking=hint"
+        "default_enabled=False policy=enabled thinking=hint"
     ) in caplog.text
 
 
@@ -4496,7 +4548,7 @@ def test_operator_mtp_rollback_routes_new_requests_to_ar_until_restart() -> None
     config = ServerConfig(
         model="fake-path",
         served_model_name="fake-model",
-        speculative_mtp_serving="enabled",
+        speculative_mtp_serving="opt_in",
     )
     app = create_app(config, llm=fake)
     client = TestClient(app)
@@ -4505,6 +4557,7 @@ def test_operator_mtp_rollback_routes_new_requests_to_ar_until_restart() -> None
         "prompt": "hello",
         "max_tokens": 2,
         "temperature": 0.0,
+        "speculative_mtp": True,
     }
 
     before = client.post("/v1/completions", json=payload)
@@ -6358,6 +6411,130 @@ def test_completions_endpoint_routes_explicit_speculative_mtp_request() -> None:
     }
 
 
+def test_artifact_scoped_explicit_mtp_uses_one_plan_in_capability_route_and_response() -> None:
+    fake = ArtifactScopedSpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+            max_active_requests=1,
+            max_context_tokens=1024,
+        ),
+        llm=fake,
+    )
+    client = TestClient(app)
+
+    capability = client.get("/v1/hipengine/capabilities").json()["sampling"]["speculative_mtp"]
+    response = client.post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": "hello",
+            "max_tokens": 25,
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "speculative_mtp": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    plan = capability["certified_explicit_scope"]
+    decision = body["hipengine"]["generation_shape"]["route_decision"]
+    assert plan["admitted"] is True
+    assert plan["automatic_eligible"] is False
+    assert body["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
+    assert decision["policy_fingerprint"] == plan["plan_fingerprint"]
+    assert decision["policy_cell"] == plan["evidence_key"]
+    assert decision["selected_candidate_count"] == 3
+    assert body["hipengine"]["speculative_mtp"]["used"] is True
+    assert len(fake.mtp_calls) == 1
+
+    rollback = client.post("/v1/hipengine/speculative_mtp/rollback").json()
+    assert rollback["serving_plan"]["plan_fingerprint"] == plan["plan_fingerprint"]
+
+
+def test_artifact_scoped_explicit_mtp_fails_to_k0_before_backend_mutation() -> None:
+    fake = ArtifactScopedSpeculativeMTPFakeLLM()
+    app = create_app(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+            max_active_requests=1,
+            max_context_tokens=1024,
+        ),
+        llm=fake,
+    )
+    prompt = " ".join(f"token{index}" for index in range(68))
+
+    response = TestClient(app).post(
+        "/v1/completions",
+        json={
+            "model": "fake-model",
+            "prompt": prompt,
+            "max_tokens": 25,
+            "temperature": 0.0,
+            "speculative_mtp": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    shape = body["hipengine"]["generation_shape"]
+    summary = body["hipengine"]["speculative_mtp"]
+    assert shape["route"] == "default"
+    assert shape["route_decision"]["reason"] == "context_bucket_not_qualified"
+    assert shape["route_decision"]["selected_candidate_count"] == 0
+    assert summary["effective_route"] == "default"
+    assert summary["used"] is False
+    assert summary["decision_reason"] == "context_bucket_not_qualified"
+    assert fake.mtp_calls == []
+    assert len(fake.calls) == 1
+
+
+def test_auto_and_enabled_share_explicit_only_plan_fingerprint_and_k0() -> None:
+    fingerprints = []
+    for mode in ("auto", "enabled"):
+        fake = ArtifactScopedSpeculativeMTPFakeLLM()
+        app = create_app(
+            ServerConfig(
+                model="fake-path",
+                served_model_name="fake-model",
+                speculative_mtp_serving=mode,
+                max_active_requests=1,
+                max_context_tokens=1024,
+            ),
+            llm=fake,
+        )
+        client = TestClient(app)
+        capability = client.get("/v1/hipengine/capabilities").json()["sampling"]["speculative_mtp"]
+        response = client.post(
+            "/v1/completions",
+            json={
+                "model": "fake-model",
+                "prompt": "hello",
+                "max_tokens": 25,
+                "temperature": 0.0,
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        plan = capability["certified_explicit_scope"]
+        decision = body["hipengine"]["generation_shape"]["route_decision"]
+        assert capability["default_enabled"] is False
+        assert capability["automatic_route_promoted"] is False
+        assert body["hipengine"]["generation_shape"]["route"] == "default"
+        assert decision["reason"] == "automatic_mtp_scope_not_promoted"
+        assert decision["policy_fingerprint"] == plan["plan_fingerprint"]
+        assert fake.mtp_calls == []
+        fingerprints.append(plan["plan_fingerprint"])
+
+    assert fingerprints[0] == fingerprints[1]
+
+
 def test_chat_endpoint_routes_explicit_mtp_and_reports_direct_usage() -> None:
     fake = SpeculativeMTPFakeLLM()
     app = create_app(
@@ -6740,7 +6917,7 @@ def test_completions_default_auto_keeps_compatibility_mtp_explicit_only() -> Non
     assert fake.mtp_calls[0][0] == ("three",)
 
 
-def test_completions_enabled_mode_routes_default_to_dense_mtp() -> None:
+def test_completions_enabled_mode_requires_model_plugin_default_evidence() -> None:
     fake = SpeculativeMTPFakeLLM()
     app = create_app(
         ServerConfig(
@@ -6753,7 +6930,7 @@ def test_completions_enabled_mode_routes_default_to_dense_mtp() -> None:
     )
     client = TestClient(app)
 
-    # A greedy non-streaming request without speculative_mtp uses MTP by default.
+    # A broad dense supports_default_mtp boolean is not artifact evidence.
     response = client.post(
         "/v1/completions",
         json={
@@ -6766,14 +6943,18 @@ def test_completions_enabled_mode_routes_default_to_dense_mtp() -> None:
     )
     assert response.status_code == 200
     body = response.json()
-    assert [choice["text"] for choice in body["choices"]] == ["mtp:one", "mtp:two"]
-    assert fake.calls == []
-    assert len(fake.mtp_calls) == 1
-    assert fake.mtp_calls[0][0] == ("one", "two")
-    assert body["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
+    assert [choice["text"] for choice in body["choices"]] == [
+        "generated:one",
+        "generated:two",
+    ]
+    assert fake.mtp_calls == []
+    assert body["hipengine"]["generation_shape"]["route"] == "default"
+    assert body["hipengine"]["generation_shape"]["route_decision"]["reason"] == (
+        "model_plugin_scope_not_qualified"
+    )
 
-    # Explicit speculative_mtp=false forces plain AR.
-    ar_response = client.post(
+    # Existing operator-selected explicit compatibility remains independent.
+    explicit_response = client.post(
         "/v1/completions",
         json={
             "model": "fake-model",
@@ -6781,13 +6962,12 @@ def test_completions_enabled_mode_routes_default_to_dense_mtp() -> None:
             "max_tokens": 3,
             "temperature": 0.0,
             "top_p": 1.0,
-            "speculative_mtp": False,
+            "speculative_mtp": True,
         },
     )
-    assert ar_response.status_code == 200
-    assert ar_response.json()["choices"][0]["text"] == "generated:three"
+    assert explicit_response.status_code == 200
+    assert explicit_response.json()["choices"][0]["text"] == "mtp:three"
     assert len(fake.mtp_calls) == 1
-    assert fake.calls and fake.calls[-1][0] == ("three",)
 
 
 def test_completions_enabled_mode_falls_back_to_ar_when_engine_not_dense_default() -> None:
@@ -6883,7 +7063,7 @@ def test_chat_completion_hint_thinking_policy_routes_through_mtp_and_relaxes_sam
         ServerConfig(
             model="fake-path",
             served_model_name="fake-model",
-            speculative_mtp_serving="enabled",
+            speculative_mtp_serving="opt_in",
             speculative_mtp_thinking="hint",
         ),
         llm=fake,
@@ -6899,6 +7079,7 @@ def test_chat_completion_hint_thinking_policy_routes_through_mtp_and_relaxes_sam
             "max_tokens": 100,
             "temperature": 0.0,
             "top_p": 1.0,
+            "speculative_mtp": True,
         },
     )
 
