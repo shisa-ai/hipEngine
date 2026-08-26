@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from types import SimpleNamespace
 
 import pytest
@@ -21,6 +22,7 @@ from scripts.gguf_live_server_bench import (
     _stats,
     _wait_for_live_admission_trigger,
     build_parser,
+    run,
 )
 
 
@@ -81,6 +83,17 @@ def test_live_server_bench_accepts_complete_c1_c8_sweep() -> None:
     )
     assert [CONFIGURATIONS[name].logical_rows for name in names] == list(range(1, 9))
     assert all(CONFIGURATIONS[name].packed_decode for name in names)
+
+
+def test_live_server_bench_captures_final_state_before_server_shutdown() -> None:
+    source = inspect.getsource(run)
+    server_body = source.split("with TestClient(app) as client:", 1)[1].split(
+        "finally:", 1
+    )[0]
+
+    lines = server_body.splitlines()
+    assert "                final_snapshot = llm.live_loop_snapshot()" in lines
+    assert "            final_snapshot = llm.live_loop_snapshot()" not in lines
 
 
 def test_live_server_bench_stats_and_counter_deltas_are_exact() -> None:
