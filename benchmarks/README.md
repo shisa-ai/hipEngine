@@ -113,11 +113,12 @@ All 34 repeat pairs, 10 controls, and ownership gates pass; these are same-host
 model-quality rows. The campaign retains **no implementation** because all seven
 development failures are model-owned. [`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
 
-gfx1151 SPECDEC2-PERF P9 is exact in all **540/540** repaired-source fixed cells.
-Production C1 K1/K2/K3 reaches **1.231x/1.4087x/1.4037x AR**; K2 is the sole
-product-qualification candidate. Repaired physical acceptance reaches
-95.0%/89.8%/77.7%, but best C2/C4 is only **0.6975x/0.5843x AR**. Automatic
-stays K0 pending the C1/K2 product packet. [`P9`](results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json) · [`Campaign`](../docs/SPECDEC2-PERF.md).
+gfx1151 SPECDEC2-PERF P9 is exact in **540/540** fixed cells. Capacity-1
+production C1/K2 reaches **1.4087x AR**, but normal capacity-4 automatic serving
+executes zero speculative cycles and falls back through
+`physical_streaming_category_rejected`. Best physical C2/C4 is
+**0.6975x/0.5843x AR**. No automatic cell promotes; K0 remains default.
+[`P9 no-go`](results/2026-08-26-gfx1151-specdec2-perf-p9-product-no-go.json) · [`Campaign`](../docs/SPECDEC2-PERF.md).
 
 gfx1100 dense C1 K1/K2/K3 remains exact at **1.272x/1.407x/1.439x AR** but
 2.7%-3.9% behind direct; packed PARO is **0.979x AR**. Automatic stays K0.
