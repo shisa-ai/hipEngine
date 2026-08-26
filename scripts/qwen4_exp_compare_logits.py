@@ -172,6 +172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         generator = None
         free_after_close, _ = runtime.mem_get_info()
         owned_after_close = memory_stats()
+        teardown_passed = owned_after_close["current_allocated_bytes"] == 0
         report = {
             "schema": 1,
             "model_path": str(model_path),
@@ -193,12 +194,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "hipengine_owned_peak": owned_peak,
                 "hipengine_owned_after_close": owned_after_close,
                 "process_max_rss_kib": max_rss_kib,
+                "tracked_teardown_passed": teardown_passed,
             },
             **metrics,
             "max_kl": float(args.max_kl),
             "require_top1": bool(args.require_top1),
         }
-        passed = bool(metrics["kl_teacher_to_hipengine"] <= args.max_kl)
+        passed = bool(metrics["kl_teacher_to_hipengine"] <= args.max_kl) and teardown_passed
         if args.require_top1:
             passed = passed and bool(metrics["top1_agreement"])
         report["passed"] = passed
