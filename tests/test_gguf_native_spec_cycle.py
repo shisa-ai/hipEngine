@@ -103,6 +103,37 @@ def test_compact_n2_result_validates_commit_from_visible_tokens_without_row_ids(
     assert result.compact_result
 
 
+def test_n2_result_allows_hidden_rows_only_with_aligned_diagnostic_logits() -> None:
+    kwargs = {
+        "input_token_ids": [100, 101],
+        "token_ids": [200],
+        "accepted_draft_tokens": 0,
+        "commit_row": 0,
+        "commit_token": 100,
+        "commit_position": 5,
+        "next_token": 200,
+        "full_accept": False,
+        "start_position": 5,
+        "end_position": 6,
+        "hidden_seed_rows_ptr": 0x1000,
+        "hidden_seed_row_count": 2,
+        "hidden_size": 8,
+        "target_top1": [200, 201],
+        "hidden_seeds": np.zeros((2, 8), dtype=np.float32),
+    }
+
+    with pytest.raises(ValueError, match="require aligned finite FP32 logits"):
+        Qwen35GGUFNativeAcceptCommitResult(**kwargs)
+
+    result = Qwen35GGUFNativeAcceptCommitResult(
+        **kwargs,
+        lm_head_logits_f32=np.zeros((2, 16), dtype=np.float32),
+    )
+
+    assert result.hidden_seeds.shape == (2, 8)
+    assert result.lm_head_logits_f32.shape == (2, 16)
+
+
 def test_build_native_b2_target_batch_uses_root_prefixed_chain_layout() -> None:
     batch = build_native_b2_target_batch(
         [101, 202, 303],
