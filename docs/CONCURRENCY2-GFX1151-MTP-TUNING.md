@@ -99,29 +99,38 @@ is stable: 0.7395 at c1, 0.639-0.669 at c2-c8 — acceptance is **not** the
 serving-route problem at width (contrast SPECDEC2's physical 18.43% at C2/C4,
 which is a different surface and still open).
 
-### G1 root cause: prefill, not decode
+### G1 root cause correction: legacy prompt activation, not target prefill
 
-Per-request backend timing on the MTP serving route (raw rows of the c1-c8
-diagnostic):
+T1.0 supersedes the original additive interpretation of the legacy response
+telemetry. Packed chunk wall is copied into each member request; wide-cell
+`prefill_ms`/`target_verify_ms` values cannot be summed across requests.
+Targeted same-host probes isolate p512 target prefill at **1.27-1.34 s
+(384-402 tok/s)** across plain, GDN-capture, hidden-seed-return, D2H, and full
+legacy-MTP-env variants; the hidden D2H itself is 0.3 ms. There is no prefill
+kernel regression to fix.
 
-- 512-token prefill = **~4.5 s at every width** (~113 tok/s, serial per
-  request). External references do ~500+ tok/s at 2K.
-- Decode phase = ~4.8 s for 128 tokens → **26.7 tok/s decode-only at c1**,
-  already faster than the 21.16 tok/s direct leaf.
-- The entire serving-vs-direct gap is prefill (~48% of c1 request wall) plus
-  HTTP/tokenize overhead. **Fixing prefill is the single largest lever for G1
-  and for every wide cell** (at c8, prefill alone is ~36 s of the 81.6 s wall).
+The forced legacy route instead retains the full prompt-hidden slab and calls
+`Qwen35GGUFResidentMTPDraftRunner.write_kv_rows()` once per prompt row after
+target prefill. That serial NextN catch-up is the missing activation wall. The
+staged MTP2 owner already uses retained exact OI-3 streaming prompt priming
+(p512 TTFT 13.079 -> 10.356 s, -20.82%; slab -> one 10,240-byte row). Current
+public requests are blocked before MTP with typed reason
+`execution_profile_not_qualified`; T0.4 must exercise/qualify staged MTP2 rather
+than tune the legacy fallback. Evidence:
+[`T1.0 attribution`](../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t10-prefill-attribution.json).
 
-### G2 mechanism: phase-serial scheduler, no cross-request batching
+### G2 mechanism: forced legacy scheduler; staged owner not yet qualified
 
-- Wall at c8 (81.6 s) ≈ Σ per-request work (8 × ~10.1 s): phases do not
-  overlap across requests.
-- Verify is ~98% of decode: ~120 ms per 4-position block per slot, vs the
-  batched AR decode step of ~33 ms for 8 positions. Verify jobs run with
-  `use_wmma_prefill=False` in chunks of ≤4 slots
-  (`_MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4`), so weights are re-read per
-  small block instead of once per batched pass.
-- Tokens/step ≈ 2.9-3.2 per request at all widths — drafter quality is fine.
+- The forced diagnostic route is phase serial: draft live slots -> verify
+  chunks of <=4 slots -> commit live slots.
+- Legacy response telemetry books whole chunk wall to every member request, so
+  prior per-position/additive estimates are withdrawn. A definitive staged
+  target-owner ranking requires T0.4 route engagement followed by T0.2 rocprof.
+- Tokens/step ≈ 2.9-3.2 and accept-per-draft 0.64-0.74 on the forced legacy
+  route — drafter quality was not its flat-line owner.
+- Current public explicit MTP routes to AR (`execution_profile_not_qualified`),
+  so it has no MTP economics until the staged execution profile passes its
+  production correctness/task gate.
 
 ### Correctness observation (diagnostic)
 
@@ -133,10 +142,12 @@ binding gate.
 
 ### Punchlist impact
 
-T0.1/T0.3 done. T1 priority reorders: **prefill is now T1.0**; T2.2's premise
-is confirmed (verify must batch across slots×positions like AR decode); the
-K=0 crossover policy (T2.3) now has its measured table — crossover sits
-between c1 and c2 on this diagnostic.
+T0.1/T0.3/T1.0 attribution are done. T0.4 is now the critical path: engage the
+existing staged MTP2 + OI-3 owner and qualify it against the **production**
+correctness/task contract (generated-ID bit exactness is diagnostic, not a
+promotion requirement). Only then run T0.2 rocprof and the T1.4 budget sweep.
+The forced-legacy crossover table still supports a K=0 safety policy but cannot
+promote staged MTP2 by itself.
 
 ## 2. External source review (commit-pinned, read-only)
 
@@ -145,7 +156,7 @@ between c1 and c2 on this diagnostic.
 | `julianmb/q38rocm` | `5d097740` | Draft-budget sweep discipline (`n_max` 3-6 × `p_min` 0.50-0.55); default `DRAFT_N=4, DRAFT_P=0.0`; Vulkan-Wave64 vs ROCm MTP note (36 vs 28 tok/s) | Vulkan numbers (we are HIP-native); ROCmFP4 artifacts; q8_0/turbo4 KV (our INT8 KV failed quality gates) |
 | `KyaniteLabs/qwen38-27b-strix-halo` | `7fa3ca81` | ngram-mod stacked on MTP (`n12`, `n-min 24`) as a free prompt-derived second provider; time-per-task framing over raw tok/s; `HSA_ENABLE_SDMA=0 HSA_XNACK=1` hang guards | Their c30 148-163 tok/s rows (different model file/engine/power); n16 deep-draft waste already measured |
 | `LaurentZuijdwijk/llama.cpp` | `c28d538` | **EMA adaptive draft length** (`common/speculative.cpp`: per-seq acceptance EMA, size next draft to `ema+1`, additive probe on full accept, censor-aware decay): adaptive json 65.57 vs bare 13.99 tok/s; fixed `n=7` collapses acceptance to 18-25% while adaptive holds 96% | FP4/DFlash2 absolute rates; Vulkan gate names |
-| `MikeVeerman/qwen38-27-Strix-Halo-bench` | `cc527064` | Clean c1-c4 MTP-vs-AR protocol: c1 +2.11x, c2 +28%, c3 +4%, c4 **−22%** — crossover evidence | Q8_K_XL/Vulkan absolute rates; bit-nondeterminism tolerance (we require exact IDs) |
+| `MikeVeerman/qwen38-27-Strix-Halo-bench` | `cc527064` | Clean c1-c4 MTP-vs-AR protocol: c1 +2.11x, c2 +28%, c3 +4%, c4 **−22%** — crossover evidence | Q8_K_XL/Vulkan absolute rates; different correctness contract (our production profile binds numerical/task quality and repeatability; generated-ID equality is diagnostic) |
 | `hogeheer499/strix-halo-guide` | `029320fb` | Paired no-spec control + acceptance + prompt-class reporting discipline; 35B n2/n3 sweet spots | 35B/Vulkan leaderboard rows |
 | `jcbtc/Ling-3.0-Flash-CIRU-int4-Strix-native` (vLLM fork) | `838616875` (on vLLM `d35eb6c4`) | (a) **silent skinny-GEMM Wave32 dispatch cost 28.16x** — audit that serving shapes never silently fall to a wrong owner; (b) **multi-token verifier routing repair was +27.3%** — same family as G2/G3; (c) MTP K1 **scales c1→c6** (26.79→63.51 aggregate) with per-request acceptance — the G2 target state; (d) **`max_num_batched_tokens=8192`** vs the 2048 spec-decode default materially changed aggregate TG — audit our batch window/chunk analogs | MLA/LSE layout fixes (Qwen3.8 is GQA+GDN, not MLA); Ling-specific W4A16 geometry guards |
 
@@ -162,28 +173,27 @@ between c1 and c2 on this diagnostic.
   execute at serving shapes (Ling skinny-GEMM lesson: no silent wrong-owner
   dispatch). Exit: named owner list with ms/token and a ranked gap closure
   order.
-- [x] **T0.3 c>1 acceptance root cause (G3)** — serving route solved in §1a:
-  acceptance is stable (0.64-0.67) at width; the flat line is phase-serial
-  execution + verify per-position cost, not acceptance. The SPECDEC2 physical
-  18.43% C2/C4 collapse remains open on its own surface and moves to T2.1.
-- [ ] **T0.4 Full-suite MTP c1-c8 baseline.** Replace the fixed-prompt
-  diagnostic with the complete mtpbench category suite + heldouts at c1-c8
-  under exact-ID and route-engagement checks. Required before any retained
-  claim from T1+.
+- [x] **T0.3 c>1 legacy acceptance attribution** — accept-per-draft is stable
+  (0.64-0.67) on the forced legacy route; its flat line is not an acceptance
+  collapse. Wide timing fields are chunk-wall copies and are not additive.
+  The staged SPECDEC2 18.43% C2/C4 collapse remains open as T2.1.
+- [ ] **T0.4 Full-suite staged MTP c1-c8 baseline.** Replace the forced legacy
+  fixed-prompt diagnostic with the complete mtpbench category suite + heldouts
+  at c1-c8, route-engagement checks, and the production execution-profile
+  numerical/task gate. Generated-ID equality is recorded diagnostically, not
+  required for promotion. Required before any retained claim from T1+.
 
 ### T1 — close the C1 serving gap (G1)
 
-- [ ] **T1.0 Prefill speed (top lever, from T0.3).** 512-token packed prefill
-  at ~113 tok/s is ~4.5x below the ~520 tok/s external reference and is ~48%
-  of the c1 request wall (and ~44% of c8 wall). Attribute inside
-  `prefill_batch_native` (kernel owner ranking under rocprof at p512, GDN seed
-  capture overhead under `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1`,
-  chunk-256 policy), then close toward the AR route's own prefill economics.
-  Exit: same-host p512 prefill tok/s before/after with exact-ID gate.
-- [ ] **T1.1 Streaming NextN prompt priming (OI-3) on the serving path.**
-  Eliminate the retained full prompt-hidden slab + serial post-prefill draft
-  catch-up; stream the exact shifted fold during target prefill. Approved as
-  an idea in `OLMX-IDEAS.md`; this is the first implementation candidate.
+- [x] **T1.0 Prefill attribution.** Isolated target p512 is 384-402 tok/s;
+  capture/hidden-seed/D2H/full-MTP-env variants differ <0.4%. The apparent
+  ~113 tok/s field belonged to the forced legacy activation owner and packed
+  telemetry bookkeeping, not a prefill kernel. No kernel candidate admitted.
+- [ ] **T1.1 Streaming NextN prompt priming (OI-3) on public serving.** Shared
+  source is already retained and fully gated in staged MTP2; the legacy forced
+  route still uses the slab/catch-up loop. Completion means T0.4 proves the
+  public staged route engages OI-3 and passes the production profile; do not
+  duplicate the sink or optimize the legacy fallback.
 - [ ] **T1.2 Zero-hot-allocation audit for the Q4_K_M serving key.** P3 closed
   this for Q4_K_S SPECDEC2; verify the promoted Q4_K_M serving route has zero
   cycle-local malloc/free after warmup.
@@ -249,8 +259,10 @@ between c1 and c2 on this diagnostic.
 3. No prompt-, token-, category-, or heldout-conditioned policy anywhere.
 4. Same-host evidence only; nothing transfers to/from W7900 or between 8060S
    hosts.
-5. Every candidate names its strict fallback before implementation; production
-   arithmetic passes the complete profile gate.
+5. Every candidate names its strict fallback before implementation. A speed
+   gain promotes when the complete **production execution-profile** numerical,
+   deterministic/isolation, BF16-relative, and task gates pass; generated-ID
+   bit equality with strict/AR is diagnostic and is not a promotion requirement.
 6. Retained win: compact artifact + `benchmarks/README.md` +
    `benchmarks/CHANGELOG.md` + worklog. Rejected: compact artifact + worklog
    only. Reruns follow the focused-repair policy in `AGENTS.md`.
