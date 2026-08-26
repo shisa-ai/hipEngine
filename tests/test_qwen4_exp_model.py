@@ -29,6 +29,10 @@ def test_qwen4_exp_model_plugin_freezes_layer_and_state_geometry() -> None:
     assert plugin.residual_width == 10240
     assert plugin.qsa_dense_equivalent_max_tokens == 2051
     assert plugin.native_context_length == 262144
+    assert "blk.{layer}.ssm_a" in plugin.weight_name_templates
+    assert "blk.{layer}.ssm_dt.bias" in plugin.weight_name_templates
+    assert "blk.{layer}.ssm_a.weight" not in plugin.weight_name_templates
+    assert "blk.{layer}.ssm_dt.weight" not in plugin.weight_name_templates
     assert plugin.ple_device_resident is False
     assert plugin.vision_supported is False
     assert plugin.mtp_supported is False
