@@ -1165,3 +1165,25 @@ especially `qwen35_gguf_mtp2.py`, `qwen35_gguf_nextn.py`,
 through one merge owner. Reusable architecture and no-repeat lessons transfer;
 gfx1151 rates, thresholds, profile manifests, policy fingerprints, and graph
 buckets never do.
+
+## 25. Post-closure exact small-M target update
+
+The merged gfx1100 R6 recovery reopened only the standard-Q4 physical projection
+owner, not product policy. On gfx1151, the generic rowtile transfer was rejected
+because it changed BF16 output bytes. The retained replacement is a strict
+one-wave/one-16-row-tile WMMA sibling that preserves the prior K16 FP16-WMMA,
+FP32-accumulation, and BF16-store schedule while removing invalid 16-row tiles.
+
+Actual Qwen3.8 Q4_K_M weights are exact in **28/28** R6/R8/R12/R16 shape rows.
+Six shapes win **1.755x-2.424x** and now use the small-M owner; narrow
+`5120→1024` loses at **0.651x-0.656x** and retains shared-B. Clean strict
+operation profiles reduce R6/R8/R12/R16 target wall by
+**20.07%/19.25%/17.68%/16.30%**. The complete ten-prompt Q4_K_S gate is exact
+in all **120/120** parent/candidate C2/C4 cells and improves staged throughput
+**9.958→11.462 (+15.10%) / 15.718→17.555 tok/s (+11.69%)**, with every
+category positive and zero candidate D2H/recovery/final tracked ownership.
+
+This is a retained scoped kernel/default improvement, not a campaign or product
+reopening. Physical strict SPECDEC2 remains **0.7510x/0.6218x true AR** at
+C2/C4, so automatic K0 and all closure no-go decisions remain unchanged.
+Evidence: [`2026-08-27-gfx1151-specdec2-smallm-q4-wmma-retained.json`](../benchmarks/results/2026-08-27-gfx1151-specdec2-smallm-q4-wmma-retained.json).
