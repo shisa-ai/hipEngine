@@ -348,12 +348,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     llm = LLM(
         str(args.model),
         backend=str(args.backend),
+        execution_profile=str(args.execution_profile),
         max_active_requests=max(widths),
         max_sequence_length=int(args.max_sequence_length),
         speculative_candidate_budget=int(args.candidate_budget),
     )
+    runtime_profile: dict[str, Any] = {}
     try:
         llm.prepare(max_sequence_length=int(args.max_sequence_length))
+        runtime_profile = {
+            "requested": str(args.execution_profile),
+            "resolved": getattr(llm, "resolved_execution_profile", None),
+            "manifest_sha256": getattr(llm, "execution_profile_manifest_sha256", None),
+            "strict_manifest_sha256": getattr(
+                llm, "execution_profile_strict_manifest_sha256", None
+            ),
+        }
         if args.generation2_diagnostic:
             _install_diagnostic_plan(llm)
         app = create_app(
@@ -473,10 +483,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "warmup_arms_per_width": 2,
             "runs": 1,
             "sampling": "raw greedy, no processed target, natural stop/EOS",
+            "execution_profile": str(args.execution_profile),
             "correctness_contract": str(args.correctness_contract),
+            "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
             "generation2_diagnostic_plan": bool(args.generation2_diagnostic),
             "timing": "blocking OpenAI barrier-to-last-completion complete wall",
         },
+        "runtime_profile": runtime_profile,
         "summary": summary,
         "cells": cells,
         "initial_memory": initial_memory,
@@ -493,6 +506,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", default="hip_gfx1100")
     parser.add_argument("--quant", default="gguf_q4_k_m")
+    parser.add_argument(
+        "--execution-profile",
+        choices=("strict", "production"),
+        default="production",
+    )
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--widths", type=_parse_widths, default=tuple(range(1, 9)))
     parser.add_argument("--max-tokens", type=int, default=24)
