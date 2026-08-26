@@ -71,7 +71,9 @@ def test_qwen4_exp_gdn_decode_matches_cpu_at_production_geometry() -> None:
     alpha = rng.normal(-0.2, 0.1, size=(v_heads,)).astype(np.float32)
     beta_logits = rng.normal(0.0, 0.2, size=(v_heads,)).astype(np.float32)
     dt_bias = rng.normal(-1.0, 0.1, size=(v_heads,)).astype(np.float32)
-    a_log = rng.normal(-0.5, 0.1, size=(v_heads,)).astype(np.float32)
+    log_a = rng.normal(-0.5, 0.1, size=(v_heads,)).astype(np.float32)
+    # Frozen GGUF conversion stores -exp(A_log), not the source A_log value.
+    a = -np.exp(log_a).astype(np.float32)
     norm = rng.normal(1.0, 0.05, size=(value_dim,)).astype(np.float32)
     state = rng.normal(
         0.0,
@@ -86,7 +88,7 @@ def test_qwen4_exp_gdn_decode_matches_cpu_at_production_geometry() -> None:
     query /= np.sqrt(np.float32(head_dim))
     key /= np.sqrt(np.sum(key * key, axis=-1, keepdims=True) + np.float32(1e-6))
     beta = 1.0 / (1.0 + np.exp(-beta_logits))
-    decay = np.exp(-np.exp(a_log) * np.log1p(np.exp(alpha + dt_bias)))
+    decay = np.exp(a * np.log1p(np.exp(alpha + dt_bias)))
     core, expected_state = gdn_prefill_recurrent_segments(
         query[None],
         key[None],
@@ -106,7 +108,7 @@ def test_qwen4_exp_gdn_decode_matches_cpu_at_production_geometry() -> None:
         d_alpha = _upload(alpha, runtime, allocations)
         d_beta = _upload(beta_logits, runtime, allocations)
         d_dt = _upload(dt_bias, runtime, allocations)
-        d_a = _upload(a_log, runtime, allocations)
+        d_a = _upload(a, runtime, allocations)
         d_norm = _upload(norm, runtime, allocations)
         d_state = _upload(state, runtime, allocations)
         d_output = _alloc(expected.shape, np.float32, runtime, allocations)

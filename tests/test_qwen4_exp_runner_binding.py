@@ -68,7 +68,7 @@ def test_bind_qwen4_exp_gdn_layer_maps_every_physical_slot_without_quant_branche
     assert binding.ffn_gr.norm_weight_ptr > 0
     assert binding.mixer.conv_weight_ptr > 0
     assert binding.mixer.dt_bias_ptr > 0
-    assert binding.mixer.a_log_ptr > 0
+    assert binding.mixer.a_ptr > 0
     assert binding.mixer.norm_weight_ptr > 0
 
 

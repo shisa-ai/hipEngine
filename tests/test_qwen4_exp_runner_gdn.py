@@ -48,7 +48,8 @@ def test_qwen4_exp_runner_gdn_token_mixer_matches_reduced_cpu_oracle() -> None:
     }
     conv_weight = rng.normal(0.0, 0.1, size=(qkv_width, kernel_size)).astype(np.float32)
     dt_bias = rng.normal(-1.0, 0.1, size=v_heads).astype(np.float32)
-    a_log = rng.normal(-0.5, 0.1, size=v_heads).astype(np.float32)
+    log_a = rng.normal(-0.5, 0.1, size=v_heads).astype(np.float32)
+    a = -np.exp(log_a).astype(np.float32)
     norm = rng.normal(1.0, 0.05, size=head_dim).astype(np.float32)
     conv_state = rng.normal(0.0, 0.05, size=(qkv_width, kernel_size)).astype(np.float32)
     matrix_state = rng.normal(
@@ -74,7 +75,7 @@ def test_qwen4_exp_runner_gdn_token_mixer_matches_reduced_cpu_oracle() -> None:
     query /= np.sqrt(np.float32(head_dim))
     key /= np.sqrt(np.sum(key * key, axis=-1, keepdims=True) + np.float32(1e-6))
     beta = 1.0 / (1.0 + np.exp(-beta_logits))
-    decay = np.exp(-np.exp(a_log) * np.log1p(np.exp(alpha + dt_bias)))
+    decay = np.exp(a * np.log1p(np.exp(alpha + dt_bias)))
     core, next_matrix = gdn_prefill_recurrent_segments(
         query[None], key[None], value[None], beta[None], decay[None],
         matrix_state[None], [0, 1], [0],
@@ -92,7 +93,7 @@ def test_qwen4_exp_runner_gdn_token_mixer_matches_reduced_cpu_oracle() -> None:
         }
         d_conv_weight = _upload(conv_weight, runtime, allocations)
         d_dt = _upload(dt_bias, runtime, allocations)
-        d_a = _upload(a_log, runtime, allocations)
+        d_a = _upload(a, runtime, allocations)
         d_norm = _upload(norm, runtime, allocations)
         d_conv_state = _upload(conv_state, runtime, allocations)
         d_matrix = _upload(matrix_state, runtime, allocations)
@@ -109,7 +110,7 @@ def test_qwen4_exp_runner_gdn_token_mixer_matches_reduced_cpu_oracle() -> None:
             weights,
             conv_weight_ptr=d_conv_weight.ptr,
             dt_bias_ptr=d_dt.ptr,
-            a_log_ptr=d_a.ptr,
+            a_ptr=d_a.ptr,
             norm_weight_ptr=d_norm.ptr,
             conv_state_ptr=d_conv_state.ptr,
             recurrent_state_ptr=d_matrix.ptr,
