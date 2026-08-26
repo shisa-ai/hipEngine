@@ -347,7 +347,10 @@ def test_mixed_q5_q6_fixed_meta_q6_blocks_match_retained_mixed_bits() -> None:
 )
 def test_mixed_q5_q6_local32_matches_fixed_meta_bits(
     dimensions: tuple[int, int, int, int],
+    hip_test_target_arch: str,
 ) -> None:
+    if hip_test_target_arch != "gfx1100":
+        pytest.skip("Laguna local32 fixed-metadata ownership is gfx1100-qualified")
     rows, in_features = 1, 3072
     rng = np.random.default_rng(20260729 + dimensions[0])
     x = _f32_to_bf16_u16(rng.normal(0.0, 0.2, size=(rows, in_features)))
