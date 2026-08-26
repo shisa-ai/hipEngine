@@ -682,8 +682,10 @@ def final_ownership_from_server(
     *,
     cache_mode: str,
     allowed_cache_bytes: int = 0,
+    persistent_refcounted_pages: int = 0,
+    persistent_pinned_pages: int = 0,
 ) -> dict[str, int]:
-    """Map public readiness/session state into the A0 final-ownership envelope."""
+    """Map public state into request/cache ownership relative to an idle baseline."""
 
     if ready_payload.get("ready") is not True:
         raise AgenticBenchmarkError("server is not ready after agentic run")
@@ -707,8 +709,12 @@ def final_ownership_from_server(
     cache_entries = 0
     cache_bytes = 0
     allowed = int(allowed_cache_bytes)
+    persistent_refs = int(persistent_refcounted_pages)
+    persistent_pins = int(persistent_pinned_pages)
     if allowed < 0:
         raise AgenticBenchmarkError("allowed_cache_bytes must be non-negative")
+    if persistent_refs < 0 or persistent_pins < 0:
+        raise AgenticBenchmarkError("persistent ownership baseline must be non-negative")
     if cache_mode == "off":
         allowed = 0
     elif cache_mode == "radix":
@@ -753,14 +759,19 @@ def final_ownership_from_server(
         allowed = server_limit
     else:
         raise AgenticBenchmarkError("cache_mode must be off or radix")
-    request_refs = refs - cache_pages
+    request_refs = refs - cache_pages - persistent_refs
+    request_pins = pins - persistent_pins
+    if request_refs < 0 or request_pins < 0:
+        raise AgenticBenchmarkError(
+            "server ownership is below its declared persistent baseline"
+        )
     if any(
         (
             pending,
             active,
             worker_active,
             request_refs,
-            pins,
+            request_pins,
             len(sessions),
             pending_sessions,
             active_continuations,
@@ -774,8 +785,8 @@ def final_ownership_from_server(
         "model_active_requests": active,
         "session_count": len(sessions),
         "kv_refcounted_pages": request_refs,
-        "kv_pinned_pages": pins,
-        "graph_owners": pins,
+        "kv_pinned_pages": request_pins,
+        "graph_owners": request_pins,
         "workspace_owners": active,
         "cache_resident_entries": cache_entries,
         "cache_resident_pages": cache_pages,

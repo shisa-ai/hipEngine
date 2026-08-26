@@ -1,13 +1,13 @@
 # Agentic Serving Optimization Board
 
-Last updated: 2026-08-25
+Last updated: 2026-08-26
 
-The A0-A6 gfx1100 board below is closed historical evidence. The approved
-quality-only ZBook follow-up is
-[`AGENTIC-QUALITY2.md`](AGENTIC-QUALITY2.md): it refreshes current-main live
-automatic-tool quality, freezes disjoint development/heldout external-oracle
-tasks, admits at most one model-general runtime mechanism, and carries no
-performance claim.
+The A0-A6 gfx1100 board below and its quality-only ZBook
+[`AGENTIC-QUALITY2`](AGENTIC-QUALITY2.md) follow-up are both closed. The ZBook
+campaign freezes disjoint development/heldout external-oracle tasks, publishes
+Qwen3.6/Qwen3.8/Ornith product-quality rows, and retains `no_implementation`
+after finding no runtime-owned candidate trigger. It carries no performance
+claim.
 
 `AGENTIC-OPT.md` is the status, measurement, and optimization board for
 using hipEngine as a local coding-agent runtime. The functional server contract
@@ -52,11 +52,11 @@ explicit host fallback. The GGUF native sampler therefore stays default-off.
 A4 routing is also closed without promotion: every candidate fails a balanced
 mixed-arrival SLO or exact-ID gate. A5 now closes pressure/soak on unchanged
 package defaults: all nine workloads pass exactness, SLO, bounded-resource, and
-final-ownership gates across 122 requests. A6 now closes the first broad
+final-ownership gates across 122 requests. A6 closes the first broad
 external-oracle quality packet: 10/48 complete tool turns pass across four
-families, with no performance claim. The queued A0-A6 measurement program is
-complete. Its quality follow-on is now the approved ZBook
-[`AGENTIC-QUALITY2`](AGENTIC-QUALITY2.md) AQ0-AQ13 campaign; the independent A4
+families, with no performance claim. The queued A0-A6 measurement program and
+the ZBook [`AGENTIC-QUALITY2`](AGENTIC-QUALITY2.md) AQ0-AQ13 follow-on are
+complete; the latter retains no runtime mechanism. The independent A4
 performance blocker remains historical gfx1100 work and is not part of that
 quality denominator.
 

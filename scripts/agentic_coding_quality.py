@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """Collect natural automatic-tool quality from a live hipEngine server.
 
-Unlike ``agentic_coding_live.py``, this A6 lane does not produce latency or
-goodput rollups. Model failures are retained as scored quality observations and
-can never set ``performance_claim=true``.
+Unlike ``agentic_coding_live.py``, this quality lane does not produce latency
+or goodput rollups. Model failures are retained as scored quality observations
+and can never set ``performance_claim=true``.
 """
 
 from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import hashlib
 import json
 import os
 import sys
+import tempfile
 import time
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -41,13 +44,91 @@ from hipengine.benchmark.agentic_quality import (  # noqa: E402
 from hipengine.benchmark.provenance import collect_artifact_provenance  # noqa: E402
 from scripts.agentic_coding_live import LiveHTTPTransport  # noqa: E402
 
-
 _QUALITY_SYSTEM_POLICY = (
     "You are measuring automatic tool selection across repository, general, and "
     "multilingual tasks. Choose the appropriate tool from the declared set and call "
     "it exactly once. Return only the tool call. Do not expose reasoning or raw tool "
     "markers.\n\n"
 )
+
+
+def _canonical_sha256(value: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _quality_build_profile(backend: str) -> str:
+    normalized = str(backend).strip()
+    if not normalized:
+        raise AgenticBenchmarkError("quality backend must be a non-empty string")
+    return f"{normalized}_agentic_auto_tool_quality"
+
+
+def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True, ensure_ascii=False)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _validate_live_capabilities(
+    capabilities: Mapping[str, Any],
+    *,
+    model: str,
+    backend: str,
+    cache_mode: str,
+) -> None:
+    model_capability = capabilities.get("model")
+    if not isinstance(model_capability, Mapping):
+        raise AgenticBenchmarkError("server capabilities omit model identity")
+    served_model = model_capability.get("id")
+    if served_model != model:
+        raise AgenticBenchmarkError(
+            f"served model is {served_model!r}, expected {model!r}"
+        )
+    served_backend = model_capability.get("backend")
+    if served_backend not in {backend, "auto", None}:
+        raise AgenticBenchmarkError(
+            f"served backend is {served_backend!r}, expected {backend!r}"
+        )
+    cache = capabilities.get("cache")
+    if isinstance(cache, Mapping) and cache.get("prefix_cache") not in {None, cache_mode}:
+        raise AgenticBenchmarkError(
+            f"server prefix cache is {cache.get('prefix_cache')!r}, expected {cache_mode!r}"
+        )
+    tokenizer = capabilities.get("tokenizer")
+    if not isinstance(tokenizer, Mapping) or not all(
+        tokenizer.get(name) is True for name in ("tokenize", "detokenize")
+    ):
+        raise AgenticBenchmarkError(
+            "server capabilities must advertise tokenize and detokenize"
+        )
+    features = capabilities.get("features")
+    tools = features.get("tools") if isinstance(features, Mapping) else None
+    if not isinstance(tools, Mapping) or tools.get("enabled") is not True:
+        raise AgenticBenchmarkError("server capabilities do not enable tools")
+    if tools.get("strict_result_validation") is not True:
+        raise AgenticBenchmarkError(
+            "server capabilities do not advertise strict tool result validation"
+        )
 
 
 def _quality_chat_payload(
@@ -70,11 +151,39 @@ def _quality_chat_payload(
     }
 
 
+def _idle_persistent_ownership_baseline(
+    transport: LiveHTTPTransport,
+    *,
+    cache_mode: str,
+) -> dict[str, int]:
+    ready = transport.ready()
+    kv_capacity = ready.get("kv_capacity") if isinstance(ready, Mapping) else None
+    pool = kv_capacity.get("pool") if isinstance(kv_capacity, Mapping) else None
+    if not isinstance(pool, Mapping):
+        raise AgenticBenchmarkError("server readiness omits KV pool ownership")
+    try:
+        baseline = {
+            "kv_refcounted_pages": int(pool.get("refcounted_pages", 0)),
+            "kv_pinned_pages": int(pool.get("pinned_pages", 0)),
+        }
+    except (TypeError, ValueError) as exc:
+        raise AgenticBenchmarkError("server KV ownership is not integral") from exc
+    final_ownership_from_server(
+        ready,
+        transport.sessions(),
+        cache_mode=cache_mode,
+        persistent_refcounted_pages=baseline["kv_refcounted_pages"],
+        persistent_pinned_pages=baseline["kv_pinned_pages"],
+    )
+    return baseline
+
+
 def _wait_for_final_ownership(
     transport: LiveHTTPTransport,
     *,
     cache_mode: str,
     timeout_s: float,
+    persistent_ownership: Mapping[str, int],
 ) -> dict[str, int]:
     deadline = time.monotonic() + float(timeout_s)
     last_error: AgenticBenchmarkError | None = None
@@ -84,6 +193,12 @@ def _wait_for_final_ownership(
                 transport.ready(),
                 transport.sessions(),
                 cache_mode=cache_mode,
+                persistent_refcounted_pages=int(
+                    persistent_ownership["kv_refcounted_pages"]
+                ),
+                persistent_pinned_pages=int(
+                    persistent_ownership["kv_pinned_pages"]
+                ),
             )
         except AgenticBenchmarkError as exc:
             last_error = exc
@@ -107,6 +222,7 @@ def collect_live_quality_records(
     max_tokens: int,
     cache_mode: str,
     idle_timeout_s: float,
+    checkpoint_callback: Callable[[Mapping[str, Any]], None] | None = None,
 ) -> tuple[AgenticWorkloadSuite, dict[str, Any]]:
     """Collect independent natural auto-tool attempts over canonical valid histories."""
 
@@ -114,7 +230,8 @@ def collect_live_quality_records(
         raise AgenticBenchmarkError("concurrency, runs, and max_tokens must be positive")
     if cache_mode != "off":
         raise AgenticBenchmarkError(
-            "A6 quality collector supports cache_mode=off only until prefix quality gates exist"
+            "agentic quality collector supports cache_mode=off only until prefix "
+            "quality gates exist"
         )
     suite = load_agentic_workload_suite(workloads_path)
     if workload_id is not None and workload_ids is not None:
@@ -133,13 +250,59 @@ def collect_live_quality_records(
     if unknown:
         raise AgenticBenchmarkError(f"unknown workload ids: {unknown}")
     capabilities = transport.capabilities()
-    cache = capabilities.get("cache")
-    if isinstance(cache, Mapping) and cache.get("prefix_cache") not in {None, cache_mode}:
-        raise AgenticBenchmarkError(
-            f"server prefix cache is {cache.get('prefix_cache')!r}, expected {cache_mode!r}"
-        )
+    if not isinstance(capabilities, Mapping):
+        raise AgenticBenchmarkError("server capabilities must be an object")
+    _validate_live_capabilities(
+        capabilities,
+        model=model,
+        backend=backend,
+        cache_mode=cache_mode,
+    )
+    capabilities_payload = json.loads(
+        json.dumps(capabilities, sort_keys=True, ensure_ascii=False)
+    )
+    persistent_ownership = _idle_persistent_ownership_baseline(
+        transport,
+        cache_mode=cache_mode,
+    )
     tools = build_openai_tools(suite)
     records: list[dict[str, Any]] = []
+    raw_turns: list[dict[str, Any]] = []
+    total_turns = runs * concurrency * sum(
+        len(suite.workloads[workload_id]["turns"])
+        for workload_id in selected_workloads
+    )
+
+    def checkpoint(*, status: str, final_ownership: Mapping[str, Any] | None = None) -> None:
+        if checkpoint_callback is None:
+            return
+        payload: dict[str, Any] = {
+            "kind": "hipengine_agentic_coding_quality_checkpoint",
+            "schema_version": 1,
+            "status": status,
+            "performance_claim": False,
+            "configuration": {
+                "model": str(model),
+                "backend": str(backend),
+                "cache_mode": cache_mode,
+                "concurrency": int(concurrency),
+                "repetitions": int(runs),
+                "max_tokens": int(max_tokens),
+                "workloads": list(selected_workloads),
+                "server_capabilities_sha256": _canonical_sha256(capabilities_payload),
+                "persistent_ownership_baseline": dict(persistent_ownership),
+            },
+            "progress": {
+                "completed_turns": len(records),
+                "total_turns": total_turns,
+            },
+            "server_capabilities": capabilities_payload,
+            "turn_records": records,
+            "raw_turns": raw_turns,
+        }
+        if final_ownership is not None:
+            payload["final_ownership"] = dict(final_ownership)
+        checkpoint_callback(payload)
 
     for run_index in range(runs):
         for selected_workload in selected_workloads:
@@ -188,25 +351,45 @@ def collect_live_quality_records(
                 for prepared_row, response in zip(prepared, responses, strict=True):
                     agent_id, session_id, prompt_ids, _payload = prepared_row
                     request_id = f"{run_id}-{agent_id}-turn-{turn_index}"
-                    records.append(
-                        normalize_chat_quality_turn(
-                            suite,
-                            workload_id=selected_workload,
-                            turn_index=turn_index,
-                            run_id=run_id,
-                            agent_id=agent_id,
-                            session_id=session_id,
-                            request_id=request_id,
-                            prompt_token_ids=prompt_ids,
-                            payload=response,
-                        )
+                    record = normalize_chat_quality_turn(
+                        suite,
+                        workload_id=selected_workload,
+                        turn_index=turn_index,
+                        run_id=run_id,
+                        agent_id=agent_id,
+                        session_id=session_id,
+                        request_id=request_id,
+                        prompt_token_ids=prompt_ids,
+                        payload=response,
+                    )
+                    records.append(record)
+                    raw_turns.append(
+                        {
+                            "workload_id": selected_workload,
+                            "run_id": run_id,
+                            "agent_id": agent_id,
+                            "session_id": session_id,
+                            "turn_index": turn_index,
+                            "request_id": request_id,
+                            "prompt_token_ids": list(prompt_ids),
+                            "response": response,
+                        }
+                    )
+                    checkpoint(status="in_progress")
+                    print(
+                        f"quality progress {len(records)}/{total_turns}: "
+                        f"{selected_workload} run={run_index} turn={turn_index} "
+                        f"outcome={record['quality']['outcome']}",
+                        flush=True,
                     )
 
     ownership = _wait_for_final_ownership(
         transport,
         cache_mode=cache_mode,
         timeout_s=idle_timeout_s,
+        persistent_ownership=persistent_ownership,
     )
+    checkpoint(status="complete", final_ownership=ownership)
     return suite, {
         "kind": AGENTIC_QUALITY_RECORDS_KIND,
         "schema_version": 1,
@@ -228,6 +411,11 @@ def collect_live_quality_records(
             "history": "canonical_valid_fixture_transcript",
             "workloads": list(selected_workloads),
             "quality_system_policy": "automatic_selection_without_expected_tool_name_hint",
+            "repetitions": int(runs),
+            "max_tokens": int(max_tokens),
+            "server_capabilities_sha256": _canonical_sha256(capabilities_payload),
+            "server_capabilities": capabilities_payload,
+            "persistent_ownership_baseline": dict(persistent_ownership),
         },
         "turn_records": records,
         "final_ownership": ownership,
@@ -236,7 +424,7 @@ def collect_live_quality_records(
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Collect the non-performance A6 automatic-tool quality lane."
+        description="Collect the non-performance automatic-tool quality lane."
     )
     parser.add_argument("--base-url", default="http://127.0.0.1:8000/v1")
     parser.add_argument("--api-key")
@@ -259,6 +447,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout-s", type=float, default=600.0)
     parser.add_argument("--idle-timeout-s", type=float, default=30.0)
     parser.add_argument("--records-json", type=Path, required=True)
+    parser.add_argument(
+        "--checkpoint-json",
+        type=Path,
+        help="Atomic per-turn raw-response checkpoint (default: RECORDS.checkpoint.json)",
+    )
     parser.add_argument("--json", type=Path, required=True)
     return parser
 
@@ -278,6 +471,9 @@ def main(argv: list[str] | None = None) -> int:
             selected_workloads = ()
         else:
             selected_workloads = tuple(args.workload or ("small_repo",))
+        checkpoint_json = args.checkpoint_json or args.records_json.with_name(
+            f"{args.records_json.stem}.checkpoint.json"
+        )
         suite, records = collect_live_quality_records(
             transport,
             workloads_path=args.workloads,
@@ -289,6 +485,10 @@ def main(argv: list[str] | None = None) -> int:
             max_tokens=args.max_tokens,
             cache_mode=args.cache_mode,
             idle_timeout_s=args.idle_timeout_s,
+            checkpoint_callback=lambda payload: _atomic_write_json(
+                checkpoint_json,
+                payload,
+            ),
         )
         provenance = None
         if args.model_path is not None:
@@ -319,7 +519,7 @@ def main(argv: list[str] | None = None) -> int:
                         "GPU_MAX_HW_QUEUES",
                     )
                 },
-                build_profile="gfx1100_agentic_auto_tool_quality",
+                build_profile=_quality_build_profile(args.backend),
                 timing_protocol=(
                     "real localhost blocking OpenAI chat; response-owned IDs; "
                     "external result/patch/test oracles; no latency or throughput fields"
@@ -340,22 +540,14 @@ def main(argv: list[str] | None = None) -> int:
             records,
             provenance=provenance,
         )
-        args.records_json.parent.mkdir(parents=True, exist_ok=True)
-        args.json.parent.mkdir(parents=True, exist_ok=True)
-        args.records_json.write_text(
-            json.dumps(records, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        args.json.write_text(
-            json.dumps(artifact, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        _atomic_write_json(args.records_json, records)
+        _atomic_write_json(args.json, artifact)
     except (AgenticBenchmarkError, json.JSONDecodeError, OSError) as exc:
         print(f"live agentic quality benchmark rejected: {exc}", file=sys.stderr)
         return 2
     quality = artifact["quality"]
     print(
-        f"A6 quality collected: {quality['successes']}/{quality['attempts']} successful "
+        f"Agentic quality collected: {quality['successes']}/{quality['attempts']} successful "
         f"tool turns ({100.0 * quality['success_rate']:.1f}%) -> {args.json}"
     )
     return 0

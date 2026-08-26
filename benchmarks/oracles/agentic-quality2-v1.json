@@ -1,0 +1,1205 @@
+{
+  "cases": {
+    "aq2_dev_code_clamp_en": {
+      "code_case": "code_clamp_readings",
+      "expected_result_sha256": "331e8f1016cea71607f7d36ce93ca68a3d9b6b64e8e15a55fd2d2f92dc8eb248",
+      "kind": "code",
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_code_clamp_en"
+    },
+    "aq2_dev_code_group_en": {
+      "code_case": "code_group_fixed",
+      "expected_result_sha256": "ae831f61cfac290c4042d30fde4401fa7293a09fd7ef01419dcc6d81fe4337bb",
+      "kind": "code",
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_code_group_en"
+    },
+    "aq2_dev_code_label_en": {
+      "code_case": "code_normalize_label",
+      "expected_result_sha256": "d378541a0c3a3061482c3ec7e9f667d8e3addcdbe37503b24e9da4a0f1258dab",
+      "kind": "code",
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_code_label_en"
+    },
+    "aq2_dev_code_rises_en": {
+      "code_case": "code_count_rises",
+      "expected_result_sha256": "7a1d23031d3051ba23c519727646084e03f25d3647aed10a2c6d727ff6272eac",
+      "kind": "code",
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_code_rises_en"
+    },
+    "aq2_dev_instruction_bullets_en": {
+      "expected_result_sha256": "2790d0c0d98945be414df9ad649f20f3308d9bf544a3a0f7c9a6630f55dc5c14",
+      "instruction_case": "instruction_three_bullets",
+      "kind": "instruction",
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_instruction_bullets_en"
+    },
+    "aq2_dev_instruction_ja_lines": {
+      "expected_result_sha256": "2790d0c0d98945be414df9ad649f20f3308d9bf544a3a0f7c9a6630f55dc5c14",
+      "instruction_case": "instruction_ja_two_lines",
+      "kind": "instruction",
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_instruction_ja_lines"
+    },
+    "aq2_dev_instruction_json_en": {
+      "expected_result_sha256": "b78ae5a8be0933e86ecb995319d2dffec9be097585da3b69a75147905db39182",
+      "instruction_case": "instruction_json_keys",
+      "kind": "instruction",
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_instruction_json_en"
+    },
+    "aq2_dev_instruction_status_en": {
+      "expected_result_sha256": "2244f933f66bf384354bf06aef1d95176239f67326f479983cdccf22e9ae3e0b",
+      "instruction_case": "instruction_status_line",
+      "kind": "instruction",
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_instruction_status_en"
+    },
+    "aq2_dev_repo_patch_ingest_en": {
+      "expected_result_sha256": "3ba73c08f883facc9e1f30c8dfc87fb5435ecb394845424e94cc06e39f0ad861",
+      "kind": "patch",
+      "reference_arguments": {
+        "patch_id": "ingest_sample_overflow"
+      },
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_repo_patch_ingest_en"
+    },
+    "aq2_dev_repo_read_config_en": {
+      "expected_result_sha256": "b82f9fa81b4cae78e6f691324b40780b08c88804eb46db469c6b5c392f90de89",
+      "kind": "read",
+      "reference_arguments": {
+        "mode": "summary",
+        "path": "config/stations.json"
+      },
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_repo_read_config_en"
+    },
+    "aq2_dev_repo_search_ingest_en": {
+      "expected_result_sha256": "8e00c89b130953927cd0e589ea27d837d987b2876fc4476e69c273413098659c",
+      "kind": "search",
+      "reference_arguments": {
+        "path": "src/ingest.py",
+        "query": "raise ValueError"
+      },
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_repo_search_ingest_en"
+    },
+    "aq2_dev_repo_test_ingest_en": {
+      "expected_result_sha256": "3d072bdb7563ffecfe42dd171bf95d30ab85a7a575f3258a581f0c8d0865123e",
+      "kind": "test",
+      "reference_arguments": {
+        "suite": "ingest"
+      },
+      "setup_patches": [
+        "ingest_sample_overflow"
+      ],
+      "split": "development",
+      "workload_id": "aq2_dev_repo_test_ingest_en"
+    },
+    "aq2_dev_tool_enum_lookup_ja": {
+      "expected_result_sha256": "613d97c8f377cf2159deed9be0da8bc93dd295517c00df8c6f7d458a4d36706f",
+      "kind": "lookup",
+      "reference_arguments": {
+        "key": "rotation_policy_ja",
+        "locale": "ja"
+      },
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_tool_enum_lookup_ja"
+    },
+    "aq2_dev_tool_irrelevant_en": {
+      "expected_result_sha256": "364094df98f72632d5072601f55a5d3c9322327038641b709a0e8c50cde6896f",
+      "kind": "no_tool",
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_tool_irrelevant_en"
+    },
+    "aq2_dev_tool_multiple_en": {
+      "expected_result_sha256": "6b6429b1de6150150713119bf77eba8de8bc8d50a62153b00dbd81523257efdd",
+      "kind": "multiple",
+      "reference_calls": [
+        {
+          "arguments": {
+            "key": "station_owner",
+            "locale": "en"
+          },
+          "tool": "lookup_record"
+        },
+        {
+          "arguments": {
+            "expression": "18 * 7"
+          },
+          "tool": "calculate"
+        }
+      ],
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_tool_multiple_en"
+    },
+    "aq2_dev_tool_nested_alert_en": {
+      "expected_result_sha256": "676cc80016f0e4d381ab1fcf658d8089c0323629b9c63ff4448770dcd7c0b8ce",
+      "kind": "transform",
+      "reference_arguments": {
+        "include_metadata": true,
+        "mode": "normalize",
+        "record": {
+          "priority": "high",
+          "station": "west-17",
+          "tags": [
+            "night",
+            "edge"
+          ]
+        }
+      },
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_tool_nested_alert_en"
+    },
+    "aq2_dev_tool_optional_read_en": {
+      "expected_result_sha256": "b82f9fa81b4cae78e6f691324b40780b08c88804eb46db469c6b5c392f90de89",
+      "kind": "read",
+      "reference_arguments": {
+        "mode": "summary",
+        "path": "config/stations.json"
+      },
+      "setup_patches": [],
+      "split": "development",
+      "workload_id": "aq2_dev_tool_optional_read_en"
+    },
+    "aq2_held_code_ranges_en": {
+      "code_case": "code_merge_ranges",
+      "expected_result_sha256": "fba3160afab1f1aed34e084d9a958e55687105f1ed4f89f496d13917b4faabdf",
+      "kind": "code",
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_code_ranges_en"
+    },
+    "aq2_held_code_rolling_ja": {
+      "code_case": "code_rolling_average",
+      "expected_result_sha256": "ea5846ae4da2e6544a0f3168b5719dd122a3b4a055d1ba2a64266f0acb76c238",
+      "kind": "code",
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_code_rolling_ja"
+    },
+    "aq2_held_code_station_ja": {
+      "code_case": "code_parse_station_code",
+      "expected_result_sha256": "270c05170ede0604038a5439b991e62349a78636e9838422cf4764e4899b530b",
+      "kind": "code",
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_code_station_ja"
+    },
+    "aq2_held_code_unique_mixed": {
+      "code_case": "code_stable_unique",
+      "expected_result_sha256": "109a6d2da102d642a0498d909da2b2e7e7d543b3841a637cc14db0086a9a21b6",
+      "kind": "code",
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_code_unique_mixed"
+    },
+    "aq2_held_instruction_bilingual_mixed": {
+      "expected_result_sha256": "2790d0c0d98945be414df9ad649f20f3308d9bf544a3a0f7c9a6630f55dc5c14",
+      "instruction_case": "instruction_bilingual_two_lines",
+      "kind": "instruction",
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_instruction_bilingual_mixed"
+    },
+    "aq2_held_instruction_ja_bullets": {
+      "expected_result_sha256": "2790d0c0d98945be414df9ad649f20f3308d9bf544a3a0f7c9a6630f55dc5c14",
+      "instruction_case": "instruction_ja_three_bullets",
+      "kind": "instruction",
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_instruction_ja_bullets"
+    },
+    "aq2_held_instruction_numbered_en": {
+      "expected_result_sha256": "2790d0c0d98945be414df9ad649f20f3308d9bf544a3a0f7c9a6630f55dc5c14",
+      "instruction_case": "instruction_four_numbered",
+      "kind": "instruction",
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_instruction_numbered_en"
+    },
+    "aq2_held_instruction_sentence_en": {
+      "expected_result_sha256": "6acdeb77de7a12578682709ff830a0c164b3ab45e81527370a24929a7397c54d",
+      "instruction_case": "instruction_one_sentence",
+      "kind": "instruction",
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_instruction_sentence_en"
+    },
+    "aq2_held_repo_patch_retry_en": {
+      "expected_result_sha256": "7ec095b0ed0c8481c8a14f3f1f83fcde43f861391e41facadc4050e6728888f3",
+      "kind": "patch",
+      "reference_arguments": {
+        "patch_id": "retry_bounded_jitter"
+      },
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_repo_patch_retry_en"
+    },
+    "aq2_held_repo_read_operator_ja": {
+      "expected_result_sha256": "91ed68f3ec221a4e9db97f6ff8723942805d9c8a1aa3b784b6e829e434ad3213",
+      "kind": "read",
+      "reference_arguments": {
+        "mode": "summary",
+        "path": "docs/operator_ja.md"
+      },
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_repo_read_operator_ja"
+    },
+    "aq2_held_repo_search_operator_ja": {
+      "expected_result_sha256": "4c6723baae1bab63d3bae9be1194ad838e738d5d65b5729c5a0e28419243ea26",
+      "kind": "search",
+      "reference_arguments": {
+        "path": "docs/operator_ja.md",
+        "query": "監視"
+      },
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_repo_search_operator_ja"
+    },
+    "aq2_held_repo_test_full_mixed": {
+      "expected_result_sha256": "80cc46788340b6364d93776d376d47b81358a1a381d05253550984ebcde9b97c",
+      "kind": "test",
+      "reference_arguments": {
+        "suite": "full"
+      },
+      "setup_patches": [
+        "ingest_sample_overflow",
+        "retry_bounded_jitter"
+      ],
+      "split": "heldout",
+      "workload_id": "aq2_held_repo_test_full_mixed"
+    },
+    "aq2_held_tool_enum_lookup_mixed": {
+      "expected_result_sha256": "e32454a50169dbcf65a3ae572f9202bebd9c392cefd0ce67115505c6a035f5c2",
+      "kind": "lookup",
+      "reference_arguments": {
+        "key": "canary_window",
+        "locale": "en"
+      },
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_tool_enum_lookup_mixed"
+    },
+    "aq2_held_tool_irrelevant_ja": {
+      "expected_result_sha256": "364094df98f72632d5072601f55a5d3c9322327038641b709a0e8c50cde6896f",
+      "kind": "no_tool",
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_tool_irrelevant_ja"
+    },
+    "aq2_held_tool_multiple_en": {
+      "expected_result_sha256": "83ac07903e6ca1b73eacfbc9eb6278f668f8e35799afe09c3b49b4d9b943cc58",
+      "kind": "multiple",
+      "reference_calls": [
+        {
+          "arguments": {
+            "mode": "summary",
+            "path": "docs/operator.md"
+          },
+          "tool": "read_file"
+        },
+        {
+          "arguments": {
+            "expression": "(84 + 42) / 6"
+          },
+          "tool": "calculate"
+        }
+      ],
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_tool_multiple_en"
+    },
+    "aq2_held_tool_nested_asset_mixed": {
+      "expected_result_sha256": "561234d0bfc77d0a1f90c7a3a09d40ac67f3425f6f0a535acf52bfa063b880df",
+      "kind": "transform",
+      "reference_arguments": {
+        "mode": "normalize",
+        "record": {
+          "priority": "medium",
+          "station": "north-2",
+          "tags": [
+            "daytime",
+            "core"
+          ]
+        }
+      },
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_tool_nested_asset_mixed"
+    },
+    "aq2_held_tool_optional_search_ja": {
+      "expected_result_sha256": "fc22690adbb891add78da123c34a700112e63ca58ff96f4933b71e1ce531d36f",
+      "kind": "search",
+      "reference_arguments": {
+        "path": "docs",
+        "query": "rollback snapshot"
+      },
+      "setup_patches": [],
+      "split": "heldout",
+      "workload_id": "aq2_held_tool_optional_search_ja"
+    }
+  },
+  "code_cases": {
+    "code_clamp_readings": {
+      "allowed_imports": [],
+      "entry_point": "clamp_readings",
+      "hidden_tests": [
+        {
+          "args": [
+            [
+              -2,
+              4,
+              11
+            ],
+            0,
+            8
+          ],
+          "expected": [
+            0,
+            4,
+            8
+          ],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            [],
+            1,
+            3
+          ],
+          "expected": [],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            [
+              2,
+              2
+            ],
+            2,
+            2
+          ],
+          "expected": [
+            2,
+            2
+          ],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            [
+              9,
+              -1
+            ],
+            0,
+            5
+          ],
+          "expected": [
+            5,
+            0
+          ],
+          "kwargs": {}
+        }
+      ],
+      "signature": "clamp_readings(values, low, high)"
+    },
+    "code_count_rises": {
+      "allowed_imports": [],
+      "entry_point": "count_rises",
+      "hidden_tests": [
+        {
+          "args": [
+            [
+              1,
+              3,
+              2,
+              4
+            ]
+          ],
+          "expected": 2,
+          "kwargs": {}
+        },
+        {
+          "args": [
+            []
+          ],
+          "expected": 0,
+          "kwargs": {}
+        },
+        {
+          "args": [
+            [
+              3
+            ]
+          ],
+          "expected": 0,
+          "kwargs": {}
+        },
+        {
+          "args": [
+            [
+              3,
+              2,
+              1
+            ]
+          ],
+          "expected": 0,
+          "kwargs": {}
+        }
+      ],
+      "signature": "count_rises(values)"
+    },
+    "code_group_fixed": {
+      "allowed_imports": [],
+      "entry_point": "group_fixed",
+      "hidden_tests": [
+        {
+          "args": [
+            [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            2
+          ],
+          "expected": [
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              5
+            ]
+          ],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            [],
+            3
+          ],
+          "expected": [],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            [
+              1,
+              2
+            ],
+            5
+          ],
+          "expected": [
+            [
+              1,
+              2
+            ]
+          ],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            [
+              "a",
+              "b",
+              "c"
+            ],
+            1
+          ],
+          "expected": [
+            [
+              "a"
+            ],
+            [
+              "b"
+            ],
+            [
+              "c"
+            ]
+          ],
+          "kwargs": {}
+        }
+      ],
+      "signature": "group_fixed(values, size)"
+    },
+    "code_merge_ranges": {
+      "allowed_imports": [],
+      "entry_point": "merge_ranges",
+      "hidden_tests": [
+        {
+          "args": [
+            [
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                5
+              ],
+              [
+                8,
+                9
+              ]
+            ]
+          ],
+          "expected": [
+            [
+              1,
+              5
+            ],
+            [
+              8,
+              9
+            ]
+          ],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            []
+          ],
+          "expected": [],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            [
+              [
+                4,
+                4
+              ]
+            ]
+          ],
+          "expected": [
+            [
+              4,
+              4
+            ]
+          ],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            [
+              [
+                5,
+                7
+              ],
+              [
+                1,
+                2
+              ],
+              [
+                2,
+                3
+              ]
+            ]
+          ],
+          "expected": [
+            [
+              1,
+              3
+            ],
+            [
+              5,
+              7
+            ]
+          ],
+          "kwargs": {}
+        }
+      ],
+      "signature": "merge_ranges(ranges)"
+    },
+    "code_normalize_label": {
+      "allowed_imports": [],
+      "entry_point": "normalize_label",
+      "hidden_tests": [
+        {
+          "args": [
+            "  North Station  "
+          ],
+          "expected": "north-station",
+          "kwargs": {}
+        },
+        {
+          "args": [
+            "A__B"
+          ],
+          "expected": "a-b",
+          "kwargs": {}
+        },
+        {
+          "args": [
+            "already-ok"
+          ],
+          "expected": "already-ok",
+          "kwargs": {}
+        },
+        {
+          "args": [
+            " x   y_z "
+          ],
+          "expected": "x-y-z",
+          "kwargs": {}
+        }
+      ],
+      "signature": "normalize_label(text)"
+    },
+    "code_parse_station_code": {
+      "allowed_imports": [],
+      "entry_point": "parse_station_code",
+      "hidden_tests": [
+        {
+          "args": [
+            "west-17"
+          ],
+          "expected": [
+            "west",
+            17
+          ],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            "north-2"
+          ],
+          "expected": [
+            "north",
+            2
+          ],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            "a-0"
+          ],
+          "expected": [
+            "a",
+            0
+          ],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            "tokyo-108"
+          ],
+          "expected": [
+            "tokyo",
+            108
+          ],
+          "kwargs": {}
+        }
+      ],
+      "signature": "parse_station_code(text)"
+    },
+    "code_rolling_average": {
+      "allowed_imports": [],
+      "entry_point": "rolling_average",
+      "hidden_tests": [
+        {
+          "args": [
+            [
+              1,
+              2,
+              3,
+              4
+            ],
+            2
+          ],
+          "expected": [
+            1.5,
+            2.5,
+            3.5
+          ],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            [
+              5
+            ],
+            1
+          ],
+          "expected": [
+            5.0
+          ],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            [],
+            3
+          ],
+          "expected": [],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            [
+              2,
+              4,
+              8
+            ],
+            3
+          ],
+          "expected": [
+            4.666666666666667
+          ],
+          "kwargs": {}
+        }
+      ],
+      "signature": "rolling_average(values, window)"
+    },
+    "code_stable_unique": {
+      "allowed_imports": [],
+      "entry_point": "stable_unique",
+      "hidden_tests": [
+        {
+          "args": [
+            [
+              3,
+              1,
+              3,
+              2,
+              1
+            ]
+          ],
+          "expected": [
+            3,
+            1,
+            2
+          ],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            []
+          ],
+          "expected": [],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            [
+              "a",
+              "a",
+              "b"
+            ]
+          ],
+          "expected": [
+            "a",
+            "b"
+          ],
+          "kwargs": {}
+        },
+        {
+          "args": [
+            [
+              false,
+              true,
+              false
+            ]
+          ],
+          "expected": [
+            false,
+            true
+          ],
+          "kwargs": {}
+        }
+      ],
+      "signature": "stable_unique(values)"
+    }
+  },
+  "description": "Project-original hermetic repository, code, instruction, no-tool, multiple-call, and fail-safe oracle data. Hidden expected behavior is never rendered into model prompts.",
+  "fail_safe_controls": [
+    {
+      "class": "malformed",
+      "expected": {
+        "accepted": false,
+        "finish_reason": "invalid_tool_call",
+        "public_content_empty": true,
+        "public_tool_call_count": 0,
+        "session_commit": "none"
+      },
+      "id": "aq2_dev_control_malformed_json",
+      "raw_text": "<tool_call>{\"name\":\"read_file\",\"arguments\":}</tool_call>",
+      "split": "development",
+      "tools_mode": "auto"
+    },
+    {
+      "class": "truncated",
+      "expected": {
+        "accepted": false,
+        "finish_reason": "invalid_tool_call",
+        "public_content_empty": true,
+        "public_tool_call_count": 0,
+        "session_commit": "none"
+      },
+      "id": "aq2_dev_control_truncated",
+      "raw_text": "<tool_call>{\"name\":\"read_file\",\"arguments\":{\"path\":\"docs/operator.md\"",
+      "split": "development",
+      "tools_mode": "auto"
+    },
+    {
+      "class": "duplicate",
+      "expected": {
+        "accepted": false,
+        "finish_reason": "invalid_tool_call",
+        "public_content_empty": true,
+        "public_tool_call_count": 0,
+        "session_commit": "none"
+      },
+      "id": "aq2_dev_control_duplicate",
+      "raw_text": "<tool_call>{\"name\":\"calculate\",\"arguments\":{\"expression\":\"2+2\"}}</tool_call><tool_call>{\"name\":\"calculate\",\"arguments\":{\"expression\":\"3+3\"}}</tool_call>",
+      "split": "development",
+      "tools_mode": "auto"
+    },
+    {
+      "class": "undeclared",
+      "expected": {
+        "accepted": false,
+        "finish_reason": "invalid_tool_call",
+        "public_content_empty": true,
+        "public_tool_call_count": 0,
+        "session_commit": "none"
+      },
+      "id": "aq2_dev_control_undeclared",
+      "raw_text": "<tool_call>{\"name\":\"delete_all\",\"arguments\":{}}</tool_call>",
+      "split": "development",
+      "tools_mode": "auto"
+    },
+    {
+      "class": "schema_invalid",
+      "expected": {
+        "accepted": false,
+        "finish_reason": "invalid_tool_call",
+        "public_content_empty": true,
+        "public_tool_call_count": 0,
+        "session_commit": "none"
+      },
+      "id": "aq2_dev_control_schema_extra",
+      "raw_text": "<tool_call>{\"name\":\"calculate\",\"arguments\":{\"expression\":\"2+2\",\"extra\":true}}</tool_call>",
+      "split": "development",
+      "tools_mode": "auto"
+    },
+    {
+      "class": "content_leak",
+      "expected": {
+        "accepted": false,
+        "finish_reason": "invalid_tool_call",
+        "public_content_empty": true,
+        "public_tool_call_count": 0,
+        "session_commit": "prompt_only"
+      },
+      "id": "aq2_held_control_content_leak",
+      "raw_text": "unsafe preface<tool_call>{\"name\":\"calculate\",\"arguments\":{\"expression\":\"2+2\"}}</tool_call>",
+      "split": "heldout",
+      "tools_mode": "auto"
+    },
+    {
+      "class": "reasoning_leak",
+      "expected": {
+        "accepted": false,
+        "finish_reason": "invalid_tool_call",
+        "public_content_empty": true,
+        "public_tool_call_count": 0,
+        "session_commit": "prompt_only"
+      },
+      "id": "aq2_held_control_reasoning_leak",
+      "raw_text": "<think>private</think><tool_call>{\"name\":\"calculate\",\"arguments\":{\"expression\":\"2+2\"}}</tool_call>",
+      "split": "heldout",
+      "tools_mode": "auto"
+    },
+    {
+      "class": "required_missing",
+      "expected": {
+        "accepted": false,
+        "finish_reason": "tool_required_not_satisfied",
+        "public_content_empty": true,
+        "public_tool_call_count": 0,
+        "session_commit": "none"
+      },
+      "id": "aq2_held_control_required_missing",
+      "raw_text": "A direct answer without a call.",
+      "split": "heldout",
+      "tools_mode": "required"
+    },
+    {
+      "class": "ambiguous",
+      "expected": {
+        "accepted": false,
+        "finish_reason": "tool_required_not_satisfied",
+        "public_content_empty": true,
+        "public_tool_call_count": 0,
+        "session_commit": "none"
+      },
+      "id": "aq2_held_control_ambiguous_missing",
+      "raw_text": "The request is ambiguous between reading and searching.",
+      "split": "heldout",
+      "tools_mode": "required"
+    },
+    {
+      "class": "tool_none_violation",
+      "expected": {
+        "accepted": false,
+        "finish_reason": "invalid_tool_call",
+        "public_content_empty": true,
+        "public_tool_call_count": 0,
+        "session_commit": "none"
+      },
+      "id": "aq2_held_control_none_violation",
+      "raw_text": "<tool_call>{\"name\":\"calculate\",\"arguments\":{\"expression\":\"2+2\"}}</tool_call>",
+      "split": "heldout",
+      "tools_mode": "none"
+    }
+  ],
+  "files": {
+    "config/stations.json": "{\"stations\":[\"north-2\",\"west-17\"],\"sample_cap\":64,\"retry_ms\":250}\n",
+    "docs/operator.md": "Operator guide\n- Inspect stale samples before restart.\n- Keep one rollback snapshot.\n- Escalate after three failed retries.\n",
+    "docs/operator_ja.md": "運用ガイド\n- 監視アラートを確認する。\n- 復旧前にロールバックスナップショットを保持する。\n- 3回失敗したら担当者へ通知する。\n",
+    "src/ingest.py": "class SampleOverflow(RuntimeError):\n    pass\n\n\ndef accept_batch(count: int, cap: int) -> str:\n    if count > cap:\n        raise ValueError(\"too many samples\")\n    return \"accepted\"\n",
+    "src/retry.py": "def retry_delay(attempt: int, base_ms: int = 250) -> int:\n    return base_ms * attempt\n"
+  },
+  "instruction_cases": {
+    "instruction_bilingual_two_lines": {
+      "checks": [
+        {
+          "type": "line_count",
+          "value": 2
+        },
+        {
+          "prefixes": [
+            "EN:",
+            "JA:"
+          ],
+          "type": "line_prefixes"
+        },
+        {
+          "terms": [
+            "rollback",
+            "ロールバック"
+          ],
+          "type": "required_terms"
+        }
+      ]
+    },
+    "instruction_four_numbered": {
+      "checks": [
+        {
+          "type": "line_count",
+          "value": 4
+        },
+        {
+          "type": "numbered_prefix",
+          "value": 1
+        },
+        {
+          "terms": [
+            "sensor",
+            "retry"
+          ],
+          "type": "required_terms"
+        }
+      ]
+    },
+    "instruction_ja_three_bullets": {
+      "checks": [
+        {
+          "type": "line_count",
+          "value": 3
+        },
+        {
+          "type": "bullet_prefix",
+          "value": "- "
+        },
+        {
+          "terms": [
+            "監視",
+            "通知",
+            "復旧"
+          ],
+          "type": "required_terms"
+        }
+      ]
+    },
+    "instruction_ja_two_lines": {
+      "checks": [
+        {
+          "type": "line_count",
+          "value": 2
+        },
+        {
+          "type": "line_suffix",
+          "value": "。"
+        },
+        {
+          "terms": [
+            "監視",
+            "復旧"
+          ],
+          "type": "required_terms"
+        }
+      ]
+    },
+    "instruction_json_keys": {
+      "checks": [
+        {
+          "terms": [
+            "action",
+            "owner"
+          ],
+          "type": "json_keys"
+        }
+      ]
+    },
+    "instruction_one_sentence": {
+      "checks": [
+        {
+          "type": "single_sentence"
+        },
+        {
+          "maximum": 12,
+          "minimum": 8,
+          "type": "word_count"
+        },
+        {
+          "terms": [
+            "telemetry"
+          ],
+          "type": "required_terms"
+        },
+        {
+          "terms": [
+            ":"
+          ],
+          "type": "forbidden_terms"
+        }
+      ]
+    },
+    "instruction_status_line": {
+      "checks": [
+        {
+          "type": "line_count",
+          "value": 1
+        },
+        {
+          "prefixes": [
+            "STATUS:"
+          ],
+          "type": "line_prefixes"
+        },
+        {
+          "terms": [
+            "green",
+            "cache"
+          ],
+          "type": "required_terms"
+        },
+        {
+          "terms": [
+            "maybe"
+          ],
+          "type": "forbidden_terms"
+        },
+        {
+          "maximum": 12,
+          "type": "word_count"
+        }
+      ]
+    },
+    "instruction_three_bullets": {
+      "checks": [
+        {
+          "type": "line_count",
+          "value": 3
+        },
+        {
+          "type": "bullet_prefix",
+          "value": "- "
+        },
+        {
+          "maximum": 6,
+          "type": "word_count"
+        }
+      ]
+    }
+  },
+  "kind": "hipengine.agentic_quality2_oracles",
+  "license": "AGPL-3.0-only",
+  "lookups": {
+    "canary_window": "Keep the canary active for 20 minutes before regional rollout.",
+    "rotation_policy_ja": "当番を毎週交代し、引き継ぎ前に未解決アラートを確認する。",
+    "station_owner": "west-17 is owned by the edge-operations team.",
+    "telemetry_retention": "Retain raw telemetry for 14 days and aggregates for 90 days."
+  },
+  "patches": {
+    "ingest_sample_overflow": {
+      "new": "        raise SampleOverflow(\"too many samples\")",
+      "old": "        raise ValueError(\"too many samples\")",
+      "path": "src/ingest.py",
+      "test_suite": "ingest"
+    },
+    "retry_bounded_jitter": {
+      "new": "    return min(base_ms * attempt + 17, 2000)",
+      "old": "    return base_ms * attempt",
+      "path": "src/retry.py",
+      "test_suite": "retry"
+    }
+  },
+  "schema_version": 1,
+  "source_manifest": {
+    "file_sha256": "eacab37e9ace592e326a17052e154adc167191cb971f9d62b9c476b8cdb64e35",
+    "path": "../sources/agentic-quality2-v1-sources.json"
+  },
+  "suite": "agentic-quality2-v1",
+  "summaries": {
+    "config/stations.json": "Two stations are configured with a 64-sample cap and a 250 ms retry base.",
+    "docs/operator.md": "The operator guide covers stale samples, rollback snapshots, and retry escalation.",
+    "docs/operator_ja.md": "監視、復旧前のロールバック保持、3回失敗後の通知を定義する。",
+    "src/ingest.py": "accept_batch raises ValueError only when count is greater than cap; SampleOverflow is declared.",
+    "src/retry.py": "retry_delay uses linear delay without jitter."
+  },
+  "test_suites": {
+    "full": {
+      "required_file_sha256": {
+        "src/ingest.py": "979c30ed22b920977b96ecadc45c46a54b592af93ec78aae303f4880e4868803",
+        "src/retry.py": "4a0fb23c403ea9b62e9328fd0833158481af6efd79c5ab5866267f0bd518e5df"
+      }
+    },
+    "ingest": {
+      "required_file_sha256": {
+        "src/ingest.py": "979c30ed22b920977b96ecadc45c46a54b592af93ec78aae303f4880e4868803"
+      }
+    },
+    "retry": {
+      "required_file_sha256": {
+        "src/retry.py": "4a0fb23c403ea9b62e9328fd0833158481af6efd79c5ab5866267f0bd518e5df"
+      }
+    }
+  }
+}

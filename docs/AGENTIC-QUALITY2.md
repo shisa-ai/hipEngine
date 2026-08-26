@@ -1,6 +1,6 @@
 # AGENTIC-QUALITY2 — ZBook Agent Quality Campaign
 
-- **Status:** approved; active; AQ0 plan frozen, no live quality row yet
+- **Status:** complete; AQ0-AQ13 closed on the retained no-go path
 - **Approved:** 2026-08-25
 - **Execution host:** `zbook`, HP ZBook Ultra G1a, Radeon 8060S / `gfx1151`
 - **Primary model:** Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV
@@ -395,6 +395,57 @@ A comparison model can be:
 
 No fallback silently substitutes Qwen3.6 for a requested comparison model.
 
+#### AQ7 admitted comparison result
+
+Both comparison artifacts are `admitted_complete` at clean source
+`1f9c23418`: strict profile, BF16 KV, c1, cache/native sampler/automatic MTP
+off, `temperature=0`, reasoning off, and the frozen 192-token cap. Each first
+passed the same two-repetition development smoke with exact normalized equality,
+10/10 independent policy controls, and zero transient ownership. Only one
+model-owning process held `/dev/kfd` at a time.
+
+| Model | Overall | Development | Sealed heldout | Code | Instruction | Repository | Tool selection | Valid calls |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Qwen3.6-35B-A3B `UD-Q4_K_M` (AQ6 reference) | 44/68 (64.71%) | 20/34 | 24/34 | 14/16 | 4/16 | 10/16 | 16/20 | 56/64 |
+| Qwen3.8-27B `Q4_K_M` | **50/68 (73.53%)** | **22/34** | **28/34** | 14/16 | **12/16** | 10/16 | 14/20 | **64/64** |
+| Ornith-1.5-35B-A3B `Q4_K_M` | 42/68 (61.76%) | 16/34 | 26/34 | 14/16 | 4/16 | 10/16 | 14/20 | 60/64 |
+
+All 34 normalized response pairs match for each model, all model-specific rows
+are scored, and neither comparison has a malformed public argument, raw markup
+or content leak, truncation, runtime error, blocked sandbox, or final ownership
+delta. Qwen3.8's +6 passes versus the primary reference are an instruction
+family gain (+8) offset by tool-selection loss (-2). Ornith matches the primary
+code/instruction/repository totals but loses two tool-selection observations.
+These are same-host, same-suite **product-quality** differences between model
+artifacts, not implementation-correctness, quantization, or speed deltas.
+
+Independent metadata admission found:
+
+- Qwen3.8 resolves through the registered `qwen35` dense plugin: 64 AR blocks
+  (48 linear/16 full attention), 851 mapped tensors with zero missing,
+  unexpected, or shape errors, and one complete trailing GGUF MTP block. Its
+  strict manifest is `0e053fd658cacbc72a67b7e7ccf33927502a0fe9379faf14dac30ae6ee2bb65b`.
+- Ornith resolves through the registered `qwen35moe` plugin: 40 blocks (30
+  linear/10 full attention), 256 experts/top-8, and 733 mapped tensors with zero
+  missing, unexpected, or shape errors. No trailing GGUF MTP block is present;
+  speculative serving remained explicitly off. Its strict manifest is
+  `6f6af11c059dbd02d458405bfa9d70ef0ea4a38daaa47a884c4f52b7a489fc41`.
+- Both artifacts have byte-identical Qwen tokenizer vocabulary, merges, and
+  token types to the primary, singleton control IDs `248045/248046` for
+  `<|im_start|>/<|im_end|>`, `248058/248059` for tool-call open/close, and
+  `248068/248069` for think open/close; EOS is `248046`. Embedded GGUF template
+  hashes differ, so admission did not infer one model's template from another.
+  The current Qwen35 generator exposes the server's generic registered Qwen
+  renderer; identical 1,544-token live smoke prompts, exact nested tool calls,
+  public capability manifests, and clean full matrices admit that route for
+  each exact artifact.
+
+Compact quality-only evidence:
+[`Qwen3.8`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq7-qwen38-comparison.json)
+and
+[`Ornith`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq7-ornith15-comparison.json).
+Raw outputs remain local and are not inputs for AQ8 tuning.
+
 ## 11. Candidate admission
 
 AQ8 admits **at most one** mechanism after AQ3/AQ6/AQ7. Candidate order is not a
@@ -444,152 +495,449 @@ No GPU run.
 
 ### AQ1 / Task #41 — current stack audit
 
-- [ ] Create a clean campaign worktree from current `origin/main` and record
+- [x] Create a clean campaign worktree from current `origin/main` and record
       exact base.
-- [ ] Audit server parser, Qwen/Poolside templates, tokenizer constraints,
+- [x] Audit server parser, Qwen/Poolside templates, tokenizer constraints,
       structured validation, repair queues, commit policy, collector, schema,
       and capabilities.
-- [ ] Diff relevant behavior since `878d07a9...`; do not assume all 31 historical
+- [x] Diff relevant behavior since `878d07a9...`; do not assume all historical
       path commits affect the live row.
-- [ ] Verify v2 oracle cases independently.
-- [ ] RED malformed/stale provenance and any discovered harness bug.
-- [ ] Fix only harness/provenance correctness needed for AQ2.
-- [ ] Run focused benchmark/agentic tests; publish worklog and commit.
+- [x] Verify v2 oracle cases independently.
+- [x] RED malformed/stale provenance and the discovered exact-argument scoring
+      bug.
+- [x] Fix only harness/provenance correctness needed for AQ2.
+- [x] Run focused benchmark/agentic tests; publish worklog and commit.
+
+#### AQ1 result — current live contract and harness repairs
+
+The clean campaign worktree is `/home/lhl/hipEngine-agentic-quality2`, branch
+`agentic-quality2`, starting at AQ0 commit `58d055872...`. The path audit found
+36 commits touching the broad server/sampling/tokenization/quality path since
+the old A6 source, but most are lifecycle, SPECDEC2, merge, or other-model work.
+The quality-relevant current Qwen contract is:
+
+- Qwen uses the generic canonical `<tool_call>` parser, not the later
+  Poolside/Laguna model-owned parser.
+- With tokenizer support, `tool_choice=auto` constrains a started tool branch to
+  one declared tool name plus a canonical envelope and syntactically valid root
+  argument object. It still permits a plain-text branch, as OpenAI auto
+  semantics require.
+- Full declared JSON Schema validation is post-generation. The decode-time
+  prefix anchor reaches the first required string key only for required/specific
+  single-tool shapes; it does not make automatic multi-tool arguments
+  schema-complete.
+- Close repair is bounded to a tokenizer-safe marker/object suffix once the
+  current prefix is structurally completable. There is no automatic second
+  generation/repair request.
+- Invalid, undeclared, malformed, schema-violating, content-leaking, and
+  required-tool-missing outputs are withheld/fail closed; unsafe session commits
+  downgrade to prompt-only or none. Blocking and SSE contract coverage exists.
+- Native sampling and speculative MTP remain incompatible with the dynamic tool
+  processor surface; AQ2 explicitly disables both.
+
+The old collector was not valid for AQ2 unchanged. AQ1 observed and fixed one
+RED scoring defect: broad external-oracle rows still required exact argument
+text before consulting the oracle, so semantically equivalent successful
+arguments were labeled `wrong_arguments`. External-oracle success now decides
+broad task success; exact arguments remain diagnostic. Legacy suites without an
+external oracle still require exact arguments.
+
+AQ1 also replaces the hardcoded `gfx1100` provenance label with the selected
+backend, binds and hashes the live server capability payload (served model,
+backend, tokenizer, tools, and cache checked before generation), records output
+cap/repetition count, emits flushed per-turn progress, atomically checkpoints
+normalized rows plus local raw responses/prompt IDs, atomically writes final
+JSON, and computes normalized deterministic repeat equality while ignoring
+random call IDs. The checkpoint supplies the response-owned IDs needed to
+reconstruct pre-parser model text during AQ3. AQ2 live startup additionally
+proved that Qwen keeps a fixed prepared KV allocation pinned while idle; the
+collector records those pre-request refcounted/pinned pages and still requires
+strictly zero request-owned deltas at completion rather than mislabeling stable
+model-lifetime allocation as a leak.
+
+All 24 committed v2 oracle cases execute independently. Focused quality/oracle,
+server-conformance, and harness-trace tests pass; exact commands and counts are
+in the AQ1 worklog.
 
 ### AQ2 / Task #42 — current v2 baseline
 
-- [ ] Start one clean Qwen3.6 server with frozen settings and explicit compiler
+- [x] Start one clean Qwen3.6 server with frozen settings and explicit compiler
       version/cache.
-- [ ] Run all six v2 workloads twice (24 turns/run).
-- [ ] Require response-owned IDs, normalized repeat equality, valid artifact,
-      and zero final ownership.
-- [ ] Keep raw records/logs under `/tmp/hipengine-agentic-quality2/<run-tag>/`.
-- [ ] Publish compact baseline artifact with no performance fields.
-- [ ] Update campaign/worklog/quality rollup and commit.
+- [x] Run all six v2 workloads twice (24 turns/run).
+- [x] Require response-owned IDs, normalized repeat equality, valid artifact,
+      and zero final request/session ownership relative to the recorded idle
+      persistent-allocation baseline.
+- [x] Keep raw records/logs under `/tmp/hipengine-agentic-quality2/<run-tag>/`.
+- [x] Publish compact baseline artifact with no performance fields.
+- [x] Update campaign/worklog/quality rollup and commit.
 
-Expected GPU time: about 30–90 minutes after cached startup. This assigned
-campaign authorizes the run; state reason/duration before starting it.
+#### AQ2 result — qualified current ZBook denominator
+
+The retained run uses commit `fef66d0fd...` and raw directory
+`/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/`.
+Its compact artifact is
+[`2026-08-26-zbook-agentic-quality2-aq2-baseline.json`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq2-baseline.json).
+It contains no latency, throughput, goodput, speedup, or profiler result.
+
+| Scope | External-oracle success | Valid call | Correct tool | Exact arguments |
+| --- | ---: | ---: | ---: | ---: |
+| Overall, 48 repeated observations | **38/48 (79.17%)** | **48/48 (100%)** | **46/48 (95.83%)** | **38/48 (79.17%)** |
+| Repository | 12/16 (75%) | 16/16 | 14/16 | 12/16 |
+| General English | **14/16 (87.5%)** | 16/16 | 16/16 | 14/16 |
+| General Japanese | 6/8 (75%) | 8/8 | 8/8 | 6/8 |
+| Mixed Japanese/English | 6/8 (75%) | 8/8 | 8/8 | 6/8 |
+
+The 24 independent task blocks are 19/24 successful: all four
+`general_en_operations` turns pass; the other five workloads are 3/4. The five
+unique failures repeat exactly: four selected the expected tool but failed the
+executable result oracle, and one selected the wrong declared tool. There are
+no malformed/invalid/schema-invalid/no-call/content-leak/raw-marker/runtime
+failures, no repair attempts, and all six patch plus all eight test observations
+pass. The 24 normalized repeat pairs are exact after excluding random call IDs;
+all 856 generated IDs are response-owned.
+
+Initial model-lifetime ownership is 128 refcounted/128 pinned KV pages and final
+request/session/KV/graph/workspace/stream deltas are all zero. Server shutdown
+leaves no `/dev/kfd` owner. The first two pre-evidence attempts are excluded: one
+found the repaired Qwen detokenization surface, and one populated a missing
+AOTriton cache then exposed absolute-versus-baseline ownership accounting. No
+partial attempt contributes a quality row.
+
+This is not an old→new comparison with the historical W7900 row: host, backend,
+source, constraint stack, and broad-oracle scoring differ. AQ3 owns the five
+unique failure classifications; AQ2 admits no implementation mechanism.
 
 ### AQ3 / Task #43 — failure taxonomy
 
-- [ ] Classify every AQ2 row under Section 6.
-- [ ] Compare public response, raw generated IDs/text where retained, independent
+- [x] Classify every AQ2 row under Section 6.
+- [x] Compare public response, raw generated IDs/text where retained, independent
       parser, tokenizer/template controls, finish details, and oracle execution.
-- [ ] Record earliest bad boundary and runtime/model/unresolved owner.
-- [ ] Add classifier tests and a compact taxonomy artifact.
-- [ ] Name candidate classes by aggregate failure evidence only; no implementation.
-- [ ] Commit.
+- [x] Record earliest bad boundary and runtime/model/unresolved owner.
+- [x] Add classifier tests and a compact taxonomy artifact.
+- [x] Name candidate classes by aggregate failure evidence only; no implementation.
+- [x] Commit.
+
+#### AQ3 result — five model-quality failures, zero runtime/unresolved
+
+The tested standalone classifier joins all 48 normalized rows one-to-one with
+raw checkpoint responses, verifies response-owned IDs, reconstructs pre-parser
+text from the exact GGUF tokenizer, and parses the generic Qwen envelope without
+calling the server parser. The compact result is
+[`2026-08-26-zbook-agentic-quality2-aq3-taxonomy.json`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq3-taxonomy.json).
+
+| Primary outcome / earliest bad boundary | Independent task blocks | Repeated observations | Owner |
+| --- | ---: | ---: | --- |
+| `passed` / none | 19 | 38 | none |
+| `wrong_arguments` / model-generated arguments | 4 | 8 | model quality |
+| `wrong_tool` / model tool selection | 1 | 2 | model quality |
+| Runtime implementation failure | **0** | **0** | — |
+| Unresolved | **0** | **0** | — |
+
+All 48 prompt token sequences decode→encode exactly. All 48 raw model texts are
+single canonical `<tool_call>` envelopes accepted by the independent parser,
+and every parsed tool/argument projection equals the public OpenAI response.
+All calls are schema-valid, terminate with `tool_calls`, contain empty public
+content, use zero repair attempts, and execute their external oracle. Final
+request-owned state remains zero; requests are stateless, so there is no session
+commit scope.
+
+The four argument failures are concrete model substitutions: query prose for
+`ValueError`, a file path for the requested directory, `release_validation` for
+`release_check_ja`, and `docs/release.md` for `docs/release_ja.md`. The selection
+failure chooses valid declared `read` instead of expected `grep`. Therefore AQ3
+nominates only aggregate classes `model_argument_grounding` (4/24) and
+`model_tool_selection` (1/24). It admits no implementation. The detokenization
+and persistent-ownership defects remain separately recorded pre-evidence
+runtime repairs and do not relabel model answers.
 
 ### AQ4 / Task #44 — freeze expanded suite
 
-- [ ] Audit public dataset source/license/revision and local availability.
-- [ ] Choose bounded original versus upstream-derived tasks honestly.
-- [ ] Freeze development/heldout IDs before candidate code.
-- [ ] Add tool, repository, patch, code, instruction, Japanese/mixed, and
+- [x] Audit public dataset source/license/revision and local availability.
+- [x] Choose bounded original versus upstream-derived tasks honestly.
+- [x] Freeze development/heldout IDs before candidate code.
+- [x] Add tool, repository, patch, code, instruction, Japanese/mixed, and
       fail-safe rows under the minimum coverage rule.
-- [ ] Add external oracle source data without expected answer leakage into
+- [x] Add external oracle source data without expected answer leakage into
       prompts.
-- [ ] Record canonical hashes and generation/adaptation process.
-- [ ] Commit suite/schema/oracle/docs/worklog as one unit.
+- [x] Record canonical hashes and generation/adaptation process.
+- [x] Commit suite/schema/oracle/docs/worklog as one unit.
+
+#### AQ4 result — project-original 17/17 split frozen
+
+[`AGENTIC-QUALITY2-SUITE.md`](AGENTIC-QUALITY2-SUITE.md) is the fixture card.
+It pins the exact six input/schema hashes, source/license revisions, creation
+method, split IDs, heldout policy, and AQ6 checkpoint plan. BFCL (Apache-2.0),
+HumanEval (MIT), MBPP (CC-BY-4.0), and IFEval (Apache-2.0) were audited at exact
+revisions; local HumanEval/MBPP copies exist under read-only `/home/lhl/omlx/`,
+but no upstream task, solution, assertion, test, or evaluator byte is imported.
+The suite is AGPL project-original and claims no official upstream score.
+
+Fake-endpoint validation superseded v1 with v2 before any model or candidate
+run: the schema-invalid control now expects public `schema_violation`, and the
+reasoning-leak control is genuinely malformed (`</think>` without an opener).
+No task prompt, oracle answer, split ID, or result was changed. The frozen v2
+suite contains 34 independent one-turn blocks: 17 development and 17 heldout,
+with 5/5 tool-selection, 4/4 repository, 4/4 code, and 4/4 instruction
+rows. It includes single/nested/enum/optional/multiple/irrelevant automatic-tool
+shapes, read/search/patch/test, eight code entry points, eight behavioral
+instruction cases, 12 Japanese/mixed heldout blocks, five heldout patch/code
+blocks, and ten separate fail-safe controls. Expected result hashes, hidden code
+cases, patch replacement text, and reference results remain oracle-only;
+machine-readable instruction checks mirror public request constraints but store
+no reference prose. Expected code source and exact response prose are not stored.
+
+AQ4 executes no generated code and admits no mechanism. AQ5 must RED-test the
+new loader/schema relationships, independently prove every oracle, and establish
+or fail closed on the sandbox. Once qualified, AQ6 is 68 repeated model
+observations plus controls, estimated at 15–45 minutes after cached startup with
+atomic development→heldout→control checkpoints.
 
 ### AQ5 / Task #45 — fixture/oracle/sandbox validation
 
-- [ ] RED loaders and schemas for duplicate IDs, split overlap, missing language,
+- [x] RED loaders and schemas for duplicate IDs, split overlap, missing language,
       oracle mismatch, expected-answer prompt leakage, and malformed counts.
-- [ ] RED sandbox network/filesystem/process/resource escapes.
-- [ ] Prove every committed oracle independently.
-- [ ] Prove deterministic artifact aggregation and large-raw/compact separation.
-- [ ] Run focused tests, fixture checker, Ruff/compile, Worklog2/sync/diff.
-- [ ] Commit.
+- [x] RED sandbox network/filesystem/process/resource escapes.
+- [x] Prove every committed oracle independently.
+- [x] Prove deterministic artifact aggregation and large-raw/compact separation.
+- [x] Run focused tests, fixture checker, Ruff/compile, Worklog2/sync/diff.
+- [x] Commit.
+
+#### AQ5 result — fixture and generated-code sandbox qualified
+
+The fail-closed loader cross-validates exact file references, 17/17 membership,
+family/language/executable cardinalities, one-to-one same-split cases, tool and
+argument shapes, code/instruction references, source-use policy, fail-safe
+classes, and hidden-answer leakage. It rejects duplicate IDs, overlap, missing
+language, malformed counts, unknown/mismatched oracle cases, bad hashes, and
+hidden expected material in user-visible prompts. Every **34/34** reference case
+and **10/10** independent fail-safe policy controls passes.
+
+The ZBook sandbox is qualified with unprivileged bubblewrap + `prlimit` +
+`python -I -S`: a new user/PID/network/session namespace per hidden input; only
+read-only `/usr`, `/lib`, `/lib64`, candidate source, generic runner, and that
+input are mounted; `/tmp`/`/work` are private; environment is cleared; and
+wall/CPU/address-space/file/process/FD/core/output bounds apply. Hidden expected
+values remain host-only and never enter the namespace. Probes block network,
+`/etc`, home/repository/model paths, `/dev/kfd`, inherited secrets, and child
+processes; wall timeout kills the process group; memory/file/output limits fail
+closed; valid code passes. Missing bubblewrap returns `blocked_sandbox` without
+execution.
+
+The compact qualification artifact is
+[`2026-08-26-zbook-agentic-quality2-aq5-validation-v2.json`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq5-validation-v2.json).
+Aggregation is order-independent, checks repeat fingerprints, keeps blocked and
+unscorable counts explicit/outside the scored denominator, seals heldout detail
+by default, and excludes raw token arrays. AQ5 runs no model or GPU and admits no
+candidate mechanism.
 
 ### AQ6 / Task #46 — expanded primary baseline
 
-- [ ] Run development and heldout Qwen3.6 baseline before candidate code.
-- [ ] Keep heldout row details sealed from implementation selection; publish
+- [x] Run development and heldout Qwen3.6 baseline before candidate code.
+- [x] Keep heldout row details sealed from implementation selection; publish
       aggregate baseline.
-- [ ] Repeat deterministic rows and run fail-safe controls.
-- [ ] Record all metrics in Section 9 and final zero ownership.
-- [ ] Publish compact artifact/rollup/worklog and commit.
+- [x] Repeat deterministic rows and run fail-safe controls.
+- [x] Record all metrics in Section 9 and final zero ownership.
+- [x] Publish compact artifact/rollup/worklog and commit.
 
-Expected GPU time depends on AQ4 size; AQ4 must publish an estimate and staged
-checkpoint plan before this run.
+#### AQ6 result — deterministic expanded baseline
+
+Clean commit `8e228965e` completed all **68/68** observations on the ZBook with
+response-owned IDs and no blocked/unscorable row. External-oracle success is
+**44/68 (64.71%)**: development **20/34 (58.82%)** and sealed heldout aggregate
+**24/34 (70.59%)**. Family totals are code **14/16**, instruction **4/16**,
+repository **10/16**, and tool selection **16/20**; language totals are English
+**20/40**, Japanese **18/18**, and mixed Japanese/English **6/10**.
+
+All **56/56** published call blocks are JSON-valid, declared, and strict-schema
+valid. Valid-call observations are **56/64 (87.50%)**, correct tool/no-tool
+selection is **52/68 (76.47%)**, and exact arguments are **22/32 (68.75%,
+diagnostic only)**. Patch is **4/4**, code **14/16**, and instruction **4/16**;
+multiple-call and repository-test kinds are **0/4** each. There are zero raw
+markup/content leaks, malformed public arguments, truncations, runtime errors,
+or ownership deltas.
+
+All 34 normalized response pairs match exactly under
+`normalized_response_v1`, which hashes response-owned IDs, public content,
+calls/arguments, parse errors, and finish state. All **10/10** frozen independent
+parser/publication fail-safe controls pass; they are not relabeled as live
+endpoint tests, which remain AQ10's responsibility. Per-response repair counters
+are unavailable in this baseline and remain explicit nulls rather than inferred
+zeroes.
+
+The seven unique development failures repeat exactly and are model-owned: two
+no-tool actions, one wrong call count, one wrong tool, and three schema-valid
+outputs/actions that fail their external task oracle. No parser, template,
+runtime, or unresolved development boundary appears. Heldout model-output detail
+remains local and was not inspected for mechanism selection.
+
+The compact quality-only artifact is
+[`2026-08-26-zbook-agentic-quality2-aq6-expanded-baseline.json`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq6-expanded-baseline.json).
+A prior whole-APU DMCUB/SMU/MES hang before request prefill retained zero rows;
+a cold-boot exact diagnostic and the complete baseline then passed under the
+unchanged default SDMA route with a clean kernel journal and post-shutdown KFD.
 
 ### AQ7 / Task #47 — comparison models
 
-- [ ] Audit/load Qwen3.8 and Ornith independently.
-- [ ] Run one smoke task before the full matrix.
-- [ ] Run the frozen suite for each admitted model without changing task wording,
+- [x] Audit/load Qwen3.8 and Ornith independently.
+- [x] Run one smoke task before the full matrix.
+- [x] Run the frozen suite for each admitted model without changing task wording,
       tools, output cap, or oracle.
-- [ ] Record exact blocker instead of weakening unsupported paths.
-- [ ] Publish separate artifacts and a cross-model table with no implementation
+- [x] Record exact blocker instead of weakening unsupported paths. Both models
+      are `admitted_complete`; no substitution or weakening was required.
+- [x] Publish separate artifacts and a cross-model table with no implementation
       or speed inference.
-- [ ] Commit.
+- [x] Commit.
 
-AQ6 and AQ7 may execute in parallel only with one model-owning GPU process at a
-time; artifact work can overlap after a process exits.
+#### AQ7 result — both comparison rows complete
+
+Qwen3.8 completes **50/68 (73.53%)**, development **22/34** and sealed heldout
+**28/34**. Ornith completes **42/68 (61.76%)**, development **16/34** and sealed
+heldout **26/34**. Both exact 34/34 normalized repeat pairs, 10/10 independent
+controls, complete response-owned IDs, clean source/log/kernel-journal health,
+and zero final transient ownership pass. No speed fields are retained. Section
+10.2 contains the cross-model table and independent architecture/tokenizer/
+template admission; separate compact artifacts retain commands, full model
+hashes, capability/profile manifests, aggregate quality, and local raw hashes.
+
+AQ6 and AQ7 observed the one-model-owning-process rule. Comparison-model raw
+outputs and heldout details remain local and cannot tune AQ8.
 
 ### AQ8 / Task #48 — one mechanism declaration
 
-- [ ] Join AQ3/AQ6/AQ7 evidence.
-- [ ] Select at most one Section 11 mechanism or no-go.
-- [ ] Fill every declaration field before code.
-- [ ] Prohibit fixture/category/model-conditioned behavior explicitly.
-- [ ] Add `REFACTOR.md` removal trigger for any temporary flag/path.
-- [ ] Commit the declaration before implementation.
+- [x] Join AQ3/AQ6/AQ7 evidence.
+- [x] Select at most one Section 11 mechanism or no-go.
+- [x] Fill every declaration field before code.
+- [x] Prohibit fixture/category/model-conditioned behavior explicitly.
+- [x] Add `REFACTOR.md` removal trigger for any temporary flag/path. No entry is
+      needed because the declaration adds no runtime path or flag.
+- [x] Commit the declaration before implementation.
+
+#### AQ8 decision — retained no-go / no implementation
+
+AQ8 admits **no runtime mechanism**. The Qwen3.6 development denominator has
+seven deterministic failed task blocks: two legal no-call choices under auto,
+one valid wrong call count, one valid wrong declared tool, and three schema-
+valid actions/content that fail an external task oracle. AQ3 independently found
+zero parser/projection/runtime/unresolved failures; AQ6 likewise has zero
+malformed argument, content/reasoning leak, truncation, runtime, or schema-
+invalid published call. All 56 published primary call blocks are declared,
+JSON-valid, and strict-schema-valid. Patch is already 4/4.
+
+| Candidate | Measured trigger | AQ8 decision |
+| --- | ---: | --- |
+| Parser/template correctness repair | 0 independent mismatches | Reject: no runtime RED. |
+| Complete token-level argument schema constraint | 0 invalid/schema-violating calls | Reject: cannot choose the intended valid tool/action or external result. |
+| Bounded invalid-tool repair | 0 malformed/invalid/truncated/leaked outputs | Reject: retrying valid choices would coerce `auto` semantics. |
+| Patch/diff constraint | 4/4 patch observations pass | Reject: no syntax premise. |
+| No implementation | 7/7 unique development failures model-owned | **Admit.** |
+
+AQ7 aggregates corroborate model dependence without supplying tuning data:
+Qwen3.8 development is 22/34 while Ornith is 16/34 under the same admitted
+runtime, and their raw/heldout outputs remain sealed from selection. Qwen3.8's
+instruction-family gain especially argues against relabeling a shared runtime
+path as defective. The runtime cannot infer benchmark-required tool identity,
+call count, arguments, or external result from `tools`, `tool_choice=auto`, and
+JSON Schema without guessing task intent.
+
+Existing auto/required/specific/none semantics, strict post-validation,
+fail-closed publication/session behavior, streaming behavior, native-sampler/MTP
+blockers, and telemetry remain unchanged. Repair count/token budget is zero.
+There is no new flag, alternate path, fallback chain, or `REFACTOR.md` debt.
+Reopening requires an independent candidate-specific RED: a valid envelope
+misparsed/misprojected by the runtime, an argument prefix that violates a
+supported strict schema, a generically repairable invalid output, or a patch
+syntax failure after intended semantics are independently established.
+
+The compact decision artifact is
+[`2026-08-26-zbook-agentic-quality2-aq8-no-go-decision.json`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-aq8-no-go-decision.json).
+Because runtime source is unchanged, AQ9 implementation, AQ10 candidate semantic
+qualification, AQ11 post-change primary measurement, and AQ12 transfer are
+not-applicable phases on the approved no-go path; redundant GPU reruns cannot
+create post-change evidence when there is no change.
 
 ### AQ9 / Task #49 — implementation
 
-- [ ] Observe targeted RED first.
-- [ ] Implement the minimum general mechanism.
-- [ ] Preserve torch-free hot path and plugin boundaries.
-- [ ] Preserve invalid-output/hidden-reasoning non-commit.
-- [ ] Emit bounded capability/route/repair/result telemetry.
-- [ ] Keep fail-closed fallback and unsupported sampling/MTP behavior.
-- [ ] Run targeted GREEN and commit only after AQ10 gates are ready/passing.
+- [x] Targeted RED is not applicable: AQ8 admitted no mechanism and named exact
+      independent RED criteria required to reopen each rejected class.
+- [x] Implement no runtime code, prompt, fixture, or model-conditioned behavior.
+- [x] Preserve the torch-free hot path and plugin boundaries by zero diff.
+- [x] Preserve invalid-output/hidden-reasoning non-commit by zero diff.
+- [x] Add no capability/route/repair telemetry because no route exists.
+- [x] Keep fail-closed fallback and sampling/MTP behavior unchanged.
+- [x] Confirm AQ8 changed no `hipengine/`, `kernels/`, `tests/`, `scripts/`, or
+      `docs/REFACTOR.md` path.
+
+**Disposition:** `not_applicable_no_implementation`. There is no AQ9 candidate,
+flag, fallback chain, or code commit to qualify.
 
 ### AQ10 / Task #50 — semantic qualification
 
-- [ ] Unit/fake endpoint success and failure matrix.
-- [ ] Blocking/SSE envelope parity where applicable.
-- [ ] Auto/required/specific/none tool-choice semantics.
-- [ ] malformed/truncated/duplicate/undeclared/schema-invalid controls.
-- [ ] reasoning/content leakage and session commit policy.
-- [ ] cancellation/deadline/continuation/replay/snapshot/restore.
-- [ ] sampler/native/MTP blockers and capability truthfulness.
-- [ ] deterministic repeats and zero ownership on a focused real-model smoke.
-- [ ] old minimal OpenAI client contract.
-- [ ] Commit retained implementation or revert runtime and commit rejection
-      evidence.
+- [x] Candidate unit/fake-endpoint matrix is not applicable.
+- [x] Candidate blocking/SSE parity is not applicable.
+- [x] Auto/required/specific/none semantics are unchanged by zero runtime diff.
+- [x] Malformed/truncated/duplicate/undeclared/schema-invalid behavior is
+      unchanged; AQ5/AQ6 controls remain baseline evidence, not relabeled tests.
+- [x] Reasoning/content/session/cancellation/continuation behavior is unchanged.
+- [x] Sampler/native/MTP capabilities and blockers are unchanged.
+- [x] Do not run a candidate real-model smoke when no candidate exists.
+- [x] No retain/revert action is needed beyond the committed AQ8 no-go.
+
+**Disposition:** `not_applicable_no_candidate_semantic_qualification`. Existing
+semantic evidence remains valid for unchanged source; it is not presented as a
+post-change gate.
 
 ### AQ11 / Task #51 — post-change primary quality
 
-- [ ] Re-run identical development and heldout inputs/settings.
-- [ ] Compare external-oracle success and all secondary metrics by split/family.
-- [ ] Require no heldout/family regression and no safety/lifecycle failure.
-- [ ] Use task-block intervals only where sample size supports them.
-- [ ] Publish keep/reject decision with raw hashes and final ownership.
-- [ ] Commit.
+- [x] Do not rerun unchanged development or heldout inputs as “post-change”.
+- [x] Preserve AQ6 as the primary baseline; there is no candidate denominator.
+- [x] Preserve heldout details sealed and avoid task-block interval theater.
+- [x] Publish no keep/reject quality delta because no runtime delta exists.
+- [x] Carry AQ8's no-go artifact and AQ6 raw hashes into closure.
+
+**Disposition:** `not_applicable_no_post_change_primary_run`. A redundant GPU
+run cannot create post-change evidence from documentation-only commits.
 
 ### AQ12 / Task #52 — cross-model transfer
 
-- [ ] Apply retained candidate unchanged to admitted Qwen3.8/Ornith rows.
-- [ ] Run adversarial/fail-safe controls.
-- [ ] Verify no model-name branches or hidden substitutions.
-- [ ] Retain transfer only when safe; otherwise capability-gate/fail closed.
-- [ ] Publish artifacts/worklog and commit.
+- [x] No candidate exists to apply to Qwen3.8 or Ornith.
+- [x] Do not relabel AQ7 controls as candidate transfer controls.
+- [x] Zero runtime diff proves no model-name branch or substitution was added.
+- [x] No transfer capability gate or fallback is needed.
+- [x] Carry AQ7 aggregate artifacts and AQ8 no-go into closure.
+
+**Disposition:** `not_applicable_no_cross_model_transfer`. Qwen3.8 and Ornith
+remain independently admitted on their unchanged routes; raw outputs stay
+local and sealed from mechanism selection.
+
+#### AQ9–AQ12 no-go-path result
+
+`git diff 2031efb95..645678fb9 -- hipengine kernels tests scripts docs/REFACTOR.md`
+is empty. The only AQ8 paths are the decision artifact,
+campaign/benchmark docs, and immutable worklog. Therefore no candidate endpoint,
+lifecycle, primary post-change, or transfer execution exists to test. Skipping
+those runs follows the focused-repair/no-redundant-rerun rule; it does not claim
+they passed for a nonexistent candidate.
 
 ### AQ13 / Task #53 — closure
 
-- [ ] List retained implementation/default/explicit/unsupported scopes.
-- [ ] List model-quality outcomes separately from runtime fixes.
-- [ ] List blocked/rejected/no-go families and reopen triggers.
-- [ ] Remove temporary paths or update `REFACTOR.md` with exact removal gates.
-- [ ] Update campaign, AGENTIC/API/SAMPLING/PLAN, benchmark index/changelog, and
+- [x] List retained implementation/default/explicit/unsupported scopes.
+- [x] List model-quality outcomes separately from runtime fixes.
+- [x] List blocked/rejected/no-go families and reopen triggers.
+- [x] Remove temporary paths or update `REFACTOR.md` with exact removal gates.
+- [x] Update campaign, AGENTIC/API/SAMPLING/PLAN, benchmark index/changelog, and
       root README only when public-quality wording is justified.
-- [ ] Run focused-repair-aware milestone validation and schema/link/fixture/
+- [x] Run focused-repair-aware milestone validation and schema/link/fixture/
       Worklog2/benchmark-sync checks.
-- [ ] Commit, merge cleanly, push, and verify local/remote equality.
-- [ ] Complete the objective audit against Tasks #40–#53 and this checklist.
+- [x] Commit, merge cleanly, push, and verify local/remote equality.
+- [x] Complete the objective audit against Tasks #40–#53 and this checklist.
+
+**Closure:** AQ0–AQ13 are complete with `no_implementation`. The final compact
+artifact records retained, rejected, unsupported, and reopen scopes separately
+from the three model-product quality rows. No temporary candidate path, flag,
+fallback, API/sampling change, or refactor debt exists. The root README stays
+unchanged because this bounded synthetic suite is already presented in the
+benchmark scoreboard and no runtime feature/default or general leaderboard
+claim changed.
 
 ## 13. Command book
 
@@ -629,15 +977,34 @@ python3 scripts/agentic_coding_quality.py \
   --json /tmp/hipengine-agentic-quality2/RUN/v2-summary.json
 ```
 
-The exact server command is not frozen until AQ1 audits current CLI and public
-capabilities. It must explicitly select `hip_gfx1151`, the primary model,
-context cap, one active request, cache off, native sampler off, and automatic
-MTP off; set one model-owning process; use cached builds; and preserve raw
-startup/readiness/capability hashes. Do not infer settings from defaults.
+AQ1 froze the AQ2 server command surface. Use a free port and run from the clean
+campaign worktree:
 
-Long runs emit immediate progress and atomic checkpoints. The v2 collector does
-not currently checkpoint each turn; AQ1 must either add that property or record
-why the bounded 48-turn rerun is restartable enough before AQ2.
+```bash
+env -u ROCR_VISIBLE_DEVICES \
+  HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 \
+  GPU_MAX_HW_QUEUES=1 \
+  HIPENGINE_COMPILER_VERSION_FILE=/tmp/agentic-quality2-hipcc-version.txt \
+  HIPENGINE_REQUIRE_CACHED_BUILD=1 \
+  HIPENGINE_QWEN35_NATIVE_SAMPLER=0 \
+  PYTHONPATH=. /home/lhl/hipEngine/.venv/bin/python -m hipengine.server \
+  --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf \
+  --served-model-name Qwen3.6-35B-A3B \
+  --backend hip_gfx1151 --quant gguf_q4_k_m \
+  --execution-profile strict --kv-storage bf16 \
+  --max-context-tokens 4096 --max-active-requests 1 \
+  --generation-batch-window-ms 0 --prefix-cache off \
+  --speculative-mtp-serving off --no-startup-chat-smoke \
+  --host 127.0.0.1 --port PORT --log-level info
+```
+
+If a required JIT object is absent, perform one untimed startup without
+`HIPENGINE_REQUIRE_CACHED_BUILD`, stop it, then restart the exact command above.
+Do not let compilation overlap collection. Before the collector starts, hash
+`/ready`, `/v1/models`, and `/v1/hipengine/capabilities`; its own capability
+preflight now rejects the wrong served model, backend, cache, tokenizer, or tool
+contract. Long runs print immediate progress and atomically checkpoint each
+turn, including local raw responses and prompt IDs.
 
 ## 14. Artifact contract
 
@@ -655,7 +1022,8 @@ New committed summaries live under `benchmarks/results/` and record:
 - complete failure taxonomy and runtime/model/unresolved ownership;
 - deterministic repeat verdict and normalized-response hash;
 - raw record/log paths and SHA-256 without committing large token arrays;
-- final resource ownership and shutdown verdict;
+- initial persistent KV refcount/pin baseline, final zero request/session
+  ownership deltas, and shutdown verdict;
 - baseline/candidate relationship, keep/reject/no-go decision, and reason; and
 - links/hashes to prerequisite evidence.
 
@@ -710,12 +1078,15 @@ A no-go decision is a valid AQ8–AQ13 path.
 | Path | Campaign role |
 | --- | --- |
 | `docs/AGENTIC-QUALITY2.md` | This source-of-truth ledger. |
+| `docs/AGENTIC-QUALITY2-SUITE.md` | Frozen v1 source/license, split, hash, and execution card. |
 | `docs/AGENTIC-OPT.md` | Historical A0-A6 status and pointer to this follow-up. |
 | `hipengine/benchmark/agentic_quality.py` | Normalization, classification, aggregation, compact artifact. |
 | `scripts/agentic_coding_quality.py` | Live collector; no performance rollups. |
-| `benchmarks/prompts/agentic-quality-v*.json` | Versioned semantic task suites. |
-| `benchmarks/oracles/agentic-quality-v*.json` | Independent hermetic oracles. |
-| `benchmarks/schemas/agentic-coding-quality-*.schema.json` | Records/summary contracts. |
+| `benchmarks/prompts/agentic-quality*.json` | Versioned semantic task suites. |
+| `benchmarks/oracles/agentic-quality*.json` | Independent hermetic oracles. |
+| `benchmarks/sources/agentic-quality2-*.json` | Public-source audit and original-authorship record. |
+| `benchmarks/schemas/agentic-quality2-*.schema.json` | Expanded source/suite/oracle contracts. |
+| `benchmarks/schemas/agentic-coding-quality-*.schema.json` | Live records/summary contracts. |
 | `tests/test_agentic_coding_quality*.py` | Loader/oracle/classifier/artifact RED gates. |
 | `tests/test_agentic_server_conformance.py` | Public compatibility and fail-safe contract. |
 | `tests/fixtures/agentic_traces/` | Deterministic envelope/replay fixtures. |
@@ -753,11 +1124,21 @@ completed expensive matrix when a focused repair plus existing evidence covers
 the change. Do not commit raw model outputs, generated-code sandboxes, logs,
 weights, caches, or profiler data.
 
-## 18. Current handoff
+## 18. Closure handoff
 
-Start Task #41 from the committed AQ0 source. Before changing the collector,
-prove which current template/parser/constraint paths a real Qwen3.6 request
-uses. The most likely stale issue is provenance and restartability, not model
-math. AQ1 may repair benchmark tooling but must not change tool prompts, oracle
-answers, or runtime behavior. AQ2 then establishes the first current ZBook
-quality denominator.
+AQ0–AQ13 are complete on the measured no-go path. The authoritative closure
+artifact is
+[`2026-08-26-zbook-agentic-quality2-campaign-final.json`](../benchmarks/results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
+It preserves Qwen3.6/Qwen3.8/Ornith model-product quality separately from
+runtime correctness, records zero admitted quality mechanism, and keeps AQ6/AQ7
+heldout details and raw outputs local and sealed.
+
+The full milestone run completed 10,510 tests with 10,262 passed, 180 skipped,
+4 expected failures, and 67 failures outside the AQ13 closure diff. A focused
+rerun of exactly those 67 nodes passed six order-sensitive nodes and reproduced
+61 baseline failures; none exercises AGENTIC-QUALITY2 behavior, while every
+agentic quality, fixture, live-harness, taxonomy, trace, and server-conformance
+test passed in the completed broad run. Per the focused-repair rule, no unrelated
+runtime/test expectation was changed and the expensive broad suite was not
+repeated. Reopen only under the mechanism-specific criteria in the final
+artifact.
