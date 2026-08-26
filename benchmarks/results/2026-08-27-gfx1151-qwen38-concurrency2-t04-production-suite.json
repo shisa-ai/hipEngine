@@ -7,7 +7,7 @@
  "performance_claim": false,
  "speed_claim_eligible": false,
  "decision": {
-  "c1": "staged MTP2 B2 is a production-profile speed candidate: 14.314 vs 9.754 tok/s (+46.75%), every category +39.47% or better, 79.29% accept/draft",
+  "c1": "staged MTP2 B3 is the production-profile speed candidate: 14.287 vs 9.730 tok/s (+46.84%), every category positive, 79.29% accept/draft",
   "c2_c8": "public route stays typed K0/AR before MTP; no MTP speed claim. Physical C2/C4 belongs to T2.1 bridge.",
   "promotion": "blocked pending actual-owner rocprof, OI-3/device-chain/hot-allocation telemetry, and dynamic lifecycle/SLO product packet; public automatic policy unchanged"
  },
@@ -48,7 +48,7 @@
   ],
   "fresh_capacity_matched_process_per_width": true,
   "max_tokens": 24,
-  "candidate_budget": 2,
+  "candidate_budget": 3,
   "batch_window_ms": 20.0,
   "max_sequence_length": 1024,
   "surface": "blocking OpenAI barrier-to-last-completion complete wall",
@@ -61,16 +61,17 @@
  "width_results": {
   "1": {
    "expected_route": "staged_mtp2",
-   "ar_tok_s": 9.753929527749124,
-   "requested_mtp_arm_tok_s": 14.313805371775317,
-   "requested_mtp_arm_vs_ar_pct": 46.74911614907329,
+   "ar_tok_s": 9.729754089597318,
+   "requested_mtp_arm_tok_s": 14.286893899745897,
+   "requested_mtp_arm_vs_ar_pct": 46.837153006990164,
    "mtp_speed_claim_valid": true,
    "exact_diagnostic_cells": 10,
    "cells": 10,
    "mtp_engaged_cells": 10,
    "route_reasons": [
     "diagnostic_gfx1100_physical_mtp"
-   ]
+   ],
+   "physical_budget_conformed_cells": 10
   },
   "2": {
    "expected_route": "K0_true_AR",
@@ -168,41 +169,41 @@
  "c1_scopes": {
   "category": {
    "code": {
-    "ar_tok_s": 9.817307788635135,
-    "mtp_tok_s": 14.573165063336713,
-    "mtp_vs_ar_pct": 48.44359958039745,
+    "ar_tok_s": 9.768108956678237,
+    "mtp_tok_s": 14.488776068738307,
+    "mtp_vs_ar_pct": 48.3273388226557,
     "accept_per_draft": 0.8076923076923077
    },
    "general_en": {
-    "ar_tok_s": 9.795457015239384,
-    "mtp_tok_s": 14.89966550878682,
-    "mtp_vs_ar_pct": 52.10791579817573,
+    "ar_tok_s": 9.80105768816723,
+    "mtp_tok_s": 14.911946427830257,
+    "mtp_vs_ar_pct": 52.14629790245371,
     "accept_per_draft": 0.8421052631578947
    },
    "general_ja": {
-    "ar_tok_s": 9.797086210236447,
-    "mtp_tok_s": 13.663780809072692,
-    "mtp_vs_ar_pct": 39.46780211851299,
+    "ar_tok_s": 9.776447791841457,
+    "mtp_tok_s": 13.64396555000806,
+    "mtp_vs_ar_pct": 39.559539829937876,
     "accept_per_draft": 0.6818181818181818
    },
    "mixed_ja_en": {
-    "ar_tok_s": 9.548109965777149,
-    "mtp_tok_s": 13.93285758438588,
-    "mtp_vs_ar_pct": 45.92267615606418,
+    "ar_tok_s": 9.539869536109837,
+    "mtp_tok_s": 13.970301654563563,
+    "mtp_vs_ar_pct": 46.44122334885059,
     "accept_per_draft": 0.8421052631578947
    }
   },
   "heldout": {
    "train": {
-    "ar_tok_s": 9.777343273431807,
-    "mtp_tok_s": 14.242966465136911,
-    "mtp_vs_ar_pct": 45.67317590085685,
+    "ar_tok_s": 9.74653502421505,
+    "mtp_tok_s": 14.1948824159877,
+    "mtp_vs_ar_pct": 45.64029555858396,
     "accept_per_draft": 0.7815126050420168
    },
    "heldout": {
-    "ar_tok_s": 9.719018414513322,
-    "mtp_tok_s": 14.421394880750183,
-    "mtp_vs_ar_pct": 48.38324474429277,
+    "ar_tok_s": 9.704690754683671,
+    "mtp_tok_s": 14.427169660544322,
+    "mtp_vs_ar_pct": 48.661817519342286,
     "accept_per_draft": 0.810126582278481
    }
   }
@@ -210,7 +211,9 @@
  "c1_acceptance": {
   "accepted_draft_tokens": 157,
   "draft_tokens": 198,
-  "accept_per_draft": 0.7929292929292929
+  "accept_per_draft": 0.7929292929292929,
+  "drafts_per_cycle": 2.8285714285714287,
+  "physical_budget": 3
  },
  "production_correctness": {
   "status": "passed",
@@ -252,7 +255,7 @@
    "strict_teacher_nll": 0.04263812719091444,
    "candidate_teacher_nll": 0.005707416880337178
   },
-  "generated_ids_diagnostic": "80/80 width cells internally exact; c1 MTP equals same-cell AR in 10/10 cells, but this is not the production binding.",
+  "generated_ids_diagnostic": "80/80 width cells internally exact; truthful physical-B3 c1 MTP equals same-cell AR in 10/10 cells, but this is not the production binding.",
   "bf16_relative": "normative N/A: model quant and BF16 KV are unchanged and no aligned BF16/full-precision teacher is available on this host",
   "external_task": "normative N/A for new capability: same model/sampling/target semantics; full four-category+heldout suite is non-regressive and exact diagnostically",
   "automatic_admission": "not yet: dynamic serving/lifecycle/SLO and actual-owner profile remain pending T0.2/T1.2/T1.3",
@@ -263,17 +266,18 @@
   "timing_warning": "requested-MTP K0 arm differs materially from paired AR at several widths (-35.1% c5, -30.6% c6); it is not an MTP rate and T2.3/T2.4 must prove K0 preserves true AR batching/economics before product promotion"
  },
  "source_states": {
-  "c1_head": "7b3724f7a2cb5df934237786bb95550f0930685e",
+  "c1_head": "9166b221439069568dabf7cd28e62f84c9e2496e",
   "c2_c8_head": "5fad41b56a346f3107b43620f15ce5a548db8a05",
   "numerics_head": "5fad41b56a346f3107b43620f15ce5a548db8a05",
   "quant_label_fix_head": "143c66664"
  },
  "raw_sources": [
   {
-   "path": "/tmp/gfx1151-t04-production-c1.json",
-   "sha256": "6ea0b4b43bcca07d8dd9ead621dbdaa1a46a80125d256de57ffbad91f073b300",
-   "size_bytes": 528465,
-   "retained_in_git": false
+   "path": "/tmp/gfx1151-t14-truthful-production-b3.json",
+   "sha256": "9ac0e9e85c5bead7b0955b06d951e43afa4ad18cf4d9cb11ff527a970a759a83",
+   "size_bytes": 528991,
+   "retained_in_git": false,
+   "note": "truthful physical B3; supersedes mislabeled T0.4 c1 packet"
   },
   {
    "path": "/tmp/gfx1151-t04-production-c2-k0.json",
@@ -325,12 +329,13 @@
   }
  ],
  "commands": {
-  "suite_template": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --execution-profile production --widths C --expected-mtp-widths (C for c1; none for c2-c8) --max-tokens 24 --candidate-budget 2 --max-sequence-length 1024 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/gfx1151-t04-production-cC[-k0].json",
+  "suite_template": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --execution-profile production --widths C --expected-mtp-widths (C for c1; none for c2-c8) --max-tokens 24 --candidate-budget (3 for c1; K0 controls c2-c8) --max-sequence-length 1024 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/gfx1151-t04-production-cC[-k0].json",
   "numerics": ".venv/bin/python scripts/execution_profile_gguf_fp16_state_batch_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --widths 4,8 --decode-steps 24 --repeat-runs 3 --long-prompt-tokens 512 --long-decode-steps 8 --isolation-decode-steps 8 --compiler-version-file /tmp/gfx1151-old-vs-c2-c1-c8/hipcc-version.txt --json /tmp/gfx1151-t04-q4km-production-numerics.json"
  },
  "limitations": [
   "One complete measured AR/MTP arm per prompt/width after two warmup arms; dynamic load/SLO/soak not included.",
   "The generation2 diagnostic plan is content agnostic but not automatic/public policy evidence; automatic remains K0.",
-  "C2-C8 requested-MTP arm rates are K0/fallback controls, not MTP throughput."
+  "C2-C8 requested-MTP arm rates are K0/fallback controls, not MTP throughput.",
+  "The original T0.4 c1 packet labeled B2 actually used adapter-default B3; T1.4 physical conformance exposed and corrected it. This artifact uses the truthful B3 rerun."
  ]
 }
