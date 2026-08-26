@@ -1494,6 +1494,40 @@ def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
     assert row.mtp2_k0_catchups == 1
 
 
+def test_refill_reuses_live_provider_group_before_opening_singleton() -> None:
+    provider = SimpleNamespace(executor=SimpleNamespace(max_requests=2))
+    group = mtp2_module._MTP2ProviderGroup(
+        key=(0, 1),
+        provider=provider,
+        provider_pool_key="pool",
+        request_ids={1},
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._states = {}
+    adapter._provider_groups = {group.key: group}
+    calls = []
+    adapter._attach_request_to_group = lambda request_id, selected: (
+        calls.append((request_id, selected.key))
+        or _MTP2RequestState(
+            request_id=request_id,
+            provider=selected.provider,
+            provider_pool_key=selected.provider_pool_key,
+            provider_group_key=selected.key,
+            verifier=None,
+            root_hidden_buffer=SimpleNamespace(ptr=1),
+        )
+    )
+    adapter._open_batch_requests = lambda ids: (_ for _ in ()).throw(
+        AssertionError(f"unexpected singleton group open: {ids}")
+    )
+    adapter.owner = SimpleNamespace(capacity=2)
+
+    adapter._ensure_request_states((2,))
+
+    assert calls == [(2, (0, 1))]
+    assert adapter._states[2].provider_group_key == (0, 1)
+
+
 def test_context_bucket_k0_does_not_attach_or_mutate_provider() -> None:
     adapter = object.__new__(Qwen35GGUFMTP2Adapter)
     adapter._states = {}
