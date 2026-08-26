@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-26 W7900 SPECDEC2 C2 acceptance root cause; repair retained/economics blocked] Physical commit now owns consumed-position metadata and selected pre-output-norm BF16 target hidden. Full-suite K2/D24 acceptance improves **18.43%→76.92%** with 10/10 exact cells and zero D2H/recovery, but R6 target cost leaves **16.974 vs 31.230 tok/s (0.544x AR)**. Keep physical capability false/automatic K0; next premise is ≤111 ms target lowering, not acceptance tuning. `benchmarks/results/2026-08-26-w7900-specdec2-c2-acceptance-root-cause.json`.
+
 - [2026-08-26 AGENTIC-QUALITY2 campaign closure; quality only] AQ0-AQ13 close with frozen 34-task external/sandbox oracles; Qwen3.6/Qwen3.8/Ornith complete **44/68, 50/68, and 42/68** with exact repeat/control/ownership gates. AQ3/AQ6 find zero scored runtime/unresolved boundaries and AQ8 retains **no implementation**; AQ9-AQ12 are not applicable, so no post-change or speed row is claimed. `benchmarks/results/2026-08-26-zbook-agentic-quality2-campaign-final.json`.
 
 - [2026-08-26 AGENTIC-QUALITY2 AQ8 mechanism decision; retained no-go] AQ3/AQ6/AQ7 admit **no implementation**: all **7/7** unique primary development failures are deterministic model selection/grounding behavior, while parser/template/runtime/unresolved boundaries, malformed/schema-invalid published calls, leaks, truncations, and patch failures are all zero. The 44/68 primary baseline remains unchanged; no post-change or speed row is claimed. `benchmarks/results/2026-08-26-zbook-agentic-quality2-aq8-no-go-decision.json`.
