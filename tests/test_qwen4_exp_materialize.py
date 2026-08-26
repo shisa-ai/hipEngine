@@ -76,6 +76,10 @@ def test_qwen4_exp_materialize_owns_every_hot_weight_once_and_closes_reverse() -
     assert readers[0].calls == []
     assert readers[1].calls == ["per_layer_token_embd.weight"]
     assert len(resident.device_weights) == 1_223
+    assert resident.weight("root.token_embedding").allocation().name == (
+        "root.token_embedding"
+    )
+    assert resident.weight("root.token_embedding").spec.quant_key == "f32"
     assert resident.ple_table.tensor.name == "per_layer_token_embd.weight"
     assert resident.ple_staging.row_capacity == 16
 
@@ -138,6 +142,7 @@ def test_qwen4_exp_raw_weight_loader_preserves_quant_bytes() -> None:
     spec = Qwen4ExpGGUFWeightSpec(
         slot_path="root.test",
         source_ref=source_ref,
+        quant_key="gguf_q8_0",
         layout=LAYOUT_RAW_GGUF,
         allocation_names=("raw",),
         device_resident=True,
@@ -155,6 +160,29 @@ def test_qwen4_exp_raw_weight_loader_preserves_quant_bytes() -> None:
     finally:
         allocation.free(runtime=runtime)
     np.testing.assert_array_equal(actual, raw)
+
+
+def test_qwen4_exp_device_weight_implements_model_neutral_dispatch_abi() -> None:
+    from hipengine.runtime.gguf_linear import (
+        GGUF_ACTIVATION_F32,
+        GGUF_OUTPUT_F32,
+        resolve_gguf_linear_dispatch,
+    )
+
+    model_map = build_qwen4_exp_gguf_tensor_map(_infos())
+    plan = plan_qwen4_exp_residency(model_map)
+    spec = plan.root_specs["token_embedding"]
+    weight = SimpleNamespace(spec=spec, backend="hip_gfx1151")
+
+    dispatch = resolve_gguf_linear_dispatch(
+        weight,
+        activation_dtype=GGUF_ACTIVATION_F32,
+        output_dtype=GGUF_OUTPUT_F32,
+    )
+    assert dispatch.key.backend == "hip_gfx1151"
+    assert dispatch.key.layer == "dense_gemv"
+    assert dispatch.key.quant == "f32"
+    assert dispatch.key.variant == "f32_hidden_f32_out"
 
 
 def test_qwen4_exp_materialize_rejects_reader_part_mismatch() -> None:

@@ -16,6 +16,10 @@ from hipengine.loading.materialize import (
     DeviceTensorAllocation,
     load_host_array_to_device_as_dtype,
 )
+from hipengine.loading.qwen35_gguf_materialize import (
+    LAYOUT_DENSE_BF16,
+    LAYOUT_DENSE_F32,
+)
 from hipengine.loading.qwen4_exp_gguf import (
     GDN,
     Qwen4ExpGGUFConfig,
@@ -32,6 +36,7 @@ LAYOUT_PLE_SPARSE_MMAP = "ple_sparse_mmap"
 class Qwen4ExpGGUFWeightSpec:
     slot_path: str
     source_ref: Qwen4ExpGGUFTensorRef
+    quant_key: str
     layout: str
     allocation_names: tuple[str, ...]
     device_resident: bool
@@ -112,10 +117,12 @@ def plan_qwen4_exp_residency(
         raise ValueError("staging capacities must be positive")
 
     def device_spec(slot_path: str, ref: Qwen4ExpGGUFTensorRef) -> Qwen4ExpGGUFWeightSpec:
+        quant_key, layout = _qwen4_exp_runtime_layout(ref.tensor)
         return Qwen4ExpGGUFWeightSpec(
             slot_path=slot_path,
             source_ref=ref,
-            layout=LAYOUT_RAW_GGUF,
+            quant_key=quant_key,
+            layout=layout,
             allocation_names=("raw",),
             device_resident=True,
             device_nbytes=int(ref.tensor.nbytes),
@@ -137,6 +144,7 @@ def plan_qwen4_exp_residency(
     ple_spec = Qwen4ExpGGUFWeightSpec(
         slot_path="ple.table",
         source_ref=model_map.ple_table,
+        quant_key="ple_mmap",
         layout=LAYOUT_PLE_SPARSE_MMAP,
         allocation_names=(),
         device_resident=False,
@@ -246,6 +254,21 @@ def _runtime_state_bytes_per_request(config: Qwen4ExpGGUFConfig) -> int:
     return matrix_state + conv_state + ple_history + bf16_residual
 
 
+@dataclass(frozen=True)
+class Qwen4ExpDeviceWeight:
+    spec: Qwen4ExpGGUFWeightSpec
+    backend: str
+    allocations: Mapping[str, DeviceTensorAllocation]
+
+    def allocation(self, name: str | None = None) -> DeviceTensorAllocation:
+        key = self.spec.allocation_names[0] if name is None else str(name)
+        return self.allocations[key]
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        for allocation in reversed(tuple(self.allocations.values())):
+            allocation.free(runtime=runtime)
+
+
 @dataclass
 class Qwen4ExpResidentWeights:
     """Physical Qwen4Exp owners with one device allocation per hot tensor."""
@@ -280,6 +303,7 @@ def materialize_qwen4_exp_weights(
     runtime: HipRuntime | None = None,
     device_loader: Any | None = None,
     pin_ple_staging: bool = True,
+    backend: str = "hip_gfx1100",
 ) -> Qwen4ExpResidentWeights:
     """Materialize hot raw weights once and create the sparse PLE owner."""
 
@@ -299,7 +323,12 @@ def materialize_qwen4_exp_weights(
     try:
         for spec in plan.device_specs:
             reader = reader_parts[spec.source_ref.part_index]
-            allocations[spec.slot_path] = load(spec, reader, runtime=active_runtime)
+            allocation = load(spec, reader, runtime=active_runtime)
+            allocations[spec.slot_path] = Qwen4ExpDeviceWeight(
+                spec=spec,
+                backend=str(backend),
+                allocations=MappingProxyType({"raw": allocation}),
+            )
         ple_ref = plan.ple_spec.source_ref
         table = Qwen4ExpPLEMMapTable(
             reader_parts[ple_ref.part_index],
@@ -326,6 +355,14 @@ def materialize_qwen4_exp_weights(
         ple_staging=ring,
         runtime=active_runtime,
     )
+
+
+def _qwen4_exp_runtime_layout(tensor: GGUFTensorInfo) -> tuple[str, str]:
+    if tensor.ggml_type_name == "F32":
+        return "f32", LAYOUT_DENSE_F32
+    if tensor.ggml_type_name == "BF16":
+        return "bf16", LAYOUT_DENSE_BF16
+    return f"gguf_{tensor.ggml_type_name.lower()}", LAYOUT_RAW_GGUF
 
 
 def materialize_qwen4_exp_raw_weight(
@@ -485,6 +522,7 @@ class Qwen4ExpPLEStagingRing:
 __all__ = [
     "LAYOUT_PLE_SPARSE_MMAP",
     "LAYOUT_RAW_GGUF",
+    "Qwen4ExpDeviceWeight",
     "Qwen4ExpGGUFWeightSpec",
     "Qwen4ExpMemoryAdmissionPlan",
     "Qwen4ExpPLEMMapTable",
