@@ -6084,6 +6084,66 @@ class Qwen35GGUFResidentModelRunner:
         with hip_target_arch_environment(self.generator.target_arch):
             return bool(adapter.recover_cycle_failure(plan, error))
 
+    def restore_speculative_target_rows(self, plan) -> bool:
+        """Rebuild canonical target state after an uncertain selected commit."""
+
+        request_ids = tuple(int(value) for value in plan.speculative_request_ids)
+        rows = tuple(self._rows.get(request_id) for request_id in request_ids)
+        if not rows or any(row is None for row in rows):
+            return False
+        concrete = tuple(row for row in rows if row is not None)
+        if any(row.slot is None or row.lease is None for row in concrete):
+            return False
+        token_rows = tuple(
+            (
+                *tuple(int(token) for token in row.prompt_ids),
+                *tuple(int(token) for token in row.slot.generated_ids[:-1]),
+            )
+            for row in concrete
+        )
+        if any(
+            not row.slot.generated_ids
+            or len(tokens) != int(row.slot.seq_position)
+            for row, tokens in zip(concrete, token_rows, strict=True)
+        ):
+            return False
+        self._flush_rows(concrete)
+        sessions = tuple(row.lease.session for row in concrete)
+        for session in sessions:
+            session.reset()
+        owner = self._packed_execution_owner(sessions[0])
+        prefill_batch = getattr(owner, "prefill_batch_native", None)
+        if not callable(prefill_batch):
+            return False
+        with _temporary_env({"HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1"}):
+            results = prefill_batch(
+                token_rows,
+                sessions=sessions,
+                full_prompt_lengths=[len(tokens) for tokens in token_rows],
+                return_logits=False,
+                return_hidden_seeds=False,
+            )
+        result_rows = () if results is None else tuple(results)
+        if len(result_rows) != len(concrete):
+            raise RuntimeError(
+                "SPECDEC2 postcommit target rebuild returned the wrong row count"
+            )
+        for row, session, result in zip(
+            concrete,
+            sessions,
+            result_rows,
+            strict=True,
+        ):
+            if int(result.token_id) != int(row.slot.prev_token):
+                raise RuntimeError(
+                    "SPECDEC2 postcommit target rebuild changed the canonical token"
+                )
+            if int(session.position) != int(row.slot.seq_position):
+                raise RuntimeError(
+                    "SPECDEC2 postcommit target rebuild changed the canonical cursor"
+                )
+        return True
+
     def register_batch(
         self,
         request_ids: Sequence[int],

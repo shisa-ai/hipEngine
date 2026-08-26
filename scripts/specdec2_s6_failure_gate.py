@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from hipengine import LLM
+from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
 from hipengine.generation.registry import GenerationRequest
 from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
@@ -24,11 +25,30 @@ def _request(prompt: str) -> GenerationRequest:
     )
 
 
+def _outcomes(
+    handles: Sequence[Any],
+) -> tuple[tuple[tuple[int, ...] | None, ...], tuple[str | None, ...]]:
+    outputs: list[tuple[int, ...] | None] = []
+    errors: list[str | None] = []
+    for handle in handles:
+        try:
+            result = handle.result(timeout=180)
+        except BaseException as error:
+            outputs.append(None)
+            errors.append(f"{type(error).__name__}:{error}")
+        else:
+            outputs.append(
+                tuple(int(token) for token in result.generated_token_ids)
+            )
+            errors.append(None)
+    return tuple(outputs), tuple(errors)
+
+
 def _ids(handles: Sequence[Any]) -> tuple[tuple[int, ...], ...]:
-    return tuple(
-        tuple(int(token) for token in handle.result(timeout=180).generated_token_ids)
-        for handle in handles
-    )
+    outputs, errors = _outcomes(handles)
+    if any(error is not None for error in errors):
+        raise RuntimeError(f"generation failed: {errors}")
+    return tuple(output for output in outputs if output is not None)
 
 
 def _recent_rows(snapshot: dict[str, Any], request_ids: set[int]) -> list[dict[str, Any]]:
@@ -37,6 +57,34 @@ def _recent_rows(snapshot: dict[str, Any], request_ids: set[int]) -> list[dict[s
         for row in snapshot["runner"]["routes"]["recent_completed"]
         if int(row["request_id"]) in request_ids
     ]
+
+
+def _failure_phase_specs() -> tuple[
+    tuple[str, type[Any], str, Callable[..., Any], bool], ...
+]:
+    return (
+        (
+            "proposal",
+            Qwen35GGUFNextNDraftProvider,
+            "propose_batch_device",
+            Qwen35GGUFNextNDraftProvider.propose_batch_device,
+            False,
+        ),
+        (
+            "target",
+            Qwen35GGUFResidentSession,
+            "verify_target_blocks_batch",
+            Qwen35GGUFResidentSession.verify_target_blocks_batch,
+            False,
+        ),
+        (
+            "readback",
+            Qwen35GGUFMTP2Adapter,
+            "_read_target_batch_accept",
+            Qwen35GGUFMTP2Adapter._read_target_batch_accept,
+            True,
+        ),
+    )
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -50,34 +98,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     service = llm._get_text_generator()
     greeting = _request("Write one short greeting.")
     health = _request("Write one short farewell.")
-    original_proposal = Qwen35GGUFNextNDraftProvider.propose_batch_device
-    original_target = Qwen35GGUFResidentSession.verify_target_blocks_batch
-    original_readback = Qwen35GGUFNextNDraftProvider.materialize_batch_device_proposal
+    phases = _failure_phase_specs()
     results: list[dict[str, Any]] = []
     try:
         ar_health = _ids(service.submit_children((health, health)))
         next_request_id = 2
-        phases: tuple[tuple[str, object, str, Callable[..., Any]], ...] = (
-            (
-                "proposal",
-                Qwen35GGUFNextNDraftProvider,
-                "propose_batch_device",
-                original_proposal,
-            ),
-            (
-                "target",
-                Qwen35GGUFResidentSession,
-                "verify_target_blocks_batch",
-                original_target,
-            ),
-            (
-                "readback",
-                Qwen35GGUFNextNDraftProvider,
-                "materialize_batch_device_proposal",
-                original_readback,
-            ),
-        )
-        for phase, owner, method_name, original in phases:
+        for phase, owner, method_name, original, is_static in phases:
             raised = False
 
             def fail_once(*call_args, __original=original, __phase=phase, **call_kwargs):
@@ -87,33 +113,70 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     raise RuntimeError(f"injected SPECDEC2 {__phase} failure")
                 return __original(*call_args, **call_kwargs)
 
-            setattr(owner, method_name, fail_once)
+            setattr(
+                owner,
+                method_name,
+                staticmethod(fail_once) if is_static else fail_once,
+            )
             fault_ids = {next_request_id, next_request_id + 1}
-            fault_output = _ids(
+            fault_output, fault_errors = _outcomes(
                 service.submit_speculative_children((greeting, greeting))
             )
-            setattr(owner, method_name, original)
+            setattr(
+                owner,
+                method_name,
+                staticmethod(original) if is_static else original,
+            )
             next_request_id += 2
             health_ids = {next_request_id, next_request_id + 1}
-            health_output = _ids(
+            health_output, health_errors = _outcomes(
                 service.submit_speculative_children((health, health))
             )
             next_request_id += 2
             snapshot = service.live_loop_snapshot()
             fault_rows = _recent_rows(snapshot, fault_ids)
             health_rows = _recent_rows(snapshot, health_ids)
+            precommit = phase != "readback"
+            fault_contract_passed = bool(
+                (
+                    precommit
+                    and fault_output
+                    == ((271, 9419, 0, 2500, 628),) * 2
+                    and fault_errors == (None, None)
+                    and len(fault_rows) == 2
+                    and all(
+                        int(row["specdec2_mtp2_recoverable_failures"]) == 1
+                        and row["specdec2_mtp2_failure_reasons"]
+                        == [
+                            "precommit_failure_ar_fallback",
+                            f"RuntimeError:injected SPECDEC2 {phase} failure",
+                        ]
+                        and int(row["specdec2_mtp2_cycles"]) == 0
+                        for row in fault_rows
+                    )
+                )
+                or (
+                    not precommit
+                    and fault_output
+                    == ((271, 9419, 0, 2500, 628),) * 2
+                    and fault_errors == (None, None)
+                    and len(fault_rows) == 2
+                    and all(
+                        int(row["specdec2_mtp2_recoverable_failures"]) == 1
+                        and row["specdec2_mtp2_failure_reasons"][0]
+                        == "postcommit_target_rebuild_ar_fallback"
+                        and "RuntimeError:injected SPECDEC2 readback failure"
+                        in row["specdec2_mtp2_failure_reasons"][1]
+                        and int(row["specdec2_mtp2_cycles"]) == 0
+                        for row in fault_rows
+                    )
+                )
+            )
             phase_passed = bool(
                 raised
-                and fault_output == ((271, 9419, 0, 2500, 628),) * 2
+                and fault_contract_passed
                 and health_output == ar_health
-                and len(fault_rows) == 2
-                and all(
-                    int(row["specdec2_mtp2_recoverable_failures"]) == 1
-                    and row["specdec2_mtp2_failure_reasons"]
-                    == ["precommit_failure_ar_fallback"]
-                    and int(row["specdec2_mtp2_cycles"]) == 0
-                    for row in fault_rows
-                )
+                and health_errors == (None, None)
                 and len(health_rows) == 2
                 and all(
                     int(row["specdec2_mtp2_cycles"]) > 0
@@ -126,7 +189,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     "phase": phase,
                     "raised": raised,
                     "fault_output": fault_output,
+                    "fault_errors": fault_errors,
+                    "fault_contract": (
+                        "precommit_exact_ar_recovery"
+                        if precommit
+                        else "postcommit_target_rebuild_ar_recovery"
+                    ),
                     "health_output": health_output,
+                    "health_errors": health_errors,
                     "ar_health": ar_health,
                     "fault_rows": fault_rows,
                     "health_rows": health_rows,
@@ -135,9 +205,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             )
         final = service.live_loop_snapshot()
     finally:
-        Qwen35GGUFNextNDraftProvider.propose_batch_device = original_proposal
-        Qwen35GGUFResidentSession.verify_target_blocks_batch = original_target
-        Qwen35GGUFNextNDraftProvider.materialize_batch_device_proposal = original_readback
+        for _, owner, method_name, original, is_static in phases:
+            setattr(
+                owner,
+                method_name,
+                staticmethod(original) if is_static else original,
+            )
         llm.close()
 
     passed = bool(
