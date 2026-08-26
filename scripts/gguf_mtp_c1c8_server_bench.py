@@ -193,7 +193,7 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
     budget = int(kwargs.get("candidate_budget", 2))
     admitted = bool(
         1 <= rows <= 4
-        and budget == 2
+        and budget in {1, 2, 3}
         and kwargs["sampling_mode"] == "greedy_fast"
         and int(kwargs["context_tokens"]) <= 95
         and int(kwargs["output_horizon_tokens"]) == 24
