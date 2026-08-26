@@ -366,10 +366,22 @@ def _probe_native_graph(
     session: Any,
     inputs: Sequence[int],
 ) -> tuple[tuple[int, ...], np.ndarray, np.ndarray]:
+    if len(tuple(inputs)) == 2:
+        tokens, logits, hidden, *_ = _probe_serial(
+            session,
+            list(inputs),
+            capture_pre_output_norm_hidden=False,
+            capture_layer_output_hidden=[],
+        )
+        return (
+            tuple(int(token) for token in tokens),
+            np.ascontiguousarray(logits, dtype=np.float32),
+            np.ascontiguousarray(hidden, dtype=np.float32),
+        )
     result = session.verify_target_block_native_cycle(
         list(inputs),
         fallback=False,
-        bulk_attention_mode="bulk",
+        bulk_attention_mode="native",
         use_wmma_prefill=False,
         capture_linear_state_rows=True,
         capture_lm_head_logits=True,
@@ -527,6 +539,8 @@ def _capture_graph_eager(
         output_index = int(cycle.root_position) - len(prompt_tokens) + 1
         root_token = _strict_prefix(session, prompt_tokens, output_index)
         inputs = (root_token, *cycle.draft_tokens)
+        if len(inputs) == 2:
+            continue
         graph_tokens, graph_logits, graph_hidden = _probe_native_graph(
             session,
             inputs,
@@ -537,7 +551,7 @@ def _capture_graph_eager(
         eager_tokens, eager_logits, eager_hidden, *_ = _probe_bulk_or_native(
             session,
             list(inputs),
-            mode="bulk",
+            mode="native",
             use_wmma_prefill=False,
             capture_linear_state_rows=True,
             capture_pre_output_norm_hidden=False,
@@ -776,14 +790,23 @@ def _trace_checks(
                 and cycle.accepted <= len(cycle.draft_tokens)
                 and len(cycle.output_tokens) <= cycle.remaining_decode
             )
-            graph = graph and cycle.graph
+            graph = graph and (
+                cycle.graph or len(cycle.draft_tokens) == 1
+            )
         reconstructed_equal = tuple(reconstructed) == first_output
         terminal = trace_rows[0][-1]
         terminal_exact = bool(
-            terminal.remaining_decode == 1
-            and len(terminal.draft_tokens) == 1
-            and terminal.accepted == 0
-            and len(terminal.output_tokens) == 1
+            terminal.remaining_decode != 1
+            or (
+                len(terminal.draft_tokens) == 1
+                and terminal.accepted == 0
+                and len(terminal.output_tokens) == 1
+            )
+        )
+        shape_routes = all(
+            (len(cycle.draft_tokens) == 2 and cycle.graph)
+            or (len(cycle.draft_tokens) == 1 and not cycle.graph)
+            for cycle in trace_rows[0]
         )
         passed = bool(
             output_repeat
@@ -791,7 +814,7 @@ def _trace_checks(
             and isolation_equal
             and reconstructed_equal
             and bounded
-            and graph
+            and shape_routes
             and terminal_exact
             and len(first_output) == max_tokens
         )
@@ -803,7 +826,8 @@ def _trace_checks(
                 "reverse_order_isolation": isolation_equal,
                 "reconstructed_output": reconstructed_equal,
                 "bounded_control": bounded,
-                "all_graph": graph,
+                "all_k2_graph": graph,
+                "shape_routes": shape_routes,
                 "terminal_zero_accept": terminal_exact,
                 "cycles": len(trace_rows[0]),
                 "trace_sha256": _sha256_json(trace_payloads[0]),

@@ -522,6 +522,8 @@ class Qwen35GGUFMoEMTP2Adapter:
             draft_cache_len=cache_before,
             cycle_id=int(plan.cycle_id),
             transaction_id=transaction_id,
+            target_bulk_attention_mode="native",
+            terminal_serial_exact=True,
         )
         state.cache_len = int(native.draft_cache_len_after)
         output_ids = tuple(int(token) for token in native.output_token_ids)

@@ -2124,6 +2124,8 @@ def run_qwen35_gguf_native_mtp_cycle(
     request_id: int = 0,
     record_stage_timings: bool = False,
     native_proposal_graph: bool = False,
+    target_bulk_attention_mode: str = "bulk",
+    terminal_serial_exact: bool = False,
 ) -> Qwen35GGUFNativeCompleteCycleResult:
     """Own one strict llama-compatible GGUF MTP cycle behind one call.
 
@@ -2147,6 +2149,9 @@ def run_qwen35_gguf_native_mtp_cycle(
         raise NativeSpecTargetGraphUnsupportedError(
             "native complete cycle supports only B1/B2 strict chains"
         )
+    target_mode = str(target_bulk_attention_mode)
+    if target_mode not in {"bulk", "native"}:
+        raise ValueError("target_bulk_attention_mode must be bulk or native")
     if root < 0:
         raise ValueError("root_token must be non-negative")
     if start < 0 or cache_before < 0:
@@ -2236,34 +2241,61 @@ def run_qwen35_gguf_native_mtp_cycle(
         raise RuntimeError("device NextN proposal returned an unexpected speculative KV cursor")
 
     target_start = time.perf_counter()
-    target_result = session.verify_target_block_native_cycle(
-        [root, *drafts],
-        cycle_id=int(cycle_id),
-        transaction_id=int(transaction_id),
-        request_id=int(request_id),
-        bulk_attention_mode="bulk",
-        use_wmma_prefill=False,
-        capture_linear_state_rows=True,
-        defer_linear_state_commit=True,
-        device_accept_commit=True,
-        remaining_decode=remaining,
-        fallback=False,
-    )
+    use_terminal_serial = bool(terminal_serial_exact and budget == 1)
+    if use_terminal_serial:
+        target_result = session.verify_target_block_serial_exact(
+            [root, *drafts],
+            capture_linear_state_rows=True,
+        )
+        target_tokens = tuple(int(token) for token in target_result.token_ids)
+        if len(target_tokens) != 2:
+            raise RuntimeError("terminal serial target must return root plus K1 rows")
+        accepted = int(
+            remaining > 1 and drafts[0] == target_tokens[0]
+        )
+        outputs = (
+            (drafts[0], target_tokens[1])
+            if accepted
+            else (target_tokens[0],)
+        )
+        end = start + accepted + 1
+        session._commit_verify_linear_state_row(accepted, position=end)
+        session.last_native_spec_target_submitted = False
+        session.last_native_spec_target_fallback_reason = "k1_serial_exact"
+        hidden_rows_ptr = int(session._verify_hidden_seed_buf.ptr)
+        hidden_row_count = len(target_tokens)
+    else:
+        target_result = session.verify_target_block_native_cycle(
+            [root, *drafts],
+            cycle_id=int(cycle_id),
+            transaction_id=int(transaction_id),
+            request_id=int(request_id),
+            bulk_attention_mode=target_mode,
+            use_wmma_prefill=False,
+            capture_linear_state_rows=True,
+            defer_linear_state_commit=True,
+            device_accept_commit=True,
+            remaining_decode=remaining,
+            fallback=False,
+        )
+        if not bool(getattr(target_result, "device_accept_commit", False)):
+            raise RuntimeError("native complete cycle target did not execute N2 accept/commit")
+        accepted = int(getattr(target_result, "accepted_draft_tokens", -1))
+        outputs = tuple(int(token) for token in getattr(target_result, "token_ids", ()))
+        end = int(getattr(target_result, "end_position", -1))
+        hidden_rows_ptr = int(getattr(target_result, "hidden_seed_rows_ptr", 0))
+        hidden_row_count = int(getattr(target_result, "hidden_seed_row_count", 0))
     target_wall_ms = (time.perf_counter() - target_start) * 1000.0
-    if not bool(getattr(target_result, "device_accept_commit", False)):
-        raise RuntimeError("native complete cycle target did not execute N2 accept/commit")
-    accepted = int(getattr(target_result, "accepted_draft_tokens", -1))
-    outputs = tuple(int(token) for token in getattr(target_result, "token_ids", ()))
-    end = int(getattr(target_result, "end_position", -1))
     if accepted < 0 or accepted > budget:
         raise RuntimeError("native target returned an invalid accepted draft count")
     if outputs[:accepted] != drafts[:accepted] or len(outputs) != accepted + 1:
         raise RuntimeError("native target returned an invalid strict-chain visible payload")
-    if int(getattr(target_result, "start_position", -1)) != start or end != start + len(outputs):
+    if (
+        (not use_terminal_serial and int(getattr(target_result, "start_position", -1)) != start)
+        or end != start + len(outputs)
+    ):
         raise RuntimeError("native target cursor diverged from the complete-cycle boundary")
 
-    hidden_rows_ptr = int(getattr(target_result, "hidden_seed_rows_ptr", 0))
-    hidden_row_count = int(getattr(target_result, "hidden_seed_row_count", 0))
     consumed_rows = accepted + 1
     if hidden_rows_ptr <= 0 or hidden_row_count < consumed_rows:
         raise RuntimeError("native target did not expose the consumed verifier hidden rows")
