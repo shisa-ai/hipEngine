@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from scripts.gguf_mtp_c1c8_server_bench import (
+    _cell_correctness,
     _diagnostic_plan,
     _generated_ids,
     _mtp_engaged,
@@ -42,6 +43,17 @@ def test_mtp_c1c8_extracts_authoritative_ids_and_engagement() -> None:
         "speculative_mtp",
         {"used": False, "draft_tokens": 0, "draft_cycles": 0},
     )
+
+
+def test_mtp_c1c8_correctness_contract_separates_exact_and_traded_routes() -> None:
+    ar = [[1, 2], [1, 2]]
+    mtp = [[1, 3], [1, 3]]
+
+    strict = _cell_correctness(ar, mtp, contract="ar_exact")
+    traded = _cell_correctness(ar, mtp, contract="mtp_self_exact")
+
+    assert strict == {"ar_self_exact": True, "mtp_self_exact": True, "ar_mtp_equal": False, "passed": False}
+    assert traded == {"ar_self_exact": True, "mtp_self_exact": True, "ar_mtp_equal": False, "passed": True}
 
 
 def test_mtp_c1c8_diagnostic_plan_is_content_agnostic_and_bounded() -> None:

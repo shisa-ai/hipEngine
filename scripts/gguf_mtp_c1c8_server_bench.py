@@ -38,6 +38,7 @@ FULL_PROMPT_IDS = (
     "mixed_ja_en_review",
 )
 ARMS = ("ar", "mtp")
+_CORRECTNESS_CONTRACTS = ("ar_exact", "mtp_self_exact")
 
 
 def _render_messages(messages: object) -> str:
@@ -131,6 +132,25 @@ def _mtp_engaged(route: str, summary: Mapping[str, Any]) -> bool:
         and int(summary.get("draft_tokens", 0) or 0) > 0
         and int(summary.get("draft_cycles", 0) or 0) > 0
     )
+
+
+def _cell_correctness(
+    ar_ids: Sequence[Sequence[int]],
+    mtp_ids: Sequence[Sequence[int]],
+    *,
+    contract: str,
+) -> dict[str, bool]:
+    if contract not in _CORRECTNESS_CONTRACTS:
+        raise ValueError(f"unsupported correctness contract: {contract!r}")
+    ar_self_exact = bool(ar_ids and all(list(row) == list(ar_ids[0]) for row in ar_ids))
+    mtp_self_exact = bool(mtp_ids and all(list(row) == list(mtp_ids[0]) for row in mtp_ids))
+    ar_mtp_equal = bool(ar_self_exact and mtp_self_exact and list(mtp_ids[0]) == list(ar_ids[0]))
+    return {
+        "ar_self_exact": ar_self_exact,
+        "mtp_self_exact": mtp_self_exact,
+        "ar_mtp_equal": ar_mtp_equal,
+        "passed": ar_mtp_equal if contract == "ar_exact" else ar_self_exact and mtp_self_exact,
+    }
 
 
 def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
@@ -348,7 +368,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     ar_ids = [row["generated_ids"] for row in measured["ar"]["rows"]]
                     mtp_ids = [row["generated_ids"] for row in measured["mtp"]["rows"]]
-                    exact = bool(ar_ids and all(row == ar_ids[0] for row in ar_ids) and mtp_ids == ar_ids)
+                    correctness = _cell_correctness(
+                        ar_ids,
+                        mtp_ids,
+                        contract=str(args.correctness_contract),
+                    )
                     engaged = all(
                         _mtp_engaged(row["route"], row["mtp"])
                         for row in measured["mtp"]["rows"]
@@ -362,7 +386,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "order": list(order),
                         "ar": measured["ar"],
                         "mtp": measured["mtp"],
-                        "exact": exact,
+                        "correctness": correctness,
+                        "exact": correctness["passed"],
                         "mtp_engaged": engaged,
                     }
                     cells.append(cell)
@@ -373,7 +398,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                 "prompt": prompt["id"],
                                 "ar_tok_s": measured["ar"]["tok_s"],
                                 "mtp_tok_s": measured["mtp"]["tok_s"],
-                                "exact": exact,
+                                "correctness": correctness,
                                 "engaged": engaged,
                             }
                         ),
@@ -410,6 +435,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "warmup_arms_per_width": 2,
             "runs": 1,
             "sampling": "raw greedy, no processed target, natural stop/EOS",
+            "correctness_contract": str(args.correctness_contract),
             "generation2_diagnostic_plan": bool(args.generation2_diagnostic),
             "timing": "blocking OpenAI barrier-to-last-completion complete wall",
         },
@@ -436,6 +462,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-window-ms", type=float, default=20.0)
     parser.add_argument("--max-sequence-length", type=int, default=1024)
     parser.add_argument("--generation2-diagnostic", action="store_true")
+    parser.add_argument(
+        "--correctness-contract",
+        choices=_CORRECTNESS_CONTRACTS,
+        default="ar_exact",
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
