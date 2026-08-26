@@ -183,7 +183,7 @@ def _backend_mtp_engaged(payload: Mapping[str, Any], *, width: int) -> bool:
 
 def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
     rows = int(kwargs["realized_group_rows"])
-    budget = int(kwargs["candidate_budget"])
+    budget = int(kwargs.get("candidate_budget", 2))
     admitted = bool(
         1 <= rows <= 4
         and budget == 2
