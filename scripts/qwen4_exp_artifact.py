@@ -10,13 +10,14 @@ import re
 import sys
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from hipengine.loading.gguf import GGUFReader  # noqa: E402
+from hipengine.loading.gguf import GGUFReader, discover_gguf_files  # noqa: E402
 
 _SHARD_RE = re.compile(r"model-\d+-of-\d+\.safetensors\Z")
 
@@ -225,6 +226,81 @@ def summarize_qwen4_exp_gguf(reader: GGUFReader) -> dict[str, Any]:
     }
 
 
+def summarize_qwen4_exp_split_gguf(readers: Any) -> dict[str, Any]:
+    """Validate and aggregate every part of one split qwen4exp GGUF."""
+
+    parts = tuple(readers)
+    if not parts:
+        raise ValueError("at least one GGUF reader is required")
+    infos = tuple(reader.info for reader in parts)
+    all_tensors = tuple(tensor for info in infos for tensor in info.tensors)
+    names = Counter(tensor.name for tensor in all_tensors)
+    duplicates = sorted(name for name, count in names.items() if count > 1)
+
+    split_counts = {int(info.metadata.get("split.count", 1)) for info in infos}
+    declared_counts = {
+        int(info.metadata.get("split.tensors.count", sum(item.tensor_count for item in infos)))
+        for info in infos
+    }
+    part_numbers = [
+        int(info.metadata.get("split.no", index)) for index, info in enumerate(infos)
+    ]
+    architectures = {info.architecture for info in infos}
+    file_types = {info.file_type for info in infos}
+    split_errors: list[str] = []
+    if len(split_counts) != 1:
+        split_errors.append(f"inconsistent split counts: {sorted(split_counts)}")
+    if len(declared_counts) != 1:
+        split_errors.append(f"inconsistent declared tensor counts: {sorted(declared_counts)}")
+    if len(architectures) != 1:
+        split_errors.append(f"inconsistent architectures: {sorted(map(str, architectures))}")
+    if len(file_types) != 1:
+        split_errors.append(f"inconsistent file types: {sorted(map(str, file_types))}")
+
+    split_count = next(iter(split_counts)) if len(split_counts) == 1 else len(infos)
+    expected_parts = list(range(split_count))
+    if sorted(part_numbers) != expected_parts:
+        split_errors.append(
+            f"split part numbers {sorted(part_numbers)} do not cover {expected_parts}"
+        )
+    declared_tensor_count = (
+        next(iter(declared_counts)) if len(declared_counts) == 1 else len(all_tensors)
+    )
+    if len(all_tensors) != declared_tensor_count:
+        split_errors.append(
+            f"split contains {len(all_tensors)} tensors, declared {declared_tensor_count}"
+        )
+    if duplicates:
+        split_errors.append(
+            "duplicate tensor names across split: " + ", ".join(duplicates[:16])
+        )
+
+    first = infos[0]
+    merged = SimpleNamespace(
+        info=SimpleNamespace(
+            path=first.path,
+            architecture=first.architecture,
+            file_type=first.file_type,
+            file_type_name=first.file_type_name,
+            tensor_count=len(all_tensors),
+            total_tensor_nbytes=sum(int(tensor.nbytes) for tensor in all_tensors),
+            metadata=first.metadata,
+            tensors=all_tensors,
+        )
+    )
+    result = summarize_qwen4_exp_gguf(merged)
+    result["kind"] = "qwen4exp_split_gguf"
+    result["part_paths"] = [str(info.path) for info in infos]
+    result["split"] = {
+        "count": split_count,
+        "part_numbers": part_numbers,
+        "declared_tensor_count": declared_tensor_count,
+    }
+    result["errors"].extend(split_errors)
+    result["passed"] = result["passed"] and not split_errors
+    return result
+
+
 def _emit(result: dict[str, Any], json_out: Path | None) -> None:
     text = json.dumps(result, indent=2, sort_keys=True)
     print(text)
@@ -251,10 +327,33 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "verify-hf":
         result = verify_hf_snapshot(args.root, args.revision)
     else:
-        result = summarize_qwen4_exp_gguf(GGUFReader(args.path))
-        result["file_bytes"] = args.path.stat().st_size
+        paths = discover_gguf_files(args.path)
+        readers = tuple(GGUFReader(path) for path in paths)
+        is_split = len(readers) > 1 or "split.count" in readers[0].info.metadata
+        result = (
+            summarize_qwen4_exp_split_gguf(readers)
+            if is_split
+            else summarize_qwen4_exp_gguf(readers[0])
+        )
+        result["files"] = [
+            {
+                "path": str(path),
+                "file_bytes": path.stat().st_size,
+                **({"sha256": _sha256(path)} if args.sha256 else {}),
+            }
+            for path in paths
+        ]
+        result["file_bytes"] = sum(item["file_bytes"] for item in result["files"])
         if args.sha256:
-            result["sha256"] = _sha256(args.path)
+            identity = hashlib.sha256()
+            for item in result["files"]:
+                identity.update(Path(item["path"]).name.encode("utf-8"))
+                identity.update(b"\0")
+                identity.update(str(item["file_bytes"]).encode("ascii"))
+                identity.update(b"\0")
+                identity.update(item["sha256"].encode("ascii"))
+                identity.update(b"\n")
+            result["split_identity_sha256"] = identity.hexdigest()
     _emit(result, args.json_out)
     return 0 if result["passed"] else 1
 

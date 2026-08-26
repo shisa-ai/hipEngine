@@ -140,3 +140,101 @@ def test_summarize_qwen4_exp_gguf_groups_bytes_by_role_and_qtype() -> None:
         "type": "Q4_0",
         "nbytes": 90,
     }
+
+
+def test_summarize_qwen4_exp_split_gguf_validates_and_aggregates_parts() -> None:
+    tensors = (
+        SimpleNamespace(name="per_layer_token_embd.weight", ggml_type_name="Q4_0", nbytes=90),
+        SimpleNamespace(name="blk.0.ffn_up_exps.weight", ggml_type_name="Q4_K", nbytes=20),
+    )
+    shared = {
+        "general.architecture": "qwen4exp",
+        "general.file_type": 15,
+        "split.count": 2,
+        "split.tensors.count": 2,
+    }
+    readers = (
+        SimpleNamespace(
+            info=SimpleNamespace(
+                path=Path("model-00001-of-00002.gguf"),
+                architecture="qwen4exp",
+                file_type=15,
+                file_type_name="MOSTLY_Q4_K_M",
+                tensor_count=0,
+                total_tensor_nbytes=0,
+                metadata={**shared, "split.no": 0},
+                tensors=(),
+            )
+        ),
+        SimpleNamespace(
+            info=SimpleNamespace(
+                path=Path("model-00002-of-00002.gguf"),
+                architecture="qwen4exp",
+                file_type=15,
+                file_type_name="MOSTLY_Q4_K_M",
+                tensor_count=2,
+                total_tensor_nbytes=110,
+                metadata={**shared, "split.no": 1},
+                tensors=tensors,
+            )
+        ),
+    )
+
+    result = qwen4_exp_artifact.summarize_qwen4_exp_split_gguf(readers)
+
+    assert result["passed"] is True
+    assert result["split"] == {
+        "count": 2,
+        "part_numbers": [0, 1],
+        "declared_tensor_count": 2,
+    }
+    assert result["tensor_count"] == 2
+    assert result["total_tensor_nbytes"] == 110
+    assert result["tensor_bytes_by_role"] == {"ple_table": 90, "routed_expert": 20}
+    assert result["part_paths"] == [
+        "model-00001-of-00002.gguf",
+        "model-00002-of-00002.gguf",
+    ]
+
+
+def test_summarize_qwen4_exp_split_gguf_rejects_missing_parts_and_duplicate_tensors() -> None:
+    tensor = SimpleNamespace(name="output.weight", ggml_type_name="Q6_K", nbytes=10)
+    metadata = {
+        "general.architecture": "qwen4exp",
+        "general.file_type": 15,
+        "split.count": 3,
+        "split.no": 1,
+        "split.tensors.count": 2,
+    }
+    readers = (
+        SimpleNamespace(
+            info=SimpleNamespace(
+                path=Path("part-a.gguf"),
+                architecture="qwen4exp",
+                file_type=15,
+                file_type_name="MOSTLY_Q4_K_M",
+                tensor_count=1,
+                total_tensor_nbytes=10,
+                metadata=metadata,
+                tensors=(tensor,),
+            )
+        ),
+        SimpleNamespace(
+            info=SimpleNamespace(
+                path=Path("part-b.gguf"),
+                architecture="qwen4exp",
+                file_type=15,
+                file_type_name="MOSTLY_Q4_K_M",
+                tensor_count=1,
+                total_tensor_nbytes=10,
+                metadata=metadata,
+                tensors=(tensor,),
+            )
+        ),
+    )
+
+    result = qwen4_exp_artifact.summarize_qwen4_exp_split_gguf(readers)
+
+    assert result["passed"] is False
+    assert "split part numbers [1, 1] do not cover [0, 1, 2]" in result["errors"]
+    assert "duplicate tensor names across split: output.weight" in result["errors"]
