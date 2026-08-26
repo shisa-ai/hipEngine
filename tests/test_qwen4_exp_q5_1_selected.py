@@ -80,7 +80,8 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
                 raw[expert, output, offset + 8 : offset + 24] = rng.integers(
                     0, 256, size=16, dtype=np.uint8
                 )
-    selected = np.array([3, 0, 2], dtype=np.int32)
+    # Router selection is an int64 contract shared by all selected GGUF kernels.
+    selected = np.array([3, 0, 2], dtype=np.int64)
     x_bits = float_array_to_bf16_bits(
         rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
     )

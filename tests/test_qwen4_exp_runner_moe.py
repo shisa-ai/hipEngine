@@ -130,7 +130,8 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle() -> None:
         )
         runtime.device_synchronize()
         actual_bits = _download(result.output, (rows, hidden), np.uint16, runtime)
-        selected = _download(result.selected, (rows, top_k), np.int32, runtime)
+        assert result.selected.nbytes == rows * top_k * np.dtype(np.int64).itemsize
+        selected = _download(result.selected, (rows, top_k), np.int64, runtime)
         routing = _download(result.routing, (rows, top_k), np.float32, runtime)
         finite_boundaries = {
             "expert_gate": bf16_to_float32(
@@ -160,7 +161,7 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle() -> None:
 
     for name, boundary in finite_boundaries.items():
         assert np.isfinite(boundary).all(), name
-    np.testing.assert_array_equal(selected, expected.selected_experts.astype(np.int32))
+    np.testing.assert_array_equal(selected, expected.selected_experts.astype(np.int64))
     np.testing.assert_allclose(routing, expected.routing_weights, rtol=2e-6, atol=2e-6)
     np.testing.assert_allclose(
         bf16_to_float32(actual_bits),
