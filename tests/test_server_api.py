@@ -1747,7 +1747,7 @@ def test_capabilities_endpoint_defaults_to_auto_exact_fallback() -> None:
         "policy_fingerprint": DEFAULT_AUTO_DEPTH_POLICY.fingerprint,
         "exact_default_required": True,
         "compatibility_mtp_explicit_only": True,
-        "evidence": "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json",
+        "evidence": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json",
     }
 
 
