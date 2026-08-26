@@ -1133,7 +1133,7 @@ class Qwen4ExpMoEScratch:
         compact = rows * top_k
         byte_sizes = (
             rows * experts * 4,
-            compact * 4,
+            compact * DType.INT64.itemsize,
             compact * 4,
             rows * hidden * 2,
             compact * ffn * 2,

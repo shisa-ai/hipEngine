@@ -35,7 +35,7 @@ __device__ inline float dequant_q5_1(const uint8_t* block, int index) {
 
 __global__ void q5_1_selected_gemv_bf16_bf16_kernel(
     const uint16_t* __restrict__ input,
-    const int32_t* __restrict__ selected,
+    const int64_t* __restrict__ selected,
     const uint8_t* __restrict__ weights,
     uint16_t* __restrict__ output,
     int64_t x_rows,
@@ -49,7 +49,7 @@ __global__ void q5_1_selected_gemv_bf16_bf16_kernel(
   const int64_t row = pair / out_features;
   const int64_t out = pair % out_features;
   const int64_t input_row = row / (rows / x_rows);
-  const int32_t expert = selected[row];
+  const int64_t expert = selected[row];
   if (expert < 0 || expert >= num_experts) {
     return;
   }
@@ -99,7 +99,7 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
       q5_1_selected_gemv_bf16_bf16_kernel,
       dim3(static_cast<uint32_t>(rows * out_features)), dim3(threads),
       threads * sizeof(float), stream,
-      static_cast<const uint16_t*>(input), static_cast<const int32_t*>(selected),
+      static_cast<const uint16_t*>(input), static_cast<const int64_t*>(selected),
       static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
       x_rows, rows, num_experts, in_features, out_features, row_bytes);
   return static_cast<int>(hipGetLastError());
