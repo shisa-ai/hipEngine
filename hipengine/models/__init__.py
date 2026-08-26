@@ -35,6 +35,7 @@ from hipengine.models.qwen35_dms import (
     register_qwen35_dms_decision_capability,
     resolve_qwen35_dms_decision_capability,
 )
+from hipengine.models.qwen4_exp import QWEN4_EXP_GGUF, Qwen4ExpGGUFModel
 from hipengine.models.registry import (
     DuplicateModelError,
     MissingModelError,
@@ -52,6 +53,7 @@ __all__ = [
     "QWEN35_GGUF",
     "QWEN35_MOE_GGUF",
     "QWEN35_PARO_MOE",
+    "QWEN4_EXP_GGUF",
     "TOY_ONE_LAYER",
     "DuplicateModelError",
     "KVCapabilityEvidence",
@@ -69,6 +71,7 @@ __all__ = [
     "Qwen35GGUFModel",
     "Qwen35MoeGGUFModel",
     "Qwen35ParoMoeModel",
+    "Qwen4ExpGGUFModel",
     "ToyOneLayerModel",
     "model_artifact_identity",
     "parse_maple_model_spec",
