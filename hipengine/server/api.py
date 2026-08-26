@@ -2036,9 +2036,9 @@ def _resolve_realized_generation_route(
 ) -> tuple[str, dict[str, Any] | None]:
     """Resolve automatic routing only after the batcher's group is known.
 
-    A shared target-reseed repair changed speculative acceptance after the last
-    fixed grid. Automatic requests remain on the default route until the grid
-    and complete product packet are rerun. Unqualified widths stay pre-mutation K0.
+    Exact staged MTP has one current fixed C1/K2 performance premise, but
+    automatic requests remain on the default route until its complete product
+    packet passes. Losing and unqualified widths stay pre-mutation K0.
     """
 
     route = str(requested_route)
