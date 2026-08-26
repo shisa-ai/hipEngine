@@ -476,11 +476,16 @@ def test_packed_target_device_result_binds_identity_and_only_device_rows() -> No
             0x3000, (3, 8), DType.FP32, Device("hip", 0)
         ),
         deferred_packed_state=object(),
+        pre_output_norm_hidden=Tensor.from_handle(
+            0x4000, (3, 8), DType.BF16, Device("hip", 0)
+        ),
     )
 
     assert result.rows == 3
     assert result.request_id == 10
     assert result.transaction_id == 7
+    assert result.pre_output_norm_hidden is not None
+    assert result.pre_output_norm_hidden.ptr == 0x4000
     assert not hasattr(result, "token_ids")
 
 
@@ -897,6 +902,17 @@ def test_packed_owner_device_commit_selects_from_accept_buffers_before_readback(
                     )
                 )
             ),
+            _commit_external_pre_output_norm_hidden_row_device=(
+                lambda source_rows, *, request_id=request_id, **kwargs: calls.append(
+                    (
+                        "hidden",
+                        request_id,
+                        int(source_rows.ptr),
+                        int(kwargs["commit_row_i32_ptr"]),
+                        int(kwargs["commit_position_i32_ptr"]),
+                    )
+                )
+            ),
         )
         for request_id in (10, 20)
     )
@@ -924,6 +940,12 @@ def test_packed_owner_device_commit_selects_from_accept_buffers_before_readback(
                 0x3000 + index * 0x100,
                 (3, 8),
                 DType.FP32,
+                Device("hip", 0),
+            ),
+            pre_output_norm_hidden=Tensor.from_handle(
+                0x4000 + index * 0x100,
+                (3, 8),
+                DType.BF16,
                 Device("hip", 0),
             ),
             deferred_packed_state=SimpleNamespace(
@@ -958,8 +980,10 @@ def test_packed_owner_device_commit_selects_from_accept_buffers_before_readback(
     assert calls == [
         ("kv", 10, packed, 0, 0, 3),
         ("state", 10, owner, 0, 3, 0xA000, 0xB000),
+        ("hidden", 10, 0x4000, 0xA000, 0xB000),
         ("kv", 20, packed, 1, 0, 3),
         ("state", 20, owner, 3, 3, 0xA004, 0xB004),
+        ("hidden", 20, 0x4100, 0xA004, 0xB004),
     ]
 
 

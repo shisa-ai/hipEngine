@@ -984,6 +984,7 @@ class Qwen35GGUFPackedVerifyDeviceResult:
     target_top1: Tensor
     hidden_seeds: Tensor
     deferred_packed_state: object
+    pre_output_norm_hidden: Tensor | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -1012,6 +1013,15 @@ class Qwen35GGUFPackedVerifyDeviceResult:
             or self.hidden_seeds.dtype != DType.FP32
         ):
             raise ValueError("packed hidden seeds must be FP32 [rows, hidden_size]")
+        if self.pre_output_norm_hidden is not None and (
+            self.pre_output_norm_hidden.ndim != 2
+            or self.pre_output_norm_hidden.shape[0] != rows
+            or self.pre_output_norm_hidden.shape[1] != self.hidden_seeds.shape[1]
+            or self.pre_output_norm_hidden.dtype != DType.BF16
+        ):
+            raise ValueError(
+                "packed pre-output-norm hidden must be BF16 [rows, hidden_size]"
+            )
         device = self.input_token_ids.device
         if self.target_top1.device != device or self.hidden_seeds.device != device:
             raise ValueError("packed device-result tensors must share one device")
@@ -18573,6 +18583,7 @@ class Qwen35GGUFResidentSession:
                 layout,
                 packed_state,
                 hidden_seed_buf,
+                src,
             )
             add_stage("packed_verify_device_descriptors", scatter_start)
         else:
@@ -24094,6 +24105,7 @@ class Qwen35GGUFResidentSession:
         layout: _GGUFPackedVerifyLayout,
         packed_state: _GGUFPackedTargetState,
         hidden_seed_buf: DeviceBuffer,
+        pre_output_norm_hidden_buf: DeviceBuffer,
     ) -> list[Qwen35GGUFPackedVerifyDeviceResult]:
         """Return stable target row descriptors without synchronizing or D2H."""
 
@@ -24136,6 +24148,13 @@ class Qwen35GGUFResidentSession:
                         hidden_seed_buf.ptr + row_start * hidden_row_nbytes,
                         (rows, hidden_size),
                         DType.FP32,
+                        device,
+                    ),
+                    pre_output_norm_hidden=Tensor.from_handle(
+                        pre_output_norm_hidden_buf.ptr
+                        + row_start * hidden_size * DType.BF16.itemsize,
+                        (rows, hidden_size),
+                        DType.BF16,
                         device,
                     ),
                     deferred_packed_state=_GGUFPackedVerifyDeferredState(
@@ -24670,6 +24689,72 @@ class Qwen35GGUFResidentSession:
         self._verify_hidden_seed_rows_populated = rows
         self._hidden_seed_fp32_populated = True
 
+    def _commit_external_pre_output_norm_hidden_row_device(
+        self,
+        source_rows: Tensor,
+        *,
+        request_id: int,
+        transaction_id: int,
+        commit_row_i32_ptr: int,
+        commit_position_i32_ptr: int,
+        stream: int = 0,
+    ) -> None:
+        """Install the selected BF16 trunk row used by target-attached NextN."""
+
+        if self.runner is None or self._hidden_a is None:
+            raise RuntimeError("external target hidden destination is closed")
+        rows = int(source_rows.shape[0]) if source_rows.ndim == 2 else 0
+        hidden_size = int(self.runner.hidden_size)
+        if (
+            rows <= 0
+            or source_rows.shape != (rows, hidden_size)
+            or source_rows.dtype != DType.BF16
+        ):
+            raise ValueError(
+                "external pre-output-norm hidden rows must be BF16 [rows,H]"
+            )
+        if self._dflash_commit_library is None:
+            self._dflash_commit_library = build_dflash_commit(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=self.require_cached_build,
+            )
+        device = source_rows.device
+        selected = Tensor.from_handle(
+            int(commit_row_i32_ptr), (1,), DType.INT32, device
+        )
+        commit_position = Tensor.from_handle(
+            int(commit_position_i32_ptr), (1,), DType.INT32, device
+        )
+        destination = Tensor.from_handle(
+            self._hidden_a.ptr,
+            (1, 1, hidden_size),
+            DType.BF16,
+            device,
+        )
+        dflash_commit_chain_i32(
+            TargetStateCommitBuffers(
+                request_ids=(int(request_id),),
+                transaction_id=int(transaction_id),
+                accepted_counts=selected,
+                commit_rows=selected,
+                commit_positions=commit_position,
+                hidden_taps_src=Tensor.from_handle(
+                    source_rows.ptr,
+                    (1, rows, hidden_size),
+                    DType.BF16,
+                    device,
+                ),
+                hidden_taps_dst=destination,
+                mode="verify_chain",
+            ),
+            target_rows=rows,
+            stream=int(stream),
+            library=self._dflash_commit_library,
+            runtime=self.runtime or get_hip_runtime(),
+        )
+        self._last_target_hidden_ptr = int(self._hidden_a.ptr)
+
     def _commit_deferred_packed_verify_states_batch_device(
         self,
         results: Sequence[Qwen35GGUFPackedVerifyDeviceResult],
@@ -24734,16 +24819,30 @@ class Qwen35GGUFResidentSession:
                     )
                 elif layer_type != LINEAR_ATTENTION:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+            commit_row_ptr = accepted.ptr + index * DType.INT32.itemsize
+            commit_position_ptr = (
+                commit_positions.ptr + index * DType.INT32.itemsize
+            )
             session._commit_external_verify_state_row_device(
                 self,
                 request_id=int(result.request_id),
                 transaction_id=int(result.transaction_id),
                 row_start=int(result.row_start),
                 rows=rows,
-                commit_row_i32_ptr=accepted.ptr + index * DType.INT32.itemsize,
-                commit_position_i32_ptr=(
-                    commit_positions.ptr + index * DType.INT32.itemsize
-                ),
+                commit_row_i32_ptr=commit_row_ptr,
+                commit_position_i32_ptr=commit_position_ptr,
+                stream=int(stream),
+            )
+            if result.pre_output_norm_hidden is None:
+                raise RuntimeError(
+                    "packed device result omitted pre-output-norm target hidden"
+                )
+            session._commit_external_pre_output_norm_hidden_row_device(
+                result.pre_output_norm_hidden,
+                request_id=int(result.request_id),
+                transaction_id=int(result.transaction_id),
+                commit_row_i32_ptr=commit_row_ptr,
+                commit_position_i32_ptr=commit_position_ptr,
                 stream=int(stream),
             )
             if slot_index < len(written_positions):
