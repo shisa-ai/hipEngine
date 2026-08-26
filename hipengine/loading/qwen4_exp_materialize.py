@@ -1,0 +1,383 @@
+"""One-layout Qwen4Exp residency planning and sparse PLE mmap ownership."""
+
+from __future__ import annotations
+
+from collections import Counter
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Any, Mapping
+
+import numpy as np
+
+from hipengine.loading.gguf import GGUFTensorInfo
+from hipengine.loading.qwen4_exp_gguf import (
+    GDN,
+    Qwen4ExpGGUFConfig,
+    Qwen4ExpGGUFModelMap,
+    Qwen4ExpGGUFTensorRef,
+)
+from hipengine.quant.gguf import dequantization_supported, dequantize_gguf_data
+
+LAYOUT_RAW_GGUF = "raw_gguf"
+LAYOUT_PLE_SPARSE_MMAP = "ple_sparse_mmap"
+
+
+@dataclass(frozen=True)
+class Qwen4ExpGGUFWeightSpec:
+    slot_path: str
+    source_ref: Qwen4ExpGGUFTensorRef
+    layout: str
+    allocation_names: tuple[str, ...]
+    device_resident: bool
+    device_nbytes: int
+
+    @property
+    def source(self) -> GGUFTensorInfo:
+        return self.source_ref.tensor
+
+
+@dataclass(frozen=True)
+class Qwen4ExpResidencyPlan:
+    config: Qwen4ExpGGUFConfig
+    root_specs: Mapping[str, Qwen4ExpGGUFWeightSpec]
+    layer_specs: tuple[Mapping[str, Qwen4ExpGGUFWeightSpec], ...]
+    ple_spec: Qwen4ExpGGUFWeightSpec
+    raw_payload_bytes: int
+    device_weight_bytes: int
+    replacement_payload_bytes: int
+    alternate_layout_bytes: int
+    ple_mmap_bytes: int
+    staging_buffer_count: int
+    staging_row_capacity: int
+    staging_bytes: int
+    tensor_bytes_by_type: Mapping[str, int]
+
+    @property
+    def specs(self) -> tuple[Qwen4ExpGGUFWeightSpec, ...]:
+        return (
+            *self.root_specs.values(),
+            *(spec for layer in self.layer_specs for spec in layer.values()),
+            self.ple_spec,
+        )
+
+    @property
+    def device_specs(self) -> tuple[Qwen4ExpGGUFWeightSpec, ...]:
+        return tuple(spec for spec in self.specs if spec.device_resident)
+
+
+@dataclass(frozen=True)
+class Qwen4ExpMemoryAdmissionPlan:
+    available_device_bytes: int
+    required_bytes: int
+    device_weight_bytes: int
+    staging_bytes: int
+    kv_bytes: int
+    index_bytes: int
+    runtime_state_bytes: int
+    scratch_bytes: int
+    reserve_bytes: int
+    context_tokens: int
+    resident_capacity: int
+
+    @property
+    def passed(self) -> bool:
+        return self.required_bytes <= self.available_device_bytes
+
+    @property
+    def shortfall_bytes(self) -> int:
+        return max(0, self.required_bytes - self.available_device_bytes)
+
+
+def plan_qwen4_exp_residency(
+    model_map: Qwen4ExpGGUFModelMap,
+    *,
+    staging_token_capacity: int = 256,
+    ple_rows_per_token: int = 16,
+) -> Qwen4ExpResidencyPlan:
+    """Plan one raw device owner per hot tensor and one sparse mmap PLE owner."""
+
+    if not model_map.validation.passed:
+        raise ValueError("qwen4exp tensor map must pass before residency planning")
+    if model_map.ple_table is None:
+        raise ValueError("qwen4exp tensor map has no PLE table")
+    token_capacity = int(staging_token_capacity)
+    rows_per_token = int(ple_rows_per_token)
+    if token_capacity <= 0 or rows_per_token <= 0:
+        raise ValueError("staging capacities must be positive")
+
+    def device_spec(slot_path: str, ref: Qwen4ExpGGUFTensorRef) -> Qwen4ExpGGUFWeightSpec:
+        return Qwen4ExpGGUFWeightSpec(
+            slot_path=slot_path,
+            source_ref=ref,
+            layout=LAYOUT_RAW_GGUF,
+            allocation_names=("raw",),
+            device_resident=True,
+            device_nbytes=int(ref.tensor.nbytes),
+        )
+
+    roots = {
+        slot: device_spec(f"root.{slot}", ref)
+        for slot, ref in model_map.roots.items()
+    }
+    layers = tuple(
+        MappingProxyType(
+            {
+                slot: device_spec(f"layers.{layer.layer_id}.{slot}", ref)
+                for slot, ref in layer.slots.items()
+            }
+        )
+        for layer in model_map.layers
+    )
+    ple_spec = Qwen4ExpGGUFWeightSpec(
+        slot_path="ple.table",
+        source_ref=model_map.ple_table,
+        layout=LAYOUT_PLE_SPARSE_MMAP,
+        allocation_names=(),
+        device_resident=False,
+        device_nbytes=0,
+    )
+    specs = (*roots.values(), *(spec for layer in layers for spec in layer.values()), ple_spec)
+    source_names = [spec.source.name for spec in specs]
+    if len(source_names) != len(set(source_names)):
+        raise ValueError("residency plan would create duplicate logical tensor owners")
+    type_bytes: Counter[str] = Counter()
+    for spec in specs:
+        type_bytes[spec.source.ggml_type_name] += int(spec.source.nbytes)
+    raw_payload = sum(int(spec.source.nbytes) for spec in specs)
+    device_bytes = sum(spec.device_nbytes for spec in specs)
+    row_capacity = token_capacity * rows_per_token
+    staging_bytes = 2 * row_capacity * model_map.config.ple_row_width * 4
+    return Qwen4ExpResidencyPlan(
+        config=model_map.config,
+        root_specs=MappingProxyType(roots),
+        layer_specs=layers,
+        ple_spec=ple_spec,
+        raw_payload_bytes=raw_payload,
+        device_weight_bytes=device_bytes,
+        replacement_payload_bytes=0,
+        alternate_layout_bytes=0,
+        ple_mmap_bytes=int(ple_spec.source.nbytes),
+        staging_buffer_count=2,
+        staging_row_capacity=row_capacity,
+        staging_bytes=staging_bytes,
+        tensor_bytes_by_type=MappingProxyType(dict(sorted(type_bytes.items()))),
+    )
+
+
+def plan_qwen4_exp_memory_admission(
+    residency: Qwen4ExpResidencyPlan,
+    *,
+    available_device_bytes: int,
+    context_tokens: int,
+    resident_capacity: int = 1,
+    scratch_bytes: int = 4 * 1024**3,
+    reserve_bytes: int = 4 * 1024**3,
+) -> Qwen4ExpMemoryAdmissionPlan:
+    """Account complete resident, KV/index, recurrent, scratch, and reserve bytes."""
+
+    available = int(available_device_bytes)
+    context = int(context_tokens)
+    capacity = int(resident_capacity)
+    scratch = int(scratch_bytes)
+    reserve = int(reserve_bytes)
+    if available < 0 or scratch < 0 or reserve < 0:
+        raise ValueError("byte counts must be non-negative")
+    if context <= 0 or context > residency.config.context_length:
+        raise ValueError("context_tokens must be in 1..native context length")
+    if capacity <= 0:
+        raise ValueError("resident_capacity must be positive")
+    kv_bytes = capacity * context * residency.config.bf16_kv_bytes_per_token
+    index_bytes = (
+        capacity * context * residency.config.bf16_compressed_index_bytes_per_token
+    )
+    runtime_state = capacity * _runtime_state_bytes_per_request(residency.config)
+    required = (
+        residency.device_weight_bytes
+        + residency.staging_bytes
+        + kv_bytes
+        + index_bytes
+        + runtime_state
+        + scratch
+        + reserve
+    )
+    return Qwen4ExpMemoryAdmissionPlan(
+        available_device_bytes=available,
+        required_bytes=required,
+        device_weight_bytes=residency.device_weight_bytes,
+        staging_bytes=residency.staging_bytes,
+        kv_bytes=kv_bytes,
+        index_bytes=index_bytes,
+        runtime_state_bytes=runtime_state,
+        scratch_bytes=scratch,
+        reserve_bytes=reserve,
+        context_tokens=context,
+        resident_capacity=capacity,
+    )
+
+
+def _runtime_state_bytes_per_request(config: Qwen4ExpGGUFConfig) -> int:
+    gdn_layers = config.layer_types.count(GDN)
+    fp32_bytes = 4
+    matrix_state = (
+        gdn_layers * config.gdn_inner_size * config.gdn_state_size * fp32_bytes
+    )
+    conv_channels = (
+        config.gdn_inner_size + 2 * config.gdn_group_count * config.gdn_state_size
+    )
+    conv_state = (
+        gdn_layers
+        * (config.gdn_conv_kernel - 1)
+        * conv_channels
+        * fp32_bytes
+    )
+    ple_history = (
+        (config.ple_conv_kernel - 1)
+        * config.ple_ngram_size
+        * config.residual_width
+        * fp32_bytes
+    )
+    bf16_residual = config.residual_width * 2
+    return matrix_state + conv_state + ple_history + bf16_residual
+
+
+class Qwen4ExpPLEMMapTable:
+    """One lazy GGUF memmap owner that dequantizes only requested PLE rows."""
+
+    def __init__(self, reader: Any, tensor: GGUFTensorInfo, *, semantic_rows: int):
+        if tensor.name != "per_layer_token_embd.weight":
+            raise ValueError("tensor must be per_layer_token_embd.weight")
+        if len(tensor.shape) != 2:
+            raise ValueError("PLE tensor must be rank two")
+        semantic = int(semantic_rows)
+        if semantic <= 0 or semantic > tensor.shape[0]:
+            raise ValueError("semantic_rows must be in 1..physical rows")
+        if not dequantization_supported(tensor.ggml_type):
+            raise ValueError(f"PLE qtype {tensor.ggml_type_name} has no CPU dequantizer")
+        self.reader = reader
+        self.tensor = tensor
+        self.semantic_rows = semantic
+        self.row_width = int(tensor.shape[1])
+        self.rows_gathered = 0
+        self._raw: Any | None = reader.tensor_data(tensor.name)
+
+    def gather_rows(self, row_indices: Any) -> np.ndarray:
+        if self._raw is None:
+            raise RuntimeError("PLE mmap table is closed")
+        indices = np.asarray(row_indices, dtype=np.int64)
+        if indices.ndim != 1:
+            raise ValueError("row_indices must have shape [rows]")
+        if indices.size and (
+            int(np.min(indices)) < 0 or int(np.max(indices)) >= self.semantic_rows
+        ):
+            raise IndexError("PLE row index is outside semantic rows")
+        selected = np.asarray(self._raw[indices])
+        values = dequantize_gguf_data(selected, self.tensor.ggml_type).astype(np.float32)
+        values = values.reshape(indices.size, self.row_width)
+        self.rows_gathered += int(indices.size)
+        return values
+
+    def close(self) -> None:
+        if self._raw is None:
+            return
+        mapping = getattr(self._raw, "_mmap", None)
+        if mapping is not None:
+            mapping.close()
+        self._raw = None
+
+
+class Qwen4ExpPLEStagingRing:
+    """Bounded double-buffered host row staging, optionally HIP page-locked."""
+
+    def __init__(
+        self,
+        table: Qwen4ExpPLEMMapTable,
+        buffers: tuple[np.ndarray, np.ndarray],
+        *,
+        runtime: Any | None,
+        registered_ptrs: tuple[int, ...],
+    ) -> None:
+        self.table = table
+        self._buffers = buffers
+        self.runtime = runtime
+        self._registered_ptrs = registered_ptrs
+        self._active = 0
+        self._closed = False
+
+    @classmethod
+    def create(
+        cls,
+        table: Qwen4ExpPLEMMapTable,
+        *,
+        row_capacity: int,
+        runtime: Any | None = None,
+    ) -> "Qwen4ExpPLEStagingRing":
+        capacity = int(row_capacity)
+        if capacity <= 0:
+            raise ValueError("row_capacity must be positive")
+        buffers = (
+            np.empty((capacity, table.row_width), dtype=np.float32),
+            np.empty((capacity, table.row_width), dtype=np.float32),
+        )
+        registered: list[int] = []
+        if runtime is not None:
+            try:
+                for buffer in buffers:
+                    ptr = int(buffer.ctypes.data)
+                    runtime.host_register(ptr, int(buffer.nbytes))
+                    registered.append(ptr)
+            except Exception:
+                for ptr in reversed(registered):
+                    runtime.host_unregister(ptr)
+                raise
+        return cls(
+            table,
+            buffers,
+            runtime=runtime,
+            registered_ptrs=tuple(registered),
+        )
+
+    @property
+    def row_capacity(self) -> int:
+        return 0 if self._closed else int(self._buffers[0].shape[0])
+
+    @property
+    def pinned(self) -> bool:
+        return bool(self._registered_ptrs) and not self._closed
+
+    def stage(self, row_indices: Any) -> np.ndarray:
+        if self._closed:
+            raise RuntimeError("PLE staging ring is closed")
+        indices = np.asarray(row_indices, dtype=np.int64)
+        if indices.ndim != 1:
+            raise ValueError("row_indices must have shape [rows]")
+        if indices.size > self.row_capacity:
+            raise ValueError("PLE row request exceeds staging capacity")
+        buffer = self._buffers[self._active]
+        values = self.table.gather_rows(indices)
+        np.copyto(buffer[: indices.size], values)
+        result = buffer[: indices.size]
+        self._active = 1 - self._active
+        return result
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        if self.runtime is not None:
+            for ptr in reversed(self._registered_ptrs):
+                self.runtime.host_unregister(ptr)
+        self._registered_ptrs = ()
+        self._buffers = ()  # type: ignore[assignment]
+        self._closed = True
+
+
+__all__ = [
+    "LAYOUT_PLE_SPARSE_MMAP",
+    "LAYOUT_RAW_GGUF",
+    "Qwen4ExpGGUFWeightSpec",
+    "Qwen4ExpMemoryAdmissionPlan",
+    "Qwen4ExpPLEMMapTable",
+    "Qwen4ExpPLEStagingRing",
+    "Qwen4ExpResidencyPlan",
+    "plan_qwen4_exp_memory_admission",
+    "plan_qwen4_exp_residency",
+]
