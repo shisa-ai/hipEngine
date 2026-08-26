@@ -13,6 +13,13 @@ from hipengine.kernels.registry import KernelKey, register
 _SOURCE = Path(__file__).with_name("qwen4_exp_gr.hip")
 _OUTPUT_NAME = "qwen4_exp_gr.so"
 _THREADS = 256
+_ARGS_REPEAT = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _ARGS_GROUPED_NORM = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -110,6 +117,29 @@ def build_qwen4_exp_gr(
         load=load,
         require_cached=require_cached,
     )
+
+
+def qwen4_exp_repeat_bf16_branches(
+    input_ptr: int,
+    output_ptr: int,
+    branches: int,
+    hidden: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    if branches <= 0 or hidden <= 0:
+        raise ValueError("branches and hidden must be positive")
+    library = library or build_qwen4_exp_gr(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_repeat_bf16_branches",
+        _ARGS_REPEAT,
+        ctypes.c_int,
+    )
+    _check_launch(runtime, fn(input_ptr, output_ptr, branches, hidden, stream))
 
 
 def qwen4_exp_grouped_rmsnorm_bf16_f32(
@@ -359,6 +389,12 @@ def register_qwen4_exp_gr_kernels(*, replace: bool = True) -> None:
     registrations = {
         KernelKey(
             "hip_gfx1100",
+            "repeat_branches",
+            "bf16",
+            "strict",
+        ): qwen4_exp_repeat_bf16_branches,
+        KernelKey(
+            "hip_gfx1100",
             "gr_grouped_rmsnorm",
             "bf16_f32",
             "strict",
@@ -427,6 +463,7 @@ __all__ = [
     "build_qwen4_exp_gr",
     "plan_qwen4_exp_gr_build",
     "qwen4_exp_gated_mean_f32",
+    "qwen4_exp_repeat_bf16_branches",
     "qwen4_exp_gr_write_bf16_f32",
     "qwen4_exp_grouped_rmsnorm_bf16_f32",
     "qwen4_exp_grouped_rmsnorm_f32",
