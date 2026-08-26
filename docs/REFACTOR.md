@@ -240,18 +240,6 @@ fallback count is not a success metric.
   runtime environment read. Keep the pure CPU acceptance implementation and
   strict eager fallback.
 
-## SPECDEC2 P9 automatic qualification override
-
-- Added 2026-08-26 for the only P9 product candidate. Normal `auto` remains
-  pre-mutation K0. `HIPENGINE_SPECDEC2_P9_AUTO_QUALIFY=1` selects the exact
-  artifact/backend/production-manifest/BF16-KV/C1/prompt<=128/horizon25-64 K2
-  candidate so clean lifecycle/load/SLO/soak gates can exercise the real
-  automatic server route without prematurely changing the default.
-- Removal trigger: P9.3 must either promote the complete automatic cell and
-  delete the override/default-K0 duplicate, or reject it and delete the
-  candidate policy plus override. Keep the fingerprinted K0 reasons and explicit
-  MTP compatibility route independently of this temporary gate.
-
 ## Execution-profile migration seam
 
 - Implemented for campaign P3: public `strict|production|batch_invariant`

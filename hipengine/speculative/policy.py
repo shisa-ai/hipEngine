@@ -26,15 +26,6 @@ class OfflineSpeculativeDepthCell:
     selected_k: int
     reason: str
     evidence: str
-    artifact_fingerprint: str | None = None
-    backend: str | None = None
-    execution_profile: str | None = None
-    execution_profile_manifest_sha256: str | None = None
-    kv_storage: str | None = None
-    min_context_tokens: int = 0
-    max_context_tokens: int = 2**31 - 1
-    min_output_horizon_tokens: int = 0
-    max_output_horizon_tokens: int = 2**31 - 1
 
     def __post_init__(self) -> None:
         key = str(self.cell_key).strip()
@@ -49,84 +40,16 @@ class OfflineSpeculativeDepthCell:
             raise ValueError("offline depth cell concurrency range is invalid")
         if selected < 0:
             raise ValueError("offline depth cell selected_k must be non-negative")
-        min_context = int(self.min_context_tokens)
-        max_context = int(self.max_context_tokens)
-        min_horizon = int(self.min_output_horizon_tokens)
-        max_horizon = int(self.max_output_horizon_tokens)
-        if min_context < 0 or max_context < min_context:
-            raise ValueError("offline depth cell context range is invalid")
-        if min_horizon < 0 or max_horizon < min_horizon:
-            raise ValueError("offline depth cell output horizon range is invalid")
-        for name in (
-            "artifact_fingerprint",
-            "backend",
-            "execution_profile",
-            "execution_profile_manifest_sha256",
-            "kv_storage",
-        ):
-            value = getattr(self, name)
-            if value is not None:
-                normalized = str(value).strip()
-                if not normalized:
-                    raise ValueError(f"offline depth cell {name} cannot be blank")
-                object.__setattr__(self, name, normalized)
         object.__setattr__(self, "cell_key", key)
         object.__setattr__(self, "min_concurrency", lower)
         object.__setattr__(self, "max_concurrency", upper)
         object.__setattr__(self, "selected_k", selected)
         object.__setattr__(self, "reason", reason)
         object.__setattr__(self, "evidence", evidence)
-        object.__setattr__(self, "min_context_tokens", min_context)
-        object.__setattr__(self, "max_context_tokens", max_context)
-        object.__setattr__(self, "min_output_horizon_tokens", min_horizon)
-        object.__setattr__(self, "max_output_horizon_tokens", max_horizon)
 
-    def matches_concurrency(self, concurrency: int) -> bool:
+    def matches(self, concurrency: int) -> bool:
         value = int(concurrency)
         return self.min_concurrency <= value <= self.max_concurrency
-
-    def matches(
-        self,
-        concurrency: int,
-        *,
-        context_tokens: int,
-        output_horizon_tokens: int,
-        artifact_fingerprint: str | None,
-        backend: str | None,
-        execution_profile: str | None,
-        execution_profile_manifest_sha256: str | None,
-        kv_storage: str | None,
-    ) -> bool:
-        if not self.matches_concurrency(concurrency):
-            return False
-        if not self.min_context_tokens <= int(context_tokens) <= self.max_context_tokens:
-            return False
-        if not (
-            self.min_output_horizon_tokens
-            <= int(output_horizon_tokens)
-            <= self.max_output_horizon_tokens
-        ):
-            return False
-        queries = {
-            "artifact_fingerprint": artifact_fingerprint,
-            "backend": backend,
-            "execution_profile": execution_profile,
-            "execution_profile_manifest_sha256": execution_profile_manifest_sha256,
-            "kv_storage": kv_storage,
-        }
-        return all(
-            expected is None or queries[name] == expected
-            for name, expected in (
-                ("artifact_fingerprint", self.artifact_fingerprint),
-                ("backend", self.backend),
-                ("execution_profile", self.execution_profile),
-                (
-                    "execution_profile_manifest_sha256",
-                    self.execution_profile_manifest_sha256,
-                ),
-                ("kv_storage", self.kv_storage),
-            )
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,17 +86,6 @@ class OfflineSpeculativeDepthPolicy:
                     "selected_k": cell.selected_k,
                     "reason": cell.reason,
                     "evidence": cell.evidence,
-                    "artifact_fingerprint": cell.artifact_fingerprint,
-                    "backend": cell.backend,
-                    "execution_profile": cell.execution_profile,
-                    "execution_profile_manifest_sha256": (
-                        cell.execution_profile_manifest_sha256
-                    ),
-                    "kv_storage": cell.kv_storage,
-                    "min_context_tokens": cell.min_context_tokens,
-                    "max_context_tokens": cell.max_context_tokens,
-                    "min_output_horizon_tokens": cell.min_output_horizon_tokens,
-                    "max_output_horizon_tokens": cell.max_output_horizon_tokens,
                 }
                 for cell in self.cells
             ],
@@ -202,31 +114,16 @@ _P9_FIXED_POLICY_EVIDENCE = (
 )
 
 
-P9_PRODUCT_CANDIDATE_DEPTH_POLICY = OfflineSpeculativeDepthPolicy(
-    policy_key="specdec2:auto:qwen38-q4ks:production:p9-candidate:v5",
+DEFAULT_AUTO_DEPTH_POLICY = OfflineSpeculativeDepthPolicy(
+    policy_key="specdec2:auto:qwen38-q4ks:production:p9-fixed-reseed:v4",
     cells=(
         OfflineSpeculativeDepthCell(
-            "auto-qwen38-q4ks-production-c1-k2",
+            "auto-c1-product-pending-k0",
             1,
             1,
-            2,
-            "qualified_product_candidate",
+            0,
+            "product_qualification_pending",
             _P9_FIXED_POLICY_EVIDENCE,
-            artifact_fingerprint=(
-                "029f5dcc4cb3f6ed46cf6e58fc86f469"
-                "56739deb3732b352fdf73aaf428970aa"
-            ),
-            backend="hip_gfx1151",
-            execution_profile="production",
-            execution_profile_manifest_sha256=(
-                "ead97418e6ea1b746f7d5b9e8d2118d5"
-                "144c7d8a42b0af32ae5a21dd36729e51"
-            ),
-            kv_storage="bf16",
-            min_context_tokens=1,
-            max_context_tokens=128,
-            min_output_horizon_tokens=25,
-            max_output_horizon_tokens=64,
         ),
         OfflineSpeculativeDepthCell(
             "auto-c2-measured-k0",
@@ -280,104 +177,24 @@ P9_PRODUCT_CANDIDATE_DEPTH_POLICY = OfflineSpeculativeDepthPolicy(
 )
 
 
-DEFAULT_AUTO_DEPTH_POLICY = OfflineSpeculativeDepthPolicy(
-    policy_key="specdec2:auto:qwen38-q4ks:production:p9-product-pending:v5",
-    cells=tuple(
-        (
-            OfflineSpeculativeDepthCell(
-                cell.cell_key,
-                cell.min_concurrency,
-                cell.max_concurrency,
-                0,
-                (
-                    "product_qualification_pending"
-                    if cell.min_concurrency == 1
-                    else cell.reason
-                ),
-                cell.evidence,
-                artifact_fingerprint=cell.artifact_fingerprint,
-                backend=cell.backend,
-                execution_profile=cell.execution_profile,
-                execution_profile_manifest_sha256=(
-                    cell.execution_profile_manifest_sha256
-                ),
-                kv_storage=cell.kv_storage,
-                min_context_tokens=cell.min_context_tokens,
-                max_context_tokens=cell.max_context_tokens,
-                min_output_horizon_tokens=cell.min_output_horizon_tokens,
-                max_output_horizon_tokens=cell.max_output_horizon_tokens,
-            )
-        )
-        for cell in P9_PRODUCT_CANDIDATE_DEPTH_POLICY.cells
-    ),
-)
-
-
 def select_offline_speculative_depth(
     policy: OfflineSpeculativeDepthPolicy,
     *,
     concurrency: int,
     output_horizon_tokens: int,
-    context_tokens: int = 0,
-    artifact_fingerprint: str | None = None,
-    backend: str | None = None,
-    execution_profile: str | None = None,
-    execution_profile_manifest_sha256: str | None = None,
-    kv_storage: str | None = None,
 ) -> OfflineSpeculativeDepthDecision:
-    """Select one deterministic product cell without inspecting prompt content."""
+    """Select one deterministic cell using shape only, never prompt content."""
 
     count = int(concurrency)
     horizon = int(output_horizon_tokens)
-    context = int(context_tokens)
-    if count <= 0 or horizon < 0 or context < 0:
-        raise ValueError(
-            "concurrency must be positive and context/horizon non-negative"
-        )
-    query = {
-        "artifact_fingerprint": (
-            None if artifact_fingerprint is None else str(artifact_fingerprint).strip()
-        ),
-        "backend": None if backend is None else str(backend).strip(),
-        "execution_profile": (
-            None if execution_profile is None else str(execution_profile).strip()
-        ),
-        "execution_profile_manifest_sha256": (
-            None
-            if execution_profile_manifest_sha256 is None
-            else str(execution_profile_manifest_sha256).strip()
-        ),
-        "kv_storage": None if kv_storage is None else str(kv_storage).strip(),
-    }
-    cell = next(
-        (
-            candidate
-            for candidate in policy.cells
-            if candidate.matches(
-                count,
-                context_tokens=context,
-                output_horizon_tokens=horizon,
-                **query,
-            )
-        ),
-        None,
-    )
+    if count <= 0 or horizon < 0:
+        raise ValueError("concurrency must be positive and output horizon non-negative")
+    cell = next((candidate for candidate in policy.cells if candidate.matches(count)), None)
     if cell is None:
-        concurrency_known = any(
-            candidate.matches_concurrency(count) for candidate in policy.cells
-        )
         return OfflineSpeculativeDepthDecision(
             selected_k=0,
-            cell_key=(
-                "auto-outside-qualified-scope-k0"
-                if concurrency_known
-                else "auto-outside-qualified-concurrency-k0"
-            ),
-            reason=(
-                "outside_qualified_policy_scope"
-                if concurrency_known
-                else "outside_qualified_concurrency"
-            ),
+            cell_key="auto-outside-qualified-concurrency-k0",
+            reason="outside_qualified_concurrency",
             evidence=policy.cells[-1].evidence,
             policy_fingerprint=policy.fingerprint,
             concurrency=count,
@@ -626,7 +443,6 @@ def plan_speculative_requests(
 
 __all__ = [
     "DEFAULT_AUTO_DEPTH_POLICY",
-    "P9_PRODUCT_CANDIDATE_DEPTH_POLICY",
     "OfflineSpeculativeDepthCell",
     "OfflineSpeculativeDepthDecision",
     "OfflineSpeculativeDepthPolicy",

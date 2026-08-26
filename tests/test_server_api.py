@@ -220,13 +220,6 @@ class ResidentSessionPromptFakeLLM(PromptPreparingFakeLLM):
 class SpeculativeMTPFakeLLM(FakeLLM):
     supports_speculative_mtp = True
     supports_default_mtp = True
-    speculative_mtp_product_scope = {
-        "artifact_fingerprint": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa",
-        "backend": "hip_gfx1151",
-        "execution_profile": "production",
-        "execution_profile_manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
-        "kv_storage": "bf16",
-    }
 
     def __init__(self, token_map: dict[str, list[int]] | None = None) -> None:
         super().__init__(token_map=token_map)
@@ -6665,9 +6658,7 @@ def test_completions_default_auto_keeps_compatibility_mtp_explicit_only() -> Non
         "policy_reason": "measured_speedup_below_1p10",
         "policy_fingerprint": DEFAULT_AUTO_DEPTH_POLICY.fingerprint,
         "realized_group_rows": 2,
-        "context_tokens": 1,
         "output_horizon_tokens": 24,
-        "policy_scope": SpeculativeMTPFakeLLM.speculative_mtp_product_scope,
         "exact_default_required": True,
         "evidence": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json",
     }
@@ -6686,57 +6677,6 @@ def test_completions_default_auto_keeps_compatibility_mtp_explicit_only() -> Non
     assert explicit_response.json()["choices"][0]["text"] == "mtp:three"
     assert len(fake.mtp_calls) == 1
     assert fake.mtp_calls[0][0] == ("three",)
-
-
-def test_completions_auto_routes_only_the_qualified_product_cell(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("HIPENGINE_SPECDEC2_P9_AUTO_QUALIFY", "1")
-    fake = SpeculativeMTPFakeLLM()
-    app = create_app(
-        ServerConfig(model="fake-path", served_model_name="fake-model"),
-        llm=fake,
-    )
-    client = TestClient(app)
-
-    selected = client.post(
-        "/v1/completions",
-        json={
-            "model": "fake-model",
-            "prompt": "one",
-            "max_tokens": 25,
-            "temperature": 0.0,
-            "top_p": 1.0,
-        },
-    )
-    assert selected.status_code == 200
-    selected_body = selected.json()
-    assert selected_body["choices"][0]["text"] == "mtp:one"
-    decision = selected_body["hipengine"]["generation_shape"]["route_decision"]
-    assert decision["selected_route"] == "speculative_mtp"
-    assert decision["selected_candidate_count"] == 2
-    assert decision["policy_cell"] == "auto-qwen38-q4ks-production-c1-k2"
-    assert decision["context_tokens"] == 1
-
-    for prompt, horizon in ((" ".join(["x"] * 129), 25), ("one", 24), ("one", 65)):
-        response = client.post(
-            "/v1/completions",
-            json={
-                "model": "fake-model",
-                "prompt": prompt,
-                "max_tokens": horizon,
-                "temperature": 0.0,
-                "top_p": 1.0,
-            },
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["hipengine"]["generation_shape"]["route"] == "default"
-        assert body["hipengine"]["generation_shape"]["route_decision"]["policy_reason"] == (
-            "outside_qualified_policy_scope"
-        )
-
-    assert len(fake.mtp_calls) == 1
 
 
 def test_completions_enabled_mode_routes_default_to_dense_mtp() -> None:

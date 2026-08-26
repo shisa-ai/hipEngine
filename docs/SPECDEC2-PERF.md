@@ -1,6 +1,6 @@
 # SPECDEC2-PERF — gfx1151 Activation and Hot-Cycle Campaign
 
-- Status: **P9 repaired fixed grid complete; production C1/K2 product qualification next**
+- Status: **P9 product no-go; zero automatic cells, P10 closure next**
 - Approved: **2026-08-25**
 - Functional predecessor: [`SPECDEC2.md`](SPECDEC2.md), S1-S6 closed
 - Performance owner: **stable physical host `gfx1151` agent**
@@ -948,10 +948,10 @@ denominator.
 
 The target-reseed repair raises production physical acceptance to
 **95.0%/89.8%/77.7%** at K1/K2/K3. Target cost remains binding: best C2/C4 is
-K3 at only **0.6975x/0.5843x AR**. The fingerprinted anti-gaming table admits
-C1/K2 only to P9.3, not runtime default. Automatic remains K0 with
-`product_qualification_pending`; all physical/unqualified widths remain K0.
-Evidence: [`P9 fixed policy`](../benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json).
+K3 at only **0.6975x/0.5843x AR**. The fingerprinted fixed table admitted C1/K2
+to P9.3 only; the product gate below rejects it. Automatic remains K0 and every
+physical/unqualified width remains K0. Evidence:
+[`P9 fixed policy`](../benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json).
 
 - [x] Re-run fixed C1/C2/C4 K1-K3 after all retained changes.
 - [x] Keep K1 deprioritized unless new measurements overturn its extra-cycle
@@ -979,26 +979,40 @@ C1/K2 P9.3 product packet proceeds.
 
 ### P9.3 Product packet
 
-For each proposed automatic cell:
+The sole fixed candidate fails the first product precondition. Boundary gates
+find a narrow economic rectangle: D8 is only **1.058x AR**, D25 **1.409x**,
+D64 **1.582x**, and D128 diverges deterministically 3/3 at token 81; p128
+D25/D64 is **1.291x/1.506x**, while p512 D25 is **1.008x** with a category
+regression. Long p4K/p16K K0 remains exact/no-mutation.
 
-- [ ] full train/heldout/category quality and task gates;
-- [ ] counterbalanced same-host true-AR complete economics;
-- [ ] output-horizon/context boundary rows;
-- [ ] fixed/ragged/delayed admission/refill/retirement;
-- [ ] mixed AR/MTP neighbors and fairness;
-- [ ] prefix reuse/COW and pressure/regrow;
-- [ ] cancel/deadline/EOS/stop/failure/circuit breaker/restart;
-- [ ] blocking completion/chat and SSE completion/chat;
-- [ ] below/near/above Poisson load plus overload;
-- [ ] TTFT/ITL median/p95/p99, queue, E2E, exact/SLO goodput;
-- [ ] memory high-water/fragmentation/final return;
-- [ ] focused soak, then final promotion soak only after all shorter gates pass;
-      and
-- [ ] exact route/reason/result reporting.
+Under real automatic HTTP serving, the normal capacity-4 owner reports selected
+D25/p128/SSE routes but every selected row has **zero speculative cycles** and
+`specdec2_mtp2_used=false`; rows carry
+`physical_streaming_category_rejected` and complete through AR. Therefore the
+candidate does not engage the measured capacity-1 C1 path and is rejected before
+load/SLO/soak. Response labels without cycle engagement are not evidence.
+Artifact: [`P9 product no-go`](../benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-product-no-go.json).
+
+For the proposed automatic cell:
+
+- [x] full train/heldout/category quality and task gates (fixed/profile evidence);
+- [x] counterbalanced same-host true-AR complete economics;
+- [x] output-horizon/context boundary rows;
+- [x] exact automatic route/reason/result reporting exposes non-engagement;
+- [x] fixed/ragged/delayed admission/refill/retirement: not applicable after
+      route-engagement precondition fails;
+- [x] mixed AR/MTP neighbors and fairness: not applicable after precondition;
+- [x] prefix reuse/COW and pressure/regrow: retained K0 evidence, no product cell;
+- [x] cancel/deadline/EOS/stop/failure/circuit breaker/restart: not applicable;
+- [x] blocking completion/chat and SSE completion/chat: rejected on route owner;
+- [x] below/near/above Poisson load plus overload: not run for invalid route;
+- [x] TTFT/ITL median/p95/p99, queue, E2E, exact/SLO goodput: not applicable;
+- [x] memory high-water/fragmentation/final return: boundary runs return clean;
+- [x] focused/final promotion soak: not run for invalid route.
 
 Automatic promotion requires >1.10x true AR, every binding gate, and
-non-regressive AR-neighbor SLO. The project target remains >1.30x. Other cells
-remain K0 with exact measured/unqualified reasons.
+non-regressive AR-neighbor SLO. No cell satisfies the complete contract.
+Automatic remains K0; explicit production FP16 compatibility remains retained.
 
 ## 19. P10 — closure
 
@@ -1122,17 +1136,18 @@ Raw profiler dumps and terminal logs remain outside Git.
 
 ## 24. Current handoff to the gfx1151 agent
 
-P1-P9.2 are closed. Begin P9.3 with **production C1/K2 only**. Automatic still
-selects K0; the candidate is not a default until the complete product packet
-passes. Qualify output horizons and context boundaries first, then automatic
-HTTP completion/chat/SSE reporting, mixed AR/MTP neighbors, lifecycle/failure/
-rollback/restart, load/SLO/goodput, memory, and final soak.
+P1-P9 are closed with zero automatic promotion. Begin P10 closure. Preserve the
+retained production FP16 explicit compatibility surface and strict fallback;
+automatic C1-C32 remains K0. The fixed capacity-1 C1/K2 premise is **1.4087x
+AR**, but normal capacity-4 server ownership rejects singleton staged execution
+and runs AR, so it is not a product cell.
 
-The repaired fixed candidate is **1.4087x production FP16 AR** at D25 and every
-category wins. K1/K3 are not selected; C2/C4 K1-K3 remain K0 at at most
-**0.6975x/0.5843x AR**. No adaptive K, C8, R24/R32, or overlap work is admitted.
-Unsupported model/backend/quant/profile/context/horizon/memory-fit scope must
-select K0 before mutation with the fingerprinted reason.
+List all retained/scoped/default-off/K0 units, remove the temporary qualification
+policy/override (already deleted), update refactor/docs/artifacts, run milestone
+process/tests, merge current origin, push, and verify equality. Reopen C1 product
+work only after independently qualifying true singleton staged execution on a
+normal capacity>1 server owner. No adaptive K, C8, R24/R32, or overlap work is
+admitted from this no-go.
 
 The independent gfx1100 S7 lane may continue concurrently, but shared-file
 edits—especially `qwen35_gguf_mtp2.py`, `qwen35_gguf_nextn.py`,

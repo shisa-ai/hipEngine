@@ -70,7 +70,6 @@ from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kvcache import resolve_prefix_cache_mode
 from hipengine.speculative.policy import (
     DEFAULT_AUTO_DEPTH_POLICY,
-    P9_PRODUCT_CANDIDATE_DEPTH_POLICY,
     select_offline_speculative_depth,
 )
 from hipengine.tokenization.identity import token_ids_sha256
@@ -260,7 +259,6 @@ class _SpeculativeMTPRouteReason(str, Enum):
 _SPECULATIVE_MTP_AUTO_REJECTION_REASON = (
     _SpeculativeMTPRouteReason.AUTOMATIC_SCOPE_NOT_PROMOTED.value
 )
-_SPECULATIVE_MTP_P9_QUALIFY_ENV = "HIPENGINE_SPECDEC2_P9_AUTO_QUALIFY"
 _SPECULATIVE_MTP_AUTO_EVIDENCE = (
     "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json"
 )
@@ -2030,38 +2028,11 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
-def _automatic_speculative_mtp_policy():
-    return (
-        P9_PRODUCT_CANDIDATE_DEPTH_POLICY
-        if _env_flag(_SPECULATIVE_MTP_P9_QUALIFY_ENV)
-        else DEFAULT_AUTO_DEPTH_POLICY
-    )
-
-
-def _automatic_speculative_mtp_scope(engine: Any | None) -> dict[str, str]:
-    raw = getattr(engine, "speculative_mtp_product_scope", None)
-    if callable(raw):
-        raw = raw()
-    if not isinstance(raw, Mapping):
-        return {}
-    keys = (
-        "artifact_fingerprint",
-        "backend",
-        "execution_profile",
-        "execution_profile_manifest_sha256",
-        "kv_storage",
-    )
-    result = {key: str(raw.get(key, "")).strip() for key in keys}
-    return result if all(result.values()) else {}
-
-
 def _resolve_realized_generation_route(
     requested_route: str,
     *,
     group_rows: int,
     sampling: SamplingParams,
-    engine: Any | None = None,
-    prompts: Sequence[PromptInput] = (),
 ) -> tuple[str, dict[str, Any] | None]:
     """Resolve automatic routing only after the batcher's group is known.
 
@@ -2094,18 +2065,10 @@ def _resolve_realized_generation_route(
     rows = int(group_rows)
     if rows < 1:
         raise ValueError("automatic generation route requires a positive realized group")
-    prompt_rows = tuple(prompts)
-    context_tokens = max(
-        (_prompt_token_count(engine, prompt) for prompt in prompt_rows),
-        default=0,
-    )
-    scope = _automatic_speculative_mtp_scope(engine)
     decision = select_offline_speculative_depth(
-        _automatic_speculative_mtp_policy(),
+        DEFAULT_AUTO_DEPTH_POLICY,
         concurrency=rows,
-        context_tokens=context_tokens,
         output_horizon_tokens=int(sampling.max_tokens),
-        **scope,
     )
     if decision.selected_k != 0:
         return (
@@ -2118,9 +2081,7 @@ def _resolve_realized_generation_route(
                 "selected_candidate_count": decision.selected_k,
                 "policy_fingerprint": decision.policy_fingerprint,
                 "realized_group_rows": rows,
-                "context_tokens": context_tokens,
                 "output_horizon_tokens": int(sampling.max_tokens),
-                "policy_scope": deepcopy(scope),
                 "exact_default_required": True,
                 "evidence": decision.evidence,
             },
@@ -2136,9 +2097,7 @@ def _resolve_realized_generation_route(
             "policy_reason": decision.reason,
             "policy_fingerprint": decision.policy_fingerprint,
             "realized_group_rows": rows,
-            "context_tokens": context_tokens,
             "output_horizon_tokens": int(sampling.max_tokens),
-            "policy_scope": deepcopy(scope),
             "exact_default_required": True,
             "evidence": decision.evidence,
         },
@@ -2383,7 +2342,6 @@ class _QueuedGeneration:
     detailed: bool = False
     include_batch_metadata: bool = False
     route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE
-    route_decision: dict[str, Any] | None = None
     cancelled: bool = False
     finished: bool = False
     producer_task: asyncio.Task[None] | None = None
@@ -2818,22 +2776,12 @@ class _GenerationBatcher:
                 self._active_items[id(item)] = item
         try:
             if len(group) == 1 and group[0].stream_queue is not None:
-                item = group[0]
-                engine = self._engine_factory()
-                route, decision = _resolve_realized_generation_route(
-                    str(item.route),
-                    group_rows=len(item.prompts),
-                    sampling=item.sampling,
-                    engine=engine,
-                    prompts=item.prompts,
-                )
-                item.route = route
-                item.route_decision = decision
-                if len(item.prompts) == 1:
-                    await self._stream_single(item, engine=engine)
+                if len(group[0].prompts) == 1:
+                    await self._stream_single(group[0])
                     return
-                if route == _SPECULATIVE_MTP_DEFAULT_ROUTE and _engine_supports_stream_many(engine):
-                    await self._stream_many(item, engine)
+                engine = self._engine_factory()
+                if _engine_supports_stream_many(engine):
+                    await self._stream_many(group[0], engine)
                     return
             prompts: list[PromptInput] = []
             slices: list[tuple[_QueuedGeneration, int, int]] = []
@@ -2844,13 +2792,10 @@ class _GenerationBatcher:
             queue_group_id = f"queue-{uuid.uuid4().hex}"
             requested_route = str(group[0].route)
             group_sampling = self._sampling_for_group(group)
-            engine = self._engine_factory()
             route, route_decision = _resolve_realized_generation_route(
                 requested_route,
                 group_rows=len(prompts),
                 sampling=group_sampling,
-                engine=engine,
-                prompts=tuple(prompts),
             )
             breaker = self._mtp_circuit_breaker
             if (
@@ -2874,7 +2819,6 @@ class _GenerationBatcher:
                     tuple(prompts),
                     group_sampling,
                     route=route,
-                    engine=engine,
                 )
             except Exception as exc:
                 for item in group:
@@ -2925,9 +2869,8 @@ class _GenerationBatcher:
         sampling: SamplingParams,
         *,
         route: str = _SPECULATIVE_MTP_DEFAULT_ROUTE,
-        engine: Any | None = None,
     ) -> _QueuedBatchResult:
-        engine = self._engine_factory() if engine is None else engine
+        engine = self._engine_factory()
         if str(route) == _SPECULATIVE_MTP_BATCH_ROUTE:
             breaker = self._mtp_circuit_breaker
             scope = None if breaker is None else breaker.scope(engine, prompts)
