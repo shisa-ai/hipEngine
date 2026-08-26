@@ -1623,6 +1623,31 @@ class Qwen35GGUFBringupGenerator:
 
         requested_kv = str(kv_storage or "auto")
         effective_kv = "bf16" if requested_kv == "auto" else requested_kv
+        evidence = tuple(
+            getattr(
+                self.model_plugin,
+                "speculative_mtp_serving_evidence",
+                (),
+            )
+            or ()
+        )
+        artifact_path = Path(
+            getattr(self.weight_index, "path", None) or self.model_path
+        ).expanduser()
+        try:
+            artifact_size = int(artifact_path.stat().st_size)
+        except OSError:
+            artifact_size = None
+        weight_quant = self._kv_weight_quant_key()
+        if not any(
+            row.artifact_size_bytes == artifact_size
+            and row.weight_quant == weight_quant
+            for row in evidence
+        ):
+            # This model plugin may own unrelated dense artifacts (for example
+            # Q4_K_S). No typed plan applies; preserve their independent
+            # explicit compatibility route without implying default evidence.
+            return None
         artifact = self._kv_model_artifact_identity()
         key = SpeculativeMTPServingKey(
             artifact_sha256=artifact.sha256,
@@ -1630,7 +1655,7 @@ class Qwen35GGUFBringupGenerator:
             content_verified=artifact.content_verified,
             backend=str(self.backend),
             target_arch=str(self.target_arch),
-            weight_quant=self._kv_weight_quant_key(),
+            weight_quant=weight_quant,
             execution_profile=str(
                 getattr(self, "execution_profile", None) or "legacy_exact"
             ),
