@@ -348,6 +348,82 @@ def test_native_complete_cycle_owns_propose_accept_mtp_kv_and_reseed(
     assert calls[4] == ("commit_mtp_kv", 0xB000, (201,), (18,), 8)
 
 
+def test_native_complete_cycle_routes_k1_terminal_to_serial_exact() -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class Draft:
+        hidden_size = 4
+        _device_chain_enabled = True
+
+        def propose_chain_from_device_seed(self, hidden_seed_ptr, **kwargs):
+            calls.append(("propose", int(hidden_seed_ptr)))
+            return [201], [[201]], int(kwargs["dense_cache_len"]) + 1
+
+    class Context:
+        pending_seed = SimpleNamespace(hidden_ptr=0xA000)
+
+        def record_verify_seeds(self, seeds):
+            self.verify_seeds = tuple(seeds)
+            calls.append(("record", len(self.verify_seeds)))
+
+        def accept(self, accepted):
+            calls.append(("accept", int(accepted)))
+            self.pending_seed = self.verify_seeds[int(accepted)]
+
+    class Session:
+        position = 17
+        backend = "hip_gfx1100"
+        _verify_hidden_seed_buf = DeviceBuffer(0xB000, 32)
+        last_native_spec_target_submitted = True
+        last_native_spec_target_fallback_reason = None
+
+        def verify_target_block_serial_exact(self, input_token_ids, **kwargs):
+            calls.append(("serial", tuple(input_token_ids), dict(kwargs)))
+            self.position = 19
+            return SimpleNamespace(token_ids=[909, 910])
+
+        def _commit_verify_linear_state_row(self, row, *, position):
+            calls.append(("commit", int(row), int(position)))
+            self.position = int(position)
+
+        def mtp_verify_seed(self, row, *, token_id, position, **kwargs):
+            return SimpleNamespace(
+                token_id=int(token_id),
+                position=int(position),
+                hidden_ptr=int(kwargs["hidden_seed_base_ptr"]) + int(row) * 16,
+                hidden_contract=SimpleNamespace(ready_for_mtp=True, rows=1, hidden_size=4),
+            )
+
+    result = run_qwen35_gguf_native_mtp_cycle(
+        Session(),
+        Draft(),
+        Context(),
+        root_token=101,
+        root_position=17,
+        candidate_budget=1,
+        remaining_decode=1,
+        rope_cos=np.ones((64, 4), dtype=np.float32),
+        rope_sin=np.zeros((64, 4), dtype=np.float32),
+        draft_key_cache=DeviceBuffer(0xC000, 4096),
+        draft_value_cache=DeviceBuffer(0xD000, 4096),
+        draft_cache_len=7,
+        terminal_serial_exact=True,
+        target_bulk_attention_mode="native",
+    )
+
+    assert result.output_token_ids == (909,)
+    assert result.accepted_draft_tokens == 0
+    assert result.end_position == 18
+    assert result.draft_cache_len_after == 8
+    assert calls == [
+        ("propose", 0xA000),
+        ("serial", (101, 201), {"capture_linear_state_rows": True}),
+        ("commit", 0, 18),
+        ("record", 1),
+        ("accept", 0),
+    ]
+
+
 def test_device_proposal_handoff_stages_both_token_metadata_columns() -> None:
     calls: list[tuple[object, ...]] = []
 

@@ -26179,6 +26179,8 @@ class Qwen35GGUFResidentSession:
         request_id: int = 0,
         record_stage_timings: bool = False,
         native_proposal_graph: bool = False,
+        target_bulk_attention_mode: str = "bulk",
+        terminal_serial_exact: bool = False,
     ):
         """Run one complete strict GGUF MTP cycle through the N3 adapter."""
 
@@ -26211,6 +26213,8 @@ class Qwen35GGUFResidentSession:
             request_id=int(request_id),
             record_stage_timings=bool(record_stage_timings),
             native_proposal_graph=bool(native_proposal_graph),
+            target_bulk_attention_mode=str(target_bulk_attention_mode),
+            terminal_serial_exact=bool(terminal_serial_exact),
         )
 
     def capture_decode_graph(
