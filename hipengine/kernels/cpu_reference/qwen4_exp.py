@@ -54,6 +54,69 @@ class QSASelection:
     selected_positions: tuple[np.ndarray, ...]
 
 
+@dataclass(frozen=True)
+class Qwen4ExpGRWeights:
+    norm: ArrayLike
+    down: ArrayLike
+    up: ArrayLike
+    inject: ArrayLike
+
+
+@dataclass(frozen=True)
+class Qwen4ExpQSAWeights:
+    q: ArrayLike
+    k: ArrayLike
+    v: ArrayLike
+    output: ArrayLike
+    q_norm: ArrayLike
+    k_norm: ArrayLike
+    index_q: ArrayLike
+    index_k: ArrayLike
+    index_q_norm: ArrayLike
+    index_k_norm: ArrayLike
+    query_heads: int
+    kv_heads: int
+    head_dim: int
+    index_heads: int
+    index_dim: int
+
+
+@dataclass(frozen=True)
+class Qwen4ExpMoEWeights:
+    router: ArrayLike
+    expert_gate: ArrayLike
+    expert_up: ArrayLike
+    expert_down: ArrayLike
+    shared_gate: ArrayLike
+    shared_up: ArrayLike
+    shared_down: ArrayLike
+    shared_gate_weight: ArrayLike
+    experts_used: int
+
+
+@dataclass(frozen=True)
+class Qwen4ExpReducedLayerWeights:
+    attention_gr: Qwen4ExpGRWeights
+    qsa: Qwen4ExpQSAWeights
+    ffn_gr: Qwen4ExpGRWeights
+    moe: Qwen4ExpMoEWeights
+
+
+@dataclass(frozen=True)
+class Qwen4ExpMoEResult:
+    output: np.ndarray
+    selected_experts: np.ndarray
+    routing_weights: np.ndarray
+
+
+@dataclass(frozen=True)
+class Qwen4ExpReducedLayerResult:
+    residual: np.ndarray
+    attention_output: np.ndarray
+    selection: QSASelection
+    moe: Qwen4ExpMoEResult
+
+
 def grouped_zero_centered_rmsnorm(
     residual: ArrayLike,
     weight: ArrayLike,
@@ -678,6 +741,223 @@ def qsa_sparse_gqa_attention(
     return output
 
 
+def qwen4_exp_moe(
+    hidden: ArrayLike,
+    weights: Qwen4ExpMoEWeights,
+) -> Qwen4ExpMoEResult:
+    """Reduced dense-weight oracle for normalized top-k plus shared-expert MoE."""
+
+    x = np.asarray(hidden, dtype=np.float32)
+    if x.ndim != 2:
+        raise ValueError("hidden must have shape [tokens, hidden]")
+    tokens, hidden_size = x.shape
+    router = np.asarray(weights.router, dtype=np.float32)
+    if router.ndim != 2 or router.shape[1] != hidden_size:
+        raise ValueError("router must have shape [experts, hidden]")
+    experts = router.shape[0]
+    used = int(weights.experts_used)
+    if used <= 0 or used > experts:
+        raise ValueError("experts_used must be in 1..experts")
+    gate_weights = np.asarray(weights.expert_gate, dtype=np.float32)
+    up_weights = np.asarray(weights.expert_up, dtype=np.float32)
+    down_weights = np.asarray(weights.expert_down, dtype=np.float32)
+    if gate_weights.ndim != 3 or gate_weights.shape[0] != experts:
+        raise ValueError("expert_gate must have shape [experts, ffn, hidden]")
+    ffn = gate_weights.shape[1]
+    if gate_weights.shape[2] != hidden_size or up_weights.shape != gate_weights.shape:
+        raise ValueError("expert gate/up geometry is incompatible")
+    if down_weights.shape != (experts, hidden_size, ffn):
+        raise ValueError("expert_down must have shape [experts, hidden, ffn]")
+
+    probabilities = _softmax_rows((x @ router.T).astype(np.float32))
+    selected = np.argsort(-probabilities, axis=-1, kind="stable")[:, :used]
+    routing = np.take_along_axis(probabilities, selected, axis=-1).astype(np.float32)
+    routing /= np.sum(routing, axis=-1, keepdims=True, dtype=np.float32)
+    routed = np.zeros((tokens, hidden_size), dtype=np.float32)
+    for token in range(tokens):
+        for slot in range(used):
+            expert = int(selected[token, slot])
+            gate = gate_weights[expert] @ x[token]
+            up = up_weights[expert] @ x[token]
+            activated = _silu(gate.astype(np.float32)) * up
+            down = down_weights[expert] @ activated
+            routed[token] += routing[token, slot] * down
+
+    shared_gate = np.asarray(weights.shared_gate, dtype=np.float32)
+    shared_up = np.asarray(weights.shared_up, dtype=np.float32)
+    shared_down = np.asarray(weights.shared_down, dtype=np.float32)
+    shared_scalar = np.asarray(weights.shared_gate_weight, dtype=np.float32)
+    if shared_gate.shape != (ffn, hidden_size) or shared_up.shape != shared_gate.shape:
+        raise ValueError("shared gate/up must have shape [ffn, hidden]")
+    if shared_down.shape != (hidden_size, ffn):
+        raise ValueError("shared_down must have shape [hidden, ffn]")
+    if shared_scalar.shape != (hidden_size,):
+        raise ValueError("shared_gate_weight must have shape [hidden]")
+    shared = _silu((x @ shared_gate.T).astype(np.float32))
+    shared *= (x @ shared_up.T).astype(np.float32)
+    shared = (shared @ shared_down.T).astype(np.float32)
+    scalar = _sigmoid((x @ shared_scalar).astype(np.float32))[:, None]
+    output = (routed + scalar * shared).astype(np.float32)
+    return Qwen4ExpMoEResult(output, selected.astype(np.int64), routing)
+
+
+def qwen4_exp_reduced_qsa_layer(
+    residual: ArrayLike,
+    weights: Qwen4ExpReducedLayerWeights,
+    *,
+    positions: ArrayLike,
+    compression_ratio: int,
+    block_budget: int,
+    rotary_dim: int,
+    theta: float,
+    eps: float = 1e-6,
+) -> Qwen4ExpReducedLayerResult:
+    """Compose one reduced GR -> QSA -> GR -> MoE Qwen4Exp layer."""
+
+    state = np.asarray(residual, dtype=np.float32)
+    pos = np.asarray(positions, dtype=np.int64)
+    if state.ndim != 3:
+        raise ValueError("residual must have shape [tokens, branches, hidden]")
+    tokens, _, hidden = state.shape
+    if pos.shape != (tokens,) or np.any(pos < 0) or np.any(np.diff(pos) != 1):
+        raise ValueError("positions must be non-negative, contiguous, and match tokens")
+    qsa = weights.qsa
+    query_heads = int(qsa.query_heads)
+    kv_heads = int(qsa.kv_heads)
+    head_dim = int(qsa.head_dim)
+    index_heads = int(qsa.index_heads)
+    index_dim = int(qsa.index_dim)
+    if query_heads <= 0 or kv_heads <= 0 or query_heads % kv_heads:
+        raise ValueError("QSA query_heads must be divisible by positive kv_heads")
+
+    attention_read = gr_read(
+        state,
+        weights.attention_gr.norm,
+        weights.attention_gr.down,
+        weights.attention_gr.up,
+        weights.attention_gr.inject,
+        eps=eps,
+    )
+    mixed = attention_read.mixed
+    q_weight = np.asarray(qsa.q, dtype=np.float32)
+    k_weight = np.asarray(qsa.k, dtype=np.float32)
+    v_weight = np.asarray(qsa.v, dtype=np.float32)
+    output_weight = np.asarray(qsa.output, dtype=np.float32)
+    if q_weight.shape != (query_heads * 2 * head_dim, hidden):
+        raise ValueError("q weight has incompatible Q+gate geometry")
+    if k_weight.shape != (kv_heads * head_dim, hidden):
+        raise ValueError("k weight has incompatible geometry")
+    if v_weight.shape != (kv_heads * head_dim, hidden):
+        raise ValueError("v weight has incompatible geometry")
+    if output_weight.shape != (hidden, query_heads * head_dim):
+        raise ValueError("output weight has incompatible geometry")
+
+    q_and_gate = (mixed @ q_weight.T).reshape(tokens, query_heads, 2, head_dim)
+    query = _rmsnorm_last(q_and_gate[:, :, 0, :], qsa.q_norm, eps=eps)
+    query = qsa_interleaved_rope(
+        query,
+        positions=pos,
+        rotary_dim=rotary_dim,
+        theta=theta,
+    )
+    query_gate = q_and_gate[:, :, 1, :]
+    key = _rmsnorm_last(
+        (mixed @ k_weight.T).reshape(tokens, kv_heads, head_dim),
+        qsa.k_norm,
+        eps=eps,
+    )
+    key = qsa_interleaved_rope(
+        key,
+        positions=pos,
+        rotary_dim=rotary_dim,
+        theta=theta,
+    )
+    value = (mixed @ v_weight.T).reshape(tokens, kv_heads, head_dim).astype(np.float32)
+
+    index_q_weight = np.asarray(qsa.index_q, dtype=np.float32)
+    index_k_weight = np.asarray(qsa.index_k, dtype=np.float32)
+    if index_q_weight.shape != (index_heads * index_dim, hidden):
+        raise ValueError("index_q weight has incompatible geometry")
+    if index_k_weight.shape != (index_dim, hidden):
+        raise ValueError("index_k weight has incompatible geometry")
+    index_query = _rmsnorm_last(
+        (mixed @ index_q_weight.T).reshape(tokens, index_heads, index_dim),
+        qsa.index_q_norm,
+        eps=eps,
+    )
+    index_query = qsa_interleaved_rope(
+        index_query,
+        positions=pos,
+        rotary_dim=min(rotary_dim, index_dim),
+        theta=theta,
+    )
+    raw_index_key = (mixed @ index_k_weight.T).astype(np.float32)
+    prepared = qsa_prepare_index_keys(
+        raw_index_key,
+        pos,
+        qsa.index_k_norm,
+        compression_ratio=compression_ratio,
+        rotary_dim=min(rotary_dim, index_dim),
+        theta=theta,
+        eps=eps,
+    )
+    scores = qsa_index_scores(index_query, prepared.keys)
+    selection = qsa_select_positions(
+        scores,
+        prepared.block_starts,
+        query_positions=pos,
+        available_positions=pos,
+        compression_ratio=compression_ratio,
+        block_budget=block_budget,
+    )
+    context = qsa_sparse_gqa_attention(
+        query,
+        key,
+        value,
+        query_positions=pos,
+        key_positions=pos,
+        selected_positions=selection.selected_positions,
+    )
+    gated_context = (context * _sigmoid(query_gate)).reshape(
+        tokens,
+        query_heads * head_dim,
+    )
+    attention_output = (gated_context @ output_weight.T).astype(np.float32)
+    after_attention = gr_write(state, attention_output, attention_read.inject_logits)
+
+    ffn_read = gr_read(
+        after_attention,
+        weights.ffn_gr.norm,
+        weights.ffn_gr.down,
+        weights.ffn_gr.up,
+        weights.ffn_gr.inject,
+        eps=eps,
+    )
+    moe = qwen4_exp_moe(ffn_read.mixed, weights.moe)
+    output_state = gr_write(after_attention, moe.output, ffn_read.inject_logits)
+    return Qwen4ExpReducedLayerResult(output_state, attention_output, selection, moe)
+
+
+def _rmsnorm_last(value: ArrayLike, weight: ArrayLike, *, eps: float) -> np.ndarray:
+    x = np.asarray(value, dtype=np.float32)
+    gamma = np.asarray(weight, dtype=np.float32)
+    if gamma.shape != (x.shape[-1],):
+        raise ValueError("RMSNorm weight must match the last dimension")
+    variance = np.mean(x * x, axis=-1, keepdims=True, dtype=np.float32)
+    return (
+        x * np.reciprocal(np.sqrt(variance + np.float32(eps))) * gamma
+    ).astype(np.float32)
+
+
+def _softmax_rows(value: np.ndarray) -> np.ndarray:
+    x = np.asarray(value, dtype=np.float32)
+    shifted = x - np.max(x, axis=-1, keepdims=True)
+    exponent = np.exp(shifted).astype(np.float32)
+    return (
+        exponent / np.sum(exponent, axis=-1, keepdims=True, dtype=np.float32)
+    ).astype(np.float32)
+
+
 def _softmax(value: np.ndarray) -> np.ndarray:
     x = np.asarray(value, dtype=np.float32)
     shifted = x - np.max(x)
@@ -702,6 +982,12 @@ __all__ = [
     "PLEInjectionResult",
     "QSAPooledKeys",
     "QSASelection",
+    "Qwen4ExpGRWeights",
+    "Qwen4ExpMoEResult",
+    "Qwen4ExpMoEWeights",
+    "Qwen4ExpQSAWeights",
+    "Qwen4ExpReducedLayerResult",
+    "Qwen4ExpReducedLayerWeights",
     "dilated_depthwise_conv",
     "gr_read",
     "gr_write",
@@ -715,5 +1001,7 @@ __all__ = [
     "qsa_prepare_index_keys",
     "qsa_select_positions",
     "qsa_sparse_gqa_attention",
+    "qwen4_exp_moe",
+    "qwen4_exp_reduced_qsa_layer",
     "sigmoid_gated_rmsnorm",
 ]
