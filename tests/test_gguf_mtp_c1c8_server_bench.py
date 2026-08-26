@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from scripts.gguf_mtp_c1c8_server_bench import (
+    _backend_mtp_engaged,
     _cell_correctness,
     _diagnostic_plan,
     _generated_ids,
@@ -54,6 +55,28 @@ def test_mtp_c1c8_correctness_contract_separates_exact_and_traded_routes() -> No
 
     assert strict == {"ar_self_exact": True, "mtp_self_exact": True, "ar_mtp_equal": False, "passed": False}
     assert traded == {"ar_self_exact": True, "mtp_self_exact": True, "ar_mtp_equal": False, "passed": True}
+
+
+def test_mtp_c1c8_backend_telemetry_proves_legacy_engagement() -> None:
+    assert _backend_mtp_engaged(
+        {
+            "path": "gguf_llama_compat_mtp_server",
+            "batch_size": 4,
+            "speculative_mtp": {
+                "total_draft_tokens": 21,
+                "direct_cycles": 8,
+            },
+        },
+        width=4,
+    )
+    assert not _backend_mtp_engaged(
+        {
+            "path": "gguf_packed_ar_server_decode",
+            "batch_size": 4,
+            "speculative_mtp": {"total_draft_tokens": 0, "direct_cycles": 0},
+        },
+        width=4,
+    )
 
 
 def test_mtp_c1c8_diagnostic_plan_is_content_agnostic_and_bounded() -> None:
