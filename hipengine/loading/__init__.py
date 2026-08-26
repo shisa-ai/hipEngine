@@ -103,6 +103,11 @@ from hipengine.loading.qwen35_gguf import (
     required_qwen35_gguf_tensor_names,
     validate_qwen35_gguf_tensor_map,
 )
+from hipengine.loading.qwen4_exp_gguf import (
+    Qwen4ExpGGUFConfig,
+    Qwen4ExpGGUFConfigError,
+    qwen4_exp_gguf_config_from_metadata,
+)
 from hipengine.loading.qwen35_gguf_nextn import (
     Qwen35GGUFNextNMap,
     Qwen35GGUFNextNValidation,
@@ -289,6 +294,8 @@ __all__ = [
     "Qwen35GGUFPlannedWeightCensus",
     "Qwen35GGUFResidentWeightRef",
     "Qwen35GGUFRuntimeResidencyCensus",
+    "Qwen4ExpGGUFConfig",
+    "Qwen4ExpGGUFConfigError",
     "census_qwen35_gguf_resident_weight_refs",
     "census_qwen35_gguf_weight_specs",
     "qwen35_gguf_nextn_weight_refs",
@@ -339,6 +346,7 @@ __all__ = [
     "plan_qwen35_gguf_nextn_materialization",
     "plan_qwen35_gguf_weight_spec",
     "qwen35_gguf_config_from_metadata",
+    "qwen4_exp_gguf_config_from_metadata",
     "qwen35_paro_config_from_hf",
     "float_array_to_bf16_bits",
     "load_host_array_to_device",
