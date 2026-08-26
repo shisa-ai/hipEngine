@@ -7,12 +7,15 @@ import argparse
 import json
 import os
 from pathlib import Path
+import resource
 import subprocess
 import tempfile
 from typing import Sequence
 
 import numpy as np
 
+from hipengine.core.hip import get_hip_runtime
+from hipengine.core.memory import memory_stats, reset_memory_stats
 from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
 from hipengine.loading.gguf import discover_gguf_files, load_gguf_index
 from hipengine.models import resolve_model
@@ -143,6 +146,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         index = load_gguf_index(first_part)
         plugin = resolve_model(index.architecture or "")
+        runtime = get_hip_runtime()
+        free_before, total_device_bytes = runtime.mem_get_info()
+        reset_memory_stats()
         generator = Qwen4ExpGGUFTextGenerator(
             model_path=model_path,
             weight_index=index,
@@ -156,8 +162,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "tokenizer mismatch: "
                 f"llama={teacher_tokens.tolist()} hipengine={hip_tokens.tolist()}"
             )
+        free_after_residency, _ = runtime.mem_get_info()
         actual = generator.runner.prefill(hip_tokens.tolist())
+        free_after_inference, _ = runtime.mem_get_info()
+        owned_peak = memory_stats()
+        max_rss_kib = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
         metrics = compare_logits(teacher_logits, actual.logits)
+        generator.close()
+        generator = None
+        free_after_close, _ = runtime.mem_get_info()
+        owned_after_close = memory_stats()
         report = {
             "schema": 1,
             "model_path": str(model_path),
@@ -170,6 +184,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             "backend": args.backend,
             "llama_debug": str(executable),
             "llama_command": command,
+            "memory": {
+                "device_total_bytes": total_device_bytes,
+                "device_free_before_bytes": free_before,
+                "device_free_after_residency_bytes": free_after_residency,
+                "device_free_after_inference_bytes": free_after_inference,
+                "device_free_after_close_bytes": free_after_close,
+                "hipengine_owned_peak": owned_peak,
+                "hipengine_owned_after_close": owned_after_close,
+                "process_max_rss_kib": max_rss_kib,
+            },
             **metrics,
             "max_kl": float(args.max_kl),
             "require_top1": bool(args.require_top1),
