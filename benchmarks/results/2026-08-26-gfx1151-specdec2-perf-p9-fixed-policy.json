@@ -918,13 +918,12 @@
   },
   "date": "2026-08-26",
   "decision": {
-    "automatic_policy": "K0_until_P9.3_passes",
-    "production_c1_k1": "not_selected_lower_throughput",
-    "production_c1_k2": "admit_to_product_qualification_not_runtime_default",
-    "production_c1_k3": "not_selected_lower_aggregate_and_more_target_rows",
-    "production_c2_c4": "K0_measured_below_true_ar",
+    "automatic_policy": "K0_fixed_grid_rerun_pending",
+    "current_product_candidate": null,
+    "pre_repair_grid": "superseded_diagnostic",
+    "production_c2_c4": "K0_pending_current_grid",
     "promoted_cells": [],
-    "strict_cells": "explicit_fallback_diagnostics_not_product_policy"
+    "strict_cells": "rerun_required"
   },
   "hardware": {
     "backend": "hip_gfx1151",
@@ -960,7 +959,7 @@
     "strict_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
     "strict_state": "FP32"
   },
-  "performance_claim": true,
+  "performance_claim": false,
   "policy_fingerprint": "sha256:92a9dc903b4aa158104d26f90864bd03705bad75058cc76cfda162df5b2e47d0",
   "policy_table": {
     "allowed_features": [
@@ -1627,22 +1626,30 @@
   },
   "runtime_policy": {
     "evidence": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json",
-    "next": "P9.3 automatic C1/K2 product packet",
-    "policy_fingerprint": "sha256:f0d0dc2367e6754438b28332aa9e636dce832aec9465db6a155b17c81cf7afbf",
-    "policy_key": "specdec2:auto:qwen38-q4ks:production:p9-fixed:v2",
-    "reason": "product_qualification_pending",
+    "next": "rerun P9 fixed grid on merged target-reseed source",
+    "policy_fingerprint": "sha256:042b23b68e5a863395c4bd62e9d15483ab7e6bfd3380e5c8de5911fa10c58598",
+    "policy_key": "specdec2:auto:qwen38-q4ks:production:p9-rerun:v3",
+    "reason": "fixed_grid_rerun_pending",
     "selected_k": 0
   },
   "schema": 1,
   "selection": {
+    "current_product_candidate_k": null,
     "physical_automatic_k": 0,
-    "production_c1_candidate_k": 2,
-    "production_c1_candidate_speedup": 1.4066585319765184,
+    "pre_repair_production_c1_candidate_k": 2,
+    "pre_repair_production_c1_candidate_speedup": 1.4066585319765184,
     "production_c1_k2_over_k3_percent": 0.08721563310689628,
     "strict_c1_best_k": 3,
     "wider_work_admitted": false,
-    "wider_work_reason": "no current C8/R24/R32/overlap operation-complete premise despite winning C1 fixed cell"
+    "wider_work_reason": "fixed_grid_rerun_pending_after_target_reseed_repair"
   },
-  "speed_claim_eligible": true,
-  "status": "fixed_grid_complete_product_candidate_pending"
+  "speed_claim_eligible": false,
+  "status": "superseded_pre_repair_grid_rerun_required",
+  "supersession": {
+    "pre_repair_source_commit": "b5a3fedd65d67d1b71b81a6df78a4399349ed8f2",
+    "reason": "packed NextN consumed-position and selected target-hidden reseeding materially change speculative acceptance",
+    "required_action": "rerun complete production/strict C1/C2/C4 K1-K3 grid on merged source",
+    "superseded": true,
+    "superseding_repair_commit": "bd7d51eda4e1c3e34182c8d2d1270922694846bb"
+  }
 }

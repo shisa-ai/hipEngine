@@ -157,6 +157,50 @@ def test_nextn_provider_emits_only_candidate_rows_under_locked_abi() -> None:
         provider.propose(context, candidate_budget=6)
 
 
+def test_nextn_physical_batch_publishes_consumed_positions_not_next_cursors(
+    monkeypatch,
+) -> None:
+    slots = {
+        10: SimpleNamespace(
+            position_host=np.asarray([99], dtype=np.int64),
+            context_host=np.asarray([100], dtype=np.int64),
+            position_buf=SimpleNamespace(ptr=0x1000),
+            context_buf=SimpleNamespace(ptr=0x2000),
+        ),
+        20: SimpleNamespace(
+            position_host=np.asarray([99], dtype=np.int64),
+            context_host=np.asarray([100], dtype=np.int64),
+            position_buf=SimpleNamespace(ptr=0x3000),
+            context_buf=SimpleNamespace(ptr=0x4000),
+        ),
+    }
+    calls: list[tuple[int, int, int]] = []
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    executor._request_slots = {10: 0, 20: 1}
+    executor.scratch = SimpleNamespace(
+        for_slot=lambda slot, **kwargs: slots[(10, 20)[int(slot)]]
+    )
+    executor._batch_session = SimpleNamespace(
+        _runtime_state_library=object(),
+    )
+    executor.runtime = object()
+    monkeypatch.setattr(
+        nextn_mod,
+        "set_decode_position_i64",
+        lambda position_ptr, context_ptr, position, **kwargs: calls.append(
+            (int(position_ptr), int(context_ptr), int(position))
+        ),
+    )
+
+    executor._publish_batch_consumed_positions((10, 20), (36, 41))
+
+    assert slots[10].position_host.tolist() == [36]
+    assert slots[10].context_host.tolist() == [37]
+    assert slots[20].position_host.tolist() == [41]
+    assert slots[20].context_host.tolist() == [42]
+    assert calls == [(0x1000, 0x2000, 36), (0x3000, 0x4000, 41)]
+
+
 def test_nextn_provider_keeps_physical_batch_candidates_device_resident_until_materialized() -> None:
     calls = []
     device = Qwen35GGUFNextNBatchDeviceProposal(

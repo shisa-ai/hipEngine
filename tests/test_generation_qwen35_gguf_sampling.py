@@ -90,19 +90,25 @@ def test_submit_poll_adapter_explicitly_delegates_model_owned_mtp_route() -> Non
     assert adapter.generate_speculative_mtp_detailed(_request()) == sentinel
 
 
-def test_qwen36_dense_blk64_inventory_advertises_public_mtp() -> None:
+def test_qwen36_dense_inventory_advertises_only_present_public_mtp() -> None:
     model = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
     if not model.exists():
         pytest.skip(f"local GGUF fixture not found: {model}")
     info = qwen35_gguf.GGUFReader(model).info
-
-    config, block_id, required = qwen35_gguf._gguf_mtp_required_tensor_names(info)
+    config = qwen35_gguf.qwen35_gguf_config_from_metadata(info)
 
     assert config.architecture == "qwen35"
-    assert block_id == 64
-    assert "blk.64.nextn.eh_proj.weight" in required
-    assert "blk.64.ffn_gate.weight" in required
-    assert not any(name.startswith("blk.40.") for name in required)
+    if not config.ignored_block_ids:
+        nextn_prefix = f"blk.{config.declared_block_count}.nextn."
+        assert not any(tensor.name.startswith(nextn_prefix) for tensor in info.tensors)
+        assert qwen35_gguf._gguf_info_has_mtp_tensors(info) is False
+        return
+
+    resolved_config, block_id, required = qwen35_gguf._gguf_mtp_required_tensor_names(info)
+    assert resolved_config == config
+    assert config.ignored_block_ids == (block_id,)
+    assert f"blk.{block_id}.nextn.eh_proj.weight" in required
+    assert f"blk.{block_id}.ffn_gate.weight" in required
     assert qwen35_gguf._gguf_info_has_mtp_tensors(info) is True
 
 

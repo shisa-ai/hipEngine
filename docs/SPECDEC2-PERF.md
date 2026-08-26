@@ -1,6 +1,6 @@
 # SPECDEC2-PERF — gfx1151 Activation and Hot-Cycle Campaign
 
-- Status: **P9 fixed grid complete; production C1/K2 product qualification next**
+- Status: **P9 fixed grid rerun required after shared target-reseed repair**
 - Approved: **2026-08-25**
 - Functional predecessor: [`SPECDEC2.md`](SPECDEC2.md), S1-S6 closed
 - Performance owner: **stable physical host `gfx1151` agent**
@@ -938,29 +938,24 @@ Durable handoff: P9.1-P9.3.
 
 ### P9.1 Fixed cells first
 
-The post-P8 full D25 grid is complete: 540/540 production/strict C1/C2/C4
-K1-K3 cells are exact with zero candidate D2H/recovery and complete tracked
-memory return. Production C1 reaches **1.2327x/1.4067x/1.4065x AR** at K1/K2/K3.
-K2 is the sole product candidate: it narrowly leads K3 aggregate, uses fewer
-target rows, and avoids K3's lower code/Japanese rates. Strict C1 reaches
-**1.2457x/1.4428x/1.4930x**, but strict is fallback evidence, not the product
-denominator. Every physical cell loses; best production C2/C4 is only
-**0.3791x/0.3406x AR**.
+A first 540-cell production/strict grid completed on `b5a3fedd6`, but the
+concurrent shared repair `bd7d51eda` subsequently corrected packed NextN
+consumed-position metadata and selected target-hidden reseeding. That repair
+materially changes acceptance, so the earlier grid is **superseded diagnostic
+evidence**, not a retainable policy denominator. Automatic remains K0 with
+`fixed_grid_rerun_pending`; no C1 candidate is admitted until the complete grid
+is repeated on the merged source. Superseded artifact:
+[`P9 pre-repair grid`](../benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json).
 
-The fingerprinted anti-gaming table admits C1/K2 only to P9.3, not runtime
-default. Automatic remains K0 with `product_qualification_pending`; all physical
-and unqualified widths remain measured/pre-mutation K0. Evidence:
-[`P9 fixed policy`](../benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json).
-
-- [x] Re-run fixed C1/C2/C4 K1-K3 after all retained changes.
-- [x] Keep K1 deprioritized unless new measurements overturn its extra-cycle
+- [ ] Re-run fixed C1/C2/C4 K1-K3 after all retained changes.
+- [ ] Keep K1 deprioritized unless new measurements overturn its extra-cycle
       loss.
-- [x] Build policy only from cells with complete evidence.
+- [ ] Build policy only from cells with complete evidence.
 - [x] Allow features: realized C, remaining output horizon, context/page bucket,
       profile, memory fit, and a predeclared bounded acceptance statistic.
 - [x] Forbid prompt text/hash, token IDs, category, heldout identity, task
       result, and post-hoc oracle selection.
-- [x] Fingerprint the table and evidence links.
+- [ ] Fingerprint the table and evidence links.
 
 ### P9.2 Wider work admission
 
@@ -971,10 +966,9 @@ C8, R24/R32, adaptive K, or proposal/target overlap begins only when:
 - physical ownership is not simulated by multiple hidden weight sweeps; and
 - the new cell has a correctness oracle and strict fallback.
 
-No such premise means K0 and no implementation. Although C1/K2 now passes the
-fixed threshold, no current profile supplies an operation-complete premise for
-C8, R24/R32, adaptive K, or overlap. P9.2 therefore admits **no wider work**;
-only the C1/K2 P9.3 product packet proceeds.
+No such premise means K0 and no implementation. The pre-repair C1 result is no
+longer a current premise. P9.2 admits **no wider work** until the merged-source
+fixed grid completes; C8, R24/R32, adaptive K, and overlap remain closed.
 
 ### P9.3 Product packet
 
@@ -1121,17 +1115,15 @@ Raw profiler dumps and terminal logs remain outside Git.
 
 ## 24. Current handoff to the gfx1151 agent
 
-P1-P9.2 are closed. Begin P9.3 with **production C1/K2 only**. Automatic still
-selects K0; the candidate is not a default until the complete product packet
-passes. Qualify output horizons and context boundaries first, then automatic
-HTTP completion/chat/SSE reporting, mixed AR/MTP neighbors, lifecycle/failure/
-rollback/restart, load/SLO/goodput, memory, and final soak.
+P1-P8 are closed. Repeat P9.1 production/strict C1/C2/C4 K1-K3 on the merged
+source containing `bd7d51eda`; the prior `b5a3fedd6` grid is superseded because
+target reseeding changes acceptance. Automatic remains K0 and no P9.3 candidate
+exists until that rerun completes.
 
-The fixed candidate is **1.4067x production FP16 AR** at D25 and every category
-wins. K1/K3 are not selected; C2/C4 K1-K3 remain K0 at at most
-**0.3791x/0.3406x AR**. No adaptive K, C8, R24/R32, or overlap work is admitted.
-Unsupported model/backend/quant/profile/context/horizon/memory-fit scope must
-select K0 before mutation with the fingerprinted reason.
+After the rerun, rank fixed cells only by complete same-profile evidence. Do not
+admit adaptive K, C8, R24/R32, overlap, or product load work early. Unsupported
+model/backend/quant/profile/context/horizon/memory-fit scope continues to select
+K0 before mutation with the stable rerun-pending reason.
 
 The independent gfx1100 S7 lane may continue concurrently, but shared-file
 edits—especially `qwen35_gguf_mtp2.py`, `qwen35_gguf_nextn.py`,

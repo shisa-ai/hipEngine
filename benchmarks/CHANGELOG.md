@@ -4,7 +4,9 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
-- [2026-08-26 SPECDEC2-PERF gfx1151 P9 fixed grid; C1/K2 candidate, automatic K0] Production/strict C1/C2/C4 K1-K3 is exact **540/540**. Production C1 reaches **1.2327x/1.4067x/1.4065x AR**; K2 proceeds to product qualification. Best C2/C4 is only **0.3791x/0.3406x**, so all physical/wider scopes stay K0. `benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json`.
+- [2026-08-26 W7900 SPECDEC2 C2 acceptance root cause; repair retained/economics blocked] Physical commit now owns consumed-position metadata and selected pre-output-norm BF16 target hidden. Full-suite K2/D24 acceptance improves **18.43%→76.92%** with 10/10 exact cells and zero D2H/recovery, but R6 target cost leaves **16.974 vs 31.230 tok/s (0.544x AR)**. Keep physical capability false/automatic K0; next premise is ≤101 ms target lowering after proposal, not acceptance tuning. `benchmarks/results/2026-08-26-w7900-specdec2-c2-acceptance-root-cause.json`.
+
+- [2026-08-26 gfx1151 Qwen3.8 current-main exact AR/MTP refresh] Clean cached natural25 AR/B1/B2/B3 moves **11.658→11.692 (+0.30%) / 17.115→17.376 (+1.53%) / 20.008→20.338 (+1.65%) / 21.040→21.158 tok/s (+0.56%)** and B3/AR **1.8048→1.8095x (+0.26%)**. All full/train/heldout/category rates are non-regressive, all 30 MTP rows are exact with GPU/CPU acceptance agreement, and cached ROCTX profiling proves qualified scalar-C1 plus native rows4/2 ownership; no isolated implementation delta is claimed. `benchmarks/results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json`.
 
 - [2026-08-26 SPECDEC2-PERF gfx1151 P8 production FP16 profile retained; automatic K0] Full D25 K2 is exact **90/90**: C1 reaches **15.204 vs 10.807 tok/s (1.407x)**, while C2/C4 remain blocked at **5.810 vs 15.213 (0.382x) / 9.469 vs 27.598 (0.343x)** with 18.43% acceptance. Memory/lifecycle/pressure/prefix/cancel/failure and 110-request soak pass; P9 owns K1-K3 policy. `benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-retained.json`.
 
