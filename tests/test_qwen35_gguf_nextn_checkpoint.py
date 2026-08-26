@@ -116,7 +116,7 @@ def test_nextn_root_snapshot_captures_and_restores_slot_state(monkeypatch) -> No
 
     executor.capture_request_root_state(7)
 
-    assert executor._provider_root_state_metadata[7] == (1, 18, 18)
+    assert executor._provider_root_state_metadata[7] == (1, 17, 18)
     assert [copy[:3] for copy in executor.runtime.copies[-2:]] == [
         (0x30010, 0x10010, 16),
         (0x40020, 0x20020, 32),
@@ -133,7 +133,7 @@ def test_nextn_root_snapshot_captures_and_restores_slot_state(monkeypatch) -> No
         (0x3000, slot.position_host.ctypes.data, 8),
         (0x4000, slot.context_host.ctypes.data, 8),
     ]
-    assert slot.position_host[0] == 18
+    assert slot.position_host[0] == 17
     assert slot.context_host[0] == 18
     assert executor._batch_sessions[1]._position == 18
 

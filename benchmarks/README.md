@@ -109,39 +109,30 @@ pending serving gates. [`DMS status`](../docs/DMS.md).
 | Qwen3.8-27B `Q4_K_M` | **50/68 (73.53%)** | **22/34** | **28/34** | 14/16 · **12/16** · 10/16 · 14/20 | **64/64** |
 | Ornith-1.5-35B-A3B `Q4_K_M` | 42/68 (61.76%) | 16/34 | 26/34 | 14/16 · 4/16 · 10/16 · 14/20 | 60/64 |
 
-The frozen suite, external/sandbox oracles, all 34 normalized repeat pairs,
-10/10 policy controls, response ownership, and zero final transient ownership
-pass for both comparison artifacts. Rows are same-host, same-suite model-product
-quality—not implementation-correctness or quantization deltas.
-[`AQ6 reference`](results/2026-08-26-zbook-agentic-quality2-aq6-expanded-baseline.json) ·
-[`AQ7 Qwen3.8`](results/2026-08-26-zbook-agentic-quality2-aq7-qwen38-comparison.json) ·
-[`AQ7 Ornith`](results/2026-08-26-zbook-agentic-quality2-aq7-ornith15-comparison.json) ·
-[`campaign`](../docs/AGENTIC-QUALITY2.md).
+All 34 repeat pairs, 10 controls, and ownership gates pass; these are same-host
+model-quality rows. The campaign retains **no implementation** because all seven
+development failures are model-owned. [`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
 
-AGENTIC-QUALITY2 is complete with **no implementation**: seven development
-failures are model-owned, with no runtime trigger. [`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
+gfx1151 P7 cuts C2/C4 K2 repair **4.186x/4.047x**. P8 retains production FP16:
+90/90 D25 K2 cells are exact; C1 is **1.407x AR**, while C2/C4 remain
+**0.382x/0.343x**. Lifecycle and soak pass; automatic stays K0.
+[`P8`](results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-retained.json) · [`Campaign`](../docs/SPECDEC2-PERF.md).
 
-SPECDEC2-PERF now retains its P7 conditional provider repair. Strict C1/K2
-remains **15.775 tok/s vs 11.026 true AR (1.431x)** across the full suite.
-Physical C2/C4 is exact, zero-D2H/allocation/final-ownership clean, and keeps the
-P6 Q4 route. P7 reduces mixed K2 repair **127.743→30.518 ms (4.186x) /
-138.779→34.292 ms (4.047x)** and improves full-suite throughput
-**5.718→5.796 (+1.37%) / 9.331→9.445 tok/s (+1.22%)**, with every physical
-category positive. Low **18.43%** acceptance still leaves it below
-**15.752/29.118 true-AR tok/s**; automatic/product stays K0.
-[`P7 evidence`](results/2026-08-26-gfx1151-specdec2-perf-p7-provider-repair-retained.json).
+gfx1100 dense C1 K1/K2/K3 remains exact at **1.272x/1.407x/1.439x AR** but
+2.7%-3.9% behind direct; packed PARO is **0.979x AR**. Automatic stays K0.
+[`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
 
-gfx1100 SPECDEC2-PERF now retains corrected C1 device chains. Dense
-Qwen3.6-27B GGUF K1/K2/K3 is exact at **1.272x/1.407x/1.439x true AR**, but
-remains **2.7%/3.1%/3.9%** behind direct MTP. Exact p128/p512 streaming loses
-AR, while p4K/p16K stays pre-mutation K0. Corrected dense P4 pre-captures
-commit-bound graphs, keeps all **898 cycles allocation-free**, and improves
-K1/K2/K3 wall **0.75%/3.36%/1.54%**. Packed PARO production is exact across
-**372/372** cycles; P4 device candidate handoff improves staged wall **4.33%**
-to **0.979x AR** with 372 device handoffs and bounded post-target rows. Strict
-D8 allocation falls **1,110 malloc/free pairs → 0** and P4 cycle marker wall is
-**83.469 ms**. Both automatic policies remain K0; physical C2/C4 is not exposed.
-[`gfx1100 closure`](results/2026-08-25-w7900-specdec2-perf-campaign-closure.json).
+Physical C2 target-hidden repair restores D24 K2 acceptance **18.43%→76.92%**,
+but its R6 target cost leaves throughput **16.974 vs 31.230 tok/s (0.544x AR)**.
+Capability stays false/K0. P512/d128 AR recovery keeps C1 exact at **77.176 vs
+old 72.169 tok/s**; C8 raw **161.882** remains profile-diagnostic.
+[`C2 evidence`](results/2026-08-26-w7900-specdec2-c2-acceptance-root-cause.json) · [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
+
+## Where detailed evidence lives
+
+Use result artifacts for commands/samples/profilers,
+[`CHANGELOG.md`](CHANGELOG.md) for rollups, [`docs/BENCHMARK.md`](../docs/BENCHMARK.md)
+for protocols, and [`worklog/entries/`](../worklog/entries/) for decisions.
 
 ## Benchmark harness catalog
 

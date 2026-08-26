@@ -36,7 +36,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     llm = LLM(
         str(args.model),
         backend="hip_gfx1151",
-        execution_profile="strict",
+        execution_profile=str(args.execution_profile),
         max_active_requests=2,
         max_sequence_length=256,
     )
@@ -105,6 +105,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "kind": "specdec2_s4_compaction_neighbor_substitution_gate",
         "status": "passed" if passed else "failed",
         "performance_claim": False,
+        "execution_profile": str(args.execution_profile),
         "short_output": short_output,
         "moves": move_payload,
         "substitute_output": substitute_output,
@@ -124,6 +125,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--model",
         type=Path,
         default=Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf"),
+    )
+    parser.add_argument(
+        "--execution-profile",
+        choices=("strict", "production"),
+        default="strict",
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--fail-on-fail", action="store_true")

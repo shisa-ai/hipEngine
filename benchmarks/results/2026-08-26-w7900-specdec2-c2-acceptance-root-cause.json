@@ -1,0 +1,475 @@
+{
+  "before": {
+    "accepted_drafts": 1,
+    "artifact": "benchmarks/results/2026-08-26-w7900-specdec2-c2-provider-refill.json",
+    "candidate_budget": 1,
+    "draft_acceptance": 0.125,
+    "max_tokens": 8,
+    "proposed_drafts": 8,
+    "specdec2_speedup_vs_ar": 0.503379624219101
+  },
+  "date": "2026-08-26",
+  "decision": "Retain target-hidden/cursor ownership repair. Do not expose physical gfx1100 C2 or change automatic K0: full-suite repaired acceptance is 68.75% K1 D8 and 76.92% K2 D24, but best complete economics is only 0.544x AR. Next premise is a cheaper target lowering (reuse two C1 R3 graph owners or an equivalent <=111 ms R6 owner), not more acceptance repair.",
+  "economics_attribution": {
+    "ar_decode_seconds_per_two_token_step": 0.04088047109746738,
+    "best_cell": "k2_d24",
+    "break_even_complete_group_cycle_seconds": 0.11542721251049615,
+    "break_even_target_group_seconds_approx": 0.10107115261170946,
+    "complete_cycle_seconds_per_group_cycle": 0.22229169615927866,
+    "note": "K2 advances 5.65 visible tokens per group cycle, 2.82x a C2 AR step. Equal decode throughput permits ~115 ms complete group-cycle wall; after ~14 ms proposal cost, target/accept must fall from ~208 ms to <=101 ms (~51% reduction). Activation further widens complete wall.",
+    "proposal_seconds_per_group_cycle": 0.014356059898786685,
+    "r6_target_accept_seconds_per_group_cycle": 0.20781205537564615,
+    "required_target_reduction_fraction_approx": 0.5136415333123443
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "gpu_index": 0,
+    "physical_host": "epyc",
+    "rocm": "HIP 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100",
+    "unique_id": "0xe282895b62c2b295"
+  },
+  "kind": "w7900_specdec2_c2_acceptance_root_cause",
+  "model": {
+    "kv": "bf16",
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "recurrent_state": "fp32_strict"
+  },
+  "next": [
+    "Keep gfx1100 physical capability false and automatic K0.",
+    "Build a diagnostic target lowering from two retained C1 R3 graph owners, or profile a physical R6 mechanism projecting <=111 ms/group.",
+    "Preserve full category/heldout, state/KV/following-cycle, zero-allocation, and no-D2H gates before any capability promotion."
+  ],
+  "performance_claim": true,
+  "protocol": {
+    "anti_gaming": "all category+heldout prompts; no single-prompt keep or policy decision",
+    "capability_override": "process-local diagnostic only; packaged GGUF_SPECDEC2_MTP2_C4 remains false",
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "concurrency": 2,
+    "oracle": "D8 rows enable post-target candidate materialization and CPU/GPU accept equality; D24 rows retain device chain without diagnostic D2H",
+    "prompt_count": 10,
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "runs": 1,
+    "sampling": "raw greedy",
+    "warmup": true
+  },
+  "results": {
+    "k1_d8": {
+      "accepted_drafts": 44,
+      "candidate_budget": 1,
+      "candidate_d2h_after_target": 64,
+      "categories": {
+        "code": {
+          "accepted_drafts": 18,
+          "draft_acceptance": 0.6923076923076923,
+          "proposed_drafts": 26,
+          "specdec2_speedup_vs_ar": 0.558537845976821
+        },
+        "general_en": {
+          "accepted_drafts": 9,
+          "draft_acceptance": 0.75,
+          "proposed_drafts": 12,
+          "specdec2_speedup_vs_ar": 0.5877752757996574
+        },
+        "general_ja": {
+          "accepted_drafts": 9,
+          "draft_acceptance": 0.75,
+          "proposed_drafts": 12,
+          "specdec2_speedup_vs_ar": 0.581574529188374
+        },
+        "mixed_ja_en": {
+          "accepted_drafts": 8,
+          "draft_acceptance": 0.5714285714285714,
+          "proposed_drafts": 14,
+          "specdec2_speedup_vs_ar": 0.5196214057061661
+        }
+      },
+      "cells": 10,
+      "draft_acceptance": 0.6875,
+      "exact_cells": 10,
+      "group_cycles": 32,
+      "proposed_drafts": 64,
+      "recoveries": 0,
+      "specdec2_complete_tok_s": 10.110552354857354,
+      "specdec2_speedup_vs_ar": 0.5595356094581927,
+      "specdec2_wall_seconds": 15.825050341896713,
+      "stage_calls": {
+        "ar_decode": 36,
+        "arm_complete": 10,
+        "cycle_total": 32,
+        "graph_close": 26,
+        "nextn_prompt_prime": 20,
+        "proposal": 32,
+        "provider_k0_attach": 36,
+        "provider_open": 32,
+        "provider_streaming_open": 20,
+        "resident_owner_transition": 104,
+        "target_accept_commit_provider": 32,
+        "target_prefill": 20,
+        "terminal_reclaim": 20
+      },
+      "stage_totals_seconds": {
+        "ar_decode": 0.9138822401873767,
+        "arm_complete": 15.824857131112367,
+        "cycle_total": 6.414447379298508,
+        "graph_close": 5.447864532470703e-05,
+        "nextn_prompt_prime": 2.551841671112925,
+        "proposal": 0.23921602731570601,
+        "provider_k0_attach": 2.5798415653407574,
+        "provider_open": 0.00043355487287044525,
+        "provider_streaming_open": 0.00016807951033115387,
+        "resident_owner_transition": 0.008812112733721733,
+        "target_accept_commit_provider": 6.171222953591496,
+        "target_prefill": 5.748732681851834,
+        "terminal_reclaim": 0.11240136390551925
+      },
+      "true_ar_complete_tok_s": 18.06954228462343,
+      "true_ar_wall_seconds": 8.854679187759757,
+      "visible_tokens_per_group_cycle": 5.0
+    },
+    "k2_d24": {
+      "accepted_drafts": 260,
+      "candidate_budget": 2,
+      "candidate_d2h_after_target": 0,
+      "categories": {
+        "code": {
+          "accepted_drafts": 102,
+          "draft_acceptance": 0.7391304347826086,
+          "proposed_drafts": 138,
+          "specdec2_speedup_vs_ar": 0.5342886820889924
+        },
+        "general_en": {
+          "accepted_drafts": 53,
+          "draft_acceptance": 0.828125,
+          "proposed_drafts": 64,
+          "specdec2_speedup_vs_ar": 0.5718564061774775
+        },
+        "general_ja": {
+          "accepted_drafts": 55,
+          "draft_acceptance": 0.859375,
+          "proposed_drafts": 64,
+          "specdec2_speedup_vs_ar": 0.5706710338274984
+        },
+        "mixed_ja_en": {
+          "accepted_drafts": 50,
+          "draft_acceptance": 0.6944444444444444,
+          "proposed_drafts": 72,
+          "specdec2_speedup_vs_ar": 0.5127117461826184
+        }
+      },
+      "cells": 10,
+      "draft_acceptance": 0.7692307692307693,
+      "exact_cells": 10,
+      "group_cycles": 85,
+      "proposed_drafts": 338,
+      "recoveries": 0,
+      "specdec2_complete_tok_s": 16.973796967613033,
+      "specdec2_speedup_vs_ar": 0.5435026784148485,
+      "specdec2_wall_seconds": 28.27888190932572,
+      "stage_calls": {
+        "ar_decode": 32,
+        "arm_complete": 10,
+        "cycle_total": 85,
+        "graph_close": 22,
+        "nextn_prompt_prime": 20,
+        "proposal": 85,
+        "provider_k0_attach": 32,
+        "provider_open": 85,
+        "provider_streaming_open": 20,
+        "resident_owner_transition": 210,
+        "target_accept_commit_provider": 85,
+        "target_prefill": 20,
+        "terminal_reclaim": 20
+      },
+      "stage_totals_seconds": {
+        "ar_decode": 0.797336561139673,
+        "arm_complete": 28.27870847657323,
+        "cycle_total": 18.894794173538685,
+        "graph_close": 4.428112879395485e-05,
+        "nextn_prompt_prime": 2.5473061436787248,
+        "proposal": 1.2202650913968682,
+        "provider_k0_attach": 2.5669153705239296,
+        "provider_open": 0.0011503039859235287,
+        "provider_streaming_open": 0.0001595737412571907,
+        "resident_owner_transition": 0.006855233572423458,
+        "target_accept_commit_provider": 17.664024706929922,
+        "target_prefill": 5.812940916977823,
+        "terminal_reclaim": 0.10734372958540916
+      },
+      "true_ar_complete_tok_s": 31.230383292899173,
+      "true_ar_wall_seconds": 15.36964806029573,
+      "visible_tokens_per_group_cycle": 5.647058823529412
+    },
+    "k2_d8": {
+      "accepted_drafts": 63,
+      "candidate_budget": 2,
+      "candidate_d2h_after_target": 54,
+      "categories": {
+        "code": {
+          "accepted_drafts": 23,
+          "draft_acceptance": 0.5609756097560976,
+          "proposed_drafts": 41,
+          "specdec2_speedup_vs_ar": 0.5784927384210568
+        },
+        "general_en": {
+          "accepted_drafts": 14,
+          "draft_acceptance": 0.6363636363636364,
+          "proposed_drafts": 22,
+          "specdec2_speedup_vs_ar": 0.5935678028981437
+        },
+        "general_ja": {
+          "accepted_drafts": 15,
+          "draft_acceptance": 0.7894736842105263,
+          "proposed_drafts": 19,
+          "specdec2_speedup_vs_ar": 0.6176430276260781
+        },
+        "mixed_ja_en": {
+          "accepted_drafts": 11,
+          "draft_acceptance": 0.5789473684210527,
+          "proposed_drafts": 19,
+          "specdec2_speedup_vs_ar": 0.5693241607081114
+        }
+      },
+      "cells": 10,
+      "draft_acceptance": 0.6237623762376238,
+      "exact_cells": 10,
+      "group_cycles": 27,
+      "proposed_drafts": 101,
+      "recoveries": 0,
+      "specdec2_complete_tok_s": 10.590706758285654,
+      "specdec2_speedup_vs_ar": 0.5867381803417218,
+      "specdec2_wall_seconds": 15.107584758196026,
+      "stage_calls": {
+        "ar_decode": 31,
+        "arm_complete": 10,
+        "cycle_total": 27,
+        "graph_close": 21,
+        "nextn_prompt_prime": 20,
+        "proposal": 27,
+        "provider_k0_attach": 31,
+        "provider_open": 27,
+        "provider_streaming_open": 20,
+        "resident_owner_transition": 94,
+        "target_accept_commit_provider": 27,
+        "target_prefill": 20,
+        "terminal_reclaim": 20
+      },
+      "stage_totals_seconds": {
+        "ar_decode": 0.7233461923897266,
+        "arm_complete": 15.10740859573707,
+        "cycle_total": 5.897091497667134,
+        "graph_close": 4.104943946003914e-05,
+        "nextn_prompt_prime": 2.541369962040335,
+        "proposal": 0.35062019852921367,
+        "provider_k0_attach": 2.5678273420780897,
+        "provider_open": 0.0003468366339802742,
+        "provider_streaming_open": 0.00015953043475747108,
+        "resident_owner_transition": 0.004431882407516241,
+        "target_accept_commit_provider": 5.543160072527826,
+        "target_prefill": 5.763497011270374,
+        "terminal_reclaim": 0.10503810085356236
+      },
+      "true_ar_complete_tok_s": 18.050140783607315,
+      "true_ar_wall_seconds": 8.864196790382266,
+      "visible_tokens_per_group_cycle": 5.925925925925926
+    },
+    "k3_d24": {
+      "accepted_drafts": 249,
+      "candidate_budget": 3,
+      "candidate_d2h_after_target": 0,
+      "categories": {
+        "code": {
+          "accepted_drafts": 118,
+          "draft_acceptance": 0.7065868263473054,
+          "proposed_drafts": 167,
+          "specdec2_speedup_vs_ar": 0.5779126274514881
+        },
+        "general_en": {
+          "accepted_drafts": 49,
+          "draft_acceptance": 0.5833333333333334,
+          "proposed_drafts": 84,
+          "specdec2_speedup_vs_ar": 0.5523151172765641
+        },
+        "general_ja": {
+          "accepted_drafts": 38,
+          "draft_acceptance": 0.4634146341463415,
+          "proposed_drafts": 82,
+          "specdec2_speedup_vs_ar": 0.5177653235669296
+        },
+        "mixed_ja_en": {
+          "accepted_drafts": 44,
+          "draft_acceptance": 0.41904761904761906,
+          "proposed_drafts": 105,
+          "specdec2_speedup_vs_ar": 0.4677917736083298
+        }
+      },
+      "cells": 10,
+      "draft_acceptance": 0.5684931506849316,
+      "exact_cells": 10,
+      "group_cycles": 75,
+      "proposed_drafts": 438,
+      "recoveries": 0,
+      "specdec2_complete_tok_s": 16.718846523542897,
+      "specdec2_speedup_vs_ar": 0.5344272399619021,
+      "specdec2_wall_seconds": 28.71011461969465,
+      "stage_calls": {
+        "ar_decode": 68,
+        "arm_complete": 10,
+        "cycle_total": 75,
+        "graph_close": 58,
+        "nextn_prompt_prime": 20,
+        "proposal": 75,
+        "provider_k0_attach": 68,
+        "provider_open": 75,
+        "provider_streaming_open": 20,
+        "resident_owner_transition": 190,
+        "target_accept_commit_provider": 75,
+        "target_prefill": 20,
+        "terminal_reclaim": 20
+      },
+      "stage_totals_seconds": {
+        "ar_decode": 1.980452568270266,
+        "arm_complete": 28.709958156570792,
+        "cycle_total": 18.079832604620606,
+        "graph_close": 0.00011173263192176819,
+        "nextn_prompt_prime": 2.55137546826154,
+        "proposal": 1.5586749464273453,
+        "provider_k0_attach": 2.6278371307998896,
+        "provider_open": 0.0009742183610796928,
+        "provider_streaming_open": 0.00016414141282439232,
+        "resident_owner_transition": 0.006756988819688559,
+        "target_accept_commit_provider": 16.511745082214475,
+        "target_prefill": 5.809346356894821,
+        "terminal_reclaim": 0.10909501137211919
+      },
+      "true_ar_complete_tok_s": 31.283672076174,
+      "true_ar_wall_seconds": 15.343467315193266,
+      "visible_tokens_per_group_cycle": 6.4
+    },
+    "k3_d8": {
+      "accepted_drafts": 64,
+      "candidate_budget": 3,
+      "candidate_d2h_after_target": 42,
+      "categories": {
+        "code": {
+          "accepted_drafts": 24,
+          "draft_acceptance": 0.5853658536585366,
+          "proposed_drafts": 41,
+          "specdec2_speedup_vs_ar": 0.6208418814334545
+        },
+        "general_en": {
+          "accepted_drafts": 12,
+          "draft_acceptance": 0.6,
+          "proposed_drafts": 20,
+          "specdec2_speedup_vs_ar": 0.6446659757894646
+        },
+        "general_ja": {
+          "accepted_drafts": 14,
+          "draft_acceptance": 0.7368421052631579,
+          "proposed_drafts": 19,
+          "specdec2_speedup_vs_ar": 0.6496113050168124
+        },
+        "mixed_ja_en": {
+          "accepted_drafts": 14,
+          "draft_acceptance": 0.6666666666666666,
+          "proposed_drafts": 21,
+          "specdec2_speedup_vs_ar": 0.583944708041593
+        }
+      },
+      "cells": 10,
+      "draft_acceptance": 0.6336633663366337,
+      "exact_cells": 10,
+      "group_cycles": 21,
+      "proposed_drafts": 101,
+      "recoveries": 0,
+      "specdec2_complete_tok_s": 11.139769933306685,
+      "specdec2_speedup_vs_ar": 0.6224557634414234,
+      "specdec2_wall_seconds": 14.362953719682992,
+      "stage_calls": {
+        "ar_decode": 37,
+        "arm_complete": 10,
+        "cycle_total": 21,
+        "graph_close": 27,
+        "nextn_prompt_prime": 20,
+        "proposal": 21,
+        "provider_k0_attach": 37,
+        "provider_open": 21,
+        "provider_streaming_open": 20,
+        "resident_owner_transition": 82,
+        "target_accept_commit_provider": 21,
+        "target_prefill": 20,
+        "terminal_reclaim": 20
+      },
+      "stage_totals_seconds": {
+        "ar_decode": 0.9605277478694916,
+        "arm_complete": 14.362736316397786,
+        "cycle_total": 4.8368108118884265,
+        "graph_close": 4.962971433997154e-05,
+        "nextn_prompt_prime": 2.529329679440707,
+        "proposal": 0.3422689586877823,
+        "provider_k0_attach": 2.5570532749406993,
+        "provider_open": 0.0002730279229581356,
+        "provider_streaming_open": 0.00016262056306004524,
+        "resident_owner_transition": 0.012985805049538612,
+        "target_accept_commit_provider": 4.491927787661552,
+        "target_prefill": 5.841923319268972,
+        "terminal_reclaim": 0.11410679295659065
+      },
+      "true_ar_complete_tok_s": 17.89648451757809,
+      "true_ar_wall_seconds": 8.940303322859108,
+      "visible_tokens_per_group_cycle": 7.619047619047619
+    }
+  },
+  "root_cause": {
+    "first_observed_consequence": "After root 248068@36 rejected candidate 271 to target correction 198, physical next proposal produced 727 while C1 produced 8160. A full-accept neighbor similarly produced 198 instead of C1 264.",
+    "initial_candidate_and_accept": "Correct: physical candidate IDs and GPU accept matched C1/CPU on the first cycle.",
+    "provider_cursor": "Packed NextN published the next-input cursor as consumed position/context, making checkpoint/after-root metadata one token ahead.",
+    "repair": "Restore consumed-position semantics and device-select/commit the BF16 trunk row into request-stable target hidden storage before the next proposal.",
+    "target_hidden": "Physical selected commit omitted the chosen pre-output-norm BF16 target trunk row; later NextN proposals reused stale prompt hidden."
+  },
+  "schema": 1,
+  "source": {
+    "branch": "main",
+    "commit": "bd7d51eda4e1c3e34182c8d2d1270922694846bb",
+    "tracked_clean": true
+  },
+  "speed_claim_eligible": true,
+  "status": "root_cause_fixed_acceptance_restored_economics_blocked",
+  "validation": {
+    "affected_tests": "164 passed before code commit",
+    "clean_k1_oracle": {
+      "path": "/tmp/mtp-c2-rootcause/current-bd7d51eda/c2-k1-d8-clean-oracle.json",
+      "sha256": "8079673486e056ce109d478caff9c45bad16f14917f8d81315429d9756d25303",
+      "size_bytes": 46868
+    },
+    "raw_packets": {
+      "k1_d8": {
+        "path": "/tmp/mtp-c2-rootcause/current-bd7d51eda/c2-k1-d8-full-clean-oracle.json",
+        "sha256": "87428e9b3dd0f25bbb6080a5d5878efc6420a4119450bba16fec008112767717",
+        "size_bytes": 397244
+      },
+      "k23_d8": {
+        "path": "/tmp/mtp-c2-rootcause/current-bd7d51eda/c2-k23-d8-full-clean-oracle.json",
+        "sha256": "8d182715692a1bab8b86dfb79f5280be5d73febe444528672bf51b0338a49dfe",
+        "size_bytes": 772624
+      },
+      "k2_d24": {
+        "path": "/tmp/mtp-c2-rootcause/current-bd7d51eda/c2-k2-d24-full-clean.json",
+        "sha256": "a30aa20f4afb385a52ef6ad33712b6be7ea351e2d17ca93bdf6ef4d5c54ac966",
+        "size_bytes": 481361
+      },
+      "k3_d24": {
+        "path": "/tmp/mtp-c2-rootcause/current-bd7d51eda/c2-k3-d24-full-clean.json",
+        "sha256": "04624513fc9026d1081ff225e0d5d1ce81988c72c7e4e39d8c51377a3cf0fa2f",
+        "size_bytes": 484083
+      }
+    }
+  }
+}

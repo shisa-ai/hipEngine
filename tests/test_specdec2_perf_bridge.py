@@ -14,6 +14,7 @@ from scripts.specdec2_perf_bridge import (
     _close_preserving_primary,
     _decode_only_seconds,
     _install_stage_ledger,
+    _run_arm,
     _summarize,
     arm_order,
     atomic_write_json,
@@ -85,6 +86,10 @@ def _artifact() -> dict[str, object]:
             "unstaged_dirty": False,
             "unexpected_untracked": [],
         },
+        "model": {
+            "execution_profile": "strict",
+            "recurrent_state": "fp32",
+        },
         "workload": {
             "scope": "full",
             "prompt_ids": list(FULL_PROMPT_IDS),
@@ -155,6 +160,33 @@ def test_bridge_parses_only_supported_physical_cells() -> None:
         parse_budgets("0,2")
     with pytest.raises(ValueError, match="duplicate"):
         parse_budgets("2,2")
+
+
+def test_bridge_production_profile_skips_incompatible_legacy_c1_control() -> None:
+    skipped = _run_arm(
+        arm="legacy_native",
+        service=None,
+        direct_generator=None,
+        direct_config=None,
+        request=None,
+        concurrency=1,
+        ledger=SimpleNamespace(),
+        legacy_native_supported=False,
+    )
+    assert skipped == {
+        "status": "skipped",
+        "reason": "dense_direct_legacy_requires_strict_fp32_state",
+        "realized_route": None,
+    }
+
+    payload = _artifact()
+    payload["model"] = {
+        "execution_profile": "production",
+        "recurrent_state": "fp16",
+    }
+    for cell in payload["cells"]:
+        cell["arms"]["legacy_native"] = skipped
+    validate_bridge_artifact(payload)
 
 
 def test_bridge_requires_separate_c1_and_physical_service_capacities() -> None:

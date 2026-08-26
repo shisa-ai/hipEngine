@@ -14,8 +14,9 @@ from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
 import hipengine.generation.qwen35_gguf_mtp2 as mtp2_module
 from hipengine.generation.qwen35_gguf_mtp2 import (
     Qwen35GGUFMTP2Adapter,
-    _target_verify_mode_for_context,
     _MTP2RequestState,
+    _PhysicalTargetCommitError,
+    _target_verify_mode_for_context,
 )
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.runtime import qwen35_gguf_runner as runner_mod
@@ -183,6 +184,31 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
 
     target.runner = SimpleNamespace(fp16_recurrent_state=True)
     assert adapter.capability(semantics) is None
+
+    owner.generator.execution_profile = "production"
+    owner.generator.execution_profile_fell_back_to_strict = False
+    owner.generator.execution_profile_manifest_sha256 = "production-manifest"
+    owner.generator.execution_profile_manifest = {
+        "selections": (
+            {
+                "layer": "gdn_chain_recurrent_rmsnorm_gate",
+                "scope": "specdec2_mtp2_target_state_rows",
+                "selected_variant": "bf16_c1_exact_state_rows_tloop_fp16state",
+                "strict_fallback_variant": "bf16_c1_exact_state_rows_tloop",
+            },
+        )
+    }
+    assert adapter.capability(semantics) is not None
+
+    owner.generator.execution_profile_fell_back_to_strict = True
+    assert adapter.capability(semantics) is None
+
+
+def test_fp16_target_disables_c1_device_proposal_graph() -> None:
+    target = SimpleNamespace(runner=SimpleNamespace(fp16_recurrent_state=True))
+    assert not Qwen35GGUFMTP2Adapter._target_graph_supported(target)
+    target.runner.fp16_recurrent_state = False
+    assert Qwen35GGUFMTP2Adapter._target_graph_supported(target)
 
 
 def test_physical_adapter_returns_device_candidate_graph_before_target(
@@ -476,11 +502,16 @@ def test_packed_target_device_result_binds_identity_and_only_device_rows() -> No
             0x3000, (3, 8), DType.FP32, Device("hip", 0)
         ),
         deferred_packed_state=object(),
+        pre_output_norm_hidden=Tensor.from_handle(
+            0x4000, (3, 8), DType.BF16, Device("hip", 0)
+        ),
     )
 
     assert result.rows == 3
     assert result.request_id == 10
     assert result.transaction_id == 7
+    assert result.pre_output_norm_hidden is not None
+    assert result.pre_output_norm_hidden.ptr == 0x4000
     assert not hasattr(result, "token_ids")
 
 
@@ -897,6 +928,17 @@ def test_packed_owner_device_commit_selects_from_accept_buffers_before_readback(
                     )
                 )
             ),
+            _commit_external_pre_output_norm_hidden_row_device=(
+                lambda source_rows, *, request_id=request_id, **kwargs: calls.append(
+                    (
+                        "hidden",
+                        request_id,
+                        int(source_rows.ptr),
+                        int(kwargs["commit_row_i32_ptr"]),
+                        int(kwargs["commit_position_i32_ptr"]),
+                    )
+                )
+            ),
         )
         for request_id in (10, 20)
     )
@@ -924,6 +966,12 @@ def test_packed_owner_device_commit_selects_from_accept_buffers_before_readback(
                 0x3000 + index * 0x100,
                 (3, 8),
                 DType.FP32,
+                Device("hip", 0),
+            ),
+            pre_output_norm_hidden=Tensor.from_handle(
+                0x4000 + index * 0x100,
+                (3, 8),
+                DType.BF16,
                 Device("hip", 0),
             ),
             deferred_packed_state=SimpleNamespace(
@@ -958,8 +1006,10 @@ def test_packed_owner_device_commit_selects_from_accept_buffers_before_readback(
     assert calls == [
         ("kv", 10, packed, 0, 0, 3),
         ("state", 10, owner, 0, 3, 0xA000, 0xB000),
+        ("hidden", 10, 0x4000, 0xA000, 0xB000),
         ("kv", 20, packed, 1, 0, 3),
         ("state", 20, owner, 3, 3, 0xA004, 0xB004),
+        ("hidden", 20, 0x4100, 0xA004, 0xB004),
     ]
 
 
@@ -978,8 +1028,12 @@ def test_adapter_recovers_only_precommit_failure_with_canonical_target_cursors()
             mtp2_failure_reasons=[],
         ),
     }
+    rebuilds = []
     adapter = object.__new__(Qwen35GGUFMTP2Adapter)
-    adapter.owner = SimpleNamespace(_row=lambda request_id: rows[request_id])
+    adapter.owner = SimpleNamespace(
+        _row=lambda request_id: rows[request_id],
+        restore_speculative_target_rows=lambda plan: rebuilds.append(plan) or True,
+    )
     plan = SimpleNamespace(speculative_request_ids=(10, 20))
 
     assert adapter.recover_cycle_failure(plan, RuntimeError("injected")) is True
@@ -990,8 +1044,86 @@ def test_adapter_recovers_only_precommit_failure_with_canonical_target_cursors()
         for row in rows.values()
     )
 
+    assert (
+        adapter.recover_cycle_failure(
+            plan,
+            _PhysicalTargetCommitError("selected target state may be committed"),
+        )
+        is True
+    )
+    assert rebuilds == [plan]
+    assert all(row.mtp2_recoverable_failures == 2 for row in rows.values())
+    assert all(
+        row.mtp2_failure_reasons[-2:] == [
+            "postcommit_target_rebuild_ar_fallback",
+            "_PhysicalTargetCommitError:selected target state may be committed",
+        ]
+        for row in rows.values()
+    )
+
     rows[20].lease.session.position = 10
     assert adapter.recover_cycle_failure(plan, RuntimeError("late")) is False
+
+
+def test_model_runner_rebuilds_postcommit_targets_from_canonical_tokens() -> None:
+    calls = []
+
+    class Session:
+        def __init__(self) -> None:
+            self.position = 99
+
+        def reset(self) -> None:
+            calls.append("reset")
+            self.position = 0
+
+    sessions = (Session(), Session())
+    rows = {
+        10: SimpleNamespace(
+            request_id=10,
+            prompt_ids=(1, 2),
+            slot=SimpleNamespace(
+                generated_ids=[101, 102],
+                prev_token=102,
+                seq_position=3,
+            ),
+            lease=SimpleNamespace(session=sessions[0]),
+        ),
+        20: SimpleNamespace(
+            request_id=20,
+            prompt_ids=(3, 4, 5),
+            slot=SimpleNamespace(
+                generated_ids=[201, 202],
+                prev_token=202,
+                seq_position=4,
+            ),
+            lease=SimpleNamespace(session=sessions[1]),
+        ),
+    }
+
+    class PackedOwner:
+        def prefill_batch_native(self, prompts, **kwargs):
+            calls.append((tuple(tuple(row) for row in prompts), kwargs))
+            for session, tokens in zip(kwargs["sessions"], prompts, strict=True):
+                session.position = len(tokens)
+            return (SimpleNamespace(token_id=102), SimpleNamespace(token_id=202))
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._rows = rows
+    runner._flush_rows = lambda selected: calls.append(
+        ("flush", tuple(row.request_id for row in selected))
+    )
+    runner._packed_execution_owner = lambda session: PackedOwner()
+    plan = SimpleNamespace(speculative_request_ids=(10, 20))
+
+    assert runner.restore_speculative_target_rows(plan) is True
+    assert calls[0] == ("flush", (10, 20))
+    assert calls[1:3] == ["reset", "reset"]
+    prompts, kwargs = calls[3]
+    assert prompts == ((1, 2, 101), (3, 4, 5, 201))
+    assert kwargs["full_prompt_lengths"] == [3, 4]
+    assert kwargs["return_logits"] is False
+    assert kwargs["return_hidden_seeds"] is False
+    assert tuple(session.position for session in sessions) == (3, 4)
 
 
 @pytest.mark.parametrize(
@@ -1467,6 +1599,40 @@ def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
 
     assert calls == [(7, 90, 15, "pre-root-hidden")]
     assert row.mtp2_k0_catchups == 1
+
+
+def test_refill_reuses_live_provider_group_before_opening_singleton() -> None:
+    provider = SimpleNamespace(executor=SimpleNamespace(max_requests=2))
+    group = mtp2_module._MTP2ProviderGroup(
+        key=(0, 1),
+        provider=provider,
+        provider_pool_key="pool",
+        request_ids={1},
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._states = {}
+    adapter._provider_groups = {group.key: group}
+    calls = []
+    adapter._attach_request_to_group = lambda request_id, selected: (
+        calls.append((request_id, selected.key))
+        or _MTP2RequestState(
+            request_id=request_id,
+            provider=selected.provider,
+            provider_pool_key=selected.provider_pool_key,
+            provider_group_key=selected.key,
+            verifier=None,
+            root_hidden_buffer=SimpleNamespace(ptr=1),
+        )
+    )
+    adapter._open_batch_requests = lambda ids: (_ for _ in ()).throw(
+        AssertionError(f"unexpected singleton group open: {ids}")
+    )
+    adapter.owner = SimpleNamespace(capacity=2)
+
+    adapter._ensure_request_states((2,))
+
+    assert calls == [(2, (0, 1))]
+    assert adapter._states[2].provider_group_key == (0, 1)
 
 
 def test_context_bucket_k0_does_not_attach_or_mutate_provider() -> None:

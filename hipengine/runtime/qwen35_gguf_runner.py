@@ -984,6 +984,7 @@ class Qwen35GGUFPackedVerifyDeviceResult:
     target_top1: Tensor
     hidden_seeds: Tensor
     deferred_packed_state: object
+    pre_output_norm_hidden: Tensor | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -1012,6 +1013,15 @@ class Qwen35GGUFPackedVerifyDeviceResult:
             or self.hidden_seeds.dtype != DType.FP32
         ):
             raise ValueError("packed hidden seeds must be FP32 [rows, hidden_size]")
+        if self.pre_output_norm_hidden is not None and (
+            self.pre_output_norm_hidden.ndim != 2
+            or self.pre_output_norm_hidden.shape[0] != rows
+            or self.pre_output_norm_hidden.shape[1] != self.hidden_seeds.shape[1]
+            or self.pre_output_norm_hidden.dtype != DType.BF16
+        ):
+            raise ValueError(
+                "packed pre-output-norm hidden must be BF16 [rows, hidden_size]"
+            )
         device = self.input_token_ids.device
         if self.target_top1.device != device or self.hidden_seeds.device != device:
             raise ValueError("packed device-result tensors must share one device")
@@ -2814,12 +2824,13 @@ class Qwen35GGUFFullStackRunner:
         return cache[cache_key]
 
     def _gdn_chain_output_fusion_for_weight(self, weight):
-        """Resolve a weight-plugin chain GDN FP32+BF16 boundary owner.
+        """Resolve the strict FP32 chain fusion or FP16's unfused boundary."""
 
-        The chain-journal path writes FP32 state through the fused owner, so it
-        is incompatible with the fp16-state route until fp16 variants exist.
-        """
-
+        if self.fp16_recurrent_state:
+            # gfx1151 intentionally excludes the verifier-chain Q5 fusion.
+            # The typed FP16 row writer plus the existing exact standalone cast
+            # preserve the qualified consumer-owned rollback path.
+            return None
         quant = str(weight.spec.quant_key)
         cache = self.__dict__.setdefault(
             "_gguf_gdn_chain_output_fusion_fn_cache",
@@ -2827,29 +2838,20 @@ class Qwen35GGUFFullStackRunner:
         )
         cache_key = (str(self.backend), quant)
         if cache_key not in cache:
-            fn = resolve(
+            cache[cache_key] = resolve(
                 backend=self.backend,
                 layer="gdn_chain_recurrent_rmsnorm_gate+cast",
                 quant=quant,
                 variant="bf16_c1_exact_state_rows_tloop_f32_bf16_out",
                 missing="none",
             )
-            if fn is not None and self.fp16_recurrent_state:
-                raise RuntimeError(
-                    "fp16 recurrent state is incompatible with the chain-journal "
-                    "output fusion (FP32-state writer); the chain-journal path is "
-                    "gated off under HIPENGINE_GGUF_FP16_RECURRENT_STATE"
-                )
-            cache[cache_key] = fn
         return cache[cache_key]
 
     def _gdn_chain_snapshot_output_fusion_for_weight(self, weight):
-        """Resolve the rollback-capturing sibling of a fused chain GDN.
+        """Resolve strict producer-folded capture; FP16 keeps consumer copies."""
 
-        FP32-state writer; gated off under the fp16-state route (see
-        ``_gdn_chain_output_fusion_for_weight``).
-        """
-
+        if self.fp16_recurrent_state:
+            return None
         quant = str(weight.spec.quant_key)
         cache = self.__dict__.setdefault(
             "_gguf_gdn_chain_snapshot_output_fusion_fn_cache",
@@ -2857,19 +2859,13 @@ class Qwen35GGUFFullStackRunner:
         )
         cache_key = (str(self.backend), quant)
         if cache_key not in cache:
-            fn = resolve(
+            cache[cache_key] = resolve(
                 backend=self.backend,
                 layer="gdn_chain_recurrent_rmsnorm_gate+cast+snapshot",
                 quant=quant,
                 variant="bf16_c1_exact_state_rows_tloop_f32_bf16_out",
                 missing="none",
             )
-            if fn is not None and self.fp16_recurrent_state:
-                raise RuntimeError(
-                    "fp16 recurrent state is incompatible with the chain-journal "
-                    "snapshot output fusion (FP32-state writer)"
-                )
-            cache[cache_key] = fn
         return cache[cache_key]
 
     def _full_attn_decode_batch_native_fn(self):
@@ -5526,7 +5522,10 @@ class Qwen35GGUFFullStackRunner:
 
         if self.weights is None:
             return False
-        plan = _resolve_gguf_linear_attention_chain_journal_plan(self.backend)
+        plan = _resolve_gguf_linear_attention_chain_journal_plan(
+            self.backend,
+            use_fp16_state=self.fp16_recurrent_state,
+        )
         if not plan.available or not plan.snapshot_available:
             return False
         for layer_id, layer_type in enumerate(self.weights.config.layer_types):
@@ -5561,7 +5560,10 @@ class Qwen35GGUFFullStackRunner:
         rows = int(rows)
         if rows <= 1:
             return False
-        plan = _resolve_gguf_linear_attention_chain_journal_plan(self.backend)
+        plan = _resolve_gguf_linear_attention_chain_journal_plan(
+            self.backend,
+            use_fp16_state=self.fp16_recurrent_state,
+        )
         if not plan.available:
             return False
         assert self.weights is not None
@@ -18573,6 +18575,7 @@ class Qwen35GGUFResidentSession:
                 layout,
                 packed_state,
                 hidden_seed_buf,
+                src,
             )
             add_stage("packed_verify_device_descriptors", scatter_start)
         else:
@@ -24094,6 +24097,7 @@ class Qwen35GGUFResidentSession:
         layout: _GGUFPackedVerifyLayout,
         packed_state: _GGUFPackedTargetState,
         hidden_seed_buf: DeviceBuffer,
+        pre_output_norm_hidden_buf: DeviceBuffer,
     ) -> list[Qwen35GGUFPackedVerifyDeviceResult]:
         """Return stable target row descriptors without synchronizing or D2H."""
 
@@ -24136,6 +24140,13 @@ class Qwen35GGUFResidentSession:
                         hidden_seed_buf.ptr + row_start * hidden_row_nbytes,
                         (rows, hidden_size),
                         DType.FP32,
+                        device,
+                    ),
+                    pre_output_norm_hidden=Tensor.from_handle(
+                        pre_output_norm_hidden_buf.ptr
+                        + row_start * hidden_size * DType.BF16.itemsize,
+                        (rows, hidden_size),
+                        DType.BF16,
                         device,
                     ),
                     deferred_packed_state=_GGUFPackedVerifyDeferredState(
@@ -24670,6 +24681,72 @@ class Qwen35GGUFResidentSession:
         self._verify_hidden_seed_rows_populated = rows
         self._hidden_seed_fp32_populated = True
 
+    def _commit_external_pre_output_norm_hidden_row_device(
+        self,
+        source_rows: Tensor,
+        *,
+        request_id: int,
+        transaction_id: int,
+        commit_row_i32_ptr: int,
+        commit_position_i32_ptr: int,
+        stream: int = 0,
+    ) -> None:
+        """Install the selected BF16 trunk row used by target-attached NextN."""
+
+        if self.runner is None or self._hidden_a is None:
+            raise RuntimeError("external target hidden destination is closed")
+        rows = int(source_rows.shape[0]) if source_rows.ndim == 2 else 0
+        hidden_size = int(self.runner.hidden_size)
+        if (
+            rows <= 0
+            or source_rows.shape != (rows, hidden_size)
+            or source_rows.dtype != DType.BF16
+        ):
+            raise ValueError(
+                "external pre-output-norm hidden rows must be BF16 [rows,H]"
+            )
+        if self._dflash_commit_library is None:
+            self._dflash_commit_library = build_dflash_commit(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=self.require_cached_build,
+            )
+        device = source_rows.device
+        selected = Tensor.from_handle(
+            int(commit_row_i32_ptr), (1,), DType.INT32, device
+        )
+        commit_position = Tensor.from_handle(
+            int(commit_position_i32_ptr), (1,), DType.INT32, device
+        )
+        destination = Tensor.from_handle(
+            self._hidden_a.ptr,
+            (1, 1, hidden_size),
+            DType.BF16,
+            device,
+        )
+        dflash_commit_chain_i32(
+            TargetStateCommitBuffers(
+                request_ids=(int(request_id),),
+                transaction_id=int(transaction_id),
+                accepted_counts=selected,
+                commit_rows=selected,
+                commit_positions=commit_position,
+                hidden_taps_src=Tensor.from_handle(
+                    source_rows.ptr,
+                    (1, rows, hidden_size),
+                    DType.BF16,
+                    device,
+                ),
+                hidden_taps_dst=destination,
+                mode="verify_chain",
+            ),
+            target_rows=rows,
+            stream=int(stream),
+            library=self._dflash_commit_library,
+            runtime=self.runtime or get_hip_runtime(),
+        )
+        self._last_target_hidden_ptr = int(self._hidden_a.ptr)
+
     def _commit_deferred_packed_verify_states_batch_device(
         self,
         results: Sequence[Qwen35GGUFPackedVerifyDeviceResult],
@@ -24734,16 +24811,30 @@ class Qwen35GGUFResidentSession:
                     )
                 elif layer_type != LINEAR_ATTENTION:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+            commit_row_ptr = accepted.ptr + index * DType.INT32.itemsize
+            commit_position_ptr = (
+                commit_positions.ptr + index * DType.INT32.itemsize
+            )
             session._commit_external_verify_state_row_device(
                 self,
                 request_id=int(result.request_id),
                 transaction_id=int(result.transaction_id),
                 row_start=int(result.row_start),
                 rows=rows,
-                commit_row_i32_ptr=accepted.ptr + index * DType.INT32.itemsize,
-                commit_position_i32_ptr=(
-                    commit_positions.ptr + index * DType.INT32.itemsize
-                ),
+                commit_row_i32_ptr=commit_row_ptr,
+                commit_position_i32_ptr=commit_position_ptr,
+                stream=int(stream),
+            )
+            if result.pre_output_norm_hidden is None:
+                raise RuntimeError(
+                    "packed device result omitted pre-output-norm target hidden"
+                )
+            session._commit_external_pre_output_norm_hidden_row_device(
+                result.pre_output_norm_hidden,
+                request_id=int(result.request_id),
+                transaction_id=int(result.transaction_id),
+                commit_row_i32_ptr=commit_row_ptr,
+                commit_position_i32_ptr=commit_position_ptr,
                 stream=int(stream),
             )
             if slot_index < len(written_positions):
@@ -29226,6 +29317,12 @@ _GDN_CHAIN_JOURNAL_BF16_KEY = KernelKey(
     "gguf_qwen35",
     "bf16_c1_exact_state_rows_tloop",
 )
+_GDN_CHAIN_JOURNAL_BF16_FP16STATE_KEY = KernelKey(
+    "hip_gfx1100",
+    "gdn_chain_recurrent_rmsnorm_gate",
+    "gguf_qwen35",
+    "bf16_c1_exact_state_rows_tloop_fp16state",
+)
 _LINEAR_ATTN_CHAIN_CONV_SNAPSHOT_BF16_KEY = KernelKey(
     "hip_gfx1100",
     "linear_attn_chain_conv_decode+snapshot",
@@ -30084,6 +30181,8 @@ def _gguf_full_attention_split_gate_bf16_fn(
 
 def _resolve_gguf_linear_attention_chain_journal_plan(
     backend: str = "hip_gfx1100",
+    *,
+    use_fp16_state: bool = False,
 ) -> _GGUFLinearAttentionChainJournalPlan:
     def _resolve_exact(key: KernelKey):
         backend_key = KernelKey(backend, key.layer, key.quant, key.variant)
@@ -30099,9 +30198,21 @@ def _resolve_gguf_linear_attention_chain_journal_plan(
 
     return _GGUFLinearAttentionChainJournalPlan(
         conv=_resolve_exact(_LINEAR_ATTN_CHAIN_CONV_JOURNAL_BF16_KEY),
-        gdn=_resolve_exact(_GDN_CHAIN_JOURNAL_BF16_KEY),
-        conv_snapshot=_resolve_exact(_LINEAR_ATTN_CHAIN_CONV_SNAPSHOT_BF16_KEY),
-        gdn_snapshot=_resolve_exact(_GDN_CHAIN_SNAPSHOT_BF16_KEY),
+        gdn=_resolve_exact(
+            _GDN_CHAIN_JOURNAL_BF16_FP16STATE_KEY
+            if use_fp16_state
+            else _GDN_CHAIN_JOURNAL_BF16_KEY
+        ),
+        conv_snapshot=(
+            None
+            if use_fp16_state
+            else _resolve_exact(_LINEAR_ATTN_CHAIN_CONV_SNAPSHOT_BF16_KEY)
+        ),
+        gdn_snapshot=(
+            None
+            if use_fp16_state
+            else _resolve_exact(_GDN_CHAIN_SNAPSHOT_BF16_KEY)
+        ),
     )
 
 
