@@ -326,6 +326,17 @@ class Qwen4ExpQSAMixerDeviceWeights:
 
 
 @dataclass(frozen=True)
+class Qwen4ExpQSALayerDeviceWeights:
+    attention_gr: Qwen4ExpGRDeviceWeights
+    mixer: Qwen4ExpQSAMixerDeviceWeights
+    ffn_gr: Qwen4ExpGRDeviceWeights
+    moe: Mapping[str, GGUFDeviceWeight]
+    layer_id: int = -1
+    layer_type: str = "qsa"
+    qsa_state_index: int = -1
+
+
+@dataclass(frozen=True)
 class Qwen4ExpGDNLayerDeviceWeights:
     attention_gr: Qwen4ExpGRDeviceWeights
     mixer: Qwen4ExpGDNMixerDeviceWeights
@@ -399,6 +410,89 @@ class Qwen4ExpQSAScratch:
             )
         ):
             free(buffer, runtime=self.runtime)
+        self.closed = True
+
+
+@dataclass
+class Qwen4ExpQSALayerScratch:
+    attention_gr: Qwen4ExpGRScratch
+    qsa: Qwen4ExpQSAScratch
+    ffn_gr: Qwen4ExpGRScratch
+    moe: Qwen4ExpMoEScratch
+    after_attention: DeviceBuffer
+    moe_f32: DeviceBuffer
+    output: DeviceBuffer
+    runtime: HipRuntime
+    closed: bool = False
+
+    @classmethod
+    def allocate(
+        cls,
+        *,
+        rows: int,
+        branches: int,
+        hidden: int,
+        low_rank: int,
+        query_heads: int,
+        kv_heads: int,
+        head_dim: int,
+        ffn: int,
+        experts: int,
+        top_k: int,
+        runtime: HipRuntime | None = None,
+    ) -> "Qwen4ExpQSALayerScratch":
+        active_runtime = runtime or get_hip_runtime()
+        owners: list[object] = []
+        try:
+            attention_gr = Qwen4ExpGRScratch.allocate(
+                rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
+                runtime=active_runtime,
+            )
+            owners.append(attention_gr)
+            qsa = Qwen4ExpQSAScratch.allocate(
+                rows=rows, hidden=hidden, query_heads=query_heads,
+                kv_heads=kv_heads, head_dim=head_dim, runtime=active_runtime,
+            )
+            owners.append(qsa)
+            ffn_gr = Qwen4ExpGRScratch.allocate(
+                rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
+                runtime=active_runtime,
+            )
+            owners.append(ffn_gr)
+            moe = Qwen4ExpMoEScratch.allocate(
+                rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
+                runtime=active_runtime,
+            )
+            owners.append(moe)
+            after_attention = malloc(rows * branches * hidden * 2, runtime=active_runtime)
+            owners.append(after_attention)
+            moe_f32 = malloc(rows * hidden * 4, runtime=active_runtime)
+            owners.append(moe_f32)
+            output = malloc(rows * branches * hidden * 2, runtime=active_runtime)
+            owners.append(output)
+        except Exception:
+            for owner in reversed(owners):
+                close = getattr(owner, "close", None)
+                if callable(close):
+                    close()
+                else:
+                    free(owner, runtime=active_runtime)
+            raise
+        return cls(
+            attention_gr, qsa, ffn_gr, moe,
+            after_attention, moe_f32, output, active_runtime,
+        )
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        free(self.output, runtime=self.runtime)
+        free(self.moe_f32, runtime=self.runtime)
+        free(self.after_attention, runtime=self.runtime)
+        self.moe.close()
+        self.ffn_gr.close()
+        self.qsa.close()
+        self.attention_gr.close()
         self.closed = True
 
 
@@ -766,6 +860,60 @@ class Qwen4ExpGRReadDeviceResult:
     gate: DeviceBuffer
     mixed: DeviceBuffer
     inject_logits: DeviceBuffer
+
+
+def bind_qwen4_exp_qsa_layer(
+    resident: object,
+    layer_id: int,
+) -> Qwen4ExpQSALayerDeviceWeights:
+    """Bind one validated resident QSA layer to dense F5 physical roles."""
+
+    plan = getattr(resident, "plan")
+    config = plan.config
+    layer = int(layer_id)
+    if not 0 <= layer < config.block_count:
+        raise ValueError(f"layer_id must be in [0, {config.block_count}), got {layer}")
+    if config.layer_types[layer] != "qsa":
+        raise ValueError(f"Qwen4Exp layer {layer} is not QSA")
+
+    def weight(slot: str) -> GGUFDeviceWeight:
+        return resident.weight(f"layers.{layer}.{slot}")
+
+    def pointer(slot: str) -> int:
+        return int(weight(slot).allocation("raw").tensor.ptr)
+
+    def gr(prefix: str) -> Qwen4ExpGRDeviceWeights:
+        return Qwen4ExpGRDeviceWeights(
+            norm_weight_ptr=pointer(f"hc_{prefix}_norm"),
+            down=weight(f"hc_{prefix}_down"),
+            up=weight(f"hc_{prefix}_up"),
+            inject=weight(f"hc_{prefix}_inject"),
+        )
+
+    projection_slots = ("attn_q", "attn_k", "attn_v", "attn_output")
+    moe_slots = {
+        "router": "router", "expert_gate": "expert_gate",
+        "expert_up": "expert_up", "expert_down": "expert_down",
+        "shared_gate": "shared_gate", "shared_up": "shared_up",
+        "shared_down": "shared_down", "shared_gate_weight": "shared_expert_gate",
+    }
+    return Qwen4ExpQSALayerDeviceWeights(
+        attention_gr=gr("attn"),
+        mixer=Qwen4ExpQSAMixerDeviceWeights(
+            projections=MappingProxyType(
+                {slot: weight(slot) for slot in projection_slots}
+            ),
+            q_norm_weight_ptr=pointer("attn_q_norm"),
+            k_norm_weight_ptr=pointer("attn_k_norm"),
+        ),
+        ffn_gr=gr("ffn"),
+        moe=MappingProxyType(
+            {target: weight(source) for target, source in moe_slots.items()}
+        ),
+        layer_id=layer,
+        layer_type="qsa",
+        qsa_state_index=sum(1 for kind in config.layer_types[:layer] if kind == "qsa"),
+    )
 
 
 def bind_qwen4_exp_gdn_layer(
@@ -1223,6 +1371,87 @@ def run_qwen4_exp_moe(
     return Qwen4ExpMoEDeviceResult(scratch.output, scratch.selected, scratch.routing)
 
 
+def run_qwen4_exp_dense_qsa_layer(
+    residual_ptr: int,
+    weights: Qwen4ExpQSALayerDeviceWeights,
+    *,
+    attention_state: Qwen4ExpDenseAttentionState,
+    scratch: Qwen4ExpQSALayerScratch,
+    position: int,
+    rows: int,
+    branches: int,
+    hidden: int,
+    low_rank: int,
+    query_heads: int,
+    kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    theta: float,
+    ffn: int,
+    experts: int,
+    top_k: int,
+    stream: int = 0,
+    runtime: HipRuntime | None = None,
+) -> DeviceBuffer:
+    """Execute one complete dense-equivalent Qwen4Exp QSA+MoE layer."""
+
+    if scratch.closed:
+        raise RuntimeError("Qwen4Exp QSA layer scratch is closed")
+    active_runtime = runtime or scratch.runtime
+    if active_runtime is not scratch.runtime:
+        raise ValueError("runtime must match QSA layer scratch owner")
+    attention_read = run_qwen4_exp_gr_read(
+        residual_ptr,
+        weights.attention_gr.norm_weight_ptr,
+        weights.attention_gr.down,
+        weights.attention_gr.up,
+        weights.attention_gr.inject,
+        scratch.attention_gr,
+        rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
+        stream=stream, runtime=active_runtime,
+    )
+    mixer = run_qwen4_exp_dense_qsa_token_mixer(
+        attention_read.mixed.ptr,
+        weights.mixer,
+        attention_state=attention_state,
+        scratch=scratch.qsa,
+        position=position,
+        rows=rows, hidden=hidden, query_heads=query_heads, kv_heads=kv_heads,
+        head_dim=head_dim, rotary_dim=rotary_dim, theta=theta,
+        stream=stream, runtime=active_runtime,
+    )
+    qwen4_exp_gr_write_bf16_f32(
+        residual_ptr, mixer.ptr, attention_read.inject_logits.ptr,
+        scratch.after_attention.ptr, rows, branches, hidden,
+        stream=stream, runtime=active_runtime,
+    )
+    ffn_read = run_qwen4_exp_gr_read(
+        scratch.after_attention.ptr,
+        weights.ffn_gr.norm_weight_ptr,
+        weights.ffn_gr.down,
+        weights.ffn_gr.up,
+        weights.ffn_gr.inject,
+        scratch.ffn_gr,
+        rows=rows, branches=branches, hidden=hidden, low_rank=low_rank,
+        stream=stream, runtime=active_runtime,
+    )
+    moe = run_qwen4_exp_moe(
+        ffn_read.mixed.ptr, weights.moe, scratch=scratch.moe,
+        rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
+        stream=stream, runtime=active_runtime,
+    )
+    bf16_to_f32(
+        moe.output.ptr, scratch.moe_f32.ptr, rows * hidden,
+        stream=stream, runtime=active_runtime,
+    )
+    qwen4_exp_gr_write_bf16_f32(
+        scratch.after_attention.ptr, scratch.moe_f32.ptr,
+        ffn_read.inject_logits.ptr, scratch.output.ptr,
+        rows, branches, hidden, stream=stream, runtime=active_runtime,
+    )
+    return scratch.output
+
+
 def run_qwen4_exp_gdn_layer(
     residual_ptr: int,
     weights: Qwen4ExpGDNLayerDeviceWeights,
@@ -1557,6 +1786,7 @@ def run_qwen4_exp_gdn_token_mixer(
 __all__ = [
     "Qwen4ExpDecodeState",
     "bind_qwen4_exp_gdn_layer",
+    "bind_qwen4_exp_qsa_layer",
     "Qwen4ExpDecodeStateSnapshot",
     "Qwen4ExpDenseAttentionState",
     "Qwen4ExpGDNLayerDeviceWeights",
@@ -1569,8 +1799,11 @@ __all__ = [
     "Qwen4ExpMoEScratch",
     "Qwen4ExpGRScratch",
     "Qwen4ExpPLEScratch",
+    "Qwen4ExpQSALayerDeviceWeights",
+    "Qwen4ExpQSALayerScratch",
     "Qwen4ExpQSAMixerDeviceWeights",
     "Qwen4ExpQSAScratch",
+    "run_qwen4_exp_dense_qsa_layer",
     "run_qwen4_exp_dense_qsa_token_mixer",
     "run_qwen4_exp_gdn_layer",
     "run_qwen4_exp_gdn_token_mixer",
