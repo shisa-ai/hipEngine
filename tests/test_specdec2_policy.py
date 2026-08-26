@@ -4,6 +4,7 @@ import pytest
 
 from hipengine.speculative.policy import (
     DEFAULT_AUTO_DEPTH_POLICY,
+    P9_PRODUCT_CANDIDATE_DEPTH_POLICY,
     select_offline_speculative_depth,
 )
 from hipengine.speculative import (
@@ -151,7 +152,6 @@ def test_graph_miss_uses_qualified_eager_or_k0_when_no_route_exists() -> None:
 @pytest.mark.parametrize(
     ("concurrency", "cell_key", "reason"),
     [
-        (1, "auto-c1-product-pending-k0", "product_qualification_pending"),
         (2, "auto-c2-measured-k0", "measured_speedup_below_1p10"),
         (4, "auto-c4-measured-k0", "measured_speedup_below_1p10"),
         (8, "auto-c5-c8-unqualified-k0", "no_qualified_physical_frontier"),
@@ -175,11 +175,58 @@ def test_default_offline_depth_policy_selects_k0_with_stable_cell_reason(
     assert decision.reason == reason
     assert decision.policy_fingerprint.startswith("sha256:")
     assert DEFAULT_AUTO_DEPTH_POLICY.policy_key == (
-        "specdec2:auto:qwen38-q4ks:production:p9-fixed-reseed:v4"
+        "specdec2:auto:qwen38-q4ks:production:p9-product-pending:v5"
     )
     assert decision.evidence == (
         "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json"
     )
+
+
+@pytest.mark.parametrize(
+    ("context_tokens", "horizon", "overrides", "selected"),
+    [
+        (1, 25, {}, 2),
+        (128, 64, {}, 2),
+        (129, 25, {}, 0),
+        (128, 24, {}, 0),
+        (128, 65, {}, 0),
+        (128, 25, {"artifact_fingerprint": "other"}, 0),
+        (128, 25, {"backend": "hip_gfx1100"}, 0),
+        (128, 25, {"execution_profile": "strict"}, 0),
+        (128, 25, {"execution_profile_manifest_sha256": "other"}, 0),
+        (128, 25, {"kv_storage": "int8_per_token_head"}, 0),
+    ],
+)
+def test_product_depth_policy_selects_only_qualified_c1_scope(
+    context_tokens: int,
+    horizon: int,
+    overrides: dict[str, str],
+    selected: int,
+) -> None:
+    query = {
+        "artifact_fingerprint": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa",
+        "backend": "hip_gfx1151",
+        "execution_profile": "production",
+        "execution_profile_manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+        "kv_storage": "bf16",
+    }
+    query.update(overrides)
+
+    decision = select_offline_speculative_depth(
+        P9_PRODUCT_CANDIDATE_DEPTH_POLICY,
+        concurrency=1,
+        context_tokens=context_tokens,
+        output_horizon_tokens=horizon,
+        **query,
+    )
+
+    assert decision.selected_k == selected
+    if selected:
+        assert decision.cell_key == "auto-qwen38-q4ks-production-c1-k2"
+        assert decision.reason == "qualified_product_candidate"
+    else:
+        assert decision.cell_key == "auto-outside-qualified-scope-k0"
+        assert decision.reason == "outside_qualified_policy_scope"
 
 
 def test_offline_depth_policy_fails_closed_outside_qualified_concurrency() -> None:
