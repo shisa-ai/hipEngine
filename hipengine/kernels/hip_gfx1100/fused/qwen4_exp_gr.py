@@ -144,6 +144,34 @@ def qwen4_exp_grouped_rmsnorm_bf16_f32(
     )
 
 
+def qwen4_exp_grouped_rmsnorm_f32(
+    input_ptr: int,
+    weight_ptr: int,
+    output_ptr: int,
+    rows: int,
+    branches: int,
+    hidden: int,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    _check_shape(rows, branches, hidden)
+    library = library or build_qwen4_exp_gr(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_grouped_rmsnorm_f32",
+        _ARGS_GROUPED_NORM,
+        ctypes.c_int,
+    )
+    _check_launch(
+        runtime,
+        fn(input_ptr, weight_ptr, output_ptr, rows, branches, hidden, float(eps), stream),
+    )
+
+
 def qwen4_exp_gated_mean_f32(
     normalized_ptr: int,
     gate_ptr: int,
@@ -307,6 +335,12 @@ def register_qwen4_exp_gr_kernels(*, replace: bool = True) -> None:
         ): qwen4_exp_grouped_rmsnorm_bf16_f32,
         KernelKey(
             "hip_gfx1100",
+            "gr_grouped_rmsnorm",
+            "f32",
+            "strict",
+        ): qwen4_exp_grouped_rmsnorm_f32,
+        KernelKey(
+            "hip_gfx1100",
             "gr_gated_mean",
             "f32",
             "strict",
@@ -359,6 +393,7 @@ __all__ = [
     "qwen4_exp_gated_mean_f32",
     "qwen4_exp_gr_write_bf16_f32",
     "qwen4_exp_grouped_rmsnorm_bf16_f32",
+    "qwen4_exp_grouped_rmsnorm_f32",
     "qwen4_exp_scaled_silu_f32",
     "qwen4_exp_sigmoid_f32",
     "qwen4_exp_sigmoid_gated_rmsnorm_f32",

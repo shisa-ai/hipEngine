@@ -52,6 +52,35 @@ __global__ void grouped_rmsnorm_bf16_f32_kernel(
   }
 }
 
+__global__ void grouped_rmsnorm_f32_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ weight,
+    float* __restrict__ output,
+    int64_t branches,
+    int64_t hidden,
+    float eps) {
+  extern __shared__ float partial[];
+  const int64_t group = blockIdx.x;
+  const int64_t offset = group * hidden;
+  float sumsq = 0.0f;
+  for (int64_t column = threadIdx.x; column < hidden; column += blockDim.x) {
+    const float value = input[offset + column];
+    sumsq += value * value;
+  }
+  partial[threadIdx.x] = sumsq;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) partial[threadIdx.x] += partial[threadIdx.x + stride];
+    __syncthreads();
+  }
+  const float inv_rms = rsqrtf(partial[0] / static_cast<float>(hidden) + eps);
+  const int64_t branch = group % branches;
+  for (int64_t column = threadIdx.x; column < hidden; column += blockDim.x) {
+    output[offset + column] = input[offset + column] * inv_rms
+        * weight[branch * hidden + column];
+  }
+}
+
 __global__ void gated_mean_f32_kernel(
     const float* __restrict__ normalized,
     const float* __restrict__ gate,
@@ -163,6 +192,27 @@ extern "C" int hipengine_qwen4_exp_grouped_rmsnorm_bf16_f32(
       grouped_rmsnorm_bf16_f32_kernel,
       dim3(static_cast<uint32_t>(rows * branches)), dim3(threads), threads * sizeof(float), stream,
       static_cast<const uint16_t*>(residual), static_cast<const float*>(weight),
+      static_cast<float*>(output), branches, hidden, eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_grouped_rmsnorm_f32(
+    const void* input,
+    const void* weight,
+    void* output,
+    int64_t rows,
+    int64_t branches,
+    int64_t hidden,
+    float eps,
+    hipStream_t stream) {
+  if (!input || !weight || !output || rows <= 0 || branches <= 0 || hidden <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  hipLaunchKernelGGL(
+      grouped_rmsnorm_f32_kernel,
+      dim3(static_cast<uint32_t>(rows * branches)), dim3(threads), threads * sizeof(float), stream,
+      static_cast<const float*>(input), static_cast<const float*>(weight),
       static_cast<float*>(output), branches, hidden, eps);
   return static_cast<int>(hipGetLastError());
 }

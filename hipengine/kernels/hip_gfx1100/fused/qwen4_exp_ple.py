@@ -21,6 +21,14 @@ _ARGS_3PTR_3DIM = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+_ARGS_ADD = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _ARGS_CONV = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -124,6 +132,40 @@ def qwen4_exp_ple_repeat_gated_value_f32(
     _check_launch(runtime, fn(value_ptr, gate_ptr, output_ptr, rows, branches, hidden, stream))
 
 
+def qwen4_exp_ple_add_delta_bf16_f32(
+    residual_ptr: int,
+    gated_value_ptr: int,
+    conv_output_ptr: int,
+    output_ptr: int,
+    elements: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    if elements <= 0:
+        raise ValueError("elements must be positive")
+    library = library or build_qwen4_exp_ple(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_ple_add_delta_bf16_f32",
+        _ARGS_ADD,
+        ctypes.c_int,
+    )
+    _check_launch(
+        runtime,
+        fn(
+            residual_ptr,
+            gated_value_ptr,
+            conv_output_ptr,
+            output_ptr,
+            elements,
+            stream,
+        ),
+    )
+
+
 def qwen4_exp_ple_dilated_depthwise_conv_f32(
     input_ptr: int,
     weights_ptr: int,
@@ -182,6 +224,12 @@ def register_qwen4_exp_ple_kernels(*, replace: bool = True) -> None:
         ): qwen4_exp_ple_repeat_gated_value_f32,
         KernelKey(
             "hip_gfx1100",
+            "ple_add_delta",
+            "bf16_f32",
+            "strict",
+        ): qwen4_exp_ple_add_delta_bf16_f32,
+        KernelKey(
+            "hip_gfx1100",
             "ple_dilated_depthwise_conv",
             "f32",
             "strict",
@@ -207,6 +255,7 @@ register_qwen4_exp_ple_kernels()
 __all__ = [
     "build_qwen4_exp_ple",
     "plan_qwen4_exp_ple_build",
+    "qwen4_exp_ple_add_delta_bf16_f32",
     "qwen4_exp_ple_dilated_depthwise_conv_f32",
     "qwen4_exp_ple_repeat_gated_value_f32",
     "qwen4_exp_ple_signed_sqrt_gate_f32",

@@ -81,6 +81,33 @@ __global__ void ple_dilated_depthwise_conv_f32_kernel(
   }
 }
 
+__device__ inline float bf16_bits_to_float(uint16_t value) {
+  union { uint32_t u32; float f32; } out;
+  out.u32 = static_cast<uint32_t>(value) << 16;
+  return out.f32;
+}
+
+__device__ inline uint16_t float_to_bf16_bits(float value) {
+  union { float f32; uint32_t u32; } in;
+  in.f32 = value;
+  const uint32_t lsb = (in.u32 >> 16) & 1U;
+  in.u32 += 0x7FFFU + lsb;
+  return static_cast<uint16_t>(in.u32 >> 16);
+}
+
+__global__ void ple_add_delta_bf16_f32_kernel(
+    const uint16_t* __restrict__ residual,
+    const float* __restrict__ gated_value,
+    const float* __restrict__ conv_output,
+    uint16_t* __restrict__ output,
+    int64_t elements) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < elements) {
+    output[index] = float_to_bf16_bits(
+        bf16_bits_to_float(residual[index]) + gated_value[index] + conv_output[index]);
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_qwen4_exp_ple_signed_sqrt_gate_f32(
@@ -120,6 +147,25 @@ extern "C" int hipengine_qwen4_exp_ple_repeat_gated_value_f32(
       dim3(static_cast<uint32_t>(rows * branches)), dim3(threads), 0, stream,
       static_cast<const float*>(value), static_cast<const float*>(gate),
       static_cast<float*>(output), branches, hidden);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_ple_add_delta_bf16_f32(
+    const void* residual,
+    const void* gated_value,
+    const void* conv_output,
+    void* output,
+    int64_t elements,
+    hipStream_t stream) {
+  if (!residual || !gated_value || !conv_output || !output || elements <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  const uint32_t blocks = static_cast<uint32_t>((elements + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      ple_add_delta_bf16_f32_kernel, dim3(blocks), dim3(threads), 0, stream,
+      static_cast<const uint16_t*>(residual), static_cast<const float*>(gated_value),
+      static_cast<const float*>(conv_output), static_cast<uint16_t*>(output), elements);
   return static_cast<int>(hipGetLastError());
 }
 
