@@ -235,8 +235,9 @@
   "note": "Q4_K_M AR c1-c6 are within ~3% of the earlier Q4_K_S SSE diagnostic; the c7 dip (26.40 vs c6 31.80, stdev 0.05%) is reproducible and unexplained - width-bucketing suspect"
  },
  "t03_attribution_from_mtp_raw": {
-  "per_request_prefill_ms_all_widths": "~4538-4792 (512-token prompt => ~113 tok/s prefill, serial per request)",
-  "per_request_decode_ms_all_widths": "~4800-5290; target_verify_ms is 4745-5225 of it (~98%); draft_propose_ms 39-72",
+  "telemetry_ownership_correction": "The legacy packed route copies each chunk wall into every member request. Wide-cell per-request prefill_ms/target_verify_ms are shared chunk timings and must not be summed across requests. The previous sum-to-wall interpretation is withdrawn.",
+  "legacy_activation_ms": "~4538-4792 reported in prefill_ms-like response telemetry; T1.0 isolated target prefill itself at 1274-1338 ms, so this field is not a pure target-prefill kernel owner.",
+  "target_verify_telemetry_ms": "~4745-5225 per request record, but at c>1 it is whole-chunk wall booked to each request; ~98% within the record remains descriptive, not additive operation ownership.",
   "tokens_per_step": {
    "c1": 3.2,
    "c2_8": "2.91-2.98"
@@ -245,9 +246,9 @@
    "c1": 0.7395,
    "c2_8": "0.639-0.669"
   },
-  "batch_wall_equals_summed_per_request_work": "c8 wall 81.6s ~= 8 x (4.8s prefill + 5.3s decode): phases do not overlap across requests",
-  "mechanism": "phase-serial scheduler (draft all slots -> verify chunks of <=4 slots -> commit all); verify runs 4-token blocks per slot without AR-style cross-slot position batching (use_wmma_prefill=False in verify jobs); per-step verify ~120 ms per 4-position block vs ~33 ms per 8-position batched AR step",
-  "g1_finding": "c1 serving decode phase alone is 128 tok / 4.8s = 26.7 tok/s (faster than the 21.16 tok/s direct leaf); the c1 serving-vs-direct gap is prefill (4.5s = 48% of request wall) plus HTTP/tokenize overhead, not decode"
+  "confirmed_findings": "Acceptance is stable at width; the forced legacy route is flat and uses a phase-serial draft -> verify-chunks<=4 -> commit scheduler. The current public route is policy-blocked before MTP; T0.4 must measure the staged MTP2 owner.",
+  "g1_correction": "T1.0 isolated p512 target prefill at 1274-1338 ms (384-402 tok/s) with capture/hidden-seed D2H cost <0.4%. The legacy activation gap is the old full-slab/post-prefill NextN catch-up; the retained staged OI-3 sink is the existing fix.",
+  "superseding_artifact": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t10-prefill-attribution.json"
  },
  "correctness": {
   "ar_strict_generated_id_mismatches": "c1-c3: 0; c4: 3/12; c5: 3/15; c6: 3/18; c7: 9/21; c8: 12/24; live c8: 2/8",
@@ -277,6 +278,7 @@
  "limitations": [
   "Fixed synthetic prompt diagnostic; not a retained benchmark row and not eligible for benchmarks/README",
   "AR run status=failed_gate on strict generated-ID equality at c4+ (near-tie synthetic prompt); throughput rows intact and identical in structure to the prior Q4_K_S diagnostic",
-  "MTP rows are from the 2026-08-26 diagnostic on head 1ec1c747b; the harness commit differs but protocol/knobs are identical"
+  "MTP rows are from the 2026-08-26 diagnostic on head 1ec1c747b; the harness commit differs but protocol/knobs are identical",
+  "T1.0 supersedes the original additive interpretation of wide-cell per-request timing fields; see the superseding artifact."
  ]
 }
