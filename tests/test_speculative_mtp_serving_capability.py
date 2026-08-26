@@ -1,0 +1,131 @@
+from __future__ import annotations
+
+from dataclasses import fields, replace
+
+import pytest
+
+from hipengine.models.qwen35 import Qwen35GGUFModel
+from hipengine.speculative.serving import (
+    SpeculativeMTPServingEvidence,
+    SpeculativeMTPServingKey,
+    resolve_speculative_mtp_serving_plan,
+)
+
+
+_MODEL_SHA256 = "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+_STRICT_MANIFEST_SHA256 = "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+
+
+def _key(**changes) -> SpeculativeMTPServingKey:
+    key = SpeculativeMTPServingKey(
+        artifact_sha256=_MODEL_SHA256,
+        artifact_size_bytes=17_106_775_008,
+        content_verified=True,
+        backend="hip_gfx1151",
+        target_arch="gfx1151",
+        weight_quant="gguf_q4_k_m",
+        execution_profile="strict",
+        execution_profile_manifest_sha256=_STRICT_MANIFEST_SHA256,
+        kv_storage="bf16",
+        kv_layout="uniform",
+        realized_group_rows=1,
+        candidate_budget=3,
+        sampling_mode="greedy_fast",
+        max_sequence_length=1024,
+        context_tokens=67,
+        output_horizon_tokens=25,
+        memory_fit=True,
+    )
+    return replace(key, **changes)
+
+
+def _evidence() -> SpeculativeMTPServingEvidence:
+    return Qwen35GGUFModel().speculative_mtp_serving_evidence[0]
+
+
+def test_qwen38_q4km_strict_c1_b3_plan_is_explicit_candidate_only() -> None:
+    decision = resolve_speculative_mtp_serving_plan((_evidence(),), key=_key())
+
+    assert decision.admitted is True
+    assert decision.selected_route == "speculative_mtp"
+    assert decision.selected_candidate_count == 3
+    assert decision.reason == "qualified_explicit_c1_b3"
+    assert decision.automatic_eligible is False
+    assert decision.strict_fallback_key == "gguf_target_ar"
+    assert decision.evidence_artifacts == (
+        "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0.json",
+        "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0-openai.json",
+    )
+    assert decision.plan_fingerprint.startswith("sha256:")
+    assert decision == resolve_speculative_mtp_serving_plan((_evidence(),), key=_key())
+
+
+@pytest.mark.parametrize(
+    ("changes", "reason"),
+    [
+        ({"artifact_sha256": "0" * 64}, "artifact_not_qualified"),
+        ({"artifact_size_bytes": 17_106_775_009}, "artifact_not_qualified"),
+        ({"backend": "hip_gfx1100"}, "backend_not_qualified"),
+        ({"target_arch": "gfx1100"}, "target_arch_not_qualified"),
+        ({"weight_quant": "gguf_q4_k_s"}, "weight_quant_not_qualified"),
+        ({"execution_profile": "production"}, "execution_profile_not_qualified"),
+        (
+            {"execution_profile_manifest_sha256": "1" * 64},
+            "execution_profile_manifest_not_qualified",
+        ),
+        ({"kv_storage": "int8_per_token_head"}, "kv_storage_not_qualified"),
+        ({"kv_layout": "paged_int8"}, "kv_layout_not_qualified"),
+        ({"realized_group_rows": 2}, "physical_group_not_qualified"),
+        ({"candidate_budget": 2}, "candidate_budget_not_qualified"),
+        ({"sampling_mode": "processed_argmax"}, "sampling_mode_not_qualified"),
+        ({"max_sequence_length": 2048}, "max_sequence_length_not_qualified"),
+        ({"context_tokens": 68}, "context_bucket_not_qualified"),
+        ({"output_horizon_tokens": 24}, "output_horizon_not_qualified"),
+        ({"memory_fit": False}, "insufficient_memory"),
+    ],
+)
+def test_qwen38_candidate_plan_fails_closed_on_every_unqualified_axis(
+    changes: dict[str, object],
+    reason: str,
+) -> None:
+    decision = resolve_speculative_mtp_serving_plan((_evidence(),), key=_key(**changes))
+
+    assert decision.admitted is False
+    assert decision.selected_route == "default"
+    assert decision.selected_candidate_count == 0
+    assert decision.reason == reason
+    assert decision.strict_fallback_key == "gguf_target_ar"
+
+
+def test_unverified_artifact_and_generic_dense_inventory_cannot_admit() -> None:
+    unverified = resolve_speculative_mtp_serving_plan(
+        (_evidence(),),
+        key=_key(
+            artifact_sha256=None,
+            artifact_size_bytes=None,
+            content_verified=False,
+        ),
+    )
+    generic = resolve_speculative_mtp_serving_plan((), key=_key())
+
+    assert unverified.admitted is False
+    assert unverified.reason == "artifact_identity_unverified"
+    assert generic.admitted is False
+    assert generic.reason == "no_model_plugin_evidence"
+
+
+def test_serving_key_has_no_prompt_content_or_benchmark_identity_fields() -> None:
+    names = {field.name for field in fields(SpeculativeMTPServingKey)}
+
+    assert names.isdisjoint(
+        {
+            "prompt",
+            "prompt_text",
+            "prompt_hash",
+            "prompt_token_ids",
+            "category",
+            "heldout",
+            "task_result",
+            "oracle",
+        }
+    )

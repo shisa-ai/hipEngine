@@ -12,6 +12,47 @@ from hipengine.models.kv_capabilities import (
     resolve_kv_capability,
 )
 from hipengine.models.registry import register_model
+from hipengine.speculative.serving import (
+    SpeculativeMTPServingDecision,
+    SpeculativeMTPServingEvidence,
+    SpeculativeMTPServingKey,
+    resolve_speculative_mtp_serving_plan,
+)
+
+
+_QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
+    SpeculativeMTPServingEvidence(
+        evidence_key="qwen38-q4km-gfx1151-strict-bf16-c1-b3-natural25-s0",
+        artifact_sha256=(
+            "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+        ),
+        artifact_size_bytes=17_106_775_008,
+        backend="hip_gfx1151",
+        target_arch="gfx1151",
+        weight_quant="gguf_q4_k_m",
+        execution_profile="strict",
+        execution_profile_manifest_sha256=(
+            "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+        ),
+        kv_storage="bf16",
+        kv_layout="uniform",
+        realized_group_rows=1,
+        candidate_budget=3,
+        sampling_modes=("greedy_fast",),
+        max_sequence_length=1024,
+        min_context_tokens=1,
+        max_context_tokens=67,
+        min_output_horizon_tokens=25,
+        max_output_horizon_tokens=25,
+        reason="qualified_explicit_c1_b3",
+        evidence_artifacts=(
+            "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0.json",
+            "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0-openai.json",
+        ),
+        strict_fallback_key="gguf_target_ar",
+        automatic_eligible=False,
+    ),
+)
 
 
 _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE = (
@@ -180,6 +221,21 @@ class Qwen35GGUFModel:
         "blk.{layer}.ffn_down.weight",
     )
     kv_capability_evidence: tuple[KVCapabilityEvidence, ...] = _QWEN38_GGUF_KV_CAPABILITY_EVIDENCE
+    speculative_mtp_serving_evidence: tuple[SpeculativeMTPServingEvidence, ...] = (
+        _QWEN38_Q4KM_MTP_SERVING_EVIDENCE
+    )
+
+    def resolve_speculative_mtp_serving_plan(
+        self,
+        *,
+        key: SpeculativeMTPServingKey,
+    ) -> SpeculativeMTPServingDecision:
+        """Resolve the exact Qwen dense serving scope before mutation."""
+
+        return resolve_speculative_mtp_serving_plan(
+            self.speculative_mtp_serving_evidence,
+            key=key,
+        )
 
     def resolve_kv_capability(
         self,
