@@ -35,7 +35,9 @@ def test_qsa_pool_complete_blocks_rejects_non_tail_logical_holes() -> None:
         )
 
 
-def test_qsa_interleaved_rope_rotates_pairs_and_preserves_tail_dimensions() -> None:
+def test_qsa_interleaved_mrope_uses_split_half_rotation_and_preserves_tail() -> None:
+    # HF Qwen4Exp rotate_half and llama.cpp GGML_ROPE_TYPE_IMROPE both pair
+    # dimensions [i, i + rotary_dim/2], not adjacent dimensions [2i, 2i+1].
     values = np.array([[[1.0, 0.0, 2.0, 0.0, 9.0]]], dtype=np.float32)
 
     actual = qsa_interleaved_rope(
@@ -46,7 +48,13 @@ def test_qsa_interleaved_rope_rotates_pairs_and_preserves_tail_dimensions() -> N
     )
 
     expected = np.array(
-        [[[np.cos(1.0), np.sin(1.0), 2.0 * np.cos(0.1), 2.0 * np.sin(0.1), 9.0]]],
+        [[[
+            np.cos(1.0) - 2.0 * np.sin(1.0),
+            0.0,
+            np.sin(1.0) + 2.0 * np.cos(1.0),
+            0.0,
+            9.0,
+        ]]],
         dtype=np.float32,
     )
     np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-7)

@@ -531,7 +531,11 @@ def qsa_interleaved_rope(
     rotary_dim: int,
     theta: float,
 ) -> np.ndarray:
-    """Apply text-path pair-interleaved partial RoPE to QSA Q/K values."""
+    """Apply text-path interleaved-MRoPE frequencies with split-half rotation.
+
+    Qwen4Exp interleaves the T/H/W frequency sources, but its ``rotate_half``
+    vector layout still pairs dimensions ``[i, i + rotary_dim/2]``.
+    """
 
     x = np.asarray(values, dtype=np.float32)
     pos = np.asarray(positions, dtype=np.int64)
@@ -553,14 +557,14 @@ def qsa_interleaved_rope(
     table_shape = (x.shape[0],) + (1,) * (x.ndim - 2) + (rotate // 2,)
     cosine = np.cos(angles).astype(np.float32).reshape(table_shape)
     sine = np.sin(angles).astype(np.float32).reshape(table_shape)
-    pairs = x[..., :rotate].reshape(*x.shape[:-1], rotate // 2, 2)
-    rotated = np.empty_like(pairs, dtype=np.float32)
-    rotated[..., 0] = pairs[..., 0] * cosine - pairs[..., 1] * sine
-    rotated[..., 1] = pairs[..., 0] * sine + pairs[..., 1] * cosine
-    return np.concatenate(
-        (rotated.reshape(*x.shape[:-1], rotate), x[..., rotate:]),
+    half = rotate // 2
+    first = x[..., :half]
+    second = x[..., half:rotate]
+    rotated = np.concatenate(
+        (first * cosine - second * sine, first * sine + second * cosine),
         axis=-1,
-    ).astype(np.float32)
+    )
+    return np.concatenate((rotated, x[..., rotate:]), axis=-1).astype(np.float32)
 
 
 def qsa_prepare_index_keys(

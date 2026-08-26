@@ -54,15 +54,15 @@ __global__ void qsa_split_norm_rope_f32_kernel(
   for (int64_t dimension = threadIdx.x; dimension < head_dim; dimension += blockDim.x) {
     float result = values[dimension] * inv_rms * weight[dimension];
     if (dimension < rotary_dim) {
-      const int64_t even = dimension & ~1LL;
-      const int64_t pair = even / 2;
-      const float x = values[even] * inv_rms * weight[even];
-      const float y = values[even + 1] * inv_rms * weight[even + 1];
+      const int64_t half = rotary_dim / 2;
+      const int64_t pair = dimension % half;
+      const float x = values[pair] * inv_rms * weight[pair];
+      const float y = values[pair + half] * inv_rms * weight[pair + half];
       const float exponent = -2.0f * static_cast<float>(pair) / static_cast<float>(rotary_dim);
       const float angle = static_cast<float>(position[0]) * powf(theta, exponent);
       const float c = cosf(angle);
       const float s = sinf(angle);
-      result = (dimension & 1) ? x * s + y * c : x * c - y * s;
+      result = dimension < half ? x * c - y * s : x * s + y * c;
     }
     output[dimension] = result;
   }
@@ -194,15 +194,15 @@ __global__ void qsa_pool_norm_rope_f32_kernel(
   for (int64_t dimension = threadIdx.x; dimension < index_dim; dimension += blockDim.x) {
     float value = pooled[dimension] * inv_rms * weight[dimension];
     if (dimension < rotary_dim) {
-      const int64_t pair = dimension / 2;
-      const int64_t even = pair * 2;
-      const float x = pooled[even] * inv_rms * weight[even];
-      const float y = pooled[even + 1] * inv_rms * weight[even + 1];
+      const int64_t half = rotary_dim / 2;
+      const int64_t pair = dimension % half;
+      const float x = pooled[pair] * inv_rms * weight[pair];
+      const float y = pooled[pair + half] * inv_rms * weight[pair + half];
       const float exponent = -2.0f * static_cast<float>(pair) / static_cast<float>(rotary_dim);
       const float angle = static_cast<float>(block_starts[block]) * powf(theta, exponent);
       const float cosine = cosf(angle);
       const float sine = sinf(angle);
-      value = (dimension & 1) ? x * sine + y * cosine : x * cosine - y * sine;
+      value = dimension < half ? x * cosine - y * sine : x * sine + y * cosine;
     }
     output[block * index_dim + dimension] = value;
   }
