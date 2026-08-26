@@ -138,6 +138,12 @@ class Qwen4ExpGGUFConfig:
             // self.qsa_compression_ratio
         )
 
+    @property
+    def fp32_raw_index_bytes_per_token(self) -> int:
+        """Current correctness-first raw index-key payload across QSA layers."""
+
+        return self.qsa_layer_count * self.indexer_key_length * 4
+
 
 def qwen4_exp_gguf_config_from_metadata(info: GGUFModelInfo) -> Qwen4ExpGGUFConfig:
     """Parse and strictly validate the frozen Qwen3.8-Flash-Next GGUF header."""

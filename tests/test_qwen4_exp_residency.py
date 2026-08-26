@@ -55,7 +55,20 @@ def test_qwen4_exp_memory_admission_accounts_kv_index_state_scratch_and_reserve(
     )
 
     assert provisional.kv_bytes == 2 * 262_144 * 24_576
-    assert provisional.index_bytes == 2 * 262_144 * 768
+    config = plan.config
+    complete_blocks = 262_144 // config.qsa_compression_ratio
+    per_layer_index_bytes = (
+        262_144 * config.indexer_key_length * 4
+        + complete_blocks * config.qsa_compression_ratio * 4
+        + complete_blocks * 8
+        + complete_blocks * config.indexer_key_length * 4
+        + complete_blocks * 4
+        + config.qsa_block_budget * 8
+        + 4
+        + 8
+        + config.qsa_dense_equivalent_max_tokens * 8
+    )
+    assert provisional.index_bytes == 2 * config.qsa_layer_count * per_layer_index_bytes
     assert provisional.runtime_state_bytes > 2 * 108 * 1024 * 1024
     assert provisional.required_bytes == (
         plan.device_weight_bytes

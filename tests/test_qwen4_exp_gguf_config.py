@@ -121,6 +121,7 @@ def test_qwen4_exp_gguf_config_parses_frozen_text_geometry() -> None:
     assert config.vocab_size == 248_320
     assert config.bf16_kv_bytes_per_token == 24_576
     assert config.bf16_compressed_index_bytes_per_token == 768
+    assert config.fp32_raw_index_bytes_per_token == 6_144
 
 
 @pytest.mark.parametrize(
