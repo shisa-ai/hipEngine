@@ -111,9 +111,9 @@ def test_qwen4_exp_tensor_roles_are_exhaustive_for_known_families() -> None:
 
 def test_summarize_qwen4_exp_gguf_groups_bytes_by_role_and_qtype() -> None:
     tensors = (
-        SimpleNamespace(name="per_layer_token_embd.weight", ggml_type_name="Q4_0", nbytes=90),
-        SimpleNamespace(name="blk.0.hc_attn_down.weight", ggml_type_name="Q6_K", nbytes=10),
-        SimpleNamespace(name="blk.0.ffn_up_exps.weight", ggml_type_name="Q4_K", nbytes=20),
+        SimpleNamespace(name="per_layer_token_embd.weight", ggml_type_name="Q4_0", nbytes=90, shape=(10, 160), byte_shape=(10, 90)),
+        SimpleNamespace(name="blk.0.hc_attn_down.weight", ggml_type_name="Q6_K", nbytes=10, shape=(1, 1), byte_shape=(1, 10)),
+        SimpleNamespace(name="blk.0.ffn_up_exps.weight", ggml_type_name="Q4_K", nbytes=20, shape=(1, 1, 1), byte_shape=(1, 1, 20)),
     )
     info = SimpleNamespace(
         path=Path("model.gguf"),
@@ -135,17 +135,24 @@ def test_summarize_qwen4_exp_gguf_groups_bytes_by_role_and_qtype() -> None:
         "routed_expert": 20,
     }
     assert result["tensor_bytes_by_type"] == {"Q4_0": 90, "Q4_K": 20, "Q6_K": 10}
+    assert result["tensor_bytes_by_role_and_type"] == {
+        "gated_residual": {"Q6_K": 10},
+        "ple_table": {"Q4_0": 90},
+        "routed_expert": {"Q4_K": 20},
+    }
     assert result["ple_table"] == {
         "name": "per_layer_token_embd.weight",
         "type": "Q4_0",
+        "shape": [10, 160],
+        "byte_shape": [10, 90],
         "nbytes": 90,
     }
 
 
 def test_summarize_qwen4_exp_split_gguf_validates_and_aggregates_parts() -> None:
     tensors = (
-        SimpleNamespace(name="per_layer_token_embd.weight", ggml_type_name="Q4_0", nbytes=90),
-        SimpleNamespace(name="blk.0.ffn_up_exps.weight", ggml_type_name="Q4_K", nbytes=20),
+        SimpleNamespace(name="per_layer_token_embd.weight", ggml_type_name="Q4_0", nbytes=90, shape=(10, 160), byte_shape=(10, 90)),
+        SimpleNamespace(name="blk.0.ffn_up_exps.weight", ggml_type_name="Q4_K", nbytes=20, shape=(1, 1, 1), byte_shape=(1, 1, 20)),
     )
     shared = {
         "general.architecture": "qwen4exp",
@@ -202,7 +209,7 @@ def test_summarize_qwen4_exp_split_gguf_validates_and_aggregates_parts() -> None
 
 
 def test_summarize_qwen4_exp_split_gguf_rejects_missing_parts_and_duplicate_tensors() -> None:
-    tensor = SimpleNamespace(name="output.weight", ggml_type_name="Q6_K", nbytes=10)
+    tensor = SimpleNamespace(name="output.weight", ggml_type_name="Q6_K", nbytes=10, shape=(1, 1), byte_shape=(1, 10))
     metadata = {
         "general.architecture": "qwen4exp",
         "general.file_type": 15,

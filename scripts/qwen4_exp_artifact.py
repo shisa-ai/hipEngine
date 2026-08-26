@@ -178,6 +178,7 @@ def summarize_qwen4_exp_gguf(reader: GGUFReader) -> dict[str, Any]:
     count_by_role: Counter[str] = Counter()
     bytes_by_type: Counter[str] = Counter()
     count_by_type: Counter[str] = Counter()
+    bytes_by_role_and_type: dict[str, Counter[str]] = {}
     ple_tables: list[dict[str, Any]] = []
     for tensor in info.tensors:
         role = tensor_role(tensor.name)
@@ -185,11 +186,16 @@ def summarize_qwen4_exp_gguf(reader: GGUFReader) -> dict[str, Any]:
         count_by_role[role] += 1
         bytes_by_type[tensor.ggml_type_name] += int(tensor.nbytes)
         count_by_type[tensor.ggml_type_name] += 1
+        bytes_by_role_and_type.setdefault(role, Counter())[tensor.ggml_type_name] += int(
+            tensor.nbytes
+        )
         if role == "ple_table":
             ple_tables.append(
                 {
                     "name": tensor.name,
                     "type": tensor.ggml_type_name,
+                    "shape": list(tensor.shape),
+                    "byte_shape": list(tensor.byte_shape),
                     "nbytes": int(tensor.nbytes),
                 }
             )
@@ -210,6 +216,10 @@ def summarize_qwen4_exp_gguf(reader: GGUFReader) -> dict[str, Any]:
         "tensor_bytes_by_role": _sorted_counter(bytes_by_role),
         "tensor_count_by_type": _sorted_counter(count_by_type),
         "tensor_bytes_by_type": _sorted_counter(bytes_by_type),
+        "tensor_bytes_by_role_and_type": {
+            role: _sorted_counter(bytes_by_role_and_type[role])
+            for role in sorted(bytes_by_role_and_type)
+        },
         "ple_table": ple_tables[0] if ple_ok else None,
         "unknown_tensors": sorted(
             tensor.name for tensor in info.tensors if tensor_role(tensor.name) == "unknown"
