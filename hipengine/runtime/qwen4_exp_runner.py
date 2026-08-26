@@ -82,7 +82,7 @@ class Qwen4ExpDecodeState:
         active_runtime = runtime or get_hip_runtime()
         sizes = (
             gdn_layers * gdn_value_heads * gdn_head_dim * gdn_head_dim * 4,
-            gdn_layers * (gdn_conv_kernel - 1) * gdn_conv_channels * 4,
+            gdn_layers * gdn_conv_kernel * gdn_conv_channels * 4,
             (ple_conv_kernel - 1) * ple_dilation * residual_branches * hidden * 4,
             residual_branches * hidden * 2,
         )
