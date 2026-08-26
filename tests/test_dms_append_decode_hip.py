@@ -174,6 +174,9 @@ def _device_run(
 
         def upload(name: str, array: np.ndarray) -> None:
             array = np.ascontiguousarray(array)
+            previous = buffers.get(name)
+            if previous is not None:
+                free(previous)
             buf = malloc(array.nbytes)
             buffers[name] = buf
             copy_host_to_device(buf, host_array_ptr(array), array.nbytes)
