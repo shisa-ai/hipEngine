@@ -1,0 +1,235 @@
+{
+  "automatic_cells": {
+    "default_policy": "K0",
+    "promoted": [],
+    "reason": "no candidate passes complete normal-server product ownership and economics",
+    "scope": "C1-C32"
+  },
+  "cleanup": {
+    "remaining_debt": "docs/REFACTOR.md retains prompt fallback, host materialization oracle, device-chain qualification oracle, eager FP16 graph blocker, and compatibility seam with named removal gates",
+    "root_readme_export": "not_applicable_no_product_promotion",
+    "temporary_p9_qualification_policy": "removed after no-go"
+  },
+  "cross_lane_lessons": [
+    "capacity is a policy and qualification axis",
+    "route labels and equal IDs do not prove speculative engagement",
+    "commit consumed-position metadata and selected target-hidden ownership together",
+    "gate horizon/context and route engagement before load/SLO spending"
+  ],
+  "date": "2026-08-26",
+  "decision": {
+    "automatic_policy": "K0",
+    "campaign": "closed",
+    "explicit_compatibility": "retained",
+    "next": "reopen only on recorded independent owner/dataflow premise",
+    "promoted_product_cells": []
+  },
+  "evidence": {
+    "2026-08-25-gfx1151-specdec2-perf-p1-bridge": {
+      "bytes": 58123,
+      "path": "benchmarks/results/2026-08-25-gfx1151-specdec2-perf-p1-bridge.json",
+      "sha256": "5014183f6c904b54028b82fae2a3acab77f8bff9b22d17e1d447acef25059593"
+    },
+    "2026-08-25-gfx1151-specdec2-perf-p2-streaming-activation": {
+      "bytes": 12767,
+      "path": "benchmarks/results/2026-08-25-gfx1151-specdec2-perf-p2-streaming-activation.json",
+      "sha256": "448a68e7f8cb5350047ed6800778e51d6ba215cdbd1b84d2b5cc286d320d1820"
+    },
+    "2026-08-25-gfx1151-specdec2-perf-p3-stable-slabs": {
+      "bytes": 14799,
+      "path": "benchmarks/results/2026-08-25-gfx1151-specdec2-perf-p3-stable-slabs.json",
+      "sha256": "181e97c67f054b32fd5a328feaa16e3c5bed7efe03a86532f9a7fc6e50df17b9"
+    },
+    "2026-08-26-gfx1151-specdec2-perf-p4-device-cycle": {
+      "bytes": 15935,
+      "path": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p4-device-cycle.json",
+      "sha256": "db0c60865c3ad15d193ab07fbac923c160078eabbfbda7a6f4a66aed65af9e66"
+    },
+    "2026-08-26-gfx1151-specdec2-perf-p5-target-admission": {
+      "bytes": 39559,
+      "path": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p5-target-admission.json",
+      "sha256": "feb101456da32dff9599a706aa9410a1054f042cd558c0d8a8bfd1e1072e5e85"
+    },
+    "2026-08-26-gfx1151-specdec2-perf-p6-q4-route-retained": {
+      "bytes": 22343,
+      "path": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p6-q4-route-retained.json",
+      "sha256": "e45acdf7d7315e4310cdcd2b09e54c052d23f67bd4e4e0d2b51fcf9713b8a076"
+    },
+    "2026-08-26-gfx1151-specdec2-perf-p7-provider-repair-retained": {
+      "bytes": 28207,
+      "path": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p7-provider-repair-retained.json",
+      "sha256": "216ac80bb083088605d4e4ca8512f97343391eef1c7a1d5ab9b8ee551c8ccf1f"
+    },
+    "2026-08-26-gfx1151-specdec2-perf-p8-fp16-qualification": {
+      "bytes": 29667,
+      "path": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-qualification.json",
+      "sha256": "f8d8d2722533edca55498536452a0abd618b528f526f6c1ba8f4aca0fc230bb6"
+    },
+    "2026-08-26-gfx1151-specdec2-perf-p8-fp16-retained": {
+      "bytes": 23779,
+      "path": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-retained.json",
+      "sha256": "39a8bd6db94cc8afcc062bbbe3d1edc135455c5443317844b6b7b156519555d9"
+    },
+    "2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy": {
+      "bytes": 50571,
+      "path": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json",
+      "sha256": "cc7a90f542f5273a4ff2be601c9faeae3a151baaa225b0686e31427c0d271732"
+    },
+    "2026-08-26-gfx1151-specdec2-perf-p9-product-no-go": {
+      "bytes": 12246,
+      "path": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-product-no-go.json",
+      "sha256": "4af13cac60b7a83dd6997b6024a542b8ba6d0943c3280b1ecdd854011735d7ae"
+    }
+  },
+  "explicit_default_off_cells": [
+    {
+      "backend": "hip_gfx1151",
+      "candidate_budgets": [
+        1,
+        2,
+        3
+      ],
+      "concurrency": [
+        1,
+        2,
+        4
+      ],
+      "context_max": 1023,
+      "model": "Qwen3.8-27B Q4_K_S",
+      "profiles": [
+        "strict FP32",
+        "production FP16"
+      ],
+      "status": "functional exact compatibility; request opt-in/default-off"
+    }
+  ],
+  "k0_and_no_go": [
+    {
+      "reason": "fixed performance premise exists but normal capacity-4 server executes zero staged cycles; product rejected",
+      "scope": "production capacity-1 C1/K2 D25 short prompts"
+    },
+    {
+      "reason": "best repaired fixed rates remain below true AR",
+      "scope": "production C2/C4 K1-K3"
+    },
+    {
+      "reason": "D8 below 1.10x promotion threshold",
+      "scope": "output horizon <25"
+    },
+    {
+      "reason": "D128 deterministic generated-ID divergence",
+      "scope": "output horizon >64"
+    },
+    {
+      "reason": "p512 complete wall approximately parity with category regression; long contexts pre-mutation K0",
+      "scope": "prompt/context >128 for automatic candidate"
+    },
+    {
+      "reason": "no qualified operation-complete physical premise",
+      "scope": "C3,C5-C32 / C8,R24,R32,adaptive,overlap"
+    }
+  ],
+  "kind": "specdec2_perf_gfx1151_campaign_closure",
+  "model": {
+    "kv": "BF16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "production_state": "FP16",
+    "quant": "Q4_K_S",
+    "sampled_sha256": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa",
+    "strict_state": "FP32"
+  },
+  "performance_claim": false,
+  "profile_verdict": {
+    "automatic_default": "K0",
+    "fp16_target_graph": "rejected; exact eager target owner retained",
+    "production_fp16": "retained explicit compatibility",
+    "strict_fp32": "registered fallback"
+  },
+  "reopen_criteria": [
+    "qualify true singleton staged C1 execution on a normal capacity>1 server owner with nonzero cycle/kernel/commit engagement",
+    "then rerun full anti-gaming horizon/context/product packet against same-profile true AR",
+    "for physical widths, present a new target dataflow/representation that closes the remaining operation-complete target cost"
+  ],
+  "retained_units": [
+    {
+      "commit": "ce6b45e58",
+      "phase": "P1",
+      "scope": "common complete/decode timing bridge and attribution"
+    },
+    {
+      "commit": "c6edb2130",
+      "phase": "P2",
+      "scope": "exact streaming prompt activation for explicit short C1; long K0"
+    },
+    {
+      "commit": "6c47d012e",
+      "phase": "P3",
+      "scope": "persistent proposal/repair slabs; zero warmed-cycle allocation"
+    },
+    {
+      "commit": "b923345a6",
+      "phase": "P4",
+      "scope": "device proposal-target-accept-selected commit; bounded result readback"
+    },
+    {
+      "commit": "a9e2b8d7e",
+      "phase": "P6",
+      "scope": "exact gfx1151 standard-Q4 physical small-row route"
+    },
+    {
+      "commit": "264a17f6c",
+      "phase": "P7",
+      "scope": "persistent root snapshots and conditional provider repair"
+    },
+    {
+      "commit": "b259bdd7d",
+      "phase": "P8",
+      "scope": "production FP16 recurrent-state compatibility with eager target and FP32 strict fallback"
+    },
+    {
+      "commit": "3e172e72e",
+      "phase": "P8",
+      "scope": "fault-only canonical target rebuild after uncertain postcommit readback"
+    },
+    {
+      "commit": "bd7d51eda",
+      "phase": "shared",
+      "scope": "packed NextN consumed-position and selected target-hidden reseeding"
+    }
+  ],
+  "schema": 1,
+  "source": {
+    "backend": "hip_gfx1151",
+    "commit": "918db94ef894d0ccb648114e14b4ea3136daf5ae",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "hardware_lane": "gfx1151"
+  },
+  "speed_claim_eligible": false,
+  "status": "complete_zero_automatic_promotion",
+  "validation": {
+    "benchmark_sync": "passed",
+    "compileall": "passed",
+    "fixtures": "10/10 passed",
+    "focused_policy_server_bridge_scoreboard": "passed",
+    "json_evidence_hashes_links_diff": "passed",
+    "milestone_suite": {
+      "broad_command": "uv run --extra dev pytest -v",
+      "broad_result": "10546 collected / 1 collection skip; reached 85% with five isolated assertions and one HIP-process abort",
+      "focused_repair": [
+        "tests/test_qwen35_decode_state.py: 82 passed in a fresh process",
+        "tests/test_qwen35_gguf_prefill_scratch_liveness.py: 35 passed after refreshing retained RoPE scratch totals in f3b3e2d51",
+        "tests/test_qwen35_gguf_verify_advance_state_only.py: 7 passed, 1 skipped in a fresh process",
+        "109-file unexecuted tail: 1490 passed; the sole stale server-capability evidence assertion passed after ff58f5246"
+      ],
+      "initial_invalid_invocation": "uv run pytest -v executed zero tests and stopped at collection because pytest resolved outside the project dev environment; replaced by the declared dev-extra command",
+      "verdict": "passed_under_focused_repair_rule"
+    },
+    "p8_numerical_lifecycle_memory": "passed",
+    "p9_automatic_route_engagement": "failed_binding",
+    "p9_fixed_cells": 540,
+    "p9_fixed_exact": 540,
+    "registry_smoke": "passed",
+    "retained_commits": "9/9 exist and are ancestors of the closure source",
+    "worklog": "passed: 912 valid entries"
+  }
+}

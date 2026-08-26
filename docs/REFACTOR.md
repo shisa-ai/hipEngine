@@ -4216,14 +4216,13 @@ should be boring.
   `13.0999 -> 13.2738 tok/s` (**+1.33%**), and c8 ITL-p99 improves
   `0.8532 -> 0.8287 s`. Both modes share the absolute 0.5-second SLO failure;
   that serving-path issue does not erase the candidate win. See `benchmarks/results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json`.
-  SPECDEC2 P8 now has a runtime-resolved production-candidate manifest and
-  exact FP32 fallback plus clean C1/C2/C4 staged-vs-production-AR smokes.
-  Native target graph FP16 state diverges after layer 51 for accepted rows;
-  exact eager target verify/selected commit is therefore mandatory until a
-  separately qualified graph fix lands. BF16-relative/task, fresh speculative
-  lifecycle/economics, and gfx1100 named-profile evidence remain unavailable;
-  automatic policy stays K0 and producer-folded chain snapshot/fusion remains
-  excluded.
+  SPECDEC2 P8 retains the runtime-resolved production manifest, exact FP32
+  fallback, and complete C1/C2/C4 numerical/lifecycle/economics packet. Native
+  target graph FP16 state diverges after layer 51 for accepted rows; exact eager
+  target verify/selected commit is therefore mandatory until a separately
+  qualified graph fix lands. P9 promotes no automatic cell because the positive
+  capacity-1 C1 premise does not engage on the normal capacity-4 server owner;
+  automatic stays K0 and producer-folded chain snapshot/fusion remains excluded.
 
 ## gfx1151 c1 short-batch attention thread-geometry (GGUF_SHORT_C1_BATCH_ATTN_THREADS / env)
 

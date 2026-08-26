@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-26 SPECDEC2-PERF gfx1151 campaign closure; zero automatic promotion] Retain explicit production-FP16/strict-fallback mechanics, exact 540-cell fixed evidence, and scoped device/target/provider wins. Automatic C1-C32 remains K0: the capacity-1 C1/K2 premise does not engage on the normal capacity-4 server owner; physical/horizon/context/wider no-go scopes are enumerated. `benchmarks/results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json`.
+
 - [2026-08-26 SPECDEC2-PERF gfx1151 P9 product no-go; automatic K0] Capacity-1 production C1/K2 reaches **1.4087x AR**, with exact D25-D64/prompt<=128 boundaries, but normal capacity-4 automatic serving executes **0 speculative cycles** and falls through `physical_streaming_category_rejected`. D8 is only 1.058x, p512 1.008x, D128 diverges; no cell promotes. `benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-product-no-go.json`.
 
 - [2026-08-26 W7900 SPECDEC2 C2 R6 target route; retained/scoped default] Five standard-Q4 shapes use C1-equivalent rows6 rowtiles and gate/up uses exact single-wave, with registered shared-B fallback. Clean full-suite target/accept falls **17.664→10.872 s (-38.45%)** and physical throughput improves **16.974→22.393 tok/s (+31.93%)** with 10/10 exact, zero candidate D2H/recovery, and every category positive versus the repaired route. C2 remains **0.7156x AR**, so capability stays false/automatic K0. `benchmarks/results/2026-08-26-w7900-specdec2-c2-r6-target-rowtile-retained.json`.

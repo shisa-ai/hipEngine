@@ -1,6 +1,6 @@
 # SPECDEC2-PERF — gfx1151 Activation and Hot-Cycle Campaign
 
-- Status: **P9 product no-go; zero automatic cells, P10 closure next**
+- Status: **P1-P10 closed; explicit compatibility retained, zero automatic cells, K0 default**
 - Approved: **2026-08-25**
 - Functional predecessor: [`SPECDEC2.md`](SPECDEC2.md), S1-S6 closed
 - Performance owner: **stable physical host `gfx1151` agent**
@@ -1016,30 +1016,39 @@ Automatic remains K0; explicit production FP16 compatibility remains retained.
 
 ## 19. P10 — closure
 
-Durable handoff: P10 checklist below.
+Durable closure:
+[`campaign artifact`](../benchmarks/results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json).
 
-- [ ] List every retained implementation unit and default scope.
-- [ ] List every promoted automatic `(model/backend/profile/C/K/context/horizon)`
-      cell.
-- [ ] List every explicit/default-off functional cell.
-- [ ] List every K0/rejected/no-go cell and durable reason/artifact.
-- [ ] Remove superseded SPECDEC2 prompt-hidden replay, allocation, CPU-oracle,
-      and migration flags only when their removal gates pass.
-- [ ] Update `REFACTOR.md` for retained debt and remove resolved entries.
-- [ ] Update `KERNELS.md`, lineage, `PLAN.md`, `SPECDEC2.md`, and execution-profile
-      docs where ownership changed.
-- [ ] Update benchmark README/changelog/artifacts for every retained/rejected
-      measurement.
-- [ ] Export public root README only if a product scope promotes; keep internal
-      implementation history out of it.
-- [ ] Run milestone validation under the focused-repair rule.
-- [ ] Run Worklog2, benchmark sync, fixtures, registry, JSON/link, and diff
+Retained runtime units are C1 short streaming activation, stable cycle slabs,
+device proposal→target→GPU accept→selected commit, the exact physical Q4 small-
+row route, conditional provider snapshots/repair, production FP16 compatibility
+with eager target ownership and FP32 strict fallback, packed target reseeding,
+and fault-only postcommit canonical rebuild. These are explicit/default-off
+SPECDEC2 mechanics unless independently shared by AR/runtime paths.
+
+**Promoted automatic cells: none.** Automatic C1-C32 remains K0. Explicit
+strict/production C1/C2/C4 K1-K3 compatibility remains functional/default-off.
+The closure artifact lists every context/horizon/physical/wider K0/no-go reason
+and the sole reopen trigger. No public root README export is made.
+
+- [x] List every retained implementation unit and default scope.
+- [x] List every promoted automatic `(model/backend/profile/C/K/context/horizon)`
+      cell (empty set).
+- [x] List every explicit/default-off functional cell.
+- [x] List every K0/rejected/no-go cell and durable reason/artifact.
+- [x] Remove temporary P9 qualification policy/override; retain older
+      prompt/oracle/fallback debt only where named removal gates remain.
+- [x] Update `REFACTOR.md` for retained debt and remove resolved entries.
+- [x] Update `KERNELS.md`, `PLAN.md`, `SPECDEC2.md`, and profile status where
+      ownership changed; no new kernel lineage change belongs to P10.
+- [x] Update benchmark README/changelog/artifacts for retained/rejected results.
+- [x] Keep public root README unchanged because no product scope promotes.
+- [x] Run milestone validation under the focused-repair rule.
+- [x] Run Worklog2, benchmark sync, fixtures, registry, JSON/link, and diff
       checks.
-- [ ] Commit final closure, merge clean campaign branch, push, and verify
-      local/remote equality.
-- [ ] Publish retained no-repeat/performance lessons to the already-active
-      gfx1100 S7 ledger; transfer no absolute rates, thresholds, profile
-      manifests, or bucket decisions.
+- [x] Commit final closure, sync/merge current origin, push, and verify equality.
+- [x] Publish mechanism-only no-repeat lessons to the gfx1100 ledger without
+      transferring rates, thresholds, profile manifests, or bucket decisions.
 
 ## 20. Do-not-chase ledger
 
@@ -1134,24 +1143,25 @@ Each phase artifact records at minimum:
 
 Raw profiler dumps and terminal logs remain outside Git.
 
-## 24. Current handoff to the gfx1151 agent
+## 24. Closure handoff
 
-P1-P9 are closed with zero automatic promotion. Begin P10 closure. Preserve the
-retained production FP16 explicit compatibility surface and strict fallback;
-automatic C1-C32 remains K0. The fixed capacity-1 C1/K2 premise is **1.4087x
-AR**, but normal capacity-4 server ownership rejects singleton staged execution
-and runs AR, so it is not a product cell.
+P1-P10 are closed with zero automatic promotion. Retain the production FP16
+explicit compatibility surface and strict FP32 fallback; automatic C1-C32 stays
+K0. The fixed capacity-1 C1/K2 premise is **1.4087x AR**, but normal capacity-4
+server ownership rejects singleton staged execution and runs AR, so it is not a
+product cell. No adaptive K, C8, R24/R32, or overlap work is admitted from this
+no-go.
 
-List all retained/scoped/default-off/K0 units, remove the temporary qualification
-policy/override (already deleted), update refactor/docs/artifacts, run milestone
-process/tests, merge current origin, push, and verify equality. Reopen C1 product
-work only after independently qualifying true singleton staged execution on a
-normal capacity>1 server owner. No adaptive K, C8, R24/R32, or overlap work is
-admitted from this no-go.
+Reopen C1 product work only after independently qualifying true singleton staged
+execution on a normal capacity>1 server owner with nonzero cycle/kernel/commit
+engagement. Reopen physical widths only for a new target representation or
+dataflow that can close the measured operation-complete target cost. Every
+reopened candidate repeats the full anti-gaming horizon/context/product packet
+against same-profile true AR.
 
-The independent gfx1100 S7 lane may continue concurrently, but shared-file
-edits—especially `qwen35_gguf_mtp2.py`, `qwen35_gguf_nextn.py`,
+The independent gfx1100 lane remains separately governed. Shared-file edits—
+especially `qwen35_gguf_mtp2.py`, `qwen35_gguf_nextn.py`,
 `qwen35_gguf_runner.py`, and the SPECDEC2 source-of-truth docs—must be serialized
-through one merge owner. P10 publishes reusable architecture and no-repeat
-lessons to S7, never gfx1151 rates, thresholds, profile manifests, policy
-fingerprints, or assumed graph buckets.
+through one merge owner. Reusable architecture and no-repeat lessons transfer;
+gfx1151 rates, thresholds, profile manifests, policy fingerprints, and graph
+buckets never do.

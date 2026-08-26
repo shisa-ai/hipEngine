@@ -635,6 +635,23 @@ shared prompt/provider ownership rank ahead of more hot target-leaf tuning.
 Evidence: [`recovery profile`](../benchmarks/results/2026-08-26-w7900-mtp-concurrency2-recovery-profile.json)
 and [`C2 root cause`](../benchmarks/results/2026-08-26-w7900-specdec2-c2-acceptance-root-cause.json).
 
+### Cross-lane no-repeat lessons from gfx1151 closure
+
+These transfer mechanism only—no gfx1151 rate, threshold, profile manifest, or
+bucket decision:
+
+- Treat model-owner capacity as a policy/qualification axis. A singleton result
+  from a capacity-1 owner does not prove true singleton staged execution on a
+  normal wider server owner.
+- Require cycle engagement (`cycles>0`, selected kernels/commits, no fallback),
+  not merely an HTTP route label or equal generated IDs, before claiming an
+  automatic speculative cell.
+- Carry consumed-position metadata and selected target-hidden trunk ownership
+  together through provider checkpoints and target commit; acceptance heuristics
+  cannot repair stale ownership.
+- Gate output horizon and prompt/context boundaries before load/SLO spending;
+  stop downstream product work immediately when route engagement fails.
+
 ## 15. Stop and no-chase rules
 
 - Stop on ownership, rollback, state/KV, isolation, determinism, or manifest
