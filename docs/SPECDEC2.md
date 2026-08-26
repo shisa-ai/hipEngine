@@ -1,6 +1,6 @@
 # SPECDEC2 / MTP2 Implementation Plan
 
-- Status: **gfx1151 S1-S6 closed functionally; no automatic cell promoted; stable-hardware performance follow-up approved in [`SPECDEC2-PERF.md`](SPECDEC2-PERF.md)**
+- Status: **gfx1151 S1-S6 and SPECDEC2-PERF P1-P10 closed; retained explicit production-FP16/strict-fallback mechanics, no automatic product cell, K0 default**
 - Approved: **2026-08-24**
 - Primary hardware lane: **`hip_gfx1151` / AMD Radeon 8060S Graphics**
 - Primary product target: **Qwen3.8-27B Q4_K_S, BF16 KV**
@@ -935,13 +935,14 @@ automatic/product scope. P3 then removes steady proposal/repair allocation/free:
 all 1,020 physical full-suite cycle samples are zero-allocation and complete wall
 is neutral within noise. Automatic K0 and the S6 load verdict remain in force.
 
-Two independent follow-ups are active. The stable-host gfx1151
-[`SPECDEC2-PERF`](SPECDEC2-PERF.md) owner has closed P3 and next builds the
-bounded device-resident cycle before profiling the remaining physical target
-ladder. The gfx1100
-[`SPECDEC2-GFX1100`](SPECDEC2-GFX1100.md) lane independently qualifies dense
-GGUF and PARO capabilities; its C1 foundations are complete and C2/C4/product
-gates remain. Shared-file work is serialized, while hardware rates, thresholds,
+The stable-host gfx1151 [`SPECDEC2-PERF`](SPECDEC2-PERF.md) follow-up is closed
+through P10. It retains the bounded device cycle, stable slabs, target Q4 route,
+conditional provider repair, production FP16 compatibility, strict fallback,
+and exact explicit C1/C2/C4 K1-K3 mechanics. No automatic product cell promotes:
+the positive capacity-1 C1/K2 premise does not engage on the normal capacity-4
+server owner, so automatic remains K0. The gfx1100
+[`SPECDEC2-GFX1100`](SPECDEC2-GFX1100.md) lane remains independently governed.
+Shared-file work is serialized, while hardware rates, thresholds,
 profile manifests, policy fingerprints, graph buckets, and assumed C8 ownership
 never transfer. Automatic K0 and all strict fallbacks remain in force until each
 lane's complete performance/product cells pass.

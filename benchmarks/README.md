@@ -117,21 +117,23 @@ All 34 repeat pairs, 10 controls, and ownership gates pass; these are same-host
 model-quality rows. The campaign retains **no implementation** because all seven
 development failures are model-owned. [`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
 
-gfx1151 SPECDEC2-PERF P9 is exact in all **540/540** repaired-source fixed cells.
-Production C1 K1/K2/K3 reaches **1.231x/1.4087x/1.4037x AR**; K2 is the sole
-product-qualification candidate. Repaired physical acceptance reaches
-95.0%/89.8%/77.7%, but best C2/C4 is only **0.6975x/0.5843x AR**. Automatic
-stays K0 pending the C1/K2 product packet. [`P9`](results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json) · [`Campaign`](../docs/SPECDEC2-PERF.md).
+gfx1151 Qwen3.8 `Q4_K_S` SPECDEC2-PERF P9 is exact in **540/540** fixed cells. Capacity-1
+production C1/K2 reaches **1.4087x AR**, but normal capacity-4 automatic serving
+executes zero speculative cycles and falls back through
+`physical_streaming_category_rejected`. Best physical C2/C4 is
+**0.6975x/0.5843x AR**. The campaign closes with no automatic promotion; K0
+remains default and production FP16 stays explicit-compatible.
+[`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json) · [`P9 no-go`](results/2026-08-26-gfx1151-specdec2-perf-p9-product-no-go.json)
 
 gfx1100 dense C1 K1/K2/K3 remains exact at **1.272x/1.407x/1.439x AR** but
 2.7%-3.9% behind direct; packed PARO is **0.979x AR**. Automatic stays K0.
 [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
 
-Physical C2 target-hidden repair restores D24 K2 acceptance **18.43%→76.92%**,
-but its R6 target cost leaves throughput **16.974 vs 31.230 tok/s (0.544x AR)**.
-Capability stays false/K0. P512/d128 AR recovery keeps C1 exact at **77.176 vs
-old 72.169 tok/s**; C8 raw **161.882** remains profile-diagnostic.
-[`C2 evidence`](results/2026-08-26-w7900-specdec2-c2-acceptance-root-cause.json) · [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
+Physical C2 target repair plus exact R6 projection routing moves D24 K2
+acceptance **18.43%→74.28%** and throughput **16.974→22.393 tok/s (+31.93%)**,
+now **0.7156x** true AR with 10/10 exact. Capability stays false/K0. P512/d128
+AR keeps C1 exact at **77.176 vs old 72.169 tok/s**; C8 raw **161.882** remains
+diagnostic. [`C2 target`](results/2026-08-26-w7900-specdec2-c2-r6-target-rowtile-retained.json) · [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
 
 ## Where detailed evidence lives
 

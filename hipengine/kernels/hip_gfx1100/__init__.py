@@ -225,6 +225,23 @@ GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 # verifier rows, and bulk prefill. This removes the prior 13.037 GiB pack8
 # payload rather than retaining T16 as a 10.049 GiB sidecar.
 GGUF_DENSE_Q4_T16 = True
+# W7900 physical SPECDEC2 R6 reuses retained C1 rowtile arithmetic for five
+# standard-Q4 target shapes. One rows6 launch is BF16-bit exact to two
+# independent rows3 owners while avoiding the shared-B kernel's padded 256-row
+# tile. The dominant gate/up shape must preserve shared-B bits after its rowtile
+# caused one heldout strict-ID divergence, so it uses the bit-exact measured
+# single-wave sibling instead. Other rows/shapes retain registered shared-B.
+GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS = frozenset({6})
+GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES = frozenset(
+    {
+        (5_120, 1_024),
+        (5_120, 6_144),
+        (5_120, 10_240),
+        (5_120, 12_288),
+        (17_408, 5_120),
+    }
+)
+GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES = frozenset({(5_120, 17_408)})
 # W7900 retains the expanded-metadata T16 gate/up payload. The qmicro replacement
 # is qualified independently for gfx1151 and must fail closed on this backend.
 GGUF_DENSE_Q4_QMICRO_T16_GATE_UP = False
@@ -859,6 +876,9 @@ __all__ = [
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP",
     "GGUF_DENSE_Q4_T16",
+    "GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS",
+    "GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES",
+    "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",

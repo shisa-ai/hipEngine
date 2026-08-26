@@ -918,9 +918,9 @@
   },
   "date": "2026-08-26",
   "decision": {
-    "automatic_policy": "K0_until_P9.3_passes",
+    "automatic_policy": "K0_product_no_go",
     "production_c1_k1": "not_selected_lower_throughput",
-    "production_c1_k2": "admit_to_product_qualification_not_runtime_default",
+    "production_c1_k2": "fixed_premise_retained_product_rejected",
     "production_c1_k3": "not_selected_lower_aggregate_and_more_target_rows",
     "production_c2_c4": "K0_measured_below_true_ar",
     "promoted_cells": [],
@@ -1574,23 +1574,23 @@
     }
   },
   "runtime_policy": {
-    "evidence": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json",
-    "next": "P9.3 automatic C1/K2 product packet",
-    "policy_fingerprint": "sha256:c625aa251376701dbbc3eaafdfc5d8481bd3817a893e53864771ee37ea98f531",
-    "policy_key": "specdec2:auto:qwen38-q4ks:production:p9-fixed-reseed:v4",
-    "reason": "product_qualification_pending",
+    "evidence": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-product-no-go.json",
+    "policy_key": "specdec2:auto:strict:v1",
+    "reason": "product_candidate_rejected",
     "selected_k": 0
   },
   "schema": 1,
   "selection": {
+    "current_product_candidate_k": null,
+    "fixed_candidate_k": 2,
+    "fixed_candidate_speedup": 1.4086778493372913,
     "physical_automatic_k": 0,
-    "production_c1_candidate_k": 2,
-    "production_c1_candidate_speedup": 1.4086778493372913,
+    "product_disposition": "rejected_no_normal_capacity_route_engagement",
     "production_c1_k2_over_k3_percent": 0.33995799850701225,
     "strict_c1_best_k": 3,
     "wider_work_admitted": false,
     "wider_work_reason": "no current C8/R24/R32/overlap operation-complete premise despite winning C1 fixed cell"
   },
   "speed_claim_eligible": true,
-  "status": "fixed_grid_complete_product_candidate_pending"
+  "status": "fixed_grid_complete_product_rejected"
 }
