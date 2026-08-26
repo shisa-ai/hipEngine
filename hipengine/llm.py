@@ -1006,8 +1006,9 @@ class LLM:
 
         model_path = resolve_model_path(self.model)
         if _looks_like_gguf_path(model_path):
-            index = load_gguf_index(discover_gguf_files(model_path)[0])
-            self.model = str(index.path)
+            gguf_files = discover_gguf_files(model_path)
+            index = load_gguf_index(gguf_files[0])
+            self.model = str(model_path if len(gguf_files) > 1 else index.path)
             plugin = resolve_model(index.architecture or "")
         else:
             index = load_weight_index(self.model)
