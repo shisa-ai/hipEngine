@@ -559,15 +559,19 @@ responses:
 }
 ```
 
-`effective_route` mirrors the realized generation route from
-`hipengine.generation_shape.route` (`default`, `speculative_mtp`, or
-`speculative`); `used` remains true for a realized MTP route even when it
-proposes zero drafts, and `acceptance_rate` is then `null`. Non-MTP streaming
-requests with `stream_options.include_hipengine` continue to expose their
-per-choice backend telemetry, but compact MTP streaming summaries are deferred
-until the MTP route supports streaming. Auto fallback additionally reports
-`requested_route` and `decision_reason`; realized MTP reports its explicit
-thinking policy/control mode.
+`hipengine.generation_shape.route` records the selected scheduling route;
+`effective_route` and `used` are derived from ownership-bearing backend
+telemetry. An MTP execution path remains `used=true` even when it proposes zero
+drafts, in which case `acceptance_rate` is `null`. If an MTP-selected request
+realizes backend K0 before mutation, the compact summary reports
+`effective_route="default"`, `selected_route="speculative_mtp"`, `used=false`,
+and `decision_reason="backend_k0_fallback"`; it does not claim MTP usage or
+increment MTP request metrics. Non-MTP streaming requests with
+`stream_options.include_hipengine` continue to expose their per-choice backend
+telemetry, but compact MTP streaming summaries are deferred until the MTP route
+supports streaming. Auto fallback additionally reports `requested_route` and
+`decision_reason`; realized MTP reports its explicit thinking policy/control
+mode.
 
 Direct response usage, `hipengine.speculative_mtp`, generation-shape, and
 backend cycle records are the campaign's authoritative evidence. When enabled,

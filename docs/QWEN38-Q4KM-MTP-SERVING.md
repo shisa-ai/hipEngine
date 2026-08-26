@@ -1,6 +1,6 @@
 # Qwen3.8 Q4_K_M Exact MTP Serving Campaign
 
-- Status: **S0 LLM premise passed; OpenAI smoke next; automatic policy remains K0**
+- Status: **S0 complete; S1 capability RED next; automatic policy remains K0**
 - Started: **2026-08-26**
 - Primary host: **Radeon 8060S / `hip_gfx1151`**
 - Model: **Qwen3.8-27B `Q4_K_M`, BF16 KV**
@@ -88,7 +88,7 @@ into artifact-free default admission.
       zero final ownership.
 - [x] Measure operation-complete and decode-owner wall without substituting the
       direct-leaf denominator.
-- [ ] Exercise one OpenAI explicit completion/chat smoke and verify capabilities,
+- [x] Exercise one OpenAI explicit completion/chat smoke and verify capabilities,
       generation shape, compact MTP usage, and teardown.
 
 The retained LLM checkpoint is **12.940 vs 9.025 true-AR tok/s (1.4337x)**
@@ -98,6 +98,14 @@ post-target candidate D2H, and final ownership are zero. See
 [`2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0.json`](../benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0.json).
 The direct legacy control is 14.149 tok/s but is not a second admissible public
 scheduler; Generation-2 remains the serving owner.
+
+The strict C1 OpenAI completion/chat smoke realizes `gguf_specdec2_mtp2` with
+one timing owner each, eight cycles each, 32/44 aggregate accepted drafts, exact
+25-token usage, correct Prometheus accounting, health after both requests, and
+clean shutdown. Its RED capacity-4 control exposed a fail-open summary where a
+selected MTP route realized K0 but reported `used=true`; the repair now derives
+usage from backend telemetry and reports `backend_k0_fallback`. See
+[`2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0-openai.json`](../benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0-openai.json).
 
 Exit: either a public C1/B3 premise above 1.10x true AR, or a concrete no-go
 blocker. No implementation is admitted merely because the direct leaf is fast.
