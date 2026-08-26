@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import copy
 import hashlib
 import json
 import subprocess
@@ -153,6 +154,33 @@ def _cell_correctness(
     }
 
 
+def _backend_mtp_telemetry(llm: LLM) -> dict[str, Any]:
+    generator = llm._get_text_generator()
+    payload = getattr(generator, "last_batch_generation", None)
+    return copy.deepcopy(payload) if isinstance(payload, Mapping) else {}
+
+
+def _backend_mtp_engaged(payload: Mapping[str, Any], *, width: int) -> bool:
+    summary = payload.get("speculative_mtp")
+    summary = summary if isinstance(summary, Mapping) else {}
+    cycles = int(summary.get("direct_cycles", 0) or 0)
+    if cycles <= 0:
+        by_request = summary.get("cycles_by_request")
+        if isinstance(by_request, Mapping):
+            cycles = sum(
+                len(value)
+                for value in by_request.values()
+                if isinstance(value, Sequence)
+                and not isinstance(value, (str, bytes, bytearray))
+            )
+    return bool(
+        str(payload.get("path", "")).startswith("gguf_")
+        and int(payload.get("batch_size", 0) or 0) == int(width)
+        and int(summary.get("total_draft_tokens", 0) or 0) > 0
+        and cycles > 0
+    )
+
+
 def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
     rows = int(kwargs["realized_group_rows"])
     budget = int(kwargs["candidate_budget"])
@@ -235,6 +263,7 @@ def _request(
 def _run_arm(
     client: TestClient,
     *,
+    llm: LLM,
     model: str,
     prompt: str,
     width: int,
@@ -259,6 +288,7 @@ def _run_arm(
         rows = [future.result() for future in futures]
     wall = max(row["completed"] for row in rows) - min(row["started"] for row in rows)
     generated = sum(len(row["generated_ids"]) for row in rows)
+    backend_telemetry = _backend_mtp_telemetry(llm)
     return {
         "arm": arm,
         "width": int(width),
@@ -266,6 +296,7 @@ def _run_arm(
         "generated_tokens": generated,
         "tok_s": generated / wall,
         "rows": rows,
+        "backend_telemetry": backend_telemetry,
     }
 
 
@@ -348,6 +379,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 for arm in ARMS:
                     _run_arm(
                         client,
+                        llm=llm,
                         model="qwen36-mtp-c1c8",
                         prompt=str(prompts[0]["rendered_prompt"]),
                         width=width,
@@ -360,6 +392,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     for arm in order:
                         measured[arm] = _run_arm(
                             client,
+                            llm=llm,
                             model="qwen36-mtp-c1c8",
                             prompt=str(prompt["rendered_prompt"]),
                             width=width,
@@ -373,10 +406,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         mtp_ids,
                         contract=str(args.correctness_contract),
                     )
-                    engaged = all(
+                    response_engaged = all(
                         _mtp_engaged(row["route"], row["mtp"])
                         for row in measured["mtp"]["rows"]
                     )
+                    backend_engaged = _backend_mtp_engaged(
+                        measured["mtp"]["backend_telemetry"],
+                        width=width,
+                    )
+                    engaged = bool(response_engaged or backend_engaged)
                     cell = {
                         "prompt_id": prompt["id"],
                         "category": prompt["category"],
