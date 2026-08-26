@@ -806,6 +806,10 @@ def validate_bridge_artifact(payload: Mapping[str, Any]) -> None:
         raise BridgeContractError("artifact cells must be a list")
     expected = _expected_grid(workload)
     actual: set[tuple[str, int, int, int]] = set()
+    repeat_ids: dict[
+        tuple[str, int, int, str],
+        list[tuple[int, tuple[tuple[int, ...], ...]]],
+    ] = {}
     for cell_index, cell in enumerate(cells):
         if not isinstance(cell, Mapping):
             raise BridgeContractError(f"cell {cell_index} is malformed")
@@ -857,8 +861,22 @@ def validate_bridge_artifact(payload: Mapping[str, Any]) -> None:
             if len(ids) != key[2] or any(not tokens for tokens in ids):
                 raise BridgeContractError(f"cell {key} {arm} generated IDs are malformed")
             complete_ids.append(ids)
-        if not complete_ids or len(set(complete_ids)) != 1 or not bool(cell.get("exact")):
+            repeat_key = (key[0], key[2], key[3], arm)
+            repeat_ids.setdefault(repeat_key, []).append((key[1], ids))
+        cross_arm_exact = bool(complete_ids) and len(set(complete_ids)) == 1
+        if bool(cell.get("exact")) != cross_arm_exact:
+            raise BridgeContractError(
+                f"cell {key} generated IDs conflict with cross-arm exactness diagnostic"
+            )
+        if execution_profile != "production" and not cross_arm_exact:
             raise BridgeContractError(f"cell {key} generated IDs are not exact across arms")
+    if execution_profile == "production":
+        for repeat_key, rows in repeat_ids.items():
+            ordered = sorted(rows, key=lambda item: item[0])
+            if len({ids for _, ids in ordered}) != 1:
+                raise BridgeContractError(
+                    f"production arm {repeat_key} generated IDs are not repeatable"
+                )
     if actual != expected:
         missing = sorted(expected - actual)
         extra = sorted(actual - expected)
