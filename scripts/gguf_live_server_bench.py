@@ -1253,10 +1253,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         live_tail_rows=int(args.live_tail_rows),
                         trigger_timeout_seconds=float(args.trigger_timeout_seconds),
                     )
-            final_snapshot = llm.live_loop_snapshot()
-            final_memory = _memory_snapshot("final", runner)
-            resolved_backend = str(runner.generator.backend)
-            target_arch = str(runner._shared_runner.target_arch)
+                # TestClient shutdown owns the injected LLM lifecycle and may
+                # close EngineService. Capture final ownership while the server
+                # context is still live, after every requested sample drains.
+                final_snapshot = llm.live_loop_snapshot()
+                final_memory = _memory_snapshot("final", runner)
+                resolved_backend = str(runner.generator.backend)
+                target_arch = str(runner._shared_runner.target_arch)
         finally:
             llm.close()
 
