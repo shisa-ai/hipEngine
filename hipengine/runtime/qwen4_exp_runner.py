@@ -32,8 +32,15 @@ from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
 from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_gated_mean_f32,
     qwen4_exp_grouped_rmsnorm_bf16_f32,
+    qwen4_exp_grouped_rmsnorm_f32,
     qwen4_exp_scaled_silu_f32,
     qwen4_exp_sigmoid_f32,
+)
+from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple import (
+    qwen4_exp_ple_add_delta_bf16_f32,
+    qwen4_exp_ple_dilated_depthwise_conv_f32,
+    qwen4_exp_ple_repeat_gated_value_f32,
+    qwen4_exp_ple_signed_sqrt_gate_f32,
 )
 from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_F32,
@@ -214,6 +221,71 @@ class Qwen4ExpGDNScratch:
 
 
 @dataclass
+class Qwen4ExpPLEScratch:
+    key: DeviceBuffer
+    value: DeviceBuffer
+    query: DeviceBuffer
+    gate: DeviceBuffer
+    gated_value: DeviceBuffer
+    normalized: DeviceBuffer
+    conv: DeviceBuffer
+    output: DeviceBuffer
+    runtime: HipRuntime
+    closed: bool = False
+
+    @classmethod
+    def allocate(
+        cls,
+        *,
+        rows: int,
+        branches: int,
+        hidden: int,
+        runtime: HipRuntime | None = None,
+    ) -> "Qwen4ExpPLEScratch":
+        if rows <= 0 or branches <= 0 or hidden <= 0:
+            raise ValueError("rows, branches, and hidden must be positive")
+        active_runtime = runtime or get_hip_runtime()
+        channels = branches * hidden
+        byte_sizes = (
+            rows * channels * 4,
+            rows * hidden * 4,
+            rows * channels * 4,
+            rows * branches * 4,
+            rows * channels * 4,
+            rows * channels * 4,
+            rows * channels * 4,
+            rows * channels * 2,
+        )
+        buffers: list[DeviceBuffer] = []
+        try:
+            for size in byte_sizes:
+                buffers.append(malloc(size, runtime=active_runtime))
+        except Exception:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=active_runtime)
+            raise
+        return cls(*buffers, runtime=active_runtime)
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        for buffer in reversed(
+            (
+                self.key,
+                self.value,
+                self.query,
+                self.gate,
+                self.gated_value,
+                self.normalized,
+                self.conv,
+                self.output,
+            )
+        ):
+            free(buffer, runtime=self.runtime)
+        self.closed = True
+
+
+@dataclass
 class Qwen4ExpGRScratch:
     normalized: DeviceBuffer
     low_rank: DeviceBuffer
@@ -382,6 +454,147 @@ def run_qwen4_exp_gr_read(
     )
 
 
+def run_qwen4_exp_ple(
+    residual_ptr: int,
+    embedding_ptr: int,
+    weights: Mapping[str, GGUFDeviceWeight],
+    *,
+    norm_key_ptr: int,
+    norm_query_ptr: int,
+    norm_conv_ptr: int,
+    conv_weight_ptr: int,
+    conv_history_ptr: int,
+    scratch: Qwen4ExpPLEScratch,
+    rows: int,
+    branches: int,
+    hidden: int,
+    conv_kernel: int,
+    dilation: int,
+    eps: float = 1e-6,
+    stream: int = 0,
+    runtime: HipRuntime | None = None,
+) -> DeviceBuffer:
+    """Execute strict PLE projections, branch gate, Conv, and residual injection."""
+
+    if scratch.closed:
+        raise RuntimeError("Qwen4Exp PLE scratch is closed")
+    active_runtime = runtime or scratch.runtime
+    if active_runtime is not scratch.runtime:
+        raise ValueError("runtime must match the PLE scratch owner")
+    required = {"ple_key", "ple_value"}
+    missing = sorted(required - set(weights))
+    if missing:
+        raise ValueError("missing Qwen4Exp PLE weights: " + ", ".join(missing))
+    channels = branches * hidden
+    launch_gguf_linear(
+        weights["ple_key"],
+        embedding_ptr,
+        scratch.key.ptr,
+        rows,
+        hidden,
+        channels,
+        activation_dtype=GGUF_ACTIVATION_F32,
+        output_dtype=GGUF_OUTPUT_F32,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    launch_gguf_linear(
+        weights["ple_value"],
+        embedding_ptr,
+        scratch.value.ptr,
+        rows,
+        hidden,
+        hidden,
+        activation_dtype=GGUF_ACTIVATION_F32,
+        output_dtype=GGUF_OUTPUT_F32,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    qwen4_exp_grouped_rmsnorm_f32(
+        scratch.key.ptr,
+        norm_key_ptr,
+        scratch.key.ptr,
+        rows,
+        branches,
+        hidden,
+        eps,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    qwen4_exp_grouped_rmsnorm_bf16_f32(
+        residual_ptr,
+        norm_query_ptr,
+        scratch.query.ptr,
+        rows,
+        branches,
+        hidden,
+        eps,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    qwen4_exp_ple_signed_sqrt_gate_f32(
+        scratch.key.ptr,
+        scratch.query.ptr,
+        scratch.gate.ptr,
+        rows,
+        branches,
+        hidden,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    qwen4_exp_ple_repeat_gated_value_f32(
+        scratch.value.ptr,
+        scratch.gate.ptr,
+        scratch.gated_value.ptr,
+        rows,
+        branches,
+        hidden,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    qwen4_exp_grouped_rmsnorm_f32(
+        scratch.gated_value.ptr,
+        norm_conv_ptr,
+        scratch.normalized.ptr,
+        rows,
+        branches,
+        hidden,
+        eps,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    qwen4_exp_ple_dilated_depthwise_conv_f32(
+        scratch.normalized.ptr,
+        conv_weight_ptr,
+        conv_history_ptr,
+        scratch.conv.ptr,
+        rows,
+        channels,
+        conv_kernel,
+        dilation,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    qwen4_exp_scaled_silu_f32(
+        scratch.conv.ptr,
+        scratch.conv.ptr,
+        rows * channels,
+        1.0,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    qwen4_exp_ple_add_delta_bf16_f32(
+        residual_ptr,
+        scratch.gated_value.ptr,
+        scratch.conv.ptr,
+        scratch.output.ptr,
+        rows * channels,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    return scratch.output
+
+
 def run_qwen4_exp_gdn_token_mixer(
     mixed_ptr: int,
     weights: Mapping[str, GGUFDeviceWeight],
@@ -483,6 +696,8 @@ __all__ = [
     "Qwen4ExpGDNScratch",
     "Qwen4ExpGRReadDeviceResult",
     "Qwen4ExpGRScratch",
+    "Qwen4ExpPLEScratch",
     "run_qwen4_exp_gdn_token_mixer",
+    "run_qwen4_exp_ple",
     "run_qwen4_exp_gr_read",
 ]
