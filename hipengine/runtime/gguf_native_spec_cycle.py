@@ -804,10 +804,14 @@ def _validate_capture_admission(
         raise NativeSpecTargetGraphUnsupportedError(
             "native target graph N1 supports only the non-WMMA small-row verifier"
         )
-    if capture_lm_head_logits or sync_stage_timings:
+    if sync_stage_timings:
         raise NativeSpecTargetGraphUnsupportedError(
-            "native target graph N1 does not support logits readback or synchronized stage timings"
+            "native target graph N1 does not support synchronized stage timings"
         )
+    # Full logits are already produced in the resident verifier buffer.  A
+    # diagnostic caller may copy them after graph completion without changing
+    # capture topology or the default hot path.
+    _ = capture_lm_head_logits
     # The outer cycle may time capture+submission wall, but capture-time Python
     # dispatch intervals are not replay stage timings and are intentionally not
     # reported through ``last_verify_stage_timings_ms``.
@@ -1034,6 +1038,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         remaining_decode: int | None = None,
         device_proposal: Any | None = None,
         compact_result: bool = False,
+        capture_lm_head_logits: bool = False,
     ):
         """Stage live metadata, replay once, and return one bounded result."""
 
@@ -1148,6 +1153,19 @@ class Qwen35GGUFNativeB2TargetGraph:
 
         readback_start = time.perf_counter()
         hidden_size = int(self.session.runner.hidden_size)
+        lm_head_logits_host = None
+        if capture_lm_head_logits:
+            logits_buf = getattr(self.session, "_verify_logits_buf", None)
+            if logits_buf is None:
+                raise RuntimeError("native target graph diagnostic logits buffer is missing")
+            vocab_size = int(self.session.runner.vocab_size)
+            lm_head_logits_host = np.empty((self.rows, vocab_size), dtype=np.float32)
+            copy_device_to_host(
+                host_array_ptr(lm_head_logits_host),
+                DeviceBuffer(int(logits_buf.ptr), int(lm_head_logits_host.nbytes)),
+                lm_head_logits_host.nbytes,
+                runtime=runtime,
+            )
         if self.device_accept_commit:
             if self.result_payload is None:
                 raise RuntimeError("N2 native accept/commit result payload is missing")
@@ -1278,6 +1296,11 @@ class Qwen35GGUFNativeB2TargetGraph:
                 proposal_device_handoff=device_proposal is not None,
                 verify_buffers=live_verify_buffers,
                 state_commit_buffers=live_state_commit_buffers,
+                lm_head_logits_f32=(
+                    None
+                    if lm_head_logits_host is None
+                    else np.ascontiguousarray(lm_head_logits_host, dtype=np.float32)
+                ),
                 compact_result=bool(compact_result),
             )
         else:
@@ -1334,7 +1357,11 @@ class Qwen35GGUFNativeB2TargetGraph:
                 ),
                 layer_output_hidden=None,
                 layer_boundary_hidden=None,
-                lm_head_logits_f32=None,
+                lm_head_logits_f32=(
+                    None
+                    if lm_head_logits_host is None
+                    else np.ascontiguousarray(lm_head_logits_host, dtype=np.float32)
+                ),
                 linear_state_rows_captured=bool(self.capture_linear_state_rows),
                 final_linear_state_committed=not bool(self.defer_linear_state_commit),
             )
@@ -2378,6 +2405,8 @@ def verify_qwen35_gguf_native_b2_target(
             launch_kwargs["remaining_decode"] = (
                 None if remaining_decode is None else int(remaining_decode)
             )
+        if capture_lm_head_logits:
+            launch_kwargs["capture_lm_head_logits"] = True
         return graph.launch(input_token_ids, **launch_kwargs)
     except NativeSpecTargetGraphUnsupportedError as exc:
         session.last_native_spec_target_fallback_reason = str(exc)
