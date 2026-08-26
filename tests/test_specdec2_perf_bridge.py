@@ -15,6 +15,7 @@ from scripts.specdec2_perf_bridge import (
     _decode_only_seconds,
     _install_stage_ledger,
     _run_arm,
+    _run_legacy_native,
     _summarize,
     arm_order,
     atomic_write_json,
@@ -160,6 +161,33 @@ def test_bridge_parses_only_supported_physical_cells() -> None:
         parse_budgets("0,2")
     with pytest.raises(ValueError, match="duplicate"):
         parse_budgets("2,2")
+
+
+def test_bridge_legacy_native_uses_model_owned_moe_route() -> None:
+    calls = []
+    generator = SimpleNamespace(
+        generate_speculative_mtp_detailed=lambda request: calls.append(
+            ("moe", request)
+        )
+        or ("output",),
+        _generate_dense_speculative_mtp_detailed=lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("dense route must not run for MoE")
+        ),
+    )
+    request = bridge_module.GenerationRequest(
+        prompts=("prompt",),
+        max_tokens=4,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=False,
+    )
+
+    assert _run_legacy_native(
+        generator,
+        SimpleNamespace(is_moe=True),
+        request,
+    ) == ("output",)
+    assert calls[0][0] == "moe"
 
 
 def test_bridge_production_profile_skips_incompatible_legacy_c1_control() -> None:
@@ -357,6 +385,19 @@ def test_bridge_stage_ledger_records_nested_cycle_owners_and_restores() -> None:
     ) > 0.0
     ledger.close()
     assert owner.cycle == original
+
+
+def test_bridge_legacy_moe_decode_owner_uses_total_minus_prefill() -> None:
+    assert _decode_only_seconds(
+        "legacy_native",
+        {"totals_seconds": {}},
+        {
+            "owned_totals_ms": {
+                "mtp_run_total_ms": 900.0,
+                "prefill_ms": 300.0,
+            }
+        },
+    ) == pytest.approx(0.6)
 
 
 def test_bridge_installs_initial_k0_attachment_and_refill_owners() -> None:

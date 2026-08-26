@@ -150,6 +150,7 @@ def register_builtin_generators() -> None:
     # collection order.
     from hipengine.generation.qwen36_gguf_gfx1100_profiles import (
         register_qwen36_dense_gguf_gfx1100_profiles,
+        register_qwen36_moe_gguf_gfx1100_profiles,
     )
     from hipengine.generation.qwen36_gguf_profiles import (
         register_qwen36_gguf_gfx1151_profiles,
@@ -159,6 +160,7 @@ def register_builtin_generators() -> None:
     )
 
     register_qwen36_dense_gguf_gfx1100_profiles()
+    register_qwen36_moe_gguf_gfx1100_profiles()
     register_qwen36_gguf_gfx1151_profiles()
     register_qwen38_gguf_gfx1151_profiles()
 

@@ -16,6 +16,7 @@ from hipengine.execution_profiles import (
 )
 
 QWEN36_DENSE_GGUF_MODEL = "qwen3_5_gguf"
+QWEN36_MOE_GGUF_MODEL = "qwen3_5_moe_gguf"
 QWEN36_DENSE_GGUF_BACKEND = "hip_gfx1100"
 QWEN36_DENSE_GGUF_QUANT = "gguf_q4_k_m"
 FP16_RECURRENT_STATE_ENV = "HIPENGINE_GGUF_FP16_RECURRENT_STATE"
@@ -23,8 +24,14 @@ VERIFY_CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
 
 _GDN_CHAIN_VARIANT = "bf16_c1_exact_state_rows_tloop"
 _GDN_REGISTRY_QUANT = "gguf_qwen35"
-_STRICT_EVIDENCE = (
+_DENSE_STRICT_EVIDENCE = (
     "benchmarks/results/2026-08-23-w7900-qwen36-27b-current-default-publication.json"
+)
+_MOE_STRICT_EVIDENCE = (
+    "benchmarks/results/2026-08-27-w7900-dual-concurrency2-mtp-current-state-audit.json"
+)
+_MOE_CANDIDATE_EVIDENCE = (
+    "benchmarks/results/2026-08-27-w7900-35b-moe-generation2-mtp-c1-owner.json"
 )
 
 
@@ -34,25 +41,30 @@ def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
     os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] = "1"
 
 
-def _key(profile: ExecutionProfile) -> RuntimeProfileKey:
+def _key(profile: ExecutionProfile, *, model: str) -> RuntimeProfileKey:
     return RuntimeProfileKey(
-        model=QWEN36_DENSE_GGUF_MODEL,
+        model=str(model),
         backend=QWEN36_DENSE_GGUF_BACKEND,
         quant=QWEN36_DENSE_GGUF_QUANT,
         profile=profile,
     )
 
 
-def register_qwen36_dense_gguf_gfx1100_profiles() -> bool:
-    """Register the W7900 strict FP32-state dense NextN control once."""
-
-    if _key(ExecutionProfile.STRICT) in registered_runtime_profile_keys():
+def _register_profile(
+    *,
+    model: str,
+    profile: ExecutionProfile,
+    evidence: str,
+    graph_policy: str,
+) -> bool:
+    key = _key(profile, model=model)
+    if key in registered_runtime_profile_keys():
         return False
     register_runtime_profile_plan(
-        model=QWEN36_DENSE_GGUF_MODEL,
+        model=model,
         backend=QWEN36_DENSE_GGUF_BACKEND,
         quant=QWEN36_DENSE_GGUF_QUANT,
-        profile=ExecutionProfile.STRICT,
+        profile=profile,
         plan=RuntimeProfilePlan(
             selections=(
                 VariantSelection(
@@ -61,19 +73,58 @@ def register_qwen36_dense_gguf_gfx1100_profiles() -> bool:
                     selected_variant=_GDN_CHAIN_VARIANT,
                     strict_fallback_variant=_GDN_CHAIN_VARIANT,
                     registry_quant=_GDN_REGISTRY_QUANT,
-                    evidence_artifact=_STRICT_EVIDENCE,
+                    evidence_artifact=evidence,
                 ),
             ),
             kv_policy="paged_bf16",
-            graph_policy="specdec2_eager_c1",
+            graph_policy=str(graph_policy),
             binder=_strict_binder,
         ),
     )
     return True
 
 
+def register_qwen36_dense_gguf_gfx1100_profiles() -> bool:
+    """Register the W7900 strict FP32-state dense NextN control once."""
+
+    return _register_profile(
+        model=QWEN36_DENSE_GGUF_MODEL,
+        profile=ExecutionProfile.STRICT,
+        evidence=_DENSE_STRICT_EVIDENCE,
+        graph_policy="specdec2_eager_c1",
+    )
+
+
+def register_qwen36_moe_gguf_gfx1100_profiles() -> bool:
+    """Register strict fallback and the explicit non-default MoE candidate."""
+
+    strict = _register_profile(
+        model=QWEN36_MOE_GGUF_MODEL,
+        profile=ExecutionProfile.STRICT,
+        evidence=_MOE_STRICT_EVIDENCE,
+        graph_policy="specdec2_eager_c1",
+    )
+    production = _register_profile(
+        model=QWEN36_MOE_GGUF_MODEL,
+        profile=ExecutionProfile.PRODUCTION,
+        evidence=_MOE_CANDIDATE_EVIDENCE,
+        graph_policy="specdec2_moe_native_complete_c1_candidate",
+    )
+    return bool(strict or production)
+
+
 def qwen36_dense_gguf_gfx1100_strict_registered() -> bool:
-    return _key(ExecutionProfile.STRICT) in registered_runtime_profile_keys()
+    return _key(
+        ExecutionProfile.STRICT,
+        model=QWEN36_DENSE_GGUF_MODEL,
+    ) in registered_runtime_profile_keys()
+
+
+def qwen36_moe_gguf_gfx1100_strict_registered() -> bool:
+    return _key(
+        ExecutionProfile.STRICT,
+        model=QWEN36_MOE_GGUF_MODEL,
+    ) in registered_runtime_profile_keys()
 
 
 __all__ = [
@@ -81,7 +132,10 @@ __all__ = [
     "QWEN36_DENSE_GGUF_BACKEND",
     "QWEN36_DENSE_GGUF_MODEL",
     "QWEN36_DENSE_GGUF_QUANT",
+    "QWEN36_MOE_GGUF_MODEL",
     "VERIFY_CAPTURE_PREFILL_GDN_ENV",
     "qwen36_dense_gguf_gfx1100_strict_registered",
+    "qwen36_moe_gguf_gfx1100_strict_registered",
     "register_qwen36_dense_gguf_gfx1100_profiles",
+    "register_qwen36_moe_gguf_gfx1100_profiles",
 ]

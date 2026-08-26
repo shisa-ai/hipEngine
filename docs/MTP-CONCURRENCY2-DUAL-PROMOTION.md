@@ -150,15 +150,27 @@ components, but no strict/production profile and `_resolved_mtp2_adapter()`
 returns `None`; its unmodified MTP request executes K0 AR with zero cycles.
 Evidence: [`current-state audit`](../benchmarks/results/2026-08-27-w7900-dual-concurrency2-mtp-current-state-audit.json).
 
-### M1 — 35B MoE Generation-2 C1
+### M1 — 35B MoE Generation-2 C1 — implementation complete
 
-- Add a model-attached MoE NextN provider adapter around the retained
+- [x] Add a model-attached MoE NextN provider adapter around the retained
   device-resident MoE draft runner.
-- Let `EngineService` / `ResidentEngineLoop` own admission, one cycle per tick,
-  target frontier, transaction, accept/commit, publication, cancellation, and
-  teardown. Do not call whole-request legacy MTP from the staged child.
-- Register strict fallback and a provisional production manifest; automatic
-  stays K0 during qualification.
+- [x] Let `EngineService` / `ResidentEngineLoop` own admission, one bounded cycle
+  per tick, claims, transaction, accept/commit publication, and teardown. The
+  adapter never calls whole-request legacy MTP.
+- [x] Register strict fallback and a non-default production candidate manifest;
+  automatic stays K0 during qualification.
+
+The retained C1/K2 implementation uses adapter-lifetime target-hidden and draft-
+KV slabs because both native proposal and target graphs capture those pointers.
+Request-owned allocation caused stale graph inputs across prompt changes; the
+stable owner closes that control/lifecycle bug without changing arithmetic.
+A ten-prompt sequential packet completes with real graph cycles and zero
+failures/drain residue. Dirty-worktree feedback (not a performance claim) is
+**84.261 vs 67.507 tok/s (1.2482x true AR)**, train/heldout
+**1.2541x/1.2396x**, and every category **1.1338x-1.3524x** at 78.03% draft
+acceptance. Production generated IDs match AR in 8/10 cells and remain
+explicitly diagnostic. Evidence:
+[`35B MoE C1 owner`](../benchmarks/results/2026-08-27-w7900-35b-moe-generation2-mtp-c1-owner.json).
 
 ### D1 — 27B Dense C1 closure
 

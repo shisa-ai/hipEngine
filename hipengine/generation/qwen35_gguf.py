@@ -6092,13 +6092,20 @@ class Qwen35GGUFResidentModelRunner:
         candidate_budget: int,
     ) -> None:
         row = self._row(request_id)
-        row.mtp2_candidate_budget = max(1, int(candidate_budget))
         adapter = self._resolved_mtp2_adapter()
+        adapter_budget = int(getattr(adapter, "candidate_budget", candidate_budget))
+        effective_budget = min(
+            max(1, int(candidate_budget)),
+            max(1, adapter_budget),
+        )
+        row.mtp2_candidate_budget = effective_budget
         if adapter is not None:
-            adapter.register_request(request_id, candidate_budget)
+            adapter.register_request(request_id, effective_budget)
 
     def speculative_desired_candidate_count(self, request: GenerationRequest) -> int:
-        return min(3, max(1, int(request.max_tokens)))
+        adapter = self._resolved_mtp2_adapter()
+        max_budget = int(getattr(adapter, "candidate_budget", 3))
+        return min(max_budget, max(1, int(request.max_tokens)))
 
     def speculative_capability(self, request_semantics):
         adapter = self._resolved_mtp2_adapter()
@@ -6117,6 +6124,21 @@ class Qwen35GGUFResidentModelRunner:
     def speculative_claims_fit(self, plan) -> bool:
         adapter = self._resolved_mtp2_adapter()
         return bool(adapter is not None and adapter.claims_fit(plan))
+
+    def speculative_frontier_available(self, plan) -> bool:
+        adapter = self._resolved_mtp2_adapter()
+        return bool(
+            adapter is not None
+            and getattr(adapter, "staged_frontier", True)
+        )
+
+    def execute_speculative_cycle(self, plan, *, commit: bool):
+        adapter = self._resolved_mtp2_adapter()
+        execute = None if adapter is None else getattr(adapter, "execute_cycle", None)
+        if not callable(execute):
+            raise NotImplementedError("GGUF MTP2 adapter has no bounded complete cycle")
+        with hip_target_arch_environment(self.generator.target_arch):
+            return execute(plan, commit=bool(commit))
 
     def prepare_speculative_k0(self, plan, request_semantics, *, stream=None) -> None:
         adapter = self._resolved_mtp2_adapter()
@@ -6197,7 +6219,19 @@ class Qwen35GGUFResidentModelRunner:
     def restore_speculative_target_rows(self, plan) -> bool:
         """Rebuild canonical target state after an uncertain selected commit."""
 
-        request_ids = tuple(int(value) for value in plan.speculative_request_ids)
+        return self.restore_speculative_target_request_ids(
+            plan.speculative_request_ids
+        )
+
+    def restore_speculative_target_request_ids(
+        self,
+        request_ids: Sequence[int],
+        *,
+        require_token_match: bool = True,
+    ) -> bool:
+        """Rebuild named target rows from scheduler-authoritative token history."""
+
+        request_ids = tuple(int(value) for value in request_ids)
         rows = tuple(self._rows.get(request_id) for request_id in request_ids)
         if not rows or any(row is None for row in rows):
             return False
@@ -6244,7 +6278,10 @@ class Qwen35GGUFResidentModelRunner:
             result_rows,
             strict=True,
         ):
-            if int(result.token_id) != int(row.slot.prev_token):
+            if (
+                bool(require_token_match)
+                and int(result.token_id) != int(row.slot.prev_token)
+            ):
                 raise RuntimeError(
                     "SPECDEC2 postcommit target rebuild changed the canonical token"
                 )
@@ -7020,6 +7057,11 @@ class Qwen35GGUFResidentModelRunner:
                 )
             streaming_sinks = self._begin_mtp2_prompt_streaming((row,))
             streaming = streaming_sinks[0] is not None
+            mtp2_adapter = (
+                self._resolved_mtp2_adapter()
+                if row.mtp2_candidate_budget > 0
+                else None
+            )
             streaming_kwargs = (
                 {
                     "target_hidden_chunk_sinks": streaming_sinks,
@@ -7037,7 +7079,17 @@ class Qwen35GGUFResidentModelRunner:
                         full_prompt_lengths=[len(row.prompt_ids)],
                         return_logits=False,
                         return_hidden_seeds=bool(
-                            row.mtp2_candidate_budget > 0 and not streaming
+                            row.mtp2_candidate_budget > 0
+                            and (
+                                not streaming
+                                or bool(
+                                    getattr(
+                                        mtp2_adapter,
+                                        "requires_prefill_hidden_seeds",
+                                        False,
+                                    )
+                                )
+                            )
                         ),
                         **streaming_kwargs,
                     )

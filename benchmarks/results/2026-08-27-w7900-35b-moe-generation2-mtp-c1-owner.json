@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "kind": "w7900_35b_moe_generation2_mtp_c1_owner",
+  "status": "functional_candidate_not_promoted",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "default_change": false,
+  "hardware": {
+    "physical_host": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "gpu_index": 0,
+    "gpu_max_hw_queues": 1,
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "size_bytes": 22663387424,
+    "full_sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+    "quant": "UD-Q4_K_M",
+    "kv": "BF16",
+    "execution_profile": "production",
+    "recurrent_state": "FP32"
+  },
+  "implementation": {
+    "model_plugin_adapter_key": "moe_nextn",
+    "adapter": "Qwen35GGUFMoEMTP2Adapter",
+    "resident_capacity": 1,
+    "physical_concurrency": 1,
+    "candidate_budget": 2,
+    "max_context_tokens": 95,
+    "provider": "retained device-resident MoE NextN runner with external stable KV",
+    "target": "retained native complete-cycle graph",
+    "generation2_ownership": [
+      "EngineService child lifecycle",
+      "ResidentEngineLoop one bounded cycle per tick",
+      "model-plugin capability and K0 planning",
+      "composed target/provider/transient resource claims",
+      "SpecCycleTransaction and AcceptResult publication",
+      "request teardown and stable graph-bound slabs"
+    ],
+    "strict_fallback": "registered qwen3_5_moe_gguf FP32-state strict manifest and gguf_target_ar",
+    "automatic_policy": "K0 pending complete qualification"
+  },
+  "mechanical_validation": {
+    "engine_service_route": "engine_service_verify_chain",
+    "work_kind": "verify_chain",
+    "legacy_prelaunch_fallbacks": 0,
+    "ten_prompt_sequence_completed": true,
+    "ten_prompt_sequence_failures": 0,
+    "all_staged_requests_used_real_cycles": true,
+    "all_staged_cycles_target_graph": true,
+    "all_requests_drained": true,
+    "generated_id_equality_to_ar_diagnostic": "8/10",
+    "note": "Generated ID equality is diagnostic for production; strict-teacher distributions and tasks remain open."
+  },
+  "dirty_feedback_economics": {
+    "reason_not_claimable": "implementation worktree was intentionally dirty; rerun clean after commit",
+    "protocol": "complete ten-prompt category/heldout suite, natural D24, one warmup and one counterbalanced run, true Generation-2 AR denominator",
+    "true_ar_tok_s": 67.50650902578755,
+    "generation2_mtp_tok_s": 84.2611018762985,
+    "generation2_over_true_ar": 1.2481922571956827,
+    "train_ratio": 1.2541265579598053,
+    "heldout_ratio": 1.2395935084271001,
+    "category_ratios": {
+      "code": 1.2494951705586947,
+      "general_en": 1.352378046838791,
+      "general_ja": 1.1338200824816707,
+      "mixed_ja_en": 1.271789613489237
+    },
+    "accepted_candidates": 135,
+    "candidate_tokens": 173,
+    "draft_acceptance": 0.7803468208092486,
+    "cycles": 89,
+    "raw_path": "/tmp/dual-mtp-35b-moe-full-k2-d24-stablekv-dirty.json",
+    "raw_size_bytes": 319681,
+    "raw_sha256": "73f72013af1eb5fe646d2162726bf5c755c3cde9b7440f59a443363b8ee543ea"
+  },
+  "qualification_open": [
+    "clean same-source three-run economics",
+    "strict-teacher full-logit mean/p95/p99/max KL and scoped top-1",
+    "three-repeat production determinism",
+    "neighbor isolation and exact dynamic ownership",
+    "task and BF16-relative non-inferiority",
+    "failure/cancellation/stream/load/soak/SLO packet",
+    "content-verified automatic policy evidence"
+  ],
+  "decision": "Retain the explicit production C1/K2 implementation and strict fallback; do not promote automatic MTP yet."
+}

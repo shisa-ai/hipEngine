@@ -143,9 +143,52 @@ class _CycleRunner:
         return SpecCycleResult.committed(transaction, accept, telemetry=telemetry)
 
 
+class _OpaquePreferredRunner(_CycleRunner):
+    def speculative_frontier_available(self, plan):
+        return False
+
+    def speculative_component_claims(self, plan):
+        raise AssertionError("frontier claims must not run")
+
+    def reserve_speculative_claims(self, claims):
+        raise AssertionError("frontier reserve must not run")
+
+    def release_speculative_claims(self, reservation):
+        raise AssertionError("frontier release must not run")
+
+    def prepare_speculative_requests(self, *args, **kwargs):
+        raise AssertionError("frontier prepare must not run")
+
+    def propose_speculative_batch(self, *args, **kwargs):
+        raise AssertionError("frontier proposal must not run")
+
+    def execute_target_frontier(self, *args, **kwargs):
+        raise AssertionError("frontier target must not run")
+
+
 class _NoSpecRunner(_CycleRunner):
     def speculative_capability(self, request_semantics):
         return None
+
+
+def test_runner_can_select_bounded_opaque_cycle_before_frontier_mutation() -> None:
+    runner = _OpaquePreferredRunner()
+    loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)
+    request_id = loop.submit_speculative(
+        [10],
+        max_new_tokens=3,
+        desired_candidate_count=2,
+    )
+
+    events = loop.poll(max_ticks=2)
+
+    assert len(runner.cycle_plans) == 1
+    assert [event.token_id for event in events if event.kind == "token"] == [
+        1,
+        2,
+        8000,
+    ]
+    assert loop.completed[request_id].generated_tokens == (1, 2, 8000)
 
 
 def test_one_speculative_cycle_is_one_engine_tick_with_multi_token_events() -> None:

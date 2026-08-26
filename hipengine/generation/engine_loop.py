@@ -2457,6 +2457,13 @@ class ResidentEngineLoop:
         semantics: tuple[SpeculativeRequestSemantics, ...],
         capability: SpeculativeCapability,
     ) -> SpecCycleResult | None:
+        frontier_available = getattr(
+            self.runner,
+            "speculative_frontier_available",
+            None,
+        )
+        if callable(frontier_available) and not bool(frontier_available(plan)):
+            return None
         component_claims = getattr(self.runner, "speculative_component_claims", None)
         reserve_claims = getattr(self.runner, "reserve_speculative_claims", None)
         release_claims = getattr(self.runner, "release_speculative_claims", None)
