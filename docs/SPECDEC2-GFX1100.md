@@ -198,6 +198,16 @@ scope promotes. Evidence:
 [`corrected dense P4`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-p4-dense-device-chain-retained.json),
 [`campaign closure`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-campaign-closure.json).
 
+Post-closure physical dense C2 keeps capability false but retains a scoped
+backend target optimization. Current profiling attributes 71.1% of R6 cycle
+wall to the 256-row shared-B Q4T16 tile. Five shapes now use a C1-equivalent
+rows6 rowtile and gate/up uses exact single-wave; shared-B remains strict
+fallback. Clean full-suite physical C2 improves **16.974->22.393 tok/s
+(+31.93%)** and **0.544x->0.7156x AR**, with 10/10 exact and zero candidate
+D2H/recovery. Since every category still trails true AR, no C2 capability or
+automatic cell promotes. Evidence:
+[`R6 target recovery`](../benchmarks/results/2026-08-26-w7900-specdec2-c2-r6-target-rowtile-retained.json).
+
 ## 8. P2 — gfx1100 packed PARO physical C2/C4 K1
 
 PARO C>1 is not a quant alias of dense GGUF. It requires:

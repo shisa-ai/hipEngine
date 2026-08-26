@@ -1,0 +1,207 @@
+{
+  "schema": 1,
+  "date": "2026-08-26",
+  "kind": "w7900_specdec2_c2_r6_target_rowtile_retained",
+  "status": "retained_scoped_default_physical_capability_still_false",
+  "performance_claim": true,
+  "commit": "dc919ca1f178695c068df4126e93a92efdec797b",
+  "hardware": {
+    "physical_host": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "unique_id": "0xe282895b62c2b295",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "fingerprint": "sha256-sampled-v1:fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+    "quant": "Q4_K_M",
+    "kv": "bf16",
+    "recurrent_state": "fp32_strict"
+  },
+  "workload": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "scope": "all 10 category+heldout prompts",
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "concurrency": 2,
+    "candidate_budget": 2,
+    "physical_target_rows": 6,
+    "max_tokens_per_request": 24,
+    "runs": 1,
+    "sampling": "raw greedy",
+    "true_ar_denominator": true,
+    "capability_override": "process-local diagnostic; packaged GGUF_SPECDEC2_MTP2_C4 remains false"
+  },
+  "commands": {
+    "clean_full_suite": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt PYTHONPATH=. uv run python /tmp/specdec2-c2-profile-wrapper.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --scope full --concurrency 2 --budgets 2 --max-tokens 24 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --output /tmp/mtp-target-profile/current-dc919ca1f/c2-hybrid-clean-full-suite.json --fail-on-fail",
+    "clean_profiler": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --hip-trace --marker-trace --memory-copy-trace --memory-allocation-trace --output-format csv -d /tmp/mtp-target-profile/current-dc919ca1f/c2-hybrid-trace -o c2hybrid -- .venv/bin/python3 /tmp/specdec2-c2-profile-wrapper.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --scope full --limit 1 --concurrency 2 --budgets 2 --max-tokens 24 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output /tmp/mtp-target-profile/current-dc919ca1f/c2-hybrid-profile.json --fail-on-fail",
+    "operation_tests": "env HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run pytest -q tests/test_gguf_q4_k_t16_dense.py::test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile tests/test_gguf_q4_k_t16_dense.py::test_q4_t16_r6_rowtile_matches_two_retained_c1_r3_owners"
+  },
+  "local_probe_provenance": {
+    "capability_wrapper": {"bytes": 218, "sha256": "a4c730f940b8dc41a598f3b6ca218c8f3cf9d9de950a355978e75a6ec849851b"},
+    "route_micro": {"bytes": 4858, "sha256": "58325d973c88a466e9663f714b2957bfd55ad25dd7b61a9aa3f557b5c6d450e2"},
+    "dual_micro": {"bytes": 3135, "sha256": "f8b837b37fa95ba0ac4de0c78acbea6cca6af254192d4e7c4f6314271f54c347"}
+  },
+  "profile_before": {
+    "source_commit": "b8708c41c7d48e837feb30a4ef57ee40a4f33a03",
+    "c1_profile": {"bytes": 48215, "sha256": "653fe69d68680b87a3a4e86465710945b0231ee025fa5534e444dbc10fff50aa"},
+    "c2_profile": {"bytes": 55853, "sha256": "8e9992f0a2be26aa65e38a4bf0489e51291b6183402ca791b9af654ed05df6b3"},
+    "c1_kernel_trace_sha256": "f87592783ae3becd078e215f81f760a0b20c22f3e9a4337c4be74770337f05e3",
+    "c2_kernel_trace_sha256": "851adf791f9d6bb43ff7dfb331c5b7409083c39c3c3acc576f3e7969afd159b1",
+    "c1_marker_trace_sha256": "962e51f50888a5f9deb93073293372e90175abb2f9c9ea010cb1d12af7da795e",
+    "c2_marker_trace_sha256": "0ec06bea5168c052f2ee302845eff48b5697daed799e1867040ede604871169d",
+    "c1_r3": {
+      "cycle_wall_ms": 371.140643,
+      "kernel_sum_ms": 319.623099,
+      "kernel_union_ms": 39.903367,
+      "kernel_calls": 7650,
+      "note": "eight retained graph cycles; one graph wait owns each host cycle"
+    },
+    "c2_r6": {
+      "cycle_wall_ms": 1802.701939,
+      "kernel_sum_ms": 1667.64808,
+      "kernel_union_ms": 1548.742465,
+      "kernel_calls": 11530,
+      "dominant_kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+      "dominant_kernel_ms": 1282.636955,
+      "dominant_share_of_cycle_wall": 0.7115047360520242,
+      "reason": "four-wave shared-B kernel computes a 256-row tile for physical rows6"
+    }
+  },
+  "external_audit": {
+    "revisions": {
+      "vllm": "46638857fdbb30e0c232c9e8f9cb1ff6d6f545c3",
+      "sglang": "d7baad01164366b69c1260c81247d014db7c79bc",
+      "llama_cpp": "d222767c7a6516559a3f49e7721b6c6b1acc87b4",
+      "omlx": "90ecf1c26dbed875e6ced82c4faa6e9250037f2d",
+      "vmlx": "d8bba9115f2e31e505e1c07a79046fcf5e5812b5",
+      "mtplx": "e07224aa1b51f50dbb65161f7013ca784dd7e758",
+      "hipfire": "363e93d771ffebabb482d206e2d45961b32d43b7"
+    },
+    "decision": "Use hipEngine's already-registered exact rowtile/single-wave owners. Current donors corroborate shape-qualified small-M target lowering, exact fallback, and the padded token-tile pathology; no donor provides a more applicable ready GGUF-T16 gfx1100 body.",
+    "negative_references": [
+      "oMLX/MTPLX skinny-M split-K and cross-row sum-table kernels target MLX affine Q4/Q8, not GGUF T16, and remain narrow/default-off in their current trees",
+      "hipfire records small-M token-tiled WMMA padding as the same pathology and requires decode-order bit parity",
+      "llama.cpp speculative and CUDA MMQ source blobs are unchanged since the prior audit",
+      "vLLM/vMLX adaptive budget work is policy/cost accounting, not a replacement target kernel"
+    ]
+  },
+  "implementation": {
+    "kernel_body_changed": false,
+    "selector": "gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out",
+    "rows": [6],
+    "c1_rowtile_shapes": [[5120, 1024], [5120, 6144], [5120, 10240], [5120, 12288], [17408, 5120]],
+    "single_wave_shapes": [[5120, 17408]],
+    "strict_fallback": "t16_wmma_prefill_shared_b_bf16_bf16_out",
+    "selected_variants": [
+      "t16_physical_c1_rowtile_bf16_bf16_out",
+      "t16_wmma_prefill_single_wave_bf16_bf16_out"
+    ],
+    "manifest_scope": "hip_gfx1100/linear/gguf_q4_k_t16_v1",
+    "execution_profile": "strict",
+    "execution_profile_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "primitive_screen": {
+    "oracle": "one R6 rowtile versus two retained R3 rowtile owners",
+    "all_six_shapes_exact": true,
+    "rowtile_speedup_vs_shared_b_range": [5.973256968324121, 8.887831448087214],
+    "rowtile_speedup_vs_two_r3_range": [1.2980127131059749, 1.4744080959184713],
+    "single_wave_gate_up_exact_vs_shared_b": true,
+    "single_wave_gate_up_speedup": 1.364213309822183
+  },
+  "narrowing": {
+    "maximal_rowtile": {
+      "result": "rejected",
+      "full_suite_exact_cells": "9/10",
+      "failure": "heldout code_markdown_table request 1 diverged at output 16",
+      "diagnostic_speedup_vs_ar": 0.8608980480212753
+    },
+    "hybrid": {
+      "result": "retained",
+      "reason": "gate/up uses current-bit-exact single-wave; five peer shapes keep C1-equivalent rowtile",
+      "full_suite_exact_cells": "10/10"
+    }
+  },
+  "clean_full_suite": {
+    "source": "/tmp/mtp-target-profile/current-dc919ca1f/c2-hybrid-clean-full-suite.json",
+    "source_bytes": 483941,
+    "source_sha256": "7497f275418fbf7bd662bc5c18a34351df694f5f5766d9ce87f971435a1deef8",
+    "exact_cells": 10,
+    "cells": 10,
+    "true_ar": {
+      "wall_seconds": 15.338450859300792,
+      "tok_s": 31.293903432819093
+    },
+    "specdec2": {
+      "wall_seconds": 21.435000001452863,
+      "tok_s": 22.393282013877567,
+      "speedup_vs_true_ar": 0.7155796994756778
+    },
+    "accepted_drafts": 257,
+    "proposed_drafts": 346,
+    "draft_acceptance": 0.7427745664739884,
+    "group_cycles": 87,
+    "candidate_d2h_after_target": 0,
+    "recoverable_failures": 0,
+    "category_ratios": {
+      "code": 0.7034994285409227,
+      "general_en": 0.7614564460174568,
+      "general_ja": 0.7624704823674879,
+      "mixed_ja_en": 0.6605371674511338
+    }
+  },
+  "comparison_to_repaired_physical_baseline": {
+    "baseline_artifact": "benchmarks/results/2026-08-26-w7900-specdec2-c2-acceptance-root-cause.json",
+    "specdec2_wall_seconds": [28.27888190932572, 21.435000001452863],
+    "specdec2_tok_s": [16.973796967613033, 22.393282013877567],
+    "specdec2_tok_s_improvement": 0.31928537006806534,
+    "target_accept_seconds": [17.664024706929922, 10.872354016173631],
+    "target_accept_reduction": 0.38449168881040985,
+    "speedup_vs_true_ar": [0.5435026784148485, 0.7155796994756778],
+    "acceptance": [0.7692307692307693, 0.7427745664739884],
+    "note": "Throughput win comes from target lowering, not acceptance tuning; proposal/content policy is unchanged."
+  },
+  "clean_profiler": {
+    "source": "/tmp/mtp-target-profile/current-dc919ca1f/c2-hybrid-profile.json",
+    "source_bytes": 55854,
+    "source_sha256": "c00fcb229bb520f8853c43df178ea57bd6bcfffc71a1187797b795e23f2af886",
+    "cycle_count": 8,
+    "cycle_wall_ms": 1155.448634,
+    "kernel_sum_ms": 1031.426735,
+    "kernel_union_ms": 914.994355,
+    "steady_cycle_copy_allocation_free": true,
+    "first_cycle_shape_owner_records": {"memory_copies": 2, "memory_allocations": 214},
+    "top_kernel_families_ms": {
+      "q4_single_wave_gate_up": 464.178578,
+      "q6_dense": 207.094741,
+      "q4_shared_b_fallback": 101.126304,
+      "q4_r6_rowtile": 67.535186,
+      "selected_q5": 78.557677
+    },
+    "new_bottleneck": "exact single-wave gate/up (~57.9 ms/cycle), then Q6 (~25.9 ms/cycle)",
+    "trace_evidence": {
+      "kernel": {"bytes": 14880738, "sha256": "096d8ce31593d5aa72ca590f1bdcb01623adf0909aa8b829b954aa880b586a9f"},
+      "hip_api": {"bytes": 14108664, "sha256": "04af7de45d5f2ffa30b8d45ad7f680513830a8ef455d89deb5d481fcc55a892b"},
+      "marker": {"bytes": 19083, "sha256": "96ce71f772aa2258672d8c2d824de2fddabec2fbf05a61bee5a6c076ae7ca0ea"},
+      "memory_copy": {"bytes": 106510, "sha256": "15c51af2adefcb925630d6f95717b5bb09fe5d2cd5e6ec5ad2375f14d41d468e"},
+      "memory_allocation": {"bytes": 501605, "sha256": "0ee472ee2248b4a927020d17b2573d4ffa100305361794a1ea879f7b25c34a5c"},
+      "agent": {"bytes": 1585, "sha256": "1ba18fbfa6c0ad0e5acb82b44e7be2018532a1ead88db9e054924560c659dc00"}
+    }
+  },
+  "rejected_followup": {
+    "candidate": "existing exact dual-WMMA+SiLU gate/up composite",
+    "exact": true,
+    "control_ms": 0.8382760286331177,
+    "candidate_ms": 1.0541150569915771,
+    "speedup": 0.7952414900756093,
+    "decision": "reject; keep two exact single-wave projections plus SiLU"
+  },
+  "decision": {
+    "runtime_route": "retain scoped gfx1100 default",
+    "physical_c2_capability": false,
+    "automatic_policy": "K0 unchanged",
+    "reason": "Every category improves materially versus the repaired physical route, but every C2 category remains below true AR and complete C2 is only 0.716x AR.",
+    "next": "Profile a materially different exact gate/up schedule; do not retry the rejected dual-WMMA composite or generic padded shared-B tuning."
+  }
+}
