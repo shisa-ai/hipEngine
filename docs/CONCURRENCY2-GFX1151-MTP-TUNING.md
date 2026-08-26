@@ -254,15 +254,18 @@ production policy remains MTP at no automatic cell (K0) until those gates pass.
 - [ ] **T2.2 Target-owner continuation.** Only with a new premise, extend the
   retained small-M Q4 WMMA direction to the remaining R6/R8/R12/R16 families;
   prior campaign gates apply (no retry of rejected composites).
-- [ ] **T2.3 Measured K=0 crossover policy.** T0.4 fixes the candidate table:
-  c1/B2 staged MTP2, c2-c8 K0. Before admission, prove requested-MTP K0 uses
-  true-AR batching/economics (current controls regress c5/c6 35.1%/30.6%) and
-  emit stable typed reasons. T2.1 may reopen only independently qualified
-  physical c2/c4 cells.
-- [ ] **T2.4 Scheduler-budget audit.** Check our speculative batch window /
-  chunk-token analogs of Ling's `max_num_batched_tokens=8192` finding
-  (`HIPENGINE_MAX_PREFILL_CHUNK_TOKENS`, generation batch window) under MTP at
-  c1-c8; measure, don't assume.
+- [x] **T2.3 Measured K=0 crossover policy.** Automatic remains K0 with stable
+  typed reasons; no cell promotes. Capacity-matched c1/B3 is +46.84%, but the
+  HTTP plan sees `len(prompts)`, not concurrent independent children, while the
+  resident owner rejects c1 on capacity>1/unqualified physical streaming.
+  Dynamic c1-MTP/c2+-K0 therefore needs a future resident realized-group +
+  refill/survivor lifecycle design. Forced backend K0 is not acceptable (c5
+  diagnostic -35.1%); fail closed before mutation.
+- [x] **T2.4 Scheduler-budget audit.** Full-suite c1/B3 chunks 16/32/64/256
+  yield 11.162/11.533/13.932/**14.287** MTP tok/s at unchanged 79.29%
+  acceptance. Retain 256. Batch-window overlap is N/A while only c1 MTP is
+  admitted; c2+ must stay on true-AR ownership. Evidence:
+  [`T2.3/T2.4`](../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t23-t24-policy-scheduler.json).
 
 ### T3 — adaptive candidate budget (after T1/T2 land)
 
