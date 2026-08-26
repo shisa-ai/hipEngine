@@ -1,0 +1,738 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_mtp_old_vs_concurrency2_c1_c8_diagnostic",
+  "created_at": "2026-08-26T19:27:05.857115+00:00",
+  "status": "diagnostic_complete",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "Publish the requested same-host MTP c1-c8 systems comparison as a diagnostic only. The fixed repeated-token prompt is not the required anti-gaming full category+heldout suite, and the compared defaults intentionally include OLD B2 serial-exact MTP versus CONCURRENCY2 B3 native-verifier MTP rather than isolating one concurrency mechanism.",
+  "physical_host": "gfx1151",
+  "hardware": {
+    "cpu": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "HIP 7.15.0",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8",
+    "queue_policy": {
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIP_VISIBLE_DEVICES": "0"
+    }
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "sampled_fingerprint": "8a35afe52d8a955878b6163246dddfb89cd67deefbe1f567819d78a86181cafa",
+    "quant": "Q4_K_M (registry gguf_q4_k_m)",
+    "kv_storage": "bf16"
+  },
+  "protocol": {
+    "surface": "OpenAI-compatible blocking completions HTTP",
+    "primary_metric": "median aggregate generated completion tokens / simultaneous-release-to-last-response wall",
+    "prompt_length": 512,
+    "decode_tokens_per_request": 128,
+    "prompt_rows": "token 9707 repeated; final token cycles 9707..9710",
+    "sampling": "greedy top-1, EOS honored, explicit speculative_mtp=true",
+    "server_mtp_policy": "--speculative-mtp-serving opt_in",
+    "concurrencies": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "warmup_runs_per_width": 1,
+    "measured_runs_per_width": 3,
+    "fresh_server_per_width": true,
+    "generation_batch_window_ms": 20,
+    "prefill_decode_policy": "fair",
+    "prefill_chunk_tokens": 256,
+    "context_tokens_per_sequence": 1024,
+    "recurrent_state": "FP32 (HIPENGINE_GGUF_FP16_RECURRENT_STATE=0)",
+    "percent_difference_formula": "(CONCURRENCY2 / OLD - 1) * 100",
+    "anti_gaming_scope": "fixed synthetic prompt diagnostic; not the full mtpbench code/general_en/general_ja/mixed_ja_en plus heldout gate required for a retained speculative speed claim"
+  },
+  "source_states": {
+    "old": {
+      "runtime_commit": "b08ed12d6befe3403cc0981cc809482b7ca0fe66",
+      "benchmark_width_allowlist_commit": "820e85b356b128749dc609e832041bcc2a1470db",
+      "mtp_candidate_budget": 2,
+      "target_verify_mode": "serial_exact",
+      "mtp_behavior": "legacy hard-coded B2 llama-compatible server route",
+      "temporary_adapter_sha256": "8434535e711d4b2f2062a53b1bb99343d3384822edf5c2369dd5b383cdfb56d3",
+      "temporary_adapter_patch_sha256": "e3df4077afc48fd428b84cfcd7e4ee7668ec6d286b92a0f343fa10de710974a7"
+    },
+    "concurrency2": {
+      "runtime_commit_c1_c2": "74018c188cf14e915ee62e2ea935be4a1e902d92",
+      "timeout_only_child_commit_c3_c8": "3e678e6d32fb3165b199f905b50cfd5b7f07498d",
+      "timeout_only_change": "permit HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS=1200 in EngineService; no model, kernel, candidate, acceptance, or arithmetic change",
+      "mtp_candidate_budget": 3,
+      "target_verify_mode": "native",
+      "mtp_behavior": "default B3 llama-compatible server route after CONCURRENCY2",
+      "temporary_adapter_sha256": "22efc9711ac2f3c05db94bcfb3909b5d0f423e09b10706bae92b9e95ded88501",
+      "temporary_adapter_patch_sha256": "3bdf0eba3e6c6a789eeefbd304be8b853bdf8aa8bc5bab874237b638ab21e550"
+    },
+    "adapter_changes": "enable server opt-in MTP, add speculative_mtp=true to blocking requests, honor EOS, and skip the unrelated live-admission subtest; production runtime math is unchanged"
+  },
+  "summary_table": {
+    "columns": [
+      "c=1",
+      "c=2",
+      "c=3",
+      "c=4",
+      "c=5",
+      "c=6",
+      "c=7",
+      "c=8"
+    ],
+    "old_tok_s": [
+      7.907443694290226,
+      7.126922375076011,
+      7.068478221785637,
+      7.067654462455949,
+      7.22207329130096,
+      7.087620797980719,
+      7.055645954998424,
+      7.012755815309303
+    ],
+    "concurrency2_tok_s": [
+      13.595611838590404,
+      12.934827672160136,
+      12.955969854892931,
+      12.947944880691562,
+      13.090967814678764,
+      12.957155392432483,
+      12.665186723886073,
+      12.551927283501733
+    ],
+    "percent_difference": [
+      71.93434900342656,
+      81.49247306797251,
+      83.2922087099534,
+      83.20002696046154,
+      81.2632922245047,
+      82.81389145598772,
+      79.50428358602217,
+      78.98708601973645
+    ]
+  },
+  "results": {
+    "old": {
+      "1": {
+        "aggregate_http_completion_tok_s_median": 7.907443694290226,
+        "aggregate_http_completion_tok_s_samples": [
+          7.90864229387687,
+          7.907443694290226,
+          7.899902035366844
+        ],
+        "batch_wall_seconds_samples": [
+          16.184826073003933,
+          16.187279346981086,
+          16.20273256895598
+        ],
+        "throughput_stdev_pct_of_median": 0.05992123225788048,
+        "measured_records": 3,
+        "independent_c1_exact_records": 3,
+        "independent_c1_total_records": 3,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 3,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          1
+        ],
+        "mtp_cycles_total": 129.0,
+        "mtp_generated_draft_tokens_total": 255.0,
+        "mtp_accepted_draft_tokens_total": 255.0,
+        "mtp_accept_per_draft": 1.0,
+        "legacy_ar_native_route_assertion_passed": true
+      },
+      "2": {
+        "aggregate_http_completion_tok_s_median": 7.126922375076011,
+        "aggregate_http_completion_tok_s_samples": [
+          7.126922375076011,
+          7.1245364698864755,
+          7.1295661709958384
+        ],
+        "batch_wall_seconds_samples": [
+          35.92013305705041,
+          35.932162194978446,
+          35.906813101959415
+        ],
+        "throughput_stdev_pct_of_median": 0.03530208547012377,
+        "measured_records": 6,
+        "independent_c1_exact_records": 6,
+        "independent_c1_total_records": 6,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 6,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          2
+        ],
+        "mtp_cycles_total": 297.0,
+        "mtp_generated_draft_tokens_total": 591.0,
+        "mtp_accepted_draft_tokens_total": 468.0,
+        "mtp_accept_per_draft": 0.7918781725888325,
+        "legacy_ar_native_route_assertion_passed": false
+      },
+      "3": {
+        "aggregate_http_completion_tok_s_median": 7.068478221785637,
+        "aggregate_http_completion_tok_s_samples": [
+          7.071235952592633,
+          7.068478221785637,
+          7.068285456469517
+        ],
+        "batch_wall_seconds_samples": [
+          54.30450950504746,
+          54.325696133077145,
+          54.32717769604642
+        ],
+        "throughput_stdev_pct_of_median": 0.023352120115984268,
+        "measured_records": 9,
+        "independent_c1_exact_records": 9,
+        "independent_c1_total_records": 9,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 9,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          3
+        ],
+        "mtp_cycles_total": 450.0,
+        "mtp_generated_draft_tokens_total": 897.0,
+        "mtp_accepted_draft_tokens_total": 699.0,
+        "mtp_accept_per_draft": 0.7792642140468228,
+        "legacy_ar_native_route_assertion_passed": false
+      },
+      "4": {
+        "aggregate_http_completion_tok_s_median": 7.067654462455949,
+        "aggregate_http_completion_tok_s_samples": [
+          7.067503205383918,
+          7.068078436391378,
+          7.067654462455949
+        ],
+        "batch_wall_seconds_samples": [
+          72.44425437401515,
+          72.43835854507051,
+          72.44270397198852
+        ],
+        "throughput_stdev_pct_of_median": 0.004219157776111772,
+        "measured_records": 12,
+        "independent_c1_exact_records": 12,
+        "independent_c1_total_records": 12,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 12,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          4
+        ],
+        "mtp_cycles_total": 600.0,
+        "mtp_generated_draft_tokens_total": 1197.0,
+        "mtp_accepted_draft_tokens_total": 933.0,
+        "mtp_accept_per_draft": 0.7794486215538847,
+        "legacy_ar_native_route_assertion_passed": false
+      },
+      "5": {
+        "aggregate_http_completion_tok_s_median": 7.22207329130096,
+        "aggregate_http_completion_tok_s_samples": [
+          7.22207329130096,
+          7.220941851129853,
+          7.222676418184793
+        ],
+        "batch_wall_seconds_samples": [
+          88.61721200903412,
+          88.63109732698649,
+          88.60981206200086
+        ],
+        "throughput_stdev_pct_of_median": 0.012193048208149754,
+        "measured_records": 15,
+        "independent_c1_exact_records": 15,
+        "independent_c1_total_records": 15,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 15,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          1,
+          4
+        ],
+        "mtp_cycles_total": 729.0,
+        "mtp_generated_draft_tokens_total": 1452.0,
+        "mtp_accepted_draft_tokens_total": 1188.0,
+        "mtp_accept_per_draft": 0.8181818181818182,
+        "legacy_ar_native_route_assertion_passed": false
+      },
+      "6": {
+        "aggregate_http_completion_tok_s_median": 7.087620797980719,
+        "aggregate_http_completion_tok_s_samples": [
+          7.087620797980719,
+          7.087885059648878,
+          7.055855995789643
+        ],
+        "batch_wall_seconds_samples": [
+          108.35794152796734,
+          108.35390155692585,
+          108.84575882193167
+        ],
+        "throughput_stdev_pct_of_median": 0.25983580950509355,
+        "measured_records": 18,
+        "independent_c1_exact_records": 18,
+        "independent_c1_total_records": 18,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 18,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          2,
+          4
+        ],
+        "mtp_cycles_total": 897.0,
+        "mtp_generated_draft_tokens_total": 1788.0,
+        "mtp_accepted_draft_tokens_total": 1401.0,
+        "mtp_accept_per_draft": 0.7835570469798657,
+        "legacy_ar_native_route_assertion_passed": false
+      },
+      "7": {
+        "aggregate_http_completion_tok_s_median": 7.055645954998424,
+        "aggregate_http_completion_tok_s_samples": [
+          7.069343182306148,
+          7.055645954998424,
+          6.972257290136857
+        ],
+        "batch_wall_seconds_samples": [
+          126.74444808997214,
+          126.99049891601317,
+          128.50931380107068
+        ],
+        "throughput_stdev_pct_of_median": 0.7447472817275244,
+        "measured_records": 21,
+        "independent_c1_exact_records": 21,
+        "independent_c1_total_records": 21,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 21,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          3,
+          4
+        ],
+        "mtp_cycles_total": 1050.0,
+        "mtp_generated_draft_tokens_total": 2094.0,
+        "mtp_accepted_draft_tokens_total": 1632.0,
+        "mtp_accept_per_draft": 0.7793696275071633,
+        "legacy_ar_native_route_assertion_passed": false
+      },
+      "8": {
+        "aggregate_http_completion_tok_s_median": 7.012755815309303,
+        "aggregate_http_completion_tok_s_samples": [
+          7.067772644540234,
+          7.012755815309303,
+          6.963695259374479
+        ],
+        "batch_wall_seconds_samples": [
+          144.88298527698498,
+          146.01962865504902,
+          147.0483646770008
+        ],
+        "throughput_stdev_pct_of_median": 0.742462625330438,
+        "measured_records": 24,
+        "independent_c1_exact_records": 24,
+        "independent_c1_total_records": 24,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 24,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          4
+        ],
+        "mtp_cycles_total": 1200.0,
+        "mtp_generated_draft_tokens_total": 2394.0,
+        "mtp_accepted_draft_tokens_total": 1866.0,
+        "mtp_accept_per_draft": 0.7794486215538847,
+        "legacy_ar_native_route_assertion_passed": false
+      }
+    },
+    "concurrency2": {
+      "1": {
+        "aggregate_http_completion_tok_s_median": 13.595611838590404,
+        "aggregate_http_completion_tok_s_samples": [
+          13.596234239937054,
+          13.595611838590404,
+          13.590658506191723
+        ],
+        "batch_wall_seconds_samples": [
+          9.414371490012854,
+          9.414802475948818,
+          9.418233850970864
+        ],
+        "throughput_stdev_pct_of_median": 0.022473202462318955,
+        "measured_records": 3,
+        "independent_c1_exact_records": 3,
+        "independent_c1_total_records": 3,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 3,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          1
+        ],
+        "mtp_cycles_total": 120.0,
+        "mtp_generated_draft_tokens_total": 357.0,
+        "mtp_accepted_draft_tokens_total": 264.0,
+        "mtp_accept_per_draft": 0.7394957983193278,
+        "legacy_ar_native_route_assertion_passed": true,
+        "percent_difference_vs_old": 71.93434900342656
+      },
+      "2": {
+        "aggregate_http_completion_tok_s_median": 12.934827672160136,
+        "aggregate_http_completion_tok_s_samples": [
+          12.939590203566633,
+          12.924856583186681,
+          12.934827672160136
+        ],
+        "batch_wall_seconds_samples": [
+          19.78424323897343,
+          19.806796180084348,
+          19.791527686989866
+        ],
+        "throughput_stdev_pct_of_median": 0.058127458691714116,
+        "measured_records": 6,
+        "independent_c1_exact_records": 6,
+        "independent_c1_total_records": 6,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 6,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          2
+        ],
+        "mtp_cycles_total": 264.0,
+        "mtp_generated_draft_tokens_total": 789.0,
+        "mtp_accepted_draft_tokens_total": 504.0,
+        "mtp_accept_per_draft": 0.6387832699619772,
+        "legacy_ar_native_route_assertion_passed": false,
+        "percent_difference_vs_old": 81.49247306797251
+      },
+      "3": {
+        "aggregate_http_completion_tok_s_median": 12.955969854892931,
+        "aggregate_http_completion_tok_s_samples": [
+          12.955969854892931,
+          12.960410064374976,
+          12.941243276402965
+        ],
+        "batch_wall_seconds_samples": [
+          29.638846362009645,
+          29.62869215500541,
+          29.67257409496233
+        ],
+        "throughput_stdev_pct_of_median": 0.07743835842048141,
+        "measured_records": 9,
+        "independent_c1_exact_records": 9,
+        "independent_c1_total_records": 9,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 9,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          3
+        ],
+        "mtp_cycles_total": 393.0,
+        "mtp_generated_draft_tokens_total": 1170.0,
+        "mtp_accepted_draft_tokens_total": 759.0,
+        "mtp_accept_per_draft": 0.6487179487179487,
+        "legacy_ar_native_route_assertion_passed": false,
+        "percent_difference_vs_old": 83.2922087099534
+      },
+      "4": {
+        "aggregate_http_completion_tok_s_median": 12.947944880691562,
+        "aggregate_http_completion_tok_s_samples": [
+          12.93872139485231,
+          12.947944880691562,
+          12.959563970139316
+        ],
+        "batch_wall_seconds_samples": [
+          39.57114342099521,
+          39.54295486409683,
+          39.5075020409422
+        ],
+        "throughput_stdev_pct_of_median": 0.08066305519752283,
+        "measured_records": 12,
+        "independent_c1_exact_records": 12,
+        "independent_c1_total_records": 12,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 12,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          4
+        ],
+        "mtp_cycles_total": 525.0,
+        "mtp_generated_draft_tokens_total": 1563.0,
+        "mtp_accepted_draft_tokens_total": 1011.0,
+        "mtp_accept_per_draft": 0.6468330134357005,
+        "legacy_ar_native_route_assertion_passed": false,
+        "percent_difference_vs_old": 83.20002696046154
+      },
+      "5": {
+        "aggregate_http_completion_tok_s_median": 13.090967814678764,
+        "aggregate_http_completion_tok_s_samples": [
+          13.094645745695054,
+          13.090967814678764,
+          13.087810289315028
+        ],
+        "batch_wall_seconds_samples": [
+          48.87493807997089,
+          48.888669581967406,
+          48.900464313919656
+        ],
+        "throughput_stdev_pct_of_median": 0.026132737680195913,
+        "measured_records": 15,
+        "independent_c1_exact_records": 15,
+        "independent_c1_total_records": 15,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 15,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          1,
+          4
+        ],
+        "mtp_cycles_total": 645.0,
+        "mtp_generated_draft_tokens_total": 1920.0,
+        "mtp_accepted_draft_tokens_total": 1275.0,
+        "mtp_accept_per_draft": 0.6640625,
+        "legacy_ar_native_route_assertion_passed": false,
+        "percent_difference_vs_old": 81.2632922245047
+      },
+      "6": {
+        "aggregate_http_completion_tok_s_median": 12.957155392432483,
+        "aggregate_http_completion_tok_s_samples": [
+          12.957428922124897,
+          12.957155392432483,
+          12.703493551192846
+        ],
+        "batch_wall_seconds_samples": [
+          59.271017777966335,
+          59.2722690080991,
+          60.45581059297547
+        ],
+        "throughput_stdev_pct_of_median": 1.1308867797797066,
+        "measured_records": 18,
+        "independent_c1_exact_records": 18,
+        "independent_c1_total_records": 18,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 18,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          2,
+          4
+        ],
+        "mtp_cycles_total": 789.0,
+        "mtp_generated_draft_tokens_total": 2352.0,
+        "mtp_accepted_draft_tokens_total": 1515.0,
+        "mtp_accept_per_draft": 0.6441326530612245,
+        "legacy_ar_native_route_assertion_passed": false,
+        "percent_difference_vs_old": 82.81389145598772
+      },
+      "7": {
+        "aggregate_http_completion_tok_s_median": 12.665186723886073,
+        "aggregate_http_completion_tok_s_samples": [
+          12.975670772484623,
+          12.665186723886073,
+          12.508755993070961
+        ],
+        "batch_wall_seconds_samples": [
+          69.05230686801951,
+          70.74510779301636,
+          71.62982478004415
+        ],
+        "throughput_stdev_pct_of_median": 1.8764455120875003,
+        "measured_records": 21,
+        "independent_c1_exact_records": 21,
+        "independent_c1_total_records": 21,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 21,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          3,
+          4
+        ],
+        "mtp_cycles_total": 918.0,
+        "mtp_generated_draft_tokens_total": 2733.0,
+        "mtp_accepted_draft_tokens_total": 1770.0,
+        "mtp_accept_per_draft": 0.6476399560922064,
+        "legacy_ar_native_route_assertion_passed": false,
+        "percent_difference_vs_old": 79.50428358602217
+      },
+      "8": {
+        "aggregate_http_completion_tok_s_median": 12.551927283501733,
+        "aggregate_http_completion_tok_s_samples": [
+          12.940749358515244,
+          12.551927283501733,
+          12.495476669028006
+        ],
+        "batch_wall_seconds_samples": [
+          79.12988433905412,
+          81.5810972189065,
+          81.949654832948
+        ],
+        "throughput_stdev_pct_of_median": 1.9314253513895832,
+        "measured_records": 24,
+        "independent_c1_exact_records": 24,
+        "independent_c1_total_records": 24,
+        "independent_c1_mismatches": 0,
+        "actual_mtp_records": 24,
+        "execution_paths": [
+          "gguf_llama_compat_mtp_server"
+        ],
+        "generation_routes": [
+          "speculative_mtp"
+        ],
+        "response_backend_max_actual_group_rows": [
+          4
+        ],
+        "mtp_cycles_total": 1050.0,
+        "mtp_generated_draft_tokens_total": 3126.0,
+        "mtp_accepted_draft_tokens_total": 2022.0,
+        "mtp_accept_per_draft": 0.6468330134357005,
+        "legacy_ar_native_route_assertion_passed": false,
+        "percent_difference_vs_old": 78.98708601973645
+      }
+    }
+  },
+  "correctness": {
+    "cross_source_independent_c1_oracles_identical": true,
+    "oracle_rows": 4,
+    "oracle_generated_token_ids_sha256": [
+      "4d1d3a28ced499b94abce6d9f3494553e452dae62e897b4de54fa406f69e70ac",
+      "57faef02e61211da8ba0b09f2dff9a07cff20c06230e671839b92f3ba519533b",
+      "183f227a35b3bd50fbb7164b5dc3eb69706db0505030e1168f98cf818b55edde",
+      "81ab3b0abfd1745effe165c6e43a86425cd0f73592f1828edbf0b4efa56dc408"
+    ],
+    "old_measured_exact_records": 108,
+    "old_measured_total_records": 108,
+    "concurrency2_measured_exact_records": 108,
+    "concurrency2_measured_total_records": 108,
+    "all_measured_records_executed_actual_mtp_cycles": true,
+    "old_actual_mtp_records": 108,
+    "concurrency2_actual_mtp_records": 108
+  },
+  "raw_packet_classification": {
+    "old": "Raw status failed_gate only because the reused AR harness's native_caware route assertion does not describe the MTP execution path; all requested widths completed and are exact.",
+    "concurrency2_c1_c2": "The first packet completed c1/c2, then failed while starting c3 at the old 30-second EngineService command timeout. The completed c1/c2 rows are retained unchanged.",
+    "concurrency2_c3_c8": "Focused continuation changed only the command timeout to 1200 seconds. Its raw status failed_gate for the same inapplicable AR native_caware assertion; every width completed exact.",
+    "max_throughput_stdev_pct_of_median": 1.9314253513895832
+  },
+  "commands": {
+    "common_environment": {
+      "unset": [
+        "PYTHONPATH",
+        "ROCR_VISIBLE_DEVICES",
+        "HSA_OVERRIDE_GFX_VERSION"
+      ],
+      "HIP_VISIBLE_DEVICES": "0",
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK": "4",
+      "HIPENGINE_GGUF_FP16_RECURRENT_STATE": "0",
+      "HIPENGINE_DIAGNOSTIC_SKIP_LIVE": "1",
+      "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/gfx1151-old-vs-c2-c1-c8/hipcc-version.txt",
+      "HIPENGINE_HIPCC_VERSION_FILE": "/tmp/gfx1151-old-vs-c2-c1-c8/hipcc-version.txt"
+    },
+    "old": "/home/lhl/hipEngine/.venv/bin/python scripts/server_f1_concurrency_bench_mtp_tmp.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --hipengine-python /home/lhl/hipEngine/.venv/bin/python --hipengine-route-expectation native --hipengine-prefill-decode-policy fair --hipengine-kv-storage bf16 --gpu 0 --gpu-max-hw-queues 2 --compiler-version-file /tmp/gfx1151-old-vs-c2-c1-c8/hipcc-version.txt --prompt-token-id 9707 --prompt-length 512 --decode-tokens 128 --oracle-rows 4 --generation-batch-window-ms 20 --hipengine-prefill-chunk-tokens 256 --ctx-per-seq 1024 --server-ready-timeout 900 --request-timeout 1200 --inter-rep-seconds 0 --inter-server-seconds 0 --no-memory-sampling --served-model-name qwen38-q4ks-old --concurrencies 1,2,3,4,5,6,7,8 --live-concurrency 8 --warmup-runs 1 --measured-runs 3 --work-dir /tmp/gfx1151-old-vs-c2-mtp-c1-c8-1787766279/old-work --json /tmp/gfx1151-old-vs-c2-mtp-c1-c8-1787766279/old.json",
+    "concurrency2_c1_c2": "/home/lhl/hipEngine/.venv/bin/python scripts/server_f1_concurrency_bench_mtp_tmp.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --served-model-name qwen38-q4km-c2-mtp --hipengine-python /home/lhl/hipEngine/.venv/bin/python --hipengine-route-expectation native --hipengine-prefill-decode-policy fair --hipengine-kv-storage bf16 --gpu 0 --gpu-max-hw-queues 2 --compiler-version-file /tmp/gfx1151-old-vs-c2-c1-c8/hipcc-version.txt --concurrencies 1,2,3,4,5,6,7,8 --live-concurrency 8 --prompt-token-id 9707 --prompt-length 512 --decode-tokens 128 --oracle-rows 4 --warmup-runs 1 --measured-runs 3 --generation-batch-window-ms 20 --hipengine-prefill-chunk-tokens 256 --ctx-per-seq 1024 --server-ready-timeout 900 --request-timeout 1200 --inter-rep-seconds 0 --inter-server-seconds 0 --no-memory-sampling --work-dir /tmp/gfx1151-old-vs-c2-mtp-c1-c8-1787766279/c2-work --json /tmp/gfx1151-old-vs-c2-mtp-c1-c8-1787766279/c2.json",
+    "concurrency2_c3_c8": "/home/lhl/hipEngine/.venv/bin/python scripts/server_f1_concurrency_bench_mtp_tmp.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --served-model-name qwen38-q4km-c2-mtp --hipengine-python /home/lhl/hipEngine/.venv/bin/python --hipengine-route-expectation native --hipengine-prefill-decode-policy fair --hipengine-kv-storage bf16 --gpu 0 --gpu-max-hw-queues 2 --compiler-version-file /tmp/gfx1151-old-vs-c2-c1-c8/hipcc-version.txt --concurrencies 3,4,5,6,7,8 --focused-width-repair --live-concurrency 8 --prompt-token-id 9707 --prompt-length 512 --decode-tokens 128 --oracle-rows 4 --warmup-runs 1 --measured-runs 3 --generation-batch-window-ms 20 --hipengine-prefill-chunk-tokens 256 --ctx-per-seq 1024 --server-ready-timeout 900 --request-timeout 1200 --inter-rep-seconds 0 --inter-server-seconds 0 --no-memory-sampling --work-dir /tmp/gfx1151-old-vs-c2-mtp-c1-c8-1787766279/c2-c3-c8-work --json /tmp/gfx1151-old-vs-c2-mtp-c1-c8-1787766279/c2-c3-c8.json",
+    "concurrency2_c3_c8_additional_environment": {
+      "HIPENGINE_ENGINE_COMMAND_TIMEOUT_SECONDS": "1200"
+    }
+  },
+  "raw_artifacts": {
+    "old": {
+      "path": "/tmp/gfx1151-old-vs-c2-mtp-c1-c8-1787766279/old.json",
+      "sha256": "53b06b5e9938bed4f89c8d2aa18b8c43ceb40c47ce3418ae66032de4e9d8f5a8",
+      "status": "failed_gate"
+    },
+    "concurrency2_c1_c2": {
+      "path": "/tmp/gfx1151-old-vs-c2-mtp-c1-c8-1787766279/c2.json",
+      "sha256": "65a4231ec08fa4fbc80eb1ea4b3c14f2a5dfb5c6270a67572d8420e4ec1a2e5b",
+      "status": "failed_exception"
+    },
+    "concurrency2_c3_c8": {
+      "path": "/tmp/gfx1151-old-vs-c2-mtp-c1-c8-1787766279/c2-c3-c8.json",
+      "sha256": "0e870a9e12f995714d2748cfec7c9c8ee29a16a141c1972222418b193f51000b",
+      "status": "failed_gate"
+    },
+    "compiler_version_file_sha256": "4575f2f128d68d1d1c7e99436d20ecac67a363d6d300f6dde6b2fb83a86f8987"
+  },
+  "related_full_suite_evidence": {
+    "artifact": "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0.json",
+    "scope": "current-source C1/B3 full category+heldout suite only",
+    "limitation": "does not convert this fixed-prompt OLD-vs-CONCURRENCY2 c1-c8 diagnostic into a retained speed claim"
+  }
+}
