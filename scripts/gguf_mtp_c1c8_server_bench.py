@@ -95,6 +95,13 @@ def _parse_widths(raw: str) -> tuple[int, ...]:
     return widths
 
 
+def _parse_expected_mtp_widths(raw: str) -> tuple[int, ...]:
+    normalized = str(raw).strip().lower()
+    if normalized in {"", "none", "k0"}:
+        return ()
+    return _parse_widths(normalized)
+
+
 def _generated_ids(payload: Mapping[str, Any]) -> list[int]:
     root = payload.get("hipengine")
     root = root if isinstance(root, Mapping) else {}
@@ -300,7 +307,13 @@ def _run_arm(
     }
 
 
-def summarize(cells: Sequence[Mapping[str, Any]], *, widths: Sequence[int]) -> dict[str, Any]:
+def summarize(
+    cells: Sequence[Mapping[str, Any]],
+    *,
+    widths: Sequence[int],
+    expected_mtp_widths: Sequence[int] | None = None,
+) -> dict[str, Any]:
+    expected = set(widths if expected_mtp_widths is None else expected_mtp_widths)
     result: dict[str, Any] = {}
     for width in widths:
         selected = [cell for cell in cells if int(cell["width"]) == int(width)]
@@ -314,14 +327,21 @@ def summarize(cells: Sequence[Mapping[str, Any]], *, widths: Sequence[int]) -> d
                 "generated_tokens": generated,
                 "tok_s": generated / wall,
             }
+        exact_cells = sum(bool(cell["exact"]) for cell in selected)
+        engaged_cells = sum(bool(cell["mtp_engaged"]) for cell in selected)
+        mtp_expected = int(width) in expected
         result[str(width)] = {
             "ar": arms["ar"],
             "mtp": arms["mtp"],
             "mtp_vs_ar_ratio": arms["mtp"]["tok_s"] / arms["ar"]["tok_s"],
             "mtp_vs_ar_percent": 100.0 * (arms["mtp"]["tok_s"] / arms["ar"]["tok_s"] - 1.0),
-            "exact_cells": sum(bool(cell["exact"]) for cell in selected),
-            "engaged_cells": sum(bool(cell["mtp_engaged"]) for cell in selected),
+            "exact_cells": exact_cells,
+            "engaged_cells": engaged_cells,
             "cells": len(selected),
+            "mtp_expected": mtp_expected,
+            "route_expectation_passed": bool(
+                engaged_cells == len(selected) if mtp_expected else engaged_cells == 0
+            ),
         }
     return result
 
@@ -329,6 +349,13 @@ def summarize(cells: Sequence[Mapping[str, Any]], *, widths: Sequence[int]) -> d
 def run(args: argparse.Namespace) -> dict[str, Any]:
     prompts = load_prompt_suite(Path(args.prompts).resolve())
     widths = tuple(args.widths)
+    expected_mtp_widths = (
+        widths
+        if args.expected_mtp_widths is None
+        else tuple(args.expected_mtp_widths)
+    )
+    if not set(expected_mtp_widths).issubset(widths):
+        raise ValueError("expected MTP widths must be a subset of measured widths")
     repo_status = subprocess.check_output(
         ("git", "status", "--porcelain", "--untracked-files=no"),
         cwd=REPO_ROOT,
@@ -455,9 +482,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # TestClient owns current-server shutdown. Older servers leave close idempotent.
     finally:
         llm.close()
-    summary = summarize(cells, widths=widths)
+    summary = summarize(
+        cells,
+        widths=widths,
+        expected_mtp_widths=expected_mtp_widths,
+    )
     passed = all(
-        int(row["exact_cells"]) == int(row["engaged_cells"]) == int(row["cells"]) == len(prompts)
+        int(row["exact_cells"]) == int(row["cells"]) == len(prompts)
+        and bool(row["route_expectation_passed"])
         for row in summary.values()
     )
     payload = {
@@ -477,6 +509,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "prompts": str(Path(args.prompts).resolve()),
             "prompt_ids": list(FULL_PROMPT_IDS),
             "widths": list(widths),
+            "expected_mtp_widths": list(expected_mtp_widths),
             "max_tokens": int(args.max_tokens),
             "candidate_budget": int(args.candidate_budget),
             "batch_window_ms": float(args.batch_window_ms),
@@ -513,6 +546,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--widths", type=_parse_widths, default=tuple(range(1, 9)))
+    parser.add_argument(
+        "--expected-mtp-widths",
+        type=_parse_expected_mtp_widths,
+        default=None,
+        help="Expected engaged MTP widths; use 'none' for typed K0-only cells",
+    )
     parser.add_argument("--max-tokens", type=int, default=24)
     parser.add_argument("--candidate-budget", type=int, default=2)
     parser.add_argument("--batch-window-ms", type=float, default=20.0)
