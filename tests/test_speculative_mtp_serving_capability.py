@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import fields, replace
+from types import SimpleNamespace
 
 import pytest
 
+from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
 from hipengine.llm import LLM
 from hipengine.models.qwen35 import Qwen35GGUFModel
 from hipengine.speculative.serving import (
@@ -119,6 +121,33 @@ def test_unverified_artifact_and_generic_dense_inventory_cannot_admit() -> None:
     assert unverified.reason == "artifact_identity_unverified"
     assert generic.admitted is False
     assert generic.reason == "no_model_plugin_evidence"
+
+
+def test_unrelated_q4ks_artifact_keeps_legacy_explicit_compatibility(tmp_path) -> None:
+    model_path = tmp_path / "qwen38-q4ks.gguf"
+    with model_path.open("wb") as handle:
+        handle.truncate(16_121_359_328)
+    generator = Qwen35GGUFBringupGenerator.__new__(Qwen35GGUFBringupGenerator)
+    generator.model_path = model_path
+    generator.weight_index = SimpleNamespace(
+        path=model_path,
+        file_type_name="Q4_K_S",
+    )
+    generator.model_plugin = Qwen35GGUFModel()
+    generator.backend = "hip_gfx1151"
+
+    assert generator.resolve_speculative_mtp_serving_plan(
+        execution_profile_manifest_sha256=_STRICT_MANIFEST_SHA256,
+        realized_group_rows=1,
+        resident_capacity=1,
+        candidate_budget=3,
+        sampling_mode="greedy_fast",
+        max_sequence_length=1024,
+        context_tokens=67,
+        output_horizon_tokens=25,
+        kv_storage="bf16",
+        memory_fit=True,
+    ) is None
 
 
 def test_llm_delegates_mechanical_serving_identity_to_loaded_generator() -> None:
