@@ -435,6 +435,12 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "hip_gfx1151",
             "linear",
             "gguf_q4_k_t16_v1",
+            "t16_wmma_prefill_smallm_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151",
+            "linear",
+            "gguf_q4_k_t16_v1",
             "t16_wmma_prefill_shared_b_bf16_bf16_out",
         ),
         KernelKey(
@@ -711,7 +717,7 @@ def test_gfx1151_backend_declares_q4_two_wave_shape_and_row_policy() -> None:
     )
 
 
-def test_gfx1151_backend_routes_admitted_physical_q4_shapes_to_single_wave(
+def test_gfx1151_backend_routes_admitted_physical_q4_shapes_to_smallm_wmma(
     monkeypatch,
 ) -> None:
     selector = getattr(
@@ -721,12 +727,12 @@ def test_gfx1151_backend_routes_admitted_physical_q4_shapes_to_single_wave(
     )
     rows_policy = getattr(
         gfx1151_backend,
-        "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_ROWS",
+        "GGUF_Q4_T16_PHYSICAL_SMALLM_ROWS",
         None,
     )
     shape_policy = getattr(
         gfx1151_backend,
-        "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES",
+        "GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES",
         None,
     )
     assert callable(selector)
@@ -736,10 +742,18 @@ def test_gfx1151_backend_routes_admitted_physical_q4_shapes_to_single_wave(
             (5_120, 6_144),
             (5_120, 10_240),
             (5_120, 12_288),
+            (5_120, 17_408),
             (6_144, 5_120),
+            (17_408, 5_120),
         }
     )
     calls: list[str] = []
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("smallm"),
+        raising=False,
+    )
     monkeypatch.setattr(
         gfx1151_backend,
         "gguf_q4_k_t16_wmma_prefill_bf16_bf16_out",
@@ -760,12 +774,12 @@ def test_gfx1151_backend_routes_admitted_physical_q4_shapes_to_single_wave(
         (4, 5_120, 10_240),
         (7, 5_120, 10_240),
         (16, 5_120, 1_024),
-        (16, 17_408, 5_120),
         (16, 5_120, 5_120),
+        (16, 1_024, 4_096),
     ):
         selector(1, 2, 3, rows, in_features, out_features)
 
-    assert calls == ["single"] * (len(rows_policy) * len(shape_policy)) + [
+    assert calls == ["smallm"] * (len(rows_policy) * len(shape_policy)) + [
         "shared"
     ] * 5
 
@@ -785,6 +799,12 @@ def test_gfx1151_backend_registers_q4_physical_route_and_explicit_fallbacks() ->
         quant="gguf_q4_k_t16_v1",
         variant="t16_wmma_prefill_single_wave_bf16_bf16_out",
     )
+    smallm = resolve(
+        backend="hip_gfx1151",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="t16_wmma_prefill_smallm_bf16_bf16_out",
+    )
     fallback = resolve(
         backend="hip_gfx1151",
         layer="linear",
@@ -803,6 +823,10 @@ def test_gfx1151_backend_registers_q4_physical_route_and_explicit_fallbacks() ->
         "gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out",
     )
     assert single is gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
+    assert smallm is getattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out",
+    )
     assert fallback is gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
     assert peer is gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out
 
