@@ -217,6 +217,33 @@ def test_bridge_production_profile_skips_incompatible_legacy_c1_control() -> Non
     validate_bridge_artifact(payload)
 
 
+def test_bridge_production_cross_arm_ids_are_diagnostic_but_repeats_are_exact() -> None:
+    payload = _artifact()
+    payload["model"] = {
+        "execution_profile": "production",
+        "recurrent_state": "fp32",
+    }
+    payload["workload"]["runs"] = 2
+    for cell in payload["cells"]:
+        cell["arms"]["legacy_native"] = {
+            "status": "skipped",
+            "reason": "dense_direct_legacy_requires_strict_fp32_state",
+            "realized_route": None,
+        }
+        cell["arms"]["specdec2"] = _arm("specdec2", token=9)
+        cell["exact"] = False
+    repeated = json.loads(json.dumps(payload["cells"]))
+    for cell in repeated:
+        cell["run"] = 1
+    payload["cells"].extend(repeated)
+
+    validate_bridge_artifact(payload)
+
+    payload["cells"][-1]["arms"]["specdec2"] = _arm("specdec2", token=10)
+    with pytest.raises(BridgeContractError, match="not repeatable"):
+        validate_bridge_artifact(payload)
+
+
 def test_bridge_requires_separate_c1_and_physical_service_capacities() -> None:
     assert bridge_service_capacity((1,)) == 1
     assert bridge_service_capacity((2, 4)) == 4
