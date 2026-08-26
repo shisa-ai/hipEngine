@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-26 W7900 OLD vs CONCURRENCY2 full C1-C8; retained] Identical p512/d128 OpenAI SSE moves aggregate C1..C8 **71.106/98.468/63.448/125.904/88.097/98.045/107.096/143.934 → 75.187/99.281/116.770/133.084/143.253/152.118/157.325/162.219 tok/s**, or **+5.74/+0.83/+84.04/+5.70/+62.61/+55.15/+46.90/+12.70%**. All cells are exact; Generation 2 replaces OLD's masked eager C3/C5-C7 with exact native graphs. `benchmarks/results/2026-08-26-w7900-old-vs-concurrency2-c1-c8.json`.
+
 - [2026-08-26 gfx1151 Qwen3.8 Q4_K_M serving closure; retained metric unchanged] Close S5 at **12.940 vs 9.025 tok/s (1.4337x)** public complete-wall and **1.3147x** real automatic HTTP. The completed 10,576-test milestone had 19 isolated test-hygiene failures; focused repairs pass 19/19 without a prohibited broad rerun. Exact auto scope is unchanged and all other keys remain K0. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json`.
 
 - [2026-08-26 gfx1151 Qwen3.8 Q4_K_M exact automatic MTP promotion] Promote only the content-verified strict/BF16/resident-C1+physical-C1/B3/context1-67/natural25/raw-greedy scope: full-suite complete-wall is **12.940 vs 9.025 tok/s (1.4337x)** and S4 auto rerun is **12.418 vs 9.445 tok/s (1.3147x)** with exact IDs. Context68, sampling changes, and every other key remain K0. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s4-auto.json`.

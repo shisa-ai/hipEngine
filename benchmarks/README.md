@@ -95,15 +95,22 @@ llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hi
 
 ## Current default notes
 
-Strix Halo Qwen3.8 `Q4_K_M` automatic MTP is limited to the content-verified
-strict/BF16/C1/B3/natural25/raw-greedy key; every other typed scope selects
-K0/strict AR. [`Serving closure`](results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json).
+Strix Halo Qwen3.8 `Q4_K_M` automatic MTP is limited to its verified strict/
+BF16/C1/B3 key; all other scopes use K0. [`Serving`](results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json).
+`Q4_K_S` uses FP16 recurrent state with FP32 rollback. Its exact W8192 DMS
+sidecar stays default-off. [`DMS`](../docs/DMS.md).
 
-Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback
-([`evidence`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json)).
-The exact `Q4_K_M` W8192 DMS sidecar passes 32K/128K at 100% top-1, saves
-3.750 GiB live K/V at 128K, and matches dense c1 decode. It stays default-off
-pending serving gates. [`DMS status`](../docs/DMS.md).
+### W7900 OLD versus CONCURRENCY2
+
+Same-host Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, p512/d128 OpenAI SSE:
+
+| Implementation | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| OLD | 71.106 | 98.468 | 63.448 | 125.904 | 88.097 | 98.045 | 107.096 | 143.934 |
+| CONCURRENCY2 | **75.187** | **99.281** | **116.770** | **133.084** | **143.253** | **152.118** | **157.325** | **162.219** |
+| CONCURRENCY2 difference | **+5.74%** | **+0.83%** | **+84.04%** | **+5.70%** | **+62.61%** | **+55.15%** | **+46.90%** | **+12.70%** |
+
+All cells are exact; CONCURRENCY2 graphs every C2-C8 width. [`Evidence`](results/2026-08-26-w7900-old-vs-concurrency2-c1-c8.json).
 
 ### Agentic quality (quality-only; no speed claim)
 
@@ -113,32 +120,19 @@ pending serving gates. [`DMS status`](../docs/DMS.md).
 | Qwen3.8-27B `Q4_K_M` | **50/68 (73.53%)** | **22/34** | **28/34** | 14/16 · **12/16** · 10/16 · 14/20 | **64/64** |
 | Ornith-1.5-35B-A3B `Q4_K_M` | 42/68 (61.76%) | 16/34 | 26/34 | 14/16 · 4/16 · 10/16 · 14/20 | 60/64 |
 
-All 34 repeat pairs, 10 controls, and ownership gates pass; these are same-host
-model-quality rows. The campaign retains **no implementation** because all seven
-development failures are model-owned. [`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
+All repeat/control/ownership gates pass; failures are model-owned, so no
+implementation is retained. [`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
 
-gfx1151 Qwen3.8 `Q4_K_S` P9 is exact in **540/540** fixed cells. C1/K2 reaches
-**1.4087x AR**, but capacity-4 automatic serving executes zero speculative
-cycles (`physical_streaming_category_rejected`); physical C2/C4 is
-**0.6975x/0.5843x AR**. No automatic cell promotes: K0 remains default and
-production FP16 stays explicit-compatible.
-[`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json) · [`P9 no-go`](results/2026-08-26-gfx1151-specdec2-perf-p9-product-no-go.json)
+gfx1151 Qwen3.8 `Q4_K_S` P9 is exact **540/540**; C1/K2 is **1.4087x AR**, but
+physical C2/C4 is **0.6975x/0.5843x** and automatic stays K0. [`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json).
 
-gfx1100 dense C1 K1/K2/K3 remains exact at **1.272x/1.407x/1.439x AR** but
-2.7%-3.9% behind direct; packed PARO is **0.979x AR**. Automatic stays K0.
-[`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
-
-Physical C2 target repair plus exact R6 projection routing moves D24 K2
-acceptance **18.43%→74.28%** and throughput **16.974→22.393 tok/s (+31.93%)**,
-now **0.7156x** true AR with 10/10 exact. Capability stays false/K0. P512/d128
-AR keeps C1 exact at **77.176 vs old 72.169 tok/s**; C8 raw **161.882** remains
-diagnostic. [`C2 target`](results/2026-08-26-w7900-specdec2-c2-r6-target-rowtile-retained.json) · [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
+gfx1100 dense C1 K1/K2/K3 is **1.272x/1.407x/1.439x AR**; packed PARO is
+**0.979x**. Physical C2 routing improves **16.974→22.393 tok/s (+31.93%)** but
+remains **0.7156x AR**, so K0 stays. [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
 
 ## Where detailed evidence lives
 
-Use result artifacts for commands/samples/profilers,
-[`CHANGELOG.md`](CHANGELOG.md) for rollups, [`docs/BENCHMARK.md`](../docs/BENCHMARK.md)
-for protocols, and [`worklog/entries/`](../worklog/entries/) for decisions.
+See result artifacts, [`CHANGELOG.md`](CHANGELOG.md), and [`BENCHMARK.md`](../docs/BENCHMARK.md).
 
 ## Benchmark harness catalog
 
