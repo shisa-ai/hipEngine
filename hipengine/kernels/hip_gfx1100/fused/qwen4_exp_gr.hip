@@ -20,6 +20,16 @@ __device__ inline uint16_t float_to_bf16_bits(float value) {
   return static_cast<uint16_t>(in.u32 >> 16);
 }
 
+__global__ void repeat_bf16_branches_kernel(
+    const uint16_t* __restrict__ input,
+    uint16_t* __restrict__ output,
+    int64_t branches,
+    int64_t hidden) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t elements = branches * hidden;
+  if (index < elements) output[index] = input[index % hidden];
+}
+
 __global__ void grouped_rmsnorm_bf16_f32_kernel(
     const uint16_t* __restrict__ residual,
     const float* __restrict__ weight,
@@ -186,6 +196,24 @@ __global__ void sigmoid_gated_rmsnorm_f32_kernel(
 }
 
 }  // namespace
+
+extern "C" int hipengine_qwen4_exp_repeat_bf16_branches(
+    const void* input,
+    void* output,
+    int64_t branches,
+    int64_t hidden,
+    hipStream_t stream) {
+  if (!input || !output || branches <= 0 || hidden <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  const int64_t elements = branches * hidden;
+  hipLaunchKernelGGL(
+      repeat_bf16_branches_kernel,
+      dim3(static_cast<uint32_t>((elements + threads - 1) / threads)), dim3(threads), 0, stream,
+      static_cast<const uint16_t*>(input), static_cast<uint16_t*>(output), branches, hidden);
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_qwen4_exp_grouped_rmsnorm_bf16_f32(
     const void* residual,

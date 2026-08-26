@@ -57,6 +57,7 @@ from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_grouped_rmsnorm_bf16_f32,
     qwen4_exp_grouped_rmsnorm_f32,
     qwen4_exp_gr_write_bf16_f32,
+    qwen4_exp_repeat_bf16_branches,
     qwen4_exp_scaled_silu_f32,
     qwen4_exp_silu_mul_f32,
     qwen4_exp_sigmoid_f32,
@@ -72,8 +73,10 @@ from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
 )
+from hipengine.kernels.cpu_reference.qwen4_exp import PLEHashState, ple_hash_rows
 from hipengine.kernels.registry import resolve
 from hipengine.kvcache import KVLiveSpans
+from hipengine.loading.qwen4_exp_materialize import Qwen4ExpResidentWeights
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 
 
@@ -306,7 +309,7 @@ class Qwen4ExpGRDeviceWeights:
     norm_weight_ptr: int
     down: GGUFDeviceWeight
     up: GGUFDeviceWeight
-    inject: GGUFDeviceWeight
+    inject: GGUFDeviceWeight | None
 
 
 @dataclass(frozen=True)
@@ -1094,7 +1097,7 @@ def run_qwen4_exp_gr_read(
     norm_weight_ptr: int,
     down_weight: GGUFDeviceWeight,
     up_weight: GGUFDeviceWeight,
-    inject_weight: GGUFDeviceWeight,
+    inject_weight: GGUFDeviceWeight | None,
     scratch: Qwen4ExpGRScratch,
     *,
     rows: int,
@@ -1165,18 +1168,21 @@ def run_qwen4_exp_gr_read(
         stream=stream,
         runtime=active_runtime,
     )
-    launch_gguf_linear(
-        inject_weight,
-        scratch.normalized.ptr,
-        scratch.inject_logits.ptr,
-        rows,
-        residual_width,
-        branches,
-        activation_dtype=GGUF_ACTIVATION_F32,
-        output_dtype=GGUF_OUTPUT_F32,
-        stream=stream,
-        runtime=active_runtime,
-    )
+    if inject_weight is None:
+        active_runtime.memset(scratch.inject_logits.ptr, 0, rows * branches * 4)
+    else:
+        launch_gguf_linear(
+            inject_weight,
+            scratch.normalized.ptr,
+            scratch.inject_logits.ptr,
+            rows,
+            residual_width,
+            branches,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            stream=stream,
+            runtime=active_runtime,
+        )
     qwen4_exp_gated_mean_f32(
         scratch.normalized.ptr,
         scratch.gate.ptr,
@@ -1783,6 +1789,363 @@ def run_qwen4_exp_gdn_token_mixer(
     return scratch.output
 
 
+@dataclass(frozen=True)
+class Qwen4ExpTokenResult:
+    token_id: int
+    logits: np.ndarray
+
+
+class Qwen4ExpGGUFResidentModelRunner:
+    """Strict c1 text runner for the complete 48-layer Qwen4Exp target."""
+
+    def __init__(
+        self,
+        resident: Qwen4ExpResidentWeights,
+        *,
+        max_sequence_length: int = 2_051,
+        backend: str = "hip_gfx1151",
+        runtime: HipRuntime | None = None,
+    ) -> None:
+        self.resident = resident
+        self.config = resident.plan.config
+        self.backend = str(backend)
+        self.runtime = runtime or get_hip_runtime()
+        self.max_sequence_length = int(max_sequence_length)
+        if not 0 < self.max_sequence_length <= self.config.qsa_dense_equivalent_max_tokens:
+            raise ValueError(
+                "dense Qwen4Exp runner max_sequence_length must be in "
+                f"1..{self.config.qsa_dense_equivalent_max_tokens}"
+            )
+        load_backend_kernel_package(self.backend)
+        self.gdn_bindings = {
+            layer: bind_qwen4_exp_gdn_layer(resident, layer)
+            for layer, kind in enumerate(self.config.layer_types)
+            if kind == "gdn"
+        }
+        self.qsa_bindings = {
+            layer: bind_qwen4_exp_qsa_layer(resident, layer)
+            for layer, kind in enumerate(self.config.layer_types)
+            if kind == "qsa"
+        }
+        self.state: Qwen4ExpDecodeState | None = None
+        self.gdn_scratch: Qwen4ExpGDNLayerScratch | None = None
+        self.qsa_scratch: Qwen4ExpQSALayerScratch | None = None
+        self.ple_scratch: Qwen4ExpPLEScratch | None = None
+        self.head_scratch: Qwen4ExpGRScratch | None = None
+        self.attention_states: tuple[Qwen4ExpDenseAttentionState, ...] = ()
+        self._buffers: list[DeviceBuffer] = []
+        self._ple_hash_states: dict[int, PLEHashState] = {}
+        self.position = 0
+        self.closed = False
+        try:
+            self._allocate()
+        except Exception:
+            self.close()
+            raise
+
+    def _allocate(self) -> None:
+        cfg = self.config
+        qkv_width = 2 * cfg.gdn_group_count * cfg.gdn_state_size + cfg.gdn_inner_size
+        self.state = Qwen4ExpDecodeState.allocate(
+            gdn_layers=cfg.layer_types.count("gdn"),
+            gdn_value_heads=cfg.gdn_time_step_rank,
+            gdn_head_dim=cfg.gdn_state_size,
+            gdn_conv_channels=qkv_width,
+            gdn_conv_kernel=cfg.gdn_conv_kernel,
+            residual_branches=cfg.residual_branch_count,
+            hidden=cfg.hidden_size,
+            ple_conv_kernel=cfg.ple_conv_kernel,
+            ple_dilation=cfg.ple_ngram_size,
+            runtime=self.runtime,
+        )
+        self.gdn_scratch = Qwen4ExpGDNLayerScratch.allocate(
+            rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
+            low_rank=cfg.residual_low_rank, qkv_width=qkv_width,
+            core_width=cfg.gdn_inner_size, scalar_width=cfg.gdn_time_step_rank,
+            ffn=cfg.expert_feed_forward_length, experts=cfg.expert_count,
+            top_k=cfg.expert_used_count, runtime=self.runtime,
+        )
+        self.qsa_scratch = Qwen4ExpQSALayerScratch.allocate(
+            rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
+            low_rank=cfg.residual_low_rank, query_heads=cfg.attention_head_count,
+            kv_heads=cfg.attention_kv_head_count, head_dim=cfg.attention_key_length,
+            ffn=cfg.expert_feed_forward_length, experts=cfg.expert_count,
+            top_k=cfg.expert_used_count, runtime=self.runtime,
+        )
+        self.ple_scratch = Qwen4ExpPLEScratch.allocate(
+            rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
+            runtime=self.runtime,
+        )
+        self.head_scratch = Qwen4ExpGRScratch.allocate(
+            rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
+            low_rank=cfg.residual_low_rank, runtime=self.runtime,
+        )
+        self.attention_states = tuple(
+            Qwen4ExpDenseAttentionState.allocate(
+                max_positions=self.max_sequence_length,
+                block_size=256,
+                kv_heads=cfg.attention_kv_head_count,
+                head_dim=cfg.attention_key_length,
+                runtime=self.runtime,
+            )
+            for _ in range(cfg.layer_types.count("qsa"))
+        )
+        for nbytes in (
+            4,
+            cfg.hidden_size * 2,
+            cfg.hidden_size * 4,
+            cfg.vocab_size * 4,
+        ):
+            self._buffers.append(malloc(nbytes, runtime=self.runtime))
+
+    @property
+    def token_id_buffer(self) -> DeviceBuffer:
+        return self._buffers[0]
+
+    @property
+    def embedding_buffer(self) -> DeviceBuffer:
+        return self._buffers[1]
+
+    @property
+    def ple_embedding_buffer(self) -> DeviceBuffer:
+        return self._buffers[2]
+
+    @property
+    def logits_buffer(self) -> DeviceBuffer:
+        return self._buffers[3]
+
+    def reset(self) -> None:
+        self._require_open()
+        assert self.state is not None
+        self.state.zero()
+        for attention in self.attention_states:
+            self.runtime.memset(attention.key_cache.ptr, 0, attention.key_cache.nbytes)
+            self.runtime.memset(attention.value_cache.ptr, 0, attention.value_cache.nbytes)
+            attention.set_position(0)
+        self._ple_hash_states = {}
+        self.position = 0
+
+    def step(self, token_id: int) -> Qwen4ExpTokenResult:
+        self._require_open()
+        if self.position >= self.max_sequence_length:
+            raise ValueError("Qwen4Exp dense runner sequence capacity exceeded")
+        cfg = self.config
+        assert self.state is not None
+        assert self.gdn_scratch is not None
+        assert self.qsa_scratch is not None
+        assert self.ple_scratch is not None
+        assert self.head_scratch is not None
+        token_host = np.asarray([int(token_id)], dtype=np.int32)
+        if token_host[0] < 0 or token_host[0] >= cfg.vocab_size:
+            raise ValueError("token_id is outside Qwen4Exp vocabulary")
+        copy_host_to_device(
+            self.token_id_buffer, host_array_ptr(token_host), runtime=self.runtime
+        )
+        token_weight = self.resident.weight("root.token_embedding")
+        embedding = resolve(
+            backend=self.backend,
+            layer="embedding",
+            quant=token_weight.spec.quant_key,
+            variant="lookup_bf16_out",
+        )
+        embedding(
+            self.token_id_buffer.ptr,
+            token_weight.allocation("raw").tensor.ptr,
+            self.embedding_buffer.ptr,
+            1,
+            cfg.hidden_size,
+            cfg.vocab_size,
+            runtime=self.runtime,
+        )
+        qwen4_exp_repeat_bf16_branches(
+            self.embedding_buffer.ptr,
+            self.state.residual.ptr,
+            cfg.residual_branch_count,
+            cfg.hidden_size,
+            runtime=self.runtime,
+        )
+        rows, self._ple_hash_states = ple_hash_rows(
+            [int(token_id)],
+            positions=[self.position],
+            sequence_ids=[0],
+            states=self._ple_hash_states,
+            eos_token_id=cfg.ple_eos_token_id,
+            layer_multipliers=cfg.ple_layer_multipliers,
+            head_offsets=cfg.ple_head_offsets,
+            head_vocab_sizes=cfg.ple_head_vocab_sizes,
+            heads_per_ngram=cfg.ple_heads_per_ngram,
+            ngram_size=cfg.ple_ngram_size,
+        )
+        staged = self.resident.ple_staging.stage(rows[0]).reshape(1, cfg.hidden_size)
+        copy_host_to_device(
+            self.ple_embedding_buffer,
+            host_array_ptr(staged),
+            staged.nbytes,
+            runtime=self.runtime,
+        )
+        residual_ptr = self.state.residual.ptr
+        gdn_conv_row_bytes = (
+            (2 * cfg.gdn_group_count * cfg.gdn_state_size + cfg.gdn_inner_size)
+            * cfg.gdn_conv_kernel * 4
+        )
+        gdn_matrix_row_bytes = (
+            cfg.gdn_time_step_rank * cfg.gdn_state_size * cfg.gdn_state_size * 4
+        )
+        for layer, kind in enumerate(cfg.layer_types):
+            if layer in cfg.ple_layers:
+                layer_prefix = f"layers.{layer}."
+                residual_ptr = run_qwen4_exp_ple(
+                    residual_ptr,
+                    self.ple_embedding_buffer.ptr,
+                    {
+                        "ple_key": self.resident.weight(layer_prefix + "ple_key"),
+                        "ple_value": self.resident.weight(layer_prefix + "ple_value"),
+                    },
+                    norm_key_ptr=self.resident.weight(
+                        layer_prefix + "ple_norm_key"
+                    ).allocation("raw").tensor.ptr,
+                    norm_query_ptr=self.resident.weight(
+                        layer_prefix + "ple_norm_query"
+                    ).allocation("raw").tensor.ptr,
+                    norm_conv_ptr=self.resident.weight(
+                        layer_prefix + "ple_norm_conv"
+                    ).allocation("raw").tensor.ptr,
+                    conv_weight_ptr=self.resident.weight(
+                        layer_prefix + "ple_conv1d"
+                    ).allocation("raw").tensor.ptr,
+                    conv_history_ptr=self.state.ple_conv.ptr,
+                    scratch=self.ple_scratch,
+                    rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
+                    conv_kernel=cfg.ple_conv_kernel, dilation=cfg.ple_ngram_size,
+                    runtime=self.runtime,
+                ).ptr
+            if kind == "gdn":
+                binding = self.gdn_bindings[layer]
+                residual_ptr = run_qwen4_exp_gdn_layer(
+                    residual_ptr,
+                    binding,
+                    conv_state_ptr=(
+                        self.state.gdn_conv.ptr
+                        + binding.gdn_state_index * gdn_conv_row_bytes
+                    ),
+                    recurrent_state_ptr=(
+                        self.state.gdn_matrix.ptr
+                        + binding.gdn_state_index * gdn_matrix_row_bytes
+                    ),
+                    scratch=self.gdn_scratch,
+                    rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
+                    low_rank=cfg.residual_low_rank,
+                    num_k_heads=cfg.gdn_group_count,
+                    num_v_heads=cfg.gdn_time_step_rank,
+                    head_dim=cfg.gdn_state_size,
+                    conv_kernel=cfg.gdn_conv_kernel,
+                    ffn=cfg.expert_feed_forward_length,
+                    experts=cfg.expert_count,
+                    top_k=cfg.expert_used_count,
+                    runtime=self.runtime,
+                ).ptr
+            else:
+                binding = self.qsa_bindings[layer]
+                residual_ptr = run_qwen4_exp_dense_qsa_layer(
+                    residual_ptr,
+                    binding,
+                    attention_state=self.attention_states[binding.qsa_state_index],
+                    scratch=self.qsa_scratch,
+                    position=self.position,
+                    rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
+                    low_rank=cfg.residual_low_rank,
+                    query_heads=cfg.attention_head_count,
+                    kv_heads=cfg.attention_kv_head_count,
+                    head_dim=cfg.attention_key_length,
+                    rotary_dim=cfg.rope_dimension_count,
+                    theta=cfg.rope_freq_base,
+                    ffn=cfg.expert_feed_forward_length,
+                    experts=cfg.expert_count,
+                    top_k=cfg.expert_used_count,
+                    runtime=self.runtime,
+                ).ptr
+        head_read = run_qwen4_exp_gr_read(
+            residual_ptr,
+            self.resident.weight("root.head_hc_norm").allocation("raw").tensor.ptr,
+            self.resident.weight("root.head_hc_down"),
+            self.resident.weight("root.head_hc_up"),
+            None,
+            self.head_scratch,
+            rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
+            low_rank=cfg.residual_low_rank, runtime=self.runtime,
+        )
+        launch_gguf_linear(
+            self.resident.weight("root.lm_head"),
+            head_read.mixed.ptr,
+            self.logits_buffer.ptr,
+            1,
+            cfg.hidden_size,
+            cfg.vocab_size,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            runtime=self.runtime,
+        )
+        self.runtime.device_synchronize()
+        logits = np.empty(cfg.vocab_size, dtype=np.float32)
+        copy_device_to_host(
+            host_array_ptr(logits), self.logits_buffer, runtime=self.runtime
+        )
+        result = Qwen4ExpTokenResult(int(np.argmax(logits)), logits)
+        self.position += 1
+        return result
+
+    def prefill(self, token_ids: list[int] | tuple[int, ...]) -> Qwen4ExpTokenResult:
+        if not token_ids:
+            raise ValueError("Qwen4Exp prefill requires at least one token")
+        self.reset()
+        result = None
+        for token in token_ids:
+            result = self.step(int(token))
+        assert result is not None
+        return result
+
+    def generate(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        max_new_tokens: int,
+    ) -> tuple[int, ...]:
+        count = int(max_new_tokens)
+        if count <= 0:
+            raise ValueError("max_new_tokens must be positive")
+        result = self.prefill(token_ids)
+        output: list[int] = []
+        for index in range(count):
+            output.append(result.token_id)
+            if index + 1 < count:
+                result = self.step(result.token_id)
+        return tuple(output)
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        for buffer in reversed(self._buffers):
+            free(buffer, runtime=self.runtime)
+        self._buffers = []
+        for state in reversed(self.attention_states):
+            state.close()
+        self.attention_states = ()
+        for owner in (
+            self.head_scratch,
+            self.ple_scratch,
+            self.qsa_scratch,
+            self.gdn_scratch,
+            self.state,
+        ):
+            if owner is not None:
+                owner.close()
+        self.closed = True
+
+    def _require_open(self) -> None:
+        if self.closed:
+            raise RuntimeError("Qwen4Exp resident model runner is closed")
+
+
 __all__ = [
     "Qwen4ExpDecodeState",
     "bind_qwen4_exp_gdn_layer",
@@ -1793,12 +2156,14 @@ __all__ = [
     "Qwen4ExpGDNLayerScratch",
     "Qwen4ExpGDNMixerDeviceWeights",
     "Qwen4ExpGDNScratch",
+    "Qwen4ExpGGUFResidentModelRunner",
     "Qwen4ExpGRDeviceWeights",
     "Qwen4ExpGRReadDeviceResult",
     "Qwen4ExpMoEDeviceResult",
     "Qwen4ExpMoEScratch",
     "Qwen4ExpGRScratch",
     "Qwen4ExpPLEScratch",
+    "Qwen4ExpTokenResult",
     "Qwen4ExpQSALayerDeviceWeights",
     "Qwen4ExpQSALayerScratch",
     "Qwen4ExpQSAMixerDeviceWeights",
