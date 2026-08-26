@@ -606,11 +606,13 @@ eligible: varied D128 IDs differ from C1, and hidden drift begins at decode step
 separately from scheduler performance; do not attribute this to CONCURRENCY2
 host overhead or publish the raw C8 rate as strict.
 
-Physical gfx1100 C2 remains unexposed. A process-local capability diagnostic
-after provider-group refill reaches exact C2/K1 proposal and R4 target/accept
-with zero D2H/recovery/hot allocation, but is only `0.503x` AR at `1/8` accepted
-drafts. K2/K3/full-suite spending is rejected from this premise. The refill fix
-is retained for lifecycle correctness; both physical capability constants and
+Physical gfx1100 C2 remains unexposed, but its acceptance blocker is closed.
+Differential tracing found packed provider cursor metadata one token ahead and
+physical selected commit missing the pre-output-norm BF16 target hidden row.
+After repair, full-suite D24 K2 is exact at `260/338 = 76.92%` draft acceptance
+versus the prior physical `18.43%`; zero candidate D2H/recovery remains. It is
+still only `16.974 vs 31.230 tok/s = 0.544x` AR because R6 target/accept costs
+207.8 ms/group. Break-even is approximately <=101 ms after proposal, so capability and
 automatic policy remain false/K0.
 
 C1 attribution also changes the tuning order: sampled K2 staged decode is
@@ -618,7 +620,7 @@ C1 attribution also changes the tuning order: sampled K2 staged decode is
 priming is `339.3 + 25.3 ms` versus direct prefill `305.9 ms`. Activation and
 shared prompt/provider ownership rank ahead of more hot target-leaf tuning.
 Evidence: [`recovery profile`](../benchmarks/results/2026-08-26-w7900-mtp-concurrency2-recovery-profile.json)
-and [`C2 refill`](../benchmarks/results/2026-08-26-w7900-specdec2-c2-provider-refill.json).
+and [`C2 root cause`](../benchmarks/results/2026-08-26-w7900-specdec2-c2-acceptance-root-cause.json).
 
 ## 15. Stop and no-chase rules
 

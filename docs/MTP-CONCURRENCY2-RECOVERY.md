@@ -1,8 +1,8 @@
 # MTP and CONCURRENCY2 Recovery — W7900
 
-- Status: **audit/profile complete; one lifecycle fix retained; performance recovery active**
+- Status: **C2 acceptance root cause fixed; target economics blocked; recovery active**
 - Hardware lane: AMD Radeon Pro W7900 / `gfx1100` / host `epyc`
-- Current source baseline: `694b96382`
+- Current source baseline: `bd7d51eda`
 - Scope: Generation-2 AR plus dense-GGUF and packed-PARO SPECDEC2
 - Normative architecture: [`CONCURRENCY2.md`](CONCURRENCY2.md),
   [`SPECDEC2.md`](SPECDEC2.md), and [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md)
@@ -35,8 +35,8 @@ SPECDEC2 has a different status:
   2.7%-3.9% behind direct MTP;
 - packed-PARO production C1/K1 is exact at `0.979x` AR / `0.960x` direct;
 - gfx1100 physical C2/C4 capabilities remain false and automatic policy is K0;
-- a clean diagnostic physical dense C2/K1 cycle now executes exactly after the
-  provider-refill fix, but is only `0.503x` AR at 12.5% draft acceptance.
+- physical C2 target-hidden/cursor repair restores full-suite D24 K2 acceptance
+  from `18.43%` to `76.92%`, but target cost leaves it at `0.544x` AR.
 
 Therefore the efficient recovery order is **profile contract -> C1 activation ->
 PARO physical MTP -> conditional dense physical MTP**, not more generic target
@@ -44,7 +44,7 @@ kernel work.
 
 Evidence:
 [`AR/MTP recovery profile`](../benchmarks/results/2026-08-26-w7900-mtp-concurrency2-recovery-profile.json),
-[`C2 provider refill`](../benchmarks/results/2026-08-26-w7900-specdec2-c2-provider-refill.json), and
+[`C2 root cause`](../benchmarks/results/2026-08-26-w7900-specdec2-c2-acceptance-root-cause.json), and
 [`gfx1100 SPECDEC2 closure`](../benchmarks/results/2026-08-25-w7900-specdec2-perf-campaign-closure.json).
 
 ## 2. What transfers from prior campaigns
@@ -83,9 +83,9 @@ Evidence:
 | 0 | AR C>1 | Legacy/default execution has no named gfx1100 strict/production/batch-invariant profile; D128 differs from C1 from layer 0 | Raw C8 speed is useful diagnostic capacity but cannot be labeled strict |
 | 1 | Dense C1 SPECDEC2 | Activation: sampled staged target prefill + NextN priming `339.3 + 25.3 ms` vs direct prefill `305.9 ms`; staged cycle `416.6 ms` is already faster than direct decode `433.5 ms` | Optimize shared prompt/target-hidden/provider activation before target leaves |
 | 2 | Packed PARO C1 | Production trails AR only 2.1%, with 80.92% accepted drafts and qualified T2 verifier | Best candidate for physical C2 once direct C2 ownership is refreshed |
-| 3 | Dense physical C2 | Exact device mechanics but D8 K1 accepts 1/8 and runs at 0.503x AR | Keep K0; do not spend K2/K3/full suite without a proposal-quality premise |
+| 3 | Dense physical C2 | Acceptance repaired to 76.92% at K2/D24; R6 target/accept is 207.8 ms/group and best wall is 0.544x AR | Keep K0; test two retained C1 R3 target graphs or an equivalent <=101 ms physical R6 owner |
 | 4 | Dense C1 residual | Required target/accept synchronization plus graph wall; no individual target primitive projects the campaign admission threshold | Reprofile only after activation contraction |
-| 5 | Conditional provider repair | gfx1151 P7 proves after-root snapshots can cut physical repair ~4x, but W7900 C1 repair is only 4.95-6.56 ms/request and dense C2 acceptance is low | Transfer source only after a W7900 operation-complete profile projects >=1% request saving |
+| 5 | Multi-slot provider arithmetic | Reject repair now follows C1; one full-accept continuation can still differ because physical provider KV/hidden is not C1-equivalent | Treat as profile/acceptance headroom, not the dominant 51% target-cost blocker |
 | 6 | Packed physical C2/C4 | gfx1100 direct C2 exists, but request-major MTP proposal/frontier and c4/c8 owner symmetry are unqualified | Implement only after matched AR C2 control and state oracle |
 
 ## 4. Recovery phases
@@ -157,22 +157,27 @@ Packed PARO is the higher-value physical MTP lane because C1 acceptance is
    credible path to the repository promotion floor. C4 follows C2; do not start
    c4/c8 symmetry first.
 
-### R4 — Reopen dense physical C2/C4 only conditionally
+### R4 — Dense physical C2 acceptance repair — complete; economics blocked
 
-The provider-refill fix is retained, but the measured low-acceptance K1 cell is
-not an optimization premise. Reopen only if one of these changes workload-
-general proposal quality without benchmark-specific policy:
+The physical provider-refill premise was valid but incomplete. Differential
+tracing proved initial candidates and GPU accept correct, then localized later
+collapse to stale target-attached state: packed NextN cursors conflated consumed
+position with the next input, and physical selected commit omitted the selected
+pre-output-norm BF16 target trunk row. The retained repair owns both surfaces.
 
-- a corrected physical provider hidden/state contract;
-- a different registered candidate depth with independent full-suite acceptance
-  evidence and a break-even cost model;
-- a provider artifact with materially higher heldout acceptance; or
-- target/frontier batching that changes the complete cost enough to cross the
-  predeclared gate despite measured acceptance.
+Full-suite results on W7900:
 
-Then run fixed C2/C4 K1-K3, varied composition, state/KV/following-cycle,
-allocation, profiler, category/heldout, and same-schedule repeat gates. Until
-then all physical cells remain K0.
+| Horizon | K | Acceptance | SPECDEC2 / AR | Exact |
+| --- | ---: | ---: | ---: | ---: |
+| D8 | 1 / 2 / 3 | 68.75% / 62.38% / 63.37% | 0.560x / 0.587x / 0.622x | 10/10 each |
+| D24 | 2 / 3 | **76.92%** / 56.85% | **0.544x** / 0.534x | 10/10 each |
+
+K2 is the fixed-cell winner, but its R6 target/accept costs 207.8 ms/group. It
+advances 5.65 visible tokens/group cycle versus two for AR, so break-even needs
+roughly <=115 ms complete cycle and <=101 ms target wall after proposal—a ~51% target reduction. The next
+dense premise is two retained C1 R3 target graphs or an equivalent cheaper R6
+owner. More acceptance tuning cannot close this gap. Physical capability and
+automatic policy remain false/K0.
 
 ### R5 — Continuous product gate
 
@@ -193,11 +198,13 @@ scope. The project target remains >1.3x. No wider scope inherits a C1 result.
    `batch_invariant -> strict` fallback before measuring another AR rate.
 2. **R2 attribution:** run matched direct/staged activation markers on dense K2
    and design one shared target-hidden/NextN priming owner.
-3. **R3 control:** refresh packed-PARO direct selected-batch C2 under current
-   production/strict manifests; profile actual target rows before MTP wiring.
-4. **R3 implementation:** physical PARO C2/K1 only if the control and C1
-   economics still support the premise.
+3. **Dense C2 target diagnostic:** compose two retained C1 R3 graph owners over
+   one C2/K2 provider cycle and compare operation-complete wall to the 101 ms target
+   break-even ceiling before designing a new physical kernel.
+4. **R3 control:** refresh packed-PARO direct selected-batch C2 under current
+   production/strict manifests; implement physical PARO only if its C1 premise
+   survives.
 
-This queue deliberately does not start a new kernel. Current evidence names
-profile ownership, activation duplication, and request-major provider grouping
-as the first recoverable boundaries.
+The next queue starts from measured target lowering and activation ownership;
+it does not reopen acceptance heuristics, generic fusion, or prompt-conditioned
+policy.

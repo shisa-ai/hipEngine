@@ -1,0 +1,923 @@
+{
+  "applicability": {
+    "bf16_relative": {
+      "reason": "No aligned BF16/full-precision Qwen3.8 teacher is available on this host; model quant and BF16 KV are unchanged, and P8 measures implementation-state drift against FP32-state same-quant strict.",
+      "status": "not_applicable"
+    },
+    "external_task": {
+      "reason": "P8 makes no new task capability claim; task59 full category/heldout production AR equality and P9 product qualification are binding before automatic promotion.",
+      "status": "deferred_to_complete_request_gate"
+    }
+  },
+  "date": "2026-08-26",
+  "decision": {
+    "automatic_policy": "K0",
+    "determinism_isolation": "passed",
+    "economics_lifecycle": "pending_task59",
+    "profile_numerics": "passed",
+    "profiler_manifest": "passed",
+    "transaction_ownership": "passed_eager_only"
+  },
+  "general_strict_teacher": {
+    "by_scope": {
+      "category": {
+        "code": {
+          "candidate_teacher_nll_mean": 0.05289572118566962,
+          "kl_max": 0.0003748131237380611,
+          "kl_mean": 1.7057545000194272e-05,
+          "kl_p50": 3.393351633107954e-08,
+          "kl_p95": 9.86239875156124e-05,
+          "kl_p99": 0.0003087339109925044,
+          "max_abs_logit_delta": 0.5802183151245117,
+          "passed": true,
+          "rows": 150,
+          "strict_margin_min": 0.047634124755859375,
+          "strict_teacher_nll_mean": 0.05301374543874827,
+          "teacher_delta_p_mean": 4.042261399884506e-05,
+          "teacher_nll_delta": -0.00011802425307864961,
+          "top1_agreement": 1.0,
+          "top1_matches": 150,
+          "topk_overlap_mean": 0.9920000000000001
+        },
+        "general_en": {
+          "candidate_teacher_nll_mean": 0.2150013364702594,
+          "kl_max": 0.0006339053360402501,
+          "kl_mean": 4.47677688839016e-05,
+          "kl_p50": 4.507372265346301e-06,
+          "kl_p95": 0.00015648626042811763,
+          "kl_p99": 0.00032273259280215995,
+          "max_abs_logit_delta": 0.3617873191833496,
+          "passed": true,
+          "rows": 100,
+          "strict_margin_min": 0.00908660888671875,
+          "strict_teacher_nll_mean": 0.21544004069570474,
+          "teacher_delta_p_mean": 0.00015638125326479068,
+          "teacher_nll_delta": -0.00043870422544534105,
+          "top1_agreement": 1.0,
+          "top1_matches": 100,
+          "topk_overlap_mean": 0.992
+        },
+        "general_ja": {
+          "candidate_teacher_nll_mean": 0.280731932794199,
+          "kl_max": 0.0006880802593287258,
+          "kl_mean": 7.191207058065204e-05,
+          "kl_p50": 1.8063828467940375e-05,
+          "kl_p95": 0.0003050773606969523,
+          "kl_p99": 0.000516868632159883,
+          "max_abs_logit_delta": 0.38429689407348633,
+          "passed": true,
+          "rows": 100,
+          "strict_margin_min": 0.011150360107421875,
+          "strict_teacher_nll_mean": 0.28129262360415064,
+          "teacher_delta_p_mean": 0.0004223815337490161,
+          "teacher_nll_delta": -0.0005606908099516361,
+          "top1_agreement": 0.98,
+          "top1_matches": 98,
+          "topk_overlap_mean": 0.9880000000000001
+        },
+        "mixed_ja_en": {
+          "candidate_teacher_nll_mean": 0.19834362049217577,
+          "kl_max": 0.0003254559548103513,
+          "kl_mean": 3.781461883810115e-05,
+          "kl_p50": 5.1477421459662416e-06,
+          "kl_p95": 0.00018252046097065404,
+          "kl_p99": 0.00023386830704975257,
+          "max_abs_logit_delta": 0.40758538246154785,
+          "passed": true,
+          "rows": 100,
+          "strict_margin_min": 0.0042667388916015625,
+          "strict_teacher_nll_mean": 0.19863146253097766,
+          "teacher_delta_p_mean": 0.00016031441340883995,
+          "teacher_nll_delta": -0.00028784203880188874,
+          "top1_agreement": 1.0,
+          "top1_matches": 100,
+          "topk_overlap_mean": 0.996
+        }
+      },
+      "shape": {
+        "c1": {
+          "candidate_teacher_nll_mean": 0.1695551727172145,
+          "kl_max": 0.0006880802593287258,
+          "kl_mean": 4.168536476920051e-05,
+          "kl_p50": 2.4350472188369566e-06,
+          "kl_p95": 0.00019925587125610544,
+          "kl_p99": 0.0004340589775872737,
+          "max_abs_logit_delta": 0.5802183151245117,
+          "passed": true,
+          "rows": 432,
+          "strict_margin_min": 0.0042667388916015625,
+          "strict_teacher_nll_mean": 0.16989412490559805,
+          "teacher_delta_p_mean": 0.00018511831514373016,
+          "teacher_nll_delta": -0.0003389521883835622,
+          "top1_agreement": 0.9953703703703703,
+          "top1_matches": 430,
+          "topk_overlap_mean": 0.9916666666666667
+        },
+        "prefill_last": {
+          "candidate_teacher_nll_mean": 0.22745625220428853,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 18,
+          "strict_margin_min": 0.019514083862304688,
+          "strict_teacher_nll_mean": 0.22745625220428853,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 18,
+          "topk_overlap_mean": 1.0
+        }
+      },
+      "transition": {
+        "prefill_to_c1": {
+          "candidate_teacher_nll_mean": 0.22745625220428853,
+          "kl_max": 0.0,
+          "kl_mean": 0.0,
+          "kl_p50": 0.0,
+          "kl_p95": 0.0,
+          "kl_p99": 0.0,
+          "max_abs_logit_delta": 0.0,
+          "passed": true,
+          "rows": 18,
+          "strict_margin_min": 0.019514083862304688,
+          "strict_teacher_nll_mean": 0.22745625220428853,
+          "teacher_delta_p_mean": 0.0,
+          "teacher_nll_delta": 0.0,
+          "top1_agreement": 1.0,
+          "top1_matches": 18,
+          "topk_overlap_mean": 1.0
+        },
+        "steady": {
+          "candidate_teacher_nll_mean": 0.1695551727172145,
+          "kl_max": 0.0006880802593287258,
+          "kl_mean": 4.168536476920051e-05,
+          "kl_p50": 2.4350472188369566e-06,
+          "kl_p95": 0.00019925587125610544,
+          "kl_p99": 0.0004340589775872737,
+          "max_abs_logit_delta": 0.5802183151245117,
+          "passed": true,
+          "rows": 432,
+          "strict_margin_min": 0.0042667388916015625,
+          "strict_teacher_nll_mean": 0.16989412490559805,
+          "teacher_delta_p_mean": 0.00018511831514373016,
+          "teacher_nll_delta": -0.0003389521883835622,
+          "top1_agreement": 0.9953703703703703,
+          "top1_matches": 430,
+          "topk_overlap_mean": 0.9916666666666667
+        }
+      }
+    },
+    "evidence": {
+      "bytes": 35665,
+      "path": "/tmp/specdec2-p8-fp16-general-profile.json",
+      "sha256": "34ccf300283c96978bd42ce868f66c8be794a7fcd9e97270129b45b152021a22"
+    },
+    "measurement_valid": true,
+    "prompt_count": 18,
+    "repeat_determinism_passed": true,
+    "review_row_count": 0,
+    "scope_failures": [],
+    "state_mismatch_count": 0,
+    "state_repeat_passed": true,
+    "status": "passed",
+    "summary": {
+      "candidate_teacher_nll_mean": 0.17187121589669746,
+      "kl_max": 0.0006880802593287258,
+      "kl_mean": 4.0017950178432497e-05,
+      "kl_p50": 1.8720055044184534e-06,
+      "kl_p95": 0.00019545033246957914,
+      "kl_p99": 0.00042783196926578107,
+      "max_abs_logit_delta": 0.5802183151245117,
+      "rows": 450,
+      "strict_margin_min": 0.0042667388916015625,
+      "strict_teacher_nll_mean": 0.17219660999754563,
+      "teacher_delta_p_mean": 0.00017771358253798096,
+      "teacher_nll_delta": -0.0003253941008481698,
+      "top1_agreement": 0.9955555555555555,
+      "top1_matches": 448,
+      "topk_overlap_mean": 0.9920000000000001
+    },
+    "top1_mismatch_count": 2
+  },
+  "graph_rejection": {
+    "decision": "FP16 native target graph rejected; eager retained",
+    "observed": "row0/reject exact; accepted row1+ state diverges after layer51 in graph, eager exact for reject/partial/full",
+    "pre_repair_operation_evidence": {
+      "bytes": 10467,
+      "path": "/tmp/specdec2-p8-fp16-operation-profile.json",
+      "sha256": "dd86c3d60e1d5007ef529d9b5b4fb1d47d0ef7f90b4761424a3630b6cde2e6da"
+    },
+    "source_row_log": {
+      "bytes": 12145,
+      "path": "/tmp/vstack-pi-bg/bg-109-1787698168626.log",
+      "sha256": "ab576589dc2040620cbf1782e2f5a2827b15ae4f0f30e711caf0bd4369bbda65"
+    }
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "compiler": "AMD clang 23",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "host": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2",
+    "rocm": "HIP 7.15.0"
+  },
+  "implementation": {
+    "arithmetic_class": "T1",
+    "automatic_policy": "K0 unchanged",
+    "eager_guard_commit": "59fd77d404f7f1c681340b93060298d4d9d33cb8",
+    "production_manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+    "profile_commit": "c1bbdf37ce1cf57d5dcef1aeaade54ee7b437c5f",
+    "proposal_fallback_commit": "a259a836c",
+    "strict_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+    "target_owner": "eager under FP16; native target graph and C1 device proposal handoff fail closed"
+  },
+  "kind": "specdec2_p8_fp16_profile_qualification",
+  "model": {
+    "candidate_state": "FP16",
+    "kv": "BF16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "quant": "Q4_K_S",
+    "sampled_sha256": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa",
+    "strict_state": "FP32"
+  },
+  "performance_claim": false,
+  "profiler": {
+    "production": {
+      "chain_dispatches": 288,
+      "chain_symbols": {
+        "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, _Float16, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, _Float16 const*, _Float16*, _Float16*, long const*, float*, unsigned short*, float, long, long, long, long, long)": 288
+      },
+      "evidence": {
+        "hip_api_trace": {
+          "bytes": 9151928,
+          "path": "/tmp/specdec2-p8-production-profile-v3/gfx1151/3645194_hip_api_trace.csv",
+          "sha256": "c27860ac0703c51fb33ae29f995a325d2a23868661aa94863989974961948376"
+        },
+        "kernel_trace": {
+          "bytes": 5915917,
+          "path": "/tmp/specdec2-p8-production-profile-v3/gfx1151/3645194_kernel_trace.csv",
+          "sha256": "8fc032e06a7e1463d29984bc3c8f023407126a6457f2ba291b05cc06ffb8edb2"
+        },
+        "memory_copy_trace": {
+          "bytes": 99180,
+          "path": "/tmp/specdec2-p8-production-profile-v3/gfx1151/3645194_memory_copy_trace.csv",
+          "sha256": "7a325f2ad1efc41e00a328ae51e49d09734ead386e30566f89f76591afe3a2a4"
+        },
+        "result": {
+          "bytes": 27671,
+          "path": "/tmp/specdec2-p8-production-profile-v3.json",
+          "sha256": "fbc7ce1df7c65f97ae5fa2bcb784120178818a8c2b68610a2cb7fd615287c87e"
+        }
+      },
+      "manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+      "passed": true,
+      "profile": "production",
+      "routes": [
+        [
+          "eager",
+          "eager",
+          "eager"
+        ],
+        [
+          "eager",
+          "eager",
+          "eager"
+        ]
+      ],
+      "strict_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+    },
+    "strict": {
+      "chain_dispatches": 288,
+      "chain_symbols": {
+        "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, float, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, float*, float*, long const*, float*, unsigned short*, float, long, long, long, long, long)": 288
+      },
+      "evidence": {
+        "hip_api_trace": {
+          "bytes": 5971732,
+          "path": "/tmp/specdec2-p8-strict-profile-v3/gfx1151/3645897_hip_api_trace.csv",
+          "sha256": "64c2ae61e77e44d7a6fa2c7a90bb11e7579310a3eb1f2bf874d23111d880e4fc"
+        },
+        "kernel_trace": {
+          "bytes": 5419546,
+          "path": "/tmp/specdec2-p8-strict-profile-v3/gfx1151/3645897_kernel_trace.csv",
+          "sha256": "2822ee3d6690a004b31a1e1621ae592701ae5be88ae8c71a81951633037494d8"
+        },
+        "memory_copy_trace": {
+          "bytes": 97326,
+          "path": "/tmp/specdec2-p8-strict-profile-v3/gfx1151/3645897_memory_copy_trace.csv",
+          "sha256": "aecf025df0b2caa2f998dd2b854aba7fe695f4de2e4b5fbfe5cfbebf88317715"
+        },
+        "result": {
+          "bytes": 27663,
+          "path": "/tmp/specdec2-p8-strict-profile-v3.json",
+          "sha256": "73cbcc63b465baededaf1037d4c7ea86397b1c281aa677ea67b1b72cae7611bc"
+        }
+      },
+      "manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+      "passed": true,
+      "profile": "strict",
+      "routes": [
+        [
+          "graph",
+          "graph",
+          "graph"
+        ],
+        [
+          "graph",
+          "graph",
+          "graph"
+        ]
+      ],
+      "strict_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+    }
+  },
+  "same_width_isolation": {
+    "c2": {
+      "base": {
+        "code_markdown_table": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654
+        ],
+        "general_en_explain": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          10597
+        ]
+      },
+      "neighbor": {
+        "code_markdown_table": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654
+        ],
+        "code_merge_intervals": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654
+        ]
+      },
+      "permutation": {
+        "code_markdown_table": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654
+        ],
+        "general_en_explain": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          10597
+        ]
+      },
+      "repeat": {
+        "code_markdown_table": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654
+        ],
+        "general_en_explain": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          10597
+        ]
+      }
+    },
+    "c4": {
+      "base": {
+        "code_markdown_table": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654
+        ],
+        "general_en_explain": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          10597
+        ],
+        "general_ja_explain": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          369,
+          9859,
+          728
+        ],
+        "mixed_ja_en_review": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          728,
+          310
+        ]
+      },
+      "neighbor": {
+        "code_markdown_table": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654
+        ],
+        "code_merge_intervals": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654
+        ],
+        "general_en_plan": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          14542
+        ],
+        "general_ja_plan": [
+          271,
+          248068,
+          198,
+          176034,
+          14876,
+          95872,
+          113652,
+          24950
+        ]
+      },
+      "permutation": {
+        "code_markdown_table": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654
+        ],
+        "general_en_explain": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          10597
+        ],
+        "general_ja_explain": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          369,
+          9859,
+          728
+        ],
+        "mixed_ja_en_review": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          728,
+          310
+        ]
+      },
+      "repeat": {
+        "code_markdown_table": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          12654
+        ],
+        "general_en_explain": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          264,
+          10597
+        ],
+        "general_ja_explain": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          369,
+          9859,
+          728
+        ],
+        "mixed_ja_en_review": [
+          271,
+          248068,
+          198,
+          760,
+          1156,
+          6587,
+          728,
+          310
+        ]
+      }
+    },
+    "evidence": {
+      "bytes": 124054,
+      "path": "/tmp/specdec2-p8-fp16-isolation.json",
+      "sha256": "81c1050c4552f2d9e186f195a061030f34d0ff3c0db7777fd44e20da14f75b2b"
+    },
+    "manifest": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+    "passed": true,
+    "strict_manifest": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+  },
+  "schema": 1,
+  "smokes": {
+    "c1_final": {
+      "bytes": 27672,
+      "path": "/tmp/specdec2-p8-production-c1-eager-smoke.json",
+      "sha256": "7b749c695016d61eaa87604b1c5b60086fca3c6ad5a44080af129fbfa8f083d6"
+    },
+    "c2": {
+      "bytes": 51048,
+      "path": "/tmp/specdec2-p8-fp16-c2-smoke.json",
+      "sha256": "3c9f6accabda1e174f6cd8202b93161973123b93d0d87b903a53aef81c94f30f"
+    },
+    "c4": {
+      "bytes": 85744,
+      "path": "/tmp/specdec2-p8-fp16-c4-smoke.json",
+      "sha256": "69b4741fb0e56fe51fe2d94274ebdc8899fcfb3429dc9ee38c79cd22d0b9bd9a"
+    }
+  },
+  "specdec2_operation": {
+    "controls": [
+      {
+        "accepted": 0,
+        "following_logits_equal": true,
+        "graph": false,
+        "state_equal": true
+      },
+      {
+        "accepted": 1,
+        "following_logits_equal": true,
+        "graph": false,
+        "state_equal": true
+      },
+      {
+        "accepted": 3,
+        "following_logits_equal": true,
+        "graph": false,
+        "state_equal": true
+      }
+    ],
+    "evidence": {
+      "bytes": 10463,
+      "path": "/tmp/specdec2-p8-fp16-operation-profile-fixed.json",
+      "sha256": "857f242f2b1840232974d7e3e56a728e567e94a3d8a5c6d7e2f212211186e8aa"
+    },
+    "passed": true,
+    "postcommit_rollback": {
+      "changed": true,
+      "restored": true
+    },
+    "production_chain_scalar_logits_exact": true,
+    "prompts": [
+      {
+        "category": "code",
+        "id": "code_markdown_table"
+      },
+      {
+        "category": "general_en",
+        "id": "general_en_explain"
+      },
+      {
+        "category": "general_ja",
+        "id": "general_ja_explain"
+      },
+      {
+        "category": "mixed_ja_en",
+        "id": "mixed_ja_en_review"
+      }
+    ],
+    "quality": {
+      "by_scope": {
+        "category": {
+          "code": {
+            "candidate_teacher_nll_mean": 0.04120465611163757,
+            "kl_max": 0.0001774472873779511,
+            "kl_mean": 3.9673761470987926e-05,
+            "kl_p50": 6.462551031679332e-07,
+            "kl_p95": 0.0001774472873779511,
+            "kl_p99": 0.0001774472873779511,
+            "max_abs_logit_delta": 0.38375282287597656,
+            "passed": true,
+            "rows": 9,
+            "strict_margin_min": 2.0102310180664062,
+            "strict_teacher_nll_mean": 0.03939468520330833,
+            "teacher_delta_p_mean": -0.0015105193036870264,
+            "teacher_nll_delta": 0.0018099709083292462,
+            "top1_agreement": 1.0,
+            "top1_matches": 9,
+            "topk_overlap_mean": 1.0
+          },
+          "general_en": {
+            "candidate_teacher_nll_mean": 0.2018101575005942,
+            "kl_max": 5.693452276804903e-05,
+            "kl_mean": 2.6358802274747725e-05,
+            "kl_p50": 1.3809459228708937e-05,
+            "kl_p95": 5.693452276804903e-05,
+            "kl_p99": 5.693452276804903e-05,
+            "max_abs_logit_delta": 0.1580737829208374,
+            "passed": true,
+            "rows": 9,
+            "strict_margin_min": 1.0806884765625,
+            "strict_teacher_nll_mean": 0.20512107752040704,
+            "teacher_delta_p_mean": 0.0020290338711078165,
+            "teacher_nll_delta": -0.003310920019812841,
+            "top1_agreement": 1.0,
+            "top1_matches": 9,
+            "topk_overlap_mean": 1.0
+          },
+          "general_ja": {
+            "candidate_teacher_nll_mean": 0.23480787192143515,
+            "kl_max": 0.00020601929063785059,
+            "kl_mean": 7.257287072998927e-05,
+            "kl_p50": 1.859765224359776e-05,
+            "kl_p95": 0.00020187221711406568,
+            "kl_p99": 0.0002051898759330936,
+            "max_abs_logit_delta": 0.16649019718170166,
+            "passed": true,
+            "rows": 9,
+            "strict_margin_min": 0.5904827117919922,
+            "strict_teacher_nll_mean": 0.23625122538373264,
+            "teacher_delta_p_mean": 0.0009058546911086848,
+            "teacher_nll_delta": -0.0014433534622974864,
+            "top1_agreement": 1.0,
+            "top1_matches": 9,
+            "topk_overlap_mean": 1.0
+          },
+          "mixed_ja_en": {
+            "candidate_teacher_nll_mean": 0.2994909363627623,
+            "kl_max": 0.0007158026761204286,
+            "kl_mean": 0.00031858111910173256,
+            "kl_p50": 0.00020484078968397546,
+            "kl_p95": 0.0007158026761204286,
+            "kl_p99": 0.0007158026761204286,
+            "max_abs_logit_delta": 0.37358856201171875,
+            "passed": true,
+            "rows": 9,
+            "strict_margin_min": 0.42229270935058594,
+            "strict_teacher_nll_mean": 0.30917430838862386,
+            "teacher_delta_p_mean": 0.0043124662539942606,
+            "teacher_nll_delta": -0.009683372025861559,
+            "top1_agreement": 1.0,
+            "top1_matches": 9,
+            "topk_overlap_mean": 1.0
+          }
+        },
+        "shape": {
+          "c1_k1": {
+            "candidate_teacher_nll_mean": 0.16936437898432533,
+            "kl_max": 0.0007158026761204286,
+            "kl_mean": 0.00012464343934212365,
+            "kl_p50": 9.621953673382847e-06,
+            "kl_p95": 0.0005369660158676697,
+            "kl_p99": 0.0006800353440698767,
+            "max_abs_logit_delta": 0.38375282287597656,
+            "passed": true,
+            "rows": 8,
+            "strict_margin_min": 0.42229270935058594,
+            "strict_teacher_nll_mean": 0.17384297166720708,
+            "teacher_delta_p_mean": 0.002116683997947774,
+            "teacher_nll_delta": -0.004478592682881755,
+            "top1_agreement": 1.0,
+            "top1_matches": 8,
+            "topk_overlap_mean": 1.0
+          },
+          "c1_k2": {
+            "candidate_teacher_nll_mean": 0.19694036894191405,
+            "kl_max": 0.0007158026761204286,
+            "kl_mean": 0.00011534291354999324,
+            "kl_p50": 1.6203555736153348e-05,
+            "kl_p95": 0.00043477363858037907,
+            "kl_p99": 0.000659596868612419,
+            "max_abs_logit_delta": 0.38375282287597656,
+            "passed": true,
+            "rows": 12,
+            "strict_margin_min": 0.42229270935058594,
+            "strict_teacher_nll_mean": 0.19956280803716808,
+            "teacher_delta_p_mean": 0.0010312874476098345,
+            "teacher_nll_delta": -0.002622439095254031,
+            "top1_agreement": 1.0,
+            "top1_matches": 12,
+            "topk_overlap_mean": 1.0
+          },
+          "c1_k3": {
+            "candidate_teacher_nll_mean": 0.20485144611814324,
+            "kl_max": 0.0007158026761204286,
+            "kl_mean": 0.00010833853155376309,
+            "kl_p50": 2.8269307000067213e-05,
+            "kl_p95": 0.00033346513700849506,
+            "kl_p99": 0.0006393351682980417,
+            "max_abs_logit_delta": 0.38375282287597656,
+            "passed": true,
+            "rows": 16,
+            "strict_margin_min": 0.42229270935058594,
+            "strict_teacher_nll_mean": 0.20774838741756085,
+            "teacher_delta_p_mean": 0.001395162391113338,
+            "teacher_nll_delta": -0.002896941299417616,
+            "top1_agreement": 1.0,
+            "top1_matches": 16,
+            "topk_overlap_mean": 1.0
+          }
+        },
+        "transition": {
+          "parent1": {
+            "candidate_teacher_nll_mean": 0.3343578864438193,
+            "kl_max": 0.0007158026761204286,
+            "kl_mean": 0.00019799527655881084,
+            "kl_p50": 3.776608750582339e-05,
+            "kl_p95": 0.0007158026761204286,
+            "kl_p99": 0.0007158026761204286,
+            "max_abs_logit_delta": 0.3593168258666992,
+            "passed": true,
+            "rows": 12,
+            "strict_margin_min": 0.42229270935058594,
+            "strict_teacher_nll_mean": 0.34392533696935207,
+            "teacher_delta_p_mean": 0.004834566782288607,
+            "teacher_nll_delta": -0.009567450525532761,
+            "top1_agreement": 1.0,
+            "top1_matches": 12,
+            "topk_overlap_mean": 1.0
+          },
+          "parent2": {
+            "candidate_teacher_nll_mean": 0.25209234885709164,
+            "kl_max": 0.00019565160682838835,
+            "kl_mean": 9.674186196573242e-05,
+            "kl_p50": 9.562837330333e-05,
+            "kl_p95": 0.00019565160682838835,
+            "kl_p99": 0.00019565160682838835,
+            "max_abs_logit_delta": 0.22095727920532227,
+            "passed": true,
+            "rows": 8,
+            "strict_margin_min": 0.5904827117919922,
+            "strict_teacher_nll_mean": 0.2510024807770901,
+            "teacher_delta_p_mean": -0.0011395056530660447,
+            "teacher_nll_delta": 0.0010898680800015548,
+            "top1_agreement": 1.0,
+            "top1_matches": 8,
+            "topk_overlap_mean": 1.0
+          },
+          "parent3": {
+            "candidate_teacher_nll_mean": 0.2285846776468306,
+            "kl_max": 0.00020601929063785059,
+            "kl_mean": 8.732538556507254e-05,
+            "kl_p50": 7.156122370157739e-05,
+            "kl_p95": 0.0001908936198891657,
+            "kl_p99": 0.00020299415648811358,
+            "max_abs_logit_delta": 0.2174062728881836,
+            "passed": true,
+            "rows": 4,
+            "strict_margin_min": 0.6278438568115234,
+            "strict_teacher_nll_mean": 0.23230512555873922,
+            "teacher_delta_p_mean": 0.0024867872216238485,
+            "teacher_nll_delta": -0.00372044791190862,
+            "top1_agreement": 1.0,
+            "top1_matches": 4,
+            "topk_overlap_mean": 1.0
+          },
+          "root": {
+            "candidate_teacher_nll_mean": 0.004370871524831384,
+            "kl_max": 0.00020484078968397546,
+            "kl_mean": 5.129160212543648e-05,
+            "kl_p50": 1.5608015147141632e-07,
+            "kl_p95": 0.00020484078968397546,
+            "kl_p99": 0.00020484078968397546,
+            "max_abs_logit_delta": 0.38375282287597656,
+            "passed": true,
+            "rows": 12,
+            "strict_margin_min": 5.388673782348633,
+            "strict_teacher_nll_mean": 0.0037606063650620623,
+            "teacher_delta_p_mean": -0.000601198786393059,
+            "teacher_nll_delta": 0.0006102651597693219,
+            "top1_agreement": 1.0,
+            "top1_matches": 12,
+            "topk_overlap_mean": 1.0
+          }
+        }
+      },
+      "eligible_for_automatic_admission": true,
+      "finite": true,
+      "hard_gates_passed": true,
+      "requires_outlier_review": false,
+      "rows_over_review_boundary": [],
+      "scope_failures": [],
+      "summary": {
+        "candidate_teacher_nll_mean": 0.19432840547410732,
+        "kl_max": 0.0007158026761204286,
+        "kl_mean": 0.00011429663839436437,
+        "kl_p50": 1.859765224359776e-05,
+        "kl_p95": 0.0007158026761204286,
+        "kl_p99": 0.0007158026761204286,
+        "max_abs_logit_delta": 0.38375282287597656,
+        "rows": 36,
+        "strict_margin_min": 0.42229270935058594,
+        "strict_teacher_nll_mean": 0.19748532412401795,
+        "teacher_delta_p_mean": 0.0014342088781309338,
+        "teacher_nll_delta": -0.003156918649910634,
+        "top1_agreement": 1.0,
+        "top1_matches": 36,
+        "topk_overlap_mean": 1.0
+      },
+      "thresholds": {
+        "max_kl_max": 0.05,
+        "mean_kl_max": 0.001,
+        "p95_kl_max": 0.005,
+        "p99_kl_max": 0.02,
+        "per_scope_top1_min": 0.97,
+        "review_kl": 0.02,
+        "top1_min": 0.99
+      },
+      "top1_mismatch_rows": [],
+      "top_k": 5
+    },
+    "repeat_deterministic": true,
+    "status": "passed",
+    "strict_target_logits_exact": true
+  },
+  "status": "passed_economics_pending"
+}
