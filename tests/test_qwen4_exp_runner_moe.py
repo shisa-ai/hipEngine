@@ -1,0 +1,231 @@
+from __future__ import annotations
+
+import ctypes
+from math import prod
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from hipengine.core.memory import (
+    copy_device_to_host,
+    copy_host_to_device,
+    free,
+    host_array_ptr,
+    malloc,
+)
+from hipengine.kernels.cpu_reference.qwen4_exp import (
+    Qwen4ExpMoEWeights,
+    qwen4_exp_moe,
+)
+from hipengine.loading.gguf import GGUFTensorInfo
+from hipengine.loading.materialize import (
+    DeviceTensorAllocation,
+    float_array_to_bf16_bits,
+)
+from hipengine.loading.qwen4_exp_gguf import Qwen4ExpGGUFTensorRef
+from hipengine.loading.qwen4_exp_materialize import (
+    LAYOUT_RAW_GGUF,
+    Qwen4ExpDeviceWeight,
+    Qwen4ExpGGUFWeightSpec,
+)
+from hipengine.quant.gguf import (
+    GGMLQuantizationType,
+    bf16_to_float32,
+    dequantize_gguf_data,
+)
+from hipengine.runtime.qwen4_exp_runner import (
+    Qwen4ExpMoEScratch,
+    run_qwen4_exp_moe,
+)
+from tests._gguf_synthetic_weights import make_q4_k_weight
+from tests.test_qwen4_exp_runner_gr import _dense_f32_weight
+
+
+def _hip_available() -> bool:
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(510)
+    rows, hidden, ffn, experts, top_k = 1, 256, 256, 4, 2
+    mixed = rng.normal(0.0, 0.1, size=(rows, hidden)).astype(np.float32)
+    router = rng.normal(0.0, 0.1, size=(experts, hidden)).astype(np.float32)
+    gate_raw = np.stack([make_q4_k_weight(ffn, hidden) for _ in range(experts)])
+    up_raw = np.stack([make_q4_k_weight(ffn, hidden) for _ in range(experts)])
+    down_raw = np.stack([make_q4_k_weight(hidden, ffn) for _ in range(experts)])
+    expert_gate = np.stack(
+        [dequantize_gguf_data(value, GGMLQuantizationType.Q4_K) for value in gate_raw]
+    )
+    expert_up = np.stack(
+        [dequantize_gguf_data(value, GGMLQuantizationType.Q4_K) for value in up_raw]
+    )
+    expert_down = np.stack(
+        [dequantize_gguf_data(value, GGMLQuantizationType.Q4_K) for value in down_raw]
+    )
+    shared_gate = rng.normal(0.0, 0.1, size=(ffn, hidden)).astype(np.float32)
+    shared_up = rng.normal(0.0, 0.1, size=(ffn, hidden)).astype(np.float32)
+    shared_down = rng.normal(0.0, 0.1, size=(hidden, ffn)).astype(np.float32)
+    shared_scalar = rng.normal(0.0, 0.1, size=(hidden,)).astype(np.float32)
+    expected = qwen4_exp_moe(
+        mixed,
+        Qwen4ExpMoEWeights(
+            router=router,
+            expert_gate=expert_gate,
+            expert_up=expert_up,
+            expert_down=expert_down,
+            shared_gate=shared_gate,
+            shared_up=shared_up,
+            shared_down=shared_down,
+            shared_gate_weight=shared_scalar,
+            experts_used=top_k,
+        ),
+    )
+
+    allocations = []
+    scratch = None
+    try:
+        d_mixed = _upload(mixed, runtime, allocations)
+        weights = {
+            "router": _dense_f32_weight("router", router, runtime, allocations),
+            "expert_gate": _q4_weight("expert_gate", gate_raw, runtime, allocations),
+            "expert_up": _q4_weight("expert_up", up_raw, runtime, allocations),
+            "expert_down": _q4_weight("expert_down", down_raw, runtime, allocations),
+            "shared_gate": _dense_f32_weight("shared_gate", shared_gate, runtime, allocations),
+            "shared_up": _dense_f32_weight("shared_up", shared_up, runtime, allocations),
+            "shared_down": _dense_f32_weight("shared_down", shared_down, runtime, allocations),
+            "shared_gate_weight": _dense_f32_weight(
+                "shared_gate_weight",
+                shared_scalar.reshape(1, hidden),
+                runtime,
+                allocations,
+            ),
+        }
+        scratch = Qwen4ExpMoEScratch.allocate(
+            rows=rows,
+            hidden=hidden,
+            ffn=ffn,
+            experts=experts,
+            top_k=top_k,
+            runtime=runtime,
+        )
+        result = run_qwen4_exp_moe(
+            d_mixed.ptr,
+            weights,
+            scratch=scratch,
+            rows=rows,
+            hidden=hidden,
+            ffn=ffn,
+            experts=experts,
+            top_k=top_k,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        actual_bits = _download(result.output, (rows, hidden), np.uint16, runtime)
+        selected = _download(result.selected, (rows, top_k), np.int32, runtime)
+        routing = _download(result.routing, (rows, top_k), np.float32, runtime)
+        finite_boundaries = {
+            "expert_gate": bf16_to_float32(
+                _download(scratch.expert_gate, (top_k, ffn), np.uint16, runtime)
+            ),
+            "expert_up": bf16_to_float32(
+                _download(scratch.expert_up, (top_k, ffn), np.uint16, runtime)
+            ),
+            "expert_intermediate": bf16_to_float32(
+                _download(scratch.expert_intermediate, (top_k, ffn), np.uint16, runtime)
+            ),
+            "expert_down": bf16_to_float32(
+                _download(scratch.expert_down, (top_k, hidden), np.uint16, runtime)
+            ),
+            "routed": bf16_to_float32(
+                _download(scratch.routed, (rows, hidden), np.uint16, runtime)
+            ),
+            "shared_down": _download(
+                scratch.shared_down, (rows, hidden), np.float32, runtime
+            ),
+        }
+    finally:
+        if scratch is not None:
+            scratch.close()
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    for name, boundary in finite_boundaries.items():
+        assert np.isfinite(boundary).all(), name
+    np.testing.assert_array_equal(selected, expected.selected_experts.astype(np.int32))
+    np.testing.assert_allclose(routing, expected.routing_weights, rtol=2e-6, atol=2e-6)
+    np.testing.assert_allclose(
+        bf16_to_float32(actual_bits),
+        expected.output,
+        rtol=2e-2,
+        atol=2e-2,
+    )
+
+
+def _q4_weight(name, raw, runtime, allocations):
+    host = np.ascontiguousarray(raw, dtype=np.uint8)
+    buffer = malloc(host.nbytes, runtime=runtime)
+    allocations.append(buffer)
+    copy_host_to_device(buffer, host_array_ptr(host), runtime=runtime)
+    shape = (raw.shape[0], raw.shape[1], 256 * (raw.shape[2] // 144))
+    tensor = GGUFTensorInfo(
+        name=f"{name}.weight",
+        shape=shape,
+        ggml_shape=tuple(reversed(shape)),
+        ggml_type=int(GGMLQuantizationType.Q4_K),
+        ggml_type_name="Q4_K",
+        n_elements=prod(shape),
+        nbytes=int(host.nbytes),
+        offset=0,
+        data_offset=0,
+        byte_shape=tuple(int(value) for value in host.shape),
+    )
+    spec = Qwen4ExpGGUFWeightSpec(
+        slot_path=name,
+        source_ref=Qwen4ExpGGUFTensorRef(0, Path("synthetic.gguf"), tensor),
+        quant_key="gguf_q4_k",
+        layout=LAYOUT_RAW_GGUF,
+        allocation_names=("raw",),
+        device_resident=True,
+        device_nbytes=int(host.nbytes),
+    )
+    allocation = DeviceTensorAllocation(
+        name=name,
+        source=SimpleSource(name),
+        buffer=buffer,
+        tensor=SimpleTensor(buffer.ptr),
+        owns_buffer=False,
+    )
+    return Qwen4ExpDeviceWeight(spec, "hip_gfx1151", {"raw": allocation})
+
+
+class SimpleSource:
+    def __init__(self, name):
+        self.name = name
+
+
+class SimpleTensor:
+    def __init__(self, ptr):
+        self.ptr = ptr
+
+
+def _upload(array: np.ndarray, runtime, allocations):
+    host = np.ascontiguousarray(array)
+    device = malloc(host.nbytes, runtime=runtime)
+    allocations.append(device)
+    copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
+    return device
+
+
+def _download(device, shape, dtype, runtime):
+    host = np.empty(shape, dtype=dtype)
+    copy_device_to_host(host_array_ptr(host), device, runtime=runtime)
+    return host

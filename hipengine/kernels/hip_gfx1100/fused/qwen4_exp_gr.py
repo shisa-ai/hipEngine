@@ -49,6 +49,13 @@ _ARGS_SCALED_SILU = (
     ctypes.c_float,
     ctypes.c_void_p,
 )
+_ARGS_SILU_MUL = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _ARGS_SIGMOID = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -263,6 +270,29 @@ def qwen4_exp_scaled_silu_f32(
     _check_launch(runtime, fn(input_ptr, output_ptr, elements, float(scale), stream))
 
 
+def qwen4_exp_silu_mul_f32(
+    gate_ptr: int,
+    up_ptr: int,
+    output_ptr: int,
+    elements: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    if elements <= 0:
+        raise ValueError("elements must be positive")
+    library = library or build_qwen4_exp_gr(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_silu_mul_f32",
+        _ARGS_SILU_MUL,
+        ctypes.c_int,
+    )
+    _check_launch(runtime, fn(gate_ptr, up_ptr, output_ptr, elements, stream))
+
+
 def qwen4_exp_sigmoid_f32(
     input_ptr: int,
     output_ptr: int,
@@ -359,6 +389,12 @@ def register_qwen4_exp_gr_kernels(*, replace: bool = True) -> None:
         ): qwen4_exp_scaled_silu_f32,
         KernelKey(
             "hip_gfx1100",
+            "silu_mul",
+            "f32",
+            "strict",
+        ): qwen4_exp_silu_mul_f32,
+        KernelKey(
+            "hip_gfx1100",
             "sigmoid",
             "f32",
             "strict",
@@ -395,6 +431,7 @@ __all__ = [
     "qwen4_exp_grouped_rmsnorm_bf16_f32",
     "qwen4_exp_grouped_rmsnorm_f32",
     "qwen4_exp_scaled_silu_f32",
+    "qwen4_exp_silu_mul_f32",
     "qwen4_exp_sigmoid_f32",
     "qwen4_exp_sigmoid_gated_rmsnorm_f32",
     "register_qwen4_exp_gr_kernels",

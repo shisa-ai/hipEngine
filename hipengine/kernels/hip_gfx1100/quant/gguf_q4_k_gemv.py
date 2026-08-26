@@ -1255,6 +1255,7 @@ _EXTRA_Q4_K_WRAPPERS = {
     "gemv_f32_fp16_out": gguf_q4_k_gemv_f32_fp16_out,
     "gemv_fp16_fp16_out": gguf_q4_k_gemv_fp16_fp16_out,
     "gemv_bf16_fp16_out": gguf_q4_k_gemv_bf16_fp16_out,
+    "selected_gemv_bf16_bf16_out": gguf_q4_k_selected_gemv_bf16_bf16_out,
     "selected_dual_gemv_bf16_bf16_out": gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
     "selected_dual_dp4a_gemv_bf16_bf16_out": gguf_q4_k_selected_dual_dp4a_gemv_bf16_bf16_out,
     "selected_pack8_gemv_bf16_bf16_out": gguf_q4_k_selected_pack8_gemv_bf16_bf16_out,

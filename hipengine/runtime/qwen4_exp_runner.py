@@ -23,6 +23,16 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
+from hipengine.kernels.backends import load_backend_kernel_package
+from hipengine.kernels.hip_gfx1100.convert.cast import f32_to_bf16
+from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
+    shared_gate_combine_out_bf16,
+    weighted_sum_out_bf16_f32w,
+)
+from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
+    silu_mul_separate_out_bf16,
+)
+from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_select
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_decode_f32,
 )
@@ -34,6 +44,7 @@ from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_grouped_rmsnorm_bf16_f32,
     qwen4_exp_grouped_rmsnorm_f32,
     qwen4_exp_scaled_silu_f32,
+    qwen4_exp_silu_mul_f32,
     qwen4_exp_sigmoid_f32,
 )
 from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple import (
@@ -47,6 +58,7 @@ from hipengine.runtime.gguf_linear import (
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
 )
+from hipengine.kernels.registry import resolve
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 
 
@@ -286,6 +298,105 @@ class Qwen4ExpPLEScratch:
 
 
 @dataclass
+class Qwen4ExpMoEScratch:
+    router_logits: DeviceBuffer
+    selected: DeviceBuffer
+    routing: DeviceBuffer
+    hidden_bf16: DeviceBuffer
+    expert_gate: DeviceBuffer
+    expert_up: DeviceBuffer
+    expert_intermediate: DeviceBuffer
+    expert_down: DeviceBuffer
+    routed: DeviceBuffer
+    shared_gate: DeviceBuffer
+    shared_up: DeviceBuffer
+    shared_intermediate: DeviceBuffer
+    shared_down: DeviceBuffer
+    shared_down_bf16: DeviceBuffer
+    shared_gate_logits: DeviceBuffer
+    output: DeviceBuffer
+    runtime: HipRuntime
+    closed: bool = False
+
+    @classmethod
+    def allocate(
+        cls,
+        *,
+        rows: int,
+        hidden: int,
+        ffn: int,
+        experts: int,
+        top_k: int,
+        runtime: HipRuntime | None = None,
+    ) -> "Qwen4ExpMoEScratch":
+        dimensions = (rows, hidden, ffn, experts, top_k)
+        if any(int(value) <= 0 for value in dimensions) or top_k > experts:
+            raise ValueError("Qwen4Exp MoE dimensions must be positive with top_k <= experts")
+        active_runtime = runtime or get_hip_runtime()
+        compact = rows * top_k
+        byte_sizes = (
+            rows * experts * 4,
+            compact * 4,
+            compact * 4,
+            rows * hidden * 2,
+            compact * ffn * 2,
+            compact * ffn * 2,
+            compact * ffn * 2,
+            compact * hidden * 2,
+            rows * hidden * 2,
+            rows * ffn * 4,
+            rows * ffn * 4,
+            rows * ffn * 4,
+            rows * hidden * 4,
+            rows * hidden * 2,
+            rows * 4,
+            rows * hidden * 2,
+        )
+        buffers: list[DeviceBuffer] = []
+        try:
+            for size in byte_sizes:
+                buffers.append(malloc(size, runtime=active_runtime))
+        except Exception:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=active_runtime)
+            raise
+        return cls(*buffers, runtime=active_runtime)
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        for buffer in reversed(
+            (
+                self.router_logits,
+                self.selected,
+                self.routing,
+                self.hidden_bf16,
+                self.expert_gate,
+                self.expert_up,
+                self.expert_intermediate,
+                self.expert_down,
+                self.routed,
+                self.shared_gate,
+                self.shared_up,
+                self.shared_intermediate,
+                self.shared_down,
+                self.shared_down_bf16,
+                self.shared_gate_logits,
+                self.output,
+            )
+        ):
+            free(buffer, runtime=self.runtime)
+        self.closed = True
+
+
+@dataclass(frozen=True)
+class Qwen4ExpMoEDeviceResult:
+    output: DeviceBuffer
+    selected: DeviceBuffer
+    routing: DeviceBuffer
+
+
+@dataclass
 class Qwen4ExpGRScratch:
     normalized: DeviceBuffer
     low_rank: DeviceBuffer
@@ -452,6 +563,182 @@ def run_qwen4_exp_gr_read(
         mixed=scratch.mixed,
         inject_logits=scratch.inject_logits,
     )
+
+
+def run_qwen4_exp_moe(
+    mixed_ptr: int,
+    weights: Mapping[str, GGUFDeviceWeight],
+    *,
+    scratch: Qwen4ExpMoEScratch,
+    rows: int,
+    hidden: int,
+    ffn: int,
+    experts: int,
+    top_k: int,
+    stream: int = 0,
+    runtime: HipRuntime | None = None,
+) -> Qwen4ExpMoEDeviceResult:
+    """Run normalized softmax top-k routed experts plus gated shared expert."""
+
+    if scratch.closed:
+        raise RuntimeError("Qwen4Exp MoE scratch is closed")
+    if rows != 1:
+        raise ValueError("strict Qwen4Exp MoE decode currently requires rows == 1")
+    active_runtime = runtime or scratch.runtime
+    if active_runtime is not scratch.runtime:
+        raise ValueError("runtime must match the MoE scratch owner")
+    required = {
+        "router",
+        "expert_gate",
+        "expert_up",
+        "expert_down",
+        "shared_gate",
+        "shared_up",
+        "shared_down",
+        "shared_gate_weight",
+    }
+    missing = sorted(required - set(weights))
+    if missing:
+        raise ValueError("missing Qwen4Exp MoE weights: " + ", ".join(missing))
+    backend = str(weights["expert_gate"].backend)
+    load_backend_kernel_package(backend)
+    launch_gguf_linear(
+        weights["router"], mixed_ptr, scratch.router_logits.ptr,
+        rows, hidden, experts,
+        activation_dtype=GGUF_ACTIVATION_F32,
+        output_dtype=GGUF_OUTPUT_F32,
+        stream=stream, runtime=active_runtime,
+    )
+    qwen35_router_select(
+        scratch.router_logits.ptr,
+        scratch.selected.ptr,
+        scratch.routing.ptr,
+        rows,
+        experts,
+        experts,
+        top_k,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    f32_to_bf16(
+        mixed_ptr,
+        scratch.hidden_bf16.ptr,
+        rows * hidden,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    compact = rows * top_k
+
+    def selected_projection(
+        slot: str,
+        input_ptr: int,
+        output_ptr: int,
+        x_rows: int,
+        selected_rows: int,
+        in_features: int,
+        out_features: int,
+    ) -> None:
+        weight = weights[slot]
+        function = resolve(
+            backend=backend,
+            layer="linear",
+            quant=weight.spec.quant_key,
+            variant="selected_gemv_bf16_bf16_out",
+        )
+        function(
+            input_ptr,
+            scratch.selected.ptr,
+            weight.allocation("raw").tensor.ptr,
+            output_ptr,
+            x_rows,
+            selected_rows,
+            experts,
+            in_features,
+            out_features,
+            stream=stream,
+            runtime=active_runtime,
+        )
+
+    selected_projection(
+        "expert_gate", scratch.hidden_bf16.ptr, scratch.expert_gate.ptr,
+        rows, compact, hidden, ffn,
+    )
+    selected_projection(
+        "expert_up", scratch.hidden_bf16.ptr, scratch.expert_up.ptr,
+        rows, compact, hidden, ffn,
+    )
+    silu_mul_separate_out_bf16(
+        scratch.expert_gate.ptr,
+        scratch.expert_up.ptr,
+        scratch.expert_intermediate.ptr,
+        compact,
+        ffn,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    selected_projection(
+        "expert_down", scratch.expert_intermediate.ptr, scratch.expert_down.ptr,
+        compact, compact, ffn, hidden,
+    )
+    weighted_sum_out_bf16_f32w(
+        scratch.expert_down.ptr,
+        scratch.routing.ptr,
+        scratch.routed.ptr,
+        compact,
+        hidden,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    for slot, output in (
+        ("shared_gate", scratch.shared_gate),
+        ("shared_up", scratch.shared_up),
+    ):
+        launch_gguf_linear(
+            weights[slot], mixed_ptr, output.ptr,
+            rows, hidden, ffn,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            stream=stream, runtime=active_runtime,
+        )
+    qwen4_exp_silu_mul_f32(
+        scratch.shared_gate.ptr,
+        scratch.shared_up.ptr,
+        scratch.shared_intermediate.ptr,
+        rows * ffn,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    launch_gguf_linear(
+        weights["shared_down"], scratch.shared_intermediate.ptr, scratch.shared_down.ptr,
+        rows, ffn, hidden,
+        activation_dtype=GGUF_ACTIVATION_F32,
+        output_dtype=GGUF_OUTPUT_F32,
+        stream=stream, runtime=active_runtime,
+    )
+    launch_gguf_linear(
+        weights["shared_gate_weight"], mixed_ptr, scratch.shared_gate_logits.ptr,
+        rows, hidden, 1,
+        activation_dtype=GGUF_ACTIVATION_F32,
+        output_dtype=GGUF_OUTPUT_F32,
+        stream=stream, runtime=active_runtime,
+    )
+    f32_to_bf16(
+        scratch.shared_down.ptr,
+        scratch.shared_down_bf16.ptr,
+        rows * hidden,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    shared_gate_combine_out_bf16(
+        scratch.routed.ptr,
+        scratch.shared_down_bf16.ptr,
+        scratch.shared_gate_logits.ptr,
+        scratch.output.ptr,
+        hidden,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    return Qwen4ExpMoEDeviceResult(scratch.output, scratch.selected, scratch.routing)
 
 
 def run_qwen4_exp_ple(
@@ -695,9 +982,12 @@ __all__ = [
     "Qwen4ExpDecodeStateSnapshot",
     "Qwen4ExpGDNScratch",
     "Qwen4ExpGRReadDeviceResult",
+    "Qwen4ExpMoEDeviceResult",
+    "Qwen4ExpMoEScratch",
     "Qwen4ExpGRScratch",
     "Qwen4ExpPLEScratch",
     "run_qwen4_exp_gdn_token_mixer",
+    "run_qwen4_exp_moe",
     "run_qwen4_exp_ple",
     "run_qwen4_exp_gr_read",
 ]
