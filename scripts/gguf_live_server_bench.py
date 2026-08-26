@@ -73,12 +73,24 @@ class ServerConfiguration:
 
 CONFIGURATIONS: dict[str, ServerConfiguration] = {
     "c1": ServerConfiguration("c1", 1, True, "occupancy_adaptive_c1"),
+    "packed_c2": ServerConfiguration("packed_c2", 2, True, "exact_hybrid"),
+    "packed_c3": ServerConfiguration("packed_c3", 3, True, "exact_hybrid"),
+    "packed_c4": ServerConfiguration("packed_c4", 4, True, "exact_hybrid"),
+    "packed_c5": ServerConfiguration("packed_c5", 5, True, "exact_hybrid"),
+    "packed_c6": ServerConfiguration("packed_c6", 6, True, "exact_hybrid"),
+    "packed_c7": ServerConfiguration("packed_c7", 7, True, "exact_hybrid"),
     "packed_c8": ServerConfiguration("packed_c8", 8, True, "exact_hybrid"),
     "packed_c9": ServerConfiguration("packed_c9", 9, True, "grouped_exact_hybrid"),
     "packed_c13": ServerConfiguration("packed_c13", 13, True, "grouped_exact_hybrid"),
     "serial_c13": ServerConfiguration("serial_c13", 13, False, "serial_bridge"),
 }
-_CANONICAL_CONFIGURATIONS = tuple(CONFIGURATIONS)
+_CANONICAL_CONFIGURATIONS = (
+    "c1",
+    "packed_c8",
+    "packed_c9",
+    "packed_c13",
+    "serial_c13",
+)
 _SUPPORTED_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
 _NATIVE_EXECUTION_PATHS = frozenset(
     {"packed_native", "native_c1", "native_c1_eager", "native_c1_graph"}
@@ -230,6 +242,24 @@ def _logical_shape_covers(
             for width, mask in zip(widths, masks, strict=True)
         )
         and sum(mask.count("1") for mask in masks) == int(logical_c)
+    )
+
+
+def _route_counts_prove_one_packed_group(
+    route_delta: Mapping[str, int],
+    *,
+    max_tokens: int,
+) -> bool:
+    """Accept Generation-2 packed engagement when poll-plan history is absent."""
+
+    decode_steps = int(max_tokens) - 1
+    return bool(
+        decode_steps > 0
+        and int(route_delta.get("native_packed_decode_steps", 0)) == decode_steps
+        and int(route_delta.get("native_packed_graph_captures", 0)) == 1
+        and int(route_delta.get("native_packed_graph_replays", 0)) == decode_steps
+        and int(route_delta.get("serial_decode_fallback_steps", 0)) == 0
+        and int(route_delta.get("resident_fallback_requests", 0)) == 0
     )
 
 
@@ -781,6 +811,12 @@ def _run_http_sample(
         expected_group_shape_seen = any(
             logical_c == 8 and widths == (8,) and masks == ("11111111",)
             for logical_c, widths, masks in logical_shapes
+        ) or (
+            not logical_shapes
+            and _route_counts_prove_one_packed_group(
+                route_delta,
+                max_tokens=int(max_tokens),
+            )
         )
     elif config.name == "packed_c9":
         expected_group_shape_seen = any(
@@ -1241,10 +1277,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         live_tail_rows=int(args.live_tail_rows),
                         trigger_timeout_seconds=float(args.trigger_timeout_seconds),
                     )
-            final_snapshot = llm.live_loop_snapshot()
-            final_memory = _memory_snapshot("final", runner)
-            resolved_backend = str(runner.generator.backend)
-            target_arch = str(runner._shared_runner.target_arch)
+                # TestClient shutdown owns the injected LLM lifecycle and may
+                # close EngineService. Capture final ownership while the server
+                # context is still live, after every requested sample drains.
+                final_snapshot = llm.live_loop_snapshot()
+                final_memory = _memory_snapshot("final", runner)
+                resolved_backend = str(runner.generator.backend)
+                target_arch = str(runner._shared_runner.target_arch)
         finally:
             llm.close()
 

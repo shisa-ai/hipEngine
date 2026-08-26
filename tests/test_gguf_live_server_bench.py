@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from types import SimpleNamespace
 
 import pytest
@@ -14,6 +15,7 @@ from scripts.gguf_live_server_bench import (
     _owned_physical_plans,
     _parse_configurations,
     _parse_sse_data_line,
+    _route_counts_prove_one_packed_group,
     _prompt_rows,
     _ReferenceRun,
     _reference_c1_summary,
@@ -21,6 +23,7 @@ from scripts.gguf_live_server_bench import (
     _stats,
     _wait_for_live_admission_trigger,
     build_parser,
+    run,
 )
 
 
@@ -62,6 +65,65 @@ def test_live_server_bench_declares_honest_c13_routes() -> None:
         _parse_configurations(
             "packed_c13,c1,packed_c8,packed_c9,serial_c13"
         )
+
+
+def test_live_server_bench_accepts_generation2_route_counters_without_poll_plans() -> None:
+    assert _route_counts_prove_one_packed_group(
+        {
+            "native_packed_decode_steps": 127,
+            "native_packed_graph_captures": 1,
+            "native_packed_graph_replays": 127,
+            "serial_decode_fallback_steps": 0,
+        },
+        max_tokens=128,
+    )
+    assert not _route_counts_prove_one_packed_group(
+        {
+            "native_packed_decode_steps": 254,
+            "native_packed_graph_captures": 2,
+            "native_packed_graph_replays": 254,
+        },
+        max_tokens=128,
+    )
+    assert not _route_counts_prove_one_packed_group(
+        {
+            "native_packed_decode_steps": 127,
+            "native_packed_graph_captures": 1,
+            "native_packed_graph_replays": 127,
+            "serial_decode_fallback_steps": 1,
+        },
+        max_tokens=128,
+    )
+
+
+def test_live_server_bench_accepts_complete_c1_c8_sweep() -> None:
+    names = _parse_configurations(
+        "c1,packed_c2,packed_c3,packed_c4,packed_c5,packed_c6,packed_c7,packed_c8"
+    )
+
+    assert names == (
+        "c1",
+        "packed_c2",
+        "packed_c3",
+        "packed_c4",
+        "packed_c5",
+        "packed_c6",
+        "packed_c7",
+        "packed_c8",
+    )
+    assert [CONFIGURATIONS[name].logical_rows for name in names] == list(range(1, 9))
+    assert all(CONFIGURATIONS[name].packed_decode for name in names)
+
+
+def test_live_server_bench_captures_final_state_before_server_shutdown() -> None:
+    source = inspect.getsource(run)
+    server_body = source.split("with TestClient(app) as client:", 1)[1].split(
+        "finally:", 1
+    )[0]
+
+    lines = server_body.splitlines()
+    assert "                final_snapshot = llm.live_loop_snapshot()" in lines
+    assert "            final_snapshot = llm.live_loop_snapshot()" not in lines
 
 
 def test_live_server_bench_stats_and_counter_deltas_are_exact() -> None:
