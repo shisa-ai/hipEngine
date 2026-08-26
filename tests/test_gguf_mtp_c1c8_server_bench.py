@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from scripts.gguf_mtp_c1c8_server_bench import (
@@ -7,11 +9,13 @@ from scripts.gguf_mtp_c1c8_server_bench import (
     _cell_correctness,
     _diagnostic_plan,
     _generated_ids,
+    _memory_delta,
     _mtp_budget_conformed,
     _mtp_engaged,
     _parse_expected_mtp_widths,
     _parse_widths,
     _render_messages,
+    _resident_observability,
     build_parser,
     summarize,
 )
@@ -69,6 +73,36 @@ def test_mtp_c1c8_extracts_authoritative_ids_and_engagement() -> None:
     assert not _mtp_budget_conformed(
         {"draft_tokens": 0, "draft_cycles": 0}, budget=2
     )
+
+
+def test_mtp_c1c8_compacts_nested_resident_observability() -> None:
+    runner = SimpleNamespace(
+        observability_snapshot=lambda: {
+            "resources": {"active_requests": 0},
+            "routes": {"recent_completed": [{"request_id": 1}, {"request_id": 2}]},
+        }
+    )
+    llm = SimpleNamespace(
+        _get_text_generator=lambda: SimpleNamespace(
+            _driver=SimpleNamespace(_runner=runner)
+        )
+    )
+
+    snapshot = _resident_observability(llm, recent=1)
+
+    assert snapshot["resources"]["active_requests"] == 0
+    assert snapshot["routes"]["recent_completed"] == [{"request_id": 2}]
+
+
+def test_mtp_c1c8_reports_tracked_memory_delta() -> None:
+    assert _memory_delta(
+        {"total_allocated_bytes": 10, "active_allocations": 2},
+        {"total_allocated_bytes": 25, "active_allocations": 1},
+    )["total_allocated_bytes"] == 15
+    assert _memory_delta(
+        {"total_allocated_bytes": 10, "active_allocations": 2},
+        {"total_allocated_bytes": 25, "active_allocations": 1},
+    )["active_allocations"] == -1
 
 
 def test_mtp_c1c8_correctness_contract_separates_exact_and_traded_routes() -> None:
