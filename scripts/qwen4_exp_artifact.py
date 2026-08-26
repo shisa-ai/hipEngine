@@ -137,7 +137,7 @@ def tensor_role(name: str) -> str:
         return "ple_table"
     if name in {"token_embd.weight", "output.weight"}:
         return "root"
-    if name.startswith("head.hc_") or ".hc_" in name:
+    if name.startswith("output_hc_") or ".hc_" in name:
         return "gated_residual"
     if ".ple_" in name:
         return "ple_compute"
@@ -245,8 +245,8 @@ def summarize_qwen4_exp_split_gguf(readers: Any) -> dict[str, Any]:
     part_numbers = [
         int(info.metadata.get("split.no", index)) for index, info in enumerate(infos)
     ]
-    architectures = {info.architecture for info in infos}
-    file_types = {info.file_type for info in infos}
+    architectures = {info.architecture for info in infos if info.architecture is not None}
+    file_types = {info.file_type for info in infos if info.file_type is not None}
     split_errors: list[str] = []
     if len(split_counts) != 1:
         split_errors.append(f"inconsistent split counts: {sorted(split_counts)}")
@@ -275,16 +275,24 @@ def summarize_qwen4_exp_split_gguf(readers: Any) -> dict[str, Any]:
             "duplicate tensor names across split: " + ", ".join(duplicates[:16])
         )
 
-    first = infos[0]
+    metadata_info = next(
+        (
+            info
+            for info in infos
+            if int(info.metadata.get("split.no", -1)) == 0
+            and info.architecture is not None
+        ),
+        infos[0],
+    )
     merged = SimpleNamespace(
         info=SimpleNamespace(
-            path=first.path,
-            architecture=first.architecture,
-            file_type=first.file_type,
-            file_type_name=first.file_type_name,
+            path=metadata_info.path,
+            architecture=metadata_info.architecture,
+            file_type=metadata_info.file_type,
+            file_type_name=metadata_info.file_type_name,
             tensor_count=len(all_tensors),
             total_tensor_nbytes=sum(int(tensor.nbytes) for tensor in all_tensors),
-            metadata=first.metadata,
+            metadata=metadata_info.metadata,
             tensors=all_tensors,
         )
     )

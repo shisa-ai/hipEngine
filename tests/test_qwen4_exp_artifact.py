@@ -96,7 +96,7 @@ def test_qwen4_exp_tensor_roles_are_exhaustive_for_known_families() -> None:
         "per_layer_token_embd.weight": "ple_table",
         "token_embd.weight": "root",
         "output.weight": "root",
-        "head.hc_norm.weight": "gated_residual",
+        "output_hc_norm.weight": "gated_residual",
         "blk.0.hc_attn_down.weight": "gated_residual",
         "blk.0.ple_key.weight": "ple_compute",
         "blk.3.indexer.q_proj.weight": "qsa_indexer",
@@ -169,12 +169,16 @@ def test_summarize_qwen4_exp_split_gguf_validates_and_aggregates_parts() -> None
         SimpleNamespace(
             info=SimpleNamespace(
                 path=Path("model-00002-of-00002.gguf"),
-                architecture="qwen4exp",
-                file_type=15,
-                file_type_name="MOSTLY_Q4_K_M",
+                architecture=None,
+                file_type=None,
+                file_type_name=None,
                 tensor_count=2,
                 total_tensor_nbytes=110,
-                metadata={**shared, "split.no": 1},
+                metadata={
+                    "split.count": 2,
+                    "split.no": 1,
+                    "split.tensors.count": 2,
+                },
                 tensors=tensors,
             )
         ),
