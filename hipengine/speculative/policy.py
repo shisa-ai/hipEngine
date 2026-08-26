@@ -115,14 +115,14 @@ _P9_FIXED_POLICY_EVIDENCE = (
 
 
 DEFAULT_AUTO_DEPTH_POLICY = OfflineSpeculativeDepthPolicy(
-    policy_key="specdec2:auto:qwen38-q4ks:production:p9-rerun:v3",
+    policy_key="specdec2:auto:qwen38-q4ks:production:p9-fixed-reseed:v4",
     cells=(
         OfflineSpeculativeDepthCell(
-            "auto-c1-rerun-pending-k0",
+            "auto-c1-product-pending-k0",
             1,
             1,
             0,
-            "fixed_grid_rerun_pending",
+            "product_qualification_pending",
             _P9_FIXED_POLICY_EVIDENCE,
         ),
         OfflineSpeculativeDepthCell(

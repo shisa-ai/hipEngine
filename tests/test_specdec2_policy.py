@@ -151,7 +151,7 @@ def test_graph_miss_uses_qualified_eager_or_k0_when_no_route_exists() -> None:
 @pytest.mark.parametrize(
     ("concurrency", "cell_key", "reason"),
     [
-        (1, "auto-c1-rerun-pending-k0", "fixed_grid_rerun_pending"),
+        (1, "auto-c1-product-pending-k0", "product_qualification_pending"),
         (2, "auto-c2-measured-k0", "measured_speedup_below_1p10"),
         (4, "auto-c4-measured-k0", "measured_speedup_below_1p10"),
         (8, "auto-c5-c8-unqualified-k0", "no_qualified_physical_frontier"),
@@ -175,7 +175,7 @@ def test_default_offline_depth_policy_selects_k0_with_stable_cell_reason(
     assert decision.reason == reason
     assert decision.policy_fingerprint.startswith("sha256:")
     assert DEFAULT_AUTO_DEPTH_POLICY.policy_key == (
-        "specdec2:auto:qwen38-q4ks:production:p9-rerun:v3"
+        "specdec2:auto:qwen38-q4ks:production:p9-fixed-reseed:v4"
     )
     assert decision.evidence == (
         "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json"
