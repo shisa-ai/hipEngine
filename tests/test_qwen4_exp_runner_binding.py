@@ -6,7 +6,10 @@ import pytest
 
 from hipengine.loading.qwen4_exp_gguf import GDN, build_qwen4_exp_gguf_tensor_map
 from hipengine.loading.qwen4_exp_materialize import plan_qwen4_exp_residency
-from hipengine.runtime.qwen4_exp_runner import bind_qwen4_exp_gdn_layer
+from hipengine.runtime.qwen4_exp_runner import (
+    bind_qwen4_exp_gdn_layer,
+    bind_qwen4_exp_qsa_layer,
+)
 from tests.test_qwen4_exp_gguf_mapping import _infos
 
 
@@ -78,6 +81,21 @@ def test_bind_qwen4_exp_gdn_layer_tracks_dense_state_indices() -> None:
     assert bind_qwen4_exp_gdn_layer(resident, 46).gdn_state_index == 35
 
 
+def test_bind_qwen4_exp_qsa_layer_maps_roles_and_state_indices() -> None:
+    resident = _resident()
+
+    binding = bind_qwen4_exp_qsa_layer(resident, 3)
+    assert binding.layer_id == 3
+    assert binding.layer_type == "qsa"
+    assert binding.qsa_state_index == 0
+    assert set(binding.mixer.projections) == {
+        "attn_q", "attn_k", "attn_v", "attn_output"
+    }
+    assert binding.mixer.q_norm_weight_ptr > 0
+    assert binding.mixer.k_norm_weight_ptr > 0
+    assert bind_qwen4_exp_qsa_layer(resident, 47).qsa_state_index == 11
+
+
 def test_bind_qwen4_exp_gdn_layer_rejects_qsa_and_bad_ids() -> None:
     resident = _resident()
 
@@ -85,3 +103,5 @@ def test_bind_qwen4_exp_gdn_layer_rejects_qsa_and_bad_ids() -> None:
         bind_qwen4_exp_gdn_layer(resident, 3)
     with pytest.raises(ValueError, match="layer_id"):
         bind_qwen4_exp_gdn_layer(resident, 48)
+    with pytest.raises(ValueError, match="not QSA"):
+        bind_qwen4_exp_qsa_layer(resident, 2)
