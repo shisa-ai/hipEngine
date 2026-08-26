@@ -117,12 +117,11 @@ All 34 repeat pairs, 10 controls, and ownership gates pass; these are same-host
 model-quality rows. The campaign retains **no implementation** because all seven
 development failures are model-owned. [`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
 
-gfx1151 Qwen3.8 `Q4_K_S` SPECDEC2-PERF P9 is exact in **540/540** fixed cells. Capacity-1
-production C1/K2 reaches **1.4087x AR**, but normal capacity-4 automatic serving
-executes zero speculative cycles and falls back through
-`physical_streaming_category_rejected`. Best physical C2/C4 is
-**0.6975x/0.5843x AR**. The campaign closes with no automatic promotion; K0
-remains default and production FP16 stays explicit-compatible.
+gfx1151 Qwen3.8 `Q4_K_S` P9 is exact in **540/540** fixed cells. C1/K2 reaches
+**1.4087x AR**, but capacity-4 automatic serving executes zero speculative
+cycles (`physical_streaming_category_rejected`); physical C2/C4 is
+**0.6975x/0.5843x AR**. No automatic cell promotes: K0 remains default and
+production FP16 stays explicit-compatible.
 [`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json) · [`P9 no-go`](results/2026-08-26-gfx1151-specdec2-perf-p9-product-no-go.json)
 
 gfx1100 dense C1 K1/K2/K3 remains exact at **1.272x/1.407x/1.439x AR** but
