@@ -12,6 +12,30 @@ from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("qwen4_exp_qsa.hip")
 _OUTPUT_NAME = "qwen4_exp_qsa.so"
+_ARGS_SPLIT = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
+_ARGS_GATE = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _ARGS_POOL = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -86,6 +110,72 @@ def build_qwen4_exp_qsa(
         load=load,
         require_cached=require_cached,
     )
+
+
+def qwen4_exp_qsa_split_norm_rope_f32(
+    q_projected_ptr: int,
+    key_ptr: int,
+    q_weight_ptr: int,
+    k_weight_ptr: int,
+    position_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    gate_out_ptr: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    theta: float,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    if num_q_heads <= 0 or num_kv_heads <= 0 or head_dim <= 0:
+        raise ValueError("head counts and head_dim must be positive")
+    if rotary_dim <= 0 or rotary_dim > head_dim or rotary_dim % 2:
+        raise ValueError("rotary_dim must be positive, even, and <= head_dim")
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_qsa_split_norm_rope_f32",
+        _ARGS_SPLIT,
+        ctypes.c_int,
+    )
+    _check_launch(
+        runtime,
+        fn(
+            q_projected_ptr, key_ptr, q_weight_ptr, k_weight_ptr, position_ptr,
+            query_out_ptr, key_out_ptr, gate_out_ptr,
+            num_q_heads, num_kv_heads, head_dim, rotary_dim,
+            float(theta), float(eps), stream,
+        ),
+    )
+
+
+def qwen4_exp_qsa_gate_context_f32(
+    context_ptr: int,
+    gate_ptr: int,
+    output_ptr: int,
+    elements: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    if elements <= 0:
+        raise ValueError("elements must be positive")
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_qsa_gate_context_f32",
+        _ARGS_GATE,
+        ctypes.c_int,
+    )
+    _check_launch(runtime, fn(context_ptr, gate_ptr, output_ptr, elements, stream))
 
 
 def qwen4_exp_qsa_pool_norm_rope_f32(
@@ -226,6 +316,18 @@ def register_qwen4_exp_qsa_kernels(*, replace: bool = True) -> None:
     registrations = {
         KernelKey(
             "hip_gfx1100",
+            "qsa_split_norm_rope",
+            "f32",
+            "strict",
+        ): qwen4_exp_qsa_split_norm_rope_f32,
+        KernelKey(
+            "hip_gfx1100",
+            "qsa_gate_context",
+            "f32",
+            "strict",
+        ): qwen4_exp_qsa_gate_context_f32,
+        KernelKey(
+            "hip_gfx1100",
             "qsa_pool_norm_rope",
             "f32",
             "strict",
@@ -258,8 +360,10 @@ register_qwen4_exp_qsa_kernels()
 __all__ = [
     "build_qwen4_exp_qsa",
     "plan_qwen4_exp_qsa_build",
+    "qwen4_exp_qsa_gate_context_f32",
     "qwen4_exp_qsa_pool_norm_rope_f32",
     "qwen4_exp_qsa_score_f32",
+    "qwen4_exp_qsa_split_norm_rope_f32",
     "qwen4_exp_qsa_select_blocks_f32_i64",
     "register_qwen4_exp_qsa_kernels",
 ]
