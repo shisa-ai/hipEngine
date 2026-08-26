@@ -610,10 +610,23 @@ Physical gfx1100 C2 remains unexposed, but its acceptance blocker is closed.
 Differential tracing found packed provider cursor metadata one token ahead and
 physical selected commit missing the pre-output-norm BF16 target hidden row.
 After repair, full-suite D24 K2 is exact at `260/338 = 76.92%` draft acceptance
-versus the prior physical `18.43%`; zero candidate D2H/recovery remains. It is
-still only `16.974 vs 31.230 tok/s = 0.544x` AR because R6 target/accept costs
-207.8 ms/group. Break-even is approximately <=101 ms after proposal, so capability and
-automatic policy remain false/K0.
+versus the prior physical `18.43%`; zero candidate D2H/recovery remains. The
+first repaired target was only `16.974 vs 31.230 tok/s = 0.544x` AR because R6
+target/accept cost 207.8 ms/group.
+
+A follow-up complete C1/C2 profile identifies the actual R6 blocker: shared-B
+standard-Q4 owns **1,282.637/1,802.702 ms (71.1%)** of eight C2 cycle windows
+because its four-wave kernel computes a 256-row tile for rows6. The retained
+exact hybrid routes five actual shapes to one rows6 rowtile that is bit-identical
+to two independent C1 R3 owners, and K5120/N17408 gate/up to the bit-exact
+single-wave sibling; shared-B remains registered for every miss. Clean full-suite
+C2 improves **16.974->22.393 tok/s (+31.93%)**, target/accept
+**17.664->10.872 s (-38.45%)**, and C2/AR **0.544x->0.7156x** with 10/10 exact,
+zero candidate D2H/recovery, and every category positive versus the repaired
+physical baseline. Every category still trails true AR, so capability and
+automatic policy remain false/K0. The next exact target candidate must improve
+the remaining single-wave gate/up owner; an existing dual-WMMA+SiLU composite
+is rejected at **1.054 vs 0.838 ms (0.795x)**.
 
 C1 attribution also changes the tuning order: sampled K2 staged decode is
 `416.6 ms` versus direct `433.5 ms`, while staged target prefill plus NextN
@@ -621,6 +634,23 @@ priming is `339.3 + 25.3 ms` versus direct prefill `305.9 ms`. Activation and
 shared prompt/provider ownership rank ahead of more hot target-leaf tuning.
 Evidence: [`recovery profile`](../benchmarks/results/2026-08-26-w7900-mtp-concurrency2-recovery-profile.json)
 and [`C2 root cause`](../benchmarks/results/2026-08-26-w7900-specdec2-c2-acceptance-root-cause.json).
+
+### Cross-lane no-repeat lessons from gfx1151 closure
+
+These transfer mechanism only—no gfx1151 rate, threshold, profile manifest, or
+bucket decision:
+
+- Treat model-owner capacity as a policy/qualification axis. A singleton result
+  from a capacity-1 owner does not prove true singleton staged execution on a
+  normal wider server owner.
+- Require cycle engagement (`cycles>0`, selected kernels/commits, no fallback),
+  not merely an HTTP route label or equal generated IDs, before claiming an
+  automatic speculative cell.
+- Carry consumed-position metadata and selected target-hidden trunk ownership
+  together through provider checkpoints and target commit; acceptance heuristics
+  cannot repair stale ownership.
+- Gate output horizon and prompt/context boundaries before load/SLO spending;
+  stop downstream product work immediately when route engagement fails.
 
 ## 15. Stop and no-chase rules
 

@@ -1,0 +1,386 @@
+{
+  "automatic_route_gate": {
+    "completed_rows": 8,
+    "engine_service_routes": {
+      "engine_service_verify_chain": 3,
+      "legacy_prelaunch_fallback": 0
+    },
+    "http_routes": [
+      [
+        "selected_d25",
+        "speculative_mtp"
+      ],
+      [
+        "h24_k0",
+        "default"
+      ],
+      [
+        "h65_k0",
+        "default"
+      ],
+      [
+        "p128_d25",
+        "speculative_mtp"
+      ],
+      [
+        "p512_k0",
+        "default"
+      ],
+      [
+        "selected_sse",
+        null
+      ]
+    ],
+    "passed": false,
+    "response_labels_misleading": true,
+    "selected_fallback_reason": "physical_streaming_category_rejected",
+    "selected_fallback_rows": 3,
+    "speculative_cycles": 0,
+    "speculative_used_rows": 0
+  },
+  "binding_failure": {
+    "expected": "automatic selected requests execute at least one staged C1/K2 cycle",
+    "gate": "normal_capacity_server_route_engagement",
+    "observed": "capacity-4 server owner rejects singleton staged plan; selected requests complete as AR with zero cycles",
+    "reason": "physical_streaming_category_rejected",
+    "reopen_trigger": "independently qualify true singleton staged execution on a normal capacity>1 server owner"
+  },
+  "boundaries": {
+    "contexts": {
+      "long_k0": {
+        "passed": true,
+        "rows": [
+          {
+            "fallback_reason": "target_context_k0",
+            "no_provider_mutation": true,
+            "passed": true,
+            "prompt_tokens": 4096
+          },
+          {
+            "fallback_reason": "target_context_k0",
+            "no_provider_mutation": true,
+            "passed": true,
+            "prompt_tokens": 16384
+          }
+        ]
+      },
+      "p128_d25": {
+        "categories": {
+          "code": {
+            "ratio": 1.2893498688990657,
+            "specdec2_tok_s": 12.882780042145042,
+            "true_ar_tok_s": 9.991686781761752
+          },
+          "general_en": {
+            "ratio": 1.2761187714629492,
+            "specdec2_tok_s": 12.756402429191674,
+            "true_ar_tok_s": 9.996250125345048
+          },
+          "general_ja": {
+            "ratio": 1.3123311804224613,
+            "specdec2_tok_s": 13.12043872020133,
+            "true_ar_tok_s": 9.99781070200408
+          },
+          "mixed_ja_en": {
+            "ratio": 1.2867038390450956,
+            "specdec2_tok_s": 12.862640284931345,
+            "true_ar_tok_s": 9.996581882025879
+          }
+        },
+        "exact": true,
+        "specdec2_over_true_ar": 1.2906621490306094,
+        "specdec2_tok_s": 12.899913376587278,
+        "true_ar_tok_s": 9.994802579649637
+      },
+      "p128_d64": {
+        "categories": {
+          "code": {
+            "ratio": 1.5190664514635692,
+            "specdec2_tok_s": 17.856419823279712,
+            "true_ar_tok_s": 11.754864183904301
+          },
+          "general_en": {
+            "ratio": 1.4268282216338377,
+            "specdec2_tok_s": 16.763053984662754,
+            "true_ar_tok_s": 11.748473803992786
+          },
+          "general_ja": {
+            "ratio": 1.4945777375894709,
+            "specdec2_tok_s": 17.562325308444553,
+            "true_ar_tok_s": 11.750693769044053
+          },
+          "mixed_ja_en": {
+            "ratio": 1.5763649139912075,
+            "specdec2_tok_s": 18.50075050880623,
+            "true_ar_tok_s": 11.736337408046005
+          }
+        },
+        "exact": true,
+        "specdec2_over_true_ar": 1.5056231382829386,
+        "specdec2_tok_s": 17.689630562584842,
+        "true_ar_tok_s": 11.74904271380863
+      },
+      "p512_d25": {
+        "categories": {
+          "code": {
+            "ratio": 1.0073316166209751,
+            "specdec2_tok_s": 6.560399733932771,
+            "true_ar_tok_s": 6.512651470167473
+          },
+          "general_en": {
+            "ratio": 0.9983211494156657,
+            "specdec2_tok_s": 6.501237328956568,
+            "true_ar_tok_s": 6.512170289852972
+          },
+          "general_ja": {
+            "ratio": 1.014222942688756,
+            "specdec2_tok_s": 6.607883220926038,
+            "true_ar_tok_s": 6.515217653633635
+          },
+          "mixed_ja_en": {
+            "ratio": 1.0140234411616493,
+            "specdec2_tok_s": 6.603673706859659,
+            "true_ar_tok_s": 6.512348175397793
+          }
+        },
+        "exact": true,
+        "specdec2_over_true_ar": 1.0082118962283217,
+        "specdec2_tok_s": 6.5664917619353576,
+        "true_ar_tok_s": 6.513007619231956
+      }
+    },
+    "horizons": {
+      "d128": {
+        "deterministic_mismatches": [
+          {
+            "first_mismatches": [
+              {
+                "ar": 4281,
+                "index": 81,
+                "specdec2": 1103
+              }
+            ],
+            "prompt_id": "code_topological_sort",
+            "run": 0
+          },
+          {
+            "first_mismatches": [
+              {
+                "ar": 4281,
+                "index": 81,
+                "specdec2": 1103
+              }
+            ],
+            "prompt_id": "code_topological_sort",
+            "run": 1
+          },
+          {
+            "first_mismatches": [
+              {
+                "ar": 4281,
+                "index": 81,
+                "specdec2": 1103
+              }
+            ],
+            "prompt_id": "code_topological_sort",
+            "run": 2
+          }
+        ],
+        "exact": false,
+        "status": "failed"
+      },
+      "d25": {
+        "categories": {
+          "code": {
+            "specdec2_over_true_ar": 1.446423361854169,
+            "specdec2_tok_s": 15.773249928649827,
+            "true_ar_tok_s": 10.905002189974386
+          },
+          "general_en": {
+            "specdec2_over_true_ar": 1.4069723261468436,
+            "specdec2_tok_s": 15.394428674819363,
+            "true_ar_tok_s": 10.941529118045118
+          },
+          "general_ja": {
+            "specdec2_over_true_ar": 1.3720268601947312,
+            "specdec2_tok_s": 15.008086382349877,
+            "true_ar_tok_s": 10.93862432126131
+          },
+          "mixed_ja_en": {
+            "specdec2_over_true_ar": 1.3763178913217324,
+            "specdec2_tok_s": 14.490756738007478,
+            "true_ar_tok_s": 10.528640824462023
+          }
+        },
+        "exact": true,
+        "specdec2_over_true_ar": 1.4086778493372913,
+        "specdec2_tok_s": 15.272035977486812,
+        "true_ar_tok_s": 10.841397119058485
+      },
+      "d64": {
+        "categories": {
+          "code": {
+            "ratio": 1.6263071287414266,
+            "specdec2_tok_s": 19.900400399439082,
+            "true_ar_tok_s": 12.236557319182195
+          },
+          "general_en": {
+            "ratio": 1.5717250298935537,
+            "specdec2_tok_s": 19.245133022898973,
+            "true_ar_tok_s": 12.24459282435832
+          },
+          "general_ja": {
+            "ratio": 1.4932611103473121,
+            "specdec2_tok_s": 18.27671425193826,
+            "true_ar_tok_s": 12.23946309543101
+          },
+          "mixed_ja_en": {
+            "ratio": 1.5989237712143805,
+            "specdec2_tok_s": 19.235486515232186,
+            "true_ar_tok_s": 12.030271149588863
+          }
+        },
+        "exact": true,
+        "specdec2_over_true_ar": 1.581782033353631,
+        "specdec2_tok_s": 19.29285086596979,
+        "true_ar_tok_s": 12.196908587377148
+      },
+      "d8": {
+        "categories": {
+          "code": {
+            "ratio": 1.0646453383109353,
+            "specdec2_tok_s": 8.416973113341975,
+            "true_ar_tok_s": 7.905893925854727
+          },
+          "general_en": {
+            "ratio": 1.0796283029387659,
+            "specdec2_tok_s": 8.567613835332631,
+            "true_ar_tok_s": 7.935706957673717
+          },
+          "general_ja": {
+            "ratio": 1.049289445915376,
+            "specdec2_tok_s": 8.30258313932875,
+            "true_ar_tok_s": 7.912576621873639
+          },
+          "mixed_ja_en": {
+            "ratio": 1.033802503846798,
+            "specdec2_tok_s": 7.552152804555217,
+            "true_ar_tok_s": 7.305218140267138
+          }
+        },
+        "exact": true,
+        "specdec2_over_true_ar": 1.0577534015476535,
+        "specdec2_tok_s": 8.23464466675693,
+        "true_ar_tok_s": 7.785032555516624
+      }
+    }
+  },
+  "candidate": {
+    "candidate_budget": 2,
+    "concurrency": 1,
+    "disposition": "rejected_no_product_route_engagement",
+    "execution_profile": "production",
+    "fixed_d25_speedup": 1.4086778493372913
+  },
+  "date": "2026-08-26",
+  "decision": {
+    "automatic_policy": "K0",
+    "explicit_production_fp16_compatibility": "retained",
+    "product_candidate": "rejected",
+    "promoted_cells": [],
+    "wider_work": "not_admitted"
+  },
+  "downstream_disposition": {
+    "failure_rollback_restart": "not_applicable_after_route_precondition_failure",
+    "final_soak": "not_run_invalid_route",
+    "load_slo_goodput": "not_run_invalid_route",
+    "prefix_pressure": "existing K0/lifecycle evidence retained",
+    "quality_task": "fixed-grid exact and P8 profile gates pass but cannot promote a non-engaging server route",
+    "ragged_refill_fairness": "not_applicable_after_route_precondition_failure"
+  },
+  "evidence": {
+    "auto_smoke": {
+      "bytes": 64789,
+      "path": "/tmp/specdec2-p9-product-auto-route-smoke.json",
+      "sha256": "a66e3529c79ba01760a37806c2e09b909c41626cd23f479786578e544924563f"
+    },
+    "fixed": {
+      "bytes": 50571,
+      "path": "/home/lhl/hipEngine/benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json",
+      "sha256": "cc7a90f542f5273a4ff2be601c9faeae3a151baaa225b0686e31427c0d271732"
+    },
+    "h128": {
+      "bytes": 2745009,
+      "path": "/tmp/specdec2-p9-product-horizon-d128.json",
+      "sha256": "07c5623bd4bec37803f5d238674ec785ac72ac5b409fad70f004aa206f524494"
+    },
+    "h25": {
+      "bytes": 3110291,
+      "path": "/tmp/specdec2-p9-rerun-production-c1-k123.json",
+      "sha256": "554cb1c1348620de77b97f4a5cc3b423cf20c47f5fe71e6c88872477b0355fd5"
+    },
+    "h64": {
+      "bytes": 1648744,
+      "path": "/tmp/specdec2-p9-product-horizon-d64.json",
+      "sha256": "cc9779908839c76275d4b28abbd06e9a731403b98762b50803f53fe4feafcf87"
+    },
+    "h8": {
+      "bytes": 760188,
+      "path": "/tmp/specdec2-p9-product-horizon-d8.json",
+      "sha256": "b164de141792382904513a22e31c908a9bde88f4201f1f01f571d95a9dd51b06"
+    },
+    "long_k0": {
+      "bytes": 42225,
+      "path": "/tmp/specdec2-p9-product-context-long-k0.json",
+      "sha256": "46839031fcaeb288db846cf11e33773b0798f79ce86897a2ef48f70950d39f8e"
+    },
+    "p128_d25": {
+      "bytes": 1019568,
+      "path": "/tmp/specdec2-p9-product-context-p128-d25.json",
+      "sha256": "eed74e9e4ea1de5786b633d68769f7508cccaaac7c72f39c107a1430b6d16a9b"
+    },
+    "p128_d64": {
+      "bytes": 1645511,
+      "path": "/tmp/specdec2-p9-product-context-p128-d64.json",
+      "sha256": "8ab064f757e93afba725be1d1a5663c73896deef76828113c1da074c2fa64d48"
+    },
+    "p512_d25": {
+      "bytes": 1033565,
+      "path": "/tmp/specdec2-p9-product-context-p512-d25.json",
+      "sha256": "2925865b57ba752363f62d5bfc54d8744d647db6c7b818bf83ea173d3c14a6a8"
+    }
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "host": "gfx1151",
+    "queue_policy": "GPU_MAX_HW_QUEUES=2"
+  },
+  "kind": "specdec2_perf_p9_gfx1151_product_no_go",
+  "model": {
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8060155376,
+        16120310752
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 16121359328,
+      "value": "029f5dcc4cb3f6ed46cf6e58fc86f46956739deb3732b352fdf73aaf428970aa"
+    },
+    "kv": "BF16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "production_manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+    "production_state": "FP16",
+    "quant": "Q4_K_S",
+    "strict_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+    "strict_state": "FP32"
+  },
+  "performance_claim": false,
+  "schema": 1,
+  "speed_claim_eligible": false,
+  "status": "retained_no_go_automatic_k0"
+}
