@@ -9,12 +9,12 @@ from tests.test_qwen4_exp_gguf_config import _info
 from hipengine.loading.qwen4_exp_gguf import qwen4_exp_gguf_config_from_metadata
 
 
-def test_qwen4_exp_model_runner_rejects_context_above_dense_equivalence_before_allocating() -> None:
+def test_qwen4_exp_model_runner_rejects_context_above_native_limit_before_allocating() -> None:
     config = qwen4_exp_gguf_config_from_metadata(_info())
     resident = SimpleNamespace(plan=SimpleNamespace(config=config))
 
-    with pytest.raises(ValueError, match="1..2051"):
-        Qwen4ExpGGUFResidentModelRunner(resident, max_sequence_length=2052)
+    with pytest.raises(ValueError, match="1..262144"):
+        Qwen4ExpGGUFResidentModelRunner(resident, max_sequence_length=262145)
 
 
 def test_qwen4_exp_model_runner_generation_does_not_consume_after_last_output() -> None:

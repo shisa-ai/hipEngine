@@ -68,6 +68,50 @@ __global__ void qsa_split_norm_rope_f32_kernel(
   }
 }
 
+__global__ void qsa_norm_rope_f32_kernel(
+    const float* __restrict__ input,
+    const float* __restrict__ weight,
+    const int64_t* __restrict__ position,
+    float* __restrict__ output,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    float theta,
+    float eps) {
+  extern __shared__ float shared[];
+  float* values = shared;
+  float* partial = values + head_dim;
+  const int64_t head = blockIdx.x;
+  const int64_t offset = head * head_dim;
+  float sumsq = 0.0f;
+  for (int64_t dimension = threadIdx.x; dimension < head_dim; dimension += blockDim.x) {
+    const float value = input[offset + dimension];
+    values[dimension] = value;
+    sumsq += value * value;
+  }
+  partial[threadIdx.x] = sumsq;
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) partial[threadIdx.x] += partial[threadIdx.x + stride];
+    __syncthreads();
+  }
+  const float inv_rms = rsqrtf(partial[0] / static_cast<float>(head_dim) + eps);
+  for (int64_t dimension = threadIdx.x; dimension < head_dim; dimension += blockDim.x) {
+    float result = values[dimension] * inv_rms * weight[dimension];
+    if (dimension < rotary_dim) {
+      const int64_t half = rotary_dim / 2;
+      const int64_t pair = dimension % half;
+      const float x = values[pair] * inv_rms * weight[pair];
+      const float y = values[pair + half] * inv_rms * weight[pair + half];
+      const float exponent = -2.0f * static_cast<float>(pair) / static_cast<float>(rotary_dim);
+      const float angle = static_cast<float>(position[0]) * powf(theta, exponent);
+      const float cosine = cosf(angle);
+      const float sine = sinf(angle);
+      result = dimension < half ? x * cosine - y * sine : x * sine + y * cosine;
+    }
+    output[offset + dimension] = result;
+  }
+}
+
 __global__ void qsa_gate_context_f32_kernel(
     const float* __restrict__ context,
     const float* __restrict__ gate,
@@ -331,6 +375,32 @@ extern "C" int hipengine_qwen4_exp_qsa_split_norm_rope_f32(
       static_cast<const int64_t*>(position), static_cast<float*>(query_out),
       static_cast<float*>(key_out), static_cast<float*>(gate_out),
       num_q_heads, num_kv_heads, head_dim, rotary_dim, theta, eps);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_qsa_norm_rope_f32(
+    const void* input,
+    const void* weight,
+    const void* position,
+    void* output,
+    int64_t heads,
+    int64_t head_dim,
+    int64_t rotary_dim,
+    float theta,
+    float eps,
+    hipStream_t stream) {
+  if (!input || !weight || !position || !output || heads <= 0 || head_dim <= 0 ||
+      rotary_dim <= 0 || rotary_dim > head_dim || (rotary_dim & 1) || theta <= 0.0f) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  const size_t shared = static_cast<size_t>(head_dim + threads) * sizeof(float);
+  hipLaunchKernelGGL(
+      qsa_norm_rope_f32_kernel,
+      dim3(static_cast<uint32_t>(heads)), dim3(threads), shared, stream,
+      static_cast<const float*>(input), static_cast<const float*>(weight),
+      static_cast<const int64_t*>(position), static_cast<float*>(output),
+      head_dim, rotary_dim, theta, eps);
   return static_cast<int>(hipGetLastError());
 }
 

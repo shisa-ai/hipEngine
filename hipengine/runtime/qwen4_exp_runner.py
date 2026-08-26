@@ -16,7 +16,7 @@ import numpy as np
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
-from hipengine.core.hip import HipRuntime, get_hip_runtime
+from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
     copy_device_to_host,
@@ -35,6 +35,11 @@ from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
 )
 from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_gate_context_f32,
+    qwen4_exp_qsa_norm_rope_f32,
+    qwen4_exp_qsa_pool_norm_rope_f32,
+    qwen4_exp_qsa_score_f32,
+    qwen4_exp_qsa_select_blocks_f32_i64,
+    qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
     qwen4_exp_qsa_split_norm_rope_f32,
 )
 from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, f32_to_bf16
@@ -307,6 +312,7 @@ class Qwen4ExpDenseAttentionState:
     context: DeviceBuffer
     append_spans: KVLiveSpans
     decode_spans: KVLiveSpans
+    block_host: np.ndarray
     position_host: np.ndarray
     context_host: np.ndarray
     block_size: int
@@ -379,7 +385,7 @@ class Qwen4ExpDenseAttentionState:
         )
         return cls(
             key_cache, value_cache, block_table, position, context,
-            append_spans, decode_spans, position_host, context_host,
+            append_spans, decode_spans, block_host, position_host, context_host,
             block_size, max_positions, active_runtime,
         )
 
@@ -408,6 +414,273 @@ class Qwen4ExpDenseAttentionState:
         self.closed = True
 
 
+@dataclass
+class Qwen4ExpQSAIndexDeviceState:
+    raw_keys: DeviceBuffer
+    member_indices: DeviceBuffer
+    block_starts: DeviceBuffer
+    pooled_keys: DeviceBuffer
+    scores: DeviceBuffer
+    selected_starts: DeviceBuffer
+    selected_count: DeviceBuffer
+    query_position: DeviceBuffer
+    selected_positions: DeviceBuffer
+    member_host: np.ndarray
+    block_starts_host: np.ndarray
+    selected_starts_host: np.ndarray
+    selected_count_host: np.ndarray
+    query_position_host: np.ndarray
+    selected_positions_host: np.ndarray
+    physical_positions_host: np.ndarray
+    capacity: int
+    index_heads: int
+    index_dim: int
+    compression_ratio: int
+    block_budget: int
+    runtime: HipRuntime
+    count: int = 0
+    closed: bool = False
+
+    @classmethod
+    def allocate(
+        cls,
+        *,
+        attention_state: Qwen4ExpDenseAttentionState,
+        index_heads: int,
+        index_dim: int,
+        compression_ratio: int,
+        block_budget: int,
+        runtime: HipRuntime | None = None,
+    ) -> "Qwen4ExpQSAIndexDeviceState":
+        if attention_state.closed:
+            raise RuntimeError("QSA index state requires an open attention state")
+        active_runtime = runtime or attention_state.runtime
+        if active_runtime is not attention_state.runtime:
+            raise ValueError("runtime must match the mirrored attention state")
+        heads = int(index_heads)
+        dimension = int(index_dim)
+        ratio = int(compression_ratio)
+        budget = int(block_budget)
+        if heads <= 0 or dimension <= 0 or ratio <= 0 or budget <= 0:
+            raise ValueError("QSA index heads, dimension, ratio, and budget must be positive")
+        capacity = int(attention_state.max_positions)
+        complete_blocks = capacity // ratio
+        if complete_blocks <= 0:
+            raise ValueError("QSA index capacity must contain one complete block")
+        logical_positions = np.arange(capacity, dtype=np.int64)
+        logical_blocks = logical_positions // attention_state.block_size
+        physical_positions = (
+            attention_state.block_host[logical_blocks].astype(np.int64)
+            * attention_state.block_size
+            + logical_positions % attention_state.block_size
+        )
+        member_host = np.ascontiguousarray(
+            physical_positions[: complete_blocks * ratio].reshape(complete_blocks, ratio),
+            dtype=np.int32,
+        )
+        block_starts_host = np.arange(complete_blocks, dtype=np.int64) * ratio
+        selected_starts_host = np.full(budget, -1, dtype=np.int64)
+        selected_count_host = np.zeros(1, dtype=np.int32)
+        query_position_host = np.zeros(1, dtype=np.int64)
+        selected_positions_host = np.empty(budget * ratio + ratio - 1, dtype=np.int64)
+        sizes = (
+            capacity * dimension * DType.FP32.itemsize,
+            member_host.nbytes,
+            block_starts_host.nbytes,
+            complete_blocks * dimension * DType.FP32.itemsize,
+            complete_blocks * DType.FP32.itemsize,
+            selected_starts_host.nbytes,
+            selected_count_host.nbytes,
+            query_position_host.nbytes,
+            selected_positions_host.nbytes,
+        )
+        buffers: list[DeviceBuffer] = []
+        try:
+            for size in sizes:
+                buffers.append(malloc(size, runtime=active_runtime))
+            copy_host_to_device(buffers[1], host_array_ptr(member_host), runtime=active_runtime)
+            copy_host_to_device(
+                buffers[2], host_array_ptr(block_starts_host), runtime=active_runtime
+            )
+            copy_host_to_device(
+                buffers[5], host_array_ptr(selected_starts_host), runtime=active_runtime
+            )
+            copy_host_to_device(
+                buffers[6], host_array_ptr(selected_count_host), runtime=active_runtime
+            )
+            copy_host_to_device(
+                buffers[7], host_array_ptr(query_position_host), runtime=active_runtime
+            )
+            active_runtime.memset(buffers[0].ptr, 0, buffers[0].nbytes)
+        except Exception:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=active_runtime)
+            raise
+        return cls(
+            *buffers,
+            member_host,
+            block_starts_host,
+            selected_starts_host,
+            selected_count_host,
+            query_position_host,
+            selected_positions_host,
+            physical_positions,
+            capacity,
+            heads,
+            dimension,
+            ratio,
+            budget,
+            active_runtime,
+        )
+
+    @property
+    def dense_equivalent_limit(self) -> int:
+        return self.block_budget * self.compression_ratio + self.compression_ratio - 1
+
+    def append(self, raw_key_ptr: int, *, position: int, stream: int = 0) -> None:
+        if self.closed:
+            raise RuntimeError("QSA index state is closed")
+        logical = int(position)
+        if logical != self.count:
+            raise ValueError("QSA index position must equal contiguous count")
+        if logical >= self.capacity:
+            raise ValueError("QSA index capacity exceeded")
+        physical = int(self.physical_positions_host[logical])
+        self.runtime.memcpy_async(
+            self.raw_keys.ptr + physical * self.index_dim * DType.FP32.itemsize,
+            int(raw_key_ptr),
+            self.index_dim * DType.FP32.itemsize,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            int(stream),
+        )
+        self.count += 1
+
+    def select(
+        self,
+        prepared_query_ptr: int,
+        *,
+        query_position: int,
+        key_norm_weight_ptr: int,
+        rotary_dim: int,
+        theta: float,
+        eps: float = 1e-6,
+        stream: int = 0,
+    ) -> tuple[int, DeviceBuffer]:
+        if self.closed:
+            raise RuntimeError("QSA index state is closed")
+        position = int(query_position)
+        if position != self.count - 1:
+            raise ValueError("QSA query position must identify the latest index key")
+        blocks = self.count // self.compression_ratio
+        if blocks <= self.block_budget:
+            raise ValueError("native QSA selection requires more blocks than the budget")
+        self.query_position_host[0] = position
+        copy_host_to_device(
+            self.query_position,
+            host_array_ptr(self.query_position_host),
+            runtime=self.runtime,
+        )
+        qwen4_exp_qsa_pool_norm_rope_f32(
+            self.raw_keys.ptr,
+            self.member_indices.ptr,
+            self.block_starts.ptr,
+            int(key_norm_weight_ptr),
+            self.pooled_keys.ptr,
+            blocks,
+            self.compression_ratio,
+            self.index_dim,
+            rotary_dim,
+            theta,
+            eps,
+            stream=stream,
+            runtime=self.runtime,
+        )
+        qwen4_exp_qsa_score_f32(
+            int(prepared_query_ptr),
+            self.pooled_keys.ptr,
+            self.scores.ptr,
+            1,
+            blocks,
+            self.index_heads,
+            self.index_dim,
+            stream=stream,
+            runtime=self.runtime,
+        )
+        qwen4_exp_qsa_select_blocks_f32_i64(
+            self.scores.ptr,
+            self.block_starts.ptr,
+            self.query_position.ptr,
+            self.selected_starts.ptr,
+            self.selected_count.ptr,
+            1,
+            blocks,
+            self.compression_ratio,
+            self.block_budget,
+            stream=stream,
+            runtime=self.runtime,
+        )
+        if stream:
+            self.runtime.stream_synchronize(stream)
+        copy_device_to_host(
+            host_array_ptr(self.selected_count_host),
+            self.selected_count,
+            runtime=self.runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(self.selected_starts_host),
+            self.selected_starts,
+            runtime=self.runtime,
+        )
+        count = int(self.selected_count_host[0])
+        if count != self.block_budget:
+            raise RuntimeError("QSA selector did not fill the complete block budget")
+        output_count = 0
+        for start in self.selected_starts_host[:count].tolist():
+            stop = output_count + self.compression_ratio
+            self.selected_positions_host[output_count:stop] = np.arange(
+                int(start), int(start) + self.compression_ratio, dtype=np.int64
+            )
+            output_count = stop
+        if position % self.compression_ratio != self.compression_ratio - 1:
+            tail_start = position // self.compression_ratio * self.compression_ratio
+            tail = np.arange(tail_start, position + 1, dtype=np.int64)
+            self.selected_positions_host[output_count : output_count + tail.size] = tail
+            output_count += int(tail.size)
+        selected = self.selected_positions_host[:output_count]
+        selected.sort()
+        copy_host_to_device(
+            self.selected_positions,
+            host_array_ptr(selected),
+            selected.nbytes,
+            runtime=self.runtime,
+        )
+        return output_count, self.selected_positions
+
+    def reset(self) -> None:
+        if self.closed:
+            raise RuntimeError("QSA index state is closed")
+        self.count = 0
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        for buffer in reversed(
+            (
+                self.raw_keys,
+                self.member_indices,
+                self.block_starts,
+                self.pooled_keys,
+                self.scores,
+                self.selected_starts,
+                self.selected_count,
+                self.query_position,
+                self.selected_positions,
+            )
+        ):
+            free(buffer, runtime=self.runtime)
+        self.closed = True
+
+
 @dataclass(frozen=True)
 class Qwen4ExpGRDeviceWeights:
     norm_weight_ptr: int
@@ -430,6 +703,8 @@ class Qwen4ExpQSAMixerDeviceWeights:
     projections: Mapping[str, GGUFDeviceWeight]
     q_norm_weight_ptr: int
     k_norm_weight_ptr: int
+    index_q_norm_weight_ptr: int = 0
+    index_k_norm_weight_ptr: int = 0
 
 
 @dataclass(frozen=True)
@@ -460,6 +735,9 @@ class Qwen4ExpQSAScratch:
     q_projected: DeviceBuffer
     key_projected: DeviceBuffer
     value_projected: DeviceBuffer
+    index_q_projected: DeviceBuffer
+    index_k_projected: DeviceBuffer
+    index_query: DeviceBuffer
     query: DeviceBuffer
     key: DeviceBuffer
     gate: DeviceBuffer
@@ -478,9 +756,11 @@ class Qwen4ExpQSAScratch:
         query_heads: int,
         kv_heads: int,
         head_dim: int,
+        index_heads: int = 1,
+        index_dim: int = 1,
         runtime: HipRuntime | None = None,
     ) -> "Qwen4ExpQSAScratch":
-        dimensions = (rows, hidden, query_heads, kv_heads, head_dim)
+        dimensions = (rows, hidden, query_heads, kv_heads, head_dim, index_heads, index_dim)
         if any(int(value) <= 0 for value in dimensions):
             raise ValueError("Qwen4Exp QSA scratch dimensions must be positive")
         active_runtime = runtime or get_hip_runtime()
@@ -490,6 +770,9 @@ class Qwen4ExpQSAScratch:
             rows * q_width * 2,
             rows * kv_width,
             rows * kv_width,
+            rows * index_heads * index_dim,
+            rows * index_dim,
+            rows * index_heads * index_dim,
             rows * q_width,
             rows * kv_width,
             rows * q_width,
@@ -513,6 +796,7 @@ class Qwen4ExpQSAScratch:
         for buffer in reversed(
             (
                 self.q_projected, self.key_projected, self.value_projected,
+                self.index_q_projected, self.index_k_projected, self.index_query,
                 self.query, self.key, self.gate, self.context, self.gated, self.output,
             )
         ):
@@ -546,6 +830,8 @@ class Qwen4ExpQSALayerScratch:
         ffn: int,
         experts: int,
         top_k: int,
+        index_heads: int = 1,
+        index_dim: int = 1,
         runtime: HipRuntime | None = None,
     ) -> "Qwen4ExpQSALayerScratch":
         active_runtime = runtime or get_hip_runtime()
@@ -558,7 +844,8 @@ class Qwen4ExpQSALayerScratch:
             owners.append(attention_gr)
             qsa = Qwen4ExpQSAScratch.allocate(
                 rows=rows, hidden=hidden, query_heads=query_heads,
-                kv_heads=kv_heads, head_dim=head_dim, runtime=active_runtime,
+                kv_heads=kv_heads, head_dim=head_dim,
+                index_heads=index_heads, index_dim=index_dim, runtime=active_runtime,
             )
             owners.append(qsa)
             ffn_gr = Qwen4ExpGRScratch.allocate(
@@ -997,7 +1284,9 @@ def bind_qwen4_exp_qsa_layer(
             inject=weight(f"hc_{prefix}_inject"),
         )
 
-    projection_slots = ("attn_q", "attn_k", "attn_v", "attn_output")
+    projection_slots = (
+        "attn_q", "attn_k", "attn_v", "attn_output", "index_q", "index_k"
+    )
     moe_slots = {
         "router": "router", "expert_gate": "expert_gate",
         "expert_up": "expert_up", "expert_down": "expert_down",
@@ -1012,6 +1301,8 @@ def bind_qwen4_exp_qsa_layer(
             ),
             q_norm_weight_ptr=pointer("attn_q_norm"),
             k_norm_weight_ptr=pointer("attn_k_norm"),
+            index_q_norm_weight_ptr=pointer("index_q_norm"),
+            index_k_norm_weight_ptr=pointer("index_k_norm"),
         ),
         ffn_gr=gr("ffn"),
         moe=MappingProxyType(
@@ -1096,6 +1387,10 @@ def run_qwen4_exp_dense_qsa_token_mixer(
     head_dim: int,
     rotary_dim: int,
     theta: float,
+    index_state: Qwen4ExpQSAIndexDeviceState | None = None,
+    index_heads: int = 0,
+    index_dim: int = 0,
+    index_rotary_dim: int = 0,
     eps: float = 1e-6,
     stream: int = 0,
     runtime: HipRuntime | None = None,
@@ -1128,6 +1423,55 @@ def run_qwen4_exp_dense_qsa_token_mixer(
             output_dtype=GGUF_OUTPUT_F32,
             stream=stream, runtime=active_runtime,
         )
+    selected_count = 0
+    selected_positions: DeviceBuffer | None = None
+    if index_state is not None:
+        index_required = {"index_q", "index_k"}
+        index_missing = sorted(index_required - set(weights.projections))
+        if index_missing:
+            raise ValueError("missing Qwen4Exp QSA index weights: " + ", ".join(index_missing))
+        if index_heads != index_state.index_heads or index_dim != index_state.index_dim:
+            raise ValueError("QSA index geometry must match its state owner")
+        if weights.index_q_norm_weight_ptr == 0 or weights.index_k_norm_weight_ptr == 0:
+            raise ValueError("QSA index norm weights are required with index state")
+        launch_gguf_linear(
+            weights.projections["index_k"], mixed_ptr, scratch.index_k_projected.ptr,
+            rows, hidden, index_dim,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            stream=stream, runtime=active_runtime,
+        )
+        index_state.append(scratch.index_k_projected.ptr, position=position, stream=stream)
+        if index_state.count > index_state.dense_equivalent_limit:
+            launch_gguf_linear(
+                weights.projections["index_q"], mixed_ptr, scratch.index_q_projected.ptr,
+                rows, hidden, index_heads * index_dim,
+                activation_dtype=GGUF_ACTIVATION_F32,
+                output_dtype=GGUF_OUTPUT_F32,
+                stream=stream, runtime=active_runtime,
+            )
+            qwen4_exp_qsa_norm_rope_f32(
+                scratch.index_q_projected.ptr,
+                weights.index_q_norm_weight_ptr,
+                attention_state.position.ptr,
+                scratch.index_query.ptr,
+                index_heads,
+                index_dim,
+                index_rotary_dim,
+                theta,
+                eps,
+                stream=stream,
+                runtime=active_runtime,
+            )
+            selected_count, selected_positions = index_state.select(
+                scratch.index_query.ptr,
+                query_position=position,
+                key_norm_weight_ptr=weights.index_k_norm_weight_ptr,
+                rotary_dim=index_rotary_dim,
+                theta=theta,
+                eps=eps,
+                stream=stream,
+            )
     qwen4_exp_qsa_split_norm_rope_f32(
         scratch.q_projected.ptr,
         scratch.key_projected.ptr,
@@ -1158,21 +1502,39 @@ def run_qwen4_exp_dense_qsa_token_mixer(
         stream=stream,
         runtime=active_runtime,
     )
-    qwen35_paged_full_attn_decode_context_bf16_spans(
-        scratch.query.ptr,
-        attention_state.key_cache.ptr,
-        attention_state.value_cache.ptr,
-        scratch.context.ptr,
-        attention_state.decode_spans,
-        position + 1,
-        attention_state.block_size,
-        query_heads,
-        kv_heads,
-        head_dim,
-        head_dim ** -0.5,
-        stream=stream,
-        runtime=active_runtime,
-    )
+    if selected_positions is None:
+        qwen35_paged_full_attn_decode_context_bf16_spans(
+            scratch.query.ptr,
+            attention_state.key_cache.ptr,
+            attention_state.value_cache.ptr,
+            scratch.context.ptr,
+            attention_state.decode_spans,
+            position + 1,
+            attention_state.block_size,
+            query_heads,
+            kv_heads,
+            head_dim,
+            head_dim ** -0.5,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    else:
+        qwen4_exp_qsa_sparse_attention_paged_bf16_f32(
+            scratch.query.ptr,
+            attention_state.key_cache.ptr,
+            attention_state.value_cache.ptr,
+            selected_positions.ptr,
+            scratch.context.ptr,
+            attention_state.decode_spans,
+            selected_count=selected_count,
+            block_size=attention_state.block_size,
+            query_heads=query_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            scale=head_dim ** -0.5,
+            stream=stream,
+            runtime=active_runtime,
+        )
     qwen4_exp_qsa_gate_context_f32(
         scratch.context.ptr,
         scratch.gate.ptr,
@@ -1500,6 +1862,10 @@ def run_qwen4_exp_dense_qsa_layer(
     ffn: int,
     experts: int,
     top_k: int,
+    index_state: Qwen4ExpQSAIndexDeviceState | None = None,
+    index_heads: int = 0,
+    index_dim: int = 0,
+    index_rotary_dim: int = 0,
     stream: int = 0,
     runtime: HipRuntime | None = None,
 ) -> DeviceBuffer:
@@ -1528,6 +1894,8 @@ def run_qwen4_exp_dense_qsa_layer(
         position=position,
         rows=rows, hidden=hidden, query_heads=query_heads, kv_heads=kv_heads,
         head_dim=head_dim, rotary_dim=rotary_dim, theta=theta,
+        index_state=index_state, index_heads=index_heads, index_dim=index_dim,
+        index_rotary_dim=index_rotary_dim,
         stream=stream, runtime=active_runtime,
     )
     qwen4_exp_gr_write_bf16_f32(
@@ -1915,10 +2283,10 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.backend = str(backend)
         self.runtime = runtime or get_hip_runtime()
         self.max_sequence_length = int(max_sequence_length)
-        if not 0 < self.max_sequence_length <= self.config.qsa_dense_equivalent_max_tokens:
+        if not 0 < self.max_sequence_length <= self.config.context_length:
             raise ValueError(
-                "dense Qwen4Exp runner max_sequence_length must be in "
-                f"1..{self.config.qsa_dense_equivalent_max_tokens}"
+                "Qwen4Exp runner max_sequence_length must be in "
+                f"1..{self.config.context_length}"
             )
         load_backend_kernel_package(self.backend)
         self.gdn_bindings = {
@@ -1937,6 +2305,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.ple_scratch: Qwen4ExpPLEScratch | None = None
         self.head_scratch: Qwen4ExpGRScratch | None = None
         self.attention_states: tuple[Qwen4ExpDenseAttentionState, ...] = ()
+        self.index_states: tuple[Qwen4ExpQSAIndexDeviceState, ...] = ()
         self._buffers: list[DeviceBuffer] = []
         self._ple_hash_states: dict[int, PLEHashState] = {}
         self.position = 0
@@ -1974,7 +2343,8 @@ class Qwen4ExpGGUFResidentModelRunner:
             low_rank=cfg.residual_low_rank, query_heads=cfg.attention_head_count,
             kv_heads=cfg.attention_kv_head_count, head_dim=cfg.attention_key_length,
             ffn=cfg.expert_feed_forward_length, experts=cfg.expert_count,
-            top_k=cfg.expert_used_count, runtime=self.runtime,
+            top_k=cfg.expert_used_count, index_heads=cfg.indexer_head_count,
+            index_dim=cfg.indexer_key_length, runtime=self.runtime,
         )
         self.ple_scratch = Qwen4ExpPLEScratch.allocate(
             rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
@@ -1993,6 +2363,17 @@ class Qwen4ExpGGUFResidentModelRunner:
                 runtime=self.runtime,
             )
             for _ in range(cfg.layer_types.count("qsa"))
+        )
+        self.index_states = tuple(
+            Qwen4ExpQSAIndexDeviceState.allocate(
+                attention_state=attention,
+                index_heads=cfg.indexer_head_count,
+                index_dim=cfg.indexer_key_length,
+                compression_ratio=cfg.qsa_compression_ratio,
+                block_budget=cfg.qsa_block_budget,
+                runtime=self.runtime,
+            )
+            for attention in self.attention_states
         )
         for nbytes in (
             4,
@@ -2026,6 +2407,8 @@ class Qwen4ExpGGUFResidentModelRunner:
             self.runtime.memset(attention.key_cache.ptr, 0, attention.key_cache.nbytes)
             self.runtime.memset(attention.value_cache.ptr, 0, attention.value_cache.nbytes)
             attention.set_position(0)
+        for index in self.index_states:
+            index.reset()
         self._ple_hash_states = {}
         self.position = 0
 
@@ -2154,6 +2537,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     residual_ptr,
                     binding,
                     attention_state=self.attention_states[binding.qsa_state_index],
+                    index_state=self.index_states[binding.qsa_state_index],
                     scratch=self.qsa_scratch,
                     position=self.position,
                     rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
@@ -2163,6 +2547,9 @@ class Qwen4ExpGGUFResidentModelRunner:
                     head_dim=cfg.attention_key_length,
                     rotary_dim=cfg.rope_dimension_count,
                     theta=cfg.rope_freq_base,
+                    index_heads=cfg.indexer_head_count,
+                    index_dim=cfg.indexer_key_length,
+                    index_rotary_dim=cfg.rope_dimension_count,
                     ffn=cfg.expert_feed_forward_length,
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,
@@ -2231,6 +2618,9 @@ class Qwen4ExpGGUFResidentModelRunner:
         for buffer in reversed(self._buffers):
             free(buffer, runtime=self.runtime)
         self._buffers = []
+        for state in reversed(self.index_states):
+            state.close()
+        self.index_states = ()
         for state in reversed(self.attention_states):
             state.close()
         self.attention_states = ()
@@ -2269,6 +2659,7 @@ __all__ = [
     "Qwen4ExpMoEScratch",
     "Qwen4ExpGRScratch",
     "Qwen4ExpPLEScratch",
+    "Qwen4ExpQSAIndexDeviceState",
     "Qwen4ExpTokenResult",
     "Qwen4ExpQSALayerDeviceWeights",
     "Qwen4ExpQSALayerScratch",

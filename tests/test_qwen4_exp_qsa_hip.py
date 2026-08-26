@@ -50,6 +50,55 @@ def test_qwen4_exp_qsa_build_and_registry_contract() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_qsa_native_query_norm_rope_matches_split_half_oracle() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.cpu_reference.qwen4_exp import qsa_interleaved_rope
+    from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
+        qwen4_exp_qsa_norm_rope_f32,
+    )
+
+    runtime = get_hip_runtime()
+    query = np.array(
+        [[1.0, 2.0, -3.0, 4.0], [-2.0, 0.5, 1.0, 3.0]],
+        dtype=np.float32,
+    )
+    weight = np.array([1.0, 0.8, 1.2, 0.9], dtype=np.float32)
+    position = np.array([7], dtype=np.int64)
+    normalized = query / np.sqrt(
+        np.mean(query * query, axis=-1, keepdims=True, dtype=np.float32)
+        + np.float32(1e-6)
+    ) * weight
+    expected = qsa_interleaved_rope(
+        normalized[None], positions=position, rotary_dim=4, theta=100.0
+    )[0]
+
+    allocations = []
+    try:
+        d_query = _upload(query, runtime, allocations)
+        d_weight = _upload(weight, runtime, allocations)
+        d_position = _upload(position, runtime, allocations)
+        d_output = _alloc(expected.shape, np.float32, runtime, allocations)
+        qwen4_exp_qsa_norm_rope_f32(
+            d_query.ptr,
+            d_weight.ptr,
+            d_position.ptr,
+            d_output.ptr,
+            heads=2,
+            head_dim=4,
+            rotary_dim=4,
+            theta=100.0,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        actual = _download(d_output, expected.shape, np.float32, runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=2e-6)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_qwen4_exp_qsa_native_pool_score_select_match_cpu() -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (

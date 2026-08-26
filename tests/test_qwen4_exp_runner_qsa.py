@@ -13,11 +13,15 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.kernels.cpu_reference.qwen4_exp import (
+    qsa_index_scores,
     qsa_interleaved_rope,
+    qsa_prepare_index_keys,
+    qsa_select_positions,
     qsa_sparse_gqa_attention,
 )
 from hipengine.runtime.qwen4_exp_runner import (
     Qwen4ExpDenseAttentionState,
+    Qwen4ExpQSAIndexDeviceState,
     Qwen4ExpQSAMixerDeviceWeights,
     Qwen4ExpQSAScratch,
     run_qwen4_exp_dense_qsa_token_mixer,
@@ -131,6 +135,162 @@ def test_qwen4_exp_dense_qsa_runner_matches_cpu_through_three_decode_positions()
     finally:
         if scratch is not None:
             scratch.close()
+        if state is not None:
+            state.close()
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_qsa_runner_switches_to_native_sparse_selection_above_budget() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(4310)
+    hidden, query_heads, kv_heads, head_dim = 8, 2, 1, 4
+    index_heads, index_dim, ratio, block_budget = 2, 4, 2, 2
+    q_width = query_heads * head_dim
+    kv_width = kv_heads * head_dim
+    arrays = {
+        "attn_q": rng.normal(0.0, 0.1, size=(q_width * 2, hidden)).astype(np.float32),
+        "attn_k": rng.normal(0.0, 0.1, size=(kv_width, hidden)).astype(np.float32),
+        "attn_v": rng.normal(0.0, 0.1, size=(kv_width, hidden)).astype(np.float32),
+        "attn_output": rng.normal(0.0, 0.1, size=(hidden, q_width)).astype(np.float32),
+        "index_q": rng.normal(0.0, 0.1, size=(index_heads * index_dim, hidden)).astype(np.float32),
+        "index_k": rng.normal(0.0, 0.1, size=(index_dim, hidden)).astype(np.float32),
+    }
+    q_norm = rng.normal(1.0, 0.05, size=head_dim).astype(np.float32)
+    k_norm = rng.normal(1.0, 0.05, size=head_dim).astype(np.float32)
+    index_q_norm = rng.normal(1.0, 0.05, size=index_dim).astype(np.float32)
+    index_k_norm = rng.normal(1.0, 0.05, size=index_dim).astype(np.float32)
+    mixed_rows = rng.normal(0.0, 0.2, size=(6, hidden)).astype(np.float32)
+
+    allocations = []
+    state = index_state = scratch = None
+    try:
+        weights = Qwen4ExpQSAMixerDeviceWeights(
+            projections={
+                name: _dense_f32_weight(name, array, runtime, allocations)
+                for name, array in arrays.items()
+            },
+            q_norm_weight_ptr=_upload(q_norm, runtime, allocations).ptr,
+            k_norm_weight_ptr=_upload(k_norm, runtime, allocations).ptr,
+            index_q_norm_weight_ptr=_upload(index_q_norm, runtime, allocations).ptr,
+            index_k_norm_weight_ptr=_upload(index_k_norm, runtime, allocations).ptr,
+        )
+        state = Qwen4ExpDenseAttentionState.allocate(
+            max_positions=8,
+            block_size=256,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            runtime=runtime,
+        )
+        index_state = Qwen4ExpQSAIndexDeviceState.allocate(
+            attention_state=state,
+            index_heads=index_heads,
+            index_dim=index_dim,
+            compression_ratio=ratio,
+            block_budget=block_budget,
+            runtime=runtime,
+        )
+        scratch = Qwen4ExpQSAScratch.allocate(
+            rows=1,
+            hidden=hidden,
+            query_heads=query_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            index_heads=index_heads,
+            index_dim=index_dim,
+            runtime=runtime,
+        )
+        cpu_keys: list[np.ndarray] = []
+        cpu_values: list[np.ndarray] = []
+        raw_index_keys: list[np.ndarray] = []
+        for position, mixed in enumerate(mixed_rows):
+            qfull = (arrays["attn_q"] @ mixed).reshape(query_heads, 2, head_dim)
+            query = qsa_interleaved_rope(
+                _rmsnorm(qfull[:, 0], q_norm)[None],
+                positions=[position],
+                rotary_dim=4,
+                theta=100.0,
+            )[0]
+            key = qsa_interleaved_rope(
+                _rmsnorm((arrays["attn_k"] @ mixed).reshape(kv_heads, head_dim), k_norm)[None],
+                positions=[position],
+                rotary_dim=4,
+                theta=100.0,
+            )[0]
+            value = (arrays["attn_v"] @ mixed).reshape(kv_heads, head_dim)
+            cpu_keys.append(key)
+            cpu_values.append(value)
+            raw_index_keys.append(arrays["index_k"] @ mixed)
+            if position + 1 <= block_budget * ratio + ratio - 1:
+                selected = np.arange(position + 1, dtype=np.int64)
+            else:
+                index_query = _rmsnorm(
+                    (arrays["index_q"] @ mixed).reshape(index_heads, index_dim),
+                    index_q_norm,
+                )
+                index_query = qsa_interleaved_rope(
+                    index_query[None], positions=[position], rotary_dim=4, theta=100.0
+                )[0]
+                pooled = qsa_prepare_index_keys(
+                    np.asarray(raw_index_keys),
+                    np.arange(position + 1),
+                    index_k_norm,
+                    compression_ratio=ratio,
+                    rotary_dim=4,
+                    theta=100.0,
+                )
+                selection = qsa_select_positions(
+                    qsa_index_scores(index_query[None], pooled.keys),
+                    pooled.block_starts,
+                    query_positions=[position],
+                    available_positions=np.arange(position + 1),
+                    compression_ratio=ratio,
+                    block_budget=block_budget,
+                )
+                selected = selection.selected_positions[0]
+            context = qsa_sparse_gqa_attention(
+                query[None],
+                np.asarray(cpu_keys),
+                np.asarray(cpu_values),
+                query_positions=[position],
+                key_positions=np.arange(position + 1),
+                selected_positions=(selected,),
+            )[0]
+            gated = context * (1.0 / (1.0 + np.exp(-qfull[:, 1])))
+            expected = arrays["attn_output"] @ gated.reshape(-1)
+
+            d_mixed = _upload(mixed[None], runtime, allocations)
+            output = run_qwen4_exp_dense_qsa_token_mixer(
+                d_mixed.ptr,
+                weights,
+                attention_state=state,
+                index_state=index_state,
+                scratch=scratch,
+                position=position,
+                rows=1,
+                hidden=hidden,
+                query_heads=query_heads,
+                kv_heads=kv_heads,
+                head_dim=head_dim,
+                rotary_dim=4,
+                theta=100.0,
+                index_heads=index_heads,
+                index_dim=index_dim,
+                index_rotary_dim=4,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            actual = _download(output, (hidden,), np.float32, runtime)
+            np.testing.assert_allclose(actual, expected, rtol=3e-4, atol=3e-4)
+        np.testing.assert_array_equal(index_state.selected_positions_host[: selected.size], selected)
+    finally:
+        if scratch is not None:
+            scratch.close()
+        if index_state is not None:
+            index_state.close()
         if state is not None:
             state.close()
         for allocation in reversed(allocations):
