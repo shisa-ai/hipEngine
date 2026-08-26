@@ -18602,7 +18602,7 @@ class Qwen35GGUFResidentSession:
                 defer_state_scatter=defer_state_scatter,
             )
             add_stage("packed_verify_scatter_outputs", scatter_start)
-            sync_start = time.per_counter()
+            sync_start = time.perf_counter()
             if stream:
                 runtime.stream_synchronize(stream)
             else:
