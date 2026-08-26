@@ -63,8 +63,9 @@ __global__ void qwen4_exp_gdn_decode_f32_kernel(
     }
     __syncthreads();
   }
-  const float q_scale = rsqrtf(reductions[0]) * rsqrtf(static_cast<float>(head_k_dim));
-  const float k_scale = rsqrtf(norm_reductions[0]);
+  const float q_scale = rsqrtf(reductions[0] + 1.0e-6f)
+      * rsqrtf(static_cast<float>(head_k_dim));
+  const float k_scale = rsqrtf(norm_reductions[0] + 1.0e-6f);
   const float beta = sigmoid_f32(beta_logits[v_head]);
   const float decay = expf(-expf(a_log[v_head]) * softplus_f32(alpha[v_head] + dt_bias[v_head]));
   const int64_t value_index = threadIdx.x;
