@@ -136,12 +136,18 @@ def register_builtin_generators() -> None:
     """
 
     global _BUILTINS_REGISTERED
-    if _BUILTINS_REGISTERED:
-        return
-    from hipengine.generation import laguna_gguf as _laguna_gguf  # noqa: F401
-    from hipengine.generation import maple as _maple  # noqa: F401
-    from hipengine.generation import qwen35_gguf as _qwen35_gguf  # noqa: F401
-    from hipengine.generation import qwen35_paro as _qwen35_paro  # noqa: F401
+    if not _BUILTINS_REGISTERED:
+        from hipengine.generation import laguna_gguf as _laguna_gguf  # noqa: F401
+        from hipengine.generation import maple as _maple  # noqa: F401
+        from hipengine.generation import qwen35_gguf as _qwen35_gguf  # noqa: F401
+        from hipengine.generation import qwen35_paro as _qwen35_paro  # noqa: F401
+
+        _BUILTINS_REGISTERED = True
+
+    # Runtime-profile registries are deliberately reset between tests. Refresh
+    # these idempotent plans even after the model modules have been imported so
+    # a prior LLM lifecycle test cannot make later profile resolution depend on
+    # collection order.
     from hipengine.generation.qwen36_gguf_gfx1100_profiles import (
         register_qwen36_dense_gguf_gfx1100_profiles,
     )
@@ -155,8 +161,6 @@ def register_builtin_generators() -> None:
     register_qwen36_dense_gguf_gfx1100_profiles()
     register_qwen36_gguf_gfx1151_profiles()
     register_qwen38_gguf_gfx1151_profiles()
-
-    _BUILTINS_REGISTERED = True
 
 
 __all__ = [

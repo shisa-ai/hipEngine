@@ -27809,6 +27809,8 @@ class _GGUFFullAttentionPrefillScratch:
                 ("block_table", block_table_arr.nbytes),
                 ("positions", positions_arr.nbytes),
                 ("context_counts", context_arr.nbytes),
+                ("cos_table", cos_arr.nbytes),
+                ("sin_table", sin_arr.nbytes),
                 ("cu_q", cu_arr.nbytes),
                 ("cu_k", cu_arr.nbytes),
                 ("softmax_lse", cfg.head_count * rows * 4),
@@ -27834,6 +27836,8 @@ class _GGUFFullAttentionPrefillScratch:
                 copy_host_to_device(fields["block_table"], host_array_ptr(block_table_arr), runtime=runtime)
                 copy_host_to_device(fields["positions"], host_array_ptr(positions_arr), runtime=runtime)
                 copy_host_to_device(fields["context_counts"], host_array_ptr(context_arr), runtime=runtime)
+                copy_host_to_device(fields["cos_table"], host_array_ptr(cos_arr), runtime=runtime)
+                copy_host_to_device(fields["sin_table"], host_array_ptr(sin_arr), runtime=runtime)
                 copy_host_to_device(fields["cu_q"], host_array_ptr(cu_arr), runtime=runtime)
                 copy_host_to_device(fields["cu_k"], host_array_ptr(cu_arr), runtime=runtime)
                 copy_host_to_device(fields["atomic"], host_array_ptr(atomic_arr), runtime=runtime)

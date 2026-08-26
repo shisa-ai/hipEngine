@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import hipengine.generation.qwen35_gguf as qwen35_gguf
 from hipengine import LLM, SamplingParams
 from hipengine.models import resolve_model
 
@@ -28,92 +29,101 @@ def test_qwen35moe_gguf_model_plugin_resolves_architecture() -> None:
     assert plugin.default_backend == "auto"
 
 
-def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
-    import hipengine.generation.qwen35_gguf as qwen35_gguf
-
-    calls = []
-
+def _fake_session_type(calls, *, include_step: bool):
     class FakeSession:
         def __init__(self, model_path, **kwargs):
+            self.closed = False
+            self.position = 0
+            self._decode_graphs = []
+            self._device_kv_graph_handles = {}
             calls.append(("init", str(model_path), dict(kwargs)))
 
-        def __enter__(self):
-            calls.append(("enter",))
+        def resident_slot_view(self, slot_index):
+            calls.append(("slot_view", int(slot_index)))
             return self
 
-        def __exit__(self, exc_type, exc, tb):
-            calls.append(("exit", exc_type is None))
+        def reset(self):
+            self.position = 0
+
+        def close(self):
+            if not self.closed:
+                self.closed = True
+                calls.append(("close",))
 
         def prefill(self, token_ids, *, return_logits=True):
-            calls.append(("prefill", tuple(int(token) for token in token_ids), bool(return_logits)))
+            tokens = tuple(int(token) for token in token_ids)
+            self.position = len(tokens)
+            calls.append(("prefill", tokens, bool(return_logits)))
             return type("Result", (), {"token_id": 220, "logit": 4.5})()
 
-        def step(self, token_id, *, return_logits=True):
-            calls.append(("step", int(token_id), bool(return_logits)))
-            return type("Result", (), {"token_id": 16, "logit": 1.0})()
+        def prefill_batch_native(self, prompts, *, sessions, return_logits=True, **kwargs):
+            del kwargs
+            return [
+                session.prefill(prompt, return_logits=return_logits)
+                for session, prompt in zip(sessions, prompts, strict=True)
+            ]
 
-    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+        if include_step:
+
+            def step(self, token_id, *, return_logits=True):
+                self.position += 1
+                calls.append(("step", int(token_id), bool(return_logits)))
+                return type("Result", (), {"token_id": 16, "logit": 1.0})()
+
+    return FakeSession
+
+
+def _assert_generation2_session_contract(calls, model: Path) -> None:
+    init = calls[0]
+    assert init[0:2] == ("init", str(model.resolve()))
+    assert init[2]["backend"] == "hip_gfx1100"
+    assert init[2]["use_wmma_prefill"] is True
+    assert init[2]["use_gemv_decode"] is True
+    assert init[2]["defer_kv_allocation"] is True
+    assert init[2]["max_batch_size"] >= 2
+    assert init[2]["shared_runner"] is not None
+    assert init[2]["runtime"] is not None
+    assert [call for call in calls if call[0] == "slot_view"] == [
+        ("slot_view", index) for index in range(1, init[2]["max_batch_size"])
+    ]
+    assert calls[-1] == ("close",)
+
+
+def test_llm_generate_gguf_path_uses_resident_session(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "Qwen35GGUFResidentSession",
+        _fake_session_type(calls, include_step=True),
+    )
 
     llm = LLM(str(MODEL), backend="hip_gfx1100", quant="gguf_q4_k_m")
-    assert llm.generate("The answer is", SamplingParams(max_tokens=2)) == [" 1"]
+    try:
+        assert llm.generate("The answer is", SamplingParams(max_tokens=2)) == [" 1"]
+    finally:
+        llm.close()
 
-    # Eager per-token decode (the HIP decode graph was retired; see WORKLOG
-    # 2026-06-28 "#8 moot" - the lib cache made eager == graph).
-    assert calls == [
-        (
-            "init",
-            str(MODEL.resolve()),
-            {
-                "backend": "hip_gfx1100",
-                "use_wmma_prefill": True,
-                "use_gemv_decode": True,
-            },
-        ),
-        ("enter",),
-        ("prefill", (760, 4087, 369), False),
-        ("step", 220, False),
-        ("exit", True),
-    ]
+    _assert_generation2_session_contract(calls, MODEL)
+    assert ("prefill", (760, 4087, 369), False) in calls
+    assert ("step", 220, False) in calls
 
 
 def test_llm_generate_qwen35moe_gguf_path_uses_resident_session(monkeypatch) -> None:
     if not MOE_MODEL.exists():
         pytest.skip(f"local GGUF fixture not found: {MOE_MODEL}")
-    import hipengine.generation.qwen35_gguf as qwen35_gguf
 
     calls = []
-
-    class FakeSession:
-        def __init__(self, model_path, **kwargs):
-            calls.append(("init", str(model_path), dict(kwargs)))
-
-        def __enter__(self):
-            calls.append(("enter",))
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            calls.append(("exit", exc_type is None))
-
-        def prefill(self, token_ids, *, return_logits=True):
-            calls.append(("prefill", tuple(int(token) for token in token_ids), bool(return_logits)))
-            return type("Result", (), {"token_id": 220, "logit": 4.5})()
-
-    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    monkeypatch.setattr(
+        qwen35_gguf,
+        "Qwen35GGUFResidentSession",
+        _fake_session_type(calls, include_step=False),
+    )
 
     llm = LLM(str(MOE_MODEL), backend="hip_gfx1100", quant="gguf_q4_k_m")
-    assert llm.generate("The answer is", SamplingParams(max_tokens=1)) == [" "]
+    try:
+        assert llm.generate("The answer is", SamplingParams(max_tokens=1)) == [" "]
+    finally:
+        llm.close()
 
-    assert calls == [
-        (
-            "init",
-            str(MOE_MODEL.resolve()),
-            {
-                "backend": "hip_gfx1100",
-                "use_wmma_prefill": True,
-                "use_gemv_decode": True,
-            },
-        ),
-        ("enter",),
-        ("prefill", (760, 4087, 369), False),
-        ("exit", True),
-    ]
+    _assert_generation2_session_contract(calls, MOE_MODEL)
+    assert ("prefill", (760, 4087, 369), False) in calls
