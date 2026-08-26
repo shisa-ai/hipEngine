@@ -240,7 +240,7 @@ def _runtime_state_bytes_per_request(config: Qwen4ExpGGUFConfig) -> int:
     )
     conv_state = (
         gdn_layers
-        * (config.gdn_conv_kernel - 1)
+        * config.gdn_conv_kernel
         * conv_channels
         * fp32_bytes
     )

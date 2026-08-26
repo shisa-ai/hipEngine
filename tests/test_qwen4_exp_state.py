@@ -40,7 +40,7 @@ def test_qwen4_exp_decode_state_snapshot_restore_reset_and_close() -> None:
     )
     expected_sizes = {
         "gdn_matrix": 2 * 3 * 4 * 4 * 4,
-        "gdn_conv": 2 * 3 * 5 * 4,
+        "gdn_conv": 2 * 4 * 5 * 4,
         "ple_conv": 9 * 8 * 4,
         "residual": 2 * 4 * 2,
     }
