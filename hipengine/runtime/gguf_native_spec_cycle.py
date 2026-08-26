@@ -990,7 +990,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         if int(position) + int(rows) > int(self.context_limit):
             return NATIVE_SPEC_TARGET_GRAPH_CONTEXT_BUCKET_MISS
         if bool(device_accept_commit) and (
-            remaining_decode is None or int(remaining_decode) < int(rows)
+            remaining_decode is None or int(remaining_decode) < 1
         ):
             return NATIVE_SPEC_TARGET_GRAPH_OUTPUT_ROOM_MISS
         return None
@@ -1086,7 +1086,7 @@ class Qwen35GGUFNativeB2TargetGraph:
                 NATIVE_SPEC_TARGET_GRAPH_CONTEXT_BUCKET_MISS
             )
         if self.device_accept_commit and (
-            remaining_decode is None or int(remaining_decode) < int(self.rows)
+            remaining_decode is None or int(remaining_decode) < 1
         ):
             raise NativeSpecTargetGraphUnsupportedError(
                 NATIVE_SPEC_TARGET_GRAPH_OUTPUT_ROOM_MISS
@@ -1095,9 +1095,9 @@ class Qwen35GGUFNativeB2TargetGraph:
         runtime = self.session.runtime
         _stage_dynamic_metadata(self.dynamic_metadata, batch, runtime=runtime)
         if self.device_accept_commit:
-            if remaining_decode is None or int(remaining_decode) < int(self.rows):
+            if remaining_decode is None or int(remaining_decode) < 1:
                 raise ValueError(
-                    "N2 native accept/commit requires remaining_decode to cover drafts plus correction"
+                    "N2 native accept/commit requires room for one correction"
                 )
             if self.remaining_decode is None:
                 raise RuntimeError("N2 native accept/commit remaining-decode buffer is missing")
@@ -1189,7 +1189,13 @@ class Qwen35GGUFNativeB2TargetGraph:
                     and target_top1_start + self.rows > payload.size
                 )
             ):
-                raise RuntimeError("N2 native accept/commit returned an invalid bounded payload")
+                raise RuntimeError(
+                    "N2 native accept/commit returned an invalid bounded payload: "
+                    f"accepted={accepted} commit_row={commit_row} "
+                    f"committed_length={committed_length} "
+                    f"visible_length={visible_length} next_token={next_token} "
+                    f"remaining_decode={remaining_decode} rows={self.rows}"
+                )
             output_tokens = [
                 int(token)
                 for token in payload[output_start:output_start + visible_length].tolist()
@@ -2082,9 +2088,9 @@ def run_qwen35_gguf_native_mtp_cycle(
         raise ValueError("root_token must be non-negative")
     if start < 0 or cache_before < 0:
         raise ValueError("root_position and draft_cache_len must be non-negative")
-    if remaining < budget + 1:
+    if remaining < 1:
         raise NativeSpecTargetGraphUnsupportedError(
-            "native complete cycle requires output room for drafts plus correction"
+            "native complete cycle requires output room for one correction"
         )
     if int(getattr(session, "position", -1)) != start:
         raise ValueError("root_position must match the target session cursor")

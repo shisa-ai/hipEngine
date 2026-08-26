@@ -352,11 +352,17 @@ def test_target_verify_batch_accept_from_top1_oracles_device_accept_summary() ->
     assert summary.commit_tokens == (11, 200)
     assert summary.next_tokens == (12, 21)
 
-    budgeted = target.accept_from_top1((10, 20, 11, 12, 21), remaining_decode=(1, 1))
+    terminal = target.accept_from_top1((10, 20, 11, 12, 21), remaining_decode=(1, 1))
+    assert terminal.accepted_counts == (0, 0)
+    assert terminal.accepted_tokens == ((), ())
+    assert terminal.selected_candidate_rows == (0, 1)
+    assert terminal.next_tokens == (10, 20)
+
+    budgeted = target.accept_from_top1((10, 20, 11, 12, 21), remaining_decode=(2, 2))
     assert budgeted.accepted_counts == (1, 1)
     assert budgeted.accepted_tokens == ((10,), (20,))
     assert budgeted.selected_candidate_rows == (2, 4)
-    assert budgeted.next_tokens == (None, None)
+    assert budgeted.next_tokens == (11, 21)
 
     with pytest.raises(ValueError, match="target_top1"):
         target.accept_from_top1((10, 20))

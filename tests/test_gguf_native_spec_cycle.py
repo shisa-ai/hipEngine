@@ -439,7 +439,9 @@ def test_native_target_graph_key_separates_profile_manifest_and_state_dtype() ->
         (3, 1021, 3, "target_graph_context_bucket_miss"),
         (4, 1019, 4, None),
         (4, 1020, 4, "target_graph_context_bucket_miss"),
-        (4, 1019, 3, "target_graph_output_room_miss"),
+        (4, 1019, 3, None),
+        (4, 1019, 1, None),
+        (4, 1019, 0, "target_graph_output_room_miss"),
     ],
 )
 def test_native_target_graph_launch_eligibility_covers_live_context_and_output_room(

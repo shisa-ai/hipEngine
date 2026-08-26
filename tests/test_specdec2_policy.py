@@ -117,6 +117,22 @@ def test_context_and_output_room_misses_select_k0_without_mutation() -> None:
     assert plan.is_ar_only
 
 
+def test_terminal_zero_accept_capability_keeps_one_bounded_candidate() -> None:
+    plan = _plan(
+        _capability(
+            max_requests=1,
+            proposal_widths=(1,),
+            terminal_zero_accept_supported=True,
+        ),
+        (_semantics(1, remaining_decode=1),),
+        (3,),
+    )
+
+    assert plan.candidate_counts == (1,)
+    assert plan.reasons == (SpecPlanReason.SPECULATIVE_QUALIFIED,)
+    assert plan.logical_frontier_rows == 2
+
+
 def test_claim_miss_and_circuit_breaker_select_stable_k0_reasons() -> None:
     semantics = (_semantics(1), _semantics(2))
 

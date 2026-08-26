@@ -393,7 +393,10 @@ class TargetVerifyBatch:
             budget = None if budgets is None else budgets[index]
             row = root_row
             request_tokens: list[int] = []
-            while budget is None or len(request_tokens) < budget:
+            accepted_budget = (
+                None if budget is None else max(0, int(budget) - 1)
+            )
+            while accepted_budget is None or len(request_tokens) < accepted_budget:
                 matches = [
                     child
                     for child in child_rows[row]
@@ -408,7 +411,7 @@ class TargetVerifyBatch:
             selected_rows.append(row)
             accepted_counts.append(len(request_tokens))
             accepted_tokens.append(tuple(request_tokens))
-            if budget is not None and len(request_tokens) >= budget:
+            if budget is not None and int(budget) <= 0:
                 next_tokens.append(None)
             else:
                 next_tokens.append(top1[row])
