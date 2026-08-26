@@ -1,0 +1,749 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_old_vs_concurrency2_c1_c8_diagnostic",
+  "created_at": "2026-08-26T17:13:12.821624+00:00",
+  "status": "diagnostic_complete",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "Publish the requested same-host c1-c8 diagnostic table; do not promote it as a retained topline because OLD c5-c8 needs its exact Q6 LM-head chunk4 rollback and the frozen CONCURRENCY2 production-FP16 source predates the attached profile-aware serving bundle.",
+  "physical_host": "gfx1151",
+  "hardware": {
+    "cpu": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "architecture": "gfx1151",
+    "rocm": "HIP 7.15.0",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8",
+    "queue_policy": {
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIP_VISIBLE_DEVICES": "0"
+    }
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+    "size_bytes": 16121359328,
+    "sha256": "22200efcd98a7aeeaf83f59b0f1400b055d9e0437900e26b930ef2d42a3eb3f9",
+    "sampled_fingerprint": "5f6fb0a89d04905d32da30135738deae3f4dddf4692515611b20dc064b5050e1",
+    "quant": "Q4_K_S (registry gguf_q4_k_m)",
+    "kv_storage": "bf16"
+  },
+  "protocol": {
+    "surface": "OpenAI-compatible server SSE",
+    "primary_metric": "median aggregate generated completion tokens / simultaneous-release-to-last-SSE-completion wall",
+    "prompt_length": 512,
+    "decode_tokens_per_request": 128,
+    "prompt_rows": "token 9707 repeated; last token cycles 9707..9710",
+    "sampling": "greedy top-1, ignore EOS, MTP off",
+    "concurrencies": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "warmup_runs_per_width": 1,
+    "measured_runs_per_width": 3,
+    "stream_warmup_runs_per_width": 0,
+    "stream_measured_runs_per_width": 3,
+    "fresh_server_per_width": true,
+    "generation_batch_window_ms": 20,
+    "prefill_decode_policy": "fair",
+    "prefill_chunk_tokens": 256,
+    "context_tokens_per_sequence": 1024,
+    "percent_difference_formula": "(CONCURRENCY2 / OLD - 1) * 100"
+  },
+  "source_states": {
+    "old": {
+      "runtime_commit": "b08ed12d6befe3403cc0981cc809482b7ca0fe66",
+      "benchmark_only_harness_commit": "820e85b356b128749dc609e832041bcc2a1470db",
+      "recurrent_state": "fp32",
+      "c1_c4": "pre-C2 runtime defaults",
+      "c5_c8": "same runtime with HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4, its exact supported rollback composition; default max-chunk=5 fails at c5 because the qmicro rowtile accepts only rows 2/4"
+    },
+    "concurrency2": {
+      "runtime_commit": "74018c188cf14e915ee62e2ea935be4a1e902d92",
+      "recurrent_state": "production fp16 default with fp32 accumulation",
+      "physical_widths": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "strict_control": "same commit with HIPENGINE_GGUF_FP16_RECURRENT_STATE=0"
+    }
+  },
+  "results": {
+    "old": {
+      "1": {
+        "aggregate_sse_completion_tok_s_median": 9.915017714667709,
+        "aggregate_sse_completion_tok_s_samples": [
+          9.915017714667709,
+          9.91333818468388,
+          9.918063008056997
+        ],
+        "blocking_http_tok_s_median": 9.957542449310093,
+        "measured_rows": 3,
+        "strict_c1_exact_rows": 3,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": null
+      },
+      "2": {
+        "aggregate_sse_completion_tok_s_median": 4.919225100583102,
+        "aggregate_sse_completion_tok_s_samples": [
+          4.919225100583102,
+          4.917937331283356,
+          4.919639222613348
+        ],
+        "blocking_http_tok_s_median": 4.925280529198025,
+        "measured_rows": 6,
+        "strict_c1_exact_rows": 6,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          2
+        ],
+        "route_manifest": null
+      },
+      "3": {
+        "aggregate_sse_completion_tok_s_median": 6.807283768659769,
+        "aggregate_sse_completion_tok_s_samples": [
+          6.8065240490071,
+          6.809731694432556,
+          6.807283768659769
+        ],
+        "blocking_http_tok_s_median": 6.821267538698894,
+        "measured_rows": 9,
+        "strict_c1_exact_rows": 9,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          3
+        ],
+        "route_manifest": null
+      },
+      "4": {
+        "aggregate_sse_completion_tok_s_median": 8.88495695439145,
+        "aggregate_sse_completion_tok_s_samples": [
+          8.885011343745134,
+          8.88495695439145,
+          8.88069326555815
+        ],
+        "blocking_http_tok_s_median": 8.902250082696765,
+        "measured_rows": 12,
+        "strict_c1_exact_rows": 12,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          4
+        ],
+        "route_manifest": null
+      },
+      "5": {
+        "aggregate_sse_completion_tok_s_median": 9.65807686172975,
+        "aggregate_sse_completion_tok_s_samples": [
+          9.65807686172975,
+          9.660149065186472,
+          9.657530836615338
+        ],
+        "blocking_http_tok_s_median": 9.68453664335278,
+        "measured_rows": 15,
+        "strict_c1_exact_rows": 15,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          5
+        ],
+        "route_manifest": null
+      },
+      "6": {
+        "aggregate_sse_completion_tok_s_median": 11.19005058180446,
+        "aggregate_sse_completion_tok_s_samples": [
+          11.19005058180446,
+          11.186799804637321,
+          11.190438102585219
+        ],
+        "blocking_http_tok_s_median": 11.220518509756818,
+        "measured_rows": 18,
+        "strict_c1_exact_rows": 18,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          6
+        ],
+        "route_manifest": null
+      },
+      "7": {
+        "aggregate_sse_completion_tok_s_median": 12.598497694019962,
+        "aggregate_sse_completion_tok_s_samples": [
+          12.598497694019962,
+          12.605700668629698,
+          12.5920377366281
+        ],
+        "blocking_http_tok_s_median": 12.630259395743503,
+        "measured_rows": 21,
+        "strict_c1_exact_rows": 21,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          7
+        ],
+        "route_manifest": null
+      },
+      "8": {
+        "aggregate_sse_completion_tok_s_median": 14.365585507188033,
+        "aggregate_sse_completion_tok_s_samples": [
+          14.370102788707916,
+          14.365585507188033,
+          14.320369470955454
+        ],
+        "blocking_http_tok_s_median": 14.412370715501801,
+        "measured_rows": 24,
+        "strict_c1_exact_rows": 24,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          8
+        ],
+        "route_manifest": null
+      }
+    },
+    "concurrency2_production_fp16": {
+      "1": {
+        "aggregate_sse_completion_tok_s_median": 10.920512856862091,
+        "aggregate_sse_completion_tok_s_samples": [
+          10.920512856862091,
+          10.917947655560502,
+          10.929319295628476
+        ],
+        "blocking_http_tok_s_median": 9.698493860774011,
+        "measured_rows": 3,
+        "strict_c1_exact_rows": 3,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "unavailable",
+          "kind": "gguf_ar_c1_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "1",
+          "mode": "native_c1_eager",
+          "physical_execution_width": "1",
+          "rows": "1",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 10.141133088515918
+      },
+      "2": {
+        "aggregate_sse_completion_tok_s_median": 17.712826338140328,
+        "aggregate_sse_completion_tok_s_samples": [
+          17.7027142237648,
+          17.717571886368372,
+          17.712826338140328
+        ],
+        "blocking_http_tok_s_median": 17.74703871853242,
+        "measured_rows": 6,
+        "strict_c1_exact_rows": 6,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "exact_hybrid",
+          "kind": "gguf_packed_ar_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "2",
+          "mode": "decode_graph_replay",
+          "physical_execution_width": "2",
+          "rows": "2",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 260.07350702533887
+      },
+      "3": {
+        "aggregate_sse_completion_tok_s_median": 22.656367017366836,
+        "aggregate_sse_completion_tok_s_samples": [
+          22.656367017366836,
+          22.652309198984128,
+          22.678226466686045
+        ],
+        "blocking_http_tok_s_median": 22.716161101467076,
+        "measured_rows": 9,
+        "strict_c1_exact_rows": 6,
+        "strict_c1_mismatch_count": 3,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "exact_hybrid",
+          "kind": "gguf_packed_ar_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "3",
+          "mode": "decode_graph_replay",
+          "physical_execution_width": "3",
+          "rows": "3",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 232.82536452608417
+      },
+      "4": {
+        "aggregate_sse_completion_tok_s_median": 25.49192859515029,
+        "aggregate_sse_completion_tok_s_samples": [
+          25.49192859515029,
+          25.505798034562105,
+          25.479136135322037
+        ],
+        "blocking_http_tok_s_median": 25.520738728338213,
+        "measured_rows": 12,
+        "strict_c1_exact_rows": 9,
+        "strict_c1_mismatch_count": 3,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "exact_hybrid",
+          "kind": "gguf_packed_ar_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "4",
+          "mode": "decode_graph_replay",
+          "physical_execution_width": "4",
+          "rows": "4",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 186.91110971056233
+      },
+      "5": {
+        "aggregate_sse_completion_tok_s_median": 26.679556557613335,
+        "aggregate_sse_completion_tok_s_samples": [
+          26.679694854151034,
+          26.67120083638312,
+          26.679556557613335
+        ],
+        "blocking_http_tok_s_median": 26.68256575476422,
+        "measured_rows": 15,
+        "strict_c1_exact_rows": 12,
+        "strict_c1_mismatch_count": 3,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "exact_hybrid",
+          "kind": "gguf_packed_ar_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "5",
+          "mode": "decode_graph_replay",
+          "physical_execution_width": "5",
+          "rows": "5",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 176.24088045241604
+      },
+      "6": {
+        "aggregate_sse_completion_tok_s_median": 27.832402423084744,
+        "aggregate_sse_completion_tok_s_samples": [
+          27.93347493584843,
+          27.832402423084744,
+          27.519562472568865
+        ],
+        "blocking_http_tok_s_median": 27.950585080419163,
+        "measured_rows": 18,
+        "strict_c1_exact_rows": 15,
+        "strict_c1_mismatch_count": 3,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "exact_hybrid",
+          "kind": "gguf_packed_ar_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "6",
+          "mode": "decode_graph_replay",
+          "physical_execution_width": "6",
+          "rows": "6",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 148.72454525220397
+      },
+      "7": {
+        "aggregate_sse_completion_tok_s_median": 28.720420635738378,
+        "aggregate_sse_completion_tok_s_samples": [
+          29.007098149457352,
+          28.720420635738378,
+          28.61301635986855
+        ],
+        "blocking_http_tok_s_median": 29.212817222722215,
+        "measured_rows": 21,
+        "strict_c1_exact_rows": 15,
+        "strict_c1_mismatch_count": 6,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "exact_hybrid",
+          "kind": "gguf_packed_ar_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "7",
+          "mode": "decode_graph_replay",
+          "physical_execution_width": "7",
+          "rows": "7",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 127.96702696838919
+      },
+      "8": {
+        "aggregate_sse_completion_tok_s_median": 29.391981836344286,
+        "aggregate_sse_completion_tok_s_samples": [
+          29.542394792112812,
+          29.391981836344286,
+          29.318624366686386
+        ],
+        "blocking_http_tok_s_median": 29.984067585353547,
+        "measured_rows": 24,
+        "strict_c1_exact_rows": 18,
+        "strict_c1_mismatch_count": 6,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "exact_hybrid",
+          "kind": "gguf_packed_ar_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "8",
+          "mode": "decode_graph_replay",
+          "physical_execution_width": "8",
+          "rows": "8",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 104.59995745831296
+      }
+    },
+    "concurrency2_strict_fp32_control": {
+      "1": {
+        "aggregate_sse_completion_tok_s_median": 10.8857674545861,
+        "aggregate_sse_completion_tok_s_samples": [
+          10.8857674545861,
+          10.887765757050415,
+          10.877381401100378
+        ],
+        "blocking_http_tok_s_median": 10.927358260509124,
+        "measured_rows": 3,
+        "strict_c1_exact_rows": 3,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "unavailable",
+          "kind": "gguf_ar_c1_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "1",
+          "mode": "native_c1_eager",
+          "physical_execution_width": "1",
+          "rows": "1",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 9.79070101390056
+      },
+      "2": {
+        "aggregate_sse_completion_tok_s_median": 17.57510515571649,
+        "aggregate_sse_completion_tok_s_samples": [
+          17.582112267137244,
+          17.57510515571649,
+          17.57281612878173
+        ],
+        "blocking_http_tok_s_median": 17.582294930294427,
+        "measured_rows": 6,
+        "strict_c1_exact_rows": 6,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "exact_hybrid",
+          "kind": "gguf_packed_ar_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "2",
+          "mode": "decode_graph_replay",
+          "physical_execution_width": "2",
+          "rows": "2",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 257.2738550556107
+      },
+      "3": {
+        "aggregate_sse_completion_tok_s_median": 22.499045481971514,
+        "aggregate_sse_completion_tok_s_samples": [
+          22.499045481971514,
+          22.50588967133801,
+          22.4827194666258
+        ],
+        "blocking_http_tok_s_median": 22.534677205083213,
+        "measured_rows": 9,
+        "strict_c1_exact_rows": 9,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "exact_hybrid",
+          "kind": "gguf_packed_ar_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "3",
+          "mode": "decode_graph_replay",
+          "physical_execution_width": "3",
+          "rows": "3",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 230.51428802711965
+      },
+      "4": {
+        "aggregate_sse_completion_tok_s_median": 25.253936424844824,
+        "aggregate_sse_completion_tok_s_samples": [
+          25.25366026984429,
+          25.256665565942075,
+          25.253936424844824
+        ],
+        "blocking_http_tok_s_median": 25.273952649759867,
+        "measured_rows": 12,
+        "strict_c1_exact_rows": 12,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "exact_hybrid",
+          "kind": "gguf_packed_ar_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "4",
+          "mode": "decode_graph_replay",
+          "physical_execution_width": "4",
+          "rows": "4",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 184.23251293708174
+      },
+      "5": {
+        "aggregate_sse_completion_tok_s_median": 26.521547716062834,
+        "aggregate_sse_completion_tok_s_samples": [
+          26.51749986619892,
+          26.52501877808472,
+          26.521547716062834
+        ],
+        "blocking_http_tok_s_median": 26.541751646103936,
+        "measured_rows": 15,
+        "strict_c1_exact_rows": 15,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "exact_hybrid",
+          "kind": "gguf_packed_ar_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "5",
+          "mode": "decode_graph_replay",
+          "physical_execution_width": "5",
+          "rows": "5",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 174.60485245416507
+      },
+      "6": {
+        "aggregate_sse_completion_tok_s_median": 27.353385023801565,
+        "aggregate_sse_completion_tok_s_samples": [
+          27.68368899623919,
+          27.353385023801565,
+          27.226948978148
+        ],
+        "blocking_http_tok_s_median": 27.70662355480896,
+        "measured_rows": 18,
+        "strict_c1_exact_rows": 18,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "exact_hybrid",
+          "kind": "gguf_packed_ar_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "6",
+          "mode": "decode_graph_replay",
+          "physical_execution_width": "6",
+          "rows": "6",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 144.44380142730932
+      },
+      "7": {
+        "aggregate_sse_completion_tok_s_median": 28.5121540896432,
+        "aggregate_sse_completion_tok_s_samples": [
+          28.70525212457731,
+          28.5121540896432,
+          28.442562868678248
+        ],
+        "blocking_http_tok_s_median": 29.0417707524425,
+        "measured_rows": 21,
+        "strict_c1_exact_rows": 21,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "exact_hybrid",
+          "kind": "gguf_packed_ar_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "7",
+          "mode": "decode_graph_replay",
+          "physical_execution_width": "7",
+          "rows": "7",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 126.3139207714969
+      },
+      "8": {
+        "aggregate_sse_completion_tok_s_median": 29.167660818856987,
+        "aggregate_sse_completion_tok_s_samples": [
+          29.263380620179305,
+          29.158974428427616,
+          29.167660818856987
+        ],
+        "blocking_http_tok_s_median": 29.76907815329072,
+        "measured_rows": 24,
+        "strict_c1_exact_rows": 24,
+        "strict_c1_mismatch_count": 0,
+        "route_passed": true,
+        "response_shape_max_backend_rows": [
+          1
+        ],
+        "route_manifest": {
+          "claim_level": "exact_hybrid",
+          "kind": "gguf_packed_ar_execution_manifest",
+          "kv_attention_source": "unavailable",
+          "logical_c": "8",
+          "mode": "decode_graph_replay",
+          "physical_execution_width": "8",
+          "rows": "8",
+          "serial_decode_fallback": "false",
+          "throughput_claim_eligible": "false"
+        },
+        "percent_difference_vs_old": 103.03844075316331
+      }
+    }
+  },
+  "correctness": {
+    "old": {
+      "passed": true,
+      "contract": "strict generated-ID equality to independent c1 oracles for all measured rows",
+      "note": "Top-level old packets are failed_exception/failed_gate because the first intentionally exposed unsupported default c5 and the second retained the c8 live/SLO failure; every reported measured row itself is exact and route-clean."
+    },
+    "concurrency2_strict_fp32_control": {
+      "passed": true,
+      "contract": "strict generated-ID equality to independent c1 oracles for all measured rows"
+    },
+    "concurrency2_production_fp16": {
+      "passed": true,
+      "generated_id_equality_binding": false,
+      "direct_run_strict_c1_diagnostic": "c1/c2 exact; c3-c8 show expected production-width arithmetic differences from c1",
+      "bundle": "benchmarks/results/2026-08-23-gfx1151-qwen38-fp16-serving-correctness-bundle-v3.json",
+      "bundle_sha256": "73a63f689ceb5adf60491398f9fb33c3f8540d0b90a292067b9482ac3445ef98",
+      "bundle_status": "passed",
+      "profile_summary": {
+        "rows": 1170,
+        "kl_mean": 0.00010249953022477523,
+        "kl_p95": 0.0003192126281601045,
+        "kl_p99": 0.0010501767207584248,
+        "kl_max": 0.03286571255372825,
+        "top1_agreement": 0.9982905982905983
+      },
+      "direct_width_summary": {
+        "rows": 1950,
+        "kl_mean": 5.199979969540048e-05,
+        "kl_p95": 0.0002724956674681842,
+        "kl_p99": 0.0006706765408078594,
+        "kl_max": 0.0011175924514045844,
+        "top1_agreement": 0.9948717948717949
+      },
+      "determinism_isolation_lifecycle_control_passed": true,
+      "limitation": "The bundle is a later descendant qualification of the same candidate family; this frozen CONCURRENCY2 measurement is therefore diagnostic rather than a fresh retained production row."
+    }
+  },
+  "raw_sources": [
+    {
+      "path": "/tmp/gfx1151-old-vs-c2-c1-c8/old.json",
+      "sha256": "080cc44ec5623d9c2ecc003f5f2d58999e9514669762ae69e3f8d64d8d0f5bfd",
+      "size_bytes": 870332,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/gfx1151-old-vs-c2-c1-c8/old-c5-c8.json",
+      "sha256": "6b04a5569ee4fe088ebd96c06a8f3ece05b031dac5fd124998a9ce96c95df653",
+      "size_bytes": 2122061,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/gfx1151-old-vs-c2-c1-c8/c2.json",
+      "sha256": "b481f883e928d98cf9e21676a4b39996a1343a8589c7ef919fb56747d5f0a0bd",
+      "size_bytes": 3680260,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/gfx1151-old-vs-c2-c1-c8/c2-default.json",
+      "sha256": "4eb84fa7b4b06229a51f8815ba47b89cb0b2d21d3ae095d926004ed4578c0b5a",
+      "size_bytes": 3667879,
+      "retained_in_git": false
+    }
+  ],
+  "commands": {
+    "old_c1_c4": "/home/lhl/hipEngine/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --served-model-name qwen38-q4ks-old-gfx1151 --hipengine-python /home/lhl/hipEngine/.venv/bin/python --hipengine-route-expectation native --hipengine-prefill-decode-policy fair --hipengine-kv-storage bf16 --gpu 0 --gpu-max-hw-queues 2 --compiler-version-file /tmp/gfx1151-old-vs-c2-c1-c8/hipcc-version.txt --concurrencies 1,2,3,4,5,6,7,8 --live-concurrency 8 --prompt-token-id 9707 --prompt-length 512 --decode-tokens 128 --oracle-rows 4 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 --generation-batch-window-ms 20 --hipengine-prefill-chunk-tokens 256 --ctx-per-seq 1024 --server-ready-timeout 600 --request-timeout 900 --inter-rep-seconds 0 --inter-server-seconds 0 --no-memory-sampling --work-dir /tmp/gfx1151-old-vs-c2-c1-c8/old-work --json /tmp/gfx1151-old-vs-c2-c1-c8/old.json",
+    "old_c5_c8": "HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4 /home/lhl/hipEngine/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --served-model-name qwen38-q4ks-old-gfx1151 --hipengine-python /home/lhl/hipEngine/.venv/bin/python --hipengine-route-expectation native --hipengine-prefill-decode-policy fair --hipengine-kv-storage bf16 --gpu 0 --gpu-max-hw-queues 2 --compiler-version-file /tmp/gfx1151-old-vs-c2-c1-c8/hipcc-version.txt --concurrencies 1,5,6,7,8 --live-concurrency 8 --prompt-token-id 9707 --prompt-length 512 --decode-tokens 128 --oracle-rows 4 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 --generation-batch-window-ms 20 --hipengine-prefill-chunk-tokens 256 --ctx-per-seq 1024 --server-ready-timeout 600 --request-timeout 900 --inter-rep-seconds 0 --inter-server-seconds 0 --no-memory-sampling --work-dir /tmp/gfx1151-old-vs-c2-c1-c8/old-c5-c8-work --json /tmp/gfx1151-old-vs-c2-c1-c8/old-c5-c8.json",
+    "concurrency2_production_fp16": "/home/lhl/hipEngine/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --served-model-name qwen38-q4ks-c2-default-gfx1151 --hipengine-python /home/lhl/hipEngine/.venv/bin/python --hipengine-route-expectation native --hipengine-prefill-decode-policy fair --hipengine-kv-storage bf16 --gpu 0 --gpu-max-hw-queues 2 --compiler-version-file /tmp/gfx1151-old-vs-c2-c1-c8/hipcc-version.txt --concurrencies 1,2,3,4,5,6,7,8 --live-concurrency 8 --prompt-token-id 9707 --prompt-length 512 --decode-tokens 128 --oracle-rows 4 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 --generation-batch-window-ms 20 --hipengine-prefill-chunk-tokens 256 --ctx-per-seq 1024 --server-ready-timeout 600 --request-timeout 900 --inter-rep-seconds 0 --inter-server-seconds 0 --no-memory-sampling --work-dir /tmp/gfx1151-old-vs-c2-c1-c8/c2-default-work --json /tmp/gfx1151-old-vs-c2-c1-c8/c2-default.json",
+    "concurrency2_strict_fp32_control": "HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 /home/lhl/hipEngine/.venv/bin/python scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_S.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --served-model-name qwen38-q4ks-c2-gfx1151 --hipengine-python /home/lhl/hipEngine/.venv/bin/python --hipengine-route-expectation native --hipengine-prefill-decode-policy fair --hipengine-kv-storage bf16 --gpu 0 --gpu-max-hw-queues 2 --compiler-version-file /tmp/gfx1151-old-vs-c2-c1-c8/hipcc-version.txt --concurrencies 1,2,3,4,5,6,7,8 --live-concurrency 8 --prompt-token-id 9707 --prompt-length 512 --decode-tokens 128 --oracle-rows 4 --warmup-runs 1 --measured-runs 3 --streaming-primary --stream-warmup-runs 0 --stream-measured-runs 3 --generation-batch-window-ms 20 --hipengine-prefill-chunk-tokens 256 --ctx-per-seq 1024 --server-ready-timeout 600 --request-timeout 900 --inter-rep-seconds 0 --inter-server-seconds 0 --no-memory-sampling --work-dir /tmp/gfx1151-old-vs-c2-c1-c8/c2-work --json /tmp/gfx1151-old-vs-c2-c1-c8/c2.json"
+  },
+  "limitations": [
+    "Cross-commit diagnostic, not a current-main performance promotion.",
+    "OLD c5-c8 uses the old runtime exact chunk4 Q6 LM-head rollback because its default chunk5 route cannot execute logical c5.",
+    "The production FP16 C2 row uses profile-gated arithmetic; strict cross-width generated-ID equality is diagnostic and fails from c3 upward. The separately measured strict FP32 C2 control is exact at every width.",
+    "c6-c8 miss the fixed streaming SLO in at least one packet; values remain raw completion throughput, not SLO goodput.",
+    "Synthetic prompt-ID rows make this a systems scaling diagnostic, not a model-quality or natural-workload claim."
+  ]
+}
