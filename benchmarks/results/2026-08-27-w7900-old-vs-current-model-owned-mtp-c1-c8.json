@@ -1,0 +1,288 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "kind": "w7900_old_vs_current_model_owned_mtp_c1_c8",
+  "status": "complete_diagnostic_not_retained",
+  "performance_claim": false,
+  "default_change": false,
+  "hardware": {
+    "physical_host": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "gpu_index": 0,
+    "gpu_max_hw_queues": 1,
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "size_bytes": 22663387424,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        11331169424,
+        22662338848
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "full_file_sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "quant": "UD-Q4_K_M",
+    "kv": "BF16"
+  },
+  "protocol": {
+    "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "includes_category_heldouts": true,
+    "concurrencies": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "max_tokens": 24,
+    "candidate_budget": 2,
+    "sampling": "raw greedy, natural stop/EOS",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "batch_window_ms": 20,
+    "warmup": "one AR plus one MTP burst per width",
+    "measurement": "one burst per prompt and arm; aggregate generated tokens / summed prompt walls",
+    "logical_c5_c8": "server route cap decomposes into physical C4 plus C1-C4 remainder"
+  },
+  "routes": {
+    "old": "model-owned gguf llama_compat MTP at runtime parent 2a1fafb80",
+    "current_ar": "CONCURRENCY2 EngineService AR",
+    "current_mtp": "model-owned gguf llama_compat MTP through an explicit legacy-prelaunch diagnostic bypass",
+    "unmodified_current_mtp": "Generation2 has no Qwen3.6-35B MoE speculative adapter and correctly executes K0"
+  },
+  "source": {
+    "old_runtime_parent": "2a1fafb80c70ffdf64851f1b679188fe92020bb2",
+    "old_measurement_commit": "1ad4b5ead7194e59094ec3e984aa9c1f6a10727f",
+    "current_runtime_parent": "a90fb78bcdb48f733d398a9390b609270ba6b8d0",
+    "current_measurement_commit": "bb6c31ec7e443fac1e8d9b7d4796ea21aad25cec",
+    "packed_final_sync_timer_fix": "bb6c31ec7e443fac1e8d9b7d4796ea21aad25cec",
+    "current_run_harness_sha256": "facd42a07016f9ed67bbea096ca90d76bc4de4bd98f53b20b2490efab1ab7e3e",
+    "corrected_evaluator_and_old_run_harness_sha256": "dd85ae6ea2027d5973a316c8e59af5cb4438bcbb44e98e25c8c3a249a8930992",
+    "old_raw_sha256": "94ac2153d41eb581d82baffea2961ccf18cdf4ef9468094c876910e33246da48",
+    "current_raw_sha256": "6d1887ad2e7c7f1e186b2689054c58c9c6f00be51d5a81de531f29c62a367939"
+  },
+  "commands": {
+    "common_env": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=.",
+    "common_args": "/tmp/mtp-c1c8-harness.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --prompts /home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2,3,4,5,6,7,8 --max-tokens 24 --candidate-budget 2 --batch-window-ms 20 --max-sequence-length 1024 --force-mtp-plan --correctness-contract mtp_self_exact",
+    "old_extra": "--output /tmp/mtp-old-35b-c1c8-legacy.json",
+    "current_extra": "--legacy-prelaunch-mtp --output /tmp/mtp-current-35b-c1c8-legacy.json",
+    "corrected_current_evaluator": "offline evaluator requires every response route=speculative_mtp/used=true and the final physical fragment batch_size in 1..4 with nonzero backend draft tokens/cycles"
+  },
+  "results": [
+    {
+      "concurrency": 1,
+      "physical_mtp_groups": [
+        1
+      ],
+      "old_mtp_tok_s": 79.58361470263272,
+      "current_model_owned_mtp_tok_s": 82.44574762275238,
+      "current_mtp_vs_old_percent": 3.5963846714102354,
+      "current_concurrency2_ar_tok_s": 46.72231602127957,
+      "current_mtp_vs_ar_percent": 76.45903423366825,
+      "old_mtp_self_exact_cells": 10,
+      "current_mtp_self_exact_cells": 10,
+      "old_ar_mtp_equal_cells": 8,
+      "current_ar_mtp_equal_cells": 9,
+      "old_route_selected_cells": 10,
+      "current_route_used_cells": 10,
+      "old_backend_engaged_cells": 10,
+      "current_backend_engaged_cells": 10
+    },
+    {
+      "concurrency": 2,
+      "physical_mtp_groups": [
+        2
+      ],
+      "old_mtp_tok_s": 75.67060176260408,
+      "current_model_owned_mtp_tok_s": 110.98598134051919,
+      "current_mtp_vs_old_percent": 46.669880713658785,
+      "current_concurrency2_ar_tok_s": 84.2472088556817,
+      "current_mtp_vs_ar_percent": 31.738466885759852,
+      "old_mtp_self_exact_cells": 10,
+      "current_mtp_self_exact_cells": 10,
+      "old_ar_mtp_equal_cells": 9,
+      "current_ar_mtp_equal_cells": 8,
+      "old_route_selected_cells": 10,
+      "current_route_used_cells": 10,
+      "old_backend_engaged_cells": 10,
+      "current_backend_engaged_cells": 10
+    },
+    {
+      "concurrency": 3,
+      "physical_mtp_groups": [
+        3
+      ],
+      "old_mtp_tok_s": 95.42626099186351,
+      "current_model_owned_mtp_tok_s": 129.0952663254559,
+      "current_mtp_vs_old_percent": 35.28274605295827,
+      "current_concurrency2_ar_tok_s": 93.315495981293,
+      "current_mtp_vs_ar_percent": 38.342796089660915,
+      "old_mtp_self_exact_cells": 10,
+      "current_mtp_self_exact_cells": 10,
+      "old_ar_mtp_equal_cells": 9,
+      "current_ar_mtp_equal_cells": 8,
+      "old_route_selected_cells": 10,
+      "current_route_used_cells": 10,
+      "old_backend_engaged_cells": 10,
+      "current_backend_engaged_cells": 10
+    },
+    {
+      "concurrency": 4,
+      "physical_mtp_groups": [
+        4
+      ],
+      "old_mtp_tok_s": 110.2569284323202,
+      "current_model_owned_mtp_tok_s": 136.0071179553149,
+      "current_mtp_vs_old_percent": 23.354713294775962,
+      "current_concurrency2_ar_tok_s": 102.84982576412399,
+      "current_mtp_vs_ar_percent": 32.23854969597508,
+      "old_mtp_self_exact_cells": 10,
+      "current_mtp_self_exact_cells": 10,
+      "old_ar_mtp_equal_cells": 9,
+      "current_ar_mtp_equal_cells": 8,
+      "old_route_selected_cells": 10,
+      "current_route_used_cells": 10,
+      "old_backend_engaged_cells": 10,
+      "current_backend_engaged_cells": 10
+    },
+    {
+      "concurrency": 5,
+      "physical_mtp_groups": [
+        4,
+        1
+      ],
+      "old_mtp_tok_s": 102.9137710779275,
+      "current_model_owned_mtp_tok_s": 114.73552979488343,
+      "current_mtp_vs_old_percent": 11.487052309067902,
+      "current_concurrency2_ar_tok_s": 108.44645008221386,
+      "current_mtp_vs_ar_percent": 5.799249037568122,
+      "old_mtp_self_exact_cells": 9,
+      "current_mtp_self_exact_cells": 10,
+      "old_ar_mtp_equal_cells": 8,
+      "current_ar_mtp_equal_cells": 8,
+      "old_route_selected_cells": 10,
+      "current_route_used_cells": 10,
+      "old_backend_engaged_cells": 10,
+      "current_backend_engaged_cells": 10
+    },
+    {
+      "concurrency": 6,
+      "physical_mtp_groups": [
+        4,
+        2
+      ],
+      "old_mtp_tok_s": 96.62004949531261,
+      "current_model_owned_mtp_tok_s": 125.6406494453235,
+      "current_mtp_vs_old_percent": 30.03579495311559,
+      "current_concurrency2_ar_tok_s": 112.88218291291358,
+      "current_mtp_vs_ar_percent": 11.302462623577036,
+      "old_mtp_self_exact_cells": 10,
+      "current_mtp_self_exact_cells": 10,
+      "old_ar_mtp_equal_cells": 9,
+      "current_ar_mtp_equal_cells": 8,
+      "old_route_selected_cells": 10,
+      "current_route_used_cells": 10,
+      "old_backend_engaged_cells": 10,
+      "current_backend_engaged_cells": 10
+    },
+    {
+      "concurrency": 7,
+      "physical_mtp_groups": [
+        4,
+        3
+      ],
+      "old_mtp_tok_s": 104.15189795920683,
+      "current_model_owned_mtp_tok_s": 131.9603697804682,
+      "current_mtp_vs_old_percent": 26.69991845194517,
+      "current_concurrency2_ar_tok_s": 116.43762568258016,
+      "current_mtp_vs_ar_percent": 13.331381507387041,
+      "old_mtp_self_exact_cells": 10,
+      "current_mtp_self_exact_cells": 10,
+      "old_ar_mtp_equal_cells": 9,
+      "current_ar_mtp_equal_cells": 8,
+      "old_route_selected_cells": 10,
+      "current_route_used_cells": 10,
+      "old_backend_engaged_cells": 10,
+      "current_backend_engaged_cells": 10
+    },
+    {
+      "concurrency": 8,
+      "physical_mtp_groups": [
+        4,
+        4
+      ],
+      "old_mtp_tok_s": 110.21816739323093,
+      "current_model_owned_mtp_tok_s": 135.14308090011866,
+      "current_mtp_vs_old_percent": 22.614160710876142,
+      "current_concurrency2_ar_tok_s": 118.9151553428899,
+      "current_mtp_vs_ar_percent": 13.646642020048505,
+      "old_mtp_self_exact_cells": 10,
+      "current_mtp_self_exact_cells": 10,
+      "old_ar_mtp_equal_cells": 9,
+      "current_ar_mtp_equal_cells": 8,
+      "old_route_selected_cells": 10,
+      "current_route_used_cells": 10,
+      "old_backend_engaged_cells": 10,
+      "current_backend_engaged_cells": 10
+    }
+  ],
+  "quality": {
+    "old_mtp_self_exact_cells": 79,
+    "current_mtp_self_exact_cells": 80,
+    "cells_per_implementation": 80,
+    "old_non_invariant_cells": [
+      "C5:mixed_ja_en_review"
+    ],
+    "old_current_representative_mtp_equal_cells": 79,
+    "old_current_representative_mtp_equal_positions": 1918,
+    "old_current_representative_mtp_positions": 1920,
+    "current_ar_mtp_equal_cells": 65,
+    "current_ar_mtp_cells": 80,
+    "current_ar_mtp_equal_positions": 8499,
+    "current_ar_mtp_positions": 8640,
+    "current_ar_self_exact_cells": 73,
+    "old_route_selected_cells": 80,
+    "current_route_used_cells": 80,
+    "current_backend_engaged_cells": 80,
+    "note": "MTP-self-exact is the historical accuracy-traded llama_compat contract; AR equality is diagnostic and is not sufficient for automatic/default promotion."
+  },
+  "blockers": [
+    "Current Generation2 has no Qwen3.6-35B MoE speculative adapter; the unmodified current API is K0.",
+    "OLD fails MTP batch-composition invariance for C5 mixed_ja_en_review (physical C4+C1).",
+    "Current model-owned MTP matches current AR in 65/80 cells, so it remains accuracy-traded."
+  ],
+  "raw_status_notes": {
+    "old": "raw harness status failed only because 79/80, not 80/80, MTP cells are self-exact",
+    "current": "raw harness status failed because the original evaluator demanded backend batch_size==logical width at C5-C8; corrected route-cap-aware evaluation passes 80/80 route-used, backend-engaged, and MTP-self-exact cells without changing timing data"
+  }
+}

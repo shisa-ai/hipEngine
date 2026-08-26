@@ -594,6 +594,40 @@ Evidence:
 and
 [`c4/c8 promotion packet`](../benchmarks/results/2026-08-17-concurrency2-c2-8-w7900-shared-slot-c4-c8-promotion.json).
 
+### Diagnostic MTP C1-C8 old-versus-current comparison (2026-08-27)
+
+This is the requested same-host MTP follow-up, using exact-file Qwen3.6-35B-A3B
+`UD-Q4_K_M`, BF16 KV, the complete ten-prompt category/heldout suite, raw-greedy
+D24, one warmup per arm/width, and blocking OpenAI barrier-to-last-completion
+walls. Values are aggregate generated tok/s. Logical C5-C8 are mechanically
+split by the server's MTP cap into C4 plus a C1-C4 remainder.
+
+| Implementation | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| OLD model-owned MTP | 79.584 | 75.671 | 95.426 | 110.257 | 102.914 | 96.620 | 104.152 | 110.218 |
+| Current model-owned MTP | **82.446** | **110.986** | **129.095** | **136.007** | **114.736** | **125.641** | **131.960** | **135.143** |
+| Current difference | **+3.60%** | **+46.67%** | **+35.28%** | **+23.35%** | **+11.49%** | **+30.04%** | **+26.70%** | **+22.61%** |
+
+The same current packet gives the requested AR-versus-MTP view:
+
+| Current route | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| CONCURRENCY2 AR | 46.722 | 84.247 | 93.315 | 102.850 | 108.446 | 112.882 | 116.438 | 118.915 |
+| Model-owned MTP | **82.446** | **110.986** | **129.095** | **136.007** | **114.736** | **125.641** | **131.960** | **135.143** |
+| MTP difference | **+76.46%** | **+31.74%** | **+38.34%** | **+32.24%** | **+5.80%** | **+11.30%** | **+13.33%** | **+13.65%** |
+
+These are **diagnostic, not a Generation-2 MTP promotion**. Current Generation-2
+has no 35B MoE speculative adapter and the unmodified route correctly executes
+K0; the MTP row explicitly bypasses EngineService prelaunch into the same
+model-owned `llama_compat` route used by OLD. Current MTP is self-exact in 80/80
+cells and every cell has selected-route plus backend-draft proof, but it matches
+current AR in only 65/80 cells (8,499/8,640 token positions). OLD is self-exact
+in 79/80 cells: C5 `mixed_ja_en_review` differs across its physical C4+C1
+fragments. This accuracy trade and missing adapter keep automatic/default K0.
+
+Evidence:
+[`MTP old/current diagnostic`](../benchmarks/results/2026-08-27-w7900-old-vs-current-model-owned-mtp-c1-c8.json).
+
 ### Simplified c=N view: what scaling proves—and what remains unknown
 
 The retained direct graph packet, not the later invalid eager D2 sweep, is the
