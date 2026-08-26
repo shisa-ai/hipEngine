@@ -140,6 +140,7 @@ def register_builtin_generators() -> None:
         from hipengine.generation import laguna_gguf as _laguna_gguf  # noqa: F401
         from hipengine.generation import maple as _maple  # noqa: F401
         from hipengine.generation import qwen35_gguf as _qwen35_gguf  # noqa: F401
+        from hipengine.generation import qwen4_exp_gguf as _qwen4_exp_gguf  # noqa: F401
         from hipengine.generation import qwen35_paro as _qwen35_paro  # noqa: F401
 
         _BUILTINS_REGISTERED = True
