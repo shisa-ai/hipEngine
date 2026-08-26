@@ -140,14 +140,42 @@ target-verified MTP had **0 mismatches at every width**. MTP is the more
 batch-invariant route on this diagnostic; T0.4's natural-prompt suite is the
 binding gate.
 
+### T0.4 production result (2026-08-27)
+
+Capacity-matched public serving, canonical ten-prompt/four-category+heldout
+suite, max24, B2:
+
+| Width | Effective route | AR tok/s | MTP tok/s | MTP vs AR | Engagement |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| c1 | staged MTP2 | 9.754 | **14.314** | **+46.75%** | 10/10 |
+| c2-c8 | typed K0/AR | 15.124-35.296 | n/a | n/a | 0/70 |
+
+C1 is non-regressive in every category: code +48.44%, general_en +52.11%,
+general_ja +39.47%, mixed_ja_en +45.92%; heldouts +48.38%. Aggregate
+accept-per-draft is 79.29%. Exact AR/MTP IDs on 10/10 c1 cells and all 70 K0
+cells are diagnostic, not the binding production criterion.
+
+The Q4_K_M production gate passes **1,170** strict-teacher rows: KL
+mean/p95/p99/max `1.239e-4 / 3.503e-4 / 1.110e-3 / 0.049788`, top-1
+`1167/1170 = 99.744%`, finite logits, all three repeats deterministic,
+neighbor/permutation isolation, and indexed manifest gates. The sole review
+row passes manually (same top-1/rank 1, margin 3.168, top-k overlap 1.0,
+teacher NLL improves). BF16-relative/external task scoring are normative N/A
+because quant/KV/target capability are unchanged; the full category suite is
+non-regressive.
+
+This is a **candidate, not a promotion**: actual-owner rocprof,
+streaming/device-chain/allocation telemetry, and dynamic lifecycle/SLO remain.
+Requested-MTP K0 controls also show wide timing anomalies (c5 -35.1%, c6
+-30.6% vs paired AR), so T2.3/T2.4 must prove true-AR batching/economics.
+Evidence:
+[`T0.4 production suite`](../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json).
+
 ### Punchlist impact
 
-T0.1/T0.3/T1.0 attribution are done. T0.4 is now the critical path: engage the
-existing staged MTP2 + OI-3 owner and qualify it against the **production**
-correctness/task contract (generated-ID bit exactness is diagnostic, not a
-promotion requirement). Only then run T0.2 rocprof and the T1.4 budget sweep.
-The forced-legacy crossover table still supports a K=0 safety policy but cannot
-promote staged MTP2 by itself.
+T0.1/T0.3/T0.4/T1.0 are done. T0.2 rocprof and T1.1-T1.3 telemetry are now the
+critical path before any c1 promotion; T1.4 then measures B1-B4. Public
+production policy remains MTP at no automatic cell (K0) until those gates pass.
 
 ## 2. External source review (commit-pinned, read-only)
 
@@ -177,11 +205,10 @@ promote staged MTP2 by itself.
   (0.64-0.67) on the forced legacy route; its flat line is not an acceptance
   collapse. Wide timing fields are chunk-wall copies and are not additive.
   The staged SPECDEC2 18.43% C2/C4 collapse remains open as T2.1.
-- [ ] **T0.4 Full-suite staged MTP c1-c8 baseline.** Replace the forced legacy
-  fixed-prompt diagnostic with the complete mtpbench category suite + heldouts
-  at c1-c8, route-engagement checks, and the production execution-profile
-  numerical/task gate. Generated-ID equality is recorded diagnostically, not
-  required for promotion. Required before any retained claim from T1+.
+- [x] **T0.4 Full-suite staged MTP c1-c8 baseline.** C1 production staged MTP2
+  is +46.75% over production AR and passes the full 1,170-row production
+  numerical/determinism/isolation gate; c2-c8 stay typed K0 in 70/70 cells.
+  Promotion remains blocked on T0.2/T1.1-T1.3 lifecycle/ownership evidence.
 
 ### T1 — close the C1 serving gap (G1)
 
@@ -215,10 +242,11 @@ promote staged MTP2 by itself.
 - [ ] **T2.2 Target-owner continuation.** Only with a new premise, extend the
   retained small-M Q4 WMMA direction to the remaining R6/R8/R12/R16 families;
   prior campaign gates apply (no retry of rejected composites).
-- [ ] **T2.3 Measured K=0 crossover policy.** From T0.1+T0.4, derive the
-  honest per-width verdict and admit `K=0 above crossover` with a stable typed
-  reason (vLLM/SGLang adaptive-tier equivalent). If T2.1 fails, this is the
-  product endpoint for wide cells; MTP at c1, AR above the measured crossover.
+- [ ] **T2.3 Measured K=0 crossover policy.** T0.4 fixes the candidate table:
+  c1/B2 staged MTP2, c2-c8 K0. Before admission, prove requested-MTP K0 uses
+  true-AR batching/economics (current controls regress c5/c6 35.1%/30.6%) and
+  emit stable typed reasons. T2.1 may reopen only independently qualified
+  physical c2/c4 cells.
 - [ ] **T2.4 Scheduler-budget audit.** Check our speculative batch window /
   chunk-token analogs of Ling's `max_num_batched_tokens=8192` finding
   (`HIPENGINE_MAX_PREFILL_CHUNK_TOKENS`, generation batch window) under MTP at
