@@ -9,16 +9,16 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from hipengine import LLM
-from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
 from hipengine.generation.registry import GenerationRequest
+from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFTransactionalVerifier
 from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
 
-def _request(prompt: str) -> GenerationRequest:
+def _request(prompt: str, *, max_tokens: int) -> GenerationRequest:
     return GenerationRequest(
         prompts=(prompt,),
-        max_tokens=5,
+        max_tokens=int(max_tokens),
         temperature=0.0,
         top_p=1.0,
         ignore_eos=False,
@@ -62,26 +62,28 @@ def _recent_rows(snapshot: dict[str, Any], request_ids: set[int]) -> list[dict[s
 def _failure_phase_specs() -> tuple[
     tuple[str, type[Any], str, Callable[..., Any], bool], ...
 ]:
+    """Return C1 graph owners and whether failure follows owned target work."""
+
     return (
         (
             "proposal",
             Qwen35GGUFNextNDraftProvider,
-            "propose_batch_device",
-            Qwen35GGUFNextNDraftProvider.propose_batch_device,
+            "launch_device_proposal",
+            Qwen35GGUFNextNDraftProvider.launch_device_proposal,
             False,
         ),
         (
             "target",
             Qwen35GGUFResidentSession,
-            "verify_target_blocks_batch",
-            Qwen35GGUFResidentSession.verify_target_blocks_batch,
+            "verify_target_from_device_proposal",
+            Qwen35GGUFResidentSession.verify_target_from_device_proposal,
             False,
         ),
         (
             "readback",
-            Qwen35GGUFMTP2Adapter,
-            "_read_target_batch_accept",
-            Qwen35GGUFMTP2Adapter._read_target_batch_accept,
+            Qwen35GGUFTransactionalVerifier,
+            "prepare",
+            Qwen35GGUFTransactionalVerifier.prepare,
             True,
         ),
     )
@@ -92,58 +94,78 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         str(args.model),
         backend="hip_gfx1151",
         execution_profile=str(args.execution_profile),
-        max_active_requests=2,
-        max_sequence_length=256,
+        max_active_requests=int(args.concurrency),
+        max_sequence_length=int(args.max_sequence_length),
     )
     service = llm._get_text_generator()
-    greeting = _request("Write one short greeting.")
-    health = _request("Write one short farewell.")
+    greeting = _request(
+        "Write one short greeting.",
+        max_tokens=int(args.max_tokens),
+    )
+    health = _request(
+        "Write one short farewell.",
+        max_tokens=int(args.max_tokens),
+    )
+    concurrency = int(args.concurrency)
     phases = _failure_phase_specs()
     results: list[dict[str, Any]] = []
     try:
-        ar_health = _ids(service.submit_children((health, health)))
-        next_request_id = 2
-        for phase, owner, method_name, original, is_static in phases:
+        ar_greeting = _ids(
+            service.submit_children((greeting,) * concurrency)
+        )
+        ar_health = _ids(service.submit_children((health,) * concurrency))
+        next_request_id = 2 * concurrency
+        for phase, owner, method_name, original, fail_after in phases:
             raised = False
 
-            def fail_once(*call_args, __original=original, __phase=phase, **call_kwargs):
+            def fail_once(
+                *call_args,
+                __original=original,
+                __phase=phase,
+                __fail_after=fail_after,
+                **call_kwargs,
+            ):
                 nonlocal raised
+                if __fail_after:
+                    result = __original(*call_args, **call_kwargs)
+                    if not raised:
+                        raised = True
+                        raise RuntimeError(f"injected SPECDEC2 {__phase} failure")
+                    return result
                 if not raised:
                     raised = True
                     raise RuntimeError(f"injected SPECDEC2 {__phase} failure")
                 return __original(*call_args, **call_kwargs)
 
-            setattr(
-                owner,
-                method_name,
-                staticmethod(fail_once) if is_static else fail_once,
+            setattr(owner, method_name, fail_once)
+            fault_ids = set(
+                range(next_request_id, next_request_id + concurrency)
             )
-            fault_ids = {next_request_id, next_request_id + 1}
             fault_output, fault_errors = _outcomes(
-                service.submit_speculative_children((greeting, greeting))
+                service.submit_speculative_children((greeting,) * concurrency)
             )
-            setattr(
-                owner,
-                method_name,
-                staticmethod(original) if is_static else original,
+            setattr(owner, method_name, original)
+            next_request_id += concurrency
+            health_ids = set(
+                range(next_request_id, next_request_id + concurrency)
             )
-            next_request_id += 2
-            health_ids = {next_request_id, next_request_id + 1}
             health_output, health_errors = _outcomes(
-                service.submit_speculative_children((health, health))
+                service.submit_speculative_children((health,) * concurrency)
             )
-            next_request_id += 2
+            next_request_id += concurrency
             snapshot = service.live_loop_snapshot()
             fault_rows = _recent_rows(snapshot, fault_ids)
             health_rows = _recent_rows(snapshot, health_ids)
-            precommit = phase != "readback"
+            # C1 readback remains inside the transactional verifier journal and
+            # restores the canonical target cursor. Physical C>1 commits target
+            # rows before its packed readback and therefore needs target rebuild.
+            precommit = phase != "readback" or concurrency == 1
             fault_contract_passed = bool(
                 (
                     precommit
-                    and fault_output
-                    == ((271, 9419, 0, 2500, 628),) * 2
-                    and fault_errors == (None, None)
-                    and len(fault_rows) == 2
+                    and fault_output == ar_greeting
+                    and fault_errors == (None,) * concurrency
+                    and len(fault_rows) == concurrency
                     and all(
                         int(row["specdec2_mtp2_recoverable_failures"]) == 1
                         and row["specdec2_mtp2_failure_reasons"]
@@ -157,10 +179,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 )
                 or (
                     not precommit
-                    and fault_output
-                    == ((271, 9419, 0, 2500, 628),) * 2
-                    and fault_errors == (None, None)
-                    and len(fault_rows) == 2
+                    and fault_output == ar_greeting
+                    and fault_errors == (None,) * concurrency
+                    and len(fault_rows) == concurrency
                     and all(
                         int(row["specdec2_mtp2_recoverable_failures"]) == 1
                         and row["specdec2_mtp2_failure_reasons"][0]
@@ -176,8 +197,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 raised
                 and fault_contract_passed
                 and health_output == ar_health
-                and health_errors == (None, None)
-                and len(health_rows) == 2
+                and health_errors == (None,) * concurrency
+                and len(health_rows) == concurrency
                 and all(
                     int(row["specdec2_mtp2_cycles"]) > 0
                     and int(row["specdec2_mtp2_recoverable_failures"]) == 0
@@ -197,6 +218,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     ),
                     "health_output": health_output,
                     "health_errors": health_errors,
+                    "ar_greeting": ar_greeting,
                     "ar_health": ar_health,
                     "fault_rows": fault_rows,
                     "health_rows": health_rows,
@@ -205,12 +227,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             )
         final = service.live_loop_snapshot()
     finally:
-        for _, owner, method_name, original, is_static in phases:
-            setattr(
-                owner,
-                method_name,
-                staticmethod(original) if is_static else original,
-            )
+        for _, owner, method_name, original, _fail_after in phases:
+            setattr(owner, method_name, original)
         llm.close()
 
     passed = bool(
@@ -225,6 +243,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "status": "passed" if passed else "failed",
         "performance_claim": False,
         "execution_profile": str(args.execution_profile),
+        "workload": {
+            "concurrency": concurrency,
+            "max_sequence_length": int(args.max_sequence_length),
+            "max_tokens": int(args.max_tokens),
+        },
         "phases": results,
         "final_snapshot": final,
         "passed": passed,
@@ -243,6 +266,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         choices=("strict", "production"),
         default="strict",
     )
+    parser.add_argument("--concurrency", type=int, choices=(1, 2), default=2)
+    parser.add_argument("--max-sequence-length", type=int, default=256)
+    parser.add_argument("--max-tokens", type=int, default=5)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--fail-on-fail", action="store_true")
     args = parser.parse_args(argv)
