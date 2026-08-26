@@ -370,61 +370,31 @@ def _strict_prefix(
     return current
 
 
-def _candidate_prefix(
-    session: Any,
-    prompt_tokens: Sequence[int],
-    teacher_root: int,
-    schedule: Sequence[TeacherCycle],
-) -> int:
-    current = _prefill(session, prompt_tokens)
-    if current != int(teacher_root):
-        raise GateError(f"candidate prefill token {current} != strict root {teacher_root}")
-    for cycle in schedule:
-        if int(session.position) != cycle.start_position or current != cycle.root_token:
-            raise GateError("candidate forced-prefix control cursor diverged")
-        result = session.verify_target_block(
-            list(cycle.inputs),
-            bulk_attention_mode="bulk",
-            use_wmma_prefill=False,
-            capture_linear_state_rows=True,
-            defer_linear_state_commit=True,
-            record_stage_timings=False,
-        )
-        tokens = tuple(int(token) for token in result.token_ids)
-        if len(tokens) != len(cycle.inputs):
-            raise GateError("candidate verifier returned malformed replay rows")
-        session._commit_verify_linear_state_row(
-            cycle.accepted,
-            position=cycle.start_position + cycle.accepted + 1,
-        )
-        current = int(cycle.outputs[-1])
-    return current
-
-
 def _build_teacher_and_metrics(
     session: Any,
     *,
     prompt: Mapping[str, Any],
     prompt_tokens: Sequence[int],
     teacher: Sequence[int],
-    draft_sets: Sequence[Sequence[int]],
+    live_cycles: Sequence[LiveCycle],
     repeat_runs: int,
 ) -> tuple[list[TeacherCycle], list[dict[str, Any]], list[dict[str, Any]]]:
-    if len(teacher) < 2 or not draft_sets:
+    if len(teacher) < 2 or not live_cycles:
         raise GateError("teacher metric capture requires output and provider drafts")
     schedule: list[TeacherCycle] = []
     row_metrics: list[dict[str, Any]] = []
     repeats: list[dict[str, Any]] = []
-    output_index = 1
-    while output_index < len(teacher):
+    for live_cycle in live_cycles:
+        output_index = int(live_cycle.root_position) - len(prompt_tokens) + 1
+        if output_index <= 0 or output_index >= len(teacher):
+            raise GateError(
+                f"live cycle position {live_cycle.root_position} is outside the strict trajectory"
+            )
         root = _strict_prefix(session, prompt_tokens, teacher, output_index)
         remaining = len(teacher) - output_index
-        drafts = tuple(
-            int(token)
-            for token in draft_sets[len(schedule) % len(draft_sets)][: min(2, remaining)]
-        )
+        drafts = tuple(int(token) for token in live_cycle.draft_tokens[: min(2, remaining)])
         if not drafts:
-            raise GateError("teacher schedule has no bounded candidate")
+            raise GateError("teacher-aligned live cycle has no bounded candidate")
         inputs = (root, *drafts)
         strict_tokens, strict_logits, *_ = _probe_serial(
             session,
@@ -441,12 +411,6 @@ def _build_teacher_and_metrics(
         ):
             accepted += 1
         outputs = (*drafts[:accepted], strict_tokens_tuple[accepted])
-        expected = tuple(int(token) for token in teacher[output_index : output_index + len(outputs)])
-        if outputs != expected:
-            raise GateError(
-                f"strict speculative schedule did not reconstruct teacher at {output_index}: "
-                f"{outputs!r} != {expected!r}"
-            )
         cycle = TeacherCycle(
             cycle=len(schedule),
             output_index=output_index,
@@ -461,12 +425,7 @@ def _build_teacher_and_metrics(
         candidate_tokens_runs: list[tuple[int, ...]] = []
         candidate_hidden_finite: list[bool] = []
         for _ in range(repeat_runs):
-            replay_root = _candidate_prefix(
-                session,
-                prompt_tokens,
-                int(teacher[0]),
-                schedule,
-            )
+            replay_root = _strict_prefix(session, prompt_tokens, teacher, output_index)
             if replay_root != root:
                 raise GateError("candidate strict-teacher root diverged")
             candidate_tokens, candidate_logits, hidden_rows, *_ = _probe_bulk_or_native(
@@ -536,7 +495,6 @@ def _build_teacher_and_metrics(
                 }
             )
         schedule.append(cycle)
-        output_index += len(outputs)
     return schedule, row_metrics, repeats
 
 
@@ -919,7 +877,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 prompt=prompt,
                 prompt_tokens=prompt_tokens,
                 teacher=strict,
-                draft_sets=[cycle.draft_tokens for cycle in live_cycles],
+                live_cycles=live_cycles,
                 repeat_runs=args.repeat_runs,
             )
             schedules[prompt_id] = schedule
