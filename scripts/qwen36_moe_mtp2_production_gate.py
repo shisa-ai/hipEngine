@@ -374,7 +374,8 @@ def _probe_native_graph(
         capture_linear_state_rows=True,
         capture_lm_head_logits=True,
         defer_linear_state_commit=True,
-        device_accept_commit=False,
+        device_accept_commit=True,
+        remaining_decode=len(tuple(inputs)),
     )
     if not bool(getattr(session, "last_native_spec_target_submitted", False)):
         raise GateError("production numerical candidate did not execute the native graph")
@@ -382,8 +383,11 @@ def _probe_native_graph(
     if logits is None:
         raise GateError("native graph did not return diagnostic full logits")
     hidden = np.ascontiguousarray(result.hidden_seeds, dtype=np.float32)
+    target_top1 = tuple(int(token) for token in result.target_top1)
+    if len(target_top1) != len(tuple(inputs)):
+        raise GateError("native N2 graph did not return every target top-1 row")
     return (
-        tuple(int(token) for token in result.token_ids),
+        target_top1,
         np.ascontiguousarray(logits, dtype=np.float32),
         hidden,
     )
@@ -511,78 +515,28 @@ def _build_teacher_and_metrics(
     return schedule, row_metrics, repeats
 
 
-def _replay_live_prefix(
-    session: Any,
-    prompt_tokens: Sequence[int],
-    first_token: int,
-    cycles: Sequence[LiveCycle],
-) -> int:
-    current = _prefill(session, prompt_tokens)
-    if current != first_token:
-        raise GateError("live graph/eager prefill root diverged")
-    for cycle in cycles:
-        if int(session.position) != cycle.root_position or current != cycle.root_token:
-            raise GateError("live graph/eager prefix cursor diverged")
-        result = session.verify_target_block_native_cycle(
-            [cycle.root_token, *cycle.draft_tokens],
-            fallback=False,
-            bulk_attention_mode="bulk",
-            use_wmma_prefill=False,
-            capture_linear_state_rows=True,
-            defer_linear_state_commit=True,
-            device_accept_commit=True,
-            remaining_decode=cycle.remaining_decode,
-        )
-        tokens = tuple(int(token) for token in result.target_top1)
-        outputs = tuple(int(token) for token in result.token_ids)
-        if tokens != cycle.target_tokens or outputs != cycle.output_tokens:
-            raise GateError(
-                f"live graph replay differs at cycle {cycle.cycle}: "
-                f"target={tokens!r}/{cycle.target_tokens!r} "
-                f"outputs={outputs!r}/{cycle.output_tokens!r}"
-            )
-        current = int(cycle.output_tokens[-1])
-    return current
-
-
 def _capture_graph_eager(
     session: Any,
     *,
     prompt: Mapping[str, Any],
     prompt_tokens: Sequence[int],
-    output_ids: Sequence[int],
     cycles: Sequence[LiveCycle],
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for cycle_index, cycle in enumerate(cycles):
-        current = _replay_live_prefix(
-            session,
-            prompt_tokens,
-            int(output_ids[0]),
-            cycles[:cycle_index],
-        )
-        if current != cycle.root_token:
-            raise GateError("graph/eager current root mismatch")
+        output_index = int(cycle.root_position) - len(prompt_tokens) + 1
+        root_token = _strict_prefix(session, prompt_tokens, output_index)
+        inputs = (root_token, *cycle.draft_tokens)
         graph_tokens, graph_logits, graph_hidden = _probe_native_graph(
             session,
-            (cycle.root_token, *cycle.draft_tokens),
+            inputs,
         )
-        if graph_tokens != cycle.target_tokens:
-            raise GateError(
-                f"native graph diagnostic differs from live graph for "
-                f"{prompt['id']} cycle {cycle_index}"
-            )
-        current = _replay_live_prefix(
-            session,
-            prompt_tokens,
-            int(output_ids[0]),
-            cycles[:cycle_index],
-        )
-        if current != cycle.root_token:
-            raise GateError("graph/eager replay root mismatch")
+        eager_root = _strict_prefix(session, prompt_tokens, output_index)
+        if eager_root != root_token:
+            raise GateError("graph/eager strict prefix is not repeatable")
         eager_tokens, eager_logits, eager_hidden, *_ = _probe_bulk_or_native(
             session,
-            [cycle.root_token, *cycle.draft_tokens],
+            list(inputs),
             mode="bulk",
             use_wmma_prefill=False,
             capture_linear_state_rows=True,
@@ -610,7 +564,7 @@ def _capture_graph_eager(
                     "category": str(prompt["category"]),
                     "cycle": cycle_index,
                     "row": row_index,
-                    "shape": f"k{len(cycle.draft_tokens)}",
+                    "shape": f"k{len(inputs) - 1}",
                     "transition": (
                         "prefill_to_verify" if cycle_index == 0 else "verify_to_verify"
                     ),
@@ -939,7 +893,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     session,
                     prompt=prompt,
                     prompt_tokens=prompt_tokens,
-                    output_ids=production_outputs[prompt_id][0].token_ids,
                     cycles=live_cycles,
                 )
             )

@@ -1154,6 +1154,7 @@ class Qwen35GGUFNativeB2TargetGraph:
         readback_start = time.perf_counter()
         hidden_size = int(self.session.runner.hidden_size)
         lm_head_logits_host = None
+        hidden_seed_rows_host = None
         if capture_lm_head_logits:
             logits_buf = getattr(self.session, "_verify_logits_buf", None)
             if logits_buf is None:
@@ -1164,6 +1165,15 @@ class Qwen35GGUFNativeB2TargetGraph:
                 host_array_ptr(lm_head_logits_host),
                 DeviceBuffer(int(logits_buf.ptr), int(lm_head_logits_host.nbytes)),
                 lm_head_logits_host.nbytes,
+                runtime=runtime,
+            )
+            hidden_seed_rows_host = np.empty(
+                (self.rows, hidden_size), dtype=np.float32
+            )
+            copy_device_to_host(
+                host_array_ptr(hidden_seed_rows_host),
+                _tensor_buffer(self.hidden_seed_rows),
+                hidden_seed_rows_host.nbytes,
                 runtime=runtime,
             )
         if self.device_accept_commit:
@@ -1296,6 +1306,11 @@ class Qwen35GGUFNativeB2TargetGraph:
                 proposal_device_handoff=device_proposal is not None,
                 verify_buffers=live_verify_buffers,
                 state_commit_buffers=live_state_commit_buffers,
+                hidden_seeds=(
+                    np.empty((0, 0), dtype=np.float32)
+                    if hidden_seed_rows_host is None
+                    else np.ascontiguousarray(hidden_seed_rows_host, dtype=np.float32)
+                ),
                 lm_head_logits_f32=(
                     None
                     if lm_head_logits_host is None
