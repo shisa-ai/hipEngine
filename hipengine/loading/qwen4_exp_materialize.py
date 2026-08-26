@@ -201,9 +201,7 @@ def plan_qwen4_exp_memory_admission(
     if capacity <= 0:
         raise ValueError("resident_capacity must be positive")
     kv_bytes = capacity * context * residency.config.bf16_kv_bytes_per_token
-    index_bytes = (
-        capacity * context * residency.config.bf16_compressed_index_bytes_per_token
-    )
+    index_bytes = capacity * _qsa_index_state_bytes(residency.config, context)
     runtime_state = capacity * _runtime_state_bytes_per_request(residency.config)
     required = (
         residency.device_weight_bytes
@@ -227,6 +225,26 @@ def plan_qwen4_exp_memory_admission(
         context_tokens=context,
         resident_capacity=capacity,
     )
+
+
+def _qsa_index_state_bytes(config: Qwen4ExpGGUFConfig, context_tokens: int) -> int:
+    """Return exact device bytes for the current raw-FP32 QSA index owner."""
+
+    context = int(context_tokens)
+    ratio = config.qsa_compression_ratio
+    complete_blocks = context // ratio
+    per_layer = (
+        context * config.indexer_key_length * 4
+        + complete_blocks * ratio * 4  # physical member indices
+        + complete_blocks * 8  # logical block starts
+        + complete_blocks * config.indexer_key_length * 4  # pooled FP32 keys
+        + complete_blocks * 4  # scores for one c1 query
+        + config.qsa_block_budget * 8  # selected complete-block starts
+        + 4  # selected count
+        + 8  # current query position
+        + config.qsa_dense_equivalent_max_tokens * 8  # expanded blocks + tail
+    )
+    return config.qsa_layer_count * per_layer
 
 
 def _runtime_state_bytes_per_request(config: Qwen4ExpGGUFConfig) -> int:

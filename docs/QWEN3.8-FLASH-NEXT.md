@@ -103,8 +103,11 @@ generation, and clean teardown.
   = **24,576 bytes/token**: exactly 6.0 GiB at 262,144 tokens.
 - A compressed BF16 QSA index cache is approximately **768 bytes/token** when
   one 128-dim key is retained per four tokens per QSA layer: 0.1875 GiB at
-  262,144 tokens. A correctness-first raw per-token index cache would be
-  0.75 GiB.
+  262,144 tokens. The current strict owner retains raw per-token FP32 keys
+  (**6,144 bytes/token**) plus complete-block member/start, pooled-FP32-key,
+  score, and selected-position workspaces: about **1.90 GiB/request** at 262,144
+  tokens. Memory admission accounts this exact current owner; the earlier
+  0.75-GiB raw-BF16 and 0.1875-GiB compressed forms remain later promotions.
 - The 36 GDN FP32 matrix states are approximately **108 MiB/request**; Conv,
   PLE history, and four residual branches are comparatively small.
 
