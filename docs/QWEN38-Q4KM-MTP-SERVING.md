@@ -1,6 +1,6 @@
 # Qwen3.8 Q4_K_M Exact MTP Serving Campaign
 
-- Status: **S0 complete; S1 capability RED next; automatic policy remains K0**
+- Status: **S1 complete; S2 lifecycle/fault packet next; automatic policy remains K0**
 - Started: **2026-08-26**
 - Primary host: **Radeon 8060S / `hip_gfx1151`**
 - Model: **Qwen3.8-27B `Q4_K_M`, BF16 KV**
@@ -119,13 +119,21 @@ Only after S0 passes:
       profile/manifest/KV/C/context/horizon/budget/sampler/memory resolve K0.
 - [x] RED/GREEN core: Q4_K_S cannot transfer and generic dense inventory cannot
       produce an admitted plan.
-- [ ] RED: `auto`, `enabled`, capabilities, response reasons, and rollback use
-      the same immutable plan/fingerprint.
-- [ ] Implement the capability through a model/speculative plugin boundary; do
-      not add backend/quant branches to server, engine, or model dispatch.
-- [ ] Preserve explicit MTP and strict AR/oracle fallbacks independently.
+- [x] RED/GREEN: `auto`, `enabled`, capabilities, response reasons, and rollback
+      use the same immutable plan/fingerprint.
+- [x] Implement the capability through the model/speculative plugin boundary;
+      server/engine dispatch contains no backend/quant admission branch.
+- [x] Preserve operator-selected explicit compatibility and strict AR/oracle
+      fallbacks independently; broad dense inventory cannot enable a default.
 
 Exit: one typed, fingerprinted pre-mutation serving plan with no default change.
+The retained plan fingerprint is
+`sha256:1948983ad884f41d9dce4453a3b2ab8f9a357b5005b9a2cabd18556b60084740`.
+A real `auto` server reports the exact content-verified artifact scope, keeps the
+unflagged request on AR, realizes its explicit twin through
+`gguf_specdec2_mtp2` with exact IDs, rejects context 68 before MTP mutation, and
+returns the same plan from rollback. Evidence:
+[`2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s1.json`](../benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s1.json).
 
 ## 6. S2 — LLM correctness and lifecycle
 

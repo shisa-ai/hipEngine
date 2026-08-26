@@ -4,6 +4,7 @@ from dataclasses import fields, replace
 
 import pytest
 
+from hipengine.llm import LLM
 from hipengine.models.qwen35 import Qwen35GGUFModel
 from hipengine.speculative.serving import (
     SpeculativeMTPServingEvidence,
@@ -29,6 +30,7 @@ def _key(**changes) -> SpeculativeMTPServingKey:
         kv_storage="bf16",
         kv_layout="uniform",
         realized_group_rows=1,
+        resident_capacity=1,
         candidate_budget=3,
         sampling_mode="greedy_fast",
         max_sequence_length=1024,
@@ -57,6 +59,10 @@ def test_qwen38_q4km_strict_c1_b3_plan_is_explicit_candidate_only() -> None:
         "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0-openai.json",
     )
     assert decision.plan_fingerprint.startswith("sha256:")
+    assert decision.plan_fingerprint == resolve_speculative_mtp_serving_plan(
+        (_evidence(),),
+        key=_key(context_tokens=1),
+    ).plan_fingerprint
     assert decision == resolve_speculative_mtp_serving_plan((_evidence(),), key=_key())
 
 
@@ -76,6 +82,7 @@ def test_qwen38_q4km_strict_c1_b3_plan_is_explicit_candidate_only() -> None:
         ({"kv_storage": "int8_per_token_head"}, "kv_storage_not_qualified"),
         ({"kv_layout": "paged_int8"}, "kv_layout_not_qualified"),
         ({"realized_group_rows": 2}, "physical_group_not_qualified"),
+        ({"resident_capacity": 4}, "resident_capacity_not_qualified"),
         ({"candidate_budget": 2}, "candidate_budget_not_qualified"),
         ({"sampling_mode": "processed_argmax"}, "sampling_mode_not_qualified"),
         ({"max_sequence_length": 2048}, "max_sequence_length_not_qualified"),
@@ -112,6 +119,59 @@ def test_unverified_artifact_and_generic_dense_inventory_cannot_admit() -> None:
     assert unverified.reason == "artifact_identity_unverified"
     assert generic.admitted is False
     assert generic.reason == "no_model_plugin_evidence"
+
+
+def test_llm_delegates_mechanical_serving_identity_to_loaded_generator() -> None:
+    calls = []
+
+    class Generator:
+        resident_capacity = 1
+
+        def resolve_speculative_mtp_serving_plan(self, **kwargs):
+            calls.append(kwargs)
+            return "candidate"
+
+    class LoadedLLM(LLM):
+        @property
+        def execution_profile_manifest_sha256(self):
+            return _STRICT_MANIFEST_SHA256
+
+        def _get_text_generator(self):
+            return generator
+
+    generator = Generator()
+    llm = LoadedLLM(
+        "fake.gguf",
+        execution_profile="strict",
+        max_active_requests=1,
+        max_sequence_length=1024,
+        speculative_candidate_budget=3,
+    )
+
+    decision = llm.resolve_speculative_mtp_serving_plan(
+        realized_group_rows=1,
+        sampling_mode="greedy_fast",
+        context_tokens=67,
+        output_horizon_tokens=25,
+        kv_storage="auto",
+        memory_fit=True,
+    )
+
+    assert decision == "candidate"
+    assert calls == [
+        {
+            "execution_profile_manifest_sha256": _STRICT_MANIFEST_SHA256,
+            "realized_group_rows": 1,
+            "resident_capacity": 1,
+            "candidate_budget": 3,
+            "sampling_mode": "greedy_fast",
+            "max_sequence_length": 1024,
+            "context_tokens": 67,
+            "output_horizon_tokens": 25,
+            "kv_storage": "auto",
+            "memory_fit": True,
+        }
+    ]
 
 
 def test_serving_key_has_no_prompt_content_or_benchmark_identity_fields() -> None:

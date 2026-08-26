@@ -37,6 +37,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         kv_storage="bf16",
         kv_layout="uniform",
         realized_group_rows=1,
+        resident_capacity=1,
         candidate_budget=3,
         sampling_modes=("greedy_fast",),
         max_sequence_length=1024,

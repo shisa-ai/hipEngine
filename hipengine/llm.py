@@ -378,6 +378,63 @@ class LLM:
             return False
         return callable(getattr(generator, "generate_speculative_mtp_detailed", None))
 
+    def resolve_speculative_mtp_serving_plan(
+        self,
+        *,
+        realized_group_rows: int,
+        sampling_mode: str,
+        context_tokens: int,
+        output_horizon_tokens: int,
+        kv_storage: str = "auto",
+        memory_fit: bool = True,
+    ):
+        """Resolve one model-plugin serving plan before request mutation."""
+
+        generator = self._get_text_generator()
+        resolver = getattr(generator, "resolve_speculative_mtp_serving_plan", None)
+        if not callable(resolver):
+            return None
+        manifest_sha256 = self.execution_profile_manifest_sha256 or ("0" * 64)
+        resident_capacity = int(
+            getattr(
+                generator,
+                "resident_capacity",
+                self.max_active_requests if self.max_active_requests is not None else 32,
+            )
+        )
+        return resolver(
+            execution_profile_manifest_sha256=manifest_sha256,
+            realized_group_rows=int(realized_group_rows),
+            resident_capacity=resident_capacity,
+            candidate_budget=int(self.speculative_candidate_budget),
+            sampling_mode=str(sampling_mode),
+            max_sequence_length=int(self.max_sequence_length or 1),
+            context_tokens=int(context_tokens),
+            output_horizon_tokens=int(output_horizon_tokens),
+            kv_storage=str(kv_storage or "auto"),
+            memory_fit=bool(memory_fit),
+        )
+
+    @property
+    def speculative_mtp_serving_capability(self):
+        """Resolve the loaded artifact against its model-plugin evidence scope."""
+
+        _weight_index, model_plugin = self._load_model_metadata()
+        evidence = tuple(
+            getattr(model_plugin, "speculative_mtp_serving_evidence", ()) or ()
+        )
+        if not evidence:
+            return None
+        row = evidence[0]
+        return self.resolve_speculative_mtp_serving_plan(
+            realized_group_rows=int(row.realized_group_rows),
+            sampling_mode=str(row.sampling_modes[0]),
+            context_tokens=int(row.max_context_tokens),
+            output_horizon_tokens=int(row.max_output_horizon_tokens),
+            kv_storage=str(row.kv_storage),
+            memory_fit=True,
+        )
+
     @property
     def supports_default_mtp(self) -> bool:
         """Whether default-on MTP serving is safe for the resolved generator.

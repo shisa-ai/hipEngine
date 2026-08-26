@@ -53,6 +53,7 @@ class SpeculativeMTPServingKey:
     kv_storage: str
     kv_layout: str
     realized_group_rows: int
+    resident_capacity: int
     candidate_budget: int
     sampling_mode: str
     max_sequence_length: int
@@ -86,6 +87,7 @@ class SpeculativeMTPServingKey:
             object.__setattr__(self, name, _required_text(getattr(self, name), name))
         for name in (
             "realized_group_rows",
+            "resident_capacity",
             "candidate_budget",
             "max_sequence_length",
             "context_tokens",
@@ -116,6 +118,7 @@ class SpeculativeMTPServingKey:
             "kv_storage": self.kv_storage,
             "kv_layout": self.kv_layout,
             "realized_group_rows": self.realized_group_rows,
+            "resident_capacity": self.resident_capacity,
             "candidate_budget": self.candidate_budget,
             "sampling_mode": self.sampling_mode,
             "max_sequence_length": self.max_sequence_length,
@@ -140,6 +143,7 @@ class SpeculativeMTPServingEvidence:
     kv_storage: str
     kv_layout: str
     realized_group_rows: int
+    resident_capacity: int
     candidate_budget: int
     sampling_modes: tuple[str, ...]
     max_sequence_length: int
@@ -181,6 +185,7 @@ class SpeculativeMTPServingEvidence:
         for name in (
             "artifact_size_bytes",
             "realized_group_rows",
+            "resident_capacity",
             "candidate_budget",
             "max_sequence_length",
             "min_context_tokens",
@@ -222,6 +227,7 @@ class SpeculativeMTPServingEvidence:
             "kv_storage": self.kv_storage,
             "kv_layout": self.kv_layout,
             "realized_group_rows": self.realized_group_rows,
+            "resident_capacity": self.resident_capacity,
             "candidate_budget": self.candidate_budget,
             "sampling_modes": list(self.sampling_modes),
             "max_sequence_length": self.max_sequence_length,
@@ -247,6 +253,7 @@ class SpeculativeMTPServingDecision:
     reason: str
     strict_fallback_key: str
     evidence_key: str | None = None
+    evidence_fingerprint: str | None = None
     evidence_artifacts: tuple[str, ...] = ()
     automatic_eligible: bool = False
 
@@ -254,14 +261,13 @@ class SpeculativeMTPServingDecision:
     def plan_fingerprint(self) -> str:
         return _canonical_sha256(
             {
-                "key": self.key.as_dict(),
                 "admitted": self.admitted,
                 "selected_route": self.selected_route,
                 "selected_candidate_count": self.selected_candidate_count,
                 "reason": self.reason,
                 "strict_fallback_key": self.strict_fallback_key,
                 "evidence_key": self.evidence_key,
-                "evidence_artifacts": list(self.evidence_artifacts),
+                "evidence_fingerprint": self.evidence_fingerprint,
                 "automatic_eligible": self.automatic_eligible,
             }
         )
@@ -277,6 +283,7 @@ class SpeculativeMTPServingDecision:
             "reason": self.reason,
             "strict_fallback_key": self.strict_fallback_key,
             "evidence_key": self.evidence_key,
+            "evidence_fingerprint": self.evidence_fingerprint,
             "evidence_artifacts": list(self.evidence_artifacts),
             "automatic_eligible": self.automatic_eligible,
         }
@@ -299,6 +306,9 @@ def _reject(
             else evidence.strict_fallback_key
         ),
         evidence_key=None if evidence is None else evidence.evidence_key,
+        evidence_fingerprint=(
+            None if evidence is None else _canonical_sha256(evidence.as_dict())
+        ),
         evidence_artifacts=(
             () if evidence is None else evidence.evidence_artifacts
         ),
@@ -345,6 +355,10 @@ def resolve_speculative_mtp_serving_plan(
             "physical_group_not_qualified",
         ),
         (
+            key.resident_capacity == row.resident_capacity,
+            "resident_capacity_not_qualified",
+        ),
+        (
             key.candidate_budget == row.candidate_budget,
             "candidate_budget_not_qualified",
         ),
@@ -377,6 +391,7 @@ def resolve_speculative_mtp_serving_plan(
         reason=row.reason,
         strict_fallback_key=row.strict_fallback_key,
         evidence_key=row.evidence_key,
+        evidence_fingerprint=_canonical_sha256(row.as_dict()),
         evidence_artifacts=row.evidence_artifacts,
         automatic_eligible=row.automatic_eligible,
     )
