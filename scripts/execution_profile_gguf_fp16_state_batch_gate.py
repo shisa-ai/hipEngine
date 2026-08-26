@@ -784,7 +784,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         resolved_backend=resolved_backend,
         target_arch=target_arch,
         model_path=args.model,
-        quant="gguf_q4_k_s",
+        quant=str(args.quant_label),
         kv_dtype="bf16",
         command=command,
         environment={
@@ -907,6 +907,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", default="hip_gfx1151")
+    parser.add_argument("--quant-label", default="gguf_q4_k_s")
     parser.add_argument("--prompts", action="append", type=Path, default=None)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--widths", default="4,8")
