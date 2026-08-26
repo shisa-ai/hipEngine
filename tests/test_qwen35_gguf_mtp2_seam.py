@@ -206,20 +206,9 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
 
 def test_fp16_target_disables_c1_device_proposal_graph() -> None:
     target = SimpleNamespace(runner=SimpleNamespace(fp16_recurrent_state=True))
-    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
-    adapter.device_chain_qualification_oracle = False
-
     assert not Qwen35GGUFMTP2Adapter._target_graph_supported(target)
-    assert not adapter._c1_device_proposal_allowed(target)
-
-    adapter.device_chain_qualification_oracle = True
-    assert adapter._c1_device_proposal_allowed(target)
-    assert not Qwen35GGUFMTP2Adapter._target_graph_supported(target)
-
     target.runner.fp16_recurrent_state = False
-    adapter.device_chain_qualification_oracle = False
     assert Qwen35GGUFMTP2Adapter._target_graph_supported(target)
-    assert adapter._c1_device_proposal_allowed(target)
 
 
 def test_physical_adapter_returns_device_candidate_graph_before_target(
@@ -412,7 +401,6 @@ def test_c1_adapter_warms_budget_graph_before_device_handoff() -> None:
 def test_c1_adapter_carries_cached_proposal_descriptor_without_materializing_ids() -> None:
     target = SimpleNamespace(
         position=5,
-        runner=SimpleNamespace(fp16_recurrent_state=True),
         last_target_hidden=Tensor.from_handle(
             0x1100, (1, 8), DType.BF16, Device("hip", 0)
         ),
@@ -463,7 +451,6 @@ def test_c1_adapter_carries_cached_proposal_descriptor_without_materializing_ids
         root_hidden_buffer=SimpleNamespace(ptr=1),
     )
     adapter = object.__new__(Qwen35GGUFMTP2Adapter)
-    adapter.device_chain_qualification_oracle = True
     adapter.owner = SimpleNamespace(
         capacity=1,
         _row=lambda request_id: row,
