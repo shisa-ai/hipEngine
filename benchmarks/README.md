@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-26**
+Last updated: **2026-08-27**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -124,7 +124,10 @@ All repeat/control/ownership gates pass; failures are model-owned, so no
 implementation is retained. [`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
 
 gfx1151 Qwen3.8 `Q4_K_S` P9 is exact **540/540**; C1/K2 is **1.4087x AR**, but
-physical C2/C4 is **0.6975x/0.5843x** and automatic stays K0. [`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json).
+normal capacity-4 automatic serving executes zero cycles. Post-closure strict
+small-M WMMA raises physical C2/C4 **9.958→11.462 (+15.10%) /
+15.718→17.555 tok/s (+11.69%)**, still **0.7510x/0.6218x AR**; K0 stays.
+[`Small-M`](results/2026-08-27-gfx1151-specdec2-smallm-q4-wmma-retained.json) · [`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json).
 
 gfx1100 dense C1 K1/K2/K3 is **1.272x/1.407x/1.439x AR**; packed PARO is
 **0.979x**. Physical C2 routing improves **16.974→22.393 tok/s (+31.93%)** but
