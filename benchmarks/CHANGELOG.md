@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-26 W7900 SPECDEC2 C2 R6 target route; retained/scoped default] Five standard-Q4 shapes use C1-equivalent rows6 rowtiles and gate/up uses exact single-wave, with registered shared-B fallback. Clean full-suite target/accept falls **17.664→10.872 s (-38.45%)** and physical throughput improves **16.974→22.393 tok/s (+31.93%)** with 10/10 exact, zero candidate D2H/recovery, and every category positive versus the repaired route. C2 remains **0.7156x AR**, so capability stays false/automatic K0. `benchmarks/results/2026-08-26-w7900-specdec2-c2-r6-target-rowtile-retained.json`.
+
 - [2026-08-26 SPECDEC2-PERF gfx1151 repaired P9 fixed grid; C1/K2 candidate, automatic K0] Production/strict C1/C2/C4 K1-K3 is exact **540/540**. Production C1 reaches **1.2310x/1.4087x/1.4037x AR**; K2 proceeds to product qualification. Repaired physical acceptance reaches 95.0%/89.8%/77.7%, but best C2/C4 is only **0.6975x/0.5843x**, so physical/wider scopes stay K0. `benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json`.
 
 - [2026-08-26 W7900 SPECDEC2 C2 acceptance root cause; repair retained/economics blocked] Physical commit now owns consumed-position metadata and selected pre-output-norm BF16 target hidden. Full-suite K2/D24 acceptance improves **18.43%→76.92%** with 10/10 exact cells and zero D2H/recovery, but R6 target cost leaves **16.974 vs 31.230 tok/s (0.544x AR)**. Keep physical capability false/automatic K0; next premise is ≤101 ms target lowering after proposal, not acceptance tuning. `benchmarks/results/2026-08-26-w7900-specdec2-c2-acceptance-root-cause.json`.
