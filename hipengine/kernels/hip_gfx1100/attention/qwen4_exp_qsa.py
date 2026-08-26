@@ -31,6 +31,18 @@ _ARGS_SPLIT = (
     ctypes.c_float,
     ctypes.c_void_p,
 )
+_ARGS_NORM = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
 _ARGS_GATE = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -169,6 +181,52 @@ def qwen4_exp_qsa_split_norm_rope_f32(
             query_out_ptr, key_out_ptr, gate_out_ptr,
             num_q_heads, num_kv_heads, head_dim, rotary_dim,
             float(theta), float(eps), stream,
+        ),
+    )
+
+
+def qwen4_exp_qsa_norm_rope_f32(
+    input_ptr: int,
+    weight_ptr: int,
+    position_ptr: int,
+    output_ptr: int,
+    heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    theta: float,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """RMS-normalize and split-half partial-RoPE raw QSA index queries."""
+
+    if heads <= 0 or head_dim <= 0:
+        raise ValueError("heads and head_dim must be positive")
+    if rotary_dim <= 0 or rotary_dim > head_dim or rotary_dim % 2:
+        raise ValueError("rotary_dim must be positive, even, and <= head_dim")
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_qsa_norm_rope_f32",
+        _ARGS_NORM,
+        ctypes.c_int,
+    )
+    _check_launch(
+        runtime,
+        fn(
+            input_ptr,
+            weight_ptr,
+            position_ptr,
+            output_ptr,
+            heads,
+            head_dim,
+            rotary_dim,
+            float(theta),
+            float(eps),
+            stream,
         ),
     )
 
@@ -384,6 +442,12 @@ def register_qwen4_exp_qsa_kernels(*, replace: bool = True) -> None:
         ): qwen4_exp_qsa_split_norm_rope_f32,
         KernelKey(
             "hip_gfx1100",
+            "qsa_norm_rope",
+            "f32",
+            "strict",
+        ): qwen4_exp_qsa_norm_rope_f32,
+        KernelKey(
+            "hip_gfx1100",
             "qsa_gate_context",
             "f32",
             "strict",
@@ -429,6 +493,7 @@ __all__ = [
     "build_qwen4_exp_qsa",
     "plan_qwen4_exp_qsa_build",
     "qwen4_exp_qsa_gate_context_f32",
+    "qwen4_exp_qsa_norm_rope_f32",
     "qwen4_exp_qsa_pool_norm_rope_f32",
     "qwen4_exp_qsa_score_f32",
     "qwen4_exp_qsa_split_norm_rope_f32",

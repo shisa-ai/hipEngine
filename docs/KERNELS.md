@@ -92,6 +92,7 @@ CPU oracles favor clarity and deterministic boundaries over speed. They are the 
 | Model/path | Source | Oracle families |
 | --- | --- | --- |
 | Shared primitives and Qwen/PARO/GGUF | `cpu_reference/ops.py` | embedding, linear/QKV/O/lm-head, RMSNorm, rotate, full/paged attention, KV quant/dequant/write, GDN and Conv prefill, GGUF Q4/Q5/Q6/Q8 dequant/GEMV, PARO AWQ pack8, MoE selected/tail, MTP/NextN helpers |
+| Qwen4Exp | `cpu_reference/qwen4_exp.py` | four-branch GR, PLE hash/gate/dilated Conv, QSA split-half partial RoPE/block pooling/scoring/selection/sparse GQA, sigmoid-gated GDN boundary, 512/top-10 MoE, and reduced complete layer/model semantics |
 | Laguna | `cpu_reference/laguna.py` | YaRN/plain RoPE, head RMSNorm, global/SWA attention, dense and sparse FFN/MoE, routing, DFlash layer/model, target-hidden projection |
 | DFlash2 | `cpu_reference/dflash2.py` | grouped dynamic conv (prepare/finish), top-16 bilinear candidate selector + greedy walk, q/k-norm sliding-window attention, Qwen3 block-repeat RoPE | DFlash2DraftModel exact-math oracles; fixtures generated from the z-lab/dflash torch reference (test-time torch only). |
 | Maple | `cpu_reference/maple.py` | ternary and affine4 pack/dequant, BF16 boundaries, projections, attention/KV spans, routing/MoE, complete model semantics |
@@ -172,6 +173,9 @@ GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layou
 | Quant/layout family | Source / wrapper | Principal registry layers | Stable notes |
 | --- | --- | --- | --- |
 | Q4_K selected FFN megakernel | `quant/gguf_q4_k_moe_ffn_fused.{hip,py}` | `moe_ffn_selected` (`gguf_q4_k`) | Whole selected gate/up → SiLU → down projection; primitive selected projections remain fallback. |
+| Qwen4Exp GR/PLE/GDN | `fused/qwen4_exp_gr.{hip,py}`, `fused/qwen4_exp_ple.{hip,py}`, `linear_attn/qwen4_exp_gdn.{hip,py}` | grouped GR read/write, sparse PLE gate/Conv/add, `gdn_recurrence_norm_gate` (`f32_state`) | Strict c1 raw-pointer primitives for four authoritative BF16 branches, FP32 PLE history/compute, and FP32 recurrent state with sigmoid output gate. CPU-reference chains remain the oracle. |
+| Qwen4Exp QSA | `attention/qwen4_exp_qsa.{hip,py}` | `qsa_split_norm_rope`, `qsa_norm_rope`, `qsa_pool_norm_rope`, `qsa_index_score`, `qsa_select_blocks`, `qsa_sparse_attention` | Split-half partial RoPE, FP32 raw-key complete-block pooling, deterministic lower-start tie break, and sparse original-BF16-K/V GQA. The complete runner mirrors paged K/V physical ownership, uses dense equivalence through 2,051 tokens, then runs the selected path. |
+| Qwen4Exp raw Q5_1 experts | `quant/qwen4_exp_q5_1.{hip,py}` | selected `linear`/`moe_linear` (`gguf_q5_1`) | Strict selected-expert consumer for the pinned Unsloth UD-Q4_K_XL mixed quant. |
 | Raw Q5_K/Q6_K/Q8_0 | `quant/gguf_k_gemv.{hip,py}` | `linear`, `linear_pair`, `attention_projection_quad` | Decode/prefill, BF16/F32 output, pair/quad launch contractions, rowbatch/coltile variants. |
 | Raw Q3_K selected | `quant/gguf_q3_k_gemv.{hip,py}` | `moe_linear` | Q3 selected-expert projection family. |
 | Q4_K pack8/raw | `quant/gguf_q4_k_gemv.{hip,py}` | `linear`, `linear_pair`, `linear_pair_silu`, `linear+residual` | Raw GGUF math and lossless pack8 layouts; pair/SiLU and exact rounded-BF16 residual composites where registered. Primitive projection+add fallbacks remain available. |
@@ -596,7 +600,8 @@ hipengine/kernels/hip_gfx1100/
 │   ├── maple_attention.hip
 │   ├── moonshine_attention.hip
 │   ├── paged_attn_decode.hip
-│   └── paged_kv_write.hip
+│   ├── paged_kv_write.hip
+│   └── qwen4_exp_qsa.hip
 ├── convert/
 │   ├── cast.hip
 │   └── gather.hip
@@ -608,7 +613,9 @@ hipengine/kernels/hip_gfx1100/
 │   ├── moonshine_glue.hip
 │   ├── moonshine_mlp.hip
 │   ├── paro_combine.hip
-│   └── paro_silu.hip
+│   ├── paro_silu.hip
+│   ├── qwen4_exp_gr.hip
+│   └── qwen4_exp_ple.hip
 ├── linear/
 │   ├── dense_gemv.hip
 │   ├── laguna_f16_projection.hip
@@ -617,7 +624,8 @@ hipengine/kernels/hip_gfx1100/
 │   └── moonshine_w8a16.hip
 ├── linear_attn/
 │   ├── conv.hip
-│   └── gdn.hip
+│   ├── gdn.hip
+│   └── qwen4_exp_gdn.hip
 ├── moe/
 │   ├── group_scatter.hip
 │   ├── laguna_router.hip
@@ -630,6 +638,7 @@ hipengine/kernels/hip_gfx1100/
 │   ├── gguf_expert_pack8_gemv.hip
 │   ├── gguf_iq2_xs_mmq_prefill.hip
 │   ├── gguf_iq_gemv.hip
+│   ├── qwen4_exp_q5_1.hip
 │   ├── gguf_iq_selected_prefill.hip
 │   ├── gguf_iq_source_mmq_prefill.hip
 │   ├── gguf_k_gemv.hip

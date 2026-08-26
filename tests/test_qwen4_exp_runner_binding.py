@@ -89,7 +89,7 @@ def test_bind_qwen4_exp_qsa_layer_maps_roles_and_state_indices() -> None:
     assert binding.layer_type == "qsa"
     assert binding.qsa_state_index == 0
     assert set(binding.mixer.projections) == {
-        "attn_q", "attn_k", "attn_v", "attn_output"
+        "attn_q", "attn_k", "attn_v", "attn_output", "index_q", "index_k"
     }
     assert binding.mixer.q_norm_weight_ptr > 0
     assert binding.mixer.k_norm_weight_ptr > 0
