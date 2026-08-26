@@ -114,11 +114,11 @@ blocker. No implementation is admitted merely because the direct leaf is fast.
 
 Only after S0 passes:
 
-- [ ] RED: a pinned Q4_K_M/gfx1151/strict/BF16/C1/raw-greedy scope can resolve a
-      candidate plan, while wrong hash/quant/backend/profile/KV/C/context/horizon
-      and every incompatible sampler shape resolve K0 before mutation.
-- [ ] RED: Q4_K_S policy cannot route Q4_K_M, and generic dense inventory cannot
-      imply default-safe MTP.
+- [x] RED/GREEN core: a pinned Q4_K_M/gfx1151/strict/BF16/C1/raw-greedy scope
+      resolves an explicit-only candidate plan, while wrong hash/quant/backend/
+      profile/manifest/KV/C/context/horizon/budget/sampler/memory resolve K0.
+- [x] RED/GREEN core: Q4_K_S cannot transfer and generic dense inventory cannot
+      produce an admitted plan.
 - [ ] RED: `auto`, `enabled`, capabilities, response reasons, and rollback use
       the same immutable plan/fingerprint.
 - [ ] Implement the capability through a model/speculative plugin boundary; do

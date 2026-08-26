@@ -167,6 +167,12 @@ from hipengine.speculative.packing import (
     VerifierCostRecord,
     pack_speculative_requests,
 )
+from hipengine.speculative.serving import (
+    SpeculativeMTPServingDecision,
+    SpeculativeMTPServingEvidence,
+    SpeculativeMTPServingKey,
+    resolve_speculative_mtp_serving_plan,
+)
 from hipengine.speculative.streaming import (
     SpeculativeCommitEvent,
     SpeculativeOutputTail,
@@ -237,6 +243,10 @@ __all__ = [
     "SpeculativeProviderKey",
     "SpeculativeTextProvider",
     "SpeculativeRequestSemantics",
+    "SpeculativeMTPServingDecision",
+    "SpeculativeMTPServingEvidence",
+    "SpeculativeMTPServingKey",
+    "resolve_speculative_mtp_serving_plan",
     "StagedSpeculativeProvider",
     "validate_staged_speculative_provider",
     "construct_staged_speculative_provider",
