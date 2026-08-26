@@ -44,8 +44,10 @@ from hipengine.runtime.qwen35_gguf_runner import (
 from hipengine.runtime.qwen4_exp_runner import (
     Qwen4ExpDecodeState,
     Qwen4ExpDecodeStateSnapshot,
+    Qwen4ExpGDNScratch,
     Qwen4ExpGRReadDeviceResult,
     Qwen4ExpGRScratch,
+    run_qwen4_exp_gdn_token_mixer,
     run_qwen4_exp_gr_read,
 )
 from hipengine.runtime.qwen35_paro import (
@@ -95,6 +97,7 @@ __all__ = [
     "Qwen35GGUFResidentSession",
     "Qwen4ExpDecodeState",
     "Qwen4ExpDecodeStateSnapshot",
+    "Qwen4ExpGDNScratch",
     "Qwen4ExpGRReadDeviceResult",
     "Qwen4ExpGRScratch",
     "Qwen35ParoAttentionScratch",
@@ -111,6 +114,7 @@ __all__ = [
     "RuntimeWorkspace",
     "launch_gguf_linear",
     "resolve_gguf_linear_dispatch",
+    "run_qwen4_exp_gdn_token_mixer",
     "run_qwen4_exp_gr_read",
     "WorkspaceAllocation",
     "tensor_nbytes",

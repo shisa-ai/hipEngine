@@ -23,6 +23,12 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
+from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
+    qwen35_linear_attn_conv_decode_f32,
+)
+from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
+    qwen4_exp_gdn_decode_f32,
+)
 from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_gated_mean_f32,
     qwen4_exp_grouped_rmsnorm_bf16_f32,
@@ -149,6 +155,62 @@ class Qwen4ExpDecodeState:
     def _require_open(self) -> None:
         if self.closed:
             raise RuntimeError("Qwen4Exp decode state is closed")
+
+
+@dataclass
+class Qwen4ExpGDNScratch:
+    qkv: DeviceBuffer
+    gate: DeviceBuffer
+    alpha: DeviceBuffer
+    beta: DeviceBuffer
+    conv: DeviceBuffer
+    core: DeviceBuffer
+    output: DeviceBuffer
+    runtime: HipRuntime
+    closed: bool = False
+
+    @classmethod
+    def allocate(
+        cls,
+        *,
+        rows: int,
+        qkv_width: int,
+        core_width: int,
+        scalar_width: int,
+        hidden: int,
+        runtime: HipRuntime | None = None,
+    ) -> "Qwen4ExpGDNScratch":
+        dimensions = (rows, qkv_width, core_width, scalar_width, hidden)
+        if any(int(value) <= 0 for value in dimensions):
+            raise ValueError("Qwen4Exp GDN scratch dimensions must be positive")
+        active_runtime = runtime or get_hip_runtime()
+        elements = (
+            rows * qkv_width,
+            rows * core_width,
+            rows * scalar_width,
+            rows * scalar_width,
+            rows * qkv_width,
+            rows * core_width,
+            rows * hidden,
+        )
+        buffers: list[DeviceBuffer] = []
+        try:
+            for count in elements:
+                buffers.append(malloc(count * 4, runtime=active_runtime))
+        except Exception:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=active_runtime)
+            raise
+        return cls(*buffers, runtime=active_runtime)
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        for buffer in reversed(
+            (self.qkv, self.gate, self.alpha, self.beta, self.conv, self.core, self.output)
+        ):
+            free(buffer, runtime=self.runtime)
+        self.closed = True
 
 
 @dataclass
@@ -320,10 +382,107 @@ def run_qwen4_exp_gr_read(
     )
 
 
+def run_qwen4_exp_gdn_token_mixer(
+    mixed_ptr: int,
+    weights: Mapping[str, GGUFDeviceWeight],
+    *,
+    conv_weight_ptr: int,
+    dt_bias_ptr: int,
+    a_log_ptr: int,
+    norm_weight_ptr: int,
+    conv_state_ptr: int,
+    recurrent_state_ptr: int,
+    scratch: Qwen4ExpGDNScratch,
+    rows: int,
+    hidden: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_dim: int,
+    conv_kernel: int,
+    stream: int = 0,
+    runtime: HipRuntime | None = None,
+) -> DeviceBuffer:
+    """Execute strict Qwen4Exp GDN projections, Conv, recurrence, and output."""
+
+    if scratch.closed:
+        raise RuntimeError("Qwen4Exp GDN scratch is closed")
+    if rows != 1:
+        raise ValueError("strict Qwen4Exp GDN decode currently requires rows == 1")
+    active_runtime = runtime or scratch.runtime
+    if active_runtime is not scratch.runtime:
+        raise ValueError("runtime must match the GDN scratch owner")
+    qkv_width = 2 * num_k_heads * head_dim + num_v_heads * head_dim
+    core_width = num_v_heads * head_dim
+    required = {"attn_qkv", "attn_gate", "ssm_alpha", "ssm_beta", "ssm_out"}
+    missing = sorted(required - set(weights))
+    if missing:
+        raise ValueError("missing Qwen4Exp GDN weights: " + ", ".join(missing))
+    for slot, output, out_features in (
+        ("attn_qkv", scratch.qkv, qkv_width),
+        ("attn_gate", scratch.gate, core_width),
+        ("ssm_alpha", scratch.alpha, num_v_heads),
+        ("ssm_beta", scratch.beta, num_v_heads),
+    ):
+        launch_gguf_linear(
+            weights[slot],
+            mixed_ptr,
+            output.ptr,
+            rows,
+            hidden,
+            out_features,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    qwen35_linear_attn_conv_decode_f32(
+        scratch.qkv.ptr,
+        conv_state_ptr,
+        conv_weight_ptr,
+        scratch.conv.ptr,
+        qkv_width,
+        conv_kernel,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    qwen4_exp_gdn_decode_f32(
+        scratch.conv.ptr,
+        scratch.gate.ptr,
+        scratch.alpha.ptr,
+        scratch.beta.ptr,
+        dt_bias_ptr,
+        a_log_ptr,
+        norm_weight_ptr,
+        recurrent_state_ptr,
+        scratch.core.ptr,
+        num_k_heads,
+        num_v_heads,
+        head_dim,
+        head_dim,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    launch_gguf_linear(
+        weights["ssm_out"],
+        scratch.core.ptr,
+        scratch.output.ptr,
+        rows,
+        core_width,
+        hidden,
+        activation_dtype=GGUF_ACTIVATION_F32,
+        output_dtype=GGUF_OUTPUT_F32,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    return scratch.output
+
+
 __all__ = [
     "Qwen4ExpDecodeState",
     "Qwen4ExpDecodeStateSnapshot",
+    "Qwen4ExpGDNScratch",
     "Qwen4ExpGRReadDeviceResult",
     "Qwen4ExpGRScratch",
+    "run_qwen4_exp_gdn_token_mixer",
     "run_qwen4_exp_gr_read",
 ]
