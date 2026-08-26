@@ -15,6 +15,7 @@ from scripts.gguf_live_server_bench import (
     _owned_physical_plans,
     _parse_configurations,
     _parse_sse_data_line,
+    _route_counts_prove_one_packed_group,
     _prompt_rows,
     _ReferenceRun,
     _reference_c1_summary,
@@ -64,6 +65,35 @@ def test_live_server_bench_declares_honest_c13_routes() -> None:
         _parse_configurations(
             "packed_c13,c1,packed_c8,packed_c9,serial_c13"
         )
+
+
+def test_live_server_bench_accepts_generation2_route_counters_without_poll_plans() -> None:
+    assert _route_counts_prove_one_packed_group(
+        {
+            "native_packed_decode_steps": 127,
+            "native_packed_graph_captures": 1,
+            "native_packed_graph_replays": 127,
+            "serial_decode_fallback_steps": 0,
+        },
+        max_tokens=128,
+    )
+    assert not _route_counts_prove_one_packed_group(
+        {
+            "native_packed_decode_steps": 254,
+            "native_packed_graph_captures": 2,
+            "native_packed_graph_replays": 254,
+        },
+        max_tokens=128,
+    )
+    assert not _route_counts_prove_one_packed_group(
+        {
+            "native_packed_decode_steps": 127,
+            "native_packed_graph_captures": 1,
+            "native_packed_graph_replays": 127,
+            "serial_decode_fallback_steps": 1,
+        },
+        max_tokens=128,
+    )
 
 
 def test_live_server_bench_accepts_complete_c1_c8_sweep() -> None:

@@ -245,6 +245,24 @@ def _logical_shape_covers(
     )
 
 
+def _route_counts_prove_one_packed_group(
+    route_delta: Mapping[str, int],
+    *,
+    max_tokens: int,
+) -> bool:
+    """Accept Generation-2 packed engagement when poll-plan history is absent."""
+
+    decode_steps = int(max_tokens) - 1
+    return bool(
+        decode_steps > 0
+        and int(route_delta.get("native_packed_decode_steps", 0)) == decode_steps
+        and int(route_delta.get("native_packed_graph_captures", 0)) == 1
+        and int(route_delta.get("native_packed_graph_replays", 0)) == decode_steps
+        and int(route_delta.get("serial_decode_fallback_steps", 0)) == 0
+        and int(route_delta.get("resident_fallback_requests", 0)) == 0
+    )
+
+
 def _parse_sse_data_line(line: str) -> dict[str, Any] | str | None:
     text = str(line).strip()
     if not text or not text.startswith("data:"):
@@ -793,6 +811,12 @@ def _run_http_sample(
         expected_group_shape_seen = any(
             logical_c == 8 and widths == (8,) and masks == ("11111111",)
             for logical_c, widths, masks in logical_shapes
+        ) or (
+            not logical_shapes
+            and _route_counts_prove_one_packed_group(
+                route_delta,
+                max_tokens=int(max_tokens),
+            )
         )
     elif config.name == "packed_c9":
         expected_group_shape_seen = any(
