@@ -1,0 +1,282 @@
+{
+ "schema": 1,
+ "kind": "benchmark_diagnostic",
+ "created_at": "2026-08-27T05:30:00Z",
+ "status": "diagnostic_only",
+ "passed": true,
+ "performance_claim": false,
+ "decision": "T0.1 matched-quant AR baseline + definitive AR/MTP crossover table for the CONCURRENCY2 gfx1151 MTP tuning campaign",
+ "physical_host": "gfx1151 (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S, CachyOS 7.1.6-1, HIP 7.15.0)",
+ "hardware": "Radeon 8060S gfx1151, unified memory",
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "size_bytes": 17106775008,
+  "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "sampled_fingerprint": "8a35afe52d8a955878b6163246dddfb89cd67deefbe1f567819d78a86181cafa",
+  "quant": "Q4_K_M (registry gguf_q4_k_m)",
+  "kv_storage": "bf16"
+ },
+ "protocol": {
+  "surface": "OpenAI-compatible blocking completions HTTP (matched to the MTP diagnostic)",
+  "primary_metric": "median aggregate generated completion tokens / simultaneous-release-to-last-response wall",
+  "prompt_length": 512,
+  "decode_tokens_per_request": 128,
+  "prompt_rows": "token 9707 repeated; final token cycles 9707..9710",
+  "sampling": "greedy top-1; AR rows ignore_eos=true with MTP disabled at the server; MTP rows EOS honored with --speculative-mtp-serving opt_in",
+  "concurrencies": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8
+  ],
+  "warmup_runs_per_width": 1,
+  "measured_runs_per_width": 3,
+  "fresh_server_per_width": true,
+  "generation_batch_window_ms": 20,
+  "prefill_decode_policy": "fair",
+  "prefill_chunk_tokens": 256,
+  "context_tokens_per_sequence": 1024,
+  "recurrent_state": "FP32 (HIPENGINE_GGUF_FP16_RECURRENT_STATE=0)",
+  "anti_gaming_scope": "fixed synthetic prompt diagnostic; the full mtpbench code/general_en/general_ja/mixed_ja_en + heldout gate (T0.4) is required before any retained speculative speed claim"
+ },
+ "source_states": {
+  "hipengine_head": "3d56a437e5efed4289181a8b0903ff0f4b32d778",
+  "harness": "scripts/server_f1_concurrency_bench.py (committed; --speculative-mtp-serving off for AR)",
+  "mtp_rows_source": "benchmarks/results/2026-08-26-gfx1151-qwen38-mtp-old-vs-concurrency2-c1-c8.json (head 1ec1c747b)"
+ },
+ "results": {
+  "1": {
+   "ar_median_tok_s": 10.322869247592864,
+   "ar_samples_tok_s": [
+    10.323330063106646,
+    10.322869247592864,
+    10.31505654925437
+   ],
+   "ar_stdev_pct_of_median": 0.0450398233271734,
+   "mtp_median_tok_s": 13.595611838590404,
+   "mtp_samples_tok_s": [
+    13.596234239937054,
+    13.595611838590404,
+    13.590658506191723
+   ],
+   "mtp_stdev_pct_of_median": 0.022473202462318955,
+   "mtp_accept_per_draft": 0.7394957983193278,
+   "mtp_vs_ar_pct": 31.70380746380852,
+   "ar_strict_c1_mismatches": 0,
+   "ar_rows": 3,
+   "mtp_strict_c1_mismatches": 0
+  },
+  "2": {
+   "ar_median_tok_s": 17.71401210843319,
+   "ar_samples_tok_s": [
+    17.708467621225957,
+    17.71401210843319,
+    17.72531172158611
+   ],
+   "ar_stdev_pct_of_median": 0.04846078461477382,
+   "mtp_median_tok_s": 12.934827672160136,
+   "mtp_samples_tok_s": [
+    12.939590203566633,
+    12.924856583186681,
+    12.934827672160136
+   ],
+   "mtp_stdev_pct_of_median": 0.058127458691714116,
+   "mtp_accept_per_draft": 0.6387832699619772,
+   "mtp_vs_ar_pct": -26.97968369344067,
+   "ar_strict_c1_mismatches": 0,
+   "ar_rows": 6,
+   "mtp_strict_c1_mismatches": 0
+  },
+  "3": {
+   "ar_median_tok_s": 23.295644200392992,
+   "ar_samples_tok_s": [
+    23.313676404445165,
+    23.295644200392992,
+    23.26814309892365
+   ],
+   "ar_stdev_pct_of_median": 0.09843109642062532,
+   "mtp_median_tok_s": 12.955969854892931,
+   "mtp_samples_tok_s": [
+    12.955969854892931,
+    12.960410064374976,
+    12.941243276402965
+   ],
+   "mtp_stdev_pct_of_median": 0.07743835842048141,
+   "mtp_accept_per_draft": 0.6487179487179487,
+   "mtp_vs_ar_pct": -44.38458218436232,
+   "ar_strict_c1_mismatches": 0,
+   "ar_rows": 9,
+   "mtp_strict_c1_mismatches": 0
+  },
+  "4": {
+   "ar_median_tok_s": 27.239969919869917,
+   "ar_samples_tok_s": [
+    27.287986321164453,
+    27.239969919869917,
+    27.222175542521
+   ],
+   "ar_stdev_pct_of_median": 0.12497190766843849,
+   "mtp_median_tok_s": 12.947944880691562,
+   "mtp_samples_tok_s": [
+    12.93872139485231,
+    12.947944880691562,
+    12.959563970139316
+   ],
+   "mtp_stdev_pct_of_median": 0.08066305519752283,
+   "mtp_accept_per_draft": 0.6468330134357005,
+   "mtp_vs_ar_pct": -52.467110210548306,
+   "ar_strict_c1_mismatches": 3,
+   "ar_rows": 12,
+   "mtp_strict_c1_mismatches": 0
+  },
+  "5": {
+   "ar_median_tok_s": 29.292898640924054,
+   "ar_samples_tok_s": [
+    29.33314722873403,
+    29.292898640924054,
+    29.290855572865095
+   ],
+   "ar_stdev_pct_of_median": 0.08141633232163156,
+   "mtp_median_tok_s": 13.090967814678764,
+   "mtp_samples_tok_s": [
+    13.094645745695054,
+    13.090967814678764,
+    13.087810289315028
+   ],
+   "mtp_stdev_pct_of_median": 0.026132737680195913,
+   "mtp_accept_per_draft": 0.6640625,
+   "mtp_vs_ar_pct": -55.310097593449335,
+   "ar_strict_c1_mismatches": 3,
+   "ar_rows": 15,
+   "mtp_strict_c1_mismatches": 0
+  },
+  "6": {
+   "ar_median_tok_s": 31.799042257146432,
+   "ar_samples_tok_s": [
+    31.830468121723616,
+    31.799042257146432,
+    31.728123434214265
+   ],
+   "ar_stdev_pct_of_median": 0.16486953291990178,
+   "mtp_median_tok_s": 12.957155392432483,
+   "mtp_samples_tok_s": [
+    12.957428922124897,
+    12.957155392432483,
+    12.703493551192846
+   ],
+   "mtp_stdev_pct_of_median": 1.1308867797797066,
+   "mtp_accept_per_draft": 0.6441326530612245,
+   "mtp_vs_ar_pct": -59.25300111980408,
+   "ar_strict_c1_mismatches": 3,
+   "ar_rows": 18,
+   "mtp_strict_c1_mismatches": 0
+  },
+  "7": {
+   "ar_median_tok_s": 26.39833064947004,
+   "ar_samples_tok_s": [
+    26.41884181494811,
+    26.39833064947004,
+    26.392917426222272
+   ],
+   "ar_stdev_pct_of_median": 0.05180369708724314,
+   "mtp_median_tok_s": 12.665186723886073,
+   "mtp_samples_tok_s": [
+    12.975670772484623,
+    12.665186723886073,
+    12.508755993070961
+   ],
+   "mtp_stdev_pct_of_median": 1.8764455120875003,
+   "mtp_accept_per_draft": 0.6476399560922064,
+   "mtp_vs_ar_pct": -52.02277412136161,
+   "ar_strict_c1_mismatches": 9,
+   "ar_rows": 21,
+   "mtp_strict_c1_mismatches": 0
+  },
+  "8": {
+   "ar_median_tok_s": 28.430550825934034,
+   "ar_samples_tok_s": [
+    28.430550825934034,
+    28.436462856971435,
+    28.428855261374885
+   ],
+   "ar_stdev_pct_of_median": 0.014047559506462776,
+   "mtp_median_tok_s": 12.551927283501733,
+   "mtp_samples_tok_s": [
+    12.940749358515244,
+    12.551927283501733,
+    12.495476669028006
+   ],
+   "mtp_stdev_pct_of_median": 1.9314253513895832,
+   "mtp_accept_per_draft": 0.6468330134357005,
+   "mtp_vs_ar_pct": -55.85056596211986,
+   "ar_strict_c1_mismatches": 12,
+   "ar_rows": 24,
+   "mtp_strict_c1_mismatches": 0
+  }
+ },
+ "crossover": {
+  "mtp_wins": [
+   "c1 (+31.70%)"
+  ],
+  "ar_wins": [
+   "c2 (-26.98%)",
+   "c3 (-44.38%)",
+   "c4 (-52.47%)",
+   "c5 (-55.31%)",
+   "c6 (-59.25%)",
+   "c7 (-52.02%)",
+   "c8 (-55.85%)"
+  ],
+  "crossover_width": "between c1 and c2; c1 is the only width where serving MTP beats matched-quant AR",
+  "note": "Q4_K_M AR c1-c6 are within ~3% of the earlier Q4_K_S SSE diagnostic; the c7 dip (26.40 vs c6 31.80, stdev 0.05%) is reproducible and unexplained - width-bucketing suspect"
+ },
+ "t03_attribution_from_mtp_raw": {
+  "per_request_prefill_ms_all_widths": "~4538-4792 (512-token prompt => ~113 tok/s prefill, serial per request)",
+  "per_request_decode_ms_all_widths": "~4800-5290; target_verify_ms is 4745-5225 of it (~98%); draft_propose_ms 39-72",
+  "tokens_per_step": {
+   "c1": 3.2,
+   "c2_8": "2.91-2.98"
+  },
+  "acceptance_per_draft": {
+   "c1": 0.7395,
+   "c2_8": "0.639-0.669"
+  },
+  "batch_wall_equals_summed_per_request_work": "c8 wall 81.6s ~= 8 x (4.8s prefill + 5.3s decode): phases do not overlap across requests",
+  "mechanism": "phase-serial scheduler (draft all slots -> verify chunks of <=4 slots -> commit all); verify runs 4-token blocks per slot without AR-style cross-slot position batching (use_wmma_prefill=False in verify jobs); per-step verify ~120 ms per 4-position block vs ~33 ms per 8-position batched AR step",
+  "g1_finding": "c1 serving decode phase alone is 128 tok / 4.8s = 26.7 tok/s (faster than the 21.16 tok/s direct leaf); the c1 serving-vs-direct gap is prefill (4.5s = 48% of request wall) plus HTTP/tokenize overhead, not decode"
+ },
+ "correctness": {
+  "ar_strict_generated_id_mismatches": "c1-c3: 0; c4: 3/12; c5: 3/15; c6: 3/18; c7: 9/21; c8: 12/24; live c8: 2/8",
+  "mtp_strict_generated_id_mismatches": "0 at all widths (24/24 exact at c8)",
+  "interpretation": "repeated-token synthetic prompt produces greedy near-ties; batched AR flips ties at c>=4 on both quants (Q4_K_S diagnostic showed the same pattern: c3-c6 3 mismatches, c7-c8 6); target-verified MTP stays exact at every width. Diagnostic-only signal; T0.4 full suite governs retained claims"
+ },
+ "raw_sources": [
+  {
+   "path": "/tmp/gfx1151-q4km-ar-c1-c8/ar.json",
+   "sha256": "77ec8bd573daa62416c7b96020d4c7241ff8bb894bb56d0cdb2d2da5ec9d442d",
+   "size_bytes": 1802598,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/vstack-pi-bg/bg-8-1787775052347.log",
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-old-vs-c2-mtp-c1-c8-1787766279/c2.json",
+   "retained_in_git": false,
+   "note": "MTP raw per-request backend timings used for T0.3 attribution"
+  }
+ ],
+ "commands": {
+  "ar_q4km_c1_c8": "env -u PYTHONPATH -u ROCR_VISIBLE_DEVICES -u HSA_OVERRIDE_GFX_VERSION HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_DIAGNOSTIC_SKIP_LIVE=1 .venv/bin/python scripts/server_f1_concurrency_bench.py --engine hipengine --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --served-model-name qwen38-q4km-ar-gfx1151 --hipengine-python .venv/bin/python --hipengine-route-expectation native --hipengine-prefill-decode-policy fair --hipengine-kv-storage bf16 --gpu 0 --gpu-max-hw-queues 2 --compiler-version-file /tmp/gfx1151-old-vs-c2-c1-c8/hipcc-version.txt --concurrencies 1,2,3,4,5,6,7,8 --live-concurrency 8 --prompt-token-id 9707 --prompt-length 512 --decode-tokens 128 --oracle-rows 4 --warmup-runs 1 --measured-runs 3 --generation-batch-window-ms 20 --hipengine-prefill-chunk-tokens 256 --ctx-per-seq 1024 --server-ready-timeout 900 --request-timeout 1200 --inter-rep-seconds 0 --inter-server-seconds 0 --no-memory-sampling --work-dir /tmp/gfx1151-q4km-ar-c1-c8/work --json /tmp/gfx1151-q4km-ar-c1-c8/ar.json"
+ },
+ "limitations": [
+  "Fixed synthetic prompt diagnostic; not a retained benchmark row and not eligible for benchmarks/README",
+  "AR run status=failed_gate on strict generated-ID equality at c4+ (near-tie synthetic prompt); throughput rows intact and identical in structure to the prior Q4_K_S diagnostic",
+  "MTP rows are from the 2026-08-26 diagnostic on head 1ec1c747b; the harness commit differs but protocol/knobs are identical"
+ ]
+}

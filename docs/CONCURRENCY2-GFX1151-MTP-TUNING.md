@@ -22,6 +22,10 @@ every phase names its evidence and exit gate before implementation.
 
 ## 1. Why this campaign exists — three measured gaps
 
+> **T0 update (2026-08-27):** T0.1 and T0.3 are complete; see §1a for the
+> definitive matched-quant crossover table and the measured root causes. The
+> gap statements below are the pre-T0 framing kept for context.
+
 ### G1 — C1 serving is ~39% below our own direct leaf
 
 Same model, same host, same natural25 protocol family:
@@ -45,9 +49,9 @@ Fixed-prompt p512/d128 blocking-HTTP diagnostic
 | OLD MTP (B2 serial-exact) | 7.907 | 7.127 | 7.068 | 7.013 |
 | CONCURRENCY2 MTP (B3 native) | 13.596 | 12.935 | 12.948 | 12.552 |
 
-CONCURRENCY2 is +72% to +83% over OLD but gains nothing from width, while the
-indicative AR comparison (Q4_K_S, quant-mismatched — T0.1 fixes this) scales
-10.9 → 29.8 tok/s and passes MTP from c2 onward. External engines confirm both
+CONCURRENCY2 is +72% to +83% over OLD but gains nothing from width.
+The definitive matched-quant AR comparison (§1a) scales 10.3 → 31.8 tok/s and
+passes MTP from c2 onward. External engines confirm both
 endpoints are real: llama.cpp/Vulkan MTP crosses over near c3-c4 (MikeVeerman),
 while the CIRU vLLM stack keeps MTP K1 scaling c1→c6 (26.79 → 63.51 aggregate
 tok/s). Flat-at-13 is a defect, not physics.
@@ -74,6 +78,66 @@ The historical fast rows are **not** the qualified exact route:
 This campaign tunes the **exact** serving/SPECDEC2 route. `llama-compat`
 remains a diagnostic control, never a promotion target.
 
+## 1a. T0 measured findings (2026-08-27, gfx1151, Q4_K_M)
+
+Artifact:
+[`2026-08-27-gfx1151-qwen38-q4km-ar-vs-mtp-c1-c8.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-q4km-ar-vs-mtp-c1-c8.json)
+(diagnostic only — fixed synthetic prompt; T0.4 remains the retained gate).
+
+### Definitive matched-quant crossover (blocking HTTP, p512/d128, Q4_K_M)
+
+| Route | c=1 | c=2 | c=3 | c=4 | c=5 | c=6 | c=7 | c=8 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| CONCURRENCY2 AR Q4_K_M (tok/s) | 10.323 | 17.714 | 23.296 | 27.240 | 29.293 | 31.799 | 26.398 | 28.431 |
+| CONCURRENCY2 MTP Q4_K_M (tok/s) | 13.596 | 12.935 | 12.956 | 12.948 | 13.091 | 12.957 | 12.665 | 12.552 |
+| MTP vs AR | **+31.7%** | −27.0% | −44.4% | −52.5% | −55.3% | −59.3% | −52.0% | −55.9% |
+
+Crossover is **between c1 and c2**. Q4_K_M AR tracks the earlier Q4_K_S SSE
+diagnostic within ~3% at c1-c6; the c7 dip (26.40 vs c6 31.80 at 0.05% stdev)
+is reproducible and unexplained — width-bucketing suspect. MTP accept-per-draft
+is stable: 0.7395 at c1, 0.639-0.669 at c2-c8 — acceptance is **not** the
+serving-route problem at width (contrast SPECDEC2's physical 18.43% at C2/C4,
+which is a different surface and still open).
+
+### G1 root cause: prefill, not decode
+
+Per-request backend timing on the MTP serving route (raw rows of the c1-c8
+diagnostic):
+
+- 512-token prefill = **~4.5 s at every width** (~113 tok/s, serial per
+  request). External references do ~500+ tok/s at 2K.
+- Decode phase = ~4.8 s for 128 tokens → **26.7 tok/s decode-only at c1**,
+  already faster than the 21.16 tok/s direct leaf.
+- The entire serving-vs-direct gap is prefill (~48% of c1 request wall) plus
+  HTTP/tokenize overhead. **Fixing prefill is the single largest lever for G1
+  and for every wide cell** (at c8, prefill alone is ~36 s of the 81.6 s wall).
+
+### G2 mechanism: phase-serial scheduler, no cross-request batching
+
+- Wall at c8 (81.6 s) ≈ Σ per-request work (8 × ~10.1 s): phases do not
+  overlap across requests.
+- Verify is ~98% of decode: ~120 ms per 4-position block per slot, vs the
+  batched AR decode step of ~33 ms for 8 positions. Verify jobs run with
+  `use_wmma_prefill=False` in chunks of ≤4 slots
+  (`_MTP_SERVING_TARGET_BATCH_MAX_SLOTS = 4`), so weights are re-read per
+  small block instead of once per batched pass.
+- Tokens/step ≈ 2.9-3.2 per request at all widths — drafter quality is fine.
+
+### Correctness observation (diagnostic)
+
+Batched AR flips greedy near-ties on the repeated-token prompt at c≥4 (up to
+12/24 rows at c8; the Q4_K_S diagnostic showed the same pattern), while
+target-verified MTP had **0 mismatches at every width**. MTP is the more
+batch-invariant route on this diagnostic; T0.4's natural-prompt suite is the
+binding gate.
+
+### Punchlist impact
+
+T0.1/T0.3 done. T1 priority reorders: **prefill is now T1.0**; T2.2's premise
+is confirmed (verify must batch across slots×positions like AR decode); the
+K=0 crossover policy (T2.3) now has its measured table — crossover sits
+between c1 and c2 on this diagnostic.
+
 ## 2. External source review (commit-pinned, read-only)
 
 | Project | Commit | Mechanism worth transferring | Not transferable |
@@ -89,10 +153,8 @@ remains a diagnostic control, never a promotion target.
 
 ### T0 — baselines and attribution (measurement only; no behavior change)
 
-- [ ] **T0.1 Matched-quant AR c1-c8.** Run the Q4_K_M true-AR c1-c8 blocking
-  sweep on the same harness as the MTP diagnostic. The current AR comparison
-  row is Q4_K_S and cannot be the MTP denominator. Exit: artifact + the
-  definitive AR/MTP crossover table replacing the indicative one.
+- [x] **T0.1 Matched-quant AR c1-c8** — done 2026-08-27; see §1a.
+  Crossover between c1 and c2; MTP only wins c1 (+31.7%).
 - [ ] **T0.2 C1 serving-vs-direct attribution (G1).** Operation-complete
   breakdown of serving C1/B3 against the direct leaf: prefill share, NextN
   activation/catch-up, proposal/target/accept/commit owners, HTTP boundary.
@@ -100,11 +162,10 @@ remains a diagnostic control, never a promotion target.
   execute at serving shapes (Ling skinny-GEMM lesson: no silent wrong-owner
   dispatch). Exit: named owner list with ms/token and a ranked gap closure
   order.
-- [ ] **T0.3 c>1 acceptance root cause (G3).** Per-request acceptance and
-  cycle telemetry at c2/c4/c8 on the current serving/SPECDEC2 path. Classify
-  provider-state (NextN catch-up across requests) vs target-frontier batching
-  vs verify-width arithmetic. Exit: one named root cause with reproducing
-  artifact.
+- [x] **T0.3 c>1 acceptance root cause (G3)** — serving route solved in §1a:
+  acceptance is stable (0.64-0.67) at width; the flat line is phase-serial
+  execution + verify per-position cost, not acceptance. The SPECDEC2 physical
+  18.43% C2/C4 collapse remains open on its own surface and moves to T2.1.
 - [ ] **T0.4 Full-suite MTP c1-c8 baseline.** Replace the fixed-prompt
   diagnostic with the complete mtpbench category suite + heldouts at c1-c8
   under exact-ID and route-engagement checks. Required before any retained
@@ -112,6 +173,13 @@ remains a diagnostic control, never a promotion target.
 
 ### T1 — close the C1 serving gap (G1)
 
+- [ ] **T1.0 Prefill speed (top lever, from T0.3).** 512-token packed prefill
+  at ~113 tok/s is ~4.5x below the ~520 tok/s external reference and is ~48%
+  of the c1 request wall (and ~44% of c8 wall). Attribute inside
+  `prefill_batch_native` (kernel owner ranking under rocprof at p512, GDN seed
+  capture overhead under `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1`,
+  chunk-256 policy), then close toward the AR route's own prefill economics.
+  Exit: same-host p512 prefill tok/s before/after with exact-ID gate.
 - [ ] **T1.1 Streaming NextN prompt priming (OI-3) on the serving path.**
   Eliminate the retained full prompt-hidden slab + serial post-prefill draft
   catch-up; stream the exact shifted fold during target prefill. Approved as
@@ -129,10 +197,11 @@ remains a diagnostic control, never a promotion target.
 
 ### T2 — c>1 MTP economics (G2/G3)
 
-- [ ] **T2.1 Repair the C2/C4 acceptance collapse** identified by T0.3, or
-  record the concrete blocker. Provider repair and per-request acceptance must
-  survive physical batching (llama.cpp server model: one target batch,
-  independent per-slot accept).
+- [ ] **T2.1 Repair the SPECDEC2-physical C2/C4 acceptance collapse**
+  (18.43% vs 80.48% at C1, Q4_K_S surface; the serving route does not show
+  it). Provider repair and per-request acceptance must survive physical
+  batching (llama.cpp server model: one target batch, independent per-slot
+  accept).
 - [ ] **T2.2 Target-owner continuation.** Only with a new premise, extend the
   retained small-M Q4 WMMA direction to the remaining R6/R8/R12/R16 families;
   prior campaign gates apply (no retry of rejected composites).
