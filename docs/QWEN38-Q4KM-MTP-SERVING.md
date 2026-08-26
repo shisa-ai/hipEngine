@@ -1,6 +1,6 @@
 # Qwen3.8 Q4_K_M Exact MTP Serving Campaign
 
-- Status: **S1 complete; S2 lifecycle/fault packet next; automatic policy remains K0**
+- Status: **S2 complete; S3 OpenAI SSE/load next; automatic policy remains K0**
 - Started: **2026-08-26**
 - Primary host: **Radeon 8060S / `hip_gfx1151`**
 - Model: **Qwen3.8-27B `Q4_K_M`, BF16 KV**
@@ -137,15 +137,22 @@ returns the same plan from rollback. Evidence:
 
 ## 6. S2 — LLM correctness and lifecycle
 
-- [ ] Full train/heldout/category exact generated IDs and GPU/CPU acceptance
+- [x] Full train/heldout/category exact generated IDs and GPU/CPU acceptance
       agreement where the route exposes both oracles.
-- [ ] Reject/partial/full commit, following AR, state/KV/cursor/provider/output
-      ownership, deterministic repeats, and neighbor isolation.
-- [ ] Context/page/output-room boundaries and fallback before mutation.
-- [ ] EOS, stop, cancellation, deadline, injected proposal/target/readback
+- [x] Reject/partial/full commit, following AR, state/KV/cursor/provider/output
+      ownership, deterministic repeats, and C1 neighbor isolation.
+- [x] Context/page/output-room boundaries and fallback before mutation.
+- [x] EOS, stop, cancellation, deadline, injected proposal/target/readback
       failure, circuit breaker, operator rollback, restart, and health-after-fault.
-- [ ] Stable tracked/HIP memory, fragmentation, repeated close/reopen, pressure,
-      and final return to zero.
+- [x] Stable tracked/HIP memory, repeated clean reopen, pressure/soak, request-page
+      drain, provider/claim release, and final zero transient ownership.
+
+The clean-worktree S2 packet covers every natural acceptance count (0/1/2/3),
+proposal/target/readback RED→exact-AR recovery with following healthy MTP, 30/30
+alternating exact waves, 40 reported requests plus two AR references, logical C8
+queue/drain, and byte-exact blocking/stream text and IDs after repairing empty
+raw-greedy speculative chunks. Evidence:
+[`2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s2.json`](../benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s2.json).
 
 ## 7. S3 — OpenAI serving packet
 
