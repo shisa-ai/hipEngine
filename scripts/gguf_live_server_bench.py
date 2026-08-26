@@ -73,12 +73,24 @@ class ServerConfiguration:
 
 CONFIGURATIONS: dict[str, ServerConfiguration] = {
     "c1": ServerConfiguration("c1", 1, True, "occupancy_adaptive_c1"),
+    "packed_c2": ServerConfiguration("packed_c2", 2, True, "exact_hybrid"),
+    "packed_c3": ServerConfiguration("packed_c3", 3, True, "exact_hybrid"),
+    "packed_c4": ServerConfiguration("packed_c4", 4, True, "exact_hybrid"),
+    "packed_c5": ServerConfiguration("packed_c5", 5, True, "exact_hybrid"),
+    "packed_c6": ServerConfiguration("packed_c6", 6, True, "exact_hybrid"),
+    "packed_c7": ServerConfiguration("packed_c7", 7, True, "exact_hybrid"),
     "packed_c8": ServerConfiguration("packed_c8", 8, True, "exact_hybrid"),
     "packed_c9": ServerConfiguration("packed_c9", 9, True, "grouped_exact_hybrid"),
     "packed_c13": ServerConfiguration("packed_c13", 13, True, "grouped_exact_hybrid"),
     "serial_c13": ServerConfiguration("serial_c13", 13, False, "serial_bridge"),
 }
-_CANONICAL_CONFIGURATIONS = tuple(CONFIGURATIONS)
+_CANONICAL_CONFIGURATIONS = (
+    "c1",
+    "packed_c8",
+    "packed_c9",
+    "packed_c13",
+    "serial_c13",
+)
 _SUPPORTED_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
 _NATIVE_EXECUTION_PATHS = frozenset(
     {"packed_native", "native_c1", "native_c1_eager", "native_c1_graph"}

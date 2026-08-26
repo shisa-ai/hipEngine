@@ -64,6 +64,25 @@ def test_live_server_bench_declares_honest_c13_routes() -> None:
         )
 
 
+def test_live_server_bench_accepts_complete_c1_c8_sweep() -> None:
+    names = _parse_configurations(
+        "c1,packed_c2,packed_c3,packed_c4,packed_c5,packed_c6,packed_c7,packed_c8"
+    )
+
+    assert names == (
+        "c1",
+        "packed_c2",
+        "packed_c3",
+        "packed_c4",
+        "packed_c5",
+        "packed_c6",
+        "packed_c7",
+        "packed_c8",
+    )
+    assert [CONFIGURATIONS[name].logical_rows for name in names] == list(range(1, 9))
+    assert all(CONFIGURATIONS[name].packed_decode for name in names)
+
+
 def test_live_server_bench_stats_and_counter_deltas_are_exact() -> None:
     stats = _stats([1.0, 2.0, 3.0, 4.0])
 
