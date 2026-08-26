@@ -80,7 +80,7 @@ Each value is the total tokens per second across all active requests:
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — exact MTP-3 | **21.158 tok/s** | **1.8095x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — public C1 MTP-3 automatic scope | **12.940 tok/s** | **1.4337x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
 ### RTX PRO 6000 Blackwell (`sm_120a`)
@@ -390,7 +390,7 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | W7900 / Qwen3.6-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 29.457 | **60.929** | **2.0684x** | Current clean snapshot; all ten prompts, greedy outputs, and GPU/CPU acceptance agree. The ratio replaces stale historical denominators. [`artifact`](results/2026-08-23-w7900-qwen36-27b-current-default-publication.json) |
 | RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 35.287 | **62.440** | **1.7695x** | Clean idle-card correction; exact greedy and GPU/CPU acceptance, retained fusion improves matched AR 3.764% and B3 0.439% with every category non-regressive. [`artifact`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Exact natural25 B3 | 11.692 | **21.158** | **1.8095x** | Clean current-main direct-leaf snapshot; all ten prompts and 30 MTP comparisons are exact, GPU/CPU acceptance agrees, and cached profiling confirms the qualified scalar-C1 and native Q4 rows4/2 owners. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
-| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public LLM strict/BF16 C1 natural25 B3 checkpoint | 9.025 | **12.940** | **1.4337x** | Complete request through terminal reclaim: 30/30 exact cells, every category/heldout positive and every cell 1.2995x–1.5515x, zero recovery/readback/final ownership. Explicit candidate only; automatic remains K0 pending serving qualification. [`artifact`](results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0.json) |
+| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public LLM strict/BF16 C1 natural25 B3, artifact-scoped automatic | 9.025 | **12.940** | **1.4337x** | Complete request through terminal reclaim: 30/30 exact cells, every category/heldout positive and every cell 1.2995x–1.5515x. Exact hash/profile/BF16/C1/B3/context1-67/natural25 auto-promotes after lifecycle/SSE/load qualification; every other scope is K0. [`artifact`](results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s4-auto.json) |
 | W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production/default B1 fast, raw D24 | 110.830 | **115.770** | **1.0446x** | Exact `720/720`; complete 10-prompt numerical/repeat/task/state gate passes. Fast improves strict MTP 10.33% overall and every category. [`artifact`](results/2026-08-24-w7900-paro-fast-d24-3run-default.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |

@@ -1371,7 +1371,9 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
         payload["certified_explicit_scope"] = deepcopy(serving_plan)
     if not serving_route:
         return payload
-    default_enabled = bool(configured_mode == "enabled" and automatic_promoted)
+    default_enabled = bool(
+        configured_mode in {"auto", "enabled"} and automatic_promoted
+    )
     payload.update(
         {
             "policy": configured_mode,
@@ -1410,9 +1412,21 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
             else _SPECULATIVE_MTP_AUTO_EVIDENCE
         )
         payload["auto_route"] = {
-            "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
-            "reason": _SPECULATIVE_MTP_AUTO_REJECTION_REASON,
-            "selected_candidate_count": 0,
+            "selected_route": (
+                _SPECULATIVE_MTP_BATCH_ROUTE
+                if automatic_promoted
+                else _SPECULATIVE_MTP_DEFAULT_ROUTE
+            ),
+            "reason": (
+                str(serving_plan.get("reason"))
+                if automatic_promoted and serving_plan is not None
+                else _SPECULATIVE_MTP_AUTO_REJECTION_REASON
+            ),
+            "selected_candidate_count": (
+                int(serving_plan.get("selected_candidate_count", 0))
+                if automatic_promoted and serving_plan is not None
+                else 0
+            ),
             "policy_key": (
                 DEFAULT_AUTO_DEPTH_POLICY.policy_key
                 if serving_plan is None
@@ -1424,7 +1438,7 @@ def _speculative_mtp_capability(config: ServerConfig, *, engine: Any | None = No
                 else serving_plan.get("plan_fingerprint")
             ),
             "exact_default_required": True,
-            "compatibility_mtp_explicit_only": True,
+            "compatibility_mtp_explicit_only": not automatic_promoted,
             "evidence": plan_evidence,
         }
     return payload
@@ -2093,7 +2107,11 @@ def _serving_plan_route_decision(
         reason = _SPECULATIVE_MTP_AUTO_REJECTION_REASON
     selected_route = (
         _SPECULATIVE_MTP_BATCH_ROUTE
-        if admitted and route == _SPECULATIVE_MTP_BATCH_ROUTE
+        if admitted
+        and route in {
+            _SPECULATIVE_MTP_BATCH_ROUTE,
+            _SPECULATIVE_MTP_AUTO_ROUTE,
+        }
         else _SPECULATIVE_MTP_DEFAULT_ROUTE
     )
     artifacts = copied.get("evidence_artifacts")
@@ -11800,11 +11818,7 @@ def _speculative_mtp_route_for_request(
         sampling = relax_thinking_budget_for_mtp(sampling)
     blockers = speculative_mtp_sampling_blockers(sampling)
     if blockers:
-        return (
-            _SPECULATIVE_MTP_K0_ROUTE
-            if explicit_requested
-            else _SPECULATIVE_MTP_DEFAULT_ROUTE
-        )
+        return _SPECULATIVE_MTP_K0_ROUTE
     if not supports_speculative_mtp_sampling(sampling):
         return _SPECULATIVE_MTP_DEFAULT_ROUTE
     if explicit_requested:

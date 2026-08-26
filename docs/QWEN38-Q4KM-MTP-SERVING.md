@@ -1,6 +1,6 @@
 # Qwen3.8 Q4_K_M Exact MTP Serving Campaign
 
-- Status: **S3 complete; S4 automatic product decision next; automatic policy remains K0**
+- Status: **S4 promoted for one exact scope; S5 closure next**
 - Started: **2026-08-26**
 - Primary host: **Radeon 8060S / `hip_gfx1151`**
 - Model: **Qwen3.8-27B `Q4_K_M`, BF16 KV**
@@ -174,14 +174,20 @@ final pending/admitted/active rows are zero. Evidence:
 
 ## 8. S4 — Automatic product qualification
 
-Automatic promotion is considered only if S0-S3 pass and the public
-operation-complete route is >1.10x same-host true AR overall, non-regressive in
-every category/heldout slice and neighboring AR SLO, exact under all binding
-control/ownership gates, and healthy under focused then final soak.
+- [x] S0-S3 pass and public operation-complete MTP is **12.940 vs 9.025 true-AR
+      tok/s (1.4337x)** overall; every cell is **1.2995x-1.5515x** and every
+      category/heldout is positive.
+- [x] Three counterbalanced real automatic-vs-explicit-false repetitions are
+      exact at **12.418 vs 9.445 tok/s (1.3147x)** complete HTTP wall.
+- [x] Automatic blocking/SSE realize `gguf_specdec2_mtp2` with truthful terminal
+      telemetry, usage, plan fingerprint, and one timing owner.
+- [x] Context 68, temperature, explicit false, and every other typed key remain
+      pre-mutation K0 with strict AR fallback.
 
-A promoted table may use only the allowed fields in Section 3 and must carry a
-canonical fingerprint and evidence link. Every other scope remains K0 with an
-exact measured or unqualified reason. The project target remains >1.30x.
+Promote only the exact key in Section 3 under plan fingerprint
+`sha256:5bee87fc6e6a157aca61d7704795ca97aa667798f1876c958db1d19a831b7ded`.
+This exceeds both the 1.10 promotion floor and the 1.30 project target. Evidence:
+[`2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s4-auto.json`](../benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s4-auto.json).
 
 ## 9. S5 — Closure
 

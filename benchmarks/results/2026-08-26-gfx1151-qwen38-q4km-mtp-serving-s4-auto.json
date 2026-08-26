@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_q4km_mtp_serving_s4_auto",
+  "status": "promoted",
+  "created_at": "2026-08-26",
+  "performance_claim": true,
+  "decision": {
+    "old_automatic_policy": "K0",
+    "new_automatic_policy": "artifact_scoped_K3",
+    "promoted": true,
+    "plan_fingerprint": "sha256:5bee87fc6e6a157aca61d7704795ca97aa667798f1876c958db1d19a831b7ded",
+    "reason": "Complete-wall full-suite speed exceeds 1.10 in every cell/category/heldout and S1-S3 exact control/lifecycle/OpenAI/load gates pass"
+  },
+  "provenance": {
+    "base_commit": "e3e534e05",
+    "code_change_uncommitted_during_s4_green": true,
+    "implementation_diff_sha256": "b4689f3ba93f14f6f42cefb38a9eb67f65d8fc70e3e1390e1eb8d100a164d89e",
+    "host_name": "zbook",
+    "physical_host_identity": "zbook / AMD Radeon 8060S Graphics",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "execution_profile": "strict",
+    "execution_profile_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+    "kv_dtype": "bf16",
+    "require_cached_build": true,
+    "compiler_overlap": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "served_model_name": "qwen38-q4km-mtp-s4",
+    "quant": "Q4_K_M",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "content_verified": true
+  },
+  "automatic_scope": {
+    "artifact_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "artifact_size_bytes": 17106775008,
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "weight_quant": "gguf_q4_k_m",
+    "execution_profile": "strict",
+    "execution_profile_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+    "kv_storage": "bf16",
+    "kv_layout": "uniform",
+    "resident_capacity": 1,
+    "realized_group_rows": 1,
+    "candidate_budget": 3,
+    "sampling_mode": "greedy_fast",
+    "max_sequence_length": 1024,
+    "context_tokens_min": 1,
+    "context_tokens_max": 67,
+    "output_horizon_tokens": 25,
+    "memory_fit": true,
+    "strict_fallback_key": "gguf_target_ar"
+  },
+  "binding_full_suite": {
+    "artifact": "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0.json",
+    "command": "env -u HIPENGINE_HIP_ARCH -u HIPENGINE_GGUF_FP16_RECURRENT_STATE -u GPU_MAX_HW_QUEUES -u HIP_VISIBLE_DEVICES -u ROCR_VISIBLE_DEVICES -u HSA_ENABLE_SDMA -u HSA_USE_SVM HIPENGINE_REQUIRE_CACHED_BUILD=1 /home/lhl/miniforge3/bin/python3.13 scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --target-arch gfx1151 --quant-label Q4_K_M --execution-profile strict --gpu-max-hw-queues 2 --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --scope full --concurrency 1 --budgets 3 --max-tokens 25 --runs 3 --warmup --require-cached-build --compiler-version-file <run-root>/hipcc-version.txt --output <run-root>/retained-public-c1-b3-natural25-full-r3.json --fail-on-fail",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "cells": 30,
+    "arms": 90,
+    "all_ids_exact": true,
+    "true_ar_tok_s": 9.025497680421644,
+    "mtp_tok_s": 12.940098229765553,
+    "mtp_over_true_ar": 1.4337268356775015,
+    "individual_cell_speedup_min": 1.2995299236201776,
+    "individual_cell_speedup_max": 1.5514662406253197,
+    "category_median_speedups": {
+      "code": 1.499592416318311,
+      "general_en": 1.4311527809912512,
+      "general_ja": 1.3864149719868804,
+      "mixed_ja_en": 1.4442802051531953,
+      "heldout": 1.4476370643995473
+    },
+    "recovery": 0,
+    "candidate_readback": 0,
+    "final_tracked_bytes": 0,
+    "final_allocations": 0
+  },
+  "s4_real_auto": {
+    "raw_artifact": "/tmp/qwen38-q4km-mtp-serving-20260826T064610Z-1c745688d/s4-final-auto.json",
+    "server_command": "env -u HIPENGINE_HIP_ARCH -u GPU_MAX_HW_QUEUES -u HIP_VISIBLE_DEVICES -u ROCR_VISIBLE_DEVICES -u HSA_ENABLE_SDMA -u HSA_USE_SVM HIPENGINE_REQUIRE_CACHED_BUILD=1 /home/lhl/miniforge3/bin/python3.13 -m hipengine.server --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile strict --served-model-name qwen38-q4km-mtp-s4 --max-context-tokens 1024 --max-active-requests 1 --no-startup-chat-smoke --no-startup-scratch-probe --speculative-mtp-serving auto --speculative-candidate-budget 3 --metrics prometheus --host 127.0.0.1 --port 8221 --log-level info",
+    "request_protocol": "three counterbalanced automatic versus speculative_mtp=false requests; same prompt, natural25, raw greedy, complete HTTP wall",
+    "ar_wall_seconds": [
+      2.6645511780006927,
+      2.6385240930030704,
+      2.6372612199993455
+    ],
+    "automatic_wall_seconds": [
+      2.5555170820007334,
+      1.7445012589960243,
+      1.739412976996391
+    ],
+    "generated_tokens_per_arm": 75,
+    "ar_tok_s": 9.445443538190053,
+    "automatic_mtp_tok_s": 12.418387767165115,
+    "automatic_over_ar": 1.314749033960637,
+    "all_ids_exact": true,
+    "automatic_execution_path": "gguf_specdec2_mtp2",
+    "capability_automatic_route_promoted": true,
+    "capability_default_enabled": true,
+    "capability_selected_candidate_count": 3,
+    "sse": {
+      "events": 27,
+      "wall_seconds": 1.748960126999009,
+      "execution_path": "gguf_specdec2_mtp2",
+      "draft_cycles": 8,
+      "draft_tokens": 23,
+      "accepted_draft_tokens": 16,
+      "rejected_draft_tokens": 7,
+      "usage_matches_terminal": true,
+      "plan_fingerprint_matches": true
+    }
+  },
+  "fallbacks": {
+    "context68": {
+      "route": "default",
+      "reason": "context_bucket_not_qualified",
+      "selected_candidate_count": 0
+    },
+    "temperature": {
+      "route": "default",
+      "reason": "sampling_mode_not_qualified",
+      "selected_candidate_count": 0
+    },
+    "explicit_false": {
+      "route": "default"
+    },
+    "every_other_artifact_backend_quant_profile_kv_capacity_group_budget_sampler_context_horizon_memory_shape": "K0 through typed resolver"
+  },
+  "correctness_and_serving_gates": {
+    "s1_artifact_plan": "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s1.json",
+    "s2_lifecycle_fault_soak": "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s2.json",
+    "s3_openai_sse_load": "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s3.json",
+    "all_passed": true,
+    "full_server_capability_suite_passed": true,
+    "focused_k0_reason_repair_passed": true
+  },
+  "teardown": {
+    "health_before_shutdown": "ok",
+    "shutdown_complete": true,
+    "final_gpu_owner": false,
+    "compiler_owner": false
+  },
+  "next": "S5 closure, docs and merge; retain exact automatic scope and K0 everywhere else"
+}
