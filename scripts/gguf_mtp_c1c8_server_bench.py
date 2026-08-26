@@ -174,6 +174,51 @@ def _backend_mtp_telemetry(llm: LLM) -> dict[str, Any]:
     return copy.deepcopy(payload) if isinstance(payload, Mapping) else {}
 
 
+def _resident_observability(llm: LLM, *, recent: int) -> dict[str, Any]:
+    pending = [llm._get_text_generator()]
+    seen: set[int] = set()
+    while pending:
+        owner = pending.pop(0)
+        if owner is None or id(owner) in seen:
+            continue
+        seen.add(id(owner))
+        snapshot = getattr(owner, "observability_snapshot", None)
+        if callable(snapshot):
+            payload = snapshot()
+            if not isinstance(payload, Mapping):
+                return {}
+            result = copy.deepcopy(dict(payload))
+            routes = result.get("routes")
+            if isinstance(routes, Mapping):
+                compact_routes = copy.deepcopy(dict(routes))
+                completed = compact_routes.get("recent_completed")
+                if isinstance(completed, Sequence) and not isinstance(
+                    completed, (str, bytes, bytearray)
+                ):
+                    compact_routes["recent_completed"] = list(completed)[-int(recent) :]
+                result["routes"] = compact_routes
+            return result
+        pending.extend(
+            getattr(owner, name, None)
+            for name in ("_driver", "_runner", "_inner")
+        )
+    return {}
+
+
+def _memory_delta(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, int]:
+    return {
+        str(key): int(after.get(key, 0) or 0) - int(before.get(key, 0) or 0)
+        for key in (
+            "current_allocated_bytes",
+            "peak_allocated_bytes",
+            "total_allocated_bytes",
+            "total_freed_bytes",
+            "active_allocations",
+            "peak_allocations",
+        )
+    }
+
+
 def _backend_mtp_engaged(payload: Mapping[str, Any], *, width: int) -> bool:
     summary = payload.get("speculative_mtp")
     summary = summary if isinstance(summary, Mapping) else {}
@@ -284,6 +329,7 @@ def _run_arm(
     max_tokens: int,
     arm: str,
 ) -> dict[str, Any]:
+    memory_before = memory_stats()
     barrier = threading.Barrier(int(width) + 1)
     with concurrent.futures.ThreadPoolExecutor(max_workers=int(width)) as executor:
         futures = [
@@ -303,6 +349,8 @@ def _run_arm(
     wall = max(row["completed"] for row in rows) - min(row["started"] for row in rows)
     generated = sum(len(row["generated_ids"]) for row in rows)
     backend_telemetry = _backend_mtp_telemetry(llm)
+    resident_observability = _resident_observability(llm, recent=int(width))
+    memory_after = memory_stats()
     return {
         "arm": arm,
         "width": int(width),
@@ -311,6 +359,10 @@ def _run_arm(
         "tok_s": generated / wall,
         "rows": rows,
         "backend_telemetry": backend_telemetry,
+        "resident_observability": resident_observability,
+        "tracked_memory_before": memory_before,
+        "tracked_memory_after": memory_after,
+        "tracked_memory_delta": _memory_delta(memory_before, memory_after),
     }
 
 
