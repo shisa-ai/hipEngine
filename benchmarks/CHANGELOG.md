@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-26 gfx1151 Qwen3.8 Q4_K_M public C1/B3 serving premise; automatic K0] The complete public LLM boundary reaches **12.940 vs 9.025 true-AR tok/s (1.4337x)** across 30/30 exact cells; every category/heldout is positive and every cell is **1.2995x–1.5515x**, with zero recovery/readback/final ownership. Advance artifact-scoped explicit qualification only; automatic remains K0. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0.json`.
+
 - [2026-08-26 SPECDEC2-PERF gfx1151 repaired P9 fixed grid; C1/K2 candidate, automatic K0] Production/strict C1/C2/C4 K1-K3 is exact **540/540**. Production C1 reaches **1.2310x/1.4087x/1.4037x AR**; K2 proceeds to product qualification. Repaired physical acceptance reaches 95.0%/89.8%/77.7%, but best C2/C4 is only **0.6975x/0.5843x**, so physical/wider scopes stay K0. `benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json`.
 
 - [2026-08-26 W7900 SPECDEC2 C2 acceptance root cause; repair retained/economics blocked] Physical commit now owns consumed-position metadata and selected pre-output-norm BF16 target hidden. Full-suite K2/D24 acceptance improves **18.43%→76.92%** with 10/10 exact cells and zero D2H/recovery, but R6 target cost leaves **16.974 vs 31.230 tok/s (0.544x AR)**. Keep physical capability false/automatic K0; next premise is ≤101 ms target lowering after proposal, not acceptance tuning. `benchmarks/results/2026-08-26-w7900-specdec2-c2-acceptance-root-cause.json`.
