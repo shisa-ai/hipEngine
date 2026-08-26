@@ -6662,6 +6662,7 @@ def test_explicit_mtp_streaming_uses_committed_speculative_chunks(endpoint: str)
         "max_tokens": 3,
         "temperature": 0.0,
         "stream": True,
+        "stream_options": {"include_usage": True, "include_hipengine": True},
         "speculative_mtp": True,
     }
     if endpoint.endswith("chat/completions"):
@@ -6690,6 +6691,24 @@ def test_explicit_mtp_streaming_uses_committed_speculative_chunks(endpoint: str)
         assert text == "mtp:hello"
     assert fake.calls == []
     assert len(fake.mtp_calls) == 1
+    done = next(
+        item["choices"][0]
+        for item in payloads
+        if item.get("choices")
+        and item["choices"][0].get("finish_reason") is not None
+    )
+    assert done["hipengine"]["generation_shape"]["route"] == "speculative_mtp"
+    assert done["hipengine"]["speculative_mtp"] == {
+        "effective_route": "speculative_mtp",
+        "used": True,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": None,
+        "draft_cycles": 0,
+        "thinking_policy": "hint",
+        "thinking_controls": "prompt_hint_only",
+    }
 
 
 def test_mtp_summary_honors_batch_timing_ownership() -> None:

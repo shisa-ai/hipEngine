@@ -5045,6 +5045,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             prompts=(generation_prompt,),
                         )
                     )
+                    generation_route, generation_route_decision = (
+                        _resolve_realized_generation_route(
+                            generation_route,
+                            group_rows=1,
+                            sampling=sampling,
+                            precomputed_decision=generation_route_decision,
+                        )
+                    )
                     await ensure_resident_context(
                         engine,
                         preparation_sampling(request),
@@ -5367,6 +5375,12 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             tokens=final_tokens,
             stream_chunk=done_stream_chunk,
             include_hipengine=include_hipengine,
+            extra_hipengine=_stream_speculative_mtp_metadata(
+                generation_route,
+                backend_detail,
+                route_decision=generation_route_decision,
+                thinking_policy=_request_speculative_mtp_thinking(config, request),
+            ),
             stream_started_at=stream_started_at,
             routing=routing_metadata,
             kv_pool=final_kv_pool,
@@ -7395,6 +7409,14 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                             prompts=(generation_prompt,),
                         )
                     )
+                    generation_route, generation_route_decision = (
+                        _resolve_realized_generation_route(
+                            generation_route,
+                            group_rows=1,
+                            sampling=sampling,
+                            precomputed_decision=generation_route_decision,
+                        )
+                    )
                     await ensure_resident_context(
                         engine,
                         preparation_sampling(request),
@@ -7905,6 +7927,15 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 tokens=final_tokens,
                 stream_chunk=done_stream_chunk,
                 include_hipengine=include_hipengine,
+                extra_hipengine=_stream_speculative_mtp_metadata(
+                    generation_route,
+                    backend_detail,
+                    route_decision=generation_route_decision,
+                    thinking_policy=_request_speculative_mtp_thinking(
+                        config,
+                        request,
+                    ),
+                ),
                 stream_started_at=stream_started_at,
                 routing=routing_metadata,
                 kv_pool=final_kv_pool,
@@ -14256,6 +14287,29 @@ def _mtp_response_summary(
     return summary
 
 
+def _stream_speculative_mtp_metadata(
+    route: str,
+    detail: GenerationOutput | None,
+    *,
+    route_decision: Mapping[str, Any] | None,
+    thinking_policy: str,
+) -> dict[str, Any]:
+    if str(route) == _SPECULATIVE_MTP_DEFAULT_ROUTE and route_decision is None:
+        return {}
+    generation_shape: dict[str, Any] = {"route": str(route)}
+    if route_decision is not None:
+        generation_shape["route_decision"] = deepcopy(dict(route_decision))
+    return {
+        "generation_shape": generation_shape,
+        "speculative_mtp": _mtp_response_summary(
+            route,
+            None if detail is None else (detail,),
+            route_decision=route_decision,
+            thinking_policy=thinking_policy,
+        ),
+    }
+
+
 def _finish_reasoning_token_total(details: Sequence[GenerationOutput] | None) -> int:
     """Sum reasoning tokens reported by each completed generation's finish details."""
 
@@ -16212,6 +16266,7 @@ def _completion_stream_done(
     tokens: Mapping[str, int] | None = None,
     stream_chunk: GenerationStreamChunk | None = None,
     include_hipengine: bool = False,
+    extra_hipengine: Mapping[str, Any] | None = None,
     stream_started_at: _StreamTimingSource = None,
     routing: Mapping[str, Any] | None = None,
     kv_pool: Mapping[str, float] | None = None,
@@ -16226,13 +16281,16 @@ def _completion_stream_done(
         "finish_details": finish_payload,
     }
     if include_hipengine:
-        choice["hipengine"] = _choice_hipengine_payload(
+        hipengine_payload = _choice_hipengine_payload(
             phase,
             finish_details=finish_payload,
             tokens=tokens,
             stream_chunk=stream_chunk,
             include_generated_token_ids=True,
         )
+        if extra_hipengine is not None:
+            hipengine_payload.update(deepcopy(dict(extra_hipengine)))
+        choice["hipengine"] = hipengine_payload
     return _sse(
         _attach_stream_hipengine(
             {

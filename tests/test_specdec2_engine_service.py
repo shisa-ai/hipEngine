@@ -12,7 +12,12 @@ from hipengine.generation.deadline import (
 )
 from hipengine.generation.engine_loop import SubmitPollTextGenerator
 from hipengine.generation.engine_service import EngineService
-from hipengine.generation.registry import FinishDetails, GenerationOutput, GenerationRequest
+from hipengine.generation.registry import (
+    FinishDetails,
+    GenerationOutput,
+    GenerationRequest,
+    GenerationTelemetry,
+)
 from tests.test_specdec2_engine_frontier import _StagedCycleRunner
 
 
@@ -49,6 +54,11 @@ class _ServiceRunner(_StagedCycleRunner):
             text=",".join(str(token) for token in completed.generated_tokens),
             generated_token_ids=completed.generated_tokens,
             finish_details=completed.finish_details,
+            telemetry=GenerationTelemetry.from_decode_counts(
+                prompt_tokens=1,
+                generated_tokens=len(completed.generated_tokens),
+                execution_path="fake_specdec2",
+            ),
         )
 
     def has_outputs(self, request_ids):
@@ -230,6 +240,10 @@ def test_staged_blocking_and_streaming_share_committed_ids_and_finish_details() 
         assert terminal.finish_details == blocking.finish_details
         assert terminal.finish_details is not None
         assert terminal.finish_details.reason == "length"
+        assert terminal.text == ""
+        assert terminal.telemetry == blocking.telemetry
+        assert terminal.telemetry is not None
+        assert terminal.telemetry.decode_state.execution_path == "fake_specdec2"
     finally:
         blocking_service.close()
         streaming_service.close()
