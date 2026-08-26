@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 SPECDEC2 strict small-M Q4 WMMA; retained/scoped default] One-wave/one-16-row-tile WMMA replaces padded physical Q4 ownership for six exact shapes at R6/R8/R12/R16. Target wall improves **20.07%/19.25%/17.68%/16.30%**; full-suite C2/C4 improves **9.958→11.462 (+15.10%) / 15.718→17.555 tok/s (+11.69%)**, with 120/120 parent/candidate cells exact and every category positive. Physical remains below true AR; automatic K0 is unchanged. `benchmarks/results/2026-08-27-gfx1151-specdec2-smallm-q4-wmma-retained.json`.
+
 - [2026-08-26 gfx1151 Qwen3.8 Q4_K_M serving closure; retained metric unchanged] Close S5 at **12.940 vs 9.025 tok/s (1.4337x)** public complete-wall and **1.3147x** real automatic HTTP. The completed 10,576-test milestone had 19 isolated test-hygiene failures; focused repairs pass 19/19 without a prohibited broad rerun. Exact auto scope is unchanged and all other keys remain K0. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json`.
 
 - [2026-08-26 gfx1151 Qwen3.8 Q4_K_M exact automatic MTP promotion] Promote only the content-verified strict/BF16/resident-C1+physical-C1/B3/context1-67/natural25/raw-greedy scope: full-suite complete-wall is **12.940 vs 9.025 tok/s (1.4337x)** and S4 auto rerun is **12.418 vs 9.445 tok/s (1.3147x)** with exact IDs. Context68, sampling changes, and every other key remain K0. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s4-auto.json`.

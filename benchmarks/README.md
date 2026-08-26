@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-26**
+Last updated: **2026-08-27**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -117,12 +117,11 @@ All 34 repeat pairs, 10 controls, and ownership gates pass; these are same-host
 model-quality rows. The campaign retains **no implementation** because all seven
 development failures are model-owned. [`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
 
-gfx1151 Qwen3.8 `Q4_K_S` P9 is exact in **540/540** fixed cells. C1/K2 reaches
-**1.4087x AR**, but capacity-4 automatic serving executes zero speculative
-cycles (`physical_streaming_category_rejected`); physical C2/C4 is
-**0.6975x/0.5843x AR**. No automatic cell promotes: K0 remains default and
-production FP16 stays explicit-compatible.
-[`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json) · [`P9 no-go`](results/2026-08-26-gfx1151-specdec2-perf-p9-product-no-go.json)
+gfx1151 Qwen3.8 `Q4_K_S` P9 is exact in **540/540** fixed cells; C1/K2 reaches
+**1.4087x AR**, but normal capacity-4 automatic serving executes zero cycles.
+Post-closure strict small-M WMMA raises physical C2/C4 **9.958→11.462
+(+15.10%) / 15.718→17.555 tok/s (+11.69%)**, still only **0.7510x/0.6218x
+AR**. Automatic K0 is unchanged. [`Small-M`](results/2026-08-27-gfx1151-specdec2-smallm-q4-wmma-retained.json) · [`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json)
 
 gfx1100 dense C1 K1/K2/K3 remains exact at **1.272x/1.407x/1.439x AR** but
 2.7%-3.9% behind direct; packed PARO is **0.979x AR**. Automatic stays K0.
