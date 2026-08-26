@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from math import isclose
-from typing import Any, Mapping
+from pathlib import Path
+from typing import Any, Mapping, Sequence
 
-from hipengine.loading.gguf import GGUFModelInfo
+from hipengine.loading.gguf import GGUFModelInfo, GGUFTensorInfo
 
 GDN = "gdn"
 QSA = "qsa"
@@ -297,6 +299,405 @@ def _geometry_errors(config: Qwen4ExpGGUFConfig) -> list[str]:
     return errors
 
 
+class Qwen4ExpGGUFTensorMapError(ValueError):
+    """Raised when qwen4exp tensor names, owners, or shapes are invalid."""
+
+
+@dataclass(frozen=True)
+class Qwen4ExpGGUFTensorRef:
+    part_index: int
+    part_path: Path
+    tensor: GGUFTensorInfo
+
+
+@dataclass(frozen=True)
+class Qwen4ExpGGUFLayerMap:
+    layer_id: int
+    layer_type: str
+    slots: Mapping[str, Qwen4ExpGGUFTensorRef]
+
+    def tensor(self, slot: str) -> Qwen4ExpGGUFTensorRef:
+        try:
+            return self.slots[slot]
+        except KeyError as exc:
+            raise KeyError(f"unknown qwen4exp layer slot {slot!r}") from exc
+
+
+@dataclass(frozen=True)
+class Qwen4ExpGGUFMappingValidation:
+    config: Qwen4ExpGGUFConfig
+    missing_tensor_names: tuple[str, ...]
+    unexpected_tensor_names: tuple[str, ...]
+    duplicate_tensor_names: tuple[str, ...]
+    shape_errors: tuple[str, ...]
+    split_errors: tuple[str, ...]
+
+    @property
+    def passed(self) -> bool:
+        return not (
+            self.missing_tensor_names
+            or self.unexpected_tensor_names
+            or self.duplicate_tensor_names
+            or self.shape_errors
+            or self.split_errors
+        )
+
+
+@dataclass(frozen=True)
+class Qwen4ExpGGUFModelMap:
+    config: Qwen4ExpGGUFConfig
+    roots: Mapping[str, Qwen4ExpGGUFTensorRef]
+    layers: tuple[Qwen4ExpGGUFLayerMap, ...]
+    ple_table: Qwen4ExpGGUFTensorRef | None
+    tensor_refs: tuple[Qwen4ExpGGUFTensorRef, ...]
+    validation: Qwen4ExpGGUFMappingValidation
+    part_paths: tuple[Path, ...]
+    ple_padding_rows: int
+
+    @property
+    def tensor_names(self) -> tuple[str, ...]:
+        return tuple(ref.tensor.name for ref in self.tensor_refs)
+
+    def root(self, slot: str) -> Qwen4ExpGGUFTensorRef:
+        try:
+            return self.roots[slot]
+        except KeyError as exc:
+            raise KeyError(f"unknown qwen4exp root slot {slot!r}") from exc
+
+    def layer(self, layer_id: int) -> Qwen4ExpGGUFLayerMap:
+        if not 0 <= layer_id < len(self.layers):
+            raise IndexError(f"qwen4exp layer {layer_id} is out of range")
+        return self.layers[layer_id]
+
+
+_ROOT_SLOTS = {
+    "token_embedding": "token_embd.weight",
+    "lm_head": "output.weight",
+    "head_hc_norm": "output_hc_norm.weight",
+    "head_hc_down": "output_hc_down.weight",
+    "head_hc_up": "output_hc_up.weight",
+}
+_COMMON_LAYER_SLOTS = {
+    "hc_attn_norm": "hc_attn_norm.weight",
+    "hc_attn_down": "hc_attn_down.weight",
+    "hc_attn_up": "hc_attn_up.weight",
+    "hc_attn_inject": "hc_attn_inject.weight",
+    "hc_ffn_norm": "hc_ffn_norm.weight",
+    "hc_ffn_down": "hc_ffn_down.weight",
+    "hc_ffn_up": "hc_ffn_up.weight",
+    "hc_ffn_inject": "hc_ffn_inject.weight",
+    "router": "ffn_gate_inp.weight",
+    "shared_expert_gate": "ffn_gate_inp_shexp.weight",
+    "expert_gate": "ffn_gate_exps.weight",
+    "expert_up": "ffn_up_exps.weight",
+    "expert_down": "ffn_down_exps.weight",
+    "shared_gate": "ffn_gate_shexp.weight",
+    "shared_up": "ffn_up_shexp.weight",
+    "shared_down": "ffn_down_shexp.weight",
+}
+_GDN_LAYER_SLOTS = {
+    "attn_qkv": "attn_qkv.weight",
+    "attn_gate": "attn_gate.weight",
+    "ssm_a": "ssm_a",
+    "ssm_alpha": "ssm_alpha.weight",
+    "ssm_beta": "ssm_beta.weight",
+    "ssm_conv1d": "ssm_conv1d.weight",
+    "ssm_dt_bias": "ssm_dt.bias",
+    "ssm_norm": "ssm_norm.weight",
+    "ssm_out": "ssm_out.weight",
+}
+_QSA_LAYER_SLOTS = {
+    "attn_q": "attn_q.weight",
+    "attn_q_norm": "attn_q_norm.weight",
+    "attn_k": "attn_k.weight",
+    "attn_k_norm": "attn_k_norm.weight",
+    "attn_v": "attn_v.weight",
+    "attn_output": "attn_output.weight",
+    "index_q": "indexer.q_proj.weight",
+    "index_k": "indexer.k_proj.weight",
+    "index_q_norm": "indexer.q_norm.weight",
+    "index_k_norm": "indexer.k_norm.weight",
+}
+_PLE_LAYER_SLOTS = {
+    "ple_key": "ple_key.weight",
+    "ple_value": "ple_value.weight",
+    "ple_norm_key": "ple_norm_key.weight",
+    "ple_norm_query": "ple_norm_query.weight",
+    "ple_norm_conv": "ple_norm_conv.weight",
+    "ple_conv1d": "ple_conv1d.weight",
+}
+_PLE_TABLE_NAME = "per_layer_token_embd.weight"
+
+
+def required_qwen4_exp_gguf_tensor_names(
+    config: Qwen4ExpGGUFConfig,
+) -> tuple[str, ...]:
+    names = [*_ROOT_SLOTS.values(), _PLE_TABLE_NAME]
+    for layer_id, layer_type in enumerate(config.layer_types):
+        suffixes = dict(_COMMON_LAYER_SLOTS)
+        suffixes.update(_QSA_LAYER_SLOTS if layer_type == QSA else _GDN_LAYER_SLOTS)
+        if layer_id in config.ple_layers:
+            suffixes.update(_PLE_LAYER_SLOTS)
+        names.extend(f"blk.{layer_id}.{suffix}" for suffix in suffixes.values())
+    return tuple(names)
+
+
+def validate_qwen4_exp_gguf_tensor_map(
+    infos: Sequence[GGUFModelInfo],
+) -> Qwen4ExpGGUFMappingValidation:
+    parts = tuple(infos)
+    if not parts:
+        raise Qwen4ExpGGUFTensorMapError("at least one qwen4exp GGUF part is required")
+    metadata_info = next(
+        (
+            info
+            for info in parts
+            if int(info.metadata.get("split.no", 0)) == 0
+            and info.metadata.get("general.architecture") == "qwen4exp"
+        ),
+        parts[0],
+    )
+    config = qwen4_exp_gguf_config_from_metadata(metadata_info)
+    names = Counter(tensor.name for info in parts for tensor in info.tensors)
+    actual_names = set(names)
+    required_names = set(required_qwen4_exp_gguf_tensor_names(config))
+    by_name = {
+        tensor.name: tensor
+        for info in parts
+        for tensor in info.tensors
+        if names[tensor.name] == 1
+    }
+    split_errors = _qwen4_exp_split_errors(parts, expected_tensors=len(required_names))
+    return Qwen4ExpGGUFMappingValidation(
+        config=config,
+        missing_tensor_names=tuple(sorted(required_names - actual_names)),
+        unexpected_tensor_names=tuple(sorted(actual_names - required_names)),
+        duplicate_tensor_names=tuple(sorted(name for name, count in names.items() if count > 1)),
+        shape_errors=tuple(_qwen4_exp_shape_errors(config, by_name)),
+        split_errors=tuple(split_errors),
+    )
+
+
+def build_qwen4_exp_gguf_tensor_map(
+    infos: Sequence[GGUFModelInfo],
+    *,
+    strict: bool = True,
+) -> Qwen4ExpGGUFModelMap:
+    parts = tuple(infos)
+    validation = validate_qwen4_exp_gguf_tensor_map(parts)
+    if strict and not validation.passed:
+        raise Qwen4ExpGGUFTensorMapError(_mapping_error_message(validation))
+
+    owners: dict[str, Qwen4ExpGGUFTensorRef] = {}
+    for part_index, info in enumerate(parts):
+        for tensor in info.tensors:
+            owners.setdefault(
+                tensor.name,
+                Qwen4ExpGGUFTensorRef(part_index, info.path, tensor),
+            )
+    required = required_qwen4_exp_gguf_tensor_names(validation.config)
+    available = tuple(owners[name] for name in required if name in owners)
+    roots = {
+        slot: owners[name]
+        for slot, name in _ROOT_SLOTS.items()
+        if name in owners
+    }
+    layers: list[Qwen4ExpGGUFLayerMap] = []
+    for layer_id, layer_type in enumerate(validation.config.layer_types):
+        suffixes = dict(_COMMON_LAYER_SLOTS)
+        suffixes.update(_QSA_LAYER_SLOTS if layer_type == QSA else _GDN_LAYER_SLOTS)
+        if layer_id in validation.config.ple_layers:
+            suffixes.update(_PLE_LAYER_SLOTS)
+        slots = {
+            slot: owners[f"blk.{layer_id}.{suffix}"]
+            for slot, suffix in suffixes.items()
+            if f"blk.{layer_id}.{suffix}" in owners
+        }
+        layers.append(Qwen4ExpGGUFLayerMap(layer_id, layer_type, slots))
+    ple_ref = owners.get(_PLE_TABLE_NAME)
+    if ple_ref is None:
+        if strict:
+            raise Qwen4ExpGGUFTensorMapError("missing PLE table")
+        ple_padding = 0
+        ple_ref = None
+    else:
+        ple_padding = ple_ref.tensor.shape[0] - validation.config.ple_row_count
+    return Qwen4ExpGGUFModelMap(
+        config=validation.config,
+        roots=roots,
+        layers=tuple(layers),
+        ple_table=ple_ref,
+        tensor_refs=available,
+        validation=validation,
+        part_paths=tuple(info.path for info in parts),
+        ple_padding_rows=ple_padding,
+    )
+
+
+def _qwen4_exp_split_errors(
+    infos: tuple[GGUFModelInfo, ...],
+    *,
+    expected_tensors: int,
+) -> list[str]:
+    counts = {int(info.metadata.get("split.count", 1)) for info in infos}
+    declared = {
+        int(info.metadata.get("split.tensors.count", expected_tensors)) for info in infos
+    }
+    numbers = sorted(
+        int(info.metadata.get("split.no", index)) for index, info in enumerate(infos)
+    )
+    errors: list[str] = []
+    if len(counts) != 1:
+        errors.append(f"inconsistent split.count values: {sorted(counts)}")
+    else:
+        count = next(iter(counts))
+        if numbers != list(range(count)):
+            errors.append(f"split part numbers {numbers} do not cover {list(range(count))}")
+    if len(declared) != 1:
+        errors.append(f"inconsistent split.tensors.count values: {sorted(declared)}")
+    elif next(iter(declared)) != expected_tensors:
+        errors.append(
+            f"split declares {next(iter(declared))} tensors, expected {expected_tensors}"
+        )
+    return errors
+
+
+def _qwen4_exp_expected_shapes(
+    config: Qwen4ExpGGUFConfig,
+) -> dict[str, tuple[int, ...]]:
+    hidden = config.hidden_size
+    residual = config.residual_width
+    low_rank = config.residual_low_rank
+    shapes: dict[str, tuple[int, ...]] = {
+        "token_embd.weight": (config.vocab_size, hidden),
+        "output.weight": (config.vocab_size, hidden),
+        "output_hc_norm.weight": (residual,),
+        "output_hc_down.weight": (low_rank, residual),
+        "output_hc_up.weight": (residual, low_rank),
+    }
+    for layer_id, layer_type in enumerate(config.layer_types):
+        prefix = f"blk.{layer_id}."
+        layer_shapes = {
+            "hc_attn_norm.weight": (residual,),
+            "hc_attn_down.weight": (low_rank, residual),
+            "hc_attn_up.weight": (residual, low_rank),
+            "hc_attn_inject.weight": (config.residual_branch_count, residual),
+            "hc_ffn_norm.weight": (residual,),
+            "hc_ffn_down.weight": (low_rank, residual),
+            "hc_ffn_up.weight": (residual, low_rank),
+            "hc_ffn_inject.weight": (config.residual_branch_count, residual),
+            "ffn_gate_inp.weight": (config.expert_count, hidden),
+            "ffn_gate_inp_shexp.weight": (hidden,),
+            "ffn_gate_exps.weight": (
+                config.expert_count,
+                config.expert_feed_forward_length,
+                hidden,
+            ),
+            "ffn_up_exps.weight": (
+                config.expert_count,
+                config.expert_feed_forward_length,
+                hidden,
+            ),
+            "ffn_down_exps.weight": (
+                config.expert_count,
+                hidden,
+                config.expert_feed_forward_length,
+            ),
+            "ffn_gate_shexp.weight": (config.shared_expert_feed_forward_length, hidden),
+            "ffn_up_shexp.weight": (config.shared_expert_feed_forward_length, hidden),
+            "ffn_down_shexp.weight": (hidden, config.shared_expert_feed_forward_length),
+        }
+        if layer_type == QSA:
+            q_width = config.attention_head_count * config.attention_key_length * 2
+            attention_width = config.attention_head_count * config.attention_value_length
+            layer_shapes.update(
+                {
+                    "attn_q.weight": (q_width, hidden),
+                    "attn_q_norm.weight": (config.attention_key_length,),
+                    "attn_k.weight": (
+                        config.attention_kv_head_count * config.attention_key_length,
+                        hidden,
+                    ),
+                    "attn_k_norm.weight": (config.attention_key_length,),
+                    "attn_v.weight": (
+                        config.attention_kv_head_count * config.attention_value_length,
+                        hidden,
+                    ),
+                    "attn_output.weight": (hidden, attention_width),
+                    "indexer.q_proj.weight": (
+                        config.indexer_head_count * config.indexer_key_length,
+                        hidden,
+                    ),
+                    "indexer.k_proj.weight": (config.indexer_key_length, hidden),
+                    "indexer.q_norm.weight": (config.indexer_key_length,),
+                    "indexer.k_norm.weight": (config.indexer_key_length,),
+                }
+            )
+        else:
+            layer_shapes.update(
+                {
+                    "attn_qkv.weight": (10_240, hidden),
+                    "attn_gate.weight": (config.gdn_inner_size, hidden),
+                    "ssm_a": (config.gdn_time_step_rank,),
+                    "ssm_alpha.weight": (config.gdn_time_step_rank, hidden),
+                    "ssm_beta.weight": (config.gdn_time_step_rank, hidden),
+                    "ssm_conv1d.weight": (10_240, config.gdn_conv_kernel),
+                    "ssm_dt.bias": (config.gdn_time_step_rank,),
+                    "ssm_norm.weight": (config.gdn_state_size,),
+                    "ssm_out.weight": (hidden, config.gdn_inner_size),
+                }
+            )
+        if layer_id in config.ple_layers:
+            layer_shapes.update(
+                {
+                    "ple_key.weight": (residual, hidden),
+                    "ple_value.weight": (hidden, hidden),
+                    "ple_norm_key.weight": (residual,),
+                    "ple_norm_query.weight": (residual,),
+                    "ple_norm_conv.weight": (residual,),
+                    "ple_conv1d.weight": (residual, config.ple_conv_kernel),
+                }
+            )
+        shapes.update({prefix + suffix: shape for suffix, shape in layer_shapes.items()})
+    return shapes
+
+
+def _qwen4_exp_shape_errors(
+    config: Qwen4ExpGGUFConfig,
+    actual: Mapping[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    expected = _qwen4_exp_expected_shapes(config)
+    for name in sorted(expected.keys() & actual.keys()):
+        if actual[name].shape != expected[name]:
+            errors.append(
+                f"{name} shape {actual[name].shape}, expected {expected[name]}"
+            )
+    ple = actual.get(_PLE_TABLE_NAME)
+    if ple is not None:
+        rows, width = ple.shape if len(ple.shape) == 2 else (-1, -1)
+        max_rows = config.ple_row_count + 255
+        if width != config.ple_row_width or not config.ple_row_count <= rows <= max_rows:
+            errors.append(
+                f"{_PLE_TABLE_NAME} shape {ple.shape}, expected "
+                f"[{config.ple_row_count}..{max_rows}, {config.ple_row_width}]"
+            )
+    return errors
+
+
+def _mapping_error_message(validation: Qwen4ExpGGUFMappingValidation) -> str:
+    problems: list[str] = []
+    if validation.missing_tensor_names:
+        problems.append("missing: " + ", ".join(validation.missing_tensor_names[:8]))
+    if validation.unexpected_tensor_names:
+        problems.append("unexpected: " + ", ".join(validation.unexpected_tensor_names[:8]))
+    if validation.duplicate_tensor_names:
+        problems.append("duplicate: " + ", ".join(validation.duplicate_tensor_names[:8]))
+    problems.extend(validation.shape_errors[:8])
+    problems.extend(validation.split_errors[:8])
+    return "invalid qwen4exp GGUF tensor map; " + "; ".join(problems)
+
+
 def _required(metadata: Mapping[str, Any], key: str) -> Any:
     try:
         return metadata[key]
@@ -337,5 +738,13 @@ __all__ = [
     "QSA",
     "Qwen4ExpGGUFConfig",
     "Qwen4ExpGGUFConfigError",
+    "Qwen4ExpGGUFLayerMap",
+    "Qwen4ExpGGUFMappingValidation",
+    "Qwen4ExpGGUFModelMap",
+    "Qwen4ExpGGUFTensorMapError",
+    "Qwen4ExpGGUFTensorRef",
+    "build_qwen4_exp_gguf_tensor_map",
     "qwen4_exp_gguf_config_from_metadata",
+    "required_qwen4_exp_gguf_tensor_names",
+    "validate_qwen4_exp_gguf_tensor_map",
 ]
