@@ -118,6 +118,7 @@ from hipengine.loading.qwen4_exp_gguf import (
 )
 from hipengine.loading.qwen4_exp_materialize import (
     LAYOUT_PLE_SPARSE_MMAP,
+    Qwen4ExpDeviceWeight,
     Qwen4ExpGGUFWeightSpec,
     Qwen4ExpMemoryAdmissionPlan,
     Qwen4ExpPLEMMapTable,
@@ -323,6 +324,7 @@ __all__ = [
     "Qwen4ExpGGUFModelMap",
     "Qwen4ExpGGUFTensorMapError",
     "Qwen4ExpGGUFTensorRef",
+    "Qwen4ExpDeviceWeight",
     "Qwen4ExpGGUFWeightSpec",
     "Qwen4ExpMemoryAdmissionPlan",
     "Qwen4ExpPLEMMapTable",

@@ -19,7 +19,7 @@ from hipengine.quant.gguf import GGMLQuantizationType
 from tests.test_qwen4_exp_gguf_mapping import _infos
 
 
-def test_qwen4_exp_residency_defers_only_ple_and_keeps_one_raw_layout() -> None:
+def test_qwen4_exp_residency_defers_only_ple_and_keeps_one_device_layout() -> None:
     model_map = build_qwen4_exp_gguf_tensor_map(_infos())
 
     plan = plan_qwen4_exp_residency(model_map, staging_token_capacity=4)
@@ -38,6 +38,8 @@ def test_qwen4_exp_residency_defers_only_ple_and_keeps_one_raw_layout() -> None:
     assert plan.staging_row_capacity == 64
     assert plan.staging_bytes == 2 * 64 * 160 * 4
     assert all(spec.allocation_names == ("raw",) for spec in plan.device_specs)
+    assert all(spec.quant_key == "f32" for spec in plan.device_specs)
+    assert all(spec.layout != LAYOUT_PLE_SPARSE_MMAP for spec in plan.device_specs)
 
 
 def test_qwen4_exp_memory_admission_accounts_kv_index_state_scratch_and_reserve() -> None:
