@@ -14,15 +14,40 @@ import argparse
 from dataclasses import replace
 import json
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import numpy as np
 
 from hipengine import LLM
-from hipengine.core.memory import DeviceBuffer, copy_device_to_host, host_array_ptr
+from hipengine.core.memory import (
+    DeviceBuffer,
+    copy_device_to_host,
+    copy_host_to_device,
+    host_array_ptr,
+)
 from hipengine.generation.engine_service import EngineService
 from hipengine.generation.registry import GenerationRequest
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+
+def _controlled_token_values(
+    token_ids: Sequence[int],
+    candidates: Sequence[int],
+    *,
+    request_index: int,
+    vocab_size: int,
+) -> list[int]:
+    candidate_ids = tuple(int(value) for value in candidates)
+    output = list(int(value) for value in token_ids)
+    if not candidate_ids or len(output) != len(candidate_ids) + 1:
+        raise ValueError("controlled neighbor rows do not align")
+    if int(request_index) == 0:
+        output[: len(candidate_ids)] = candidate_ids
+    else:
+        output[0] = (candidate_ids[0] + 1) % int(vocab_size)
+        if output[0] == candidate_ids[0]:
+            raise RuntimeError("controlled reject token did not diverge")
+    return output
 
 
 def _controlled_token_rows(
@@ -31,7 +56,7 @@ def _controlled_token_rows(
     *,
     vocab_size: int,
 ) -> list[Any]:
-    """Force request 0 full-accept and request 1 root-reject target IDs."""
+    """Force request 0 full-accept and request 1 root-reject host target IDs."""
 
     output = list(results)
     if len(output) != 2 or len(candidate_rows) != 2:
@@ -39,17 +64,56 @@ def _controlled_token_rows(
     for index, (result, candidates) in enumerate(
         zip(output, candidate_rows, strict=True)
     ):
-        candidate_ids = tuple(int(value) for value in candidates)
-        token_ids = list(int(value) for value in result.token_ids)
-        if not candidate_ids or len(token_ids) != len(candidate_ids) + 1:
-            raise ValueError("controlled neighbor rows do not align")
-        if index == 0:
-            token_ids[: len(candidate_ids)] = candidate_ids
-        else:
-            token_ids[0] = (candidate_ids[0] + 1) % int(vocab_size)
-            if token_ids[0] == candidate_ids[0]:
-                raise RuntimeError("controlled reject token did not diverge")
-        output[index] = replace(result, token_ids=token_ids)
+        output[index] = replace(
+            result,
+            token_ids=_controlled_token_values(
+                result.token_ids,
+                candidates,
+                request_index=index,
+                vocab_size=int(vocab_size),
+            ),
+        )
+    return output
+
+
+def _controlled_device_token_rows(
+    results: Sequence[Any],
+    candidate_rows: Sequence[Sequence[int]],
+    *,
+    runtime: Any,
+    vocab_size: int,
+    copy_to_host: Callable[..., None] = copy_device_to_host,
+    copy_to_device: Callable[..., None] = copy_host_to_device,
+) -> list[Any]:
+    """Rewrite packed target top-1 views without changing device-result ownership."""
+
+    output = list(results)
+    if len(output) != 2 or len(candidate_rows) != 2:
+        raise ValueError("controlled neighbor gate requires exactly two requests")
+    for index, (result, candidates) in enumerate(
+        zip(output, candidate_rows, strict=True)
+    ):
+        target_top1 = result.target_top1
+        token_ids = np.empty(target_top1.shape, dtype=np.int32)
+        target_buffer = DeviceBuffer(target_top1.ptr, token_ids.nbytes)
+        copy_to_host(
+            host_array_ptr(token_ids),
+            target_buffer,
+            token_ids.nbytes,
+            runtime=runtime,
+        )
+        token_ids[:] = _controlled_token_values(
+            token_ids,
+            candidates,
+            request_index=index,
+            vocab_size=int(vocab_size),
+        )
+        copy_to_device(
+            target_buffer,
+            host_array_ptr(token_ids),
+            token_ids.nbytes,
+            runtime=runtime,
+        )
     return output
 
 
@@ -67,7 +131,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     llm = LLM(
         str(args.model),
         backend="hip_gfx1151",
-        execution_profile="strict",
+        execution_profile=str(args.execution_profile),
         max_active_requests=2,
         max_sequence_length=256,
     )
@@ -76,9 +140,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     original = Qwen35GGUFResidentSession.verify_target_blocks_batch
     controlled_calls = 0
 
-    def controlled(self, jobs, *, stream: int = 0):
+    def controlled(
+        self,
+        jobs,
+        *,
+        stream: int = 0,
+        device_result: bool = False,
+        **kwargs,
+    ):
         nonlocal controlled_calls
-        results = original(self, jobs, stream=stream)
+        results = original(
+            self,
+            jobs,
+            stream=stream,
+            device_result=bool(device_result),
+            **kwargs,
+        )
         if controlled_calls > 0:
             return results
         candidate_rows: list[tuple[int, ...]] = []
@@ -95,6 +172,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             )
             candidate_rows.append(tuple(int(value) for value in values))
         controlled_calls += 1
+        if device_result:
+            return _controlled_device_token_rows(
+                results,
+                candidate_rows,
+                runtime=self.runtime,
+                vocab_size=int(self.runner.vocab_size),
+            )
         return _controlled_token_rows(
             results,
             candidate_rows,
@@ -150,6 +234,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "status": "passed" if passed else "failed",
         "performance_claim": False,
         "model": str(args.model),
+        "execution_profile": str(args.execution_profile),
         "controlled_calls": controlled_calls,
         "controlled_outputs": controlled_outputs,
         "controlled_accepted_counts": accepted,
@@ -166,6 +251,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--model",
         type=Path,
         default=Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf"),
+    )
+    parser.add_argument(
+        "--execution-profile",
+        choices=("strict", "production"),
+        default="strict",
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--fail-on-fail", action="store_true")
