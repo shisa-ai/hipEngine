@@ -122,11 +122,11 @@ gfx1100 dense C1 K1/K2/K3 remains exact at **1.272x/1.407x/1.439x AR** but
 2.7%-3.9% behind direct; packed PARO is **0.979x AR**. Automatic stays K0.
 [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
 
-Physical C2 target-hidden repair restores D24 K2 acceptance **18.43%→76.92%**,
-but its R6 target cost leaves throughput **16.974 vs 31.230 tok/s (0.544x AR)**.
-Capability stays false/K0. P512/d128 AR recovery keeps C1 exact at **77.176 vs
-old 72.169 tok/s**; C8 raw **161.882** remains profile-diagnostic.
-[`C2 evidence`](results/2026-08-26-w7900-specdec2-c2-acceptance-root-cause.json) · [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
+Physical C2 target repair plus exact R6 projection routing moves D24 K2
+acceptance **18.43%→74.28%** and throughput **16.974→22.393 tok/s (+31.93%)**,
+now **0.7156x** true AR with 10/10 exact. Capability stays false/K0. P512/d128
+AR keeps C1 exact at **77.176 vs old 72.169 tok/s**; C8 raw **161.882** remains
+diagnostic. [`C2 target`](results/2026-08-26-w7900-specdec2-c2-r6-target-rowtile-retained.json) · [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
 
 ## Where detailed evidence lives
 
