@@ -39,6 +39,7 @@ from hipengine.kernels.hip_gfx1100.norm import (
     register_qwen35_rmsnorm_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
+    gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
     register_gguf_k_t16_selected_prefill_kernels,
@@ -803,7 +804,7 @@ def test_gfx1151_backend_registers_q4_physical_route_and_explicit_fallbacks() ->
     )
     assert single is gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
     assert fallback is gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
-    assert peer is gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
+    assert peer is gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out
 
 
 def test_gfx1151_backend_overrides_q5_rowtile_with_scoped_col8_wrapper(

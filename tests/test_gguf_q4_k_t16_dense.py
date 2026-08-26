@@ -18,6 +18,7 @@ from hipengine.core.memory import (
 )
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.cpu_reference.ops import gguf_quant_gemv
+from hipengine.kernels import hip_gfx1100 as gfx1100_backend
 from hipengine.kernels.hip_gfx1100.quant import gguf_k_t16_selected_prefill as t16_prefill
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     build_gguf_k_t16_selected_prefill,
@@ -31,6 +32,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
     gguf_q4_k_t16_dense_dual_local32_silu_bf16_bf16_out,
+    gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
     gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
 )
 from hipengine.kernels.registry import KernelKey, register, resolve
@@ -123,6 +125,100 @@ def _weight(
         allocations=MappingProxyType({"tiles": allocation}),
         backend=backend,
     )
+
+
+def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selector = getattr(
+        t16_prefill,
+        "gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out",
+        None,
+    )
+    rows_policy = getattr(
+        gfx1100_backend,
+        "GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS",
+        None,
+    )
+    shape_policy = getattr(
+        gfx1100_backend,
+        "GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES",
+        None,
+    )
+    single_wave_policy = getattr(
+        gfx1100_backend,
+        "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES",
+        None,
+    )
+    assert callable(selector)
+    assert rows_policy == frozenset({6})
+    assert shape_policy == frozenset(
+        {
+            (5_120, 1_024),
+            (5_120, 6_144),
+            (5_120, 10_240),
+            (5_120, 12_288),
+            (17_408, 5_120),
+        }
+    )
+    assert single_wave_policy == frozenset({(5_120, 17_408)})
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        t16_prefill,
+        "gguf_q4_k_t16_dense_rowtile_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("rowtile"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        t16_prefill,
+        "gguf_q4_k_t16_wmma_prefill_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("single_wave"),
+    )
+    monkeypatch.setattr(
+        t16_prefill,
+        "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("shared_b"),
+    )
+    for in_features, out_features in shape_policy:
+        selector(1, 2, 3, 6, in_features, out_features)
+    selector(1, 2, 3, 6, 5_120, 17_408)
+    selector(1, 2, 3, 5, 5_120, 17_408)
+    selector(1, 2, 3, 6, 5_120, 5_120)
+    assert calls == ["rowtile"] * len(shape_policy) + [
+        "single_wave",
+        "shared_b",
+        "shared_b",
+    ]
+
+    selected = resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="t16_physical_c1_rowtile_bf16_bf16_out",
+    )
+    single_wave = resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="t16_wmma_prefill_single_wave_bf16_bf16_out",
+    )
+    fallback = resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="t16_wmma_prefill_shared_b_bf16_bf16_out",
+    )
+    default = resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="t16_wmma_prefill_bf16_bf16_out",
+    )
+    assert selected is gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
+    assert single_wave is gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
+    assert fallback is gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
+    assert default is selector
 
 
 def test_q4_t16_unequal_dual_prefill_leaf_contract() -> None:
@@ -662,6 +758,67 @@ def test_q4_t16_dense_bulk_pair_silu_keeps_unfused_fallback_below_512(
         5_120,
         17_408,
     )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q4_t16_r6_rowtile_matches_two_retained_c1_r3_owners() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    rows = 6
+    c1_rows = 3
+    in_features = 256
+    out_features = 96
+    raw = make_q4_k_weight(out_features, in_features)
+    tiles = repack_gguf_q4_k_tile16(raw[None, ...]).tiles
+    rng = np.random.default_rng(0xC1C206)
+    x_bits = _f32_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    r6_bits = np.zeros((rows, out_features), dtype=np.uint16)
+    split_bits = np.zeros_like(r6_bits)
+    buffers = []
+    try:
+        x_dev = malloc(x_bits.nbytes, runtime=runtime)
+        tiles_dev = malloc(tiles.nbytes, runtime=runtime)
+        r6_dev = malloc(r6_bits.nbytes, runtime=runtime)
+        split_dev = malloc(split_bits.nbytes, runtime=runtime)
+        buffers.extend((x_dev, tiles_dev, r6_dev, split_dev))
+        copy_host_to_device(x_dev, host_array_ptr(x_bits), runtime=runtime)
+        copy_host_to_device(tiles_dev, host_array_ptr(tiles), runtime=runtime)
+        library = build_gguf_t16_selected_gemv(load=True)
+        gguf_q4_k_t16_dense_rowtile_bf16_bf16_out(
+            x_dev.ptr,
+            tiles_dev.ptr,
+            r6_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        for row_start in (0, c1_rows):
+            gguf_q4_k_t16_dense_rowtile_bf16_bf16_out(
+                x_dev.ptr + row_start * in_features * 2,
+                tiles_dev.ptr,
+                split_dev.ptr + row_start * out_features * 2,
+                c1_rows,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(r6_bits), r6_dev, runtime=runtime)
+        copy_device_to_host(
+            host_array_ptr(split_bits), split_dev, runtime=runtime
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(r6_bits, split_bits)
+    assert np.isfinite(_bf16_bits_to_f32(r6_bits)).all()
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
