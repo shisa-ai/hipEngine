@@ -3,7 +3,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from hipengine.runtime.qwen4_exp_runner import Qwen4ExpHostQSAIndexState
+from hipengine.runtime.qwen4_exp_runner import (
+    Qwen4ExpHostQSAIndexState,
+    _qsa_select_starts_host,
+)
 
 
 def test_qwen4_exp_host_index_state_selects_blocks_tail_and_rolls_back() -> None:
@@ -37,6 +40,18 @@ def test_qwen4_exp_host_index_state_selects_blocks_tail_and_rolls_back() -> None
     np.testing.assert_array_equal(state.raw_keys[:4], keys[:4])
     state.append(np.array([9.0, 9.0], dtype=np.float32), position=4)
     assert state.count == 5
+
+
+def test_qwen4_exp_runtime_host_selector_scales_and_breaks_ties_by_start() -> None:
+    starts = np.arange(65_536, dtype=np.int64) * 4
+    scores = np.zeros(starts.size, dtype=np.float32)
+    scores[-1] = 1.0
+
+    selected = _qsa_select_starts_host(scores, starts, budget=512)
+
+    assert selected.shape == (512,)
+    assert selected[-1] == starts[-1]
+    np.testing.assert_array_equal(selected[:-1], starts[:511])
 
 
 def test_qwen4_exp_host_index_state_rejects_noncontiguous_or_overflow_append() -> None:

@@ -38,7 +38,6 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_norm_rope_f32,
     qwen4_exp_qsa_pool_norm_rope_f32,
     qwen4_exp_qsa_score_f32,
-    qwen4_exp_qsa_select_blocks_f32_i64,
     qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
     qwen4_exp_qsa_split_norm_rope_f32,
 )
@@ -414,6 +413,27 @@ class Qwen4ExpDenseAttentionState:
         self.closed = True
 
 
+def _qsa_select_starts_host(
+    scores: object,
+    block_starts: object,
+    *,
+    budget: int,
+) -> np.ndarray:
+    """Select exact QSA blocks without the quadratic single-thread GPU fallback."""
+
+    score = np.asarray(scores, dtype=np.float32)
+    starts = np.asarray(block_starts, dtype=np.int64)
+    count = int(budget)
+    if score.ndim != 1 or starts.shape != score.shape:
+        raise ValueError("QSA scores and block starts must have the same 1D shape")
+    if count <= 0 or count > score.size:
+        raise ValueError("QSA selection budget must be in 1..block count")
+    if not np.all(np.isfinite(score)):
+        raise ValueError("QSA scores must be finite")
+    ranking = np.lexsort((starts, -score))
+    return np.sort(starts[ranking[:count]]).astype(np.int64)
+
+
 @dataclass
 class Qwen4ExpQSAIndexDeviceState:
     raw_keys: DeviceBuffer
@@ -427,6 +447,7 @@ class Qwen4ExpQSAIndexDeviceState:
     selected_positions: DeviceBuffer
     member_host: np.ndarray
     block_starts_host: np.ndarray
+    scores_host: np.ndarray
     selected_starts_host: np.ndarray
     selected_count_host: np.ndarray
     query_position_host: np.ndarray
@@ -479,6 +500,7 @@ class Qwen4ExpQSAIndexDeviceState:
             dtype=np.int32,
         )
         block_starts_host = np.arange(complete_blocks, dtype=np.int64) * ratio
+        scores_host = np.empty(complete_blocks, dtype=np.float32)
         selected_starts_host = np.full(budget, -1, dtype=np.int64)
         selected_count_host = np.zeros(1, dtype=np.int32)
         query_position_host = np.zeros(1, dtype=np.int64)
@@ -520,6 +542,7 @@ class Qwen4ExpQSAIndexDeviceState:
             *buffers,
             member_host,
             block_starts_host,
+            scores_host,
             selected_starts_host,
             selected_count_host,
             query_position_host,
@@ -606,34 +629,32 @@ class Qwen4ExpQSAIndexDeviceState:
             stream=stream,
             runtime=self.runtime,
         )
-        qwen4_exp_qsa_select_blocks_f32_i64(
-            self.scores.ptr,
-            self.block_starts.ptr,
-            self.query_position.ptr,
-            self.selected_starts.ptr,
-            self.selected_count.ptr,
-            1,
-            blocks,
-            self.compression_ratio,
-            self.block_budget,
-            stream=stream,
-            runtime=self.runtime,
-        )
         if stream:
             self.runtime.stream_synchronize(stream)
         copy_device_to_host(
-            host_array_ptr(self.selected_count_host),
-            self.selected_count,
+            host_array_ptr(self.scores_host),
+            self.scores,
+            blocks * DType.FP32.itemsize,
             runtime=self.runtime,
         )
-        copy_device_to_host(
-            host_array_ptr(self.selected_starts_host),
+        chosen = _qsa_select_starts_host(
+            self.scores_host[:blocks],
+            self.block_starts_host[:blocks],
+            budget=self.block_budget,
+        )
+        self.selected_starts_host[:] = chosen
+        self.selected_count_host[0] = self.block_budget
+        copy_host_to_device(
             self.selected_starts,
+            host_array_ptr(self.selected_starts_host),
             runtime=self.runtime,
         )
-        count = int(self.selected_count_host[0])
-        if count != self.block_budget:
-            raise RuntimeError("QSA selector did not fill the complete block budget")
+        copy_host_to_device(
+            self.selected_count,
+            host_array_ptr(self.selected_count_host),
+            runtime=self.runtime,
+        )
+        count = self.block_budget
         output_count = 0
         for start in self.selected_starts_host[:count].tolist():
             stop = output_count + self.compression_ratio
