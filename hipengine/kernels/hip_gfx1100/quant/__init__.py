@@ -159,6 +159,12 @@ from hipengine.kernels.hip_gfx1100.quant.paro_awq_gemv import (
     plan_paro_awq_gemv_build,
     register_paro_awq_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
+    build_qwen4_exp_q5_1,
+    plan_qwen4_exp_q5_1_build,
+    qwen4_exp_q5_1_selected_gemv_bf16_bf16_out,
+    register_qwen4_exp_q5_1_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.w8a16_linear import (
     build_w8a16_linear,
     plan_w8a16_linear_build,
@@ -187,6 +193,7 @@ __all__ = [
     "build_gguf_q4_k_gemv",
     "build_gguf_q6_k_embedding",
     "build_paro_awq_gemv",
+    "build_qwen4_exp_q5_1",
     "build_paro_marlin_k",
     "build_w8a16_linear",
     "gemv_awq_dual_pack8_strided_bf16",
@@ -308,6 +315,7 @@ __all__ = [
     "plan_gguf_q4_k_gemv_build",
     "plan_gguf_q6_k_embedding_build",
     "plan_paro_awq_gemv_build",
+    "plan_qwen4_exp_q5_1_build",
     "plan_paro_marlin_k_build",
     "plan_w8a16_linear_build",
     "register_gguf_iq_gemv_kernels",
@@ -318,8 +326,10 @@ __all__ = [
     "register_gguf_q4_k_gemv_kernels",
     "register_gguf_q6_k_embedding_kernels",
     "register_paro_awq_gemv_kernels",
+    "register_qwen4_exp_q5_1_kernels",
     "register_paro_marlin_k_kernels",
     "register_w8a16_linear_kernels",
+    "qwen4_exp_q5_1_selected_gemv_bf16_bf16_out",
     "w8a16_linear_bf16_f32_multi_row",
     "w8a16_linear_bf16_f32_out",
     "w8a16_linear_bf16_lowp_out",
