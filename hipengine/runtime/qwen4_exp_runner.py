@@ -715,7 +715,7 @@ class Qwen4ExpGDNMixerDeviceWeights:
     projections: Mapping[str, GGUFDeviceWeight]
     conv_weight_ptr: int
     dt_bias_ptr: int
-    a_log_ptr: int
+    a_ptr: int
     norm_weight_ptr: int
 
 
@@ -1380,7 +1380,7 @@ def bind_qwen4_exp_gdn_layer(
             projections=MappingProxyType({slot: weight(slot) for slot in mixer_slots}),
             conv_weight_ptr=pointer("ssm_conv1d"),
             dt_bias_ptr=pointer("ssm_dt_bias"),
-            a_log_ptr=pointer("ssm_a"),
+            a_ptr=pointer("ssm_a"),
             norm_weight_ptr=pointer("ssm_norm"),
         ),
         ffn_gr=gr("ffn"),
@@ -1994,7 +1994,7 @@ def run_qwen4_exp_gdn_layer(
         weights.mixer.projections,
         conv_weight_ptr=weights.mixer.conv_weight_ptr,
         dt_bias_ptr=weights.mixer.dt_bias_ptr,
-        a_log_ptr=weights.mixer.a_log_ptr,
+        a_ptr=weights.mixer.a_ptr,
         norm_weight_ptr=weights.mixer.norm_weight_ptr,
         conv_state_ptr=conv_state_ptr,
         recurrent_state_ptr=recurrent_state_ptr,
@@ -2193,7 +2193,7 @@ def run_qwen4_exp_gdn_token_mixer(
     *,
     conv_weight_ptr: int,
     dt_bias_ptr: int,
-    a_log_ptr: int,
+    a_ptr: int,
     norm_weight_ptr: int,
     conv_state_ptr: int,
     recurrent_state_ptr: int,
@@ -2256,7 +2256,7 @@ def run_qwen4_exp_gdn_token_mixer(
         scratch.alpha.ptr,
         scratch.beta.ptr,
         dt_bias_ptr,
-        a_log_ptr,
+        a_ptr,
         norm_weight_ptr,
         recurrent_state_ptr,
         scratch.core.ptr,

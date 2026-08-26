@@ -19,7 +19,7 @@ __global__ void qwen4_exp_gdn_decode_f32_kernel(
     const float* __restrict__ alpha,
     const float* __restrict__ beta_logits,
     const float* __restrict__ dt_bias,
-    const float* __restrict__ a_log,
+    const float* __restrict__ a,
     const float* __restrict__ norm_weight,
     float* __restrict__ recurrent_state,
     float* __restrict__ output,
@@ -67,7 +67,7 @@ __global__ void qwen4_exp_gdn_decode_f32_kernel(
       * rsqrtf(static_cast<float>(head_k_dim));
   const float k_scale = rsqrtf(norm_reductions[0] + 1.0e-6f);
   const float beta = sigmoid_f32(beta_logits[v_head]);
-  const float decay = expf(-expf(a_log[v_head]) * softplus_f32(alpha[v_head] + dt_bias[v_head]));
+  const float decay = expf(a[v_head] * softplus_f32(alpha[v_head] + dt_bias[v_head]));
   const int64_t value_index = threadIdx.x;
   float core_value = 0.0f;
   if (value_index < head_v_dim) {
@@ -113,7 +113,7 @@ extern "C" int hipengine_qwen4_exp_gdn_decode_f32(
     const void* alpha,
     const void* beta_logits,
     const void* dt_bias,
-    const void* a_log,
+    const void* a,
     const void* norm_weight,
     void* recurrent_state,
     void* output,
@@ -122,7 +122,7 @@ extern "C" int hipengine_qwen4_exp_gdn_decode_f32(
     int64_t head_k_dim,
     int64_t head_v_dim,
     hipStream_t stream) {
-  if (!conv || !output_gate || !alpha || !beta_logits || !dt_bias || !a_log ||
+  if (!conv || !output_gate || !alpha || !beta_logits || !dt_bias || !a ||
       !norm_weight || !recurrent_state || !output || num_k_heads <= 0 ||
       num_v_heads <= 0 || num_v_heads % num_k_heads || head_k_dim <= 0 ||
       head_v_dim <= 0 || head_v_dim > 256) {
@@ -136,7 +136,7 @@ extern "C" int hipengine_qwen4_exp_gdn_decode_f32(
       dim3(static_cast<uint32_t>(num_v_heads)), dim3(threads), shared, stream,
       static_cast<const float*>(conv), static_cast<const float*>(output_gate),
       static_cast<const float*>(alpha), static_cast<const float*>(beta_logits),
-      static_cast<const float*>(dt_bias), static_cast<const float*>(a_log),
+      static_cast<const float*>(dt_bias), static_cast<const float*>(a),
       static_cast<const float*>(norm_weight), static_cast<float*>(recurrent_state),
       static_cast<float*>(output), num_k_heads, num_v_heads, head_k_dim, head_v_dim);
   return static_cast<int>(hipGetLastError());
