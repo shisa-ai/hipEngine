@@ -10,8 +10,20 @@ from scripts.gguf_mtp_c1c8_server_bench import (
     _mtp_engaged,
     _parse_widths,
     _render_messages,
+    build_parser,
     summarize,
 )
+
+
+def test_mtp_c1c8_parser_defaults_to_production_profile() -> None:
+    parser = build_parser()
+    default = parser.parse_args(("--output", "/tmp/out.json"))
+    strict = parser.parse_args(
+        ("--execution-profile", "strict", "--output", "/tmp/out.json")
+    )
+
+    assert default.execution_profile == "production"
+    assert strict.execution_profile == "strict"
 
 
 def test_mtp_c1c8_parses_complete_widths() -> None:
