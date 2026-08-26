@@ -1,0 +1,146 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "kind": "w7900_dual_concurrency2_mtp_current_state_audit",
+  "status": "complete_implementation_audit",
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "source": {
+    "commit": "c223e754ba556a7ec37c4da988a5599c0bf8246b",
+    "tracked_clean": true
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "gpu_index": 0,
+    "gpu_max_hw_queues": 1,
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "models": {
+    "moe_35b": {
+      "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "size_bytes": 22663387424,
+      "full_sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+      "registry_model": "qwen3_5_moe_gguf",
+      "target_blocks": 40,
+      "nextn_block": 40,
+      "required_nextn_tensors": 22,
+      "strict_profile_registered": false,
+      "production_profile_registered": false,
+      "generation2_adapter": null,
+      "adapter_resolution_blocker": "Qwen35GGUFResidentModelRunner._resolved_mtp2_adapter returns None for config.is_moe",
+      "unmodified_mtp_request": {
+        "engine_service_route": "engine_service_verify_chain",
+        "legacy_prelaunch_fallbacks": 0,
+        "backend_path": "gguf_packed_ar_server_decode",
+        "real_speculative_cycles": 0,
+        "result": "K0 AR before provider mutation"
+      },
+      "reusable_components": [
+        "complete model-attached NextN inventory",
+        "Qwen35GGUFResidentMTPDraftRunner device-resident MoE proposal",
+        "Qwen35GGUFTransactionalVerifier MoE target rows",
+        "Generation-2 planner/frontier/transaction/lifecycle interfaces"
+      ]
+    },
+    "dense_27b": {
+      "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+      "size_bytes": 17106773120,
+      "full_sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+      "sampled_sha256": "fbb2aeb078adbf5fa89219f596a79e505e1495b14fefa036e1c36b813bd5cba7",
+      "registry_model": "qwen3_5_gguf",
+      "target_blocks": 64,
+      "nextn_block": 64,
+      "required_nextn_tensors": 17,
+      "strict_profile_registered": true,
+      "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d",
+      "production_profile_registered": false,
+      "production_resolution": "fell_back_to_strict",
+      "generation2_adapter": "Qwen35GGUFMTP2Adapter",
+      "engine_service": {
+        "sole_driver": true,
+        "route": "engine_service_verify_chain",
+        "work_kind": "verify_chain",
+        "legacy_prelaunch_fallbacks": 0
+      }
+    }
+  },
+  "dense_27b_full_suite_d24_k3": {
+    "profile": "strict",
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "splits": {
+      "train": 6,
+      "heldout": 4
+    },
+    "runs": 1,
+    "warmups": 1,
+    "true_ar_tok_s": 22.492265337100505,
+    "legacy_native_mtp_tok_s": 32.91528034755695,
+    "generation2_mtp_tok_s": 32.177472093399885,
+    "generation2_over_true_ar": 1.4306016584431733,
+    "generation2_over_legacy_native": 0.9775846279792714,
+    "split_ratios": {
+      "train_generation2_over_true_ar": 1.484606211046263,
+      "heldout_generation2_over_true_ar": 1.3570388094775891
+    },
+    "category_ratios": {
+      "code": 1.421087260212528,
+      "general_en": 1.5238378423735777,
+      "general_ja": 1.4861798548971552,
+      "mixed_ja_en": 1.3217263557689043
+    },
+    "acceptance": {
+      "accepted_candidates": 153,
+      "candidate_tokens": 215,
+      "draft_acceptance": 0.7116279069767442,
+      "accepted_per_output": 0.6375,
+      "cycles": 74
+    },
+    "mechanical_checks": {
+      "generation2_cycles_all_prompts": true,
+      "generation2_ar_ids_equal_diagnostic": "10/10",
+      "generation2_legacy_ids_equal_diagnostic": "10/10",
+      "candidate_d2h_after_target": 0,
+      "all_requests_drained": true
+    },
+    "promotion_evidence_missing": [
+      "named production manifest rather than strict fallback",
+      "strict-teacher full-logit mean/p95/p99/max KL and scoped top-1",
+      "three-run deterministic production capture",
+      "neighbor isolation and dynamic-state control packet",
+      "task and BF16-relative non-inferiority verdicts",
+      "blocking/SSE load, fault, soak, and SLO candidate packet",
+      "content-verified automatic policy key"
+    ]
+  },
+  "commands": {
+    "dense_c1_smoke": "env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. .venv/bin/python3 scripts/specdec2_c1_gate.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --budget 3 --concurrency 1 --max-tokens 8 --prompt 'Write one short greeting.' --execution-profile strict --provider-fingerprint --output /tmp/dual-mtp-audit-27b-c1-k3-d8.json --fail-on-fail",
+    "dense_full_suite": "env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. .venv/bin/python3 scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile strict --gpu-max-hw-queues 1 --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --scope full --concurrency 1 --budgets 3 --max-tokens 24 --runs 1 --max-sequence-length 1024 --warmup --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --output /tmp/dual-mtp-audit-27b-full-k3-d24.json --fail-on-fail",
+    "moe_route_audit": "env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. .venv/bin/python3 /tmp/audit-current-mtp-routes.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --budget 2 --max-tokens 8 --output /tmp/dual-mtp-audit-35b-c1-k2-d8.json"
+  },
+  "raw_evidence": {
+    "dense_c1_smoke": {
+      "path": "/tmp/dual-mtp-audit-27b-c1-k3-d8.json",
+      "size_bytes": 30503,
+      "sha256": "b563295d04566e661e7aad1a2e603991a382dc950278baaf5156325f0abafa"
+    },
+    "dense_full_suite": {
+      "path": "/tmp/dual-mtp-audit-27b-full-k3-d24.json",
+      "size_bytes": 393687,
+      "sha256": "7ea60980bdb3fb38c0b52ad0b3374070be221e55ebb95779a35a076142387dea"
+    },
+    "moe_route_audit": {
+      "path": "/tmp/dual-mtp-audit-35b-c1-k2-d8.json",
+      "size_bytes": 15183,
+      "sha256": "c1a51200c40c689ee44e566537a5cc095b219c2d003ba39855d95b23e0286b5c"
+    }
+  },
+  "decision": {
+    "dense_27b": "economically ready for production-profile qualification; no kernel optimization before the quality/serving packet",
+    "moe_35b": "implement a real model-plugin-selected staged C1 adapter before qualification",
+    "automatic_policy": "K0 for both until independent complete packets pass"
+  }
+}
