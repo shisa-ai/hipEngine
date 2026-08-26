@@ -282,16 +282,20 @@ production policy remains MTP at no automatic cell (K0) until those gates pass.
 
 ### T4 — research / parked (no promotion path in this campaign)
 
-- [ ] **T4.1 ngram-mod stacking spike (KyaniteLabs mechanism).** Prompt-derived
-  drafts are free and complementary to MTP; evaluate as a separate provider
-  behind the registry. Content-based drafting is a general mechanism (allowed);
-  any policy keyed to prompt identity is forbidden.
-- [ ] **T4.2 KV-quant (q8_0 / turbo4-class):** parked — our INT8 KV lane
-  failed quality gates; external llama.cpp claims do not transfer.
-- [ ] **T4.3 DFlash2:** parked — measured 8.85 tok/s = 0.66x AR on this exact
-  target (`QWEN38-27B-DFLASH2-CAMPAIGN.md`).
-- [ ] **T4.4 ROCr idle busy-spin check (Ling release note):** verify our host
-  stack does not carry the idle-CPU spin; close as environment hygiene.
+- [x] **T4.1 ngram-mod stacking spike (KyaniteLabs mechanism).** Full-suite
+  content-agnostic simulation rejects a provider: best short ngram has 46.9%
+  coverage / 28.4% accept / 1.37 visible tokens per cycle; deep n12 reaches
+  1.45 visible/cycle but only 12.2% accept and 630 verifier rows. MTP B3 is
+  3.43 visible/cycle / 79.29% accept. Heldout coverage is weaker; no code
+  candidate.
+- [x] **T4.2 KV-quant (q8_0 / turbo4-class):** closed parked — our INT8 KV
+  lane failed quality gates; external llama.cpp claims do not transfer.
+- [x] **T4.3 DFlash2:** closed parked — measured 8.85 tok/s = 0.66x AR on this
+  exact target (`QWEN38-27B-DFLASH2-CAMPAIGN.md`).
+- [x] **T4.4 ROCr idle busy-spin check (Ling release note):** initialized HIP
+  runtime idle for 15 s used 0.00 CPU ticks / 0% of one core; no busy-spin.
+  Evidence:
+  [`T4 closeout`](../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t4-research-closeout.json).
 
 ## 4. Non-negotiable rules
 
