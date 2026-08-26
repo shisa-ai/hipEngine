@@ -76,11 +76,19 @@ def test_mtp_c1c8_extracts_authoritative_ids_and_engagement() -> None:
 
 
 def test_mtp_c1c8_compacts_nested_resident_observability() -> None:
+    adapter = SimpleNamespace(
+        cycle_workspace_contract=lambda: {"allocated": True, "shape": [4, 5120]},
+        _states={},
+        _provider_groups={},
+        _prompt_streaming_sinks={},
+        _batch_accept_workspace=None,
+    )
     runner = SimpleNamespace(
+        _mtp2_adapter=adapter,
         observability_snapshot=lambda: {
             "resources": {"active_requests": 0},
             "routes": {"recent_completed": [{"request_id": 1}, {"request_id": 2}]},
-        }
+        },
     )
     llm = SimpleNamespace(
         _get_text_generator=lambda: SimpleNamespace(
@@ -92,6 +100,13 @@ def test_mtp_c1c8_compacts_nested_resident_observability() -> None:
 
     assert snapshot["resources"]["active_requests"] == 0
     assert snapshot["routes"]["recent_completed"] == [{"request_id": 2}]
+    assert snapshot["mtp2_adapter"] == {
+        "cycle_workspace": {"allocated": True, "shape": [4, 5120]},
+        "active_states": 0,
+        "provider_groups": 0,
+        "prompt_streaming_sinks": 0,
+        "batch_accept_workspace_allocated": False,
+    }
 
 
 def test_mtp_c1c8_reports_tracked_memory_delta() -> None:

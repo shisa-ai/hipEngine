@@ -188,6 +188,24 @@ def _resident_observability(llm: LLM, *, recent: int) -> dict[str, Any]:
             if not isinstance(payload, Mapping):
                 return {}
             result = copy.deepcopy(dict(payload))
+            adapter = getattr(owner, "_mtp2_adapter", None)
+            cycle_contract = getattr(adapter, "cycle_workspace_contract", None)
+            if adapter is not None:
+                result["mtp2_adapter"] = {
+                    "cycle_workspace": (
+                        copy.deepcopy(cycle_contract())
+                        if callable(cycle_contract)
+                        else None
+                    ),
+                    "active_states": len(getattr(adapter, "_states", {})),
+                    "provider_groups": len(getattr(adapter, "_provider_groups", {})),
+                    "prompt_streaming_sinks": len(
+                        getattr(adapter, "_prompt_streaming_sinks", {})
+                    ),
+                    "batch_accept_workspace_allocated": bool(
+                        getattr(adapter, "_batch_accept_workspace", None) is not None
+                    ),
+                }
             routes = result.get("routes")
             if isinstance(routes, Mapping):
                 compact_routes = copy.deepcopy(dict(routes))
