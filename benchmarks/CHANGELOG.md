@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-26 gfx1151 Qwen3.8 Q4_K_M S3 OpenAI serving/load; automatic K0] Blocking/SSE completion+chat text/IDs, MTP terminal telemetry, acceptance, usage, sessions, continuation, and disconnect are exact/truthful. Mixed/delayed admit **2/2**; overload accepts **4/8** exact and rejects four bounded 429s, with **10.29 tok/s** diagnostic exact goodput and zero final pending/admitted/active rows. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s3.json`.
+
 - [2026-08-26 gfx1151 Qwen3.8 Q4_K_M S2 lifecycle/fault qualification; automatic K0] Clean-worktree C1/natural25 passes proposal/target/readback recovery **3/3**, following-health **3/3**, **30/30** alternating exact waves, a 40-request packet, logical C8 drain, and byte-exact 25-chunk blocking/stream output with zero request pages/provider claims/final owners. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s2.json`.
 
 - [2026-08-26 gfx1151 Qwen3.8 Q4_K_M artifact-scoped MTP serving plan; automatic K0] The content-verified strict/BF16/C1/B3 natural25 plan is bound to capabilities, `auto`, explicit routing, K0 reasons, and rollback under fingerprint `sha256:1948983a…84740`. A real auto/explicit twin is exact; context 68 falls back before MTP and does not increment MTP metrics. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s1.json`.

@@ -1,0 +1,196 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_q4km_mtp_serving_s3",
+  "status": "qualified_checkpoint",
+  "created_at": "2026-08-26",
+  "performance_claim": false,
+  "promotion": {
+    "explicit_openai_scope_qualified": true,
+    "automatic_policy": "K0",
+    "automatic_promoted": false,
+    "reason": "S3 qualifies blocking/SSE, controls, sessions, disconnect, offered load, and overload; S4 owns the automatic product decision"
+  },
+  "provenance": {
+    "implementation_commit": "4a4a50f09",
+    "measurement_base_commit": "df2ba2ee6",
+    "implementation_uncommitted_during_green": true,
+    "host_name": "zbook",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "execution_profile": "strict",
+    "execution_profile_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+    "kv_dtype": "bf16",
+    "require_cached_build": true,
+    "server": {
+      "max_context_tokens": 1024,
+      "max_active_requests": 1,
+      "max_queued_requests": 2,
+      "speculative_mtp_serving": "auto",
+      "candidate_budget": 3,
+      "metrics": "prometheus"
+    }
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "served_model_name": "qwen38-q4km-mtp-s3",
+    "quant": "Q4_K_M",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "serving_plan": {
+    "fingerprint": "sha256:1948983ad884f41d9dce4453a3b2ab8f9a357b5005b9a2cabd18556b60084740",
+    "automatic_eligible": false,
+    "strict_fallback": "gguf_target_ar"
+  },
+  "blocking_sse_parity": {
+    "completion": {
+      "events": 27,
+      "blocking_wall_seconds": 2.527131909999298,
+      "sse_wall_seconds": 1.741064624999126,
+      "text_exact": true,
+      "generated_ids_exact": true,
+      "finish_exact": true,
+      "execution_path": "gguf_specdec2_mtp2",
+      "timing_owner": true,
+      "draft_cycles": 8,
+      "draft_tokens": 23,
+      "accepted_draft_tokens": 16,
+      "rejected_draft_tokens": 7,
+      "usage_acceptance_matches_terminal": true,
+      "plan_fingerprint_matches": true
+    },
+    "chat": {
+      "events": 27,
+      "blocking_wall_seconds": 1.7794437510019634,
+      "sse_wall_seconds": 1.7740412400016794,
+      "answer_text_exact": true,
+      "reasoning_text_exact": true,
+      "generated_ids_exact": true,
+      "finish_exact": true,
+      "execution_path": "gguf_specdec2_mtp2",
+      "timing_owner": true,
+      "draft_cycles": 8,
+      "draft_tokens": 21,
+      "accepted_draft_tokens": 16,
+      "rejected_draft_tokens": 5,
+      "usage_acceptance_matches_terminal": true,
+      "plan_fingerprint_matches": true
+    }
+  },
+  "controls": {
+    "auto_unflagged": {
+      "route": "default",
+      "reason": "automatic_mtp_scope_not_promoted"
+    },
+    "temperature_explicit": {
+      "route": "default",
+      "reason": "sampling_mode_not_qualified"
+    },
+    "thinking_hint_medium": {
+      "route": "default",
+      "reason": "context_bucket_not_qualified"
+    },
+    "thinking_hard_medium": {
+      "route": "default",
+      "reason": "sampling_mode_not_qualified"
+    },
+    "fresh_session": {
+      "turns": 2,
+      "routes": [
+        "speculative_mtp",
+        "speculative_mtp"
+      ],
+      "stored_messages": 4
+    },
+    "continuation": {
+      "created": true,
+      "resume_status": 200,
+      "resume_route": "default",
+      "resume_reason": "automatic_mtp_scope_not_promoted"
+    },
+    "disconnect": {
+      "http_status": 200,
+      "events_read": 1,
+      "cancelled_metric_delta": 1,
+      "health_after": "ok"
+    }
+  },
+  "offered_load": {
+    "mixed_two": {
+      "offered_requests": 2,
+      "accepted": 2,
+      "rejected": 0,
+      "routes": [
+        "default",
+        "speculative_mtp"
+      ],
+      "all_outputs_exact_vs_baseline": true,
+      "max_e2e_seconds": 4.707138992998807,
+      "exact_goodput_tok_s": 10.622163499817578
+    },
+    "delayed_two": {
+      "offered_requests": 2,
+      "accepted": 2,
+      "rejected": 0,
+      "all_outputs_exact_vs_repeat": true,
+      "max_e2e_seconds": 4.515143676995649,
+      "exact_goodput_tok_s": 11.073844727189217
+    },
+    "overload_eight": {
+      "offered_requests": 8,
+      "accepted": 4,
+      "rejected_429_engine_busy": 4,
+      "all_accepted_outputs_exact_vs_repeat": true,
+      "max_accepted_e2e_seconds": 9.718892131000757,
+      "exact_goodput_tok_s": 10.289238593463324,
+      "bounded_queue": true,
+      "complete_drain": true
+    },
+    "latency_seconds": {
+      "queue_p50": 0.0005869219967280515,
+      "queue_p95": 0.002292136996402405,
+      "queue_max": 0.004500927992921788,
+      "service_p50": 2.4923582280025585,
+      "service_p95": 3.0140749540005345,
+      "service_max": 4.164715819002595,
+      "ttft_p50": 0.6130679240013706,
+      "ttft_p95": 0.8700370909937192,
+      "ttft_max": 1.4017744049997418,
+      "itl_p50": 0.08823930450307671,
+      "itl_p95": 0.14653439900175724,
+      "itl_max": 0.16180314400116913,
+      "completion_p50": 2.4968591559954803,
+      "completion_p95": 3.014780339995923,
+      "completion_max": 4.165402119004284
+    }
+  },
+  "final_metrics": {
+    "requests_total": 44,
+    "requests_completed": 37,
+    "requests_failed_including_reject_cancel": 7,
+    "requests_rejected": 4,
+    "requests_cancelled": 3,
+    "mtp_requests": 17,
+    "resident_pending": 0,
+    "resident_admitted": 0,
+    "resident_active": 0,
+    "health": "ok",
+    "shutdown_complete": true,
+    "final_gpu_owner": false,
+    "compiler_owner": false,
+    "note": "Aggregate metrics include RED/GREEN stream diagnostics and three intentional disconnects; binding load rows report isolated status/exactness above."
+  },
+  "validation": {
+    "real_artifacts": [
+      "/tmp/qwen38-q4km-mtp-serving-20260826T064610Z-1c745688d/s3-blocking-sse-parity.json",
+      "/tmp/qwen38-q4km-mtp-serving-20260826T064610Z-1c745688d/s3-controls-load.json",
+      "/tmp/qwen38-q4km-mtp-serving-20260826T064610Z-1c745688d/s3-followup.json",
+      "/tmp/qwen38-q4km-mtp-serving-20260826T064610Z-1c745688d/s3-metrics-final.txt"
+    ],
+    "full_affected_bundle": "all other tests passed; two plain-stream shape expectations repaired with focused 5/5 result",
+    "performance_interpretation": "Goodput and latency are diagnostic S3 load/SLO evidence, not an automatic/default throughput claim."
+  },
+  "next": "S4 automatic product decision against >1.10 complete-wall gate; automatic remains K0 until that commit"
+}

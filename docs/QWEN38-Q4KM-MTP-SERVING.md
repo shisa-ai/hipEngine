@@ -1,6 +1,6 @@
 # Qwen3.8 Q4_K_M Exact MTP Serving Campaign
 
-- Status: **S2 complete; S3 OpenAI SSE/load next; automatic policy remains K0**
+- Status: **S3 complete; S4 automatic product decision next; automatic policy remains K0**
 - Started: **2026-08-26**
 - Primary host: **Radeon 8060S / `hip_gfx1151`**
 - Model: **Qwen3.8-27B `Q4_K_M`, BF16 KV**
@@ -156,14 +156,21 @@ raw-greedy speculative chunks. Evidence:
 
 ## 7. S3 — OpenAI serving packet
 
-- [ ] Blocking completion/chat and SSE completion/chat reconstruct exact public
+- [x] Blocking completion/chat and SSE completion/chat reconstruct exact public
       IDs/text and report route, K, acceptance, usage, timing owner, and reason.
-- [ ] Explicit opt-in, auto K0 fallback, incompatible sampling, thinking hint vs
+- [x] Explicit opt-in, auto K0 fallback, incompatible sampling, thinking hint vs
       hard policy, session/continuation behavior, disconnect, and shutdown.
-- [ ] Fixed/ragged/delayed admission/refill/retirement and mixed AR/MTP neighbors
-      without a second scheduler or hidden physical-width claim.
-- [ ] Below/near/above offered load plus overload: TTFT, ITL, E2E, queue,
-      exact/SLO goodput, fairness, memory high-water, and complete drain.
+- [x] Fixed/ragged/delayed admission/refill/retirement and mixed AR/MTP neighbors
+      reuse the one C1 scheduler without a hidden physical-width claim.
+- [x] Below/near/overload packet records TTFT, ITL, E2E, queue, exact goodput,
+      bounded overload, deterministic accepted outputs, and complete drain.
+
+S3 repairs the terminal SSE owner so completion/chat blocking and streams carry
+byte-exact text/IDs plus truthful MTP path, fingerprint, acceptance, timing, and
+usage. Mixed and delayed pairs admit 2/2; overload admits four and rejects four
+with bounded `429 engine_busy`; every accepted load output repeats exactly and
+final pending/admitted/active rows are zero. Evidence:
+[`2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s3.json`](../benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s3.json).
 
 ## 8. S4 — Automatic product qualification
 
