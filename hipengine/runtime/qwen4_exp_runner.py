@@ -200,6 +200,10 @@ class Qwen4ExpGDNLayerDeviceWeights:
     mixer: Qwen4ExpGDNMixerDeviceWeights
     ffn_gr: Qwen4ExpGRDeviceWeights
     moe: Mapping[str, GGUFDeviceWeight]
+    layer_id: int = -1
+    layer_type: str = "gdn"
+    gdn_state_index: int = -1
+    has_ple: bool = False
 
 
 @dataclass
@@ -566,6 +570,65 @@ class Qwen4ExpGRReadDeviceResult:
     gate: DeviceBuffer
     mixed: DeviceBuffer
     inject_logits: DeviceBuffer
+
+
+def bind_qwen4_exp_gdn_layer(
+    resident: object,
+    layer_id: int,
+) -> Qwen4ExpGDNLayerDeviceWeights:
+    """Bind one validated resident GDN layer to physical runner roles."""
+
+    plan = getattr(resident, "plan")
+    config = plan.config
+    layer = int(layer_id)
+    if not 0 <= layer < config.block_count:
+        raise ValueError(f"layer_id must be in [0, {config.block_count}), got {layer}")
+    if config.layer_types[layer] != "gdn":
+        raise ValueError(f"Qwen4Exp layer {layer} is not GDN")
+
+    def weight(slot: str) -> GGUFDeviceWeight:
+        return resident.weight(f"layers.{layer}.{slot}")
+
+    def pointer(slot: str) -> int:
+        return int(weight(slot).allocation("raw").tensor.ptr)
+
+    def gr(prefix: str) -> Qwen4ExpGRDeviceWeights:
+        return Qwen4ExpGRDeviceWeights(
+            norm_weight_ptr=pointer(f"hc_{prefix}_norm"),
+            down=weight(f"hc_{prefix}_down"),
+            up=weight(f"hc_{prefix}_up"),
+            inject=weight(f"hc_{prefix}_inject"),
+        )
+
+    mixer_slots = ("attn_qkv", "attn_gate", "ssm_alpha", "ssm_beta", "ssm_out")
+    moe_slots = {
+        "router": "router",
+        "expert_gate": "expert_gate",
+        "expert_up": "expert_up",
+        "expert_down": "expert_down",
+        "shared_gate": "shared_gate",
+        "shared_up": "shared_up",
+        "shared_down": "shared_down",
+        "shared_gate_weight": "shared_expert_gate",
+    }
+    return Qwen4ExpGDNLayerDeviceWeights(
+        attention_gr=gr("attn"),
+        mixer=Qwen4ExpGDNMixerDeviceWeights(
+            projections=MappingProxyType({slot: weight(slot) for slot in mixer_slots}),
+            conv_weight_ptr=pointer("ssm_conv1d"),
+            dt_bias_ptr=pointer("ssm_dt_bias"),
+            a_log_ptr=pointer("ssm_a"),
+            norm_weight_ptr=pointer("ssm_norm"),
+        ),
+        ffn_gr=gr("ffn"),
+        moe=MappingProxyType(
+            {target: weight(source) for target, source in moe_slots.items()}
+        ),
+        layer_id=layer,
+        layer_type="gdn",
+        gdn_state_index=sum(1 for kind in config.layer_types[:layer] if kind == "gdn"),
+        has_ple=layer in config.ple_layers,
+    )
 
 
 def run_qwen4_exp_gr_read(
@@ -1183,6 +1246,7 @@ def run_qwen4_exp_gdn_token_mixer(
 
 __all__ = [
     "Qwen4ExpDecodeState",
+    "bind_qwen4_exp_gdn_layer",
     "Qwen4ExpDecodeStateSnapshot",
     "Qwen4ExpGDNLayerDeviceWeights",
     "Qwen4ExpGDNLayerScratch",
