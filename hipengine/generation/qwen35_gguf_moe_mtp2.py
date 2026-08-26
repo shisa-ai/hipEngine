@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-import time
+from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
@@ -25,7 +24,6 @@ from hipengine.speculative.interfaces import AcceptResult
 from hipengine.speculative.provider import SpeculativeRequestSemantics
 from hipengine.speculative.transaction import (
     SpecCycleResult,
-    SpecCycleStage,
     SpecCycleTelemetry,
     SpecCycleTransaction,
     compose_speculative_claims,
@@ -334,6 +332,7 @@ class Qwen35GGUFMoEMTP2Adapter:
                 cache_len=int(cache_len),
             )
             free(shifted, runtime=target.runtime)
+            shifted = None
         except Exception:
             if shifted is not None:
                 free(shifted, runtime=target.runtime)
@@ -413,6 +412,7 @@ class Qwen35GGUFMoEMTP2Adapter:
             eager_supported=True,
             strict_fallback_key="gguf_target_ar",
             max_context_tokens=max_context,
+            terminal_zero_accept_supported=True,
         )
 
     def claims_fit(self, plan: SpecRequestPlan) -> bool:
@@ -498,8 +498,8 @@ class Qwen35GGUFMoEMTP2Adapter:
             raise RuntimeError("MoE MTP2 complete-cycle target cursor is stale")
         budget = int(plan.candidate_counts[0])
         remaining = max(0, int(row.request.max_tokens) - len(slot.generated_ids))
-        if remaining < budget + 1:
-            raise RuntimeError("MoE MTP2 complete cycle has insufficient output room")
+        if remaining < 1:
+            raise RuntimeError("MoE MTP2 complete cycle has no output room")
         complete_claims = compose_speculative_claims(
             plan.operation_id,
             self.component_claims(plan),

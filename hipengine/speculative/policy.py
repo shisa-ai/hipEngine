@@ -357,9 +357,12 @@ def plan_speculative_requests(
             continue
         output_room = row.remaining_decode - 1
         if output_room <= 0:
-            counts_list.append(0)
-            reasons_list.append(SpecPlanReason.TARGET_GRAPH_OUTPUT_ROOM_MISS)
-            continue
+            if bool(capability.terminal_zero_accept_supported):
+                output_room = 1
+            else:
+                counts_list.append(0)
+                reasons_list.append(SpecPlanReason.TARGET_GRAPH_OUTPUT_ROOM_MISS)
+                continue
         context_room = capability.max_candidates_per_request
         if capability.max_context_tokens is not None:
             context_room = capability.max_context_tokens - row.context_tokens - 1

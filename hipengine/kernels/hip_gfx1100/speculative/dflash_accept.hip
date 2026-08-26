@@ -85,7 +85,7 @@ __global__ void dflash_accept_chain_i32_kernel(
     }
   }
 
-  while (has_budget_room && accepted < budget) {
+  while (has_budget_room && accepted + 1 < budget) {
     const int32_t expected = target_top1[row];
     int64_t matched_child = -1;
     for (int64_t candidate = request_count; candidate < rows; ++candidate) {

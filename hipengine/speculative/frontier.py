@@ -117,6 +117,7 @@ class SpeculativeCapability:
     eager_supported: bool
     strict_fallback_key: str
     max_context_tokens: int | None = None
+    terminal_zero_accept_supported: bool = False
 
     def __post_init__(self) -> None:
         for field in (
