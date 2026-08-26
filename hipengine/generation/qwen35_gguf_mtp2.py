@@ -163,6 +163,10 @@ class _PhysicalAcceptPending:
     output_stride: int
 
 
+class _PhysicalTargetCommitError(RuntimeError):
+    """Target state may be committed; AR fallback requires canonical rebuild."""
+
+
 class Qwen35GGUFMTP2Adapter:
     """Staged C1/C2/C4 adapter over the retained exact dense components."""
 
@@ -2058,72 +2062,80 @@ class Qwen35GGUFMTP2Adapter:
                     "physical target owner has no device selected-state commit"
                 )
             commit_started = time.perf_counter()
-            commit_contract = commit_batch(
-                results,
-                targets,
-                accept_buffers=pending.buffers,
-            )
-            commit_seconds = time.perf_counter() - commit_started
-            readback_started = time.perf_counter()
-            gpu_summary = self._read_target_batch_accept(
-                pending,
-                runtime=targets[0].runtime,
-            )
-            bounded_readback_seconds = time.perf_counter() - readback_started
-            if bool(
-                getattr(self, "device_chain_qualification_oracle", False)
-            ):
-                candidate_readback_seconds = (
-                    self._qualify_target_batch_device_accept(
-                        frontier,
-                        device_draft,
-                        results,
-                        gpu_summary,
-                        remaining,
-                        provider=states[0].provider,
-                        runtime=targets[0].runtime,
-                    )
+            try:
+                commit_contract = commit_batch(
+                    results,
+                    targets,
+                    accept_buffers=pending.buffers,
                 )
-                for row in rows:
-                    row.mtp2_candidate_d2h_after_target += 1
-            accept_seconds = time.perf_counter() - accept_started
-            if int(commit_contract.get("requests", 0)) != len(ids):
-                raise RuntimeError("physical selected-state commit omitted requests")
-            for target, summary_position in zip(
-                targets, gpu_summary.commit_positions, strict=True
-            ):
-                next_position = int(summary_position) + 1
-                target._position = next_position
-                target.scratch.position_host[0] = next_position
-                target.scratch.context_host[0] = next_position + 1
-            accept = AcceptResult(
-                request_ids=ids,
-                accepted_counts=gpu_summary.accepted_counts,
-                accepted_tokens=gpu_summary.accepted_tokens,
-                transaction_id=transaction_id,
-                selected_candidate_rows=gpu_summary.commit_rows,
-                next_tokens=gpu_summary.next_tokens,
-                correction_or_bonus_tokens=gpu_summary.next_tokens,
-                target_cursor_deltas=tuple(
-                    int(count) + (1 if next_token is not None else 0)
-                    for count, next_token in zip(
-                        gpu_summary.accepted_counts,
-                        gpu_summary.next_tokens or (None,) * len(ids),
-                        strict=True,
+                commit_seconds = time.perf_counter() - commit_started
+                readback_started = time.perf_counter()
+                gpu_summary = self._read_target_batch_accept(
+                    pending,
+                    runtime=targets[0].runtime,
+                )
+                bounded_readback_seconds = time.perf_counter() - readback_started
+                if bool(
+                    getattr(self, "device_chain_qualification_oracle", False)
+                ):
+                    candidate_readback_seconds = (
+                        self._qualify_target_batch_device_accept(
+                            frontier,
+                            device_draft,
+                            results,
+                            gpu_summary,
+                            remaining,
+                            provider=states[0].provider,
+                            runtime=targets[0].runtime,
+                        )
                     )
-                ),
-                provider_cursor_deltas=gpu_summary.accepted_counts,
-                finish_reasons=(None,) * len(ids),
-            )
-            provider_update_started = time.perf_counter()
-            self._repair_provider_states_batch_device(
-                states,
-                device_draft,
-                accepted_counts=gpu_summary.accepted_counts,
-            )
-            provider_update_seconds = (
-                time.perf_counter() - provider_update_started
-            )
+                    for row in rows:
+                        row.mtp2_candidate_d2h_after_target += 1
+                accept_seconds = time.perf_counter() - accept_started
+                if int(commit_contract.get("requests", 0)) != len(ids):
+                    raise RuntimeError(
+                        "physical selected-state commit omitted requests"
+                    )
+                for target, summary_position in zip(
+                    targets, gpu_summary.commit_positions, strict=True
+                ):
+                    next_position = int(summary_position) + 1
+                    target._position = next_position
+                    target.scratch.position_host[0] = next_position
+                    target.scratch.context_host[0] = next_position + 1
+                accept = AcceptResult(
+                    request_ids=ids,
+                    accepted_counts=gpu_summary.accepted_counts,
+                    accepted_tokens=gpu_summary.accepted_tokens,
+                    transaction_id=transaction_id,
+                    selected_candidate_rows=gpu_summary.commit_rows,
+                    next_tokens=gpu_summary.next_tokens,
+                    correction_or_bonus_tokens=gpu_summary.next_tokens,
+                    target_cursor_deltas=tuple(
+                        int(count) + (1 if next_token is not None else 0)
+                        for count, next_token in zip(
+                            gpu_summary.accepted_counts,
+                            gpu_summary.next_tokens or (None,) * len(ids),
+                            strict=True,
+                        )
+                    ),
+                    provider_cursor_deltas=gpu_summary.accepted_counts,
+                    finish_reasons=(None,) * len(ids),
+                )
+                provider_update_started = time.perf_counter()
+                self._repair_provider_states_batch_device(
+                    states,
+                    device_draft,
+                    accepted_counts=gpu_summary.accepted_counts,
+                )
+                provider_update_seconds = (
+                    time.perf_counter() - provider_update_started
+                )
+            except BaseException as error:
+                raise _PhysicalTargetCommitError(
+                    "physical target selected commit path failed: "
+                    f"{type(error).__name__}:{error}"
+                ) from error
         else:
             assert batch is not None
             target_top1 = [0] * batch.rows
@@ -2726,6 +2738,24 @@ class Qwen35GGUFMTP2Adapter:
         )
         if not rows:
             return False
+        if isinstance(error, _PhysicalTargetCommitError):
+            rebuild = getattr(
+                self.owner,
+                "restore_speculative_target_rows",
+                None,
+            )
+            if not callable(rebuild) or not bool(rebuild(plan)):
+                for row in rows:
+                    row.mtp2_failure_reasons.extend(
+                        ("postcommit_failure_fatal", reason)
+                    )
+                return False
+            for row in rows:
+                row.mtp2_recoverable_failures += 1
+                row.mtp2_failure_reasons.extend(
+                    ("postcommit_target_rebuild_ar_fallback", reason)
+                )
+            return True
         for row in rows:
             if row.slot is None or row.lease is None:
                 return False

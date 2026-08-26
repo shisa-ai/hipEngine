@@ -14,8 +14,9 @@ from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
 import hipengine.generation.qwen35_gguf_mtp2 as mtp2_module
 from hipengine.generation.qwen35_gguf_mtp2 import (
     Qwen35GGUFMTP2Adapter,
-    _target_verify_mode_for_context,
     _MTP2RequestState,
+    _PhysicalTargetCommitError,
+    _target_verify_mode_for_context,
 )
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.runtime import qwen35_gguf_runner as runner_mod
@@ -1003,8 +1004,12 @@ def test_adapter_recovers_only_precommit_failure_with_canonical_target_cursors()
             mtp2_failure_reasons=[],
         ),
     }
+    rebuilds = []
     adapter = object.__new__(Qwen35GGUFMTP2Adapter)
-    adapter.owner = SimpleNamespace(_row=lambda request_id: rows[request_id])
+    adapter.owner = SimpleNamespace(
+        _row=lambda request_id: rows[request_id],
+        restore_speculative_target_rows=lambda plan: rebuilds.append(plan) or True,
+    )
     plan = SimpleNamespace(speculative_request_ids=(10, 20))
 
     assert adapter.recover_cycle_failure(plan, RuntimeError("injected")) is True
@@ -1015,8 +1020,86 @@ def test_adapter_recovers_only_precommit_failure_with_canonical_target_cursors()
         for row in rows.values()
     )
 
+    assert (
+        adapter.recover_cycle_failure(
+            plan,
+            _PhysicalTargetCommitError("selected target state may be committed"),
+        )
+        is True
+    )
+    assert rebuilds == [plan]
+    assert all(row.mtp2_recoverable_failures == 2 for row in rows.values())
+    assert all(
+        row.mtp2_failure_reasons[-2:] == [
+            "postcommit_target_rebuild_ar_fallback",
+            "_PhysicalTargetCommitError:selected target state may be committed",
+        ]
+        for row in rows.values()
+    )
+
     rows[20].lease.session.position = 10
     assert adapter.recover_cycle_failure(plan, RuntimeError("late")) is False
+
+
+def test_model_runner_rebuilds_postcommit_targets_from_canonical_tokens() -> None:
+    calls = []
+
+    class Session:
+        def __init__(self) -> None:
+            self.position = 99
+
+        def reset(self) -> None:
+            calls.append("reset")
+            self.position = 0
+
+    sessions = (Session(), Session())
+    rows = {
+        10: SimpleNamespace(
+            request_id=10,
+            prompt_ids=(1, 2),
+            slot=SimpleNamespace(
+                generated_ids=[101, 102],
+                prev_token=102,
+                seq_position=3,
+            ),
+            lease=SimpleNamespace(session=sessions[0]),
+        ),
+        20: SimpleNamespace(
+            request_id=20,
+            prompt_ids=(3, 4, 5),
+            slot=SimpleNamespace(
+                generated_ids=[201, 202],
+                prev_token=202,
+                seq_position=4,
+            ),
+            lease=SimpleNamespace(session=sessions[1]),
+        ),
+    }
+
+    class PackedOwner:
+        def prefill_batch_native(self, prompts, **kwargs):
+            calls.append((tuple(tuple(row) for row in prompts), kwargs))
+            for session, tokens in zip(kwargs["sessions"], prompts, strict=True):
+                session.position = len(tokens)
+            return (SimpleNamespace(token_id=102), SimpleNamespace(token_id=202))
+
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._rows = rows
+    runner._flush_rows = lambda selected: calls.append(
+        ("flush", tuple(row.request_id for row in selected))
+    )
+    runner._packed_execution_owner = lambda session: PackedOwner()
+    plan = SimpleNamespace(speculative_request_ids=(10, 20))
+
+    assert runner.restore_speculative_target_rows(plan) is True
+    assert calls[0] == ("flush", (10, 20))
+    assert calls[1:3] == ["reset", "reset"]
+    prompts, kwargs = calls[3]
+    assert prompts == ((1, 2, 101), (3, 4, 5, 201))
+    assert kwargs["full_prompt_lengths"] == [3, 4]
+    assert kwargs["return_logits"] is False
+    assert kwargs["return_hidden_seeds"] is False
+    assert tuple(session.position for session in sessions) == (3, 4)
 
 
 @pytest.mark.parametrize(
