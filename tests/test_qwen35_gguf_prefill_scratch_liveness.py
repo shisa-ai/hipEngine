@@ -800,8 +800,9 @@ def test_gfx1100_dense_qwen36_split_gdn_keeps_conv_output_disjoint(monkeypatch) 
         recurrent_offset + recurrent_bytes,
     )
     # The disjoint conv_out plane restores the pre-59fd48631 arena footprint
-    # (~66.5 MiB larger than the invalid page-sharing variant).
-    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 475 * _MIB
+    # (~66.5 MiB larger than the invalid page-sharing variant). Standalone RoPE
+    # cos/sin ownership adds less than 2 MiB to the retained arena ceiling.
+    assert sum(buffer.nbytes for buffer in scratch.buffers) <= 477 * _MIB
     assert max(buffer.nbytes for buffer in scratch.buffers) == 467 * _MIB + 576 * 1_024
     assert scratch.allocation_offsets["attn_out"] == (
         48 * _MIB + 64 * 1_024,
@@ -1042,7 +1043,8 @@ def test_gfx1151_right_sized_short_scratch_uses_owner_slots(monkeypatch) -> None
     )
 
     assert scratch.allocation_mode == "liveness_aliased"
-    assert sum(buffer.nbytes for buffer in scratch.buffers) == 69_790_760
+    # Includes standalone full-attention RoPE cos/sin buffers.
+    assert sum(buffer.nbytes for buffer in scratch.buffers) == 70_183_976
     assert len(set(scratch.allocation_groups.values())) == 21
     assert scratch.moe_down_out_f32 == DeviceBuffer(ptr=0, nbytes=0)
     assert scratch.conv_out.ptr == scratch.moe_down_out.ptr
@@ -1064,7 +1066,8 @@ def test_gfx1151_short_diagnostics_keep_dedicated_scratch_fallback(monkeypatch) 
     )
 
     assert scratch.allocation_mode == "dedicated"
-    assert sum(buffer.nbytes for buffer in scratch.buffers) == 355_182_664
+    # Includes standalone full-attention RoPE cos/sin buffers.
+    assert sum(buffer.nbytes for buffer in scratch.buffers) == 355_575_880
     assert scratch.moe_down_out_f32.ptr != 0
     assert not scratch.allocation_offsets
     assert not scratch.allocation_groups
