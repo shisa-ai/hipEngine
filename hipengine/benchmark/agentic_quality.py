@@ -11,8 +11,9 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from hipengine.benchmark.agentic import (
     AGENTIC_SCHEMA_VERSION,
@@ -22,7 +23,6 @@ from hipengine.benchmark.agentic import (
 from hipengine.benchmark.agentic_quality_oracle import evaluate_quality_oracle
 from hipengine.benchmark.provenance import validate_artifact_provenance
 from hipengine.tokenization.identity import token_ids_sha256
-
 
 AGENTIC_QUALITY_RECORDS_KIND = "hipengine_agentic_coding_quality_records"
 AGENTIC_QUALITY_ARTIFACT_KIND = "hipengine_agentic_coding_quality_benchmark"
@@ -220,10 +220,14 @@ def _quality_score(
         outcome = "schema_violation"
     elif not correct_tool:
         outcome = "wrong_tool"
-    elif not exact_arguments:
-        outcome = "wrong_arguments"
     elif external_oracle is not None and external_oracle.get("passed") is not True:
         outcome = "oracle_failed"
+    elif external_oracle is None and not exact_arguments:
+        # Legacy deterministic fixtures use exact arguments as their oracle.
+        # Broad quality suites execute arguments against a separate oracle, so
+        # equivalent arguments are valid task successes and exactness remains
+        # diagnostic only.
+        outcome = "wrong_arguments"
     elif finish_reason != "tool_calls":
         outcome = "finish_mismatch"
     else:
@@ -394,6 +398,11 @@ def _validate_final_ownership(value: Any) -> dict[str, int]:
         raise AgenticBenchmarkError(
             "final_ownership.cache_resident_bytes exceeds allowed_cache_bytes"
         )
+    for field in ("cache_resident_entries", "cache_resident_pages"):
+        normalized[field] = _nonnegative_int(
+            ownership.get(field, 0),
+            label=f"final_ownership.{field}",
+        )
     normalized["cache_resident_bytes"] = resident
     normalized["allowed_cache_bytes"] = allowed
     return normalized
@@ -422,6 +431,37 @@ def _validate_quality_records(
         raise AgenticBenchmarkError("quality configuration.tool_choice must be auto")
     if configuration.get("performance_claim", False) is not False:
         raise AgenticBenchmarkError("quality artifacts cannot make performance claims")
+    if "repetitions" in configuration:
+        _positive_int(configuration.get("repetitions"), label="configuration.repetitions")
+    if "max_tokens" in configuration:
+        _positive_int(configuration.get("max_tokens"), label="configuration.max_tokens")
+    capabilities = configuration.get("server_capabilities")
+    capabilities_hash = configuration.get("server_capabilities_sha256")
+    if (capabilities is None) != (capabilities_hash is None):
+        raise AgenticBenchmarkError(
+            "quality server capabilities and SHA-256 must be recorded together"
+        )
+    if capabilities is not None:
+        capabilities = _mapping(
+            capabilities,
+            label="configuration.server_capabilities",
+        )
+        expected_hash = _sha256(
+            capabilities_hash,
+            label="configuration.server_capabilities_sha256",
+        )
+        if _canonical_sha256(capabilities) != expected_hash:
+            raise AgenticBenchmarkError("quality server capabilities hash mismatch")
+    if "persistent_ownership_baseline" in configuration:
+        baseline = _mapping(
+            configuration.get("persistent_ownership_baseline"),
+            label="configuration.persistent_ownership_baseline",
+        )
+        for field in ("kv_refcounted_pages", "kv_pinned_pages"):
+            _nonnegative_int(
+                baseline.get(field),
+                label=f"configuration.persistent_ownership_baseline.{field}",
+            )
     require_complete = configuration.get("require_complete_workloads")
     if not isinstance(require_complete, bool):
         raise AgenticBenchmarkError("quality require_complete_workloads must be boolean")
@@ -662,9 +702,73 @@ def _external_oracle_counts(records: Sequence[Mapping[str, Any]]) -> dict[str, A
     }
 
 
+def _repeat_determinism(
+    records: Sequence[Mapping[str, Any]],
+    *,
+    expected_repetitions: int,
+) -> dict[str, Any] | None:
+    if expected_repetitions < 2:
+        return None
+    rows: dict[tuple[str, str, int], list[Mapping[str, Any]]] = {}
+    for record in records:
+        key = (
+            str(record["workload_id"]),
+            str(record["agent_id"]),
+            int(record["turn_index"]),
+        )
+        rows.setdefault(key, []).append(record)
+    mismatches: list[dict[str, Any]] = []
+    incomplete: list[dict[str, Any]] = []
+    for (workload_id, agent_id, turn_index), repeats in sorted(rows.items()):
+        if len(repeats) != expected_repetitions:
+            incomplete.append(
+                {
+                    "workload_id": workload_id,
+                    "agent_id": agent_id,
+                    "turn_index": turn_index,
+                    "observed_repetitions": len(repeats),
+                    "expected_repetitions": expected_repetitions,
+                }
+            )
+            continue
+        normalized_hashes: list[str] = []
+        for record in repeats:
+            quality = copy.deepcopy(dict(record["quality"]))
+            quality.pop("call_id", None)
+            normalized_hashes.append(
+                _canonical_sha256(
+                    {
+                        "prompt": record["prompt"],
+                        "output": record["output"],
+                        "quality": quality,
+                        "finish": record["finish"],
+                    }
+                )
+            )
+        if len(set(normalized_hashes)) != 1:
+            mismatches.append(
+                {
+                    "workload_id": workload_id,
+                    "agent_id": agent_id,
+                    "turn_index": turn_index,
+                    "normalized_sha256": normalized_hashes,
+                }
+            )
+    return {
+        "evaluated": True,
+        "expected_repetitions": expected_repetitions,
+        "task_rows": len(rows),
+        "passed": not mismatches and not incomplete,
+        "mismatches": mismatches,
+        "incomplete_rows": incomplete,
+    }
+
+
 def _quality_rollup(
     suite: AgenticWorkloadSuite,
     records: Sequence[Mapping[str, Any]],
+    *,
+    expected_repetitions: int = 1,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     attempts = len(records)
     generated_tokens = 0
@@ -699,6 +803,12 @@ def _quality_rollup(
         "generated_tokens": generated_tokens,
     }
     quality_rollup = _quality_counts(records)
+    determinism = _repeat_determinism(
+        records,
+        expected_repetitions=expected_repetitions,
+    )
+    if determinism is not None:
+        quality_rollup["determinism"] = determinism
     if has_external_oracle:
         coverage["families"] = sorted(family_records)
         quality_rollup["external_oracle"] = _external_oracle_counts(records)
@@ -759,7 +869,11 @@ def build_agentic_quality_artifact(
     """Validate natural quality records and build a non-performance artifact."""
 
     configuration, records, ownership = _validate_quality_records(suite, records_payload)
-    coverage, quality = _quality_rollup(suite, records)
+    coverage, quality = _quality_rollup(
+        suite,
+        records,
+        expected_repetitions=int(configuration.get("repetitions", 1)),
+    )
     artifact = {
         "kind": AGENTIC_QUALITY_ARTIFACT_KIND,
         "schema_version": AGENTIC_SCHEMA_VERSION,

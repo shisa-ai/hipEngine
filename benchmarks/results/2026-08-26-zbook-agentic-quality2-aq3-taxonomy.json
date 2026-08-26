@@ -1,0 +1,1693 @@
+{
+  "campaign": {
+    "baseline": "benchmarks/results/2026-08-26-zbook-agentic-quality2-aq2-baseline.json",
+    "name": "AGENTIC-QUALITY2",
+    "phase": "AQ3",
+    "task_id": 43
+  },
+  "candidate_class_nominations": [
+    {
+      "class": "model_tool_selection",
+      "implementation_admitted": false,
+      "task_blocks": 1
+    },
+    {
+      "class": "model_argument_grounding",
+      "implementation_admitted": false,
+      "task_blocks": 4
+    }
+  ],
+  "coverage": {
+    "canonical_qwen_tool_control_rows": 48,
+    "empty_public_content": 48,
+    "expected_repetitions": 2,
+    "external_oracle_evaluated": 48,
+    "independent_parser_accepts": 48,
+    "independent_public_projection_matches": 48,
+    "observations": 48,
+    "prompt_token_roundtrips": 48,
+    "raw_response_matches": 48,
+    "repeat_stable_task_blocks": 24,
+    "response_owned_id_matches": 48,
+    "schema_valid_calls": 48,
+    "task_blocks": 24,
+    "terminal_tool_call_finishes": 48,
+    "zero_repair_observations": 48
+  },
+  "date": "2026-08-26",
+  "decision": {
+    "implementation_selected": false,
+    "next": "AQ4 freezes development and heldout evaluation before candidate code",
+    "result": "all AQ2 answer failures are model-quality-owned; freeze expanded suite next"
+  },
+  "kind": "hipengine_agentic_quality_failure_taxonomy",
+  "performance_claim": false,
+  "repaired_pre_evidence_blockers": [
+    {
+      "directory": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-180246",
+      "owner": "runtime_implementation",
+      "reason": "pre-generation Qwen detokenize HTTP 500; no quality row",
+      "retained_in_quality_denominator": false
+    },
+    {
+      "directory": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r1-180806",
+      "owner": "runtime_implementation",
+      "reason": "require-cached AOTriton miss and old absolute-ownership timeout; warm outputs excluded",
+      "retained_in_quality_denominator": false
+    }
+  ],
+  "rollup": {
+    "earliest_bad_boundaries_task_blocks": {
+      "model_generated_arguments": 4,
+      "model_tool_selection": 1,
+      "none": 19
+    },
+    "owners_task_blocks": {
+      "model_quality": 5,
+      "none": 19
+    },
+    "primary_outcomes_observations": {
+      "passed": 38,
+      "wrong_arguments": 8,
+      "wrong_tool": 2
+    },
+    "primary_outcomes_task_blocks": {
+      "passed": 19,
+      "wrong_arguments": 4,
+      "wrong_tool": 1
+    },
+    "runtime_failure_task_blocks": 0,
+    "unresolved_task_blocks": 0
+  },
+  "schema_version": 1,
+  "source": {
+    "baseline_source_commit": "fef66d0fdfa705fb58994ecfd668417e873f9a8a",
+    "checkpoint_path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/v2-checkpoint.json",
+    "checkpoint_sha256": "056dbda2d6f6d70c6d80199e0a235214eedd4c54c991363f226da44e78ee08d7",
+    "classifier": "agentic_quality_taxonomy_v1",
+    "classifier_base_commit": "80224563f3bd6d12bb55836253cd93ae60d5b979",
+    "classifier_sha256": "dcd0a6a64cff75535d1c2b873f71af24367d85ae1c92e7d7a87172947ea2a3be",
+    "collector_sha256": "03f2d03bf6041c76e0016eaf85c6fc3998b33f7b058cc52c488ba1cd5db7c4bd",
+    "model_path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "model_sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "records_path": "/tmp/hipengine-agentic-quality2/20260825-aq2-v2-qwen36-r2-181806/v2-records.json",
+    "records_sha256": "613e9b26ac37aaff6423b2ce4f723e5bd1b8122f402eb00d29e75294dcb3f84b",
+    "template_tokenizer_controls": {
+      "chat_template_json_sha256": "c016c3260e41e4909b42f77a01de1013b1689f5ffcab35e52a81060c512da289",
+      "tokenizer_vocab_json_sha256": "5ee0f927bcaa4b9fe85c244776ae9487468e427f83e053fc81f2a186f14936a3",
+      "tool_call_end_token_id": 248059,
+      "tool_call_start_token_id": 248058
+    },
+    "workloads_path": "benchmarks/prompts/agentic-quality-v2.json",
+    "workloads_sha256": "74903e7225deebcab4427f08eb9a5d4a64015d86c24d134ecbcbde78abb50652"
+  },
+  "status": "complete",
+  "task_blocks": [
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "key": "postgres_cutover"
+        },
+        "tool": "lookup"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "8c213282f3f0e824d125ddc85ea26f304f28d3d43787cbf810d826f14b9a3614",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-general_en_operations-agent-0-turn-0",
+        "run-1-general_en_operations-agent-0-turn-0"
+      ],
+      "observed": {
+        "arguments": {
+          "key": "postgres_cutover"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 16
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "4ae646988e6ae047503f1fba32b01ba3043c32ad5c0a58dc81fd8464fc0e9064",
+          "kind": "lookup",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "4ae646988e6ae047503f1fba32b01ba3043c32ad5c0a58dc81fd8464fc0e9064",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "fcebf6d07a6ecd6440f4763da64a9e81aa92e87ca4263739b496295819145101",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "lookup"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 0,
+      "workload_id": "general_en_operations"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "expression": "37 * 19"
+        },
+        "tool": "calculate"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "15e7327dd14aa10dfefb144d335fb90915cd4ce5f6c6e0ff30fb40e0aac23664",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-general_en_operations-agent-0-turn-1",
+        "run-1-general_en_operations-agent-0-turn-1"
+      ],
+      "observed": {
+        "arguments": {
+          "expression": "37 * 19"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 18
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "83c201d3544f4b86baafb85ef883a12505891b6ef8ca9a5bd7732e207bdbe95b",
+          "kind": "calculate",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "83c201d3544f4b86baafb85ef883a12505891b6ef8ca9a5bd7732e207bdbe95b",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "463d8702b7dd3a079124030400732201577d7730720f55f4d0aff24388d3e74f",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "calculate"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 1,
+      "workload_id": "general_en_operations"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "key": "gpu_bandwidth"
+        },
+        "tool": "lookup"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "1670ee2e10b8ccffb6862cc8f921ec21e13b6a2e94fbb62e86fe3c31cf533c97",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-general_en_operations-agent-0-turn-2",
+        "run-1-general_en_operations-agent-0-turn-2"
+      ],
+      "observed": {
+        "arguments": {
+          "key": "gpu_bandwidth"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 15
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "28555d27b3c623bb8a0e10a535420dd6d7eb2c70076eecec89412000195d6be3",
+          "kind": "lookup",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "28555d27b3c623bb8a0e10a535420dd6d7eb2c70076eecec89412000195d6be3",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "debf647bd70e45e329036d350f39bb1ce3c66fb8d78afc86f1da86a6084ef100",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "lookup"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 2,
+      "workload_id": "general_en_operations"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "expression": "(144 + 96) / 8"
+        },
+        "tool": "calculate"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "4ac6047885cf38fa7e1951421a6360f5370f11c99a837d63b1e3ae77d501ce73",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-general_en_operations-agent-0-turn-3",
+        "run-1-general_en_operations-agent-0-turn-3"
+      ],
+      "observed": {
+        "arguments": {
+          "expression": "(144 + 96) / 8"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 24
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "e4317a532a4165cdbd619de4f288a4e463f224181bf72fd8906b940632307871",
+          "kind": "calculate",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "e4317a532a4165cdbd619de4f288a4e463f224181bf72fd8906b940632307871",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "3a5653f45db701e97db2d7adfa5598538c121144fce9b702b3cb92ddebd19198",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "calculate"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 3,
+      "workload_id": "general_en_operations"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "mode": "summary",
+          "path": "docs/release.md"
+        },
+        "tool": "read"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "7841eb3d45df2affcd49f9546bd0a9ad37c3dc4153c8c7525ff63a1c6b244013",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-general_en_release-agent-0-turn-0",
+        "run-1-general_en_release-agent-0-turn-0"
+      ],
+      "observed": {
+        "arguments": {
+          "mode": "summary",
+          "path": "docs/release.md"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 19
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "4a107c2378b8cbc369494aaf7b73902a7d9be16581356cd75631af93f1750265",
+          "kind": "read",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "4a107c2378b8cbc369494aaf7b73902a7d9be16581356cd75631af93f1750265",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "4905651dca16d7d5d76f423c23bc2191376edf4edd8989dbea042e7a47ee4b96",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "read"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 0,
+      "workload_id": "general_en_release"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [
+        "external_oracle_failure"
+      ],
+      "earliest_bad_boundary": "model_generated_arguments",
+      "expected": {
+        "arguments": {
+          "path": "docs",
+          "pattern": "backward compatibility"
+        },
+        "tool": "grep"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "280acfadad0263394ba868b2498aed80958018e32c4c331573b0122ffe3d4d6e",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-general_en_release-agent-0-turn-1",
+        "run-1-general_en_release-agent-0-turn-1"
+      ],
+      "observed": {
+        "arguments": {
+          "path": "docs/release.md",
+          "pattern": "backward compatibility"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 20
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "9ff4381f979592e7e085deb831f125a7cef749188bc1191c562325e382efe9f6",
+          "kind": "grep",
+          "passed": false,
+          "patch_applied": null,
+          "result_sha256": "63fa278fb103133f8d4ba1283abc53f5c0b0a5caaba5d0532ea66c2cc3ddb546",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "111fc70d07199eaf0d2273fa9a0d625e0d0d330c157e1de68c62803665c183f4",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "grep"
+      },
+      "owner": "model_quality",
+      "primary_outcome": "wrong_arguments",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 1,
+      "workload_id": "general_en_release"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "key": "release_validation"
+        },
+        "tool": "lookup"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "bfc0818bc47eff2d3d2abd166e885f3a23d2c7b02ae4d56b51a3c2c73af6d354",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-general_en_release-agent-0-turn-2",
+        "run-1-general_en_release-agent-0-turn-2"
+      ],
+      "observed": {
+        "arguments": {
+          "key": "release_validation"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 14
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "b7220d8e69bd3bdf44d103f9d580b63bf470711b9e4617f6dfc3c3744e751b45",
+          "kind": "lookup",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "b7220d8e69bd3bdf44d103f9d580b63bf470711b9e4617f6dfc3c3744e751b45",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "b9d593c231074cf48593b216275741978c30bb973f57f5cd5adb2aca14f82748",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "lookup"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 2,
+      "workload_id": "general_en_release"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "suite": "full"
+        },
+        "tool": "run_tests"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "9a058e0a77f7a2620a383a67c4dd7e1965e44a49caa4ebe6e281c2132523a074",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-general_en_release-agent-0-turn-3",
+        "run-1-general_en_release-agent-0-turn-3"
+      ],
+      "observed": {
+        "arguments": {
+          "suite": "full"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 14
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "7848dd3d59453257f50fca80a1d083b3a3a92919cd269170f32d2da72a7ee402",
+          "kind": "test",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "7848dd3d59453257f50fca80a1d083b3a3a92919cd269170f32d2da72a7ee402",
+          "tests_passed": true
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "9c04fec2e1621b971cda856b2bd440cf19ae1827b663d97e8ee64c32c865b7b6",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "run_tests"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 3,
+      "workload_id": "general_en_release"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [
+        "external_oracle_failure"
+      ],
+      "earliest_bad_boundary": "model_generated_arguments",
+      "expected": {
+        "arguments": {
+          "key": "release_check_ja"
+        },
+        "tool": "lookup"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "bfc0818bc47eff2d3d2abd166e885f3a23d2c7b02ae4d56b51a3c2c73af6d354",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-general_ja_operations-agent-0-turn-0",
+        "run-1-general_ja_operations-agent-0-turn-0"
+      ],
+      "observed": {
+        "arguments": {
+          "key": "release_validation"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 14
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "72e8e0e42ca78fb1052789ecf754920804af823d57e8581d6e667b2d1280d06e",
+          "kind": "lookup",
+          "passed": false,
+          "patch_applied": null,
+          "result_sha256": "b7220d8e69bd3bdf44d103f9d580b63bf470711b9e4617f6dfc3c3744e751b45",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "b9d593c231074cf48593b216275741978c30bb973f57f5cd5adb2aca14f82748",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "lookup"
+      },
+      "owner": "model_quality",
+      "primary_outcome": "wrong_arguments",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 0,
+      "workload_id": "general_ja_operations"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "expression": "125 * 8"
+        },
+        "tool": "calculate"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "b1d0c075959a828d8de6778b4049d49d7cfda998dd99c96026887232681210bb",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-general_ja_operations-agent-0-turn-1",
+        "run-1-general_ja_operations-agent-0-turn-1"
+      ],
+      "observed": {
+        "arguments": {
+          "expression": "125 * 8"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 18
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "a97b993a82f175fa601ead086300fa767da22981afa9279c3858933e00ece12b",
+          "kind": "calculate",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "a97b993a82f175fa601ead086300fa767da22981afa9279c3858933e00ece12b",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "d148f4f6e1d94a23567ffd5afb4ecc406782d2525a1a5a174e58297b9a7ae360",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "calculate"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 1,
+      "workload_id": "general_ja_operations"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "mode": "summary",
+          "path": "docs/release_ja.md"
+        },
+        "tool": "read"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "35e754907a6d5a6de86761e4c438b4a1bd5715ed0ae2ca8643a62220fad3fb9b",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-general_ja_operations-agent-0-turn-2",
+        "run-1-general_ja_operations-agent-0-turn-2"
+      ],
+      "observed": {
+        "arguments": {
+          "mode": "summary",
+          "path": "docs/release_ja.md"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 21
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "aafa5c61593fc947f263565e01608993a3588632a50c9ca8f62ec71494087800",
+          "kind": "read",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "aafa5c61593fc947f263565e01608993a3588632a50c9ca8f62ec71494087800",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "aa4f8b8320fa63d3bc8d46b55fd6af59eadc1c69a251b7b497ed7eb7abebc06f",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "read"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 2,
+      "workload_id": "general_ja_operations"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "path": "docs",
+          "pattern": "後方互換性"
+        },
+        "tool": "grep"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "7a3d20d5d3be215952c60713019582417547eb7a6a40f512837594240e7d9e77",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-general_ja_operations-agent-0-turn-3",
+        "run-1-general_ja_operations-agent-0-turn-3"
+      ],
+      "observed": {
+        "arguments": {
+          "path": "docs",
+          "pattern": "後方互換性"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 21
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "d571b517546d12e2edf63060d53fcb17313bf8608fc7b427584226b34f335374",
+          "kind": "grep",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "d571b517546d12e2edf63060d53fcb17313bf8608fc7b427584226b34f335374",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "3306a11beef0ed33f8dfaf741920ca7ed6b293120e88c4d25668080a05c5cf15",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "grep"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 3,
+      "workload_id": "general_ja_operations"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [
+        "external_oracle_failure"
+      ],
+      "earliest_bad_boundary": "model_generated_arguments",
+      "expected": {
+        "arguments": {
+          "path": "docs/release_ja.md",
+          "pattern": "API behavior may change"
+        },
+        "tool": "grep"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "f1d98d554a44248bf9289262babb4da419478943680b554f73f92df164ffdada",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-mixed_ja_en_release-agent-0-turn-0",
+        "run-1-mixed_ja_en_release-agent-0-turn-0"
+      ],
+      "observed": {
+        "arguments": {
+          "path": "docs/release.md",
+          "pattern": "API behavior may change"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 22
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "9ce183aa83af372e1e219ef5e1ce60b36ffc64a43fe60acdb102f39c29141e7d",
+          "kind": "grep",
+          "passed": false,
+          "patch_applied": null,
+          "result_sha256": "6d89109e1b41e62ea4c7a4108738ab8093b5f1224eabf364fff40496b0511db1",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "9741629d2fa1181c95e8c8b1247a62e2ef53a1b02a56b244a25fc091762df25a",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "grep"
+      },
+      "owner": "model_quality",
+      "primary_outcome": "wrong_arguments",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 0,
+      "workload_id": "mixed_ja_en_release"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "patch_id": "release_backward_compatible"
+        },
+        "tool": "apply_patch"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "59a7ff61da8f8d0a596cabe0af948f1b3cdfe88bd9ca8802a21817acd1386dff",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-mixed_ja_en_release-agent-0-turn-1",
+        "run-1-mixed_ja_en_release-agent-0-turn-1"
+      ],
+      "observed": {
+        "arguments": {
+          "patch_id": "release_backward_compatible"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 18
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "e274bcf2501b4e11014beb8ee1fb8b72501140eb67baa4d1ec4f5bf33abf5a53",
+          "kind": "patch",
+          "passed": true,
+          "patch_applied": true,
+          "result_sha256": "e274bcf2501b4e11014beb8ee1fb8b72501140eb67baa4d1ec4f5bf33abf5a53",
+          "tests_passed": true
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "2f9c7a9be6d0e40edea7a1a5bf7859e6c5d7eb65fe55c4796805d5959e8c9ea3",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "apply_patch"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 1,
+      "workload_id": "mixed_ja_en_release"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "suite": "release"
+        },
+        "tool": "run_tests"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "5ce2283000311fd54538623124518b174e80335de0b0a8e61fadecd0f3a4b312",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-mixed_ja_en_release-agent-0-turn-2",
+        "run-1-mixed_ja_en_release-agent-0-turn-2"
+      ],
+      "observed": {
+        "arguments": {
+          "suite": "release"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 14
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "23455ff7c81756495d0bfb3f25ae52b3b34caf73e747b4b47e054a87e70f8f14",
+          "kind": "test",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "23455ff7c81756495d0bfb3f25ae52b3b34caf73e747b4b47e054a87e70f8f14",
+          "tests_passed": true
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "2aeda47c79e6772c5635ce7c4d00c311bf661a947c2d0c8047e10e5444c845f8",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "run_tests"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 2,
+      "workload_id": "mixed_ja_en_release"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "expression": "48 * 3"
+        },
+        "tool": "calculate"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "13d6eaa7c01372dfc5b8fd4a327d872233f6d9d1f931fe7d60c20b93df81d987",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-mixed_ja_en_release-agent-0-turn-3",
+        "run-1-mixed_ja_en_release-agent-0-turn-3"
+      ],
+      "observed": {
+        "arguments": {
+          "expression": "48 * 3"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 17
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "be78dcf7bce27b4b83286efc5abb78f52e38e93052fb964bf01edaf7d9ed4448",
+          "kind": "calculate",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "be78dcf7bce27b4b83286efc5abb78f52e38e93052fb964bf01edaf7d9ed4448",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "79cd76e2c28746ad165f79c7ebd3a7373818bd54362cabf7cda7c2489f288faa",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "calculate"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 3,
+      "workload_id": "mixed_ja_en_release"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "model_tool_selection",
+      "expected": {
+        "arguments": {
+          "path": "src/cache.py",
+          "pattern": "refcount <= 1"
+        },
+        "tool": "grep"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "ae3ad9bc4987bd1da7fd63bea2f70fe1d8f4d9bd6f14120022857dbcf90ada18",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-repository_cache_en-agent-0-turn-0",
+        "run-1-repository_cache_en-agent-0-turn-0"
+      ],
+      "observed": {
+        "arguments": {
+          "mode": "raw",
+          "path": "src/cache.py"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 19
+        },
+        "external_oracle": {
+          "error": "ValueError: selected tool 'read' is not 'grep'",
+          "evaluated": true,
+          "expected_result_sha256": "a7a43312ff124f2af7f1e8c5f999d0025ae6fa6dc3ab79ef1941ab3d5926fa18",
+          "kind": "grep",
+          "passed": false,
+          "patch_applied": null,
+          "result_sha256": null,
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "79fdc1f60d59d31bd22a78b7a782d4bc8f62c52a9903b06952141ba648940a6c",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "read"
+      },
+      "owner": "model_quality",
+      "primary_outcome": "wrong_tool",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 0,
+      "workload_id": "repository_cache_en"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "mode": "summary",
+          "path": "src/cache.py"
+        },
+        "tool": "read"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "0e3e946156a062820966d6f69bfca1757d4449051c57919595505f322b0bf550",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-repository_cache_en-agent-0-turn-1",
+        "run-1-repository_cache_en-agent-0-turn-1"
+      ],
+      "observed": {
+        "arguments": {
+          "mode": "summary",
+          "path": "src/cache.py"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 19
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "3175791c9223d7a630a0a87d3b67f6fc039c77d2cfce73a9a10d3102491dadb9",
+          "kind": "read",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "3175791c9223d7a630a0a87d3b67f6fc039c77d2cfce73a9a10d3102491dadb9",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "583a04d8f67335b02be07dba76bb3bf75b459ef69994136d94d64a5bd047b8a1",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "read"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 1,
+      "workload_id": "repository_cache_en"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "patch_id": "cache_zero_ref_only"
+        },
+        "tool": "apply_patch"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "8876de2fdf87b37f348bcf36d4c9bda371c193548dace38265c2885b2d3cc7e7",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-repository_cache_en-agent-0-turn-2",
+        "run-1-repository_cache_en-agent-0-turn-2"
+      ],
+      "observed": {
+        "arguments": {
+          "patch_id": "cache_zero_ref_only"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 18
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "fc6677c90f54c28d2aaea558afbc027a61206ac093c2fd9a03d499514728ae5c",
+          "kind": "patch",
+          "passed": true,
+          "patch_applied": true,
+          "result_sha256": "fc6677c90f54c28d2aaea558afbc027a61206ac093c2fd9a03d499514728ae5c",
+          "tests_passed": true
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "c68d89a11fba8a861c1742764d721a4a389486eede64a9a94b5d57973576a756",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "apply_patch"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 2,
+      "workload_id": "repository_cache_en"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "suite": "cache"
+        },
+        "tool": "run_tests"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "a08c43ba7414261e8b35d51a8fedebe35150b00be7355b96b0b1f96b7c33f838",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-repository_cache_en-agent-0-turn-3",
+        "run-1-repository_cache_en-agent-0-turn-3"
+      ],
+      "observed": {
+        "arguments": {
+          "suite": "cache"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 14
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "42f3b0cffcbfaa85a949a3c8d4c40863d0daf58894985ac21653d1f869269b4b",
+          "kind": "test",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "42f3b0cffcbfaa85a949a3c8d4c40863d0daf58894985ac21653d1f869269b4b",
+          "tests_passed": true
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "4ec975b3745052f6438f0e276c445b777bd230ef1f569ea62ec98e0ee5fb924e",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "run_tests"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 3,
+      "workload_id": "repository_cache_en"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [
+        "external_oracle_failure"
+      ],
+      "earliest_bad_boundary": "model_generated_arguments",
+      "expected": {
+        "arguments": {
+          "path": "src/scheduler.py",
+          "pattern": "ValueError"
+        },
+        "tool": "grep"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "e3da47a7a6740c71d8333c587cb8b871cb53ed89b3d5e92b588c69061a00f1d1",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-repository_scheduler_en-agent-0-turn-0",
+        "run-1-repository_scheduler_en-agent-0-turn-0"
+      ],
+      "observed": {
+        "arguments": {
+          "path": "src/scheduler.py",
+          "pattern": "full pending queue"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 22
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "ca414da7674a192c7f4b719f8d8e8fd43c1c324db79fc52387ecca5b659f39f2",
+          "kind": "grep",
+          "passed": false,
+          "patch_applied": null,
+          "result_sha256": "fc68739027b0c8aefc68fe3c1fd28348eecbbf8540f28bd80352d11548904911",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "36e58c67aaea762ed7e4cb2d34994e4c08cf21006e5a8c981c87095caa9a7fcb",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "grep"
+      },
+      "owner": "model_quality",
+      "primary_outcome": "wrong_arguments",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 0,
+      "workload_id": "repository_scheduler_en"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "mode": "summary",
+          "path": "src/scheduler.py"
+        },
+        "tool": "read"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "ecdf37d4eb699c2cab4eae4d37275af8b1d8f99397922863b46d6f310734c83b",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-repository_scheduler_en-agent-0-turn-1",
+        "run-1-repository_scheduler_en-agent-0-turn-1"
+      ],
+      "observed": {
+        "arguments": {
+          "mode": "summary",
+          "path": "src/scheduler.py"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 20
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "e5e50b0eb9771ddbd86d82727888718794fa1a9bad8b0b6dcfe9e33a527bfbea",
+          "kind": "read",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "e5e50b0eb9771ddbd86d82727888718794fa1a9bad8b0b6dcfe9e33a527bfbea",
+          "tests_passed": null
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "6f5f043616f8af48bd55eca99fa16035bf29ad996464d4daacc179651a138c35",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "read"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 1,
+      "workload_id": "repository_scheduler_en"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "patch_id": "scheduler_engine_busy"
+        },
+        "tool": "apply_patch"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "f1a4903124ccad02da920d5140af4c84b1c12b738db8471e83562bd83e283860",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-repository_scheduler_en-agent-0-turn-2",
+        "run-1-repository_scheduler_en-agent-0-turn-2"
+      ],
+      "observed": {
+        "arguments": {
+          "patch_id": "scheduler_engine_busy"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 17
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "7afa281c9233699b6411e60bd2c89bea202495eb88761723980c0952f92bd17d",
+          "kind": "patch",
+          "passed": true,
+          "patch_applied": true,
+          "result_sha256": "7afa281c9233699b6411e60bd2c89bea202495eb88761723980c0952f92bd17d",
+          "tests_passed": true
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "d90488d55afef98c2d64e588f9dad4bfb98af82ee278bf029ef29381ac2efc12",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "apply_patch"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 2,
+      "workload_id": "repository_scheduler_en"
+    },
+    {
+      "agent_id": "agent-0",
+      "contributing_causes": [],
+      "earliest_bad_boundary": "none",
+      "expected": {
+        "arguments": {
+          "suite": "scheduler"
+        },
+        "tool": "run_tests"
+      },
+      "independent_parser": {
+        "accepted": true,
+        "error": null,
+        "projection_matches_public": true,
+        "raw_control_token_ids": {
+          "first": 248058,
+          "last": 248059
+        },
+        "raw_text_sha256": "c6f1ec81e51d7052aaeda3bcccdac73792c2286eb66ff8b6cb42ecf80f8a0f51",
+        "tool_call_count": 1
+      },
+      "observation_request_ids": [
+        "run-0-repository_scheduler_en-agent-0-turn-3",
+        "run-1-repository_scheduler_en-agent-0-turn-3"
+      ],
+      "observed": {
+        "arguments": {
+          "suite": "scheduler"
+        },
+        "backend_finish_details": {
+          "cache_action": "append_none",
+          "phase": "tool_call",
+          "reason": "tool_calls",
+          "sampler_mode": "processed_argmax",
+          "stop_sequence": [
+            248059
+          ],
+          "tool_call_tokens": 14
+        },
+        "external_oracle": {
+          "error": null,
+          "evaluated": true,
+          "expected_result_sha256": "aeabcdb85b804c447bbc66095e0c47f5743fe45c11f61dcaf35e8aed2f89aea4",
+          "kind": "test",
+          "passed": true,
+          "patch_applied": null,
+          "result_sha256": "aeabcdb85b804c447bbc66095e0c47f5743fe45c11f61dcaf35e8aed2f89aea4",
+          "tests_passed": true
+        },
+        "finish_detail_reason": "tool_calls",
+        "finish_reason": "tool_calls",
+        "generated_token_ids_sha256": "a0a790b2e9d3ef82a6a85fda357e7f067b239ca5b6af948e1d719ffac294dde9",
+        "public_content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "repair_count": 0,
+        "schema_valid": true,
+        "tool": "run_tests"
+      },
+      "owner": "none",
+      "primary_outcome": "passed",
+      "prompt_token_roundtrip": true,
+      "repeat_stable": true,
+      "turn_index": 3,
+      "workload_id": "repository_scheduler_en"
+    }
+  ],
+  "validation": {
+    "all_independent_public_projections_match": true,
+    "all_prompt_token_roundtrips": true,
+    "all_qwen_tool_controls_canonical": true,
+    "all_raw_envelopes_independently_parsed": true,
+    "all_repeats_stable": true,
+    "final_request_ownership": {
+      "active_requests": 0,
+      "allowed_cache_bytes": 0,
+      "cache_resident_bytes": 0,
+      "graph_owners": 0,
+      "kv_pinned_pages": 0,
+      "kv_refcounted_pages": 0,
+      "model_active_requests": 0,
+      "pending_requests": 0,
+      "session_count": 0,
+      "stream_producers": 0,
+      "workspace_owners": 0
+    },
+    "one_to_one_raw_normalized_join": true,
+    "runtime_failure_task_blocks": 0,
+    "stateless_session_commit_scope": "none",
+    "unresolved_task_blocks": 0
+  }
+}

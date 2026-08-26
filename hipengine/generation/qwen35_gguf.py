@@ -1561,6 +1561,17 @@ class Qwen35GGUFBringupGenerator:
     def tokenize(self, text: str) -> tuple[int, ...]:
         return tuple(int(token) for token in self.tokenizer.encode(str(text)))
 
+    def detokenize(
+        self,
+        token_ids: Sequence[int],
+        *,
+        skip_special: bool = False,
+    ) -> str:
+        return self.tokenizer.decode(
+            tuple(int(token) for token in token_ids),
+            skip_special=bool(skip_special),
+        )
+
     def count_tokens(self, text: str) -> int:
         return len(self.tokenize(text))
 

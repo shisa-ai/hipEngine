@@ -1,6 +1,12 @@
 # Agentic Inference Roadmap
 
-Last updated: 2026-07-22
+Last updated: 2026-08-26
+
+The quality-only ZBook [`AGENTIC-QUALITY2`](AGENTIC-QUALITY2.md) campaign is
+complete. Its frozen 34-task external/sandbox-oracle suite records Qwen3.6,
+Qwen3.8, and Ornith product-quality rows, independently finds no scored runtime
+boundary failure, and retains `no_implementation`; the serving/API contract
+below is unchanged.
 
 `AGENTIC.md` is the implementation handoff for making hipEngine useful as a
 local **agent runtime**. The scope is not broad project management; it is the

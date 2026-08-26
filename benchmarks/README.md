@@ -101,21 +101,24 @@ The exact `Q4_K_M` W8192 DMS sidecar passes 32K/128K at 100% top-1, saves
 3.750 GiB live K/V at 128K, and matches dense c1 decode. It stays default-off
 pending serving gates. [`DMS status`](../docs/DMS.md).
 
-SPECDEC2-PERF now retains its P7 conditional provider repair. Strict C1/K2
-remains **15.775 tok/s vs 11.026 true AR (1.431x)** across the full suite.
-Physical C2/C4 is exact, zero-D2H/allocation/final-ownership clean, and keeps the
-P6 Q4 route. P7 reduces mixed K2 repair **127.743→30.518 ms (4.186x) /
-138.779→34.292 ms (4.047x)** and improves full-suite throughput
-**5.718→5.796 (+1.37%) / 9.331→9.445 tok/s (+1.22%)**, with every physical
-category positive. Low **18.43%** acceptance still leaves it below
-**15.752/29.118 true-AR tok/s**; automatic/product stays K0.
-[`P7 evidence`](results/2026-08-26-gfx1151-specdec2-perf-p7-provider-repair-retained.json).
-P8 now retains the non-fallback production FP16 compatibility profile. The full
-10-prompt/three-run D25 K2 packet is exact in all 90 cells: C1 is **15.204 vs
-10.807 tok/s (1.407x)**, while C2/C4 remain blocked at **5.810 vs 15.213
-(0.382x) / 9.469 vs 27.598 tok/s (0.343x)**. Lifecycle, pressure/memory,
-failure recovery, prefix/cancel, and the 110-request soak pass; automatic stays
-K0 until P9 rebuilds K1-K3. [`P8 evidence`](results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-retained.json).
+### Agentic quality (quality-only; no speed claim)
+
+| Model | Overall | Development | Sealed heldout | Code / instruction / repository / tool | Valid calls |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Qwen3.6-35B-A3B `UD-Q4_K_M` (reference) | 44/68 (64.71%) | 20/34 | 24/34 | 14/16 · 4/16 · 10/16 · 16/20 | 56/64 |
+| Qwen3.8-27B `Q4_K_M` | **50/68 (73.53%)** | **22/34** | **28/34** | 14/16 · **12/16** · 10/16 · 14/20 | **64/64** |
+| Ornith-1.5-35B-A3B `Q4_K_M` | 42/68 (61.76%) | 16/34 | 26/34 | 14/16 · 4/16 · 10/16 · 14/20 | 60/64 |
+
+All 34 repeat pairs, 10 controls, and ownership gates pass; these are same-host
+model-quality rows. The campaign retains **no implementation** because all seven
+development failures are model-owned. [`Final evidence`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json)
+
+On gfx1151, SPECDEC2-PERF P7 cuts C2/C4 K2 repair **127.743→30.518 ms /
+138.779→34.292 ms** and raises throughput **5.718→5.796 / 9.331→9.445
+tok/s**, but 18.43% acceptance still loses to AR. P8 retains production FP16:
+90/90 D25 K2 cells are exact; C1 is **15.204 vs 10.807 tok/s (1.407x)** while
+C2/C4 are **0.382x/0.343x** AR. Lifecycle and 110-request soak pass; automatic
+stays K0 pending P9. [`P7`](results/2026-08-26-gfx1151-specdec2-perf-p7-provider-repair-retained.json) · [`P8`](results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-retained.json)
 
 gfx1100 SPECDEC2-PERF now retains corrected C1 device chains. Dense
 Qwen3.6-27B GGUF K1/K2/K3 is exact at **1.272x/1.407x/1.439x true AR**, but
@@ -128,6 +131,12 @@ to **0.979x AR** with 372 device handoffs and bounded post-target rows. Strict
 D8 allocation falls **1,110 malloc/free pairs → 0** and P4 cycle marker wall is
 **83.469 ms**. Both automatic policies remain K0; physical C2/C4 is not exposed.
 [`gfx1100 closure`](results/2026-08-25-w7900-specdec2-perf-campaign-closure.json).
+
+P512/d128 recovery keeps C1 exact at **77.176 vs old 72.169 tok/s**.
+Native C8 raw wall is **161.882 vs 158.542**, but only **16/24** rows
+match C1, so that rate is diagnostic. The p128/d8 scoreboard is unchanged;
+D128 C8 needs a production/batch-invariant gate.
+[`Evidence`](results/2026-08-26-w7900-mtp-concurrency2-recovery-profile.json).
 
 ## Where detailed evidence lives
 
@@ -254,18 +263,9 @@ Evidence: [`PARO boundary`](results/2026-08-16-qwen36-35b-gfx1151-rocmfpx-opp3-s
 [`package decision`](results/2026-08-16-zbook-qwen36-production-profile-cn-blocked.json), and the
 [`ROCmFPX transfer report`](quant/ROCMFPX-TRANSFER.md).
 
-Current Qwen3.5-0.8B gfx1151 status remains **Vulkan parity blocked**, while
-the exact D08-X package is retained. Its clean three-way exact-core pp512 is
-hipEngine / llama HIP / Vulkan **4896/4848/5510 Q4** and **4997/4640/5704 Q8
-tok/s**. Retained operation-complete units include Q4 pack8 gate+up+SiLU,
-dense-BF16 down+residual, and Q8T16 alpha/beta dual WMMA; the final natural and
-category gate is **1794/1800 top-1, max KL 0.005930**, with all **72/72** graph
-trajectories exact. Rejected projection, GDN-broadcast, and pack8-residual
-candidates remain in artifacts and the changelog. Evidence:
-[`three-way snapshot`](results/2026-08-15-gfx1151-qwen35-08b-post-x3-current-exact-three-way.json),
-[`alpha/beta WMMA`](results/2026-08-15-gfx1151-qwen35-08b-q8t16-alpha-beta-dual-wmma-prefill.json),
-[`cumulative gate`](results/2026-08-15-gfx1151-qwen35-08b-cumulative-semantic.json), and the
-[`campaign`](../docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md).
+Current Qwen3.5-0.8B gfx1151 remains **Vulkan parity blocked** while the exact
+D08-X package is retained: the final gate is **1794/1800 top-1, max KL
+0.005930**, with **72/72** graph trajectories exact. [`Campaign`](../docs/QWEN35-08B-GFX1151-VULKAN-PARITY.md).
 
 ## Current single-request scoreboards
 

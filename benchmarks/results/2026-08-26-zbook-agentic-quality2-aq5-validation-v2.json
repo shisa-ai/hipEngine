@@ -1,0 +1,588 @@
+{
+  "aggregation": {
+    "blocked_unscorable_excluded_with_explicit_denominator": true,
+    "deterministic_order_independent": true,
+    "heldout_details_sealed_by_default": true,
+    "large_raw_compact_separation": true
+  },
+  "coverage": {
+    "development": 17,
+    "fail_safe_controls_passed": 10,
+    "fail_safe_controls_total": 10,
+    "heldout": 17,
+    "reference_cases_passed": 34,
+    "reference_cases_total": 34,
+    "sandbox_probes_passed": 12,
+    "sandbox_probes_total": 12,
+    "workloads": 34
+  },
+  "date": "2026-08-26",
+  "decision": {
+    "candidate_implementation_admitted": false,
+    "generated_code_policy": "execute only through qualified sandbox",
+    "qualified_for_live_baseline": true
+  },
+  "fail_safe_rollup": {
+    "controls": [
+      {
+        "class": "malformed",
+        "control_id": "aq2_dev_control_malformed_json",
+        "passed": true,
+        "split": "development"
+      },
+      {
+        "class": "truncated",
+        "control_id": "aq2_dev_control_truncated",
+        "passed": true,
+        "split": "development"
+      },
+      {
+        "class": "duplicate",
+        "control_id": "aq2_dev_control_duplicate",
+        "passed": true,
+        "split": "development"
+      },
+      {
+        "class": "undeclared",
+        "control_id": "aq2_dev_control_undeclared",
+        "passed": true,
+        "split": "development"
+      },
+      {
+        "class": "schema_invalid",
+        "control_id": "aq2_dev_control_schema_extra",
+        "passed": true,
+        "split": "development"
+      },
+      {
+        "class": "content_leak",
+        "control_id": "aq2_held_control_content_leak",
+        "passed": true,
+        "split": "heldout"
+      },
+      {
+        "class": "reasoning_leak",
+        "control_id": "aq2_held_control_reasoning_leak",
+        "passed": true,
+        "split": "heldout"
+      },
+      {
+        "class": "required_missing",
+        "control_id": "aq2_held_control_required_missing",
+        "passed": true,
+        "split": "heldout"
+      },
+      {
+        "class": "ambiguous",
+        "control_id": "aq2_held_control_ambiguous_missing",
+        "passed": true,
+        "split": "heldout"
+      },
+      {
+        "class": "tool_none_violation",
+        "control_id": "aq2_held_control_none_violation",
+        "passed": true,
+        "split": "heldout"
+      }
+    ],
+    "passed": true
+  },
+  "kind": "hipengine_agentic_quality2_validation",
+  "performance_claim": false,
+  "reference_rollup": {
+    "by_kind": {
+      "code": 8,
+      "instruction": 8,
+      "lookup": 2,
+      "multiple": 2,
+      "no_tool": 2,
+      "patch": 2,
+      "read": 3,
+      "search": 3,
+      "test": 2,
+      "transform": 2
+    },
+    "case_result_sha256": {
+      "aq2_dev_code_clamp_en": "331e8f1016cea71607f7d36ce93ca68a3d9b6b64e8e15a55fd2d2f92dc8eb248",
+      "aq2_dev_code_group_en": "ae831f61cfac290c4042d30fde4401fa7293a09fd7ef01419dcc6d81fe4337bb",
+      "aq2_dev_code_label_en": "d378541a0c3a3061482c3ec7e9f667d8e3addcdbe37503b24e9da4a0f1258dab",
+      "aq2_dev_code_rises_en": "7a1d23031d3051ba23c519727646084e03f25d3647aed10a2c6d727ff6272eac",
+      "aq2_dev_instruction_bullets_en": "2790d0c0d98945be414df9ad649f20f3308d9bf544a3a0f7c9a6630f55dc5c14",
+      "aq2_dev_instruction_ja_lines": "2790d0c0d98945be414df9ad649f20f3308d9bf544a3a0f7c9a6630f55dc5c14",
+      "aq2_dev_instruction_json_en": "b78ae5a8be0933e86ecb995319d2dffec9be097585da3b69a75147905db39182",
+      "aq2_dev_instruction_status_en": "2244f933f66bf384354bf06aef1d95176239f67326f479983cdccf22e9ae3e0b",
+      "aq2_dev_repo_patch_ingest_en": "3ba73c08f883facc9e1f30c8dfc87fb5435ecb394845424e94cc06e39f0ad861",
+      "aq2_dev_repo_read_config_en": "b82f9fa81b4cae78e6f691324b40780b08c88804eb46db469c6b5c392f90de89",
+      "aq2_dev_repo_search_ingest_en": "8e00c89b130953927cd0e589ea27d837d987b2876fc4476e69c273413098659c",
+      "aq2_dev_repo_test_ingest_en": "3d072bdb7563ffecfe42dd171bf95d30ab85a7a575f3258a581f0c8d0865123e",
+      "aq2_dev_tool_enum_lookup_ja": "613d97c8f377cf2159deed9be0da8bc93dd295517c00df8c6f7d458a4d36706f",
+      "aq2_dev_tool_irrelevant_en": "364094df98f72632d5072601f55a5d3c9322327038641b709a0e8c50cde6896f",
+      "aq2_dev_tool_multiple_en": "6b6429b1de6150150713119bf77eba8de8bc8d50a62153b00dbd81523257efdd",
+      "aq2_dev_tool_nested_alert_en": "676cc80016f0e4d381ab1fcf658d8089c0323629b9c63ff4448770dcd7c0b8ce",
+      "aq2_dev_tool_optional_read_en": "b82f9fa81b4cae78e6f691324b40780b08c88804eb46db469c6b5c392f90de89",
+      "aq2_held_code_ranges_en": "fba3160afab1f1aed34e084d9a958e55687105f1ed4f89f496d13917b4faabdf",
+      "aq2_held_code_rolling_ja": "ea5846ae4da2e6544a0f3168b5719dd122a3b4a055d1ba2a64266f0acb76c238",
+      "aq2_held_code_station_ja": "270c05170ede0604038a5439b991e62349a78636e9838422cf4764e4899b530b",
+      "aq2_held_code_unique_mixed": "109a6d2da102d642a0498d909da2b2e7e7d543b3841a637cc14db0086a9a21b6",
+      "aq2_held_instruction_bilingual_mixed": "2790d0c0d98945be414df9ad649f20f3308d9bf544a3a0f7c9a6630f55dc5c14",
+      "aq2_held_instruction_ja_bullets": "2790d0c0d98945be414df9ad649f20f3308d9bf544a3a0f7c9a6630f55dc5c14",
+      "aq2_held_instruction_numbered_en": "2790d0c0d98945be414df9ad649f20f3308d9bf544a3a0f7c9a6630f55dc5c14",
+      "aq2_held_instruction_sentence_en": "6acdeb77de7a12578682709ff830a0c164b3ab45e81527370a24929a7397c54d",
+      "aq2_held_repo_patch_retry_en": "7ec095b0ed0c8481c8a14f3f1f83fcde43f861391e41facadc4050e6728888f3",
+      "aq2_held_repo_read_operator_ja": "91ed68f3ec221a4e9db97f6ff8723942805d9c8a1aa3b784b6e829e434ad3213",
+      "aq2_held_repo_search_operator_ja": "4c6723baae1bab63d3bae9be1194ad838e738d5d65b5729c5a0e28419243ea26",
+      "aq2_held_repo_test_full_mixed": "80cc46788340b6364d93776d376d47b81358a1a381d05253550984ebcde9b97c",
+      "aq2_held_tool_enum_lookup_mixed": "e32454a50169dbcf65a3ae572f9202bebd9c392cefd0ce67115505c6a035f5c2",
+      "aq2_held_tool_irrelevant_ja": "364094df98f72632d5072601f55a5d3c9322327038641b709a0e8c50cde6896f",
+      "aq2_held_tool_multiple_en": "83ac07903e6ca1b73eacfbc9eb6278f668f8e35799afe09c3b49b4d9b943cc58",
+      "aq2_held_tool_nested_asset_mixed": "561234d0bfc77d0a1f90c7a3a09d40ac67f3425f6f0a535acf52bfa063b880df",
+      "aq2_held_tool_optional_search_ja": "fc22690adbb891add78da123c34a700112e63ca58ff96f4933b71e1ce531d36f"
+    },
+    "passed": true
+  },
+  "sandbox": {
+    "backend": "bubblewrap+prlimit+python-isolated",
+    "bwrap_version": "bubblewrap 0.11.2",
+    "environment": "clearenv with fixed PATH and LANG",
+    "filesystem": "only read-only /usr,/lib,/lib64 plus private /proc,/dev,/tmp,/work",
+    "hidden_tests": "one input per fresh namespace; expected values remain host-only",
+    "network": "new empty network namespace",
+    "probes": {
+      "device": {
+        "device_isolated": true,
+        "environment_cleared": true,
+        "failure": {
+          "index": 0,
+          "kind": "exception",
+          "type": "FileNotFoundError"
+        },
+        "filesystem_isolated": true,
+        "hidden_expected_exposed": false,
+        "limits": {
+          "cpu_seconds": 1,
+          "file_bytes": 4096,
+          "memory_bytes": 100663296,
+          "open_files": 32,
+          "output_bytes": 1024,
+          "processes": 1,
+          "scope": "per_hidden_test",
+          "wall_seconds": 0.4
+        },
+        "network_isolated": true,
+        "output_truncated": false,
+        "process_group_killed": false,
+        "reason": "candidate raised an exception",
+        "returncode": 0,
+        "scratch_cleaned": true,
+        "status": "failed",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests_attempted": 1,
+        "tests_passed": 0
+      },
+      "environment": {
+        "device_isolated": true,
+        "environment_cleared": true,
+        "failure": {
+          "index": 0,
+          "kind": "wrong_result"
+        },
+        "filesystem_isolated": true,
+        "hidden_expected_exposed": false,
+        "limits": {
+          "cpu_seconds": 1,
+          "file_bytes": 4096,
+          "memory_bytes": 100663296,
+          "open_files": 32,
+          "output_bytes": 1024,
+          "processes": 1,
+          "scope": "per_hidden_test",
+          "wall_seconds": 0.4
+        },
+        "network_isolated": true,
+        "output_truncated": false,
+        "process_group_killed": false,
+        "reason": "hidden test failed",
+        "returncode": 0,
+        "scratch_cleaned": true,
+        "status": "failed",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests_attempted": 1,
+        "tests_passed": 0
+      },
+      "file_size": {
+        "device_isolated": true,
+        "environment_cleared": true,
+        "failure": {
+          "index": 0,
+          "kind": "exception",
+          "type": "OSError"
+        },
+        "filesystem_isolated": true,
+        "hidden_expected_exposed": false,
+        "limits": {
+          "cpu_seconds": 1,
+          "file_bytes": 4096,
+          "memory_bytes": 100663296,
+          "open_files": 32,
+          "output_bytes": 1024,
+          "processes": 1,
+          "scope": "per_hidden_test",
+          "wall_seconds": 0.4
+        },
+        "network_isolated": true,
+        "output_truncated": false,
+        "process_group_killed": false,
+        "reason": "candidate raised an exception",
+        "returncode": 0,
+        "scratch_cleaned": true,
+        "status": "failed",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests_attempted": 1,
+        "tests_passed": 0
+      },
+      "filesystem": {
+        "device_isolated": true,
+        "environment_cleared": true,
+        "failure": {
+          "index": 0,
+          "kind": "exception",
+          "type": "FileNotFoundError"
+        },
+        "filesystem_isolated": true,
+        "hidden_expected_exposed": false,
+        "limits": {
+          "cpu_seconds": 1,
+          "file_bytes": 4096,
+          "memory_bytes": 100663296,
+          "open_files": 32,
+          "output_bytes": 1024,
+          "processes": 1,
+          "scope": "per_hidden_test",
+          "wall_seconds": 0.4
+        },
+        "network_isolated": true,
+        "output_truncated": false,
+        "process_group_killed": false,
+        "reason": "candidate raised an exception",
+        "returncode": 0,
+        "scratch_cleaned": true,
+        "status": "failed",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests_attempted": 1,
+        "tests_passed": 0
+      },
+      "hidden_expected": {
+        "device_isolated": true,
+        "environment_cleared": true,
+        "failure": {
+          "index": 0,
+          "kind": "process_failure"
+        },
+        "filesystem_isolated": true,
+        "hidden_expected_exposed": false,
+        "limits": {
+          "cpu_seconds": 1,
+          "file_bytes": 4096,
+          "memory_bytes": 100663296,
+          "open_files": 32,
+          "output_bytes": 1024,
+          "processes": 1,
+          "scope": "per_hidden_test",
+          "wall_seconds": 0.4
+        },
+        "network_isolated": true,
+        "output_truncated": true,
+        "process_group_killed": false,
+        "reason": "sandbox process exited 0",
+        "returncode": 0,
+        "scratch_cleaned": true,
+        "status": "failed",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests_attempted": 1,
+        "tests_passed": 0
+      },
+      "home_repository_model": {
+        "device_isolated": true,
+        "environment_cleared": true,
+        "failure": {
+          "index": 0,
+          "kind": "exception",
+          "type": "FileNotFoundError"
+        },
+        "filesystem_isolated": true,
+        "hidden_expected_exposed": false,
+        "limits": {
+          "cpu_seconds": 1,
+          "file_bytes": 4096,
+          "memory_bytes": 100663296,
+          "open_files": 32,
+          "output_bytes": 1024,
+          "processes": 1,
+          "scope": "per_hidden_test",
+          "wall_seconds": 0.4
+        },
+        "network_isolated": true,
+        "output_truncated": false,
+        "process_group_killed": false,
+        "reason": "candidate raised an exception",
+        "returncode": 0,
+        "scratch_cleaned": true,
+        "status": "failed",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests_attempted": 1,
+        "tests_passed": 0
+      },
+      "memory": {
+        "device_isolated": true,
+        "environment_cleared": true,
+        "failure": {
+          "index": 0,
+          "kind": "exception",
+          "type": "MemoryError"
+        },
+        "filesystem_isolated": true,
+        "hidden_expected_exposed": false,
+        "limits": {
+          "cpu_seconds": 1,
+          "file_bytes": 4096,
+          "memory_bytes": 100663296,
+          "open_files": 32,
+          "output_bytes": 1024,
+          "processes": 1,
+          "scope": "per_hidden_test",
+          "wall_seconds": 0.4
+        },
+        "network_isolated": true,
+        "output_truncated": false,
+        "process_group_killed": false,
+        "reason": "candidate raised an exception",
+        "returncode": 0,
+        "scratch_cleaned": true,
+        "status": "failed",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests_attempted": 1,
+        "tests_passed": 0
+      },
+      "network": {
+        "device_isolated": true,
+        "environment_cleared": true,
+        "failure": {
+          "index": 0,
+          "kind": "exception",
+          "type": "ConnectionRefusedError"
+        },
+        "filesystem_isolated": true,
+        "hidden_expected_exposed": false,
+        "limits": {
+          "cpu_seconds": 1,
+          "file_bytes": 4096,
+          "memory_bytes": 100663296,
+          "open_files": 32,
+          "output_bytes": 1024,
+          "processes": 1,
+          "scope": "per_hidden_test",
+          "wall_seconds": 0.4
+        },
+        "network_isolated": true,
+        "output_truncated": false,
+        "process_group_killed": false,
+        "reason": "candidate raised an exception",
+        "returncode": 0,
+        "scratch_cleaned": true,
+        "status": "failed",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests_attempted": 1,
+        "tests_passed": 0
+      },
+      "output": {
+        "device_isolated": true,
+        "environment_cleared": true,
+        "failure": {
+          "index": 0,
+          "kind": "process_failure"
+        },
+        "filesystem_isolated": true,
+        "hidden_expected_exposed": false,
+        "limits": {
+          "cpu_seconds": 1,
+          "file_bytes": 4096,
+          "memory_bytes": 100663296,
+          "open_files": 32,
+          "output_bytes": 1024,
+          "processes": 1,
+          "scope": "per_hidden_test",
+          "wall_seconds": 0.4
+        },
+        "network_isolated": true,
+        "output_truncated": true,
+        "process_group_killed": false,
+        "reason": "sandbox process exited 120",
+        "returncode": 120,
+        "scratch_cleaned": true,
+        "status": "failed",
+        "stderr_sha256": "05cc68cabd4157f476a790550e752031e8dd3d259d847041df8cbd3a3e425166",
+        "stdout_sha256": "49abd65bbf7f7e40c7055093ed2e3fd75f2f602f2c5fcf955c213e3135eb03f7",
+        "tests_attempted": 1,
+        "tests_passed": 0
+      },
+      "process": {
+        "device_isolated": true,
+        "environment_cleared": true,
+        "failure": {
+          "index": 0,
+          "kind": "exception",
+          "type": "BlockingIOError"
+        },
+        "filesystem_isolated": true,
+        "hidden_expected_exposed": false,
+        "limits": {
+          "cpu_seconds": 1,
+          "file_bytes": 4096,
+          "memory_bytes": 100663296,
+          "open_files": 32,
+          "output_bytes": 1024,
+          "processes": 1,
+          "scope": "per_hidden_test",
+          "wall_seconds": 0.4
+        },
+        "network_isolated": true,
+        "output_truncated": false,
+        "process_group_killed": false,
+        "reason": "candidate raised an exception",
+        "returncode": 0,
+        "scratch_cleaned": true,
+        "status": "failed",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests_attempted": 1,
+        "tests_passed": 0
+      },
+      "valid": {
+        "device_isolated": true,
+        "environment_cleared": true,
+        "failure": null,
+        "filesystem_isolated": true,
+        "hidden_expected_exposed": false,
+        "limits": {
+          "cpu_seconds": 1,
+          "file_bytes": 4096,
+          "memory_bytes": 100663296,
+          "open_files": 32,
+          "output_bytes": 1024,
+          "processes": 1,
+          "scope": "per_hidden_test",
+          "wall_seconds": 0.4
+        },
+        "network_isolated": true,
+        "output_truncated": false,
+        "process_group_killed": false,
+        "reason": null,
+        "returncode": 0,
+        "scratch_cleaned": true,
+        "status": "passed",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests_attempted": 1,
+        "tests_passed": 1
+      },
+      "wall_timeout": {
+        "device_isolated": true,
+        "environment_cleared": true,
+        "failure": {
+          "index": 0,
+          "kind": "timeout"
+        },
+        "filesystem_isolated": true,
+        "hidden_expected_exposed": false,
+        "limits": {
+          "cpu_seconds": 1,
+          "file_bytes": 4096,
+          "memory_bytes": 100663296,
+          "open_files": 32,
+          "output_bytes": 1024,
+          "processes": 1,
+          "scope": "per_hidden_test",
+          "wall_seconds": 0.4
+        },
+        "network_isolated": true,
+        "output_truncated": false,
+        "process_group_killed": true,
+        "reason": "wall timeout",
+        "returncode": -9,
+        "scratch_cleaned": true,
+        "status": "timeout",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tests_attempted": 1,
+        "tests_passed": 0
+      }
+    },
+    "process": "new PID/session namespace, nproc limit, kill process group on timeout",
+    "python_version": "Python 3.14.7",
+    "qualified": true,
+    "resources": "wall, CPU, AS, file size, process, FD, core, and output caps"
+  },
+  "schema_version": 1,
+  "source": {
+    "checker_sha256": "80b912378003f76171ae89195df5f9c6d7a57d2c03d06f5bc6458e4ba1e40c01",
+    "git_base_commit": "4eb098af2043684366ff9ba685f2e6063924652d",
+    "loader_sha256": "130e6e722ea75ddc10c70ba373b318f58f9f66f236dfb41687ca4620f5b4ae71",
+    "sandbox_sha256": "27c6e5aaae7639284f008a5674ccd3e2f1275230e00a8ab0d8567c87ff709a6c"
+  },
+  "status": "qualified",
+  "suite": {
+    "development_ids": [
+      "aq2_dev_tool_nested_alert_en",
+      "aq2_dev_tool_optional_read_en",
+      "aq2_dev_tool_enum_lookup_ja",
+      "aq2_dev_tool_multiple_en",
+      "aq2_dev_tool_irrelevant_en",
+      "aq2_dev_repo_search_ingest_en",
+      "aq2_dev_repo_read_config_en",
+      "aq2_dev_repo_patch_ingest_en",
+      "aq2_dev_repo_test_ingest_en",
+      "aq2_dev_code_clamp_en",
+      "aq2_dev_code_group_en",
+      "aq2_dev_code_rises_en",
+      "aq2_dev_code_label_en",
+      "aq2_dev_instruction_bullets_en",
+      "aq2_dev_instruction_status_en",
+      "aq2_dev_instruction_ja_lines",
+      "aq2_dev_instruction_json_en"
+    ],
+    "file_sha256": "dbe4668667ba3ca57649408f4dc9a5004ee771ce61dc95f7816cf6799b62cbdd",
+    "heldout_ids": [
+      "aq2_held_tool_nested_asset_mixed",
+      "aq2_held_tool_optional_search_ja",
+      "aq2_held_tool_enum_lookup_mixed",
+      "aq2_held_tool_multiple_en",
+      "aq2_held_tool_irrelevant_ja",
+      "aq2_held_repo_search_operator_ja",
+      "aq2_held_repo_read_operator_ja",
+      "aq2_held_repo_patch_retry_en",
+      "aq2_held_repo_test_full_mixed",
+      "aq2_held_code_rolling_ja",
+      "aq2_held_code_ranges_en",
+      "aq2_held_code_station_ja",
+      "aq2_held_code_unique_mixed",
+      "aq2_held_instruction_numbered_en",
+      "aq2_held_instruction_ja_bullets",
+      "aq2_held_instruction_bilingual_mixed",
+      "aq2_held_instruction_sentence_en"
+    ],
+    "oracle_path": "/home/lhl/hipEngine-agentic-quality2/benchmarks/oracles/agentic-quality2-v2.json",
+    "oracle_sha256": "c6fd180a2fe7156307995b9567a149f8c50f7448da003bdbe4cc0abe41f0706a",
+    "path": "/home/lhl/hipEngine-agentic-quality2/benchmarks/prompts/agentic-quality2-v2.json",
+    "sources_path": "/home/lhl/hipEngine-agentic-quality2/benchmarks/sources/agentic-quality2-v2-sources.json",
+    "sources_sha256": "b5d7ed2573b78ca05b14e34616c562fce4dba154fb938a414b5b96ed1ad1fdf8",
+    "suite": "agentic-quality2-v2"
+  }
+}

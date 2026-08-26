@@ -45,9 +45,13 @@ class _FakeTokenizer:
             "}": [4],
         }[prompt]
 
-    def decode(self, ids) -> str:
+    def decode(self, ids, *, skip_special: bool = False) -> str:
         table = {1: "B", 2: "C", 3: "D", 4: "}", 5: "{", 6: "X", 16: "Q", 99: "<eos>", 114: "T114"}
-        return "".join(table[int(token)] for token in ids)
+        return "".join(
+            table[int(token)]
+            for token in ids
+            if not (skip_special and int(token) == self.eos_token_id)
+        )
 
 
 def _generator() -> qwen35_gguf.Qwen35GGUFBringupGenerator:
@@ -63,6 +67,13 @@ def _generator() -> qwen35_gguf.Qwen35GGUFBringupGenerator:
     generator._mtp_serving_assets = None
     generator._mtp_serving_lock = threading.Lock()
     return generator
+
+
+def test_qwen_gguf_generator_detokenizes_through_model_tokenizer() -> None:
+    generator = _generator()
+
+    assert generator.detokenize((1, 2, 99), skip_special=False) == "BC<eos>"
+    assert generator.detokenize((1, 2, 99), skip_special=True) == "BC"
 
 
 def test_submit_poll_adapter_explicitly_delegates_model_owned_mtp_route() -> None:
