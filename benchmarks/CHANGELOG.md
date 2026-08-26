@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-26 gfx1151 Qwen3.8 Q4_K_M serving closure; retained metric unchanged] Close S5 at **12.940 vs 9.025 tok/s (1.4337x)** public complete-wall and **1.3147x** real automatic HTTP. The completed 10,576-test milestone had 19 isolated test-hygiene failures; focused repairs pass 19/19 without a prohibited broad rerun. Exact auto scope is unchanged and all other keys remain K0. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json`.
+
 - [2026-08-26 gfx1151 Qwen3.8 Q4_K_M exact automatic MTP promotion] Promote only the content-verified strict/BF16/resident-C1+physical-C1/B3/context1-67/natural25/raw-greedy scope: full-suite complete-wall is **12.940 vs 9.025 tok/s (1.4337x)** and S4 auto rerun is **12.418 vs 9.445 tok/s (1.3147x)** with exact IDs. Context68, sampling changes, and every other key remain K0. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s4-auto.json`.
 
 - [2026-08-26 gfx1151 Qwen3.8 Q4_K_M S3 OpenAI serving/load; automatic K0] Blocking/SSE completion+chat text/IDs, MTP terminal telemetry, acceptance, usage, sessions, continuation, and disconnect are exact/truthful. Mixed/delayed admit **2/2**; overload accepts **4/8** exact and rejects four bounded 429s, with **10.29 tok/s** diagnostic exact goodput and zero final pending/admitted/active rows. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s3.json`.

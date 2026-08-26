@@ -95,6 +95,10 @@ llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hi
 
 ## Current default notes
 
+Strix Halo Qwen3.8 `Q4_K_M` automatic MTP is limited to the content-verified
+strict/BF16/C1/B3/natural25/raw-greedy key; every other typed scope selects
+K0/strict AR. [`Serving closure`](results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json).
+
 Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback
 ([`evidence`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json)).
 The exact `Q4_K_M` W8192 DMS sidecar passes 32K/128K at 100% top-1, saves

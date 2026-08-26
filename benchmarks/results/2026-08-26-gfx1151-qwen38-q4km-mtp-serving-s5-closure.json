@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_q4km_mtp_serving_s5_closure",
+  "status": "completed",
+  "created_at": "2026-08-26",
+  "performance_claim": false,
+  "campaign": {
+    "branch": "qwen38-mtp-serving",
+    "entry_commit": "1c745688d",
+    "automatic_promotion_commit": "f8880fa3f",
+    "pre_closure_head": "9a6751b5e",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_size_bytes": 17106775008,
+    "model_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "host": "zbook / AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "execution_profile": "strict",
+    "strict_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+    "kv_dtype": "bf16",
+    "promoted_plan_fingerprint": "sha256:5bee87fc6e6a157aca61d7704795ca97aa667798f1876c958db1d19a831b7ded"
+  },
+  "retained_result": {
+    "automatic_scope": "exact artifact + gfx1151 + strict manifest + BF16 uniform KV + resident/physical C1 + B3 + raw greedy + context 1-67 + natural25/maxseq1024",
+    "every_other_typed_key": "pre-mutation K0 with strict AR fallback",
+    "binding_full_suite_artifact": "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0.json",
+    "automatic_artifact": "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s4-auto.json",
+    "public_complete_wall_mtp_tok_s": 12.940098229765553,
+    "public_complete_wall_true_ar_tok_s": 9.025497680421644,
+    "public_complete_wall_ratio": 1.4337268356775015,
+    "real_http_automatic_ratio": 1.314749033960637,
+    "all_qualified_ids_exact": true,
+    "all_lifecycle_serving_teardown_gates_passed": true
+  },
+  "milestone_pytest": {
+    "command": "env -u HIPENGINE_HIP_ARCH -u GPU_MAX_HW_QUEUES -u HIP_VISIBLE_DEVICES -u ROCR_VISIBLE_DEVICES -u HSA_ENABLE_SDMA -u HSA_USE_SVM uv run pytest -q --tb=short",
+    "source_commit": "f8880fa3f",
+    "collected": 10576,
+    "passed": 10361,
+    "skipped": 192,
+    "xfailed": 4,
+    "failed": 19,
+    "elapsed_seconds_from_background_log": 2014,
+    "policy": "Preserve the completed broad result; repair isolated failures with affected focused nodes/files and do not rerun the full suite.",
+    "failure_partition": {
+      "dms_fixture_allocation_leak_cascade": 9,
+      "paro_profile_environment_leak": 6,
+      "stale_rope_scratch_expectations": 3,
+      "stale_specdec2_readback_seam_assertion": 1
+    }
+  },
+  "focused_repairs": [
+    {
+      "commit": "e352219c7",
+      "scope": "SPECDEC2 transactional readback seam",
+      "validation": "tests/test_specdec2_s6_failure_gate.py: 3 passed"
+    },
+    {
+      "commit": "0060c34cf",
+      "scope": "standalone RoPE scratch ownership expectations",
+      "validation": "tests/test_qwen35_gguf_prefill_scratch_liveness.py: 35 passed"
+    },
+    {
+      "commit": "54af648a8",
+      "scope": "PARO profile binder environment isolation",
+      "validation": "ordered profile plus affected decode diagnostics: 10 passed"
+    },
+    {
+      "commit": "9a6751b5e",
+      "scope": "DMS append fixture replacement ownership",
+      "validation": "DMS append + memory stats + Moonshine: 24 passed, 1 skipped"
+    }
+  ],
+  "final_focused_gate": {
+    "scope": "the exact 19 nodes failed by the completed milestone run",
+    "passed": 19,
+    "failed": 0,
+    "elapsed_seconds": 0.45,
+    "full_suite_rerun": false
+  },
+  "teardown": {
+    "gpu_owner": false,
+    "compiler_owner": false,
+    "server_owner": false,
+    "worktree_clean_before_closure_docs": true
+  },
+  "decision": "Close S5 and retain the exact automatic scope. Do not broaden the policy without a new complete evidence packet."
+}
