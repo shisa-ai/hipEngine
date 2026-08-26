@@ -71,6 +71,46 @@ from hipengine.speculative.transaction import (
 )
 
 
+_FP16_SPECDEC2_PROFILE_SELECTIONS = {
+    (
+        "gdn_chain_recurrent_rmsnorm_gate",
+        "specdec2_mtp2_target_state_rows",
+    ): (
+        "bf16_c1_exact_state_rows_tloop_fp16state",
+        "bf16_c1_exact_state_rows_tloop",
+    ),
+}
+
+
+def _fp16_specdec2_profile_authorized(generator: Any) -> bool:
+    """Require a complete non-fallback production manifest before FP16 mutation."""
+
+    profile = getattr(generator, "execution_profile", None)
+    profile = getattr(profile, "value", profile)
+    if str(profile) != "production" or bool(
+        getattr(generator, "execution_profile_fell_back_to_strict", True)
+    ):
+        return False
+    if not str(getattr(generator, "execution_profile_manifest_sha256", "") or ""):
+        return False
+    manifest = getattr(generator, "execution_profile_manifest", None)
+    if not isinstance(manifest, Mapping):
+        return False
+    selections = manifest.get("selections", ())
+    if not isinstance(selections, Sequence) or isinstance(selections, (str, bytes)):
+        return False
+    selected = {}
+    for row in selections:
+        if not isinstance(row, Mapping):
+            return False
+        key = (str(row.get("layer", "")), str(row.get("scope", "")))
+        selected[key] = (
+            str(row.get("selected_variant", "")),
+            str(row.get("strict_fallback_variant", "")),
+        )
+    return all(selected.get(key) == variants for key, variants in _FP16_SPECDEC2_PROFILE_SELECTIONS.items())
+
+
 def _target_verify_mode_for_context(
     requested: str,
     *,
@@ -123,6 +163,10 @@ class _PhysicalAcceptPending:
     output_stride: int
 
 
+class _PhysicalTargetCommitError(RuntimeError):
+    """Target state may be committed; AR fallback requires canonical rebuild."""
+
+
 class Qwen35GGUFMTP2Adapter:
     """Staged C1/C2/C4 adapter over the retained exact dense components."""
 
@@ -168,6 +212,29 @@ class Qwen35GGUFMTP2Adapter:
         self._cycle_repair_hidden: Tensor | None = None
         self._cycle_workspace_shape: tuple[int, int] | None = None
 
+    def _target_profile_supported(self, target: Any) -> bool:
+        runner = getattr(target, "runner", None)
+        return bool(
+            not bool(getattr(runner, "fp16_recurrent_state", False))
+            or _fp16_specdec2_profile_authorized(self.generator)
+        )
+
+    def _bind_target_profile_metadata(self, target: Any) -> None:
+        target._specdec2_execution_profile_manifest_sha256 = str(
+            getattr(self.generator, "execution_profile_manifest_sha256", "legacy")
+            or "legacy"
+        )
+        runner = getattr(target, "runner", None)
+        target._specdec2_recurrent_state_dtype = (
+            "fp16" if bool(getattr(runner, "fp16_recurrent_state", False)) else "fp32"
+        )
+
+    @staticmethod
+    def _target_graph_supported(target: Any) -> bool:
+        return not bool(
+            getattr(getattr(target, "runner", None), "fp16_recurrent_state", False)
+        )
+
     def register_request(self, request_id: int, candidate_budget: int) -> None:
         rid = int(request_id)
         budget = min(self.candidate_budget, max(1, int(candidate_budget)))
@@ -210,6 +277,10 @@ class Qwen35GGUFMTP2Adapter:
                     row.mtp2_prompt_fallback_reason = "prefix_reuse_k0"
             return None
         targets = tuple(row.lease.session for row in rows)
+        if any(not self._target_profile_supported(target) for target in targets):
+            for row in rows:
+                row.mtp2_prompt_fallback_reason = "target_profile_k0"
+            return None
         context_misses = tuple(
             (row, target)
             for row, target in zip(rows, targets, strict=True)
@@ -540,9 +611,7 @@ class Qwen35GGUFMTP2Adapter:
             ):
                 return None
             target = row.lease.session
-            if bool(
-                getattr(getattr(target, "runner", None), "fp16_recurrent_state", False)
-            ):
+            if not self._target_profile_supported(target):
                 return None
             targets.append(target)
         if len(semantics) == 1:
@@ -648,6 +717,10 @@ class Qwen35GGUFMTP2Adapter:
             for request_id in ids
             if request_id not in self._states
             and reason_by_id[request_id] is SpecPlanReason.NO_PROVIDER
+            and self.owner._row(request_id).lease is not None
+            and self._target_profile_supported(
+                self.owner._row(request_id).lease.session
+            )
         )
         if attach:
             for request_id in attach:
@@ -824,7 +897,7 @@ class Qwen35GGUFMTP2Adapter:
                     group,
                 )
             return
-        refill_group = next(
+        reusable_group = next(
             (
                 group
                 for group in self._provider_groups.values()
@@ -833,11 +906,11 @@ class Qwen35GGUFMTP2Adapter:
             ),
             None,
         )
-        if refill_group is not None:
+        if reusable_group is not None:
             for request_id in missing:
                 self._states[request_id] = self._attach_request_to_group(
                     request_id,
-                    refill_group,
+                    reusable_group,
                 )
             return
         if len(ids) == 1 and int(getattr(self.owner, "capacity", 1)) == 1:
@@ -919,7 +992,8 @@ class Qwen35GGUFMTP2Adapter:
                     states[0].provider, "launch_device_proposal", None
                 )
                 target_device_ready = bool(
-                    callable(device_ready)
+                    self._target_graph_supported(targets[0])
+                    and callable(device_ready)
                     and device_ready(
                         budgets[0],
                         remaining_decode=remaining_by_id[ids[0]],
@@ -1988,72 +2062,80 @@ class Qwen35GGUFMTP2Adapter:
                     "physical target owner has no device selected-state commit"
                 )
             commit_started = time.perf_counter()
-            commit_contract = commit_batch(
-                results,
-                targets,
-                accept_buffers=pending.buffers,
-            )
-            commit_seconds = time.perf_counter() - commit_started
-            readback_started = time.perf_counter()
-            gpu_summary = self._read_target_batch_accept(
-                pending,
-                runtime=targets[0].runtime,
-            )
-            bounded_readback_seconds = time.perf_counter() - readback_started
-            if bool(
-                getattr(self, "device_chain_qualification_oracle", False)
-            ):
-                candidate_readback_seconds = (
-                    self._qualify_target_batch_device_accept(
-                        frontier,
-                        device_draft,
-                        results,
-                        gpu_summary,
-                        remaining,
-                        provider=states[0].provider,
-                        runtime=targets[0].runtime,
-                    )
+            try:
+                commit_contract = commit_batch(
+                    results,
+                    targets,
+                    accept_buffers=pending.buffers,
                 )
-                for row in rows:
-                    row.mtp2_candidate_d2h_after_target += 1
-            accept_seconds = time.perf_counter() - accept_started
-            if int(commit_contract.get("requests", 0)) != len(ids):
-                raise RuntimeError("physical selected-state commit omitted requests")
-            for target, summary_position in zip(
-                targets, gpu_summary.commit_positions, strict=True
-            ):
-                next_position = int(summary_position) + 1
-                target._position = next_position
-                target.scratch.position_host[0] = next_position
-                target.scratch.context_host[0] = next_position + 1
-            accept = AcceptResult(
-                request_ids=ids,
-                accepted_counts=gpu_summary.accepted_counts,
-                accepted_tokens=gpu_summary.accepted_tokens,
-                transaction_id=transaction_id,
-                selected_candidate_rows=gpu_summary.commit_rows,
-                next_tokens=gpu_summary.next_tokens,
-                correction_or_bonus_tokens=gpu_summary.next_tokens,
-                target_cursor_deltas=tuple(
-                    int(count) + (1 if next_token is not None else 0)
-                    for count, next_token in zip(
-                        gpu_summary.accepted_counts,
-                        gpu_summary.next_tokens or (None,) * len(ids),
-                        strict=True,
+                commit_seconds = time.perf_counter() - commit_started
+                readback_started = time.perf_counter()
+                gpu_summary = self._read_target_batch_accept(
+                    pending,
+                    runtime=targets[0].runtime,
+                )
+                bounded_readback_seconds = time.perf_counter() - readback_started
+                if bool(
+                    getattr(self, "device_chain_qualification_oracle", False)
+                ):
+                    candidate_readback_seconds = (
+                        self._qualify_target_batch_device_accept(
+                            frontier,
+                            device_draft,
+                            results,
+                            gpu_summary,
+                            remaining,
+                            provider=states[0].provider,
+                            runtime=targets[0].runtime,
+                        )
                     )
-                ),
-                provider_cursor_deltas=gpu_summary.accepted_counts,
-                finish_reasons=(None,) * len(ids),
-            )
-            provider_update_started = time.perf_counter()
-            self._repair_provider_states_batch_device(
-                states,
-                device_draft,
-                accepted_counts=gpu_summary.accepted_counts,
-            )
-            provider_update_seconds = (
-                time.perf_counter() - provider_update_started
-            )
+                    for row in rows:
+                        row.mtp2_candidate_d2h_after_target += 1
+                accept_seconds = time.perf_counter() - accept_started
+                if int(commit_contract.get("requests", 0)) != len(ids):
+                    raise RuntimeError(
+                        "physical selected-state commit omitted requests"
+                    )
+                for target, summary_position in zip(
+                    targets, gpu_summary.commit_positions, strict=True
+                ):
+                    next_position = int(summary_position) + 1
+                    target._position = next_position
+                    target.scratch.position_host[0] = next_position
+                    target.scratch.context_host[0] = next_position + 1
+                accept = AcceptResult(
+                    request_ids=ids,
+                    accepted_counts=gpu_summary.accepted_counts,
+                    accepted_tokens=gpu_summary.accepted_tokens,
+                    transaction_id=transaction_id,
+                    selected_candidate_rows=gpu_summary.commit_rows,
+                    next_tokens=gpu_summary.next_tokens,
+                    correction_or_bonus_tokens=gpu_summary.next_tokens,
+                    target_cursor_deltas=tuple(
+                        int(count) + (1 if next_token is not None else 0)
+                        for count, next_token in zip(
+                            gpu_summary.accepted_counts,
+                            gpu_summary.next_tokens or (None,) * len(ids),
+                            strict=True,
+                        )
+                    ),
+                    provider_cursor_deltas=gpu_summary.accepted_counts,
+                    finish_reasons=(None,) * len(ids),
+                )
+                provider_update_started = time.perf_counter()
+                self._repair_provider_states_batch_device(
+                    states,
+                    device_draft,
+                    accepted_counts=gpu_summary.accepted_counts,
+                )
+                provider_update_seconds = (
+                    time.perf_counter() - provider_update_started
+                )
+            except BaseException as error:
+                raise _PhysicalTargetCommitError(
+                    "physical target selected commit path failed: "
+                    f"{type(error).__name__}:{error}"
+                ) from error
         else:
             assert batch is not None
             target_top1 = [0] * batch.rows
@@ -2656,6 +2738,24 @@ class Qwen35GGUFMTP2Adapter:
         )
         if not rows:
             return False
+        if isinstance(error, _PhysicalTargetCommitError):
+            rebuild = getattr(
+                self.owner,
+                "restore_speculative_target_rows",
+                None,
+            )
+            if not callable(rebuild) or not bool(rebuild(plan)):
+                for row in rows:
+                    row.mtp2_failure_reasons.extend(
+                        ("postcommit_failure_fatal", reason)
+                    )
+                return False
+            for row in rows:
+                row.mtp2_recoverable_failures += 1
+                row.mtp2_failure_reasons.extend(
+                    ("postcommit_target_rebuild_ar_fallback", reason)
+                )
+            return True
         for row in rows:
             if row.slot is None or row.lease is None:
                 return False
@@ -2702,6 +2802,10 @@ class Qwen35GGUFMTP2Adapter:
     def _open_batch_requests(self, request_ids: tuple[int, ...]) -> None:
         rows = [self.owner._row(request_id) for request_id in request_ids]
         targets = [row.lease.session for row in rows]
+        if any(not self._target_profile_supported(target) for target in targets):
+            raise RuntimeError("GGUF MTP2 target execution profile is unsupported")
+        for target in targets:
+            self._bind_target_profile_metadata(target)
         max_positions = min(
             int(target.target_layout.max_sequence_length) for target in targets
         )
@@ -2764,6 +2868,9 @@ class Qwen35GGUFMTP2Adapter:
     ) -> _MTP2RequestState:
         row = self.owner._row(request_id)
         target = row.lease.session
+        if not self._target_profile_supported(target):
+            raise RuntimeError("GGUF MTP2 target execution profile is unsupported")
+        self._bind_target_profile_metadata(target)
         group.provider.reset_request(request_id)
         root_hidden = self._catch_up_provider(
             group.provider,
@@ -2885,13 +2992,9 @@ class Qwen35GGUFMTP2Adapter:
         if row.lease is None:
             raise RuntimeError("GGUF MTP2 request has no target session")
         target = row.lease.session
-        if bool(
-            getattr(getattr(target, "runner", None), "fp16_recurrent_state", False)
-        ):
-            raise RuntimeError(
-                "GGUF MTP2 strict c1 requires FP32 recurrent state; "
-                "disable HIPENGINE_GGUF_FP16_RECURRENT_STATE"
-            )
+        if not self._target_profile_supported(target):
+            raise RuntimeError("GGUF MTP2 target execution profile is unsupported")
+        self._bind_target_profile_metadata(target)
         max_positions = int(target.target_layout.max_sequence_length)
         provider, pool_key, _reused = self.generator._acquire_dense_mtp_draft_provider(
             target,

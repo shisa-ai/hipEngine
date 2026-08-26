@@ -676,6 +676,8 @@ def _native_target_configuration_key(
     capture_pre_output_norm_hidden: bool,
     defer_linear_state_commit: bool,
     device_accept_commit: bool,
+    execution_profile_manifest_sha256: str = "legacy",
+    recurrent_state_dtype: str = "fp32",
 ) -> tuple[object, ...]:
     env = tuple(
         sorted(
@@ -684,6 +686,10 @@ def _native_target_configuration_key(
             if name.startswith("HIPENGINE_")
         )
     )
+    manifest_hash = str(execution_profile_manifest_sha256 or "legacy")
+    state_dtype = str(recurrent_state_dtype).strip().lower()
+    if state_dtype not in {"fp16", "fp32"}:
+        raise ValueError("native target recurrent_state_dtype must be fp16 or fp32")
     return (
         str(bulk_attention_mode),
         bool(use_wmma_prefill),
@@ -691,8 +697,27 @@ def _native_target_configuration_key(
         bool(capture_pre_output_norm_hidden),
         bool(defer_linear_state_commit),
         bool(device_accept_commit),
+        manifest_hash,
+        state_dtype,
         env,
     )
+
+
+def _native_target_execution_identity(session: Any) -> tuple[str, str]:
+    manifest_hash = str(
+        getattr(session, "_specdec2_execution_profile_manifest_sha256", "legacy")
+        or "legacy"
+    )
+    state_dtype = str(
+        getattr(session, "_specdec2_recurrent_state_dtype", "") or ""
+    ).strip().lower()
+    if not state_dtype:
+        state_dtype = (
+            "fp16"
+            if bool(getattr(getattr(session, "runner", None), "fp16_recurrent_state", False))
+            else "fp32"
+        )
+    return manifest_hash, state_dtype
 
 
 def _native_target_binding_signature(session: Any) -> tuple[int, ...]:
@@ -908,6 +933,7 @@ class Qwen35GGUFNativeB2TargetGraph:
     ) -> bool:
         if self.closed or session is not self.session:
             return False
+        manifest_hash, state_dtype = _native_target_execution_identity(session)
         expected_key = _native_target_configuration_key(
             bulk_attention_mode=bulk_attention_mode,
             use_wmma_prefill=use_wmma_prefill,
@@ -915,6 +941,8 @@ class Qwen35GGUFNativeB2TargetGraph:
             capture_pre_output_norm_hidden=capture_pre_output_norm_hidden,
             defer_linear_state_commit=defer_linear_state_commit,
             device_accept_commit=device_accept_commit,
+            execution_profile_manifest_sha256=manifest_hash,
+            recurrent_state_dtype=state_dtype,
         )
         return (
             int(context_limit) == int(self.context_limit)
@@ -944,6 +972,7 @@ class Qwen35GGUFNativeB2TargetGraph:
             return "target_graph_session_miss"
         if int(rows) != int(self.rows):
             return "target_graph_row_shape_miss"
+        manifest_hash, state_dtype = _native_target_execution_identity(session)
         expected_key = _native_target_configuration_key(
             bulk_attention_mode=bulk_attention_mode,
             use_wmma_prefill=use_wmma_prefill,
@@ -951,6 +980,8 @@ class Qwen35GGUFNativeB2TargetGraph:
             capture_pre_output_norm_hidden=capture_pre_output_norm_hidden,
             defer_linear_state_commit=defer_linear_state_commit,
             device_accept_commit=device_accept_commit,
+            execution_profile_manifest_sha256=manifest_hash,
+            recurrent_state_dtype=state_dtype,
         )
         if expected_key != self.configuration_key:
             return "target_graph_configuration_miss"
@@ -1972,6 +2003,10 @@ def capture_qwen35_gguf_native_b2_target_graph(
                 capture_pre_output_norm_hidden=bool(capture_pre_output_norm_hidden),
                 defer_linear_state_commit=bool(defer_linear_state_commit),
                 device_accept_commit=bool(device_accept_commit),
+                execution_profile_manifest_sha256=(
+                    _native_target_execution_identity(session)[0]
+                ),
+                recurrent_state_dtype=_native_target_execution_identity(session)[1],
             ),
             binding_signature=_native_target_binding_signature(session),
             capture_wall_ms=(time.perf_counter() - capture_start) * 1000.0,
@@ -2257,6 +2292,13 @@ def verify_qwen35_gguf_native_b2_target(
     if sync_stage_timings:
         eager_kwargs["sync_stage_timings"] = True
     rows = len(tuple(input_token_ids))
+    recurrent_state_dtype = _native_target_execution_identity(session)[1]
+    if recurrent_state_dtype == "fp16":
+        reason = "FP16 recurrent state keeps target verify on the eager owner"
+        session.last_native_spec_target_fallback_reason = reason
+        if not fallback:
+            raise NativeSpecTargetGraphUnsupportedError(reason)
+        return session.verify_target_block(input_token_ids, **eager_kwargs)
     if rows not in {2, 3, 4, 5, 6, 7, 8}:
         reason = "native target graph requires two to eight rows (one root plus B1-B7)"
         session.last_native_spec_target_fallback_reason = reason
@@ -2377,6 +2419,10 @@ def verify_qwen35_gguf_native_target_from_device_proposal(
             "device proposal handoff does not support diagnostic logits"
         )
     rows = int(getattr(device_proposal, "budget", -1)) + 1
+    if _native_target_execution_identity(session)[1] == "fp16":
+        reason = "FP16 recurrent state device proposal requires eager selected commit"
+        session.last_native_spec_target_fallback_reason = reason
+        raise NativeSpecTargetGraphUnsupportedError(reason)
     if rows not in {2, 3, 4, 5, 6, 7, 8}:
         raise NativeSpecTargetGraphUnsupportedError(
             "device proposal requires one cached B1-B7 target bucket"

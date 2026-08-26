@@ -109,21 +109,18 @@ pending serving gates. [`DMS status`](../docs/DMS.md).
 | Qwen3.8-27B `Q4_K_M` | **50/68 (73.53%)** | **22/34** | **28/34** | 14/16 · **12/16** · 10/16 · 14/20 | **64/64** |
 | Ornith-1.5-35B-A3B `Q4_K_M` | 42/68 (61.76%) | 16/34 | 26/34 | 14/16 · 4/16 · 10/16 · 14/20 | 60/64 |
 
-Frozen oracles, 34 repeat pairs, 10/10 controls, response ownership, and final
-cleanup pass. These are same-host model-product quality rows, not quantization
-deltas. [`AQ6`](results/2026-08-26-zbook-agentic-quality2-aq6-expanded-baseline.json) · [`Qwen3.8`](results/2026-08-26-zbook-agentic-quality2-aq7-qwen38-comparison.json) · [`Ornith`](results/2026-08-26-zbook-agentic-quality2-aq7-ornith15-comparison.json).
+All 34 repeat pairs, 10 controls, and ownership gates pass; these are same-host
+model-quality rows. The campaign retains **no implementation** because all seven
+development failures are model-owned. [`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
 
-AGENTIC-QUALITY2 is complete with **no implementation**: seven development
-failures are model-owned, with no runtime trigger. [`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
-
-gfx1151 P7 keeps strict C1/K2 at **1.431x AR** and cuts physical C2/C4 K2
-repair **4.186x/4.047x**; throughput improves **1.37%/1.22%**. Physical remains
-below AR at 18.43% acceptance, so automatic stays K0.
-[`Evidence`](results/2026-08-26-gfx1151-specdec2-perf-p7-provider-repair-retained.json).
+gfx1151 P7 cuts C2/C4 K2 repair **4.186x/4.047x**. P8 retains production FP16:
+90/90 D25 K2 cells are exact; C1 is **1.407x AR**, while C2/C4 remain
+**0.382x/0.343x**. Lifecycle and soak pass; automatic stays K0.
+[`P8`](results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-retained.json) · [`Campaign`](../docs/SPECDEC2-PERF.md).
 
 gfx1100 dense C1 K1/K2/K3 remains exact at **1.272x/1.407x/1.439x AR** but
 2.7%-3.9% behind direct; packed PARO is **0.979x AR**. Automatic stays K0.
-[`C1 closure`](results/2026-08-25-w7900-specdec2-perf-campaign-closure.json).
+[`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
 
 Physical C2 target-hidden repair restores D24 K2 acceptance **18.43%→76.92%**,
 but its R6 target cost leaves throughput **16.974 vs 31.230 tok/s (0.544x AR)**.

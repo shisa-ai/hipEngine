@@ -34,7 +34,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     llm = LLM(
         str(args.model),
         backend="hip_gfx1151",
-        execution_profile="strict",
+        execution_profile=str(args.execution_profile),
         max_active_requests=4,
         max_sequence_length=256,
     )
@@ -132,6 +132,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "kind": "specdec2_s6_alternating_soak",
         "status": "passed" if passed else "failed",
         "performance_claim": False,
+        "execution_profile": str(args.execution_profile),
         "waves": int(args.waves),
         "total_requests": total_requests,
         "references": references,
@@ -155,6 +156,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--model",
         type=Path,
         default=Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf"),
+    )
+    parser.add_argument(
+        "--execution-profile",
+        choices=("strict", "production"),
+        default="strict",
     )
     parser.add_argument("--waves", type=int, default=25)
     parser.add_argument("--output", type=Path, required=True)

@@ -368,6 +368,68 @@ def test_device_proposal_handoff_stages_both_token_metadata_columns() -> None:
     )
 
 
+def test_fp16_n2_target_uses_eager_selected_commit_before_graph_capture() -> None:
+    session = SimpleNamespace(
+        _specdec2_execution_profile_manifest_sha256="production-manifest",
+        _specdec2_recurrent_state_dtype="fp16",
+        last_native_spec_target_submitted=True,
+        last_native_spec_target_fallback_reason=None,
+        last_native_spec_target_capture_ms=1.0,
+        last_native_spec_target_submit_ms=1.0,
+        last_native_spec_target_readback_ms=1.0,
+    )
+    eager = object()
+    session.verify_target_block = lambda tokens, **kwargs: (
+        eager
+        if tuple(tokens) == (1, 2, 3)
+        and kwargs["capture_linear_state_rows"]
+        and kwargs["defer_linear_state_commit"]
+        else None
+    )
+
+    actual = native_cycle_mod.verify_qwen35_gguf_native_b2_target(
+        session,
+        (1, 2, 3),
+        fallback=True,
+        capture_linear_state_rows=True,
+        defer_linear_state_commit=True,
+        device_accept_commit=True,
+        remaining_decode=3,
+    )
+
+    assert actual is eager
+    assert not session.last_native_spec_target_submitted
+    assert session.last_native_spec_target_fallback_reason == (
+        "FP16 recurrent state keeps target verify on the eager owner"
+    )
+
+
+def test_native_target_graph_key_separates_profile_manifest_and_state_dtype() -> None:
+    common = {
+        "bulk_attention_mode": "native",
+        "use_wmma_prefill": False,
+        "capture_linear_state_rows": True,
+        "capture_pre_output_norm_hidden": True,
+        "defer_linear_state_commit": True,
+        "device_accept_commit": True,
+    }
+
+    strict = native_cycle_mod._native_target_configuration_key(
+        **common,
+        execution_profile_manifest_sha256="strict-manifest",
+        recurrent_state_dtype="fp32",
+    )
+    production = native_cycle_mod._native_target_configuration_key(
+        **common,
+        execution_profile_manifest_sha256="production-manifest",
+        recurrent_state_dtype="fp16",
+    )
+
+    assert strict != production
+    assert "strict-manifest" in strict and "fp32" in strict
+    assert "production-manifest" in production and "fp16" in production
+
+
 @pytest.mark.parametrize(
     ("rows", "position", "remaining_decode", "expected_reason"),
     [
