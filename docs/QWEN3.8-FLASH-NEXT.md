@@ -36,7 +36,8 @@ normative in [`TESTING.md`](TESTING.md),
 | License | Qwen Community 1.0; preserve the official model license beside local artifacts |
 | Source format | BF16 safetensors, 131 shards |
 | Source tensor bytes | `359,999,963,128` |
-| Repository storage | `360,013,002,208` bytes |
+| Repository storage | `360,023,351,155` bytes across 144 frozen files |
+| Frozen tree manifest | SHA-256 `dfd29ff3e73cd8fac3c10531d0d61196fa5f4af67ad75df5d2c96401544a7502` over the local HF tree record |
 | Source path | `/models/hf/Qwen3.8-Flash-Next` |
 | Primary GGUF path | `/models/gguf/Qwen3.8-Flash-Next-Q4_K_M.gguf` |
 | Native context | 262,144 tokens |
