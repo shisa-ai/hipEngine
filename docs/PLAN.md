@@ -493,8 +493,12 @@ automatic product cell promotes because the capacity-1 C1 premise does not
 engage on the normal capacity-4 server owner; automatic remains K0. The
 independent gfx1100 campaign is closed with retained exact C1 device chains and
 automatic K0 under
-[`SPECDEC2-PERF-GFX1100.md`](SPECDEC2-PERF-GFX1100.md). The current W7900
-AR/MTP recovery queue is [`MTP-CONCURRENCY2-RECOVERY.md`](MTP-CONCURRENCY2-RECOVERY.md).
+[`SPECDEC2-PERF-GFX1100.md`](SPECDEC2-PERF-GFX1100.md). The active W7900
+promotion campaign independently targets real Generation-2 MTP for Qwen3.6
+35B MoE and 27B Dense under the production numerical/task/serving gates in
+[`MTP-CONCURRENCY2-DUAL-PROMOTION.md`](MTP-CONCURRENCY2-DUAL-PROMOTION.md);
+the prior measured queue remains historical context in
+[`MTP-CONCURRENCY2-RECOVERY.md`](MTP-CONCURRENCY2-RECOVERY.md).
 Source audit and rejected alternatives remain in
 [`SPECDEC2-RESEARCH.md`](SPECDEC2-RESEARCH.md).
 [`CONCURRENCY.md`](CONCURRENCY.md) is the legacy retained c=N kernel/resident-

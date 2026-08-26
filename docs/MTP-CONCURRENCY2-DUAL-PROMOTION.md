@@ -1,0 +1,193 @@
+# CONCURRENCY2 MTP Dual-Model Promotion — W7900
+
+- Status: **active; contract frozen, implementation/qualification open**
+- Started: **2026-08-27**
+- Binding host: **`epyc` / AMD Radeon Pro W7900 / `gfx1100` / GPU 0**
+- Normative contracts: [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
+  [`TESTING.md`](TESTING.md), [`BENCHMARK.md`](BENCHMARK.md),
+  [`CONCURRENCY2.md`](CONCURRENCY2.md), and [`SPECDEC2.md`](SPECDEC2.md)
+- Supersedes the execution queue, not the historical evidence, in
+  [`MTP-CONCURRENCY2-RECOVERY.md`](MTP-CONCURRENCY2-RECOVERY.md)
+
+## 1. Objective and definition of done
+
+Promote a real Generation-2 / `EngineService` MTP scope independently for both:
+
+1. Qwen3.6-35B-A3B MoE GGUF `UD-Q4_K_M`; and
+2. Qwen3.6-27B Dense GGUF `Q4_K_M`.
+
+“Promoted” means an immutable model/hash/quant/KV/profile/shape/depth policy key
+selects MTP automatically before mutation, the complete binding correctness and
+serving packet passes, and the same-suite complete-wall result beats true no-MTP
+AR. It does **not** mean every context, width, sampler, or candidate depth
+inherits that result. Every unqualified key remains K0.
+
+The campaign is incomplete until **both** models have at least one promoted
+automatic production key and the cross-model fail-closed serving audit passes.
+A legacy prelaunch bypass, direct model-owned generation, singleton work
+reported as physical C>N, or a verifier-derived `off` denominator cannot close
+the objective.
+
+## 2. Frozen model identities and first promotion keys
+
+| Lane | Exact artifact | Registry model | First key |
+| --- | --- | --- | --- |
+| 35B MoE | `/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`; 22,663,387,424 bytes; full SHA-256 `0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b` | `qwen3_5_moe_gguf` | `hip_gfx1100` / `gguf_q4_k_m` / BF16 KV / `production` / resident C1 + physical C1 / K2 / raw greedy / context 4-95 / natural D24 |
+| 27B Dense | `/models/gguf/Qwen3.6-27B-Q4_K_M.gguf`; 17,106,773,120 bytes; full SHA-256 `a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f` | `qwen3_5_gguf` | `hip_gfx1100` / `gguf_q4_k_m` / BF16 KV / `production` / resident C1 + physical C1 / K3 / raw greedy / context 4-95 / natural D24 |
+
+These are first promotion keys, not benchmark-tuned prompt identities. The
+context and horizon bounds are mechanical request-shape fields and must cover
+the complete committed ten-prompt category/heldout suite. C2/C4, longer
+contexts, different horizons, processed sampling, non-BF16 KV, and different
+model hashes remain K0 until independent packets pass.
+
+## 3. Correctness contract — generated-ID equality is not the production gate
+
+Both candidates are declared **T2 production arithmetic** because target
+verification, width/row scheduling, and fused/reassociated target execution can
+change near-tie logits and downstream MoE expert choices without changing the
+model representation or speculative acceptance policy.
+
+### 3.1 Exact in every profile
+
+The following bind byte-for-byte or integer-for-integer and cannot be waived as
+numerical drift:
+
+- request ID, scheduler slot, physical row, response, and output-queue mapping;
+- prompt/current/generated tokens, accepted-token accounting, stops, and usage;
+- positions, context lengths, RoPE positions, active/causal/finish masks;
+- `KVLiveSpans`, pages, live counts, append/commit/rollback destinations;
+- target and provider cursor, Conv/GDN/SSM state ownership, and reseed source;
+- graph bucket, profile/manifest/fallback identity, and sampler/RNG ownership;
+- cancellation, failure rollback, reclaim, teardown, and zero final owners.
+
+Any mismatch is a state/control bug. It is never repaired by relaxing a
+numerical threshold.
+
+### 3.2 Binding production numerical gate
+
+Use strict teacher tokens so strict and production compare identical contexts.
+Free-running generated-ID equality is recorded only as a diagnostic.
+
+Every global and category/shape/transition scope must satisfy all of:
+
+| Metric | Requirement |
+| --- | ---: |
+| Mean full-vocabulary KL, production vs strict | `<= 1e-3` |
+| p95 row KL | `<= 5e-3` |
+| p99 row KL | `<= 2e-2` |
+| Maximum row KL | `<= 5e-2` |
+| Overall top-1 agreement | `>= 99%` |
+| Per-category/shape/transition top-1 | `>= 97%` |
+
+Rows above KL `2e-2` require explicit top-k overlap, strict margin, finiteness,
+and task diagnosis and cannot auto-admit. The broad KL `<=0.05` / top-1
+`>=90%` CPU-reference rule is only the outer kernel smoke floor.
+
+### 3.3 Other binding gates
+
+- at least three identical fixed-seed repeats under the same schedule and
+  manifest;
+- same-width neighbor substitution/permutation isolation and inactive-row
+  isolation;
+- finite recorded logits, KV, and recurrent/provider state;
+- graph/eager reconciliation and registered strict fallback;
+- complete `code`, `general_en`, `general_ja`, and `mixed_ja_en` suite plus the
+  four fixed category heldouts;
+- every applicable task validator passes its predeclared paired
+  non-inferiority criterion versus strict; categories cannot compensate;
+- strict selected-quant and production selected-quant are both reported versus
+  a BF16/full-precision teacher where available, with no unreported added
+  quality budget;
+- fixed/ragged schedules, delayed arrival, sparse retirement, cancellation,
+  refill, pressure/failure recovery, blocking/SSE, and clean drain.
+
+Cross-width composition equality is required only for a separately advertised
+`batch_invariant` key. It is diagnostic for these production keys.
+
+## 4. Performance and automatic-policy gate
+
+Performance is measured only after the same-suite quality packet passes.
+
+- Denominator: a separate true no-MTP Generation-2 AR path in the same process,
+  model, profile, prompts, sampling, cache state, warmup state, and timing
+  protocol.
+- Suite: committed `benchmarks/prompts/mtpbench-code-general-ja.jsonl`, all ten
+  prompts, six train plus four fixed heldouts.
+- Primary timing: complete request / barrier-to-last-completion wall with
+  authoritative generated-token accounting.
+- Report: full/train/heldout and every-category tok/s, acceptance, accepted per
+  output, TTFT, ITL, E2E, SLO goodput, memory, active occupancy, physical
+  decomposition, graph/fallback routes, and ownership drain.
+- Automatic threshold: aggregate MTP `>=1.10x` true AR in the declared key,
+  with no heldout/category speed regression and no candidate-caused SLO or
+  task regression. The project target remains `>1.30x`.
+- Policy identity includes backend, full model hash, quant, KV, execution
+  profile and manifest hash, provider, K, resident/physical C, context bucket,
+  horizon, and sampling mode.
+
+No prompt text, token ID, candidate ID, or heldout result may participate in
+policy selection.
+
+## 5. Implementation sequence
+
+### M0 — current-state audit and RED seams
+
+- Prove 27B resolves the staged adapter and 35B is rejected solely by the MoE
+  adapter boundary, not by model inventory or target capability.
+- Freeze current same-source AR, direct MTP, and staged MTP route telemetry.
+- Add a RED seam requiring a model-plugin-selected MoE provider while retaining
+  dense behavior and K0 for unsupported models.
+
+### M1 — 35B MoE Generation-2 C1
+
+- Add a model-attached MoE NextN provider adapter around the retained
+  device-resident MoE draft runner.
+- Let `EngineService` / `ResidentEngineLoop` own admission, one cycle per tick,
+  target frontier, transaction, accept/commit, publication, cancellation, and
+  teardown. Do not call whole-request legacy MTP from the staged child.
+- Register strict fallback and a provisional production manifest; automatic
+  stays K0 during qualification.
+
+### D1 — 27B Dense C1 closure
+
+- Retain the existing staged provider/frontier/transaction path.
+- Add the missing production profile/manifest and complete control/logit/task
+  capture rather than requiring strict/free-running ID equality.
+- Optimize activation only if current complete-wall economics fail; do not
+  reopen already-rejected acceptance heuristics or physical C2 target work.
+
+### Q1/Q2 — independent qualification and promotion
+
+Run the full Section 3/4 packet independently for 35B and 27B. Promote only a
+passing exact key. One model cannot borrow another model’s quality, speed,
+manifest, context, or policy evidence.
+
+### X1 — cross-model fail-closed serving
+
+Verify discovery/capabilities, explicit/automatic blocking and SSE, unsupported
+sampling/context/profile/hash K0 before mutation, cancellation/failure recovery,
+and zero final owners for both adapters in one shared architecture.
+
+## 6. Prompt-to-artifact completion checklist
+
+| Objective requirement | Required evidence before completion |
+| --- | --- |
+| “CONCURRENCY2 MTP” | EngineService live snapshot and response telemetry show `engine_service_verify_chain`, staged `VERIFY_CHAIN` work, real cycles, and no `legacy_prelaunch_fallback` |
+| “35B MoE” | Exact 35B hash, MoE provider capability/manifest, RED/GREEN seam, full numerical/task/dynamic/perf artifact, automatic policy artifact |
+| “27B Dense” | Exact 27B hash, dense provider capability/manifest, full numerical/task/dynamic/perf artifact, automatic policy artifact |
+| “until both are promoted” | Two content-verified automatic keys select MTP on clean public LLM/server requests; all listed out-of-scope probes select K0 pre-mutation |
+| “actual correctness gates, not exact match” | Execution-profile artifacts contain strict-teacher mean/p95/p99/max KL, overall/per-scope top-1, determinism, isolation, task and BF16-relative verdicts; generated-ID equality is explicitly `diagnostic` |
+| Strict fallback | Variant manifests name registered selected/fallback variants; negative tests prove missing/uncertified production falls back to strict/K0 |
+| True speedup | Same-command true-AR and MTP full-suite rows with authoritative token counts, full/train/heldout/category ratios, and server/SLO metrics |
+| Production serving | Blocking/SSE outputs and telemetry, mixed arrival, cancellation, overload/soak, failure recovery, lifecycle/memory, and clean drain |
+| No benchmark gaming | Committed suite/hash, fixed split identity, pure greedy selection guard, no prompt/token/candidate-conditioned code or policy |
+| Publication | Compact artifacts, benchmark README/changelog, architecture/profile docs, immutable worklogs, tests, kernel trace if new kernel executes, atomic commits, pushed clean `origin/main` |
+
+## 7. Completion audit rule
+
+Before declaring this campaign complete, inspect every row in Section 6 against
+real files and command output. A green unit suite, a manifest, a route label, or
+a speed ratio is only supporting evidence; none is a proxy for the complete
+per-model promotion packet. Any absent, stale, cross-host, cross-model, or
+weakly covered row keeps the campaign active.
