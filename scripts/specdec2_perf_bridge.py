@@ -621,6 +621,8 @@ def _run_legacy_native(
         top_p=request.top_p,
         ignore_eos=request.ignore_eos,
     )
+    if bool(getattr(direct_config, "is_moe", False)):
+        return tuple(direct_generator.generate_speculative_mtp_detailed(direct_request))
     return tuple(
         direct_generator._generate_dense_speculative_mtp_detailed(
             direct_request,
@@ -679,6 +681,12 @@ def _decode_only_seconds(
     else:
         owned = timing_summary.get("owned_totals_ms", {})
         value = float(owned.get("decode_ms", 0.0)) / 1000.0
+        if value <= 0.0:
+            value = max(
+                0.0,
+                float(owned.get("mtp_run_total_ms", 0.0))
+                - float(owned.get("prefill_ms", 0.0)),
+            ) / 1000.0
     if not math.isfinite(value) or value <= 0.0:
         raise BridgeContractError(f"{arm} has no positive decode-only timing owner")
     return value
@@ -1226,6 +1234,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     direct_config, _block_id, _required = _gguf_mtp_required_tensor_names(
                         direct_generator.weight_index
                     )
+                    actual_fp16_state = os.environ.get(
+                        "HIPENGINE_GGUF_FP16_RECURRENT_STATE",
+                        "0",
+                    ).strip().lower() in {"1", "true", "yes", "on"}
+                    payload["model"]["recurrent_state"] = (
+                        "fp16" if actual_fp16_state else "fp32"
+                    )
+                    payload["canonical_provenance"]["environment"][
+                        "HIPENGINE_GGUF_FP16_RECURRENT_STATE"
+                    ] = "1" if actual_fp16_state else "0"
                     ledger = _StageLedger(roctx=bool(args.roctx_markers))
                     installed = _install_stage_ledger(service, ledger)
                     load_row = {

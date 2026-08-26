@@ -188,6 +188,20 @@ def test_resident_runner_delegates_staged_methods_without_backend_branches() -> 
     assert runner.speculative_kv_live_spans_owner(SimpleNamespace(operation_id="op"))
 
 
+def test_resident_runner_delegates_bounded_complete_cycle_when_plugin_selects_it() -> None:
+    adapter = SimpleNamespace(
+        staged_frontier=False,
+        execute_cycle=lambda plan, commit: (plan, commit),
+    )
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._mtp2_adapter = adapter
+    runner._mtp2_adapter_resolved = True
+    runner.generator = SimpleNamespace(target_arch="gfx1100")
+
+    assert runner.speculative_frontier_available("plan") is False
+    assert runner.execute_speculative_cycle("plan", commit=True) == ("plan", True)
+
+
 def test_physical_specdec2_uses_qualified_eager_when_graph_is_uncached() -> None:
     runner = object.__new__(Qwen35GGUFResidentModelRunner)
     runner._mtp2_adapter = SimpleNamespace()
@@ -1189,6 +1203,37 @@ def test_model_runner_rebuilds_postcommit_targets_from_canonical_tokens() -> Non
     assert kwargs["return_logits"] is False
     assert kwargs["return_hidden_seeds"] is False
     assert tuple(session.position for session in sessions) == (3, 4)
+
+
+def test_model_runner_production_rebuild_keeps_scheduler_token_on_near_tie() -> None:
+    session = SimpleNamespace(position=5, reset=lambda: None)
+    row = SimpleNamespace(
+        request_id=7,
+        prompt_ids=(1, 2),
+        slot=SimpleNamespace(
+            generated_ids=[101, 102],
+            prev_token=102,
+            seq_position=3,
+        ),
+        lease=SimpleNamespace(session=session),
+    )
+    owner = SimpleNamespace(
+        prefill_batch_native=lambda prompts, **kwargs: (
+            setattr(session, "position", len(prompts[0]))
+            or SimpleNamespace(token_id=999)
+        ,),
+    )
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._rows = {7: row}
+    runner._flush_rows = lambda rows: None
+    runner._packed_execution_owner = lambda selected: owner
+
+    assert runner.restore_speculative_target_request_ids(
+        (7,),
+        require_token_match=False,
+    ) is True
+    assert row.slot.prev_token == 102
+    assert session.position == row.slot.seq_position == 3
 
 
 @pytest.mark.parametrize(
