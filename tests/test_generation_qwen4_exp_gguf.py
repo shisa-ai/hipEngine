@@ -1,0 +1,112 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
+from hipengine.generation.registry import GenerationRequest, resolve_text_generator
+
+
+class _Tokenizer:
+    eos_token_id = 9
+
+    def encode(self, text):
+        return [1, 2] if text == "hello" else [3]
+
+    def decode(self, ids, *, skip_special=False):
+        del skip_special
+        return ":".join(str(value) for value in ids)
+
+
+class _Runner:
+    max_sequence_length = 8
+
+    def __init__(self):
+        self.steps = []
+
+    def prefill(self, tokens):
+        self.steps.append(("prefill", tuple(tokens)))
+        return SimpleNamespace(token_id=4)
+
+    def step(self, token):
+        self.steps.append(("step", int(token)))
+        return SimpleNamespace(token_id={4: 5, 5: 9}.get(int(token), 9))
+
+    def close(self):
+        self.steps.append(("close",))
+
+
+def _request(**overrides):
+    values = dict(
+        prompts=("hello",),
+        max_tokens=4,
+        temperature=0.0,
+        top_p=1.0,
+        ignore_eos=False,
+    )
+    values.update(overrides)
+    return GenerationRequest(**values)
+
+
+def test_qwen4_exp_generators_are_registered_for_local_and_unsloth_q4() -> None:
+    for quant in ("gguf_q4_k_m", "gguf_ud_q4_k_xl"):
+        assert callable(
+            resolve_text_generator(
+                model="qwen4_exp_gguf",
+                backend="hip_gfx1151",
+                quant=quant,
+            )
+        )
+
+
+def test_qwen4_exp_generator_runs_greedy_serial_and_stops_at_eos() -> None:
+    runner = _Runner()
+    generator = Qwen4ExpGGUFTextGenerator(
+        model_path="unused",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+        backend="hip_gfx1151",
+        tokenizer=_Tokenizer(),
+        runner=runner,
+    )
+
+    (output,) = generator.generate_detailed(_request())
+
+    assert output.text == "4:5:9"
+    assert output.generated_token_ids == (4, 5, 9)
+    assert output.finish_details.reason == "eos"
+    assert runner.steps == [("prefill", (1, 2)), ("step", 4), ("step", 5)]
+    generator.close()
+    assert runner.steps[-1] == ("close",)
+
+
+def test_qwen4_exp_generator_accepts_exact_ids_and_length_finish() -> None:
+    runner = _Runner()
+    generator = Qwen4ExpGGUFTextGenerator(
+        model_path="unused",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+        tokenizer=_Tokenizer(),
+        runner=runner,
+    )
+    (output,) = generator.generate_detailed(
+        _request(prompts=((7, 8),), max_tokens=1, ignore_eos=True)
+    )
+    assert output.generated_token_ids == (4,)
+    assert output.finish_details.reason == "length"
+    assert runner.steps[0] == ("prefill", (7, 8))
+
+
+def test_qwen4_exp_generator_rejects_unqualified_sampling_and_capacity() -> None:
+    generator = Qwen4ExpGGUFTextGenerator(
+        model_path="unused",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+        tokenizer=_Tokenizer(),
+        runner=_Runner(),
+    )
+    with pytest.raises(ValueError, match="greedy"):
+        generator.generate_detailed(_request(temperature=0.5))
+    with pytest.raises(ValueError, match="capacity"):
+        generator.generate_detailed(_request(prompts=((1, 2, 3, 4, 5, 6),), max_tokens=3))
