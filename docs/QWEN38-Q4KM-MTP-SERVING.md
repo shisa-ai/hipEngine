@@ -1,12 +1,12 @@
 # Qwen3.8 Q4_K_M Exact MTP Serving Campaign
 
-- Status: **S4 promoted for one exact scope; S5 closure next**
+- Status: **Complete; one exact automatic scope retained**
 - Started: **2026-08-26**
 - Primary host: **Radeon 8060S / `hip_gfx1151`**
 - Model: **Qwen3.8-27B `Q4_K_M`, BF16 KV**
 - Serving profile at entry: **strict**
 - Direct-leaf premise: **exact natural25 B3 at 21.157528 tok/s / 1.809537x true AR**
-- Current public policy: **explicit route available; `auto` selects AR**
+- Current public policy: **`auto` selects MTP only for the exact qualified key; every other key selects AR/K0**
 - Dependencies: [`PLAN.md`](PLAN.md), [`MTP-FIX.md`](MTP-FIX.md),
   [`API.md`](API.md), [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
   [`TESTING.md`](TESTING.md), and [`BENCHMARK.md`](BENCHMARK.md)
@@ -24,7 +24,7 @@ directly and excludes prefill from decode timing. Promotion requires the public
 `LLM.generate*_detailed()` and OpenAI paths under the same request boundary as
 true AR.
 
-Out of scope until a fixed public scope passes:
+The following remain out of scope for this campaign:
 
 - stochastic or processed-target MTP;
 - tools, structured outputs, logprobs, penalties, forced tokens, or hard
@@ -191,7 +191,26 @@ This exceeds both the 1.10 promotion floor and the 1.30 project target. Evidence
 
 ## 9. S5 — Closure
 
-Publish retained/no-go code units, compact artifacts, benchmark rollup and
-changelog, immutable worklogs, capability/API documentation, refactor/removal
-triggers, exact fallback scope, and final teardown evidence. A zero-promotion
-closure is valid and preferable to weakening a gate.
+- [x] Publish retained code units, S0-S5 compact artifacts, benchmark rollup and
+      changelog, immutable worklogs, capability/API documentation, and
+      refactor/removal triggers.
+- [x] Preserve the exact automatic key and document pre-mutation K0/strict-AR
+      fallback for every unqualified identity, profile, sampler, or shape.
+- [x] Complete the repository milestone suite once, preserve its exact totals,
+      and apply focused repair rather than automatically rerunning the suite.
+- [x] Prove final server, GPU, and compiler ownership is zero.
+
+The milestone run collected **10,576 tests: 10,361 passed, 192 skipped, 4
+xfailed, and 19 failed**. The isolated failures were one stale campaign seam
+assertion plus shared test-hygiene issues: restored RoPE scratch expectations,
+PARO profile environment leakage, and replaced DMS fixture buffers. Focused
+repairs passed their affected files/bundles and the exact failed-node rerun is
+**19/19 green**; the completed broad run was not repeated, per repository
+policy. Closure evidence:
+[`2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json`](../benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json).
+
+The retained automatic route remains only the fingerprinted key in Section 8.
+Q4_K_S, MoE, wrong artifact/backend/quant/profile/manifest/KV/capacity/group/B,
+stochastic or processed sampling, context/output mismatches, grown sessions,
+hard thinking controls, DMS, and physical C>1 remain K0. Final server,
+`/dev/kfd`, `hipcc`, and clang ownership is zero.
