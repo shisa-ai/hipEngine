@@ -61,11 +61,16 @@ class Qwen4ExpGGUFTextGenerator:
                 plan=plan,
                 backend=self.backend,
             )
-            runner = Qwen4ExpGGUFResidentModelRunner(
-                self._resident,
-                max_sequence_length=max_sequence_length,
-                backend=self.backend,
-            )
+            try:
+                runner = Qwen4ExpGGUFResidentModelRunner(
+                    self._resident,
+                    max_sequence_length=max_sequence_length,
+                    backend=self.backend,
+                )
+            except Exception:
+                self._resident.close()
+                self._resident = None
+                raise
         self.runner = runner
 
     def generate(self, request: GenerationRequest) -> list[str]:
