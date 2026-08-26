@@ -212,8 +212,29 @@ class Qwen35GGUFNativeAcceptCommitResult:
             != (() if self.verify_buffers is None else self.verify_buffers.request_ids)
         ):
             raise ValueError("native verify/state buffer request ids must match")
-        if self.hidden_seeds.shape != (0, 0) or self.hidden_seeds.dtype != np.float32:
-            raise ValueError("device accept/commit must not return host hidden rows")
+        if self.lm_head_logits_f32 is not None:
+            logits = np.asarray(self.lm_head_logits_f32)
+            if (
+                logits.dtype != np.float32
+                or logits.ndim != 2
+                or logits.shape[0] != rows
+                or not np.isfinite(logits).all()
+            ):
+                raise ValueError(
+                    "diagnostic lm_head_logits_f32 must contain finite FP32 target rows"
+                )
+        if self.hidden_seeds.shape != (0, 0):
+            if (
+                self.lm_head_logits_f32 is None
+                or self.hidden_seeds.dtype != np.float32
+                or self.hidden_seeds.shape != (rows, self.hidden_size)
+                or not np.isfinite(self.hidden_seeds).all()
+            ):
+                raise ValueError(
+                    "diagnostic host hidden rows require aligned finite FP32 logits"
+                )
+        elif self.hidden_seeds.dtype != np.float32:
+            raise ValueError("device accept/commit empty hidden rows must be FP32")
 
 
 def build_native_b2_target_batch(
