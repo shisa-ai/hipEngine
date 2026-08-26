@@ -6,6 +6,7 @@ from hipengine.execution_profiles import resolve_runtime_profile
 from hipengine.kernels.registry import resolve
 from hipengine.speculative.paro_mtp_profiles import (
     FAST_VERIFIER_CANDIDATE_VARIANT,
+    FULL_ATTN_EXACT_SUFFIX_ENV,
     PARO_MTP_BACKEND,
     GDN_EXACT_ENV,
     LINEAR_EXACT_ENV,
@@ -81,9 +82,24 @@ def test_fast_verifier_route_is_certified_and_selected_by_production() -> None:
     )
 
 
+def _track_bound_route_environment(monkeypatch) -> None:
+    for name in (
+        PARO_MTP_CONTRACT_ENV,
+        PARO_MTP_ROUTE_ENV,
+        PARO_MTP_CHAIN_ATTN_MODE_ENV,
+        GDN_EXACT_ENV,
+        LINEAR_EXACT_ENV,
+        MOE_EXACT_ENV,
+        FULL_ATTN_EXACT_SUFFIX_ENV,
+    ):
+        # The runtime binder intentionally mutates os.environ directly. Prime
+        # each key through monkeypatch so pytest restores the pre-test process
+        # environment after the binder has overwritten it.
+        monkeypatch.setenv(name, "pytest-sentinel")
+
+
 def test_profile_binder_enables_target_contract_and_records_route(monkeypatch) -> None:
-    monkeypatch.delenv(PARO_MTP_CONTRACT_ENV, raising=False)
-    monkeypatch.delenv(PARO_MTP_ROUTE_ENV, raising=False)
+    _track_bound_route_environment(monkeypatch)
     resolution = _resolved("production")
     generator = resolution.construct_generator(lambda: SimpleNamespace())
 
@@ -97,9 +113,11 @@ def test_profile_binder_enables_target_contract_and_records_route(monkeypatch) -
     assert env[GDN_EXACT_ENV] == "0"
     assert env[LINEAR_EXACT_ENV] == "0"
     assert env[MOE_EXACT_ENV] == "0"
+    assert env[FULL_ATTN_EXACT_SUFFIX_ENV] == "0"
 
 
 def test_strict_profile_binder_restores_exact_route(monkeypatch) -> None:
+    _track_bound_route_environment(monkeypatch)
     resolution = _resolved("strict")
     resolution.construct_generator(lambda: SimpleNamespace())
     env = __import__("os").environ
@@ -108,3 +126,4 @@ def test_strict_profile_binder_restores_exact_route(monkeypatch) -> None:
     assert env[GDN_EXACT_ENV] == "1"
     assert env[LINEAR_EXACT_ENV] == "1"
     assert env[MOE_EXACT_ENV] == "1"
+    assert env[FULL_ATTN_EXACT_SUFFIX_ENV] == "0"
