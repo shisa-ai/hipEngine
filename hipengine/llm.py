@@ -379,6 +379,36 @@ class LLM:
         return callable(getattr(generator, "generate_speculative_mtp_detailed", None))
 
     @property
+    def speculative_mtp_product_scope(self) -> dict[str, str] | None:
+        """Return plugin/profile-derived fields used by the automatic K policy."""
+
+        generator = self._text_generator
+        if generator is None:
+            return None
+        capability = getattr(generator, "speculative_provider_capabilities", None)
+        if not callable(capability):
+            return None
+        try:
+            provider = capability()
+        except Exception:
+            return None
+        fingerprint = str(getattr(provider, "artifact_fingerprint", "")).strip()
+        backend = str(getattr(generator, "backend", "")).strip()
+        profile = self.resolved_execution_profile
+        manifest = self.execution_profile_manifest_sha256
+        kv_policy = getattr(generator, "_prepared_kv_policy", None)
+        kv_storage = getattr(getattr(kv_policy, "storage_dtype", None), "value", None)
+        if not all((fingerprint, backend, profile, manifest, kv_storage)):
+            return None
+        return {
+            "artifact_fingerprint": fingerprint,
+            "backend": backend,
+            "execution_profile": str(profile),
+            "execution_profile_manifest_sha256": str(manifest),
+            "kv_storage": str(kv_storage),
+        }
+
+    @property
     def supports_default_mtp(self) -> bool:
         """Whether default-on MTP serving is safe for the resolved generator.
 
