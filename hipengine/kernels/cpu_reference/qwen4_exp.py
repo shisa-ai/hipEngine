@@ -25,6 +25,21 @@ class PLEHashState:
     next_position: int
 
 
+@dataclass(frozen=True)
+class PLEConvState:
+    history: np.ndarray
+    next_position: int
+
+
+@dataclass(frozen=True)
+class PLEInjectionResult:
+    residual: np.ndarray
+    gate: np.ndarray
+    gated_value: np.ndarray
+    conv_output: np.ndarray
+    state: PLEConvState
+
+
 def grouped_zero_centered_rmsnorm(
     residual: ArrayLike,
     weight: ArrayLike,
@@ -245,6 +260,128 @@ def ple_hash_rows(
     return rows, output_states
 
 
+def ple_signed_sqrt_gate(scores: ArrayLike) -> np.ndarray:
+    """Apply PLE's signed-square-root sigmoid gate."""
+
+    value = np.asarray(scores, dtype=np.float32)
+    transformed = np.sign(value) * np.sqrt(
+        np.maximum(np.abs(value), np.float32(1e-6))
+    )
+    return _sigmoid(transformed.astype(np.float32))
+
+
+def dilated_depthwise_conv(
+    values: ArrayLike,
+    kernel: ArrayLike,
+    *,
+    dilation: int,
+    positions: ArrayLike,
+    state: PLEConvState | None,
+) -> tuple[np.ndarray, PLEConvState]:
+    """Causal per-channel convolution with explicit immutable history."""
+
+    x = np.asarray(values, dtype=np.float32)
+    weights = np.asarray(kernel, dtype=np.float32)
+    pos = np.asarray(positions, dtype=np.int64)
+    if x.ndim != 2:
+        raise ValueError("values must have shape [tokens, channels]")
+    tokens, channels = x.shape
+    if tokens == 0:
+        raise ValueError("values must contain at least one token")
+    if weights.ndim != 2 or weights.shape[0] != channels:
+        raise ValueError("kernel must have shape [channels, kernel_size]")
+    kernel_size = weights.shape[1]
+    if kernel_size <= 0:
+        raise ValueError("kernel_size must be positive")
+    dil = int(dilation)
+    if dil <= 0:
+        raise ValueError("dilation must be positive")
+    if pos.shape != (tokens,):
+        raise ValueError("positions must have shape [tokens]")
+    if np.any(pos < 0) or np.any(np.diff(pos) != 1):
+        raise ValueError("positions must be non-negative and contiguous")
+
+    history_rows = (kernel_size - 1) * dil
+    if state is None or state.next_position != int(pos[0]):
+        history = np.zeros((history_rows, channels), dtype=np.float32)
+    else:
+        history = np.asarray(state.history, dtype=np.float32)
+        if history.shape != (history_rows, channels):
+            raise ValueError("state history shape does not match kernel/dilation/channels")
+        history = history.copy()
+    padded = np.concatenate((history, x), axis=0)
+    output = np.zeros_like(x, dtype=np.float32)
+    for tap in range(kernel_size):
+        start = history_rows - (kernel_size - 1 - tap) * dil
+        output += padded[start : start + tokens] * weights[:, tap][None, :]
+    next_history = (
+        padded[-history_rows:].copy()
+        if history_rows
+        else np.zeros((0, channels), dtype=np.float32)
+    )
+    return output, PLEConvState(next_history, int(pos[-1]) + 1)
+
+
+def ple_injection(
+    residual: ArrayLike,
+    embedding: ArrayLike,
+    key_weight: ArrayLike,
+    value_weight: ArrayLike,
+    norm_key_weight: ArrayLike,
+    norm_query_weight: ArrayLike,
+    norm_conv_weight: ArrayLike,
+    conv_kernel: ArrayLike,
+    *,
+    positions: ArrayLike,
+    state: PLEConvState | None,
+    dilation: int,
+    eps: float = 1e-6,
+) -> PLEInjectionResult:
+    """Reference PLE projections, branch gate, dilated Conv, and residual update."""
+
+    hidden_state = np.asarray(residual, dtype=np.float32)
+    emb = np.asarray(embedding, dtype=np.float32)
+    if hidden_state.ndim != 3:
+        raise ValueError("residual must have shape [tokens, branches, hidden]")
+    tokens, branches, hidden = hidden_state.shape
+    if emb.shape != (tokens, hidden):
+        raise ValueError("embedding must have shape [tokens, hidden]")
+    residual_width = branches * hidden
+    key_projection = np.asarray(key_weight, dtype=np.float32)
+    value_projection = np.asarray(value_weight, dtype=np.float32)
+    if key_projection.shape != (residual_width, hidden):
+        raise ValueError("key_weight must have shape [branches * hidden, hidden]")
+    if value_projection.shape != (hidden, hidden):
+        raise ValueError("value_weight must have shape [hidden, hidden]")
+
+    key = (emb @ key_projection.T).reshape(tokens, branches, hidden).astype(np.float32)
+    value = (emb @ value_projection.T).astype(np.float32)
+    key = grouped_zero_centered_rmsnorm(key, norm_key_weight, eps=eps)
+    query = grouped_zero_centered_rmsnorm(
+        hidden_state,
+        norm_query_weight,
+        eps=eps,
+    )
+    score = np.sum(key * query, axis=-1, dtype=np.float32) / np.float32(np.sqrt(hidden))
+    gate = ple_signed_sqrt_gate(score)
+    gated = (value[:, None, :] * gate[:, :, None]).astype(np.float32)
+    normalized = grouped_zero_centered_rmsnorm(
+        gated,
+        norm_conv_weight,
+        eps=eps,
+    ).reshape(tokens, residual_width)
+    conv_raw, next_state = dilated_depthwise_conv(
+        normalized,
+        conv_kernel,
+        dilation=dilation,
+        positions=positions,
+        state=state,
+    )
+    conv_output = _silu(conv_raw).reshape(tokens, branches, hidden)
+    updated = (hidden_state + gated + conv_output).astype(np.float32)
+    return PLEInjectionResult(updated, gate, gated, conv_output, next_state)
+
+
 def _sigmoid(value: np.ndarray) -> np.ndarray:
     x = np.asarray(value, dtype=np.float32)
     return np.reciprocal(np.float32(1.0) + np.exp(-x)).astype(np.float32)
@@ -257,10 +394,15 @@ def _silu(value: np.ndarray) -> np.ndarray:
 
 __all__ = [
     "GRReadResult",
+    "PLEConvState",
     "PLEHashState",
+    "PLEInjectionResult",
+    "dilated_depthwise_conv",
     "gr_read",
     "gr_write",
     "grouped_zero_centered_rmsnorm",
     "ple_hash_rows",
+    "ple_injection",
+    "ple_signed_sqrt_gate",
     "sigmoid_gated_rmsnorm",
 ]

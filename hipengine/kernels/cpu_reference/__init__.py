@@ -83,11 +83,16 @@ from hipengine.kernels.cpu_reference.moonshine import (
 )
 from hipengine.kernels.cpu_reference.qwen4_exp import (
     GRReadResult,
+    PLEConvState,
     PLEHashState,
+    PLEInjectionResult,
+    dilated_depthwise_conv,
     gr_read,
     gr_write,
     grouped_zero_centered_rmsnorm,
     ple_hash_rows,
+    ple_injection,
+    ple_signed_sqrt_gate,
     sigmoid_gated_rmsnorm,
 )
 from hipengine.kernels.cpu_reference.ops import (
@@ -182,7 +187,9 @@ __all__ = [
     "LagunaSparseFFNWeights",
     "LagunaSparseMoEResult",
     "GRReadResult",
+    "PLEConvState",
     "PLEHashState",
+    "PLEInjectionResult",
     "Tolerances",
     "candidate_selector_greedy_path",
     "candidate_selector_select",
@@ -203,6 +210,7 @@ __all__ = [
     "dequantize_kv_int8_hadamard_group32",
     "dequantize_kv_int8_key_bf16_value",
     "dequantize_kv_int8_per_token_head",
+    "dilated_depthwise_conv",
     "dms_streaming_pack_reference",
     "embed",
     "external_dms_linear_decision_reference",
@@ -286,6 +294,8 @@ __all__ = [
     "qwen35_gguf_mtp_nextn_layer_logits",
     "qwen35_gguf_mtp_shared_head_logits",
     "ple_hash_rows",
+    "ple_injection",
+    "ple_signed_sqrt_gate",
     "register_cpu_reference_kernels",
     "register_dms_cpu_reference_kernels",
     "register_laguna_cpu_reference_kernels",
