@@ -109,6 +109,9 @@ def test_mtp_c1c8_diagnostic_plan_is_content_agnostic_and_bounded() -> None:
     assert first == second
     assert first["admitted"] is True
     assert first["selected_candidate_count"] == 2
+    assert _diagnostic_plan(**{**base, "candidate_budget": 1})["admitted"] is True
+    assert _diagnostic_plan(**{**base, "candidate_budget": 3})["admitted"] is True
+    assert _diagnostic_plan(**{**base, "candidate_budget": 4})["admitted"] is False
     assert _diagnostic_plan(**{**base, "realized_group_rows": 5})["admitted"] is False
     assert _diagnostic_plan(**{**base, "context_tokens": 96})["admitted"] is False
 
