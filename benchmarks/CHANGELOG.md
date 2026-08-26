@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 W7900 model-owned MTP OLD vs current; diagnostic/not retained] Full-suite D24 C1-C8 moves **79.584/75.671/95.426/110.257/102.914/96.620/104.152/110.218 → 82.446/110.986/129.095/136.007/114.736/125.641/131.960/135.143 tok/s** (**+3.60/+46.67/+35.28/+23.35/+11.49/+30.04/+26.70/+22.61%**). Current MTP beats same-protocol CONCURRENCY2 AR **5.80-76.46%**, but this is a legacy-prelaunch diagnostic: Generation-2 MoE MTP is K0, current AR equality is 65/80, and OLD has one C5 non-invariant cell. `benchmarks/results/2026-08-27-w7900-old-vs-current-model-owned-mtp-c1-c8.json`.
+
 - [2026-08-27 gfx1151 SPECDEC2 strict small-M Q4 WMMA; retained/scoped default] One-wave/one-16-row-tile WMMA replaces padded physical Q4 ownership for six exact shapes at R6/R8/R12/R16. Target wall improves **20.07%/19.25%/17.68%/16.30%**; full-suite C2/C4 improves **9.958→11.462 (+15.10%) / 15.718→17.555 tok/s (+11.69%)**, with 120/120 parent/candidate cells exact and every category positive. Physical remains below true AR; automatic K0 is unchanged. `benchmarks/results/2026-08-27-gfx1151-specdec2-smallm-q4-wmma-retained.json`.
 
 - [2026-08-26 W7900 OLD vs CONCURRENCY2 full C1-C8; retained] Identical p512/d128 OpenAI SSE moves aggregate C1..C8 **71.106/98.468/63.448/125.904/88.097/98.045/107.096/143.934 → 75.187/99.281/116.770/133.084/143.253/152.118/157.325/162.219 tok/s**, or **+5.74/+0.83/+84.04/+5.70/+62.61/+55.15/+46.90/+12.70%**. All cells are exact; Generation 2 replaces OLD's masked eager C3/C5-C7 with exact native graphs. `benchmarks/results/2026-08-26-w7900-old-vs-concurrency2-c1-c8.json`.
