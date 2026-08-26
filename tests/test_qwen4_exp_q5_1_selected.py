@@ -106,6 +106,7 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
             d_weight.ptr,
             d_output.ptr,
             rows,
+            rows,
             experts,
             in_features,
             out_features,

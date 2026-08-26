@@ -132,6 +132,18 @@ __global__ void scaled_silu_f32_kernel(
   }
 }
 
+__global__ void silu_mul_f32_kernel(
+    const float* __restrict__ gate,
+    const float* __restrict__ up,
+    float* __restrict__ output,
+    int64_t elements) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index < elements) {
+    const float value = gate[index];
+    output[index] = value / (1.0f + expf(-value)) * up[index];
+  }
+}
+
 __global__ void sigmoid_f32_kernel(
     const float* __restrict__ input,
     float* __restrict__ output,
@@ -274,6 +286,24 @@ extern "C" int hipengine_qwen4_exp_scaled_silu_f32(
   hipLaunchKernelGGL(
       scaled_silu_f32_kernel, dim3(blocks), dim3(threads), 0, stream,
       static_cast<const float*>(input), static_cast<float*>(output), elements, scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_silu_mul_f32(
+    const void* gate,
+    const void* up,
+    void* output,
+    int64_t elements,
+    hipStream_t stream) {
+  if (!gate || !up || !output || elements <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  const uint32_t blocks = static_cast<uint32_t>((elements + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      silu_mul_f32_kernel, dim3(blocks), dim3(threads), 0, stream,
+      static_cast<const float*>(gate), static_cast<const float*>(up),
+      static_cast<float*>(output), elements);
   return static_cast<int>(hipGetLastError());
 }
 

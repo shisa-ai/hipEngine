@@ -38,6 +38,7 @@ __global__ void q5_1_selected_gemv_bf16_bf16_kernel(
     const int32_t* __restrict__ selected,
     const uint8_t* __restrict__ weights,
     uint16_t* __restrict__ output,
+    int64_t x_rows,
     int64_t rows,
     int64_t num_experts,
     int64_t in_features,
@@ -47,6 +48,7 @@ __global__ void q5_1_selected_gemv_bf16_bf16_kernel(
   const int64_t pair = blockIdx.x;
   const int64_t row = pair / out_features;
   const int64_t out = pair % out_features;
+  const int64_t input_row = row / (rows / x_rows);
   const int32_t expert = selected[row];
   if (expert < 0 || expert >= num_experts) {
     return;
@@ -58,7 +60,7 @@ __global__ void q5_1_selected_gemv_bf16_bf16_kernel(
     const int64_t block_index = column / 32;
     const int within = static_cast<int>(column & 31);
     const float weight = dequant_q5_1(weight_row + block_index * 24, within);
-    value += bf16_bits_to_float(input[row * in_features + column]) * weight;
+    value += bf16_bits_to_float(input[input_row * in_features + column]) * weight;
   }
   partial[threadIdx.x] = value;
   __syncthreads();
@@ -80,13 +82,15 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
     const void* selected,
     const void* weights,
     void* output,
+    int64_t x_rows,
     int64_t rows,
     int64_t num_experts,
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
-  if (!input || !selected || !weights || !output || rows <= 0 || num_experts <= 0 ||
-      in_features <= 0 || (in_features % 32) || out_features <= 0) {
+  if (!input || !selected || !weights || !output || x_rows <= 0 || rows <= 0 ||
+      rows % x_rows || num_experts <= 0 || in_features <= 0 ||
+      (in_features % 32) || out_features <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   constexpr int threads = 256;
@@ -97,6 +101,6 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
       threads * sizeof(float), stream,
       static_cast<const uint16_t*>(input), static_cast<const int32_t*>(selected),
       static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
-      rows, num_experts, in_features, out_features, row_bytes);
+      x_rows, rows, num_experts, in_features, out_features, row_bytes);
   return static_cast<int>(hipGetLastError());
 }

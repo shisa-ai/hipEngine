@@ -21,6 +21,7 @@ _ARGS = (
     ctypes.c_int64,
     ctypes.c_int64,
     ctypes.c_int64,
+    ctypes.c_int64,
     ctypes.c_void_p,
 )
 
@@ -68,21 +69,27 @@ def qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
     selected_ptr: int,
     weights_ptr: int,
     output_ptr: int,
+    x_rows: int,
     rows: int,
     num_experts: int,
     in_features: int,
     out_features: int,
     *,
+    threads: int = 256,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
     """Run one raw Q5_1 expert projection for each compact BF16 input row."""
 
-    if rows <= 0 or num_experts <= 0 or in_features <= 0 or out_features <= 0:
-        raise ValueError("rows, num_experts, in_features, and out_features must be positive")
+    if x_rows <= 0 or rows <= 0 or rows % x_rows:
+        raise ValueError("rows must be positive and divisible by positive x_rows")
+    if num_experts <= 0 or in_features <= 0 or out_features <= 0:
+        raise ValueError("num_experts, in_features, and out_features must be positive")
     if in_features % 32:
         raise ValueError("Q5_1 in_features must be divisible by 32")
+    if threads != 256:
+        raise ValueError("Q5_1 strict selected GEMV requires threads == 256")
     library = library or build_qwen4_exp_q5_1(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
@@ -96,6 +103,7 @@ def qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
         selected_ptr,
         weights_ptr,
         output_ptr,
+        x_rows,
         rows,
         num_experts,
         in_features,
@@ -107,16 +115,17 @@ def qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
 
 
 def register_qwen4_exp_q5_1_kernels(*, replace: bool = True) -> None:
-    register(
-        KernelKey(
-            "hip_gfx1100",
-            "moe_linear",
-            "gguf_q5_1",
-            "selected_gemv_bf16_bf16_out",
-        ),
-        qwen4_exp_q5_1_selected_gemv_bf16_bf16_out,
-        replace=replace,
-    )
+    for layer in ("linear", "moe_linear"):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                layer,
+                "gguf_q5_1",
+                "selected_gemv_bf16_bf16_out",
+            ),
+            qwen4_exp_q5_1_selected_gemv_bf16_bf16_out,
+            replace=replace,
+        )
 
 
 register_qwen4_exp_q5_1_kernels()
