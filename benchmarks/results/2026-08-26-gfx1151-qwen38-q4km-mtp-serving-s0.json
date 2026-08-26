@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "kind": "qwen38_q4km_mtp_serving_s0",
+  "status": "qualified_checkpoint",
+  "created_at": "2026-08-26",
+  "performance_claim": false,
+  "promotion": {
+    "explicit_candidate_qualified": true,
+    "automatic_policy": "K0",
+    "automatic_promoted": false,
+    "reason": "S0 proves the public C1/B3 premise only; artifact-scoped admission and the S1-S4 API/lifecycle/load packet remain open"
+  },
+  "provenance": {
+    "hipengine_commit": "1c745688d508a5c35728d22bdf36c0581ce4b567",
+    "git_branch": "qwen38-mtp-serving",
+    "dirty": false,
+    "host_name": "zbook",
+    "device_name": "AMD Radeon 8060S Graphics",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "rocm_version": "HIP version: 7.15.0-0000000",
+    "compiler_manifest_sha256": "ad3918eb84fce2726c18e70b7fc64dbe4257e3082fec4996e22f3dc3b2522214",
+    "execution_profile": "strict",
+    "execution_profile_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+    "kv_dtype": "bf16",
+    "require_cached_build": true,
+    "compiler_overlap": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+  },
+  "workload": {
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_file_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "scope": "full",
+    "prompt_count": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "heldout_prompt_count": 4,
+    "runs_per_prompt": 3,
+    "concurrency": 1,
+    "candidate_budget": 3,
+    "max_tokens": 25,
+    "sampling": "raw greedy; temperature=0, top_p=1",
+    "counterbalance": "even prompt+run index true_ar->legacy_native->specdec2; odd index reverse",
+    "warmups_per_arm": 1,
+    "timing_boundary": "host route entry through terminal GenerationOutput/reclaim; includes tokenize, admission, activation, prefill, decode, publication, and reclaim"
+  },
+  "command": "env -u HIPENGINE_HIP_ARCH -u HIPENGINE_GGUF_FP16_RECURRENT_STATE -u GPU_MAX_HW_QUEUES -u HIP_VISIBLE_DEVICES -u ROCR_VISIBLE_DEVICES -u HSA_ENABLE_SDMA -u HSA_USE_SVM HIPENGINE_REQUIRE_CACHED_BUILD=1 /home/lhl/miniforge3/bin/python3.13 scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --target-arch gfx1151 --quant-label Q4_K_M --execution-profile strict --gpu-max-hw-queues 2 --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --scope full --concurrency 1 --budgets 3 --max-tokens 25 --runs 3 --warmup --require-cached-build --compiler-version-file <run-root>/hipcc-version.txt --output <run-root>/retained-public-c1-b3-natural25-full-r3.json --fail-on-fail",
+  "results": {
+    "cells_complete": 30,
+    "arms_complete": 90,
+    "generated_tokens_per_arm": 750,
+    "all_generated_ids_exact": true,
+    "deterministic_repeats": true,
+    "true_ar_aggregate_tok_s": 9.025497680421644,
+    "legacy_native_aggregate_tok_s": 14.149148369590392,
+    "generation2_specdec2_aggregate_tok_s": 12.940098229765553,
+    "legacy_native_over_true_ar": 1.567686223030461,
+    "generation2_specdec2_over_true_ar": 1.4337268356775015,
+    "individual_cell_speedup_min": 1.2995299236201776,
+    "individual_cell_speedup_max": 1.5514662406253197,
+    "category_speedups": {
+      "code": {
+        "samples": 12,
+        "median": 1.499592416318311,
+        "minimum": 1.2995299236201776,
+        "maximum": 1.5514662406253197
+      },
+      "general_en": {
+        "samples": 6,
+        "median": 1.4311527809912512,
+        "minimum": 1.4253584972010263,
+        "maximum": 1.4723195510883618
+      },
+      "general_ja": {
+        "samples": 6,
+        "median": 1.3864149719868804,
+        "minimum": 1.3552738884938382,
+        "maximum": 1.4360538762101522
+      },
+      "mixed_ja_en": {
+        "samples": 6,
+        "median": 1.4442802051531953,
+        "minimum": 1.4145520086257972,
+        "maximum": 1.4942474917421387
+      }
+    },
+    "scope_speedups": {
+      "train": {
+        "samples": 18,
+        "median": 1.423030438442264,
+        "minimum": 1.2995299236201776,
+        "maximum": 1.5514662406253197
+      },
+      "heldout": {
+        "samples": 12,
+        "median": 1.4476370643995473,
+        "minimum": 1.4001762820509582,
+        "maximum": 1.5258036388241136
+      }
+    }
+  },
+  "generation2_route": {
+    "realized_route": "specdec2",
+    "graph_cycles": 229,
+    "candidate_tokens": 662,
+    "accepted_draft_tokens": 482,
+    "acceptance_per_draft": 0.7280966767371602,
+    "device_accept_calls": 210,
+    "candidate_d2h_after_target": 0,
+    "candidate_readback_ms": 0.0,
+    "recoverable_failures": 0,
+    "failure_reasons": [],
+    "timing_owners_per_arm": 1
+  },
+  "lifecycle": {
+    "peak_tracked_bytes": 25379846178,
+    "final_tracked_bytes": 0,
+    "final_active_allocations": 0,
+    "total_allocated_bytes": 59865499893,
+    "total_freed_bytes": 59865499893,
+    "final_gpu_owner": false
+  },
+  "direct_leaf_comparison": {
+    "artifact": "benchmarks/results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json",
+    "direct_decode_only_b3_tok_s": 21.157527979895817,
+    "direct_decode_only_b3_over_true_ar": 1.809536758739318,
+    "interpretation": "Direct-leaf rates exclude prefill and are not substituted for the public operation-complete denominator. S0 independently proves the existing Generation-2 public owner at 1.4337x complete-wall true AR."
+  },
+  "gate": {
+    "public_c1_b3_floor": 1.1,
+    "public_c1_b3_floor_passed": true,
+    "every_category_non_regressive": true,
+    "every_heldout_non_regressive": true,
+    "bridge_generic_speed_claim_eligible": false,
+    "bridge_generic_speed_claim_reason": "The generic P1 bridge requires the full {1,2,4} concurrency set; this campaign intentionally qualifies only the physical-C1 S0 premise.",
+    "next": "S1 artifact-scoped capability RED/GREEN; automatic remains K0"
+  }
+}

@@ -1,6 +1,6 @@
 # Qwen3.8 Q4_K_M Exact MTP Serving Campaign
 
-- Status: **S0 current-route qualification next; automatic policy remains K0**
+- Status: **S0 LLM premise passed; OpenAI smoke next; automatic policy remains K0**
 - Started: **2026-08-26**
 - Primary host: **Radeon 8060S / `hip_gfx1151`**
 - Model: **Qwen3.8-27B `Q4_K_M`, BF16 KV**
@@ -79,17 +79,25 @@ into artifact-free default admission.
 
 ## 4. S0 — Current public-route baseline
 
-- [ ] Freeze clean merged-main source, compiler, model, prompt, environment, and
+- [x] Freeze clean merged-main source, compiler, model, prompt, environment, and
       GPU ownership.
-- [ ] Run one excluded cached-build warmup.
-- [ ] Compare public `LLM.generate_detailed()` with
+- [x] Run one excluded cached-build warmup.
+- [x] Compare public `LLM.generate_detailed()` with
       `LLM.generate_speculative_mtp_detailed()` over the complete natural25
       suite, with exact generated IDs, acceptance/state/route accounting, and
       zero final ownership.
-- [ ] Measure operation-complete and decode-owner wall without substituting the
+- [x] Measure operation-complete and decode-owner wall without substituting the
       direct-leaf denominator.
 - [ ] Exercise one OpenAI explicit completion/chat smoke and verify capabilities,
       generation shape, compact MTP usage, and teardown.
+
+The retained LLM checkpoint is **12.940 vs 9.025 true-AR tok/s (1.4337x)**
+operation-complete: 30/30 cells and 90/90 arms are exact, every individual cell
+is 1.2995x–1.5515x, every category/heldout slice is positive, and recovery,
+post-target candidate D2H, and final ownership are zero. See
+[`2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0.json`](../benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s0.json).
+The direct legacy control is 14.149 tok/s but is not a second admissible public
+scheduler; Generation-2 remains the serving owner.
 
 Exit: either a public C1/B3 premise above 1.10x true AR, or a concrete no-go
 blocker. No implementation is admitted merely because the direct leaf is fast.
