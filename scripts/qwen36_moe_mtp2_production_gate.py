@@ -362,6 +362,33 @@ def _strict_prefix(
     return current
 
 
+def _probe_native_graph(
+    session: Any,
+    inputs: Sequence[int],
+) -> tuple[tuple[int, ...], np.ndarray, np.ndarray]:
+    result = session.verify_target_block_native_cycle(
+        list(inputs),
+        fallback=False,
+        bulk_attention_mode="bulk",
+        use_wmma_prefill=False,
+        capture_linear_state_rows=True,
+        capture_lm_head_logits=True,
+        defer_linear_state_commit=True,
+        device_accept_commit=False,
+    )
+    if not bool(getattr(session, "last_native_spec_target_submitted", False)):
+        raise GateError("production numerical candidate did not execute the native graph")
+    logits = getattr(result, "lm_head_logits_f32", None)
+    if logits is None:
+        raise GateError("native graph did not return diagnostic full logits")
+    hidden = np.ascontiguousarray(result.hidden_seeds, dtype=np.float32)
+    return (
+        tuple(int(token) for token in result.token_ids),
+        np.ascontiguousarray(logits, dtype=np.float32),
+        hidden,
+    )
+
+
 def _build_teacher_and_metrics(
     session: Any,
     *,
@@ -420,15 +447,9 @@ def _build_teacher_and_metrics(
             replay_root = _strict_prefix(session, prompt_tokens, output_index)
             if replay_root != root:
                 raise GateError("candidate strict-teacher root diverged")
-            candidate_tokens, candidate_logits, hidden_rows, *_ = _probe_bulk_or_native(
+            candidate_tokens, candidate_logits, hidden_rows = _probe_native_graph(
                 session,
-                list(inputs),
-                mode="bulk",
-                use_wmma_prefill=False,
-                capture_linear_state_rows=True,
-                capture_pre_output_norm_hidden=False,
-                capture_layer_output_hidden=[],
-                capture_layer_boundary_hidden=[],
+                inputs,
             )
             candidate_logits_runs.append(
                 np.ascontiguousarray(candidate_logits, dtype=np.float32)
@@ -502,24 +523,24 @@ def _replay_live_prefix(
     for cycle in cycles:
         if int(session.position) != cycle.root_position or current != cycle.root_token:
             raise GateError("live graph/eager prefix cursor diverged")
-        result = session.verify_target_block(
+        result = session.verify_target_block_native_cycle(
             [cycle.root_token, *cycle.draft_tokens],
+            fallback=False,
             bulk_attention_mode="bulk",
             use_wmma_prefill=False,
             capture_linear_state_rows=True,
             defer_linear_state_commit=True,
-            record_stage_timings=False,
+            device_accept_commit=True,
+            remaining_decode=cycle.remaining_decode,
         )
-        tokens = tuple(int(token) for token in result.token_ids)
-        if tokens != cycle.target_tokens:
+        tokens = tuple(int(token) for token in result.target_top1)
+        outputs = tuple(int(token) for token in result.token_ids)
+        if tokens != cycle.target_tokens or outputs != cycle.output_tokens:
             raise GateError(
-                f"live eager replay differs from graph at cycle {cycle.cycle}: "
-                f"{tokens!r} != {cycle.target_tokens!r}"
+                f"live graph replay differs at cycle {cycle.cycle}: "
+                f"target={tokens!r}/{cycle.target_tokens!r} "
+                f"outputs={outputs!r}/{cycle.output_tokens!r}"
             )
-        session._commit_verify_linear_state_row(
-            cycle.accepted,
-            position=cycle.root_position + cycle.accepted + 1,
-        )
         current = int(cycle.output_tokens[-1])
     return current
 
@@ -531,8 +552,8 @@ def _capture_graph_eager(
     prompt_tokens: Sequence[int],
     output_ids: Sequence[int],
     cycles: Sequence[LiveCycle],
-) -> dict[str, Any]:
-    rows = 0
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
     for cycle_index, cycle in enumerate(cycles):
         current = _replay_live_prefix(
             session,
@@ -542,7 +563,24 @@ def _capture_graph_eager(
         )
         if current != cycle.root_token:
             raise GateError("graph/eager current root mismatch")
-        tokens, logits, hidden, *_ = _probe_bulk_or_native(
+        graph_tokens, graph_logits, graph_hidden = _probe_native_graph(
+            session,
+            (cycle.root_token, *cycle.draft_tokens),
+        )
+        if graph_tokens != cycle.target_tokens:
+            raise GateError(
+                f"native graph diagnostic differs from live graph for "
+                f"{prompt['id']} cycle {cycle_index}"
+            )
+        current = _replay_live_prefix(
+            session,
+            prompt_tokens,
+            int(output_ids[0]),
+            cycles[:cycle_index],
+        )
+        if current != cycle.root_token:
+            raise GateError("graph/eager replay root mismatch")
+        eager_tokens, eager_logits, eager_hidden, *_ = _probe_bulk_or_native(
             session,
             [cycle.root_token, *cycle.draft_tokens],
             mode="bulk",
@@ -552,20 +590,41 @@ def _capture_graph_eager(
             capture_layer_output_hidden=[],
             capture_layer_boundary_hidden=[],
         )
-        eager = tuple(int(token) for token in tokens)
-        if eager != cycle.target_tokens:
-            raise GateError(
-                f"graph/eager decision mismatch for {prompt['id']} cycle {cycle_index}"
-            )
-        if not np.isfinite(logits).all() or not np.isfinite(hidden).all():
+        if not (
+            np.isfinite(graph_logits).all()
+            and np.isfinite(graph_hidden).all()
+            and np.isfinite(eager_logits).all()
+            and np.isfinite(eager_hidden).all()
+        ):
             raise GateError("graph/eager diagnostic produced non-finite values")
-        rows += len(eager)
-    return {
-        "prompt_id": str(prompt["id"]),
-        "cycles": len(cycles),
-        "rows": rows,
-        "passed": True,
-    }
+        metrics = per_row_metrics(
+            graph_logits,
+            eager_logits,
+            np.asarray(graph_tokens, dtype=np.int64),
+            top_k=5,
+        )
+        for row_index in range(len(graph_tokens)):
+            rows.append(
+                {
+                    "prompt_id": str(prompt["id"]),
+                    "category": str(prompt["category"]),
+                    "cycle": cycle_index,
+                    "row": row_index,
+                    "shape": f"k{len(cycle.draft_tokens)}",
+                    "transition": (
+                        "prefill_to_verify" if cycle_index == 0 else "verify_to_verify"
+                    ),
+                    "graph_top1": graph_tokens[row_index],
+                    "eager_top1": int(eager_tokens[row_index]),
+                    "kl": float(metrics["kl_nats"][row_index]),
+                    "top1_equal": bool(metrics["top1_equal"][row_index]),
+                    "top5_overlap": float(metrics["topk_set_overlap"][row_index]),
+                    "max_abs_logit_delta": float(
+                        metrics["max_abs_logit_delta"][row_index]
+                    ),
+                }
+            )
+    return rows
 
 
 def _live_cycle_from_result(result: Any, kwargs: Mapping[str, Any], index: int) -> LiveCycle:
@@ -843,7 +902,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     row_metrics: list[dict[str, Any]] = []
     repeat_rows: list[dict[str, Any]] = []
     schedules: dict[str, list[TeacherCycle]] = {}
-    graph_eager: list[dict[str, Any]] = []
+    graph_eager_rows: list[dict[str, Any]] = []
     session = Qwen35GGUFResidentSession(
         model,
         backend="hip_gfx1100",
@@ -875,7 +934,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             schedules[prompt_id] = schedule
             row_metrics.extend(rows)
             repeat_rows.extend(repeats)
-            graph_eager.append(
+            graph_eager_rows.extend(
                 _capture_graph_eager(
                     session,
                     prompt=prompt,
@@ -897,10 +956,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             if not row["passed"]
         ],
     }
-    graph_eager_gate = {
-        "passed": all(row["passed"] for row in graph_eager),
-        "prompts": graph_eager,
-    }
+    graph_eager_gate = numerical_verdict(graph_eager_rows)
     task_rows: list[dict[str, Any]] = []
     for prompt in prompts:
         prompt_id = str(prompt["id"])
