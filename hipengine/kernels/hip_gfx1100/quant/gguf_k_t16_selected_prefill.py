@@ -47,6 +47,9 @@ _Q4_DENSE_WMMA_BF16 = (
 _Q4_QMICRO_DENSE_WMMA_BF16 = (
     "hipengine_gguf_q4_k_qmicro_t16_wmma_prefill_bf16_bf16_out"
 )
+_Q4_DENSE_WMMA_SMALLM_BF16 = (
+    "hipengine_gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out"
+)
 _Q4_DENSE_WMMA_SHARED_B_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out"
 )
@@ -211,6 +214,39 @@ def gguf_q4_k_t16_wmma_prefill_bf16_bf16_out(
     del tile_m, tile_n
     _launch_dense_t16(
         _Q4_DENSE_WMMA_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+) -> None:
+    """Launch the strict one-WMMA-row-tile Q4T16 owner for rows 1-16."""
+
+    del tile_m, tile_n
+    if int(rows) > 16:
+        raise ValueError("small-M Q4T16 WMMA requires rows <= 16")
+    _launch_dense_t16(
+        _Q4_DENSE_WMMA_SMALLM_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -867,6 +903,10 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
             gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
         ),
         (
+            "t16_wmma_prefill_smallm_bf16_bf16_out",
+            gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out,
+        ),
+        (
             "t16_wmma_prefill_shared_b_bf16_bf16_out",
             gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
         ),
@@ -1001,6 +1041,7 @@ __all__ = [
     "gguf_q4_k_t16_dense_unequal_dual_wmma_prefill_bf16_bf16_out",
     "gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_bf16_bf16_out",
+    "gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out",
     "gguf_q4_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
