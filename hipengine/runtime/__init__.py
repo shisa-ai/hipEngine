@@ -42,6 +42,8 @@ from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFResidentSession,
 )
 from hipengine.runtime.qwen4_exp_runner import (
+    Qwen4ExpDecodeState,
+    Qwen4ExpDecodeStateSnapshot,
     Qwen4ExpGRReadDeviceResult,
     Qwen4ExpGRScratch,
     run_qwen4_exp_gr_read,
@@ -91,6 +93,8 @@ __all__ = [
     "Qwen35GGUFNextNStepResult",
     "Qwen35GGUFOneLayerProbe",
     "Qwen35GGUFResidentSession",
+    "Qwen4ExpDecodeState",
+    "Qwen4ExpDecodeStateSnapshot",
     "Qwen4ExpGRReadDeviceResult",
     "Qwen4ExpGRScratch",
     "Qwen35ParoAttentionScratch",

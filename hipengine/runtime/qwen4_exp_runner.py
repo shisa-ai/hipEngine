@@ -9,9 +9,20 @@ architecture branches to the engine or dispatch layer.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Mapping
+
+import numpy as np
 
 from hipengine.core.hip import HipRuntime, get_hip_runtime
-from hipengine.core.memory import DeviceBuffer, free, malloc
+from hipengine.core.memory import (
+    DeviceBuffer,
+    copy_device_to_host,
+    copy_host_to_device,
+    free,
+    host_array_ptr,
+    malloc,
+)
 from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_gated_mean_f32,
     qwen4_exp_grouped_rmsnorm_bf16_f32,
@@ -24,6 +35,120 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear,
 )
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
+
+
+@dataclass(frozen=True)
+class Qwen4ExpDecodeStateSnapshot:
+    buffers: Mapping[str, np.ndarray]
+
+
+@dataclass
+class Qwen4ExpDecodeState:
+    gdn_matrix: DeviceBuffer
+    gdn_conv: DeviceBuffer
+    ple_conv: DeviceBuffer
+    residual: DeviceBuffer
+    runtime: HipRuntime
+    closed: bool = False
+
+    @classmethod
+    def allocate(
+        cls,
+        *,
+        gdn_layers: int,
+        gdn_value_heads: int,
+        gdn_head_dim: int,
+        gdn_conv_channels: int,
+        gdn_conv_kernel: int,
+        residual_branches: int,
+        hidden: int,
+        ple_conv_kernel: int,
+        ple_dilation: int,
+        runtime: HipRuntime | None = None,
+    ) -> "Qwen4ExpDecodeState":
+        dimensions = (
+            gdn_layers,
+            gdn_value_heads,
+            gdn_head_dim,
+            gdn_conv_channels,
+            gdn_conv_kernel,
+            residual_branches,
+            hidden,
+            ple_conv_kernel,
+            ple_dilation,
+        )
+        if any(int(value) <= 0 for value in dimensions):
+            raise ValueError("Qwen4Exp state dimensions must be positive")
+        active_runtime = runtime or get_hip_runtime()
+        sizes = (
+            gdn_layers * gdn_value_heads * gdn_head_dim * gdn_head_dim * 4,
+            gdn_layers * (gdn_conv_kernel - 1) * gdn_conv_channels * 4,
+            (ple_conv_kernel - 1) * ple_dilation * residual_branches * hidden * 4,
+            residual_branches * hidden * 2,
+        )
+        buffers: list[DeviceBuffer] = []
+        try:
+            for size in sizes:
+                buffers.append(malloc(size, runtime=active_runtime))
+        except Exception:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=active_runtime)
+            raise
+        state = cls(*buffers, runtime=active_runtime)
+        state.zero()
+        return state
+
+    @property
+    def owned_buffers(self) -> Mapping[str, DeviceBuffer]:
+        return MappingProxyType(
+            {
+                "gdn_matrix": self.gdn_matrix,
+                "gdn_conv": self.gdn_conv,
+                "ple_conv": self.ple_conv,
+                "residual": self.residual,
+            }
+        )
+
+    @property
+    def nbytes_by_owner(self) -> Mapping[str, int]:
+        return MappingProxyType(
+            {name: buffer.nbytes for name, buffer in self.owned_buffers.items()}
+        )
+
+    def zero(self) -> None:
+        self._require_open()
+        for buffer in self.owned_buffers.values():
+            self.runtime.memset(buffer.ptr, 0, buffer.nbytes)
+
+    def snapshot(self) -> Qwen4ExpDecodeStateSnapshot:
+        self._require_open()
+        buffers: dict[str, np.ndarray] = {}
+        for name, buffer in self.owned_buffers.items():
+            host = np.empty(buffer.nbytes, dtype=np.uint8)
+            copy_device_to_host(host_array_ptr(host), buffer, runtime=self.runtime)
+            buffers[name] = host
+        return Qwen4ExpDecodeStateSnapshot(MappingProxyType(buffers))
+
+    def restore(self, snapshot: Qwen4ExpDecodeStateSnapshot) -> None:
+        self._require_open()
+        if set(snapshot.buffers) != set(self.owned_buffers):
+            raise ValueError("Qwen4Exp state snapshot owner set does not match")
+        for name, buffer in self.owned_buffers.items():
+            host = np.ascontiguousarray(snapshot.buffers[name], dtype=np.uint8)
+            if host.nbytes != buffer.nbytes:
+                raise ValueError(f"Qwen4Exp state snapshot size mismatch for {name}")
+            copy_host_to_device(buffer, host_array_ptr(host), runtime=self.runtime)
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        for buffer in reversed(tuple(self.owned_buffers.values())):
+            free(buffer, runtime=self.runtime)
+        self.closed = True
+
+    def _require_open(self) -> None:
+        if self.closed:
+            raise RuntimeError("Qwen4Exp decode state is closed")
 
 
 @dataclass
@@ -196,6 +321,8 @@ def run_qwen4_exp_gr_read(
 
 
 __all__ = [
+    "Qwen4ExpDecodeState",
+    "Qwen4ExpDecodeStateSnapshot",
     "Qwen4ExpGRReadDeviceResult",
     "Qwen4ExpGRScratch",
     "run_qwen4_exp_gr_read",
