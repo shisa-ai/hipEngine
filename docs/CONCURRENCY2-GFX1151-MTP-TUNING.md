@@ -147,13 +147,15 @@ suite, max24, B2:
 
 | Width | Effective route | AR tok/s | MTP tok/s | MTP vs AR | Engagement |
 | ---: | --- | ---: | ---: | ---: | ---: |
-| c1 | staged MTP2 | 9.754 | **14.314** | **+46.75%** | 10/10 |
+| c1 | staged MTP2 B3 | 9.730 | **14.287** | **+46.84%** | 10/10 |
 | c2-c8 | typed K0/AR | 15.124-35.296 | n/a | n/a | 0/70 |
 
-C1 is non-regressive in every category: code +48.44%, general_en +52.11%,
-general_ja +39.47%, mixed_ja_en +45.92%; heldouts +48.38%. Aggregate
+C1 is non-regressive in every category: code +48.33%, general_en +52.15%,
+general_ja +39.56%, mixed_ja_en +46.44%; heldouts +48.66%. Aggregate
 accept-per-draft is 79.29%. Exact AR/MTP IDs on 10/10 c1 cells and all 70 K0
-cells are diagnostic, not the binding production criterion.
+cells are diagnostic, not the binding production criterion. T1.4 later exposed
+that the original label B2 was adapter-default physical B3; this table uses the
+truthful budget-conformed B3 rerun.
 
 The Q4_K_M production gate passes **1,170** strict-teacher rows: KL
 mean/p95/p99/max `1.239e-4 / 3.503e-4 / 1.110e-3 / 0.049788`, top-1
@@ -227,10 +229,12 @@ production policy remains MTP at no automatic cell (K0) until those gates pass.
 - [ ] **T1.3 Device-chain coverage check.** Confirm N2/N3P device proposal /
   accept / selected-commit engagement on the Q4_K_M route at C1 (P4 retained
   it for Q4_K_S); fence or repair any host round-trip that remains.
-- [ ] **T1.4 Candidate-budget sweep on serving C1.** B1/B2/B3/B4 under the
-  full suite. External and internal evidence both point at B2/B3;
-  `HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET` default 3, budget 4 known to regress.
-  Exit: one measured default per qualified key, not a heuristic.
+- [x] **T1.4 Candidate-budget sweep on serving C1.** Truthful physical budgets
+  under the full suite: B1 12.236 tok/s (+25.59%, 95.65% accept), B2 14.055
+  (+44.54%, 91.87%), B3 **14.287 (+46.84%, 79.29%)**. Every category is
+  positive. B3 beats B2 1.65% and remains the measured default; B4 clamps to
+  B3 and is not a distinct candidate. Generated IDs are diagnostic; T0.4's
+  production numerical gate is binding.
 
 ### T2 — c>1 MTP economics (G2/G3)
 
