@@ -70,9 +70,9 @@ def test_qwen4_exp_runner_gdn_token_mixer_matches_reduced_cpu_oracle() -> None:
     mapping = np.arange(v_heads) % k_heads
     query = q_raw[mapping]
     key = k_raw[mapping]
-    query /= np.sqrt(np.sum(query * query, axis=-1, keepdims=True))
+    query /= np.sqrt(np.sum(query * query, axis=-1, keepdims=True) + np.float32(1e-6))
     query /= np.sqrt(np.float32(head_dim))
-    key /= np.sqrt(np.sum(key * key, axis=-1, keepdims=True))
+    key /= np.sqrt(np.sum(key * key, axis=-1, keepdims=True) + np.float32(1e-6))
     beta = 1.0 / (1.0 + np.exp(-beta_logits))
     decay = np.exp(-np.exp(a_log) * np.log1p(np.exp(alpha + dt_bias)))
     core, next_matrix = gdn_prefill_recurrent_segments(

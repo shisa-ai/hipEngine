@@ -61,6 +61,10 @@ def test_qwen4_exp_gdn_decode_matches_cpu_at_production_geometry() -> None:
     value_dim = 128
     q_raw = rng.normal(0.0, 0.05, size=(k_heads, head_dim)).astype(np.float32)
     k_raw = rng.normal(0.0, 0.05, size=(k_heads, head_dim)).astype(np.float32)
+    # HF Qwen4Exp l2norm adds eps to the sum. A zero head must stay finite,
+    # rather than evaluating 0 * rsqrt(0) in the fused decode kernel.
+    q_raw[0] = 0.0
+    k_raw[0] = 0.0
     value = rng.normal(0.0, 0.05, size=(v_heads, value_dim)).astype(np.float32)
     conv = np.concatenate((q_raw.reshape(-1), k_raw.reshape(-1), value.reshape(-1)))
     gate = rng.normal(0.0, 0.5, size=(v_heads, value_dim)).astype(np.float32)
@@ -78,9 +82,9 @@ def test_qwen4_exp_gdn_decode_matches_cpu_at_production_geometry() -> None:
     mapping = np.arange(v_heads) % k_heads
     query = q_raw[mapping]
     key = k_raw[mapping]
-    query /= np.sqrt(np.sum(query * query, axis=-1, keepdims=True))
+    query /= np.sqrt(np.sum(query * query, axis=-1, keepdims=True) + np.float32(1e-6))
     query /= np.sqrt(np.float32(head_dim))
-    key /= np.sqrt(np.sum(key * key, axis=-1, keepdims=True))
+    key /= np.sqrt(np.sum(key * key, axis=-1, keepdims=True) + np.float32(1e-6))
     beta = 1.0 / (1.0 + np.exp(-beta_logits))
     decay = np.exp(-np.exp(a_log) * np.log1p(np.exp(alpha + dt_bias)))
     core, expected_state = gdn_prefill_recurrent_segments(
