@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-26 gfx1151 Qwen3.8 current-main exact AR/MTP refresh] Clean cached natural25 AR/B1/B2/B3 moves **11.658→11.692 (+0.30%) / 17.115→17.376 (+1.53%) / 20.008→20.338 (+1.65%) / 21.040→21.158 tok/s (+0.56%)** and B3/AR **1.8048→1.8095x (+0.26%)**. All full/train/heldout/category rates are non-regressive, all 30 MTP rows are exact with GPU/CPU acceptance agreement, and cached ROCTX profiling proves qualified scalar-C1 plus native rows4/2 ownership; no isolated implementation delta is claimed. `benchmarks/results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json`.
+
 - [2026-08-26 AGENTIC-QUALITY2 campaign closure; quality only] AQ0-AQ13 close with frozen 34-task external/sandbox oracles; Qwen3.6/Qwen3.8/Ornith complete **44/68, 50/68, and 42/68** with exact repeat/control/ownership gates. AQ3/AQ6 find zero scored runtime/unresolved boundaries and AQ8 retains **no implementation**; AQ9-AQ12 are not applicable, so no post-change or speed row is claimed. `benchmarks/results/2026-08-26-zbook-agentic-quality2-campaign-final.json`.
 
 - [2026-08-26 AGENTIC-QUALITY2 AQ8 mechanism decision; retained no-go] AQ3/AQ6/AQ7 admit **no implementation**: all **7/7** unique primary development failures are deterministic model selection/grounding behavior, while parser/template/runtime/unresolved boundaries, malformed/schema-invalid published calls, leaks, truncations, and patch failures are all zero. The 44/68 primary baseline remains unchanged; no post-change or speed row is claimed. `benchmarks/results/2026-08-26-zbook-agentic-quality2-aq8-no-go-decision.json`.
