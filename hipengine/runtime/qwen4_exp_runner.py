@@ -14,6 +14,8 @@ from typing import Mapping
 
 import numpy as np
 
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime, get_hip_runtime
 from hipengine.core.memory import (
     DeviceBuffer,
@@ -23,7 +25,18 @@ from hipengine.core.memory import (
     host_array_ptr,
     malloc,
 )
+from hipengine.core.tensor import Tensor
 from hipengine.kernels.backends import load_backend_kernel_package
+from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
+    qwen35_paged_full_attn_decode_context_bf16_spans,
+)
+from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
+    qwen35_write_paged_kv_f32_spans,
+)
+from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
+    qwen4_exp_qsa_gate_context_f32,
+    qwen4_exp_qsa_split_norm_rope_f32,
+)
 from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     shared_gate_combine_out_bf16,
@@ -60,6 +73,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear,
 )
 from hipengine.kernels.registry import resolve
+from hipengine.kvcache import KVLiveSpans
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 
 
@@ -177,6 +191,116 @@ class Qwen4ExpDecodeState:
             raise RuntimeError("Qwen4Exp decode state is closed")
 
 
+@dataclass
+class Qwen4ExpDenseAttentionState:
+    key_cache: DeviceBuffer
+    value_cache: DeviceBuffer
+    block_table: DeviceBuffer
+    position: DeviceBuffer
+    context: DeviceBuffer
+    append_spans: KVLiveSpans
+    decode_spans: KVLiveSpans
+    position_host: np.ndarray
+    context_host: np.ndarray
+    block_size: int
+    max_positions: int
+    runtime: HipRuntime
+    closed: bool = False
+
+    @classmethod
+    def allocate(
+        cls,
+        *,
+        max_positions: int,
+        block_size: int,
+        kv_heads: int,
+        head_dim: int,
+        runtime: HipRuntime | None = None,
+    ) -> "Qwen4ExpDenseAttentionState":
+        if max_positions <= 0 or block_size <= 0 or kv_heads <= 0 or head_dim <= 0:
+            raise ValueError("attention state dimensions must be positive")
+        active_runtime = runtime or get_hip_runtime()
+        blocks = (max_positions + block_size - 1) // block_size
+        block_host = np.arange(blocks, dtype=np.int32)
+        position_host = np.zeros(1, dtype=np.int64)
+        context_host = np.ones(1, dtype=np.int64)
+        buffers: list[DeviceBuffer] = []
+        try:
+            key_cache = malloc(
+                blocks * block_size * kv_heads * head_dim * 2,
+                runtime=active_runtime,
+            )
+            buffers.append(key_cache)
+            value_cache = malloc(key_cache.nbytes, runtime=active_runtime)
+            buffers.append(value_cache)
+            block_table = malloc(block_host.nbytes, runtime=active_runtime)
+            buffers.append(block_table)
+            position = malloc(position_host.nbytes, runtime=active_runtime)
+            buffers.append(position)
+            context = malloc(context_host.nbytes, runtime=active_runtime)
+            buffers.append(context)
+            copy_host_to_device(block_table, host_array_ptr(block_host), runtime=active_runtime)
+            copy_host_to_device(position, host_array_ptr(position_host), runtime=active_runtime)
+            copy_host_to_device(context, host_array_ptr(context_host), runtime=active_runtime)
+            active_runtime.memset(key_cache.ptr, 0, key_cache.nbytes)
+            active_runtime.memset(value_cache.ptr, 0, value_cache.nbytes)
+        except Exception:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=active_runtime)
+            raise
+        device = Device("hip", 0)
+        block_tensor = Tensor.from_handle(
+            block_table.ptr, block_host.shape, DType.INT32, device
+        )
+        position_tensor = Tensor.from_handle(
+            position.ptr, position_host.shape, DType.INT64, device
+        )
+        context_tensor = Tensor.from_handle(
+            context.ptr, context_host.shape, DType.INT64, device
+        )
+        append_spans = KVLiveSpans.paged_uniform(
+            block_table=block_tensor,
+            live_counts=position_tensor,
+            max_live_count=max_positions - 1,
+            storage_dtype=DType.BF16,
+        )
+        decode_spans = KVLiveSpans.paged_uniform(
+            block_table=block_tensor,
+            live_counts=context_tensor,
+            max_live_count=max_positions,
+            storage_dtype=DType.BF16,
+        )
+        return cls(
+            key_cache, value_cache, block_table, position, context,
+            append_spans, decode_spans, position_host, context_host,
+            block_size, max_positions, active_runtime,
+        )
+
+    def set_position(self, value: int) -> None:
+        if self.closed:
+            raise RuntimeError("Qwen4Exp attention state is closed")
+        position = int(value)
+        if not 0 <= position < self.max_positions:
+            raise ValueError("attention position exceeds state capacity")
+        self.position_host[0] = position
+        self.context_host[0] = position + 1
+        copy_host_to_device(
+            self.position, host_array_ptr(self.position_host), runtime=self.runtime
+        )
+        copy_host_to_device(
+            self.context, host_array_ptr(self.context_host), runtime=self.runtime
+        )
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        for buffer in reversed(
+            (self.key_cache, self.value_cache, self.block_table, self.position, self.context)
+        ):
+            free(buffer, runtime=self.runtime)
+        self.closed = True
+
+
 @dataclass(frozen=True)
 class Qwen4ExpGRDeviceWeights:
     norm_weight_ptr: int
@@ -195,6 +319,13 @@ class Qwen4ExpGDNMixerDeviceWeights:
 
 
 @dataclass(frozen=True)
+class Qwen4ExpQSAMixerDeviceWeights:
+    projections: Mapping[str, GGUFDeviceWeight]
+    q_norm_weight_ptr: int
+    k_norm_weight_ptr: int
+
+
+@dataclass(frozen=True)
 class Qwen4ExpGDNLayerDeviceWeights:
     attention_gr: Qwen4ExpGRDeviceWeights
     mixer: Qwen4ExpGDNMixerDeviceWeights
@@ -204,6 +335,71 @@ class Qwen4ExpGDNLayerDeviceWeights:
     layer_type: str = "gdn"
     gdn_state_index: int = -1
     has_ple: bool = False
+
+
+@dataclass
+class Qwen4ExpQSAScratch:
+    q_projected: DeviceBuffer
+    key_projected: DeviceBuffer
+    value_projected: DeviceBuffer
+    query: DeviceBuffer
+    key: DeviceBuffer
+    gate: DeviceBuffer
+    context: DeviceBuffer
+    gated: DeviceBuffer
+    output: DeviceBuffer
+    runtime: HipRuntime
+    closed: bool = False
+
+    @classmethod
+    def allocate(
+        cls,
+        *,
+        rows: int,
+        hidden: int,
+        query_heads: int,
+        kv_heads: int,
+        head_dim: int,
+        runtime: HipRuntime | None = None,
+    ) -> "Qwen4ExpQSAScratch":
+        dimensions = (rows, hidden, query_heads, kv_heads, head_dim)
+        if any(int(value) <= 0 for value in dimensions):
+            raise ValueError("Qwen4Exp QSA scratch dimensions must be positive")
+        active_runtime = runtime or get_hip_runtime()
+        q_width = query_heads * head_dim
+        kv_width = kv_heads * head_dim
+        elements = (
+            rows * q_width * 2,
+            rows * kv_width,
+            rows * kv_width,
+            rows * q_width,
+            rows * kv_width,
+            rows * q_width,
+            rows * q_width,
+            rows * q_width,
+            rows * hidden,
+        )
+        buffers: list[DeviceBuffer] = []
+        try:
+            for count in elements:
+                buffers.append(malloc(count * 4, runtime=active_runtime))
+        except Exception:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=active_runtime)
+            raise
+        return cls(*buffers, runtime=active_runtime)
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        for buffer in reversed(
+            (
+                self.q_projected, self.key_projected, self.value_projected,
+                self.query, self.key, self.gate, self.context, self.gated, self.output,
+            )
+        ):
+            free(buffer, runtime=self.runtime)
+        self.closed = True
 
 
 @dataclass
@@ -629,6 +825,120 @@ def bind_qwen4_exp_gdn_layer(
         gdn_state_index=sum(1 for kind in config.layer_types[:layer] if kind == "gdn"),
         has_ple=layer in config.ple_layers,
     )
+
+
+def run_qwen4_exp_dense_qsa_token_mixer(
+    mixed_ptr: int,
+    weights: Qwen4ExpQSAMixerDeviceWeights,
+    *,
+    attention_state: Qwen4ExpDenseAttentionState,
+    scratch: Qwen4ExpQSAScratch,
+    position: int,
+    rows: int,
+    hidden: int,
+    query_heads: int,
+    kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    theta: float,
+    eps: float = 1e-6,
+    stream: int = 0,
+    runtime: HipRuntime | None = None,
+) -> DeviceBuffer:
+    """Execute dense-equivalent QSA decode below the sparse-selection budget."""
+
+    if rows != 1:
+        raise ValueError("strict dense QSA decode currently requires rows == 1")
+    if scratch.closed or attention_state.closed:
+        raise RuntimeError("Qwen4Exp QSA scratch/state is closed")
+    active_runtime = runtime or scratch.runtime
+    if active_runtime is not scratch.runtime or active_runtime is not attention_state.runtime:
+        raise ValueError("runtime must match QSA scratch and attention state owners")
+    required = {"attn_q", "attn_k", "attn_v", "attn_output"}
+    missing = sorted(required - set(weights.projections))
+    if missing:
+        raise ValueError("missing Qwen4Exp QSA weights: " + ", ".join(missing))
+    attention_state.set_position(position)
+    q_width = query_heads * head_dim
+    kv_width = kv_heads * head_dim
+    for slot, output, out_features in (
+        ("attn_q", scratch.q_projected, q_width * 2),
+        ("attn_k", scratch.key_projected, kv_width),
+        ("attn_v", scratch.value_projected, kv_width),
+    ):
+        launch_gguf_linear(
+            weights.projections[slot], mixed_ptr, output.ptr,
+            rows, hidden, out_features,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            stream=stream, runtime=active_runtime,
+        )
+    qwen4_exp_qsa_split_norm_rope_f32(
+        scratch.q_projected.ptr,
+        scratch.key_projected.ptr,
+        weights.q_norm_weight_ptr,
+        weights.k_norm_weight_ptr,
+        attention_state.position.ptr,
+        scratch.query.ptr,
+        scratch.key.ptr,
+        scratch.gate.ptr,
+        query_heads,
+        kv_heads,
+        head_dim,
+        rotary_dim,
+        theta,
+        eps,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    qwen35_write_paged_kv_f32_spans(
+        scratch.key.ptr,
+        scratch.value_projected.ptr,
+        attention_state.key_cache.ptr,
+        attention_state.value_cache.ptr,
+        attention_state.append_spans,
+        attention_state.block_size,
+        kv_heads,
+        head_dim,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    qwen35_paged_full_attn_decode_context_bf16_spans(
+        scratch.query.ptr,
+        attention_state.key_cache.ptr,
+        attention_state.value_cache.ptr,
+        scratch.context.ptr,
+        attention_state.decode_spans,
+        position + 1,
+        attention_state.block_size,
+        query_heads,
+        kv_heads,
+        head_dim,
+        head_dim ** -0.5,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    qwen4_exp_qsa_gate_context_f32(
+        scratch.context.ptr,
+        scratch.gate.ptr,
+        scratch.gated.ptr,
+        rows * q_width,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    launch_gguf_linear(
+        weights.projections["attn_output"],
+        scratch.gated.ptr,
+        scratch.output.ptr,
+        rows,
+        q_width,
+        hidden,
+        activation_dtype=GGUF_ACTIVATION_F32,
+        output_dtype=GGUF_OUTPUT_F32,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    return scratch.output
 
 
 def run_qwen4_exp_gr_read(
@@ -1248,6 +1558,7 @@ __all__ = [
     "Qwen4ExpDecodeState",
     "bind_qwen4_exp_gdn_layer",
     "Qwen4ExpDecodeStateSnapshot",
+    "Qwen4ExpDenseAttentionState",
     "Qwen4ExpGDNLayerDeviceWeights",
     "Qwen4ExpGDNLayerScratch",
     "Qwen4ExpGDNMixerDeviceWeights",
@@ -1258,6 +1569,9 @@ __all__ = [
     "Qwen4ExpMoEScratch",
     "Qwen4ExpGRScratch",
     "Qwen4ExpPLEScratch",
+    "Qwen4ExpQSAMixerDeviceWeights",
+    "Qwen4ExpQSAScratch",
+    "run_qwen4_exp_dense_qsa_token_mixer",
     "run_qwen4_exp_gdn_layer",
     "run_qwen4_exp_gdn_token_mixer",
     "run_qwen4_exp_moe",
