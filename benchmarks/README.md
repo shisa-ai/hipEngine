@@ -113,12 +113,11 @@ All 34 repeat pairs, 10 controls, and ownership gates pass; these are same-host
 model-quality rows. The campaign retains **no implementation** because all seven
 development failures are model-owned. [`Final evidence`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json)
 
-On gfx1151, SPECDEC2-PERF P7 cuts C2/C4 K2 repair **127.743→30.518 ms /
-138.779→34.292 ms** and raises throughput **5.718→5.796 / 9.331→9.445
-tok/s**, but 18.43% acceptance still loses to AR. P8 retains production FP16:
-90/90 D25 K2 cells are exact; C1 is **15.204 vs 10.807 tok/s (1.407x)** while
-C2/C4 are **0.382x/0.343x** AR. Lifecycle and 110-request soak pass; automatic
-stays K0 pending P9. [`P7`](results/2026-08-26-gfx1151-specdec2-perf-p7-provider-repair-retained.json) · [`P8`](results/2026-08-26-gfx1151-specdec2-perf-p8-fp16-retained.json)
+gfx1151 SPECDEC2-PERF P9 is exact in all **540/540** production/strict fixed
+cells. Production C1 K1/K2/K3 reaches **1.233x/1.4067x/1.4065x AR**; K2 is the
+sole product-qualification candidate. Every C2/C4 cell loses (best
+**0.3791x/0.3406x AR**) and no wider work is admitted. Automatic stays K0 until
+the C1/K2 horizon/context/load/SLO packet passes. [`P9 evidence`](results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json)
 
 gfx1100 SPECDEC2-PERF now retains corrected C1 device chains. Dense
 Qwen3.6-27B GGUF K1/K2/K3 is exact at **1.272x/1.407x/1.439x true AR**, but

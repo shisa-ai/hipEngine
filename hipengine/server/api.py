@@ -260,7 +260,7 @@ _SPECULATIVE_MTP_AUTO_REJECTION_REASON = (
     _SpeculativeMTPRouteReason.AUTOMATIC_SCOPE_NOT_PROMOTED.value
 )
 _SPECULATIVE_MTP_AUTO_EVIDENCE = (
-    "benchmarks/results/2026-08-25-gfx1151-specdec2-s5-cost-policy.json"
+    "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json"
 )
 _SPECULATIVE_PROVIDER_ROUTE = "speculative"
 _SPECULATIVE_PROVIDER_ALLOWED_REQUEST_KEYS = frozenset(
@@ -2036,10 +2036,9 @@ def _resolve_realized_generation_route(
 ) -> tuple[str, dict[str, Any] | None]:
     """Resolve automatic routing only after the batcher's group is known.
 
-    The currently exposed MTP hook implements the explicitly requested
-    ``llama-compat`` contract.  It is not generated-ID exact against true AR,
-    so automatic requests stay on the exact/default route until an exact MTP
-    hook and matching full-suite evidence exist.
+    Exact staged MTP has one fixed C1/K2 performance premise, but automatic
+    requests remain on the default route until its complete product packet
+    passes. Losing and unqualified widths stay K0 before provider mutation.
     """
 
     route = str(requested_route)
