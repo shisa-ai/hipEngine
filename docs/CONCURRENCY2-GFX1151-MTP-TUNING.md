@@ -269,16 +269,16 @@ production policy remains MTP at no automatic cell (K0) until those gates pass.
 
 ### T3 — adaptive candidate budget (after T1/T2 land)
 
-- [ ] **T3.1 EMA adaptive K over independent B1/B2/B3 graph buckets.**
-  Port the LaurentZuijdwijk mechanism as a per-request, censor-aware
-  acceptance EMA sized to `ema+1` with additive probe on full accept. OI-2's
-  reopen precondition (independent buckets, transitions passing) is now met.
-  Default-off until the full suite proves it; the policy consumes only a
-  predeclared online acceptance statistic — never prompt text/IDs/category
-  (SPECDEC2-PERF invariant 11).
-- [ ] **T3.2 K(C) policy table from measured cells.** Adaptive behavior by
-  realized width comes from the T0/T2 measurement table, not a hand-written
-  curve.
+- [x] **T3.1 EMA adaptive K closeout.** OI-2 already implemented the
+  request-owned content-agnostic acceptance/cycle-wall EMA over independent
+  B1/B2/B3 buckets; all nine transitions and deterministic repeats pass. It
+  loses fixed B3 0.58% primary / 1.72% repeat and regresses train/code/general
+  English. New truthful serving evidence also keeps B3 1.65% above B2. Retain
+  transition diagnostics; reject/default-off the controller.
+- [x] **T3.2 K(C) policy table not admitted.** There is no adaptive winner and
+  c2+ has no MTP product cell; a curve would be hand-written without eligible
+  evidence. Automatic remains K0. Evidence:
+  [`T3 closeout`](../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t31-adaptive-closeout.json).
 
 ### T4 — research / parked (no promotion path in this campaign)
 
