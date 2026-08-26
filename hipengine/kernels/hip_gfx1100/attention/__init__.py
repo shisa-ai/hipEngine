@@ -29,6 +29,14 @@ from hipengine.kernels.hip_gfx1100.attention.laguna_kv import (
     plan_laguna_kv_attention_build,
     register_laguna_kv_attention_kernels,
 )
+from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
+    build_qwen4_exp_qsa,
+    plan_qwen4_exp_qsa_build,
+    qwen4_exp_qsa_pool_norm_rope_f32,
+    qwen4_exp_qsa_score_f32,
+    qwen4_exp_qsa_select_blocks_f32_i64,
+    register_qwen4_exp_qsa_kernels,
+)
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     build_qwen35_paged_attn_decode,
     plan_qwen35_paged_attn_decode_build,
@@ -173,6 +181,11 @@ __all__ = [
     "plan_moonshine_attention_build",
     "plan_qwen35_paged_attn_decode_build",
     "plan_qwen35_paged_kv_write_build",
+    "build_qwen4_exp_qsa",
+    "plan_qwen4_exp_qsa_build",
+    "qwen4_exp_qsa_pool_norm_rope_f32",
+    "qwen4_exp_qsa_score_f32",
+    "qwen4_exp_qsa_select_blocks_f32_i64",
     "qwen35_full_attn_decode_context_bf16",
     "qwen35_full_attn_gate_mul_bf16",
     "qwen35_full_attn_gate_mul_bf16_to_bf16",
@@ -244,4 +257,5 @@ __all__ = [
     "register_moonshine_attention_kernels",
     "register_qwen35_paged_attn_decode_kernels",
     "register_qwen35_paged_kv_write_kernels",
+    "register_qwen4_exp_qsa_kernels",
 ]
