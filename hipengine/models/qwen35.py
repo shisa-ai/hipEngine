@@ -228,6 +228,7 @@ class Qwen35GGUFModel:
     speculative_mtp_serving_evidence: tuple[SpeculativeMTPServingEvidence, ...] = (
         _QWEN38_Q4KM_MTP_SERVING_EVIDENCE
     )
+    speculative_mtp2_adapter: str = "dense_nextn"
 
     def resolve_speculative_mtp_serving_plan(
         self,
@@ -264,6 +265,7 @@ class Qwen35MoeGGUFModel:
     architectures: tuple[str, ...] = ("qwen35moe",)
     default_quant: str = "gguf_q4_k_m"
     default_backend: str = "auto"
+    speculative_mtp2_adapter: str = "moe_nextn"
     weight_name_templates: tuple[str, ...] = (
         "token_embd.weight",
         "output.weight",
