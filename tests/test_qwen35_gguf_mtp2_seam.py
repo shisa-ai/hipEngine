@@ -11,6 +11,11 @@ from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
 from hipengine.core.tensor import Tensor
 from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
+from hipengine.generation.qwen35_gguf_mtp2_registry import (
+    register_gguf_mtp2_adapter,
+    unregister_gguf_mtp2_adapter,
+)
+from hipengine.models.qwen35 import Qwen35GGUFModel, Qwen35MoeGGUFModel
 import hipengine.generation.qwen35_gguf_mtp2 as mtp2_module
 from hipengine.generation.qwen35_gguf_mtp2 import (
     Qwen35GGUFMTP2Adapter,
@@ -94,6 +99,66 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_C4", False
     ) is False
+
+
+def test_qwen_gguf_plugins_select_distinct_mtp2_adapters() -> None:
+    assert Qwen35GGUFModel().speculative_mtp2_adapter == "dense_nextn"
+    assert Qwen35MoeGGUFModel().speculative_mtp2_adapter == "moe_nextn"
+
+
+def test_unregistered_model_plugin_mtp2_adapter_fails_closed() -> None:
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    runner._mtp2_adapter = None
+    runner._mtp2_adapter_resolved = False
+    runner.capacity = 1
+    runner.generator = SimpleNamespace(
+        backend="hip_gfx1100",
+        supports_speculative_mtp=True,
+        model_plugin=SimpleNamespace(speculative_mtp2_adapter="not_registered"),
+    )
+
+    assert runner._resolved_mtp2_adapter() is None
+    assert runner._mtp2_adapter_resolved is True
+
+
+def test_resident_runner_resolves_model_plugin_mtp2_adapter_without_model_branch() -> None:
+    key = "test_moe_nextn"
+    calls = []
+
+    def factory(owner, **kwargs):
+        calls.append((owner, kwargs))
+        return _AdapterDouble()
+
+    register_gguf_mtp2_adapter(key, factory)
+    try:
+        runner = object.__new__(Qwen35GGUFResidentModelRunner)
+        runner._mtp2_adapter = None
+        runner._mtp2_adapter_resolved = False
+        runner.capacity = 1
+        runner.generator = SimpleNamespace(
+            backend="hip_gfx1100",
+            target_arch="gfx1100",
+            supports_speculative_mtp=True,
+            model_plugin=SimpleNamespace(speculative_mtp2_adapter=key),
+            _kv_weight_quant_key=lambda: "gguf_q4_k_m",
+        )
+
+        adapter = runner._resolved_mtp2_adapter()
+
+        assert isinstance(adapter, _AdapterDouble)
+        assert calls == [
+            (
+                runner,
+                {
+                    "enabled": True,
+                    "target_verify_mode": "native",
+                    "candidate_budget": 3,
+                    "quant": "gguf_q4_k_m",
+                },
+            )
+        ]
+    finally:
+        unregister_gguf_mtp2_adapter(key)
 
 
 def test_resident_runner_delegates_staged_methods_without_backend_branches() -> None:

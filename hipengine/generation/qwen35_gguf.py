@@ -6055,22 +6055,34 @@ class Qwen35GGUFResidentModelRunner:
         )
         if not enabled or not self.generator.supports_speculative_mtp:
             return None
-        try:
-            config, _block_id, _required = _gguf_mtp_required_tensor_names(
-                self.generator.weight_index
-            )
-        except Exception:
+        adapter_key = str(
+            getattr(self.generator.model_plugin, "speculative_mtp2_adapter", "")
+            or ""
+        ).strip()
+        if not adapter_key:
             return None
-        if config.is_moe:
-            return None
-        from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+        from hipengine.generation.qwen35_gguf_mtp2_registry import (
+            register_builtin_gguf_mtp2_adapters,
+            resolve_gguf_mtp2_adapter,
+        )
 
-        self._mtp2_adapter = Qwen35GGUFMTP2Adapter(
+        register_builtin_gguf_mtp2_adapters()
+        try:
+            factory = resolve_gguf_mtp2_adapter(adapter_key)
+        except KeyError:
+            return None
+        quant_resolver = getattr(self.generator, "_kv_weight_quant_key", None)
+        quant = (
+            str(quant_resolver())
+            if callable(quant_resolver)
+            else str(getattr(self.generator.model_plugin, "default_quant", ""))
+        )
+        self._mtp2_adapter = factory(
             self,
             enabled=True,
             target_verify_mode=_gguf_mtp_server_target_verify_mode(),
             candidate_budget=min(3, _gguf_mtp_server_candidate_budget()),
-            quant="gguf_q4_k_m",
+            quant=quant,
         )
         return self._mtp2_adapter
 
