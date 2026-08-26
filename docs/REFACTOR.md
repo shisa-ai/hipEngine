@@ -18,6 +18,19 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-08-27 Qwen4Exp scalable device top-512 selection
+
+- The strict Qwen4Exp runner currently downloads one FP32 block-score row per
+  QSA layer and performs exact NumPy lexicographic top-512 selection. This
+  replaces the reduced-fixture single-thread device selector, whose
+  `O(blocks * budget²)` scan is not viable at 262K. Remove the host score copy,
+  host selection, and their device metadata mirrors only after a scalable exact
+  GPU selector matches Transformers/llama indices at 2,052/4K/16K/64K/262K,
+  preserves lower-start tie behavior, passes non-contiguous/cancellation/
+  rollback isolation, and improves complete-model wall time. Keep the current
+  host route as strict fallback until that gate; affected owner:
+  `hipengine/runtime/qwen4_exp_runner.py`.
+
 ## 2026-08-26 speculative-MTP default capability migration
 
 - Dense generators still expose the legacy broad `supports_default_mtp`
