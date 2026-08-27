@@ -33,7 +33,7 @@ Each value is the total tokens per second across all active requests:
 
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` — MTP-3 | **60.929 tok/s** | **2.0684x** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` — Generation-2 C1/K3 D24 | **32.076 tok/s** | **1.4382x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — Generation-2 C1/K2 D24 | **77.358 tok/s** | **1.1400x** |
 
 ### RX 7900 XTX (`gfx1100`) — Qwen3.8-27B `Q4_K_M` prefill

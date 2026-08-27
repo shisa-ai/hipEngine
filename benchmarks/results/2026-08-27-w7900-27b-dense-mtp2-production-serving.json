@@ -1,0 +1,186 @@
+{
+  "checks": {
+    "blocking_sse": true,
+    "controls": true,
+    "drain": true,
+    "fault_contract": "tests/test_specdec2_engine_loop.py and dense adapter recovery bundle",
+    "overload": true,
+    "soak": true
+  },
+  "execution_profile": {
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "name": "production"
+  },
+  "kind": "qwen36_dense_mtp2_explicit_serving",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "size_bytes": 17106773120
+  },
+  "performance_artifact": "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-performance.json",
+  "performance_claim": false,
+  "quality_artifact": "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-quality.json",
+  "raw_source": {
+    "path": "/tmp/server-gate-dense.json",
+    "sha256": "45f4d23a3bef435c0bde16e246c2dcf6ca6871be6e254984b9b0a968190c8dd4"
+  },
+  "rows": {
+    "completion": {
+      "blocking_text": "<think>\nHere's a thinking process:\n\n1.  **Understand the User Request:**\n   - **Function",
+      "chunks": 25,
+      "spec": {
+        "acceptance_rate": 0.8,
+        "accepted_draft_tokens": 16,
+        "draft_cycles": 7,
+        "draft_tokens": 20,
+        "effective_route": "speculative_mtp",
+        "rejected_draft_tokens": 4,
+        "thinking_controls": "prompt_hint_only",
+        "thinking_policy": "hint",
+        "used": true
+      },
+      "sse_text": "<think>\nHere's a thinking process:\n\n1.  **Understand the User Request:**\n   - **Function",
+      "statuses": [
+        200,
+        200
+      ]
+    },
+    "controls": {
+      "long": {
+        "acceptance_rate": null,
+        "accepted_draft_tokens": 0,
+        "decision_reason": "backend_k0_fallback",
+        "draft_cycles": 0,
+        "draft_tokens": 0,
+        "effective_route": "default",
+        "rejected_draft_tokens": 0,
+        "selected_route": "speculative_mtp",
+        "used": false
+      },
+      "temperature": {
+        "acceptance_rate": null,
+        "accepted_draft_tokens": 0,
+        "decision_reason": "unsupported_sampling_k0",
+        "draft_cycles": 0,
+        "draft_tokens": 0,
+        "effective_route": "default",
+        "rejected_draft_tokens": 0,
+        "requested_route": "speculative_mtp",
+        "used": false
+      }
+    },
+    "overload": {
+      "accepted": 3,
+      "rejected": 5
+    },
+    "soak": {
+      "after_kv": 36,
+      "before_kv": 36,
+      "rows": [
+        {
+          "explicit": true,
+          "status": 200,
+          "used": true
+        },
+        {
+          "explicit": false,
+          "status": 200,
+          "used": false
+        },
+        {
+          "explicit": true,
+          "status": 200,
+          "used": true
+        },
+        {
+          "explicit": false,
+          "status": 200,
+          "used": false
+        },
+        {
+          "explicit": true,
+          "status": 200,
+          "used": true
+        },
+        {
+          "explicit": false,
+          "status": 200,
+          "used": false
+        },
+        {
+          "explicit": true,
+          "status": 200,
+          "used": true
+        },
+        {
+          "explicit": false,
+          "status": 200,
+          "used": false
+        },
+        {
+          "explicit": true,
+          "status": 200,
+          "used": true
+        },
+        {
+          "explicit": false,
+          "status": 200,
+          "used": false
+        },
+        {
+          "explicit": true,
+          "status": 200,
+          "used": true
+        },
+        {
+          "explicit": false,
+          "status": 200,
+          "used": false
+        },
+        {
+          "explicit": true,
+          "status": 200,
+          "used": true
+        },
+        {
+          "explicit": false,
+          "status": 200,
+          "used": false
+        },
+        {
+          "explicit": true,
+          "status": 200,
+          "used": true
+        },
+        {
+          "explicit": false,
+          "status": 200,
+          "used": false
+        },
+        {
+          "explicit": true,
+          "status": 200,
+          "used": true
+        },
+        {
+          "explicit": false,
+          "status": 200,
+          "used": false
+        },
+        {
+          "explicit": true,
+          "status": 200,
+          "used": true
+        },
+        {
+          "explicit": false,
+          "status": 200,
+          "used": false
+        }
+      ]
+    }
+  },
+  "schema": 1,
+  "source_commit": "f44851730dba7e6bf7ab6b6aa5c3dd5c7bc25503",
+  "status": "passed"
+}
