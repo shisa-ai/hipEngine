@@ -233,6 +233,15 @@ fallback count is not a success metric.
   `_catch_up_provider{,_batch}` from production selection while retaining a
   focused test oracle if still useful.
 
+## SPECDEC2 MoE physical-C2 Q4 pair-reuse scope
+
+- Added 2026-08-27 after actual R5/R6 microbench and full-suite evidence. The
+  request-local `moe_physical_c2_pairreuse_session(...)` selects the exact
+  duplicate-expert Q4 gate/up kernel only for x_rows 2-6, selected rows
+  `x_rows*8`, K2048/N512. C1, C8, non-MoE, and Q5 down keep existing owners.
+- Removal trigger: fold the route into a profile-resolved MoE physical-target
+  manifest after C2 promotion or remove it if the final three-repeat gate loses.
+
 ## SPECDEC2 MoE request-local C2 prototype
 
 - Added 2026-08-27 as the first functional physical-C2 seam in

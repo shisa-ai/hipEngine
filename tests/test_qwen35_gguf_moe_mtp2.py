@@ -225,6 +225,7 @@ def test_moe_adapter_factory_keeps_c1_and_selects_batched_c2() -> None:
     assert c2.production_physical_q5_rowtile is False
     assert c2.production_physical_q6_rowtile is False
     assert c2.moe_physical_c2_numerics is True
+    assert c2.moe_physical_c2_pairreuse is True
     assert c2.target_key == "qwen_moe_gguf"
     assert c2.provider_key == "qwen_nextn_moe"
     assert c2.policy_prefix == "moe-nextn"

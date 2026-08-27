@@ -17,7 +17,10 @@ import numpy as np
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
-from hipengine.core.specdec2_scope import moe_physical_c2_f32_residual_disabled
+from hipengine.core.specdec2_scope import (
+    moe_physical_c2_f32_residual_disabled,
+    moe_physical_c2_pairreuse_enabled,
+)
 from hipengine.core.hip import (
     HIP_HOST_REGISTER_MAPPED,
     HipError,
@@ -32084,9 +32087,21 @@ def _launch_selected_raw_gguf_moe_pair(
                 t_stage,
             )
         else:
+            physical_c2_pairreuse = bool(
+                moe_physical_c2_pairreuse_enabled()
+                and 2 <= int(x_rows) <= 6
+                and int(rows) == int(x_rows) * 8
+                and int(in_features) == 2048
+                and int(out_features) == 512
+            )
             selected_dual_fn = (
                 gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out
-                if _gguf_t16_selected_pairreuse_enabled() and x_rows == 8 and rows == 64
+                if physical_c2_pairreuse
+                or (
+                    _gguf_t16_selected_pairreuse_enabled()
+                    and x_rows == 8
+                    and rows == 64
+                )
                 else gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out
             )
             selected_dual_fn(
