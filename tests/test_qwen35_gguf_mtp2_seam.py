@@ -2352,6 +2352,77 @@ def test_mtp2_singleton_only_capability_fails_closed_when_a_neighbor_arrives() -
     assert adapter.capability((one, two)) is None
 
 
+def test_mtp2_physical_intent_allows_c1_before_or_after_c2() -> None:
+    target = SimpleNamespace(
+        runner=SimpleNamespace(fp16_recurrent_state=False),
+        _target_scratch_owner=SimpleNamespace(slot_count=4),
+        target_layout=SimpleNamespace(max_sequence_length=1024),
+        kv_storage_dtype="bf16",
+    )
+    row = SimpleNamespace(
+        native_greedy=True,
+        first_token_emitted=True,
+        lease=SimpleNamespace(session=target),
+        slot=SimpleNamespace(),
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.enabled = True
+    adapter.candidate_budget = 1
+    adapter.target_verify_mode = "native"
+    adapter.quant = "gguf_q4_k_m"
+    adapter.generator = SimpleNamespace(
+        backend="hip_gfx1151",
+        execution_profile="production",
+        execution_profile_fell_back_to_strict=False,
+        execution_profile_manifest_sha256="production-manifest",
+        execution_profile_manifest={
+            "selections": (
+                {
+                    "layer": "gdn_chain_recurrent_rmsnorm_gate",
+                    "scope": "specdec2_mtp2_target_state_rows",
+                    "selected_variant": "bf16_c1_exact_state_rows_tloop_fp16state",
+                    "strict_fallback_variant": "bf16_c1_exact_state_rows_tloop",
+                },
+            )
+        },
+    )
+    adapter.owner = SimpleNamespace(capacity=4, _row=lambda rid: row)
+    adapter._intents = {7: 1}
+    adapter._static_eligibility_by_request = {
+        7: SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="qualified_test_physical_c4",
+            max_candidate_count=1,
+            max_realized_group_rows=4,
+            automatic_eligible=False,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key="test-physical-c4",
+            evidence_fingerprint="sha256:test-physical-c4",
+        )
+    }
+    adapter._disabled_requests = set()
+    adapter._prompt_hidden_rows = {7: object()}
+    adapter._states = {}
+    semantics = (
+        SpeculativeRequestSemantics(7, "greedy", "verify_chain", 32, 25),
+    )
+
+    assert adapter.capability(semantics) is not None
+
+    adapter._prompt_hidden_rows = {}
+    adapter._states = {
+        7: _MTP2RequestState(
+            request_id=7,
+            provider=SimpleNamespace(executor=SimpleNamespace(max_requests=4)),
+            provider_pool_key=None,
+            provider_group_key=(7, 8),
+            verifier=None,
+            root_hidden_buffer=SimpleNamespace(ptr=7),
+        )
+    }
+    assert adapter.capability(semantics) is not None
+
+
 def test_mtp2_long_prompt_selects_k0_before_provider_streaming() -> None:
     target = SimpleNamespace(
         target_layout=SimpleNamespace(max_sequence_length=4096),
