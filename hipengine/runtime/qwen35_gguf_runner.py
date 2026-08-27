@@ -8139,6 +8139,7 @@ class Qwen35GGUFFullStackRunner:
         attention_max_context_len: int | None = None,
         stage_prefix: str = "decode_full_attn",
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
+        kv_write_only: bool = False,
     ) -> None:
         if max_context_len is None:
             max_context_len = attention_max_context_len
@@ -8155,7 +8156,10 @@ class Qwen35GGUFFullStackRunner:
             attention_max_context_len=max_context_len,
             stage_prefix=stage_prefix,
             gpu_stage_recorder=gpu_stage_recorder,
+            kv_write_only=bool(kv_write_only),
         )
+        if kv_write_only:
+            return
         self._run_post_attention_ffn(
             layer_id,
             hidden_ptr,
@@ -8183,6 +8187,7 @@ class Qwen35GGUFFullStackRunner:
         attention_max_context_len: int | None = None,
         stage_prefix: str = "decode_full_attn",
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
+        kv_write_only: bool = False,
     ) -> None:
         dms_owner = self.__dict__.get("_dms_decode_owner")
         if dms_owner is not None:
@@ -8221,32 +8226,36 @@ class Qwen35GGUFFullStackRunner:
             raise ValueError("prefused full-attention input norm must use scratch.norm")
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_norm")
-        if not launch_gguf_linear_triple(
-            layer.weight("attn_q"),
-            layer.weight("attn_k"),
-            layer.weight("attn_v"),
-            scratch.norm.ptr,
-            scratch.full_q.ptr,
-            scratch.full_k.ptr,
-            scratch.full_v.ptr,
-            rows=1,
-            in_features=self.hidden_size,
-            out_features=2 * self.q_width,
-            out_features_b=self.kv_width,
-            out_features_c=self.kv_width,
-            stream=stream,
-            runtime=runtime,
-        ):
-            launch_gguf_linear(
+        qkv_complete = False
+        if not kv_write_only:
+            qkv_complete = launch_gguf_linear_triple(
                 layer.weight("attn_q"),
+                layer.weight("attn_k"),
+                layer.weight("attn_v"),
                 scratch.norm.ptr,
                 scratch.full_q.ptr,
+                scratch.full_k.ptr,
+                scratch.full_v.ptr,
                 rows=1,
                 in_features=self.hidden_size,
                 out_features=2 * self.q_width,
+                out_features_b=self.kv_width,
+                out_features_c=self.kv_width,
                 stream=stream,
                 runtime=runtime,
             )
+        if not qkv_complete:
+            if not kv_write_only:
+                launch_gguf_linear(
+                    layer.weight("attn_q"),
+                    scratch.norm.ptr,
+                    scratch.full_q.ptr,
+                    rows=1,
+                    in_features=self.hidden_size,
+                    out_features=2 * self.q_width,
+                    stream=stream,
+                    runtime=runtime,
+                )
             if not launch_gguf_linear_pair(
                 layer.weight("attn_k"),
                 layer.weight("attn_v"),
@@ -8423,6 +8432,8 @@ class Qwen35GGUFFullStackRunner:
             )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_kv_write")
+        if kv_write_only:
+            return
         active_context = int(position) + 1
         attention_context_cap = active_context if attention_max_context_len is None else int(attention_max_context_len)
         if attention_context_cap < active_context:
