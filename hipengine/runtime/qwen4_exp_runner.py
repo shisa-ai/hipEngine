@@ -664,6 +664,7 @@ class Qwen4ExpQSAIndexDeviceState:
     block_budget: int
     runtime: HipRuntime
     count: int = 0
+    pooled_count: int = 0
     closed: bool = False
 
     @classmethod
@@ -782,6 +783,46 @@ class Qwen4ExpQSAIndexDeviceState:
         )
         self.count += 1
 
+    def prepare_complete_blocks(
+        self,
+        blocks: int,
+        *,
+        key_norm_weight_ptr: int,
+        rotary_dim: int,
+        theta: float,
+        eps: float = 1e-6,
+        stream: int = 0,
+    ) -> None:
+        """Append only newly completed normalized/RoPE index-key blocks."""
+
+        if self.closed:
+            raise RuntimeError("QSA index state is closed")
+        complete = int(blocks)
+        maximum = self.capacity // self.compression_ratio
+        if complete < 0 or complete > maximum:
+            raise ValueError("QSA complete-block count exceeds index capacity")
+        first = self.pooled_count
+        if complete <= first:
+            return
+        count = complete - first
+        qwen4_exp_qsa_pool_norm_rope_f32(
+            self.raw_keys.ptr,
+            self.member_indices.ptr
+            + first * self.compression_ratio * DType.INT32.itemsize,
+            self.block_starts.ptr + first * DType.INT64.itemsize,
+            int(key_norm_weight_ptr),
+            self.pooled_keys.ptr + first * self.index_dim * DType.FP32.itemsize,
+            count,
+            self.compression_ratio,
+            self.index_dim,
+            rotary_dim,
+            theta,
+            eps,
+            stream=stream,
+            runtime=self.runtime,
+        )
+        self.pooled_count = complete
+
     def select_positions_host(
         self,
         prepared_query_ptr: int,
@@ -809,20 +850,13 @@ class Qwen4ExpQSAIndexDeviceState:
             host_array_ptr(self.query_position_host),
             runtime=self.runtime,
         )
-        qwen4_exp_qsa_pool_norm_rope_f32(
-            self.raw_keys.ptr,
-            self.member_indices.ptr,
-            self.block_starts.ptr,
-            int(key_norm_weight_ptr),
-            self.pooled_keys.ptr,
+        self.prepare_complete_blocks(
             blocks,
-            self.compression_ratio,
-            self.index_dim,
-            rotary_dim,
-            theta,
-            eps,
+            key_norm_weight_ptr=key_norm_weight_ptr,
+            rotary_dim=rotary_dim,
+            theta=theta,
+            eps=eps,
             stream=stream,
-            runtime=self.runtime,
         )
         qwen4_exp_qsa_score_f32(
             int(prepared_query_ptr),
@@ -914,6 +948,7 @@ class Qwen4ExpQSAIndexDeviceState:
         if restored < 0 or restored > self.capacity:
             raise ValueError("QSA index restore count exceeds capacity")
         self.count = restored
+        self.pooled_count = restored // self.compression_ratio
 
     def reset(self) -> None:
         self.restore_count(0)
@@ -1995,6 +2030,14 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         )
     sparse_rows = count - dense_rows
     if sparse_rows:
+        index_state.prepare_complete_blocks(
+            (start + count) // index_state.compression_ratio,
+            key_norm_weight_ptr=weights.index_k_norm_weight_ptr,
+            rotary_dim=index_rotary_dim,
+            theta=theta,
+            eps=eps,
+            stream=stream,
+        )
         for local_row in range(dense_rows, count):
             position = start + local_row
             selected = index_state.select_positions_host(

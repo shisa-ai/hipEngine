@@ -526,9 +526,12 @@ A natural chat-formatted 4K archive-retrieval gate now passes: the code at token
 positions match the pinned Transformers CPU formula oracle 2,048/2,048, replay
 and abandoned-branch rollback are bit-exact, and teardown is zero. A matched
 special-token llama PR #27742 diagnostic has KL `3.31e-12` and exact top-1.
-Correctness-first prefill is 304.944 seconds, reinforcing that persistent
-compressed keys and GPU selection remain required. Evidence:
-[`2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json).
+Correctness-first prefill is 304.944 seconds before persistent pooling and
+303.528 seconds after; the retained structural win is pool launches
+`24,540→384` and prepared block work `18,849,792→12,288`. GPU selection remains
+required. Evidence:
+[`2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json) and
+[`2026-08-27-gfx1151-qwen38-flash-next-persistent-qsa-pool.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-persistent-qsa-pool.json).
 
 ### F6 — Native QSA and 262K context ownership
 
@@ -586,13 +589,13 @@ and
 Treat all of these as external target lines only—not old→new comparisons to
 this host—until reproduced under the declared same-host protocol.
 
-The pinned vLLM/SGLang implementations establish the next long-context
-performance design: update a paged persistent compressed-QSA K cache only when
-a four-token group completes; score that cache on device; run deterministic
-GPU top-k and block/tail expansion; and use split-k sparse attention. Recomputing
-all pooled keys, copying all scores to host, and host-sorting on every sparse row
-is a correctness-first fallback and cannot be the 262K production route. MTP
-step 0 selects target-aligned QSA rows and later draft steps reuse those indices.
+The pinned vLLM/SGLang implementations establish the long-context performance
+design. hipEngine now updates its persistent compressed-QSA K cache only when a
+four-token group completes. Remaining work is to score that cache on device,
+run deterministic GPU top-k and block/tail expansion, and use split-k sparse
+attention. Copying all scores to host and host-sorting on every sparse row is a
+correctness-first fallback and cannot be the 262K production route. MTP step 0
+selects target-aligned QSA rows and later draft steps reuse those indices.
 
 Current exact F7 default (2026-08-27): immediate PLE ring ownership, batched
 projections, exact row-serial causal Conv, and exact grouped Q5_1 down make
