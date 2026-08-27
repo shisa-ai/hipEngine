@@ -1168,13 +1168,11 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
                 assert prepared.target_verify_mode == "native"
                 assert prepared.summary.accepted_counts == (budget,)
                 assert prepared.summary.full_accept == (True,)
-                assert not prepared.native_graph_submitted
-                assert prepared.native_graph_capture_ms == 0.0
-                assert prepared.native_graph_submit_ms == 0.0
-                assert prepared.native_graph_readback_ms == 0.0
-                assert "does not support logits readback" in str(
-                    prepared.native_graph_fallback_reason
-                )
+                assert prepared.native_graph_submitted
+                assert prepared.native_graph_capture_ms > 0.0
+                assert prepared.native_graph_submit_ms >= 0.0
+                assert prepared.native_graph_readback_ms > 0.0
+                assert prepared.native_graph_fallback_reason is None
                 np.testing.assert_array_equal(
                     prepared.target_logits,
                     np.concatenate(scalar_logits, axis=0),
@@ -1523,7 +1521,7 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
         rows
         for rows, in_features, out_features in q4_single_rowtile_calls["col4"]
         if (in_features, out_features) == (5_120, 1_024)
-    } == {2, 4}
+    } == {2, 3, 4}
     # Rank-2 Q4 weights are sole-resident T16. The old draft-projection pack8
     # assertion was the last test dependency on removed dual residency.
     assert not q4_single_rowtile_calls["pack8"]
@@ -1572,9 +1570,9 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     # the scalar writers before the retained shared-page attention batch.
     assert not shared_kv_write_calls
     assert shared_full_attn_batch_calls
-    # B2/rows3 is owned by the separate N2 bulk graph; this shared-page leaf
-    # owns the N1 native B1/B3 captures only.
-    assert {rows for rows, *_ in shared_full_attn_batch_calls} == {2, 4}
+    # Diagnostic full-logit N2 capture now exercises B2/rows3 through the
+    # same exact shared-page attention owner as B1/B3.
+    assert {rows for rows, *_ in shared_full_attn_batch_calls} == {2, 3, 4}
     assert {
         (block_size, num_q_heads, num_kv_heads, head_dim, table_blocks)
         for _, block_size, num_q_heads, num_kv_heads, head_dim, table_blocks, _
@@ -1596,10 +1594,10 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     ]
     assert q6_attn_v_decode_calls
     assert {rows for rows, _, _ in q6_attn_v_decode_calls} == {1}
-    # Mirrors the compact-K col4 owner: B2/rows3 is owned by the separate N2
-    # bulk graph, so the shared-page attention leaf sees only B1/B3 (2,4).
+    # Diagnostic full-logit N2 capture also exercises B2/rows3 through the
+    # exact planar-Q6 V rowtile owner.
     assert q6_attn_v_rowtile_calls
-    assert {rows for rows, _, _ in q6_attn_v_rowtile_calls} == {2, 4}
+    assert {rows for rows, _, _ in q6_attn_v_rowtile_calls} == {2, 3, 4}
     assert q4_dual_rowtile_silu_calls["t16"]
     assert {
         rows for rows, _, _ in q4_dual_rowtile_silu_calls["t16"]
@@ -1610,19 +1608,19 @@ def test_dense_q4_k_m_nextn_transaction_and_provider_match_scalar_ar(
     } == {(5120, 17408)}
     assert not q4_dual_rowtile_silu_calls["pack8"]
     assert rounded_next_rms_calls
-    # B2/rows3 remains on the separate N2 bulk graph. The cross-layer owner is
-    # deliberately limited to the native N1 B1/B3 graphs.
-    assert {rows for rows, _hidden in rounded_next_rms_calls} == {2, 4}
+    # Diagnostic full-logit N2 capture also exercises the exact cross-layer
+    # rounded residual/RMSNorm owner at B2/rows3.
+    assert {rows for rows, _hidden in rounded_next_rms_calls} == {2, 3, 4}
     assert {hidden for _rows, hidden in rounded_next_rms_calls} == {5_120}
-    assert down_residual_calls["q4"]
+    # Q4 FFN-down remains an ordinary projection before the exact rounded
+    # cross-layer residual/RMSNorm owner; only the planar-Q6 composite fires.
+    assert not down_residual_calls["q4"]
     assert down_residual_calls["q6"]
-    assert {rows for rows, _, _ in down_residual_calls["q4"]} == {2, 3, 4}
     assert {rows for rows, _, _ in down_residual_calls["q6"]} == {2, 3}
-    for calls in down_residual_calls.values():
-        assert {
-            (in_features, out_features)
-            for _, in_features, out_features in calls
-        } == {(17_408, 5_120)}
+    assert {
+        (in_features, out_features)
+        for _, in_features, out_features in down_residual_calls["q6"]
+    } == {(17_408, 5_120)}
 
 
 def test_target_commit_plan_fixture_keeps_shared_transaction_shape() -> None:

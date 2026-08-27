@@ -293,7 +293,7 @@ def test_laguna_resident_cycle_normalizes_chain_and_commits_capture_prefix() -> 
     assert cycle.closed
 
 
-def test_laguna_resident_cycle_truncates_at_accepted_eos_without_bonus() -> None:
+def test_laguna_resident_cycle_truncates_at_eos_correction_without_bonus() -> None:
     class StopTarget(_FakeTarget):
         def verify_dflash_chain(self, root, candidates, **kwargs) -> LagunaDFlashVerifyResult:
             assert tuple(candidates) == (20,)
@@ -312,16 +312,16 @@ def test_laguna_resident_cycle_truncates_at_accepted_eos_without_bonus() -> None
                 rows_result=rows,
                 target_top1_ids=(20, 99),
                 target_top1_values=(3.0, 2.0),
-                accepted_draft_count=1,
-                accepted_token_ids=(20,),
-                commit_row=1,
-                commit_token_id=20,
-                commit_position=6,
-                next_token_id=None,
-                full_accept=True,
-                committed_input_ids=(10, 20),
+                accepted_draft_count=0,
+                accepted_token_ids=(),
+                commit_row=0,
+                commit_token_id=10,
+                commit_position=5,
+                next_token_id=20,
+                full_accept=False,
+                committed_input_ids=(10,),
                 visible_output_ids=(20,),
-                packed_payload=(1, 1, 20, 6, -1, 1, 2),
+                packed_payload=(0, 0, 10, 5, 20, 0, 1),
             )
 
     target = StopTarget()
@@ -337,6 +337,6 @@ def test_laguna_resident_cycle_truncates_at_accepted_eos_without_bonus() -> None
 
     assert result.target_batch.tokens == (10, 20)
     assert result.visible_output_ids == (20,)
-    assert result.target_result.next_token_id is None
-    assert drafter.append_calls[-1][1] == (5, 6)
+    assert result.target_result.next_token_id == 20
+    assert drafter.append_calls[-1][1] == (5,)
     cycle.close()
