@@ -110,6 +110,53 @@ def test_moe_adapter_capability_is_c1_k2_and_short_context_only() -> None:
     ) is not None
 
 
+def test_moe_adapter_capability_exposes_exact_physical_c2() -> None:
+    adapter = object.__new__(Qwen35GGUFMoEMTP2Adapter)
+    adapter.enabled = True
+    adapter.candidate_budget = 2
+    adapter.quant = "gguf_q4_k_m"
+    adapter.target_verify_mode = "native"
+    adapter._disabled_requests = set()
+    adapter._states = {7: object(), 8: object()}
+    targets = {
+        rid: SimpleNamespace(
+            position=6,
+            target_layout=SimpleNamespace(max_sequence_length=1024),
+            kv_storage_dtype="bf16",
+        )
+        for rid in (7, 8)
+    }
+    rows = {
+        rid: SimpleNamespace(
+            native_greedy=True,
+            first_token_emitted=True,
+            lease=SimpleNamespace(session=targets[rid]),
+            slot=object(),
+        )
+        for rid in targets
+    }
+    adapter.owner = SimpleNamespace(
+        capacity=2,
+        _row=lambda request_id: rows[int(request_id)],
+    )
+    adapter.generator = SimpleNamespace(
+        backend="hip_gfx1100",
+        execution_profile=SimpleNamespace(value="production"),
+    )
+    one = SpeculativeRequestSemantics(7, "greedy", "verify_chain", 6, 8)
+    two = SpeculativeRequestSemantics(8, "greedy", "verify_chain", 6, 8)
+
+    assert adapter.capability((one,)) is None
+    capability = adapter.capability((one, two))
+    assert capability is not None
+    assert adapter.staged_frontier is True
+    assert capability.max_requests == 2
+    assert capability.max_frontier_rows == 6
+    assert capability.proposal_widths == (1, 2)
+    adapter.generator.execution_profile = SimpleNamespace(value="strict")
+    assert adapter.capability((one, two)) is None
+
+
 def test_moe_adapter_accepts_generic_static_eligibility_registration() -> None:
     adapter = object.__new__(Qwen35GGUFMoEMTP2Adapter)
     adapter.candidate_budget = 2
