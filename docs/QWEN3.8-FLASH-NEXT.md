@@ -45,6 +45,7 @@ normative in [`TESTING.md`](TESTING.md),
 | Source path | `/models/hf/Qwen3.8-Flash-Next` |
 | Operational GGUF path | `/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL` (4 parts, revision `8bdc666649440e9bdc97e16f3f75782c98478ff5`) |
 | Planned local conventional quant | `/models/gguf/Qwen3.8-Flash-Next-Q4_K_M.gguf` (not yet produced) |
+| Higher-quality GGUF candidate | Unsloth `UD-Q5_K_XL`, frozen revision `ff34bcdd8a6ecffbe75b392e57b866df8f6bba8f`: six parts / 158,286,406,650 bytes; part 3 is the sole 54,400,261,312-byte Q8_0 PLE tensor, leaving 103,886,145,338 bytes of non-PLE artifact payload before runtime scratch/context |
 | Native context | 262,144 tokens |
 | Extended context | up to 1,000,000 tokens; not an initial support claim |
 
@@ -63,10 +64,14 @@ committed.
 | Source | Frozen identity / use |
 | --- | --- |
 | Qwen technical report | `QwenLM/Qwen3.8-Flash-Next/tech_report.pdf`, local SHA-256 `04f263446d74a35cb7cea368574e0c561f3b05c133be2c777ac884404063655d`; architecture/formula authority |
-| Transformers | `transformers/models/qwen4_exp/modular_qwen4_exp.py`; executable framework oracle outside the hot path |
+| Transformers | `huggingface/transformers@fc5c5bde8e656dad91cbf34e61940d984b1c7b91`, `src/transformers/models/qwen4_exp/modular_qwen4_exp.py`; executable formula/control oracle outside the hot path |
 | llama.cpp PR #27742 | `bea3b12daee45876b0129a3602dc8f534ce30bf0`; primary converter, quantizer fixes, target-text comparator, QSA/PLE/GR reference |
 | llama.cpp PR #27739 | `dfa0c0fee2b704fd2ac228d365d40502c3006c40`; alternate MTP/PLE reference only, not the primary quantizer |
-| SGLang day-0 path | QSA compressed-cache, sparse PLE offload, HyperConnection and IndexShare MTP implementation reference |
+| vLLM PR #53896 | `vllm-project/vllm@2a4cd640ff1a61b66124ddbaaf02a73781f7295a`; paged raw/persistent-compressed QSA caches, GPU scoring/top-k/expansion, split-k sparse attention, MTP step-0 index reuse, and AMD path reference |
+| vLLM PR #53899 | `vllm-project/vllm@95dc96d1d012a25ff5c3823a1e77197c8dae4654`; PLE CPU-offload protocol/reference; known TP1 warmup deadlock is explicitly not inherited |
+| SGLang PR #36497 | `sgl-project/sglang@7c66045d71f067c1c5da2b85baad3c47d9a19cb7`; persistent compressed-QSA cache, fused exact index prep/compression, fast top-k, sparse attention, PLE offload, HC and MTP reference |
+| SGLang AMD PR #36601 | `sgl-project/sglang@3003ddf1574ef5004e21a10e36aaabc364766921`; gfx942/gfx950 QSA graph replay and MTP correctness reference, not a gfx1151 performance claim |
+| SGLang PD PR #36651 | `sgl-project/sglang@7bcf5ba35654131cd2ff49bee73eca9677a33ca1`; PLE/GDN/QSA pending/compressed-state transfer and exact aggregate/PD parity reference |
 | Unsloth guide/repository | Memory-size expectation and independent GGUF comparator; no unverified quality claim transfers into hipEngine |
 
 The llama.cpp worktree is local and external to hipEngine:
@@ -516,6 +521,15 @@ and
 [`2026-08-27-gfx1151-qwen38-flash-next-qsa-64k.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-64k.json), and
 [`2026-08-27-gfx1151-qwen38-flash-next-262k-capacity.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-262k-capacity.json).
 
+A natural chat-formatted 4K archive-retrieval gate now passes: the code at token
+720 is selected by all 12 QSA layers and generated exactly, final-layer selected
+positions match the pinned Transformers CPU formula oracle 2,048/2,048, replay
+and abandoned-branch rollback are bit-exact, and teardown is zero. A matched
+special-token llama PR #27742 diagnostic has KL `3.31e-12` and exact top-1.
+Correctness-first prefill is 304.944 seconds, reinforcing that persistent
+compressed keys and GPU selection remain required. Evidence:
+[`2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json).
+
 ### F6 — Native QSA and 262K context ownership
 
 Add a QSA index-cache backend or model-attention state that mirrors
@@ -557,7 +571,28 @@ After F5/F6 correctness, add:
 Benchmark exact repeated-token shapes for structural profiling and the full
 natural category suite for product claims. Baselines are same-artifact
 llama.cpp PR #27742 HIP and Vulkan, plus hipEngine AR before each retained
-change. Physical host identity is mandatory.
+change. Physical host identity is mandatory. A user-reported, independently
+hosted Strix Halo 128-GB llama.cpp PR #27742 run (`UD-Q4_K_XL`, Ubuntu
+24.04.4, kernel 7.2.0, ROCm 10.1.0) reports pp33k `285 tok/s` and decode
+`13 tok/s`. A second independent Strix Halo report using Vulkan and
+`UD-IQ4_XS` records pp512 `390.3 tok/s`, pp4096 `357.5 tok/s`, tg128
+`23.0 tok/s`, and at depth 16K pp512/pp4096/tg128
+`305.3/317.9/19.4 tok/s`; Q4-XL comments report roughly `260–400 tok/s`
+prefill and `16–17 tok/s` short-context decode, falling toward `12 tok/s`
+around 100K. Sources:
+[`r/StrixHalo benchmark`](https://www.reddit.com/r/StrixHalo/comments/1vz5yb3/qwen38flashnext_125ba6b_running_on_strix_halo/)
+and
+[`r/LocalLLM PLE mmap/layout`](https://www.reddit.com/r/LocalLLM/comments/1vz927j/got_qwen38nextflash_ngram_ssd_offload_working_in/).
+Treat all of these as external target lines only—not old→new comparisons to
+this host—until reproduced under the declared same-host protocol.
+
+The pinned vLLM/SGLang implementations establish the next long-context
+performance design: update a paged persistent compressed-QSA K cache only when
+a four-token group completes; score that cache on device; run deterministic
+GPU top-k and block/tail expansion; and use split-k sparse attention. Recomputing
+all pooled keys, copying all scores to host, and host-sorting on every sparse row
+is a correctness-first fallback and cannot be the 262K production route. MTP
+step 0 selects target-aligned QSA rows and later draft steps reuse those indices.
 
 Current exact F7 default (2026-08-27): immediate PLE ring ownership, batched
 projections, exact row-serial causal Conv, and exact grouped Q5_1 down make

@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 Qwen3.8-Flash-Next natural 4K QSA retrieval] A 4,096-token chat archive returns **VIOLET-7391** exactly, retains the token-720 needle in all 12 QSA layers, matches the pinned Transformers CPU selector **2,048/2,048**, replays and rolls back bit-exactly, and tears down to zero; correctness-first prefill is **304.944 s**. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json`.
+
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next exact first-QSA-row requalification] At 2,052 tokens, promoted exact chunk64 matches serial logits bit-for-bit and improves **370.565→136.129 s (2.722x)**; llama KL is **7.65e-5**, top-1 264 agrees, and teardown is zero. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-exact-prefill.json`.
 
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next exact chunk64 prefill promotion] Promote immediate PLE copies + batched projections + exact serial Conv + exact grouped Q5_1 down: **687/687 rows bit-exact**, natural-suite prefill **5.265→12.117 tok/s (2.301x)**, warm p512 **8.674→16.555 tok/s (1.909x)**, public output/lifecycle pass. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json`.
