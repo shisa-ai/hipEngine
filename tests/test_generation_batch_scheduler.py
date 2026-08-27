@@ -18495,13 +18495,13 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     assert commit.verify_plan is buffer_plan
     summary = commit.summary
     assert summary.transaction_id == plan.transaction.transaction_id
-    assert summary.accepted_tokens == ((101, 102), (201,))
-    assert summary.next_tokens == (103, None)
+    assert summary.accepted_tokens == ((101, 102), ())
+    assert summary.next_tokens == (103, 201)
     assert commit.commit_plan.transaction_id == plan.transaction.transaction_id
     assert commit.commit_plan.request_ids == (r0, r1)
-    assert commit.commit_plan.accepted_counts == (2, 1)
-    assert commit.commit_plan.commit_rows == (3, 4)
-    assert commit.commit_plan.next_tokens == (103, None)
+    assert commit.commit_plan.accepted_counts == (2, 0)
+    assert commit.commit_plan.commit_rows == (3, 1)
+    assert commit.commit_plan.next_tokens == (103, 201)
     assert commit.commit_plan.candidate_counts == (2, 1)
     assert commit.commit_plan.draft_depth == work.target_batch.draft_depth
     assert commit.commit_plan.tree_shape == work.target_batch.tree_shape
@@ -18547,7 +18547,7 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
         commit_positions=_tensor(0x4400, (len(work.target_batch.request_ids),), "int32"),
         parent_rows=_tensor(0x4480, (work.target_batch.rows,), "int32"),
         kv_rows_src=_tensor(0x4500, (work.target_batch.rows, 2, 4), "bf16"),
-        kv_rows_dst=_tensor(0x4600, (len(work.target_batch.request_ids), 2, 4), "bf16"),
+        kv_rows_dst=_tensor(0x4600, (1, 2, 4), "bf16"),
     )
     with pytest.raises(ValueError, match="accepted token rows"):
         scheduler.bind_speculative_commit_buffers(commit, short_kv_dst_buffers)
@@ -18568,7 +18568,7 @@ def test_resident_batch_scheduler_emits_speculative_verify_work() -> None:
     committed_txn = scheduler.commit_speculative_kv_transaction(policy, state_plan)
     assert committed_txn.transaction_id == plan.transaction.transaction_id
     assert committed_txn.request_ids == (r0, r1)
-    assert committed_txn.accepted_counts == (2, 1)
+    assert committed_txn.accepted_counts == (2, 0)
     assert committed_txn.committed
     completed = scheduler.finalize_speculative_accept(committed_txn, state_plan)
 
