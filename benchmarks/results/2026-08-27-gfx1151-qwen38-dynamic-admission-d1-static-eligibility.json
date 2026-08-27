@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_dynamic_admission_d1_static_eligibility",
+  "created_at": "2026-08-27T10:20:00Z",
+  "status": "candidate_d1_pass_pending_clean_commit",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "Typed static eligibility and pure/transitional K0 are implemented; host/fake and candidate-source GPU C2/mixed-intent gates pass. Commit, rerun clean, then mark D1 retained.",
+  "source": {
+    "base_commit": "d46227332",
+    "d0_handoff": "benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d0-handoff.json"
+  },
+  "implementation": {
+    "static_eligibility": "SpeculativeMTPStaticEligibility carries permanent_ar/speculative_capable state, max K and evidence C bound, automatic eligibility, strict fallback, evidence identity/fingerprint/artifacts; it contains no actual C_due or selected K",
+    "frontend": "queue-group K0 decisions preserve eligible static intent and report static eligibility fingerprint plus pure/transitional K0 class",
+    "service": "eligible intent enters ordinary EngineService/Generation-2 even when queue grouping predicts K0; request response remains truthful K0",
+    "cycle_planner": "actual ResidentEngineLoop WorkItem remains sole C_due/K owner and now records recent immutable plans with per-row K0 classes",
+    "k0": "permanent AR is provider-free pure_k0; eligible K0 is transitional_k0 and executes target-output provider catch-up",
+    "mixed": "when an AR-only neighbor makes the composed capability unavailable, the loop records mixed transitional/pure K0, executes the eligible subset as a disjoint speculative frontier in the same fairness tick, and decodes the AR subset once",
+    "cleanup": "temporary speculative_mtp_singleton_only bool/set replaced by the typed eligibility object/map"
+  },
+  "validation": {
+    "red": "D0 inline assertion failed KeyError: static_eligibility",
+    "focused_tests": "168 passed across LLM, EngineService/Loop, speculative contracts/policy/transactions, GGUF/PARO seams, journal, serving capability; six focused server routing tests passed",
+    "public_c2": "two independent automatic HTTP children retained typed intent into resident C2, adapter capability saw width2 and fail-closed, resident plan recorded transitional_k0 for both, outputs matched AR, following C1 MTP healthy, zero ownership",
+    "mixed_gpu": "one spec-capable child plus one permanent-AR child produced transitional/pure mixed K0, then disjoint C1 MTP plus one AR decode; both outputs matched controls and ownership returned to zero",
+    "production_policy": "unchanged; D1 changes routing/intention semantics, not arithmetic or automatic c2+ policy"
+  },
+  "raw_sources": [
+    {"path": "/tmp/qwen38-cap4-auto-c2-k0.json", "sha256": "9308802dd0f57197fc30b467c5964c79d3c9b233243e8c23f0c023c774269742", "size_bytes": 51034, "retained_in_git": false},
+    {"path": "/tmp/qwen38_cap4_auto_c2_k0.py", "sha256": "b9058d49fa18a552aa1fdbbf41ba32ff44491efebd389b481b18be8212bc7dea", "size_bytes": 4237, "retained_in_git": false},
+    {"path": "/tmp/qwen38-d1-mixed-intent.json", "sha256": "0fdde76fef247128aa4052f0314e2017599a83737973240058ce119b48783cda", "size_bytes": 46158, "retained_in_git": false},
+    {"path": "/tmp/qwen38_d1_mixed_intent.py", "sha256": "d0a4fb67987f4e8d1575a3822bda89e687e1e1e2d6551580f4dd88b14d049fd4", "size_bytes": 4146, "retained_in_git": false}
+  ],
+  "next": "Commit D1, rerun C2 and mixed gates clean, finalize artifact/docs/refactor handoff, then D2 may start explicit production Q4_K_M C2/K1."
+}

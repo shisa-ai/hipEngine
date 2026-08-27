@@ -56,6 +56,7 @@ from hipengine.speculative.frontier import (
     CandidateGraph,
     ProviderAttachment,
     ProviderCatchupMode,
+    SpecK0Class,
     SpecPlanReason,
     SpecRequestPlan,
     SpecTransactionMode,
@@ -171,6 +172,8 @@ from hipengine.speculative.serving import (
     SpeculativeMTPServingDecision,
     SpeculativeMTPServingEvidence,
     SpeculativeMTPServingKey,
+    SpeculativeMTPStaticEligibility,
+    SpeculativeMTPStaticState,
     resolve_speculative_mtp_serving_plan,
 )
 from hipengine.speculative.streaming import (
@@ -246,6 +249,8 @@ __all__ = [
     "SpeculativeMTPServingDecision",
     "SpeculativeMTPServingEvidence",
     "SpeculativeMTPServingKey",
+    "SpeculativeMTPStaticEligibility",
+    "SpeculativeMTPStaticState",
     "resolve_speculative_mtp_serving_plan",
     "StagedSpeculativeProvider",
     "validate_staged_speculative_provider",
@@ -271,6 +276,7 @@ __all__ = [
     "CandidateGraph",
     "ProviderAttachment",
     "ProviderCatchupMode",
+    "SpecK0Class",
     "SpecPlanReason",
     "SpecRequestPlan",
     "SpecTransactionMode",

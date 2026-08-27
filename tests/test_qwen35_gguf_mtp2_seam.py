@@ -32,6 +32,8 @@ from hipengine.runtime.qwen35_gguf_nextn import (
 from hipengine.speculative import (
     DraftBatch,
     MtpProposalContext,
+    SpeculativeMTPStaticEligibility,
+    SpeculativeMTPStaticState,
     SpeculativeRequestSemantics,
     TargetVerifyBatch,
     TargetVerifyBuffers,
@@ -42,8 +44,16 @@ class _AdapterDouble:
     def __init__(self) -> None:
         self.calls = []
 
-    def register_request(self, request_id, candidate_budget):
-        self.calls.append(("register", request_id, candidate_budget))
+    def register_request(
+        self,
+        request_id,
+        candidate_budget,
+        *,
+        static_eligibility=None,
+    ):
+        self.calls.append(
+            ("register", request_id, candidate_budget, static_eligibility)
+        )
 
     def capability(self, semantics):
         self.calls.append(("capability", tuple(semantics)))
@@ -171,7 +181,7 @@ def test_resident_runner_delegates_staged_methods_without_backend_branches() -> 
 
     runner.register_speculative_request(7, 3)
     assert runner._rows[7].mtp2_candidate_budget == 3
-    assert adapter.calls == [("register", 7, 3)]
+    assert adapter.calls == [("register", 7, 3, None)]
     assert runner.speculative_capability(("semantics",)) == "capability"
     assert runner.speculative_claims_fit("plan") is True
     assert runner.speculative_component_claims("plan") == {"plan": "plan"}
@@ -2198,7 +2208,20 @@ def test_mtp2_singleton_only_streaming_opens_one_slot_provider_under_wide_owner(
         target_verify_mode="native",
         candidate_budget=3,
     )
-    adapter.register_request(7, 3, singleton_only=True)
+    adapter.register_request(
+        7,
+        3,
+        static_eligibility=SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="qualified_test_singleton",
+            max_candidate_count=3,
+            max_realized_group_rows=1,
+            automatic_eligible=True,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key="test-singleton",
+            evidence_fingerprint="sha256:test-singleton",
+        ),
+    )
 
     sinks = adapter.begin_prompt_streaming((7,), checkpoints={})
 
@@ -2240,7 +2263,19 @@ def test_mtp2_singleton_only_capability_fails_closed_when_a_neighbor_arrives() -
     )
     adapter.owner = SimpleNamespace(capacity=4, _row=lambda rid: rows[int(rid)])
     adapter._intents = {7: 3, 8: 3}
-    adapter._singleton_only_requests = {7, 8}
+    adapter._static_eligibility_by_request = {
+        rid: SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="qualified_test_singleton",
+            max_candidate_count=3,
+            max_realized_group_rows=1,
+            automatic_eligible=True,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key=f"test-singleton-{rid}",
+            evidence_fingerprint=f"sha256:test-singleton-{rid}",
+        )
+        for rid in (7, 8)
+    }
     adapter._disabled_requests = set()
     adapter._prompt_hidden_rows = {}
     adapter._states = {

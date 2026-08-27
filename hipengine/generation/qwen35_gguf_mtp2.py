@@ -62,6 +62,7 @@ from hipengine.speculative.interfaces import (
 )
 from hipengine.speculative.mtp import MtpProposalContext
 from hipengine.speculative.provider import SpeculativeRequestSemantics
+from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative.transaction import (
     SpecCycleResult,
@@ -193,7 +194,9 @@ class Qwen35GGUFMTP2Adapter:
         if self.candidate_budget not in {1, 2, 3}:
             raise ValueError("MTP2 candidate budget must be 1, 2, or 3")
         self._intents: dict[int, int] = {}
-        self._singleton_only_requests: set[int] = set()
+        self._static_eligibility_by_request: dict[
+            int, SpeculativeMTPStaticEligibility
+        ] = {}
         self._prompt_hidden_rows: dict[int, np.ndarray] = {}
         self._prompt_streaming_sinks: dict[int, _StreamingNextNPromptSink] = {}
         self._prompt_streaming_group_keys: dict[int, tuple[int, ...]] = {}
@@ -236,27 +239,51 @@ class Qwen35GGUFMTP2Adapter:
             getattr(getattr(target, "runner", None), "fp16_recurrent_state", False)
         )
 
+    def _static_eligibility(
+        self,
+        request_id: int,
+    ) -> SpeculativeMTPStaticEligibility | None:
+        return getattr(self, "_static_eligibility_by_request", {}).get(
+            int(request_id)
+        )
+
     def _singleton_only(self, request_id: int) -> bool:
-        return int(request_id) in getattr(self, "_singleton_only_requests", ())
+        eligibility = self._static_eligibility(request_id)
+        return bool(
+            eligibility is not None
+            and eligibility.eligible
+            and int(eligibility.max_realized_group_rows) == 1
+            and int(getattr(self.owner, "capacity", 1)) > 1
+        )
 
     def register_request(
         self,
         request_id: int,
         candidate_budget: int,
         *,
-        singleton_only: bool = False,
+        static_eligibility: SpeculativeMTPStaticEligibility | None = None,
     ) -> None:
         rid = int(request_id)
         budget = min(self.candidate_budget, max(1, int(candidate_budget)))
         self._intents[rid] = budget
-        singleton_requests = getattr(self, "_singleton_only_requests", None)
-        if singleton_requests is None:
-            singleton_requests = set()
-            self._singleton_only_requests = singleton_requests
-        if singleton_only:
-            singleton_requests.add(rid)
+        eligibility_by_request = getattr(
+            self,
+            "_static_eligibility_by_request",
+            None,
+        )
+        if eligibility_by_request is None:
+            eligibility_by_request = {}
+            self._static_eligibility_by_request = eligibility_by_request
+        if static_eligibility is None:
+            eligibility_by_request.pop(rid, None)
         else:
-            singleton_requests.discard(rid)
+            if not isinstance(static_eligibility, SpeculativeMTPStaticEligibility):
+                raise TypeError(
+                    "static_eligibility must be SpeculativeMTPStaticEligibility"
+                )
+            if not static_eligibility.eligible:
+                raise ValueError("permanent-AR eligibility cannot register a provider")
+            eligibility_by_request[rid] = static_eligibility
         self._disabled_requests.discard(rid)
 
     def begin_prompt_streaming(
@@ -627,14 +654,21 @@ class Qwen35GGUFMTP2Adapter:
         semantics = tuple(request_semantics)
         if not self.enabled or not (1 <= len(semantics) <= 4):
             return None
+        static_eligibilities = tuple(
+            self._static_eligibility(item.request_id)
+            for item in semantics
+        )
+        static_bounds = tuple(
+            int(eligibility.max_realized_group_rows)
+            for eligibility in static_eligibilities
+            if eligibility is not None
+        )
+        if static_bounds and len(semantics) > min(static_bounds):
+            return None
         singleton_only = tuple(
             self._singleton_only(item.request_id)
             for item in semantics
         )
-        if any(singleton_only) and not (
-            len(semantics) == 1 and all(singleton_only)
-        ):
-            return None
         targets = []
         for item in semantics:
             rid = int(item.request_id)
@@ -1429,6 +1463,7 @@ class Qwen35GGUFMTP2Adapter:
                 request_ids=plan.request_ids,
                 candidate_counts=plan.candidate_counts,
                 plan_reasons=plan.reasons,
+                k0_classes=plan.k0_classes,
                 proposal_widths=plan.proposal_widths,
                 target_row_decomposition=plan.target_row_decomposition,
                 execution_route=actual_execution_route,
@@ -2346,6 +2381,7 @@ class Qwen35GGUFMTP2Adapter:
             request_ids=plan.request_ids,
             candidate_counts=plan.candidate_counts,
             plan_reasons=plan.reasons,
+            k0_classes=plan.k0_classes,
             proposal_widths=plan.proposal_widths,
             target_row_decomposition=plan.target_row_decomposition,
             execution_route="eager",
@@ -2823,7 +2859,7 @@ class Qwen35GGUFMTP2Adapter:
             self._abort_prompt_streaming((rid,), stream=0)
         self._drop_request(rid, disable=False)
         self._intents.pop(rid, None)
-        self._singleton_only_requests.discard(rid)
+        getattr(self, "_static_eligibility_by_request", {}).pop(rid, None)
         self._prompt_hidden_rows.pop(rid, None)
         self._disabled_requests.discard(rid)
 
@@ -2836,7 +2872,7 @@ class Qwen35GGUFMTP2Adapter:
         for request_id in tuple(self._states):
             self._drop_request(request_id, disable=False)
         self._intents.clear()
-        self._singleton_only_requests.clear()
+        getattr(self, "_static_eligibility_by_request", {}).clear()
         self._prompt_hidden_rows.clear()
         self._disabled_requests.clear()
         self._active_claims = None

@@ -528,6 +528,7 @@ class Qwen35ParoMTP2Adapter:
             request_ids=plan.request_ids,
             candidate_counts=plan.candidate_counts,
             plan_reasons=plan.reasons,
+            k0_classes=plan.k0_classes,
             proposal_widths=plan.proposal_widths,
             target_row_decomposition=plan.target_row_decomposition,
             execution_route="eager",

@@ -8,6 +8,7 @@ import json
 from typing import Sequence
 
 from hipengine.speculative.frontier import (
+    SpecK0Class,
     SpecPlanReason,
     SpecRequestPlan,
     SpecTransactionMode,
@@ -310,6 +311,12 @@ def plan_speculative_requests(
             resident_slots=slots,
             candidate_counts=counts,
             reasons=reasons,
+            k0_classes=tuple(
+                SpecK0Class.PURE
+                if desired_count == 0
+                else SpecK0Class.TRANSITIONAL
+                for desired_count in desired
+            ),
             mode="decode",
             capability_key=None,
             provider_key=None,
@@ -408,6 +415,12 @@ def plan_speculative_requests(
             resident_slots=slots,
             candidate_counts=counts,
             reasons=reasons,
+            k0_classes=tuple(
+                SpecK0Class.PURE
+                if desired_count == 0
+                else SpecK0Class.TRANSITIONAL
+                for desired_count in desired
+            ),
             mode="decode",
             capability_key=None,
             provider_key=None,
@@ -428,6 +441,14 @@ def plan_speculative_requests(
         resident_slots=slots,
         candidate_counts=counts,
         reasons=reasons,
+        k0_classes=tuple(
+            SpecK0Class.NOT_K0
+            if count > 0
+            else SpecK0Class.PURE
+            if desired_count == 0
+            else SpecK0Class.TRANSITIONAL
+            for count, desired_count in zip(counts, desired, strict=True)
+        ),
         mode=selected_mode,
         capability_key=capability.capability_key,
         provider_key=capability.provider_key,
