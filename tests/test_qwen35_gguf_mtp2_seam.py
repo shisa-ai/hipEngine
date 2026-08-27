@@ -139,6 +139,7 @@ def test_resident_runner_resolves_model_plugin_mtp2_adapter_without_model_branch
             backend="hip_gfx1100",
             target_arch="gfx1100",
             supports_speculative_mtp=True,
+            speculative_candidate_budget=2,
             model_plugin=SimpleNamespace(speculative_mtp2_adapter=key),
             _kv_weight_quant_key=lambda: "gguf_q4_k_m",
         )
@@ -152,7 +153,7 @@ def test_resident_runner_resolves_model_plugin_mtp2_adapter_without_model_branch
                 {
                     "enabled": True,
                     "target_verify_mode": "native",
-                    "candidate_budget": 3,
+                    "candidate_budget": 2,
                     "quant": "gguf_q4_k_m",
                 },
             )
