@@ -118,6 +118,23 @@
     "candidate_d2h_zero_in_normal_serving": true,
     "recoveries_zero": true
   },
+  "public_unflagged_production": {
+    "status": "complete",
+    "source_commit": "303abba696d35a227b02b6ddd042b97dc093cf4d",
+    "cells": 10,
+    "exact_cells_diagnostic": 10,
+    "engaged_cells": 10,
+    "budget_conformed_cells": 10,
+    "decision_reason": "qualified_explicit_production_dense_c2_k2_d24",
+    "true_ar_tok_s": 30.62319978761916,
+    "mtp_tok_s": 22.001735773139558,
+    "mtp_over_true_ar": 0.7184662584487587,
+    "raw_path": "/tmp/gfx1100-cn-campaign-server-public-c2-production.json",
+    "raw_bytes": 1451047,
+    "raw_sha256": "2e66be98b9230a841e04647cea78c83b2bd98e2d17ca482e78dfb54acca0741a",
+    "diagnostic_package_override": false,
+    "diagnostic_plan_override": false
+  },
   "bf16_relative": {
     "applicable": false,
     "reason": "No aligned same-model BF16/full-precision artifact is available on the binding host."
@@ -135,8 +152,8 @@
   "command": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen36_dense_mtp2_c2_production_gate.py --max-tokens 24 --repeat-runs 3 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --verify-model-sha256 --output /tmp/gfx1100-dense-c2-production-full-final.json",
   "decision": {
     "production_correctness": "qualified",
-    "public_policy": "explicit-only until complete economics beats true AR",
+    "public_policy": "validated unflagged explicit-only production C2",
     "automatic_policy": "K0 unchanged",
-    "next": "register the production C2 evidence row, validate the unflagged public production route, then optimize complete wall"
+    "next": "optimize complete wall; automatic remains K0 until the same-suite result reaches at least 1.10x true AR"
   }
 }

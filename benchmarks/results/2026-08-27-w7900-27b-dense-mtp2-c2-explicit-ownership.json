@@ -192,10 +192,10 @@
   },
   "decision": {
     "backend_adapter_construction": "enable gfx1100 capacity>1 adapter",
-    "public_scope": "validated unflagged strict explicit-only exact C2/K2/D24 key",
+    "public_scope": "validated unflagged strict and production explicit-only C2/K2/D24 keys",
     "automatic_policy": "K0 unchanged",
     "production_profile": "qualified explicit-only; automatic remains blocked on economics",
-    "performance": "blocked: 0.716x true AR and every category trails AR",
-    "next": "validate the unflagged public production route, then optimize complete wall; automatic remains K0 until >=1.10x true AR"
+    "performance": "blocked: strict 0.7189x and production 0.7185x public true AR; every category trails AR",
+    "next": "optimize complete wall; automatic remains K0 until >=1.10x true AR"
   }
 }
