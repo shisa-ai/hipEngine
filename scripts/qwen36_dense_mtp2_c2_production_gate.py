@@ -312,6 +312,15 @@ def _production_pairs(
                     ) from exc
             return rows
 
+        # Discard one complete physical run per pair so graph/JIT/provider-pool
+        # first use cannot contaminate the three binding same-schedule repeats.
+        for pair_index, pair in enumerate(pairs):
+            run_pair(
+                pair,
+                repeat=-1,
+                pair_index=pair_index,
+                capture_enabled=False,
+            )
         for repeat in range(repeat_runs):
             for pair_index, pair in enumerate(pairs):
                 rows = run_pair(
