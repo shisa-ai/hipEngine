@@ -2694,7 +2694,13 @@ class _GenerationBatcher:
         route_name = str(route)
         limit = self._max_active_requests
         route_limit = self._route_max_active_requests.get(route_name)
-        if route_name == _SPECULATIVE_MTP_DEFAULT_ROUTE:
+        if route_name in {
+            _SPECULATIVE_MTP_DEFAULT_ROUTE,
+            _SPECULATIVE_MTP_AUTO_ROUTE,
+        }:
+            # Automatic requests must reach their normal AR group width before
+            # static evidence decides MTP or pure K0. Explicit MTP stays bounded
+            # by its registered physical owner.
             engine = self._engine_factory()
             independent = _engine_supports_independent_generation(engine)
             if independent:
