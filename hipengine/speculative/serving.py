@@ -329,67 +329,86 @@ def resolve_speculative_mtp_serving_plan(
     if not evidence:
         return _reject(key, "no_model_plugin_evidence", None)
 
-    row = next(
-        (
-            candidate
-            for candidate in evidence
-            if key.artifact_sha256 == candidate.artifact_sha256
-            and key.artifact_size_bytes == candidate.artifact_size_bytes
-        ),
-        evidence[0],
+    identity_rows = tuple(
+        candidate
+        for candidate in evidence
+        if key.artifact_sha256 == candidate.artifact_sha256
+        and key.artifact_size_bytes == candidate.artifact_size_bytes
     )
-    checks = (
+    if not identity_rows:
+        return _reject(key, "artifact_not_qualified", evidence[0])
+
+    def checks_for(row: SpeculativeMTPServingEvidence):
+        return (
+            (key.backend == row.backend, "backend_not_qualified"),
+            (key.target_arch == row.target_arch, "target_arch_not_qualified"),
+            (key.weight_quant == row.weight_quant, "weight_quant_not_qualified"),
+            (
+                key.execution_profile == row.execution_profile,
+                "execution_profile_not_qualified",
+            ),
+            (
+                key.execution_profile_manifest_sha256
+                == row.execution_profile_manifest_sha256,
+                "execution_profile_manifest_not_qualified",
+            ),
+            (key.kv_storage == row.kv_storage, "kv_storage_not_qualified"),
+            (key.kv_layout == row.kv_layout, "kv_layout_not_qualified"),
+            (
+                key.realized_group_rows == row.realized_group_rows,
+                "physical_group_not_qualified",
+            ),
+            (
+                key.resident_capacity == row.resident_capacity,
+                "resident_capacity_not_qualified",
+            ),
+            (
+                key.candidate_budget == row.candidate_budget,
+                "candidate_budget_not_qualified",
+            ),
+            (
+                key.sampling_mode in row.sampling_modes,
+                "sampling_mode_not_qualified",
+            ),
+            (
+                key.max_sequence_length == row.max_sequence_length,
+                "max_sequence_length_not_qualified",
+            ),
+            (
+                row.min_context_tokens
+                <= key.context_tokens
+                <= row.max_context_tokens,
+                "context_bucket_not_qualified",
+            ),
+            (
+                row.min_output_horizon_tokens
+                <= key.output_horizon_tokens
+                <= row.max_output_horizon_tokens,
+                "output_horizon_not_qualified",
+            ),
+            (key.memory_fit, "insufficient_memory"),
+        )
+
+    evaluated = tuple((row, checks_for(row)) for row in identity_rows)
+    exact = next(
         (
-            key.artifact_sha256 == row.artifact_sha256
-            and key.artifact_size_bytes == row.artifact_size_bytes,
-            "artifact_not_qualified",
+            (row, checks)
+            for row, checks in evaluated
+            if all(passed for passed, _reason in checks)
         ),
-        (key.backend == row.backend, "backend_not_qualified"),
-        (key.target_arch == row.target_arch, "target_arch_not_qualified"),
-        (key.weight_quant == row.weight_quant, "weight_quant_not_qualified"),
-        (
-            key.execution_profile == row.execution_profile,
-            "execution_profile_not_qualified",
-        ),
-        (
-            key.execution_profile_manifest_sha256
-            == row.execution_profile_manifest_sha256,
-            "execution_profile_manifest_not_qualified",
-        ),
-        (key.kv_storage == row.kv_storage, "kv_storage_not_qualified"),
-        (key.kv_layout == row.kv_layout, "kv_layout_not_qualified"),
-        (
-            key.realized_group_rows == row.realized_group_rows,
-            "physical_group_not_qualified",
-        ),
-        (
-            key.resident_capacity == row.resident_capacity,
-            "resident_capacity_not_qualified",
-        ),
-        (
-            key.candidate_budget == row.candidate_budget,
-            "candidate_budget_not_qualified",
-        ),
-        (key.sampling_mode in row.sampling_modes, "sampling_mode_not_qualified"),
-        (
-            key.max_sequence_length == row.max_sequence_length,
-            "max_sequence_length_not_qualified",
-        ),
-        (
-            row.min_context_tokens <= key.context_tokens <= row.max_context_tokens,
-            "context_bucket_not_qualified",
-        ),
-        (
-            row.min_output_horizon_tokens
-            <= key.output_horizon_tokens
-            <= row.max_output_horizon_tokens,
-            "output_horizon_not_qualified",
-        ),
-        (key.memory_fit, "insufficient_memory"),
+        None,
     )
-    for passed, reason in checks:
-        if not passed:
-            return _reject(key, reason, row)
+    if exact is None:
+        # Multiple independently qualified widths/profiles can share one model
+        # artifact. Report the nearest row's first failed axis rather than
+        # letting tuple order make every non-first width unreachable.
+        row, checks = min(
+            evaluated,
+            key=lambda item: sum(not passed for passed, _reason in item[1]),
+        )
+        reason = next(reason for passed, reason in checks if not passed)
+        return _reject(key, reason, row)
+    row, _checks = exact
 
     return SpeculativeMTPServingDecision(
         key=key,

@@ -2140,6 +2140,55 @@ def _serving_plan_route_decision(
     }
 
 
+def _realized_model_serving_plan(
+    engine: Any,
+    prompts: Sequence[PromptInput],
+    sampling: SamplingParams,
+    precomputed_decision: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Re-resolve model evidence after the queue's physical group is known."""
+
+    if not prompts or not isinstance(precomputed_decision, Mapping):
+        return None
+    if precomputed_decision.get("plan_fingerprint") is None:
+        return None
+    resolver = getattr(engine, "resolve_speculative_mtp_serving_plan", None)
+    if not callable(resolver):
+        return None
+    precomputed_key = (
+        precomputed_decision.get("key")
+        if isinstance(precomputed_decision.get("key"), Mapping)
+        else {}
+    )
+    sampling_mode = str(precomputed_key.get("sampling_mode") or "")
+    if not sampling_mode:
+        sampling_mode = (
+            "greedy_fast"
+            if supports_speculative_mtp_sampling(sampling)
+            else "processed_argmax"
+        )
+    decision = resolver(
+        realized_group_rows=len(prompts),
+        sampling_mode=sampling_mode,
+        context_tokens=max(
+            _prompt_token_count(engine, prompt) for prompt in prompts
+        ),
+        output_horizon_tokens=int(sampling.max_tokens),
+        kv_storage=str(precomputed_key.get("kv_storage") or sampling.kv_storage),
+        memory_fit=bool(precomputed_key.get("memory_fit", True)),
+    )
+    if decision is None:
+        return None
+    payload = (
+        decision.as_dict()
+        if callable(getattr(decision, "as_dict", None))
+        else decision
+    )
+    if not isinstance(payload, Mapping):
+        raise TypeError("realized speculative MTP serving plan must be a mapping")
+    return deepcopy(dict(payload))
+
+
 def _resolve_realized_generation_route(
     requested_route: str,
     *,
@@ -2937,11 +2986,25 @@ class _GenerationBatcher:
             queue_group_id = f"queue-{uuid.uuid4().hex}"
             requested_route = str(group[0].route)
             group_sampling = self._sampling_for_group(group)
+            precomputed_decision = group[0].route_decision
+            if requested_route in {
+                _SPECULATIVE_MTP_BATCH_ROUTE,
+                _SPECULATIVE_MTP_AUTO_ROUTE,
+                _SPECULATIVE_MTP_K0_ROUTE,
+            }:
+                realized = _realized_model_serving_plan(
+                    self._engine_factory(),
+                    tuple(prompts),
+                    group_sampling,
+                    precomputed_decision,
+                )
+                if realized is not None:
+                    precomputed_decision = realized
             route, route_decision = _resolve_realized_generation_route(
                 requested_route,
                 group_rows=len(prompts),
                 sampling=group_sampling,
-                precomputed_decision=group[0].route_decision,
+                precomputed_decision=precomputed_decision,
             )
             breaker = self._mtp_circuit_breaker
             if (

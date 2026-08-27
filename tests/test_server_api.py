@@ -373,6 +373,40 @@ class PromotedArtifactScopedSpeculativeMTPFakeLLM(
         return plan
 
 
+class RealizedGroupArtifactScopedSpeculativeMTPFakeLLM(
+    PromotedArtifactScopedSpeculativeMTPFakeLLM
+):
+    @staticmethod
+    def _plan(**kwargs: Any) -> dict[str, Any]:
+        rows = int(kwargs["realized_group_rows"])
+        admitted = bool(
+            rows in {1, 2}
+            and kwargs["sampling_mode"] == "greedy_fast"
+            and 1 <= kwargs["context_tokens"] <= 67
+            and kwargs["output_horizon_tokens"] == 25
+            and kwargs["kv_storage"] in {"auto", "bf16"}
+            and kwargs["memory_fit"]
+        )
+        reason = f"qualified_automatic_c{rows}_b3" if admitted else "scope_not_qualified"
+        return {
+            "schema_version": 1,
+            "plan_fingerprint": "sha256:" + ("e" if rows == 1 else "f") * 64,
+            "key": {
+                "realized_group_rows": rows,
+                "context_tokens": kwargs["context_tokens"],
+                "output_horizon_tokens": kwargs["output_horizon_tokens"],
+            },
+            "admitted": admitted,
+            "selected_route": "speculative_mtp" if admitted else "default",
+            "selected_candidate_count": 3 if admitted else 0,
+            "reason": reason,
+            "strict_fallback_key": "gguf_target_ar",
+            "evidence_key": f"fake-qwen38-q4km-c{rows}-b3",
+            "evidence_artifacts": [f"benchmarks/results/fake-qwen38-q4km-c{rows}.json"],
+            "automatic_eligible": admitted,
+        }
+
+
 class SchedulerChunkRowsFakeLLM(FakeLLM):
     def __init__(
         self,
@@ -5529,6 +5563,55 @@ def test_generation_batcher_applies_mtp_route_group_limit() -> None:
                 sampling,
             )
         ]
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_re_resolves_model_plan_at_realized_c2_before_mutation() -> None:
+    async def run() -> None:
+        fake = RealizedGroupArtifactScopedSpeculativeMTPFakeLLM()
+        sampling = SamplingParams(max_tokens=25)
+        c1_plan = fake.resolve_speculative_mtp_serving_plan(
+            realized_group_rows=1,
+            sampling_mode="greedy_fast",
+            context_tokens=1,
+            output_horizon_tokens=25,
+            kv_storage="bf16",
+            memory_fit=True,
+        )
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=2,
+            route_max_active_requests={_SPECULATIVE_MTP_AUTO_ROUTE: 2},
+        )
+
+        results = await asyncio.gather(
+            *(
+                batcher.submit(
+                    (prompt,),
+                    sampling,
+                    detailed=True,
+                    include_batch_metadata=True,
+                    route=_SPECULATIVE_MTP_AUTO_ROUTE,
+                    route_decision=c1_plan,
+                )
+                for prompt in ("one", "two")
+            )
+        )
+
+        assert all(isinstance(result, _QueuedBatchResult) for result in results)
+        assert [call["realized_group_rows"] for call in fake.plan_calls] == [1, 2]
+        assert fake.calls == []
+        assert len(fake.mtp_calls) == 1
+        assert fake.mtp_calls[0][0] == ("one", "two")
+        for result in results:
+            assert result.generation_shape is not None
+            assert result.generation_shape["route"] == _SPECULATIVE_MTP_BATCH_ROUTE
+            decision = result.generation_shape["route_decision"]
+            assert decision["reason"] == "qualified_automatic_c2_b3"
+            assert decision["realized_group_rows"] == 2
+            assert decision["policy_cell"] == "fake-qwen38-q4km-c2-b3"
 
     asyncio.run(run())
 

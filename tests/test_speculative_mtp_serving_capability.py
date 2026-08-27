@@ -109,6 +109,42 @@ def test_qwen38_candidate_plan_fails_closed_on_every_unqualified_axis(
     assert decision.strict_fallback_key == "gguf_target_ar"
 
 
+def test_serving_resolver_selects_exact_physical_width_among_same_artifact_rows() -> None:
+    c1 = _evidence()
+    c2 = replace(
+        c1,
+        evidence_key="qwen38-q4km-gfx1151-strict-bf16-c2-b3-natural25",
+        realized_group_rows=2,
+        resident_capacity=2,
+        reason="qualified_explicit_c2_b3",
+        automatic_eligible=False,
+    )
+
+    decision = resolve_speculative_mtp_serving_plan(
+        (c1, c2),
+        key=_key(realized_group_rows=2, resident_capacity=2),
+    )
+
+    assert decision.admitted is True
+    assert decision.reason == "qualified_explicit_c2_b3"
+    assert decision.evidence_key == c2.evidence_key
+    assert decision.automatic_eligible is False
+
+    c1_capacity2 = replace(
+        c1,
+        evidence_key="qwen38-q4km-gfx1151-strict-bf16-c1-cap2-b3-natural25",
+        resident_capacity=2,
+        reason="qualified_explicit_c1_cap2_b3",
+        automatic_eligible=False,
+    )
+    c1_decision = resolve_speculative_mtp_serving_plan(
+        (c1, c1_capacity2, c2),
+        key=_key(realized_group_rows=1, resident_capacity=2),
+    )
+    assert c1_decision.admitted is True
+    assert c1_decision.evidence_key == c1_capacity2.evidence_key
+
+
 def test_qwen36_dense_production_row_resolves_after_qwen38_evidence() -> None:
     evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence[1]
     key = SpeculativeMTPServingKey(

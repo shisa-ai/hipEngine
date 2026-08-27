@@ -223,20 +223,38 @@ the starting premise.
 
 ### P1 — Realized-group admission and transition RED/GREEN
 
-- [ ] Trace frontend intent through submission, due-group planning,
+- [x] Trace frontend intent through submission, due-group planning,
       `speculative_capability()`, `plan_speculative_requests()`, claims, and
       execution; identify every point that can mutate provider/target state.
-- [ ] RED: capacity-2 server with one due row can select an independently
+- [x] RED: capacity-2 server with one due row can select an independently
       qualified resident-capacity-2/C1 key rather than inheriting capacity-1.
-- [ ] RED: two compatible due rows select one C2 plan; an unqualified C2 plan
+- [x] RED: two compatible due rows select one C2 plan; an unqualified C2 plan
       selects K0 before provider/target mutation.
-- [ ] RED: delayed C1 -> C2 and retirement/cancel C2 -> C1 preserve request,
-      slot, state, KV, output, and provider identity.
-- [ ] RED: K0 -> MTP and MTP -> K0 catch-up/park paths preserve canonical state.
-- [ ] RED: telemetry rejects per-request target backbone loops, legacy prelaunch,
-      mislabeled candidate depth, and mismatched realized width.
-- [ ] GREEN with backend/model capabilities supplied by registries, never shared
+- [x] RED: delayed C1 -> C2 and retirement C2 -> C1 preserve request, slot,
+      plan, and output identity at the common owner; model state/KV/cancellation
+      remain binding P2 gates.
+- [x] RED: K0 -> MTP and MTP -> K0 enter through complete cycle boundaries and
+      invoke provider K0 preparation before AR; model canonical-state parity
+      remains a binding P2 gate.
+- [ ] RED: model-specific telemetry rejects per-request target backbone loops,
+      legacy prelaunch, mislabeled candidate depth, and mismatched realized width.
+- [x] GREEN with model evidence supplied by plugins, never shared
       `if backend == ...` or `if quant == ...` branches.
+
+The audit found one shared blocker: request-time C1 plans were copied into the
+queue, and a later C2 queue group compared its width to that stale plan and
+selected K0 without asking the model plugin for an independently qualified C2
+row. The server now re-resolves the immutable model plan after physical grouping
+and before backend mutation. The serving resolver also selects the exact row
+among multiple same-artifact C1/C2/resident-capacity entries instead of making
+the first tuple entry shadow every later width. Focused tests prove one C2 model
+call, exact realized decision telemetry, unqualified-C2 K0 preparation, and
+C1 -> C2 -> C1 plus MTP -> K0 -> MTP cycle boundaries.
+
+This does not enable a gfx1100 physical adapter or add evidence. The backend
+capability remains false and current automatic C2 remains K0. P2 must carry the
+model-specific plan through controlled streaming, prove physical target
+telemetry/state, and add only an explicit qualified 27B C2 row.
 
 Exit: the common owner can switch safely even though automatic C2 policy remains
 K0.
