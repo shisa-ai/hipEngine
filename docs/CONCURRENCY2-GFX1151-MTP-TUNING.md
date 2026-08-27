@@ -198,10 +198,12 @@ production policy remains MTP at no automatic cell (K0) until those gates pass.
   Crossover between c1 and c2; MTP only wins c1 (+31.7%).
 - [x] **T0.2 C1 serving-vs-direct attribution (G1).** Cached production
   c1/B3 profile leaf: 2,807.7-ms arm; target prefill/activation 1,680.8 ms
-  (59.9%), including provider streaming open **981.9 ms / 189 allocations / only
-  0.052 ms GPU**; eight cycles 1,068.3 ms (proposal 147.1, target/accept/commit/
-  provider 919.3); reclaim 51.6 ms. Cycles 2-8 have zero malloc/free. Expected
-  Q4/Q5/Q6 rows4/rows2 owners execute; no R6/R8/R12/R16 dispatch. Evidence:
+  (59.9%), including cold provider streaming open **981.9 ms / 189 allocations /
+  only 0.052 ms GPU**; eight cycles 1,068.3 ms (proposal 147.1, target/accept/
+  commit/provider 919.3); reclaim 51.6 ms. Existing pooling reduces provider
+  open to **0.13-0.15 ms** on warm repeats (1.735/1.739-s complete wall), so it
+  is not steady debt. All 16 repeat cycles have zero malloc/free. Expected Q4/
+  Q5/Q6 rows4/rows2 owners execute; no R6/R8/R12/R16 dispatch. Evidence:
   [`T0.2 profile`](../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t02-actual-owner-profile.json).
 - [x] **T0.3 c>1 legacy acceptance attribution** — accept-per-draft is stable
   (0.64-0.67) on the forced legacy route; its flat line is not an acceptance
@@ -224,9 +226,10 @@ production policy remains MTP at no automatic cell (K0) until those gates pass.
 - [x] **T1.2 Zero-hot-allocation audit for the Q4_K_M serving key.** Hot-cycle
   proposal/repair workspace is persistent at stable pointers/shape `[1,5120]`
   across all requests after warmup. Each request still allocates/frees
-  83,794,462 bytes of admission/provider state, but active ownership returns to
-  zero and this does not scale with its 6-8 cycles. Track admission allocation
-  as startup debt, not cycle-local malloc.
+  83,794,462 bytes of verifier/admission state, but active ownership returns to
+  zero and this does not scale with its 6-8 cycles. Warm repeats confirm provider
+  open at 0.13-0.15 ms and zero allocations in all 16 cycles; existing pooling
+  is effective.
 - [x] **T1.3 Device-chain coverage check / fence.** Qualified production uses
   70 eager cycles with zero device handoff/GPU accept/selected-commit calls.
   An oracle-only FP16 device-proposal/eager-target candidate launched one

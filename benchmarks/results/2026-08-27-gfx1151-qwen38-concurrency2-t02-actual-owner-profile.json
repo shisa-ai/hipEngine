@@ -5,7 +5,7 @@
  "status": "complete_profile_target_rows4_no_wider_premise",
  "passed": true,
  "performance_claim": false,
- "decision": "Actual staged production c1/B3 owner is target/accept/commit dominated after activation. Provider admission is the largest complete-wall startup owner. No R6/R8/R12/R16 kernel executes, so T2.2 wider target work has no current public-route premise.",
+ "decision": "Actual staged production c1/B3 is target/accept/commit dominated after warmup. The 981.9-ms provider-open marker is cold first-use setup already eliminated by the existing provider pool (0.13-0.15 ms on repeat). No R6/R8/R12/R16 kernel executes.",
  "physical_host": "gfx1151 / Radeon 8060S / HIP 7.15.0 / rocprofv3 1.3.2 / queue 1",
  "model": {
   "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
@@ -623,7 +623,7 @@
   "prompt_carried_bytes": 10240
  },
  "owner_ranking": {
-  "startup": "provider_streaming_open 981.9 ms, 189 allocation events, 0.052 ms GPU: request admission/provider construction is the largest recoverable wall",
+  "startup": "Cold first-use provider construction is 981.9 ms, but existing pooling reduces provider_streaming_open to 0.13-0.15 ms on subsequent requests. Not a steady optimization candidate.",
   "proposal": "Q6 LM-head top1 stage1 101.97 ms/22 calls = 74.0% of proposal kernel time",
   "target": "rows4 Q4 dual-silu 222.19 ms, Q4 local32 139.18 ms, Q4 rowtile 84.42 ms, Q6 planar rowtile 78.09 ms; target stage 919.31 ms wall / 811.54 ms kernel",
   "wider_rows": "No R6/R8/R12/R16 dispatch; only rows4 and rows2 tails. Public c2+ is K0."
@@ -715,11 +715,45 @@
    "sha256": "650c68a079a95b69686462d80b6b71b39cde6c9334d8cd2253fc2d0467098d0c",
    "size_bytes": 8720625,
    "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-provider-pool-repeat.json",
+   "sha256": "8605393ea84c80682df8ed49b0a7d0c2f122e3009977968c1fb6ed34ee33bd7f",
+   "size_bytes": 75862,
+   "retained_in_git": false
   }
  ],
  "command": "rocprofv3 --kernel-trace --marker-trace --hip-trace --memory-copy-trace --memory-allocation-trace --output-format csv --output-directory /tmp/gfx1151-t02-rocprof --output-file t02 -- .venv/bin/python scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --target-arch gfx1151 --quant-label Q4_K_M --execution-profile production --gpu-max-hw-queues 2 --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --scope full --limit 1 --concurrency 1 --budgets 3 --max-tokens 24 --runs 1 --max-sequence-length 1024 --no-warmup --compiler-version-file /tmp/gfx1151-old-vs-c2-c1-c8/hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output /tmp/gfx1151-t02-profiled.json --fail-on-fail",
  "limitations": [
   "Single canonical prompt profiling leaf; full-suite performance/correctness comes from T0.4/T1.4.",
-  "rocprof overhead reverses complete-wall comparison; no speed ratio is claimed from profile wall."
- ]
+  "rocprof overhead reverses complete-wall comparison; no speed ratio is claimed from profile wall.",
+  "Cold first-request ownership is separately bounded by warm-repeat evidence; serving benchmarks execute MTP warmup before measured arms."
+ ],
+ "warm_repeat": {
+  "raw": "/tmp/gfx1151-provider-pool-repeat.json",
+  "sha256": "8605393ea84c80682df8ed49b0a7d0c2f122e3009977968c1fb6ed34ee33bd7f",
+  "size_bytes": 75862,
+  "arm_wall_ms": [
+   1734.598,
+   1738.586
+  ],
+  "target_prefill_ms": [
+   641.759,
+   642.395
+  ],
+  "provider_streaming_open_ms": [
+   0.154,
+   0.132
+  ],
+  "cycle_total_ms": [
+   1036.739,
+   1040.078
+  ],
+  "cycle_allocations": "zero in all 16 measured cycles",
+  "request_allocated_and_freed_bytes": [
+   83794462,
+   83794462
+  ],
+  "interpretation": "Existing provider pool removes cold construction; request verifier/admission allocations are fully freed and no hot-cycle allocations remain. No code candidate."
+ }
 }
