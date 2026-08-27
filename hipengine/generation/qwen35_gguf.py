@@ -6081,7 +6081,16 @@ class Qwen35GGUFResidentModelRunner:
             self,
             enabled=True,
             target_verify_mode=_gguf_mtp_server_target_verify_mode(),
-            candidate_budget=min(3, _gguf_mtp_server_candidate_budget()),
+            candidate_budget=min(
+                3,
+                int(
+                    getattr(
+                        self.generator,
+                        "speculative_candidate_budget",
+                        _gguf_mtp_server_candidate_budget(),
+                    )
+                ),
+            ),
             quant=quant,
         )
         return self._mtp2_adapter

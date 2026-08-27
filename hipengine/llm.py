@@ -825,6 +825,12 @@ class LLM:
             if profile_resolution is None
             else profile_resolution.construct_generator(factory, **factory_kwargs)
         )
+        # The loaded resident model owns staged MTP candidate depth. Publish the
+        # public LLM setting on that owner before its cold adapter is resolved;
+        # model-plugin evidence still decides whether the resulting key admits.
+        generator.speculative_candidate_budget = int(
+            self.speculative_candidate_budget
+        )
         if self.speculative_provider is not None:
             from hipengine.speculative.registry import (
                 SpeculativeProviderConfig,

@@ -120,7 +120,9 @@ def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> Non
 
     def factory(**kwargs):
         calls["factory_kwargs"] = kwargs
-        return FakeGenerator()
+        generator = FakeGenerator()
+        calls["generator"] = generator
+        return generator
 
     fake_index = SimpleNamespace(config={"architectures": ["FakeForCausalLM"]}, model_path="/tmp/fake-model")
     fake_plugin = SimpleNamespace(name="fake_model")
@@ -147,6 +149,7 @@ def test_llm_generate_dispatches_through_generation_registry(monkeypatch) -> Non
 
     assert out == ["a!", "b!"]
     assert llm._text_generator._runner.capacity == 8
+    assert calls["generator"].speculative_candidate_budget == 4
     assert llm._text_generator._loop.config.prefix_cache == "radix"
     assert calls["factory_kwargs"] == {
         "model_path": "/tmp/fake-model",
