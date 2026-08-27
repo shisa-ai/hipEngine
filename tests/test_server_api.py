@@ -6905,7 +6905,7 @@ def test_mtp_summary_honors_batch_timing_ownership() -> None:
         )
 
     assert _mtp_accepted_rejected_counts(details) == (4, 2)
-    assert _mtp_response_summary("speculative_mtp", details) == {
+    expected = {
         "effective_route": "speculative_mtp",
         "used": True,
         "draft_tokens": 6,
@@ -6914,6 +6914,10 @@ def test_mtp_summary_honors_batch_timing_ownership() -> None:
         "acceptance_rate": 4 / 6,
         "draft_cycles": 2,
     }
+    assert _mtp_response_summary("speculative_mtp", details) == expected
+    # Frontend grouping may predict K0 before the resident due work selects K>0.
+    # Committed-cycle telemetry owns the effective route in that case.
+    assert _mtp_response_summary("default", details) == expected
 
 
 def test_mtp_summary_treats_owned_zero_draft_timing_as_realized_mtp() -> None:
