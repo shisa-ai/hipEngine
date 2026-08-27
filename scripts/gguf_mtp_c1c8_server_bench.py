@@ -507,6 +507,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         max_sequence_length=int(args.max_sequence_length),
         speculative_candidate_budget=int(args.candidate_budget),
     )
+    original_capability = None
+    capability_owner = None
+    if args.force_cycle_k0:
+        from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+
+        capability_owner = Qwen35GGUFMTP2Adapter
+        original_capability = Qwen35GGUFMTP2Adapter.capability
+        Qwen35GGUFMTP2Adapter.capability = lambda self, semantics: None
     runtime_profile: dict[str, Any] = {}
     try:
         llm.prepare(max_sequence_length=int(args.max_sequence_length))
@@ -620,6 +628,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # TestClient owns current-server shutdown. Older servers leave close idempotent.
     finally:
         llm.close()
+        if original_capability is not None and capability_owner is not None:
+            capability_owner.capability = original_capability
     summary = summarize(
         cells,
         widths=widths,
@@ -662,6 +672,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "correctness_contract": str(args.correctness_contract),
             "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
             "generation2_diagnostic_plan": bool(args.generation2_diagnostic),
+            "force_cycle_k0": bool(args.force_cycle_k0),
             "timing": "blocking OpenAI barrier-to-last-completion complete wall",
         },
         "runtime_profile": runtime_profile,
@@ -705,6 +716,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-window-ms", type=float, default=20.0)
     parser.add_argument("--max-sequence-length", type=int, default=1024)
     parser.add_argument("--generation2-diagnostic", action="store_true")
+    parser.add_argument(
+        "--force-cycle-k0",
+        action="store_true",
+        help="diagnostic: retain static provider intent but force every resident cycle to K0",
+    )
     parser.add_argument(
         "--correctness-contract",
         choices=_CORRECTNESS_CONTRACTS,

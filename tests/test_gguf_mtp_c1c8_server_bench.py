@@ -28,6 +28,9 @@ def test_mtp_c1c8_parser_defaults_to_production_profile() -> None:
     strict = parser.parse_args(
         ("--execution-profile", "strict", "--output", "/tmp/out.json")
     )
+    intent_k0 = parser.parse_args(
+        ("--force-cycle-k0", "--output", "/tmp/out.json")
+    )
     normal_owner = parser.parse_args(
         (
             "--widths",
@@ -42,6 +45,7 @@ def test_mtp_c1c8_parser_defaults_to_production_profile() -> None:
     assert default.execution_profile == "production"
     assert default.resident_capacity is None
     assert strict.execution_profile == "strict"
+    assert intent_k0.force_cycle_k0 is True
     assert normal_owner.widths == (2,)
     assert normal_owner.resident_capacity == 4
 
