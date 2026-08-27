@@ -1,6 +1,6 @@
 # CONCURRENCY2 MTP Dual-Model Promotion — W7900
 
-- Status: **active; 35B quality qualified, 35B performance/serving and 27B qualification open**
+- Status: **active; 35B explicit promotion packet qualified, automatic/27B open**
 - Started: **2026-08-27**
 - Binding host: **`epyc` / AMD Radeon Pro W7900 / `gfx1100` / GPU 0**
 - Normative contracts: [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
@@ -183,9 +183,15 @@ transition scope, exact graph/eager reconciliation, three repeats, reverse-order
 isolation, paired task non-inferiority, profiles/fallback, and clean drain.
 Same-host three-repeat economics measure **77.358 vs 67.858 tok/s (1.1400x true
 AR)**, train/heldout **1.1531x/1.1211x**, with every category non-regressive
-(`1.0802x-1.1697x`). Automatic remains K0 pending serving gates. Evidence:
+(`1.0802x-1.1697x`). Real blocking/SSE completion+chat parity, sampler/context
+K0 controls, continuation, disconnect health, five-request concurrent load,
+bounded overload (3 accepted/5 truthful 429), precommit fault recovery,
+following MTP, 30-request alternating soak, bounded memory, and clean drain all
+pass. Automatic policy is ready for exact-key publication and mechanical rerun.
+Evidence:
 [`35B production quality`](../benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-quality.json),
-[`35B production performance`](../benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-performance.json).
+[`35B production performance`](../benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-performance.json),
+[`35B production serving`](../benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-serving.json).
 
 ### D1 — 27B Dense C1 closure
 
