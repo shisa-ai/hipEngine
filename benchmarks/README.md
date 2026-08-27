@@ -34,7 +34,7 @@ Each value is the total tokens per second across all active requests:
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
 | Qwen3.6-27B Dense GGUF `Q4_K_M` — Generation-2 C1/K3 D24 | **32.076 tok/s** | **1.4382x** |
-| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — Generation-2 C1/K2 D24 | **77.358 tok/s** | **1.1400x** |
+| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — legacy MTP-2 / Generation-2 C1/K2 D24 | **122.67 tok/s** / **77.358 tok/s** | **1.2679x** / **1.1400x** |
 
 ### RX 7900 XTX (`gfx1100`) — Qwen3.8-27B `Q4_K_M` prefill
 
@@ -94,6 +94,9 @@ llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hi
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 ## Current default notes
+
+W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE K2 and 27B
+Dense K3; other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
 
 Strix Halo Qwen3.8 `Q4_K_M` automatic MTP is limited to its verified strict/
 BF16/C1/B3 key; all other scopes use K0. [`Serving`](results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json).
