@@ -316,29 +316,11 @@ def _reject(
     )
 
 
-def resolve_speculative_mtp_serving_plan(
-    evidence_rows: Sequence[SpeculativeMTPServingEvidence],
-    *,
+def _evidence_checks(
     key: SpeculativeMTPServingKey,
-) -> SpeculativeMTPServingDecision:
-    """Resolve one exact model-plugin evidence row or fail closed to K0."""
-
-    evidence = tuple(evidence_rows)
-    if not key.content_verified or key.artifact_sha256 is None:
-        return _reject(key, "artifact_identity_unverified", evidence[0] if evidence else None)
-    if not evidence:
-        return _reject(key, "no_model_plugin_evidence", None)
-
-    row = next(
-        (
-            candidate
-            for candidate in evidence
-            if key.artifact_sha256 == candidate.artifact_sha256
-            and key.artifact_size_bytes == candidate.artifact_size_bytes
-        ),
-        evidence[0],
-    )
-    checks = (
+    row: SpeculativeMTPServingEvidence,
+) -> tuple[tuple[bool, str], ...]:
+    return (
         (
             key.artifact_sha256 == row.artifact_sha256
             and key.artifact_size_bytes == row.artifact_size_bytes,
@@ -387,10 +369,12 @@ def resolve_speculative_mtp_serving_plan(
         ),
         (key.memory_fit, "insufficient_memory"),
     )
-    for passed, reason in checks:
-        if not passed:
-            return _reject(key, reason, row)
 
+
+def _admit(
+    key: SpeculativeMTPServingKey,
+    row: SpeculativeMTPServingEvidence,
+) -> SpeculativeMTPServingDecision:
     return SpeculativeMTPServingDecision(
         key=key,
         admitted=True,
@@ -403,6 +387,44 @@ def resolve_speculative_mtp_serving_plan(
         evidence_artifacts=row.evidence_artifacts,
         automatic_eligible=row.automatic_eligible,
     )
+
+
+def resolve_speculative_mtp_serving_plan(
+    evidence_rows: Sequence[SpeculativeMTPServingEvidence],
+    *,
+    key: SpeculativeMTPServingKey,
+) -> SpeculativeMTPServingDecision:
+    """Resolve one exact model-plugin evidence row or fail closed to K0.
+
+    A model artifact may carry independently qualified profile/shape scopes.
+    The first exact row wins. When no row admits, rejection is attributed to the
+    row matching the most key axes (ties preserve declaration order), keeping a
+    stable and useful pre-mutation failure reason without merging scopes.
+    """
+
+    evidence = tuple(evidence_rows)
+    if not key.content_verified or key.artifact_sha256 is None:
+        return _reject(key, "artifact_identity_unverified", evidence[0] if evidence else None)
+    if not evidence:
+        return _reject(key, "no_model_plugin_evidence", None)
+
+    rejected: list[tuple[int, int, SpeculativeMTPServingEvidence, str]] = []
+    for index, row in enumerate(evidence):
+        checks = _evidence_checks(key, row)
+        failed_reason = next((reason for passed, reason in checks if not passed), None)
+        if failed_reason is None:
+            return _admit(key, row)
+        rejected.append(
+            (
+                sum(bool(passed) for passed, _reason in checks),
+                -index,
+                row,
+                failed_reason,
+            )
+        )
+
+    _matched, _order, row, reason = max(rejected, key=lambda item: (item[0], item[1]))
+    return _reject(key, reason, row)
 
 
 __all__ = [

@@ -1,7 +1,7 @@
 # CONCURRENCY2 gfx1151 MTP Tuning Campaign
 
 - Status: **campaign completed 2026-08-27 via definition-of-done branch (b); no product cell promoted, automatic remains K0**
-- Follow-up intake: **documentation-only CR-S0–CR-S3 compact-rollback sweep proposed 2026-08-27; no GPU run or product claim, and the original closure remains binding**
+- Follow-up outcome: **Compact Rollback stopped at CR-S0; a separate explicit-only production C1/B3 context 68-128 scope is retained at +39.98%, while automatic and c2+ remain K0**
 - Hardware lane: **Radeon 8060S / `hip_gfx1151`** only (two 8060S hosts are
   independent lanes; W7900 is the separate
   [`MTP-CONCURRENCY2-DUAL-PROMOTION.md`](MTP-CONCURRENCY2-DUAL-PROMOTION.md)
@@ -482,3 +482,25 @@ residency, if replay erases the product benefit, or if any lifecycle/gate fails.
   product key; route it through a separately qualified KV-backend campaign.
   `--pipeline-parallel` is multi-GPU scheduler policy and is N/A on the single
   Radeon 8060S lane. Neither reopens T4.2 or creates a CONCURRENCY2 candidate.
+
+## 7. Post-CR prerequisite result: explicit production context 68-128
+
+The CR-S0 blocker prompted a separate check of the current short context
+fingerprint. That prerequisite produced a useful product result without
+reopening Compact Rollback: one non-overlapping model-plugin evidence row now
+qualifies explicit-only production Q4_K_M/BF16/C1/B3/raw-greedy requests at
+context **68-128** and horizon 24.
+
+The padded canonical category+heldout OpenAI suite reaches **13.088 vs 9.350
+tok/s (+39.98%, 1.3998x)**, with 10/10 cells above 1.10x, 4/4 categories and
+train/heldout positive, 87.63% acceptance, and zero final ownership. Existing
+1,170-row production numerics—including p512—remain binding and pass. The
+actual plan engages only under explicit request; automatic remains K0, context
+129 fails closed, and blocking/SSE outputs match AR diagnostically.
+
+This does **not** change the completed campaign decision: normal capacity>1
+cannot dynamically choose C1 MTP then c2+ K0, and physical c2+ economics remain
+blocked. It also does not make Compact Rollback useful: the 128-token scope is
+not memory-limited. Synthetic ratios decline to 1.063x/1.017x/0.897x at
+256/512/1020, so no larger context bucket is retained. Evidence:
+[`context128`](../benchmarks/results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json).
