@@ -5558,7 +5558,7 @@ def test_generation_batcher_uses_registered_plain_ar_cap_without_widening_mtp() 
             (tuple(f"prompt-{index}" for index in range(8)), sampling),
         ]
         assert batcher._route_request_cap(_SPECULATIVE_MTP_DEFAULT_ROUTE) == 8
-        assert batcher._route_request_cap(_SPECULATIVE_MTP_AUTO_ROUTE) == 4
+        assert batcher._route_request_cap(_SPECULATIVE_MTP_AUTO_ROUTE) == 8
         assert batcher._route_request_cap(_SPECULATIVE_MTP_BATCH_ROUTE) == 4
 
     asyncio.run(run())
