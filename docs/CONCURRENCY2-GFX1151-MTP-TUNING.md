@@ -1,6 +1,6 @@
 # CONCURRENCY2 gfx1151 MTP Tuning Campaign
 
-- Status: **plan frozen 2026-08-26; no GPU work started**
+- Status: **campaign completed 2026-08-27 via definition-of-done branch (b); no product cell promoted, automatic remains K0**
 - Hardware lane: **Radeon 8060S / `hip_gfx1151`** only (two 8060S hosts are
   independent lanes; W7900 is the separate
   [`MTP-CONCURRENCY2-DUAL-PROMOTION.md`](MTP-CONCURRENCY2-DUAL-PROMOTION.md)
@@ -20,11 +20,28 @@ hipEngine's exact MTP serving on gfx1151 and (a) our own direct-leaf MTP speed
 and (b) external Strix Halo MTP results. It is a measurement-first campaign:
 every phase names its evidence and exit gate before implementation.
 
+## Final outcome
+
+- Capacity-matched production c1/B3: **14.287 vs 9.730 tok/s (+46.84%)**;
+  every category positive, 79.29% accept/draft.
+- Production correctness (not bit exactness): 1,170 strict-teacher rows, KL
+  mean/p95/p99/max `1.239e-4/3.503e-4/1.110e-3/0.049788`, top-1 99.744%,
+  deterministic repeats/isolation/manifest gates pass.
+- C2-c8: typed K0; repaired physical C2/C4 still only 0.6975x/0.5843x AR.
+- No promotion: c1 is 1.468x, below the 1.6x/~19 tok/s target, and only engages
+  on capacity-1. The normal concurrency owner cannot select c1 MTP then c2+
+  K0 before mutation; physical streaming/refill/survivor lifecycle is
+  unqualified. FP16 device proposal also lacks eager selected commit.
+- Definition-of-done **branch (b)** applies. Automatic stays K0, B3 remains the
+  explicit diagnostic candidate, and blockers/reopen triggers are recorded in
+  `docs/REFACTOR.md`. Completion audit:
+  [`campaign closeout`](../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-campaign-closeout.json).
+
 ## 1. Why this campaign exists — three measured gaps
 
-> **T0 update (2026-08-27):** T0.1 and T0.3 are complete; see §1a for the
-> definitive matched-quant crossover table and the measured root causes. The
-> gap statements below are the pre-T0 framing kept for context.
+> **Final note (2026-08-27):** all T0-T4 items are complete. The gap statements
+> below are entry framing kept for context; §1a and the punchlist carry the
+> superseding results.
 
 ### G1 — C1 serving is ~39% below our own direct leaf
 
@@ -175,9 +192,9 @@ Evidence:
 
 ### Punchlist impact
 
-T0.1/T0.3/T0.4/T1.0 are done. T0.2 rocprof and T1.1-T1.3 telemetry are now the
-critical path before any c1 promotion; T1.4 then measures B1-B4. Public
-production policy remains MTP at no automatic cell (K0) until those gates pass.
+All T0-T4 items are complete. No product cell promotes: capacity-matched c1/B3
+is the sole positive candidate, while automatic remains K0 under the recorded
+capacity/dynamic-lifecycle blockers.
 
 ## 2. External source review (commit-pinned, read-only)
 
@@ -210,9 +227,9 @@ production policy remains MTP at no automatic cell (K0) until those gates pass.
   collapse. Wide timing fields are chunk-wall copies and are not additive.
   The staged SPECDEC2 18.43% C2/C4 collapse remains open as T2.1.
 - [x] **T0.4 Full-suite staged MTP c1-c8 baseline.** C1 production staged MTP2
-  is +46.75% over production AR and passes the full 1,170-row production
+  is +46.84% over production AR and passes the full 1,170-row production
   numerical/determinism/isolation gate; c2-c8 stay typed K0 in 70/70 cells.
-  Promotion remains blocked on T0.2/T1.1-T1.3 lifecycle/ownership evidence.
+  Final promotion is blocked by capacity>1/dynamic lifecycle ownership.
 
 ### T1 — close the C1 serving gap (G1)
 
@@ -332,3 +349,7 @@ The campaign closes when either:
   reproducing artifact) that invalidates the premise, in which case the K0
   crossover policy ships with exact reasons and the blocker is recorded in
   `docs/REFACTOR.md`/the relevant campaign ledger.
+
+**Closure: branch (b).** The exact blockers and production evidence are in the
+Final outcome above and the closeout artifact. Automatic K0 is the shipped
+safe policy; this campaign does not claim a product MTP promotion.

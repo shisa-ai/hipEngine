@@ -1,0 +1,90 @@
+{
+ "schema": 1,
+ "kind": "concurrency2_gfx1151_mtp_campaign_closeout",
+ "created_at": "2026-08-27T09:55:00Z",
+ "status": "completed_definition_branch_b_automatic_k0",
+ "passed": true,
+ "performance_claim": false,
+ "product_promotion": false,
+ "objective": "Fully run docs/CONCURRENCY2-GFX1151-MTP-TUNING.md and bind any speed gain to the production correctness bar rather than generated-ID bit exactness.",
+ "completion_rule": {
+  "branch": "b",
+  "reason": "Every phase has a result or measured blocker. C1 is positive and production-correct but below direct-parity target and cannot engage on the normal concurrency owner; C2-C8 remain K0. Blockers and reopen triggers are durable.",
+  "automatic_policy": "K0",
+  "unchecked_plan_items": 0
+ },
+ "final_result": {
+  "c1": {"budget": 3, "ar_tok_s": 9.729754089597318, "mtp_tok_s": 14.286893899745897, "mtp_vs_ar_pct": 46.837153006990164, "mtp_over_ar": 1.4683715300699016, "accept_per_draft": 0.7929292929292929, "categories_non_regressive": true},
+  "c2_c8": "typed K0; no MTP performance claim",
+  "direct_parity_target": ">=1.6x / ~19 tok/s",
+  "direct_parity_met": false,
+  "promoted_cells": []
+ },
+ "production_correctness": {
+  "binding": true,
+  "generated_id_bit_equality_required": false,
+  "teacher_forced_rows": 1170,
+  "kl_mean": 0.00012391210401986377,
+  "kl_p95": 0.000350302086656365,
+  "kl_p99": 0.001110227899242281,
+  "kl_max": 0.04978771577044094,
+  "top1_agreement": 0.9974358974358974,
+  "top1_matches": 1167,
+  "repeat_determinism": true,
+  "isolation": true,
+  "manifest_gate": true,
+  "manual_outlier_review": "passed: same top-1/rank1, strict margin 3.168, top-k overlap 1.0, candidate teacher NLL improves",
+  "strict_fallback_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+  "production_manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51"
+ },
+ "prompt_to_artifact_checklist": [
+  {"requirement": "T0.1 matched Q4_K_M AR c1-c8 and crossover", "status": "complete", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-q4km-ar-vs-mtp-c1-c8.json"},
+  {"requirement": "T0.2 actual serving owner profile with rocprof kernel/marker proof", "status": "complete", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t02-actual-owner-profile.json"},
+  {"requirement": "T0.3 legacy acceptance/root-cause attribution", "status": "complete_corrected", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t10-prefill-attribution.json"},
+  {"requirement": "T0.4 complete category+heldout c1-c8 staged baseline and production correctness", "status": "complete", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json"},
+  {"requirement": "T1.0 target prefill attribution", "status": "complete_no_kernel_candidate", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t10-prefill-attribution.json"},
+  {"requirement": "T1.1 OI-3 public streaming", "status": "complete_10_of_10", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t11-t13-ownership.json"},
+  {"requirement": "T1.2 zero hot-cycle allocation", "status": "complete_cycles_steady_zero", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t02-actual-owner-profile.json"},
+  {"requirement": "T1.3 device-chain audit/fence", "status": "complete_candidate_rejected", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t11-t13-ownership.json"},
+  {"requirement": "T1.4 B1/B2/B3/B4 budget sweep", "status": "complete_physical_b3_selected_b4_clamped", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t14-budget-sweep.json"},
+  {"requirement": "T2.1 C2/C4 acceptance collapse", "status": "complete_repaired_economics_k0", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t21-acceptance-closeout.json"},
+  {"requirement": "T2.2 R6/R8/R12/R16 target continuation", "status": "complete_not_admitted_no_dispatch_premise", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t22-target-owner-closeout.json"},
+  {"requirement": "T2.3 K0 crossover policy", "status": "complete_automatic_k0_dynamic_blocker", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t23-t24-policy-scheduler.json"},
+  {"requirement": "T2.4 scheduler/chunk audit", "status": "complete_chunk256_retained", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t23-t24-policy-scheduler.json"},
+  {"requirement": "T3.1/T3.2 adaptive EMA and K(C)", "status": "complete_controller_rejected", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t31-adaptive-closeout.json"},
+  {"requirement": "T4.1 ngram provider spike", "status": "complete_rejected", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t4-research-closeout.json"},
+  {"requirement": "T4.2 KV quant parked", "status": "complete_parked_prior_quality_failure", "evidence": "docs/CONCURRENCY2-GFX1151-MTP-TUNING.md"},
+  {"requirement": "T4.3 DFlash2 parked", "status": "complete_parked_0.66x_ar", "evidence": "docs/QWEN38-27B-DFLASH2-CAMPAIGN.md"},
+  {"requirement": "T4.4 ROCr idle busy-spin", "status": "complete_no_spin", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t4-research-closeout.json"},
+  {"requirement": "External source review including Ling CIRU", "status": "complete_commit_pinned", "evidence": "docs/CONCURRENCY2-GFX1151-MTP-TUNING.md#2-external-source-review-commit-pinned-read-only"},
+  {"requirement": "Production correctness, not bit exactness", "status": "complete_binding_gate_passed", "evidence": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json"},
+  {"requirement": "Blockers and removal triggers durable", "status": "complete", "evidence": "docs/REFACTOR.md"}
+ ],
+ "measured_blockers": [
+  "Capacity-matched c1/B3 is 1.468x, below the 1.6x/~19 tok/s direct-parity target.",
+  "HTTP plan sees prompt multiplicity, not eventual concurrent child group; resident c1 on capacity>1 and physical prompt streaming/refill/survivor ownership are unqualified.",
+  "FP16 device proposal into eager target lacks eager selected commit; diagnostic recovers to AR and regresses 6.77%.",
+  "Physical C2/C4 acceptance is repaired, but best economics are only 0.6975x/0.5843x AR.",
+  "No R6/R8/R12/R16 public dispatch exists; adaptive K and ngram providers fail economics."
+ ],
+ "validation": {
+  "focused_tests": "55 passed: c1-c8 harness + MTP2 seam + FP16 production gate tests",
+  "campaign_json_artifacts_parsed": 11,
+  "worklog": "958 valid entries before closeout entry",
+  "benchmark_readme_sync": "passed",
+  "git_diff_check": "passed",
+  "unchecked_plan_items": 0,
+  "gpu_use_pct_final": 0,
+  "live_server_compiler_profiler_processes": 0
+ },
+ "rollup": {
+  "benchmarks_readme_updated": false,
+  "benchmarks_changelog_updated": false,
+  "reason": "No product/default MTP cell is retained or promoted; all new speed rows are diagnostic/blocked candidates. Automatic remains K0."
+ },
+ "git": {
+  "branch": "main",
+  "remote_state_before_closeout": "ahead 21",
+  "pr": "not applicable; direct repository commits"
+ }
+}

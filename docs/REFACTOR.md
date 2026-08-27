@@ -4232,6 +4232,21 @@ should be boring.
   qualified graph fix lands. P9 promotes no automatic cell because the positive
   capacity-1 C1 premise does not engage on the normal capacity-4 server owner;
   automatic stays K0 and producer-folded chain snapshot/fusion remains excluded.
+- 2026-08-27 Q4_K_M follow-up confirms the blocker under the production bar:
+  capacity-matched c1/B3 is 14.287 vs 9.730 tok/s (+46.84%) with the 1,170-row
+  KL/top-1/determinism/isolation gate passed, but c1 on capacity>1 remains K0.
+  HTTP plan `realized_group_rows` is prompt multiplicity inside one request,
+  not the eventual group of concurrent children; resident physical streaming,
+  refill, and survivor ownership remain unqualified. An oracle-only FP16 device
+  proposal reached the eager target then failed precommit with `FP16 recurrent
+  state device proposal requires eager selected commit`, recovered 10/10 to AR,
+  and regressed 6.77%; its diagnostic source was removed. Removal trigger:
+  qualify resident realized-group c1-only admission on capacity>1 plus dynamic
+  refill/survivor/load/SLO, and either implement+production-qualify FP16 eager
+  selected commit or repair the FP16 native graph. Until then automatic K0 and
+  eager host proposal/target are required. Evidence:
+  `benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json`,
+  `...-t11-t13-ownership.json`, and `...-t23-t24-policy-scheduler.json`.
 
 ## gfx1151 c1 short-batch attention thread-geometry (GGUF_SHORT_C1_BATCH_ATTN_THREADS / env)
 
