@@ -18,6 +18,19 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-08-27 Qwen4Exp bounded chunked prefill
+
+- `Qwen4ExpGGUFResidentModelRunner.prefill()` remains the strict serial default;
+  `prefill_chunked()` is a bounded size-2 candidate and the logits comparator
+  exposes `--prefill-mode` for qualification. Remove the duplicate public
+  methods by promoting chunked prefill only after the complete multi-prompt
+  production numerical/task gate passes, including category/shape tails and
+  2,052+ QSA transition coverage. If that gate fails, remove the candidate
+  path and retain only the serial strict owner. A nine-token real Q4-XL smoke
+  passes (`KL_teacher=0.00510`, `KL_serial=0.00410`, top-1 exact, teardown
+  clean) at 1.210 s versus 2.193 s serial; size 9 remains rejected at
+  `KL_serial=0.09754` despite a faster 0.801 s wall.
+
 ## 2026-08-27 Qwen4Exp scalable device top-512 selection
 
 - The strict Qwen4Exp runner currently downloads one FP32 block-score row per

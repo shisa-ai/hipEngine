@@ -26,6 +26,9 @@ from hipengine.loading.qwen4_exp_materialize import (
     Qwen4ExpDeviceWeight,
     Qwen4ExpGGUFWeightSpec,
 )
+from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
+    qwen4_exp_repeat_bf16_branches,
+)
 from hipengine.quant.gguf import GGMLQuantizationType, bf16_to_float32
 from hipengine.runtime.qwen4_exp_runner import (
     Qwen4ExpGRScratch,
@@ -39,6 +42,41 @@ def _hip_available() -> bool:
     except OSError:
         return False
     return True
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_repeat_branches_preserves_distinct_prompt_rows() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    rows, branches, hidden = 3, 2, 4
+    source = float_array_to_bf16_bits(
+        np.arange(rows * hidden, dtype=np.float32).reshape(rows, hidden)
+    )
+    allocations = []
+    try:
+        d_source = _upload(source, runtime, allocations)
+        d_output = malloc(source.nbytes * branches, runtime=runtime)
+        allocations.append(d_output)
+        qwen4_exp_repeat_bf16_branches(
+            d_source.ptr,
+            d_output.ptr,
+            branches,
+            hidden,
+            rows=rows,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        actual = _download(
+            d_output, (rows, branches, hidden), np.uint16, runtime
+        )
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    np.testing.assert_array_equal(
+        actual, np.repeat(source[:, None, :], branches, axis=1)
+    )
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

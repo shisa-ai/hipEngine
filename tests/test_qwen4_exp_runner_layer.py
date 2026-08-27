@@ -17,6 +17,7 @@ from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_gr_write_bf16_f32,
 )
 from hipengine.loading.materialize import float_array_to_bf16_bits
+from hipengine.quant.gguf import bf16_to_float32
 from hipengine.runtime.qwen4_exp_runner import (
     Qwen4ExpGDNLayerDeviceWeights,
     Qwen4ExpGDNLayerScratch,
@@ -46,7 +47,7 @@ def test_qwen4_exp_complete_gdn_layer_matches_individually_gated_components() ->
 
     runtime = get_hip_runtime()
     rng = np.random.default_rng(40385)
-    rows, branches, hidden, low_rank = 1, 2, 256, 16
+    rows, branches, hidden, low_rank = 3, 2, 256, 16
     k_heads, v_heads, head_dim, conv_kernel = 2, 4, 64, 4
     qkv_width = 2 * k_heads * head_dim + v_heads * head_dim
     core_width = v_heads * head_dim
@@ -56,7 +57,7 @@ def test_qwen4_exp_complete_gdn_layer_matches_individually_gated_components() ->
     )
 
     allocations = []
-    scratch = None
+    scratch = serial_scratch = None
     manual_after = manual_moe_f32 = None
     try:
         d_residual = _upload(residual, runtime, allocations)
@@ -108,6 +109,8 @@ def test_qwen4_exp_complete_gdn_layer_matches_individually_gated_components() ->
         d_norm = _upload(norm, runtime, allocations)
         d_conv_state = _upload(conv_state, runtime, allocations)
         d_matrix_state = _upload(matrix_state, runtime, allocations)
+        d_serial_conv_state = _upload(conv_state, runtime, allocations)
+        d_serial_matrix_state = _upload(matrix_state, runtime, allocations)
 
         router = rng.normal(0.0, 0.05, size=(experts, hidden)).astype(np.float32)
         gate_raw = np.stack([make_q4_k_weight(ffn, hidden) for _ in range(experts)])
@@ -289,11 +292,63 @@ def test_qwen4_exp_complete_gdn_layer_matches_individually_gated_components() ->
         actual_matrix = _download(
             d_matrix_state, matrix_state.shape, np.float32, runtime
         )
+        serial_scratch = Qwen4ExpGDNLayerScratch.allocate(
+            rows=1,
+            branches=branches,
+            hidden=hidden,
+            low_rank=low_rank,
+            qkv_width=qkv_width,
+            core_width=core_width,
+            scalar_width=v_heads,
+            ffn=ffn,
+            experts=experts,
+            top_k=top_k,
+            runtime=runtime,
+        )
+        serial_rows = []
+        for row in range(rows):
+            serial_output = run_qwen4_exp_gdn_layer(
+                d_residual.ptr + row * branches * hidden * 2,
+                layer_weights,
+                conv_state_ptr=d_serial_conv_state.ptr,
+                recurrent_state_ptr=d_serial_matrix_state.ptr,
+                scratch=serial_scratch,
+                rows=1,
+                branches=branches,
+                hidden=hidden,
+                low_rank=low_rank,
+                num_k_heads=k_heads,
+                num_v_heads=v_heads,
+                head_dim=head_dim,
+                conv_kernel=conv_kernel,
+                ffn=ffn,
+                experts=experts,
+                top_k=top_k,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            serial_rows.append(
+                _download(
+                    serial_output,
+                    (branches, hidden),
+                    np.uint16,
+                    runtime,
+                )
+            )
+        serial = np.asarray(serial_rows)
+        serial_conv = _download(
+            d_serial_conv_state, conv_state.shape, np.float32, runtime
+        )
+        serial_matrix = _download(
+            d_serial_matrix_state, matrix_state.shape, np.float32, runtime
+        )
     finally:
         if manual_after is not None:
             free(manual_after, runtime=runtime)
         if manual_moe_f32 is not None:
             free(manual_moe_f32, runtime=runtime)
+        if serial_scratch is not None:
+            serial_scratch.close()
         if scratch is not None:
             scratch.close()
         for allocation in reversed(allocations):
@@ -302,6 +357,14 @@ def test_qwen4_exp_complete_gdn_layer_matches_individually_gated_components() ->
     np.testing.assert_array_equal(actual, manual_final)
     np.testing.assert_array_equal(actual_conv, manual_conv)
     np.testing.assert_array_equal(actual_matrix, manual_matrix)
+    np.testing.assert_allclose(
+        bf16_to_float32(actual),
+        bf16_to_float32(serial),
+        rtol=3e-3,
+        atol=3e-3,
+    )
+    np.testing.assert_allclose(actual_conv, serial_conv, rtol=3e-6, atol=3e-6)
+    np.testing.assert_allclose(actual_matrix, serial_matrix, rtol=3e-4, atol=3e-4)
 
 
 def _upload(array: np.ndarray, runtime, allocations):
