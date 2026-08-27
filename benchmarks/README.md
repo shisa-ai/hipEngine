@@ -243,11 +243,15 @@ alternate/replacement layouts. `"The answer to 2 + 2 is"` generated
 `" 4.\n\n"` through the public API. A separate repeated-token structural gate
 qualifies only the first native sparse-QSA row at token 2,052: teacher→strict
 serial KL `7.65e-5`, teacher→size-2 chunk KL `4.98e-5`, top-1 exact, and clean
-teardown. Natural 4K+ and lifecycle/index-reference gates remain open, so this
-is not a broad long-context, speed, serving/c>N, MTP, or vision claim.
+teardown. A repeated-token structural 4K checkpoint also passes teacher→strict/
+chunk KL `4.40e-5/4.78e-5`, strict→chunk KL `3.19e-5`, top-1 exact, and clean
+teardown. Natural retrieval, 16K+, and lifecycle/index-reference gates remain
+open, so this is not a broad long-context, speed, serving/c>N, MTP, or vision
+claim.
 [`Bring-up artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json) ·
 [`Heldout artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json) ·
-[`2,052 transition artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json).
+[`2,052 transition artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json) ·
+[`4K structural artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json).
 
 ## Current Qwen3.6-35B quantization quality
 
