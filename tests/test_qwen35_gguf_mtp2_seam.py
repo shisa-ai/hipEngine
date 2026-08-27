@@ -211,6 +211,36 @@ def test_physical_specdec2_uses_qualified_eager_when_graph_is_uncached() -> None
     assert runner.speculative_graph_available(object()) is False
 
 
+def test_physical_gate_up_rowtile_is_production_and_backend_capability_scoped() -> None:
+    production = Qwen35GGUFMTP2Adapter(
+        SimpleNamespace(
+            generator=SimpleNamespace(
+                execution_profile="production",
+                backend="hip_gfx1100",
+            )
+        ),
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=2,
+    )
+    strict = Qwen35GGUFMTP2Adapter(
+        SimpleNamespace(
+            generator=SimpleNamespace(
+                execution_profile="strict",
+                backend="hip_gfx1100",
+            )
+        ),
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=2,
+    )
+
+    assert production.production_physical_gate_up_rowtile is True
+    assert strict.production_physical_gate_up_rowtile is False
+    production.close()
+    strict.close()
+
+
 def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
     target = SimpleNamespace(
         target_layout=SimpleNamespace(max_sequence_length=4096),
