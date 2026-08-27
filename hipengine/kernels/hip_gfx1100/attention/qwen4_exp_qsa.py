@@ -31,6 +31,11 @@ _ARGS_SPLIT = (
     ctypes.c_float,
     ctypes.c_void_p,
 )
+_ARGS_SPLIT_ROWS = (ctypes.c_void_p,) * 8 + (ctypes.c_int64,) * 5 + (
+    ctypes.c_float,
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
 _ARGS_NORM = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -39,6 +44,11 @@ _ARGS_NORM = (
     ctypes.c_int64,
     ctypes.c_int64,
     ctypes.c_int64,
+    ctypes.c_float,
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
+_ARGS_NORM_ROWS = (ctypes.c_void_p,) * 4 + (ctypes.c_int64,) * 4 + (
     ctypes.c_float,
     ctypes.c_float,
     ctypes.c_void_p,
@@ -185,6 +195,51 @@ def qwen4_exp_qsa_split_norm_rope_f32(
     )
 
 
+def qwen4_exp_qsa_split_norm_rope_rows_f32(
+    q_projected_ptr: int,
+    key_ptr: int,
+    q_weight_ptr: int,
+    k_weight_ptr: int,
+    positions_ptr: int,
+    query_out_ptr: int,
+    key_out_ptr: int,
+    gate_out_ptr: int,
+    rows: int,
+    num_q_heads: int,
+    num_kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    theta: float,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Apply strict Q/K norm, split-half RoPE, and gate split to token rows."""
+
+    if rows <= 0 or num_q_heads <= 0 or num_kv_heads <= 0 or head_dim <= 0:
+        raise ValueError("rows, head counts, and head_dim must be positive")
+    if rotary_dim <= 0 or rotary_dim > head_dim or rotary_dim % 2:
+        raise ValueError("rotary_dim must be positive, even, and <= head_dim")
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_qsa_split_norm_rope_rows_f32",
+        _ARGS_SPLIT_ROWS,
+        ctypes.c_int,
+    )
+    _check_launch(
+        runtime,
+        fn(
+            q_projected_ptr, key_ptr, q_weight_ptr, k_weight_ptr, positions_ptr,
+            query_out_ptr, key_out_ptr, gate_out_ptr, rows, num_q_heads,
+            num_kv_heads, head_dim, rotary_dim, float(theta), float(eps), stream,
+        ),
+    )
+
+
 def qwen4_exp_qsa_norm_rope_f32(
     input_ptr: int,
     weight_ptr: int,
@@ -227,6 +282,45 @@ def qwen4_exp_qsa_norm_rope_f32(
             float(theta),
             float(eps),
             stream,
+        ),
+    )
+
+
+def qwen4_exp_qsa_norm_rope_rows_f32(
+    input_ptr: int,
+    weight_ptr: int,
+    positions_ptr: int,
+    output_ptr: int,
+    rows: int,
+    heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    theta: float,
+    eps: float = 1e-6,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """RMS-normalize and split-half partial-RoPE QSA index-query rows."""
+
+    if rows <= 0 or heads <= 0 or head_dim <= 0:
+        raise ValueError("rows, heads, and head_dim must be positive")
+    if rotary_dim <= 0 or rotary_dim > head_dim or rotary_dim % 2:
+        raise ValueError("rotary_dim must be positive, even, and <= head_dim")
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_qsa_norm_rope_rows_f32",
+        _ARGS_NORM_ROWS,
+        ctypes.c_int,
+    )
+    _check_launch(
+        runtime,
+        fn(
+            input_ptr, weight_ptr, positions_ptr, output_ptr, rows, heads,
+            head_dim, rotary_dim, float(theta), float(eps), stream,
         ),
     )
 
@@ -442,10 +536,22 @@ def register_qwen4_exp_qsa_kernels(*, replace: bool = True) -> None:
         ): qwen4_exp_qsa_split_norm_rope_f32,
         KernelKey(
             "hip_gfx1100",
+            "qsa_split_norm_rope",
+            "f32",
+            "strict_rows",
+        ): qwen4_exp_qsa_split_norm_rope_rows_f32,
+        KernelKey(
+            "hip_gfx1100",
             "qsa_norm_rope",
             "f32",
             "strict",
         ): qwen4_exp_qsa_norm_rope_f32,
+        KernelKey(
+            "hip_gfx1100",
+            "qsa_norm_rope",
+            "f32",
+            "strict_rows",
+        ): qwen4_exp_qsa_norm_rope_rows_f32,
         KernelKey(
             "hip_gfx1100",
             "qsa_gate_context",
@@ -494,9 +600,11 @@ __all__ = [
     "plan_qwen4_exp_qsa_build",
     "qwen4_exp_qsa_gate_context_f32",
     "qwen4_exp_qsa_norm_rope_f32",
+    "qwen4_exp_qsa_norm_rope_rows_f32",
     "qwen4_exp_qsa_pool_norm_rope_f32",
     "qwen4_exp_qsa_score_f32",
     "qwen4_exp_qsa_split_norm_rope_f32",
+    "qwen4_exp_qsa_split_norm_rope_rows_f32",
     "qwen4_exp_qsa_select_blocks_f32_i64",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_f32",
     "register_qwen4_exp_qsa_kernels",
