@@ -196,13 +196,20 @@ Evidence:
 [`35B production serving`](../benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-serving.json),
 [`35B automatic`](../benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-automatic.json).
 
-### D1 — 27B Dense C1 closure
+### D1 — 27B Dense C1 — production qualified
 
-- Retain the existing staged provider/frontier/transaction path.
-- Add the missing production profile/manifest and complete control/logit/task
-  capture rather than requiring strict/free-running ID equality.
-- Optimize activation only if current complete-wall economics fail; do not
-  reopen already-rejected acceptance heuristics or physical C2 target work.
+The existing staged provider/frontier/transaction path now has a real
+production manifest selecting the same exact recurrent variant and strict
+fallback. The binding full packet is exact in 30/30 cells and measures
+**32.076 vs 22.302 tok/s (1.4382x true AR)**, train/heldout
+**1.4929x/1.3638x**, and every category **1.3230x-1.5266x**. It executes 222
+graph cycles, accepts 459/645 drafts, and reports zero failures. Real explicit
+blocking/SSE parity, sampler/context K0, 20-request alternating soak with
+bounded KV, bounded overload (3 accepted/5 truthful 429), and clean drain pass.
+Automatic exact-key publication/rerun is next. Evidence:
+[`27B quality`](../benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-quality.json),
+[`27B performance`](../benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-performance.json),
+[`27B serving`](../benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-serving.json).
 
 ### Q1/Q2 — independent qualification and promotion
 
