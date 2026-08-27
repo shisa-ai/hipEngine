@@ -13,6 +13,8 @@ from numbers import Integral
 from pathlib import Path
 from typing import Any
 
+from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
+
 AUTO_QUANT = "auto"
 
 _ENGINE_LOOP_GENERATOR_DEFAULT_ENVS = {
@@ -128,7 +130,7 @@ class SamplingParams:
         compare=False,
         repr=False,
     )
-    speculative_mtp_singleton_only: bool = False
+    speculative_mtp_static_eligibility: SpeculativeMTPStaticEligibility | None = None
     logprobs: bool = False
     top_logprobs: int = 0
 
@@ -212,11 +214,14 @@ class SamplingParams:
             if self.resident_session_cache_action is None
             else str(self.resident_session_cache_action),
         )
-        object.__setattr__(
-            self,
-            "speculative_mtp_singleton_only",
-            bool(self.speculative_mtp_singleton_only),
-        )
+        if self.speculative_mtp_static_eligibility is not None and not isinstance(
+            self.speculative_mtp_static_eligibility,
+            SpeculativeMTPStaticEligibility,
+        ):
+            raise TypeError(
+                "speculative_mtp_static_eligibility must be "
+                "SpeculativeMTPStaticEligibility or None"
+            )
         object.__setattr__(self, "logprobs", bool(self.logprobs))
         object.__setattr__(self, "top_logprobs", int(self.top_logprobs))
         validate_sampling_params(self)
@@ -1066,7 +1071,7 @@ def _generation_request(prompt_tuple: tuple[Any, ...], params: SamplingParams):
         cancellation_token=params.cancellation_token,
         resident_session_key=params.resident_session_key,
         resident_session_cache_action=params.resident_session_cache_action,
-        speculative_mtp_singleton_only=params.speculative_mtp_singleton_only,
+        speculative_mtp_static_eligibility=params.speculative_mtp_static_eligibility,
         logprobs=params.logprobs,
         top_logprobs=params.top_logprobs,
     )

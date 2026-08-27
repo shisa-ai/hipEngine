@@ -11,6 +11,7 @@ from hipengine.models.qwen35 import Qwen35GGUFModel, Qwen35MoeGGUFModel
 from hipengine.speculative.serving import (
     SpeculativeMTPServingEvidence,
     SpeculativeMTPServingKey,
+    SpeculativeMTPStaticState,
     resolve_speculative_mtp_serving_plan,
 )
 
@@ -60,6 +61,11 @@ def test_qwen38_q4km_strict_c1_b3_capacity4_realized_singleton_is_automatic() ->
     assert decision.reason == "qualified_automatic_realized_singleton_c1_b3"
     assert decision.automatic_eligible is True
     assert decision.strict_fallback_key == "gguf_target_ar"
+    assert decision.static_eligibility.state is SpeculativeMTPStaticState.SPECULATIVE_CAPABLE
+    assert decision.static_eligibility.max_candidate_count == 3
+    assert decision.static_eligibility.max_realized_group_rows == 1
+    assert "realized_group_rows" not in decision.static_eligibility.as_dict()
+    assert decision.as_dict()["static_eligibility"]["eligible"] is True
 
 
 def test_qwen38_q4km_production_c1_b3_context128_is_explicit_only() -> None:
@@ -222,6 +228,20 @@ def test_qwen36_moe_production_c1_k2_plan_is_exact_automatic_scope() -> None:
     assert Qwen35MoeGGUFModel().resolve_speculative_mtp_serving_plan(
         key=replace(key, output_horizon_tokens=25)
     ).reason == "output_horizon_not_qualified"
+
+
+def test_rejected_serving_plan_exposes_permanent_ar_static_eligibility() -> None:
+    decision = resolve_speculative_mtp_serving_plan(
+        Qwen35GGUFModel().speculative_mtp_serving_evidence,
+        key=_key(context_tokens=1024),
+    )
+
+    assert decision.admitted is False
+    assert decision.static_eligibility.state is SpeculativeMTPStaticState.PERMANENT_AR
+    assert decision.static_eligibility.eligible is False
+    assert decision.static_eligibility.max_candidate_count == 0
+    assert decision.static_eligibility.max_realized_group_rows == 0
+    assert decision.static_eligibility.automatic_eligible is False
 
 
 def test_unverified_artifact_and_generic_dense_inventory_cannot_admit() -> None:

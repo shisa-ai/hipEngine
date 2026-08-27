@@ -9,9 +9,10 @@ oracle fields.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 import hashlib
 import json
-from typing import Sequence
+from typing import Mapping, Sequence
 
 
 _DEFAULT_STRICT_FALLBACK = "gguf_target_ar"
@@ -242,6 +243,139 @@ class SpeculativeMTPServingEvidence:
         }
 
 
+class SpeculativeMTPStaticState(StrEnum):
+    """Request-local provider intent decided before resident scheduling."""
+
+    PERMANENT_AR = "permanent_ar"
+    SPECULATIVE_CAPABLE = "speculative_capable"
+
+
+@dataclass(frozen=True, slots=True)
+class SpeculativeMTPStaticEligibility:
+    """Typed static eligibility with no selected future C_due or K.
+
+    ``max_realized_group_rows`` is an evidence bound, not a prediction of the
+    resident due group. The Generation-2 cycle planner remains the only owner of
+    actual C_due and candidate counts.
+    """
+
+    state: SpeculativeMTPStaticState
+    reason: str
+    max_candidate_count: int
+    max_realized_group_rows: int
+    automatic_eligible: bool
+    strict_fallback_key: str
+    evidence_key: str | None = None
+    evidence_fingerprint: str | None = None
+    evidence_artifacts: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        state = SpeculativeMTPStaticState(self.state)
+        reason = _required_text(self.reason, "static eligibility reason")
+        fallback = _required_text(self.strict_fallback_key, "strict_fallback_key")
+        candidates = int(self.max_candidate_count)
+        rows = int(self.max_realized_group_rows)
+        if min(candidates, rows) < 0:
+            raise ValueError("static eligibility bounds must be non-negative")
+        if state is SpeculativeMTPStaticState.SPECULATIVE_CAPABLE:
+            if candidates <= 0 or rows <= 0:
+                raise ValueError("speculative-capable eligibility requires positive bounds")
+            evidence_key = _required_text(self.evidence_key, "evidence_key")
+            evidence_fingerprint = _required_text(
+                self.evidence_fingerprint,
+                "evidence_fingerprint",
+            )
+        else:
+            if candidates or rows or self.automatic_eligible:
+                raise ValueError("permanent-AR eligibility cannot retain speculative bounds")
+            evidence_key = None if self.evidence_key is None else _required_text(
+                self.evidence_key,
+                "evidence_key",
+            )
+            evidence_fingerprint = (
+                None
+                if self.evidence_fingerprint is None
+                else _required_text(self.evidence_fingerprint, "evidence_fingerprint")
+            )
+        artifacts = tuple(
+            _required_text(value, "evidence_artifact")
+            for value in self.evidence_artifacts
+        )
+        object.__setattr__(self, "state", state)
+        object.__setattr__(self, "reason", reason)
+        object.__setattr__(self, "max_candidate_count", candidates)
+        object.__setattr__(self, "max_realized_group_rows", rows)
+        object.__setattr__(self, "automatic_eligible", bool(self.automatic_eligible))
+        object.__setattr__(self, "strict_fallback_key", fallback)
+        object.__setattr__(self, "evidence_key", evidence_key)
+        object.__setattr__(self, "evidence_fingerprint", evidence_fingerprint)
+        object.__setattr__(self, "evidence_artifacts", artifacts)
+
+    @property
+    def eligible(self) -> bool:
+        return self.state is SpeculativeMTPStaticState.SPECULATIVE_CAPABLE
+
+    @property
+    def fingerprint(self) -> str:
+        return _canonical_sha256(self.as_dict())
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "state": self.state.value,
+            "eligible": self.eligible,
+            "reason": self.reason,
+            "max_candidate_count": self.max_candidate_count,
+            "max_realized_group_rows": self.max_realized_group_rows,
+            "automatic_eligible": self.automatic_eligible,
+            "strict_fallback_key": self.strict_fallback_key,
+            "evidence_key": self.evidence_key,
+            "evidence_fingerprint": self.evidence_fingerprint,
+            "evidence_artifacts": list(self.evidence_artifacts),
+        }
+
+    @classmethod
+    def from_mapping(
+        cls,
+        payload: Mapping[str, object],
+    ) -> "SpeculativeMTPStaticEligibility":
+        state = payload.get("state")
+        if state is None:
+            state = (
+                SpeculativeMTPStaticState.SPECULATIVE_CAPABLE
+                if bool(payload.get("eligible"))
+                else SpeculativeMTPStaticState.PERMANENT_AR
+            )
+        artifacts = payload.get("evidence_artifacts")
+        return cls(
+            state=SpeculativeMTPStaticState(state),
+            reason=str(payload.get("reason") or "model_plugin_scope_not_qualified"),
+            max_candidate_count=int(payload.get("max_candidate_count", 0) or 0),
+            max_realized_group_rows=int(
+                payload.get("max_realized_group_rows", 0) or 0
+            ),
+            automatic_eligible=bool(payload.get("automatic_eligible")),
+            strict_fallback_key=str(
+                payload.get("strict_fallback_key") or _DEFAULT_STRICT_FALLBACK
+            ),
+            evidence_key=(
+                None
+                if payload.get("evidence_key") is None
+                else str(payload.get("evidence_key"))
+            ),
+            evidence_fingerprint=(
+                None
+                if payload.get("evidence_fingerprint") is None
+                else str(payload.get("evidence_fingerprint"))
+            ),
+            evidence_artifacts=(
+                tuple(str(value) for value in artifacts)
+                if isinstance(artifacts, Sequence)
+                and not isinstance(artifacts, (str, bytes, bytearray))
+                else ()
+            ),
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class SpeculativeMTPServingDecision:
     """Immutable candidate-or-K0 decision resolved before backend mutation."""
@@ -256,6 +390,25 @@ class SpeculativeMTPServingDecision:
     evidence_fingerprint: str | None = None
     evidence_artifacts: tuple[str, ...] = ()
     automatic_eligible: bool = False
+
+    @property
+    def static_eligibility(self) -> SpeculativeMTPStaticEligibility:
+        eligible = bool(self.admitted and self.selected_candidate_count > 0)
+        return SpeculativeMTPStaticEligibility(
+            state=(
+                SpeculativeMTPStaticState.SPECULATIVE_CAPABLE
+                if eligible
+                else SpeculativeMTPStaticState.PERMANENT_AR
+            ),
+            reason=self.reason,
+            max_candidate_count=(self.selected_candidate_count if eligible else 0),
+            max_realized_group_rows=(self.key.realized_group_rows if eligible else 0),
+            automatic_eligible=(self.automatic_eligible if eligible else False),
+            strict_fallback_key=self.strict_fallback_key,
+            evidence_key=self.evidence_key,
+            evidence_fingerprint=self.evidence_fingerprint,
+            evidence_artifacts=self.evidence_artifacts,
+        )
 
     @property
     def plan_fingerprint(self) -> str:
@@ -286,6 +439,7 @@ class SpeculativeMTPServingDecision:
             "evidence_fingerprint": self.evidence_fingerprint,
             "evidence_artifacts": list(self.evidence_artifacts),
             "automatic_eligible": self.automatic_eligible,
+            "static_eligibility": self.static_eligibility.as_dict(),
         }
 
 
@@ -431,5 +585,7 @@ __all__ = [
     "SpeculativeMTPServingDecision",
     "SpeculativeMTPServingEvidence",
     "SpeculativeMTPServingKey",
+    "SpeculativeMTPStaticEligibility",
+    "SpeculativeMTPStaticState",
     "resolve_speculative_mtp_serving_plan",
 ]

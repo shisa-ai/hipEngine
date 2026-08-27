@@ -72,6 +72,7 @@ from hipengine.speculative.policy import (
     DEFAULT_AUTO_DEPTH_POLICY,
     select_offline_speculative_depth,
 )
+from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 from hipengine.tokenization.identity import token_ids_sha256
 
 
@@ -2081,7 +2082,8 @@ def _serving_plan_route_decision(
 
     copied = deepcopy(dict(plan))
     key = copied.get("key") if isinstance(copied.get("key"), Mapping) else {}
-    admitted = bool(copied.get("admitted"))
+    request_admitted = bool(copied.get("admitted"))
+    admitted = request_admitted
     planned_rows = int(key.get("realized_group_rows", 0) or 0)
     automatic_eligible = bool(copied.get("automatic_eligible"))
     route = str(requested_route)
@@ -2091,13 +2093,55 @@ def _serving_plan_route_decision(
         else route
     )
     reason = str(copied.get("reason") or "model_plugin_scope_not_qualified")
+    static_payload = copied.get("static_eligibility")
+    if not isinstance(static_payload, Mapping):
+        static_payload = {
+            "state": (
+                "speculative_capable" if request_admitted else "permanent_ar"
+            ),
+            "eligible": request_admitted,
+            "reason": reason,
+            "max_candidate_count": (
+                int(copied.get("selected_candidate_count", 0))
+                if request_admitted
+                else 0
+            ),
+            "max_realized_group_rows": planned_rows if request_admitted else 0,
+            "automatic_eligible": automatic_eligible if request_admitted else False,
+            "strict_fallback_key": str(
+                copied.get("strict_fallback_key") or "gguf_target_ar"
+            ),
+            "evidence_key": (
+                copied.get("evidence_key")
+                or ("legacy-model-plugin-plan" if request_admitted else None)
+            ),
+            "evidence_fingerprint": (
+                copied.get("evidence_fingerprint")
+                or copied.get("plan_fingerprint")
+                or ("legacy-plan" if request_admitted else None)
+            ),
+            "evidence_artifacts": list(copied.get("evidence_artifacts") or ()),
+        }
+    static_intent_allowed = bool(
+        copied.get(
+            "static_intent_allowed",
+            request_admitted
+            and (
+                route == _SPECULATIVE_MTP_BATCH_ROUTE
+                or (
+                    route == _SPECULATIVE_MTP_AUTO_ROUTE
+                    and automatic_eligible
+                )
+            ),
+        )
+    )
     if admitted and planned_rows != int(group_rows):
         admitted = False
         reason = "physical_group_not_qualified"
     if route == _SPECULATIVE_MTP_AUTO_ROUTE:
-        admitted = admitted and automatic_eligible
-        if not admitted and reason == "qualified_explicit_c1_b3":
+        if admitted and not automatic_eligible:
             reason = _SPECULATIVE_MTP_AUTO_REJECTION_REASON
+        admitted = admitted and automatic_eligible
     elif (
         route == _SPECULATIVE_MTP_K0_ROUTE
         and admitted
@@ -2120,10 +2164,23 @@ def _serving_plan_route_decision(
         if isinstance(artifacts, list) and artifacts
         else "model_plugin_speculative_mtp_serving_plan"
     )
+    k0_class = (
+        "not_k0"
+        if selected_route == _SPECULATIVE_MTP_BATCH_ROUTE
+        else "transitional_k0"
+        if static_intent_allowed
+        else "pure_k0"
+    )
     return selected_route, {
         "requested_route": reported_requested_route,
         "selected_route": selected_route,
         "reason": reason,
+        "k0_class": k0_class,
+        "static_eligibility": deepcopy(dict(static_payload)),
+        "static_eligibility_fingerprint": SpeculativeMTPStaticEligibility.from_mapping(
+            static_payload
+        ).fingerprint,
+        "static_intent_allowed": static_intent_allowed,
         "policy_cell": copied.get("evidence_key"),
         "selected_candidate_count": (
             int(copied.get("selected_candidate_count", 0))
@@ -2140,23 +2197,44 @@ def _serving_plan_route_decision(
     }
 
 
+def _static_eligibility_from_route_decision(
+    route_decision: Mapping[str, Any] | None,
+) -> SpeculativeMTPStaticEligibility | None:
+    if not isinstance(route_decision, Mapping) or not bool(
+        route_decision.get("static_intent_allowed")
+    ):
+        return None
+    payload = route_decision.get("static_eligibility")
+    if not isinstance(payload, Mapping):
+        return None
+    eligibility = SpeculativeMTPStaticEligibility.from_mapping(payload)
+    return eligibility if eligibility.eligible else None
+
+
 def _sampling_for_realized_generation_route(
     sampling: SamplingParams,
     route_decision: Mapping[str, Any] | None,
 ) -> SamplingParams:
-    """Tag an automatic C1 plan so the resident owner can enforce K0 at c>1."""
+    """Attach typed static provider intent without selecting future C_due/K."""
 
-    singleton_only = bool(
-        isinstance(route_decision, Mapping)
-        and route_decision.get("selected_route") == _SPECULATIVE_MTP_BATCH_ROUTE
-        and route_decision.get("requested_route") == _SPECULATIVE_MTP_AUTO_ROUTE
-    )
-    if bool(sampling.speculative_mtp_singleton_only) == singleton_only:
+    eligibility = _static_eligibility_from_route_decision(route_decision)
+    if sampling.speculative_mtp_static_eligibility == eligibility:
         return sampling
     return replace(
         sampling,
-        speculative_mtp_singleton_only=singleton_only,
+        speculative_mtp_static_eligibility=eligibility,
     )
+
+
+def _execution_route_for_static_intent(
+    selected_route: str,
+    route_decision: Mapping[str, Any] | None,
+) -> str:
+    """Enter Generation-2 for eligible intent even when this group predicts K0."""
+
+    if _static_eligibility_from_route_decision(route_decision) is not None:
+        return _SPECULATIVE_MTP_BATCH_ROUTE
+    return str(selected_route)
 
 
 def _resolve_realized_generation_route(
@@ -2983,11 +3061,15 @@ class _GenerationBatcher:
                 group_sampling,
                 route_decision,
             )
+            execution_route = _execution_route_for_static_intent(
+                route,
+                route_decision,
+            )
             try:
                 batch_result = await self._generate_prompts(
                     tuple(prompts),
                     group_sampling,
-                    route=route,
+                    route=execution_route,
                 )
             except Exception as exc:
                 for item in group:
@@ -12033,6 +12115,25 @@ def _generation_route_for_request(
     )
     if plan is None:
         return route, None
+    explicit_requested = _request_speculative_mtp_enabled(request) is True
+    static_payload = plan.get("static_eligibility")
+    static_eligible = bool(
+        isinstance(static_payload, Mapping)
+        and static_payload.get("eligible") is True
+    )
+    plan["static_intent_allowed"] = bool(
+        static_eligible
+        and (
+            explicit_requested
+            or (
+                route in {
+                    _SPECULATIVE_MTP_AUTO_ROUTE,
+                    _SPECULATIVE_MTP_BATCH_ROUTE,
+                }
+                and bool(plan.get("automatic_eligible"))
+            )
+        )
+    )
     if route == _SPECULATIVE_MTP_BATCH_ROUTE and not bool(plan.get("admitted")):
         route = _SPECULATIVE_MTP_K0_ROUTE
     elif (
@@ -13786,6 +13887,11 @@ def _sampling_key(
             None
             if not include_cancellation_token or sampling.cancellation_token is None
             else id(sampling.cancellation_token)
+        ),
+        (
+            None
+            if sampling.speculative_mtp_static_eligibility is None
+            else sampling.speculative_mtp_static_eligibility.fingerprint
         ),
         bool(sampling.logprobs),
         int(sampling.top_logprobs),

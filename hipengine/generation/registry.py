@@ -9,6 +9,8 @@ from numbers import Integral
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
+from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
+
 
 @dataclass(frozen=True)
 class PreparedPromptInput(Sequence[int]):
@@ -135,7 +137,7 @@ class GenerationRequest:
         compare=False,
         repr=False,
     )
-    speculative_mtp_singleton_only: bool = False
+    speculative_mtp_static_eligibility: SpeculativeMTPStaticEligibility | None = None
     logprobs: bool = False
     top_logprobs: int = 0
 
@@ -220,11 +222,14 @@ class GenerationRequest:
             if self.resident_session_cache_action is None
             else str(self.resident_session_cache_action),
         )
-        object.__setattr__(
-            self,
-            "speculative_mtp_singleton_only",
-            bool(self.speculative_mtp_singleton_only),
-        )
+        if self.speculative_mtp_static_eligibility is not None and not isinstance(
+            self.speculative_mtp_static_eligibility,
+            SpeculativeMTPStaticEligibility,
+        ):
+            raise TypeError(
+                "speculative_mtp_static_eligibility must be "
+                "SpeculativeMTPStaticEligibility or None"
+            )
         object.__setattr__(self, "logprobs", bool(self.logprobs))
         object.__setattr__(self, "top_logprobs", int(self.top_logprobs))
         validate_sampling_params(self)

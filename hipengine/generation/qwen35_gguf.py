@@ -6091,7 +6091,7 @@ class Qwen35GGUFResidentModelRunner:
         request_id: int,
         candidate_budget: int,
         *,
-        singleton_only: bool = False,
+        static_eligibility=None,
     ) -> None:
         row = self._row(request_id)
         adapter = self._resolved_mtp2_adapter()
@@ -6102,14 +6102,11 @@ class Qwen35GGUFResidentModelRunner:
         )
         row.mtp2_candidate_budget = effective_budget
         if adapter is not None:
-            if singleton_only:
-                adapter.register_request(
-                    request_id,
-                    effective_budget,
-                    singleton_only=True,
-                )
-            else:
-                adapter.register_request(request_id, effective_budget)
+            adapter.register_request(
+                request_id,
+                effective_budget,
+                static_eligibility=static_eligibility,
+            )
 
     def speculative_desired_candidate_count(self, request: GenerationRequest) -> int:
         adapter = self._resolved_mtp2_adapter()
