@@ -2380,7 +2380,10 @@ class Qwen35ParoResidentModelRunner:
         self,
         request_id: int,
         candidate_budget: int,
+        *,
+        singleton_only: bool = False,
     ) -> None:
+        del singleton_only
         row = self._row(request_id)
         row.mtp2_candidate_budget = 1
         adapter = self._resolved_mtp2_adapter()

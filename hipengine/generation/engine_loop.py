@@ -661,7 +661,11 @@ class SubmitPollTextGenerator:
                 None,
             )
             if callable(register_speculative):
-                register_speculative(request_id, max(1, desired))
+                register_speculative(
+                    request_id,
+                    max(1, desired),
+                    singleton_only=bool(request.speculative_mtp_singleton_only),
+                )
             timing_observer = getattr(
                 self._runner,
                 "record_prompt_tokenize_ms",

@@ -157,7 +157,14 @@ class Qwen35GGUFMoEMTP2Adapter:
         self._transaction_sequence = 0
         self._assets: Any | None = None
 
-    def register_request(self, request_id: int, candidate_budget: int) -> None:
+    def register_request(
+        self,
+        request_id: int,
+        candidate_budget: int,
+        *,
+        singleton_only: bool = False,
+    ) -> None:
+        del singleton_only  # The MoE adapter is already restricted to capacity one.
         rid = int(request_id)
         self._intents[rid] = min(
             self.candidate_budget,

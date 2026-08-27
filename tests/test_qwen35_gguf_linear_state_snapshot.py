@@ -27,22 +27,27 @@ class _FakeRuntime:
 
 def _fake_target(*, backend: str):
     runtime = _FakeRuntime()
+    scratch = SimpleNamespace(
+        layer_conv_states=(
+            DeviceBuffer(0x1000, 64),
+            None,
+            DeviceBuffer(0x2000, 64),
+        ),
+        layer_recurrent_states=(
+            DeviceBuffer(0x3000, 128),
+            None,
+            DeviceBuffer(0x4000, 128),
+        ),
+    )
     return SimpleNamespace(
         backend=backend,
         runtime=runtime,
         runner=SimpleNamespace(hidden_size=4),
+        scratch=scratch,
         _target_scratch_owner=SimpleNamespace(
             slot_count=1,
-            layer_conv_states=(
-                DeviceBuffer(0x1000, 64),
-                None,
-                DeviceBuffer(0x2000, 64),
-            ),
-            layer_recurrent_states=(
-                DeviceBuffer(0x3000, 128),
-                None,
-                DeviceBuffer(0x4000, 128),
-            ),
+            layer_conv_states=scratch.layer_conv_states,
+            layer_recurrent_states=scratch.layer_recurrent_states,
         ),
         last_target_hidden=DeviceBuffer(0x5000, 8),
         _hidden_a=DeviceBuffer(0x6000, 8),
@@ -51,6 +56,45 @@ def _fake_target(*, backend: str):
         compiler_version="hipcc:test",
         require_cached_build=True,
     )
+
+
+def test_wide_owner_journal_binds_only_the_target_slot_view(monkeypatch) -> None:
+    allocated: list[DeviceBuffer] = []
+
+    def fake_malloc(nbytes: int, *, runtime) -> DeviceBuffer:
+        del runtime
+        buffer = DeviceBuffer(0xA000 + len(allocated) * 0x1000, int(nbytes))
+        allocated.append(buffer)
+        return buffer
+
+    monkeypatch.setattr(mtp_module, "malloc", fake_malloc)
+    monkeypatch.setattr(mtp_module, "free", lambda *args, **kwargs: None)
+    target = _fake_target(backend="missing_slot_local_state_copy")
+    target._target_scratch_owner = SimpleNamespace(
+        slot_count=4,
+        layer_conv_states=(DeviceBuffer(0xDEAD, 4 * 64),),
+        layer_recurrent_states=(DeviceBuffer(0xBEEF, 4 * 128),),
+    )
+    target.scratch = SimpleNamespace(
+        layer_conv_states=(DeviceBuffer(0x7100, 64),),
+        layer_recurrent_states=(DeviceBuffer(0x8100, 128),),
+    )
+
+    journal = _StateJournal.allocate(
+        target,
+        max_rows=2,
+        initial_state_only=True,
+    )
+
+    assert tuple(int(state.ptr) for state, _snapshot in journal.state_rows) == (
+        0x7100,
+        0x8100,
+    )
+    assert tuple(int(state.nbytes) for state, _snapshot in journal.state_rows) == (
+        64,
+        128,
+    )
+    journal.close()
 
 
 def test_linear_state_snapshot_copy_registers_only_for_gfx1100() -> None:
