@@ -31,6 +31,7 @@ def test_qwen4_exp_qsa_build_and_registry_contract() -> None:
     from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
         plan_qwen4_exp_qsa_build,
         qwen4_exp_qsa_score_f32,
+        qwen4_exp_qsa_split_norm_rope_rows_f32,
         register_qwen4_exp_qsa_kernels,
     )
     from hipengine.kernels.registry import resolve
@@ -46,6 +47,15 @@ def test_qwen4_exp_qsa_build_and_registry_contract() -> None:
             variant="strict",
         )
         is qwen4_exp_qsa_score_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="qsa_split_norm_rope",
+            quant="f32",
+            variant="strict_rows",
+        )
+        is qwen4_exp_qsa_split_norm_rope_rows_f32
     )
 
 
@@ -96,6 +106,133 @@ def test_qwen4_exp_qsa_native_query_norm_rope_matches_split_half_oracle() -> Non
             free(allocation, runtime=runtime)
 
     np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=2e-6)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_qsa_row_transforms_are_exact_to_c1() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
+        qwen4_exp_qsa_norm_rope_f32,
+        qwen4_exp_qsa_norm_rope_rows_f32,
+        qwen4_exp_qsa_split_norm_rope_f32,
+        qwen4_exp_qsa_split_norm_rope_rows_f32,
+    )
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(409)
+    rows, q_heads, kv_heads, head_dim = 3, 2, 1, 8
+    index_heads, index_dim = 2, 8
+    q_projected = rng.normal(
+        0.0, 0.2, size=(rows, q_heads, 2, head_dim)
+    ).astype(np.float32)
+    key = rng.normal(0.0, 0.2, size=(rows, kv_heads, head_dim)).astype(np.float32)
+    q_weight = rng.normal(1.0, 0.05, size=head_dim).astype(np.float32)
+    k_weight = rng.normal(1.0, 0.05, size=head_dim).astype(np.float32)
+    index = rng.normal(0.0, 0.2, size=(rows, index_heads, index_dim)).astype(np.float32)
+    index_weight = rng.normal(1.0, 0.05, size=index_dim).astype(np.float32)
+    positions = np.array([3, 7, 11], dtype=np.int64)
+
+    allocations = []
+    try:
+        d_q = _upload(q_projected, runtime, allocations)
+        d_k = _upload(key, runtime, allocations)
+        d_q_weight = _upload(q_weight, runtime, allocations)
+        d_k_weight = _upload(k_weight, runtime, allocations)
+        d_index = _upload(index, runtime, allocations)
+        d_index_weight = _upload(index_weight, runtime, allocations)
+        d_positions = _upload(positions, runtime, allocations)
+        d_serial_query = _alloc((rows, q_heads, head_dim), np.float32, runtime, allocations)
+        d_serial_key = _alloc((rows, kv_heads, head_dim), np.float32, runtime, allocations)
+        d_serial_gate = _alloc((rows, q_heads, head_dim), np.float32, runtime, allocations)
+        d_bulk_query = _alloc((rows, q_heads, head_dim), np.float32, runtime, allocations)
+        d_bulk_key = _alloc((rows, kv_heads, head_dim), np.float32, runtime, allocations)
+        d_bulk_gate = _alloc((rows, q_heads, head_dim), np.float32, runtime, allocations)
+        d_serial_index = _alloc(index.shape, np.float32, runtime, allocations)
+        d_bulk_index = _alloc(index.shape, np.float32, runtime, allocations)
+        for row in range(rows):
+            qwen4_exp_qsa_split_norm_rope_f32(
+                d_q.ptr + row * q_heads * 2 * head_dim * 4,
+                d_k.ptr + row * kv_heads * head_dim * 4,
+                d_q_weight.ptr,
+                d_k_weight.ptr,
+                d_positions.ptr + row * 8,
+                d_serial_query.ptr + row * q_heads * head_dim * 4,
+                d_serial_key.ptr + row * kv_heads * head_dim * 4,
+                d_serial_gate.ptr + row * q_heads * head_dim * 4,
+                q_heads,
+                kv_heads,
+                head_dim,
+                4,
+                100.0,
+                runtime=runtime,
+            )
+            qwen4_exp_qsa_norm_rope_f32(
+                d_index.ptr + row * index_heads * index_dim * 4,
+                d_index_weight.ptr,
+                d_positions.ptr + row * 8,
+                d_serial_index.ptr + row * index_heads * index_dim * 4,
+                index_heads,
+                index_dim,
+                4,
+                100.0,
+                runtime=runtime,
+            )
+        qwen4_exp_qsa_split_norm_rope_rows_f32(
+            d_q.ptr,
+            d_k.ptr,
+            d_q_weight.ptr,
+            d_k_weight.ptr,
+            d_positions.ptr,
+            d_bulk_query.ptr,
+            d_bulk_key.ptr,
+            d_bulk_gate.ptr,
+            rows,
+            q_heads,
+            kv_heads,
+            head_dim,
+            4,
+            100.0,
+            runtime=runtime,
+        )
+        qwen4_exp_qsa_norm_rope_rows_f32(
+            d_index.ptr,
+            d_index_weight.ptr,
+            d_positions.ptr,
+            d_bulk_index.ptr,
+            rows,
+            index_heads,
+            index_dim,
+            4,
+            100.0,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        serial_query = _download(
+            d_serial_query, (rows, q_heads, head_dim), np.float32, runtime
+        )
+        serial_key = _download(
+            d_serial_key, (rows, kv_heads, head_dim), np.float32, runtime
+        )
+        serial_gate = _download(
+            d_serial_gate, (rows, q_heads, head_dim), np.float32, runtime
+        )
+        serial_index = _download(d_serial_index, index.shape, np.float32, runtime)
+        bulk_query = _download(
+            d_bulk_query, (rows, q_heads, head_dim), np.float32, runtime
+        )
+        bulk_key = _download(d_bulk_key, (rows, kv_heads, head_dim), np.float32, runtime)
+        bulk_gate = _download(
+            d_bulk_gate, (rows, q_heads, head_dim), np.float32, runtime
+        )
+        bulk_index = _download(d_bulk_index, index.shape, np.float32, runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    np.testing.assert_array_equal(bulk_query, serial_query)
+    np.testing.assert_array_equal(bulk_key, serial_key)
+    np.testing.assert_array_equal(bulk_gate, serial_gate)
+    np.testing.assert_array_equal(bulk_index, serial_index)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
