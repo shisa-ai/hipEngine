@@ -120,33 +120,44 @@ def test_automatic_realized_mtp_propagates_typed_static_intent() -> None:
     ) == _SPECULATIVE_MTP_BATCH_ROUTE
 
 
-def test_independent_frontend_c1_intent_survives_queue_c2_k0_selection() -> None:
+def test_automatic_width_above_static_bound_becomes_pure_k0() -> None:
     eligibility = _test_static_eligibility()
-    selected, decision = _serving_plan_route_decision(
-        {
-            "admitted": True,
-            "selected_candidate_count": 3,
-            "automatic_eligible": True,
-            "reason": eligibility.reason,
-            "plan_fingerprint": "sha256:test-plan",
-            "evidence_key": eligibility.evidence_key,
-            "evidence_fingerprint": eligibility.evidence_fingerprint,
-            "strict_fallback_key": eligibility.strict_fallback_key,
-            "static_intent_allowed": True,
-            "static_eligibility": eligibility.as_dict(),
-            "key": {"realized_group_rows": 1},
-        },
+    plan = {
+        "admitted": True,
+        "selected_candidate_count": 3,
+        "automatic_eligible": True,
+        "reason": eligibility.reason,
+        "plan_fingerprint": "sha256:test-plan",
+        "evidence_key": eligibility.evidence_key,
+        "evidence_fingerprint": eligibility.evidence_fingerprint,
+        "strict_fallback_key": eligibility.strict_fallback_key,
+        "static_intent_allowed": True,
+        "static_eligibility": eligibility.as_dict(),
+        "key": {"realized_group_rows": 1},
+    }
+    selected, automatic = _serving_plan_route_decision(
+        plan,
         requested_route=_SPECULATIVE_MTP_AUTO_ROUTE,
+        group_rows=2,
+        output_horizon_tokens=25,
+    )
+    _explicit_selected, explicit = _serving_plan_route_decision(
+        plan,
+        requested_route=_SPECULATIVE_MTP_BATCH_ROUTE,
         group_rows=2,
         output_horizon_tokens=25,
     )
 
     assert selected == _SPECULATIVE_MTP_DEFAULT_ROUTE
-    assert decision["reason"] == "physical_group_not_qualified"
-    assert decision["k0_class"] == "transitional_k0"
-    assert decision["static_eligibility"]["eligible"] is True
-    assert decision["static_eligibility"]["max_realized_group_rows"] == 1
-    assert _execution_route_for_static_intent(selected, decision) == (
+    assert automatic["reason"] == "physical_group_not_qualified"
+    assert automatic["k0_class"] == "pure_k0"
+    assert automatic["static_intent_allowed"] is False
+    assert _execution_route_for_static_intent(selected, automatic) == (
+        _SPECULATIVE_MTP_DEFAULT_ROUTE
+    )
+    assert explicit["k0_class"] == "transitional_k0"
+    assert explicit["static_intent_allowed"] is True
+    assert _execution_route_for_static_intent(selected, explicit) == (
         _SPECULATIVE_MTP_BATCH_ROUTE
     )
 
