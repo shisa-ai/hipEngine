@@ -18320,8 +18320,8 @@ class Qwen35GGUFResidentSession:
 
         setup_start = time.perf_counter()
         job_list = list(jobs)
-        if len(job_list) <= 1:
-            raise NotImplementedError("packed target verifier requires at least two jobs")
+        if not job_list:
+            raise NotImplementedError("packed target verifier requires at least one job")
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
