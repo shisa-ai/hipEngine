@@ -88,6 +88,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
 from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
     qwen4_exp_gather_bf16_lanes,
     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
+    qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out,
     qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
@@ -2673,7 +2674,13 @@ def run_qwen4_exp_moe(
                 "HIPENGINE_QWEN4_EXP_Q5_1_WMMA", ""
             ) not in {"", "0", "false", "False"}
             if exact_grouped_down:
-                qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
+                grouped_q5_down = (
+                    qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out
+                    if os.environ.get("HIPENGINE_QWEN4_EXP_Q5_1_OUT8", "1")
+                    not in {"", "0", "false", "False"}
+                    else qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out
+                )
+                grouped_q5_down(
                     (
                         scratch.expert_intermediate.ptr
                         if exact_grouped_q4_gate

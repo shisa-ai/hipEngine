@@ -37,7 +37,7 @@ __device__ inline float dequant_q5_1(const uint8_t* block, int index) {
   return d * static_cast<float>(low | (high << 4)) + m;
 }
 
-template <int ROW_BATCH>
+template <int ROW_BATCH, int OUT_BATCH>
 __global__ void q5_1_selected_grouped_prefill_bf16_bf16_kernel(
     const uint16_t* __restrict__ input,
     const int64_t* __restrict__ expert_start,
@@ -49,55 +49,60 @@ __global__ void q5_1_selected_grouped_prefill_bf16_bf16_kernel(
     int64_t out_features,
     int64_t row_bytes) {
   extern __shared__ float partial[];
-  const int64_t out = blockIdx.x;
+  const int64_t out_base = blockIdx.x * OUT_BATCH;
   const int64_t expert = blockIdx.y;
-  if (out >= out_features || expert >= num_experts) return;
+  if (out_base >= out_features || expert >= num_experts) return;
   const int64_t start = expert_start[expert];
   const int64_t end = expert_start[expert + 1];
   if (start < 0 || end < start || end > compact_rows || start == end) return;
-  const uint8_t* weight_row = weights
-      + (expert * out_features + out) * row_bytes;
-  for (int64_t base = start; base < end; base += ROW_BATCH) {
-    float value[ROW_BATCH] = {};
-    for (int64_t column = threadIdx.x; column < in_features; column += blockDim.x) {
-      const int64_t block_index = column / 32;
-      const int within = static_cast<int>(column & 31);
-      const float weight = dequant_q5_1(weight_row + block_index * 24, within);
 #pragma unroll
-      for (int row = 0; row < ROW_BATCH; ++row) {
-        const int64_t compact_row = base + row;
-        if (compact_row < end) {
-          value[row] += bf16_bits_to_float(
-              input[compact_row * in_features + column]) * weight;
-        }
-      }
-    }
-#pragma unroll
-    for (int row = 0; row < ROW_BATCH; ++row) {
-      partial[row * blockDim.x + threadIdx.x] = value[row];
-    }
-    __syncthreads();
-    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-      if (threadIdx.x < stride) {
+  for (int out_offset = 0; out_offset < OUT_BATCH; ++out_offset) {
+    const int64_t out = out_base + out_offset;
+    if (out >= out_features) break;
+    const uint8_t* weight_row = weights
+        + (expert * out_features + out) * row_bytes;
+    for (int64_t base = start; base < end; base += ROW_BATCH) {
+      float value[ROW_BATCH] = {};
+      for (int64_t column = threadIdx.x; column < in_features; column += blockDim.x) {
+        const int64_t block_index = column / 32;
+        const int within = static_cast<int>(column & 31);
+        const float weight = dequant_q5_1(weight_row + block_index * 24, within);
 #pragma unroll
         for (int row = 0; row < ROW_BATCH; ++row) {
-          partial[row * blockDim.x + threadIdx.x] +=
-              partial[row * blockDim.x + threadIdx.x + stride];
+          const int64_t compact_row = base + row;
+          if (compact_row < end) {
+            value[row] += bf16_bits_to_float(
+                input[compact_row * in_features + column]) * weight;
+          }
+        }
+      }
+#pragma unroll
+      for (int row = 0; row < ROW_BATCH; ++row) {
+        partial[row * blockDim.x + threadIdx.x] = value[row];
+      }
+      __syncthreads();
+      for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride) {
+#pragma unroll
+          for (int row = 0; row < ROW_BATCH; ++row) {
+            partial[row * blockDim.x + threadIdx.x] +=
+                partial[row * blockDim.x + threadIdx.x + stride];
+          }
+        }
+        __syncthreads();
+      }
+      if (threadIdx.x == 0) {
+#pragma unroll
+        for (int row = 0; row < ROW_BATCH; ++row) {
+          const int64_t compact_row = base + row;
+          if (compact_row < end) {
+            output[compact_row * out_features + out] =
+                float_to_bf16_bits(partial[row * blockDim.x]);
+          }
         }
       }
       __syncthreads();
     }
-    if (threadIdx.x == 0) {
-#pragma unroll
-      for (int row = 0; row < ROW_BATCH; ++row) {
-        const int64_t compact_row = base + row;
-        if (compact_row < end) {
-          output[compact_row * out_features + out] =
-              float_to_bf16_bits(partial[row * blockDim.x]);
-        }
-      }
-    }
-    __syncthreads();
   }
 }
 
@@ -313,8 +318,39 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatc
   constexpr int row_batch = 8;
   const int64_t row_bytes = (in_features / 32) * 24;
   hipLaunchKernelGGL(
-      (q5_1_selected_grouped_prefill_bf16_bf16_kernel<row_batch>),
+      (q5_1_selected_grouped_prefill_bf16_bf16_kernel<row_batch, 1>),
       dim3(static_cast<uint32_t>(out_features), static_cast<uint32_t>(num_experts)),
+      dim3(threads), row_batch * threads * sizeof(float), stream,
+      static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(expert_start),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      compact_rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out(
+    const void* input,
+    const void* expert_start,
+    const void* weights,
+    void* output,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!input || !expert_start || !weights || !output || compact_rows <= 0 ||
+      num_experts <= 0 || in_features <= 0 || (in_features % 32) ||
+      out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  constexpr int row_batch = 8;
+  constexpr int out_batch = 8;
+  const int64_t row_bytes = (in_features / 32) * 24;
+  hipLaunchKernelGGL(
+      (q5_1_selected_grouped_prefill_bf16_bf16_kernel<row_batch, out_batch>),
+      dim3(static_cast<uint32_t>((out_features + out_batch - 1) / out_batch),
+           static_cast<uint32_t>(num_experts)),
       dim3(threads), row_batch * threads * sizeof(float), stream,
       static_cast<const uint16_t*>(input),
       static_cast<const int64_t*>(expert_start),
