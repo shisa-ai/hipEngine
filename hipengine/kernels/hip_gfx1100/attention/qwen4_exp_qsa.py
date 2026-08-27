@@ -76,6 +76,10 @@ _ARGS_SPARSE_ATTN = (
     ctypes.c_float,
     ctypes.c_void_p,
 )
+_ARGS_SPARSE_ATTN_ROWS = (ctypes.c_void_p,) * 7 + (ctypes.c_int64,) * 7 + (
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
 _ARGS_POOL = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -392,6 +396,59 @@ def qwen4_exp_qsa_sparse_attention_paged_bf16_f32(
     )
 
 
+def qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    selected_positions_ptr: int,
+    selected_counts_ptr: int,
+    output_ptr: int,
+    spans: KVLiveSpans,
+    *,
+    rows: int,
+    selected_stride: int,
+    block_size: int,
+    query_heads: int,
+    kv_heads: int,
+    head_dim: int,
+    scale: float | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run variable-selection QSA rows over one shared paged BF16 K/V owner."""
+
+    if spans.spans_mode != "uniform" or spans.storage_dtype != DType.BF16:
+        raise ValueError("sparse QSA attention requires uniform BF16 KVLiveSpans")
+    if rows <= 0 or selected_stride <= 0 or block_size <= 0:
+        raise ValueError("rows, selected_stride, and block_size must be positive")
+    if query_heads <= 0 or kv_heads <= 0 or query_heads % kv_heads:
+        raise ValueError("query heads must be divisible by positive KV heads")
+    if head_dim <= 0 or head_dim > 256:
+        raise ValueError("head_dim must be in 1..256")
+    if spans.live_counts.numel != rows or spans.base_offsets.numel % rows:
+        raise ValueError("row QSA spans must provide one table and live count per row")
+    block_table_len = spans.base_offsets.numel // rows
+    attention_scale = head_dim ** -0.5 if scale is None else float(scale)
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32",
+        _ARGS_SPARSE_ATTN_ROWS,
+        ctypes.c_int,
+    )
+    _check_launch(
+        runtime,
+        fn(
+            query_ptr, key_cache_ptr, value_cache_ptr, selected_positions_ptr,
+            selected_counts_ptr, spans.base_offsets.ptr, output_ptr, rows,
+            selected_stride, block_size, block_table_len, query_heads, kv_heads,
+            head_dim, attention_scale, stream,
+        ),
+    )
+
+
 def qwen4_exp_qsa_pool_norm_rope_f32(
     raw_keys_ptr: int,
     member_indices_ptr: int,
@@ -566,6 +623,12 @@ def register_qwen4_exp_qsa_kernels(*, replace: bool = True) -> None:
         ): qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
         KernelKey(
             "hip_gfx1100",
+            "qsa_sparse_attention",
+            "bf16_kv",
+            "strict_rows_spans",
+        ): qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
+        KernelKey(
+            "hip_gfx1100",
             "qsa_pool_norm_rope",
             "f32",
             "strict",
@@ -607,5 +670,6 @@ __all__ = [
     "qwen4_exp_qsa_split_norm_rope_rows_f32",
     "qwen4_exp_qsa_select_blocks_f32_i64",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_f32",
+    "qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32",
     "register_qwen4_exp_qsa_kernels",
 ]

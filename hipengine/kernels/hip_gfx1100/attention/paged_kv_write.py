@@ -27,6 +27,7 @@ _SYMBOL_MIXED_FP16_BATCH = "hipengine_qwen35_write_paged_kv_mixed_value_fp16_bat
 _SYMBOL_MIXED_BF16_PROMPT = "hipengine_qwen35_write_paged_kv_mixed_value_bf16_prompt_spans"
 _SYMBOL_MIXED_FP16_PROMPT = "hipengine_qwen35_write_paged_kv_mixed_value_fp16_prompt_spans"
 _SYMBOL_F32 = "hipengine_qwen35_write_paged_kv_f32_spans"
+_SYMBOL_F32_BATCH = "hipengine_qwen35_write_paged_kv_f32_batch_spans"
 _SYMBOL_INT8_SCALE_F32 = "hipengine_qwen35_write_paged_kv_int8_per_token_head_scale_f32_spans"
 _SYMBOL_INT8_SCALE_F32_BATCH = "hipengine_qwen35_write_paged_kv_int8_per_token_head_scale_f32_batch_spans"
 _SYMBOL_INT8_SCALE_F32_PROMPT = "hipengine_qwen35_write_paged_kv_int8_per_token_head_scale_f32_prompt_spans"
@@ -434,6 +435,40 @@ def qwen35_write_paged_kv_f32_spans(
         key_cache_ptr,
         value_cache_ptr,
         spans,
+        block_size,
+        num_kv_heads,
+        head_dim,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def qwen35_write_paged_kv_f32_batch_spans(
+    key_ptr: int,
+    value_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    spans: KVLiveSpans,
+    rows: int,
+    block_size: int,
+    num_kv_heads: int,
+    head_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Append FP32 K/V rows to one shared paged BF16 cache via full spans."""
+
+    _launch_write_batch(
+        _SYMBOL_F32_BATCH,
+        key_ptr,
+        value_ptr,
+        key_cache_ptr,
+        value_cache_ptr,
+        spans,
+        rows,
         block_size,
         num_kv_heads,
         head_dim,
