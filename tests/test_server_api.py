@@ -50,6 +50,7 @@ from hipengine.server.api import (
     _backend_scheduler_token_chunks,
     _chat_session_message_copy,
     _coerce_generation_output,
+    _generation_route_for_request,
     _GenerationBatcher,
     _MTPCircuitBreaker,
     _QueuedBatchResult,
@@ -406,6 +407,21 @@ class RealizedGroupArtifactScopedSpeculativeMTPFakeLLM(
             "evidence_artifacts": [f"benchmarks/results/fake-qwen38-q4km-c{rows}.json"],
             "automatic_eligible": admitted,
         }
+
+
+class C2OnlyArtifactScopedSpeculativeMTPFakeLLM(
+    RealizedGroupArtifactScopedSpeculativeMTPFakeLLM
+):
+    @staticmethod
+    def _plan(**kwargs: Any) -> dict[str, Any]:
+        plan = RealizedGroupArtifactScopedSpeculativeMTPFakeLLM._plan(**kwargs)
+        if int(kwargs["realized_group_rows"]) == 1:
+            plan["admitted"] = False
+            plan["selected_route"] = "default"
+            plan["selected_candidate_count"] = 0
+            plan["reason"] = "physical_group_not_qualified"
+            plan["automatic_eligible"] = False
+        return plan
 
 
 class SchedulerChunkRowsFakeLLM(FakeLLM):
@@ -5566,6 +5582,34 @@ def test_generation_batcher_applies_mtp_route_group_limit() -> None:
         ]
 
     asyncio.run(run())
+
+
+def test_explicit_c2_intent_survives_request_time_c1_plan_rejection() -> None:
+    fake = C2OnlyArtifactScopedSpeculativeMTPFakeLLM()
+    request = CompletionRequest(
+        model="fake-model",
+        prompt="one",
+        max_tokens=25,
+        temperature=0.0,
+        speculative_mtp=True,
+    )
+
+    route, plan = _generation_route_for_request(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        request,
+        engine=fake,
+        sampling=SamplingParams(max_tokens=25),
+        prompts=("one",),
+    )
+
+    assert route == _SPECULATIVE_MTP_BATCH_ROUTE
+    assert plan is not None
+    assert plan["admitted"] is False
+    assert plan["reason"] == "physical_group_not_qualified"
 
 
 def test_automatic_route_rejects_any_explicit_only_realized_plan() -> None:
