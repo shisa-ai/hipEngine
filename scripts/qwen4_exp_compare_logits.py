@@ -83,6 +83,10 @@ def _run_llama_debug(
         str(output_directory),
         "-c",
         str(context),
+        "-ctk",
+        "bf16",
+        "-ctv",
+        "bf16",
         "-ngl",
         "99",
     ]

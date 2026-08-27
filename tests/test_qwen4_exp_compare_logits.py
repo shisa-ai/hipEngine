@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+
 import numpy as np
 import pytest
 
@@ -18,6 +20,25 @@ def test_qwen4_exp_compare_logits_reports_kl_top1_and_errors() -> None:
     assert 0.0 < report["kl_teacher_to_hipengine"] < 0.05
     assert report["mean_absolute_logit_error"] == pytest.approx(1.0 / 6.0)
     assert report["max_absolute_logit_error"] == pytest.approx(0.2)
+
+
+def test_qwen4_exp_llama_debug_matches_bf16_kv_contract(tmp_path, monkeypatch) -> None:
+    captured: list[list[str]] = []
+
+    def run(command, **_kwargs):
+        captured.append(command)
+        np.asarray([1.0, 2.0], dtype=np.float32).tofile(tmp_path / "llamacpp-test.bin")
+        np.asarray([3], dtype=np.int32).tofile(tmp_path / "llamacpp-test-tokens.bin")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr("scripts.qwen4_exp_compare_logits.subprocess.run", run)
+
+    _run_llama_debug(tmp_path / "llama-debug", tmp_path / "model.gguf", "prompt", tmp_path, 16)
+
+    assert captured
+    command = captured[0]
+    assert command[command.index("-ctk") + 1] == "bf16"
+    assert command[command.index("-ctv") + 1] == "bf16"
 
 
 def test_qwen4_exp_llama_debug_replaces_invalid_diagnostic_bytes(tmp_path) -> None:
