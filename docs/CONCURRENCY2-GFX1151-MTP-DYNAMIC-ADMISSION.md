@@ -1,7 +1,7 @@
 # CONCURRENCY2 gfx1151 MTP Dynamic Admission Campaign
 
-- Status: **D2 normal-owner production C2/K1-K3 retained explicit/default-off; D3 dynamic lifecycle is next**
-- Scope: **C2/K1 passes the full functional/failure packet but is 0.5277x true AR; automatic C2 remains pure K0 and D5/D6 still own correctness/economics promotion**
+- Status: **D3 dynamic physical C1↔C2 lifecycle retained; D4 width/packing expansion is next**
+- Scope: **binding cancel/survivor/refill, pressure transitional-K0 catch-up/re-entry, mixed acceptance, blocking/SSE, and zero drain pass; automatic C>1 remains pure K0**
 - Hardware lane when execution is approved: **Radeon 8060S / `hip_gfx1151`**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile**
 - First functional width: **two independent resident requests (`C_due=2`)**
@@ -27,6 +27,9 @@ pure/transitional K0 telemetry, and mixed disjoint execution. Evidence:
 D2 now proves real physical C2/K1-K3 through that seam; K1 is mechanically
 retained but economically rejected for automatic use. Evidence:
 [`D2 functional`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d2-c2-k1-functional.json).
+D3 now closes the binding physical C1↔C2 transition sequence plus pressure K0,
+refill, cancellation, public blocking/SSE, and final drain. Evidence:
+[`D3 lifecycle`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d3-lifecycle.json).
 
 ## 1. Executive decision
 
@@ -266,18 +269,18 @@ explicit/default-off and automatic C2 stays pure K0. Evidence:
 
 ### D3 — dynamic switching and lifecycle
 
-- [ ] Exercise delayed second arrival `C1 -> C2`, retirement/cancel `C2 -> C1`,
+- [x] Exercise delayed second arrival `C1 -> C2`, retirement/cancel `C2 -> C1`,
   and repeated `C1 -> C2 -> C1` without reconstructing the request scheduler.
-- [ ] Exercise two speculative peers with different remaining horizons and
+- [x] Exercise two speculative peers with different remaining horizons and
   accepted counts, including reject beside full accept.
-- [ ] Exercise mixed permanent-AR and speculative-capable peers, transitional
+- [x] Exercise mixed permanent-AR and speculative-capable peers, transitional
   K0, provider catch-up, and later MTP re-entry.
-- [ ] Exercise refill into a live provider group, survivor continuation, slot
+- [x] Exercise refill into a live provider group, survivor continuation, slot
   permutation/compaction, prefix restore/COW, pressure/regrow, and neighbor
   substitution.
-- [ ] Exercise blocking plus SSE disconnect/deadline/backpressure, overload,
+- [x] Exercise blocking plus SSE disconnect/deadline/backpressure, overload,
   restart, and repeated clean reopen.
-- [ ] Assert zero cross-talk, duplicate/missing output, stale workspace reads,
+- [x] Assert zero cross-talk, duplicate/missing output, stale workspace reads,
   delayed OOM, sticky fallback, active claims, provider rows, pages, collectors,
   and background owners.
 
@@ -291,9 +294,17 @@ C arrives while A is transitional K0 -> exact catch-up -> A+C execute C2 MTP
 A retires -> C survives -> final reclaim
 ```
 
-Exit: switching is mechanically safe and repeatable. Width expansion and
-production qualification are now admitted; performance tuning still waits for
-D5. Automatic serving remains unchanged.
+Exit passed. The binding A -> A+B -> A -> A+C -> C sequence executes physical
+C1/R2 and C2/R4 between transactions, cancels B and A truthfully, reuses the
+live provider group for C, crosses a typed `resource_claim_miss` transitional
+K0 with exact provider catch-up, re-enters C2, observes mixed accepted counts,
+and drains loop/service/provider/memory ownership to zero. Public production
+blocking/SSE and following health pass. Host controlled-neighbor, prefix/COW,
+failure, compaction/refill, and soak contracts plus D1 mixed permanent-AR
+coverage are green/reused. Width expansion and production qualification are now
+admitted; performance tuning still waits for D5/D6. Automatic serving remains
+unchanged. Evidence:
+[`D3`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d3-lifecycle.json).
 
 ### D4 — width/packing expansion
 
