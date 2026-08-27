@@ -1239,6 +1239,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     execution_profile=str(args.execution_profile),
                     max_active_requests=max(args.concurrency),
                     max_sequence_length=int(args.max_sequence_length),
+                    speculative_candidate_budget=int(budget),
                 )
                 ledger: _StageLedger | None = None
                 load_row: dict[str, Any] | None = None
