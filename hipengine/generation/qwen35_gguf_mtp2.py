@@ -665,6 +665,15 @@ class Qwen35GGUFMTP2Adapter:
         )
         if static_bounds and len(semantics) > min(static_bounds):
             return None
+        static_candidate_bounds = tuple(
+            int(eligibility.max_candidate_count)
+            for eligibility in static_eligibilities
+            if eligibility is not None
+        )
+        max_candidate_count = min(
+            self.candidate_budget,
+            *(static_candidate_bounds or (self.candidate_budget,)),
+        )
         singleton_only = tuple(
             self._singleton_only(item.request_id)
             for item in semantics
@@ -724,17 +733,17 @@ class Qwen35GGUFMTP2Adapter:
         )
         profile = str(getattr(self.generator, "execution_profile", None) or "legacy_exact")
         max_requests = min(4, max(1, int(getattr(self.owner, "capacity", 4))))
-        max_frontier_rows = max_requests * (self.candidate_budget + 1)
+        max_frontier_rows = max_requests * (max_candidate_count + 1)
         return SpeculativeCapability(
             capability_key=(
                 f"gguf_mtp2_c{max_requests}:{self.generator.backend}:{self.quant}:"
-                f"{realized_verify_mode}:{self.candidate_budget}"
+                f"{realized_verify_mode}:{max_candidate_count}"
             ),
             target_key="qwen_dense_gguf",
             provider_key="qwen_nextn_dense",
             method_key="mtp2",
             policy_fingerprint=(
-                f"dense-nextn:{realized_verify_mode}:b{self.candidate_budget}"
+                f"dense-nextn:{realized_verify_mode}:b{max_candidate_count}"
             ),
             execution_profile=profile,
             kv_backend_key=str(getattr(target, "kv_storage_dtype", "bf16")),
@@ -743,7 +752,7 @@ class Qwen35GGUFMTP2Adapter:
             supported_modes=("verify_chain",),
             supported_sampling_modes=("greedy",),
             max_requests=max_requests,
-            max_candidates_per_request=self.candidate_budget,
+            max_candidates_per_request=max_candidate_count,
             max_frontier_rows=max_frontier_rows,
             proposal_widths=tuple(
                 width for width in (1, 2, 4) if width <= max_requests
