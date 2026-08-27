@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 Qwen3.8-Flash-Next 262K capacity; ownership only] The real complete 262,144-token runner moves **projected→physically allocated** at **91,126,119,496 tracked bytes**, leaves **38,915,162,112** physical bytes free, and tears down to **0 B / 0 allocations**. This is not 262K inference correctness or speed. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-262k-capacity.json`.
+
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next 16K QSA; chunk-only structural correctness] A 16,384 repeated-token teacher→size-2-chunk checkpoint moves **unqualified→passed** at KL **7.55e-5**, top-1 **264==264**, zero teardown bytes, and **2,434.172 s** wall. Strict remains measured through 4K; natural retrieval, strict-above-4K, 64K+, and lifecycle/index-reference scopes remain open. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json`.
 
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next 4K QSA; structural correctness only] A 4,096 repeated-token checkpoint moves **unqualified→passed**: teacher→strict/chunk KL **4.40e-5/4.78e-5**, strict→chunk **3.19e-5**, top-1 **264==264**, teardown zero; diagnostic size-2 chunk wall **854.982→574.759 s (1.488x)**. Natural retrieval, 16K+, and lifecycle/index-reference scopes remain open. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json`.

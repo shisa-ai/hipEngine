@@ -247,14 +247,18 @@ teardown. A repeated-token structural 4K checkpoint also passes teacher→strict
 chunk KL `4.40e-5/4.78e-5`, strict→chunk KL `3.19e-5`, top-1 exact, and clean
 teardown. A chunk-only repeated-token 16K checkpoint passes teacher KL
 `7.55e-5`, top-1 exact, and clean teardown in 2,434.172 s; strict remains
-measured through 4K. Natural retrieval, strict-above-4K, 64K+, and lifecycle/
-index-reference gates remain open, so this is not a broad long-context, speed,
-serving/c>N, MTP, or vision claim.
+measured through 4K. The real complete 262,144-token owner also allocates at
+91.126 GB tracked, leaves 38.915 GB physical memory free, and tears down to zero
+tracked bytes; this is capacity-only evidence. Natural retrieval,
+strict-above-4K, 64K/262K inference, and lifecycle/index-reference gates remain
+open, so this is not a broad long-context, speed, serving/c>N, MTP, or vision
+claim.
 [`Bring-up artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json) ·
 [`Heldout artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json) ·
 [`2,052 transition artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json) ·
 [`4K structural artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json) ·
-[`16K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json).
+[`16K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json) ·
+[`262K capacity artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-262k-capacity.json).
 
 ## Current Qwen3.6-35B quantization quality
 
