@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "kind": "hipengine_cuda_sm120a_moonshine_encoder_rowbatch4_rejection",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "model": {
+    "id": "shisa-ai/shisa-realtime-asr-0.92b",
+    "revision": "cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+    "precision": "FP16 storage/boundaries with FP32-sensitive arithmetic"
+  },
+  "hardware": {
+    "host": "linode-gpu1",
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition 97887 MiB",
+    "driver": "610.43.02",
+    "power_limit_watts": 600,
+    "cuda_toolkit": "13.3",
+    "architecture": "sm_120a"
+  },
+  "hypothesis": "Reuse each projection weight row from shared memory across four consecutive encoder rows while preserving the parent thread/reduction order independently per row.",
+  "prototype": {
+    "scope": "single, triple-QKV, bias-fc1, and bias-residual-fc2 encoder projections",
+    "row_group": 4,
+    "arithmetic": "byte-exact to each parent projection in the focused real-GPU primitive gate",
+    "implementation_retained": false,
+    "reason_removed": "The complete route regressed both the six-short-file and actual 20-fixture product distributions."
+  },
+  "profile_baseline": {
+    "fixture": "fleurs-ja-14857775735233890472",
+    "audio_seconds": 7.628,
+    "output_tokens": 27,
+    "complete_wall_ms": 38.460052,
+    "encoder_kernel_sum_ms": 15.369044,
+    "encoder_top_families_ms": {
+      "conv2": 2.805141,
+      "conv3": 0.926972,
+      "qkv_triple": 3.405942,
+      "o_projection": 3.912706,
+      "fc1_bias": 4.313165,
+      "fc2_bias_residual": 1.3622,
+      "attention": 1.240156
+    },
+    "interpretation": "Projection families dominate the current encoder, so exact row reuse was a reasonable first RT-3 screen."
+  },
+  "performance": {
+    "six_short_file_complete_route": {
+      "protocol": "two warmups plus ten timed attempts/file; six retained 2-11-token files; conditional exact-EOS decode active",
+      "baseline_median_of_medians_ms": 4.74668375,
+      "candidate_median_of_medians_ms": 5.4153475,
+      "regression_percent": 14.087,
+      "all_baseline_tokens_exact": true,
+      "all_candidate_tokens_exact": true
+    },
+    "downstream_20_fixture_screen": {
+      "protocol": "20 FLEURS-through-EOU fixtures; five alternating iterations; 100 observations/route",
+      "baseline_p50_ms": 39.2156225,
+      "baseline_p95_ms": 46.352487,
+      "candidate_p50_ms": 45.1247375,
+      "candidate_p95_ms": 52.900112,
+      "p50_regression_percent": 15.068,
+      "p95_regression_percent": 14.126,
+      "all_200_observations_exact": true
+    }
+  },
+  "decision": "Reject and remove the rowbatch4 prototype. Retain the exact current custom encoder. Continue RT-3 with other launch/memory candidates; do not infer a win from shared weight reuse.",
+  "raw_sha256": {
+    "short_baseline_json": "caf98a3f326d3f41e2134b9bcbeab662af9f6474f7952655e4bca4bf63141492",
+    "short_candidate_json": "63b8325ae63da49aaf4dc4ffc9d283283dccfa764c6b4e7b23f84b818418325d",
+    "downstream_screen_json": "5e9e868a25b93b39f6452f71a7d49582e6d9e16d38e90690c5795e88e15f7b19",
+    "baseline_profile_nsys_rep": "e618da07b08e8d72f6cee407c0fd3b6d3496f3bbb736167cb5e2eee17e928bfb",
+    "baseline_kernel_summary_csv": "a7e52459a0c44ba30d58a8aa3e6fd51d8ecb143c982493100e7025d50caec8b5"
+  },
+  "limitations": [
+    "The prototype was measured from an uncommitted worktree and then removed; raw hashes preserve the negative evidence.",
+    "The six-short-file route and 20-fixture product screen both failed decisively, so no expensive full quality campaign was run.",
+    "The exact primitive result establishes correctness only, not value; complete-route performance decides the rejection."
+  ]
+}
