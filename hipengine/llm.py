@@ -446,21 +446,6 @@ class LLM:
             memory_fit=True,
         )
 
-    @property
-    def supports_default_mtp(self) -> bool:
-        """Whether default-on MTP serving is safe for the resolved generator.
-
-        True only for dense Qwen models whose MTP route is validated for
-        serving (native verify by default, or the token-exact serial_exact
-        rollback control); MoE and unsupported models report False so the
-        server can keep them on plain AR unless a request explicitly opts in.
-        """
-
-        generator = self._text_generator
-        if generator is None:
-            return False
-        return bool(getattr(generator, "supports_default_mtp", False))
-
     def generate_speculative_detailed(
         self,
         prompts: Any,

@@ -431,12 +431,6 @@ class SubmitPollTextGenerator:
     def last_speculative_submission(self) -> GenerationSubmission | None:
         return self._last_speculative_submission
 
-    @property
-    def supports_default_mtp(self) -> bool:
-        """Whether default-on MTP serving is safe for the wrapped model."""
-
-        return bool(getattr(self._inner, "supports_default_mtp", False))
-
     def generate_speculative_mtp_detailed(
         self,
         request: GenerationRequest,
