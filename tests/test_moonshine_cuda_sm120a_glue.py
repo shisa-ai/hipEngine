@@ -157,6 +157,47 @@ def test_moonshine_cuda_glue_wrappers_keep_raw_pointer_abis() -> None:
     ]
 
 
+def test_moonshine_cuda_conditional_graph_wrapper_returns_owned_handles() -> None:
+    from hipengine.kernels.cuda_sm120a.fused.moonshine_glue import (
+        moonshine_create_eos_decode_graph,
+    )
+
+    class FakeGraphFactory:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def __call__(self, *args):
+            self.calls.append(args[:-2])
+            ctypes.cast(args[-2], ctypes.POINTER(ctypes.c_void_p))[0] = ctypes.c_void_p(
+                0x8000
+            )
+            ctypes.cast(args[-1], ctypes.POINTER(ctypes.c_void_p))[0] = ctypes.c_void_p(
+                0x9000
+            )
+            return 0
+
+    class FakeLibrary:
+        hipengine_cuda_sm120a_moonshine_create_eos_decode_graph = FakeGraphFactory()
+
+    library = FakeLibrary()
+    graph, graph_exec = moonshine_create_eos_decode_graph(
+        0x6000,
+        0x6001,
+        0x1000,
+        0x2000,
+        194,
+        library=library,
+        runtime=object(),
+    )
+
+    assert (graph, graph_exec) == (0x8000, 0x9000)
+    assert library.hipengine_cuda_sm120a_moonshine_create_eos_decode_graph.calls == [
+        (0x6000, 0x6001, 0x1000, 0x2000, 194)
+    ]
+    with pytest.raises(ValueError, match="capacity"):
+        moonshine_create_eos_decode_graph(1, 2, 3, 4, 7, library=library)
+
+
 def test_moonshine_cuda_glue_rejects_invalid_shapes_before_build() -> None:
     from hipengine.kernels.cuda_sm120a.fused.moonshine_glue import (
         moonshine_argmax_fp16,

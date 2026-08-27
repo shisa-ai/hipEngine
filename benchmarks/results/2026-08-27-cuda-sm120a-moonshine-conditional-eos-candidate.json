@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "kind": "hipengine_cuda_sm120a_moonshine_conditional_eos_candidate",
+  "status": "candidate_complete_pending_downstream_promotion",
+  "performance_claim": false,
+  "generated_utc": "2026-08-27T08:43:04.546724+00:00",
+  "model": {
+    "id": "shisa-ai/shisa-realtime-asr-0.92b",
+    "revision": "cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+    "precision": "FP16 storage/boundaries with FP32-sensitive arithmetic"
+  },
+  "hardware": {
+    "host": "linode-gpu1",
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition 97887 MiB",
+    "driver": "610.43.02",
+    "power_limit_watts": 600,
+    "cuda_toolkit": "13.3",
+    "architecture": "sm_120a"
+  },
+  "source": {
+    "base_commit": "349c765e58b2f532bda03f3adb794651395db4f5",
+    "branch": "lhl/20260827-moonshine-eos-aware",
+    "dirty_at_measurement": true,
+    "implementation_sha256": {
+      "hipengine/kernels/cuda_sm120a/fused/moonshine_glue.cu": "574b9686bc8cca956d8cd932e57d73eceed8edee7eb2b1f0dd6ac87c2cbdee4c",
+      "hipengine/kernels/cuda_sm120a/fused/moonshine_glue.py": "61397026fe057f5e32e9ae841943151dcd6c003f3440bab676b40c10e1942867",
+      "hipengine/runtime/moonshine_cuda.py": "ad17b104d8749e253276099b98637a8e6b50179359ec72e4586946889cb0dc9e",
+      "scripts/benchmark_moonshine_cuda_complete.py": "77e0a676a42d9078ae874a432187ae855183182ebe2cbc7cccfde060bb9b7a8d",
+      "tests/test_moonshine_cuda_sm120a_glue.py": "c2fad883ed2162898f38cc3767d5e398a30918f6f64b1d9ed93216f3e0776fe3",
+      "tests/test_moonshine_cuda_sm120a_runtime.py": "79552c3ebab19af8234c50249c948499b8e034e77b29b09a0e333a3782c78a37"
+    }
+  },
+  "candidate": {
+    "control": "one CUDA graph launch containing two conditional WHILE nodes; device kernels update loop handles from sticky EOS and exact position",
+    "first_bucket": "positions 0..6 / t32 child graph",
+    "remaining_bucket": "positions 7..193 / t256 child graph",
+    "host_boundaries": "one seed before replay; one final position/result read after replay",
+    "math_changed": false,
+    "default": false
+  },
+  "correctness": {
+    "red_first": "four targeted tests failed before implementation because wrapper/runtime APIs were absent",
+    "gpu_conditional_exact_gate": "2/2 model-derived fixtures exact through first EOS",
+    "six_file_driver_exact": true,
+    "downstream_20_fixture_screen_exact": true,
+    "lifecycle": "conditional exec/graph destroyed before source token graphs; tracked runtime ownership returns to baseline"
+  },
+  "performance": {
+    "six_short_file_diagnostic": {
+      "protocol": "one warmup + two timed attempts/file; six retained 2..11-token files; complete encoder+decode",
+      "baseline_median_of_medians_ms": 4.668131249999999,
+      "candidate_median_of_medians_ms": 4.745412249999999,
+      "improvement_percent": -1.655501867047979,
+      "verdict": "regressed; not an unconditional hipEngine default"
+    },
+    "downstream_20_fixture_screen": {
+      "scope": "asr-service warm resident PCM E2; 20 FLEURS-through-EOU fixtures; five alternating iterations; 100 observations/route",
+      "baseline": {
+        "count": 100,
+        "min": 26.262304,
+        "mean": 38.488768529999994,
+        "p50": 40.0585965,
+        "p95": 47.3253532,
+        "max": 47.710848,
+        "exact": true
+      },
+      "candidate": {
+        "count": 100,
+        "min": 25.926582999999997,
+        "mean": 37.83089333,
+        "p50": 39.2990035,
+        "p95": 46.58769925,
+        "max": 46.823783999999996,
+        "exact": true
+      },
+      "p50": {
+        "baseline_ms": 40.0585965,
+        "candidate_ms": 39.2990035,
+        "delta_ms": -0.7595930000000024,
+        "improvement_percent": 1.8962047259943378
+      },
+      "p95": {
+        "baseline_ms": 47.3253532,
+        "candidate_ms": 46.58769925,
+        "delta_ms": -0.7376539500000021,
+        "improvement_percent": 1.558686623811615
+      },
+      "verdict": "promising screen only; requires seven-pair 4200-attempt and full-FLEURS gates"
+    }
+  },
+  "profiler": {
+    "tool": "Nsight Systems 2026.1.3, cuda graph trace node:host-and-device",
+    "condition_kernel": {
+      "name": "moonshine_set_decode_condition_kernel",
+      "instances": 42,
+      "total_time_ns": 42720,
+      "median_ns": 960
+    },
+    "publish_kernel": {
+      "name": "moonshine_publish_result_fp16_kernel",
+      "instances": 36,
+      "total_time_ns": 26208,
+      "median_ns": 736
+    },
+    "expected_generated_steps": 36,
+    "interpretation": "36 token/publish kernels and 42 conditions = one post-token condition per step plus one second-bucket precondition per fixture"
+  },
+  "commands": {
+    "baseline_short": "PATH=/usr/local/cuda-13.3/bin:$PATH PYTHONPATH=$PWD CUDA_VISIBLE_DEVICES=0 mamba run -n ak-miotts python -u scripts/benchmark_moonshine_cuda_complete.py --mode standalone --snapshot-dir <packed-model> --fixture-dir <six-fixture-dir> --gpu-index 0 --packed --async-chain --device-owned --bucket auto --attention-route custom --lm-head-route fused --warmup 1 --iterations 2 --output <raw.json>",
+    "candidate_short": "same command plus --eos-conditional",
+    "gpu_gate": "HIPENGINE_RUN_CUDA_SM120A=1 HIPENGINE_CUDA_ARCH=sm_120a HIPENGINE_MOONSHINE_FIXTURE_DIR=<six-fixture-dir> HIPENGINE_MOONSHINE_SNAPSHOT=<pinned-snapshot> python -m pytest -q tests/test_moonshine_cuda_sm120a_runtime.py::test_cuda_resident_runtime_conditional_eos_decode_exact_stream_on_fixtures",
+    "profiler": "nsys profile --trace=cuda,nvtx --cuda-graph-trace=node:host-and-device <candidate-short-command with warmup 0 iterations 1>"
+  },
+  "raw_sha256": {
+    "downstream_screen_json": "9e27193865ec452eae618767a6a12b33abf156a6ea244ef951809ea68b3f1d77",
+    "short_baseline_json": "f874274becdcf7cbd5749d191e47280c1d1abd32cb7f386c090b1b399083bd50",
+    "short_candidate_json": "401298d31a0b818c617cd3841f93540e945f0be02a8e6eddcfe3a1f9138d3c5d",
+    "profile_run_json": "22d67e816893860fa0d258adc3733c972d7e3bd7f218714a56cdf018a4e59d34",
+    "profile_trace_nsys_rep": "3bb4afe47028372cb096c5a2444a0d72f4afdb1e141b5724c23c77feeef38648",
+    "profile_kernel_summary_csv": "68a4cd7d34579520a580709d27f05f3bdbfe064397942a7509dba40ed57dc60a"
+  },
+  "limitations": [
+    "The downstream 100-observation screen is not promotion evidence and lives in the separate asr-service campaign lane.",
+    "The six very-short-file hipEngine diagnostic regressed; the conditional path remains opt-in until downstream high-confidence promotion.",
+    "One broad CUDA test run had one unrelated fixture-data failure: the available six-file bundle lacks decoder.position_1.final_hidden; every other collected test passed and the targeted conditional gates passed.",
+    "Kernel-lineage audit could not run because $HOME/amd-gpu-tuning/reference/atlas is absent on this host; this control change has no external kernel source lineage."
+  ]
+}

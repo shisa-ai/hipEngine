@@ -100,6 +100,83 @@ __global__ void moonshine_publish_result_fp16_kernel(
   }
 }
 
+// RT-2 device-side loop condition.  The token child graph publishes EOS and
+// advances position before this kernel runs.  cudaGraphSetConditional updates
+// the owning WHILE node without a host readback or relaunch boundary.
+__global__ void moonshine_set_decode_condition_kernel(
+    cudaGraphConditionalHandle handle,
+    const int64_t* __restrict__ result_eos,
+    const int64_t* __restrict__ position,
+    int64_t limit) {
+  if (blockIdx.x == 0 && threadIdx.x == 0) {
+    const unsigned int keep_running =
+        (result_eos[0] == 0 && position[0] < limit) ? 1U : 0U;
+    cudaGraphSetConditional(handle, keep_running);
+  }
+}
+
+cudaError_t moonshine_add_condition_kernel_node(
+    cudaGraph_t graph,
+    cudaGraphNode_t dependency,
+    cudaGraphConditionalHandle handle,
+    const int64_t* result_eos,
+    const int64_t* position,
+    int64_t limit,
+    cudaGraphNode_t* node_out) {
+  void* arguments[] = {&handle, &result_eos, &position, &limit};
+  cudaKernelNodeParams parameters{};
+  parameters.func = reinterpret_cast<void*>(moonshine_set_decode_condition_kernel);
+  parameters.gridDim = dim3(1);
+  parameters.blockDim = dim3(1);
+  parameters.kernelParams = arguments;
+  return cudaGraphAddKernelNode(
+      node_out,
+      graph,
+      dependency == nullptr ? nullptr : &dependency,
+      dependency == nullptr ? 0 : 1,
+      &parameters);
+}
+
+cudaError_t moonshine_add_decode_while_node(
+    cudaGraph_t graph,
+    cudaGraphNode_t dependency,
+    cudaGraphConditionalHandle handle,
+    cudaGraph_t token_graph,
+    const int64_t* result_eos,
+    const int64_t* position,
+    int64_t limit,
+    cudaGraphNode_t* node_out) {
+  cudaGraphNodeParams parameters{};
+  parameters.type = cudaGraphNodeTypeConditional;
+  parameters.conditional.handle = handle;
+  parameters.conditional.type = cudaGraphCondTypeWhile;
+  parameters.conditional.size = 1;
+  parameters.conditional.ctx = nullptr;
+  cudaError_t error = cudaGraphAddNode(
+      node_out,
+      graph,
+      dependency == nullptr ? nullptr : &dependency,
+      nullptr,
+      dependency == nullptr ? 0 : 1,
+      &parameters);
+  if (error != cudaSuccess) return error;
+
+  cudaGraph_t body = parameters.conditional.phGraph_out[0];
+  cudaGraphNode_t token_node = nullptr;
+  error = cudaGraphAddChildGraphNode(
+      &token_node, body, nullptr, 0, token_graph);
+  if (error != cudaSuccess) return error;
+  cudaGraphNode_t condition_node = nullptr;
+  return moonshine_add_condition_kernel_node(
+      body,
+      token_node,
+      handle,
+      result_eos,
+      position,
+      limit,
+      &condition_node);
+}
+
 __global__ void moonshine_embedding_lookup_fp16_kernel(
     const half_t* __restrict__ embedding,
     const int64_t* __restrict__ token,
@@ -341,6 +418,80 @@ extern "C" int hipengine_cuda_sm120a_moonshine_publish_result_fp16(
   moonshine_publish_result_fp16_kernel<<<dim3(1), dim3(1), 0, stream>>>(
       token, position, result_tokens, result_eos, capacity, eos_token);
   return cudaGetLastError();
+}
+
+extern "C" int hipengine_cuda_sm120a_moonshine_create_eos_decode_graph(
+    cudaGraph_t first_bucket_graph,
+    cudaGraph_t remaining_bucket_graph,
+    const int64_t* result_eos,
+    const int64_t* position,
+    int64_t capacity,
+    cudaGraph_t* graph_out,
+    cudaGraphExec_t* graph_exec_out) {
+  if (first_bucket_graph == nullptr || remaining_bucket_graph == nullptr ||
+      result_eos == nullptr || position == nullptr || capacity <= 7 ||
+      graph_out == nullptr || graph_exec_out == nullptr) {
+    return cudaErrorInvalidValue;
+  }
+  *graph_out = nullptr;
+  *graph_exec_out = nullptr;
+
+  cudaGraph_t graph = nullptr;
+  cudaGraphExec_t graph_exec = nullptr;
+  cudaGraphConditionalHandle first_handle = 0;
+  cudaGraphConditionalHandle remaining_handle = 0;
+  cudaGraphNode_t first_while = nullptr;
+  cudaGraphNode_t remaining_condition = nullptr;
+  cudaGraphNode_t remaining_while = nullptr;
+  cudaError_t error = cudaGraphCreate(&graph, 0);
+  if (error != cudaSuccess) return error;
+
+  error = cudaGraphConditionalHandleCreate(
+      &first_handle, graph, 1U, cudaGraphCondAssignDefault);
+  if (error != cudaSuccess) goto fail;
+  error = moonshine_add_decode_while_node(
+      graph,
+      nullptr,
+      first_handle,
+      first_bucket_graph,
+      result_eos,
+      position,
+      7,
+      &first_while);
+  if (error != cudaSuccess) goto fail;
+
+  error = cudaGraphConditionalHandleCreate(
+      &remaining_handle, graph, 0U, cudaGraphCondAssignDefault);
+  if (error != cudaSuccess) goto fail;
+  error = moonshine_add_condition_kernel_node(
+      graph,
+      first_while,
+      remaining_handle,
+      result_eos,
+      position,
+      capacity,
+      &remaining_condition);
+  if (error != cudaSuccess) goto fail;
+  error = moonshine_add_decode_while_node(
+      graph,
+      remaining_condition,
+      remaining_handle,
+      remaining_bucket_graph,
+      result_eos,
+      position,
+      capacity,
+      &remaining_while);
+  if (error != cudaSuccess) goto fail;
+
+  error = cudaGraphInstantiate(&graph_exec, graph, 0);
+  if (error != cudaSuccess) goto fail;
+  *graph_out = graph;
+  *graph_exec_out = graph_exec;
+  return cudaSuccess;
+
+fail:
+  cudaGraphDestroy(graph);
+  return error;
 }
 
 extern "C" int hipengine_cuda_sm120a_moonshine_embedding_lookup_fp16(

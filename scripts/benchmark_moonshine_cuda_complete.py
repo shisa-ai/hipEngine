@@ -197,6 +197,7 @@ class Route:
         device_owned: bool = False,
         encoder_graph: bool = False,
         decode_batch: int = 0,
+        eos_conditional: bool = False,
         bucket_frames: str | None = None,
         attention_route: str = "custom",
         lm_head_route: str = "fused",
@@ -242,8 +243,13 @@ class Route:
         if decode_batch < 0:
             raise ValueError("decode_batch must be a non-negative integer")
         self.decode_batch = decode_batch
+        self.eos_conditional = bool(eos_conditional)
         if decode_batch > 0 and not device_owned:
             raise ValueError("--decode-batch requires --device-owned")
+        if self.eos_conditional and not device_owned:
+            raise ValueError("--eos-conditional requires --device-owned")
+        if self.eos_conditional and decode_batch > 0:
+            raise ValueError("--eos-conditional and --decode-batch are mutually exclusive")
         # Opt-in torch-free AOT CUTLASS/CuTe encoder self-attention route
         # (review §8.3 item 3/4); the default keeps the custom kernel so the
         # deployment path never changes.
@@ -370,6 +376,13 @@ class Route:
         prepare["graph_count"] = contract["graph_count"]
         prepare["capture_wall_ms"] = contract["capture_wall_ms"]
         prepare["instantiate_wall_ms"] = contract["instantiate_wall_ms"]
+        if self.eos_conditional:
+            conditional = self.dec.capture_eos_decode_graph()
+            prepare["eos_conditional_graph"] = {
+                "creation_wall_ms": conditional.creation_wall_ms,
+                "graph": int(conditional.graph),
+                "graph_exec": int(conditional.graph_exec),
+            }
 
         # C5/§7.3: capture the whole encoder+handoff+cross-KV chain as one
         # fixed-address graph on the decoder stream, so each timed iteration
@@ -525,6 +538,11 @@ class Route:
             "token_graph_execs": {
                 name: int(graph.graph_exec) for name, graph in token_graphs.items()
             },
+            "eos_conditional_graph_exec": (
+                int(self.dec._eos_decode_graph.graph_exec)
+                if self.dec._eos_decode_graph is not None
+                else None
+            ),
         }
 
     # -- per-iteration route -------------------------------------------------
@@ -634,6 +652,12 @@ class Route:
             # position and the fused LM head writes each next token into the
             # same device token buffer (no per-step H2D re-upload).
             dec.set_decode_seed(token_id=fixture.reference[0])
+            if self.eos_conditional:
+                # RT-2: one CUDA conditional graph launch loops over the two
+                # token child graphs and stops at exact device EOS, with no
+                # intermediate host status read or graph relaunch.
+                tokens = dec.graph_decode_to_eos()
+                return tokens, len(tokens)
             if self.decode_batch > 0:
                 # RR-8 device-owned EOS/result: launch several token graphs
                 # back-to-back with no per-token D2H, read the tiny device EOS
@@ -810,6 +834,7 @@ def main() -> int:
     parser.add_argument("--async-chain", action="store_true", help="enqueue encoder->handoff->cross-KV on the decoder stream without terminal syncs (C5/§7.3 async chain)")
     parser.add_argument("--device-owned", action="store_true", help="device-owned token/position decode state (graph-tail position advance, C5/§7.3)")
     parser.add_argument("--decode-batch", type=int, default=0, help="RR-8 device-owned EOS/result: run N token graphs back-to-back with no per-token D2H, reading only the device EOS status per batch (requires --device-owned; 0 = per-step readback)")
+    parser.add_argument("--eos-conditional", action="store_true", help="RT-2: replay one CUDA conditional graph that loops over token child graphs and stops on device at exact EOS (requires --device-owned; mutually exclusive with --decode-batch)")
     parser.add_argument("--encoder-graph", action="store_true", help="capture encoder+handoff+cross-KV as one fixed-address graph per bucket (standalone only, C5/§7.3)")
     parser.add_argument(
         "--bucket",
@@ -889,6 +914,7 @@ def main() -> int:
             "device_owned": bool(args.device_owned),
             "encode_batch": 0,
             "decode_batch": args.decode_batch,
+            "eos_conditional": bool(args.eos_conditional),
             "encoder_graph": bool(args.encoder_graph),
             "attention_route": args.attention_route,
             "lm_head_route": args.lm_head_route,
@@ -935,6 +961,7 @@ def main() -> int:
                 device_owned=args.device_owned,
                 encoder_graph=args.encoder_graph,
                 decode_batch=args.decode_batch,
+                eos_conditional=args.eos_conditional,
                 bucket_frames=args.bucket,
                 attention_route=args.attention_route,
                 lm_head_route=args.lm_head_route,

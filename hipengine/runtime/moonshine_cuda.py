@@ -120,6 +120,27 @@ class MoonshineCudaTokenGraph:
             del self.owner._token_graphs[self.bucket]
 
 
+@dataclass
+class MoonshineCudaEosDecodeGraph:
+    """One conditional graph that replays token DAGs until device EOS."""
+
+    owner: "MoonshineCudaResidentRuntime"
+    graph: int
+    graph_exec: int
+    creation_wall_ms: float
+    replay_count: int = 0
+    closed: bool = False
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        self.owner.runtime.graph_exec_destroy(self.graph_exec)
+        self.owner.runtime.graph_destroy(self.graph)
+        if self.owner._eos_decode_graph is self:
+            self.owner._eos_decode_graph = None
+
+
 @dataclass(frozen=True)
 class MoonshineCudaCacheView:
     key: Tensor
@@ -204,6 +225,7 @@ class MoonshineCudaResidentRuntime:
             )
         self.decoder_libraries: MoonshineCudaDecoderLibraries | None = None
         self._token_graphs: dict[str, MoonshineCudaTokenGraph] = {}
+        self._eos_decode_graph: MoonshineCudaEosDecodeGraph | None = None
         self.closed = False
         self.teardown_returned_to_baseline: bool | None = None
         self._allocation_baseline = memory_stats()["current_allocated_bytes"]
@@ -1137,6 +1159,103 @@ class MoonshineCudaResidentRuntime:
         for _ in range(count):
             self.graph_token_step()
 
+    def capture_eos_decode_graph(self) -> MoonshineCudaEosDecodeGraph:
+        """Create one conditional graph that replays token DAGs until EOS.
+
+        CUDA WHILE nodes select the t32 positions-0..6 child graph and then the
+        t256 positions-7+ graph.  Each body updates its condition from the
+        sticky device EOS flag and device position, removing all intermediate
+        host status reads and graph relaunches.
+        """
+
+        import time
+
+        if self.closed or self.spec is None:
+            raise RuntimeError("Moonshine runtime is closed")
+        if not self._device_owned_decode:
+            raise RuntimeError("conditional EOS graph requires device-owned decode")
+        if not self._token_graphs:
+            raise RuntimeError("capture token graphs before conditional EOS graph")
+        if self._eos_decode_graph is not None:
+            return self._eos_decode_graph
+        first = self._token_graphs.get("positions_0_6")
+        remaining = self._token_graphs.get(
+            f"positions_7_{self.spec.self_cache_capacity - 1}"
+        )
+        if first is None or remaining is None:
+            raise RuntimeError("conditional EOS graph requires both token buckets")
+        libraries = self.decoder_libraries
+        if libraries is None:
+            raise RuntimeError("Moonshine decoder kernels are not prepared")
+        from hipengine.kernels.cuda_sm120a.fused.moonshine_glue import (
+            moonshine_create_eos_decode_graph,
+        )
+
+        self.runtime.stream_synchronize(self.stream)
+        started = time.perf_counter_ns()
+        graph, graph_exec = moonshine_create_eos_decode_graph(
+            first.graph,
+            remaining.graph,
+            self.tensor("result_eos").ptr,
+            self.tensor("position").ptr,
+            self.spec.self_cache_capacity,
+            library=libraries.glue,
+            runtime=self.runtime,
+        )
+        created = MoonshineCudaEosDecodeGraph(
+            owner=self,
+            graph=graph,
+            graph_exec=graph_exec,
+            creation_wall_ms=(time.perf_counter_ns() - started) / 1.0e6,
+        )
+        self._eos_decode_graph = created
+        return created
+
+    def _read_device_position(self) -> int:
+        if self.closed or self.spec is None:
+            raise RuntimeError("Moonshine runtime is closed")
+        self.runtime.stream_synchronize(self.stream)
+        host = np.empty(1, dtype=np.int64)
+        copy_device_to_host(
+            host_array_ptr(host),
+            self.workspace.allocation("position").buffer,
+            runtime=self.runtime,
+        )
+        position = int(host[0])
+        if position < 0 or position > self.spec.self_cache_capacity:
+            raise RuntimeError(f"Moonshine decoder returned invalid position {position}")
+        return position
+
+    def graph_decode_to_eos(self) -> list[int]:
+        """Replay one conditional graph and return the exact EOS token stream."""
+
+        if not self._device_owned_decode:
+            raise RuntimeError("conditional EOS decode requires device-owned decode")
+        conditional = self._eos_decode_graph
+        if conditional is None or conditional.closed:
+            raise RuntimeError("conditional EOS graph is not captured")
+        if self.self_cache_length != 0 or self.decode_position is not None:
+            raise RuntimeError("conditional EOS decode requires a fresh seeded generation")
+        self.runtime.graph_launch(conditional.graph_exec, self.stream)
+        conditional.replay_count += 1
+        generated = self._read_device_position()
+        if generated <= 0:
+            raise RuntimeError("conditional EOS graph produced no tokens")
+        self.self_cache_length = generated
+        first_count = min(generated, 7)
+        remaining_count = max(0, generated - first_count)
+        self._token_graphs["positions_0_6"].replay_count += first_count
+        self._token_graphs[
+            f"positions_7_{self.spec.self_cache_capacity - 1}"
+        ].replay_count += remaining_count
+        tokens = self.read_result_tokens()
+        eos = self.spec.eos_token_ids[0]
+        if generated < self.spec.self_cache_capacity and (
+            not tokens or tokens[-1] != eos
+        ):
+            raise RuntimeError("conditional EOS graph stopped before EOS")
+        return tokens
+
     def read_eos_flag(self) -> bool:
         """Synchronize once and read the sticky device EOS flag (RR-8).
 
@@ -1287,6 +1406,7 @@ class MoonshineCudaResidentRuntime:
 
     def token_graph_contract(self) -> dict[str, object]:
         captures = tuple(self._token_graphs.values())
+        conditional = self._eos_decode_graph
         return {
             "captured": bool(captures),
             "graph_count": len(captures),
@@ -1297,6 +1417,15 @@ class MoonshineCudaResidentRuntime:
                 capture.instantiate_wall_ms for capture in captures
             ),
             "replay_count": sum(capture.replay_count for capture in captures),
+            "eos_conditional_captured": bool(
+                conditional is not None and not conditional.closed
+            ),
+            "eos_conditional_creation_wall_ms": (
+                conditional.creation_wall_ms if conditional is not None else None
+            ),
+            "eos_conditional_replay_count": (
+                conditional.replay_count if conditional is not None else 0
+            ),
         }
 
     def _close_token_graphs(self) -> None:
@@ -1326,6 +1455,8 @@ class MoonshineCudaResidentRuntime:
             return
         self.closed = True
         try:
+            if self._eos_decode_graph is not None:
+                self._eos_decode_graph.close()
             if self._token_graphs:
                 self._close_token_graphs()
             if self.workspace is not None:

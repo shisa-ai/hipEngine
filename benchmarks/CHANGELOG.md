@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [candidate/default-off CUDA Moonshine conditional EOS] `shisa-realtime-asr-0.92b` / FP16 / RTX PRO 6000 Blackwell: one conditional-WHILE graph removes all intermediate host EOS reads/relaunches and is exact on model fixtures; the six very-short-file diagnostic regresses **4.668 -> 4.745 ms (+1.66%)**, while a downstream 20-fixture/100-observation screen improves **40.059/47.325 -> 39.299/46.588 ms P50/P95 (-1.90%/-1.56%)**. Keep opt-in pending the downstream seven-pair/full-FLEURS gate; `benchmarks/results/2026-08-27-cuda-sm120a-moonshine-conditional-eos-candidate.json`.
+
 - [Qwen3.8-27B DFlash2 diagnostic — attribution correction] The DFlash2 rows'
   recorded loss reason was wrong: MTP B3's comparator acceptance was read from
   `target_forward_rows / cycles` (**3.85 verify rows/cycle**) as if it were

@@ -244,6 +244,7 @@ def fake_decoder_libraries(
             trace,
             "hipengine_cuda_sm120a_moonshine_embedding_lookup_fp16",
             "hipengine_cuda_sm120a_moonshine_partial_rope_cache_append_fp16",
+            "hipengine_cuda_sm120a_moonshine_publish_result_fp16",
         ),
         layernorm=FakeLibrary(
             trace,
@@ -991,6 +992,85 @@ def test_cuda_resident_runtime_graph_token_step_dispatches_bucket_and_advances()
 
         with pytest.raises(ValueError, match="sequential"):
             resident.set_decode_state(token_id=1, position=0)
+    finally:
+        resident.close()
+
+
+def test_cuda_resident_runtime_conditional_eos_graph_contract_and_close(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = FakeCudaRuntime()
+    resident, _ = _graph_ready_resident(runtime)
+    resident.set_device_owned_decode(True)
+    resident.capture_token_graphs()
+    calls = []
+
+    def fake_create(first, rest, eos, position, capacity, **kwargs):
+        calls.append((first, rest, eos, position, capacity, kwargs["library"]))
+        return (0x8000, 0x9000)
+
+    monkeypatch.setattr(
+        "hipengine.kernels.cuda_sm120a.fused.moonshine_glue.moonshine_create_eos_decode_graph",
+        fake_create,
+    )
+    graph = resident.capture_eos_decode_graph()
+    assert graph.graph == 0x8000
+    assert graph.graph_exec == 0x9000
+    assert graph.replay_count == 0
+    assert calls[0][:5] == (
+        0x6000,
+        0x6001,
+        resident.tensor("result_eos").ptr,
+        resident.tensor("position").ptr,
+        194,
+    )
+    assert calls[0][5] is resident.decoder_libraries.glue
+    assert resident.capture_eos_decode_graph() is graph
+    contract = resident.token_graph_contract()
+    assert contract["eos_conditional_captured"] is True
+    assert contract["eos_conditional_replay_count"] == 0
+
+    resident.close()
+    assert runtime.graph_exec_destroyed[0] == 0x9000
+    assert runtime.graph_destroyed[0] == 0x8000
+    assert sorted(runtime.graph_exec_destroyed[1:]) == [0x7000, 0x7001]
+    assert sorted(runtime.graph_destroyed[1:]) == [0x6000, 0x6001]
+
+
+def test_cuda_resident_runtime_conditional_eos_decode_updates_exact_host_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = FakeCudaRuntime()
+    resident, _ = _graph_ready_resident(runtime)
+    resident.set_device_owned_decode(True)
+    resident.capture_token_graphs()
+    monkeypatch.setattr(
+        "hipengine.kernels.cuda_sm120a.fused.moonshine_glue.moonshine_create_eos_decode_graph",
+        lambda *_args, **_kwargs: (0x8000, 0x9000),
+    )
+    resident.capture_eos_decode_graph()
+    resident.set_decode_seed(token_id=1)
+    monkeypatch.setattr(resident, "_read_device_position", lambda: 23)
+    monkeypatch.setattr(resident, "read_result_tokens", lambda: [7] * 22 + [2])
+
+    tokens = resident.graph_decode_to_eos()
+
+    assert tokens == [7] * 22 + [2]
+    assert resident.self_cache_length == 23
+    assert runtime.graph_launches[-1] == (0x9000, resident.stream)
+    contract = resident.token_graph_contract()
+    assert contract["eos_conditional_replay_count"] == 1
+    assert contract["replay_count"] == 23
+    resident.close()
+
+
+def test_cuda_resident_runtime_conditional_eos_graph_requires_device_owned() -> None:
+    runtime = FakeCudaRuntime()
+    resident, _ = _graph_ready_resident(runtime)
+    resident.capture_token_graphs()
+    try:
+        with pytest.raises(RuntimeError, match="device-owned"):
+            resident.capture_eos_decode_graph()
     finally:
         resident.close()
 
@@ -2196,6 +2276,49 @@ def test_cuda_resident_runtime_device_owned_batched_decode_exact_stream_on_fixtu
             )
             contract = resident.token_graph_contract()
             assert contract["replay_count"] == steps
+        finally:
+            resident.close()
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _fixtures_available(),
+    reason="CUDA sm_120a gate or model-derived fixtures are not available",
+)
+def test_cuda_resident_runtime_conditional_eos_decode_exact_stream_on_fixtures() -> None:
+    """RT-2: one conditional graph replay stops on device at exact EOS."""
+
+    from hipengine.core.cuda import get_cuda_runtime
+
+    cuda_runtime = get_cuda_runtime()
+    cuda_runtime.set_device(0)
+    for fixture_name in _FIXTURES:
+        with open(os.path.join(_FIXTURE_DIR, f"{fixture_name}.json")) as handle:
+            manifest = json.load(handle)
+        frames = int(manifest["input"]["encoder_frames"])
+        reference = [int(token) for token in manifest["decoder"]["token_ids"]]
+        with np.load(os.path.join(_FIXTURE_DIR, f"{fixture_name}.npz")) as fixture:
+            keys = [fixture[f"cross.layer_{layer}.key"] for layer in range(8)]
+            values = [fixture[f"cross.layer_{layer}.value"] for layer in range(8)]
+            mask = fixture["encoder.attention_mask"]
+
+        resident = MoonshineCudaResidentRuntime(
+            model_path=_SNAPSHOT,
+            encoder_frames=frames,
+        )
+        resident.prepare_decoder_kernels()
+        resident.load_cross_cache(keys, values, mask=mask)
+        resident.set_device_owned_decode(True)
+        resident.capture_token_graphs()
+        resident.capture_eos_decode_graph()
+        try:
+            resident.set_decode_seed(token_id=reference[0])
+            result = resident.graph_decode_to_eos()
+            expected_steps = reference.index(resident.spec.eos_token_ids[0], 1)
+            assert result == reference[1 : expected_steps + 1]
+            assert resident.self_cache_length == expected_steps
+            contract = resident.token_graph_contract()
+            assert contract["eos_conditional_replay_count"] == 1
+            assert contract["replay_count"] == expected_steps
         finally:
             resident.close()
 
