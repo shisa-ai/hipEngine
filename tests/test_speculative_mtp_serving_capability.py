@@ -160,7 +160,12 @@ def test_qwen38_candidate_plan_fails_closed_on_every_unqualified_axis(
 
 
 def test_qwen36_dense_production_row_resolves_after_qwen38_evidence() -> None:
-    evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence[1]
+    evidence = next(
+        row
+        for row in Qwen35GGUFModel().speculative_mtp_serving_evidence
+        if row.evidence_key
+        == "qwen36-dense-q4km-gfx1100-production-bf16-c1-k3-d24"
+    )
     key = SpeculativeMTPServingKey(
         artifact_sha256=evidence.artifact_sha256,
         artifact_size_bytes=evidence.artifact_size_bytes,

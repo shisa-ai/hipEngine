@@ -110,6 +110,18 @@ def test_moe_adapter_capability_is_c1_k2_and_short_context_only() -> None:
     ) is not None
 
 
+def test_moe_adapter_accepts_generic_static_eligibility_registration() -> None:
+    adapter = object.__new__(Qwen35GGUFMoEMTP2Adapter)
+    adapter.candidate_budget = 2
+    adapter._intents = {}
+    adapter._disabled_requests = {7}
+
+    adapter.register_request(7, 3, static_eligibility=object())
+
+    assert adapter._intents == {7: 2}
+    assert adapter._disabled_requests == set()
+
+
 def test_moe_prefill_missing_sink_fails_closed_only_beyond_context_limit() -> None:
     adapter = object.__new__(Qwen35GGUFMoEMTP2Adapter)
     adapter._intents = {7: 2}
