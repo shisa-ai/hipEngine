@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_dynamic_admission_d6_economics",
+  "created_at": "2026-08-27T18:05:00Z",
+  "status": "economics_complete_no_optimization_candidate",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "Complete the three-arm economics matrix and admit no optimization candidate. Intent K0 is exact but costs 12.2%-50.3% versus true AR. Engaged K1 C2-C8 is only 0.3346x-0.6613x AR; C2 K2/K3 improve to 0.7617x/0.8170x but still fail the 1.10x gate. The best K3 profile is 90.0% GPU-kernel wall and dominated by mandatory Q4/Q6 model work; accept memory copies are about 1 ms. Automatic C>1 remains pure K0.",
+  "source": {
+    "intent_k0_commit": "14d6a4e14d8f23f5a3d49b7360c5d0f37f94f95f",
+    "engaged_d2_artifact": "benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d2-c2-k1-functional.json",
+    "engaged_d4_artifact": "benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d4-widths.json",
+    "correctness_d5_artifact": "benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d5-production-correctness.json"
+  },
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "hip_visible_devices": "0",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "execution_profile": "production",
+    "manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51"
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_cells_per_width": 10,
+    "max_tokens": 24,
+    "surface": "blocking OpenAI complete wall",
+    "sampling": "raw greedy",
+    "arms": ["true_ar", "intent_k0", "engaged_mtp"],
+    "intent_k0": "typed provider intent is present and provider catch-up executes, but resident capability is forced K0 before proposal/target",
+    "promotion_threshold": 1.1,
+    "no_content_conditioning": true
+  },
+  "intent_k0": {
+    "all_cells_exact": true,
+    "all_cells_zero_mtp_cycles": true,
+    "provider_catchups_by_width": {"1": 230, "2": 460, "3": 690, "4": 920, "5": 1150, "6": 1380, "7": 1610, "8": 1840},
+    "ratio_vs_paired_true_ar": {"1": 0.8782407171806792, "2": 0.8511410399526824, "3": 0.8283242492911853, "4": 0.7751940968274349, "5": 0.5295018638460144, "6": 0.49694763701727446, "7": 0.6636817869087926, "8": 0.6354216042954721},
+    "normal_owner_c2_cap4": {"ar_tok_s": 15.691630824554988, "intent_k0_tok_s": 12.828705774666377, "ratio": 0.8175508280880166, "exact_cells": 10, "mtp_cycles": 0},
+    "final_current_allocated_bytes": 0,
+    "final_active_allocations": 0
+  },
+  "engaged_k1_ratio_vs_paired_true_ar": {"2": 0.5277422449346383, "3": 0.6612536268784381, "4": 0.5876715093292267, "5": 0.34861055476715475, "6": 0.33460414356488105, "7": 0.5063695886988954, "8": 0.4888818963836858},
+  "c2_budget_sweep": {
+    "k1": {"ar_tok_s": 14.698768436098016, "mtp_tok_s": 7.757161052240769, "ratio": 0.5277422449346383, "acceptance": 0.9565217391304348, "cells": 10},
+    "k2": {"ar_tok_s": 15.339788235636933, "mtp_tok_s": 11.684767172297203, "ratio": 0.7617293663253776, "acceptance": 0.906832298136646, "cells": 10},
+    "k3": {"ar_tok_s": 14.349970836649819, "mtp_tok_s": 11.7239113252131, "ratio": 0.8169989652710817, "acceptance": 0.7889447236180904, "cells": 10},
+    "best": "k3",
+    "best_ratio": 0.8169989652710817,
+    "throughput_gain_needed_for_1_10": 0.3463909346192509,
+    "all_cells_deterministic_and_diagnostic_ar_equal": true,
+    "all_final_allocations_zero": true
+  },
+  "profile": {
+    "cell": "normal-owner C2/K3, production, two independent requests, max_tokens=9, marker-scoped measured pair after warmup",
+    "host_window_ms": 2049.624551,
+    "kernel_count": 5941,
+    "kernel_sum_ms": 1843.740882,
+    "kernel_fraction_of_host_window": 0.8995579330538738,
+    "memory_copy_calls": 73,
+    "memory_copy_ms": 1.015501,
+    "hip_device_synchronize_ms": 1153.781014,
+    "hip_memcpy_api_ms": 550.762827,
+    "top_kernel_families": [
+      {"name": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16", "calls": 556, "ms": 575.887045, "kernel_pct": 31.23},
+      {"name": "q6_k_t16_qmicro_planar_gemv_bf16_f32", "calls": 42, "ms": 390.389633, "kernel_pct": 21.17},
+      {"name": "gguf_q4_t16_dense_wmma_prefill_bf16", "calls": 528, "ms": 257.898161, "kernel_pct": 13.99},
+      {"name": "q6_k_t16_qmicro_planar_gemv_bf16", "calls": 80, "ms": 171.610583, "kernel_pct": 9.31},
+      {"name": "q6_k_t16_qmicro_planar_wmma_prefill_bf16", "calls": 40, "ms": 98.980685, "kernel_pct": 5.37}
+    ],
+    "interpretation": "The deficit is mandatory proposal/target/LM-head model work. HIP synchronize/memcpy API wall waits on that work and is not additive removable overhead; physical copy events are about 1 ms. No accept/readback micro-optimization can plausibly recover the required 34.6%."
+  },
+  "optimization_admission": {
+    "admitted_candidates": [],
+    "rejected": [
+      "accept/readback micro-optimization: physical copies are ~1 ms",
+      "acceptance tuning: prohibited without a fixed-cell economic premise and cannot remove mandatory target work",
+      "kernel micro-tuning: Q4/Q6 work is distributed mandatory model execution and projected savings do not bridge 34.6%",
+      "C5-C8 optimization: decomposed routes are 0.3346x-0.5064x and fail the D6 prerequisite"
+    ],
+    "reopen_trigger": "A materially different fused/shared-weight target dataflow with an operation-complete profile projecting >=1.10x true AR, followed by D5 requalification",
+    "automatic_c_gt_1": "pure_k0"
+  },
+  "raw_sources": [
+    {"path": "/tmp/qwen38-dynamic-admission-d6-intent-k0-c1-c8.json", "sha256": "61e01ba6de850bff40b62455ed2a9b0551f7c135c75d3da756167d5cdcc6553e", "size_bytes": 13882138, "retained_in_git": false},
+    {"path": "/tmp/qwen38-dynamic-admission-d6-intent-k0-c2-cap4.json", "sha256": "1888287b5ff91fbee0208745371a5688a05df5e7f99323d2a64b7864ae6503f9", "size_bytes": 902108, "retained_in_git": false},
+    {"path": "/tmp/qwen38-dynamic-admission-d6-c2-k2.json", "sha256": "ed8635f2cc0cd26117765540c2f6e5a7cb0b84a3097562be476d2b5a48b51ec9", "size_bytes": 931899, "retained_in_git": false},
+    {"path": "/tmp/qwen38-dynamic-admission-d6-c2-k3.json", "sha256": "1594bcfe844a7a5629546325fc63b27d200ee81f844700e37ab6a93d8be25743", "size_bytes": 931607, "retained_in_git": false},
+    {"path": "/tmp/qwen38-d6-k3-rocprof/c2k3_results.db", "sha256": "4a72d2f1ad34d0715ca65c5e73e0c2629f7f32cbeb6f5194ec2e610cd0541d39", "size_bytes": 15683584, "retained_in_git": false},
+    {"path": "/tmp/qwen38-d6-k3-profile-child.json", "sha256": "aaebd2ff7b9e676c03df1fbeaa059f45c7fb40efba9430915c01483af24c0b36", "size_bytes": 30092, "retained_in_git": false},
+    {"path": "/tmp/qwen38_d6_profile.py", "sha256": "0d7a75527c95126c975ff6be4eb346d4cd3a8b900b99ca5199e9cd165aeeda97", "size_bytes": 2440, "retained_in_git": false}
+  ],
+  "next": "D7 policy closure: publish no automatic C>1 cells, prove current public auto remains exact C1-only with C2-C8 pure K0, validate overload/restart/soak/drain, and remove diagnostic seams where appropriate."
+}

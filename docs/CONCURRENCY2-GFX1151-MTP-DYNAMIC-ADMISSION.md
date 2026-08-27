@@ -1,7 +1,7 @@
 # CONCURRENCY2 gfx1151 MTP Dynamic Admission Campaign
 
-- Status: **D5 production correctness qualified; D6 economics/optimization decision is next**
-- Scope: **1,170-row strict-teacher, repeat/isolation/transition/manifest, full D4 category+heldout, and D2-D4 serving/lifecycle/failure gates pass; every C>1 width still loses AR**
+- Status: **D6 economics complete with no optimization candidate; D7 policy closure is next**
+- Scope: **true AR / intent K0 / engaged MTP are separated; best C>1 is C2/K3 at 0.8170x AR, the profile is mandatory model-work bound, and automatic C>1 remains pure K0**
 - Hardware lane when execution is approved: **Radeon 8060S / `hip_gfx1151`**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile**
 - First functional width: **two independent resident requests (`C_due=2`)**
@@ -37,6 +37,9 @@ D5 now binds the complete explicit capability packet to current-source
 production numerical, repeat, isolation, transition, and manifest evidence.
 Evidence:
 [`D5 correctness`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d5-production-correctness.json).
+D6 now closes the three-arm economics matrix and profiles the only plausible
+cell, rejecting blind optimization and every automatic C>1 cell. Evidence:
+[`D6 economics`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d6-economics.json).
 
 ## 1. Executive decision
 
@@ -370,18 +373,18 @@ For each eligible width and K, measure three distinct arms:
 2. **intent K0:** provider activation/catch-up ownership present but cycle K=0;
 3. **engaged MTP:** nonzero proposal/target/accept/commit cycles.
 
-- [ ] Use same-host, same-process where ownership permits, counterbalanced true
+- [x] Use same-host, same-process where ownership permits, counterbalanced true
   AR and MTP with exact authoritative token counts and complete wall.
-- [ ] Report activation, provider priming/open, K0 catch-up, proposal, target,
+- [x] Report activation, provider priming/open, K0 catch-up, proposal, target,
   accept/commit, provider repair, scheduler, readback, reclaim, TTFT, ITL, E2E,
   goodput, memory, and occupancy separately.
-- [ ] Start with C2 K1/K2/K3, then C4 and other functional widths. Do not tune
+- [x] Start with C2 K1/K2/K3, then C4 and other functional widths. Do not tune
   C5-C8 before their physical decomposition and lifecycle are qualified.
-- [ ] Profile final cached target R4/R6/R8/R12/R16 families and only implement
+- [x] Profile final cached target R4/R6/R8/R12/R16 families and only implement
   kernel/dataflow work with a measured operation-complete premise.
-- [ ] Keep every exact non-regressive owner win. Do not use prompt/token/category
+- [x] Keep every exact non-regressive owner win. Do not use prompt/token/category
   features, fixed-suite reranking, or verifier-derived K0 as the AR baseline.
-- [ ] Rebuild the offline C/K/load LUT from retained evidence. Online adaptation
+- [x] Rebuild the offline C/K/load LUT from retained evidence. Online adaptation
   is out of scope until a fixed cell wins and passes the complete gate.
 
 Promotion requires `>=1.10x` true AR overall, no category/heldout/task/SLO
@@ -390,6 +393,17 @@ The project target remains `>1.30x`. A losing but correct explicit route may
 remain default-off; a losing automatic cell selects pure K0 before provider
 mutation unless a separately qualified transitional policy proves its shadow
 cost acceptable.
+
+Exit passed with no candidate. Full intent-K0 C1-C8 is exact/zero-cycle but
+costs **0.4969x-0.8782x AR**. C2 K1/K2/K3 is
+**0.5277x/0.7617x/0.8170x AR**; K3 still needs **34.6%** throughput to reach
+1.10x. Cached K3 profiling records a **2.050-s** marked window, **1.844 s
+(90.0%)** of GPU kernels, mandatory Q4/Q6 model-work dominance, and only
+**1.016 ms** of physical copy events. No accept/readback micro-optimization or
+kernel micro-tune can bridge the gap; no candidate is admitted. Reopen only for
+a materially different fused/shared-weight target dataflow with an
+operation-complete >=1.10x projection, followed by D5 requalification. Evidence:
+[`D6`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d6-economics.json).
 
 ### D7 — automatic policy and closure
 
