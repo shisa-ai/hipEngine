@@ -1,0 +1,199 @@
+{
+ "schema": 1,
+ "kind": "concurrency2_gfx1151_mtp_t14_budget_sweep",
+ "created_at": "2026-08-27T08:00:00Z",
+ "status": "retained_existing_b3_default",
+ "passed": true,
+ "performance_claim": false,
+ "speed_claim_eligible": false,
+ "decision": "B3 remains the measured production c1 default: 14.287 tok/s (+46.84% AR), 1.65% over B2; every category positive. B4 clamps to B3 and is not a candidate. No product promotion until T0.2/T1.1-T1.3/lifecycle/SLO close.",
+ "physical_host": "gfx1151 / Radeon 8060S / HIP 7.15.0",
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "quant": "Q4_K_M",
+  "kv": "BF16"
+ },
+ "runtime_profile": {
+  "profile": "production",
+  "manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+  "strict_fallback_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+ },
+ "protocol": {
+  "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "prompt_count": 10,
+  "width": 1,
+  "max_tokens": 24,
+  "budgets": [
+   1,
+   2,
+   3
+  ],
+  "fresh_process_per_budget": true,
+  "one_warmup_pair_per_budget": true,
+  "runs": 1,
+  "surface": "blocking OpenAI complete wall",
+  "physical_budget_assertion": "draft_tokens <= budget * cycles in every row",
+  "generated_id_equality": "diagnostic only; production correctness artifact binds promotion"
+ },
+ "results": {
+  "1": {
+   "ar_tok_s": 9.742502035246359,
+   "mtp_tok_s": 12.235541766965163,
+   "mtp_vs_ar_pct": 25.589317022459966,
+   "accept_per_draft": 0.9565217391304348,
+   "drafts_per_cycle": 1.0,
+   "draft_tokens": 115,
+   "accepted_draft_tokens": 110,
+   "cycles": 115,
+   "exact_diagnostic_cells": 10,
+   "engaged_cells": 10,
+   "budget_conformed_cells": 10,
+   "cells": 10,
+   "categories": {
+    "code": {
+     "ar_tok_s": 9.795307006190265,
+     "mtp_tok_s": 12.360156007447408,
+     "mtp_vs_ar_pct": 26.18446772149412
+    },
+    "general_en": {
+     "ar_tok_s": 9.812316197122168,
+     "mtp_tok_s": 12.424095123417334,
+     "mtp_vs_ar_pct": 26.617353882880046
+    },
+    "general_ja": {
+     "ar_tok_s": 9.783668041480547,
+     "mtp_tok_s": 12.29070243770864,
+     "mtp_vs_ar_pct": 25.624687853255356
+    },
+    "mixed_ja_en": {
+     "ar_tok_s": 9.53180841514249,
+     "mtp_tok_s": 11.766886814491482,
+     "mtp_vs_ar_pct": 23.44862907439773
+    }
+   }
+  },
+  "2": {
+   "ar_tok_s": 9.72434479952058,
+   "mtp_tok_s": 14.055330939522714,
+   "mtp_vs_ar_pct": 44.53756247120788,
+   "accept_per_draft": 0.91875,
+   "drafts_per_cycle": 1.927710843373494,
+   "draft_tokens": 160,
+   "accepted_draft_tokens": 147,
+   "cycles": 83,
+   "exact_diagnostic_cells": 10,
+   "engaged_cells": 10,
+   "budget_conformed_cells": 10,
+   "cells": 10,
+   "categories": {
+    "code": {
+     "ar_tok_s": 9.782192617582274,
+     "mtp_tok_s": 14.23679494387797,
+     "mtp_vs_ar_pct": 45.53787172713306
+    },
+    "general_en": {
+     "ar_tok_s": 9.785518787363992,
+     "mtp_tok_s": 14.147204049625339,
+     "mtp_vs_ar_pct": 44.572856657263536
+    },
+    "general_ja": {
+     "ar_tok_s": 9.775679982523137,
+     "mtp_tok_s": 14.037471092757002,
+     "mtp_vs_ar_pct": 43.59585336112735
+    },
+    "mixed_ja_en": {
+     "ar_tok_s": 9.50264834430439,
+     "mtp_tok_s": 13.636498970446212,
+     "mtp_vs_ar_pct": 43.50208990548967
+    }
+   }
+  },
+  "3": {
+   "ar_tok_s": 9.729754089597318,
+   "mtp_tok_s": 14.286893899745897,
+   "mtp_vs_ar_pct": 46.837153006990164,
+   "accept_per_draft": 0.7929292929292929,
+   "drafts_per_cycle": 2.8285714285714287,
+   "draft_tokens": 198,
+   "accepted_draft_tokens": 157,
+   "cycles": 70,
+   "exact_diagnostic_cells": 10,
+   "engaged_cells": 10,
+   "budget_conformed_cells": 10,
+   "cells": 10,
+   "categories": {
+    "code": {
+     "ar_tok_s": 9.768108956678237,
+     "mtp_tok_s": 14.488776068738307,
+     "mtp_vs_ar_pct": 48.3273388226557
+    },
+    "general_en": {
+     "ar_tok_s": 9.80105768816723,
+     "mtp_tok_s": 14.911946427830257,
+     "mtp_vs_ar_pct": 52.14629790245371
+    },
+    "general_ja": {
+     "ar_tok_s": 9.776447791841457,
+     "mtp_tok_s": 13.64396555000806,
+     "mtp_vs_ar_pct": 39.559539829937876
+    },
+    "mixed_ja_en": {
+     "ar_tok_s": 9.539869536109837,
+     "mtp_tok_s": 13.970301654563563,
+     "mtp_vs_ar_pct": 46.44122334885059
+    }
+   }
+  }
+ },
+ "comparisons": {
+  "b3_vs_b2_pct": 1.6475098396441235,
+  "b2_vs_b1_pct": 14.87297585359737
+ },
+ "correctness": {
+  "production_gate": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json",
+  "hard_gates_passed": true,
+  "teacher_forced_rows": 1170,
+  "kl_max": 0.04978771577044094,
+  "top1_agreement": 0.9974358974358974,
+  "repeat_deterministic": true,
+  "isolation_passed": true,
+  "budget_specific_arithmetic": "target profile/weights/state unchanged; candidate budget changes only number of exact target-verified draft rows; full category/task trajectories non-regressive"
+ },
+ "invalid_first_packet": {
+  "status": "rejected_diagnostic",
+  "reason": "labeled B1-B4 all executed physical B3 because the harness did not set HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET; 2.829 drafts/cycle and identical draft counts exposed it",
+  "repair_commit": "9166b2214",
+  "retained_as_claim": false
+ },
+ "b4": {
+  "status": "not_a_candidate",
+  "behavior": "staged adapter caps at 3; B4 request clamps to physical B3",
+  "promotion": false
+ },
+ "raw_sources": [
+  {
+   "path": "/tmp/gfx1151-t14-truthful-production-b1.json",
+   "sha256": "d456ca4360cb479a38e156d3b7525e84d21d588af023458dd0272b9124e66368",
+   "size_bytes": 528972,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t14-truthful-production-b2.json",
+   "sha256": "b21a8ce0e6191ac8aaff3b728c9af0c5bbec3ab21febf663ca307910546d85bd",
+   "size_bytes": 528932,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t14-truthful-production-b3.json",
+   "sha256": "9ac0e9e85c5bead7b0955b06d951e43afa4ad18cf4d9cb11ff527a970a759a83",
+   "size_bytes": 528991,
+   "retained_in_git": false
+  }
+ ],
+ "command_template": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --execution-profile production --widths 1 --expected-mtp-widths 1 --max-tokens 24 --candidate-budget B --max-sequence-length 1024 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/gfx1151-t14-truthful-production-bB.json",
+ "limitations": [
+  "One measured full-suite arm per budget after warmup; dynamic load/SLO pending.",
+  "Confirms existing B3 default; no runtime/policy change or retained product claim."
+ ]
+}

@@ -1,0 +1,45 @@
+{
+ "schema": 1,
+ "kind": "concurrency2_gfx1151_mtp_t21_acceptance_closeout",
+ "created_at": "2026-08-27T08:35:00Z",
+ "status": "closed_repair_retained_economics_k0",
+ "passed": true,
+ "performance_claim": false,
+ "decision": "The historical 18.43% C2/C4 acceptance collapse is repaired. Target cost, not provider acceptance, remains binding; production C2/C4 stay K0.",
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+  "quant": "Q4_K_S",
+  "kv": "BF16",
+  "execution_profile": "production",
+  "manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51"
+ },
+ "source": {
+  "artifact": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json",
+  "status": "fixed_grid_complete_product_rejected",
+  "cells": 540,
+  "all_exact_diagnostic": true,
+  "candidate_d2h_after_target": 0
+ },
+ "acceptance_by_budget": {
+  "K1": 0.95,
+  "K2": 0.8982035928143712,
+  "K3": 0.7772511848341233
+ },
+ "production_c2": {
+  "K1": {"true_ar_tok_s": 15.051673138370441, "specdec2_tok_s": 7.968058529379031, "ratio": 0.5293802526887511},
+  "K2": {"true_ar_tok_s": 15.04730319534519, "specdec2_tok_s": 9.880266026765472, "ratio": 0.6566137399173219},
+  "K3": {"true_ar_tok_s": 15.004551747493736, "specdec2_tok_s": 10.465786619521229, "ratio": 0.6975074494490892}
+ },
+ "production_c4": {
+  "K1": {"true_ar_tok_s": 27.312827412201685, "specdec2_tok_s": 13.291807122049123, "ratio": 0.4866507198779122},
+  "K2": {"true_ar_tok_s": 27.33300533208977, "specdec2_tok_s": 15.51308952477677, "ratio": 0.567558866516736},
+  "K3": {"true_ar_tok_s": 27.336810185357688, "specdec2_tok_s": 15.97242493466499, "ratio": 0.5842826879348285}
+ },
+ "interpretation": [
+  "Acceptance repair is retained and needs no reimplementation.",
+  "Even best K3 reaches only 0.6975x C2 and 0.5843x C4 true AR; provider repair cannot cross the product threshold.",
+  "Q4_K_M public c2-c8 remains typed physical_group_not_qualified/K0; Q4_K_S physical speed does not transfer as a claim."
+ ],
+ "next": "T2.2 admits target-owner work only with a new >=0.5 ms/token or >=1.15x operation-complete premise; otherwise K0.",
+ "correctness": "Production profile gates and full category grid passed in the source artifact. Generated-ID equality is diagnostic, not the binding production criterion."
+}

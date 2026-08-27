@@ -1,0 +1,69 @@
+{
+ "schema": 1,
+ "kind": "concurrency2_gfx1151_mtp_t23_t24_policy_scheduler",
+ "created_at": "2026-08-27T09:00:00Z",
+ "status": "closed_automatic_k0_default_chunk256",
+ "passed": true,
+ "performance_claim": false,
+ "decision": {
+  "t2_3": "Keep automatic K0. Capacity-matched c1/B3 is a positive explicit diagnostic, but current routing cannot safely select c1 MTP then K0 at c2+ on one concurrency-capable server.",
+  "t2_4": "Retain max_prefill_chunk_tokens=256. Smaller chunks regress complete-wall MTP and AR; generation batch-window overlap is inapplicable while only c1 MTP is admitted."
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "quant": "Q4_K_M",
+  "kv": "BF16"
+ },
+ "runtime_profile": {
+  "profile": "production",
+  "manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+  "strict_fallback_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+ },
+ "t2_3_policy": {
+  "measured_table": {
+   "capacity_matched_c1_b3": {"ar_tok_s": 9.729754089597318, "mtp_tok_s": 14.286893899745897, "mtp_vs_ar_pct": 46.837153006990164},
+   "public_c2_c8": "typed K0 in 70/70 canonical cells"
+  },
+  "automatic_policy": "K0",
+  "stable_reasons": [
+   "execution_profile_not_qualified for unqualified production evidence",
+   "physical_group_not_qualified for unsupported capacity/group keys",
+   "backend_k0_fallback when a forced diagnostic selection cannot form an admitted physical owner"
+  ],
+  "mechanical_blocker": {
+   "http_plan_input": "realized_group_rows is len(prompts) inside one HTTP request, not concurrent independent requests",
+   "resident_owner": "MTP2 rejects c1 when resident capacity/target scratch slot count exceeds one; physical streaming is unqualified",
+   "required_future_work": "defer c1-only route selection to the resident realized-group owner, qualify streaming/refill/survivor lifecycle at capacity>1, then re-run load/SLO; do not infer this from response labels"
+  },
+  "forced_diagnostic_warning": "At c5 one subset selected speculative then backend-K0 while neighbors pre-routed K0; aggregate requested-MTP control was -35.1% AR. Product policy must fail closed before mutation, not rely on backend fallback.",
+  "promoted_cells": [],
+  "public_policy_changed": false
+ },
+ "t2_4_scheduler": {
+  "protocol": "canonical ten prompts, c1, production, physical B3, max24, blocking complete wall, one warmup arm pair + one measured arm pair per chunk",
+  "results": {
+   "16": {"ar_tok_s": 8.1694, "mtp_tok_s": 11.1615, "mtp_vs_ar_pct": 36.626, "accept_per_draft": 0.7929},
+   "32": {"ar_tok_s": 8.3669, "mtp_tok_s": 11.5330, "mtp_vs_ar_pct": 37.841, "accept_per_draft": 0.7929},
+   "64": {"ar_tok_s": 9.5549, "mtp_tok_s": 13.9322, "mtp_vs_ar_pct": 45.812, "accept_per_draft": 0.7929},
+   "256": {"ar_tok_s": 9.7298, "mtp_tok_s": 14.2869, "mtp_vs_ar_pct": 46.837, "accept_per_draft": 0.7929}
+  },
+  "decision": "retain 256",
+  "chunk256_vs_64_mtp_pct": 2.545,
+  "chunk256_vs_32_mtp_pct": 23.879,
+  "chunk256_vs_16_mtp_pct": 28.001,
+  "batch_window_audit": "not applicable to the sole admitted c1 cell; c2+ is K0 and must use true-AR scheduler ownership",
+  "correctness": "10/10 engaged and budget-conformed at each chunk; exact IDs diagnostic; production numerical gate from T0.4 binds"
+ },
+ "raw_sources": [
+  {"path": "/tmp/gfx1151-t24-production-chunk16.json", "sha256": "e251dc6cc71b92dd2273769c83fc5f4a51e87660cd51f02da414464f8e808ef4", "size_bytes": 728706, "retained_in_git": false},
+  {"path": "/tmp/gfx1151-t24-production-chunk32.json", "sha256": "53a0721e75151f2e237e1067aca34246a0f4a35d9e215f25db7b4786d78a0963", "size_bytes": 728696, "retained_in_git": false},
+  {"path": "/tmp/gfx1151-t24-production-chunk64.json", "sha256": "8fdac720b8c024255228aa678864b007d38f7291a9bc37dff83fd0c648159946", "size_bytes": 728676, "retained_in_git": false},
+  {"path": "/tmp/gfx1151-t14-truthful-production-b3.json", "sha256": "9ac0e9e85c5bead7b0955b06d951e43afa4ad18cf4d9cb11ff527a970a759a83", "size_bytes": 528991, "retained_in_git": false}
+ ],
+ "correctness": "No arithmetic change. Production hard numerical/determinism/isolation gate remains passed from T0.4; generated-ID equality is diagnostic.",
+ "limitations": [
+  "No dynamic capacity>1 MTP cell is qualified, so batch-window interaction cannot be claimed.",
+  "Chunk sweep is one measured full-suite arm per setting after warmup; only the clearly non-regressive existing default is retained."
+ ]
+}

@@ -1,0 +1,44 @@
+{
+ "schema": 1,
+ "kind": "concurrency2_gfx1151_mtp_t4_research_closeout",
+ "created_at": "2026-08-27T09:20:00Z",
+ "status": "research_closed_no_provider_candidate_environment_clean",
+ "passed": true,
+ "performance_claim": false,
+ "decision": {
+  "T4.1": "Reject n-gram provider implementation: full-suite offline target-trajectory simulation has insufficient coverage/visible-token economics versus MTP B3.",
+  "T4.2": "KV quant remains parked; prior INT8 KV quality gates fail and external llama.cpp rows do not transfer.",
+  "T4.3": "DFlash2 remains parked at 0.66x true AR on this target.",
+  "T4.4": "Close environment check: initialized HIP runtime shows no idle ROCr CPU busy-spin."
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "target_source": "/tmp/gfx1151-t14-truthful-production-b3.json"
+ },
+ "ngram_spike": {
+  "algorithm": "content-agnostic longest suffix n-gram lookup, latest prior occurrence, speculative accepted-prefix + correction/bonus advance; no prompt/category/heldout identity input",
+  "suite": "canonical 10 prompts / four categories / heldouts, 24 exact target tokens each",
+  "configs": "min n 1/2/3/4, max n 12, draft length 3/6/12",
+  "best_short": {"config": "n1-12_d3", "coverage": 0.4685714285714286, "accept_per_draft": 0.2838983050847458, "visible_tokens_per_cycle": 1.3714285714285714, "generated_drafts": 236, "heldout_coverage": 0.3466666666666667},
+  "best_visible": {"config": "n1-12_d12", "coverage": 0.43636363636363634, "accept_per_draft": 0.12222222222222222, "visible_tokens_per_cycle": 1.4545454545454546, "generated_drafts": 630, "heldout_coverage": 0.3194444444444444},
+  "high_precision_low_coverage": {"config": "n2-12_d3", "coverage": 0.16042780748663102, "accept_per_draft": 0.6, "visible_tokens_per_cycle": 1.2834224598930482, "generated_drafts": 90, "heldout_coverage": 0.12658227848101267},
+  "mtp_b3_control": {"visible_tokens_per_cycle": 3.4285714285714284, "accept_per_draft": 0.7929292929292929, "cycles": 70, "generated_drafts": 198},
+  "interpretation": "Deep n-gram drafting increases verifier rows while acceptance collapses; precise n>=2 lookup covers too few cycles. Stacking has no measured cost/coverage premise and is not implemented.",
+  "raw_source": {"path": "/tmp/gfx1151-ngram-spike.json", "sha256": "fa16cf2f80493f16f9ad0ee9effa4521a10a2cecd61aa27202ee0e4f0360ab54", "size_bytes": 384893, "retained_in_git": false}
+ },
+ "rocr_idle_check": {
+  "protocol": "initialize hipengine get_hip_runtime(), device_synchronize(), sleep 15 seconds, compare /proc process CPU ticks",
+  "idle_wall_s": 15.000086497981101,
+  "process_cpu_s": 0.000035425999999998126,
+  "proc_ticks_cpu_s": 0.0,
+  "cpu_pct_one_core": 0.0,
+  "busy_spin_detected": false,
+  "environment": "HIP 7.15.0, gfx1151"
+ },
+ "correctness": "Research simulation consumes fixed target trajectories only; no runtime arithmetic/policy changes. No speed gain exists to promote or production-gate.",
+ "reopen_triggers": {
+  "ngram": "A materially different provider must demonstrate full-suite heldout coverage and operation-complete verifier economics competitive with B3, not external absolute rates.",
+  "rocr": "Reopen only if an actual idle server process consumes a sustained CPU core."
+ }
+}

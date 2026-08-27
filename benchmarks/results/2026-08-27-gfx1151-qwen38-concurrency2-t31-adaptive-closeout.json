@@ -1,0 +1,40 @@
+{
+ "schema": 1,
+ "kind": "concurrency2_gfx1151_mtp_t31_adaptive_closeout",
+ "created_at": "2026-08-27T09:10:00Z",
+ "status": "controller_rejected_transition_contract_retained",
+ "passed": true,
+ "performance_claim": false,
+ "decision": "Do not wire adaptive K into public generation. Retain request-owned variable-budget transition/diagnostic infrastructure; fixed B3 remains default.",
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "backend": "hip_gfx1151"
+ },
+ "existing_adaptive_evidence": {
+  "artifact": "benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi2-adaptive-rejected.json",
+  "status": "transition_contract_retained_controller_rejected",
+  "controller": "request-owned content-agnostic EMA of conditional acceptance and per-budget complete-cycle wall; expected-visible-tokens/wall score; 2% hysteresis; bounded B1/B2/B3 exploration",
+  "transition_gate": "all nine directed B1/B2/B3 edges, reject/every-partial/full, GPU/CPU accept, teardown and cancellation passed",
+  "deterministic": true,
+  "primary": {"adaptive_tok_s": 21.089, "fixed_b3_tok_s": 21.211, "adaptive_vs_b3_pct": -0.577},
+  "repeat": {"adaptive_tok_s": 20.832, "fixed_b3_tok_s": 21.197, "adaptive_vs_b3_pct": -1.724},
+  "scope_regressions_pct": {"train": -1.047, "code": -3.916, "general_en": -7.769}
+ },
+ "current_serving_fixed_table": {
+  "artifact": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t14-budget-sweep.json",
+  "B1_tok_s": 12.235541766965163,
+  "B2_tok_s": 14.055330939522714,
+  "B3_tok_s": 14.286893899745897,
+  "B3_vs_B2_pct": 1.647520489357324,
+  "B3_vs_B1_pct": 16.766296087903623,
+  "B3_every_category_positive": true,
+  "physical_budget_conformed_cells": 30
+ },
+ "t3_2": {
+  "status": "not_admitted",
+  "reason": "No adaptive controller promotes, and c2+ has no MTP product cell. A K(C) curve would be a hand-written policy without eligible cells; automatic remains K0."
+ },
+ "correctness": "Transition exactness is diagnostic; current fixed B3 is covered by T0.4 production KL/top-1/determinism/isolation. No adaptive speed gain exists to gate or promote.",
+ "reopen_trigger": "A materially new mechanism must beat fixed B3 aggregate and every category under the full production suite, or enable a newly qualified dynamic capacity>1 cell. Donor EMA constants alone are not a new premise."
+}
