@@ -68,6 +68,7 @@ from hipengine.speculative.provider import SpeculativeRequestSemantics
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.core.specdec2_scope import (
     q4_t16_physical_extra_rowtiles_session,
+    q5_t16_physical_rowtile_session,
     q6_t16_physical_rowtile_session,
 )
 from hipengine.speculative.transaction import (
@@ -200,6 +201,14 @@ class Qwen35GGUFMTP2Adapter:
             and backend_package_capability(
                 str(self.generator.backend),
                 "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES",
+                (),
+            )
+        )
+        self.production_physical_q5_rowtile = bool(
+            str(profile) == "production"
+            and backend_package_capability(
+                str(self.generator.backend),
+                "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS",
                 (),
             )
         )
@@ -760,6 +769,8 @@ class Qwen35GGUFMTP2Adapter:
                 f"dense-nextn:{realized_verify_mode}:b{self.candidate_budget}:"
                 "extra-rowtiles"
                 f"{int(getattr(self, 'production_physical_extra_rowtiles', False))}:"
+                "q5-rowtile"
+                f"{int(getattr(self, 'production_physical_q5_rowtile', False))}:"
                 "q6-rowtile"
                 f"{int(getattr(self, 'production_physical_q6_rowtile', False))}"
             ),
@@ -2110,6 +2121,9 @@ class Qwen35GGUFMTP2Adapter:
         with (
             q4_t16_physical_extra_rowtiles_session(
                 bool(getattr(self, "production_physical_extra_rowtiles", False))
+            ),
+            q5_t16_physical_rowtile_session(
+                bool(getattr(self, "production_physical_q5_rowtile", False))
             ),
             q6_t16_physical_rowtile_session(
                 bool(getattr(self, "production_physical_q6_rowtile", False))

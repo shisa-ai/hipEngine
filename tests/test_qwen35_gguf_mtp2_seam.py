@@ -236,8 +236,10 @@ def test_physical_extra_rowtiles_are_production_and_backend_capability_scoped() 
     )
 
     assert production.production_physical_extra_rowtiles is True
+    assert production.production_physical_q5_rowtile is True
     assert production.production_physical_q6_rowtile is True
     assert strict.production_physical_extra_rowtiles is False
+    assert strict.production_physical_q5_rowtile is False
     assert strict.production_physical_q6_rowtile is False
     production.close()
     strict.close()

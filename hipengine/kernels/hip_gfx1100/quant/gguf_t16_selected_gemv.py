@@ -15,6 +15,7 @@ from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.core.specdec2_scope import q5_t16_physical_rowtile_enabled
 from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gguf_t16_selected_gemv.hip")
@@ -1631,11 +1632,17 @@ def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch the one-expert dense Q5T16 direct producer."""
+    """Launch the one-expert dense Q5T16 producer."""
 
-    _check_dense_q5_t16_shape(rows, in_features, out_features, rowtile=False)
+    physical_rowtile = q5_t16_physical_rowtile_enabled() and int(rows) == 6
+    _check_dense_q5_t16_shape(
+        rows,
+        in_features,
+        out_features,
+        rowtile=physical_rowtile,
+    )
     _launch_dense_q5_t16(
-        _Q5_DENSE_DIRECT_BF16,
+        _Q5_DENSE_ROWTILE_BF16 if physical_rowtile else _Q5_DENSE_DIRECT_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
