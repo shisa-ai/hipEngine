@@ -492,8 +492,10 @@ The first real native sparse-QSA row is additionally qualified at token 2,052
 with a repeated-token structural prompt: frozen llama.cpp, strict serial, and
 size-2 chunked hipEngine all select token 264; teacher→serial, teacher→chunk,
 and serial→chunk KL are `7.65e-5`, `4.98e-5`, and `3.95e-5`, respectively,
-with zero tracked bytes after close. The measured 381.725→245.855 s prefill
-wall is diagnostic only. A repeated-token structural 4,096-token checkpoint
+with zero tracked bytes after close. On the promoted exact chunk64 route, the
+same first sparse row is bit-exact to serial (KL/max error 0) and improves
+strict→chunk wall `370.565→136.129 s` (2.722x); versus the historical size-2
+chunk wall, this is a 44.630% reduction. A repeated-token structural 4,096-token checkpoint
 also passes: teacher→serial/chunk KL `4.40e-5/4.78e-5`, serial→chunk KL
 `3.19e-5`, top-1 264 exact, and zero tracked bytes after close; diagnostic
 serial/chunk walls are `854.982/574.759` seconds. A practical chunk-only 16K
@@ -506,7 +508,8 @@ isolation gates. Separately, the real complete
 262,144-token owner allocates successfully at 91,126,119,496 tracked bytes,
 leaves 38,915,162,112 physical bytes free, and returns to zero tracked bytes on
 close; this is capacity/lifecycle evidence only. Exact evidence is in
-[`2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json)
+[`2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json),
+[`2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-exact-prefill.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-exact-prefill.json),
 and
 [`2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json), and
 [`2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json),
