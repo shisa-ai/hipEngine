@@ -147,8 +147,8 @@ class Qwen35GGUFNextNBatchDeviceProposal:
 
     def __post_init__(self) -> None:
         rows = len(self.request_ids)
-        if rows <= 1 or len(set(self.request_ids)) != rows:
-            raise ValueError("batch device proposal requires unique C>1 requests")
+        if rows < 1 or len(set(self.request_ids)) != rows:
+            raise ValueError("batch device proposal requires unique request rows")
         if any(
             len(values) != rows
             for values in (
