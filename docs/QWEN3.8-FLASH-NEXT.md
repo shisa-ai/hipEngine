@@ -567,6 +567,10 @@ A one-layout 45.587-GB Q4T16 replacement was also measured and removed:
 optimized p512 was neutral (`213.52` vs `211.76 tok/s`), paired decode regressed
 `5.925→3.615 tok/s`, and mean/p95 KL failed (`0.003010/0.008338`). See
 [`2026-08-27-gfx1151-qwen38-flash-next-t16-replacement-rejected.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-t16-replacement-rejected.json).
+A one-layout pack8 replacement was likewise removed: the sampled layer-0 kernel
+was bit-exact and 4.47x faster, but full load/repack took 979 seconds and paired
+whole-model mean/p95 KL failed at `0.002089/0.006529`. See
+[`2026-08-27-gfx1151-qwen38-flash-next-pack8-replacement-rejected.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-pack8-replacement-rejected.json).
 
 **Promotion:** keep every exact/non-regressive measured win in scope. Update
 benchmark rollups only for retained complete-model rows, never microbench-only
