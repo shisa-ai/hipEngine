@@ -14507,9 +14507,14 @@ def _mtp_response_summary(
     backend_k0_fallback = (
         selected_route == _SPECULATIVE_MTP_BATCH_ROUTE and not used
     )
+    resident_dynamic_mtp = bool(
+        used and selected_route != _SPECULATIVE_MTP_BATCH_ROUTE
+    )
     summary = {
         "effective_route": (
-            _SPECULATIVE_MTP_DEFAULT_ROUTE
+            _SPECULATIVE_MTP_BATCH_ROUTE
+            if used
+            else _SPECULATIVE_MTP_DEFAULT_ROUTE
             if backend_k0_fallback
             else selected_route
         ),
@@ -14523,6 +14528,9 @@ def _mtp_response_summary(
     if backend_k0_fallback:
         summary["selected_route"] = selected_route
         summary["decision_reason"] = "backend_k0_fallback"
+    elif resident_dynamic_mtp:
+        summary["selected_route"] = selected_route
+        summary["decision_reason"] = "resident_dynamic_mtp"
     if isinstance(route_decision, Mapping):
         requested_route = route_decision.get("requested_route")
         decision_reason = route_decision.get("reason")
@@ -14530,7 +14538,9 @@ def _mtp_response_summary(
             summary["requested_route"] = str(requested_route)
         if decision_reason is not None:
             summary[
-                "selection_reason" if backend_k0_fallback else "decision_reason"
+                "selection_reason"
+                if backend_k0_fallback or resident_dynamic_mtp
+                else "decision_reason"
             ] = str(decision_reason)
     if used and thinking_policy is not None:
         policy = str(thinking_policy)
