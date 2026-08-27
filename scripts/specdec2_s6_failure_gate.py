@@ -15,6 +15,13 @@ from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
 
+def _resident_capacity(concurrency: int, requested: int | None) -> int:
+    capacity = int(concurrency) if requested is None else int(requested)
+    if capacity < int(concurrency):
+        raise ValueError("resident capacity cannot be smaller than concurrency")
+    return capacity
+
+
 def _request(prompt: str, *, max_tokens: int) -> GenerationRequest:
     return GenerationRequest(
         prompts=(prompt,),
@@ -90,12 +97,19 @@ def _failure_phase_specs() -> tuple[
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    concurrency = int(args.concurrency)
+    resident_capacity = _resident_capacity(
+        concurrency,
+        getattr(args, "resident_capacity", None),
+    )
+    candidate_budget = int(getattr(args, "candidate_budget", 2))
     llm = LLM(
         str(args.model),
         backend="hip_gfx1151",
         execution_profile=str(args.execution_profile),
-        max_active_requests=int(args.concurrency),
+        max_active_requests=resident_capacity,
         max_sequence_length=int(args.max_sequence_length),
+        speculative_candidate_budget=candidate_budget,
     )
     service = llm._get_text_generator()
     greeting = _request(
@@ -106,7 +120,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "Write one short farewell.",
         max_tokens=int(args.max_tokens),
     )
-    concurrency = int(args.concurrency)
     phases = _failure_phase_specs()
     results: list[dict[str, Any]] = []
     try:
@@ -245,6 +258,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "execution_profile": str(args.execution_profile),
         "workload": {
             "concurrency": concurrency,
+            "resident_capacity": resident_capacity,
+            "candidate_budget": candidate_budget,
             "max_sequence_length": int(args.max_sequence_length),
             "max_tokens": int(args.max_tokens),
         },
@@ -267,6 +282,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="strict",
     )
     parser.add_argument("--concurrency", type=int, choices=(1, 2), default=2)
+    parser.add_argument("--resident-capacity", type=int, default=None)
+    parser.add_argument("--candidate-budget", type=int, choices=(1, 2, 3), default=2)
     parser.add_argument("--max-sequence-length", type=int, default=256)
     parser.add_argument("--max-tokens", type=int, default=5)
     parser.add_argument("--output", type=Path, required=True)
