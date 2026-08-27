@@ -32,6 +32,7 @@ def test_qwen4_exp_q5_1_selected_build_and_registry_contract() -> None:
     from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
         plan_qwen4_exp_q5_1_build,
         qwen4_exp_q5_1_selected_gemv_bf16_bf16_out,
+        qwen4_exp_q5_1_selected_gemv_wave64_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
         register_qwen4_exp_q5_1_kernels,
@@ -49,6 +50,15 @@ def test_qwen4_exp_q5_1_selected_build_and_registry_contract() -> None:
             variant="selected_gemv_bf16_bf16_out",
         )
         is qwen4_exp_q5_1_selected_gemv_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q5_1",
+            variant="selected_gemv_wave64_bf16_bf16_out",
+        )
+        is qwen4_exp_q5_1_selected_gemv_wave64_bf16_bf16_out
     )
     assert (
         resolve(
@@ -76,6 +86,7 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
     from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
         build_qwen4_exp_q5_1,
         qwen4_exp_q5_1_selected_gemv_bf16_bf16_out,
+        qwen4_exp_q5_1_selected_gemv_wave64_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
     )
@@ -134,6 +145,7 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
         d_selected = _upload(selected, runtime, allocations)
         d_weight = _upload(raw, runtime, allocations)
         d_output = _alloc(expected_bits.shape, np.uint16, runtime, allocations)
+        d_wave64_output = _alloc(expected_bits.shape, np.uint16, runtime, allocations)
         d_grouped_x = _upload(grouped_x_bits, runtime, allocations)
         d_expert_start = _upload(expert_start, runtime, allocations)
         d_grouped_output = _alloc(
@@ -149,6 +161,19 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
             d_selected.ptr,
             d_weight.ptr,
             d_output.ptr,
+            rows,
+            rows,
+            experts,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        qwen4_exp_q5_1_selected_gemv_wave64_bf16_bf16_out(
+            d_x.ptr,
+            d_selected.ptr,
+            d_weight.ptr,
+            d_wave64_output.ptr,
             rows,
             rows,
             experts,
@@ -186,6 +211,9 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
         )
         runtime.device_synchronize()
         actual = _download(d_output, expected_bits.shape, np.uint16, runtime)
+        wave64_actual = _download(
+            d_wave64_output, expected_bits.shape, np.uint16, runtime
+        )
         grouped_actual = _download(
             d_grouped_output, grouped_expected_bits.shape, np.uint16, runtime
         )
@@ -197,6 +225,9 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
             free(allocation, runtime=runtime)
 
     np.testing.assert_array_equal(actual, expected_bits)
+    np.testing.assert_allclose(
+        bf16_to_float32(wave64_actual), expected, rtol=2e-2, atol=2e-2
+    )
     np.testing.assert_array_equal(grouped_actual, grouped_expected_bits)
     np.testing.assert_allclose(
         bf16_to_float32(wmma_actual),

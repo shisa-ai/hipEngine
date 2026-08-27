@@ -556,9 +556,12 @@ Q5_1 WMMA down, peer-GDN, and tuned Q4/Q8 tiles raise warm repeated-token 512
 prefill from `8.67` to `211.76 tok/s` and the 18-prompt natural suite from
 `5.36` to `35.75 tok/s`. It is not promoted: strict→candidate mean/p95/p99/max
 KL are `0.17169/0.56894/1.18881/1.34378` and top-1 is `94.44%`. Warm eager
-decode remains only `5.74 tok/s`. Exact evidence and rejected sub-experiments
-are in
-[`2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json).
+decode remains only `5.74 tok/s`. A Q5_1 wave64 decode candidate reaches
+`6.10-6.22 tok/s` but is rejected at production mean/p95 KL
+`0.002565/0.007202`. Exact evidence and rejected sub-experiments are in
+[`2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json)
+and
+[`2026-08-27-gfx1151-qwen38-flash-next-decode-wave64-candidate.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-decode-wave64-candidate.json).
 
 **Promotion:** keep every exact/non-regressive measured win in scope. Update
 benchmark rollups only for retained complete-model rows, never microbench-only

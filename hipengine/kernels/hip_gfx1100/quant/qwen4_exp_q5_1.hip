@@ -316,6 +316,34 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf
   return static_cast<int>(hipGetLastError());
 }
 
+extern "C" int hipengine_qwen4_exp_q5_1_selected_gemv_wave64_bf16_bf16_out(
+    const void* input,
+    const void* selected,
+    const void* weights,
+    void* output,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!input || !selected || !weights || !output || x_rows <= 0 || rows <= 0 ||
+      rows % x_rows || num_experts <= 0 || in_features <= 0 ||
+      (in_features % 32) || out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 64;
+  const int64_t row_bytes = (in_features / 32) * 24;
+  hipLaunchKernelGGL(
+      q5_1_selected_gemv_bf16_bf16_kernel,
+      dim3(static_cast<uint32_t>(rows * out_features)), dim3(threads),
+      threads * sizeof(float), stream,
+      static_cast<const uint16_t*>(input), static_cast<const int64_t*>(selected),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      x_rows, rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
     const void* input,
     const void* selected,

@@ -34,6 +34,10 @@ should be removed or collapsed.
   direct/grouped routes only after the full category+heldout mean/tail/max,
   per-category top-1, determinism/isolation, BF16-relative, task, and lifecycle
   gates pass; otherwise remove the candidates after the campaign.
+- `HIPENGINE_QWEN4_EXP_Q5_1_WAVE64` selects a 64-thread decode reduction that
+  improves warm decode by 6-8% but fails production mean/p95 KL
+  (`0.002565/0.007202`). Keep it default-off only for exact-repack/reduction
+  bisection; remove it when that successor lands or at campaign closure.
 
 ## 2026-08-27 Qwen4Exp bounded chunked prefill
 
