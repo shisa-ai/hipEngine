@@ -136,8 +136,9 @@ gfx1100 dense C1 K1/K2/K3 is **1.272x/1.407x/1.439x AR**; packed PARO is
 **0.979x**. The repaired physical C2/K2 owner is now exposed only for the exact
 strict/BF16/resident-C2/physical-C2/D24 key: 10/10 cells execute request-major
 proposal, one packed target/accept/commit group, and zero candidate D2H/recovery.
-It remains **22.390 vs 31.281 tok/s (0.7158x AR)**, so production and automatic
-stay K0. [`Explicit C2`](results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json) · [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
+Direct ownership remains **22.390 vs 31.281 tok/s (0.7158x AR)**; the real
+unflagged public blocking route passes 10/10 at **22.036 vs 30.652 tok/s
+(0.7189x)**. Production and automatic stay K0. [`Explicit C2`](results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json) · [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
 
 ## Where detailed evidence lives
 
