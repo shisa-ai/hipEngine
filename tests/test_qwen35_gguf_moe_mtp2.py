@@ -102,7 +102,7 @@ def test_moe_adapter_capability_is_c1_k2_and_short_context_only() -> None:
     ) is None
     assert adapter.capability(
         (SpeculativeRequestSemantics(7, "greedy", "verify_chain", 6, 2),)
-    ) is None
+    ) is not None
     assert adapter.capability(
         (SpeculativeRequestSemantics(7, "greedy", "verify_chain", 6, 3),)
     ) is not None

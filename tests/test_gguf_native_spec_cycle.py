@@ -72,6 +72,22 @@ def test_native_target_graph_snapshots_mutable_linear_commit_tables(
     np.testing.assert_array_equal(staged[0][1], np.asarray([11, 12], dtype=np.uint64))
 
 
+def test_k1_f32_override_restores_environment_after_failure(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_RESIDUAL", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_POST_NORM", "1")
+
+    def fail():
+        assert __import__("os").environ["HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"] == "0"
+        assert __import__("os").environ["HIPENGINE_GGUF_VERIFY_F32_POST_NORM"] == "0"
+        raise RuntimeError("test failure")
+
+    with pytest.raises(RuntimeError, match="test failure"):
+        native_cycle_mod._call_with_f32_verifier_disabled(True, fail)
+
+    assert __import__("os").environ["HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"] == "1"
+    assert __import__("os").environ["HIPENGINE_GGUF_VERIFY_F32_POST_NORM"] == "1"
+
+
 def test_compact_n2_result_validates_commit_from_visible_tokens_without_row_ids() -> None:
     kwargs = {
         "input_token_ids": [100, 0, 0],

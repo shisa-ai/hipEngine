@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field as dataclass_field, replace
 import os
 import time
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import numpy as np
 
@@ -65,6 +65,29 @@ class NativeSpecTargetGraphUnsupportedError(RuntimeError):
 
 NATIVE_SPEC_TARGET_GRAPH_CONTEXT_BUCKET_MISS = "target_graph_context_bucket_miss"
 NATIVE_SPEC_TARGET_GRAPH_OUTPUT_ROOM_MISS = "target_graph_output_room_miss"
+
+
+def _call_with_f32_verifier_disabled(
+    enabled: bool,
+    callback: Callable[[], Any],
+) -> Any:
+    if not enabled:
+        return callback()
+    names = (
+        "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL",
+        "HIPENGINE_GGUF_VERIFY_F32_POST_NORM",
+    )
+    previous = {name: os.environ.get(name) for name in names}
+    try:
+        for name in names:
+            os.environ[name] = "0"
+        return callback()
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 _COMPLETE_CYCLE_STAGES = (
@@ -2125,6 +2148,7 @@ def run_qwen35_gguf_native_mtp_cycle(
     record_stage_timings: bool = False,
     native_proposal_graph: bool = False,
     target_bulk_attention_mode: str = "bulk",
+    k1_disable_f32_verifier: bool = False,
 ) -> Qwen35GGUFNativeCompleteCycleResult:
     """Own one strict llama-compatible GGUF MTP cycle behind one call.
 
@@ -2240,20 +2264,23 @@ def run_qwen35_gguf_native_mtp_cycle(
         raise RuntimeError("device NextN proposal returned an unexpected speculative KV cursor")
 
     target_start = time.perf_counter()
-    target_result = session.verify_target_block_native_cycle(
-        [root, *drafts],
-        cycle_id=int(cycle_id),
-        transaction_id=int(transaction_id),
-        request_id=int(request_id),
-        bulk_attention_mode=target_mode,
-        use_wmma_prefill=False,
-        capture_linear_state_rows=True,
-        defer_linear_state_commit=True,
-        device_accept_commit=True,
-        remaining_decode=remaining,
-        fallback=False,
+    f32_override = bool(k1_disable_f32_verifier and budget == 1)
+    target_result = _call_with_f32_verifier_disabled(
+        f32_override,
+        lambda: session.verify_target_block_native_cycle(
+            [root, *drafts],
+            cycle_id=int(cycle_id),
+            transaction_id=int(transaction_id),
+            request_id=int(request_id),
+            bulk_attention_mode=target_mode,
+            use_wmma_prefill=False,
+            capture_linear_state_rows=True,
+            defer_linear_state_commit=True,
+            device_accept_commit=True,
+            remaining_decode=remaining,
+            fallback=False,
+        ),
     )
-    target_wall_ms = (time.perf_counter() - target_start) * 1000.0
     if not bool(getattr(target_result, "device_accept_commit", False)):
         raise RuntimeError("native complete cycle target did not execute N2 accept/commit")
     accepted = int(getattr(target_result, "accepted_draft_tokens", -1))
@@ -2261,6 +2288,7 @@ def run_qwen35_gguf_native_mtp_cycle(
     end = int(getattr(target_result, "end_position", -1))
     hidden_rows_ptr = int(getattr(target_result, "hidden_seed_rows_ptr", 0))
     hidden_row_count = int(getattr(target_result, "hidden_seed_row_count", 0))
+    target_wall_ms = (time.perf_counter() - target_start) * 1000.0
     if accepted < 0 or accepted > budget:
         raise RuntimeError("native target returned an invalid accepted draft count")
     if outputs[:accepted] != drafts[:accepted] or len(outputs) != accepted + 1:
