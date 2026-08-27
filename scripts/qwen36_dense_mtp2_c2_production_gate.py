@@ -819,7 +819,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         detected_arches=("gfx1100",),
         target_arch="gfx1100",
         model_path=model,
-        quant="Q4_K_M",
+        quant=str(args.quant_label),
         kv_dtype="bf16",
         command=sys.argv,
         environment={
@@ -840,7 +840,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     ]
     return {
         "schema": 1,
-        "kind": KIND,
+        "kind": str(args.artifact_kind),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "status": "passed" if all(checks.values()) else "failed",
         "performance_claim": False,
@@ -848,8 +848,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "model": {
             "path": str(model),
             "size_bytes": model.stat().st_size,
-            "sha256": MODEL_SHA256,
-            "quant": "Q4_K_M",
+            "sha256": str(args.model_sha256),
+            "quant": str(args.quant_label),
             "kv": "bf16",
         },
         "workload": {
@@ -927,6 +927,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("benchmarks/prompts/mtpbench-code-general-ja.jsonl"),
     )
     parser.add_argument("--max-tokens", type=int, default=24)
+    parser.add_argument("--artifact-kind", default=KIND)
+    parser.add_argument("--model-sha256", default=MODEL_SHA256)
+    parser.add_argument("--quant-label", default="Q4_K_M")
     parser.add_argument("--repeat-runs", type=int, default=3)
     parser.add_argument("--max-sequence-length", type=int, default=1024)
     parser.add_argument("--limit", type=int, default=None)
@@ -941,8 +944,11 @@ def main() -> int:
     args = build_parser().parse_args()
     if args.max_tokens != 24 or args.repeat_runs < 3:
         raise GateError("binding C2 gate requires D24 and at least three repeats")
-    if args.verify_model_sha256 and _file_sha256(args.model) != MODEL_SHA256:
-        raise GateError("model SHA-256 does not match the frozen 27B artifact")
+    if (
+        args.verify_model_sha256
+        and _file_sha256(args.model) != str(args.model_sha256)
+    ):
+        raise GateError("model SHA-256 does not match the declared artifact")
     payload = run(args)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
