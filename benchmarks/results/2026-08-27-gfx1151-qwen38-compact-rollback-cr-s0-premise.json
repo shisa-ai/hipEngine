@@ -1,0 +1,179 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_compact_rollback_cr_s0_premise",
+  "created_at": "2026-08-27T07:55:00Z",
+  "status": "measured_product_premise_failed",
+  "passed": true,
+  "candidate_admitted": false,
+  "performance_claim": false,
+  "speed_claim_eligible": false,
+  "decision": {
+    "cr_s0_0": "failed: no currently admissible context or resident-capacity product cell is limited by rollback-row bytes",
+    "cr_s0_1": "passed: live B1/B2/B3 target/provider/request memory planes were attributed exactly",
+    "compact_d1": "do not implement; the current C1 product key rejects context 68, while c2-c8 remain typed K0 for non-memory blockers",
+    "follow_up": "reopen only after a separately retained long-context or capacity>1 MTP product scope proves rollback rows are the limiting claim plane"
+  },
+  "physical_host": "gfx1151 / AMD RYZEN AI MAX+ 395 / Radeon 8060S / HIP 7.15.0",
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "hip_visible_devices": "0",
+    "gpu_max_hw_queues": "2",
+    "rocm_preflight": "hip OK; gfx1151; no KFD PIDs before, between, or after probes"
+  },
+  "source": {
+    "commit": "865e6141fa1561de4c5cfd12ecb5d602607a1196",
+    "tracked_clean": true,
+    "external_mechanism": {
+      "llama_cpp_base": "3737e41370da1830a44c663f9929a0f27591ffa6",
+      "feature_commit": "6cb89357",
+      "patch_sha256": "759ad384f22859f084aa4a1c11252e63a423568f7e31cb9f623d4b473bd526ba"
+    }
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "context_length": 262144,
+    "linear_attention_layers": 48,
+    "full_attention_layers": 16,
+    "recurrent_state": "FP16",
+    "hidden_size": 5120
+  },
+  "protocol": {
+    "surface": "live C1 staged production MTP2 request paused after target verifier prepare on the first measured cycle",
+    "prompt": "canonical code_merge_intervals natural prompt",
+    "max_tokens": 24,
+    "budgets": [1, 2, 3],
+    "max_sequence_length": 1024,
+    "warmup": "one complete MTP request per fresh process before measured request",
+    "memory_counter": "process-local hipEngine malloc/free counters plus direct live buffer descriptors",
+    "note": "attribution only; no throughput benchmark and no arithmetic change"
+  },
+  "geometry": {
+    "conv_state_bytes_per_linear_layer": 163840,
+    "recurrent_state_bytes_per_linear_layer": 1572864,
+    "target_state_group_bytes": 83361792,
+    "target_state_group_mib": 79.5,
+    "derivation": "48 * (163840 + 1572864)",
+    "bf16_kv_bytes_per_token": 65536,
+    "bf16_kv_derivation": "16 full-attention layers * 2 K/V planes * 1024 KV elements * 2 bytes"
+  },
+  "measurements": {
+    "B1": {
+      "target_live_state_bytes": 83361792,
+      "initial_checkpoint_state_bytes": 83361792,
+      "initial_checkpoint_owned_bytes_with_hidden": 83392512,
+      "verify_row_capacity": 2,
+      "verify_row_state_bytes": 166723584,
+      "provider_checkpoint_bytes": 0,
+      "verifier_metadata_workspace_bytes": 87,
+      "measured_request_live_delta_bytes": 83589101,
+      "measured_request_live_allocation_delta": 160,
+      "compact_d1_verify_row_bytes": 83361792,
+      "compact_d1_theoretical_savings_bytes": 83361792,
+      "compact_d1_theoretical_bf16_kv_tokens": 1272
+    },
+    "B2": {
+      "target_live_state_bytes": 83361792,
+      "initial_checkpoint_state_bytes": 83361792,
+      "initial_checkpoint_owned_bytes_with_hidden": 83402752,
+      "verify_row_capacity": 3,
+      "verify_row_state_bytes": 250085376,
+      "provider_checkpoint_bytes": 0,
+      "verifier_metadata_workspace_bytes": 203,
+      "measured_request_live_delta_bytes": 83691767,
+      "measured_request_live_allocation_delta": 176,
+      "compact_d1_verify_row_bytes": 83361792,
+      "compact_d1_theoretical_savings_bytes": 166723584,
+      "compact_d1_theoretical_bf16_kv_tokens": 2544
+    },
+    "B3": {
+      "target_live_state_bytes": 83361792,
+      "initial_checkpoint_state_bytes": 83361792,
+      "initial_checkpoint_owned_bytes_with_hidden": 83412992,
+      "verify_row_capacity": 4,
+      "verify_row_state_bytes": 333447168,
+      "provider_checkpoint_bytes": 0,
+      "verifier_metadata_workspace_bytes": 348,
+      "measured_request_live_delta_bytes": 83794462,
+      "measured_request_live_allocation_delta": 192,
+      "compact_d1_verify_row_bytes": 83361792,
+      "compact_d1_theoretical_savings_bytes": 250085376,
+      "compact_d1_theoretical_bf16_kv_tokens": 3816
+    }
+  },
+  "ownership_interpretation": {
+    "target_live_state": "one Conv/GDN state group belongs to the resident target session and is required by AR and MTP",
+    "initial_checkpoint": "one full state group belongs to each request verifier journal; it remains required by compact D1 for deep replay",
+    "verify_rows": "K+1 full Conv/GDN state groups are lazily allocated on the target session and retained for selected-row direct commit",
+    "provider_checkpoint": "zero bytes for this full-attention NextN provider; the checkpoint owns only cursor metadata",
+    "request_delta": "after warmup, the 83.6-83.8 MB request allocation is almost entirely the required initial target checkpoint, not K+1 verify rows",
+    "compact_effect": "D1 could remove K persistent verify-row state groups but cannot remove the one request checkpoint; it is capacity-only and introduces deep replay"
+  },
+  "product_premise": {
+    "public_c1_scope": "the retained fingerprinted product key accepts context 1-67 and rejects context 68 before MTP mutation",
+    "native_backend_ceiling": 65544,
+    "capacity_gt_1": "unqualified physical prompt streaming/refill/survivor lifecycle; post-campaign c2-c8 is 70/70 typed K0",
+    "c_gt_1_economics": "best repaired physical K3 remains 0.6975x C2 and 0.5843x C4 true AR",
+    "limiting_plane": "product qualification and physical lifecycle/economics, not rollback memory",
+    "conclusion": "even the maximum B3 saving equivalent to 3816 BF16-KV tokens cannot enlarge any currently retained MTP product cell"
+  },
+  "existing_performance_context": {
+    "postcampaign_c1_ar_tok_s": 9.777518619758249,
+    "postcampaign_c1_b3_tok_s": 14.220916376795133,
+    "postcampaign_c1_gain_pct": 45.44504520868657,
+    "postcampaign_accept_per_draft": 0.7929292929292929,
+    "selected_state_commit_profile": {
+      "source": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t02-actual-owner-profile.json",
+      "calls": 8,
+      "kernel_sum_ms": 5.828,
+      "approx_ms_per_cycle": 0.7285,
+      "interpretation": "selected-row state commit is not a first-order throughput owner; compact replay would add target work rather than remove the target forward"
+    }
+  },
+  "commands": {
+    "preflight": "python3 -c 'import ctypes; ctypes.CDLL(\"libamdhip64.so\")'; rocminfo; rocm-smi --showpids",
+    "probe_template": "CR_BUDGET=B HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python /tmp/cr_s0_live_probe.py",
+    "budgets": [1, 2, 3]
+  },
+  "raw_sources": [
+    {
+      "path": "/tmp/cr-s0-live-probe-b1.json",
+      "sha256": "e7f2a59494e1514066635d138b3355abc8fd782796a9cc3b003843b5a0a85ca6",
+      "size_bytes": 26715,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/cr-s0-live-probe-b2.json",
+      "sha256": "2084f5a11e1de33853663a92ce88b0f23e4e183ee0698d058c4a40ad30b7361e",
+      "size_bytes": 28099,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/cr-s0-live-probe.json",
+      "sha256": "d9d70582957ebc3ebb5e98d2477e8c4fdc1a11fcf9d32e209a898e68cdbcdde6",
+      "size_bytes": 29482,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/cr_s0_live_probe.py",
+      "sha256": "acf07476588019e8534e016410a3e0299cf595a439b1e22080213b718540e761",
+      "size_bytes": 10500,
+      "retained_in_git": false
+    }
+  ],
+  "validation": {
+    "requests_completed": true,
+    "routes": "B1/B2/B3 each warm and measured request engaged staged C1 MTP",
+    "teardown": "no KFD PIDs after every process",
+    "source_dirty_during_measurement": false,
+    "full_suite_rerun": "not run: the CR-S0 stop gate failed, and commit 865e6141f already supplies the unchanged full-suite C1 B3 baseline"
+  },
+  "reopen_triggers": [
+    "a separately qualified long-context C1 MTP product scope where exact admission accounting identifies verify-row states as the limiting plane",
+    "a capacity>1 physical MTP lifecycle and economics packet that passes before mutation and is constrained by per-request rollback state",
+    "a materially different target-state representation that changes the measured 83,361,792-byte group or replay cost"
+  ]
+}
