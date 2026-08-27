@@ -133,10 +133,25 @@ def main() -> int:
         ratio = config.qsa_compression_ratio
         needle_start = needle // ratio * ratio
         layer_selections = []
+        selected_by_layer: dict[int, np.ndarray] = {}
         for layer, binding in sorted(runner.qsa_bindings.items()):
             state = runner.index_states[binding.qsa_state_index]
-            count = state.block_budget * ratio
-            selected = state.selected_positions_host[:count]
+            count_host = np.empty(1, dtype=np.int32)
+            copy_device_to_host(
+                host_array_ptr(count_host), state.selected_count, runtime=runner.runtime
+            )
+            count = int(count_host[0])
+            selected = np.empty(
+                state.selected_positions.nbytes // np.dtype(np.int64).itemsize,
+                dtype=np.int64,
+            )
+            copy_device_to_host(
+                host_array_ptr(selected),
+                state.selected_positions,
+                runtime=runner.runtime,
+            )
+            selected = selected[:count]
+            selected_by_layer[int(layer)] = selected
             layer_selections.append(
                 {
                     "layer": int(layer),
@@ -191,9 +206,16 @@ def main() -> int:
             compression_ratio=ratio,
             block_budget=config.qsa_block_budget,
         ).selected_positions[0]
-        native = state.selected_positions_host[: cpu_selection.size].copy()
+        native = selected_by_layer[int(layer)][: cpu_selection.size].copy()
         native.sort()
-        scores = state.scores_host[: prepared.block_starts.size]
+        score_count = prepared.block_starts.size
+        copy_device_to_host(
+            host_array_ptr(state.scores_host),
+            state.scores,
+            score_count * np.dtype(np.float32).itemsize,
+            runtime=runner.runtime,
+        )
+        scores = state.scores_host[:score_count]
         ranking = np.sort(scores)[::-1]
         cutoff_margin = float(
             ranking[config.qsa_block_budget - 1] - ranking[config.qsa_block_budget]

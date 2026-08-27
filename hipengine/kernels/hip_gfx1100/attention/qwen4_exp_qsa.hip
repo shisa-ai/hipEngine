@@ -478,6 +478,147 @@ __global__ void qsa_score_f32_kernel(
   }
 }
 
+__global__ __launch_bounds__(1024) void qsa_topk_expand_f32_i64_kernel(
+    const float* __restrict__ scores,
+    int64_t* __restrict__ selected_positions,
+    int32_t* __restrict__ selected_count,
+    int64_t blocks,
+    int64_t query_position,
+    int64_t ratio,
+    int64_t budget) {
+  __shared__ int histogram[256];
+  __shared__ uint32_t prefix_bits;
+  __shared__ uint32_t prefix_mask;
+  __shared__ int rank_in_prefix;
+  __shared__ int equal_needed;
+  __shared__ int equal_seen;
+  __shared__ int output_seen;
+  __shared__ int wave_counts[32];
+  __shared__ int wave_offsets[32];
+  __shared__ int equal_wave_counts[32];
+  __shared__ int equal_wave_offsets[32];
+  __shared__ int tile_count;
+  __shared__ int equal_tile_count;
+
+  const int tid = threadIdx.x;
+  const int lane = tid % warpSize;
+  const int wave = tid / warpSize;
+  const int waves = (blockDim.x + warpSize - 1) / warpSize;
+  const int64_t output_capacity = budget * ratio + ratio - 1;
+  for (int64_t index = tid; index < output_capacity; index += blockDim.x) {
+    selected_positions[index] = -1;
+  }
+  if (tid == 0) {
+    prefix_bits = 0;
+    prefix_mask = 0;
+    rank_in_prefix = static_cast<int>(budget);
+  }
+  __syncthreads();
+
+  // Scores are finite and non-negative (sum of rectified head dots), so their
+  // IEEE-754 bit patterns have the same total order as their values. Four
+  // stable radix passes find the exact kth threshold without materializing a
+  // host-side sort.
+  for (int shift = 24; shift >= 0; shift -= 8) {
+    if (tid < 256) histogram[tid] = 0;
+    __syncthreads();
+    for (int64_t index = tid; index < blocks; index += blockDim.x) {
+      const uint32_t bits = __float_as_uint(scores[index]);
+      if ((bits & prefix_mask) == prefix_bits) {
+        atomicAdd(&histogram[(bits >> shift) & 0xffu], 1);
+      }
+    }
+    __syncthreads();
+    if (tid == 0) {
+      int higher = 0;
+      int chosen = 0;
+      for (int bin = 255; bin >= 0; --bin) {
+        const int count = histogram[bin];
+        if (rank_in_prefix > higher + count) {
+          higher += count;
+          continue;
+        }
+        chosen = bin;
+        rank_in_prefix -= higher;
+        break;
+      }
+      prefix_bits |= static_cast<uint32_t>(chosen) << shift;
+      prefix_mask |= 0xffu << shift;
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    equal_needed = rank_in_prefix;
+    equal_seen = 0;
+    output_seen = 0;
+  }
+  __syncthreads();
+
+  // Compact in increasing block-index order. Exact-threshold ties take the
+  // lowest indices, matching the strict host lexsort contract. The output is
+  // therefore already in the order consumed by strict online softmax.
+  for (int64_t base = 0; base < blocks; base += blockDim.x) {
+    const int64_t index = base + tid;
+    const bool valid = index < blocks;
+    const uint32_t bits = valid ? __float_as_uint(scores[index]) : 0;
+    const bool equal = valid && bits == prefix_bits;
+    const unsigned long long equal_ballot = __ballot(equal);
+    const unsigned long long lower_mask =
+        lane == 0 ? 0ull : ((1ull << lane) - 1ull);
+    const int equal_lane_offset = __popcll(equal_ballot & lower_mask);
+    if (lane == 0) equal_wave_counts[wave] = __popcll(equal_ballot);
+    __syncthreads();
+    if (tid == 0) {
+      int offset = 0;
+      for (int current = 0; current < waves; ++current) {
+        equal_wave_offsets[current] = offset;
+        offset += equal_wave_counts[current];
+      }
+      equal_tile_count = offset;
+    }
+    __syncthreads();
+    const int equal_rank = equal_seen + equal_wave_offsets[wave] + equal_lane_offset;
+    const bool candidate = valid &&
+        (bits > prefix_bits || (equal && equal_rank < equal_needed));
+    const unsigned long long candidate_ballot = __ballot(candidate);
+    const int candidate_lane_offset = __popcll(candidate_ballot & lower_mask);
+    if (lane == 0) wave_counts[wave] = __popcll(candidate_ballot);
+    __syncthreads();
+    if (tid == 0) {
+      int offset = 0;
+      for (int current = 0; current < waves; ++current) {
+        wave_offsets[current] = offset;
+        offset += wave_counts[current];
+      }
+      tile_count = offset;
+    }
+    __syncthreads();
+    if (candidate) {
+      const int output_block =
+          output_seen + wave_offsets[wave] + candidate_lane_offset;
+      for (int member = 0; member < ratio; ++member) {
+        selected_positions[static_cast<int64_t>(output_block) * ratio + member]
+            = index * ratio + member;
+      }
+    }
+    __syncthreads();
+    if (tid == 0) {
+      output_seen += tile_count;
+      equal_seen += equal_tile_count;
+    }
+    __syncthreads();
+  }
+
+  if (tid == 0) {
+    const int64_t tail_start = blocks * ratio;
+    const int64_t tail_count = query_position + 1 - tail_start;
+    for (int64_t tail = 0; tail < tail_count; ++tail) {
+      selected_positions[budget * ratio + tail] = tail_start + tail;
+    }
+    selected_count[0] = static_cast<int32_t>(budget * ratio + tail_count);
+  }
+}
+
 __global__ void qsa_select_blocks_f32_i64_kernel(
     const float* __restrict__ scores,
     const int64_t* __restrict__ block_starts,
@@ -801,6 +942,31 @@ extern "C" int hipengine_qwen4_exp_qsa_score_f32(
       dim3(static_cast<uint32_t>(query_count * blocks)), dim3(threads), threads * sizeof(float), stream,
       static_cast<const float*>(queries), static_cast<const float*>(pooled_keys),
       static_cast<float*>(scores), blocks, heads, index_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_qsa_topk_expand_f32_i64(
+    const void* scores,
+    void* selected_positions,
+    void* selected_count,
+    int64_t blocks,
+    int64_t query_position,
+    int64_t ratio,
+    int64_t budget,
+    hipStream_t stream) {
+  if (!scores || !selected_positions || !selected_count || blocks <= 0 ||
+      query_position < 0 || ratio <= 0 || budget <= 0 || budget > blocks ||
+      query_position + 1 < blocks * ratio ||
+      query_position + 1 >= (blocks + 1) * ratio) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 1024;
+  hipLaunchKernelGGL(
+      qsa_topk_expand_f32_i64_kernel,
+      dim3(1), dim3(threads), 0, stream,
+      static_cast<const float*>(scores),
+      static_cast<int64_t*>(selected_positions),
+      static_cast<int32_t*>(selected_count), blocks, query_position, ratio, budget);
   return static_cast<int>(hipGetLastError());
 }
 
