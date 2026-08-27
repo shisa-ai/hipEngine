@@ -18,6 +18,13 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-08-27 Qwen4Exp exact grouped Q4_K bisection
+
+- `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4` defaults on for the exact row-batched
+  gate/up path when strict grouped Q5_1 down is active. Remove the flag and
+  direct selected gate/up + gather fallback after natural 16K/64K and
+  serving/cancellation/graph soak.
+
 ## 2026-08-27 Qwen4Exp batched QSA selection bisection
 
 - `HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION` defaults on for exact chunk-level

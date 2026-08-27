@@ -33,8 +33,12 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+    gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     build_gguf_q4_k_selected_prefill,
+    gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out,
@@ -65,6 +69,15 @@ def _hip_available() -> bool:
 
 def test_gguf_q4_k_selected_wmma_registry_and_build_plan(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS", raising=False)
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k",
+            variant="selected_dual_grouped_rowbatch8_bf16_bf16_out",
+        )
+        is gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out
+    )
     assert (
         resolve(
             backend="hip_gfx1100",
@@ -355,6 +368,92 @@ def _build_compact_fixture(
         out_features_b=out_features_b,
         num_experts=num_experts,
     )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_grouped_rowbatch8_matches_strict_selected_dual_bits() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    fixture = _build_compact_fixture(
+        counts=[9, 0, 17, 3],
+        in_features=256,
+        out_features_a=32,
+        out_features_b=32,
+        dtype="bf16",
+        seed=19,
+    )
+    selected = np.repeat(
+        np.arange(fixture.num_experts, dtype=np.int64),
+        np.diff(fixture.expert_start_compact),
+    )
+    runtime = get_hip_runtime()
+    hosts = (
+        fixture.x_host,
+        fixture.expert_start_compact,
+        fixture.qweight_a,
+        fixture.qweight_b,
+        selected,
+    )
+    devices = []
+    outputs = []
+    try:
+        for host in hosts:
+            device = malloc(host.nbytes, runtime=runtime)
+            copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
+            devices.append(device)
+        for _ in range(4):
+            outputs.append(
+                malloc(
+                    fixture.compact_rows
+                    * fixture.out_features_a
+                    * np.dtype(np.uint16).itemsize,
+                    runtime=runtime,
+                )
+            )
+        gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
+            devices[0].ptr,
+            devices[4].ptr,
+            devices[2].ptr,
+            devices[3].ptr,
+            outputs[0].ptr,
+            outputs[1].ptr,
+            fixture.compact_rows,
+            fixture.compact_rows,
+            fixture.num_experts,
+            fixture.in_features,
+            fixture.out_features_a,
+            threads=128,
+            runtime=runtime,
+        )
+        gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out(
+            devices[0].ptr,
+            devices[1].ptr,
+            devices[2].ptr,
+            devices[3].ptr,
+            outputs[2].ptr,
+            outputs[3].ptr,
+            fixture.compact_rows,
+            fixture.num_experts,
+            fixture.in_features,
+            fixture.out_features_a,
+            runtime=runtime,
+        )
+        got = []
+        for output in outputs:
+            host = np.empty(
+                (fixture.compact_rows, fixture.out_features_a), dtype=np.uint16
+            )
+            copy_device_to_host(
+                host_array_ptr(host), output, host.nbytes, runtime=runtime
+            )
+            got.append(host)
+        np.testing.assert_array_equal(got[2], got[0])
+        np.testing.assert_array_equal(got[3], got[1])
+    finally:
+        for output in reversed(outputs):
+            free(output, runtime=runtime)
+        for device in reversed(devices):
+            free(device, runtime=runtime)
 
 
 def _run_selected_dual_gpu(
