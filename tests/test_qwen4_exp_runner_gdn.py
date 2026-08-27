@@ -138,6 +138,127 @@ def test_qwen4_exp_runner_gdn_token_mixer_matches_reduced_cpu_oracle() -> None:
     np.testing.assert_allclose(actual_matrix, next_matrix[0], rtol=8e-5, atol=8e-5)
 
 
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_runner_gdn_bulk_matches_serial_reduced() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(3518)
+    rows, hidden, k_heads, v_heads, head_dim, kernel_size = 5, 8, 2, 4, 4, 4
+    qkv_width = 2 * k_heads * head_dim + v_heads * head_dim
+    core_width = v_heads * head_dim
+    mixed = rng.normal(0.0, 0.1, size=(rows, hidden)).astype(np.float32)
+    arrays = {
+        "attn_qkv": rng.normal(0.0, 0.15, size=(qkv_width, hidden)).astype(np.float32),
+        "attn_gate": rng.normal(0.0, 0.15, size=(core_width, hidden)).astype(np.float32),
+        "ssm_alpha": rng.normal(0.0, 0.15, size=(v_heads, hidden)).astype(np.float32),
+        "ssm_beta": rng.normal(0.0, 0.15, size=(v_heads, hidden)).astype(np.float32),
+        "ssm_out": rng.normal(0.0, 0.15, size=(hidden, core_width)).astype(np.float32),
+    }
+    conv_weight = rng.normal(0.0, 0.1, size=(qkv_width, kernel_size)).astype(np.float32)
+    dt_bias = rng.normal(-1.0, 0.1, size=v_heads).astype(np.float32)
+    a = -np.exp(rng.normal(-0.5, 0.1, size=v_heads)).astype(np.float32)
+    norm = rng.normal(1.0, 0.05, size=head_dim).astype(np.float32)
+    initial_conv = rng.normal(
+        0.0, 0.05, size=(qkv_width, kernel_size)
+    ).astype(np.float32)
+    initial_matrix = rng.normal(
+        0.0, 0.01, size=(v_heads, head_dim, head_dim)
+    ).astype(np.float32)
+
+    allocations = []
+    serial_scratch = bulk_scratch = None
+    try:
+        d_mixed = _upload(mixed, runtime, allocations)
+        weights = {
+            name: _dense_f32_weight(name, array, runtime, allocations)
+            for name, array in arrays.items()
+        }
+        d_conv_weight = _upload(conv_weight, runtime, allocations)
+        d_dt = _upload(dt_bias, runtime, allocations)
+        d_a = _upload(a, runtime, allocations)
+        d_norm = _upload(norm, runtime, allocations)
+        d_serial_conv = _upload(initial_conv, runtime, allocations)
+        d_bulk_conv = _upload(initial_conv, runtime, allocations)
+        d_serial_matrix = _upload(initial_matrix, runtime, allocations)
+        d_bulk_matrix = _upload(initial_matrix, runtime, allocations)
+        serial_scratch = Qwen4ExpGDNScratch.allocate(
+            rows=1,
+            qkv_width=qkv_width,
+            core_width=core_width,
+            scalar_width=v_heads,
+            hidden=hidden,
+            runtime=runtime,
+        )
+        bulk_scratch = Qwen4ExpGDNScratch.allocate(
+            rows=rows,
+            qkv_width=qkv_width,
+            core_width=core_width,
+            scalar_width=v_heads,
+            hidden=hidden,
+            runtime=runtime,
+        )
+        serial_rows = []
+        for row in range(rows):
+            output = run_qwen4_exp_gdn_token_mixer(
+                d_mixed.ptr + row * hidden * 4,
+                weights,
+                conv_weight_ptr=d_conv_weight.ptr,
+                dt_bias_ptr=d_dt.ptr,
+                a_ptr=d_a.ptr,
+                norm_weight_ptr=d_norm.ptr,
+                conv_state_ptr=d_serial_conv.ptr,
+                recurrent_state_ptr=d_serial_matrix.ptr,
+                scratch=serial_scratch,
+                rows=1,
+                hidden=hidden,
+                num_k_heads=k_heads,
+                num_v_heads=v_heads,
+                head_dim=head_dim,
+                conv_kernel=kernel_size,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            serial_rows.append(_download(output, (hidden,), np.float32, runtime))
+        bulk_output = run_qwen4_exp_gdn_token_mixer(
+            d_mixed.ptr,
+            weights,
+            conv_weight_ptr=d_conv_weight.ptr,
+            dt_bias_ptr=d_dt.ptr,
+            a_ptr=d_a.ptr,
+            norm_weight_ptr=d_norm.ptr,
+            conv_state_ptr=d_bulk_conv.ptr,
+            recurrent_state_ptr=d_bulk_matrix.ptr,
+            scratch=bulk_scratch,
+            rows=rows,
+            hidden=hidden,
+            num_k_heads=k_heads,
+            num_v_heads=v_heads,
+            head_dim=head_dim,
+            conv_kernel=kernel_size,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        bulk = _download(bulk_output, (rows, hidden), np.float32, runtime)
+        serial_conv = _download(d_serial_conv, initial_conv.shape, np.float32, runtime)
+        bulk_conv = _download(d_bulk_conv, initial_conv.shape, np.float32, runtime)
+        serial_matrix = _download(
+            d_serial_matrix, initial_matrix.shape, np.float32, runtime
+        )
+        bulk_matrix = _download(d_bulk_matrix, initial_matrix.shape, np.float32, runtime)
+    finally:
+        if bulk_scratch is not None:
+            bulk_scratch.close()
+        if serial_scratch is not None:
+            serial_scratch.close()
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    np.testing.assert_allclose(bulk, np.asarray(serial_rows), rtol=3e-4, atol=3e-4)
+    np.testing.assert_allclose(bulk_conv, serial_conv, rtol=3e-6, atol=3e-6)
+    np.testing.assert_allclose(bulk_matrix, serial_matrix, rtol=3e-4, atol=3e-4)
+
+
 def _upload(array: np.ndarray, runtime, allocations):
     host = np.ascontiguousarray(array)
     device = malloc(host.nbytes, runtime=runtime)

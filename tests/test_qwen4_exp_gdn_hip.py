@@ -28,6 +28,7 @@ def test_qwen4_exp_gdn_build_and_registry_contract() -> None:
     from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
         plan_qwen4_exp_gdn_build,
         qwen4_exp_gdn_decode_f32,
+        qwen4_exp_gdn_prefill_f32,
         register_qwen4_exp_gdn_kernels,
     )
     from hipengine.kernels.registry import resolve
@@ -43,6 +44,15 @@ def test_qwen4_exp_gdn_build_and_registry_contract() -> None:
             variant="qwen4exp_sigmoid_strict",
         )
         is qwen4_exp_gdn_decode_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gdn_recurrence_norm_gate",
+            quant="f32_state",
+            variant="qwen4exp_sigmoid_strict_prefill",
+        )
+        is qwen4_exp_gdn_prefill_f32
     )
 
 
@@ -138,6 +148,98 @@ def test_qwen4_exp_gdn_decode_matches_cpu_at_production_geometry() -> None:
 
     np.testing.assert_allclose(actual, expected, rtol=5e-5, atol=5e-5)
     np.testing.assert_allclose(actual_state, expected_state[0], rtol=5e-5, atol=5e-5)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_gdn_prefill_is_exact_to_serial_decode() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
+        build_qwen4_exp_gdn,
+        qwen4_exp_gdn_decode_f32,
+        qwen4_exp_gdn_prefill_f32,
+    )
+
+    runtime = get_hip_runtime()
+    library = build_qwen4_exp_gdn(load=True)
+    rng = np.random.default_rng(4038)
+    rows, k_heads, v_heads, head_dim = 5, 2, 4, 8
+    qkv_width = 2 * k_heads * head_dim + v_heads * head_dim
+    core_width = v_heads * head_dim
+    conv = rng.normal(0.0, 0.05, size=(rows, qkv_width)).astype(np.float32)
+    gate = rng.normal(0.0, 0.5, size=(rows, core_width)).astype(np.float32)
+    alpha = rng.normal(-0.2, 0.1, size=(rows, v_heads)).astype(np.float32)
+    beta = rng.normal(0.0, 0.2, size=(rows, v_heads)).astype(np.float32)
+    dt_bias = rng.normal(-1.0, 0.1, size=v_heads).astype(np.float32)
+    a = -np.exp(rng.normal(-0.5, 0.1, size=v_heads)).astype(np.float32)
+    norm = rng.normal(1.0, 0.05, size=head_dim).astype(np.float32)
+    initial_state = rng.normal(
+        0.0, 0.01, size=(v_heads, head_dim, head_dim)
+    ).astype(np.float32)
+
+    allocations = []
+    try:
+        d_conv = _upload(conv, runtime, allocations)
+        d_gate = _upload(gate, runtime, allocations)
+        d_alpha = _upload(alpha, runtime, allocations)
+        d_beta = _upload(beta, runtime, allocations)
+        d_dt = _upload(dt_bias, runtime, allocations)
+        d_a = _upload(a, runtime, allocations)
+        d_norm = _upload(norm, runtime, allocations)
+        d_serial_state = _upload(initial_state, runtime, allocations)
+        d_prefill_state = _upload(initial_state, runtime, allocations)
+        d_serial = _alloc((rows, core_width), np.float32, runtime, allocations)
+        d_prefill = _alloc((rows, core_width), np.float32, runtime, allocations)
+        for row in range(rows):
+            qwen4_exp_gdn_decode_f32(
+                d_conv.ptr + row * qkv_width * 4,
+                d_gate.ptr + row * core_width * 4,
+                d_alpha.ptr + row * v_heads * 4,
+                d_beta.ptr + row * v_heads * 4,
+                d_dt.ptr,
+                d_a.ptr,
+                d_norm.ptr,
+                d_serial_state.ptr,
+                d_serial.ptr + row * core_width * 4,
+                k_heads,
+                v_heads,
+                head_dim,
+                head_dim,
+                library=library,
+                runtime=runtime,
+            )
+        qwen4_exp_gdn_prefill_f32(
+            d_conv.ptr,
+            d_gate.ptr,
+            d_alpha.ptr,
+            d_beta.ptr,
+            d_dt.ptr,
+            d_a.ptr,
+            d_norm.ptr,
+            d_prefill_state.ptr,
+            d_prefill.ptr,
+            rows,
+            k_heads,
+            v_heads,
+            head_dim,
+            head_dim,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        serial = _download(d_serial, (rows, core_width), np.float32, runtime)
+        prefill = _download(d_prefill, (rows, core_width), np.float32, runtime)
+        serial_state = _download(
+            d_serial_state, initial_state.shape, np.float32, runtime
+        )
+        prefill_state = _download(
+            d_prefill_state, initial_state.shape, np.float32, runtime
+        )
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    np.testing.assert_array_equal(prefill, serial)
+    np.testing.assert_array_equal(prefill_state, serial_state)
 
 
 def _upload(array: np.ndarray, runtime, allocations):

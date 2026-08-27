@@ -52,9 +52,11 @@ from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_select
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_decode_f32,
+    qwen35_linear_attn_conv_prefill_f32,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
     qwen4_exp_gdn_decode_f32,
+    qwen4_exp_gdn_prefill_f32,
 )
 from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_gated_mean_f32,
@@ -2217,8 +2219,8 @@ def run_qwen4_exp_gdn_token_mixer(
 
     if scratch.closed:
         raise RuntimeError("Qwen4Exp GDN scratch is closed")
-    if rows != 1:
-        raise ValueError("strict Qwen4Exp GDN decode currently requires rows == 1")
+    if rows <= 0:
+        raise ValueError("Qwen4Exp GDN rows must be positive")
     active_runtime = runtime or scratch.runtime
     if active_runtime is not scratch.runtime:
         raise ValueError("runtime must match the GDN scratch owner")
@@ -2246,33 +2248,64 @@ def run_qwen4_exp_gdn_token_mixer(
             stream=stream,
             runtime=active_runtime,
         )
-    qwen35_linear_attn_conv_decode_f32(
-        scratch.qkv.ptr,
-        conv_state_ptr,
-        conv_weight_ptr,
-        scratch.conv.ptr,
-        qkv_width,
-        conv_kernel,
-        stream=stream,
-        runtime=active_runtime,
-    )
-    qwen4_exp_gdn_decode_f32(
-        scratch.conv.ptr,
-        scratch.gate.ptr,
-        scratch.alpha.ptr,
-        scratch.beta.ptr,
-        dt_bias_ptr,
-        a_ptr,
-        norm_weight_ptr,
-        recurrent_state_ptr,
-        scratch.core.ptr,
-        num_k_heads,
-        num_v_heads,
-        head_dim,
-        head_dim,
-        stream=stream,
-        runtime=active_runtime,
-    )
+    if rows == 1:
+        qwen35_linear_attn_conv_decode_f32(
+            scratch.qkv.ptr,
+            conv_state_ptr,
+            conv_weight_ptr,
+            scratch.conv.ptr,
+            qkv_width,
+            conv_kernel,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        qwen4_exp_gdn_decode_f32(
+            scratch.conv.ptr,
+            scratch.gate.ptr,
+            scratch.alpha.ptr,
+            scratch.beta.ptr,
+            dt_bias_ptr,
+            a_ptr,
+            norm_weight_ptr,
+            recurrent_state_ptr,
+            scratch.core.ptr,
+            num_k_heads,
+            num_v_heads,
+            head_dim,
+            head_dim,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    else:
+        qwen35_linear_attn_conv_prefill_f32(
+            scratch.qkv.ptr,
+            conv_state_ptr,
+            conv_weight_ptr,
+            scratch.conv.ptr,
+            rows,
+            qkv_width,
+            conv_kernel,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        qwen4_exp_gdn_prefill_f32(
+            scratch.conv.ptr,
+            scratch.gate.ptr,
+            scratch.alpha.ptr,
+            scratch.beta.ptr,
+            dt_bias_ptr,
+            a_ptr,
+            norm_weight_ptr,
+            recurrent_state_ptr,
+            scratch.core.ptr,
+            rows,
+            num_k_heads,
+            num_v_heads,
+            head_dim,
+            head_dim,
+            stream=stream,
+            runtime=active_runtime,
+        )
     launch_gguf_linear(
         weights["ssm_out"],
         scratch.core.ptr,
