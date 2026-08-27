@@ -166,6 +166,26 @@ class _OpaquePreferredRunner(_CycleRunner):
         raise AssertionError("frontier target must not run")
 
 
+class _RecoveringOpaqueRunner(_OpaquePreferredRunner):
+    def __init__(self) -> None:
+        super().__init__()
+        self.recovered = []
+        self.disabled = False
+
+    def speculative_capability(self, request_semantics):
+        if self.disabled:
+            return None
+        return super().speculative_capability(request_semantics)
+
+    def execute_speculative_cycle(self, plan, *, commit):
+        raise RuntimeError("opaque precommit failure")
+
+    def recover_speculative_cycle_failure(self, plan, error):
+        self.recovered.append((plan, error))
+        self.disabled = True
+        return True
+
+
 class _NoSpecRunner(_CycleRunner):
     def speculative_capability(self, request_semantics):
         return None
@@ -189,6 +209,27 @@ def test_runner_can_select_bounded_opaque_cycle_before_frontier_mutation() -> No
         8000,
     ]
     assert loop.completed[request_id].generated_tokens == (1, 2, 8000)
+
+
+def test_opaque_cycle_failure_uses_shared_recovery_boundary() -> None:
+    runner = _RecoveringOpaqueRunner()
+    loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)
+    request_id = loop.submit_speculative(
+        [10],
+        max_new_tokens=3,
+        desired_candidate_count=2,
+    )
+
+    events = loop.poll(max_ticks=4)
+
+    assert len(runner.recovered) == 1
+    assert str(runner.recovered[0][1]) == "opaque precommit failure"
+    assert [event.token_id for event in events if event.kind == "token"] == [
+        9000,
+        9001,
+        9002,
+    ]
+    assert loop.completed[request_id].generated_tokens == (9000, 9001, 9002)
 
 
 def test_one_speculative_cycle_is_one_engine_tick_with_multi_token_events() -> None:
