@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 from collections import defaultdict
 import concurrent.futures
-from contextlib import nullcontext
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -39,7 +39,16 @@ from hipengine.core.memory import (  # noqa: E402
     host_array_ptr,
 )
 from hipengine.core.specdec2_scope import (  # noqa: E402
+    moe_physical_c2_f32_residual_disabled,
     moe_physical_c2_numerics_session,
+    moe_physical_c2_pairreuse_enabled,
+    moe_physical_c2_pairreuse_session,
+    q4_t16_physical_extra_rowtiles_enabled,
+    q4_t16_physical_extra_rowtiles_session,
+    q5_t16_physical_rowtile_enabled,
+    q5_t16_physical_rowtile_session,
+    q6_t16_physical_rowtile_enabled,
+    q6_t16_physical_rowtile_session,
 )
 from hipengine.loading.gguf import scan_gguf  # noqa: E402
 from hipengine.runtime.prefill import PrefillConfig  # noqa: E402
@@ -69,6 +78,26 @@ MODEL_SHA256 = "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f
 
 class GateError(RuntimeError):
     """Raised when the C2 production packet cannot be evaluated honestly."""
+
+
+@contextmanager
+def _physical_target_scope(scope: Mapping[str, Any]):
+    """Replay the production target's profile-owned C2 arithmetic scopes."""
+
+    with (
+        moe_physical_c2_numerics_session(
+            bool(scope.get("moe_f32_residual_disabled", False))
+        ),
+        moe_physical_c2_pairreuse_session(
+            bool(scope.get("moe_pairreuse", False))
+        ),
+        q4_t16_physical_extra_rowtiles_session(
+            bool(scope.get("q4_extra_rowtiles", False))
+        ),
+        q5_t16_physical_rowtile_session(bool(scope.get("q5_rowtile", False))),
+        q6_t16_physical_rowtile_session(bool(scope.get("q6_rowtile", False))),
+    ):
+        yield
 
 
 def _telemetry_dict(chunk: Any) -> dict[str, Any]:
@@ -114,8 +143,10 @@ def _copy_device_i32(tensor: Any, runtime: Any) -> tuple[int, ...]:
 
 def _install_packed_capture(context: dict[str, Any]):
     original = Qwen35GGUFResidentSession.verify_target_blocks_batch
+    captured_scope: dict[str, bool] | None = None
 
     def wrapped(self: Any, jobs: Any, **kwargs: Any):
+        nonlocal captured_scope
         job_rows = list(jobs)
         if context.get("enabled") is not True:
             return original(self, jobs, **kwargs)
@@ -139,6 +170,17 @@ def _install_packed_capture(context: dict[str, Any]):
             full_row_counts.append(len(host_ids))
             starts.append(int(job["session"].position))
             request_ids.append(int(job["request_id"]))
+        current_scope = {
+            "moe_f32_residual_disabled": moe_physical_c2_f32_residual_disabled(),
+            "moe_pairreuse": moe_physical_c2_pairreuse_enabled(),
+            "q4_extra_rowtiles": q4_t16_physical_extra_rowtiles_enabled(),
+            "q5_rowtile": q5_t16_physical_rowtile_enabled(),
+            "q6_rowtile": q6_t16_physical_rowtile_enabled(),
+        }
+        if captured_scope is None:
+            captured_scope = current_scope
+        elif current_scope != captured_scope:
+            raise GateError("production physical target arithmetic scope changed")
         results = original(self, jobs, **kwargs)
         vocab = int(self.runner.vocab_size)
         cycle_key = (int(context["repeat"]), int(context["pair"]))
@@ -165,6 +207,7 @@ def _install_packed_capture(context: dict[str, Any]):
                     "inputs": active_inputs,
                     "full_rows": full_rows,
                     "active_rows": active_rows,
+                    "physical_scope": dict(captured_scope),
                 }
             )
         return results
@@ -379,6 +422,7 @@ def _teacher_metrics(
     prompt_by_id = {str(row["id"]): row for row in prompts}
     tokenizer = Qwen35GGUFTokenizer.from_gguf_info(scan_gguf(model))
     first_groups: dict[tuple[int, int], list[Mapping[str, Any]]] = defaultdict(list)
+    physical_scope = dict(captures[0].get("physical_scope", {})) if captures else {}
     for row in captures:
         if int(row["repeat"]) == 0:
             first_groups[(int(row["pair"]), int(row["cycle"]))].append(row)
@@ -449,14 +493,7 @@ def _teacher_metrics(
                     "input_token_ids": inputs,
                 }
             )
-        weights = getattr(sessions[0].runner, "weights", None)
-        config = getattr(weights, "config", None)
-        scope = (
-            moe_physical_c2_numerics_session(True)
-            if bool(getattr(config, "is_moe", False))
-            else nullcontext()
-        )
-        with scope:
+        with _physical_target_scope(physical_scope):
             sessions[0].verify_target_blocks_batch(jobs, device_result=False)
         runtime = sessions[0].runtime
         if runtime is None or sessions[0].runner is None:
