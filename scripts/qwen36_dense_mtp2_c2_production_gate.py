@@ -707,9 +707,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             0 <= len(row["inputs"]) - 1 <= 2 for row in captures
         )
         and any(len(row["inputs"]) - 1 == 2 for row in captures),
-        "actual_full_logits": all(
-            row["active_rows"] == len(row["candidate_top1"]) for row in captures
-        ),
+        "actual_full_logits": int(physical_repeat_gate["cycles"])
+        == sum(1 for repeat, _pair, _cycle in cycle_groups if repeat == 0),
     }
     checks = {
         "full_suite": args.limit is None and len(prompts) == 10,
