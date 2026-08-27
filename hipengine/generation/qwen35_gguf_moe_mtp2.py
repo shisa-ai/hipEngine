@@ -2,28 +2,56 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+import time
 from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 
+from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind
-from hipengine.core.memory import DeviceBuffer, free, host_array_ptr, malloc
+from hipengine.core.memory import (
+    DeviceBuffer,
+    copy_device_to_host,
+    copy_host_to_device,
+    free,
+    host_array_ptr,
+    malloc,
+)
+from hipengine.core.tensor import Tensor
 from hipengine.kernels.backends import backend_package_capability
+from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
+    ACCEPT_PACKED_PAYLOAD_FIELDS,
+    build_dflash_accept,
+    dflash_accept_chain_i32_packed,
+)
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.speculative.frontier import (
+    CandidateGraph,
     ProviderAttachment,
     ProviderCatchupMode,
     SpecPlanReason,
     SpecRequestPlan,
     SpecTransactionMode,
     SpeculativeCapability,
+    TargetFrontier,
 )
-from hipengine.speculative.interfaces import AcceptResult
+from hipengine.speculative.buffers import (
+    TargetVerifyBufferOwner,
+    TargetVerifyBufferSpec,
+)
+from hipengine.speculative.interfaces import (
+    AcceptResult,
+    TargetAcceptSummary,
+    TargetVerifyBatch,
+    TargetVerifyBuffers,
+)
 from hipengine.speculative.provider import SpeculativeRequestSemantics
+from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.speculative.transaction import (
     SpecCycleResult,
+    SpecCycleStage,
     SpecCycleTelemetry,
     SpecCycleTransaction,
     compose_speculative_claims,
@@ -114,6 +142,9 @@ class _MoeMTP2RequestState:
     target_hidden_buffer: DeviceBuffer
     target_hidden_ptr: int
     cache_len: int
+    proposal_tokens: tuple[int, ...] = ()
+    proposed_cache_len: int | None = None
+    last_proposal_seconds: float = 0.0
 
 
 class Qwen35GGUFMoEMTP2Adapter:
@@ -125,7 +156,9 @@ class Qwen35GGUFMoEMTP2Adapter:
     No whole-request legacy generation call is used.
     """
 
-    staged_frontier = False
+    @property
+    def staged_frontier(self) -> bool:
+        return int(getattr(self.owner, "capacity", 1)) > 1
 
     def __init__(
         self,
@@ -156,6 +189,12 @@ class Qwen35GGUFMoEMTP2Adapter:
         self._disabled_requests: set[int] = set()
         self._transaction_sequence = 0
         self._assets: Any | None = None
+        self._active_claims: ResourceClaimSet | None = None
+        self._batch_accept_workspace: RuntimeWorkspace | None = None
+        self._batch_accept_owner: TargetVerifyBufferOwner | None = None
+        self._batch_accept_remaining: Tensor | None = None
+        self._batch_accept_payload: Tensor | None = None
+        self._batch_accept_library: Any | None = None
 
     def register_request(
         self,
@@ -164,7 +203,7 @@ class Qwen35GGUFMoEMTP2Adapter:
         *,
         static_eligibility: Any | None = None,
     ) -> None:
-        del static_eligibility  # The MoE adapter is already restricted to capacity one.
+        del static_eligibility  # Static policy is enforced by the model key and due width.
         rid = int(request_id)
         self._intents[rid] = min(
             self.candidate_budget,
@@ -180,50 +219,80 @@ class Qwen35GGUFMoEMTP2Adapter:
     ) -> tuple[_MoeTargetHiddenSink, ...] | None:
         del checkpoints
         ids = tuple(int(value) for value in request_ids)
-        if not ids or len(ids) != 1 or int(getattr(self.owner, "capacity", 1)) != 1:
+        capacity = int(getattr(self.owner, "capacity", 1))
+        if (
+            not ids
+            or len(set(ids)) != len(ids)
+            or len(ids) > 2
+            or capacity not in {1, 2}
+        ):
             return None
-        rid = ids[0]
-        if rid not in self._intents or rid in self._disabled_requests:
+        if any(
+            rid not in self._intents or rid in self._disabled_requests
+            for rid in ids
+        ):
             return None
-        row = self.owner._row(rid)
-        if row.lease is None:
-            return None
-        target = row.lease.session
-        hidden_size = int(target.runner.hidden_size)
-        rows = len(row.prompt_ids)
-        target_key = id(target)
-        slab = self._target_hidden_slabs.get(target_key)
-        if slab is None:
-            capacity = 95
-            slab = (
-                target,
-                malloc(
-                    capacity * hidden_size * DType.BF16.itemsize,
-                    runtime=target.runtime,
-                ),
-                malloc(
-                    capacity * hidden_size * DType.FP32.itemsize,
-                    runtime=target.runtime,
-                ),
-                malloc(
-                    hidden_size * DType.BF16.itemsize,
-                    runtime=target.runtime,
-                ),
-            )
-            self._target_hidden_slabs[target_key] = slab
-        if rows > int(slab[1].nbytes) // (hidden_size * DType.BF16.itemsize):
-            return None
-        sink = _MoeTargetHiddenSink(
-            request_id=rid,
-            hidden_size=hidden_size,
-            total_rows=rows,
-            target=target,
-            buffer=slab[1],
-            normalized=slab[2],
-            normalized_bf16=slab[3],
-        )
-        self._prompt_sinks[rid] = sink
-        return (sink,)
+        existing = tuple(self._prompt_sinks.get(rid) for rid in ids)
+        if all(sink is not None for sink in existing):
+            return tuple(sink for sink in existing if sink is not None)
+        if any(sink is not None for sink in existing):
+            raise RuntimeError("MoE prompt streaming ownership is only opened once")
+        created: list[_MoeTargetHiddenSink] = []
+        try:
+            for rid in ids:
+                row = self.owner._row(rid)
+                if row.lease is None:
+                    for created_sink in created:
+                        self._prompt_sinks.pop(created_sink.request_id, None)
+                        self._detach_sink(created_sink)
+                    return None
+                target = row.lease.session
+                hidden_size = int(target.runner.hidden_size)
+                rows = len(row.prompt_ids)
+                target_key = id(target)
+                slab = self._target_hidden_slabs.get(target_key)
+                if slab is None:
+                    slab_rows = 95
+                    slab = (
+                        target,
+                        malloc(
+                            slab_rows * hidden_size * DType.BF16.itemsize,
+                            runtime=target.runtime,
+                        ),
+                        malloc(
+                            slab_rows * hidden_size * DType.FP32.itemsize,
+                            runtime=target.runtime,
+                        ),
+                        malloc(
+                            hidden_size * DType.BF16.itemsize,
+                            runtime=target.runtime,
+                        ),
+                    )
+                    self._target_hidden_slabs[target_key] = slab
+                if rows > int(slab[1].nbytes) // (
+                    hidden_size * DType.BF16.itemsize
+                ):
+                    for created_sink in created:
+                        self._prompt_sinks.pop(created_sink.request_id, None)
+                        self._detach_sink(created_sink)
+                    return None
+                sink = _MoeTargetHiddenSink(
+                    request_id=rid,
+                    hidden_size=hidden_size,
+                    total_rows=rows,
+                    target=target,
+                    buffer=slab[1],
+                    normalized=slab[2],
+                    normalized_bf16=slab[3],
+                )
+                self._prompt_sinks[rid] = sink
+                created.append(sink)
+            return tuple(created)
+        except Exception:
+            for sink in created:
+                self._prompt_sinks.pop(sink.request_id, None)
+                self._detach_sink(sink)
+            raise
 
     def finish_prompt_streaming(
         self,
@@ -343,6 +412,12 @@ class Qwen35GGUFMoEMTP2Adapter:
                 target_hidden_ptr=int(target._last_target_hidden_ptr),
                 cache_len=int(cache_len),
             )
+            row.mtp2_prompt_streaming = True
+            row.mtp2_prompt_prime_rows = len(prompt)
+            row.mtp2_prompt_carried_bytes = (
+                int(target.runner.hidden_size) * DType.BF16.itemsize
+            )
+            row.mtp2_prompt_fallback_reason = None
             free(shifted, runtime=target.runtime)
             shifted = None
         except Exception:
@@ -369,38 +444,51 @@ class Qwen35GGUFMoEMTP2Adapter:
         request_semantics: Sequence[SpeculativeRequestSemantics],
     ) -> SpeculativeCapability | None:
         semantics = tuple(request_semantics)
+        capacity = int(getattr(self.owner, "capacity", 1))
         if (
             not self.enabled
-            or len(semantics) != 1
-            or int(getattr(self.owner, "capacity", 1)) != 1
+            or capacity not in {1, 2}
+            or len(semantics) != capacity
         ):
             return None
-        item = semantics[0]
-        rid = int(item.request_id)
-        state = self._states.get(rid)
-        if state is None or rid in self._disabled_requests:
-            return None
-        row = self.owner._row(rid)
-        if (
-            not row.native_greedy
-            or not row.first_token_emitted
-            or row.lease is None
-            or row.slot is None
-        ):
-            return None
-        target = row.lease.session
-        max_context = min(
-            95,
-            int(target.target_layout.max_sequence_length) - self.candidate_budget - 1,
-        )
-        if int(item.context_tokens) > max_context:
+        targets = []
+        max_context = 95
+        modes = set()
+        for item in semantics:
+            rid = int(item.request_id)
+            state = self._states.get(rid)
+            if state is None or rid in self._disabled_requests:
+                return None
+            row = self.owner._row(rid)
+            if (
+                not row.native_greedy
+                or not row.first_token_emitted
+                or row.lease is None
+                or row.slot is None
+            ):
+                return None
+            target = row.lease.session
+            request_max_context = min(
+                95,
+                int(target.target_layout.max_sequence_length)
+                - self.candidate_budget
+                - 1,
+            )
+            if int(item.context_tokens) > request_max_context:
+                return None
+            max_context = min(max_context, request_max_context)
+            modes.add(self._target_mode(target))
+            targets.append(target)
+        if len(modes) != 1:
             return None
         profile = getattr(self.generator, "execution_profile", None)
         profile = getattr(profile, "value", profile)
-        mode = self._target_mode(target)
+        if capacity > 1 and str(profile) != "production":
+            return None
+        mode = next(iter(modes))
         return SpeculativeCapability(
             capability_key=(
-                f"gguf_moe_mtp2_c1:{self.generator.backend}:{self.quant}:"
+                f"gguf_moe_mtp2_c{capacity}:{self.generator.backend}:{self.quant}:"
                 f"{mode}:b{self.candidate_budget}"
             ),
             target_key="qwen_moe_gguf",
@@ -413,11 +501,13 @@ class Qwen35GGUFMoEMTP2Adapter:
             catchup_mode=ProviderCatchupMode.TARGET_OUTPUT,
             supported_modes=("verify_chain",),
             supported_sampling_modes=("greedy",),
-            max_requests=1,
+            max_requests=capacity,
             max_candidates_per_request=self.candidate_budget,
-            max_frontier_rows=self.candidate_budget + 1,
-            proposal_widths=(1,),
-            target_row_buckets=tuple(range(2, self.candidate_budget + 2)),
+            max_frontier_rows=capacity * (self.candidate_budget + 1),
+            proposal_widths=tuple(range(1, capacity + 1)),
+            target_row_buckets=tuple(
+                range(capacity * 2, capacity * (self.candidate_budget + 1) + 1)
+            ),
             target_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
             provider_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
             graph_supported=mode == "native",
@@ -428,11 +518,162 @@ class Qwen35GGUFMoEMTP2Adapter:
         )
 
     def claims_fit(self, plan: SpecRequestPlan) -> bool:
+        capacity = int(getattr(self.owner, "capacity", 1))
         return bool(
             self.enabled
-            and len(plan.speculative_request_ids) == 1
-            and int(plan.speculative_request_ids[0]) in self._states
-            and int(plan.speculative_request_ids[0]) not in self._disabled_requests
+            and capacity in {1, 2}
+            and len(plan.speculative_request_ids) == capacity
+            and all(
+                int(request_id) in self._states
+                and int(request_id) not in self._disabled_requests
+                for request_id in plan.speculative_request_ids
+            )
+        )
+
+    def reserve_claims(self, claims: ResourceClaimSet) -> str:
+        if self._active_claims is not None:
+            raise RuntimeError("MoE MTP2 claims are already reserved")
+        self._active_claims = claims
+        return claims.claim_id
+
+    def release_claims(self, reservation: str) -> None:
+        if (
+            self._active_claims is None
+            or self._active_claims.claim_id != str(reservation)
+        ):
+            raise RuntimeError("MoE MTP2 claim release does not match ownership")
+        self._active_claims = None
+
+    def prepare_requests(
+        self,
+        plan: SpecRequestPlan,
+        request_semantics: Sequence[SpeculativeRequestSemantics],
+        *,
+        stream: int | None = None,
+    ) -> None:
+        del request_semantics, stream
+        ids = tuple(int(value) for value in plan.speculative_request_ids)
+        if len(ids) != 2 or any(request_id not in self._states for request_id in ids):
+            raise RuntimeError("MoE physical C2 requests are not prompt-primed")
+        for request_id in ids:
+            self.owner._flush_row_owner(self.owner._row(request_id))
+
+    def propose_batch(
+        self,
+        plan: SpecRequestPlan,
+        request_semantics: Sequence[SpeculativeRequestSemantics],
+        *,
+        stream: int | None = None,
+    ) -> CandidateGraph:
+        del stream
+        ids = tuple(int(value) for value in plan.speculative_request_ids)
+        if len(ids) != 2:
+            raise NotImplementedError("MoE staged proposal currently requires C2")
+        semantics = {
+            int(item.request_id): item for item in request_semantics
+        }
+        counts = tuple(
+            int(plan.candidate_counts[plan.request_ids.index(request_id)])
+            for request_id in ids
+        )
+        if any(count < 1 or count > self.candidate_budget for count in counts):
+            raise ValueError("MoE C2 proposal count is outside the adapter budget")
+        rows = tuple(self.owner._row(request_id) for request_id in ids)
+        states = tuple(self._states[request_id] for request_id in ids)
+        roots = []
+        positions = []
+        candidate_rows: list[tuple[int, ...]] = []
+        started = time.perf_counter()
+        for request_id, count, row, state in zip(
+            ids, counts, rows, states, strict=True
+        ):
+            if row.lease is None or row.slot is None:
+                raise RuntimeError("MoE C2 proposal lost resident target ownership")
+            target = row.lease.session
+            if int(target.position) != int(row.slot.seq_position):
+                raise RuntimeError("MoE C2 proposal target cursor is stale")
+            pending = state.context.pending_seed
+            if pending is None or int(getattr(pending, "hidden_ptr", 0)) <= 0:
+                raise RuntimeError("MoE C2 proposal has no resident pending seed")
+            root_token = int(row.slot.generated_ids[-1])
+            root_position = int(target.position)
+            tokens, topk, proposed_cache_len = (
+                state.draft.propose_chain_from_device_seed(
+                    int(pending.hidden_ptr),
+                    start_token=root_token,
+                    start_position=root_position,
+                    draft_n_max=count,
+                    top_k=1,
+                    rope_cos=self._assets.rope_cos,
+                    rope_sin=self._assets.rope_sin,
+                    dense_key_cache=state.key_cache,
+                    dense_value_cache=state.value_cache,
+                    dense_cache_len=int(state.cache_len),
+                    draft_p_min=0.0,
+                )
+            )
+            candidate_tokens = tuple(int(token) for token in tokens)
+            if (
+                len(candidate_tokens) != count
+                or len(topk) != count
+                or any(tuple(int(value) for value in values) != (candidate_tokens[index],)
+                       for index, values in enumerate(topk))
+            ):
+                raise RuntimeError("MoE C2 provider did not produce one top-1 chain")
+            if int(proposed_cache_len) != int(state.cache_len) + count:
+                raise RuntimeError("MoE C2 provider returned an invalid speculative cursor")
+            state.proposal_tokens = candidate_tokens
+            state.proposed_cache_len = int(proposed_cache_len)
+            roots.append(root_token)
+            positions.append(root_position)
+            candidate_rows.append(candidate_tokens)
+        proposal_seconds = time.perf_counter() - started
+        for state in states:
+            state.last_proposal_seconds = proposal_seconds
+        offsets = [0]
+        for values in candidate_rows:
+            offsets.append(offsets[-1] + len(values))
+        row_to_request = tuple(
+            request_id
+            for request_id, values in zip(ids, candidate_rows, strict=True)
+            for _ in values
+        )
+        draft_depths = tuple(
+            depth
+            for values in candidate_rows
+            for depth in range(1, len(values) + 1)
+        )
+        parents: list[int] = []
+        cursor = 0
+        for values in candidate_rows:
+            for index in range(len(values)):
+                parents.append(-1 if index == 0 else cursor + index - 1)
+            cursor += len(values)
+        return CandidateGraph(
+            provider_key=str(plan.provider_key),
+            method_key="mtp2",
+            policy_fingerprint="moe-nextn-request-major-c2",
+            cycle_id=int(plan.cycle_id),
+            transaction_id=int(plan.cycle_id),
+            request_ids=plan.request_ids,
+            resident_slots=plan.resident_slots,
+            root_positions=tuple(
+                int(semantics[request_id].context_tokens) - 1
+                for request_id in plan.request_ids
+            ),
+            row_offsets=tuple(offsets),
+            row_to_request=row_to_request,
+            parent_candidate_rows=tuple(parents),
+            draft_depths=draft_depths,
+            active_mask=(True,) * sum(counts),
+            candidate_tokens=tuple(
+                token for values in candidate_rows for token in values
+            ),
+            mode="verify_chain",
+            provider_metadata=(
+                ("physical_provider_rows", len(ids)),
+                ("provider_weight_sweeps", len(ids)),
+            ),
         )
 
     def prepare_k0(
@@ -485,6 +726,500 @@ class Qwen35GGUFMoEMTP2Adapter:
                 dense_cache_len=int(state.cache_len),
             )
             row.mtp2_k0_catchups += 1
+
+    def _batch_accept_resources(
+        self,
+        runtime: Any,
+    ) -> tuple[TargetVerifyBufferOwner, Tensor, Tensor]:
+        if self._batch_accept_workspace is None:
+            workspace = RuntimeWorkspace(device=Device("hip", 0), runtime=runtime)
+            spec = TargetVerifyBufferSpec(
+                backend=str(self.generator.backend),
+                bucket="gguf-moe-mtp2-physical-r6-c2",
+                device=Device("hip", 0),
+                max_rows=6,
+                max_requests=2,
+                mode="verify_chain",
+            )
+            self._batch_accept_workspace = workspace
+            self._batch_accept_owner = TargetVerifyBufferOwner.allocate(
+                spec,
+                workspace=workspace,
+            )
+            self._batch_accept_remaining = workspace.reserve_tensor(
+                "target_verify/gguf-moe-mtp2-r6-c2/remaining_decode",
+                (2,),
+                DType.INT32,
+            )
+            self._batch_accept_payload = workspace.reserve_tensor(
+                "target_verify/gguf-moe-mtp2-r6-c2/packed_accept_payload",
+                (2, ACCEPT_PACKED_PAYLOAD_FIELDS),
+                DType.INT32,
+            )
+        if (
+            self._batch_accept_owner is None
+            or self._batch_accept_remaining is None
+            or self._batch_accept_payload is None
+        ):
+            raise RuntimeError("MoE physical accept workspace is incomplete")
+        return (
+            self._batch_accept_owner,
+            self._batch_accept_remaining,
+            self._batch_accept_payload,
+        )
+
+    @staticmethod
+    def _upload_accept_array(
+        tensor: Tensor,
+        values: np.ndarray,
+        runtime: Any,
+    ) -> None:
+        array = np.ascontiguousarray(values)
+        if array.nbytes > tensor.numel * tensor.dtype.itemsize:
+            raise ValueError("MoE physical accept upload exceeds capacity")
+        copy_host_to_device(
+            DeviceBuffer(tensor.ptr, array.nbytes),
+            host_array_ptr(array),
+            array.nbytes,
+            runtime=runtime,
+        )
+
+    def _accept_target_batch_on_device(
+        self,
+        batch: TargetVerifyBatch,
+        target_top1: Sequence[int],
+        remaining_decode: Sequence[int],
+        *,
+        transaction_id: int,
+        runtime: Any,
+    ) -> tuple[TargetAcceptSummary, TargetVerifyBuffers]:
+        owner, remaining_owner, payload_owner = self._batch_accept_resources(runtime)
+        buffers = owner.bind(batch, transaction_id=int(transaction_id))
+        requests = len(batch.request_ids)
+        remaining = Tensor.from_handle(
+            remaining_owner.ptr,
+            (requests,),
+            DType.INT32,
+            remaining_owner.device,
+        )
+        payload = Tensor.from_handle(
+            payload_owner.ptr,
+            (requests, ACCEPT_PACKED_PAYLOAD_FIELDS),
+            DType.INT32,
+            payload_owner.device,
+        )
+        for tensor, values in (
+            (buffers.token_ids, np.asarray(batch.tokens, dtype=np.int32)),
+            (buffers.positions, np.asarray(batch.positions, dtype=np.int32)),
+            (buffers.parent_rows, np.asarray(batch.parent_rows, dtype=np.int32)),
+            (buffers.draft_depths, np.asarray(batch.draft_depths, dtype=np.int32)),
+            (buffers.row_to_request, np.asarray(batch.row_to_request, dtype=np.int32)),
+            (buffers.active_mask, np.asarray(batch.active_mask, dtype=np.uint8)),
+            (buffers.target_top1, np.asarray(tuple(target_top1), dtype=np.int32)),
+            (remaining, np.asarray(tuple(remaining_decode), dtype=np.int32)),
+        ):
+            self._upload_accept_array(tensor, values, runtime)
+        if self._batch_accept_library is None:
+            self._batch_accept_library = build_dflash_accept(
+                load=True,
+                compiler_version=getattr(self.generator, "compiler_version", None),
+                require_cached=bool(
+                    getattr(self.generator, "require_cached_build", False)
+                ),
+            )
+        dflash_accept_chain_i32_packed(
+            buffers.token_ids.ptr,
+            buffers.positions.ptr,
+            buffers.parent_rows.ptr,
+            buffers.draft_depths.ptr,
+            buffers.active_mask.ptr,
+            buffers.target_top1.ptr,
+            remaining.ptr,
+            buffers.accepted_counts.ptr,
+            buffers.commit_rows.ptr,
+            buffers.commit_tokens.ptr,
+            buffers.commit_positions.ptr,
+            buffers.next_tokens.ptr if buffers.next_tokens is not None else 0,
+            buffers.full_accept.ptr if buffers.full_accept is not None else 0,
+            (
+                buffers.committed_output_ids.ptr
+                if buffers.committed_output_ids is not None
+                else 0
+            ),
+            (
+                buffers.committed_output_lengths.ptr
+                if buffers.committed_output_lengths is not None
+                else 0
+            ),
+            payload.ptr,
+            batch.rows,
+            requests,
+            batch.rows,
+            library=self._batch_accept_library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        payload_host = np.empty(
+            (requests, ACCEPT_PACKED_PAYLOAD_FIELDS),
+            dtype=np.int32,
+        )
+        copy_device_to_host(
+            host_array_ptr(payload_host),
+            DeviceBuffer(payload.ptr, payload_host.nbytes),
+            payload_host.nbytes,
+            runtime=runtime,
+        )
+        summary = TargetAcceptSummary.from_gpu_payload(
+            batch,
+            {
+                "accepted_counts": tuple(int(value) for value in payload_host[:, 0]),
+                "commit_rows": tuple(int(value) for value in payload_host[:, 1]),
+                "commit_tokens": tuple(int(value) for value in payload_host[:, 2]),
+                "commit_positions": tuple(int(value) for value in payload_host[:, 3]),
+                "next_tokens": tuple(int(value) for value in payload_host[:, 4]),
+                "full_accept": tuple(bool(value) for value in payload_host[:, 5]),
+            },
+        )
+        return replace(summary, transaction_id=int(transaction_id)), buffers
+
+    def _repair_physical_provider(
+        self,
+        state: _MoeMTP2RequestState,
+        target: Any,
+        result: Any,
+        *,
+        accepted_count: int,
+        output_ids: tuple[int, ...],
+        start_position: int,
+    ) -> None:
+        accepted = int(accepted_count)
+        proposed = state.proposed_cache_len
+        if proposed is None or proposed != int(state.cache_len) + len(
+            state.proposal_tokens
+        ):
+            raise RuntimeError("MoE physical provider lost its proposal cursor")
+        consumed_rows = accepted + 1
+        if len(output_ids) != consumed_rows:
+            raise RuntimeError("MoE physical provider repair output count changed")
+        hidden = getattr(target, "_verify_hidden_seed_buf", None)
+        if hidden is None or int(getattr(target, "_verify_hidden_seed_rows_populated", 0)) < consumed_rows:
+            raise RuntimeError("MoE physical target omitted verifier hidden rows")
+        verify_seeds = tuple(
+            target.mtp_verify_seed(
+                row,
+                token_id=int(output_ids[row]),
+                position=int(start_position) + row,
+                hidden_seed_base_ptr=int(hidden.ptr),
+                hidden_seed_row_count=int(
+                    getattr(target, "_verify_hidden_seed_rows_populated", 0)
+                ),
+            )
+            for row in range(consumed_rows)
+        )
+        state.context.record_verify_seeds(verify_seeds)
+        state.context.accept(accepted)
+        committed_cache_len = int(state.cache_len) + 1
+        if accepted:
+            committed_cache_len = state.draft.write_kv_rows_from_device_seed_base(
+                int(hidden.ptr),
+                np.ascontiguousarray(output_ids[:accepted], dtype=np.int64),
+                positions=np.arange(
+                    int(start_position) + 1,
+                    int(start_position) + 1 + accepted,
+                    dtype=np.int64,
+                ),
+                rope_cos=self._assets.rope_cos,
+                rope_sin=self._assets.rope_sin,
+                dense_key_cache=state.key_cache,
+                dense_value_cache=state.value_cache,
+                dense_cache_len=committed_cache_len,
+            )
+        expected = int(state.cache_len) + 1 + accepted
+        if int(committed_cache_len) != expected:
+            raise RuntimeError("MoE physical provider commit cursor diverged")
+        state.cache_len = expected
+        state.proposal_tokens = ()
+        state.proposed_cache_len = None
+
+    def execute_target_frontier(
+        self,
+        plan: SpecRequestPlan,
+        frontier: TargetFrontier,
+        complete_claims: ResourceClaimSet,
+        *,
+        commit: bool,
+        cancelled_request_ids: Callable[[], Sequence[int]],
+    ) -> SpecCycleResult:
+        if not commit:
+            raise ValueError("MoE physical target frontier requires commit=True")
+        if self._active_claims != complete_claims:
+            raise RuntimeError("MoE physical target does not own complete claims")
+        ids = tuple(int(value) for value in plan.speculative_request_ids)
+        if len(ids) != 2 or frontier.target_batch is None:
+            raise NotImplementedError("MoE staged target currently requires physical C2")
+        batch = frontier.target_batch
+        states = tuple(self._states[request_id] for request_id in ids)
+        rows = tuple(self.owner._row(request_id) for request_id in ids)
+        if any(row.lease is None or row.slot is None for row in rows):
+            raise RuntimeError("MoE physical target lost resident rows")
+        targets = tuple(row.lease.session for row in rows)
+        starts = tuple(int(target.position) for target in targets)
+        caches = tuple(int(state.cache_len) for state in states)
+        self._transaction_sequence += 1
+        transaction_id = self._transaction_sequence
+        transaction = SpecCycleTransaction(
+            operation_id=plan.operation_id,
+            transaction_id=transaction_id,
+            cycle_id=plan.cycle_id,
+            request_ids=plan.request_ids,
+            reserved_claims=complete_claims,
+            pre_target_cursors=starts,
+            pre_provider_cursors=caches,
+            pre_rng_counters=(0, 0),
+            target_transaction_mode=plan.target_transaction_mode,
+            provider_transaction_mode=plan.provider_transaction_mode,
+            target_owner=f"{plan.operation_id}:gguf-moe-target-c2",
+            provider_owner=f"{plan.operation_id}:nextn-moe-c2",
+            provider_request_ids=ids,
+            target_checkpoint_ids=tuple(
+                f"target:{request_id}:{position}"
+                for request_id, position in zip(ids, starts, strict=True)
+            ),
+            provider_checkpoint_ids=tuple(
+                f"provider:{request_id}:{cursor}"
+                for request_id, cursor in zip(ids, caches, strict=True)
+            ),
+            target_open=True,
+            provider_open=True,
+        )
+        cancelled = tuple(int(value) for value in cancelled_request_ids())
+        if cancelled:
+            return SpecCycleResult(
+                stage=SpecCycleStage.CANCELLED,
+                transaction=replace(
+                    transaction,
+                    target_open=False,
+                    provider_open=False,
+                    rolled_back=True,
+                ),
+                cancelled_request_ids=cancelled,
+            )
+        root_rows = dict(zip(batch.request_ids, batch.root_rows, strict=True))
+        candidate_rows = {
+            request_id: tuple(
+                sorted(
+                    (
+                        row
+                        for row in batch.candidate_rows
+                        if batch.row_to_request[row] == request_id
+                    ),
+                    key=lambda row: batch.draft_depths[row],
+                )
+            )
+            for request_id in ids
+        }
+        jobs = []
+        for request_id, target in zip(ids, targets, strict=True):
+            root = root_rows[request_id]
+            candidates = candidate_rows[request_id]
+            jobs.append(
+                {
+                    "session": target,
+                    "request_id": request_id,
+                    "resident_slot": int(
+                        plan.resident_slots[plan.request_ids.index(request_id)]
+                    ),
+                    "transaction_id": transaction_id,
+                    "bulk_attention_mode": "bulk",
+                    "use_wmma_prefill": False,
+                    "capture_linear_state_rows": True,
+                    "defer_linear_state_commit": True,
+                    "defer_state_scatter": True,
+                    "input_token_ids": (
+                        int(batch.tokens[root]),
+                        *tuple(int(batch.tokens[row]) for row in candidates),
+                    ),
+                }
+            )
+        owner = self.owner._packed_execution_owner(targets[0])
+        verify_batch = getattr(owner, "verify_target_blocks_batch", None)
+        if not callable(verify_batch):
+            raise RuntimeError("MoE physical target owner has no packed verifier")
+        target_started = time.perf_counter()
+        results = list(verify_batch(jobs, device_result=False))
+        target_seconds = time.perf_counter() - target_started
+        if len(results) != 2:
+            raise RuntimeError("MoE physical target returned the wrong request count")
+        physical_rows = sum(len(job["input_token_ids"]) for job in jobs)
+        for row in rows:
+            row.mtp2_target_batch_calls += 1
+            row.mtp2_target_physical_rows.append(physical_rows)
+        target_top1 = [0] * batch.rows
+        for request_id, result in zip(ids, results, strict=True):
+            destination = (root_rows[request_id], *candidate_rows[request_id])
+            if len(result.token_ids) != len(destination):
+                raise RuntimeError("MoE physical target omitted verifier rows")
+            for row_index, token in zip(destination, result.token_ids, strict=True):
+                target_top1[row_index] = int(token)
+        remaining = tuple(
+            max(0, int(row.request.max_tokens) - len(row.slot.generated_ids))
+            for row in rows
+        )
+        accept_started = time.perf_counter()
+        gpu_summary, accept_buffers = self._accept_target_batch_on_device(
+            batch,
+            target_top1,
+            remaining,
+            transaction_id=transaction_id,
+            runtime=targets[0].runtime,
+        )
+        accept = batch.accept_from_top1(
+            target_top1,
+            transaction_id=transaction_id,
+            remaining_decode=remaining,
+        )
+        cpu_summary = replace(
+            TargetAcceptSummary.from_accept_result(batch, accept),
+            transaction_id=transaction_id,
+        )
+        if any(
+            getattr(gpu_summary, field) != getattr(cpu_summary, field)
+            for field in (
+                "request_ids",
+                "accepted_counts",
+                "accepted_tokens",
+                "commit_rows",
+                "commit_tokens",
+                "commit_positions",
+                "next_tokens",
+                "full_accept",
+            )
+        ):
+            raise RuntimeError("MoE physical GPU accept differs from CPU oracle")
+        accept_seconds = time.perf_counter() - accept_started
+        cancelled = tuple(int(value) for value in cancelled_request_ids())
+        if cancelled:
+            return SpecCycleResult(
+                stage=SpecCycleStage.CANCELLED,
+                transaction=replace(
+                    transaction,
+                    target_open=False,
+                    provider_open=False,
+                    rolled_back=True,
+                ),
+                cancelled_request_ids=cancelled,
+            )
+        commit_batch = getattr(
+            owner,
+            "_commit_deferred_packed_verify_states_batch",
+            None,
+        )
+        if not callable(commit_batch):
+            raise RuntimeError("MoE physical target owner has no selected commit")
+        commit_started = time.perf_counter()
+        commit_contract = commit_batch(
+            results,
+            targets,
+            accepted_counts=gpu_summary.accepted_counts,
+            accept_buffers=accept_buffers,
+        )
+        commit_seconds = time.perf_counter() - commit_started
+        if int(commit_contract.get("requests", 0)) != 2:
+            raise RuntimeError("MoE physical selected commit omitted a request")
+        provider_started = time.perf_counter()
+        next_tokens = gpu_summary.next_tokens
+        visible_rows: list[tuple[int, ...]] = []
+        for index, (
+            request_id,
+            state,
+            target,
+            result,
+            row,
+            accepted_count,
+            accepted_tokens,
+            next_token,
+        ) in enumerate(
+            zip(
+                ids,
+                states,
+                targets,
+                results,
+                rows,
+                gpu_summary.accepted_counts,
+                gpu_summary.accepted_tokens,
+                next_tokens,
+                strict=True,
+            )
+        ):
+            visible = (
+                *tuple(int(token) for token in accepted_tokens),
+                int(next_token),
+            )
+            self._repair_physical_provider(
+                state,
+                target,
+                result,
+                accepted_count=int(accepted_count),
+                output_ids=visible,
+                start_position=starts[index],
+            )
+            row.slot.generated_ids.extend(visible)
+            row.slot.prev_token = int(visible[-1])
+            row.slot.seq_position = int(target.position)
+            row.slot.native_decode_steps += 1
+            row.slot.done = len(row.slot.generated_ids) >= int(row.request.max_tokens)
+            row.mtp2_cycles += 1
+            row.mtp2_candidate_counts.append(
+                int(plan.candidate_counts[plan.request_ids.index(request_id)])
+            )
+            row.mtp2_accepted_counts.append(int(accepted_count))
+            row.mtp2_proposal_ms += float(state.last_proposal_seconds) * 1000.0
+            row.mtp2_target_ms += float(target_seconds) * 1000.0
+            row.mtp2_accept_ms += float(accept_seconds) * 1000.0
+            row.mtp2_selected_commit_ms += float(commit_seconds) * 1000.0
+            row.mtp2_device_accept_calls += 1
+            row.mtp2_selected_commit_batch_calls += 1
+            row.mtp2_execution_routes.append("eager")
+            visible_rows.append(visible)
+        provider_seconds = time.perf_counter() - provider_started
+        for row in rows:
+            row.mtp2_provider_update_ms += provider_seconds * 1000.0
+        committed_accept = AcceptResult(
+            request_ids=ids,
+            accepted_counts=gpu_summary.accepted_counts,
+            accepted_tokens=gpu_summary.accepted_tokens,
+            transaction_id=transaction_id,
+            selected_candidate_rows=gpu_summary.commit_rows,
+            next_tokens=tuple(int(value) for value in next_tokens),
+            correction_or_bonus_tokens=tuple(int(value) for value in next_tokens),
+            target_cursor_deltas=tuple(len(values) for values in visible_rows),
+            provider_cursor_deltas=gpu_summary.accepted_counts,
+            finish_reasons=(None, None),
+        )
+        telemetry = SpecCycleTelemetry(
+            operation_id=plan.operation_id,
+            request_ids=plan.request_ids,
+            candidate_counts=plan.candidate_counts,
+            plan_reasons=plan.reasons,
+            k0_classes=plan.k0_classes,
+            proposal_widths=plan.proposal_widths,
+            target_row_decomposition=plan.target_row_decomposition,
+            execution_route="eager",
+            proposal_seconds=max(state.last_proposal_seconds for state in states),
+            target_seconds=target_seconds,
+            accept_commit_seconds=accept_seconds + commit_seconds,
+            provider_update_seconds=provider_seconds,
+            weight_sweeps=1,
+        )
+        return SpecCycleResult.committed(
+            replace(
+                transaction,
+                target_committed=True,
+                provider_committed=True,
+            ),
+            committed_accept,
+            telemetry=telemetry,
+        )
 
     def execute_cycle(
         self,
@@ -622,13 +1357,22 @@ class Qwen35GGUFMoEMTP2Adapter:
             ),
             "transient": ResourceClaimSet.from_mapping(
                 f"{plan.operation_id}:transient",
-                {"gguf_moe_mtp2.result_rows": 1},
+                {
+                    "gguf_moe_mtp2.result_rows": len(
+                        plan.speculative_request_ids
+                    )
+                },
                 lifetime=ClaimLifetime.WORK_ITEM,
             ),
         }
 
     def rollback_cycle(self, plan: SpecRequestPlan, *args: Any) -> None:
         del args
+        for request_id in plan.speculative_request_ids:
+            state = self._states.get(int(request_id))
+            if state is not None:
+                state.proposal_tokens = ()
+                state.proposed_cache_len = None
         self._disabled_requests.update(int(value) for value in plan.speculative_request_ids)
 
     def recover_cycle_failure(
@@ -689,6 +1433,14 @@ class Qwen35GGUFMoEMTP2Adapter:
             self.release_request(request_id)
         self._intents.clear()
         self._disabled_requests.clear()
+        self._active_claims = None
+        if self._batch_accept_workspace is not None:
+            self._batch_accept_workspace.free()
+            self._batch_accept_workspace = None
+            self._batch_accept_owner = None
+            self._batch_accept_remaining = None
+            self._batch_accept_payload = None
+            self._batch_accept_library = None
         for target, buffer, normalized, normalized_bf16 in self._target_hidden_slabs.values():
             self._detach_sink(
                 _MoeTargetHiddenSink(
