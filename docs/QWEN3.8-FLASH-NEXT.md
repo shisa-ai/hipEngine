@@ -469,12 +469,18 @@ Frozen llama.cpp PR #27742 (`bea3b12da`, `llama-debug` SHA-256
 versus hipEngine on all 10 prompts in
 `benchmarks/prompts/mtpbench-code-general-ja.jsonl` measured mean/p95/p99/max
 teacher→hipEngine KL `0.01406 / 0.04154 / 0.04776 / 0.04931` and `10/10`
-top-1 agreement. The public API resolved `gguf_ud_q4_k_xl` and generated
+top-1 agreement. The separately predeclared eight category-heldout prompts,
+run with matched BF16 K/V in the corrected merged process, pass mean/p95/p99/max
+KL `0.00987 / 0.02331 / 0.02766 / 0.02874` and top-1 `8/8`; the complete
+merged 18-row diagnostic is not called a pass because one canonical repeat
+exceeded the ceiling. The public API resolved `gguf_ud_q4_k_xl` and generated
 `" 4.\n\n"` for `The answer to 2 + 2 is`. Measured tracked peak was
 82,718,198,780 bytes; close returned active allocations/current bytes to zero.
 Exact commands, hashes, category rows, memory plan, and unsupported-scope list
 are retained in
-[`2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json).
+[`2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json)
+and the heldout subset is in
+[`2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json).
 These are correctness/bring-up results, not a speed or 262K-capacity claim.
 
 The first real native sparse-QSA row is additionally qualified at token 2,052
