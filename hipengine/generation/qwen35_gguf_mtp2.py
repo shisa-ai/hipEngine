@@ -22,6 +22,9 @@ from hipengine.core.memory import (
 )
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.backends import backend_package_capability
+from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
+    gguf_rmsnorm_bf16_f32_weight,
+)
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
     ACCEPT_PACKED_PAYLOAD_FIELDS,
     build_dflash_accept,
@@ -209,6 +212,7 @@ class Qwen35GGUFMTP2Adapter:
         self._prompt_hidden_rows: dict[int, np.ndarray] = {}
         self._prompt_streaming_sinks: dict[int, _StreamingNextNPromptSink] = {}
         self._prompt_streaming_group_keys: dict[int, tuple[int, ...]] = {}
+        self._prompt_streaming_norm_buffers: dict[int, DeviceBuffer] = {}
         self._states: dict[int, _MTP2RequestState] = {}
         self._provider_groups: dict[tuple[int, ...], _MTP2ProviderGroup] = {}
         self._disabled_requests: set[int] = set()
@@ -355,6 +359,8 @@ class Qwen35GGUFMTP2Adapter:
             )
             self._provider_groups[group.key] = group
         created: list[int] = []
+        if not hasattr(self, "_prompt_streaming_norm_buffers"):
+            self._prompt_streaming_norm_buffers = {}
         checkpoint_by_id = {} if checkpoints is None else dict(checkpoints)
         try:
             for request_id, row, target in zip(ids, rows, targets, strict=True):
@@ -364,13 +370,58 @@ class Qwen35GGUFMTP2Adapter:
                     checkpoint = lambda row=row: raise_if_generation_deadline_expired(
                         row.request
                     )
+                hidden_size = int(group.provider.executor.hidden_size)
+                hidden_nbytes = hidden_size * DType.BF16.itemsize
+                target_hidden = getattr(target, "_prefill_hidden_a", None)
+                if target_hidden is None or target.runner is None:
+                    raise RuntimeError("GGUF target prefill hidden storage is closed")
+                capacity = min(
+                    len(row.prompt_ids),
+                    int(target_hidden.nbytes) // hidden_nbytes,
+                )
+                if capacity <= 0:
+                    raise RuntimeError(
+                        "GGUF target prefill hidden storage has no row capacity"
+                    )
+                norm_buffer = malloc(
+                    capacity * hidden_nbytes,
+                    runtime=target.runtime,
+                )
+                self._prompt_streaming_norm_buffers[request_id] = norm_buffer
+
+                def transform_hidden_rows(
+                    src_ptr: int,
+                    count: int,
+                    stream: int,
+                    *,
+                    target=target,
+                    norm_buffer=norm_buffer,
+                    capacity=capacity,
+                ) -> int:
+                    if int(count) > int(capacity):
+                        raise RuntimeError(
+                            "streaming normalized hidden rows exceed capacity"
+                        )
+                    gguf_rmsnorm_bf16_f32_weight(
+                        int(src_ptr),
+                        target.runner.weights.root("output_norm").allocation().tensor.ptr,
+                        norm_buffer.ptr,
+                        rows=int(count),
+                        hidden_size=int(target.runner.hidden_size),
+                        eps=target.runner.weights.config.rms_norm_eps,
+                        stream=int(stream),
+                        runtime=target.runtime,
+                    )
+                    return int(norm_buffer.ptr)
+
                 sink = _StreamingNextNPromptSink(
                     request_id=request_id,
                     prompt_tokens=row.prompt_ids,
-                    hidden_size=int(group.provider.executor.hidden_size),
+                    hidden_size=hidden_size,
                     executor=group.provider.executor,
                     runtime=target.runtime,
                     checkpoint=checkpoint,
+                    transform_hidden_rows=transform_hidden_rows,
                 )
                 self._prompt_streaming_sinks[request_id] = sink
                 self._prompt_streaming_group_keys[request_id] = group.key
@@ -378,6 +429,8 @@ class Qwen35GGUFMTP2Adapter:
                 created.append(request_id)
         except Exception:
             self._abort_prompt_streaming(tuple(created), stream=0)
+            for request_id in ids:
+                self._free_prompt_streaming_norm_buffer(request_id, target=None)
             if acquired and not group.request_ids:
                 self._provider_groups.pop(group.key, None)
             self._active_prompt_claims = None
@@ -469,7 +522,33 @@ class Qwen35GGUFMTP2Adapter:
                 self._prompt_streaming_group_keys.pop(request_id, None)
                 if sink is not None:
                     sink.close()
+                self._free_prompt_streaming_norm_buffer(request_id, target=None)
             self._active_prompt_claims = None
+
+    def _free_prompt_streaming_norm_buffer(
+        self,
+        request_id: int,
+        *,
+        target: Any | None,
+    ) -> None:
+        rid = int(request_id)
+        norm_buffers = getattr(self, "_prompt_streaming_norm_buffers", None)
+        if not norm_buffers:
+            return
+        buffer = norm_buffers.pop(rid, None)
+        if buffer is None:
+            return
+        if target is None:
+            try:
+                row = self.owner._row(rid)
+                target = None if row.lease is None else row.lease.session
+            except (KeyError, AttributeError):
+                target = None
+        if target is None:
+            raise RuntimeError(
+                "streaming hidden normalization buffer lost its target owner"
+            )
+        free(buffer, runtime=target.runtime)
 
     def _abort_prompt_streaming(
         self,
@@ -495,6 +574,7 @@ class Qwen35GGUFMTP2Adapter:
                 groups.add(group_key)
             if sink is not None:
                 sink.close()
+            self._free_prompt_streaming_norm_buffer(request_id, target=None)
         for group_key in groups:
             group = self._provider_groups.get(group_key)
             if group is not None and not group.request_ids:
@@ -2808,6 +2888,10 @@ class Qwen35GGUFMTP2Adapter:
         self._disabled_requests.clear()
         self._active_claims = None
         self._active_prompt_claims = None
+        for request_id in tuple(
+            getattr(self, "_prompt_streaming_norm_buffers", {})
+        ):
+            self._free_prompt_streaming_norm_buffer(request_id, target=None)
         self._close_cycle_workspace()
         if self._batch_accept_workspace is not None:
             self._batch_accept_workspace.free()
