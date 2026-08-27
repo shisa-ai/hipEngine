@@ -34,8 +34,8 @@ Each value is the total tokens per second across all active requests:
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
 | Qwen3.6-27B Dense GGUF `Q4_K_M` — Generation-2 C1/K3 D24 | **32.076 tok/s** | **1.4382x** |
+| Qwen3.6-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **34.488 tok/s** | **1.1207x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — legacy MTP-2 / Generation-2 C1/K2 D24 | **122.67 tok/s** / **77.358 tok/s** | **1.2679x** / **1.1400x** |
-
 ### RX 7900 XTX (`gfx1100`) — Qwen3.8-27B `Q4_K_M` prefill
 
 | Workload | hipEngine | llama.cpp HIP | HE vs HIP | llama.cpp Vulkan | HE vs Vulkan |
@@ -95,8 +95,9 @@ Rows use different models and tests; compare only matching protocols. The RX 790
 
 ## Current default notes
 
-W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE K2 and 27B
-Dense K3; other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
+W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE C1/K2, 27B
+Dense C1/K3, and 27B Dense production C2/K2/D24 at resident capacity 2; other
+keys use K0. [`C2`](results/2026-08-27-w7900-27b-dense-mtp2-c2-automatic-promotion.json) · [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
 
 Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 auto at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-realized-singleton-auto.json); [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json); otherwise K0. Dynamic Admission [D1](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d1-static-eligibility.json) preserves typed intent through resident C2 transitional K0 and mixed permanent-AR peers; physical C2 remains unpromoted.
 `Q4_K_S` uses FP16 recurrent state with FP32 rollback. Its exact W8192 DMS
@@ -132,15 +133,15 @@ small-M WMMA raises physical C2/C4 **9.958→11.462 (+15.10%) /
 [`Small-M`](results/2026-08-27-gfx1151-specdec2-smallm-q4-wmma-retained.json) · [`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json).
 
 gfx1100 dense C1 K1/K2/K3 is **1.272x/1.407x/1.439x AR**; packed PARO is
-**0.979x**. The repaired physical C2/K2 owner is exposed only for the exact
-strict or production/BF16/resident-C2/physical-C2/D24 keys. Production passes
-281 actual packed strict-teacher rows at mean/p95/p99/max KL
-**0.000159/0.000786/0.002098/0.003763**, **99.644%** top-1, every scope,
-three physical repeats, mapped row-permutation isolation, tasks, and lifecycle.
-Direct ownership remains **22.390 vs 31.281 tok/s (0.7158x AR)**; the real
-unflagged strict/production blocking routes pass 10/10 at **22.036/22.002 vs
-30.652/30.623 tok/s (0.7189x/0.7185x)**. Concurrent SSE K2 plus cancel/survivor
-drain also pass. Automatic stays K0. [`Quality`](results/2026-08-27-w7900-27b-dense-mtp2-c2-production-quality.json) · [`Explicit C2`](results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json) · [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
+**0.979x**. The production/BF16/resident-C2/physical-C2/K2/D24 key is now
+automatic: three-run direct economics reaches **34.872 vs 31.040 tok/s
+(1.1235x AR)** and real unflagged blocking reaches **34.488 vs 30.774 tok/s
+(1.1207x)**, with every category non-regressive. Output-normalized prompt
+streaming and scoped Q4/Q5/Q6 rowtiles pass 281 strict-teacher rows at
+mean/p95/p99/max KL **0.000182/0.001043/0.003095/0.003763**, **99.644%** top-1,
+three repeats, mapped permutation isolation, tasks, automatic SSE, cancellation,
+and complete drain. Strict remains explicit; capacity-1 and wrong-K3 controls
+stay K0. [`Automatic C2`](results/2026-08-27-w7900-27b-dense-mtp2-c2-automatic-promotion.json) · [`Strict fallback`](results/2026-08-27-w7900-27b-dense-mtp2-c2-production-quality.json).
 
 ## Where detailed evidence lives
 
@@ -401,6 +402,7 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | W7900 / Qwen3.6-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 29.457 | **60.929** | **2.0684x** | Current clean snapshot; all ten prompts, greedy outputs, and GPU/CPU acceptance agree. The ratio replaces stale historical denominators. [`artifact`](results/2026-08-23-w7900-qwen36-27b-current-default-publication.json) |
 | RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 35.287 | **62.440** | **1.7695x** | Clean idle-card correction; exact greedy and GPU/CPU acceptance, retained fusion improves matched AR 3.764% and B3 0.439% with every category non-regressive. [`artifact`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Exact natural25 B3 | 11.692 | **21.158** | **1.8095x** | Clean current-main direct-leaf snapshot; all ten prompts and 30 MTP comparisons are exact, GPU/CPU acceptance agrees, and cached profiling confirms the qualified scalar-C1 and native Q4 rows4/2 owners. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
+| W7900 / Qwen3.6-27B Dense `Q4_K_M` | Public production/BF16 resident-C2 K2 D24, automatic | 30.774 | **34.488** | **1.1207x** | Clean 10/10 engaged; all categories non-regressive; 73.70% acceptance in the three-run packet; blocking/SSE/static-intent/cancel/drain pass. [`artifact`](results/2026-08-27-w7900-27b-dense-mtp2-c2-automatic-promotion.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 normal-cap4 realized-C1 B3, automatic | 9.878 | **15.769** | **1.5965x** | Clean 10/10 >1.10x; all slices positive; 78.57% acceptance; blocking/SSE and C1->C2 K0->C1 lifecycle pass. [`artifact`](results/2026-08-27-gfx1151-qwen38-realized-singleton-auto.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public production/BF16 C1 B3, c68-128/h24, explicit | 9.350 | **13.088** | **1.3998x** | 10/10 >1.10x; all slices positive; 87.63% acceptance; numerics/blocking/SSE pass. c129+/auto K0. [`artifact`](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) |
 | W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production/default B1 fast, raw D24 | 110.830 | **115.770** | **1.0446x** | Exact `720/720`; complete 10-prompt numerical/repeat/task/state gate passes. Fast improves strict MTP 10.33% overall and every category. [`artifact`](results/2026-08-24-w7900-paro-fast-d24-3run-default.json) |

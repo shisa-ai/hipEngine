@@ -325,6 +325,24 @@ def test_qwen36_dense_production_c2_k2_plan_is_exact_automatic_scope() -> None:
     assert frontend_c1.static_eligibility.max_candidate_count == 2
     assert frontend_c1.static_eligibility.max_realized_group_rows == 2
 
+    for overrides, reason in (
+        ({"candidate_budget": 3}, "candidate_budget_not_qualified"),
+        ({"output_horizon_tokens": 23}, "output_horizon_not_qualified"),
+        ({"context_tokens": 96}, "context_bucket_not_qualified"),
+        ({"sampling_mode": "processed_argmax"}, "sampling_mode_not_qualified"),
+        ({"max_sequence_length": 2048}, "max_sequence_length_not_qualified"),
+        ({"kv_storage": "int8"}, "kv_storage_not_qualified"),
+        ({"realized_group_rows": 3}, "physical_group_not_qualified"),
+        ({"resident_capacity": 3}, "resident_capacity_not_qualified"),
+        ({"memory_fit": False}, "insufficient_memory"),
+    ):
+        rejected = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+            key=replace(key, **overrides)
+        )
+        assert rejected.admitted is False
+        assert rejected.static_eligibility.eligible is False
+        assert rejected.reason == reason
+
 
 def test_qwen36_moe_production_c1_k2_plan_is_exact_automatic_scope() -> None:
     evidence = Qwen35MoeGGUFModel().speculative_mtp_serving_evidence[0]
