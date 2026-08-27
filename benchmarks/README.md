@@ -133,13 +133,15 @@ small-M WMMA raises physical C2/C4 **9.958→11.462 (+15.10%) /
 [`Small-M`](results/2026-08-27-gfx1151-specdec2-smallm-q4-wmma-retained.json) · [`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json).
 
 gfx1100 dense C1 K1/K2/K3 is **1.272x/1.407x/1.439x AR**; packed PARO is
-**0.979x**. The repaired physical C2/K2 owner is now exposed only for the exact
-strict/BF16/resident-C2/physical-C2/D24 key: 10/10 cells execute request-major
-proposal, one packed target/accept/commit group, and zero candidate D2H/recovery.
+**0.979x**. The repaired physical C2/K2 owner is exposed only for the exact
+strict or production/BF16/resident-C2/physical-C2/D24 keys. Production passes
+281 actual packed strict-teacher rows at mean/p95/p99/max KL
+**0.000159/0.000786/0.002098/0.003763**, **99.644%** top-1, every scope,
+three physical repeats, mapped row-permutation isolation, tasks, and lifecycle.
 Direct ownership remains **22.390 vs 31.281 tok/s (0.7158x AR)**; the real
 unflagged public blocking route passes 10/10 at **22.036 vs 30.652 tok/s
 (0.7189x)**. Concurrent SSE K2 plus cancel/survivor drain also pass. Production
-and automatic stay K0. [`Explicit C2`](results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json) · [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
+and automatic stay K0. [`Quality`](results/2026-08-27-w7900-27b-dense-mtp2-c2-production-quality.json) · [`Explicit C2`](results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json) · [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
 
 ## Where detailed evidence lives
 

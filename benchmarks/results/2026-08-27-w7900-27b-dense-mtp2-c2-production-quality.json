@@ -1,0 +1,142 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "kind": "qwen36_dense_mtp2_c2_production_quality",
+  "status": "passed",
+  "performance_claim": false,
+  "source_commit": "b049a6452b1d41a1e0bd34f6524fabe8db17c3e7",
+  "hardware": {
+    "physical_host": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "gpu_index": 0,
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "size_bytes": 17106773120,
+    "quant": "Q4_K_M",
+    "kv": "bf16"
+  },
+  "workload": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "resident_capacity": 2,
+    "physical_group_rows": 2,
+    "candidate_budget": 2,
+    "max_tokens": 24,
+    "repeat_runs": 3,
+    "sampling": "raw greedy",
+    "teacher": "strict selected-quant serial target arithmetic",
+    "candidate": "actual packed physical C2 target on paired strict-teacher resident states"
+  },
+  "profiles": {
+    "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d",
+    "production_manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "registered_strict_fallback": true
+  },
+  "thresholds": {
+    "mean_kl_max": 0.001,
+    "p95_kl_max": 0.005,
+    "p99_kl_max": 0.02,
+    "max_kl_max": 0.05,
+    "top1_min": 0.99,
+    "per_scope_top1_min": 0.97
+  },
+  "numerical": {
+    "passed": true,
+    "aggregate": {
+      "rows": 281,
+      "mean_kl": 0.00015924435978072318,
+      "p95_kl": 0.0007857783562731938,
+      "p99_kl": 0.0020977757918798274,
+      "max_kl": 0.003763176992624703,
+      "top1_agreement": 0.99644128113879,
+      "top1_matches": 280,
+      "top1_mismatches": 1,
+      "top5_overlap_mean": 0.985053380782918,
+      "max_abs_logit_delta": 1.095149278640747
+    },
+    "categories": {
+      "code": {"rows": 119, "mean_kl": 0.00014430280263265163, "p95_kl": 0.0009018575839500492, "p99_kl": 0.0015732455496604947, "max_kl": 0.0017363870314407847, "top1_agreement": 1.0, "passed": true},
+      "general_en": {"rows": 48, "mean_kl": 0.00009087627408623797, "p95_kl": 0.00013424737783382422, "p99_kl": 0.0021231808930960213, "max_kl": 0.003718092339773791, "top1_agreement": 1.0, "passed": true},
+      "general_ja": {"rows": 54, "mean_kl": 0.0003328302434046087, "p95_kl": 0.0014592964349564226, "p99_kl": 0.0036466585283607433, "max_kl": 0.003763176992624703, "top1_agreement": 0.9814814814814815, "passed": true},
+      "mixed_ja_en": {"rows": 60, "mean_kl": 0.00008734562141848951, "p95_kl": 0.00033670223799497093, "p99_kl": 0.000650322949715261, "max_kl": 0.0008378891985428953, "top1_agreement": 1.0, "passed": true}
+    },
+    "shapes": {
+      "k1": {"rows": 2, "mean_kl": 0.0002320978737697823, "max_kl": 0.00030748452566947834, "top1_agreement": 1.0, "passed": true},
+      "k2": {"rows": 279, "mean_kl": 0.00015872211236861523, "max_kl": 0.003763176992624703, "top1_agreement": 0.996415770609319, "passed": true}
+    },
+    "transitions": {
+      "prefill_to_verify": {"rows": 39, "mean_kl": 0.00008021480010277646, "max_kl": 0.0015188104059828868, "top1_agreement": 1.0, "passed": true},
+      "verify_to_verify": {"rows": 242, "mean_kl": 0.00017198052848915258, "max_kl": 0.003763176992624703, "top1_agreement": 0.9958677685950413, "passed": true}
+    }
+  },
+  "review_rows": [
+    {
+      "prompt_id": "general_ja_explain",
+      "category": "general_ja",
+      "heldout": true,
+      "shape": "k2",
+      "transition": "verify_to_verify",
+      "position": 60,
+      "strict_top1": 12512,
+      "candidate_top1": 5205,
+      "strict_margin": 0.042743682861328125,
+      "kl": 0.00048139564006625057,
+      "top1_equal": false,
+      "top5_overlap": 1.0,
+      "teacher_nll": 1.087126059999433,
+      "strict_teacher_nll": 1.0539520490411134,
+      "delta_p": -0.011373357590495292,
+      "max_abs_logit_delta": 0.1037607192993164,
+      "diagnosis": "finite low-KL near-tie; full top-5 overlap; binding per-scope top-1 remains 98.148%"
+    }
+  ],
+  "determinism_isolation": {
+    "same_schedule_live_proposal_inputs": true,
+    "same_schedule_physical_full_logits": true,
+    "physical_repeat_cycles": 47,
+    "normal_vs_reversed_job_logits": {"rows": 281, "mean_kl": 0.0, "max_kl": 0.0, "top1_agreement": 1.0},
+    "free_running_repeat_exact": true,
+    "free_running_reverse_pair_ids": "diagnostic; code_markdown_table differs after row permutation, which is batch-invariant rather than production binding"
+  },
+  "other_checks": {
+    "physical_pairs_and_row_mapping": true,
+    "actual_full_logits": true,
+    "paired_task_noninferiority": true,
+    "profiles_and_fallback": true,
+    "finiteness": true,
+    "active_children_zero": true,
+    "command_queue_empty": true,
+    "legacy_prelaunch_fallback_zero": true,
+    "active_provider_states_zero": true,
+    "provider_groups_zero": true,
+    "candidate_d2h_zero_in_normal_serving": true,
+    "recoveries_zero": true
+  },
+  "bf16_relative": {
+    "applicable": false,
+    "reason": "No aligned same-model BF16/full-precision artifact is available on the binding host."
+  },
+  "generated_id_equality": {
+    "binding": false,
+    "diagnostic": true,
+    "reason": "Production permits independently qualified width/shape arithmetic; exact state/control ownership and strict-teacher numerical/task gates bind."
+  },
+  "raw_source": {
+    "path": "/tmp/gfx1100-dense-c2-production-full-final.json",
+    "bytes": 244214,
+    "sha256": "9f38286ed6306ff59455c479b068cdd30d77776fcb4873ac320db08e7aed855f"
+  },
+  "command": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt PYTHONPATH=. uv run python scripts/qwen36_dense_mtp2_c2_production_gate.py --max-tokens 24 --repeat-runs 3 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --verify-model-sha256 --output /tmp/gfx1100-dense-c2-production-full-final.json",
+  "decision": {
+    "production_correctness": "qualified",
+    "public_policy": "explicit-only until complete economics beats true AR",
+    "automatic_policy": "K0 unchanged",
+    "next": "register the production C2 evidence row, validate the unflagged public production route, then optimize complete wall"
+  }
+}

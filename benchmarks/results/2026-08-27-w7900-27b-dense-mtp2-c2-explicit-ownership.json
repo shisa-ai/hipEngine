@@ -33,11 +33,25 @@
     "automatic_eligible": false,
     "strict_fallback": "gguf_target_ar"
   },
+  "production_qualified_key": {
+    "execution_profile": "production",
+    "execution_profile_manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "resident_capacity": 2,
+    "realized_group_rows": 2,
+    "candidate_budget": 2,
+    "max_sequence_length": 1024,
+    "context_tokens": [4, 95],
+    "output_horizon_tokens": 24,
+    "sampling_mode": "greedy_fast",
+    "automatic_eligible": false,
+    "strict_fallback": "gguf_target_ar",
+    "quality_artifact": "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-production-quality.json"
+  },
   "correctness_contract": {
     "profile": "strict",
     "control_and_state": "exact request/slot/row/position/provider/target/KV/commit ownership",
     "ar_generated_id_equality": "observed 10/10 and retained as strict evidence; production promotion will use the numerical KL/top-1/task gate",
-    "production_scope": "not claimed by this artifact",
+    "production_scope": "qualified independently by the strict-teacher physical C2 quality artifact",
     "anti_gaming": "all ten committed category+heldout prompts; no prompt/token/candidate-conditioned policy"
   },
   "commands": {
@@ -180,8 +194,8 @@
     "backend_adapter_construction": "enable gfx1100 capacity>1 adapter",
     "public_scope": "validated unflagged strict explicit-only exact C2/K2/D24 key",
     "automatic_policy": "K0 unchanged",
-    "production_profile": "not yet qualified; requires strict-teacher KL/top-1/task/determinism/isolation packet",
+    "production_profile": "qualified explicit-only; automatic remains blocked on economics",
     "performance": "blocked: 0.716x true AR and every category trails AR",
-    "next": "run the production strict-teacher numerical/task/determinism/isolation packet before any automatic or performance promotion; strict SSE/cancel/survivor lifecycle now passes"
+    "next": "validate the unflagged public production route, then optimize complete wall; automatic remains K0 until >=1.10x true AR"
   }
 }
