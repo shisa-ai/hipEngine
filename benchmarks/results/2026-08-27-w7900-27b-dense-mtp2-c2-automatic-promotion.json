@@ -1,0 +1,238 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "kind": "qwen36_dense_mtp2_c2_automatic_promotion",
+  "status": "passed",
+  "performance_claim": true,
+  "source_commits": {
+    "full_streamed_quality": "a1978f3b25196f1a02392d0689a225f22bbffe5a",
+    "merged_three_run_economics": "1629e1b210fe1e75c23d0a5a3b90683dbb9b92bc",
+    "automatic_model_key": "23868fab9a43cadcea98621180016c22b96c2c1c",
+    "future_c2_static_intent": "ed2b8d09abf09b71ba39a765a4037b560e651bf6",
+    "truthful_dynamic_telemetry": "19424fe3c82c5dc8a73fdc9930887302911d0245"
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "gpu_index": 0,
+    "rocm": "HIP 7.2.53211-3d9ef42",
+    "gpu_max_hw_queues": null
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "size_bytes": 17106773120,
+    "quant": "Q4_K_M",
+    "kv": "bf16"
+  },
+  "automatic_key": {
+    "evidence_key": "qwen36-dense-q4km-gfx1100-production-bf16-c2-k2-d24",
+    "execution_profile": "production",
+    "execution_profile_manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_fallback_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d",
+    "resident_capacity": 2,
+    "physical_group_rows": 2,
+    "candidate_budget": 2,
+    "max_sequence_length": 1024,
+    "context_tokens": [4, 95],
+    "output_horizon_tokens": 24,
+    "sampling": "greedy_fast",
+    "reason": "qualified_automatic_production_dense_c2_k2_d24",
+    "strict_fallback_key": "gguf_target_ar"
+  },
+  "implementation": {
+    "prompt_activation": "physical target rows are output-RMSNorm normalized and streamed directly to NextN",
+    "target_frontier": "request-major C2/K2, logical R6, one grouped target/accept/selected-commit owner",
+    "production_q4_rowtiles": [[5120, 17408], [6144, 5120]],
+    "production_q5_rows": [6],
+    "production_q6_rows": [6],
+    "provider_and_strict_fallback": "serial-row owners remain registered",
+    "static_admission": "independent frontend C1 carries typed future-C2 intent; resident C1 is transitional K0 and exact due-C2 may execute MTP",
+    "anti_gaming": "no prompt text, token ID, candidate ID, category, or heldout identity participates in policy or dispatch"
+  },
+  "correctness": {
+    "passed": true,
+    "workload": "all 10 committed code/general_en/general_ja/mixed_ja_en prompts, D24, three physical repeats",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "teacher": "strict selected-quant serial target on identical state/context",
+    "candidate": "actual packed production physical-C2 target with normalized streamed prompt state",
+    "thresholds": {
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "max_kl_max": 0.05,
+      "top1_min": 0.99,
+      "per_scope_top1_min": 0.97
+    },
+    "aggregate": {
+      "rows": 281,
+      "mean_kl": 0.00018154071929549198,
+      "p95_kl": 0.0010430260467455803,
+      "p99_kl": 0.0030949676604025,
+      "max_kl": 0.003763176992624703,
+      "top1_agreement": 0.99644128113879,
+      "top1_matches": 280,
+      "top1_mismatches": 1,
+      "top5_overlap_mean": 0.9843416370106762,
+      "finite": true
+    },
+    "categories": {
+      "code": {"rows": 119, "mean_kl": 0.00019695218938601324, "max_kl": 0.002982876867094108, "top1_agreement": 1.0, "passed": true},
+      "general_en": {"rows": 48, "mean_kl": 0.00009087627408623797, "max_kl": 0.003718092339773791, "top1_agreement": 1.0, "passed": true},
+      "general_ja": {"rows": 54, "mean_kl": 0.0003328302434046087, "max_kl": 0.003763176992624703, "top1_agreement": 0.9814814814814815, "passed": true},
+      "mixed_ja_en": {"rows": 60, "mean_kl": 0.00008734562141848951, "max_kl": 0.0008378891985428953, "top1_agreement": 1.0, "passed": true}
+    },
+    "shapes": {
+      "k1": {"rows": 2, "mean_kl": 0.0002320978737697823, "max_kl": 0.00030748452566947834, "top1_agreement": 1.0, "passed": true},
+      "k2": {"rows": 279, "mean_kl": 0.00018117830241754009, "max_kl": 0.003763176992624703, "top1_agreement": 0.996415770609319, "passed": true}
+    },
+    "transitions": {
+      "prefill_to_verify": {"rows": 39, "mean_kl": 0.00008021480010277646, "max_kl": 0.0015188104059828868, "top1_agreement": 1.0, "passed": true},
+      "verify_to_verify": {"rows": 242, "mean_kl": 0.00019787010296704532, "max_kl": 0.003763176992624703, "top1_agreement": 0.9958677685950413, "passed": true}
+    },
+    "repeat_determinism": true,
+    "neighbor_permutation": {"rows": 281, "mean_kl": 0.0, "max_kl": 0.0, "top1_agreement": 1.0},
+    "task_noninferiority": true,
+    "physical_capture": {"cycles": 282, "rows": 281, "actual_full_logits": true},
+    "generated_id_equality": "diagnostic outside strict; observed in public blocking cells but not used as the production arithmetic gate"
+  },
+  "economics": {
+    "passed": true,
+    "protocol": "same-process counterbalanced true no-MTP AR vs engaged physical C2/K2, complete barrier-to-last wall",
+    "runs": 3,
+    "cells": 30,
+    "generated_tokens_per_arm": 1440,
+    "true_ar_tok_s": 31.040041497582443,
+    "mtp_tok_s": 34.87219253252818,
+    "mtp_over_true_ar": 1.1234583090117392,
+    "repeat_ratios": [1.127357, 1.121789, 1.12132],
+    "acceptance": {"accepted": 765, "proposed": 1038, "rate": 0.7369942196531792},
+    "categories": {
+      "code": {"true_ar_tok_s": 31.3048, "mtp_tok_s": 34.6747, "ratio": 1.107647},
+      "general_en": {"true_ar_tok_s": 31.3908, "mtp_tok_s": 36.9216, "ratio": 1.176191},
+      "general_ja": {"true_ar_tok_s": 31.3186, "mtp_tok_s": 37.1971, "ratio": 1.187702},
+      "mixed_ja_en": {"true_ar_tok_s": 29.933, "mtp_tok_s": 31.5124, "ratio": 1.052765}
+    },
+    "all_categories_non_regressive": true,
+    "all_cells_normalized_prompt_streaming": true,
+    "candidate_d2h_after_target": 0
+  },
+  "public_automatic": {
+    "passed": true,
+    "protocol": "10 prompts; true AR uses explicit speculative_mtp=false; automatic arm omits request override under server policy auto",
+    "cells": 10,
+    "engaged_cells": 10,
+    "budget_conformed_cells": 10,
+    "exact_self_repeat_cells": 10,
+    "true_ar_tok_s": 30.774127446672473,
+    "automatic_mtp_tok_s": 34.48808326027024,
+    "automatic_over_true_ar": 1.1206843579897938,
+    "final_active_allocations": 0
+  },
+  "sse_dynamic_admission": {
+    "passed": true,
+    "clients": 2,
+    "http_statuses": [200, 200],
+    "finish_reasons": ["length", "length"],
+    "completion_tokens": [24, 24],
+    "requested_route": "speculative_mtp_auto",
+    "selected_route": "default",
+    "effective_route": "speculative_mtp",
+    "decision_reason": "resident_dynamic_mtp",
+    "physical_cycles_per_request": [8, 8],
+    "accepted_over_proposed": [[12, 16], [14, 16]],
+    "normalized_prompt_streaming": true,
+    "candidate_d2h_after_target": 0,
+    "recoveries": 0,
+    "active_states_final": 0,
+    "provider_groups_final": 0,
+    "prompt_sinks_final": 0
+  },
+  "cancellation_survivor": {
+    "passed": true,
+    "route": "production explicit C2 owner; same transaction/lifecycle implementation as automatic",
+    "cancelled_child_visible_tokens": 5,
+    "survivor_visible_tokens": 24,
+    "normalized_prompt_streaming": true,
+    "physical_cycles_per_request": [2, 2],
+    "survivor_k0_catchups": 19,
+    "provider_groups_final": 0,
+    "prompt_sinks_final": 0,
+    "command_queue_final": 0,
+    "active_children_final": 0
+  },
+  "negative_controls": {
+    "resident_c1": {
+      "passed": true,
+      "engaged_cells": 0,
+      "cells": 10,
+      "decision": "pure K0",
+      "true_ar_tok_s": 21.978339993462633,
+      "automatic_tok_s": 21.960434116165004,
+      "ratio": 0.9991852943715059,
+      "final_active_allocations": 0
+    },
+    "resident_c2_wrong_k3": {
+      "passed": true,
+      "engaged_cells": 0,
+      "cells": 10,
+      "reason": "candidate_budget_not_qualified",
+      "true_ar_tok_s": 30.70018968725119,
+      "automatic_tok_s": 30.74403539006218,
+      "ratio": 1.0014281899642203,
+      "final_active_allocations": 0
+    },
+    "typed_model_key_checks": {
+      "wrong_horizon": "output_horizon_not_qualified",
+      "wrong_context": "context_bucket_not_qualified",
+      "wrong_sampler": "sampling_mode_not_qualified",
+      "wrong_max_sequence": "max_sequence_length_not_qualified",
+      "wrong_kv": "kv_storage_not_qualified",
+      "wrong_width": "physical_group_not_qualified",
+      "wrong_capacity": "resident_capacity_not_qualified",
+      "memory_miss": "insufficient_memory"
+    }
+  },
+  "profiler": {
+    "passed": true,
+    "measured_cycles": 8,
+    "cycle_wall_ms": [75.308, 71.504, 74.09, 75.137, 74.134, 76.162, 73.164, 74.589],
+    "q4_rowtile": {"kernel": "q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6>", "calls": 2304, "duration_ms": 174.94124},
+    "q5_rowtile": {"kernel": "q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6, 4>", "calls": 384, "duration_ms": 30.928337},
+    "q6_rowtile": {"kernel": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 6, false>", "calls": 512, "duration_ms": 70.865204},
+    "trace": {"path": "/tmp/gfx1100-c2-promoted-trace/promoted_kernel_trace.csv", "bytes": 14759183, "sha256": "eccb4fc4c12d56486f3638d566a5ebbb0c3a42bf22900160fc9ba8a44dec83c3"}
+  },
+  "focused_tests": {
+    "merged_transition_bundle": "94 passed plus one fixture-only merge failure; repaired node and complete changed seam file passed",
+    "post_merge_server_route_bundle": "4 passed",
+    "q4_q5_q6_scope_bundles": "passing",
+    "static_intent_combined_bundle": "95 passed",
+    "serving_capability_file": "31 passed",
+    "dynamic_effective_route_bundle": "4 passed"
+  },
+  "raw_sources": {
+    "full_streamed_quality": {"path": "/tmp/gfx1100-c2-q4-q5-q6-streaming-full-quality.json", "bytes": 244286, "sha256": "3352d83a3926d92893fb38fec46c6b4da7896ff80cf233b84633aa92012d9934"},
+    "three_run_economics": {"path": "/tmp/gfx1100-dense-c2-final-merged-three-run-economics.json", "bytes": 1443952, "sha256": "4ac5742837d0d392f09b7e8b16e3f9ec6968cb3fc668673748cc7202562075b7"},
+    "public_explicit": {"path": "/tmp/gfx1100-dense-c2-final-merged-public-explicit.json", "bytes": 1402568, "sha256": "56152ecca4adbc75a8972cb04f49bddeb1406a36a48944152a187bbbde3274fb"},
+    "public_automatic": {"path": "/tmp/gfx1100-dense-c2-final-public-automatic.json", "bytes": 1402704, "sha256": "195ecf452607dd08111bf7e3ac4405efa21a026d3662f0a38e38bb776d1cf131"},
+    "automatic_sse": {"path": "/tmp/gfx1100-c2-auto-production-sse-probe.json", "bytes": 26339, "sha256": "56452d54ff4dafab804880ef99409474fca09574c42de31624827e404399d922"},
+    "cancel_survivor": {"path": "/tmp/gfx1100-c2-production-cancel-probe.json", "bytes": 89400, "sha256": "c6f223cfaa41afb1698ba17b543d83a1dff78df4efa337d6d8b094a34faa0575"},
+    "singleton_k0": {"path": "/tmp/gfx1100-dense-c2-final-public-auto-singleton-k0.json", "bytes": 705623, "sha256": "33369b2eb494f2d71593d2f32e0372fdc76634ffca3c4c820a8e37bd69edfed8"},
+    "wrong_k3_k0": {"path": "/tmp/gfx1100-dense-c2-final-public-auto-wrong-k3-k0.json", "bytes": 1225302, "sha256": "397a58c09d8d839fc72112f8f4be9de4149259acfe9f78b40bbcc6f475208de4"},
+    "profile_child": {"path": "/tmp/gfx1100-c2-promoted-profile.json", "bytes": 56257, "sha256": "01c9b4bb22615aaf8e873ae27d47c4fd981b25ef785a34bd22f2df3f33f32e14"}
+  },
+  "temporary_harnesses": {
+    "automatic_blocking": {"path": "/tmp/gfx1100-c2-auto-server-bench.py", "sha256": "643164d53c606866ee1e1a76c1e0098c03b6a318fdd22ae21a46af7663aeeeb8", "derivation": "committed server bench with policy auto; AR explicitly false; automatic arm omits request override"},
+    "automatic_sse": {"path": "/tmp/gfx1100-c2-auto-production-sse-probe.py", "sha256": "79f79fe827cb7ed194e56098a9e3e31dd0591110fe9c595b8e4f398dd07926b9"},
+    "production_cancel": {"path": "/tmp/gfx1100-c2-production-cancel-probe.py", "sha256": "87f406ea03f50b6b91eebbf1b1460ce57735db7f91089ff57554f2a1014b1a35"}
+  },
+  "decision": {
+    "production_c2_k2": "automatic promoted",
+    "strict_c2_k2": "explicit-only fallback retained",
+    "unsupported_keys": "typed K0 before speculative mutation except statically eligible future-C2 children, which use transitional K0 until exact resident C2",
+    "next_width": "C4 may now be evaluated independently",
+    "gfx1151_transfer": "none; architecture merged, evidence remains independent"
+  }
+}

@@ -1,6 +1,6 @@
 # gfx1100 Physical C>N MTP Promotion Campaign
 
-- Status: **active; contract frozen, implementation audit next**
+- Status: **active; 27B Dense physical C2 promoted, 35B MoE P4 next**
 - Started: **2026-08-27**
 - Branch: **`campaign/gfx1100-mtp-cn-promotion`**
 - Base commit: **`5c2be8d157c587caf42591b07d7c02b3181adabc`**
@@ -295,17 +295,28 @@ Exit: explicit C2 is functionally qualified; automatic still selects K0.
 
 ### P3 — 27B Dense economics and promotion
 
-- [ ] Refresh current true physical C2 AR and exact C2/K1-K3 attribution.
-- [ ] Profile operation-complete target/proposal/accept/commit/repair windows with
+- [x] Refresh current true physical C2 AR and exact C2/K1-K3 attribution.
+- [x] Profile operation-complete target/proposal/accept/commit/repair windows with
       cached builds; retain every exact or profile-qualified sub-window win.
-- [ ] Start from the retained R6 rows6 hybrid. Do not retry the rejected
+- [x] Start from the retained R6 rows6 hybrid. Do not retry the rejected
       unrestricted strict-failing rowtile or slower dual-WMMA+SiLU route without
       a materially new premise.
-- [ ] Screen multi-prompt economics, then run the complete suite only when the
+- [x] Screen multi-prompt economics, then run the complete suite only when the
       route projects to the promotion floor.
-- [ ] Run full serving/SLO/correctness packet and register the exact automatic
+- [x] Run full serving/SLO/correctness packet and register the exact automatic
       C2 key if all gates pass.
-- [ ] Evaluate C4 only after C2 promotion; keep every losing cell K0.
+- [x] Evaluate C4 only after C2 promotion; keep every losing cell K0.
+
+P3 exit passes independently. Output-normalized physical prompt streaming plus
+production-scoped Q4/Q5/Q6 rows6 target owners move clean merged-source C2/K2
+three-run economics to **34.872 vs 31.040 tok/s (1.1235x AR)**; all categories
+are non-regressive. The actual unflagged public route reaches **34.488 vs 30.774
+tok/s (1.1207x)** with 10/10 engaged/budget-conformed cells. The complete
+three-repeat gate covers **281** strict-teacher rows at mean/p95/p99/max KL
+**0.000182/0.001043/0.003095/0.003763** and **99.644%** top-1, plus mapped
+permutation isolation, tasks, automatic SSE dynamic admission, cancellation,
+wrong-key K0, and final drain. Strict remains explicit-only. Evidence:
+[`automatic C2 promotion`](../benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-automatic-promotion.json).
 
 ### P4 — 35B MoE explicit physical C2 ownership
 
