@@ -20,6 +20,43 @@ from hipengine.speculative.serving import (
 )
 
 
+_QWEN36_MOE_Q4KM_MTP_SERVING_EVIDENCE = (
+    SpeculativeMTPServingEvidence(
+        evidence_key="qwen36-moe-q4km-gfx1100-production-bf16-c1-k2-d24",
+        artifact_sha256=(
+            "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b"
+        ),
+        artifact_size_bytes=22_663_387_424,
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        weight_quant="gguf_q4_k_m",
+        execution_profile="production",
+        execution_profile_manifest_sha256=(
+            "2b64229e062c85d08244149191f515c226c6897ecd753d86849dad9fe7c92ca9"
+        ),
+        kv_storage="bf16",
+        kv_layout="uniform",
+        realized_group_rows=1,
+        resident_capacity=1,
+        candidate_budget=2,
+        sampling_modes=("greedy_fast",),
+        max_sequence_length=1024,
+        min_context_tokens=4,
+        max_context_tokens=95,
+        min_output_horizon_tokens=24,
+        max_output_horizon_tokens=24,
+        reason="qualified_automatic_moe_c1_k2_d24",
+        evidence_artifacts=(
+            "benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-quality.json",
+            "benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-performance.json",
+            "benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-serving.json",
+        ),
+        strict_fallback_key="gguf_target_ar",
+        automatic_eligible=True,
+    ),
+)
+
+
 _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
     SpeculativeMTPServingEvidence(
         evidence_key="qwen38-q4km-gfx1151-strict-bf16-c1-b3-natural25-s0",
@@ -266,6 +303,9 @@ class Qwen35MoeGGUFModel:
     default_quant: str = "gguf_q4_k_m"
     default_backend: str = "auto"
     speculative_mtp2_adapter: str = "moe_nextn"
+    speculative_mtp_serving_evidence: tuple[SpeculativeMTPServingEvidence, ...] = (
+        _QWEN36_MOE_Q4KM_MTP_SERVING_EVIDENCE
+    )
     weight_name_templates: tuple[str, ...] = (
         "token_embd.weight",
         "output.weight",
@@ -287,6 +327,18 @@ class Qwen35MoeGGUFModel:
         "blk.{layer}.ffn_up_shexp.weight",
         "blk.{layer}.ffn_down_shexp.weight",
     )
+
+    def resolve_speculative_mtp_serving_plan(
+        self,
+        *,
+        key: SpeculativeMTPServingKey,
+    ) -> SpeculativeMTPServingDecision:
+        """Resolve the exact Qwen MoE serving scope before mutation."""
+
+        return resolve_speculative_mtp_serving_plan(
+            self.speculative_mtp_serving_evidence,
+            key=key,
+        )
 
 
 QWEN35_PARO_MOE = register_model(Qwen35ParoMoeModel())

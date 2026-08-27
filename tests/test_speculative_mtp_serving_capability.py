@@ -7,7 +7,7 @@ import pytest
 
 from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
 from hipengine.llm import LLM
-from hipengine.models.qwen35 import Qwen35GGUFModel
+from hipengine.models.qwen35 import Qwen35GGUFModel, Qwen35MoeGGUFModel
 from hipengine.speculative.serving import (
     SpeculativeMTPServingEvidence,
     SpeculativeMTPServingKey,
@@ -107,6 +107,46 @@ def test_qwen38_candidate_plan_fails_closed_on_every_unqualified_axis(
     assert decision.selected_candidate_count == 0
     assert decision.reason == reason
     assert decision.strict_fallback_key == "gguf_target_ar"
+
+
+def test_qwen36_moe_production_c1_k2_plan_is_exact_automatic_scope() -> None:
+    evidence = Qwen35MoeGGUFModel().speculative_mtp_serving_evidence[0]
+    key = SpeculativeMTPServingKey(
+        artifact_sha256=evidence.artifact_sha256,
+        artifact_size_bytes=evidence.artifact_size_bytes,
+        content_verified=True,
+        backend=evidence.backend,
+        target_arch=evidence.target_arch,
+        weight_quant=evidence.weight_quant,
+        execution_profile=evidence.execution_profile,
+        execution_profile_manifest_sha256=(
+            evidence.execution_profile_manifest_sha256
+        ),
+        kv_storage=evidence.kv_storage,
+        kv_layout=evidence.kv_layout,
+        realized_group_rows=1,
+        resident_capacity=1,
+        candidate_budget=2,
+        sampling_mode="greedy_fast",
+        max_sequence_length=1024,
+        context_tokens=95,
+        output_horizon_tokens=24,
+        memory_fit=True,
+    )
+
+    decision = Qwen35MoeGGUFModel().resolve_speculative_mtp_serving_plan(key=key)
+
+    assert decision.admitted is True
+    assert decision.automatic_eligible is True
+    assert decision.selected_candidate_count == 2
+    assert decision.reason == "qualified_automatic_moe_c1_k2_d24"
+    assert replace(key, context_tokens=96) != key
+    assert Qwen35MoeGGUFModel().resolve_speculative_mtp_serving_plan(
+        key=replace(key, context_tokens=96)
+    ).reason == "context_bucket_not_qualified"
+    assert Qwen35MoeGGUFModel().resolve_speculative_mtp_serving_plan(
+        key=replace(key, output_horizon_tokens=25)
+    ).reason == "output_horizon_not_qualified"
 
 
 def test_unverified_artifact_and_generic_dense_inventory_cannot_admit() -> None:
