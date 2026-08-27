@@ -2351,6 +2351,7 @@ def test_mtp2_singleton_only_capability_fails_closed_when_a_neighbor_arrives() -
 
     assert adapter.capability((one,)) is not None
     assert adapter.capability((one, two)) is None
+    assert adapter.partition_max_requests((7, 8)) == 0
 
 
 def test_mtp2_physical_intent_allows_c1_before_or_after_c2() -> None:
@@ -2409,6 +2410,7 @@ def test_mtp2_physical_intent_allows_c1_before_or_after_c2() -> None:
     )
 
     assert adapter.capability(semantics) is not None
+    assert adapter.partition_max_requests((7,)) == 4
     adapter._active_claims = None
     assert adapter.claims_fit(SimpleNamespace(speculative_request_ids=(7,))) is True
 
