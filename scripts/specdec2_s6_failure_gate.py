@@ -16,12 +16,19 @@ from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
 
-def _invoke_original_args(
-    call_args: tuple[Any, ...],
-    *,
-    staticmethod_owner: bool,
-) -> tuple[Any, ...]:
-    return call_args[1:] if staticmethod_owner else call_args
+def _set_owner_method(
+    owner: type[Any],
+    method_name: str,
+    method: Callable[..., Any],
+) -> None:
+    """Replace a class method without changing staticmethod binding semantics."""
+
+    descriptor = owner.__dict__.get(method_name)
+    setattr(
+        owner,
+        method_name,
+        staticmethod(method) if isinstance(descriptor, staticmethod) else method,
+    )
 
 
 def _resident_capacity(concurrency: int, requested: int | None) -> int:
@@ -166,24 +173,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for phase, owner, method_name, original, fail_after in phases:
             raised = False
 
-            descriptor = owner.__dict__.get(method_name)
-            staticmethod_owner = isinstance(descriptor, staticmethod)
-
             def fail_once(
                 *call_args,
                 __original=original,
                 __phase=phase,
                 __fail_after=fail_after,
-                __staticmethod_owner=staticmethod_owner,
                 **call_kwargs,
             ):
                 nonlocal raised
-                original_args = _invoke_original_args(
-                    call_args,
-                    staticmethod_owner=__staticmethod_owner,
-                )
                 if __fail_after:
-                    result = __original(*original_args, **call_kwargs)
+                    result = __original(*call_args, **call_kwargs)
                     if not raised:
                         raised = True
                         raise RuntimeError(f"injected SPECDEC2 {__phase} failure")
@@ -191,16 +190,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 if not raised:
                     raised = True
                     raise RuntimeError(f"injected SPECDEC2 {__phase} failure")
-                return __original(*original_args, **call_kwargs)
+                return __original(*call_args, **call_kwargs)
 
-            setattr(owner, method_name, fail_once)
+            _set_owner_method(owner, method_name, fail_once)
             fault_ids = set(
                 range(next_request_id, next_request_id + concurrency)
             )
             fault_output, fault_errors = _outcomes(
                 service.submit_speculative_children((greeting,) * concurrency)
             )
-            setattr(owner, method_name, original)
+            _set_owner_method(owner, method_name, original)
             next_request_id += concurrency
             health_ids = set(
                 range(next_request_id, next_request_id + concurrency)
@@ -284,7 +283,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         final = service.live_loop_snapshot()
     finally:
         for _, owner, method_name, original, _fail_after in phases:
-            setattr(owner, method_name, original)
+            _set_owner_method(owner, method_name, original)
         llm.close()
 
     passed = bool(
