@@ -198,6 +198,31 @@ def test_resident_runner_delegates_staged_methods_without_backend_branches() -> 
     assert runner.speculative_kv_live_spans_owner(SimpleNamespace(operation_id="op"))
 
 
+def test_resident_runner_bounds_cycle_intent_by_static_evidence_k() -> None:
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    adapter = _AdapterDouble()
+    adapter.candidate_budget = 3
+    runner._mtp2_adapter = adapter
+    runner._mtp2_adapter_resolved = True
+    runner.generator = SimpleNamespace(target_arch="gfx1151")
+    runner._rows = {7: SimpleNamespace(mtp2_candidate_budget=0)}
+    eligibility = SpeculativeMTPStaticEligibility(
+        state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+        reason="qualified_test_k2",
+        max_candidate_count=2,
+        max_realized_group_rows=4,
+        automatic_eligible=False,
+        strict_fallback_key="gguf_target_ar",
+        evidence_key="test-k2",
+        evidence_fingerprint="sha256:test-k2",
+    )
+
+    runner.register_speculative_request(7, 3, static_eligibility=eligibility)
+
+    assert runner._rows[7].mtp2_candidate_budget == 2
+    assert adapter.calls == [("register", 7, 2, eligibility)]
+
+
 def test_resident_runner_delegates_bounded_complete_cycle_when_plugin_selects_it() -> None:
     adapter = SimpleNamespace(
         staged_frontier=False,
