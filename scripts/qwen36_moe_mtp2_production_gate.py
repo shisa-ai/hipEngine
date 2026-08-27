@@ -366,6 +366,8 @@ def _probe_native_graph(
     session: Any,
     inputs: Sequence[int],
 ) -> tuple[tuple[int, ...], np.ndarray, np.ndarray]:
+    if len(tuple(inputs)) != 3:
+        raise GateError("qualified production numerical candidate is K2-only")
     result = session.verify_target_block_native_cycle(
         list(inputs),
         fallback=False,
@@ -781,17 +783,14 @@ def _trace_checks(
                 and len(cycle.output_tokens) <= cycle.remaining_decode
             )
             graph = graph and cycle.graph
-        reconstructed_equal = tuple(reconstructed) == first_output
-        terminal = trace_rows[0][-1]
-        terminal_exact = bool(
-            terminal.remaining_decode != 1
-            or (
-                len(terminal.draft_tokens) == 1
-                and terminal.accepted == 0
-                and len(terminal.output_tokens) == 1
-            )
+        reconstructed_tuple = tuple(reconstructed)
+        reconstructed_equal = first_output[: len(reconstructed_tuple)] == reconstructed_tuple
+        ar_tail_tokens = len(first_output) - len(reconstructed_tuple)
+        terminal_exact = 0 <= ar_tail_tokens <= 2
+        shape_routes = all(
+            len(cycle.draft_tokens) == 2 and cycle.graph
+            for cycle in trace_rows[0]
         )
-        shape_routes = all(cycle.graph for cycle in trace_rows[0])
         passed = bool(
             output_repeat
             and trace_repeat
@@ -810,9 +809,10 @@ def _trace_checks(
                 "reverse_order_isolation": isolation_equal,
                 "reconstructed_output": reconstructed_equal,
                 "bounded_control": bounded,
-                "all_graph": graph,
+                "all_k2_graph": graph,
                 "shape_routes": shape_routes,
-                "terminal_zero_accept": terminal_exact,
+                "terminal_ar_tail_tokens": ar_tail_tokens,
+                "terminal_ar_tail_bounded": terminal_exact,
                 "cycles": len(trace_rows[0]),
                 "trace_sha256": _sha256_json(trace_payloads[0]),
                 "passed": passed,
