@@ -18,6 +18,7 @@ _ARGS_REPEAT = (
     ctypes.c_void_p,
     ctypes.c_int64,
     ctypes.c_int64,
+    ctypes.c_int64,
     ctypes.c_void_p,
 )
 _ARGS_GROUPED_NORM = (
@@ -125,12 +126,13 @@ def qwen4_exp_repeat_bf16_branches(
     branches: int,
     hidden: int,
     *,
+    rows: int = 1,
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    if branches <= 0 or hidden <= 0:
-        raise ValueError("branches and hidden must be positive")
+    if rows <= 0 or branches <= 0 or hidden <= 0:
+        raise ValueError("rows, branches, and hidden must be positive")
     library = library or build_qwen4_exp_gr(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
@@ -139,7 +141,7 @@ def qwen4_exp_repeat_bf16_branches(
         _ARGS_REPEAT,
         ctypes.c_int,
     )
-    _check_launch(runtime, fn(input_ptr, output_ptr, branches, hidden, stream))
+    _check_launch(runtime, fn(input_ptr, output_ptr, rows, branches, hidden, stream))
 
 
 def qwen4_exp_grouped_rmsnorm_bf16_f32(

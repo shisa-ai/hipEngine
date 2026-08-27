@@ -10,6 +10,7 @@ from pathlib import Path
 import resource
 import subprocess
 import tempfile
+from time import perf_counter
 from typing import Sequence
 
 import numpy as np
@@ -123,6 +124,10 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--json-out", type=Path)
     parser.add_argument("--keep-llama-output", type=Path)
     parser.add_argument("--max-kl", type=float, default=0.05)
+    parser.add_argument(
+        "--prefill-mode", choices=("serial", "chunked", "both"), default="serial"
+    )
+    parser.add_argument("--prefill-chunk-size", type=int, default=2)
     parser.add_argument("--require-top1", action=argparse.BooleanOptionalAction, default=True)
     return parser.parse_args(argv)
 
@@ -166,6 +171,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             model_plugin=plugin,
             backend=args.backend,
             max_sequence_length=args.context,
+            prefill_chunk_size=args.prefill_chunk_size,
         )
         hip_tokens = np.asarray(generator.tokenizer.encode(args.prompt), dtype=np.int32)
         if not np.array_equal(teacher_tokens, hip_tokens):
@@ -174,7 +180,28 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"llama={teacher_tokens.tolist()} hipengine={hip_tokens.tolist()}"
             )
         free_after_residency, _ = runtime.mem_get_info()
-        actual = generator.runner.prefill(hip_tokens.tolist())
+        serial_to_chunked = None
+        prefill_timings: dict[str, float] = {}
+        if args.prefill_mode == "both":
+            started = perf_counter()
+            serial = generator.runner.prefill_serial(hip_tokens.tolist())
+            prefill_timings["serial_seconds"] = perf_counter() - started
+            serial_logits = serial.logits.copy()
+            started = perf_counter()
+            actual = generator.runner.prefill_chunked(hip_tokens.tolist())
+            prefill_timings["chunked_seconds"] = perf_counter() - started
+            serial_to_chunked = compare_logits(serial_logits, actual.logits)
+        else:
+            prefill = (
+                generator.runner.prefill_chunked
+                if args.prefill_mode == "chunked"
+                else generator.runner.prefill_serial
+            )
+            started = perf_counter()
+            actual = prefill(hip_tokens.tolist())
+            prefill_timings[f"{args.prefill_mode}_seconds"] = (
+                perf_counter() - started
+            )
         free_after_inference, _ = runtime.mem_get_info()
         owned_peak = memory_stats()
         max_rss_kib = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
@@ -186,6 +213,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         teardown_passed = owned_after_close["current_allocated_bytes"] == 0
         report = {
             "schema": 1,
+            "prefill_mode": args.prefill_mode,
+            "prefill_chunk_size": args.prefill_chunk_size,
+            "prefill_timings": prefill_timings,
             "model_path": str(model_path),
             "parts": [
                 {"path": str(path), "bytes": path.stat().st_size} for path in parts
@@ -211,9 +241,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             "max_kl": float(args.max_kl),
             "require_top1": bool(args.require_top1),
         }
+        if serial_to_chunked is not None:
+            report["serial_to_chunked"] = serial_to_chunked
         passed = bool(metrics["kl_teacher_to_hipengine"] <= args.max_kl) and teardown_passed
         if args.require_top1:
             passed = passed and bool(metrics["top1_agreement"])
+        if serial_to_chunked is not None:
+            passed = passed and bool(
+                serial_to_chunked["kl_teacher_to_hipengine"] <= args.max_kl
+            )
+            if args.require_top1:
+                passed = passed and bool(serial_to_chunked["top1_agreement"])
         report["passed"] = passed
         rendered = json.dumps(report, indent=2, sort_keys=True)
         print(rendered)

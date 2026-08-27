@@ -34,6 +34,7 @@ class Qwen4ExpGGUFTextGenerator:
         tokenizer: Any | None = None,
         runner: Any | None = None,
         max_sequence_length: int = 2_051,
+        prefill_chunk_size: int = 2,
     ) -> None:
         self.model_path = Path(model_path)
         self.weight_index = weight_index
@@ -65,6 +66,7 @@ class Qwen4ExpGGUFTextGenerator:
                 runner = Qwen4ExpGGUFResidentModelRunner(
                     self._resident,
                     max_sequence_length=max_sequence_length,
+                    prefill_chunk_size=prefill_chunk_size,
                     backend=self.backend,
                 )
             except Exception:
