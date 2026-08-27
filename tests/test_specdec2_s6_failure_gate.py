@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
 from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFTransactionalVerifier
 from scripts.specdec2_s6_failure_gate import (
     _failure_phase_specs,
@@ -65,3 +66,14 @@ def test_failure_gate_injects_the_current_bounded_accept_readback() -> None:
     assert readback[1] is Qwen35GGUFTransactionalVerifier
     assert readback[2] == "prepare"
     assert readback[4] is True
+
+
+def test_failure_gate_injects_physical_c2_batch_owners() -> None:
+    phases = _failure_phase_specs(2)
+
+    assert [(phase, method, fail_after) for phase, _owner, method, _fn, fail_after in phases] == [
+        ("proposal", "propose_batch_device", False),
+        ("target", "verify_target_blocks_batch", False),
+        ("readback", "_read_target_batch_accept", True),
+    ]
+    assert phases[-1][1] is Qwen35GGUFMTP2Adapter
