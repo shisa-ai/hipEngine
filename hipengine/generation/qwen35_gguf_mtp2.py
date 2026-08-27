@@ -42,6 +42,7 @@ from hipengine.speculative.frontier import (
     CandidateGraph,
     ProviderAttachment,
     ProviderCatchupMode,
+    SpecK0Class,
     SpecPlanReason,
     SpecRequestPlan,
     SpecTransactionMode,
@@ -810,6 +811,25 @@ class Qwen35GGUFMTP2Adapter:
     ) -> None:
         del request_semantics, stream
         reason_by_id = dict(zip(plan.request_ids, plan.reasons, strict=True))
+        k0_by_id = dict(
+            zip(
+                plan.request_ids,
+                getattr(
+                    plan,
+                    "k0_classes",
+                    tuple(
+                        SpecK0Class.TRANSITIONAL
+                        if reason in {
+                            SpecPlanReason.NO_PROVIDER,
+                            SpecPlanReason.POLICY_SELECTED_AR,
+                        }
+                        else SpecK0Class.PURE
+                        for reason in plan.reasons
+                    ),
+                ),
+                strict=True,
+            )
+        )
         ids = tuple(
             int(request_id)
             for request_id in plan.request_ids
@@ -835,10 +855,7 @@ class Qwen35GGUFMTP2Adapter:
                 self.owner._flush_row_owner(self.owner._row(request_id))
             self._ensure_request_states(attach)
         for rid in ids:
-            if reason_by_id[rid] not in {
-                SpecPlanReason.NO_PROVIDER,
-                SpecPlanReason.POLICY_SELECTED_AR,
-            }:
+            if k0_by_id[rid] is not SpecK0Class.TRANSITIONAL:
                 continue
             state = self._states.get(rid)
             if state is None:
