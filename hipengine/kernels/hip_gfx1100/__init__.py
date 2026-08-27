@@ -399,10 +399,12 @@ GGUF_Q6_LM_HEAD_MAX_CHUNK = 6
 # layer hidden versus independent c1, with resolution provenance recorded.
 # Promoted 2026-08-20 after direct c3/c5/c6/c7 lifecycle certification (#36).
 GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
-# SPECDEC2 S7 exposes only the independently-qualified dense GGUF C1 adapter on
-# gfx1100. Physical C2/C4 remains absent until its own frontier/economics gate.
+# SPECDEC2 exposes the dense GGUF C1 adapter plus the independently qualified
+# explicit physical C2 owner on gfx1100. The C4 construction seam is shared,
+# but model-plugin evidence still admits only exact C2 keys; C4 and automatic
+# physical policy remain fail-closed.
 GGUF_SPECDEC2_MTP2_C1 = True
-GGUF_SPECDEC2_MTP2_C4 = False
+GGUF_SPECDEC2_MTP2_C4 = True
 # W7900 P2 p128 found deterministic native target-graph NaN/sentinel output;
 # eager/serial target verification remains exact above the locally-qualified
 # natural25 context envelope.  This is graph admission, not model policy.

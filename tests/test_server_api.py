@@ -60,6 +60,7 @@ from hipengine.server.api import (
     _prepared_context_tokens,
     _request_completion_cap,
     _request_control,
+    _serving_plan_route_decision,
     _ServerMetrics,
     _startup_memory_summary,
     _mtp_accepted_rejected_counts,
@@ -5565,6 +5566,29 @@ def test_generation_batcher_applies_mtp_route_group_limit() -> None:
         ]
 
     asyncio.run(run())
+
+
+def test_automatic_route_rejects_any_explicit_only_realized_plan() -> None:
+    selected, decision = _serving_plan_route_decision(
+        {
+            "schema_version": 1,
+            "plan_fingerprint": "sha256:" + "a" * 64,
+            "key": {"realized_group_rows": 2},
+            "admitted": True,
+            "selected_candidate_count": 2,
+            "reason": "qualified_explicit_dense_c2_k2_d24",
+            "evidence_key": "fake-explicit-c2",
+            "evidence_artifacts": ["benchmarks/results/fake-explicit-c2.json"],
+            "automatic_eligible": False,
+        },
+        requested_route=_SPECULATIVE_MTP_AUTO_ROUTE,
+        group_rows=2,
+        output_horizon_tokens=24,
+    )
+
+    assert selected == _SPECULATIVE_MTP_DEFAULT_ROUTE
+    assert decision["reason"] == "automatic_mtp_scope_not_promoted"
+    assert decision["selected_candidate_count"] == 0
 
 
 def test_generation_batcher_re_resolves_model_plan_at_realized_c2_before_mutation() -> None:

@@ -2095,8 +2095,9 @@ def _serving_plan_route_decision(
         admitted = False
         reason = "physical_group_not_qualified"
     if route == _SPECULATIVE_MTP_AUTO_ROUTE:
+        explicit_only = admitted and not automatic_eligible
         admitted = admitted and automatic_eligible
-        if not admitted and reason == "qualified_explicit_c1_b3":
+        if explicit_only:
             reason = _SPECULATIVE_MTP_AUTO_REJECTION_REASON
     elif (
         route == _SPECULATIVE_MTP_K0_ROUTE

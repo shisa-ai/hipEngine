@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "kind": "w7900_qwen36_27b_dense_mtp2_c2_explicit_ownership",
+  "status": "passed_explicit_strict_scope_automatic_k0",
+  "performance_claim": false,
+  "source_commit": "3c0c17d8e2e98e5de65013aa0fda4688caa04e40",
+  "hardware": {
+    "physical_host": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "gpu_index": 0,
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "size_bytes": 17106773120,
+    "quant": "Q4_K_M",
+    "kv": "bf16"
+  },
+  "qualified_key": {
+    "execution_profile": "strict",
+    "execution_profile_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d",
+    "resident_capacity": 2,
+    "realized_group_rows": 2,
+    "candidate_budget": 2,
+    "max_sequence_length": 1024,
+    "context_tokens": [4, 95],
+    "output_horizon_tokens": 24,
+    "sampling_mode": "greedy_fast",
+    "automatic_eligible": false,
+    "strict_fallback": "gguf_target_ar"
+  },
+  "correctness_contract": {
+    "profile": "strict",
+    "control_and_state": "exact request/slot/row/position/provider/target/KV/commit ownership",
+    "ar_generated_id_equality": "observed 10/10 and retained as strict evidence; production promotion will use the numerical KL/top-1/task gate",
+    "production_scope": "not claimed by this artifact",
+    "anti_gaming": "all ten committed category+heldout prompts; no prompt/token/candidate-conditioned policy"
+  },
+  "commands": {
+    "direct_owner_full": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt PYTHONPATH=. uv run python /tmp/specdec2-c2-profile-wrapper.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --scope full --concurrency 2 --budgets 2 --max-tokens 24 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --output /tmp/gfx1100-cn-campaign-c2-k2-d24-full.json --fail-on-fail",
+    "blocking_server_c1_c2": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt PYTHONPATH=. uv run python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile strict --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2 --expected-mtp-widths 1,2 --max-tokens 24 --candidate-budget 2 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --correctness-contract ar_exact --output /tmp/gfx1100-cn-campaign-server-c1-c2-strict.json"
+  },
+  "raw_sources": {
+    "direct_owner_full": {
+      "path": "/tmp/gfx1100-cn-campaign-c2-k2-d24-full.json",
+      "bytes": 489684,
+      "sha256": "5c6ef0c02ad22e76451ad96a42f7e52f4852afdf5e64a805fc6e142f9132bf3d"
+    },
+    "blocking_server_c1_c2": {
+      "path": "/tmp/gfx1100-cn-campaign-server-c1-c2-strict.json",
+      "bytes": 2086363,
+      "sha256": "0626555d66848db0d32ec90690a194328201b20c432f3ce8303fc3939191df7a"
+    }
+  },
+  "direct_owner_full": {
+    "cells": 10,
+    "exact_cells": 10,
+    "generated_tokens_per_arm": 480,
+    "true_ar_tok_s": 31.28117857858021,
+    "specdec2_tok_s": 22.39015215827793,
+    "specdec2_over_true_ar": 0.715774571887502,
+    "accepted_drafts": 257,
+    "proposed_drafts": 346,
+    "draft_acceptance": 0.7427745664739884,
+    "group_cycles": 87,
+    "proposal_physical_rows": {"2": 173},
+    "target_physical_rows": {"6": 86, "4": 1},
+    "candidate_d2h_after_target": 0,
+    "recoverable_failures": 0,
+    "category_ratios": {
+      "code": 0.7034444777144291,
+      "general_en": 0.7640689658340609,
+      "general_ja": 0.7637923217117574,
+      "mixed_ja_en": 0.65849969082727
+    }
+  },
+  "blocking_server": {
+    "resident_capacity": 2,
+    "c2": {
+      "cells": 10,
+      "exact_cells": 10,
+      "engaged_cells": 10,
+      "budget_conformed_cells": 10,
+      "true_ar_tok_s": 30.28391921567517,
+      "mtp_tok_s": 21.7549972163121,
+      "mtp_over_true_ar": 0.7183679583008384
+    },
+    "c1": {
+      "cells": 10,
+      "exact_cells": 10,
+      "engaged_cells": 0,
+      "effective_route": "K0/AR",
+      "reason": "a singleton resident inside the capacity-2 physical provider owner is not independently qualified; C2-to-C1 therefore switches to K0 before mutation"
+    },
+    "overall_harness_status": "expected-width mismatch only because the diagnostic invocation deliberately requested C1 engagement; C2 passed every declared route/correctness cell"
+  },
+  "ownership": {
+    "proposal": "request-major device proposal, physical width 2",
+    "target": "one packed target frontier, normally R6",
+    "accept": "one grouped GPU accept payload per physical cycle",
+    "commit": "independent selected target hidden/Conv/GDN/KV/position commit per request",
+    "provider": "one compatible provider group with selected repair and K0 catch-up",
+    "steady_cycle_allocation_free": true,
+    "legacy_prelaunch_fallback": false,
+    "request_serial_target_backbone": false,
+    "final_recoveries": 0
+  },
+  "decision": {
+    "backend_adapter_construction": "enable gfx1100 capacity>1 adapter",
+    "public_scope": "strict explicit-only exact C2/K2/D24 key",
+    "automatic_policy": "K0 unchanged",
+    "production_profile": "not yet qualified; requires strict-teacher KL/top-1/task/determinism/isolation packet",
+    "performance": "blocked: 0.716x true AR and every category trails AR",
+    "next": "validate the unflagged explicit blocking/SSE/lifecycle route after registration, then run the production numerical packet before any automatic or performance promotion"
+  }
+}
