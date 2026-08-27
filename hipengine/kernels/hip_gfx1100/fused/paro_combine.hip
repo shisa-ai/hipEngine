@@ -110,6 +110,29 @@ __global__ void weighted_lanes_sum_shared_add_out_kernel(
 }
 
 template <typename scalar_t, typename weight_t>
+__global__ void weighted_sum_batch_out_kernel(
+    const scalar_t* __restrict__ values,
+    const weight_t* __restrict__ weights,
+    scalar_t* __restrict__ out,
+    int64_t tokens,
+    int64_t top_k,
+    int64_t features) {
+  const int64_t token = blockIdx.y;
+  const int64_t col = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (token >= tokens || col >= features) return;
+  float acc = 0.0f;
+  const int64_t row_base = token * top_k;
+  for (int64_t lane = 0; lane < top_k; ++lane) {
+    const int64_t row = row_base + lane;
+    acc = fmaf(
+        scalar_to_float(values[row * features + col]),
+        scalar_to_float(weights[row]),
+        acc);
+  }
+  out[token * features + col] = float_to_scalar<scalar_t>(acc);
+}
+
+template <typename scalar_t, typename weight_t>
 __global__ void weighted_sum_out_kernel(
     const scalar_t* __restrict__ values,
     const weight_t* __restrict__ weights,
@@ -634,6 +657,25 @@ __global__ void shared_gate_combine_out_kernel(
 }
 
 template <typename scalar_t>
+__global__ void shared_gate_combine_batch_out_kernel(
+    const scalar_t* __restrict__ expert,
+    const scalar_t* __restrict__ shared,
+    const float* __restrict__ gate_logits,
+    scalar_t* __restrict__ out,
+    int64_t tokens,
+    int64_t features) {
+  const int64_t token = blockIdx.y;
+  const int64_t col = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (token >= tokens || col >= features) return;
+  const int64_t offset = token * features + col;
+  const float gate_logit = gate_logits[token];
+  const float gate = 1.0f / (1.0f + expf(-gate_logit));
+  const float value = scalar_to_float(expert[offset])
+      + gate * scalar_to_float(shared[offset]);
+  out[offset] = float_to_scalar<scalar_t>(value);
+}
+
+template <typename scalar_t>
 __global__ void shared_gate_combine_residual_out_kernel(
     const scalar_t* __restrict__ expert,
     const scalar_t* __restrict__ shared,
@@ -810,6 +852,33 @@ extern "C" int hipengine_weighted_lanes_sum_out_fp16_f32w(
       values,
       weights,
       lane_to_row,
+      out,
+      tokens,
+      top_k,
+      features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_weighted_sum_batch_out_bf16_f32w(
+    const uint16_t* values,
+    const float* weights,
+    uint16_t* out,
+    int64_t tokens,
+    int64_t top_k,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || top_k <= 0 || features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (weighted_sum_batch_out_kernel<uint16_t, float>),
+      dim3(feature_grid(features, threads).x, static_cast<unsigned int>(tokens)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      values,
+      weights,
       out,
       tokens,
       top_k,
@@ -1608,6 +1677,33 @@ extern "C" int hipengine_shared_gate_combine_out_bf16(
       shared,
       gate_logits,
       out,
+      features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_shared_gate_combine_batch_out_bf16(
+    const uint16_t* expert,
+    const uint16_t* shared,
+    const float* gate_logits,
+    uint16_t* out,
+    int64_t tokens,
+    int64_t features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (tokens <= 0 || features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (shared_gate_combine_batch_out_kernel<uint16_t>),
+      dim3(feature_grid(features, threads).x, static_cast<unsigned int>(tokens)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      expert,
+      shared,
+      gate_logits,
+      out,
+      tokens,
       features);
   return static_cast<int>(hipGetLastError());
 }

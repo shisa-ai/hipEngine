@@ -50,13 +50,14 @@ def _hip_available() -> bool:
     return True
 
 
+@pytest.mark.parametrize("rows", [1, 3])
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle() -> None:
+def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle(rows: int) -> None:
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
     rng = np.random.default_rng(510)
-    rows, hidden, ffn, experts, top_k = 1, 256, 256, 4, 2
+    hidden, ffn, experts, top_k = 256, 256, 4, 2
     mixed = rng.normal(0.0, 0.1, size=(rows, hidden)).astype(np.float32)
     router = rng.normal(0.0, 0.1, size=(experts, hidden)).astype(np.float32)
     gate_raw = np.stack([make_q4_k_weight(ffn, hidden) for _ in range(experts)])
@@ -91,7 +92,7 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle() -> None:
     )
 
     allocations = []
-    scratch = None
+    scratch = serial_scratch = None
     try:
         d_mixed = _upload(mixed, runtime, allocations)
         weights = {
@@ -133,18 +134,58 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle() -> None:
         assert result.selected.nbytes == rows * top_k * np.dtype(np.int64).itemsize
         selected = _download(result.selected, (rows, top_k), np.int64, runtime)
         routing = _download(result.routing, (rows, top_k), np.float32, runtime)
+        serial_bits = None
+        serial_selected = None
+        serial_routing = None
+        if rows > 1:
+            serial_scratch = Qwen4ExpMoEScratch.allocate(
+                rows=1,
+                hidden=hidden,
+                ffn=ffn,
+                experts=experts,
+                top_k=top_k,
+                runtime=runtime,
+            )
+            bits_rows = []
+            selected_rows = []
+            routing_rows = []
+            for row in range(rows):
+                serial = run_qwen4_exp_moe(
+                    d_mixed.ptr + row * hidden * np.dtype(np.float32).itemsize,
+                    weights,
+                    scratch=serial_scratch,
+                    rows=1,
+                    hidden=hidden,
+                    ffn=ffn,
+                    experts=experts,
+                    top_k=top_k,
+                    runtime=runtime,
+                )
+                runtime.device_synchronize()
+                bits_rows.append(
+                    _download(serial.output, (hidden,), np.uint16, runtime)
+                )
+                selected_rows.append(
+                    _download(serial.selected, (top_k,), np.int64, runtime)
+                )
+                routing_rows.append(
+                    _download(serial.routing, (top_k,), np.float32, runtime)
+                )
+            serial_bits = np.asarray(bits_rows)
+            serial_selected = np.asarray(selected_rows)
+            serial_routing = np.asarray(routing_rows)
         finite_boundaries = {
             "expert_gate": bf16_to_float32(
-                _download(scratch.expert_gate, (top_k, ffn), np.uint16, runtime)
+                _download(scratch.expert_gate, (rows * top_k, ffn), np.uint16, runtime)
             ),
             "expert_up": bf16_to_float32(
-                _download(scratch.expert_up, (top_k, ffn), np.uint16, runtime)
+                _download(scratch.expert_up, (rows * top_k, ffn), np.uint16, runtime)
             ),
             "expert_intermediate": bf16_to_float32(
-                _download(scratch.expert_intermediate, (top_k, ffn), np.uint16, runtime)
+                _download(scratch.expert_intermediate, (rows * top_k, ffn), np.uint16, runtime)
             ),
             "expert_down": bf16_to_float32(
-                _download(scratch.expert_down, (top_k, hidden), np.uint16, runtime)
+                _download(scratch.expert_down, (rows * top_k, hidden), np.uint16, runtime)
             ),
             "routed": bf16_to_float32(
                 _download(scratch.routed, (rows, hidden), np.uint16, runtime)
@@ -154,6 +195,8 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle() -> None:
             ),
         }
     finally:
+        if serial_scratch is not None:
+            serial_scratch.close()
         if scratch is not None:
             scratch.close()
         for allocation in reversed(allocations):
@@ -162,6 +205,10 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle() -> None:
     for name, boundary in finite_boundaries.items():
         assert np.isfinite(boundary).all(), name
     np.testing.assert_array_equal(selected, expected.selected_experts.astype(np.int64))
+    if serial_bits is not None:
+        np.testing.assert_array_equal(actual_bits, serial_bits)
+        np.testing.assert_array_equal(selected, serial_selected)
+        np.testing.assert_array_equal(routing, serial_routing)
     np.testing.assert_allclose(routing, expected.routing_weights, rtol=2e-6, atol=2e-6)
     np.testing.assert_allclose(
         bf16_to_float32(actual_bits),
