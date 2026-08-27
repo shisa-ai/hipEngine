@@ -258,7 +258,9 @@ serving/topline decode claim. A default-off grouped/WMMA/peer prefill candidate
 reaches 211.76 tok/s on a warm repeated-token p512 and 35.75 tok/s over the
 18-prompt natural suite (6.60x after the PLE ownership fix), but remains blocked
 from promotion by strict→candidate mean/p95 KL `0.00476/0.01458`; max KL is
-`0.01548` and top-1 is now 100%. Natural retrieval,
+`0.01548` and final-row top-1 is 100%. The binding 687-row packet rejects the
+profile at mean/p95/max KL `0.01280/0.05553/0.82237` and 94.47% top-1, so it is
+not offered as a user-facing fast profile. Natural retrieval,
 strict-above-4K, 262K inference, and lifecycle/index-reference gates remain
 open, so this is not a broad long-context, speed, serving/c>N, MTP, or vision
 claim.
@@ -271,7 +273,8 @@ claim.
 [`262K capacity artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-262k-capacity.json) ·
 [`Exact Q5 wave-tail artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-q5-wave-tail.json) ·
 [`Blocked prefill candidate`](results/2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json) ·
-[`PLE staging correction`](results/2026-08-27-gfx1151-qwen38-flash-next-ple-staging-fix.json).
+[`PLE staging correction`](results/2026-08-27-gfx1151-qwen38-flash-next-ple-staging-fix.json) ·
+[`Full-row rejection`](results/2026-08-27-gfx1151-qwen38-flash-next-fast-allrows-rejected.json).
 
 ## Current Qwen3.6-35B quantization quality
 
