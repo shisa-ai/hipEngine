@@ -12071,13 +12071,15 @@ def _generation_route_for_request(
     )
     if plan is None:
         return route, None
-    if (
-        route == _SPECULATIVE_MTP_BATCH_ROUTE
-        and _request_speculative_mtp_enabled(request) is not True
-        and (
-            not bool(plan.get("admitted"))
-            or not bool(plan.get("automatic_eligible"))
-        )
+    explicit = _request_speculative_mtp_enabled(request) is True
+    defer_physical_group = bool(
+        explicit
+        and not bool(plan.get("admitted"))
+        and str(plan.get("reason")) == "physical_group_not_qualified"
+    )
+    if route == _SPECULATIVE_MTP_BATCH_ROUTE and (
+        (not bool(plan.get("admitted")) and not defer_physical_group)
+        or (not explicit and not bool(plan.get("automatic_eligible")))
     ):
         route = _SPECULATIVE_MTP_K0_ROUTE
     return route, plan

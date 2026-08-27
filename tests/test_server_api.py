@@ -415,7 +415,7 @@ class C2OnlyArtifactScopedSpeculativeMTPFakeLLM(
     @staticmethod
     def _plan(**kwargs: Any) -> dict[str, Any]:
         plan = RealizedGroupArtifactScopedSpeculativeMTPFakeLLM._plan(**kwargs)
-        if int(kwargs["realized_group_rows"]) == 1:
+        if int(kwargs["realized_group_rows"]) == 1 and bool(plan["admitted"]):
             plan["admitted"] = False
             plan["selected_route"] = "default"
             plan["selected_candidate_count"] = 0
@@ -5610,6 +5610,22 @@ def test_explicit_c2_intent_survives_request_time_c1_plan_rejection() -> None:
     assert plan is not None
     assert plan["admitted"] is False
     assert plan["reason"] == "physical_group_not_qualified"
+
+    outside_route, outside_plan = _generation_route_for_request(
+        ServerConfig(
+            model="fake-path",
+            served_model_name="fake-model",
+            speculative_mtp_serving="opt_in",
+        ),
+        request,
+        engine=fake,
+        sampling=SamplingParams(max_tokens=25),
+        prompts=(" ".join(f"token{index}" for index in range(68)),),
+    )
+    assert outside_route != _SPECULATIVE_MTP_BATCH_ROUTE
+    assert outside_plan is not None
+    assert outside_plan["admitted"] is False
+    assert outside_plan["reason"] == "scope_not_qualified"
 
 
 def test_automatic_route_rejects_any_explicit_only_realized_plan() -> None:
