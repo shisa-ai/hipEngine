@@ -539,8 +539,8 @@ class Route:
                 name: int(graph.graph_exec) for name, graph in token_graphs.items()
             },
             "eos_conditional_graph_exec": (
-                int(self.dec._eos_decode_graph.graph_exec)
-                if self.dec._eos_decode_graph is not None
+                int(getattr(self.dec, "_eos_decode_graph").graph_exec)
+                if getattr(self.dec, "_eos_decode_graph", None) is not None
                 else None
             ),
         }

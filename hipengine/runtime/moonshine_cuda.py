@@ -191,6 +191,7 @@ class MoonshineCudaResidentRuntime:
         runtime: CudaRuntime | None = None,
         owns_weights: bool = True,
         lm_head_route: str = "fused",
+        cross_kv_exact_rows: bool = True,
     ) -> None:
         if (model_path is None) == (loaded_model is None):
             raise ValueError("provide exactly one of model_path or loaded_model")
@@ -200,12 +201,14 @@ class MoonshineCudaResidentRuntime:
         self.weights = loaded_model.weights if loaded_model is not None else None
         self.spec = loaded_model.spec if loaded_model is not None else None
         self.owns_weights = bool(owns_weights)
+        self.cross_kv_exact_rows = bool(cross_kv_exact_rows)
         self.encoder_frames = int(encoder_frames)
         self.workspace = RuntimeWorkspace(device=self.device, runtime=self.runtime)
         self.stream = 0
         self.self_cache_length = 0
         self.cross_cache_valid = False
         self.encoder_state_valid = False
+        self.encoder_source_frames: int | None = None
         self.decode_position: int | None = None
         # Device-owned decode (C5/§7.3): token/position live on device across
         # steps; the graph tail advances the position scalar instead of a
@@ -531,6 +534,7 @@ class MoonshineCudaResidentRuntime:
         self.runtime.stream_synchronize(self.stream)
         self.cross_cache_valid = True
         self.encoder_state_valid = True
+        self.encoder_source_frames = self.encoder_frames
         self.reset_generation(clear_cross_cache=False)
 
     def set_encoder_state_from_device(
@@ -595,6 +599,7 @@ class MoonshineCudaResidentRuntime:
         if synchronize:
             self.runtime.stream_synchronize(self.stream)
         self.encoder_state_valid = True
+        self.encoder_source_frames = source_frames
         self.cross_cache_valid = False
 
     def precompute_cross_kv(self, *, synchronize: bool = True, reset: bool = True) -> None:
@@ -609,27 +614,54 @@ class MoonshineCudaResidentRuntime:
             raise RuntimeError("Moonshine encoder state is not loaded")
         from hipengine.kernels.cuda_sm120a.linear.moonshine_projection import (
             moonshine_f16_projection_pair_head_major,
+            moonshine_f16_projection_pair_head_major_batch,
         )
 
+        source_frames = self.encoder_source_frames
+        if source_frames is None:
+            raise RuntimeError("Moonshine encoder source-frame count is not set")
+        padded = self.cross_kv_exact_rows and source_frames < self.encoder_frames
+        if padded:
+            cross = self.workspace.allocation("cross_kv").buffer
+            self.runtime.memset_async(cross.ptr, 0, cross.nbytes, self.stream)
         encoder_ptr = self.tensor("encoder_hidden").ptr
         for layer in range(self.spec.decoder_layers):
             prefix = f"model.decoder.layers.{layer}.encoder_attn"
             cache = self.cross_cache(layer)
-            moonshine_f16_projection_pair_head_major(
+            arguments = (
                 encoder_ptr,
                 self.weights[f"{prefix}.k_proj.weight"].ptr,
                 self.weights[f"{prefix}.v_proj.weight"].ptr,
                 cache.key.ptr,
                 cache.value.ptr,
-                self.encoder_frames,
-                self.spec.hidden_size,
-                self.spec.decoder_kv_heads * self.spec.head_dim,
-                self.spec.decoder_kv_heads * self.spec.head_dim,
-                self.spec.head_dim,
-                stream=self.stream,
-                library=libraries.projection,
-                runtime=self.runtime,
             )
+            common = {
+                "stream": self.stream,
+                "library": libraries.projection,
+                "runtime": self.runtime,
+            }
+            if padded:
+                moonshine_f16_projection_pair_head_major_batch(
+                    *arguments,
+                    1,
+                    source_frames,
+                    self.encoder_frames,
+                    self.spec.hidden_size,
+                    self.spec.decoder_kv_heads * self.spec.head_dim,
+                    self.spec.decoder_kv_heads * self.spec.head_dim,
+                    self.spec.head_dim,
+                    **common,
+                )
+            else:
+                moonshine_f16_projection_pair_head_major(
+                    *arguments,
+                    self.encoder_frames,
+                    self.spec.hidden_size,
+                    self.spec.decoder_kv_heads * self.spec.head_dim,
+                    self.spec.decoder_kv_heads * self.spec.head_dim,
+                    self.spec.head_dim,
+                    **common,
+                )
         self.cross_cache_valid = True
         self.encoder_state_valid = True
         if reset:
@@ -652,6 +684,7 @@ class MoonshineCudaResidentRuntime:
         if clear_cross_cache:
             self.cross_cache_valid = False
             self.encoder_state_valid = False
+            self.encoder_source_frames = None
 
     def _zero(self, names: tuple[str, ...]) -> None:
         for name in names:
@@ -1439,6 +1472,8 @@ class MoonshineCudaResidentRuntime:
         return {
             "cross_cache_valid": self.cross_cache_valid,
             "encoder_state_valid": self.encoder_state_valid,
+            "encoder_source_frames": self.encoder_source_frames,
+            "cross_kv_exact_rows": self.cross_kv_exact_rows,
             "self_cache_length": self.self_cache_length,
             "decode_position": self.decode_position,
             "resident_nbytes": self.resident_nbytes,
