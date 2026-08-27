@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 Qwen3.8-Flash-Next exact chunk64 prefill promotion] Promote immediate PLE copies + batched projections + exact serial Conv + exact grouped Q5_1 down: **687/687 rows bit-exact**, natural-suite prefill **5.265→12.117 tok/s (2.301x)**, warm p512 **8.674→16.555 tok/s (1.909x)**, public output/lifecycle pass. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json`.
+
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next full-row fast-profile rejection] The 687-row teacher-forced packet rejects the ~35.97-tok/s candidate at mean/p95/p99/max KL **0.01280/0.05553/0.12148/0.82237** and top-1 **94.47%**; every category misses its 97% floor. The prior 18-final-row packet was insufficient; no fast-profile exposure. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-fast-allrows-rejected.json`.
 
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next PLE staging correctness fix] Copy two-buffer PLE ring views immediately: plain chunk64 mean/max KL improves **0.13033→0.00564 / 0.64962→0.02663**, and the 35.43-tok/s fast stack improves **0.17169→0.00476 / 1.34378→0.01548**, with top-1 **94.44%→100%**. Fast promotion remains blocked on mean/p95. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-ple-staging-fix.json`.

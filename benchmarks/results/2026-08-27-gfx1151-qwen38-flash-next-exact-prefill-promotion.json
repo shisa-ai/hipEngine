@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "accepted_exact_default",
+  "scope": "Qwen4Exp exact chunk64 prefill promotion on pinned UD-Q4_K_XL",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "changes": [
+    "copy PLE two-buffer staging views immediately",
+    "run exact row-serial causal Conv over batched GDN projections",
+    "group Q5_1 down expert lanes with bit-exact scalar rowbatch8 kernel",
+    "make chunk64 prefill the public default"
+  ],
+  "binding_gate": {
+    "command": "uv run python /tmp/qwen4exp_exact_allrows_gate.py",
+    "prompt_file": "/tmp/qwen4exp-canonical-plus-heldouts.jsonl",
+    "prompts": 18,
+    "teacher_forced_rows": 687,
+    "strict_seconds": 130.4852876070072,
+    "candidate_seconds": 56.69652197801042,
+    "strict_tok_s": 5.264961380696741,
+    "candidate_tok_s": 12.11714539150128,
+    "speedup": 2.30146,
+    "mean_kl": 0.0,
+    "p95_kl": 0.0,
+    "p99_kl": 0.0,
+    "max_kl": 0.0,
+    "top1_agreement_rate": 1.0,
+    "all_categories_top1_rate": 1.0
+  },
+  "warm_structural": {
+    "tokens": 512,
+    "baseline_size2_tok_s": 8.674190628320213,
+    "exact_chunk64_tok_s": 16.555132395488716,
+    "speedup": 1.90858,
+    "token": 264
+  },
+  "public_api": {
+    "output": " 4.\n\n",
+    "load_plus_four_token_generation_seconds": 29.707130007998785,
+    "tracked_peak_bytes": 82807048480,
+    "after_close_bytes": 0,
+    "after_close_allocations": 0
+  },
+  "validation": {
+    "focused_tests_passed": 20,
+    "strict_fallback": "prefill_serial() plus exact flags set to 0",
+    "control_and_logits_exact": true
+  },
+  "decision": {"promoted": true, "reason": "687/687 rows and every category are bit-exact, performance improves, public output/lifecycle pass"}
+}

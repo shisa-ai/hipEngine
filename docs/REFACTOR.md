@@ -18,6 +18,14 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-08-27 Qwen4Exp exact chunked prefill bisection flags
+
+- `HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL` and
+  `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN` default on for the promoted exact
+  chunk64 path. Remove both flags and the old bulk-Conv/direct-down alternatives
+  after public serving, rollback, cancellation, and long-context repeatability
+  gates stabilize; keep `prefill_serial()` as the registered strict fallback.
+
 ## 2026-08-27 Qwen4Exp grouped prefill performance candidates
 
 - Qwen4Exp grouped Q4/Q5/Q8 MoE, peer-GDN, Q4 tile, and Q8 tile candidates are

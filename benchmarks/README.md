@@ -235,7 +235,10 @@ general-Japanese/mixed prompts measured:
 | Qwen3.8-Flash-Next `UD-Q4_K_XL` | real ≤2,051-token canonical text gate | **0.01406 / 0.04154 / 0.04776 / 0.04931** | **10/10** | 82.718 GB / **0 B** |
 | Qwen3.8-Flash-Next `UD-Q4_K_XL` | predeclared eight category heldouts, matched BF16 K/V | **0.00987 / 0.02331 / 0.02766 / 0.02874** | **8/8** | same residency / **0 B** |
 
-The heldout row is admitted as its predeclared subset; the containing merged
+The exact chunk64 prefill default additionally passes all 687 teacher-forced
+category+heldout rows bit-for-bit and improves same-residency natural-suite
+prefill **5.265→12.117 tok/s (2.301x)**; warm repeated-token p512 is 16.555
+tok/s. The heldout row is admitted as its predeclared subset; the containing merged
 18-prompt diagnostic is not called a pass because one repeated canonical row
 exceeded the ceiling. The scanner validates 111.335 GB across four exact hashes, 1,224 tensors, one
 28.800-GB IQ4_NL sparse-mmap PLE table, 82.523 GB hot weights, and zero
@@ -265,6 +268,7 @@ strict-above-4K, 262K inference, and lifecycle/index-reference gates remain
 open, so this is not a broad long-context, speed, serving/c>N, MTP, or vision
 claim.
 [`Bring-up artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json) ·
+[`Exact prefill promotion`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json) ·
 [`Heldout artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json) ·
 [`2,052 transition artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json) ·
 [`4K structural artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json) ·
