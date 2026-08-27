@@ -477,6 +477,15 @@ are retained in
 [`2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json).
 These are correctness/bring-up results, not a speed or 262K-capacity claim.
 
+The first real native sparse-QSA row is additionally qualified at token 2,052
+with a repeated-token structural prompt: frozen llama.cpp, strict serial, and
+size-2 chunked hipEngine all select token 264; teacher→serial, teacher→chunk,
+and serial→chunk KL are `7.65e-5`, `4.98e-5`, and `3.95e-5`, respectively,
+with zero tracked bytes after close. The measured 381.725→245.855 s prefill
+wall is diagnostic only. This does not close natural retrieval, selected-index,
+4K/16K/64K/262K, or lifecycle/isolation gates; exact evidence is in
+[`2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json).
+
 ### F6 — Native QSA and 262K context ownership
 
 Add a QSA index-cache backend or model-attention state that mirrors

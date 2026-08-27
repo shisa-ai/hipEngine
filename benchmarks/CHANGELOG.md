@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 Qwen3.8-Flash-Next first sparse-QSA row; structural correctness only] Token 2,052 moves **unqualified→passed** on one repeated-token transition workload: teacher→strict/chunk KL **7.65e-5/4.98e-5**, top-1 **264==264**, teardown zero; diagnostic size-2 chunk wall **381.725→245.855 s (1.553x)**. Natural 4K+ and lifecycle/index-reference scopes remain open. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json`.
+
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next text bring-up; correctness only] Same-artifact support moves **unavailable→working** through public `LLM.generate()` on pinned `UD-Q4_K_XL`; frozen llama.cpp full logits across 10 canonical prompts pass mean/p95/p99/max KL **0.01406/0.04154/0.04776/0.04931** and top-1 **0/10→10/10**. Four-part SHA, sparse 28.800-GB PLE, measured 82.718-GB tracked peak, and zero post-close bytes pass. No speed, >2,051-token, serving/c>N, MTP, or vision claim. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json`.
 
 - [2026-08-26 gfx1151 Qwen3.8 Q4_K_M serving closure; retained metric unchanged] Close S5 at **12.940 vs 9.025 tok/s (1.4337x)** public complete-wall and **1.3147x** real automatic HTTP. The completed 10,576-test milestone had 19 isolated test-hygiene failures; focused repairs pass 19/19 without a prohibited broad rerun. Exact auto scope is unchanged and all other keys remain K0. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json`.
