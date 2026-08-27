@@ -778,6 +778,24 @@ class Qwen35GGUFMTP2Adapter:
             max_context_tokens=max_context,
         )
 
+    def partition_max_requests(self, request_ids: Sequence[int]) -> int:
+        """Return a physical subgroup bound without selecting a future due C/K."""
+
+        ids = tuple(int(value) for value in request_ids)
+        if not self.enabled or not ids:
+            return 0
+        eligibility = tuple(self._static_eligibility(request_id) for request_id in ids)
+        if any(row is None or not row.eligible for row in eligibility):
+            return 0
+        bound = min(
+            4,
+            max(1, int(getattr(self.owner, "capacity", 1))),
+            *(int(row.max_realized_group_rows) for row in eligibility if row is not None),
+        )
+        # Exact automatic-singleton evidence must fail the composed due group to
+        # K0; it may not be reinterpreted as many independently profitable C1s.
+        return bound if bound > 1 else 0
+
     def claims_fit(self, plan: SpecRequestPlan) -> bool:
         request_ids = tuple(int(value) for value in plan.speculative_request_ids)
         physical_singleton = bool(

@@ -240,6 +240,12 @@ class _DisjointMixedRunner(_CycleRunner):
         return None if len(semantics) > 1 else super().speculative_capability(semantics)
 
 
+class _PartitionedRunner(_CycleRunner):
+    def speculative_partition_max_requests(self, work):
+        del work
+        return 2
+
+
 def test_one_speculative_cycle_is_one_engine_tick_with_multi_token_events() -> None:
     runner = _CycleRunner()
     loop = ResidentEngineLoop(runner, capacity=2, prefill_chunk_size=8)
@@ -343,6 +349,38 @@ def test_ar_neighbor_uses_disjoint_decode_without_erasing_speculative_intent() -
         ar_id
     ]
     assert loop.active_count == 1
+
+
+def test_wide_due_work_partitions_each_speculative_row_once_per_tick() -> None:
+    runner = _PartitionedRunner()
+    loop = ResidentEngineLoop(
+        runner,
+        capacity=5,
+        prefill_chunk_size=8,
+        prefill_decode_policy="protect_ttft",
+    )
+    request_ids = tuple(
+        loop.submit_speculative(
+            [10 + index],
+            max_new_tokens=2,
+            desired_candidate_count=1,
+        )
+        for index in range(5)
+    )
+
+    events = loop.poll(max_ticks=7)
+
+    assert [plan.request_ids for plan in runner.cycle_plans] == [
+        request_ids[:2],
+        request_ids[2:4],
+        request_ids[4:],
+    ]
+    assert [plan.proposal_widths for plan in runner.cycle_plans] == [(2,), (2,), (1,)]
+    assert runner.decodes == []
+    assert [event.request_id for event in events if event.kind == "completed"] == list(
+        request_ids
+    )
+    assert all(loop.completed[request_id].generated_tokens for request_id in request_ids)
 
 
 def test_missing_capability_uses_normal_decode_k0_path() -> None:

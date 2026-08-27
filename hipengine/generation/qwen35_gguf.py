@@ -6131,6 +6131,11 @@ class Qwen35GGUFResidentModelRunner:
         # telemetry. Uncaptured S3 shapes conservatively plan eager.
         return False
 
+    def speculative_partition_max_requests(self, work) -> int:
+        adapter = self._resolved_mtp2_adapter()
+        resolve = None if adapter is None else getattr(adapter, "partition_max_requests", None)
+        return 0 if not callable(resolve) else int(resolve(work.request_ids))
+
     def speculative_claims_fit(self, plan) -> bool:
         adapter = self._resolved_mtp2_adapter()
         return bool(adapter is not None and adapter.claims_fit(plan))
