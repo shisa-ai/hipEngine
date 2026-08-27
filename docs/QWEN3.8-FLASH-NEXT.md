@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next Implementation Campaign
 
-Status: **active — strict gfx1151 text c1/greedy works through 2,051 tokens; official BF16 source completion, real long-context QSA, serving, MTP, and vision qualification remain open**
+Status: **active — official BF16 source and strict gfx1151 text c1/greedy are complete; local Q4_K_M conversion, production-fast numerics, remaining long-context QSA, serving, MTP, and vision qualification remain open**
 
 This campaign brings the open-weight `Qwen/Qwen3.8-Flash-Next` checkpoint to
 hipEngine as a torch-free, registry-composed, text-generation path first, then
@@ -13,8 +13,8 @@ The operational bring-up artifact is the independently published, revision-
 pinned Unsloth `UD-Q4_K_XL` split GGUF. It passed all-part SHA-256, complete
 tensor-map, sparse-PLE, real memory, same-artifact llama.cpp full-logit, and
 public `LLM.generate()` gates on gfx1151. A local conventional `Q4_K_M` remains
-a reproducibility/quant-quality follow-up once the official BF16 snapshot is
-complete; it is not required to relabel the verified working artifact. The
+a reproducibility/quant-quality follow-up from the now-complete official BF16
+snapshot; it is not required to relabel the verified working artifact. The
 51.2B-parameter n-gram table remains one IQ4_NL sparse mmap/host owner rather
 than consuming accelerator-resident capacity.
 
@@ -48,10 +48,15 @@ normative in [`TESTING.md`](TESTING.md),
 | Native context | 262,144 tokens |
 | Extended context | up to 1,000,000 tokens; not an initial support claim |
 
-The download is resumable and must resolve the exact revision above. Model
-weights and converted GGUF files are local artifacts and are never committed.
-The F0 worklog and artifact record the completed file size and SHA-256 after
-conversion; placeholders in this document do not constitute evidence.
+The completed local source resolves the exact revision above: 144 repository
+files / 360,023,351,155 bytes, including 131 safetensor shards /
+360,000,192,888 bytes. All shards pass pinned Hugging Face LFS size+SHA-256 in
+the final complete rehash. The local manifest SHA-256 is
+`973433d38d86f0e771855b74a170f55f07290bc446ff9bc7a42a688a152b912b`;
+compact evidence is in
+[`2026-08-27-qwen38-flash-next-official-source.json`](../benchmarks/results/2026-08-27-qwen38-flash-next-official-source.json).
+Model weights and converted GGUF files are local artifacts and are never
+committed.
 
 ### 1.2 Read-only architecture and comparator sources
 
