@@ -2159,7 +2159,7 @@ should be boring.
 - Remove when: a lower-overhead verifier profiler/rocprof harness can produce the
   same operation split, or after the llama.cpp replication lane is closed.
 
-## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` / `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS` / `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` / `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` / `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE` / `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
+## `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL` / `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT` / `HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM` / `HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS` / `HIPENGINE_GGUF_VERIFY_F32_ALPHA_BETA` / `HIPENGINE_GGUF_VERIFY_F32_ATTN_OUT` / `HIPENGINE_GGUF_VERIFY_F32_MOE_COMBINE` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_SELECTED_INTERMEDIATE` / `HIPENGINE_GGUF_VERIFY_F32_SHARED_DOWN` / `HIPENGINE_GGUF_VERIFY_F32_POST_NORM` (default OFF, semantic diagnostic)
 - Added 2026-07-02. Env flag keeps target-block verifier residual outputs in
   FP32 for an opt-in llama.cpp parity probe while preserving BF16 mirrors for
   existing projection kernels. It adds FP32 add/RMSNorm and MoE combine helpers.
@@ -2203,6 +2203,14 @@ should be boring.
   post-attention RMSNorm into FP32 scratch and independently gating router /
   selected-q8 / shared-q8 consumers with
   `HIPENGINE_GGUF_VERIFY_F32_POST_NORM_{ROUTER,SELECTED_Q8,SHARED_Q8}`.
+  `HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT=N` bounds F32 residual
+  propagation to layers `[0, N)` and rejoins the ordinary BF16 verifier at the
+  next layer. It defaults to the complete layer count and is active only when
+  F32 residual is enabled. Added 2026-08-27 to screen a model-wide fixed
+  production mechanism after layer-local strict-teacher evidence localized the
+  dominant K2 amplification at a full-attention boundary; remove the flag after
+  this qualification campaign chooses a fixed manifest variant or rejects all
+  prefix lengths.
 - Purpose: test the current semantic hypothesis that accumulated BF16 verifier
   layer-boundary drift is enough to flip near-tie target decisions versus
   llama.cpp's F32 target `l_out` graph tensors. The diagnostic artifact

@@ -10579,6 +10579,9 @@ _GGUF_ROW_COMPACT_GEMV_ENV = "HIPENGINE_GGUF_ROW_COMPACT_GEMV"
 _GGUF_VERIFY_ROW_LM_HEAD_ENV = "HIPENGINE_GGUF_VERIFY_ROW_LM_HEAD"
 _GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV = "HIPENGINE_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A"
 _GGUF_VERIFY_F32_RESIDUAL_ENV = "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"
+_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT_ENV = (
+    "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT"
+)
 _GGUF_VERIFY_F32_TOKEN_EMBEDDING_ENV = "HIPENGINE_GGUF_VERIFY_F32_TOKEN_EMBEDDING"
 _GGUF_VERIFY_F32_ATTENTION_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_ATTENTION_NORM"
 _GGUF_VERIFY_F32_LINEAR_PROJECTIONS_ENV = "HIPENGINE_GGUF_VERIFY_F32_LINEAR_PROJECTIONS"
@@ -12005,6 +12008,19 @@ def _gguf_verify_lm_head_q6_top1_dp4a_enabled() -> bool:
 
 def _gguf_verify_f32_residual_enabled() -> bool:
     return _env_flag(_GGUF_VERIFY_F32_RESIDUAL_ENV, False)
+
+
+def _gguf_verify_f32_residual_layer_limit(layer_count: int) -> int:
+    raw = os.environ.get(_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT_ENV)
+    if raw is None or not raw.strip():
+        return int(layer_count)
+    value = int(raw)
+    if value < 0 or value > int(layer_count):
+        raise ValueError(
+            "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL_LAYER_LIMIT must be within "
+            f"[0, {int(layer_count)}]"
+        )
+    return value
 
 
 def _gguf_verify_f32_token_embedding_enabled() -> bool:
@@ -18871,6 +18887,9 @@ class Qwen35GGUFResidentSession:
                 self.use_wmma_prefill if use_wmma_prefill is None else use_wmma_prefill
             )
             layer_types = self.runner.weights.config.layer_types
+            f32_residual_layer_limit = _gguf_verify_f32_residual_layer_limit(
+                len(layer_types)
+            )
             full_attention_prefused_ready = (
                 FULL_ATTENTION not in layer_types
                 or (
@@ -18904,6 +18923,10 @@ class Qwen35GGUFResidentSession:
                 native_batch_decode_session(bulk_attention_mode == "native"),
             ):
                 for layer_id, layer_type in enumerate(layer_types):
+                    if use_f32_residual and layer_id >= f32_residual_layer_limit:
+                        use_f32_residual = False
+                        src_f32 = None
+                        dst_f32 = None
                     if sync_stages:
                         runtime.device_synchronize()
                     t_layer0 = time.perf_counter() if stage_timings is not None else 0.0
