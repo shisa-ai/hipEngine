@@ -1,0 +1,398 @@
+{
+ "schema": 1,
+ "kind": "gfx1151_qwen38_postcampaign_mtp_c1_c8_diagnostic",
+ "created_at": "2026-08-27T04:04:53.165115+00:00",
+ "status": "passed_c1_mtp_reproduced_c2_c8_typed_k0",
+ "passed": true,
+ "performance_claim": false,
+ "speed_claim_eligible": false,
+ "decision": {
+  "c1": "staged production B3 reproduced at 14.221 tok/s vs 9.778 true AR (+45.45%); 10/10 engaged, 79.29% accept/draft, every category positive",
+  "c2_c8": "70/70 cells fail closed to typed K0/AR; requested-MTP-arm rates are K0 diagnostics and are not MTP throughput",
+  "comparison": "C1 is stable versus T0.4 (AR +0.49%, MTP -0.46%); all requested-arm rows are within 2.37% of T0.4 and AR rows within 3.41%",
+  "promotion": "none; automatic policy remains K0 and the campaign closeout blockers are unchanged"
+ },
+ "physical_host": "gfx1151 / AMD RYZEN AI MAX+ 395 / Radeon 8060S / HIP 7.15.0",
+ "hardware": {
+  "backend": "hip_gfx1151",
+  "hip_visible_devices": "0",
+  "gpu_max_hw_queues": "2"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "size_bytes": 17106775008,
+  "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "raw_sampled_fingerprint": {
+   "algorithm": "sha256-sampled-v1",
+   "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+   "size_bytes": 17106775008,
+   "sampled_bytes": 3145728,
+   "sample_offsets": [
+    0,
+    8552863216,
+    17105726432
+   ],
+   "exists": true,
+   "path_type": "file"
+  },
+  "quant": "Q4_K_M (gguf_q4_k_m)",
+  "kv_storage": "bf16"
+ },
+ "source_states": {
+  "measured_commit": "8f653772fb6776f7591d9ca06a3750dddd5f5a4e",
+  "measured_dirty": false,
+  "publication_head": "65829e103",
+  "publication_head_runtime_difference": "none; 65829e103 changes only campaign docs/worklog relative to measured commit",
+  "prior_t04": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json"
+ },
+ "runtime_profile": {
+  "requested": "production",
+  "resolved": "production",
+  "manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+  "strict_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+ },
+ "protocol": {
+  "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "prompt_count": 10,
+  "categories": [
+   "code",
+   "general_en",
+   "general_ja",
+   "mixed_ja_en"
+  ],
+  "heldouts": 3,
+  "widths": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8
+  ],
+  "fresh_capacity_matched_process_per_width": true,
+  "one_warmup_arm_pair_per_width": true,
+  "measured_arm_pairs_per_width": 1,
+  "max_tokens": 24,
+  "candidate_budget": 3,
+  "batch_window_ms": 20.0,
+  "max_sequence_length": 1024,
+  "surface": "blocking OpenAI barrier-to-last-completion complete wall",
+  "sampling": "raw greedy, natural stop/EOS",
+  "execution_profile": "production",
+  "correctness_contract": "mtp_self_exact",
+  "expected_mtp_widths": [
+   1
+  ],
+  "generated_id_equality": "diagnostic only; existing production numerical/task gate remains binding"
+ },
+ "results": {
+  "1": {
+   "effective_route": "staged_mtp2_b3",
+   "ar_tok_s": 9.777518619758249,
+   "requested_mtp_arm_tok_s": 14.220916376795133,
+   "requested_mtp_arm_vs_ar_pct": 45.44504520868657,
+   "mtp_performance_interpretation": "valid engaged MTP diagnostic",
+   "mtp_engaged_cells": 10,
+   "prompt_cells": 10,
+   "exact_diagnostic_cells": 10,
+   "physical_budget_conformed_cells": 10,
+   "route_expectation_passed": true,
+   "route_reason_request_counts": {
+    "diagnostic_gfx1100_physical_mtp": 10
+   },
+   "draft_tokens": 198,
+   "accepted_draft_tokens": 157,
+   "draft_cycles": 70,
+   "accept_per_draft": 0.7929292929292929,
+   "prior_t04": {
+    "ar_tok_s": 9.729754089597318,
+    "requested_mtp_arm_tok_s": 14.286893899745897,
+    "ar_delta_pct": 0.4909119975806897,
+    "requested_mtp_arm_delta_pct": -0.461804528078269
+   }
+  },
+  "2": {
+   "effective_route": "typed_k0_ar",
+   "ar_tok_s": 14.74310907794359,
+   "requested_mtp_arm_tok_s": 16.80142912814085,
+   "requested_mtp_arm_vs_ar_pct": 13.961234630466146,
+   "mtp_performance_interpretation": "not MTP performance; requested arm resolved K0/AR",
+   "mtp_engaged_cells": 0,
+   "prompt_cells": 10,
+   "exact_diagnostic_cells": 10,
+   "physical_budget_conformed_cells": 10,
+   "route_expectation_passed": true,
+   "route_reason_request_counts": {
+    "physical_group_not_qualified": 20
+   },
+   "draft_tokens": 0,
+   "accepted_draft_tokens": 0,
+   "draft_cycles": 0,
+   "accept_per_draft": null,
+   "prior_t04": {
+    "ar_tok_s": 15.124165598575809,
+    "requested_mtp_arm_tok_s": 17.207395716120754,
+    "ar_delta_pct": -2.519520949096865,
+    "requested_mtp_arm_delta_pct": -2.3592564190267007
+   }
+  },
+  "3": {
+   "effective_route": "typed_k0_ar",
+   "ar_tok_s": 21.26237933775562,
+   "requested_mtp_arm_tok_s": 24.167340974082375,
+   "requested_mtp_arm_vs_ar_pct": 13.662448544356543,
+   "mtp_performance_interpretation": "not MTP performance; requested arm resolved K0/AR",
+   "mtp_engaged_cells": 0,
+   "prompt_cells": 10,
+   "exact_diagnostic_cells": 10,
+   "physical_budget_conformed_cells": 10,
+   "route_expectation_passed": true,
+   "route_reason_request_counts": {
+    "physical_group_not_qualified": 30
+   },
+   "draft_tokens": 0,
+   "accepted_draft_tokens": 0,
+   "draft_cycles": 0,
+   "accept_per_draft": null,
+   "prior_t04": {
+    "ar_tok_s": 21.949798818862906,
+    "requested_mtp_arm_tok_s": 24.753246279242223,
+    "ar_delta_pct": -3.1317803264626853,
+    "requested_mtp_arm_delta_pct": -2.3669837020576234
+   }
+  },
+  "4": {
+   "effective_route": "typed_k0_ar",
+   "ar_tok_s": 26.760513827374098,
+   "requested_mtp_arm_tok_s": 30.483220815169112,
+   "requested_mtp_arm_vs_ar_pct": 13.911193977101256,
+   "mtp_performance_interpretation": "not MTP performance; requested arm resolved K0/AR",
+   "mtp_engaged_cells": 0,
+   "prompt_cells": 10,
+   "exact_diagnostic_cells": 10,
+   "physical_budget_conformed_cells": 10,
+   "route_expectation_passed": true,
+   "route_reason_request_counts": {
+    "physical_group_not_qualified": 40
+   },
+   "draft_tokens": 0,
+   "accepted_draft_tokens": 0,
+   "draft_cycles": 0,
+   "accept_per_draft": null,
+   "prior_t04": {
+    "ar_tok_s": 27.70254280319433,
+    "requested_mtp_arm_tok_s": 31.137825312617302,
+    "ar_delta_pct": -3.4005144672553667,
+    "requested_mtp_arm_delta_pct": -2.1022807176676483
+   }
+  },
+  "5": {
+   "effective_route": "typed_k0_ar",
+   "ar_tok_s": 31.130153347053604,
+   "requested_mtp_arm_tok_s": 20.265104620684557,
+   "requested_mtp_arm_vs_ar_pct": -34.90200836867191,
+   "mtp_performance_interpretation": "not MTP performance; requested arm resolved K0/AR",
+   "mtp_engaged_cells": 0,
+   "prompt_cells": 10,
+   "exact_diagnostic_cells": 10,
+   "physical_budget_conformed_cells": 10,
+   "route_expectation_passed": true,
+   "route_reason_request_counts": {
+    "backend_k0_fallback": 10,
+    "physical_group_not_qualified": 40
+   },
+   "draft_tokens": 0,
+   "accepted_draft_tokens": 0,
+   "draft_cycles": 0,
+   "accept_per_draft": null,
+   "prior_t04": {
+    "ar_tok_s": 31.317730607951507,
+    "requested_mtp_arm_tok_s": 20.3378040456333,
+    "ar_delta_pct": -0.5989490849323431,
+    "requested_mtp_arm_delta_pct": -0.35745956046001615
+   }
+  },
+  "6": {
+   "effective_route": "typed_k0_ar",
+   "ar_tok_s": 34.91717761172414,
+   "requested_mtp_arm_tok_s": 24.077319279230952,
+   "requested_mtp_arm_vs_ar_pct": -31.044486049334896,
+   "mtp_performance_interpretation": "not MTP performance; requested arm resolved K0/AR",
+   "mtp_engaged_cells": 0,
+   "prompt_cells": 10,
+   "exact_diagnostic_cells": 10,
+   "physical_budget_conformed_cells": 10,
+   "route_expectation_passed": true,
+   "route_reason_request_counts": {
+    "physical_group_not_qualified": 60
+   },
+   "draft_tokens": 0,
+   "accepted_draft_tokens": 0,
+   "draft_cycles": 0,
+   "accept_per_draft": null,
+   "prior_t04": {
+    "ar_tok_s": 35.29639337391038,
+    "requested_mtp_arm_tok_s": 24.490069666921883,
+    "ar_delta_pct": -1.0743753849551507,
+    "requested_mtp_arm_delta_pct": -1.685378577131702
+   }
+  },
+  "7": {
+   "effective_route": "typed_k0_ar",
+   "ar_tok_s": 29.464134640332446,
+   "requested_mtp_arm_tok_s": 27.577379992565863,
+   "requested_mtp_arm_vs_ar_pct": -6.403563759119768,
+   "mtp_performance_interpretation": "not MTP performance; requested arm resolved K0/AR",
+   "mtp_engaged_cells": 0,
+   "prompt_cells": 10,
+   "exact_diagnostic_cells": 10,
+   "physical_budget_conformed_cells": 10,
+   "route_expectation_passed": true,
+   "route_reason_request_counts": {
+    "physical_group_not_qualified": 70
+   },
+   "draft_tokens": 0,
+   "accepted_draft_tokens": 0,
+   "draft_cycles": 0,
+   "accept_per_draft": null,
+   "prior_t04": {
+    "ar_tok_s": 29.15213594853988,
+    "requested_mtp_arm_tok_s": 28.001286260124655,
+    "ar_delta_pct": 1.0702429912625044,
+    "requested_mtp_arm_delta_pct": -1.513881411092377
+   }
+  },
+  "8": {
+   "effective_route": "typed_k0_ar",
+   "ar_tok_s": 32.11503911973837,
+   "requested_mtp_arm_tok_s": 30.702351361096195,
+   "requested_mtp_arm_vs_ar_pct": -4.398835552947888,
+   "mtp_performance_interpretation": "not MTP performance; requested arm resolved K0/AR",
+   "mtp_engaged_cells": 0,
+   "prompt_cells": 10,
+   "exact_diagnostic_cells": 10,
+   "physical_budget_conformed_cells": 10,
+   "route_expectation_passed": true,
+   "route_reason_request_counts": {
+    "physical_group_not_qualified": 80
+   },
+   "draft_tokens": 0,
+   "accepted_draft_tokens": 0,
+   "draft_cycles": 0,
+   "accept_per_draft": null,
+   "prior_t04": {
+    "ar_tok_s": 31.9911326186714,
+    "requested_mtp_arm_tok_s": 30.83682484936311,
+    "ar_delta_pct": 0.3873151430551447,
+    "requested_mtp_arm_delta_pct": -0.4360808511376102
+   }
+  }
+ },
+ "c1_categories": {
+  "code": {
+   "ar_tok_s": 9.822541673692305,
+   "mtp_tok_s": 14.429679908580187,
+   "mtp_vs_ar_pct": 46.90372805673273
+  },
+  "general_en": {
+   "ar_tok_s": 9.834298763616092,
+   "mtp_tok_s": 14.820828296864004,
+   "mtp_vs_ar_pct": 50.705491597393326
+  },
+  "general_ja": {
+   "ar_tok_s": 9.826392712643706,
+   "mtp_tok_s": 13.59575114911521,
+   "mtp_vs_ar_pct": 38.359533825891546
+  },
+  "mixed_ja_en": {
+   "ar_tok_s": 9.58660394815781,
+   "mtp_tok_s": 13.895341256080712,
+   "mtp_vs_ar_pct": 44.94539809116536
+  }
+ },
+ "correctness": {
+  "prompt_width_cells_passed": 80,
+  "prompt_width_cells_total": 80,
+  "request_trajectories_per_arm": 360,
+  "ar_mtp_generated_id_equal_cells": 80,
+  "mtp_engaged_cells": 10,
+  "typed_k0_cells": 70,
+  "budget_conformed_cells": 80,
+  "production_gate": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json",
+  "production_gate_reused": true,
+  "production_gate_reason": "same model/profile/manifest/candidate budget; this is a post-campaign diagnostic rerun with no arithmetic change"
+ },
+ "commands": {
+  "per_width_template": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --execution-profile production --widths C --expected-mtp-widths (1 for c1, none for c2-c8) --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --correctness-contract mtp_self_exact --output RAW/cC.json",
+  "environment": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1; cached compiler version file SHA-256 4575f2f128d68d1d1c7e99436d20ecac67a363d6d300f6dde6b2fb83a86f8987",
+  "collision_guard": "exclusive /tmp/hipengine-gfx1151-specdec2-perf.lock, 60 s initial /dev/kfd quiescence, process and /dev/kfd checks before/after every width"
+ },
+ "raw_sources": [
+  {
+   "path": "/tmp/gfx1151-postcampaign-mtp-c1-c8-1787802222/c1.json",
+   "sha256": "d0d2e5c3a313eabf7a0a56a60ce906a711d82f8d80bffbf24e39295c9a32aef8",
+   "size_bytes": 728695,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-postcampaign-mtp-c1-c8-1787802222/c2.json",
+   "sha256": "8c7b87d7ae82ad6fdfb2e9cfdd0036d795015596cdea787b1f5d99ca1537fa75",
+   "size_bytes": 893769,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-postcampaign-mtp-c1-c8-1787802222/c3.json",
+   "sha256": "d58bb222c94251b372db3a2081ac6f1bfba3036806815cf2d546569caaef4c63",
+   "size_bytes": 968515,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-postcampaign-mtp-c1-c8-1787802222/c4.json",
+   "sha256": "8fe2a881a970c616556effd2a430379de4bff2bc8b88328f3e8ef93c763adc1a",
+   "size_bytes": 1043118,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-postcampaign-mtp-c1-c8-1787802222/c5.json",
+   "sha256": "8fa80e517cd28cc99bf8b938f83f73b72438362cf8230f3f84cf202e6c5f56fc",
+   "size_bytes": 1060429,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-postcampaign-mtp-c1-c8-1787802222/c6.json",
+   "sha256": "959ea28c3f5e1563155f9adee5a9f515b62d3613585276b11df19cee961537a1",
+   "size_bytes": 1870826,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-postcampaign-mtp-c1-c8-1787802222/c7.json",
+   "sha256": "60afd266181aa1e32d452b20cc4b7fa08128984427882f0a538997c7d6476b36",
+   "size_bytes": 1952233,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-postcampaign-mtp-c1-c8-1787802222/c8.json",
+   "sha256": "f776984efc0180a7e78b773728b95ccd8efbdadbd956fe1787b5895871efe064",
+   "size_bytes": 2033537,
+   "retained_in_git": false
+  }
+ ],
+ "measurement_completion": {
+  "child_artifacts": "8/8 status=complete and passed=true",
+  "gpu_collision": "none observed by guards",
+  "wrapper_exit": "exit 1 after all measurements due display-only KeyError: aggregate_tok_s; raw schema field is tok_s",
+  "effect_on_measurement": "none"
+ },
+ "rollup": {
+  "benchmarks_readme_updated": false,
+  "benchmarks_changelog_updated": false,
+  "reason": "diagnostic reproducibility sweep; no product/default promotion or new retained performance claim"
+ },
+ "limitations": [
+  "Only c1 executes MTP. C2-c8 requested-MTP-arm timing is K0/AR control timing and must not be presented as MTP throughput.",
+  "One measured pair per width after one warmup pair; this is a reproducibility diagnostic, not a new promotion packet.",
+  "Publication HEAD advanced by a docs-only follow-up commit while the clean detached measurement ran; runtime code is identical to measured commit."
+ ]
+}
