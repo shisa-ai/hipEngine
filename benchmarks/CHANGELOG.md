@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 W7900 27B Dense Generation-2 physical C2 ownership; strict explicit only] Expose only exact Q4_K_M/strict-manifest/BF16/resident-C2/physical-C2/K2/context4-95/D24/greedy. All ten cells execute request-major proposal, one packed target/accept/selected-commit group, accept **257/346 (74.28%)**, and report zero candidate D2H/recovery; complete wall remains **22.390 vs 31.281 tok/s (0.7158x AR)**, so production and automatic stay K0. `benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json`.
+
 - [2026-08-27 W7900 dual-model Generation-2 MTP campaign final] Close both exact automatic lanes: 35B MoE **1.1400x** and 27B Dense **1.4382x** true AR, complete quality/serving/lifecycle packets, wrong-key K0, and cross-model generic-dispatch audit. `benchmarks/results/2026-08-27-w7900-dual-model-mtp2-campaign-final.json`.
 
 - [2026-08-27 W7900 dual-model Generation-2 MTP closure] Both 35B MoE K2 and 27B Dense K3 exact automatic keys pass real discovery/capabilities and unflagged D24; opposite budgets remain K0, both drain clean, and generic dispatch branch audits pass. `benchmarks/results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json`.

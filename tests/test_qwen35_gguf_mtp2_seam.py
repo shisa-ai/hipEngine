@@ -98,7 +98,7 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
     ) is True
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_C4", False
-    ) is False
+    ) is True
 
 
 def test_qwen_gguf_plugins_select_distinct_mtp2_adapters() -> None:

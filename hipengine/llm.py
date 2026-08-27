@@ -425,15 +425,23 @@ class LLM:
         )
         if not evidence:
             return None
-        row = evidence[0]
-        return self.resolve_speculative_mtp_serving_plan(
-            realized_group_rows=int(row.realized_group_rows),
-            sampling_mode=str(row.sampling_modes[0]),
-            context_tokens=int(row.max_context_tokens),
-            output_horizon_tokens=int(row.max_output_horizon_tokens),
-            kv_storage=str(row.kv_storage),
-            memory_fit=True,
-        )
+        first_decision = None
+        for row in evidence:
+            decision = self.resolve_speculative_mtp_serving_plan(
+                realized_group_rows=int(row.realized_group_rows),
+                sampling_mode=str(row.sampling_modes[0]),
+                context_tokens=int(row.max_context_tokens),
+                output_horizon_tokens=int(row.max_output_horizon_tokens),
+                kv_storage=str(row.kv_storage),
+                memory_fit=True,
+            )
+            if decision is None:
+                continue
+            if first_decision is None:
+                first_decision = decision
+            if bool(getattr(decision, "admitted", False)):
+                return decision
+        return first_decision
 
     @property
     def supports_default_mtp(self) -> bool:

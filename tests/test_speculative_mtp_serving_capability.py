@@ -176,6 +176,48 @@ def test_qwen36_dense_production_row_resolves_after_qwen38_evidence() -> None:
     assert decision.selected_candidate_count == 3
 
 
+def test_qwen36_dense_strict_c2_k2_plan_is_explicit_only() -> None:
+    evidence = next(
+        row
+        for row in Qwen35GGUFModel().speculative_mtp_serving_evidence
+        if row.evidence_key
+        == "qwen36-dense-q4km-gfx1100-strict-bf16-c2-k2-d24"
+    )
+    key = SpeculativeMTPServingKey(
+        artifact_sha256=evidence.artifact_sha256,
+        artifact_size_bytes=evidence.artifact_size_bytes,
+        content_verified=True,
+        backend=evidence.backend,
+        target_arch=evidence.target_arch,
+        weight_quant=evidence.weight_quant,
+        execution_profile=evidence.execution_profile,
+        execution_profile_manifest_sha256=(
+            evidence.execution_profile_manifest_sha256
+        ),
+        kv_storage=evidence.kv_storage,
+        kv_layout=evidence.kv_layout,
+        realized_group_rows=2,
+        resident_capacity=2,
+        candidate_budget=2,
+        sampling_mode="greedy_fast",
+        max_sequence_length=1024,
+        context_tokens=95,
+        output_horizon_tokens=24,
+        memory_fit=True,
+    )
+
+    decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(key=key)
+
+    assert decision.admitted is True
+    assert decision.automatic_eligible is False
+    assert decision.selected_candidate_count == 2
+    assert decision.reason == "qualified_explicit_dense_c2_k2_d24"
+    assert replace(key, realized_group_rows=1) != key
+    assert Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        key=replace(key, realized_group_rows=1)
+    ).reason == "physical_group_not_qualified"
+
+
 def test_qwen36_moe_production_c1_k2_plan_is_exact_automatic_scope() -> None:
     evidence = Qwen35MoeGGUFModel().speculative_mtp_serving_evidence[0]
     key = SpeculativeMTPServingKey(
@@ -311,6 +353,55 @@ def test_llm_delegates_mechanical_serving_identity_to_loaded_generator() -> None
             "memory_fit": True,
         }
     ]
+
+
+def test_llm_capability_selects_matching_row_for_resident_capacity() -> None:
+    c1 = _evidence()
+    c2 = replace(
+        c1,
+        evidence_key="fake-c2-cap2",
+        realized_group_rows=2,
+        resident_capacity=2,
+    )
+    calls = []
+
+    class Generator:
+        resident_capacity = 2
+
+        def resolve_speculative_mtp_serving_plan(self, **kwargs):
+            calls.append(dict(kwargs))
+            return SimpleNamespace(
+                admitted=kwargs["realized_group_rows"] == 2,
+                realized_group_rows=kwargs["realized_group_rows"],
+            )
+
+    class LoadedLLM(LLM):
+        @property
+        def execution_profile_manifest_sha256(self):
+            return _STRICT_MANIFEST_SHA256
+
+        def _load_model_metadata(self):
+            return None, SimpleNamespace(
+                speculative_mtp_serving_evidence=(c1, c2)
+            )
+
+        def _get_text_generator(self):
+            return generator
+
+    generator = Generator()
+    llm = LoadedLLM(
+        "fake.gguf",
+        execution_profile="strict",
+        max_active_requests=2,
+        max_sequence_length=1024,
+        speculative_candidate_budget=3,
+    )
+
+    decision = llm.speculative_mtp_serving_capability
+
+    assert decision.admitted is True
+    assert decision.realized_group_rows == 2
+    assert [call["realized_group_rows"] for call in calls] == [1, 2]
 
 
 def test_serving_key_has_no_prompt_content_or_benchmark_identity_fields() -> None:

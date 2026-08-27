@@ -261,9 +261,9 @@ K0.
 
 ### P2 — 27B Dense explicit physical C2 ownership
 
-- [ ] Enable a non-default gfx1100 C2 capability/profile candidate only for the
-      exact 27B identity.
-- [ ] Execute request-major proposal, one physical target frontier, one grouped
+- [x] Enable a non-default gfx1100 C2 capability/profile candidate only for the
+      exact 27B identity; it is strict and explicit-only, never automatic.
+- [x] Execute request-major proposal, one physical target frontier, one grouped
       device accept, independently selected state/KV commits, and provider
       repair with zero candidate D2H before target.
 - [ ] Prove reject/partial/full accept, asymmetric acceptance, wrong-branch
@@ -272,7 +272,14 @@ K0.
       pressure/claim failure, injected pre/post-commit failure, and clean drain.
 - [ ] Run strict fallback plus the production numerical/task/determinism/
       isolation packet. Do not require blanket production generated-ID equality.
-- [ ] Publish an explicit functional artifact even if it is slow.
+- [x] Publish an explicit functional artifact even if it is slow.
+
+The strict checkpoint passes all ten direct-owner and blocking-server C2 cells,
+accepts **257/346 (74.28%)** drafts, and records physical width-2 proposal plus
+normally R6 target/accept/commit with zero candidate D2H/recovery. It remains
+**22.390 vs 31.281 tok/s (0.7158x AR)**. Realized C1 inside resident capacity 2
+stays K0 because singleton continuation in the physical provider owner is not
+qualified. Evidence: [`explicit C2 ownership`](../benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json).
 
 Exit: explicit C2 is functionally qualified; automatic still selects K0.
 
