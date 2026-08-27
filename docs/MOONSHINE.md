@@ -1,6 +1,6 @@
 # Moonshine — gfx1151 transfer campaign
 
-Last updated: **2026-08-08** (`main`)
+Last updated: **2026-08-27** (`lhl/20260827-moonshine-eos-aware`)
 
 ## Summary
 
@@ -82,8 +82,9 @@ The merged `cuda_sm120a` work extends beyond the original HIP decoder:
 1. a torch-free fixed-address encoder plus independent CPU encoder oracle;
 2. packed-FP16 deployment loading and content verification;
 3. fused bounded LM-head/top-1 variants;
-4. async encoder handoff, device-owned token/position state, and device result
-   publication;
+4. async encoder handoff, device-owned token/position state, device result
+   publication, and an opt-in CUDA conditional-WHILE graph that stops at exact
+   device EOS without intermediate host readback/relaunch;
 5. exact static-B encoder and decoder runtimes;
 6. a decoder-side FIFO continuous scheduler with compaction and graph LRU;
 7. long-bucket cuBLASLt, cuDNN, and AOT CUTLASS attention candidates;
@@ -91,7 +92,12 @@ The merged `cuda_sm120a` work extends beyond the original HIP decoder:
    manifests.
 
 Blackwell measurements are directional evidence only. They do not establish a
-Radeon speedup, launch geometry, numerical contract, or default.
+Radeon speedup, launch geometry, numerical contract, or default. The 2026-08-27
+conditional-EOS control is retained as a CUDA capability candidate: it is exact
+and improved a 100-observation downstream 20-fixture screen, but the older six
+very-short-file C5 diagnostic regressed, so hipEngine does not make it an
+unconditional runtime default. Downstream promotion requires the full paired E2
+and FLEURS gates.
 
 ## Transfer rules
 

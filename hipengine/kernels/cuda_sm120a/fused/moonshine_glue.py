@@ -80,6 +80,12 @@ _PUBLISH_RESULT_ARGS = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+_CREATE_EOS_GRAPH_ARGS = (
+    *(ctypes.c_void_p for _ in range(4)),
+    ctypes.c_int64,
+    ctypes.POINTER(ctypes.c_void_p),
+    ctypes.POINTER(ctypes.c_void_p),
+)
 # Static-B batch variants: same single-row layouts, plus an int64 ``batch``
 # between the shape scalars and the stream (row == grid Y).
 _EMBEDDING_BATCH_ARGS = (
@@ -506,6 +512,58 @@ def moonshine_publish_result_fp16(
     )
 
 
+def moonshine_create_eos_decode_graph(
+    first_bucket_graph: int,
+    remaining_bucket_graph: int,
+    result_eos_ptr: int,
+    position_ptr: int,
+    capacity: int,
+    *,
+    library: ctypes.CDLL | None = None,
+    runtime: CudaRuntime | None = None,
+) -> tuple[int, int]:
+    """Create one CUDA conditional graph that decodes until EOS on device.
+
+    The first WHILE body replays the positions-0..6 child graph; the second
+    replays the positions-7+ child graph.  Device condition kernels read the
+    sticky EOS and position scalars after every token graph, so no host
+    readback/relaunch boundary exists before the final transcript result.
+    """
+
+    for name, value in (
+        ("first_bucket_graph", first_bucket_graph),
+        ("remaining_bucket_graph", remaining_bucket_graph),
+        ("result_eos_ptr", result_eos_ptr),
+        ("position_ptr", position_ptr),
+    ):
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError(f"{name} must be a positive handle or device pointer")
+    if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity <= 7:
+        raise ValueError("capacity must be an integer greater than 7")
+    library = library or build_moonshine_glue(load=True)
+    runtime = runtime or get_cuda_runtime()
+    graph = ctypes.c_void_p()
+    graph_exec = ctypes.c_void_p()
+    _launch(
+        library,
+        "hipengine_cuda_sm120a_moonshine_create_eos_decode_graph",
+        _CREATE_EOS_GRAPH_ARGS,
+        (
+            first_bucket_graph,
+            remaining_bucket_graph,
+            result_eos_ptr,
+            position_ptr,
+            capacity,
+            ctypes.byref(graph),
+            ctypes.byref(graph_exec),
+        ),
+        runtime,
+    )
+    if graph.value is None or graph_exec.value is None:
+        raise RuntimeError("CUDA conditional EOS graph returned null ownership")
+    return int(graph.value), int(graph_exec.value)
+
+
 def moonshine_embedding_lookup_batch_fp16(
     embedding_ptr: int,
     token_ptr: int,
@@ -746,6 +804,7 @@ __all__ = [
     "moonshine_advance_position_fp16",
     "moonshine_advance_position_batch_fp16",
     "moonshine_publish_result_fp16",
+    "moonshine_create_eos_decode_graph",
     "moonshine_embedding_lookup_fp16",
     "moonshine_embedding_lookup_batch_fp16",
     "moonshine_partial_rope_cache_append_fp16",
