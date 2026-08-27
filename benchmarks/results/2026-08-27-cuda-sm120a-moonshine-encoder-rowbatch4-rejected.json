@@ -31,15 +31,17 @@
     "complete_wall_ms": 38.460052,
     "encoder_kernel_sum_ms": 15.369044,
     "encoder_top_families_ms": {
-      "conv2": 2.805141,
-      "conv3": 0.926972,
-      "qkv_triple": 3.405942,
-      "o_projection": 3.912706,
       "fc1_bias": 4.313165,
-      "fc2_bias_residual": 1.3622,
-      "attention": 1.240156
+      "qkv_triple": 3.391412,
+      "conv2": 2.805141,
+      "attention": 1.240156,
+      "o_projection": 1.157628,
+      "fc2_bias_residual": 1.006492,
+      "conv3": 0.926972,
+      "conv1": 0.324447
     },
-    "interpretation": "Projection families dominate the current encoder, so exact row reuse was a reasonable first RT-3 screen."
+    "interpretation": "Projection families dominate the current encoder, so exact row reuse was a reasonable first RT-3 screen.",
+    "attribution_method": "Encoder-only instances selected by exact expected counts and rows>1 geometry from the node-level Nsight trace; full-route family totals also contain decoder instances and must not be assigned wholesale to the encoder."
   },
   "performance": {
     "six_short_file_complete_route": {
@@ -73,5 +75,6 @@
     "The prototype was measured from an uncommitted worktree and then removed; raw hashes preserve the negative evidence.",
     "The six-short-file route and 20-fixture product screen both failed decisively, so no expensive full quality campaign was run.",
     "The exact primitive result establishes correctness only, not value; complete-route performance decides the rejection."
-  ]
+  ],
+  "supersedes_profile_attribution_in": "worklog/entries/20260827T100209.886392Z-asr-rt3-rowbatch-add-exact-row-batched-moonshine-encoder-projecti-b6b149.md (the decision/performance verdict is unchanged)"
 }
