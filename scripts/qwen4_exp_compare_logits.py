@@ -121,6 +121,7 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("model", type=Path, help="split GGUF directory or a GGUF file")
     parser.add_argument("--prompt", default="The answer to 2 + 2 is")
+    parser.add_argument("--prompt-file", type=Path)
     parser.add_argument("--context", type=int, default=2051)
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--llama-debug", type=Path, default=_DEFAULT_LLAMA_DEBUG)
@@ -146,6 +147,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise FileNotFoundError(f"llama-debug is not executable: {executable}")
     if args.context <= 0:
         raise ValueError("--context must be positive")
+    prompt = (
+        args.prompt_file.expanduser().resolve().read_text(encoding="utf-8")
+        if args.prompt_file is not None
+        else args.prompt
+    )
     if args.llama_batch < 0:
         raise ValueError("--llama-batch must be non-negative")
 
@@ -162,7 +168,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         teacher_logits, teacher_tokens, command = _run_llama_debug(
             executable,
             first_part,
-            args.prompt,
+            prompt,
             llama_output,
             args.context,
             args.llama_batch,
@@ -180,7 +186,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_sequence_length=args.context,
             prefill_chunk_size=args.prefill_chunk_size,
         )
-        hip_tokens = np.asarray(generator.tokenizer.encode(args.prompt), dtype=np.int32)
+        hip_tokens = np.asarray(generator.tokenizer.encode(prompt), dtype=np.int32)
         if not np.array_equal(teacher_tokens, hip_tokens):
             raise RuntimeError(
                 "tokenizer mismatch: "
@@ -229,7 +235,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             "parts": [
                 {"path": str(path), "bytes": path.stat().st_size} for path in parts
             ],
-            "prompt": args.prompt,
+            "prompt": prompt,
+            "prompt_file": (
+                str(args.prompt_file.expanduser().resolve())
+                if args.prompt_file is not None
+                else None
+            ),
             "token_ids": hip_tokens.tolist(),
             "vocab_size": int(actual.logits.size),
             "backend": args.backend,

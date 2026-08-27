@@ -5,7 +5,16 @@ import subprocess
 import numpy as np
 import pytest
 
-from scripts.qwen4_exp_compare_logits import _run_llama_debug, compare_logits
+from scripts.qwen4_exp_compare_logits import (
+    _arguments,
+    _run_llama_debug,
+    compare_logits,
+)
+
+
+def test_qwen4_exp_compare_logits_accepts_prompt_file(tmp_path) -> None:
+    prompt_file = tmp_path / "prompt.txt"
+    assert _arguments(["model", "--prompt-file", str(prompt_file)]).prompt_file == prompt_file
 
 
 def test_qwen4_exp_compare_logits_reports_kl_top1_and_errors() -> None:
