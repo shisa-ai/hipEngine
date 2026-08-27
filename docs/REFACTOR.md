@@ -2266,10 +2266,15 @@ should be boring.
   shows the combined router+selected-q8 consumer path breaks the old trace at
   cycle 7; selected-q8 alone flips row 1 (`413 - 4071` **+0.13053 -> -0.14458**),
   while router-only reaches pair 12 but worsens `539 - 26126` to **+0.33520**.
-  This makes these flags instrumentation only, not a candidate promotion.
-- Remove when: either a fuller F32 verifier graph path supersedes this partial
-  residual-boundary slice, or parity work decides llama.cpp's F32 graph
-  semantics are not the target. Do not promote this flag as a speed path.
+  This makes these flags instrumentation only, not a broad candidate promotion.
+  The 2026-08-27 35B Generation-2 qualification reuses only the bounded
+  `F32_RESIDUAL + F32_POST_NORM` K2 composition as an explicit production
+  candidate while forcing K1 back to the incumbent BF16 verifier. That
+  shape-specific use remains pending its final full quality/performance/serving
+  packet and does not certify any other flag combination or route.
+- Remove when: fold a passing K2 composition into a typed registered variant
+  (and delete its env plumbing), or remove the candidate if final qualification
+  fails. The historical broad diagnostic modes remain non-production.
 
 ## `HIPENGINE_GGUF_T16_SELECTED_DP4A_THREADS` (diagnostic rollback)
 - Added 2026-07-01. Host-side launch switch for the selected T16 q8_1/dp4a

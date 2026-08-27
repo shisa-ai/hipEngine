@@ -44,6 +44,9 @@ from hipengine import LLM, SamplingParams  # noqa: E402
 from hipengine.benchmark.provenance import collect_artifact_provenance  # noqa: E402
 from hipengine.loading.gguf import scan_gguf  # noqa: E402
 from hipengine.runtime.prefill import PrefillConfig  # noqa: E402
+from hipengine.runtime.gguf_native_spec_cycle import (  # noqa: E402
+    _call_with_f32_verifier_disabled,
+)
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession  # noqa: E402
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer  # noqa: E402
 from scripts.gguf_mtp_c1c8_server_bench import load_prompt_suite  # noqa: E402
@@ -366,18 +369,22 @@ def _probe_native_graph(
     session: Any,
     inputs: Sequence[int],
 ) -> tuple[tuple[int, ...], np.ndarray, np.ndarray]:
-    if len(tuple(inputs)) != 3:
-        raise GateError("qualified production numerical candidate is K2-only")
-    result = session.verify_target_block_native_cycle(
-        list(inputs),
-        fallback=False,
-        bulk_attention_mode=("native" if len(tuple(inputs)) == 3 else "bulk"),
-        use_wmma_prefill=False,
-        capture_linear_state_rows=True,
-        capture_lm_head_logits=True,
-        defer_linear_state_commit=True,
-        device_accept_commit=True,
-        remaining_decode=len(tuple(inputs)),
+    input_tuple = tuple(int(token) for token in inputs)
+    if len(input_tuple) not in {2, 3}:
+        raise GateError("qualified production numerical candidate requires K1/K2")
+    result = _call_with_f32_verifier_disabled(
+        len(input_tuple) == 2,
+        lambda: session.verify_target_block_native_cycle(
+            list(input_tuple),
+            fallback=False,
+            bulk_attention_mode="bulk",
+            use_wmma_prefill=False,
+            capture_linear_state_rows=True,
+            capture_lm_head_logits=True,
+            defer_linear_state_commit=True,
+            device_accept_commit=True,
+            remaining_decode=len(input_tuple),
+        ),
     )
     if not bool(getattr(session, "last_native_spec_target_submitted", False)):
         raise GateError("production numerical candidate did not execute the native graph")
@@ -386,7 +393,7 @@ def _probe_native_graph(
         raise GateError("native graph did not return diagnostic full logits")
     hidden = np.ascontiguousarray(result.hidden_seeds, dtype=np.float32)
     target_top1 = tuple(int(token) for token in result.target_top1)
-    if len(target_top1) != len(tuple(inputs)):
+    if len(target_top1) != len(input_tuple):
         raise GateError("native N2 graph did not return every target top-1 row")
     return (
         target_top1,
@@ -536,15 +543,20 @@ def _capture_graph_eager(
         eager_root = _strict_prefix(session, prompt_tokens, output_index)
         if eager_root != root_token:
             raise GateError("graph/eager strict prefix is not repeatable")
-        eager_tokens, eager_logits, eager_hidden, *_ = _probe_bulk_or_native(
-            session,
-            list(inputs),
-            mode=("native" if len(inputs) == 3 else "bulk"),
-            use_wmma_prefill=False,
-            capture_linear_state_rows=True,
-            capture_pre_output_norm_hidden=False,
-            capture_layer_output_hidden=[],
-            capture_layer_boundary_hidden=[],
+        eager_tokens, eager_logits, eager_hidden, *_ = (
+            _call_with_f32_verifier_disabled(
+                len(inputs) == 2,
+                lambda: _probe_bulk_or_native(
+                    session,
+                    list(inputs),
+                    mode="bulk",
+                    use_wmma_prefill=False,
+                    capture_linear_state_rows=True,
+                    capture_pre_output_norm_hidden=False,
+                    capture_layer_output_hidden=[],
+                    capture_layer_boundary_hidden=[],
+                ),
+            )
         )
         if not (
             np.isfinite(graph_logits).all()
@@ -783,12 +795,18 @@ def _trace_checks(
                 and len(cycle.output_tokens) <= cycle.remaining_decode
             )
             graph = graph and cycle.graph
-        reconstructed_tuple = tuple(reconstructed)
-        reconstructed_equal = first_output[: len(reconstructed_tuple)] == reconstructed_tuple
-        ar_tail_tokens = len(first_output) - len(reconstructed_tuple)
-        terminal_exact = 0 <= ar_tail_tokens <= 2
+        reconstructed_equal = tuple(reconstructed) == first_output
+        terminal = trace_rows[0][-1]
+        terminal_exact = bool(
+            terminal.remaining_decode != 1
+            or (
+                len(terminal.draft_tokens) == 1
+                and terminal.accepted == 0
+                and len(terminal.output_tokens) == 1
+            )
+        )
         shape_routes = all(
-            len(cycle.draft_tokens) == 2 and cycle.graph
+            len(cycle.draft_tokens) in {1, 2} and cycle.graph
             for cycle in trace_rows[0]
         )
         passed = bool(
@@ -809,10 +827,9 @@ def _trace_checks(
                 "reverse_order_isolation": isolation_equal,
                 "reconstructed_output": reconstructed_equal,
                 "bounded_control": bounded,
-                "all_k2_graph": graph,
+                "all_graph": graph,
                 "shape_routes": shape_routes,
-                "terminal_ar_tail_tokens": ar_tail_tokens,
-                "terminal_ar_tail_bounded": terminal_exact,
+                "terminal_zero_accept": terminal_exact,
                 "cycles": len(trace_rows[0]),
                 "trace_sha256": _sha256_json(trace_payloads[0]),
                 "passed": passed,

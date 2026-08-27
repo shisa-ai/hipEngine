@@ -21,6 +21,8 @@ QWEN36_DENSE_GGUF_BACKEND = "hip_gfx1100"
 QWEN36_DENSE_GGUF_QUANT = "gguf_q4_k_m"
 FP16_RECURRENT_STATE_ENV = "HIPENGINE_GGUF_FP16_RECURRENT_STATE"
 VERIFY_CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
+VERIFY_F32_RESIDUAL_ENV = "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"
+VERIFY_F32_POST_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM"
 
 _GDN_CHAIN_VARIANT = "bf16_c1_exact_state_rows_tloop"
 _GDN_REGISTRY_QUANT = "gguf_qwen35"
@@ -39,6 +41,14 @@ def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
     del generator, resolved
     os.environ[FP16_RECURRENT_STATE_ENV] = "0"
     os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] = "1"
+    os.environ[VERIFY_F32_RESIDUAL_ENV] = "0"
+    os.environ[VERIFY_F32_POST_NORM_ENV] = "0"
+
+
+def _production_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
+    _strict_binder(generator, resolved)
+    os.environ[VERIFY_F32_RESIDUAL_ENV] = "1"
+    os.environ[VERIFY_F32_POST_NORM_ENV] = "1"
 
 
 def _key(profile: ExecutionProfile, *, model: str) -> RuntimeProfileKey:
@@ -56,6 +66,7 @@ def _register_profile(
     profile: ExecutionProfile,
     evidence: str,
     graph_policy: str,
+    binder: Any = _strict_binder,
 ) -> bool:
     key = _key(profile, model=model)
     if key in registered_runtime_profile_keys():
@@ -78,7 +89,7 @@ def _register_profile(
             ),
             kv_policy="paged_bf16",
             graph_policy=str(graph_policy),
-            binder=_strict_binder,
+            binder=binder,
         ),
     )
     return True
@@ -108,7 +119,8 @@ def register_qwen36_moe_gguf_gfx1100_profiles() -> bool:
         model=QWEN36_MOE_GGUF_MODEL,
         profile=ExecutionProfile.PRODUCTION,
         evidence=_MOE_CANDIDATE_EVIDENCE,
-        graph_policy="specdec2_moe_native_complete_c1_candidate",
+        graph_policy="specdec2_moe_bulk_f32_k2_strict_k1_candidate",
+        binder=_production_binder,
     )
     return bool(strict or production)
 
@@ -134,6 +146,8 @@ __all__ = [
     "QWEN36_DENSE_GGUF_QUANT",
     "QWEN36_MOE_GGUF_MODEL",
     "VERIFY_CAPTURE_PREFILL_GDN_ENV",
+    "VERIFY_F32_POST_NORM_ENV",
+    "VERIFY_F32_RESIDUAL_ENV",
     "qwen36_dense_gguf_gfx1100_strict_registered",
     "qwen36_moe_gguf_gfx1100_strict_registered",
     "register_qwen36_dense_gguf_gfx1100_profiles",
