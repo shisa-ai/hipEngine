@@ -102,6 +102,12 @@ def _artifact() -> dict[str, object]:
     }
 
 
+def test_bridge_passes_declared_budget_through_public_llm_owner() -> None:
+    source = Path("scripts/specdec2_perf_bridge.py").read_text(encoding="utf-8")
+
+    assert "speculative_candidate_budget=int(budget)" in source
+
+
 def test_bridge_resolves_independent_backend_arch_quant_and_queue_policy() -> None:
     gfx1151 = resolve_platform(
         backend="hip_gfx1151",
