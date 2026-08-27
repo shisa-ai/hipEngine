@@ -193,9 +193,16 @@ class Qwen35GGUFMTP2Adapter:
         self.target_verify_mode = str(target_verify_mode)
         self.candidate_budget = int(candidate_budget)
         self.quant = str(quant)
-        self.physical_prompt_streaming = False
         profile = getattr(self.generator, "execution_profile", None)
         profile = getattr(profile, "value", profile)
+        self.physical_prompt_streaming = bool(
+            str(profile) == "production"
+            and backend_package_capability(
+                str(self.generator.backend),
+                "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_PROMPT_STREAMING",
+                False,
+            )
+        )
         self.production_physical_extra_rowtiles = bool(
             str(profile) == "production"
             and backend_package_capability(
@@ -767,6 +774,8 @@ class Qwen35GGUFMTP2Adapter:
             method_key="mtp2",
             policy_fingerprint=(
                 f"dense-nextn:{realized_verify_mode}:b{self.candidate_budget}:"
+                "prompt-streaming"
+                f"{int(getattr(self, 'physical_prompt_streaming', False))}:"
                 "extra-rowtiles"
                 f"{int(getattr(self, 'production_physical_extra_rowtiles', False))}:"
                 "q5-rowtile"
