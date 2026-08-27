@@ -61,6 +61,18 @@
       "bytes": 1450795,
       "sha256": "b256d9c130a59ca3eae8eff56620632262628789bb0007f40f4c2269be03936e",
       "source_commit": "1196a9ac6b356dd51cc8f333d13380395fd847ac"
+    },
+    "public_sse_c2": {
+      "path": "/tmp/gfx1100-c2-sse-probe.json",
+      "bytes": 23986,
+      "sha256": "8abcb4a4d84a88307696c1e2bd810fe8f184e54c1a009340366b3cc253fffb76",
+      "source_commit": "db9fcdb6dc022592827c08da834b8e2954ce744e"
+    },
+    "public_sse_cancel_survivor": {
+      "path": "/tmp/gfx1100-c2-cancel-probe.json",
+      "bytes": 81871,
+      "sha256": "98908f190783664469582bfa4b9bee4ddfd63d7d53afc5c16259d933a37f2882",
+      "source_commit": "db9fcdb6dc022592827c08da834b8e2954ce744e"
     }
   },
   "direct_owner_full": {
@@ -118,6 +130,41 @@
     "diagnostic_package_override": false,
     "diagnostic_plan_override": false
   },
+  "public_sse": {
+    "concurrent_complete": {
+      "responses": 2,
+      "status_200": 2,
+      "errors": 0,
+      "generated_tokens_each": 24,
+      "generated_ids_equal_strict_blocking": true,
+      "mtp_cycles_each": 8,
+      "candidate_counts": [2],
+      "proposal_physical_rows": [2],
+      "target_physical_rows": [6],
+      "accepted_drafts": [14, 12],
+      "proposed_drafts": [16, 16],
+      "candidate_d2h_after_target": 0,
+      "recoverable_failures": 0,
+      "active_provider_states_after": 0,
+      "provider_groups_after": 0,
+      "legacy_prelaunch_fallback": 0
+    },
+    "cancel_survivor": {
+      "cancelled_request_generated_tokens": 5,
+      "cancelled_finish_reason": "cancel",
+      "survivor_generated_tokens": 24,
+      "survivor_ids_equal_strict_blocking": true,
+      "shared_c2_cycles_before_cancel": 2,
+      "survivor_k0_catchups_after_cancel": 19,
+      "active_requests_after": 0,
+      "reclaimed_requests": 2,
+      "active_provider_states_after": 0,
+      "provider_groups_after": 0,
+      "candidate_d2h_after_target": 0,
+      "recoverable_failures": 0,
+      "legacy_prelaunch_fallback": 0
+    }
+  },
   "ownership": {
     "proposal": "request-major device proposal, physical width 2",
     "target": "one packed target frontier, normally R6",
@@ -135,6 +182,6 @@
     "automatic_policy": "K0 unchanged",
     "production_profile": "not yet qualified; requires strict-teacher KL/top-1/task/determinism/isolation packet",
     "performance": "blocked: 0.716x true AR and every category trails AR",
-    "next": "validate SSE plus delayed/refill/cancel/failure lifecycle, then run the production numerical packet before any automatic or performance promotion"
+    "next": "run the production strict-teacher numerical/task/determinism/isolation packet before any automatic or performance promotion; strict SSE/cancel/survivor lifecycle now passes"
   }
 }

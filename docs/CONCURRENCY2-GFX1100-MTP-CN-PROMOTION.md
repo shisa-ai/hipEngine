@@ -266,17 +266,21 @@ K0.
 - [x] Execute request-major proposal, one physical target frontier, one grouped
       device accept, independently selected state/KV commits, and provider
       repair with zero candidate D2H before target.
-- [ ] Prove reject/partial/full accept, asymmetric acceptance, wrong-branch
-      neighbor isolation, and following-cycle continuity.
-- [ ] Prove delayed arrival, refill, survivor, cancellation, prefix policy,
-      pressure/claim failure, injected pre/post-commit failure, and clean drain.
+- [x] Prove reject/partial/full accept, asymmetric acceptance, wrong-branch
+      neighbor isolation, and following-cycle continuity through the physical
+      adapter oracle/tests plus full-suite/public SSE traces.
+- [x] Prove delayed arrival/refill, survivor, cancellation, prefix fail-closed,
+      claim failure, injected pre/post-commit failure, and clean drain through
+      the common/adapter suites and real two-stream cancellation packet.
 - [ ] Run strict fallback plus the production numerical/task/determinism/
       isolation packet. Do not require blanket production generated-ID equality.
 - [x] Publish an explicit functional artifact even if it is slow.
 
 The strict checkpoint passes all ten direct-owner and blocking-server C2 cells,
 accepts **257/346 (74.28%)** drafts, and records physical width-2 proposal plus
-normally R6 target/accept/commit with zero candidate D2H/recovery. It remains
+normally R6 target/accept/commit with zero candidate D2H/recovery. Real
+concurrent SSE executes exact K2 for both requests, drains provider ownership,
+and an asymmetric cancel leaves the survivor exact through 19 K0 catch-ups. It remains
 **22.390 vs 31.281 tok/s (0.7158x AR)**. The real unflagged public blocking
 route independently passes 10/10 at **22.036 vs 30.652 tok/s (0.7189x)**.
 Realized C1 inside resident capacity 2 stays K0 because singleton continuation
