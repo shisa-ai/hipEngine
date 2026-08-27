@@ -1,7 +1,7 @@
 # CONCURRENCY2 gfx1151 MTP Dynamic Admission Campaign
 
-- Status: **design complete; singleton prerequisite landed at `b663a9d20`; D0-D7 execution has not started**
-- Scope: **this campaign remains unexecuted; the prerequisite unit independently ran GPU validation and is linked below**
+- Status: **D0 handoff/no-repeat audit complete at `a2b82a7d4`; D1 typed static eligibility is next**
+- Scope: **D0 used source/host RED only; singleton prerequisite GPU evidence is reused, and no D1-D7 GPU work has started**
 - Hardware lane when execution is approved: **Radeon 8060S / `hip_gfx1151`**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile**
 - First functional width: **two independent resident requests (`C_due=2`)**
@@ -175,21 +175,22 @@ implicit fallback.
 
 ### D0 — clean handoff and no-repeat audit (no behavior change)
 
-- [ ] Start from the first clean committed descendant after the active
-  capacity>1 singleton-routing unit finishes. Record its commit, scope,
-  tests/artifacts, and remaining diffs; do not duplicate its code.
-- [ ] Freeze exact Q4_K_M model/hash/quant/KV/profile/manifest, prompt fixture,
-  host, compiler, queue policy, and true-AR command.
-- [ ] Produce a source-to-contract map for frontend resolver, request intent,
-  `ResidentEngineLoop`, `SpecRequestPlan`, packing, GGUF MTP2 activation,
-  proposal, frontier, accept/commit, catch-up, and reclaim.
-- [ ] Reuse prior primitive/oracle evidence only when model/quant/profile/shape
-  identity actually matches. List every reused and repeated gate explicitly.
-- [ ] Capture a no-GPU RED showing two independent static-eligible children can
-  each appear frontend-C1 while the later resident `WorkItem` is C2. The old
-  frontend concurrency guess must not be accepted as `C_due`.
+- [x] Start from clean singleton descendant `a2b82a7d4` (`b663a9d20`
+  implementation), with its tests/artifacts and no remaining tracked diff.
+- [x] Freeze exact Q4_K_M model/hash/quant/KV/profile manifests, prompt fixture,
+  gfx1151 host/queue/chunk policy, and true-AR protocol.
+- [x] Map frontend resolver/grouping, EngineService intent, resident due-group
+  planner, `SpecRequestPlan`, GGUF activation/catch-up/proposal/frontier/commit,
+  slot-local journal, output, and reclaim ownership.
+- [x] Reuse only identity-matched singleton, T0.4/T1/T2.3, and S2/S4/S5
+  evidence; performance/numerics/lifecycle reruns wait for behavior changes.
+- [x] Capture the no-GPU RED: two independent frontend-C1 rows group to C2 K0,
+  but current route metadata has no `static_eligibility` and therefore calls AR
+  before the resident `WorkItem` can own C_due. The RED fails with
+  `KeyError: static_eligibility` as expected.
 
-Exit: one clean base and a precise gap list; no runtime change yet.
+Exit passed. Evidence:
+[`D0 handoff`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d0-handoff.json).
 
 ### D1 — split eligibility from cycle selection (RED/GREEN, host/fake first)
 

@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_dynamic_admission_d0_handoff",
+  "created_at": "2026-08-27T10:00:00Z",
+  "status": "d0_complete_d1_admitted",
+  "passed": true,
+  "performance_claim": false,
+  "source": {
+    "commit": "a2b82a7d4",
+    "tracked_clean": true,
+    "singleton_implementation_commit": "b663a9d20",
+    "singleton_publication_commit": "a2b82a7d4"
+  },
+  "frozen_key": {
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_size_bytes": 17106775008,
+    "model_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "backend": "hip_gfx1151",
+    "profile": "strict for D1 host/automatic seam; production is independently required before D2 product promotion",
+    "strict_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+    "production_manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+    "kv": "BF16",
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "gpu_max_hw_queues": 2,
+    "prefill_chunk_tokens": 256
+  },
+  "source_contract_map": [
+    {
+      "stage": "frontend model evidence",
+      "owner": "hipengine/models/qwen35.py + hipengine/speculative/serving.py",
+      "current_contract": "artifact/profile/KV/request-shape evidence resolves SpeculativeMTPServingDecision before mutation",
+      "gap": "decision still selects a future-looking route and carries key.realized_group_rows; it has no separate typed static eligibility result"
+    },
+    {
+      "stage": "request route construction",
+      "owner": "hipengine/server/api.py:_engine_speculative_mtp_serving_plan/_generation_route_for_request",
+      "current_contract": "resolver receives realized_group_rows=len(prompts) inside one HTTP request",
+      "gap": "independent HTTP children each appear C1; len(prompts) is request multiplicity, not resident C_due"
+    },
+    {
+      "stage": "frontend grouping",
+      "owner": "hipengine/server/api.py:_GenerationBatcher._run/_run_group/_resolve_realized_generation_route",
+      "current_contract": "grouping rechecks planned rows against queue group rows and truthfully selects K0 at C2",
+      "gap": "selected K0 calls generate_detailed, so eligible intent is discarded before EngineService/ResidentEngineLoop sees the C2 due group"
+    },
+    {
+      "stage": "service child lifecycle",
+      "owner": "hipengine/generation/engine_service.py",
+      "current_contract": "submit_speculative_many admits independent children into the same collector/cancel/reclaim lifecycle",
+      "reuse": "already correct; no second scheduler or legacy whole-request route is needed"
+    },
+    {
+      "stage": "resident submission",
+      "owner": "hipengine/generation/engine_loop.py:SubmitPollTextGenerator._submit_staged_speculative_detailed_locked",
+      "current_contract": "submits speculative intent, registers target row and provider intent before cycles",
+      "gap": "temporary singleton_only bool stands in for a typed static eligibility result"
+    },
+    {
+      "stage": "cycle planner",
+      "owner": "hipengine/generation/engine_loop.py:ResidentEngineLoop._maybe_run_speculative_cycle + hipengine/speculative/policy.py",
+      "current_contract": "uses actual due WorkItem IDs/slots/contexts/remaining room and supports mixed K, K0, claims, physical decomposition, and typed reasons",
+      "reuse": "this is the dynamic C_due/K owner; do not replace it"
+    },
+    {
+      "stage": "GGUF activation and capability",
+      "owner": "hipengine/generation/qwen35_gguf.py + qwen35_gguf_mtp2.py",
+      "current_contract": "prompt activation, private singleton provider, capability, K0 catch-up, proposal, target frontier, commit, failure recovery, and reclaim are request-owned",
+      "gap": "eligibility is represented by _intents plus _singleton_only_requests rather than a generic typed intent; mixed eligible/permanent-AR behavior needs D1 binding"
+    },
+    {
+      "stage": "transaction and target",
+      "owner": "hipengine/speculative/frontier.py + transaction.py + runtime/qwen35_gguf_mtp.py",
+      "current_contract": "immutable pre-mutation plan, atomic claims, reversible journal, slot-local state, KVLiveSpans, selected commit, rollback/rebuild",
+      "reuse": "singleton path passes; D2 must prove normal-owner C2 without weakening it"
+    },
+    {
+      "stage": "output and reclaim",
+      "owner": "EngineService collectors + ResidentEngineLoop scheduler + Qwen35GGUFResidentModelRunner.reclaim/discard",
+      "current_contract": "one request/output owner, cancellation at safe boundary, provider release, pages/rows/collectors drain",
+      "reuse": "cap4 singleton C1->C2 K0->C1 evidence passes"
+    }
+  ],
+  "reused_evidence": [
+    "benchmarks/results/2026-08-27-gfx1151-qwen38-realized-singleton-auto.json",
+    "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json",
+    "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t11-t13-ownership.json",
+    "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t23-t24-policy-scheduler.json",
+    "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s2.json",
+    "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s4-auto.json",
+    "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json"
+  ],
+  "no_repeat_decision": {
+    "retain": [
+      "cap4 slot-local singleton provider/journal",
+      "automatic C1 and C2 K0 route gates",
+      "C1->C2 K0->C1 survivor/cancel lifecycle",
+      "mixed-K ResidentEngineLoop planner tests",
+      "provider target-output K0 catch-up",
+      "transaction/frontier/claims/reclaim controls"
+    ],
+    "repeat_only_after_behavior_change": [
+      "full strict category suite",
+      "production numerical gate",
+      "GPU failure/lifecycle soak",
+      "performance and SLO packet"
+    ]
+  },
+  "red": {
+    "kind": "no_gpu_frontend_independent_children_to_resident_c2",
+    "command": ".venv/bin/python inline assertion over _serving_plan_route_decision",
+    "expected": "queue C2 remains selected K0 but preserves typed static eligibility for resident submission",
+    "actual": "KeyError: static_eligibility",
+    "meaning": "current frontend K0 decision discards speculative capability before the resident C_due planner",
+    "passed_red": true
+  },
+  "d1_exit_target": "Add typed static eligibility independent of C_due; retain eligible independent children through Generation-2 even when current frontend group selects K0; keep permanent AR provider-free; cycle K remains owned only by the actual WorkItem planner.",
+  "gpu_work": "none for D0"
+}
