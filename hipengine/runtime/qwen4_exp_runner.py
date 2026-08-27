@@ -43,7 +43,9 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
 )
 from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
+    shared_gate_combine_batch_out_bf16,
     shared_gate_combine_out_bf16,
+    weighted_sum_batch_out_bf16_f32w,
     weighted_sum_out_bf16_f32w,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
@@ -1713,8 +1715,8 @@ def run_qwen4_exp_moe(
 
     if scratch.closed:
         raise RuntimeError("Qwen4Exp MoE scratch is closed")
-    if rows != 1:
-        raise ValueError("strict Qwen4Exp MoE decode currently requires rows == 1")
+    if rows <= 0:
+        raise ValueError("Qwen4Exp MoE rows must be positive")
     active_runtime = runtime or scratch.runtime
     if active_runtime is not scratch.runtime:
         raise ValueError("runtime must match the MoE scratch owner")
@@ -1811,15 +1813,27 @@ def run_qwen4_exp_moe(
         "expert_down", scratch.expert_intermediate.ptr, scratch.expert_down.ptr,
         compact, compact, ffn, hidden,
     )
-    weighted_sum_out_bf16_f32w(
-        scratch.expert_down.ptr,
-        scratch.routing.ptr,
-        scratch.routed.ptr,
-        compact,
-        hidden,
-        stream=stream,
-        runtime=active_runtime,
-    )
+    if rows == 1:
+        weighted_sum_out_bf16_f32w(
+            scratch.expert_down.ptr,
+            scratch.routing.ptr,
+            scratch.routed.ptr,
+            compact,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    else:
+        weighted_sum_batch_out_bf16_f32w(
+            scratch.expert_down.ptr,
+            scratch.routing.ptr,
+            scratch.routed.ptr,
+            rows,
+            top_k,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
     for slot, output in (
         ("shared_gate", scratch.shared_gate),
         ("shared_up", scratch.shared_up),
@@ -1860,15 +1874,27 @@ def run_qwen4_exp_moe(
         stream=stream,
         runtime=active_runtime,
     )
-    shared_gate_combine_out_bf16(
-        scratch.routed.ptr,
-        scratch.shared_down_bf16.ptr,
-        scratch.shared_gate_logits.ptr,
-        scratch.output.ptr,
-        hidden,
-        stream=stream,
-        runtime=active_runtime,
-    )
+    if rows == 1:
+        shared_gate_combine_out_bf16(
+            scratch.routed.ptr,
+            scratch.shared_down_bf16.ptr,
+            scratch.shared_gate_logits.ptr,
+            scratch.output.ptr,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    else:
+        shared_gate_combine_batch_out_bf16(
+            scratch.routed.ptr,
+            scratch.shared_down_bf16.ptr,
+            scratch.shared_gate_logits.ptr,
+            scratch.output.ptr,
+            rows,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
     return Qwen4ExpMoEDeviceResult(scratch.output, scratch.selected, scratch.routing)
 
 
