@@ -1,7 +1,7 @@
 # CONCURRENCY2 gfx1151 MTP Tuning Campaign
 
-- Status: **campaign completed 2026-08-27 via definition-of-done branch (b); no product cell promoted, automatic remains K0**
-- Follow-up outcome: **Compact Rollback stopped at CR-S0; a separate explicit-only production C1/B3 context 68-128 scope is retained at +39.98%, while automatic and c2+ remain K0**
+- Status: **original campaign completed 2026-08-27 via definition-of-done branch (b); post-closure strict realized-singleton automatic C1 is now promoted on the normal capacity-4 owner, while c2+ remains K0**
+- Follow-up outcomes: **Compact Rollback stopped at CR-S0; production C1/B3 context68-128 is explicit-only at +39.98%; strict capacity-4 realized-C1 automatic reaches +59.65% with C1->C2 K0->C1 lifecycle passing**
 - Hardware lane: **Radeon 8060S / `hip_gfx1151`** only (two 8060S hosts are
   independent lanes; W7900 is the separate
   [`MTP-CONCURRENCY2-DUAL-PROMOTION.md`](MTP-CONCURRENCY2-DUAL-PROMOTION.md)
@@ -33,10 +33,14 @@ every phase names its evidence and exit gate before implementation.
   on capacity-1. The normal concurrency owner cannot select c1 MTP then c2+
   K0 before mutation; physical streaming/refill/survivor lifecycle is
   unqualified. FP16 device proposal also lacks eager selected commit.
-- Definition-of-done **branch (b)** applies. Automatic stays K0, B3 remains the
-  explicit diagnostic candidate, and blockers/reopen triggers are recorded in
-  `docs/REFACTOR.md`. Completion audit:
+- Definition-of-done **branch (b)** applied at campaign closure. The original
+  automatic K0 decision and blockers are retained as historical closeout
+  evidence:
   [`campaign closeout`](../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-campaign-closeout.json).
+- **Post-closure supersession:** strict capacity-4 automatic C1/B3 now engages
+  only for an actual realized singleton at **15.769 vs 9.878 tok/s (+59.65%)**.
+  C2 due groups fail closed before proposal and survivors re-enter only after
+  the group shrinks. Physical C2/C4 and production automatic remain K0.
 
 ## 1. Why this campaign exists — three measured gaps
 
@@ -504,3 +508,21 @@ blocked. It also does not make Compact Rollback useful: the 128-token scope is
 not memory-limited. Synthetic ratios decline to 1.063x/1.017x/0.897x at
 256/512/1020, so no larger context bucket is retained. Evidence:
 [`context128`](../benchmarks/results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json).
+
+### Post-closure normal-owner realized-singleton automatic
+
+Commit `b663a9d20` closes the capacity-only C1 blocker without claiming physical
+C2 MTP. Strict automatic requests under the normal four-slot resident owner
+carry singleton-only intent. At actual due C1 they use a private one-slot
+provider and slot-local transactional journal; at due C2+ adapter capability
+returns unavailable before proposal and exact target-output catch-up keeps each
+provider synchronized. Cancellation/retirement may then return a survivor to
+MTP at the next C1 transaction boundary.
+
+The clean canonical suite reaches **15.769 vs 9.878 tok/s (+59.65%, 1.5965x)**,
+with 10/10 cells above 1.10x, every category/split positive, and 78.57%
+acceptance. Blocking/SSE, two-independent-HTTP C2 K0, C1->C2->C1 survivor,
+cancellation, following health, and zero ownership pass. This supersedes the
+old capacity-4 automatic K0 outcome only for strict C1. Production automatic
+and all c2+ groups remain K0. Evidence:
+[`realized singleton`](../benchmarks/results/2026-08-27-gfx1151-qwen38-realized-singleton-auto.json).

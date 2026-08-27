@@ -1,7 +1,7 @@
 # CONCURRENCY2 gfx1151 MTP Dynamic Admission Campaign
 
-- Status: **design complete; execution not started or approved in this unit**
-- Scope: **plan/design only; no GPU work was run**
+- Status: **design complete; singleton prerequisite landed at `b663a9d20`; D0-D7 execution has not started**
+- Scope: **this campaign remains unexecuted; the prerequisite unit independently ran GPU validation and is linked below**
 - Hardware lane when execution is approved: **Radeon 8060S / `hip_gfx1151`**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile**
 - First functional width: **two independent resident requests (`C_due=2`)**
@@ -15,9 +15,13 @@
   and [`BENCHMARK.md`](BENCHMARK.md)
 
 This is a separate fundamental routing/ownership campaign. It does not reopen,
-replace, or append work to the completed tuning campaign. In particular, it
-must not race the active capacity>1 singleton-routing unit. Execution starts
-only from that unit's clean committed descendant and after explicit approval.
+replace, or append work to the completed tuning campaign. The capacity>1
+singleton-routing prerequisite has landed cleanly at `b663a9d20`: strict
+realized-C1 automatic is retained at 1.5965x AR, public C2 remains pre-mutation
+K0, and C1->C2 K0->C1 survivor lifecycle passes. D0 must reuse
+[`realized-singleton evidence`](../benchmarks/results/2026-08-27-gfx1151-qwen38-realized-singleton-auto.json)
+and its two worklogs instead of duplicating that code or GPU packet. Remaining
+campaign execution starts from this handoff after explicit approval.
 
 ## 1. Executive decision
 
@@ -426,11 +430,10 @@ hipengine/speculative/serving.py
 hipengine/models/qwen35.py
 ```
 
-One merge owner serializes changes across these files. The active singleton
-capacity unit lands first. Later workers take disjoint phases or tests and do
-not force-stage, restore, or overwrite another owner's changes. Hardware
-execution uses an exclusive lane/lock and begins only after the current tuning
-agent releases the machine.
+One merge owner serializes changes across these files. The singleton-capacity
+unit landed first at `b663a9d20`. Later workers take disjoint phases or tests
+and do not force-stage, restore, or overwrite another owner's changes. Hardware
+execution uses an exclusive lane/lock.
 
 ## 10. Definition of done
 
