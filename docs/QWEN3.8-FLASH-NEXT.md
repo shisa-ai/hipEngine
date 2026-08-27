@@ -607,8 +607,11 @@ expansion without score D2H or host sorting. The production H128 sparse kernel
 uses one barrier-free wave32 per query head and retains the strict shared-memory
 fallback. Prompt score generation/top-k and strict Q4_K gate/up are now
 batched/grouped per chunk. Split-k attention is optional follow-up only if its
-production packet beats wave32; the next binding work is natural 16K/64K
-requalification. MTP step 0
+production packet beats wave32. Natural 16K now passes in `946.9997 s`
+(`17.301 tok/s`): exact retrieval, all-layer needle control, CPU index oracle,
+replay/rollback, and zero teardown. Evidence:
+[`2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-16k.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-16k.json).
+The next binding work is natural 64K requalification. MTP step 0
 selects target-aligned QSA rows and later draft steps reuse those indices.
 
 Current exact F7 default (2026-08-27): immediate PLE ring ownership, batched
