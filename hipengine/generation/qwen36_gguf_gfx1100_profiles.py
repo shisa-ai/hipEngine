@@ -96,14 +96,21 @@ def _register_profile(
 
 
 def register_qwen36_dense_gguf_gfx1100_profiles() -> bool:
-    """Register the W7900 strict FP32-state dense NextN control once."""
+    """Register exact strict and production dense NextN plans once."""
 
-    return _register_profile(
+    strict = _register_profile(
         model=QWEN36_DENSE_GGUF_MODEL,
         profile=ExecutionProfile.STRICT,
         evidence=_DENSE_STRICT_EVIDENCE,
         graph_policy="specdec2_eager_c1",
     )
+    production = _register_profile(
+        model=QWEN36_DENSE_GGUF_MODEL,
+        profile=ExecutionProfile.PRODUCTION,
+        evidence=_DENSE_STRICT_EVIDENCE,
+        graph_policy="specdec2_eager_c1_exact",
+    )
+    return bool(strict or production)
 
 
 def register_qwen36_moe_gguf_gfx1100_profiles() -> bool:

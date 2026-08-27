@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from hipengine.execution_profiles import resolve_runtime_profile
+from hipengine.runtime import qwen35_gguf_runner as _qwen35_gguf_runner  # noqa: F401
 from hipengine.generation.qwen36_gguf_gfx1100_profiles import (
     FP16_RECURRENT_STATE_ENV,
     QWEN36_DENSE_GGUF_BACKEND,
@@ -84,7 +85,7 @@ def test_qwen36_moe_gfx1100_strict_fallback_and_production_candidate(
     )
 
 
-def test_qwen36_dense_gfx1100_production_fails_closed_to_strict() -> None:
+def test_qwen36_dense_gfx1100_production_resolves_exact_selected_variant() -> None:
     register_qwen36_dense_gguf_gfx1100_profiles()
     resolved = resolve_runtime_profile(
         model=QWEN36_DENSE_GGUF_MODEL,
@@ -93,8 +94,10 @@ def test_qwen36_dense_gfx1100_production_fails_closed_to_strict() -> None:
         profile="production",
     )
 
-    assert resolved.fell_back_to_strict is True
-    assert resolved.source_profile.value == "strict"
+    assert resolved.fell_back_to_strict is False
+    assert resolved.source_profile.value == "production"
     assert resolved.manifest["execution_profile"] == "production"
+    assert resolved.manifest["graph_policy"] == "specdec2_eager_c1_exact"
     selection = resolved.manifest["selections"][0]
     assert selection["selected_variant"] == "bf16_c1_exact_state_rows_tloop"
+    assert selection["strict_fallback_variant"] == selection["selected_variant"]
