@@ -81,6 +81,37 @@ def test_qwen4_exp_q5_1_selected_build_and_registry_contract() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_gather_bf16_lanes_matches_host_permutation() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
+        qwen4_exp_gather_bf16_lanes,
+    )
+
+    runtime = get_hip_runtime()
+    source = np.arange(24, dtype=np.uint16).reshape(6, 4)
+    lanes = np.asarray([5, 2, 0, 4, 1, 3], dtype=np.int64)
+    allocations = []
+    try:
+        d_source = _upload(source, runtime, allocations)
+        d_lanes = _upload(lanes, runtime, allocations)
+        d_output = _alloc(source.shape, np.uint16, runtime, allocations)
+        qwen4_exp_gather_bf16_lanes(
+            d_source.ptr,
+            d_lanes.ptr,
+            d_output.ptr,
+            source.shape[0],
+            source.shape[1],
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        actual = _download(d_output, source.shape, np.uint16, runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+    np.testing.assert_array_equal(actual, source[lanes])
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (

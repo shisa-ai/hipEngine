@@ -34,7 +34,7 @@ class Qwen4ExpGGUFTextGenerator:
         tokenizer: Any | None = None,
         runner: Any | None = None,
         max_sequence_length: int = 2_051,
-        prefill_chunk_size: int = 2,
+        prefill_chunk_size: int = 64,
     ) -> None:
         self.model_path = Path(model_path)
         self.weight_index = weight_index

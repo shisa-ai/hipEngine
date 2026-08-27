@@ -12,6 +12,14 @@ from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("qwen4_exp_q5_1.hip")
 _OUTPUT_NAME = "qwen4_exp_q5_1.so"
+_ARGS_GATHER = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _ARGS_GROUPED_WMMA = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -87,6 +95,32 @@ def build_qwen4_exp_q5_1(
         load=load,
         require_cached=require_cached,
     )
+
+
+def qwen4_exp_gather_bf16_lanes(
+    input_ptr: int,
+    sorted_lanes_ptr: int,
+    output_ptr: int,
+    rows: int,
+    features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    if rows <= 0 or features <= 0:
+        raise ValueError("rows and features must be positive")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_gather_bf16_lanes",
+        _ARGS_GATHER,
+        ctypes.c_int,
+    )
+    error = fn(input_ptr, sorted_lanes_ptr, output_ptr, rows, features, stream)
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
 
 
 def qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
@@ -323,6 +357,7 @@ register_qwen4_exp_q5_1_kernels()
 __all__ = [
     "build_qwen4_exp_q5_1",
     "plan_qwen4_exp_q5_1_build",
+    "qwen4_exp_gather_bf16_lanes",
     "qwen4_exp_q5_1_selected_gemv_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_gemv_wave64_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",

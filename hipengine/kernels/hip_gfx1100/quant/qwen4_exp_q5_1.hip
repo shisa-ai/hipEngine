@@ -207,6 +207,22 @@ __global__ void q5_1_selected_grouped_wmma_prefill_bf16_bf16_kernel(
   }
 }
 
+__global__ void qwen4_exp_gather_bf16_lanes_kernel(
+    const uint16_t* __restrict__ input,
+    const int64_t* __restrict__ sorted_lanes,
+    uint16_t* __restrict__ output,
+    int64_t rows,
+    int64_t features) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx >= rows * features) return;
+  const int64_t row = idx / features;
+  const int64_t col = idx - row * features;
+  const int64_t source = sorted_lanes[row];
+  if (source >= 0 && source < rows) {
+    output[idx] = input[source * features + col];
+  }
+}
+
 __global__ void q5_1_selected_gemv_bf16_bf16_kernel(
     const uint16_t* __restrict__ input,
     const int64_t* __restrict__ selected,
@@ -256,6 +272,27 @@ __global__ void q5_1_selected_gemv_bf16_bf16_kernel(
 }
 
 }  // namespace
+
+extern "C" int hipengine_qwen4_exp_gather_bf16_lanes(
+    const void* input,
+    const void* sorted_lanes,
+    void* output,
+    int64_t rows,
+    int64_t features,
+    hipStream_t stream) {
+  if (!input || !sorted_lanes || !output || rows <= 0 || features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  const int64_t elements = rows * features;
+  hipLaunchKernelGGL(
+      qwen4_exp_gather_bf16_lanes_kernel,
+      dim3(static_cast<uint32_t>((elements + threads - 1) / threads)),
+      dim3(threads), 0, stream, static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(sorted_lanes), static_cast<uint16_t*>(output),
+      rows, features);
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
     const void* input,

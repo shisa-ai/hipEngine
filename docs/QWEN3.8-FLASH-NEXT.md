@@ -556,7 +556,14 @@ natural category suite for product claims. Baselines are same-artifact
 llama.cpp PR #27742 HIP and Vulkan, plus hipEngine AR before each retained
 change. Physical host identity is mandatory.
 
-Current default-off F7 candidate evidence (2026-08-27): grouped Q4/Q5/Q8 MoE,
+Current exact F7 default (2026-08-27): immediate PLE ring ownership, batched
+projections, exact row-serial causal Conv, and exact grouped Q5_1 down make
+chunk64 bit-exact on all 687 teacher-forced category+heldout rows. Natural-suite
+prefill improves `5.265→12.117 tok/s` (2.301x), warm repeated-token p512 reaches
+`16.555 tok/s`, and public generation/lifecycle pass. Evidence:
+[`2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json).
+
+Current default-off F7 research candidate: grouped Q4/Q5/Q8 MoE,
 Q5_1 WMMA down, peer-GDN, and tuned Q4/Q8 tiles raise warm repeated-token 512
 prefill from `8.67` to `211.76 tok/s` and the 18-prompt natural suite from
 `5.36` to `35.43 tok/s` after the PLE ring-ownership fix. It is not promoted:

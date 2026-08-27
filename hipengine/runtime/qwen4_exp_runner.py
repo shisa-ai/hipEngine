@@ -80,6 +80,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
     gguf_q8_0_wmma_prefill_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
+    qwen4_exp_gather_bf16_lanes,
     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
     qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
 )
@@ -2266,7 +2267,13 @@ def run_qwen4_exp_moe(
             runtime=active_runtime,
         )
 
-    grouped_prefill = (
+    exact_grouped_down = (
+        weights["expert_down"].spec.quant_key == "gguf_q5_1"
+        and rows >= 2
+        and os.environ.get("HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN", "1")
+        not in {"", "0", "false", "False"}
+    )
+    grouped_prefill = exact_grouped_down or (
         rows >= 16
         and os.environ.get("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "")
         not in {"", "0", "false", "False"}
@@ -2324,29 +2331,58 @@ def run_qwen4_exp_moe(
             runtime=active_runtime,
         )
         tile_capacity = scratch.group_tile_expert.nbytes // DType.INT64.itemsize
-        qwen35_moe_wmma_tile_map(
-            scratch.group_expert_start.ptr,
-            scratch.group_wmma_expert_start.ptr,
-            scratch.group_tile_expert.ptr,
-            scratch.group_wmma_total.ptr,
-            experts,
-            tile_capacity=tile_capacity,
-            stream=stream,
-            runtime=active_runtime,
-        )
-        wmma_total_host = np.empty(1, dtype=np.int64)
-        if stream:
-            active_runtime.stream_synchronize(stream)
-        copy_device_to_host(
-            host_array_ptr(wmma_total_host),
-            scratch.group_wmma_total,
-            DType.INT64.itemsize,
-            runtime=active_runtime,
-        )
-        wmma_total_rows = int(wmma_total_host[0])
-        if wmma_total_rows <= 0 or wmma_total_rows > tile_capacity * 16:
-            raise RuntimeError("Qwen4Exp grouped MoE WMMA row count is invalid")
-        if weights["expert_gate"].spec.quant_key == "gguf_q4_k":
+        wmma_total_rows = 0
+        if not exact_grouped_down:
+            qwen35_moe_wmma_tile_map(
+                scratch.group_expert_start.ptr,
+                scratch.group_wmma_expert_start.ptr,
+                scratch.group_tile_expert.ptr,
+                scratch.group_wmma_total.ptr,
+                experts,
+                tile_capacity=tile_capacity,
+                stream=stream,
+                runtime=active_runtime,
+            )
+            wmma_total_host = np.empty(1, dtype=np.int64)
+            if stream:
+                active_runtime.stream_synchronize(stream)
+            copy_device_to_host(
+                host_array_ptr(wmma_total_host),
+                scratch.group_wmma_total,
+                DType.INT64.itemsize,
+                runtime=active_runtime,
+            )
+            wmma_total_rows = int(wmma_total_host[0])
+            if wmma_total_rows <= 0 or wmma_total_rows > tile_capacity * 16:
+                raise RuntimeError("Qwen4Exp grouped MoE WMMA row count is invalid")
+        if exact_grouped_down:
+            selected_projection(
+                "expert_gate", scratch.hidden_bf16.ptr, scratch.expert_gate.ptr,
+                rows, compact, hidden, ffn,
+            )
+            selected_projection(
+                "expert_up", scratch.hidden_bf16.ptr, scratch.expert_up.ptr,
+                rows, compact, hidden, ffn,
+            )
+            silu_mul_separate_out_bf16(
+                scratch.expert_gate.ptr,
+                scratch.expert_up.ptr,
+                scratch.expert_intermediate.ptr,
+                compact,
+                ffn,
+                stream=stream,
+                runtime=active_runtime,
+            )
+            qwen4_exp_gather_bf16_lanes(
+                scratch.expert_intermediate.ptr,
+                scratch.group_sorted_lanes.ptr,
+                scratch.expert_gate.ptr,
+                compact,
+                ffn,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        elif weights["expert_gate"].spec.quant_key == "gguf_q4_k":
             gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
                 scratch.expert_down.ptr,
                 scratch.group_expert_start.ptr,
@@ -2412,7 +2448,20 @@ def run_qwen4_exp_moe(
             q5_wmma = os.environ.get(
                 "HIPENGINE_QWEN4_EXP_Q5_1_WMMA", ""
             ) not in {"", "0", "false", "False"}
-            if q5_wmma:
+            if exact_grouped_down:
+                qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
+                    scratch.expert_gate.ptr,
+                    scratch.group_expert_start.ptr,
+                    weights["expert_down"].allocation("raw").tensor.ptr,
+                    scratch.expert_down.ptr,
+                    compact,
+                    experts,
+                    ffn,
+                    hidden,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+            elif q5_wmma:
                 qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
                     scratch.expert_intermediate.ptr,
                     scratch.group_expert_start.ptr,
@@ -3134,17 +3183,33 @@ def run_qwen4_exp_gdn_token_mixer(
             runtime=active_runtime,
         )
     else:
-        qwen35_linear_attn_conv_prefill_f32(
-            scratch.qkv.ptr,
-            conv_state_ptr,
-            conv_weight_ptr,
-            scratch.conv.ptr,
-            rows,
-            qkv_width,
-            conv_kernel,
-            stream=stream,
-            runtime=active_runtime,
-        )
+        exact_conv = os.environ.get(
+            "HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL", "1"
+        ) not in {"", "0", "false", "False"}
+        if exact_conv:
+            for row in range(rows):
+                qwen35_linear_attn_conv_decode_f32(
+                    scratch.qkv.ptr + row * qkv_width * DType.FP32.itemsize,
+                    conv_state_ptr,
+                    conv_weight_ptr,
+                    scratch.conv.ptr + row * qkv_width * DType.FP32.itemsize,
+                    qkv_width,
+                    conv_kernel,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+        else:
+            qwen35_linear_attn_conv_prefill_f32(
+                scratch.qkv.ptr,
+                conv_state_ptr,
+                conv_weight_ptr,
+                scratch.conv.ptr,
+                rows,
+                qkv_width,
+                conv_kernel,
+                stream=stream,
+                runtime=active_runtime,
+            )
         peer_prefill = (
             head_dim == 128
             and os.environ.get("HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL", "")
@@ -3255,7 +3320,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         resident: Qwen4ExpResidentWeights,
         *,
         max_sequence_length: int = 2_051,
-        prefill_chunk_size: int = 2,
+        prefill_chunk_size: int = 64,
         backend: str = "hip_gfx1151",
         runtime: HipRuntime | None = None,
     ) -> None:
@@ -3881,7 +3946,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         return Qwen4ExpTokenResult(int(np.argmax(logits)), logits)
 
     def prefill(self, token_ids: list[int] | tuple[int, ...]) -> Qwen4ExpTokenResult:
-        return self.prefill_serial(token_ids)
+        return self.prefill_chunked(token_ids)
 
     def generate(
         self,
