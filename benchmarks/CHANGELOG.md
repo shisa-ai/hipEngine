@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 Qwen3.8 Dynamic Admission D7 closure] Retain only strict cap4 realized-C1/K3 automatic at **9.807→15.609 tok/s (1.5916x, +59.16%)**; all 10 cells are >=1.462x and categories positive. C2-C8 now group at normal AR width and select exact pure K0 with zero provider mutation. Explicit production C1-C8 stays correctness-qualified/default-off; obsolete broad booleans and the D6 switch are removed. `benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json`.
+
 - [2026-08-27 gfx1151 Qwen3.8 dynamic MTP admission D6; economics closed/no optimization] Intent K0 is exact/zero-cycle at **0.4969x-0.8782x AR**. C2 K1/K2/K3 is **0.5277x/0.7617x/0.8170x**; best K3 needs +34.6% for 1.10x. Cached profiling is 90.0% mandatory GPU model work with ~1 ms copies, so no candidate is admitted and automatic C>1 remains pure K0. `benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d6-economics.json`.
 
 - [2026-08-27 gfx1151 Qwen3.8 dynamic MTP admission D5; production correctness qualified/default-off] Current-source Q4_K_M production passes **1,170** strict-teacher rows at mean/p95/p99/max KL **0.000123912/0.000350302/0.001110228/0.049787716**, **99.7436%** top-1, repeat/isolation/transition/manifest gates, and the complete D4+D3 product packet. Economics still reject every C>1 width. `benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d5-production-correctness.json`.
