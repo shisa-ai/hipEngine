@@ -242,11 +242,14 @@ GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES = frozenset(
     }
 )
 GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES = frozenset({(5_120, 17_408)})
-# Production C2 reuses the C1-equivalent rows6 rowtile for the remaining Q4
-# gate/up shape. The complete strict-teacher, repeat, permutation-isolation,
-# task, and lifecycle packet qualifies this arithmetic only through the
-# request-local SPECDEC2 scope; strict retains the single-wave sibling.
-GGUF_SPECDEC2_PRODUCTION_PHYSICAL_GATE_UP_ROWTILE = True
+# Production C2 reuses C1-equivalent rows6 rowtiles for the remaining Q4
+# gate/up and full-attention output shapes. Complete strict-teacher, repeat,
+# permutation-isolation, task, and lifecycle packets qualify this arithmetic
+# only through the request-local SPECDEC2 scope; strict retains single-wave /
+# shared-B siblings.
+GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES = frozenset(
+    {(5_120, 17_408), (6_144, 5_120)}
+)
 # W7900 retains the expanded-metadata T16 gate/up payload. The qmicro replacement
 # is qualified independently for gfx1151 and must fail closed on this backend.
 GGUF_DENSE_Q4_QMICRO_T16_GATE_UP = False
@@ -886,7 +889,7 @@ __all__ = [
     "GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS",
     "GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES",
-    "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_GATE_UP_ROWTILE",
+    "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",

@@ -222,12 +222,13 @@ fallback count is not a success metric.
   `_catch_up_provider{,_batch}` from production selection while retaining a
   focused test oracle if still useful.
 
-## SPECDEC2 physical gate/up rowtile scope
+## SPECDEC2 physical extra-rowtile scope
 
 - Added 2026-08-27 for the gfx1100 physical-C2 production campaign. The request-
-  local `q4_t16_physical_gate_up_rowtile_session(...)` selects the exact C1-
-  equivalent rows6 rowtile for K5120/N17408 only when the production adapter and
-  backend capability agree; strict keeps the registered single-wave fallback.
+  local `q4_t16_physical_extra_rowtiles_session(...)` selects exact C1-equivalent
+  rows6 rowtiles for K5120/N17408 gate/up and K6144/N5120 attention output only
+  when the production adapter and backend capability agree; strict keeps the
+  registered single-wave/shared-B fallbacks.
   The scope avoids changing the existing C1 production manifest while C2 owns
   an independent policy fingerprint and quality/economics packet.
 - Removal trigger: after one release window with the exact C2 production key,

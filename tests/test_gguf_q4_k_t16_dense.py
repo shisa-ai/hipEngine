@@ -51,7 +51,7 @@ from hipengine.quant.gguf_q4_k import (
     repack_gguf_q4_k_tile16_qmicro,
 )
 from hipengine.core.specdec2_scope import (
-    q4_t16_physical_gate_up_rowtile_session,
+    q4_t16_physical_extra_rowtiles_session,
 )
 from hipengine.runtime.gguf_linear import (
     clear_gguf_linear_dispatch_cache,
@@ -186,12 +186,14 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     for in_features, out_features in shape_policy:
         selector(1, 2, 3, 6, in_features, out_features)
     selector(1, 2, 3, 6, 5_120, 17_408)
-    with q4_t16_physical_gate_up_rowtile_session(True):
+    with q4_t16_physical_extra_rowtiles_session(True):
         selector(1, 2, 3, 6, 5_120, 17_408)
+        selector(1, 2, 3, 6, 6_144, 5_120)
     selector(1, 2, 3, 5, 5_120, 17_408)
     selector(1, 2, 3, 6, 5_120, 5_120)
     assert calls == ["rowtile"] * len(shape_policy) + [
         "single_wave",
+        "rowtile",
         "rowtile",
         "shared_b",
         "shared_b",
