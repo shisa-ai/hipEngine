@@ -296,6 +296,25 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
     assert capability.max_frontier_rows == 16
     assert capability.max_context_tokens == 1023
 
+    adapter.register_request(
+        7,
+        3,
+        static_eligibility=SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="qualified_test_k2",
+            max_candidate_count=2,
+            max_realized_group_rows=4,
+            automatic_eligible=False,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key="test-k2-capability",
+            evidence_fingerprint="sha256:test-k2-capability",
+        ),
+    )
+    bounded = adapter.capability(semantics)
+    assert bounded is not None
+    assert bounded.max_candidates_per_request == 2
+    assert bounded.max_frontier_rows == 12
+
     target.runner = SimpleNamespace(fp16_recurrent_state=True)
     assert adapter.capability(semantics) is None
 
