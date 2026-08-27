@@ -193,6 +193,7 @@ class Qwen35GGUFMTP2Adapter:
         if self.candidate_budget not in {1, 2, 3}:
             raise ValueError("MTP2 candidate budget must be 1, 2, or 3")
         self._intents: dict[int, int] = {}
+        self._singleton_only_requests: set[int] = set()
         self._prompt_hidden_rows: dict[int, np.ndarray] = {}
         self._prompt_streaming_sinks: dict[int, _StreamingNextNPromptSink] = {}
         self._prompt_streaming_group_keys: dict[int, tuple[int, ...]] = {}
@@ -235,10 +236,27 @@ class Qwen35GGUFMTP2Adapter:
             getattr(getattr(target, "runner", None), "fp16_recurrent_state", False)
         )
 
-    def register_request(self, request_id: int, candidate_budget: int) -> None:
+    def _singleton_only(self, request_id: int) -> bool:
+        return int(request_id) in getattr(self, "_singleton_only_requests", ())
+
+    def register_request(
+        self,
+        request_id: int,
+        candidate_budget: int,
+        *,
+        singleton_only: bool = False,
+    ) -> None:
         rid = int(request_id)
         budget = min(self.candidate_budget, max(1, int(candidate_budget)))
         self._intents[rid] = budget
+        singleton_requests = getattr(self, "_singleton_only_requests", None)
+        if singleton_requests is None:
+            singleton_requests = set()
+            self._singleton_only_requests = singleton_requests
+        if singleton_only:
+            singleton_requests.add(rid)
+        else:
+            singleton_requests.discard(rid)
         self._disabled_requests.discard(rid)
 
     def begin_prompt_streaming(
@@ -264,8 +282,12 @@ class Qwen35GGUFMTP2Adapter:
         ):
             raise RuntimeError("streaming prompt ownership is only opened once per request")
         rows = tuple(self.owner._row(request_id) for request_id in ids)
+        automatic_singleton = bool(
+            len(ids) == 1 and self._singleton_only(ids[0])
+        )
         if (
             int(getattr(self.owner, "capacity", 1)) > 1
+            and not automatic_singleton
             and not bool(self.physical_prompt_streaming)
         ):
             for row in rows:
@@ -304,23 +326,31 @@ class Qwen35GGUFMTP2Adapter:
             lifetime=ClaimLifetime.WORK_ITEM,
         )
         missing = len(ids)
-        group = next(
-            (
-                candidate
-                for candidate in self._provider_groups.values()
-                if len(candidate.request_ids) + missing
-                <= int(candidate.provider.executor.max_requests)
-            ),
-            None,
+        group = (
+            None
+            if automatic_singleton
+            else next(
+                (
+                    candidate
+                    for candidate in self._provider_groups.values()
+                    if len(candidate.request_ids) + missing
+                    <= int(candidate.provider.executor.max_requests)
+                ),
+                None,
+            )
         )
         acquired = group is None
         if group is None:
             max_positions = min(
                 int(target.target_layout.max_sequence_length) for target in targets
             )
-            provider_capacity = max(
-                len(ids),
-                min(4, int(getattr(self.owner, "capacity", len(ids)))),
+            provider_capacity = (
+                1
+                if automatic_singleton
+                else max(
+                    len(ids),
+                    min(4, int(getattr(self.owner, "capacity", len(ids)))),
+                )
             )
             provider, pool_key, _reused = self.generator._acquire_dense_mtp_draft_provider(
                 targets[0],
@@ -414,7 +444,11 @@ class Qwen35GGUFMTP2Adapter:
                             ),
                         ),
                     )
-                    if len(ids) == 1 and int(getattr(self.owner, "capacity", 1)) == 1
+                    if len(ids) == 1
+                    and (
+                        int(getattr(self.owner, "capacity", 1)) == 1
+                        or self._singleton_only(request_id)
+                    )
                     else None
                 )
                 pending_states[request_id] = _MTP2RequestState(
@@ -593,6 +627,14 @@ class Qwen35GGUFMTP2Adapter:
         semantics = tuple(request_semantics)
         if not self.enabled or not (1 <= len(semantics) <= 4):
             return None
+        singleton_only = tuple(
+            self._singleton_only(item.request_id)
+            for item in semantics
+        )
+        if any(singleton_only) and not (
+            len(semantics) == 1 and all(singleton_only)
+        ):
+            return None
         targets = []
         for item in semantics:
             rid = int(item.request_id)
@@ -617,10 +659,13 @@ class Qwen35GGUFMTP2Adapter:
         if len(semantics) == 1:
             existing = self._states.get(int(semantics[0].request_id))
             owner = getattr(targets[0], "_target_scratch_owner", None)
-            if (
-                (existing is not None and existing.verifier is None)
-                or int(getattr(owner, "slot_count", 1)) > 1
-                or int(getattr(self.owner, "capacity", 1)) > 1
+            automatic_singleton = bool(singleton_only[0])
+            if (existing is not None and existing.verifier is None) or (
+                not automatic_singleton
+                and (
+                    int(getattr(owner, "slot_count", 1)) > 1
+                    or int(getattr(self.owner, "capacity", 1)) > 1
+                )
             ):
                 return None
         # Streaming activation is retained only through the already-qualified
@@ -686,6 +731,7 @@ class Qwen35GGUFMTP2Adapter:
             and not (
                 len(plan.speculative_request_ids) == 1
                 and int(getattr(self.owner, "capacity", 1)) > 1
+                and not self._singleton_only(plan.speculative_request_ids[0])
             )
             and not any(
                 request_id in self._disabled_requests
@@ -879,6 +925,9 @@ class Qwen35GGUFMTP2Adapter:
     def _ensure_request_states(self, ids: tuple[int, ...]) -> None:
         missing = tuple(request_id for request_id in ids if request_id not in self._states)
         if not missing:
+            return
+        if len(missing) == 1 and self._singleton_only(missing[0]):
+            self._states[missing[0]] = self._open_request(missing[0])
             return
         existing_groups = {
             self._states[request_id].provider_group_key
@@ -2774,6 +2823,7 @@ class Qwen35GGUFMTP2Adapter:
             self._abort_prompt_streaming((rid,), stream=0)
         self._drop_request(rid, disable=False)
         self._intents.pop(rid, None)
+        self._singleton_only_requests.discard(rid)
         self._prompt_hidden_rows.pop(rid, None)
         self._disabled_requests.discard(rid)
 
@@ -2786,6 +2836,7 @@ class Qwen35GGUFMTP2Adapter:
         for request_id in tuple(self._states):
             self._drop_request(request_id, disable=False)
         self._intents.clear()
+        self._singleton_only_requests.clear()
         self._prompt_hidden_rows.clear()
         self._disabled_requests.clear()
         self._active_claims = None

@@ -559,10 +559,9 @@ class _StateJournal:
         initial_state_only: bool = False,
     ) -> "_StateJournal":
         owner = target._target_scratch_owner
-        if owner is None or target.runner is None:
+        scratch = target.scratch
+        if owner is None or scratch is None or target.runner is None:
             raise RuntimeError("GGUF target session is closed")
-        if int(owner.slot_count) != 1:
-            raise ValueError("transactional GGUF verifier currently requires one resident target slot")
         runtime = target.runtime
         assert runtime is not None
         buffers: list[DeviceBuffer] = []
@@ -579,8 +578,8 @@ class _StateJournal:
         try:
             if not producer_capture_active:
                 for family_rows, states in (
-                    (conv_rows, owner.layer_conv_states),
-                    (recurrent_rows, owner.layer_recurrent_states),
+                    (conv_rows, scratch.layer_conv_states),
+                    (recurrent_rows, scratch.layer_recurrent_states),
                 ):
                     for layer_id, state in enumerate(states):
                         if state is None:

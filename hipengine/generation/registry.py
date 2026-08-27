@@ -135,6 +135,7 @@ class GenerationRequest:
         compare=False,
         repr=False,
     )
+    speculative_mtp_singleton_only: bool = False
     logprobs: bool = False
     top_logprobs: int = 0
 
@@ -218,6 +219,11 @@ class GenerationRequest:
             None
             if self.resident_session_cache_action is None
             else str(self.resident_session_cache_action),
+        )
+        object.__setattr__(
+            self,
+            "speculative_mtp_singleton_only",
+            bool(self.speculative_mtp_singleton_only),
         )
         object.__setattr__(self, "logprobs", bool(self.logprobs))
         object.__setattr__(self, "top_logprobs", int(self.top_logprobs))

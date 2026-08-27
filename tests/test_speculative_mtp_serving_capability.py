@@ -48,6 +48,20 @@ def _evidence() -> SpeculativeMTPServingEvidence:
     return Qwen35GGUFModel().speculative_mtp_serving_evidence[0]
 
 
+def test_qwen38_q4km_strict_c1_b3_capacity4_realized_singleton_is_automatic() -> None:
+    decision = resolve_speculative_mtp_serving_plan(
+        Qwen35GGUFModel().speculative_mtp_serving_evidence,
+        key=_key(resident_capacity=4),
+    )
+
+    assert decision.admitted is True
+    assert decision.selected_route == "speculative_mtp"
+    assert decision.selected_candidate_count == 3
+    assert decision.reason == "qualified_automatic_realized_singleton_c1_b3"
+    assert decision.automatic_eligible is True
+    assert decision.strict_fallback_key == "gguf_target_ar"
+
+
 def test_qwen38_q4km_production_c1_b3_context128_is_explicit_only() -> None:
     evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
     key = _key(

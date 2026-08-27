@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_realized_singleton_auto",
+  "created_at": "2026-08-27T09:25:00Z",
+  "status": "candidate_implementation_pending_clean_source_publication",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "Implementation and precommit GPU gates pass; retain automatic_eligible evidence only provisionally until the same code commit completes a clean-source full-suite and lifecycle publication run.",
+  "candidate_scope": {
+    "model": "Qwen3.8-27B Q4_K_M",
+    "backend": "hip_gfx1151",
+    "profile": "strict",
+    "kv": "BF16",
+    "resident_capacity": 4,
+    "realized_group_rows": 1,
+    "candidate_budget": 3,
+    "context_tokens": "1-67",
+    "output_horizon_tokens": 25,
+    "automatic": true
+  },
+  "precommit_validation": {
+    "focused_tests": "140 passed across LLM, EngineService, EngineLoop, GGUF/PARO MTP seams, slot-local journal, and serving capability; five focused server routing tests also passed",
+    "automatic_singleton_smoke": "cap4 automatic C1 engaged, matched AR IDs, blocking/SSE passed, zero final ownership",
+    "dynamic_lifecycle": "C1 MTP -> C2 K0 -> cancel -> survivor C1 MTP -> healthy C1 MTP passed",
+    "public_c2": "two independent HTTP automatic requests grouped to pre-mutation physical_group_not_qualified K0, matched independent AR, then following singleton re-engaged",
+    "full_suite_primary": "15.734 vs 9.872 tok/s (1.5938x), 10/10 cells >1.10x, 165/210 accepted",
+    "full_suite_reverse": "15.748 vs 9.861 tok/s (1.5971x), 10/10 cells >1.10x, 165/210 accepted"
+  },
+  "next": "Commit the validated implementation, then replace this provisional packet with clean-source retained evidence and update rollups."
+}

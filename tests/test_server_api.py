@@ -60,6 +60,7 @@ from hipengine.server.api import (
     _prepared_context_tokens,
     _request_completion_cap,
     _request_control,
+    _sampling_for_realized_generation_route,
     _ServerMetrics,
     _startup_memory_summary,
     _mtp_accepted_rejected_counts,
@@ -68,6 +69,35 @@ from hipengine.server.api import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_automatic_realized_mtp_tags_singleton_only_backend_intent() -> None:
+    sampling = SamplingParams(max_tokens=25)
+    automatic = _sampling_for_realized_generation_route(
+        sampling,
+        {
+            "requested_route": _SPECULATIVE_MTP_AUTO_ROUTE,
+            "selected_route": _SPECULATIVE_MTP_BATCH_ROUTE,
+        },
+    )
+    explicit = _sampling_for_realized_generation_route(
+        sampling,
+        {
+            "requested_route": _SPECULATIVE_MTP_BATCH_ROUTE,
+            "selected_route": _SPECULATIVE_MTP_BATCH_ROUTE,
+        },
+    )
+    k0 = _sampling_for_realized_generation_route(
+        replace(sampling, speculative_mtp_singleton_only=True),
+        {
+            "requested_route": _SPECULATIVE_MTP_AUTO_ROUTE,
+            "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
+        },
+    )
+
+    assert automatic.speculative_mtp_singleton_only is True
+    assert explicit.speculative_mtp_singleton_only is False
+    assert k0.speculative_mtp_singleton_only is False
 
 
 def test_prepared_context_tokens_finds_resident_model_owner_session() -> None:

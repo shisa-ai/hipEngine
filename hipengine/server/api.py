@@ -2140,6 +2140,25 @@ def _serving_plan_route_decision(
     }
 
 
+def _sampling_for_realized_generation_route(
+    sampling: SamplingParams,
+    route_decision: Mapping[str, Any] | None,
+) -> SamplingParams:
+    """Tag an automatic C1 plan so the resident owner can enforce K0 at c>1."""
+
+    singleton_only = bool(
+        isinstance(route_decision, Mapping)
+        and route_decision.get("selected_route") == _SPECULATIVE_MTP_BATCH_ROUTE
+        and route_decision.get("requested_route") == _SPECULATIVE_MTP_AUTO_ROUTE
+    )
+    if bool(sampling.speculative_mtp_singleton_only) == singleton_only:
+        return sampling
+    return replace(
+        sampling,
+        speculative_mtp_singleton_only=singleton_only,
+    )
+
+
 def _resolve_realized_generation_route(
     requested_route: str,
     *,
@@ -2960,6 +2979,10 @@ class _GenerationBatcher:
                     "evidence": "operator_runtime_rollback",
                 }
             route_cap = self._route_request_cap(requested_route)
+            group_sampling = _sampling_for_realized_generation_route(
+                group_sampling,
+                route_decision,
+            )
             try:
                 batch_result = await self._generate_prompts(
                     tuple(prompts),
@@ -3084,7 +3107,10 @@ class _GenerationBatcher:
             async for chunk in _stream_engine_text(
                 self._engine_factory() if engine is None else engine,
                 item.prompts[0],
-                item.sampling,
+                _sampling_for_realized_generation_route(
+                    item.sampling,
+                    item.route_decision,
+                ),
                 route=item.route,
             ):
                 if _queued_generation_cancelled(item):
