@@ -55,6 +55,7 @@ _SYMBOL_BF16_VIRTUAL256_OUT = "hipengine_dense_gemv_virtual256_out_bf16"
 _SYMBOL_BF16_VIRTUAL256_ROWTILE_OUT = "hipengine_dense_gemv_virtual256_rowtile_out_bf16"
 _SYMBOL_BF16_ROWTILE_OUT = "hipengine_dense_gemv_rowtile_out_bf16"
 _SYMBOL_BF16_F32W_BF16_OUT = "hipengine_dense_gemv_bf16_f32w_bf16_out"
+_SYMBOL_F32_BF16W_F32_OUT = "hipengine_dense_gemv_f32_bf16w_f32_out"
 _SYMBOL_BF16_F32W_PAIR_BF16_OUT = "hipengine_dense_pair_gemv_bf16_f32w_bf16_out"
 _SYMBOL_BF16_F32W_PAIR_ROWTILE2_BF16_OUT = (
     "hipengine_dense_pair_gemv_bf16_f32w_bf16_out_rowtile2"
@@ -305,6 +306,35 @@ def dense_gemv_rowtile_out_bf16(
     library = library or _dense_gemv_library()
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(library, _SYMBOL_BF16_ROWTILE_OUT, _ARGTYPES_DENSE_GEMV_SINGLE, ctypes.c_int)
+    err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def dense_gemv_f32_bf16w_f32_out(
+    x_ptr: int,
+    weight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Multiply FP32 activations by BF16 weights into unrounded FP32 output."""
+
+    _check_shape(rows, in_features, out_features, threads)
+    library = library or _dense_gemv_library()
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_F32_BF16W_F32_OUT,
+        _ARGTYPES_DENSE_GEMV_SINGLE,
+        ctypes.c_int,
+    )
     err = fn(x_ptr, weight_ptr, out_ptr, rows, in_features, out_features, threads, stream)
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
@@ -865,6 +895,11 @@ def register_dense_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "dense_gemv", "bf16", "f32_out"),
         dense_gemv_bf16_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "dense_gemv", "bf16", "f32_hidden_f32_out"),
+        dense_gemv_f32_bf16w_f32_out,
         replace=replace,
     )
     register(
