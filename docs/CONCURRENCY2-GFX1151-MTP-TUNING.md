@@ -1,6 +1,7 @@
 # CONCURRENCY2 gfx1151 MTP Tuning Campaign
 
 - Status: **campaign completed 2026-08-27 via definition-of-done branch (b); no product cell promoted, automatic remains K0**
+- Follow-up intake: **documentation-only CR-S0–CR-S3 compact-rollback sweep proposed 2026-08-27; no GPU run or product claim, and the original closure remains binding**
 - Hardware lane: **Radeon 8060S / `hip_gfx1151`** only (two 8060S hosts are
   independent lanes; W7900 is the separate
   [`MTP-CONCURRENCY2-DUAL-PROMOTION.md`](MTP-CONCURRENCY2-DUAL-PROMOTION.md)
@@ -206,6 +207,7 @@ capacity/dynamic-lifecycle blockers.
 | `MikeVeerman/qwen38-27-Strix-Halo-bench` | `cc527064` | Clean c1-c4 MTP-vs-AR protocol: c1 +2.11x, c2 +28%, c3 +4%, c4 **−22%** — crossover evidence | Q8_K_XL/Vulkan absolute rates; different correctness contract (our production profile binds numerical/task quality and repeatability; generated-ID equality is diagnostic) |
 | `hogeheer499/strix-halo-guide` | `029320fb` | Paired no-spec control + acceptance + prompt-class reporting discipline; 35B n2/n3 sweet spots | 35B/Vulkan leaderboard rows |
 | `jcbtc/Ling-3.0-Flash-CIRU-int4-Strix-native` (vLLM fork) | `838616875` (on vLLM `d35eb6c4`) | (a) **silent skinny-GEMM Wave32 dispatch cost 28.16x** — audit that serving shapes never silently fall to a wrong owner; (b) **multi-token verifier routing repair was +27.3%** — same family as G2/G3; (c) MTP K1 **scales c1→c6** (26.79→63.51 aggregate) with per-request acceptance — the G2 target state; (d) **`max_num_batched_tokens=8192`** vs the 2048 spec-decode default materially changed aggregate TG — audit our batch window/chunk analogs | MLA/LSE layout fixes (Qwen3.8 is GQA+GDN, not MLA); Ling-specific W4A16 geometry guards |
+| Eaman [`MTP Compact Rollback`](https://store.piffa.net/lm/bug/mtp_compact_rollback.md) for llama.cpp | llama.cpp `3737e41370da1830a44c663f9929a0f27591ffa6`; feature `6cb89357`; [standalone patch](https://store.piffa.net/lm/bug/mtp_compact_rollback_3737e41.patch) SHA-256 `759ad384...526ba` | Decouple draft maximum `N` from immediate recurrent rollback depth `D`; pre-reserve one per-slot on-device pre-verify checkpoint; direct-rollback shallow suffixes and restore/replay already selected target inputs after deeper rejection; expose replay-event/token and exact memory-reservation telemetry | Published context/TG rows are explicitly directional, not matched A/B evidence; RDNA2, multi-GPU, quantized-KV, and N5/N7 rates do not transfer. Final flag is `--spec-mtp-cr-depth`; `--spec-mtp-rs-depth` is stale. Its adaptive controller is already covered by T3. |
 
 ## 3. Punchlist
 
@@ -353,3 +355,125 @@ The campaign closes when either:
 **Closure: branch (b).** The exact blockers and production evidence are in the
 Final outcome above and the closeout artifact. Automatic K0 is the shipped
 safe policy; this campaign does not claim a product MTP promotion.
+
+## 6. Proposed follow-up: CR compact-rollback capacity sweep
+
+Status: **planned from source review only; no GPU work was run for this intake.**
+This is not a reopening of the completed throughput campaign. The Eaman source
+adds one genuinely new capacity mechanism, but its own report labels the
+headline context/TG table directional. The sweep below must establish a local
+product premise before implementation or measurement.
+
+### Intake decision and local source map
+
+The transferable mechanism is **target recurrent-state depth decoupling**, not
+its external rates. llama.cpp normally retains one recurrent rollback state per
+possible draft position. Compact Rollback retains only `D`, keeps one reusable
+pre-verify device checkpoint, and reconstructs state from already selected
+target inputs after a rejection deeper than `D`; it does not redraft or
+resample.
+
+hipEngine already has most of the control plumbing but not the compact storage
+policy:
+
+- `_initial_state_only_journal_applies()` and producer capture retain one
+  pre-verify Conv/GDN snapshot for the native B3 target owner;
+- `_ensure_verify_linear_state_row_buffers(rows)` still allocates Conv/GDN
+  state for every verify row so a selected row can commit directly; and
+- `verify_target_block(..., advance_state_only=True)` already supports
+  target-state replay without the LM-head/sample work.
+
+The known **83,794,462-byte** per-request admission/provider allocation is only
+an aggregate. Do not call it rollback savings until CR-S0 attributes every
+plane. The currently fingerprinted public key also rejects context 68, while
+the external claim concerns 56K–85K context. A local rollback-memory reduction
+has no product value unless it unlocks a retained context or residency cell.
+
+### CR-S0 — premise, ownership, and baseline (measurement before code)
+
+- [ ] **CR-S0.0 Product-premise gate.** Name the exact currently inadmissible
+  context/resident-capacity cell that fewer rollback rows could unlock. Confirm
+  the limiting `ResourceClaimSet` plane and the route's context capability. If
+  another plane or the context-68 product fingerprint remains limiting, stop;
+  do not build a memory feature for a short-only route.
+- [ ] **CR-S0.1 Exact state-plane byte attribution.** For physical B1/B2/B3,
+  report live Conv/GDN state, initial checkpoint, captured verify-row states,
+  hidden rows, target accept buffers, NextN provider state, and unrelated
+  admission workspace separately. Record row capacity, allocation lifetime,
+  pointers, current/peak bytes, and bytes per additional rollback row.
+- [ ] **CR-S0.2 Admission claim and fallback.** Model full-depth and compact-D1
+  bytes as exact pre-mutation resource claims. Reserve persistent per-request
+  buffers before admission, fail closed on a missing claim/allocation, and name
+  the unchanged full-row journal as strict fallback. No first-cycle/lazy
+  allocation may consume headroom after admission.
+- [ ] **CR-S0.3 Matched baselines.** Freeze same-host AR and full-row B1/B2/B3
+  results on the full category suite plus heldouts. Separately freeze a
+  memory-pressure context/capacity row; never compare speed from two different
+  fitted contexts as an old→new throughput result.
+
+### CR-S1 — RED and bounded D1 prototype
+
+- [ ] **CR-S1.1 RED every commit outcome.** Cover accepted counts `0..K` for
+  B1/B2/B3 across multiple cycles, full accept, shallow/deep rejection,
+  correction/root transition, short remaining horizon/EOS, cancellation,
+  injected failure, refill, and neighbor/permutation isolation. Request/slot,
+  target/provider cursor, Conv/GDN, KV/`KVLiveSpans`, transaction, and output
+  ownership are exact. Production arithmetic uses the normative numerical,
+  deterministic/isolation, BF16-relative, and task gates; generated-ID
+  bit-equality remains diagnostic.
+- [ ] **CR-S1.2 Compact target-state journal.** Keep the existing full-row
+  implementation unchanged as fallback. A D1 candidate retains only the one
+  eligible near-tail direct-commit row plus the reusable initial device
+  checkpoint. A deeper rejection restores the initial state and replays only
+  the already selected target input prefix required by the current cursor
+  contract, using the state-only path where valid. It must never rerun proposal,
+  acceptance, or sampling, and rejected full-attention KV remains unreachable
+  through live-span metadata.
+- [ ] **CR-S1.3 Persistent ownership and telemetry.** Expose direct rollbacks,
+  deep-replay events/tokens/target rows, replay wall and kernel time, checkpoint
+  copy time, row-state bytes saved, actual claim bytes, and host-fallback count.
+  Steady cycles must allocate/free zero bytes; reclaim must return all
+  request-owned bytes exactly once.
+
+### CR-S2 — economics, capacity, and lifecycle gates
+
+- [ ] **CR-S2.1 Diagnostic screen.** One natural prompt may screen full rows vs
+  D1 at B1/B2/B3 for byte savings, replay frequency, and replay cost. It is not
+  retainable performance evidence and cannot tune prompt/category policy.
+- [ ] **CR-S2.2 Binding fixed-context A/B.** Run the complete category suite +
+  heldouts at one common context, with true same-protocol AR, full-row MTP, and
+  D1 MTP. Report aggregate and category tok/s, complete wall, acceptance by
+  position, full-accept rate, replay distribution, and all production-profile
+  correctness gates.
+- [ ] **CR-S2.3 Separate capacity A/B.** Under one declared memory cap, report
+  maximum admissible context and resident request count for full rows and D1,
+  then benchmark both at their largest **common** context. A larger fitted
+  context is capacity evidence, not a throughput speedup.
+- [ ] **CR-S2.4 Dynamic lifecycle.** Two independent request checkpoints must
+  survive cancel/refill/survivor/reorder and repeated admission with zero
+  cross-talk, delayed OOM, sticky host fallback, or residual ownership. This is
+  a prerequisite for the existing T2.3 realized-group blocker; it does not by
+  itself qualify c>1 MTP economics.
+
+Default promotion requires a complete same-suite non-regression or a newly
+admissible product cell with passing SLO and correctness gates. A capacity-only
+win with a speed cost may remain an explicit capacity profile, but must not
+replace automatic B3. Reject D1 if saved state bytes do not increase context or
+residency, if replay erases the product benefit, or if any lifecycle/gate fails.
+
+### CR-S3 — conditional follow-ups only
+
+- [ ] **CR-S3.1 Replay-aware budget policy, conditional.** T3 already rejected
+  adaptive K. Reopen only if retained D1 changes the measured cost surface; use
+  content-agnostic per-request acceptance, replay, and cycle-wall telemetry.
+  Do not import the external heuristic as a new default.
+- [ ] **CR-S3.2 Deeper N4–N7, conditional.** Do not copy the external N5/N7
+  settings. Current B4 clamps to B3 and native rows>4 lack the T2.2 owner
+  premise. Screen a deeper budget only after a registered rows5+ target owner
+  clears the existing leaf/ms-token admission gate and the full-row memory is
+  the demonstrated limiter.
+- [ ] **CR-S3.3 Keep unrelated controls out.** `--hip-fa-force-vec` is a
+  quantized-KV llama.cpp capacity/PP trade and does not apply to this BF16-KV
+  product key; route it through a separately qualified KV-backend campaign.
+  `--pipeline-parallel` is multi-GPU scheduler policy and is N/A on the single
+  Radeon 8060S lane. Neither reopens T4.2 or creates a CONCURRENCY2 candidate.
