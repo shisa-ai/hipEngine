@@ -81,6 +81,7 @@ Each value is the total tokens per second across all active requests:
 | --- | ---: | ---: |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — public C1 MTP-3 automatic scope | **12.940 tok/s** | **1.4337x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C1 MTP-3 c68-128 explicit | **13.088 tok/s** | **1.3998x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
 ### RTX PRO 6000 Blackwell (`sm_120a`)
@@ -89,8 +90,7 @@ Each value is the total tokens per second across all active requests:
 | --- | --- | ---: | ---: |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
 
-Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary.
-llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
+Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary. llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 ## Current default notes
@@ -98,8 +98,7 @@ llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hi
 W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE K2 and 27B
 Dense K3; other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
 
-Strix Halo Qwen3.8 `Q4_K_M` automatic MTP is limited to its verified strict/
-BF16/C1/B3 key; all other scopes use K0. [`Serving`](results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json).
+Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 automatic](results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json); [production c68-128/h24 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json); otherwise K0.
 `Q4_K_S` uses FP16 recurrent state with FP32 rollback. Its exact W8192 DMS
 sidecar stays default-off. [`DMS`](../docs/DMS.md).
 
@@ -395,7 +394,8 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | W7900 / Qwen3.6-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 29.457 | **60.929** | **2.0684x** | Current clean snapshot; all ten prompts, greedy outputs, and GPU/CPU acceptance agree. The ratio replaces stale historical denominators. [`artifact`](results/2026-08-23-w7900-qwen36-27b-current-default-publication.json) |
 | RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 35.287 | **62.440** | **1.7695x** | Clean idle-card correction; exact greedy and GPU/CPU acceptance, retained fusion improves matched AR 3.764% and B3 0.439% with every category non-regressive. [`artifact`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Exact natural25 B3 | 11.692 | **21.158** | **1.8095x** | Clean current-main direct-leaf snapshot; all ten prompts and 30 MTP comparisons are exact, GPU/CPU acceptance agrees, and cached profiling confirms the qualified scalar-C1 and native Q4 rows4/2 owners. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
-| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public LLM strict/BF16 C1 natural25 B3, artifact-scoped automatic | 9.025 | **12.940** | **1.4337x** | Complete request through terminal reclaim: 30/30 exact cells, every category/heldout positive and every cell 1.2995x–1.5515x. Exact hash/profile/BF16/C1/B3/context1-67/natural25 auto-promotes after lifecycle/SSE/load qualification; every other scope is K0. [`artifact`](results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s4-auto.json) |
+| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 C1 natural25 B3, automatic | 9.025 | **12.940** | **1.4337x** | 30/30 exact diagnostics; all slices/cells positive (1.2995x–1.5515x); context1-67 auto. [`artifact`](results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s4-auto.json) |
+| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public production/BF16 C1 B3, c68-128/h24, explicit | 9.350 | **13.088** | **1.3998x** | 10/10 >1.10x; all slices positive; 87.63% acceptance; numerics/blocking/SSE pass. c129+/auto K0. [`artifact`](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) |
 | W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production/default B1 fast, raw D24 | 110.830 | **115.770** | **1.0446x** | Exact `720/720`; complete 10-prompt numerical/repeat/task/state gate passes. Fast improves strict MTP 10.33% overall and every category. [`artifact`](results/2026-08-24-w7900-paro-fast-d24-3run-default.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |

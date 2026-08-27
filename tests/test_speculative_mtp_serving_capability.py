@@ -17,6 +17,7 @@ from hipengine.speculative.serving import (
 
 _MODEL_SHA256 = "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
 _STRICT_MANIFEST_SHA256 = "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+_PRODUCTION_MANIFEST_SHA256 = "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51"
 
 
 def _key(**changes) -> SpeculativeMTPServingKey:
@@ -45,6 +46,35 @@ def _key(**changes) -> SpeculativeMTPServingKey:
 
 def _evidence() -> SpeculativeMTPServingEvidence:
     return Qwen35GGUFModel().speculative_mtp_serving_evidence[0]
+
+
+def test_qwen38_q4km_production_c1_b3_context128_is_explicit_only() -> None:
+    evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
+    key = _key(
+        execution_profile="production",
+        execution_profile_manifest_sha256=_PRODUCTION_MANIFEST_SHA256,
+        context_tokens=128,
+        output_horizon_tokens=24,
+    )
+
+    decision = resolve_speculative_mtp_serving_plan(evidence, key=key)
+    over = resolve_speculative_mtp_serving_plan(
+        evidence,
+        key=replace(key, context_tokens=129),
+    )
+
+    assert decision.admitted is True
+    assert decision.selected_route == "speculative_mtp"
+    assert decision.selected_candidate_count == 3
+    assert decision.reason == "qualified_explicit_production_c1_b3_context128"
+    assert decision.automatic_eligible is False
+    assert decision.strict_fallback_key == "gguf_target_ar"
+    assert decision.evidence_artifacts[-1] == (
+        "benchmarks/results/"
+        "2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json"
+    )
+    assert over.admitted is False
+    assert over.reason == "context_bucket_not_qualified"
 
 
 def test_qwen38_q4km_strict_c1_b3_plan_is_automatic_product_scope() -> None:
