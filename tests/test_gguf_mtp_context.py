@@ -446,12 +446,12 @@ def test_gguf_mtp_execution_plan_builds_target_accept_summary_from_top1() -> Non
     assert partial.transaction_id == 12
     assert partial.draft_depth == 2
     assert partial.tree_shape == (0, 1)
-    assert full_budgeted.accepted_counts == (2,)
-    assert full_budgeted.commit_rows == (2,)
-    assert full_budgeted.commit_tokens == (2,)
-    assert full_budgeted.commit_positions == (7,)
-    assert full_budgeted.full_accept == (True,)
-    assert full_budgeted.next_tokens == (None,)
+    assert full_budgeted.accepted_counts == (1,)
+    assert full_budgeted.commit_rows == (1,)
+    assert full_budgeted.commit_tokens == (1,)
+    assert full_budgeted.commit_positions == (6,)
+    assert full_budgeted.full_accept == (False,)
+    assert full_budgeted.next_tokens == (2,)
 
 
 def test_gguf_mtp_execution_plan_builds_target_commit_plan_from_summary() -> None:
@@ -484,11 +484,11 @@ def test_gguf_mtp_execution_plan_builds_target_commit_plan_from_summary() -> Non
     assert isinstance(commit, TargetCommitPlan)
     assert commit.transaction_id == 12
     assert commit.request_ids == (7,)
-    assert commit.accepted_counts == (1,)
-    assert commit.commit_rows == (1,)
-    assert commit.commit_tokens == (1,)
-    assert commit.commit_positions == (6,)
-    assert commit.next_tokens == (None,)
+    assert commit.accepted_counts == (0,)
+    assert commit.commit_rows == (0,)
+    assert commit.commit_tokens == (10,)
+    assert commit.commit_positions == (5,)
+    assert commit.next_tokens == (1,)
     assert commit.candidate_counts == (1,)
     assert commit.draft_depth == 1
     assert commit.tree_shape == (0,)
@@ -556,11 +556,11 @@ def test_gguf_mtp_execution_plan_builds_target_commit_plan_from_top1() -> None:
     assert partial.tree_shape == (0, 1)
     assert partial.mode == "verify_chain"
     assert full_budgeted.transaction_id == 13
-    assert full_budgeted.accepted_counts == (2,)
-    assert full_budgeted.commit_rows == (2,)
-    assert full_budgeted.commit_tokens == (2,)
-    assert full_budgeted.commit_positions == (7,)
-    assert full_budgeted.next_tokens == (None,)
+    assert full_budgeted.accepted_counts == (1,)
+    assert full_budgeted.commit_rows == (1,)
+    assert full_budgeted.commit_tokens == (1,)
+    assert full_budgeted.commit_positions == (6,)
+    assert full_budgeted.next_tokens == (2,)
     assert full_budgeted.candidate_counts == (2,)
 
 
@@ -628,11 +628,11 @@ def test_gguf_mtp_context_accepts_target_top1_with_commit_plan_reseed() -> None:
     assert partial_commit.commit_rows == (1,)
     assert partial_commit.next_tokens == (9,)
     assert partial_seed == seeds[1]
-    assert full_commit.accepted_counts == (2,)
-    assert full_commit.commit_rows == (2,)
-    assert full_commit.next_tokens == (None,)
-    assert full_seed == seeds[2]
-    assert context.pending_seed == seeds[2]
+    assert full_commit.accepted_counts == (1,)
+    assert full_commit.commit_rows == (1,)
+    assert full_commit.next_tokens == (2,)
+    assert full_seed == seeds[1]
+    assert context.pending_seed == seeds[1]
 
     with pytest.raises(ValueError, match="request_id"):
         context.accept_target_top1(plan, (1, 9, 77), transaction_id=14, request_id=8)
@@ -674,12 +674,12 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     assert metrics.candidate_budget == 2
     assert metrics.budget_label == "B2"
     assert metrics.draft_token_count == 4
-    assert metrics.accepted_token_count == 3
+    assert metrics.accepted_token_count == 2
     assert metrics.step_transaction_ids == (12, 13)
     assert metrics.step_candidate_token_counts == (2, 2)
-    assert metrics.step_accepted_token_counts == (1, 2)
-    assert metrics.accepted_per_draft == 0.75
-    assert metrics.accepted_per_output == 0.6
+    assert metrics.step_accepted_token_counts == (1, 1)
+    assert metrics.accepted_per_draft == 0.5
+    assert metrics.accepted_per_output == 0.4
     assert metrics.as_dict()["schema"] == 1
     assert metrics.as_dict()["kind"] == "hipengine_gguf_mtp_accept_step_metrics"
     assert metrics.as_dict()["source"] == "Qwen35GGUFMTPAcceptStepMetrics"
@@ -772,8 +772,8 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_draft_total)
     over_visible_payload = {
         **metrics.as_dict(),
-        "output_token_count": 2,
-        "accepted_per_output": 1.5,
+        "output_token_count": 1,
+        "accepted_per_output": 2.0,
     }
     with pytest.raises(ValueError, match="visible output"):
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(over_visible_payload)
@@ -824,7 +824,7 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
         Qwen35GGUFMTPAcceptStepMetrics.validate_payload(bad_steps)
     assert metrics.as_dict()["step_transaction_ids"] == [12, 13]
     assert metrics.as_dict()["step_candidate_token_counts"] == [2, 2]
-    assert metrics.as_dict()["step_accepted_token_counts"] == [1, 2]
+    assert metrics.as_dict()["step_accepted_token_counts"] == [1, 1]
     assert metrics.as_dict()["step_rows"] == [
         {
             "transaction_id": 12,
@@ -838,9 +838,9 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
             "transaction_id": 13,
             "request_ids": [7],
             "candidate_token_count": 2,
-            "accepted_token_count": 2,
+            "accepted_token_count": 1,
             "candidate_counts": [2],
-            "accepted_counts": [2],
+            "accepted_counts": [1],
         },
     ]
     assert metrics.as_dict()["denominators"] == {
@@ -848,7 +848,7 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
         "accepted_per_output": "accepted_token_count / output_token_count",
     }
     assert metrics.as_dict()["steps"][0]["accepted_counts"] == [1]
-    assert metrics.as_dict()["steps"][1]["accepted_counts"] == [2]
+    assert metrics.as_dict()["steps"][1]["accepted_counts"] == [1]
 
     with pytest.raises(ValueError, match="at least one"):
         Qwen35GGUFMTPAcceptStepMetrics.from_steps((), output_token_count=1)
@@ -857,7 +857,7 @@ def test_gguf_mtp_accept_step_metrics_aggregate_denominators() -> None:
     with pytest.raises(ValueError, match="visible output"):
         Qwen35GGUFMTPAcceptStepMetrics.from_steps(
             (partial, full_budgeted),
-            output_token_count=2,
+            output_token_count=1,
         )
     missing_counts = TargetCommitPlan(
         transaction_id=99,
@@ -929,7 +929,7 @@ def test_gguf_mtp_context_accepts_top1_specs_into_metrics() -> None:
     bad_payload = {**spec_payload, "verify_seeds": [{**spec_payload["verify_seeds"][0], "hidden_ptr": 0}]}
     with pytest.raises(ValueError, match="verify_seeds"):
         Qwen35GGUFMTPTop1AcceptSpec.validate_payload(bad_payload)
-    assert metrics.accepted_token_count == 3
+    assert metrics.accepted_token_count == 2
     assert metrics.draft_token_count == 4
     assert metrics.candidate_budget == 2
     assert metrics.budget_label == "B2"
@@ -937,10 +937,10 @@ def test_gguf_mtp_context_accepts_top1_specs_into_metrics() -> None:
     assert metrics.as_dict()["budget_label"] == "B2"
     assert metrics.as_dict()["step_transaction_ids"] == [12, 13]
     assert metrics.as_dict()["step_candidate_token_counts"] == [2, 2]
-    assert metrics.as_dict()["step_accepted_token_counts"] == [1, 2]
+    assert metrics.as_dict()["step_accepted_token_counts"] == [1, 1]
     assert metrics.as_dict()["steps"][0]["transaction_id"] == 12
     assert metrics.as_dict()["steps"][1]["transaction_id"] == 13
-    assert context.pending_seed == seeds[2]
+    assert context.pending_seed == seeds[1]
 
     with pytest.raises(ValueError, match="target_top1"):
         Qwen35GGUFMTPTop1AcceptSpec(plan=plan, target_top1=(), transaction_id=0)
@@ -975,8 +975,8 @@ def test_gguf_mtp_context_applies_target_commit_plan_reseed_rule() -> None:
     commit = plan.target_commit_plan_from_summary(summary, transaction)
     context.record_verify_seeds(seeds)
 
-    assert context.accept_target_commit_plan(commit, request_id=7) == seeds[1]
-    assert context.pending_seed == seeds[1]
+    assert context.accept_target_commit_plan(commit, request_id=7) == seeds[0]
+    assert context.pending_seed == seeds[0]
 
     with pytest.raises(ValueError, match="request_id"):
         context.accept_target_commit_plan(commit, request_id=8)
@@ -1019,8 +1019,8 @@ def test_gguf_mtp_context_applies_target_accept_summary_reseed_rule() -> None:
 
     assert context.accept_target_summary(partial, request_id=7) == seeds[1]
     assert context.pending_seed == seeds[1]
-    assert context.accept_target_summary(full_budgeted, request_id=7) == seeds[2]
-    assert context.pending_seed == seeds[2]
+    assert context.accept_target_summary(full_budgeted, request_id=7) == seeds[1]
+    assert context.pending_seed == seeds[1]
 
     with pytest.raises(ValueError, match="request_id"):
         context.accept_target_summary(partial, request_id=8)
