@@ -300,6 +300,95 @@ def test_qwen4_exp_qsa_runner_switches_to_native_sparse_selection_above_budget()
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_qsa_index_pools_only_new_complete_blocks(monkeypatch) -> None:
+    from hipengine.core.hip import get_hip_runtime
+    import hipengine.runtime.qwen4_exp_runner as runner_module
+
+    runtime = get_hip_runtime()
+    attention = index_state = None
+    allocations = []
+    try:
+        attention = Qwen4ExpDenseAttentionState.allocate(
+            max_positions=16,
+            block_size=4,
+            kv_heads=1,
+            head_dim=4,
+            runtime=runtime,
+        )
+        index_state = Qwen4ExpQSAIndexDeviceState.allocate(
+            attention_state=attention,
+            index_heads=2,
+            index_dim=4,
+            compression_ratio=2,
+            block_budget=2,
+            runtime=runtime,
+        )
+        keys = np.arange(32, dtype=np.float32).reshape(8, 4) / 31.0
+        query = np.asarray([[1.0, 0.5, -0.25, 0.125]] * 2, dtype=np.float32)
+        norm = np.ones(4, dtype=np.float32)
+        d_keys = _upload(keys, runtime, allocations)
+        d_query = _upload(query, runtime, allocations)
+        d_norm = _upload(norm, runtime, allocations)
+        original = runner_module.qwen4_exp_qsa_pool_norm_rope_f32
+        calls: list[tuple[int, int, int]] = []
+
+        def tracked_pool(*args, **kwargs):
+            calls.append((int(args[1]), int(args[4]), int(args[5])))
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(
+            runner_module, "qwen4_exp_qsa_pool_norm_rope_f32", tracked_pool
+        )
+        for position in range(6):
+            index_state.append(
+                d_keys.ptr + position * 4 * np.dtype(np.float32).itemsize,
+                position=position,
+            )
+        index_state.select_positions_host(
+            d_query.ptr,
+            query_position=5,
+            key_norm_weight_ptr=d_norm.ptr,
+            rotary_dim=4,
+            theta=100.0,
+        )
+        assert index_state.pooled_count == 3
+        assert [call[2] for call in calls] == [3]
+
+        index_state.append(d_keys.ptr + 6 * 4 * 4, position=6)
+        index_state.select_positions_host(
+            d_query.ptr,
+            query_position=6,
+            key_norm_weight_ptr=d_norm.ptr,
+            rotary_dim=4,
+            theta=100.0,
+        )
+        assert [call[2] for call in calls] == [3]
+
+        index_state.append(d_keys.ptr + 7 * 4 * 4, position=7)
+        index_state.select_positions_host(
+            d_query.ptr,
+            query_position=7,
+            key_norm_weight_ptr=d_norm.ptr,
+            rotary_dim=4,
+            theta=100.0,
+        )
+        assert index_state.pooled_count == 4
+        assert [call[2] for call in calls] == [3, 1]
+        assert calls[-1][0] == index_state.member_indices.ptr + 3 * 2 * 4
+        assert calls[-1][1] == index_state.pooled_keys.ptr + 3 * 4 * 4
+
+        index_state.restore_count(6)
+        assert index_state.pooled_count == 3
+    finally:
+        if index_state is not None:
+            index_state.close()
+        if attention is not None:
+            attention.close()
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_qwen4_exp_qsa_prefill_mixer_matches_serial_across_sparse_boundary() -> None:
     from hipengine.core.hip import get_hip_runtime
 

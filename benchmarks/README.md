@@ -267,8 +267,10 @@ profile at mean/p95/max KL `0.01280/0.05553/0.82237` and 94.47% top-1, so it is
 not offered as a user-facing fast profile. A natural chat-formatted 4K
 retrieval row now returns `VIOLET-7391` exactly, retains its token-720 block in
 all 12 QSA layers, matches the Transformers CPU control 2,048/2,048 positions,
-replays/rolls back bit-exactly, and tears down to zero; its 304.944-second
-correctness-first prefill is not a speed claim. Natural retrieval above 4K,
+replays/rolls back bit-exactly, and tears down to zero. Persistent compressed
+QSA keys reduce pool launches 24,540→384 and prepared block work 18,849,792→
+12,288; same-gate wall moves 304.944→303.528 s, whose small aggregate delta is
+not treated as a standalone speed claim. Natural retrieval above 4K,
 strict-above-4K, 262K inference, and broader lifecycle gates remain open, so
 this is not a broad long-context, speed, serving/c>N, MTP, or vision claim.
 [`Bring-up artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json) ·
@@ -278,6 +280,7 @@ this is not a broad long-context, speed, serving/c>N, MTP, or vision claim.
 [`Exact 2,052 prefill`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-exact-prefill.json) ·
 [`4K structural artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json) ·
 [`Natural 4K retrieval`](results/2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json) ·
+[`Persistent QSA pool`](results/2026-08-27-gfx1151-qwen38-flash-next-persistent-qsa-pool.json) ·
 [`16K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json) ·
 [`64K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-64k.json) ·
 [`262K capacity artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-262k-capacity.json) ·
