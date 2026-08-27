@@ -211,7 +211,7 @@ def test_physical_specdec2_uses_qualified_eager_when_graph_is_uncached() -> None
     assert runner.speculative_graph_available(object()) is False
 
 
-def test_physical_gate_up_rowtile_is_production_and_backend_capability_scoped() -> None:
+def test_physical_extra_rowtiles_are_production_and_backend_capability_scoped() -> None:
     production = Qwen35GGUFMTP2Adapter(
         SimpleNamespace(
             generator=SimpleNamespace(
@@ -235,8 +235,8 @@ def test_physical_gate_up_rowtile_is_production_and_backend_capability_scoped() 
         candidate_budget=2,
     )
 
-    assert production.production_physical_gate_up_rowtile is True
-    assert strict.production_physical_gate_up_rowtile is False
+    assert production.production_physical_extra_rowtiles is True
+    assert strict.production_physical_extra_rowtiles is False
     production.close()
     strict.close()
 
