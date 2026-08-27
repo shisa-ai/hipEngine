@@ -73,6 +73,16 @@ def test_mtp_c1c8_extracts_authoritative_ids_and_engagement() -> None:
         "speculative_mtp",
         {"used": True, "draft_tokens": 4, "draft_cycles": 2},
     )
+    assert _mtp_engaged(
+        "default",
+        {
+            "used": True,
+            "draft_tokens": 4,
+            "draft_cycles": 2,
+            "requested_route": "speculative_mtp",
+            "effective_route": "default",
+        },
+    )
     assert not _mtp_engaged(
         "speculative_mtp",
         {"used": False, "draft_tokens": 0, "draft_cycles": 0},
