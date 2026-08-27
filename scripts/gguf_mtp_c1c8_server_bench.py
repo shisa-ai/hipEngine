@@ -276,6 +276,19 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
         "candidate_budget": budget,
     }
     digest = hashlib.sha256(json.dumps(key, sort_keys=True).encode("utf-8")).hexdigest()
+    reason = "diagnostic_physical_gguf_mtp" if admitted else "diagnostic_scope_miss"
+    evidence_key = "gguf-c1-c4-generation2-diagnostic"
+    static_key = {
+        "candidate_budget": budget,
+        "sampling_mode": str(kwargs["sampling_mode"]),
+        "context_tokens": int(kwargs["context_tokens"]),
+        "output_horizon_tokens": int(kwargs["output_horizon_tokens"]),
+        "memory_fit": bool(kwargs["memory_fit"]),
+        "max_realized_group_rows": 4,
+    }
+    static_digest = hashlib.sha256(
+        json.dumps(static_key, sort_keys=True).encode("utf-8")
+    ).hexdigest()
     return {
         "schema_version": 1,
         "plan_fingerprint": f"sha256:{digest}",
@@ -283,11 +296,24 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
         "admitted": admitted,
         "selected_route": "speculative_mtp" if admitted else "default",
         "selected_candidate_count": budget if admitted else 0,
-        "reason": "diagnostic_gfx1100_physical_mtp" if admitted else "diagnostic_scope_miss",
+        "reason": reason,
         "strict_fallback_key": "gguf_target_ar",
-        "evidence_key": "w7900-c1-c8-comparison-diagnostic",
+        "evidence_key": evidence_key,
+        "evidence_fingerprint": f"sha256:{static_digest}",
         "evidence_artifacts": [],
         "automatic_eligible": False,
+        "static_eligibility": {
+            "state": "speculative_capable" if admitted else "permanent_ar",
+            "eligible": admitted,
+            "reason": reason,
+            "max_candidate_count": budget if admitted else 0,
+            "max_realized_group_rows": 4 if admitted else 0,
+            "automatic_eligible": False,
+            "strict_fallback_key": "gguf_target_ar",
+            "evidence_key": evidence_key,
+            "evidence_fingerprint": f"sha256:{static_digest}",
+            "evidence_artifacts": [],
+        },
     }
 
 
