@@ -9,6 +9,7 @@ from scripts.gguf_mtp_c1c8_server_bench import (
     _cell_correctness,
     _diagnostic_plan,
     _generated_ids,
+    _install_diagnostic_plan,
     _memory_delta,
     _mtp_budget_conformed,
     _mtp_engaged,
@@ -203,6 +204,17 @@ def test_mtp_c1c8_diagnostic_plan_is_content_agnostic_and_bounded() -> None:
     assert frontend_c1["static_eligibility"]["max_candidate_count"] == 1
     assert frontend_c1["static_eligibility"]["max_realized_group_rows"] == 4
     assert frontend_c1["static_eligibility"]["automatic_eligible"] is False
+    owner = SimpleNamespace(speculative_candidate_budget=1)
+    _install_diagnostic_plan(owner)
+    installed = owner.resolve_speculative_mtp_serving_plan(
+        realized_group_rows=1,
+        sampling_mode="greedy_fast",
+        context_tokens=64,
+        output_horizon_tokens=24,
+        memory_fit=True,
+    )
+    assert installed["selected_candidate_count"] == 1
+    assert installed["static_eligibility"]["max_candidate_count"] == 1
     assert _diagnostic_plan(**{**base, "candidate_budget": 1})["admitted"] is True
     assert _diagnostic_plan(**{**base, "candidate_budget": 3})["admitted"] is True
     assert _diagnostic_plan(**{**base, "candidate_budget": 4})["admitted"] is False
