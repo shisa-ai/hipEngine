@@ -17,6 +17,7 @@ import numpy as np
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
+from hipengine.core.specdec2_scope import moe_physical_c2_f32_residual_disabled
 from hipengine.core.hip import (
     HIP_HOST_REGISTER_MAPPED,
     HipError,
@@ -12007,7 +12008,10 @@ def _gguf_verify_lm_head_q6_top1_dp4a_enabled() -> bool:
 
 
 def _gguf_verify_f32_residual_enabled() -> bool:
-    return _env_flag(_GGUF_VERIFY_F32_RESIDUAL_ENV, False)
+    return bool(
+        not moe_physical_c2_f32_residual_disabled()
+        and _env_flag(_GGUF_VERIFY_F32_RESIDUAL_ENV, False)
+    )
 
 
 def _gguf_verify_f32_residual_layer_limit(layer_count: int) -> int:
