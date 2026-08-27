@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "accepted_heldout_correctness",
+  "scope": "predeclared eight category-heldout prompts extracted from the corrected BF16-KV 18-prompt run",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "artifact": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL"
+  },
+  "prompt_sources": {
+    "heldout_file": "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+    "heldout_sha256": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280",
+    "merged_file": "/tmp/qwen4exp-canonical-plus-heldouts.jsonl",
+    "merged_sha256": "3097ed25c6f4cf3c2986c1da90e61d1600c3b291745224313dba5100fa7a8e76"
+  },
+  "command": "uv run python scripts/qwen4_exp_compare_suite.py /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --prompts /tmp/qwen4exp-canonical-plus-heldouts.jsonl --context 2051 --json-out /tmp/qwen4exp-unsloth-bf16kv-18prompt-logits.json",
+  "oracle": {
+    "kv_key_type": "bf16",
+    "kv_value_type": "bf16",
+    "llama_cpp_commit": "bea3b12daee45876b0129a3602dc8f534ce30bf0"
+  },
+  "heldout_result": {
+    "count": 8,
+    "mean_kl": 0.009867743254909493,
+    "p95_kl": 0.02331222622787281,
+    "p99_kl": 0.027657762707189292,
+    "max_kl": 0.028744146827018417,
+    "top1_agreement": 8,
+    "top1_agreement_rate": 1.0,
+    "threshold_max_kl": 0.05,
+    "threshold_min_top1": 0.9,
+    "passed": true
+  },
+  "rows": [
+    {"id": "heldout_code_rate_limiter", "category": "code", "kl": 0.0010780152918950206, "top1": true},
+    {"id": "heldout_code_interval_schedule", "category": "code", "kl": 0.012132129876121306, "top1": true},
+    {"id": "heldout_general_en_incident", "category": "general_en", "kl": 0.005078738881099705, "top1": true},
+    {"id": "heldout_general_en_quant", "category": "general_en", "kl": 0.028744146827018417, "top1": true},
+    {"id": "heldout_general_ja_migration", "category": "general_ja", "kl": 0.0012810892918850576, "top1": true},
+    {"id": "heldout_general_ja_speculative", "category": "general_ja", "kl": 0.009403752618359698, "top1": true},
+    {"id": "heldout_mixed_summary", "category": "mixed_ja_en", "kl": 0.013224373686602415, "top1": true},
+    {"id": "heldout_mixed_review", "category": "mixed_ja_en", "kl": 0.007999699566294325, "top1": true}
+  ],
+  "memory": {
+    "tracked_peak_bytes": 82718198780,
+    "active_allocations_after_close": 0,
+    "current_bytes_after_close": 0,
+    "tracked_teardown_passed": true
+  },
+  "merged_run_caveat": "The full merged 18-prompt diagnostic is not reported as passing: canonical mixed_ja_en_review measured KL 0.089147 in that run. This artifact admits only the predeclared eight heldout subset; the separately retained canonical 10-prompt gate is the authoritative canonical result."
+}
