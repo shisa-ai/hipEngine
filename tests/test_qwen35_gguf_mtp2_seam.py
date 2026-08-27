@@ -235,9 +235,11 @@ def test_physical_extra_rowtiles_are_production_and_backend_capability_scoped() 
         candidate_budget=2,
     )
 
+    assert production.physical_prompt_streaming is True
     assert production.production_physical_extra_rowtiles is True
     assert production.production_physical_q5_rowtile is True
     assert production.production_physical_q6_rowtile is True
+    assert strict.physical_prompt_streaming is False
     assert strict.production_physical_extra_rowtiles is False
     assert strict.production_physical_q5_rowtile is False
     assert strict.production_physical_q6_rowtile is False
