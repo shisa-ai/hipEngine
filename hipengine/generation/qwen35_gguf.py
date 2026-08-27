@@ -8416,7 +8416,9 @@ class Qwen35GGUFResidentModelRunner:
                     event,
                     stream_chunk=replace(
                         chunk,
-                        text=self.generator.tokenizer.decode((int(event.token_id),)),
+                        text=self.generator.tokenizer.decode(
+                            (int(event.token_id),), skip_special=True
+                        ),
                     ),
                 )
             )
@@ -8442,7 +8444,9 @@ class Qwen35GGUFResidentModelRunner:
             text=(
                 _gguf_token_text(self.generator.tokenizer, sample)
                 if sample is not None
-                else self.generator.tokenizer.decode((generated_ids[-1],))
+                else self.generator.tokenizer.decode(
+                    (generated_ids[-1],), skip_special=True
+                )
             ),
             token_logprobs=(
                 _gguf_stream_token_logprobs(self.generator.tokenizer, sample, request)
