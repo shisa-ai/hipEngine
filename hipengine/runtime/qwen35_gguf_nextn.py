@@ -692,6 +692,7 @@ class Qwen35GGUFNextNExecutor:
         token_ready: bool = False,
         position_ready: bool = False,
         attention_context_cap: int | None = None,
+        kv_write_only: bool = False,
     ) -> tuple[int, int]:
         """Run the state-mutating NextN block before shared norm/head scoring."""
 
@@ -775,6 +776,7 @@ class Qwen35GGUFNextNExecutor:
             position=int(position),
             stream=int(stream),
             attention_max_context_len=attention_context_cap,
+            kv_write_only=bool(kv_write_only),
         )
         return layer_out_ptr, final_hidden_ptr
 
@@ -1999,6 +2001,7 @@ class Qwen35GGUFNextNExecutor:
                 stream=stream,
                 token_ready=True,
                 position_ready=True,
+                kv_write_only=True,
             )
         # _run_block is the state-mutating primitive; unlike run_step/batch it
         # intentionally omits scoring and cursor publication. Publish the final

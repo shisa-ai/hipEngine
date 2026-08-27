@@ -703,7 +703,7 @@ def test_nextn_executor_enqueues_prompt_rows_on_target_stream_without_scoring(
             (int(value), int(kwargs["stream"]))
         ),
     )
-    block_calls: list[tuple[int, int, int, int, int, bool, bool]] = []
+    block_calls: list[tuple[int, int, int, int, int, bool, bool, bool]] = []
 
     def fake_run_block(
         request_id,
@@ -714,6 +714,7 @@ def test_nextn_executor_enqueues_prompt_rows_on_target_stream_without_scoring(
         stream,
         token_ready,
         position_ready,
+        kv_write_only,
     ):
         block_calls.append(
             (
@@ -724,6 +725,7 @@ def test_nextn_executor_enqueues_prompt_rows_on_target_stream_without_scoring(
                 int(stream),
                 bool(token_ready),
                 bool(position_ready),
+                bool(kv_write_only),
             )
         )
         return 0x7000, 0x8000
@@ -746,9 +748,9 @@ def test_nextn_executor_enqueues_prompt_rows_on_target_stream_without_scoring(
     ]
     assert metadata_calls == [(9, 5), (10, 5), (11, 5)]
     assert block_calls == [
-        (7, 11, 9, 0x4000, 5, True, True),
-        (7, 22, 10, 0x4020, 5, True, True),
-        (7, 33, 11, 0x4040, 5, True, True),
+        (7, 11, 9, 0x4000, 5, True, True, True),
+        (7, 22, 10, 0x4020, 5, True, True, True),
+        (7, 33, 11, 0x4040, 5, True, True, True),
     ]
     assert len(executor._prompt_priming_staging[7]) == 1
     assert executor._batch_sessions[0]._position == 12
