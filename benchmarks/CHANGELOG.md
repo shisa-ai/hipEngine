@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 Qwen3.8 dynamic MTP admission D2; retained functional/default-off] Two independent production C2/K1 OpenAI children execute **230** physical proposal-C2/target-R4/accept/commit cycles with **220/230** accepted, complete failure recovery, and zero ownership; K2/K3 reach R6/R8. K1 is **14.699→7.757 tok/s (0.5277x, -47.23%)**, so automatic C2 remains pure K0. `benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d2-c2-k1-functional.json`.
+
 - [2026-08-27 gfx1151 Qwen3.8 dynamic MTP admission D1; retained mechanical/no speed claim] Typed static eligibility survives independent frontend C1 children into resident C2 transitional K0; mixed permanent-AR/spec-capable work records pure/transitional K0, executes disjoint MTP+AR safely, preserves blocking/SSE health, and drains to zero ownership. Automatic C2+ and arithmetic remain unchanged. `benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d1-static-eligibility.json`.
 
 - [2026-08-27 W7900 dual-model Generation-2 MTP campaign final] Close both exact automatic lanes: 35B MoE **1.1400x** and 27B Dense **1.4382x** true AR, complete quality/serving/lifecycle packets, wrong-key K0, and cross-model generic-dispatch audit. `benchmarks/results/2026-08-27-w7900-dual-model-mtp2-campaign-final.json`.
