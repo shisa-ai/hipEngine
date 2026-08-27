@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from hipengine import LLM
+from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
 from hipengine.generation.registry import GenerationRequest
 from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFTransactionalVerifier
 from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
@@ -66,11 +67,37 @@ def _recent_rows(snapshot: dict[str, Any], request_ids: set[int]) -> list[dict[s
     ]
 
 
-def _failure_phase_specs() -> tuple[
+def _failure_phase_specs(
+    concurrency: int = 1,
+) -> tuple[
     tuple[str, type[Any], str, Callable[..., Any], bool], ...
 ]:
-    """Return C1 graph owners and whether failure follows owned target work."""
+    """Return active-path owners and whether failure follows target commit."""
 
+    if int(concurrency) > 1:
+        return (
+            (
+                "proposal",
+                Qwen35GGUFNextNDraftProvider,
+                "propose_batch_device",
+                Qwen35GGUFNextNDraftProvider.propose_batch_device,
+                False,
+            ),
+            (
+                "target",
+                Qwen35GGUFResidentSession,
+                "verify_target_blocks_batch",
+                Qwen35GGUFResidentSession.verify_target_blocks_batch,
+                False,
+            ),
+            (
+                "readback",
+                Qwen35GGUFMTP2Adapter,
+                "_read_target_batch_accept",
+                Qwen35GGUFMTP2Adapter._read_target_batch_accept,
+                True,
+            ),
+        )
     return (
         (
             "proposal",
@@ -120,7 +147,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "Write one short farewell.",
         max_tokens=int(args.max_tokens),
     )
-    phases = _failure_phase_specs()
+    phases = _failure_phase_specs(concurrency)
     results: list[dict[str, Any]] = []
     try:
         ar_greeting = _ids(
