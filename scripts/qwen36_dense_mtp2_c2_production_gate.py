@@ -40,6 +40,7 @@ from hipengine.core.memory import (  # noqa: E402
 from hipengine.loading.gguf import scan_gguf  # noqa: E402
 from hipengine.runtime.prefill import PrefillConfig  # noqa: E402
 from hipengine.runtime.qwen35_gguf_runner import (  # noqa: E402
+    Qwen35GGUFFullStackRunner,
     Qwen35GGUFResidentSession,
 )
 from hipengine.tokenization.gguf import Qwen35GGUFTokenizer  # noqa: E402
@@ -135,29 +136,13 @@ def _install_packed_capture(context: dict[str, Any]):
             starts.append(int(job["session"].position))
             request_ids.append(int(job["request_id"]))
         results = original(self, jobs, **kwargs)
-        runtime.device_synchronize()
-        rows = sum(full_row_counts)
         vocab = int(self.runner.vocab_size)
-        if self._verify_logits_buf is None:
-            raise GateError("packed C2 verifier has no full-logit owner")
-        logits = np.empty((rows, vocab), dtype=np.float32)
-        copy_device_to_host(
-            host_array_ptr(logits),
-            DeviceBuffer(int(self._verify_logits_buf.ptr), logits.nbytes),
-            logits.nbytes,
-            runtime=runtime,
-        )
-        if not np.isfinite(logits).all():
-            raise GateError("packed C2 verifier produced non-finite logits")
         cycle_key = (int(context["repeat"]), int(context["pair"]))
         cycle = int(context["cycle_counts"].get(cycle_key, 0))
         context["cycle_counts"][cycle_key] = cycle + 1
-        offset = 0
         for request_id, start, input_ids, full_rows in zip(
             request_ids, starts, inputs, full_row_counts, strict=True
         ):
-            job_logits = np.ascontiguousarray(logits[offset : offset + full_rows])
-            offset += full_rows
             # Terminal device proposal slots use an out-of-vocabulary sentinel.
             # They are control padding, not teacher-forced model rows.
             active_rows = 1
@@ -166,7 +151,6 @@ def _install_packed_capture(context: dict[str, Any]):
                     break
                 active_rows += 1
             active_inputs = input_ids[:active_rows]
-            active_logits = np.ascontiguousarray(job_logits[:active_rows])
             context["captures"].append(
                 {
                     "repeat": int(context["repeat"]),
@@ -177,15 +161,6 @@ def _install_packed_capture(context: dict[str, Any]):
                     "inputs": active_inputs,
                     "full_rows": full_rows,
                     "active_rows": active_rows,
-                    "candidate_top1": tuple(
-                        int(value) for value in np.argmax(active_logits, axis=1)
-                    ),
-                    "candidate_logits_sha256": hashlib.sha256(
-                        active_logits.view(np.uint8)
-                    ).hexdigest(),
-                    "candidate_logits": (
-                        active_logits if int(context["repeat"]) == 0 else None
-                    ),
                 }
             )
         return results
@@ -367,12 +342,10 @@ def _repeat_verdict(captures: Sequence[Mapping[str, Any]], repeat_runs: int) -> 
     for (prompt_id, start), values in sorted(grouped.items()):
         repeats = {int(row["repeat"]) for row in values}
         inputs = {tuple(int(value) for value in row["inputs"]) for row in values}
-        hashes = {str(row["candidate_logits_sha256"]) for row in values}
-        top1 = {tuple(int(value) for value in row["candidate_top1"]) for row in values}
         passed = bool(
             repeats == set(range(repeat_runs))
             and len(values) == repeat_runs
-            and len(inputs) == len(hashes) == len(top1) == 1
+            and len(inputs) == 1
         )
         rows.append(
             {
@@ -380,8 +353,6 @@ def _repeat_verdict(captures: Sequence[Mapping[str, Any]], repeat_runs: int) -> 
                 "start_position": start,
                 "repeats": sorted(repeats),
                 "inputs_equal": len(inputs) == 1,
-                "logits_equal": len(hashes) == 1,
-                "top1_equal": len(top1) == 1,
                 "passed": passed,
             }
         )
@@ -394,92 +365,214 @@ def _teacher_metrics(
     strict_outputs: Mapping[str, Sequence[int]],
     captures: Sequence[Mapping[str, Any]],
     *,
+    repeat_runs: int,
     max_sequence_length: int,
     compiler_version_file: Path | None,
     require_cached_build: bool,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Run the physical C2 target on strict-teacher resident states."""
+
     prompt_by_id = {str(row["id"]): row for row in prompts}
     tokenizer = Qwen35GGUFTokenizer.from_gguf_info(scan_gguf(model))
-    first = [row for row in captures if int(row["repeat"]) == 0]
-    session = Qwen35GGUFResidentSession(
+    first_groups: dict[tuple[int, int], list[Mapping[str, Any]]] = defaultdict(list)
+    for row in captures:
+        if int(row["repeat"]) == 0:
+            first_groups[(int(row["pair"]), int(row["cycle"]))].append(row)
+    compiler_version = (
+        None
+        if compiler_version_file is None
+        else compiler_version_file.read_text(encoding="utf-8")
+    )
+    runner = Qwen35GGUFFullStackRunner(
         model,
         backend="hip_gfx1100",
-        compiler_version=(
-            None
-            if compiler_version_file is None
-            else compiler_version_file.read_text(encoding="utf-8")
-        ),
+        compiler_version=compiler_version,
         require_cached_build=require_cached_build,
-        max_sequence_length=max_sequence_length,
-        use_wmma_prefill=False,
-        use_gemv_decode=True,
-        prefill_config=PrefillConfig(),
     )
+    sessions = [
+        Qwen35GGUFResidentSession(
+            model,
+            backend="hip_gfx1100",
+            shared_runner=runner,
+            compiler_version=compiler_version,
+            require_cached_build=require_cached_build,
+            max_sequence_length=max_sequence_length,
+            use_wmma_prefill=False,
+            use_gemv_decode=True,
+            prefill_config=PrefillConfig(),
+        )
+        for _ in range(2)
+    ]
     metrics_rows: list[dict[str, Any]] = []
+    repeat_rows: list[dict[str, Any]] = []
+
+    def strict_inputs(
+        session: Qwen35GGUFResidentSession,
+        capture: Mapping[str, Any],
+    ) -> tuple[tuple[int, ...], int, Mapping[str, Any]]:
+        prompt_id = str(capture["prompt_id"])
+        prompt = prompt_by_id[prompt_id]
+        prompt_tokens = tokenizer.encode(str(prompt["rendered_prompt"]))
+        output_index = int(capture["start_position"]) - len(prompt_tokens) + 1
+        if output_index <= 0 or output_index >= len(strict_outputs[prompt_id]):
+            raise GateError(
+                f"physical C2 capture position is outside strict teacher: {prompt_id}"
+            )
+        root = _strict_prefix(session, prompt_tokens, output_index)
+        live_inputs = tuple(int(value) for value in capture["inputs"])
+        return (root, *live_inputs[1:]), output_index, prompt
+
+    def run_physical(
+        group: Sequence[Mapping[str, Any]],
+    ) -> tuple[np.ndarray, tuple[tuple[int, ...], ...]]:
+        inputs_by_slot: list[tuple[int, ...]] = []
+        jobs: list[dict[str, Any]] = []
+        for slot, (session, capture) in enumerate(zip(sessions, group, strict=True)):
+            inputs, _output_index, _prompt = strict_inputs(session, capture)
+            inputs_by_slot.append(inputs)
+            jobs.append(
+                {
+                    "session": session,
+                    "request_id": slot,
+                    "resident_slot": slot,
+                    "transaction_id": 0,
+                    "bulk_attention_mode": "bulk",
+                    "use_wmma_prefill": False,
+                    "capture_linear_state_rows": True,
+                    "defer_linear_state_commit": True,
+                    "defer_state_scatter": False,
+                    "input_token_ids": inputs,
+                }
+            )
+        sessions[0].verify_target_blocks_batch(jobs, device_result=False)
+        runtime = sessions[0].runtime
+        if runtime is None or sessions[0].runner is None:
+            raise GateError("strict physical C2 target lost runtime/runner")
+        runtime.device_synchronize()
+        rows = sum(len(values) for values in inputs_by_slot)
+        vocab = int(sessions[0].runner.vocab_size)
+        logits_owner = sessions[0]._verify_logits_buf
+        if logits_owner is None:
+            raise GateError("strict physical C2 target omitted full logits")
+        logits = np.empty((rows, vocab), dtype=np.float32)
+        copy_device_to_host(
+            host_array_ptr(logits),
+            DeviceBuffer(int(logits_owner.ptr), logits.nbytes),
+            logits.nbytes,
+            runtime=runtime,
+        )
+        if not np.isfinite(logits).all():
+            raise GateError("strict physical C2 target produced non-finite logits")
+        return np.ascontiguousarray(logits), tuple(inputs_by_slot)
+
     try:
-        for capture in first:
-            prompt_id = str(capture["prompt_id"])
-            prompt = prompt_by_id[prompt_id]
-            prompt_tokens = tokenizer.encode(str(prompt["rendered_prompt"]))
-            output_index = int(capture["start_position"]) - len(prompt_tokens) + 1
-            if output_index <= 0 or output_index >= len(strict_outputs[prompt_id]):
-                raise GateError(
-                    f"physical C2 capture position is outside strict teacher: {prompt_id}"
-                )
-            root = _strict_prefix(session, prompt_tokens, output_index)
-            inputs = tuple(int(value) for value in capture["inputs"])
-            if inputs[0] != root:
-                raise GateError(
-                    f"physical C2 root does not match strict teacher for {prompt_id}"
-                )
-            strict_tokens, strict_logits, *_ = _probe_serial(
-                session,
-                list(inputs),
-                capture_pre_output_norm_hidden=False,
-                capture_layer_output_hidden=[],
+        for group_key, group_rows in sorted(first_groups.items()):
+            if len(group_rows) != 2:
+                raise GateError(f"strict physical group {group_key} is not C2")
+            group = tuple(sorted(group_rows, key=lambda row: int(row["request_id"])))
+            # Discard first use for this exact ragged physical shape, then bind
+            # three identical full-logit repeats on strict-teacher states.
+            run_physical(group)
+            candidate_runs: list[np.ndarray] = []
+            input_runs: list[tuple[tuple[int, ...], ...]] = []
+            for _ in range(repeat_runs):
+                logits, inputs_by_slot = run_physical(group)
+                candidate_runs.append(logits)
+                input_runs.append(inputs_by_slot)
+            hashes = [
+                hashlib.sha256(values.view(np.uint8)).hexdigest()
+                for values in candidate_runs
+            ]
+            top1_runs = [
+                tuple(int(value) for value in np.argmax(values, axis=1))
+                for values in candidate_runs
+            ]
+            repeat_passed = bool(
+                len(set(hashes)) == 1
+                and len(set(top1_runs)) == 1
+                and len(set(input_runs)) == 1
             )
-            candidate_logits = capture.get("candidate_logits")
-            if not isinstance(candidate_logits, np.ndarray):
-                raise GateError("first repeat lost candidate full logits")
-            labels = np.asarray(strict_tokens, dtype=np.int64)
-            values = per_row_metrics(
-                np.ascontiguousarray(strict_logits, dtype=np.float32),
-                np.ascontiguousarray(candidate_logits, dtype=np.float32),
-                labels,
-                top_k=5,
+            repeat_rows.append(
+                {
+                    "pair": group_key[0],
+                    "cycle": group_key[1],
+                    "candidate_logits_sha256": hashes,
+                    "candidate_top1": [list(values) for values in top1_runs],
+                    "inputs_equal": len(set(input_runs)) == 1,
+                    "passed": repeat_passed,
+                }
             )
-            for row_index in range(len(inputs)):
-                strict_row = strict_logits[row_index]
-                top2 = np.partition(strict_row, -2)[-2:]
-                metrics_rows.append(
-                    {
-                        "prompt_id": prompt_id,
-                        "category": str(prompt["category"]),
-                        "heldout": bool(prompt["heldout"]),
-                        "shape": f"k{len(inputs) - 1}",
-                        "transition": (
-                            "prefill_to_verify" if output_index <= 2 else "verify_to_verify"
-                        ),
-                        "position": int(capture["start_position"]) + row_index,
-                        "strict_top1": int(strict_tokens[row_index]),
-                        "candidate_top1": int(capture["candidate_top1"][row_index]),
-                        "strict_margin": float(top2.max() - top2.min()),
-                        "kl": float(values["kl_nats"][row_index]),
-                        "top1_equal": bool(values["top1_equal"][row_index]),
-                        "top5_overlap": float(values["topk_set_overlap"][row_index]),
-                        "teacher_nll": float(values["teacher_nll_nats"][row_index]),
-                        "strict_teacher_nll": float(
-                            values["reference_teacher_nll_nats"][row_index]
-                        ),
-                        "delta_p": float(values["delta_p"][row_index]),
-                        "max_abs_logit_delta": float(
-                            values["max_abs_logit_delta"][row_index]
-                        ),
-                    }
+            candidate_logits = candidate_runs[0]
+            offset = 0
+            for session, capture, inputs in zip(
+                sessions, group, input_runs[0], strict=True
+            ):
+                prompt_id = str(capture["prompt_id"])
+                _inputs, output_index, prompt = strict_inputs(session, capture)
+                strict_tokens, strict_logits, *_ = _probe_serial(
+                    session,
+                    list(inputs),
+                    capture_pre_output_norm_hidden=False,
+                    capture_layer_output_hidden=[],
                 )
+                candidate_slice = np.ascontiguousarray(
+                    candidate_logits[offset : offset + len(inputs)]
+                )
+                offset += len(inputs)
+                labels = np.asarray(strict_tokens, dtype=np.int64)
+                values = per_row_metrics(
+                    np.ascontiguousarray(strict_logits, dtype=np.float32),
+                    candidate_slice,
+                    labels,
+                    top_k=5,
+                )
+                candidate_top1 = np.argmax(candidate_slice, axis=1)
+                for row_index in range(len(inputs)):
+                    strict_row = strict_logits[row_index]
+                    top2 = np.partition(strict_row, -2)[-2:]
+                    metrics_rows.append(
+                        {
+                            "prompt_id": prompt_id,
+                            "category": str(prompt["category"]),
+                            "heldout": bool(prompt["heldout"]),
+                            "shape": f"k{len(inputs) - 1}",
+                            "transition": (
+                                "prefill_to_verify"
+                                if output_index <= 2
+                                else "verify_to_verify"
+                            ),
+                            "position": int(capture["start_position"]) + row_index,
+                            "strict_top1": int(strict_tokens[row_index]),
+                            "candidate_top1": int(candidate_top1[row_index]),
+                            "strict_margin": float(top2.max() - top2.min()),
+                            "kl": float(values["kl_nats"][row_index]),
+                            "top1_equal": bool(values["top1_equal"][row_index]),
+                            "top5_overlap": float(
+                                values["topk_set_overlap"][row_index]
+                            ),
+                            "teacher_nll": float(
+                                values["teacher_nll_nats"][row_index]
+                            ),
+                            "strict_teacher_nll": float(
+                                values["reference_teacher_nll_nats"][row_index]
+                            ),
+                            "delta_p": float(values["delta_p"][row_index]),
+                            "max_abs_logit_delta": float(
+                                values["max_abs_logit_delta"][row_index]
+                            ),
+                        }
+                    )
+            if offset != int(candidate_logits.shape[0]):
+                raise GateError("strict physical C2 logit row accounting drifted")
     finally:
-        session.close()
-    return metrics_rows
+        for session in sessions:
+            session.close()
+        runner.close()
+    return metrics_rows, {
+        "passed": bool(repeat_rows) and all(row["passed"] for row in repeat_rows),
+        "cycles": len(repeat_rows),
+        "rows": repeat_rows,
+    }
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -529,11 +622,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         Qwen35GGUFResidentSession.verify_target_blocks_batch = original
     captures: list[dict[str, Any]] = context["captures"]
     repeat_gate = _repeat_verdict(captures, args.repeat_runs)
-    row_metrics = _teacher_metrics(
+    row_metrics, physical_repeat_gate = _teacher_metrics(
         model,
         prompts,
         strict_outputs,
         captures,
+        repeat_runs=args.repeat_runs,
         max_sequence_length=args.max_sequence_length,
         compiler_version_file=args.compiler_version_file,
         require_cached_build=args.require_cached_build,
@@ -621,7 +715,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "full_suite": args.limit is None and len(prompts) == 10,
         "physical_capture": all(capture_shape_checks.values()),
         "numerical": bool(numerical["passed"]),
-        "repeat_determinism": bool(repeat_gate["passed"]),
+        "repeat_determinism": bool(
+            repeat_gate["passed"] and physical_repeat_gate["passed"]
+        ),
         "output_repeat": all(row["repeat_exact"] for row in output_checks),
         "neighbor_permutation_isolation": all(
             row["neighbor_permutation_isolation"] for row in output_checks
@@ -707,7 +803,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
         },
         "numerical": numerical,
-        "repeat_determinism": repeat_gate,
+        "repeat_determinism": {
+            "passed": bool(
+                repeat_gate["passed"] and physical_repeat_gate["passed"]
+            ),
+            "live_schedule": repeat_gate,
+            "strict_teacher_physical_logits": physical_repeat_gate,
+        },
         "output_control": output_checks,
         "tasks": tasks,
         "lifecycle": {
