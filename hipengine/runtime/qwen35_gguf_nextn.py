@@ -1275,8 +1275,8 @@ class Qwen35GGUFNextNExecutor:
         ids = tuple(int(value) for value in context.request_ids)
         counts = tuple(int(value) for value in candidate_counts)
         rows = len(ids)
-        if rows <= 1 or len(counts) != rows or any(count <= 0 for count in counts):
-            raise ValueError("device batch proposal requires aligned C>1 positive depths")
+        if rows < 1 or len(counts) != rows or any(count <= 0 for count in counts):
+            raise ValueError("device batch proposal requires aligned positive request depths")
         if max(counts) not in MTP_CHAIN_CANDIDATE_BUDGETS:
             raise ValueError("device batch proposal budget is unsupported")
         if any(
