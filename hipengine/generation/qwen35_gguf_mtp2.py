@@ -2956,7 +2956,10 @@ class Qwen35GGUFMTP2Adapter:
                         return_logits=False,
                     )
                 else:
-                    provider.executor.run_step_batch(
+                    # Prompt catch-up consumes provider state only. Scoring a
+                    # full LM head here performs one unnecessary vocabulary
+                    # projection and D2H readback per prompt position.
+                    provider.executor.advance_state_batch_only(
                         active_ids,
                         active_tokens,
                         (position,) * len(active),

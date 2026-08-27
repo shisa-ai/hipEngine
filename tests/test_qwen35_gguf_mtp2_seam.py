@@ -2039,6 +2039,72 @@ def test_mtp2_sequential_physical_admission_reuses_compatible_provider_group() -
     assert group.request_ids == {7, 8}
 
 
+def test_physical_prompt_catchup_skips_full_vocabulary_scoring(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = []
+
+    class Executor:
+        hidden_size = 4
+
+        def run_step_batch(self, *args, **kwargs):
+            raise AssertionError("prompt catch-up must not score the LM head")
+
+        def run_step(self, request_id, token_id, position, hidden, *, return_logits):
+            assert return_logits is False
+            calls.append(((request_id,), (token_id,), (position,), hidden.shape))
+
+        def advance_state_batch_only(
+            self, request_ids, token_ids, positions, hidden
+        ):
+            calls.append(
+                (
+                    tuple(request_ids),
+                    tuple(token_ids),
+                    tuple(positions),
+                    hidden.shape,
+                )
+            )
+
+    allocations = iter(
+        (
+            DeviceBuffer(0x1000, 16),
+            DeviceBuffer(0x2000, 8),
+            DeviceBuffer(0x3000, 8),
+        )
+    )
+    monkeypatch.setattr(
+        mtp2_module, "malloc", lambda *args, **kwargs: next(allocations)
+    )
+    monkeypatch.setattr(mtp2_module, "free", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        mtp2_module,
+        "copy_host_to_device",
+        lambda *args, **kwargs: None,
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._prompt_hidden_rows = {
+        7: np.arange(12, dtype=np.float32).reshape(3, 4),
+        8: np.arange(8, dtype=np.float32).reshape(2, 4),
+    }
+    provider = SimpleNamespace(executor=Executor())
+    rows = (
+        SimpleNamespace(prompt_ids=(10, 11, 12)),
+        SimpleNamespace(prompt_ids=(20, 21)),
+    )
+    runtime = SimpleNamespace()
+    targets = (SimpleNamespace(runtime=runtime), SimpleNamespace(runtime=runtime))
+
+    roots = adapter._catch_up_provider_batch(provider, (7, 8), rows, targets)
+
+    assert set(roots) == {7, 8}
+    assert calls == [
+        ((7, 8), (10, 20), (0, 0), (2, 4)),
+        ((7, 8), (11, 21), (1, 1), (2, 4)),
+        ((7,), (12,), (2,), (1, 4)),
+    ]
+
+
 def test_mtp2_cycle_hidden_workspace_reuses_stable_distinct_slabs() -> None:
     class Runtime:
         def __init__(self) -> None:
