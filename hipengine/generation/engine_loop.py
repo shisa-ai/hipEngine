@@ -2353,6 +2353,11 @@ class ResidentEngineLoop:
                 tuple(semantics),
                 capability,
             )
+            if result is None:
+                execute = getattr(self.runner, "execute_speculative_cycle", None)
+                if not callable(execute):
+                    return None
+                result = execute(plan, commit=True)
         except BaseException as exc:
             recover = getattr(
                 self.runner,
@@ -2362,11 +2367,6 @@ class ResidentEngineLoop:
             if not callable(recover) or not bool(recover(plan, exc)):
                 raise
             return None
-        if result is None:
-            execute = getattr(self.runner, "execute_speculative_cycle", None)
-            if not callable(execute):
-                return None
-            result = execute(plan, commit=True)
         elapsed = time.perf_counter() - start
         if not isinstance(result, SpecCycleResult):
             raise TypeError("execute_speculative_cycle must return SpecCycleResult")
