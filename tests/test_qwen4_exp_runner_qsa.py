@@ -23,8 +23,10 @@ from hipengine.runtime.qwen4_exp_runner import (
     Qwen4ExpDenseAttentionState,
     Qwen4ExpQSAIndexDeviceState,
     Qwen4ExpQSAMixerDeviceWeights,
+    Qwen4ExpQSAPrefillMetadata,
     Qwen4ExpQSAScratch,
     run_qwen4_exp_dense_qsa_token_mixer,
+    run_qwen4_exp_qsa_prefill_token_mixer,
 )
 from tests.test_qwen4_exp_runner_gr import _dense_f32_weight
 
@@ -297,6 +299,216 @@ def test_qwen4_exp_qsa_runner_switches_to_native_sparse_selection_above_budget()
             free(allocation, runtime=runtime)
 
 
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_qsa_prefill_mixer_matches_serial_across_sparse_boundary() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(4320)
+    rows, hidden, query_heads, kv_heads, head_dim = 6, 8, 2, 1, 4
+    index_heads, index_dim, ratio, block_budget = 2, 4, 2, 2
+    q_width = query_heads * head_dim
+    kv_width = kv_heads * head_dim
+    arrays = {
+        "attn_q": rng.normal(0.0, 0.1, size=(q_width * 2, hidden)).astype(np.float32),
+        "attn_k": rng.normal(0.0, 0.1, size=(kv_width, hidden)).astype(np.float32),
+        "attn_v": rng.normal(0.0, 0.1, size=(kv_width, hidden)).astype(np.float32),
+        "attn_output": rng.normal(0.0, 0.1, size=(hidden, q_width)).astype(np.float32),
+        "index_q": rng.normal(0.0, 0.1, size=(index_heads * index_dim, hidden)).astype(np.float32),
+        "index_k": rng.normal(0.0, 0.1, size=(index_dim, hidden)).astype(np.float32),
+    }
+    q_norm = rng.normal(1.0, 0.05, size=head_dim).astype(np.float32)
+    k_norm = rng.normal(1.0, 0.05, size=head_dim).astype(np.float32)
+    index_q_norm = rng.normal(1.0, 0.05, size=index_dim).astype(np.float32)
+    index_k_norm = rng.normal(1.0, 0.05, size=index_dim).astype(np.float32)
+    mixed_rows = rng.normal(0.0, 0.2, size=(rows, hidden)).astype(np.float32)
+
+    allocations = []
+    serial_state = bulk_state = serial_index = bulk_index = None
+    serial_scratch = bulk_scratch = metadata = None
+    try:
+        weights = Qwen4ExpQSAMixerDeviceWeights(
+            projections={
+                name: _dense_f32_weight(name, array, runtime, allocations)
+                for name, array in arrays.items()
+            },
+            q_norm_weight_ptr=_upload(q_norm, runtime, allocations).ptr,
+            k_norm_weight_ptr=_upload(k_norm, runtime, allocations).ptr,
+            index_q_norm_weight_ptr=_upload(index_q_norm, runtime, allocations).ptr,
+            index_k_norm_weight_ptr=_upload(index_k_norm, runtime, allocations).ptr,
+        )
+        serial_state = Qwen4ExpDenseAttentionState.allocate(
+            max_positions=8,
+            block_size=256,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            runtime=runtime,
+        )
+        bulk_state = Qwen4ExpDenseAttentionState.allocate(
+            max_positions=8,
+            block_size=256,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            runtime=runtime,
+        )
+        serial_index = Qwen4ExpQSAIndexDeviceState.allocate(
+            attention_state=serial_state,
+            index_heads=index_heads,
+            index_dim=index_dim,
+            compression_ratio=ratio,
+            block_budget=block_budget,
+            runtime=runtime,
+        )
+        bulk_index = Qwen4ExpQSAIndexDeviceState.allocate(
+            attention_state=bulk_state,
+            index_heads=index_heads,
+            index_dim=index_dim,
+            compression_ratio=ratio,
+            block_budget=block_budget,
+            runtime=runtime,
+        )
+        serial_scratch = Qwen4ExpQSAScratch.allocate(
+            rows=1,
+            hidden=hidden,
+            query_heads=query_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            index_heads=index_heads,
+            index_dim=index_dim,
+            runtime=runtime,
+        )
+        bulk_scratch = Qwen4ExpQSAScratch.allocate(
+            rows=rows,
+            hidden=hidden,
+            query_heads=query_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            index_heads=index_heads,
+            index_dim=index_dim,
+            runtime=runtime,
+        )
+        metadata = Qwen4ExpQSAPrefillMetadata.allocate(
+            bulk_state,
+            rows=rows,
+            selection_capacity=block_budget * ratio + ratio - 1,
+        )
+        d_mixed = _upload(mixed_rows, runtime, allocations)
+        serial_outputs = []
+        serial_selected = None
+        for position in range(rows):
+            output = run_qwen4_exp_dense_qsa_token_mixer(
+                d_mixed.ptr + position * hidden * 4,
+                weights,
+                attention_state=serial_state,
+                index_state=serial_index,
+                scratch=serial_scratch,
+                position=position,
+                rows=1,
+                hidden=hidden,
+                query_heads=query_heads,
+                kv_heads=kv_heads,
+                head_dim=head_dim,
+                rotary_dim=4,
+                theta=100.0,
+                index_heads=index_heads,
+                index_dim=index_dim,
+                index_rotary_dim=4,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            serial_outputs.append(_download(output, (hidden,), np.float32, runtime))
+            if position == rows - 1 and position + 1 > serial_index.dense_equivalent_limit:
+                count = block_budget * ratio
+                serial_selected = serial_index.selected_positions_host[:count].copy()
+        bulk_output = run_qwen4_exp_qsa_prefill_token_mixer(
+            d_mixed.ptr,
+            weights,
+            attention_state=bulk_state,
+            index_state=bulk_index,
+            scratch=bulk_scratch,
+            metadata=metadata,
+            start_position=0,
+            rows=rows,
+            hidden=hidden,
+            query_heads=query_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            rotary_dim=4,
+            theta=100.0,
+            index_heads=index_heads,
+            index_dim=index_dim,
+            index_rotary_dim=4,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        bulk_outputs = _download(bulk_output, (rows, hidden), np.float32, runtime)
+        serial_key = _download(
+            serial_state.key_cache,
+            (serial_state.max_positions, kv_heads, head_dim),
+            np.uint16,
+            runtime,
+        )
+        bulk_key = _download(
+            bulk_state.key_cache,
+            (bulk_state.max_positions, kv_heads, head_dim),
+            np.uint16,
+            runtime,
+        )
+        serial_value = _download(
+            serial_state.value_cache,
+            (serial_state.max_positions, kv_heads, head_dim),
+            np.uint16,
+            runtime,
+        )
+        bulk_value = _download(
+            bulk_state.value_cache,
+            (bulk_state.max_positions, kv_heads, head_dim),
+            np.uint16,
+            runtime,
+        )
+        serial_raw = _download(
+            serial_index.raw_keys,
+            (serial_index.capacity, index_dim),
+            np.float32,
+            runtime,
+        )
+        bulk_raw = _download(
+            bulk_index.raw_keys,
+            (bulk_index.capacity, index_dim),
+            np.float32,
+            runtime,
+        )
+    finally:
+        if metadata is not None:
+            metadata.close()
+        if bulk_scratch is not None:
+            bulk_scratch.close()
+        if serial_scratch is not None:
+            serial_scratch.close()
+        if bulk_index is not None:
+            bulk_index.close()
+        if serial_index is not None:
+            serial_index.close()
+        if bulk_state is not None:
+            bulk_state.close()
+        if serial_state is not None:
+            serial_state.close()
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    np.testing.assert_allclose(
+        bulk_outputs, np.asarray(serial_outputs), rtol=3e-4, atol=3e-4
+    )
+    np.testing.assert_array_equal(bulk_key, serial_key)
+    np.testing.assert_array_equal(bulk_value, serial_value)
+    np.testing.assert_array_equal(bulk_raw, serial_raw)
+    assert bulk_index.count == serial_index.count == rows
+    if serial_selected is not None:
+        np.testing.assert_array_equal(
+            metadata.selected_positions_host[-1, : serial_selected.size], serial_selected
+        )
+
+
 def _upload(array: np.ndarray, runtime, allocations):
     host = np.ascontiguousarray(array)
     device = malloc(host.nbytes, runtime=runtime)
@@ -307,5 +519,5 @@ def _upload(array: np.ndarray, runtime, allocations):
 
 def _download(device, shape, dtype, runtime):
     host = np.empty(shape, dtype=dtype)
-    copy_device_to_host(host_array_ptr(host), device, runtime=runtime)
+    copy_device_to_host(host_array_ptr(host), device, host.nbytes, runtime=runtime)
     return host
