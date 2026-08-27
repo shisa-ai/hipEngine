@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "accepted_structural_64k_chunk_correctness",
+  "scope": "single repeated-token 65536-token teacher-to-size2-chunk checkpoint; strict serial measured only through 4K; not a natural long-context or public performance claim",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "device_total_bytes": 133143986176
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "revision": "f5d08274bafd880402bd16f5e3e6c514136ec06c",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "artifact": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL"
+  },
+  "workload": {
+    "prompt_file": "/tmp/qwen4exp-65536-a.txt",
+    "prompt_file_bytes": 131072,
+    "prompt_construction": "' a' repeated 65536 times",
+    "token_count": 65536,
+    "unique_token_ids": [264],
+    "context_capacity": 65536,
+    "llama_batch": 65536,
+    "prefill_mode": "chunked",
+    "prefill_chunk_size": 2,
+    "qsa_dense_equivalent_max_tokens": 2051
+  },
+  "command": "uv run python scripts/qwen4_exp_compare_logits.py /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --prompt-file /tmp/qwen4exp-65536-a.txt --context 65536 --llama-batch 65536 --prefill-mode chunked --prefill-chunk-size 2 --json-out /tmp/qwen4exp-long-65536-size2.json",
+  "result": {
+    "teacher_top1": 264,
+    "chunked_top1": 264,
+    "teacher_to_chunk_kl": 0.000005739743555346474,
+    "chunked_seconds": 10336.580216850998,
+    "tracked_peak_bytes": 84767773768,
+    "tracked_teardown_passed": true,
+    "owned_bytes_after_close": 0
+  },
+  "strict_scope": {
+    "qualified_through_tokens": 4096,
+    "reason_not_repeated_at_64k": "Measured 4K strict wall was 854.982 seconds; a 64K strict run is impractical for this checkpoint."
+  },
+  "remaining_scope": [
+    "natural category/retrieval prompts above transition",
+    "262K inference correctness",
+    "strict serial above 4K",
+    "reference index-selection parity",
+    "non-contiguous pages, prefix reuse, cancellation, compaction, rollback, repeatability, and isolation"
+  ]
+}
