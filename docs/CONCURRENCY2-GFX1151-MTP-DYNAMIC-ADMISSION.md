@@ -1,7 +1,7 @@
 # CONCURRENCY2 gfx1151 MTP Dynamic Admission Campaign
 
-- Status: **D4 explicit production C1-C8 functionality retained; D5 production correctness is next**
-- Scope: **C3/C4 are physical; C5-C8 decompose as 4+1/4+2/4+3/4+4 with fair mixed/failure safety; every width loses AR and automatic C>1 remains pure K0**
+- Status: **D5 production correctness qualified; D6 economics/optimization decision is next**
+- Scope: **1,170-row strict-teacher, repeat/isolation/transition/manifest, full D4 category+heldout, and D2-D4 serving/lifecycle/failure gates pass; every C>1 width still loses AR**
 - Hardware lane when execution is approved: **Radeon 8060S / `hip_gfx1151`**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile**
 - First functional width: **two independent resident requests (`C_due=2`)**
@@ -33,6 +33,10 @@ refill, cancellation, public blocking/SSE, and final drain. Evidence:
 D4 now gives every C1-C8 width a truthful explicit functional route: physical
 through C4 and decomposed into bounded C4 frontiers above it. Evidence:
 [`D4 widths`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d4-widths.json).
+D5 now binds the complete explicit capability packet to current-source
+production numerical, repeat, isolation, transition, and manifest evidence.
+Evidence:
+[`D5 correctness`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d5-production-correctness.json).
 
 ## 1. Executive decision
 
@@ -335,19 +339,28 @@ none is performance-promotable. Evidence:
 
 ### D5 — Q4_K_M production correctness and serving qualification
 
-- [ ] Bind the selected production and strict-fallback variant manifests for
+- [x] Bind the selected production and strict-fallback variant manifests for
   every C/K/R/route/decomposition. Q4_K_S evidence is control only.
-- [ ] Run strict-teacher mean/p95/p99/max KL and top-1 gates by category, shape,
+- [x] Run strict-teacher mean/p95/p99/max KL and top-1 gates by category, shape,
   transition, and accepted depth; generated-ID equality remains diagnostic.
-- [ ] Run deterministic repeat, neighbor/permutation isolation,
+- [x] Run deterministic repeat, neighbor/permutation isolation,
   batch-composition invariance, BF16-relative/task gates where applicable, and
   finite-logit checks.
-- [ ] Run the full committed code/general English/general Japanese/mixed suite
+- [x] Run the full committed code/general English/general Japanese/mixed suite
   plus heldouts under blocking and SSE.
-- [ ] Bind dynamic transitions, K0 catch-up, failure recovery, memory/pressure,
+- [x] Bind dynamic transitions, K0 catch-up, failure recovery, memory/pressure,
   soak, and final drain to the production profile.
 
-Exit: explicit production C>N MTP is qualified independently of speed.
+Exit passed. Current-source Q4_K_M FP16 production state versus FP32 strict
+teacher passes **1,170** full-vocabulary rows at mean/p95/p99/max KL
+**0.000123912/0.000350302/0.001110228/0.049787716** and **99.7436%** top-1.
+Every category/shape/transition scope, three deterministic repeats, sparse/long
+contexts, c8->c4->c2->c1 retirement, neighbor substitution, permutation, and
+manifest gate pass. D4's 60/60 category/heldout functional cells and D2-D4
+blocking/SSE/lifecycle/failure/pressure/drain packets bind the integrated
+capability. Explicit production C>N MTP is correctness-qualified independently
+of speed; automatic C>1 remains pure K0 because economics still fail. Evidence:
+[`D5`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d5-production-correctness.json).
 
 ### D6 — economics and optimization (only after D5)
 
