@@ -68,6 +68,7 @@ from hipengine.speculative.provider import SpeculativeRequestSemantics
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.core.specdec2_scope import (
+    moe_physical_c2_numerics_session,
     q4_t16_physical_extra_rowtiles_session,
     q5_t16_physical_rowtile_session,
     q6_t16_physical_rowtile_session,
@@ -194,6 +195,9 @@ class Qwen35GGUFMTP2Adapter:
         self.target_verify_mode = str(target_verify_mode)
         self.candidate_budget = int(candidate_budget)
         self.quant = str(quant)
+        self.target_key = "qwen_dense_gguf"
+        self.provider_key = "qwen_nextn_dense"
+        self.policy_prefix = "dense-nextn"
         profile = getattr(self.generator, "execution_profile", None)
         profile = getattr(profile, "value", profile)
         self.physical_prompt_streaming = bool(
@@ -848,11 +852,14 @@ class Qwen35GGUFMTP2Adapter:
                 f"gguf_mtp2_c{max_requests}:{self.generator.backend}:{self.quant}:"
                 f"{realized_verify_mode}:{self.candidate_budget}"
             ),
-            target_key="qwen_dense_gguf",
-            provider_key="qwen_nextn_dense",
+            target_key=str(getattr(self, "target_key", "qwen_dense_gguf")),
+            provider_key=str(
+                getattr(self, "provider_key", "qwen_nextn_dense")
+            ),
             method_key="mtp2",
             policy_fingerprint=(
-                f"dense-nextn:{realized_verify_mode}:b{self.candidate_budget}:"
+                f"{getattr(self, 'policy_prefix', 'dense-nextn')}:"
+                f"{realized_verify_mode}:b{self.candidate_budget}:"
                 "prompt-streaming"
                 f"{int(getattr(self, 'physical_prompt_streaming', False))}:"
                 "extra-rowtiles"
@@ -1325,7 +1332,9 @@ class Qwen35GGUFMTP2Adapter:
         return CandidateGraph(
             provider_key=str(plan.provider_key),
             method_key="mtp2",
-            policy_fingerprint="dense-nextn-strict",
+            policy_fingerprint=(
+                f"{getattr(self, 'policy_prefix', 'dense-nextn')}-strict"
+            ),
             cycle_id=plan.cycle_id,
             transaction_id=plan.cycle_id,
             request_ids=plan.request_ids,
@@ -2220,6 +2229,9 @@ class Qwen35GGUFMTP2Adapter:
             ),
             q6_t16_physical_rowtile_session(
                 bool(getattr(self, "production_physical_q6_rowtile", False))
+            ),
+            moe_physical_c2_numerics_session(
+                bool(getattr(self, "moe_physical_c2_numerics", False))
             ),
         ):
             results = list(verify_batch(jobs, device_result=device_result))

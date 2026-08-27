@@ -1465,4 +1465,31 @@ class Qwen35GGUFMoEMTP2Adapter:
         self._draft_kv_slabs.clear()
 
 
-__all__ = ["Qwen35GGUFMoEMTP2Adapter"]
+def create_qwen35_gguf_moe_mtp2_adapter(
+    owner: Any,
+    **kwargs: Any,
+) -> Any:
+    """Select retained C1 or architecture-shaped physical C2 ownership."""
+
+    if int(getattr(owner, "capacity", 1)) == 1:
+        return Qwen35GGUFMoEMTP2Adapter(owner, **kwargs)
+    from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+
+    adapter = Qwen35GGUFMTP2Adapter(owner, **kwargs)
+    # Dense production rowtile arithmetic is independently qualified and must
+    # not transfer to the MoE target. Prompt normalization and the packed C2
+    # target numerical boundary are qualified in the MoE campaign instead.
+    adapter.production_physical_extra_rowtiles = False
+    adapter.production_physical_q5_rowtile = False
+    adapter.production_physical_q6_rowtile = False
+    adapter.moe_physical_c2_numerics = True
+    adapter.target_key = "qwen_moe_gguf"
+    adapter.provider_key = "qwen_nextn_moe"
+    adapter.policy_prefix = "moe-nextn"
+    return adapter
+
+
+__all__ = [
+    "Qwen35GGUFMoEMTP2Adapter",
+    "create_qwen35_gguf_moe_mtp2_adapter",
+]

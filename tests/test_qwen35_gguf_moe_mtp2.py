@@ -10,7 +10,9 @@ from hipengine.core.specdec2_scope import moe_physical_c2_numerics_session
 from hipengine.generation.qwen35_gguf_moe_mtp2 import (
     Qwen35GGUFMoEMTP2Adapter,
     _MoeTargetHiddenSink,
+    create_qwen35_gguf_moe_mtp2_adapter,
 )
+from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
 from hipengine.generation.qwen35_gguf_mtp2_registry import (
     register_builtin_gguf_mtp2_adapters,
     resolve_gguf_mtp2_adapter,
@@ -198,8 +200,41 @@ def test_moe_prefill_missing_sink_fails_closed_only_beyond_context_limit() -> No
         adapter.observe_prefill_result(7, tuple(range(95)), SimpleNamespace(token_id=1))
 
 
+def test_moe_adapter_factory_keeps_c1_and_selects_batched_c2() -> None:
+    owner_c1 = SimpleNamespace(capacity=1, generator=SimpleNamespace())
+    owner_c2 = SimpleNamespace(
+        capacity=2,
+        generator=SimpleNamespace(
+            execution_profile=SimpleNamespace(value="production"),
+            backend="hip_gfx1100",
+        ),
+    )
+    kwargs = {
+        "enabled": True,
+        "target_verify_mode": "native",
+        "candidate_budget": 2,
+        "quant": "gguf_q4_k_m",
+    }
+
+    c1 = create_qwen35_gguf_moe_mtp2_adapter(owner_c1, **kwargs)
+    c2 = create_qwen35_gguf_moe_mtp2_adapter(owner_c2, **kwargs)
+
+    assert isinstance(c1, Qwen35GGUFMoEMTP2Adapter)
+    assert isinstance(c2, Qwen35GGUFMTP2Adapter)
+    assert c2.production_physical_extra_rowtiles is False
+    assert c2.production_physical_q5_rowtile is False
+    assert c2.production_physical_q6_rowtile is False
+    assert c2.moe_physical_c2_numerics is True
+    assert c2.target_key == "qwen_moe_gguf"
+    assert c2.provider_key == "qwen_nextn_moe"
+    assert c2.policy_prefix == "moe-nextn"
+
+
 def test_builtin_registry_exposes_distinct_dense_and_moe_factories() -> None:
     register_builtin_gguf_mtp2_adapters()
 
     assert resolve_gguf_mtp2_adapter("dense_nextn").__name__ == "Qwen35GGUFMTP2Adapter"
-    assert resolve_gguf_mtp2_adapter("moe_nextn") is Qwen35GGUFMoEMTP2Adapter
+    assert (
+        resolve_gguf_mtp2_adapter("moe_nextn")
+        is create_qwen35_gguf_moe_mtp2_adapter
+    )

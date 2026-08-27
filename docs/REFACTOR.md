@@ -233,6 +233,18 @@ fallback count is not a success metric.
   `_catch_up_provider{,_batch}` from production selection while retaining a
   focused test oracle if still useful.
 
+## SPECDEC2 MoE request-local C2 prototype
+
+- Added 2026-08-27 as the first functional physical-C2 seam in
+  `Qwen35GGUFMoEMTP2Adapter`. Capacity-2 model-plugin construction now selects
+  the architecture-shaped `Qwen35GGUFMTP2Adapter` with a batched MoE NextN
+  executor, so the prototype C2 proposal/accept implementation in the old MoE
+  adapter is unreachable; capacity 1 still uses its qualified complete-cycle
+  implementation.
+- Removal trigger: after the batched provider passes complete C2 production and
+  lifecycle gates, delete the unreachable capacity-2 methods/branches and keep
+  only the retained C1 adapter plus the capacity-aware factory.
+
 ## SPECDEC2 MoE physical-C2 numerical scope
 
 - Added 2026-08-27 for the gfx1100 35B MoE physical-C2 campaign. The request-

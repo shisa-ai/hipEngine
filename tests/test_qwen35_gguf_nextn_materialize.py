@@ -111,6 +111,19 @@ def test_dense_nextn_plan_uses_sole_t16_for_all_q4_draft_weights(
     assert lm_head.allocation_names == ("tiles",)
 
 
+def test_moe_q4km_nextn_map_accepts_actual_expert_qtypes() -> None:
+    model = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+    if not model.exists():
+        pytest.skip(f"local GGUF fixture not found: {model}")
+
+    model_map = build_qwen35_gguf_nextn_tensor_map(GGUFReader(model).info)
+
+    assert model_map.validation.passed
+    assert model_map.tensor("ffn_gate_exps").ggml_type_name == "Q4_K"
+    assert model_map.tensor("ffn_up_exps").ggml_type_name == "Q4_K"
+    assert model_map.tensor("ffn_down_exps").ggml_type_name == "Q5_K"
+
+
 def test_nextn_materialization_borrows_compatible_target_fallbacks_without_owning_them(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -55,11 +55,17 @@ def register_builtin_gguf_mtp2_adapters() -> None:
     global _BUILTINS_REGISTERED
     if _BUILTINS_REGISTERED:
         return
-    from hipengine.generation.qwen35_gguf_moe_mtp2 import Qwen35GGUFMoEMTP2Adapter
+    from hipengine.generation.qwen35_gguf_moe_mtp2 import (
+        create_qwen35_gguf_moe_mtp2_adapter,
+    )
     from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
 
     register_gguf_mtp2_adapter("dense_nextn", Qwen35GGUFMTP2Adapter, replace=True)
-    register_gguf_mtp2_adapter("moe_nextn", Qwen35GGUFMoEMTP2Adapter, replace=True)
+    register_gguf_mtp2_adapter(
+        "moe_nextn",
+        create_qwen35_gguf_moe_mtp2_adapter,
+        replace=True,
+    )
     _BUILTINS_REGISTERED = True
 
 
