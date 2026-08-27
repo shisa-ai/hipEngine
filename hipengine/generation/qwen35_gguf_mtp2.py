@@ -781,7 +781,7 @@ class Qwen35GGUFMTP2Adapter:
             for eligibility in static_eligibilities
             if eligibility is not None
         )
-        if static_bounds and len(semantics) > min(static_bounds):
+        if static_bounds and len(semantics) != min(static_bounds):
             return None
         singleton_only = tuple(
             self._singleton_only(item.request_id)

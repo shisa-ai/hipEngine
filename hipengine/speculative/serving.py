@@ -390,9 +390,12 @@ class SpeculativeMTPServingDecision:
     evidence_fingerprint: str | None = None
     evidence_artifacts: tuple[str, ...] = ()
     automatic_eligible: bool = False
+    static_eligibility_override: SpeculativeMTPStaticEligibility | None = None
 
     @property
     def static_eligibility(self) -> SpeculativeMTPStaticEligibility:
+        if self.static_eligibility_override is not None:
+            return self.static_eligibility_override
         eligible = bool(self.admitted and self.selected_candidate_count > 0)
         return SpeculativeMTPStaticEligibility(
             state=(
@@ -422,6 +425,7 @@ class SpeculativeMTPServingDecision:
                 "evidence_key": self.evidence_key,
                 "evidence_fingerprint": self.evidence_fingerprint,
                 "automatic_eligible": self.automatic_eligible,
+                "static_eligibility": self.static_eligibility.as_dict(),
             }
         )
 
@@ -447,6 +451,8 @@ def _reject(
     key: SpeculativeMTPServingKey,
     reason: str,
     evidence: SpeculativeMTPServingEvidence | None,
+    *,
+    static_eligibility: SpeculativeMTPStaticEligibility | None = None,
 ) -> SpeculativeMTPServingDecision:
     return SpeculativeMTPServingDecision(
         key=key,
@@ -467,6 +473,7 @@ def _reject(
             () if evidence is None else evidence.evidence_artifacts
         ),
         automatic_eligible=False,
+        static_eligibility_override=static_eligibility,
     )
 
 
@@ -562,23 +569,58 @@ def resolve_speculative_mtp_serving_plan(
     if not evidence:
         return _reject(key, "no_model_plugin_evidence", None)
 
-    rejected: list[tuple[int, int, SpeculativeMTPServingEvidence, str]] = []
+    rejected: list[
+        tuple[
+            int,
+            int,
+            SpeculativeMTPServingEvidence,
+            str,
+            SpeculativeMTPStaticEligibility | None,
+        ]
+    ] = []
     for index, row in enumerate(evidence):
         checks = _evidence_checks(key, row)
-        failed_reason = next((reason for passed, reason in checks if not passed), None)
-        if failed_reason is None:
+        failed_reasons = tuple(
+            reason for passed, reason in checks if not passed
+        )
+        if not failed_reasons:
             return _admit(key, row)
+        static_eligibility = None
+        if (
+            failed_reasons == ("physical_group_not_qualified",)
+            and key.realized_group_rows < row.realized_group_rows
+        ):
+            static_eligibility = SpeculativeMTPStaticEligibility(
+                state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+                reason=row.reason,
+                max_candidate_count=row.candidate_budget,
+                max_realized_group_rows=row.realized_group_rows,
+                automatic_eligible=row.automatic_eligible,
+                strict_fallback_key=row.strict_fallback_key,
+                evidence_key=row.evidence_key,
+                evidence_fingerprint=_canonical_sha256(row.as_dict()),
+                evidence_artifacts=row.evidence_artifacts,
+            )
         rejected.append(
             (
                 sum(bool(passed) for passed, _reason in checks),
                 -index,
                 row,
-                failed_reason,
+                failed_reasons[0],
+                static_eligibility,
             )
         )
 
-    _matched, _order, row, reason = max(rejected, key=lambda item: (item[0], item[1]))
-    return _reject(key, reason, row)
+    _matched, _order, row, reason, static_eligibility = max(
+        rejected,
+        key=lambda item: (item[0], item[1]),
+    )
+    return _reject(
+        key,
+        reason,
+        row,
+        static_eligibility=static_eligibility,
+    )
 
 
 __all__ = [

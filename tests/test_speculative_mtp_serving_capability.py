@@ -315,6 +315,16 @@ def test_qwen36_dense_production_c2_k2_plan_is_exact_automatic_scope() -> None:
         "2026-08-27-w7900-27b-dense-mtp2-c2-automatic-promotion.json"
     )
 
+    frontend_c1 = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(
+        key=replace(key, realized_group_rows=1)
+    )
+    assert frontend_c1.admitted is False
+    assert frontend_c1.reason == "physical_group_not_qualified"
+    assert frontend_c1.static_eligibility.eligible is True
+    assert frontend_c1.static_eligibility.automatic_eligible is True
+    assert frontend_c1.static_eligibility.max_candidate_count == 2
+    assert frontend_c1.static_eligibility.max_realized_group_rows == 2
+
 
 def test_qwen36_moe_production_c1_k2_plan_is_exact_automatic_scope() -> None:
     evidence = Qwen35MoeGGUFModel().speculative_mtp_serving_evidence[0]

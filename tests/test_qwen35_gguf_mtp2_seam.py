@@ -2390,7 +2390,7 @@ def test_mtp2_singleton_only_streaming_opens_one_slot_provider_under_wide_owner(
     assert adapter._provider_groups == {}
 
 
-def test_mtp2_singleton_only_capability_fails_closed_when_a_neighbor_arrives() -> None:
+def test_mtp2_static_capability_requires_its_qualified_realized_width() -> None:
     def target():
         return SimpleNamespace(
             runner=SimpleNamespace(fp16_recurrent_state=False),
@@ -2463,6 +2463,22 @@ def test_mtp2_singleton_only_capability_fails_closed_when_a_neighbor_arrives() -
 
     assert adapter.capability((one,)) is not None
     assert adapter.capability((one, two)) is None
+
+    adapter._static_eligibility_by_request = {
+        rid: SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="qualified_test_c2",
+            max_candidate_count=2,
+            max_realized_group_rows=2,
+            automatic_eligible=True,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key=f"test-c2-{rid}",
+            evidence_fingerprint=f"sha256:test-c2-{rid}",
+        )
+        for rid in (7, 8)
+    }
+    assert adapter.capability((one,)) is None
+    assert adapter.capability((one, two)) is not None
 
 
 def test_mtp2_long_prompt_selects_k0_before_provider_streaming() -> None:
