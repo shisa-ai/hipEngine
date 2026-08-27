@@ -122,6 +122,38 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
         strict_fallback_key="gguf_target_ar",
         automatic_eligible=False,
     ),
+    SpeculativeMTPServingEvidence(
+        evidence_key="qwen36-dense-q4km-gfx1100-production-bf16-c2-k2-d24",
+        artifact_sha256=(
+            "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f"
+        ),
+        artifact_size_bytes=17_106_773_120,
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        weight_quant="gguf_q4_k_m",
+        execution_profile="production",
+        execution_profile_manifest_sha256=(
+            "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff"
+        ),
+        kv_storage="bf16",
+        kv_layout="uniform",
+        realized_group_rows=2,
+        resident_capacity=2,
+        candidate_budget=2,
+        sampling_modes=("greedy_fast",),
+        max_sequence_length=1024,
+        min_context_tokens=4,
+        max_context_tokens=95,
+        min_output_horizon_tokens=24,
+        max_output_horizon_tokens=24,
+        reason="qualified_explicit_production_dense_c2_k2_d24",
+        evidence_artifacts=(
+            "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-production-quality.json",
+            "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json",
+        ),
+        strict_fallback_key="gguf_target_ar",
+        automatic_eligible=False,
+    ),
 )
 
 

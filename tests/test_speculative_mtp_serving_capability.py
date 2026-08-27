@@ -218,6 +218,45 @@ def test_qwen36_dense_strict_c2_k2_plan_is_explicit_only() -> None:
     ).reason == "physical_group_not_qualified"
 
 
+def test_qwen36_dense_production_c2_k2_plan_is_explicit_only() -> None:
+    evidence = next(
+        row
+        for row in Qwen35GGUFModel().speculative_mtp_serving_evidence
+        if row.evidence_key
+        == "qwen36-dense-q4km-gfx1100-production-bf16-c2-k2-d24"
+    )
+    key = SpeculativeMTPServingKey(
+        artifact_sha256=evidence.artifact_sha256,
+        artifact_size_bytes=evidence.artifact_size_bytes,
+        content_verified=True,
+        backend=evidence.backend,
+        target_arch=evidence.target_arch,
+        weight_quant=evidence.weight_quant,
+        execution_profile=evidence.execution_profile,
+        execution_profile_manifest_sha256=(
+            evidence.execution_profile_manifest_sha256
+        ),
+        kv_storage=evidence.kv_storage,
+        kv_layout=evidence.kv_layout,
+        realized_group_rows=2,
+        resident_capacity=2,
+        candidate_budget=2,
+        sampling_mode="greedy_fast",
+        max_sequence_length=1024,
+        context_tokens=95,
+        output_horizon_tokens=24,
+        memory_fit=True,
+    )
+
+    decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(key=key)
+
+    assert decision.admitted is True
+    assert decision.automatic_eligible is False
+    assert decision.selected_candidate_count == 2
+    assert decision.reason == "qualified_explicit_production_dense_c2_k2_d24"
+    assert decision.strict_fallback_key == "gguf_target_ar"
+
+
 def test_qwen36_moe_production_c1_k2_plan_is_exact_automatic_scope() -> None:
     evidence = Qwen35MoeGGUFModel().speculative_mtp_serving_evidence[0]
     key = SpeculativeMTPServingKey(
