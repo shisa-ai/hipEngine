@@ -21,6 +21,7 @@ from pathlib import Path
 import platform
 import sys
 import threading
+import time
 from typing import Any, Mapping, Sequence
 
 import numpy as np
@@ -238,7 +239,12 @@ def _production_pairs(
     max_sequence_length: int,
     repeat_runs: int,
     context: dict[str, Any],
-) -> tuple[dict[str, list[tuple[int, ...]]], dict[str, Any], dict[str, Any]]:
+) -> tuple[
+    dict[str, list[tuple[int, ...]]],
+    dict[str, tuple[int, ...]],
+    dict[str, Any],
+    dict[str, Any],
+]:
     llm = LLM(
         str(model),
         backend="hip_gfx1100",
@@ -252,41 +258,80 @@ def _production_pairs(
     try:
         llm.prepare(max_sequence_length=max_sequence_length)
         sampling = SamplingParams(max_tokens=max_tokens, temperature=0.0, top_p=1.0)
-        pairs = tuple((str(prompts[i]["id"]), str(prompts[i + 1]["id"])) for i in range(0, len(prompts), 2))
-        for repeat in range(repeat_runs):
-            for pair_index, base_pair in enumerate(pairs):
-                pair = base_pair if repeat % 2 == 0 else tuple(reversed(base_pair))
-                barrier = threading.Barrier(2)
-                start_capture = len(context["captures"])
-                context["repeat"] = repeat
-                context["pair"] = pair_index
-                context["enabled"] = True
+        pairs = tuple(
+            (str(prompts[i]["id"]), str(prompts[i + 1]["id"]))
+            for i in range(0, len(prompts), 2)
+        )
 
-                def run(prompt_id: str) -> tuple[str, dict[str, Any]]:
-                    barrier.wait(timeout=30.0)
-                    chunks = tuple(
-                        llm.stream_speculative_mtp_detailed(
-                            str(prompt_by_id[prompt_id]["rendered_prompt"]),
-                            sampling,
-                        )
+        def run_pair(
+            pair: tuple[str, str],
+            *,
+            repeat: int,
+            pair_index: int,
+            capture_enabled: bool,
+        ) -> tuple[tuple[str, dict[str, Any]], ...]:
+            barrier = threading.Barrier(2)
+            start_capture = len(context["captures"])
+            context["repeat"] = repeat
+            context["pair"] = pair_index
+            context["enabled"] = capture_enabled
+
+            def run(item: tuple[int, str]) -> tuple[str, dict[str, Any]]:
+                index, prompt_id = item
+                barrier.wait(timeout=30.0)
+                # Stable request/slot ownership is part of same-schedule
+                # repeatability. The stagger is tiny relative to prefill and
+                # still forms one live C2 decode group.
+                if index:
+                    time.sleep(0.01)
+                chunks = tuple(
+                    llm.stream_speculative_mtp_detailed(
+                        str(prompt_by_id[prompt_id]["rendered_prompt"]),
+                        sampling,
                     )
-                    return prompt_id, _output_record(chunks)
+                )
+                return prompt_id, _output_record(chunks)
 
-                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                    rows = tuple(executor.map(run, pair))
-                context["enabled"] = False
-                request_to_prompt: dict[int, str] = {}
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                rows = tuple(executor.map(run, enumerate(pair)))
+            context["enabled"] = False
+            request_to_prompt = {
+                int(row["request_id"]): prompt_id for prompt_id, row in rows
+            }
+            captures = context["captures"][start_capture:]
+            if capture_enabled and not captures:
+                raise GateError(f"production pair {pair} executed no physical C2 target")
+            for capture in captures:
+                try:
+                    capture["prompt_id"] = request_to_prompt[
+                        int(capture["request_id"])
+                    ]
+                except KeyError as exc:
+                    raise GateError(
+                        "physical capture request identity crossed pair ownership"
+                    ) from exc
+            return rows
+
+        for repeat in range(repeat_runs):
+            for pair_index, pair in enumerate(pairs):
+                rows = run_pair(
+                    pair,
+                    repeat=repeat,
+                    pair_index=pair_index,
+                    capture_enabled=True,
+                )
                 for prompt_id, row in rows:
-                    request_to_prompt[int(row["request_id"])] = prompt_id
                     output_runs[prompt_id].append(tuple(row["token_ids"]))
-                captures = context["captures"][start_capture:]
-                if not captures:
-                    raise GateError(f"production pair {pair} executed no physical C2 target")
-                for capture in captures:
-                    try:
-                        capture["prompt_id"] = request_to_prompt[int(capture["request_id"])]
-                    except KeyError as exc:
-                        raise GateError("physical capture request identity crossed pair ownership") from exc
+        permutation_outputs: dict[str, tuple[int, ...]] = {}
+        for pair_index, pair in enumerate(pairs):
+            rows = run_pair(
+                tuple(reversed(pair)),
+                repeat=repeat_runs,
+                pair_index=pair_index,
+                capture_enabled=False,
+            )
+            for prompt_id, row in rows:
+                permutation_outputs[prompt_id] = tuple(row["token_ids"])
         context["enabled"] = False
         service = llm._get_text_generator()
         snapshot = service.live_loop_snapshot()
@@ -302,7 +347,7 @@ def _production_pairs(
     finally:
         context["enabled"] = False
         llm.close()
-    return dict(output_runs), profile, observability
+    return dict(output_runs), permutation_outputs, profile, observability
 
 
 def _repeat_verdict(captures: Sequence[Mapping[str, Any]], repeat_runs: int) -> dict[str, Any]:
@@ -458,7 +503,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     }
     original = _install_packed_capture(context)
     try:
-        production_outputs, production_profile, observability = _production_pairs(
+        (
+            production_outputs,
+            permutation_outputs,
+            production_profile,
+            observability,
+        ) = _production_pairs(
             model,
             prompts,
             max_tokens=args.max_tokens,
@@ -486,10 +536,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     for prompt_id, runs in production_outputs.items():
         repeat_exact = len(set(runs)) == 1
         strict_equal = runs[0] == tuple(strict_outputs[prompt_id])
+        permutation_equal = permutation_outputs.get(prompt_id) == runs[0]
         output_checks.append(
             {
                 "prompt_id": prompt_id,
                 "repeat_exact": repeat_exact,
+                "neighbor_permutation_isolation": permutation_equal,
                 "strict_generated_ids_equal_diagnostic": strict_equal,
             }
         )
@@ -562,6 +614,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "numerical": bool(numerical["passed"]),
         "repeat_determinism": bool(repeat_gate["passed"]),
         "output_repeat": all(row["repeat_exact"] for row in output_checks),
+        "neighbor_permutation_isolation": all(
+            row["neighbor_permutation_isolation"] for row in output_checks
+        ),
         "task_noninferiority": bool(tasks["passed"]),
         "profiles": all(profile_checks.values()),
         "lifecycle": all(lifecycle.values()),
@@ -703,7 +758,7 @@ def main() -> int:
             {
                 "status": payload["status"],
                 "checks": payload["checks"],
-                "summary": payload["numerical"]["summary"],
+                "summary": payload["numerical"]["aggregate"],
                 "output": str(args.output),
             },
             indent=2,
