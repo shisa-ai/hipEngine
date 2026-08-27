@@ -6,6 +6,7 @@ import pytest
 
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
+from hipengine.core.specdec2_scope import moe_physical_c2_numerics_session
 from hipengine.generation.qwen35_gguf_moe_mtp2 import (
     Qwen35GGUFMoEMTP2Adapter,
     _MoeTargetHiddenSink,
@@ -15,6 +16,7 @@ from hipengine.generation.qwen35_gguf_mtp2_registry import (
     resolve_gguf_mtp2_adapter,
 )
 from hipengine.speculative.provider import SpeculativeRequestSemantics
+from hipengine.runtime.qwen35_gguf_runner import _gguf_verify_f32_residual_enabled
 
 
 class _Runtime:
@@ -27,6 +29,15 @@ class _Runtime:
 
     def stream_synchronize(self, stream):
         self.syncs.append(int(stream))
+
+
+def test_moe_physical_c2_numerics_scope_is_request_local(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_VERIFY_F32_RESIDUAL", "1")
+
+    assert _gguf_verify_f32_residual_enabled() is True
+    with moe_physical_c2_numerics_session(True):
+        assert _gguf_verify_f32_residual_enabled() is False
+    assert _gguf_verify_f32_residual_enabled() is True
 
 
 def test_moe_target_hidden_sink_preserves_rows_and_publishes_final_target() -> None:

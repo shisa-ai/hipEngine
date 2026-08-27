@@ -20,6 +20,7 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.tensor import Tensor
+from hipengine.core.specdec2_scope import moe_physical_c2_numerics_session
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
     ACCEPT_PACKED_PAYLOAD_FIELDS,
@@ -1046,7 +1047,8 @@ class Qwen35GGUFMoEMTP2Adapter:
         if not callable(verify_batch):
             raise RuntimeError("MoE physical target owner has no packed verifier")
         target_started = time.perf_counter()
-        results = list(verify_batch(jobs, device_result=False))
+        with moe_physical_c2_numerics_session(True):
+            results = list(verify_batch(jobs, device_result=False))
         target_seconds = time.perf_counter() - target_started
         if len(results) != 2:
             raise RuntimeError("MoE physical target returned the wrong request count")

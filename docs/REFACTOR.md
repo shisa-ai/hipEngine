@@ -233,6 +233,18 @@ fallback count is not a success metric.
   `_catch_up_provider{,_batch}` from production selection while retaining a
   focused test oracle if still useful.
 
+## SPECDEC2 MoE physical-C2 numerical scope
+
+- Added 2026-08-27 for the gfx1100 35B MoE physical-C2 campaign. The request-
+  local `moe_physical_c2_numerics_session(...)` disables the C1 production
+  F32-residual diagnostic only while the packed C2 target executes; the packed
+  owner cannot represent that diagnostic and fails closed without the scope.
+  C1 production and strict retain their existing arithmetic. C2 remains absent
+  from model policy until its independent full strict-teacher/task gate passes.
+- Removal trigger: replace the temporary ContextVar with a profile-resolved
+  physical-C2 target manifest after qualification, preserving the C1 production
+  and strict fallbacks plus the focused scope test.
+
 ## SPECDEC2 physical production scope
 
 - Added 2026-08-27 for the gfx1100 physical-C2 production campaign. The backend-

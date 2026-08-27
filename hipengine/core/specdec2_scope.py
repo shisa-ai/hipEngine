@@ -19,6 +19,10 @@ _q6_t16_physical_rowtile: ContextVar[bool] = ContextVar(
     "q6_t16_physical_rowtile",
     default=False,
 )
+_moe_physical_c2_disable_f32_residual: ContextVar[bool] = ContextVar(
+    "moe_physical_c2_disable_f32_residual",
+    default=False,
+)
 
 
 @contextlib.contextmanager
@@ -72,7 +76,26 @@ def q6_t16_physical_rowtile_enabled() -> bool:
     return bool(_q6_t16_physical_rowtile.get())
 
 
+@contextlib.contextmanager
+def moe_physical_c2_numerics_session(enabled: bool) -> Iterator[None]:
+    """Select the independently gated packed-MoE C2 numerical boundary."""
+
+    token = _moe_physical_c2_disable_f32_residual.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _moe_physical_c2_disable_f32_residual.reset(token)
+
+
+def moe_physical_c2_f32_residual_disabled() -> bool:
+    """Return whether packed MoE C2 replaces the C1 F32-residual diagnostic."""
+
+    return bool(_moe_physical_c2_disable_f32_residual.get())
+
+
 __all__ = [
+    "moe_physical_c2_f32_residual_disabled",
+    "moe_physical_c2_numerics_session",
     "q4_t16_physical_extra_rowtiles_enabled",
     "q4_t16_physical_extra_rowtiles_session",
     "q5_t16_physical_rowtile_enabled",
