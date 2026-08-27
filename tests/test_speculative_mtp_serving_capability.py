@@ -11,12 +11,14 @@ from hipengine.models.qwen35 import Qwen35GGUFModel, Qwen35MoeGGUFModel
 from hipengine.speculative.serving import (
     SpeculativeMTPServingEvidence,
     SpeculativeMTPServingKey,
+    SpeculativeMTPStaticState,
     resolve_speculative_mtp_serving_plan,
 )
 
 
 _MODEL_SHA256 = "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
 _STRICT_MANIFEST_SHA256 = "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+_PRODUCTION_MANIFEST_SHA256 = "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51"
 
 
 def _key(**changes) -> SpeculativeMTPServingKey:
@@ -45,6 +47,54 @@ def _key(**changes) -> SpeculativeMTPServingKey:
 
 def _evidence() -> SpeculativeMTPServingEvidence:
     return Qwen35GGUFModel().speculative_mtp_serving_evidence[0]
+
+
+def test_qwen38_q4km_strict_c1_b3_capacity4_realized_singleton_is_automatic() -> None:
+    decision = resolve_speculative_mtp_serving_plan(
+        Qwen35GGUFModel().speculative_mtp_serving_evidence,
+        key=_key(resident_capacity=4),
+    )
+
+    assert decision.admitted is True
+    assert decision.selected_route == "speculative_mtp"
+    assert decision.selected_candidate_count == 3
+    assert decision.reason == "qualified_automatic_realized_singleton_c1_b3"
+    assert decision.automatic_eligible is True
+    assert decision.strict_fallback_key == "gguf_target_ar"
+    assert decision.static_eligibility.state is SpeculativeMTPStaticState.SPECULATIVE_CAPABLE
+    assert decision.static_eligibility.max_candidate_count == 3
+    assert decision.static_eligibility.max_realized_group_rows == 1
+    assert "realized_group_rows" not in decision.static_eligibility.as_dict()
+    assert decision.as_dict()["static_eligibility"]["eligible"] is True
+
+
+def test_qwen38_q4km_production_c1_b3_context128_is_explicit_only() -> None:
+    evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
+    key = _key(
+        execution_profile="production",
+        execution_profile_manifest_sha256=_PRODUCTION_MANIFEST_SHA256,
+        context_tokens=128,
+        output_horizon_tokens=24,
+    )
+
+    decision = resolve_speculative_mtp_serving_plan(evidence, key=key)
+    over = resolve_speculative_mtp_serving_plan(
+        evidence,
+        key=replace(key, context_tokens=129),
+    )
+
+    assert decision.admitted is True
+    assert decision.selected_route == "speculative_mtp"
+    assert decision.selected_candidate_count == 3
+    assert decision.reason == "qualified_explicit_production_c1_b3_context128"
+    assert decision.automatic_eligible is False
+    assert decision.strict_fallback_key == "gguf_target_ar"
+    assert decision.evidence_artifacts[-1] == (
+        "benchmarks/results/"
+        "2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json"
+    )
+    assert over.admitted is False
+    assert over.reason == "context_bucket_not_qualified"
 
 
 def test_qwen38_q4km_strict_c1_b3_plan_is_automatic_product_scope() -> None:
@@ -146,7 +196,12 @@ def test_serving_resolver_selects_exact_physical_width_among_same_artifact_rows(
 
 
 def test_qwen36_dense_production_row_resolves_after_qwen38_evidence() -> None:
-    evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence[1]
+    evidence = next(
+        row
+        for row in Qwen35GGUFModel().speculative_mtp_serving_evidence
+        if row.evidence_key
+        == "qwen36-dense-q4km-gfx1100-production-bf16-c1-k3-d24"
+    )
     key = SpeculativeMTPServingKey(
         artifact_sha256=evidence.artifact_sha256,
         artifact_size_bytes=evidence.artifact_size_bytes,
@@ -295,6 +350,20 @@ def test_qwen36_moe_production_c1_k2_plan_is_exact_automatic_scope() -> None:
     assert Qwen35MoeGGUFModel().resolve_speculative_mtp_serving_plan(
         key=replace(key, output_horizon_tokens=25)
     ).reason == "output_horizon_not_qualified"
+
+
+def test_rejected_serving_plan_exposes_permanent_ar_static_eligibility() -> None:
+    decision = resolve_speculative_mtp_serving_plan(
+        Qwen35GGUFModel().speculative_mtp_serving_evidence,
+        key=_key(context_tokens=1024),
+    )
+
+    assert decision.admitted is False
+    assert decision.static_eligibility.state is SpeculativeMTPStaticState.PERMANENT_AR
+    assert decision.static_eligibility.eligible is False
+    assert decision.static_eligibility.max_candidate_count == 0
+    assert decision.static_eligibility.max_realized_group_rows == 0
+    assert decision.static_eligibility.automatic_eligible is False
 
 
 def test_unverified_artifact_and_generic_dense_inventory_cannot_admit() -> None:

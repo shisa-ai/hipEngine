@@ -32,6 +32,8 @@ from hipengine.runtime.qwen35_gguf_nextn import (
 from hipengine.speculative import (
     DraftBatch,
     MtpProposalContext,
+    SpeculativeMTPStaticEligibility,
+    SpeculativeMTPStaticState,
     SpeculativeRequestSemantics,
     TargetVerifyBatch,
     TargetVerifyBuffers,
@@ -42,8 +44,16 @@ class _AdapterDouble:
     def __init__(self) -> None:
         self.calls = []
 
-    def register_request(self, request_id, candidate_budget):
-        self.calls.append(("register", request_id, candidate_budget))
+    def register_request(
+        self,
+        request_id,
+        candidate_budget,
+        *,
+        static_eligibility=None,
+    ):
+        self.calls.append(
+            ("register", request_id, candidate_budget, static_eligibility)
+        )
 
     def capability(self, semantics):
         self.calls.append(("capability", tuple(semantics)))
@@ -172,7 +182,7 @@ def test_resident_runner_delegates_staged_methods_without_backend_branches() -> 
 
     runner.register_speculative_request(7, 3)
     assert runner._rows[7].mtp2_candidate_budget == 3
-    assert adapter.calls == [("register", 7, 3)]
+    assert adapter.calls == [("register", 7, 3, None)]
     assert runner.speculative_capability(("semantics",)) == "capability"
     assert runner.speculative_claims_fit("plan") is True
     assert runner.speculative_component_claims("plan") == {"plan": "plan"}
@@ -2267,6 +2277,192 @@ def test_mtp2_physical_prompt_streaming_is_rejected_before_provider_open() -> No
         for row in rows.values()
     )
     assert all(row.mtp2_candidate_budget == 2 for row in rows.values())
+
+
+def test_mtp2_singleton_only_streaming_opens_one_slot_provider_under_wide_owner(
+    monkeypatch,
+) -> None:
+    acquired: list[int] = []
+    released: list[int] = []
+
+    class Executor:
+        hidden_size = 4
+        max_requests = 1
+
+        def enqueue_prompt_rows(self, *args, **kwargs) -> None:
+            pass
+
+        def finish_prompt_priming(self, request_id, *, stream, synchronize) -> None:
+            pass
+
+    class Provider:
+        executor = Executor()
+
+        def reset_request(self, request_id) -> None:
+            pass
+
+        def release_request(self, request_id) -> None:
+            released.append(int(request_id))
+
+    provider = Provider()
+    target = SimpleNamespace(
+        runner=SimpleNamespace(
+            fp16_recurrent_state=False,
+            hidden_size=4,
+            weights=SimpleNamespace(
+                root=lambda name: SimpleNamespace(
+                    allocation=lambda: SimpleNamespace(
+                        tensor=SimpleNamespace(ptr=0x4000)
+                    )
+                ),
+                config=SimpleNamespace(rms_norm_eps=1e-6),
+            ),
+        ),
+        target_layout=SimpleNamespace(max_sequence_length=1024),
+        runtime=object(),
+        _prefill_hidden_a=DeviceBuffer(0x5000, 16),
+    )
+    row = SimpleNamespace(
+        prompt_ids=(11, 22),
+        lease=SimpleNamespace(session=target),
+        prefix_reused_tokens=0,
+        mtp2_candidate_budget=3,
+        mtp2_prompt_fallback_reason=None,
+    )
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(
+            backend="hip_gfx1151",
+            execution_profile="strict",
+            _acquire_dense_mtp_draft_provider=lambda *args, **kwargs: (
+                acquired.append(int(kwargs["max_requests"])) or provider,
+                "pool",
+                False,
+            ),
+            _release_mtp_draft_runner=lambda *args: None,
+        ),
+        capacity=4,
+        _shared_runner=SimpleNamespace(hidden_size=4),
+        _row=lambda request_id: row,
+    )
+
+    class Sink:
+        def __init__(self, *, request_id, **kwargs) -> None:
+            self.request_id = int(request_id)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(mtp2_module, "_StreamingNextNPromptSink", Sink)
+    monkeypatch.setattr(
+        mtp2_module,
+        "malloc",
+        lambda *args, **kwargs: DeviceBuffer(0x6000, 16),
+    )
+    monkeypatch.setattr(mtp2_module, "free", lambda *args, **kwargs: None)
+    adapter = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=3,
+    )
+    adapter.register_request(
+        7,
+        3,
+        static_eligibility=SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="qualified_test_singleton",
+            max_candidate_count=3,
+            max_realized_group_rows=1,
+            automatic_eligible=True,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key="test-singleton",
+            evidence_fingerprint="sha256:test-singleton",
+        ),
+    )
+
+    sinks = adapter.begin_prompt_streaming((7,), checkpoints={})
+
+    assert sinks is not None and len(sinks) == 1
+    assert acquired == [1]
+    assert row.mtp2_prompt_fallback_reason is None
+    adapter.finish_prompt_streaming((7,), success=False, stream=0)
+    assert released == [7]
+    assert adapter._provider_groups == {}
+
+
+def test_mtp2_singleton_only_capability_fails_closed_when_a_neighbor_arrives() -> None:
+    def target():
+        return SimpleNamespace(
+            runner=SimpleNamespace(fp16_recurrent_state=False),
+            _target_scratch_owner=SimpleNamespace(slot_count=4),
+            target_layout=SimpleNamespace(max_sequence_length=1024),
+            kv_storage_dtype="bf16",
+        )
+
+    targets = {7: target(), 8: target()}
+    rows = {
+        rid: SimpleNamespace(
+            native_greedy=True,
+            first_token_emitted=True,
+            lease=SimpleNamespace(session=targets[rid]),
+            slot=SimpleNamespace(),
+        )
+        for rid in targets
+    }
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.enabled = True
+    adapter.candidate_budget = 3
+    adapter.target_verify_mode = "native"
+    adapter.quant = "gguf_q4_k_m"
+    adapter.generator = SimpleNamespace(
+        backend="hip_gfx1151",
+        execution_profile="strict",
+    )
+    adapter.owner = SimpleNamespace(capacity=4, _row=lambda rid: rows[int(rid)])
+    adapter._intents = {7: 3, 8: 3}
+    adapter._static_eligibility_by_request = {
+        rid: SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="qualified_test_singleton",
+            max_candidate_count=3,
+            max_realized_group_rows=1,
+            automatic_eligible=True,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key=f"test-singleton-{rid}",
+            evidence_fingerprint=f"sha256:test-singleton-{rid}",
+        )
+        for rid in (7, 8)
+    }
+    adapter._disabled_requests = set()
+    adapter._prompt_hidden_rows = {}
+    adapter._states = {
+        rid: _MTP2RequestState(
+            request_id=rid,
+            provider=SimpleNamespace(),
+            provider_pool_key=None,
+            provider_group_key=(rid,),
+            verifier=SimpleNamespace(target_verify_mode="native"),
+            root_hidden_buffer=SimpleNamespace(ptr=rid),
+        )
+        for rid in targets
+    }
+    one = SpeculativeRequestSemantics(
+        request_id=7,
+        sampling_mode="greedy",
+        mode="verify_chain",
+        context_tokens=32,
+        remaining_decode=25,
+    )
+    two = SpeculativeRequestSemantics(
+        request_id=8,
+        sampling_mode="greedy",
+        mode="verify_chain",
+        context_tokens=32,
+        remaining_decode=25,
+    )
+
+    assert adapter.capability((one,)) is not None
+    assert adapter.capability((one, two)) is None
 
 
 def test_mtp2_long_prompt_selects_k0_before_provider_streaming() -> None:

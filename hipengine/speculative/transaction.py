@@ -11,7 +11,11 @@ from hipengine.kvcache import (
     ResourceClaim,
     ResourceClaimSet,
 )
-from hipengine.speculative.frontier import SpecPlanReason, SpecTransactionMode
+from hipengine.speculative.frontier import (
+    SpecK0Class,
+    SpecPlanReason,
+    SpecTransactionMode,
+)
 from hipengine.speculative.interfaces import AcceptResult
 
 
@@ -257,6 +261,7 @@ class SpecCycleTelemetry:
     scheduler_readback_seconds: float = 0.0
     weight_sweeps: int = 1
     result_bytes: int = 0
+    k0_classes: tuple[SpecK0Class, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "operation_id", _required_text(self.operation_id, "operation_id"))
@@ -267,11 +272,30 @@ class SpecCycleTelemetry:
         reasons = tuple(SpecPlanReason(reason) for reason in self.plan_reasons)
         if len(reasons) != len(request_ids):
             raise ValueError("plan_reasons must align with request_ids")
-        for count, reason in zip(counts, reasons, strict=True):
+        k0_classes = (
+            tuple(SpecK0Class(value) for value in self.k0_classes)
+            if self.k0_classes
+            else tuple(
+                SpecK0Class.NOT_K0 if count > 0 else SpecK0Class.PURE
+                for count in counts
+            )
+        )
+        if len(k0_classes) != len(request_ids):
+            raise ValueError("k0_classes must align with request_ids")
+        for count, reason, k0_class in zip(
+            counts,
+            reasons,
+            k0_classes,
+            strict=True,
+        ):
             if count > 0 and reason is not SpecPlanReason.SPECULATIVE_QUALIFIED:
                 raise ValueError("positive candidate counts require speculative-qualified reason")
             if count == 0 and reason is SpecPlanReason.SPECULATIVE_QUALIFIED:
                 raise ValueError("speculative-qualified reason requires candidate rows")
+            if count > 0 and k0_class is not SpecK0Class.NOT_K0:
+                raise ValueError("speculative telemetry rows require not_k0")
+            if count == 0 and k0_class is SpecK0Class.NOT_K0:
+                raise ValueError("K0 telemetry rows require pure/transitional class")
         proposal_widths = tuple(int(width) for width in self.proposal_widths)
         speculative_requests = sum(1 for count in counts if count > 0)
         if speculative_requests:
@@ -311,6 +335,7 @@ class SpecCycleTelemetry:
         object.__setattr__(self, "request_ids", request_ids)
         object.__setattr__(self, "candidate_counts", counts)
         object.__setattr__(self, "plan_reasons", reasons)
+        object.__setattr__(self, "k0_classes", k0_classes)
         object.__setattr__(self, "proposal_widths", proposal_widths)
         object.__setattr__(self, "target_row_decomposition", target_rows)
         object.__setattr__(self, "execution_route", route)

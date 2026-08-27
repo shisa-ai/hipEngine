@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_dynamic_admission_d1_static_eligibility",
+  "created_at": "2026-08-27T10:20:00Z",
+  "validated_at": "2026-08-27T15:05:00Z",
+  "status": "retained_d1_complete",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "Retain typed static eligibility, pure/transitional K0 classification, and mixed disjoint execution. Automatic policy and arithmetic are unchanged; D2 explicit production C2/K1 is admitted.",
+  "source": {
+    "implementation_commit": "2e1cc6e2d",
+    "integrated_validation_commit": "998ba54f77e103e3754d66d6e99d92ce9f715657",
+    "d0_handoff": "benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d0-handoff.json"
+  },
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "hip_visible_devices": "0",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "execution_profile": "strict"
+  },
+  "implementation": {
+    "static_eligibility": "SpeculativeMTPStaticEligibility carries permanent_ar/speculative_capable state, max K and evidence C bound, automatic eligibility, strict fallback, evidence identity/fingerprint/artifacts; it contains no actual C_due or selected K",
+    "frontend": "queue-group K0 decisions preserve eligible static intent and report static eligibility fingerprint plus pure/transitional K0 class",
+    "service": "eligible intent enters ordinary EngineService/Generation-2 even when queue grouping predicts K0; request response remains truthful K0",
+    "cycle_planner": "actual ResidentEngineLoop WorkItem remains sole C_due/K owner and records recent immutable plans with per-row K0 classes",
+    "k0": "permanent AR is provider-free pure_k0; eligible K0 is transitional_k0 and executes target-output provider catch-up",
+    "mixed": "when an AR-only neighbor makes the composed capability unavailable, the loop records mixed transitional/pure K0, executes the eligible subset as a disjoint speculative frontier in the same fairness tick, and decodes the AR subset once",
+    "cleanup": "temporary speculative_mtp_singleton_only bool/set is removed and replaced by the typed eligibility object/map"
+  },
+  "validation": {
+    "red": "D0 inline assertion failed KeyError: static_eligibility",
+    "host_fake_original": "168 passed across LLM, EngineService/Loop, speculative contracts/policy/transactions, GGUF/PARO seams, journal, and serving capability; six focused server routing tests passed",
+    "host_fake_integrated": "76/76 additional post-merge LLM, Generation/SpecDec EngineService, contract, policy, and transaction tests passed; the isolated merge-fixture repair passed both changed files",
+    "cache_preflight": "merged source requested missing dflash_accept-5b34fd2815bf2b5f; one non-profiled warmup built it, then all final GPU gates ran with HIPENGINE_REQUIRE_CACHED_BUILD=1 and /tmp/compiler-version-gfx1151.txt",
+    "blocking_sse": "automatic singleton blocking and SSE matched controls, engaged MTP under the qualified route, completed truthfully, and returned tracked allocations to zero",
+    "public_c2": "two independent automatic HTTP children retained typed intent into resident C2, adapter capability saw width2 and failed closed, resident plan recorded transitional_k0 for both, outputs matched AR, following C1 MTP was healthy, and ownership returned to zero",
+    "mixed_gpu": "one spec-capable child plus one permanent-AR child produced transitional/pure mixed K0, then disjoint C1 MTP plus one AR decode; both outputs matched controls and ownership returned to zero",
+    "production_policy": "unchanged; D1 changes routing/intention semantics, not arithmetic or automatic C2+ policy"
+  },
+  "command": {
+    "environment": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/compiler-version-gfx1151.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONDONTWRITEBYTECODE=1",
+    "programs": [
+      ".venv/bin/python /tmp/qwen38_cap4_auto_smoke.py",
+      ".venv/bin/python /tmp/qwen38_cap4_auto_c2_k0.py",
+      ".venv/bin/python /tmp/qwen38_d1_mixed_intent.py"
+    ]
+  },
+  "raw_sources": [
+    {
+      "path": "/tmp/qwen38-cap4-auto-smoke.json",
+      "sha256": "fc1e870a2afa14ceecbce42d731e24cdd2aeec650890f1e3162787350fed1cd5",
+      "size_bytes": 34650,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38_cap4_auto_smoke.py",
+      "sha256": "f9bc7eb5a1adffddd455dac78dd3519fd071a2e51868675f024e1044b5fa7a21",
+      "size_bytes": 3416,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-cap4-auto-c2-k0.json",
+      "sha256": "a3b32e2f563f5dae5fdd6c7a2984fe95bcb5bdf37c408eeff27d46cf948323d1",
+      "size_bytes": 62620,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38_cap4_auto_c2_k0.py",
+      "sha256": "b9058d49fa18a552aa1fdbbf41ba32ff44491efebd389b481b18be8212bc7dea",
+      "size_bytes": 4237,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-d1-mixed-intent.json",
+      "sha256": "f93b7bd15d24f757abd7bcb74fa8d7a29627b6d29225f38ef217a6889d7620f2",
+      "size_bytes": 46153,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38_d1_mixed_intent.py",
+      "sha256": "d0a4fb67987f4e8d1575a3822bda89e687e1e1e2d6551580f4dd88b14d049fd4",
+      "size_bytes": 4146,
+      "retained_in_git": false
+    }
+  ],
+  "next": "D2 explicit-only production Q4_K_M C2/K1 through two independent normal-owner EngineService/OpenAI children."
+}

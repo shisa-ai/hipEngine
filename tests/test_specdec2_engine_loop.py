@@ -11,6 +11,7 @@ from hipengine.speculative import (
     SpecCycleResult,
     SpecCycleTelemetry,
     SpecCycleTransaction,
+    SpecK0Class,
     SpecPlanReason,
     SpecTransactionMode,
     SpeculativeCapability,
@@ -136,6 +137,7 @@ class _CycleRunner:
             request_ids=plan.request_ids,
             candidate_counts=plan.candidate_counts,
             plan_reasons=plan.reasons,
+            k0_classes=plan.k0_classes,
             proposal_widths=plan.proposal_widths,
             target_row_decomposition=plan.target_row_decomposition,
             execution_route=plan.execution_route,
@@ -273,6 +275,12 @@ def test_opaque_cycle_failure_uses_shared_recovery_boundary() -> None:
     assert loop.completed[request_id].generated_tokens == (9000, 9001, 9002)
 
 
+class _DisjointMixedRunner(_CycleRunner):
+    def speculative_capability(self, request_semantics):
+        semantics = tuple(request_semantics)
+        return None if len(semantics) > 1 else super().speculative_capability(semantics)
+
+
 def test_one_speculative_cycle_is_one_engine_tick_with_multi_token_events() -> None:
     runner = _CycleRunner()
     loop = ResidentEngineLoop(runner, capacity=2, prefill_chunk_size=8)
@@ -329,6 +337,10 @@ def test_late_ar_arrival_joins_future_mixed_cycle_without_second_loop() -> None:
     assert mixed.reasons == (
         SpecPlanReason.SPECULATIVE_QUALIFIED,
         SpecPlanReason.POLICY_SELECTED_AR,
+    )
+    assert mixed.k0_classes == (
+        SpecK0Class.NOT_K0,
+        SpecK0Class.PURE,
     )
     assert [event.request_id for event in events if event.kind == "completed"] == [
         ar_id
@@ -433,6 +445,42 @@ def test_realized_speculative_width_switches_c1_c2_c1_at_cycle_boundaries() -> N
     assert loop.active_count == 1
 
 
+def test_ar_neighbor_uses_disjoint_decode_without_erasing_speculative_intent() -> None:
+    runner = _DisjointMixedRunner()
+    loop = ResidentEngineLoop(
+        runner,
+        capacity=2,
+        prefill_chunk_size=8,
+        prefill_decode_policy="protect_ttft",
+    )
+    spec_id = loop.submit_speculative(
+        [10],
+        max_new_tokens=6,
+        desired_candidate_count=1,
+    )
+    loop.poll(max_ticks=2)
+    ar_id = loop.submit([20], max_new_tokens=1)
+    loop.poll(max_ticks=1)
+
+    events = loop.poll(max_ticks=1)
+
+    assert runner.cycle_plans[-1].request_ids == (spec_id,)
+    assert runner.decodes[-1].request_ids == (ar_id,)
+    assert loop.completed[ar_id].generated_tokens == (9000 + ar_id * 10,)
+    recent = loop.recent_speculative_plans[-2:]
+    assert recent[0].request_ids == (spec_id, ar_id)
+    assert recent[0].candidate_counts == (0, 0)
+    assert recent[0].k0_classes == (
+        SpecK0Class.TRANSITIONAL,
+        SpecK0Class.PURE,
+    )
+    assert recent[1].request_ids == (spec_id,)
+    assert recent[1].candidate_counts == (1,)
+    assert [event.request_id for event in events if event.kind == "completed"] == [
+        ar_id
+    ]
+    assert loop.active_count == 1
+
 def test_missing_capability_uses_normal_decode_k0_path() -> None:
     runner = _NoSpecRunner()
     loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)
@@ -446,6 +494,11 @@ def test_missing_capability_uses_normal_decode_k0_path() -> None:
 
     assert runner.cycle_plans == []
     assert len(runner.decodes) == 1
+    # The child retained speculative intent, but this cycle had no provider
+    # capability and therefore used transitional K0 rather than permanent AR.
+    plan = loop.last_speculative_plan
+    assert plan is not None
+    assert plan.k0_classes == (SpecK0Class.TRANSITIONAL,)
     assert [event.work_kind for event in events if event.kind == "work"] == [
         WorkKind.PREFILL,
         WorkKind.DECODE,
