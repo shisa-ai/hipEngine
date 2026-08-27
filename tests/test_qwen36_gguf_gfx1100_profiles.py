@@ -48,7 +48,11 @@ def test_qwen36_dense_gfx1100_strict_profile_resolves_exact_c1_route(
     assert __import__("os").environ[VERIFY_F32_POST_NORM_ENV] == "0"
 
 
-def test_qwen36_moe_gfx1100_strict_fallback_and_production_candidate() -> None:
+def test_qwen36_moe_gfx1100_strict_fallback_and_production_candidate(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(VERIFY_F32_RESIDUAL_ENV, "0")
+    monkeypatch.setenv(VERIFY_F32_POST_NORM_ENV, "0")
     register_qwen36_moe_gguf_gfx1100_profiles()
     assert qwen36_moe_gguf_gfx1100_strict_registered()
 

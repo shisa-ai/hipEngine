@@ -172,17 +172,20 @@ acceptance. Production generated IDs match AR in 8/10 cells and remain
 explicitly diagnostic. Evidence:
 [`35B MoE C1 owner`](../benchmarks/results/2026-08-27-w7900-35b-moe-generation2-mtp-c1-owner.json).
 
-The first binding strict-vs-N2 packet rejected the incumbent all-bulk target
-route despite passing global KL tails: top-1 was `98.905%` and `general_ja`
-failed its binding scope. A prompt-independent shape repair now selects the
-native N2 graph for K2 and registered serial-exact target fallback for K1,
-including terminal zero acceptance. The repaired full packet passes 276 aligned
-rows at mean/p95/p99/max KL
-`0.000407/0.002124/0.006020/0.023325`, 100% top-1, every category/shape/
-transition scope, exact 252-row K2 graph/eager reconciliation, three repeats,
-reverse-order isolation, paired task non-inferiority, profiles/fallback, and
-clean drain. Automatic remains K0 pending fresh performance and serving gates.
-Evidence: [`35B production quality`](../benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-quality.json).
+The first binding strict-vs-N2 packet rejected the incumbent all-BF16 bulk
+target route: top-1 was `98.905%` and `general_ja` failed its binding scope.
+The qualified prompt-independent depth composition keeps one bulk N2 graph
+family: K2 enables F32 residual plus F32 post-norm, while K1 uses incumbent
+BF16 arithmetic and bounded terminal zero acceptance. The final packet passes
+275 aligned rows at mean/p95/p99/max KL
+`0.000454/0.001902/0.009633/0.016425`, `99.636%` top-1, every category/shape/
+transition scope, exact graph/eager reconciliation, three repeats, reverse-order
+isolation, paired task non-inferiority, profiles/fallback, and clean drain.
+Same-host three-repeat economics measure **77.358 vs 67.858 tok/s (1.1400x true
+AR)**, train/heldout **1.1531x/1.1211x**, with every category non-regressive
+(`1.0802x-1.1697x`). Automatic remains K0 pending serving gates. Evidence:
+[`35B production quality`](../benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-quality.json),
+[`35B production performance`](../benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-performance.json).
 
 ### D1 — 27B Dense C1 closure
 
