@@ -3289,7 +3289,10 @@ class _GenerationBatcher:
                     item.sampling,
                     item.route_decision,
                 ),
-                route=item.route,
+                route=_execution_route_for_static_intent(
+                    item.route,
+                    item.route_decision,
+                ),
             ):
                 if _queued_generation_cancelled(item):
                     raise GenerationCancelled(_queued_generation_finish_details(item))
@@ -12222,6 +12225,10 @@ def _generation_route_for_request(
         isinstance(static_payload, Mapping)
         and static_payload.get("eligible") is True
     )
+    static_automatic_eligible = bool(
+        isinstance(static_payload, Mapping)
+        and static_payload.get("automatic_eligible") is True
+    )
     plan["static_intent_allowed"] = bool(
         static_eligible
         and (
@@ -12231,7 +12238,7 @@ def _generation_route_for_request(
                     _SPECULATIVE_MTP_AUTO_ROUTE,
                     _SPECULATIVE_MTP_BATCH_ROUTE,
                 }
-                and bool(plan.get("automatic_eligible"))
+                and static_automatic_eligible
             )
         )
     )
