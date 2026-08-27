@@ -536,13 +536,16 @@ H128 sparse attention then improves the primitive 9.41% and paired natural 4K
 bit-exact final logits/control. Exact chunk-batched score/top-k then reduces
 launches `49,080→768` and paired natural 4K `295.706→290.971 s` (1.60%).
 Exact grouped Q4_K gate/up then reuses each dequantized weight across adjacent
-expert rows and cuts paired natural 4K `291.624→231.798 s` (20.51%). Evidence:
+expert rows and cuts paired natural 4K `291.624→231.798 s` (20.51%). Exact
+output4 scheduling then cuts full-shape CTAs 75% and paired natural 4K
+`235.774→228.569 s` (3.06%). Evidence:
 [`2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json) and
 [`2026-08-27-gfx1151-qwen38-flash-next-persistent-qsa-pool.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-persistent-qsa-pool.json), and
 [`2026-08-27-gfx1151-qwen38-flash-next-device-qsa-topk.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-device-qsa-topk.json), and
 [`2026-08-27-gfx1151-qwen38-flash-next-wave32-sparse-attention.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-wave32-sparse-attention.json), and
 [`2026-08-27-gfx1151-qwen38-flash-next-batched-qsa-selection.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-batched-qsa-selection.json), and
-[`2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-gate-up.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-gate-up.json).
+[`2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-gate-up.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-gate-up.json), and
+[`2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-out4.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-out4.json).
 
 ### F6 — Native QSA and 262K context ownership
 

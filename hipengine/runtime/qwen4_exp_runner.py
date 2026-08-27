@@ -76,6 +76,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out,
+    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
@@ -2549,7 +2550,13 @@ def run_qwen4_exp_moe(
                 raise RuntimeError("Qwen4Exp grouped MoE WMMA row count is invalid")
         if exact_grouped_down:
             if exact_grouped_q4_gate:
-                gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out(
+                grouped_q4_gate = (
+                    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out
+                    if os.environ.get("HIPENGINE_QWEN4_EXP_Q4_OUT4", "1")
+                    not in {"", "0", "false", "False"}
+                    else gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out
+                )
+                grouped_q4_gate(
                     scratch.expert_down.ptr,
                     scratch.group_expert_start.ptr,
                     weights["expert_gate"].allocation("raw").tensor.ptr,
