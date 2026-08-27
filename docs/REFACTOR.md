@@ -18,6 +18,13 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-08-27 Qwen4Exp wave32 H128 sparse-attention bisection
+
+- `HIPENGINE_QWEN4_EXP_QSA_WAVE32` defaults on for the promoted production H128
+  sparse-attention route. Remove the flag and old dispatch branch after natural
+  16K/64K, cancellation, serving, and graph-repeat soak; retain the registered
+  strict spans kernel as the execution-profile fallback.
+
 ## 2026-08-27 Qwen4Exp exact chunked prefill bisection flags
 
 - `HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL` and

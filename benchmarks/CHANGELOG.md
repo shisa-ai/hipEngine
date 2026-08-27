@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 Qwen3.8-Flash-Next production wave32 sparse attention] Promote one-wave32 H128 QSA with strict fallback: real primitive **1,982→1,796 us (-9.41%)**, paired natural 4K **298.078→290.941 s (-2.39%)**, four-category aggregate **658.409→653.088 s (-0.81%)**; category/task final logits/control/IDs exact. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-wave32-sparse-attention.json`.
+
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next device QSA top-k] Replace per-row score D2H/host lexsort/metadata H2D with exact device radix top-512 and stable expansion: natural 4K **303.528→294.434 s (-3.00%)**, 65,536-block top-k **3,656.2→128.2 us (28.51x)**, generated IDs/control unchanged. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-device-qsa-topk.json`.
 
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next persistent compressed QSA keys] Prepare each complete block once per prompt chunk: pool launches **24,540→384 (-98.44%)**, prepared block instances **18,849,792→12,288 (-99.93%)**, natural 4K wall **304.944→303.528 s (-0.46%, small/noisy)**; retrieval/control/replay remain exact. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-persistent-qsa-pool.json`.

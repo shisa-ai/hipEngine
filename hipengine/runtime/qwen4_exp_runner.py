@@ -44,6 +44,8 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_score_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
+    qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32,
+    qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32,
     qwen4_exp_qsa_split_norm_rope_f32,
     qwen4_exp_qsa_split_norm_rope_rows_f32,
     qwen4_exp_qsa_topk_expand_f32_i64,
@@ -1899,7 +1901,14 @@ def run_qwen4_exp_dense_qsa_token_mixer(
             runtime=active_runtime,
         )
     else:
-        qwen4_exp_qsa_sparse_attention_paged_bf16_f32(
+        sparse_attention = qwen4_exp_qsa_sparse_attention_paged_bf16_f32
+        if (
+            head_dim == 128
+            and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_WAVE32", "1")
+            not in {"", "0", "false", "False"}
+        ):
+            sparse_attention = qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32
+        sparse_attention(
             scratch.query.ptr,
             attention_state.key_cache.ptr,
             attention_state.value_cache.ptr,
@@ -2123,7 +2132,16 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             HipMemcpyKind.DEVICE_TO_DEVICE,
             stream,
         )
-        qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32(
+        sparse_attention_rows = qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32
+        if (
+            head_dim == 128
+            and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_WAVE32", "1")
+            not in {"", "0", "false", "False"}
+        ):
+            sparse_attention_rows = (
+                qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32
+            )
+        sparse_attention_rows(
             scratch.query.ptr + dense_rows * q_width * DType.FP32.itemsize,
             attention_state.key_cache.ptr,
             attention_state.value_cache.ptr,
