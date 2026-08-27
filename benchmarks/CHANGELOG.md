@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 W7900 35B MoE Generation-2 automatic MTP promotion] Promote only exact Q4_K_M/production-manifest/BF16/C1/K2/max-seq1024/context4-95/D24/greedy_fast. Real unflagged blocking+SSE executes 9 cycles with 14/17 accepted; D25, context bounds, sampling, and capacity2 select stable K0. `benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-automatic.json`.
+
 - [2026-08-27 W7900 35B MoE Generation-2 explicit serving qualified] Blocking/SSE completion+chat parity, sampler/context K0, continuation, disconnect health, five-request load, bounded overload **3 accepted / 5 truthful 429**, fail-once recovery, following MTP, 30-request soak, bounded memory, and zero final owners pass. Automatic exact-key publication is next. `benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-serving.json`.
 
 - [2026-08-27 W7900 35B MoE Generation-2 C1/K2 production quality+performance] A depth-composed bulk target (F32 residual+post-norm K2, incumbent BF16 K1) passes 275 strict-teacher rows at mean/p95/p99/max KL **0.000454/0.001902/0.009633/0.016425** and **99.636%** top-1. Full-suite D24 reaches **67.858→77.358 tok/s (+14.00%)**, train/heldout **+15.31/+12.11%**, and every category **+8.02% to +16.97%**. Explicit route retained; automatic awaits serving gates. `benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-performance.json`.

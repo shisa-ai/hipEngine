@@ -1,6 +1,6 @@
 # CONCURRENCY2 MTP Dual-Model Promotion — W7900
 
-- Status: **active; 35B explicit promotion packet qualified, automatic/27B open**
+- Status: **active; 35B automatic promoted, 27B and cross-model closure open**
 - Started: **2026-08-27**
 - Binding host: **`epyc` / AMD Radeon Pro W7900 / `gfx1100` / GPU 0**
 - Normative contracts: [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
@@ -187,11 +187,14 @@ AR)**, train/heldout **1.1531x/1.1211x**, with every category non-regressive
 K0 controls, continuation, disconnect health, five-request concurrent load,
 bounded overload (3 accepted/5 truthful 429), precommit fault recovery,
 following MTP, 30-request alternating soak, bounded memory, and clean drain all
-pass. Automatic policy is ready for exact-key publication and mechanical rerun.
+pass. The real unflagged automatic D24 request executes MTP; D25, context
+outside 4-95, processed sampling, and resident capacity 2 all select K0 with
+stable pre-mutation reasons. The exact 35B key is now promoted automatically.
 Evidence:
 [`35B production quality`](../benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-quality.json),
 [`35B production performance`](../benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-performance.json),
-[`35B production serving`](../benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-serving.json).
+[`35B production serving`](../benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-serving.json),
+[`35B automatic`](../benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-automatic.json).
 
 ### D1 — 27B Dense C1 closure
 
