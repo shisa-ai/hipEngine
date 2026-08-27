@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [rejected/removed CUDA Moonshine encoder rowbatch4] `shisa-realtime-asr-0.92b` / FP16 / RTX PRO 6000 Blackwell: exact rowbatch4 weight reuse regresses the six-short-file complete route **4.747 -> 5.415 ms (+14.09%)** and the 20-fixture screen **39.216/46.352 -> 45.125/52.900 ms P50/P95 (+15.07%/+14.13%)** despite exact outputs; all prototype code removed, current encoder retained; `benchmarks/results/2026-08-27-cuda-sm120a-moonshine-encoder-rowbatch4-rejected.json`.
+
 - [candidate/default-off CUDA Moonshine conditional EOS] `shisa-realtime-asr-0.92b` / FP16 / RTX PRO 6000 Blackwell: one conditional-WHILE graph removes all intermediate host EOS reads/relaunches and is exact on model fixtures; the six very-short-file diagnostic regresses **4.668 -> 4.745 ms (+1.66%)**, while a downstream 20-fixture/100-observation screen improves **40.059/47.325 -> 39.299/46.588 ms P50/P95 (-1.90%/-1.56%)**. Keep opt-in pending the downstream seven-pair/full-FLEURS gate; `benchmarks/results/2026-08-27-cuda-sm120a-moonshine-conditional-eos-candidate.json`.
 
 - [Qwen3.8-27B DFlash2 diagnostic — attribution correction] The DFlash2 rows'
