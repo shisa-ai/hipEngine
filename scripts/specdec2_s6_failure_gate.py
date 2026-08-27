@@ -16,6 +16,14 @@ from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
 
+def _invoke_original_args(
+    call_args: tuple[Any, ...],
+    *,
+    staticmethod_owner: bool,
+) -> tuple[Any, ...]:
+    return call_args[1:] if staticmethod_owner else call_args
+
+
 def _resident_capacity(concurrency: int, requested: int | None) -> int:
     capacity = int(concurrency) if requested is None else int(requested)
     if capacity < int(concurrency):
@@ -158,16 +166,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for phase, owner, method_name, original, fail_after in phases:
             raised = False
 
+            descriptor = owner.__dict__.get(method_name)
+            staticmethod_owner = isinstance(descriptor, staticmethod)
+
             def fail_once(
                 *call_args,
                 __original=original,
                 __phase=phase,
                 __fail_after=fail_after,
+                __staticmethod_owner=staticmethod_owner,
                 **call_kwargs,
             ):
                 nonlocal raised
+                original_args = _invoke_original_args(
+                    call_args,
+                    staticmethod_owner=__staticmethod_owner,
+                )
                 if __fail_after:
-                    result = __original(*call_args, **call_kwargs)
+                    result = __original(*original_args, **call_kwargs)
                     if not raised:
                         raised = True
                         raise RuntimeError(f"injected SPECDEC2 {__phase} failure")
@@ -175,7 +191,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 if not raised:
                     raised = True
                     raise RuntimeError(f"injected SPECDEC2 {__phase} failure")
-                return __original(*call_args, **call_kwargs)
+                return __original(*original_args, **call_kwargs)
 
             setattr(owner, method_name, fail_once)
             fault_ids = set(
