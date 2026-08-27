@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 Qwen3.8 dynamic MTP admission D3; retained lifecycle/default-off] Physical C1/R2↔C2/R4 switching passes delayed arrival, two cancellations, survivor/refill, resource-pressure transitional K0 catch-up/re-entry, mixed acceptance, blocking/SSE, and zero loop/service/provider/memory ownership. Automatic C2 remains pure K0. `benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d3-lifecycle.json`.
+
 - [2026-08-27 gfx1151 Qwen3.8 dynamic MTP admission D2; retained functional/default-off] Two independent production C2/K1 OpenAI children execute **230** physical proposal-C2/target-R4/accept/commit cycles with **220/230** accepted, complete failure recovery, and zero ownership; K2/K3 reach R6/R8. K1 is **14.699→7.757 tok/s (0.5277x, -47.23%)**, so automatic C2 remains pure K0. `benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d2-c2-k1-functional.json`.
 
 - [2026-08-27 gfx1151 Qwen3.8 dynamic MTP admission D1; retained mechanical/no speed claim] Typed static eligibility survives independent frontend C1 children into resident C2 transitional K0; mixed permanent-AR/spec-capable work records pure/transitional K0, executes disjoint MTP+AR safely, preserves blocking/SSE health, and drains to zero ownership. Automatic C2+ and arithmetic remain unchanged. `benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d1-static-eligibility.json`.
