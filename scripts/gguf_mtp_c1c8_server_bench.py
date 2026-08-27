@@ -8,6 +8,7 @@ import concurrent.futures
 import copy
 import hashlib
 import json
+import os
 import subprocess
 import threading
 import time
@@ -95,6 +96,13 @@ def _parse_widths(raw: str) -> tuple[int, ...]:
     return widths
 
 
+def _parse_expected_mtp_widths(raw: str) -> tuple[int, ...]:
+    normalized = str(raw).strip().lower()
+    if normalized in {"", "none", "k0"}:
+        return ()
+    return _parse_widths(normalized)
+
+
 def _generated_ids(payload: Mapping[str, Any]) -> list[int]:
     root = payload.get("hipengine")
     root = root if isinstance(root, Mapping) else {}
@@ -135,6 +143,12 @@ def _mtp_engaged(route: str, summary: Mapping[str, Any]) -> bool:
     )
 
 
+def _mtp_budget_conformed(summary: Mapping[str, Any], *, budget: int) -> bool:
+    generated = int(summary.get("draft_tokens", 0) or 0)
+    cycles = int(summary.get("draft_cycles", 0) or 0)
+    return bool(cycles > 0 and generated > 0 and generated <= int(budget) * cycles)
+
+
 def _cell_correctness(
     ar_ids: Sequence[Sequence[int]],
     mtp_ids: Sequence[Sequence[int]],
@@ -158,6 +172,69 @@ def _backend_mtp_telemetry(llm: LLM) -> dict[str, Any]:
     generator = llm._get_text_generator()
     payload = getattr(generator, "last_batch_generation", None)
     return copy.deepcopy(payload) if isinstance(payload, Mapping) else {}
+
+
+def _resident_observability(llm: LLM, *, recent: int) -> dict[str, Any]:
+    pending = [llm._get_text_generator()]
+    seen: set[int] = set()
+    while pending:
+        owner = pending.pop(0)
+        if owner is None or id(owner) in seen:
+            continue
+        seen.add(id(owner))
+        snapshot = getattr(owner, "observability_snapshot", None)
+        if callable(snapshot):
+            payload = snapshot()
+            if not isinstance(payload, Mapping):
+                return {}
+            result = copy.deepcopy(dict(payload))
+            adapter = getattr(owner, "_mtp2_adapter", None)
+            cycle_contract = getattr(adapter, "cycle_workspace_contract", None)
+            if adapter is not None:
+                result["mtp2_adapter"] = {
+                    "cycle_workspace": (
+                        copy.deepcopy(cycle_contract())
+                        if callable(cycle_contract)
+                        else None
+                    ),
+                    "active_states": len(getattr(adapter, "_states", {})),
+                    "provider_groups": len(getattr(adapter, "_provider_groups", {})),
+                    "prompt_streaming_sinks": len(
+                        getattr(adapter, "_prompt_streaming_sinks", {})
+                    ),
+                    "batch_accept_workspace_allocated": bool(
+                        getattr(adapter, "_batch_accept_workspace", None) is not None
+                    ),
+                }
+            routes = result.get("routes")
+            if isinstance(routes, Mapping):
+                compact_routes = copy.deepcopy(dict(routes))
+                completed = compact_routes.get("recent_completed")
+                if isinstance(completed, Sequence) and not isinstance(
+                    completed, (str, bytes, bytearray)
+                ):
+                    compact_routes["recent_completed"] = list(completed)[-int(recent) :]
+                result["routes"] = compact_routes
+            return result
+        pending.extend(
+            getattr(owner, name, None)
+            for name in ("_driver", "_runner", "_inner")
+        )
+    return {}
+
+
+def _memory_delta(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, int]:
+    return {
+        str(key): int(after.get(key, 0) or 0) - int(before.get(key, 0) or 0)
+        for key in (
+            "current_allocated_bytes",
+            "peak_allocated_bytes",
+            "total_allocated_bytes",
+            "total_freed_bytes",
+            "active_allocations",
+            "peak_allocations",
+        )
+    }
 
 
 def _backend_mtp_engaged(payload: Mapping[str, Any], *, width: int) -> bool:
@@ -186,7 +263,7 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
     budget = int(kwargs.get("candidate_budget", 2))
     admitted = bool(
         1 <= rows <= 4
-        and budget == 2
+        and budget in {1, 2, 3}
         and kwargs["sampling_mode"] == "greedy_fast"
         and int(kwargs["context_tokens"]) <= 95
         and int(kwargs["output_horizon_tokens"]) == 24
@@ -270,6 +347,7 @@ def _run_arm(
     max_tokens: int,
     arm: str,
 ) -> dict[str, Any]:
+    memory_before = memory_stats()
     barrier = threading.Barrier(int(width) + 1)
     with concurrent.futures.ThreadPoolExecutor(max_workers=int(width)) as executor:
         futures = [
@@ -289,6 +367,8 @@ def _run_arm(
     wall = max(row["completed"] for row in rows) - min(row["started"] for row in rows)
     generated = sum(len(row["generated_ids"]) for row in rows)
     backend_telemetry = _backend_mtp_telemetry(llm)
+    resident_observability = _resident_observability(llm, recent=int(width))
+    memory_after = memory_stats()
     return {
         "arm": arm,
         "width": int(width),
@@ -297,10 +377,20 @@ def _run_arm(
         "tok_s": generated / wall,
         "rows": rows,
         "backend_telemetry": backend_telemetry,
+        "resident_observability": resident_observability,
+        "tracked_memory_before": memory_before,
+        "tracked_memory_after": memory_after,
+        "tracked_memory_delta": _memory_delta(memory_before, memory_after),
     }
 
 
-def summarize(cells: Sequence[Mapping[str, Any]], *, widths: Sequence[int]) -> dict[str, Any]:
+def summarize(
+    cells: Sequence[Mapping[str, Any]],
+    *,
+    widths: Sequence[int],
+    expected_mtp_widths: Sequence[int] | None = None,
+) -> dict[str, Any]:
+    expected = set(widths if expected_mtp_widths is None else expected_mtp_widths)
     result: dict[str, Any] = {}
     for width in widths:
         selected = [cell for cell in cells if int(cell["width"]) == int(width)]
@@ -314,14 +404,25 @@ def summarize(cells: Sequence[Mapping[str, Any]], *, widths: Sequence[int]) -> d
                 "generated_tokens": generated,
                 "tok_s": generated / wall,
             }
+        exact_cells = sum(bool(cell["exact"]) for cell in selected)
+        engaged_cells = sum(bool(cell["mtp_engaged"]) for cell in selected)
+        budget_conformed_cells = sum(
+            bool(cell.get("mtp_budget_conformed", True)) for cell in selected
+        )
+        mtp_expected = int(width) in expected
         result[str(width)] = {
             "ar": arms["ar"],
             "mtp": arms["mtp"],
             "mtp_vs_ar_ratio": arms["mtp"]["tok_s"] / arms["ar"]["tok_s"],
             "mtp_vs_ar_percent": 100.0 * (arms["mtp"]["tok_s"] / arms["ar"]["tok_s"] - 1.0),
-            "exact_cells": sum(bool(cell["exact"]) for cell in selected),
-            "engaged_cells": sum(bool(cell["mtp_engaged"]) for cell in selected),
+            "exact_cells": exact_cells,
+            "engaged_cells": engaged_cells,
+            "budget_conformed_cells": budget_conformed_cells,
             "cells": len(selected),
+            "mtp_expected": mtp_expected,
+            "route_expectation_passed": bool(
+                engaged_cells == len(selected) if mtp_expected else engaged_cells == 0
+            ),
         }
     return result
 
@@ -329,6 +430,21 @@ def summarize(cells: Sequence[Mapping[str, Any]], *, widths: Sequence[int]) -> d
 def run(args: argparse.Namespace) -> dict[str, Any]:
     prompts = load_prompt_suite(Path(args.prompts).resolve())
     widths = tuple(args.widths)
+    budget_env = "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"
+    existing_budget = os.environ.get(budget_env)
+    if existing_budget is not None and int(existing_budget) != int(args.candidate_budget):
+        raise ValueError(
+            f"{budget_env}={existing_budget!r} conflicts with --candidate-budget "
+            f"{int(args.candidate_budget)}"
+        )
+    os.environ[budget_env] = str(int(args.candidate_budget))
+    expected_mtp_widths = (
+        widths
+        if args.expected_mtp_widths is None
+        else tuple(args.expected_mtp_widths)
+    )
+    if not set(expected_mtp_widths).issubset(widths):
+        raise ValueError("expected MTP widths must be a subset of measured widths")
     repo_status = subprocess.check_output(
         ("git", "status", "--porcelain", "--untracked-files=no"),
         cwd=REPO_ROOT,
@@ -348,12 +464,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     llm = LLM(
         str(args.model),
         backend=str(args.backend),
+        execution_profile=str(args.execution_profile),
         max_active_requests=max(widths),
         max_sequence_length=int(args.max_sequence_length),
         speculative_candidate_budget=int(args.candidate_budget),
     )
+    runtime_profile: dict[str, Any] = {}
     try:
         llm.prepare(max_sequence_length=int(args.max_sequence_length))
+        runtime_profile = {
+            "requested": str(args.execution_profile),
+            "resolved": getattr(llm, "resolved_execution_profile", None),
+            "manifest_sha256": getattr(llm, "execution_profile_manifest_sha256", None),
+            "strict_manifest_sha256": getattr(
+                llm, "execution_profile_strict_manifest_sha256", None
+            ),
+        }
         if args.generation2_diagnostic:
             _install_diagnostic_plan(llm)
         app = create_app(
@@ -415,6 +541,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         width=width,
                     )
                     engaged = bool(response_engaged or backend_engaged)
+                    budget_conformed = bool(
+                        not engaged
+                        or all(
+                            _mtp_budget_conformed(
+                                row["mtp"], budget=int(args.candidate_budget)
+                            )
+                            for row in measured["mtp"]["rows"]
+                        )
+                    )
                     cell = {
                         "prompt_id": prompt["id"],
                         "category": prompt["category"],
@@ -427,6 +562,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "correctness": correctness,
                         "exact": correctness["passed"],
                         "mtp_engaged": engaged,
+                        "mtp_budget_conformed": budget_conformed,
                     }
                     cells.append(cell)
                     print(
@@ -438,6 +574,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                 "mtp_tok_s": measured["mtp"]["tok_s"],
                                 "correctness": correctness,
                                 "engaged": engaged,
+                                "budget_conformed": budget_conformed,
                             }
                         ),
                         flush=True,
@@ -445,9 +582,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # TestClient owns current-server shutdown. Older servers leave close idempotent.
     finally:
         llm.close()
-    summary = summarize(cells, widths=widths)
+    summary = summarize(
+        cells,
+        widths=widths,
+        expected_mtp_widths=expected_mtp_widths,
+    )
     passed = all(
-        int(row["exact_cells"]) == int(row["engaged_cells"]) == int(row["cells"]) == len(prompts)
+        int(row["exact_cells"])
+        == int(row["budget_conformed_cells"])
+        == int(row["cells"])
+        == len(prompts)
+        and bool(row["route_expectation_passed"])
         for row in summary.values()
     )
     payload = {
@@ -467,16 +612,20 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "prompts": str(Path(args.prompts).resolve()),
             "prompt_ids": list(FULL_PROMPT_IDS),
             "widths": list(widths),
+            "expected_mtp_widths": list(expected_mtp_widths),
             "max_tokens": int(args.max_tokens),
             "candidate_budget": int(args.candidate_budget),
             "batch_window_ms": float(args.batch_window_ms),
             "warmup_arms_per_width": 2,
             "runs": 1,
             "sampling": "raw greedy, no processed target, natural stop/EOS",
+            "execution_profile": str(args.execution_profile),
             "correctness_contract": str(args.correctness_contract),
+            "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
             "generation2_diagnostic_plan": bool(args.generation2_diagnostic),
             "timing": "blocking OpenAI barrier-to-last-completion complete wall",
         },
+        "runtime_profile": runtime_profile,
         "summary": summary,
         "cells": cells,
         "initial_memory": initial_memory,
@@ -493,8 +642,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", default="hip_gfx1100")
     parser.add_argument("--quant", default="gguf_q4_k_m")
+    parser.add_argument(
+        "--execution-profile",
+        choices=("strict", "production"),
+        default="production",
+    )
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--widths", type=_parse_widths, default=tuple(range(1, 9)))
+    parser.add_argument(
+        "--expected-mtp-widths",
+        type=_parse_expected_mtp_widths,
+        default=None,
+        help="Expected engaged MTP widths; use 'none' for typed K0-only cells",
+    )
     parser.add_argument("--max-tokens", type=int, default=24)
     parser.add_argument("--candidate-budget", type=int, default=2)
     parser.add_argument("--batch-window-ms", type=float, default=20.0)

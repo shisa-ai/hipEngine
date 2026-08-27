@@ -1,0 +1,71 @@
+{
+ "schema": 1,
+ "kind": "concurrency2_gfx1151_mtp_provider_pool_closeout",
+ "created_at": "2026-08-27T09:45:00Z",
+ "status": "closed_existing_pool_effective",
+ "passed": true,
+ "performance_claim": false,
+ "decision": "Do not modify provider pooling. Cold first-use provider open is already amortized by existing pool; steady requests show 0.13-0.15ms provider-open and zero cycle allocations.",
+ "cold_profile": {
+  "arm_wall_ms": 2807.697635,
+  "target_prefill_ms": 1680.79798,
+  "provider_streaming_open_ms": 981.92441,
+  "cycle_total_ms": 1068.287114
+ },
+ "warm_repeat": {
+  "raw": "/tmp/gfx1151-provider-pool-repeat.json",
+  "sha256": "8605393ea84c80682df8ed49b0a7d0c2f122e3009977968c1fb6ed34ee33bd7f",
+  "size_bytes": 75862,
+  "arm_wall_ms": [
+   1734.598,
+   1738.586
+  ],
+  "target_prefill_ms": [
+   641.759,
+   642.395
+  ],
+  "provider_streaming_open_ms": [
+   0.154,
+   0.132
+  ],
+  "cycle_total_ms": [
+   1036.739,
+   1040.078
+  ],
+  "cycle_allocations": "zero in all 16 measured cycles",
+  "request_allocated_and_freed_bytes": [
+   83794462,
+   83794462
+  ],
+  "interpretation": "Existing provider pool removes cold construction; request verifier/admission allocations are fully freed and no hot-cycle allocations remain. No code candidate."
+ },
+ "speed": {
+  "true_ar_wall_ms": [
+   2435.552,
+   2431.147
+  ],
+  "specdec2_wall_ms": [
+   1734.629,
+   1738.615
+  ],
+  "specdec2_vs_ar_speedup": [
+   1.4040766065827335,
+   1.3983239532616478
+  ]
+ },
+ "ownership": {
+  "provider_reused": true,
+  "cycle_allocations": 0,
+  "request_allocated_bytes": 83794462,
+  "request_freed_bytes": 83794462,
+  "active_allocation_delta": 0
+ },
+ "correctness": "Both measured staged requests completed 24 tokens under the retained production profile; full-suite correctness remains T0.4.",
+ "raw_source": {
+  "path": "/tmp/gfx1151-provider-pool-repeat.json",
+  "sha256": "8605393ea84c80682df8ed49b0a7d0c2f122e3009977968c1fb6ed34ee33bd7f",
+  "size_bytes": 75862,
+  "retained_in_git": false
+ },
+ "reopen_trigger": "Only if measured warm provider_streaming_open regresses materially or request-admission allocation appears in steady cycle windows."
+}

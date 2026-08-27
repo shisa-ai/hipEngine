@@ -1,0 +1,74 @@
+{
+ "schema": 1,
+ "kind": "benchmark_diagnostic",
+ "created_at": "2026-08-27T06:48:00Z",
+ "status": "complete",
+ "passed": true,
+ "performance_claim": false,
+ "decision": "T1.0 attribution complete: no target-prefill kernel regression; current public MTP is policy-blocked and the forced legacy route pays the already-solved full-slab/post-prefill NextN catch-up. Exercise the retained staged OI-3 owner in T0.4 instead of adding another prefill implementation.",
+ "physical_host": "gfx1151 (AMD RYZEN AI MAX+ 395 w/ Radeon 8060S, HIP 7.15.0)",
+ "hardware": "Radeon 8060S gfx1151, unified memory",
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "size_bytes": 17106775008,
+  "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "quant": "Q4_K_M (registry gguf_q4_k_m)",
+  "kv_storage": "bf16"
+ },
+ "source_state": {
+  "hipengine_head": "ecb635f44",
+  "clean_tracked_tree": true,
+  "retained_streaming_source": "hipengine/runtime/qwen35_gguf_mtp.py::_StreamingNextNPromptSink + Qwen35GGUFMTPDecodeSession._prefill_target_and_draft",
+  "legacy_source": "hipengine/generation/qwen35_gguf.py::_generate_speculative_mtp_llama_compat and Qwen35GGUFResidentMTPDraftRunner.write_kv_rows"
+ },
+ "probe_1_prefill_batch_native_p512": {
+  "protocol": "one Q4_K_M resident target session; p512 token 9707; one warmup + three measured reps; use_wmma_prefill=true",
+  "variants": {
+   "plain": {"median_ms": 1335, "tok_s": 383.6},
+   "capture_gdn_only": {"median_ms": 1338, "tok_s": 382.7},
+   "capture_gdn_plus_return_hidden_seeds": {"median_ms": 1333, "tok_s": 384.1},
+   "return_hidden_seeds_only": {"median_ms": 1333, "tok_s": 384.0},
+   "full_llama_compat_mtp_env_plus_hidden_seeds": {"median_ms": 1333, "tok_s": 384.2}
+  },
+  "finding": "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN, host hidden-seed return, and the full legacy MTP env have no measurable isolated prefill cost (<0.4%)."
+ },
+ "probe_2_session_prefill_p512": {
+  "protocol": "same target; session.prefill A/B matching the legacy target-prefill entry; one warmup + three measured reps",
+  "variants": {
+   "bulk_capture_hidden_plus_d2h": {"median_ms": 1274, "tok_s": 401.9, "hidden_d2h_ms": 0.3},
+   "bulk_no_capture": {"median_ms": 1276, "tok_s": 401.2},
+   "plain": {"median_ms": 1275, "tok_s": 401.7},
+   "capture_no_bulk": {"median_ms": 1275, "tok_s": 401.5}
+  },
+  "finding": "Target prefill itself and the prompt-hidden D2H are not the ~4.5s legacy serving activation owner."
+ },
+ "legacy_attribution": {
+  "forced_diagnostic_route": "gguf_llama_compat_mtp_server",
+  "observed_request_activation_ms": "~4538-4792 in the 2026-08-26 forced legacy c1-c8 raw packet",
+  "root_owner": "Qwen35GGUFResidentMTPDraftRunner.write_kv_rows loops over every prompt row, copies one FP32 seed and token embedding, runs one draft KV write, then synchronizes. This is the full-slab/post-prefill catch-up OI-3 already removed in the staged decoder.",
+  "retained_fix_evidence": "benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi3-streaming-prompt-priming.json: p512 TTFT 13.079s -> 10.356s (-20.82%), full prompt slab -> 10,240-byte carried row, full category/heldout IDs and acceptance preserved."
+ },
+ "current_public_route_smoke": {
+  "protocol": "scripts/gguf_mtp_c1c8_server_bench.py; current public TestClient route; canonical 10-prompt suite; c1; max_tokens=4; B3; explicit speculative_mtp=true",
+  "result": "all 10 requested MTP cells routed to AR",
+  "decision_reason": "execution_profile_not_qualified",
+  "backend_path": "gguf_packed_ar_server_decode",
+  "used": false,
+  "engaged_cells": 0,
+  "implication": "No serving speed claim is possible until the staged MTP2 execution profile is exercised and production-qualified."
+ },
+ "correctness": {
+  "speed_gain_promotion_rule": "Per user direction, any retained speed gain is gated by the production execution-profile numerical/task contract, not generated-ID bit exactness. Strict fallback remains registered.",
+  "this_unit": "Attribution only; no arithmetic/runtime behavior changed and no speed gain is claimed."
+ },
+ "raw_sources": [
+  {"path": "/tmp/gfx1151-prefill-probe/results.json", "sha256": "02306b3066f1cd4896b21873815f45300b45bc2d0aea4822d6294638b1bb68f0", "size_bytes": 2221, "retained_in_git": false},
+  {"path": "/tmp/gfx1151-prefill-probe/results2.json", "sha256": "9ced9086fd3c4c2758192300de21fa27f2dea69c0413e5ac96e0e1f56e0dc33b", "size_bytes": 702, "retained_in_git": false},
+  {"path": "/tmp/gfx1151-prefill-probe/route-smoke.json", "sha256": "d04da23766babf670e0ea56efcaaf2a429bd417e7b8246156ebef8a3ec8f5956", "size_bytes": 127170, "retained_in_git": false}
+ ],
+ "limitations": [
+  "Diagnostic attribution; no retained throughput claim.",
+  "The c1 route smoke used max_tokens=4 only to expose routing ownership; T0.4 uses the canonical max_tokens=24 diagnostic plan and full c1-c8 suite.",
+  "The forced legacy 2026-08-26 route is not the staged production candidate."
+ ]
+}

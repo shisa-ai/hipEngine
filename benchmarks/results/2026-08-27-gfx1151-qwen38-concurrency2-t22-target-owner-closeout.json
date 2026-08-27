@@ -1,0 +1,41 @@
+{
+ "schema": 1,
+ "kind": "concurrency2_gfx1151_mtp_t22_target_owner_closeout",
+ "created_at": "2026-08-27T09:35:00Z",
+ "status": "closed_no_wider_row_premise",
+ "passed": true,
+ "performance_claim": false,
+ "decision": "Do not extend small-M Q4 WMMA to R6/R8/R12/R16. No current public MTP route executes those shapes and retained physical C2/C4 economics remain far below true AR.",
+ "evidence": {
+  "actual_public_profile": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t02-actual-owner-profile.json",
+  "physical_grid": "benchmarks/results/2026-08-26-gfx1151-specdec2-perf-p9-fixed-policy.json",
+  "acceptance_closeout": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t21-acceptance-closeout.json"
+ },
+ "public_c1": {
+  "physical_target_rows": [4, 2],
+  "target_stage_wall_ms": 919.30513,
+  "target_kernel_ms": 811.542446,
+  "top_existing_owners": [
+   {"family": "Q4 dual rowtile SiLU rows4", "duration_ms": 222.194, "calls": 448},
+   {"family": "Q4 local32", "duration_ms": 139.178, "calls": 1720},
+   {"family": "Q4 rowtile rows4", "duration_ms": 84.417, "calls": 560},
+   {"family": "Q6 planar rowtile rows4", "duration_ms": 78.088, "calls": 224}
+  ],
+  "R6_R8_R12_R16_dispatches": 0
+ },
+ "physical_c2_c4": {
+  "status": "K0_measured_below_true_ar",
+  "best_budget": 3,
+  "c2_ratio": 0.6975074494490892,
+  "c4_ratio": 0.5842826879348285,
+  "accept_per_draft": 0.7772511848341233,
+  "interpretation": "Acceptance is repaired; target operation cost remains binding, but these physical shapes are not a public Q4_K_M product route."
+ },
+ "admission_rules": {
+  "required": "materially new representation/dataflow with >=1.15x operation-complete leaf speedup or >=0.5 ms/token projected saving on a current dispatch",
+  "observed": "no R6/R8/R12/R16 current dispatch; public c2+ typed K0",
+  "passed": false
+ },
+ "next": "Retain existing rows2/rows4 owners. Reopen only after a public physical c2/c4 route is production-qualified and a fresh profile names an R6/R8/R12/R16 owner.",
+ "correctness": "No candidate implemented; production correctness remains unchanged."
+}

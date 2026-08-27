@@ -1,0 +1,341 @@
+{
+ "schema": 1,
+ "kind": "concurrency2_gfx1151_mtp_t04_production_suite",
+ "created_at": "2026-08-27T07:45:00Z",
+ "status": "passed_baseline_c1_candidate_k0_c2_c8_promotion_pending_lifecycle",
+ "passed": true,
+ "performance_claim": false,
+ "speed_claim_eligible": false,
+ "decision": {
+  "c1": "staged MTP2 B3 is the production-profile speed candidate: 14.287 vs 9.730 tok/s (+46.84%), every category positive, 79.29% accept/draft",
+  "c2_c8": "public route stays typed K0/AR before MTP; no MTP speed claim. Physical C2/C4 belongs to T2.1 bridge.",
+  "promotion": "blocked pending actual-owner rocprof, OI-3/device-chain/hot-allocation telemetry, and dynamic lifecycle/SLO product packet; public automatic policy unchanged"
+ },
+ "physical_host": "gfx1151 / AMD RYZEN AI MAX+ 395 / Radeon 8060S / HIP 7.15.0",
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "size_bytes": 17106775008,
+  "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "quant": "Q4_K_M (gguf_q4_k_m)",
+  "kv_storage": "bf16",
+  "recurrent_state": "fp16 production; fp32 strict teacher/fallback"
+ },
+ "runtime_profile": {
+  "requested": "production",
+  "resolved": "production",
+  "manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+  "strict_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+ },
+ "protocol": {
+  "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "prompt_count": 10,
+  "categories": [
+   "code",
+   "general_en",
+   "general_ja",
+   "mixed_ja_en"
+  ],
+  "heldouts": 3,
+  "widths": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8
+  ],
+  "fresh_capacity_matched_process_per_width": true,
+  "max_tokens": 24,
+  "candidate_budget": 3,
+  "batch_window_ms": 20.0,
+  "max_sequence_length": 1024,
+  "surface": "blocking OpenAI barrier-to-last-completion complete wall",
+  "sampling": "raw greedy, natural stop/EOS",
+  "expected_mtp_widths": [
+   1
+  ],
+  "generated_id_equality": "diagnostic only; production numerical/task contract binds promotion"
+ },
+ "width_results": {
+  "1": {
+   "expected_route": "staged_mtp2",
+   "ar_tok_s": 9.729754089597318,
+   "requested_mtp_arm_tok_s": 14.286893899745897,
+   "requested_mtp_arm_vs_ar_pct": 46.837153006990164,
+   "mtp_speed_claim_valid": true,
+   "exact_diagnostic_cells": 10,
+   "cells": 10,
+   "mtp_engaged_cells": 10,
+   "route_reasons": [
+    "diagnostic_gfx1100_physical_mtp"
+   ],
+   "physical_budget_conformed_cells": 10
+  },
+  "2": {
+   "expected_route": "K0_true_AR",
+   "ar_tok_s": 15.124165598575809,
+   "requested_mtp_arm_tok_s": 17.207395716120754,
+   "requested_mtp_arm_vs_ar_pct": 13.774182145566538,
+   "mtp_speed_claim_valid": false,
+   "exact_diagnostic_cells": 10,
+   "cells": 10,
+   "mtp_engaged_cells": 0,
+   "route_reasons": [
+    "physical_group_not_qualified"
+   ]
+  },
+  "3": {
+   "expected_route": "K0_true_AR",
+   "ar_tok_s": 21.949798818862906,
+   "requested_mtp_arm_tok_s": 24.753246279242223,
+   "requested_mtp_arm_vs_ar_pct": 12.772087268381394,
+   "mtp_speed_claim_valid": false,
+   "exact_diagnostic_cells": 10,
+   "cells": 10,
+   "mtp_engaged_cells": 0,
+   "route_reasons": [
+    "physical_group_not_qualified"
+   ]
+  },
+  "4": {
+   "expected_route": "K0_true_AR",
+   "ar_tok_s": 27.70254280319433,
+   "requested_mtp_arm_tok_s": 31.137825312617302,
+   "requested_mtp_arm_vs_ar_pct": 12.40060356129784,
+   "mtp_speed_claim_valid": false,
+   "exact_diagnostic_cells": 10,
+   "cells": 10,
+   "mtp_engaged_cells": 0,
+   "route_reasons": [
+    "physical_group_not_qualified"
+   ]
+  },
+  "5": {
+   "expected_route": "K0_true_AR",
+   "ar_tok_s": 31.317730607951507,
+   "requested_mtp_arm_tok_s": 20.3378040456333,
+   "requested_mtp_arm_vs_ar_pct": -35.05977715872691,
+   "mtp_speed_claim_valid": false,
+   "exact_diagnostic_cells": 10,
+   "cells": 10,
+   "mtp_engaged_cells": 0,
+   "route_reasons": [
+    "backend_k0_fallback",
+    "physical_group_not_qualified"
+   ]
+  },
+  "6": {
+   "expected_route": "K0_true_AR",
+   "ar_tok_s": 35.29639337391038,
+   "requested_mtp_arm_tok_s": 24.490069666921883,
+   "requested_mtp_arm_vs_ar_pct": -30.615943086627308,
+   "mtp_speed_claim_valid": false,
+   "exact_diagnostic_cells": 10,
+   "cells": 10,
+   "mtp_engaged_cells": 0,
+   "route_reasons": [
+    "physical_group_not_qualified"
+   ]
+  },
+  "7": {
+   "expected_route": "K0_true_AR",
+   "ar_tok_s": 29.15213594853988,
+   "requested_mtp_arm_tok_s": 28.001286260124655,
+   "requested_mtp_arm_vs_ar_pct": -3.9477371073143086,
+   "mtp_speed_claim_valid": false,
+   "exact_diagnostic_cells": 10,
+   "cells": 10,
+   "mtp_engaged_cells": 0,
+   "route_reasons": [
+    "physical_group_not_qualified"
+   ]
+  },
+  "8": {
+   "expected_route": "K0_true_AR",
+   "ar_tok_s": 31.9911326186714,
+   "requested_mtp_arm_tok_s": 30.83682484936311,
+   "requested_mtp_arm_vs_ar_pct": -3.608211634978453,
+   "mtp_speed_claim_valid": false,
+   "exact_diagnostic_cells": 10,
+   "cells": 10,
+   "mtp_engaged_cells": 0,
+   "route_reasons": [
+    "physical_group_not_qualified"
+   ]
+  }
+ },
+ "c1_scopes": {
+  "category": {
+   "code": {
+    "ar_tok_s": 9.768108956678237,
+    "mtp_tok_s": 14.488776068738307,
+    "mtp_vs_ar_pct": 48.3273388226557,
+    "accept_per_draft": 0.8076923076923077
+   },
+   "general_en": {
+    "ar_tok_s": 9.80105768816723,
+    "mtp_tok_s": 14.911946427830257,
+    "mtp_vs_ar_pct": 52.14629790245371,
+    "accept_per_draft": 0.8421052631578947
+   },
+   "general_ja": {
+    "ar_tok_s": 9.776447791841457,
+    "mtp_tok_s": 13.64396555000806,
+    "mtp_vs_ar_pct": 39.559539829937876,
+    "accept_per_draft": 0.6818181818181818
+   },
+   "mixed_ja_en": {
+    "ar_tok_s": 9.539869536109837,
+    "mtp_tok_s": 13.970301654563563,
+    "mtp_vs_ar_pct": 46.44122334885059,
+    "accept_per_draft": 0.8421052631578947
+   }
+  },
+  "heldout": {
+   "train": {
+    "ar_tok_s": 9.74653502421505,
+    "mtp_tok_s": 14.1948824159877,
+    "mtp_vs_ar_pct": 45.64029555858396,
+    "accept_per_draft": 0.7815126050420168
+   },
+   "heldout": {
+    "ar_tok_s": 9.704690754683671,
+    "mtp_tok_s": 14.427169660544322,
+    "mtp_vs_ar_pct": 48.661817519342286,
+    "accept_per_draft": 0.810126582278481
+   }
+  }
+ },
+ "c1_acceptance": {
+  "accepted_draft_tokens": 157,
+  "draft_tokens": 198,
+  "accept_per_draft": 0.7929292929292929,
+  "drafts_per_cycle": 2.8285714285714287,
+  "physical_budget": 3
+ },
+ "production_correctness": {
+  "status": "passed",
+  "measurement_valid": true,
+  "hard_gates_passed": true,
+  "teacher_forced_rows": 1170,
+  "kl_mean": 0.00012391210401986377,
+  "kl_p95": 0.000350302086656365,
+  "kl_p99": 0.001110227899242281,
+  "kl_max": 0.04978771577044094,
+  "top1_agreement": 0.9974358974358974,
+  "top1_matches": 1167,
+  "topk_overlap_mean": 0.9904273504273504,
+  "finite": true,
+  "repeat_determinism_passed": true,
+  "isolation_passed": true,
+  "manifest_gate_passed": true,
+  "scope_failures": [],
+  "thresholds": {
+   "max_kl_max": 0.05,
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02,
+   "top1_min": 0.99
+  },
+  "manual_outlier_review": {
+   "passed": true,
+   "reason": "KL remains below hard max; same strict top-1 and candidate rank 1; strict margin is wide; top-k overlap 1.0; candidate teacher NLL improves",
+   "request_id": "general_en_plan",
+   "scenario_id": "long_c8_p512",
+   "category": "general_en",
+   "kl": 0.04978771577044094,
+   "top1_equal": true,
+   "strict_top1_candidate_rank": 1,
+   "strict_margin": 3.167835235595703,
+   "topk_overlap": 1.0,
+   "strict_teacher_nll": 0.04263812719091444,
+   "candidate_teacher_nll": 0.005707416880337178
+  },
+  "generated_ids_diagnostic": "80/80 width cells internally exact; truthful physical-B3 c1 MTP equals same-cell AR in 10/10 cells, but this is not the production binding.",
+  "bf16_relative": "normative N/A: model quant and BF16 KV are unchanged and no aligned BF16/full-precision teacher is available on this host",
+  "external_task": "normative N/A for new capability: same model/sampling/target semantics; full four-category+heldout suite is non-regressive and exact diagnostically",
+  "automatic_admission": "not yet: dynamic serving/lifecycle/SLO and actual-owner profile remain pending T0.2/T1.2/T1.3",
+  "raw_provenance_note": "raw gate correctly identifies the Q4_K_M model path/fingerprint and command but labels quant gguf_q4_k_s due a metadata bug fixed in 143c66664; no expensive recompute required by focused-repair policy"
+ },
+ "k0_observation": {
+  "c2_c8": "all 70 cells stayed K0 with typed physical_group_not_qualified (one c5 backend_k0_fallback observation); no MTP cycles",
+  "timing_warning": "requested-MTP K0 arm differs materially from paired AR at several widths (-35.1% c5, -30.6% c6); it is not an MTP rate and T2.3/T2.4 must prove K0 preserves true AR batching/economics before product promotion"
+ },
+ "source_states": {
+  "c1_head": "9166b221439069568dabf7cd28e62f84c9e2496e",
+  "c2_c8_head": "5fad41b56a346f3107b43620f15ce5a548db8a05",
+  "numerics_head": "5fad41b56a346f3107b43620f15ce5a548db8a05",
+  "quant_label_fix_head": "143c66664"
+ },
+ "raw_sources": [
+  {
+   "path": "/tmp/gfx1151-t14-truthful-production-b3.json",
+   "sha256": "9ac0e9e85c5bead7b0955b06d951e43afa4ad18cf4d9cb11ff527a970a759a83",
+   "size_bytes": 528991,
+   "retained_in_git": false,
+   "note": "truthful physical B3; supersedes mislabeled T0.4 c1 packet"
+  },
+  {
+   "path": "/tmp/gfx1151-t04-production-c2-k0.json",
+   "sha256": "66017f5a5cc0b909ea666583b12dec0b3f7af9525a4908f3e6c4c43fbba221c4",
+   "size_bytes": 549743,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t04-production-c3-k0.json",
+   "sha256": "dcce2af1956bb4490fe481daf5aaa76901e0c3435cb0602994890b70949ee642",
+   "size_bytes": 573983,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t04-production-c4-k0.json",
+   "sha256": "aa47e925adca711305c9636fe475c0be7a434f596b236907096e1b2e849f9185",
+   "size_bytes": 598255,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t04-production-c5-k0.json",
+   "sha256": "fc6375470ded4c6479193895d4086a325cfcd3475fb0ebb1a2ec2bc2d40b4244",
+   "size_bytes": 623956,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t04-production-c6-k0.json",
+   "sha256": "38049a933811be6611fc0dd688f1ad6b41ca624e548cefdd8298f48ae7502b96",
+   "size_bytes": 646738,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t04-production-c7-k0.json",
+   "sha256": "f17c933fd598be9404cdb3aa5426b724c27059a77b01321944a3511303590af1",
+   "size_bytes": 670980,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t04-production-c8-k0.json",
+   "sha256": "c3b387852f2db5036f0e9f14157a161415fce2ccaf7bb2321dffd51ff249a3c6",
+   "size_bytes": 695216,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t04-q4km-production-numerics.json",
+   "sha256": "64ecf3c0a8ff3e29cb7f6e670647a4a42863ef9cf48604cb341eee1ab5a8daac",
+   "size_bytes": 62389,
+   "retained_in_git": false
+  }
+ ],
+ "commands": {
+  "suite_template": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --execution-profile production --widths C --expected-mtp-widths (C for c1; none for c2-c8) --max-tokens 24 --candidate-budget (3 for c1; K0 controls c2-c8) --max-sequence-length 1024 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/gfx1151-t04-production-cC[-k0].json",
+  "numerics": ".venv/bin/python scripts/execution_profile_gguf_fp16_state_batch_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --widths 4,8 --decode-steps 24 --repeat-runs 3 --long-prompt-tokens 512 --long-decode-steps 8 --isolation-decode-steps 8 --compiler-version-file /tmp/gfx1151-old-vs-c2-c1-c8/hipcc-version.txt --json /tmp/gfx1151-t04-q4km-production-numerics.json"
+ },
+ "limitations": [
+  "One complete measured AR/MTP arm per prompt/width after two warmup arms; dynamic load/SLO/soak not included.",
+  "The generation2 diagnostic plan is content agnostic but not automatic/public policy evidence; automatic remains K0.",
+  "C2-C8 requested-MTP arm rates are K0/fallback controls, not MTP throughput.",
+  "The original T0.4 c1 packet labeled B2 actually used adapter-default B3; T1.4 physical conformance exposed and corrected it. This artifact uses the truthful B3 rerun."
+ ]
+}

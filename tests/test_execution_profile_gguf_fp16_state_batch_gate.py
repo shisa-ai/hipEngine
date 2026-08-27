@@ -39,6 +39,17 @@ def _trajectory(token: int, delta: float = 0.0):
     )
 
 
+def test_fp16_state_parser_records_quant_label() -> None:
+    parser = gate.build_parser()
+    default = parser.parse_args(("--json", "/tmp/out.json"))
+    q4km = parser.parse_args(
+        ("--quant-label", "gguf_q4_k_m", "--json", "/tmp/out.json")
+    )
+
+    assert default.quant_label == "gguf_q4_k_s"
+    assert q4km.quant_label == "gguf_q4_k_m"
+
+
 def test_fp16_state_environment_explicitly_disables_promoted_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
