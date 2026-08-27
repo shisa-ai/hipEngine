@@ -456,6 +456,13 @@ def summarize(
 def run(args: argparse.Namespace) -> dict[str, Any]:
     prompts = load_prompt_suite(Path(args.prompts).resolve())
     widths = tuple(args.widths)
+    resident_capacity = (
+        max(widths)
+        if args.resident_capacity is None
+        else int(args.resident_capacity)
+    )
+    if resident_capacity < max(widths):
+        raise ValueError("resident capacity cannot be smaller than a measured width")
     budget_env = "HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"
     existing_budget = os.environ.get(budget_env)
     if existing_budget is not None and int(existing_budget) != int(args.candidate_budget):
@@ -491,7 +498,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         str(args.model),
         backend=str(args.backend),
         execution_profile=str(args.execution_profile),
-        max_active_requests=max(widths),
+        max_active_requests=resident_capacity,
         max_sequence_length=int(args.max_sequence_length),
         speculative_candidate_budget=int(args.candidate_budget),
     )
@@ -518,7 +525,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 metrics="prometheus",
                 generation_batch_window_ms=float(args.batch_window_ms),
                 max_context_tokens=int(args.max_sequence_length),
-                max_active_requests=max(widths),
+                max_active_requests=resident_capacity,
                 speculative_mtp_serving="opt_in",
                 speculative_candidate_budget=int(args.candidate_budget),
                 shutdown_grace_seconds=5.0,
@@ -638,6 +645,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "prompts": str(Path(args.prompts).resolve()),
             "prompt_ids": list(FULL_PROMPT_IDS),
             "widths": list(widths),
+            "resident_capacity": resident_capacity,
             "expected_mtp_widths": list(expected_mtp_widths),
             "max_tokens": int(args.max_tokens),
             "candidate_budget": int(args.candidate_budget),
@@ -675,6 +683,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--widths", type=_parse_widths, default=tuple(range(1, 9)))
+    parser.add_argument(
+        "--resident-capacity",
+        type=int,
+        default=None,
+        help="resident owner capacity; defaults to the maximum measured width",
+    )
     parser.add_argument(
         "--expected-mtp-widths",
         type=_parse_expected_mtp_widths,
