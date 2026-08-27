@@ -264,16 +264,20 @@ reaches 211.76 tok/s on a warm repeated-token p512 and 35.75 tok/s over the
 from promotion by strict→candidate mean/p95 KL `0.00476/0.01458`; max KL is
 `0.01548` and final-row top-1 is 100%. The binding 687-row packet rejects the
 profile at mean/p95/max KL `0.01280/0.05553/0.82237` and 94.47% top-1, so it is
-not offered as a user-facing fast profile. Natural retrieval,
-strict-above-4K, 262K inference, and lifecycle/index-reference gates remain
-open, so this is not a broad long-context, speed, serving/c>N, MTP, or vision
-claim.
+not offered as a user-facing fast profile. A natural chat-formatted 4K
+retrieval row now returns `VIOLET-7391` exactly, retains its token-720 block in
+all 12 QSA layers, matches the Transformers CPU control 2,048/2,048 positions,
+replays/rolls back bit-exactly, and tears down to zero; its 304.944-second
+correctness-first prefill is not a speed claim. Natural retrieval above 4K,
+strict-above-4K, 262K inference, and broader lifecycle gates remain open, so
+this is not a broad long-context, speed, serving/c>N, MTP, or vision claim.
 [`Bring-up artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json) ·
 [`Exact prefill promotion`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json) ·
 [`Heldout artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json) ·
 [`2,052 transition artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json) ·
 [`Exact 2,052 prefill`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-exact-prefill.json) ·
 [`4K structural artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json) ·
+[`Natural 4K retrieval`](results/2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json) ·
 [`16K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json) ·
 [`64K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-64k.json) ·
 [`262K capacity artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-262k-capacity.json) ·

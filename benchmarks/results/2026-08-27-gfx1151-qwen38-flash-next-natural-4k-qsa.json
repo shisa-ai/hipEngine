@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "accepted_natural_4k_qsa",
+  "scope": "Qwen4Exp natural 4K retrieval, exact selected-index control, transaction replay, and teardown",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151", "device_bytes": 133143986176},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "prompt": {"kind": "deterministic chat-formatted archive retrieval", "tokens": 4096, "needle": "VIOLET-7391", "needle_token_offset": 720, "reasoning_effort": "low", "builder": "scripts/qwen4_exp_qsa_retrieval_gate.py"},
+  "result": {"prefill_seconds": 304.94368645299994, "generated_tokens": 100, "final_answer": "VIOLET-7391", "retrieval_exact": true},
+  "qsa_control": {
+    "source": "huggingface/transformers@fc5c5bde8e656dad91cbf34e61940d984b1c7b91",
+    "qsa_layers": 12,
+    "needle_selected_layers": 12,
+    "final_layer_selected_positions": 2048,
+    "cpu_oracle_position_mismatches": 0,
+    "cpu_oracle_exact": true,
+    "cutoff_margin": 0.002354145050048828
+  },
+  "matched_llama_diagnostic": {
+    "source": "llama.cpp PR #27742 at bea3b12daee45876b0129a3602dc8f534ce30bf0",
+    "tokenizer_match": true,
+    "kl_teacher_to_hipengine": 3.3058906440673158e-12,
+    "teacher_top1": 248068,
+    "hipengine_top1": 248068,
+    "top1_agreement": true,
+    "note": "Captured in the preceding same-prompt matched-special-token diagnostic. llama.cpp always requested token_budget+ratio-1 selected IDs even with no incomplete tail, unlike the official Transformers control; therefore its selected-ID list is diagnostic rather than binding above budget."
+  },
+  "transactional": {"repeat_logits_exact": true, "abandoned_branch_token": 248085, "post_rollback_logits_exact": true},
+  "memory": {"tracked_peak_bytes": 82874289648, "tracked_after_close_bytes": 0, "tracked_after_close_allocations": 0},
+  "validation": {"focused_unit_tests": "2 passed", "gate_exit_code": 0},
+  "command": "uv run python scripts/qwen4_exp_qsa_retrieval_gate.py /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --target-tokens 4096 --max-tokens 128 --json-out /tmp/qwen4exp-qsa-retrieval-final128.json",
+  "decision": {"passed": true, "reason": "retrieval answer exact, all QSA layers retain the needle, official CPU control is exact, transaction replay/isolation are exact, and teardown is zero", "remaining": "Current full-history pool/host-topk path is correctness-only and must be replaced before practical 262K inference."}
+}
