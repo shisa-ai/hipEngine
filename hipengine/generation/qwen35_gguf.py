@@ -8406,20 +8406,23 @@ class Qwen35GGUFResidentModelRunner:
         """Attach tokenizer-owned text to canonical speculative token events."""
 
         decorated: list[GeneratedTokenEvent] = []
+        suppress_after_special = False
         for event in events:
             chunk = event.stream_chunk
             if chunk is None:
                 decorated.append(event)
                 continue
+            raw_text = self.generator.tokenizer.decode((int(event.token_id),))
+            visible_text = self.generator.tokenizer.decode(
+                (int(event.token_id),), skip_special=True
+            )
+            text = "" if suppress_after_special else visible_text
+            if raw_text and not visible_text:
+                suppress_after_special = True
             decorated.append(
                 replace(
                     event,
-                    stream_chunk=replace(
-                        chunk,
-                        text=self.generator.tokenizer.decode(
-                            (int(event.token_id),), skip_special=True
-                        ),
-                    ),
+                    stream_chunk=replace(chunk, text=text),
                 )
             )
         return tuple(decorated)
