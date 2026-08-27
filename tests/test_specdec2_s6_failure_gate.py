@@ -7,7 +7,13 @@ from scripts.specdec2_s6_failure_gate import (
     _failure_phase_specs,
     _outcomes,
     _recent_rows,
+    _resident_capacity,
 )
+
+
+def test_failure_gate_preserves_normal_owner_capacity() -> None:
+    assert _resident_capacity(2, None) == 2
+    assert _resident_capacity(2, 4) == 4
 
 
 def test_failure_gate_selects_only_requested_completed_rows() -> None:
