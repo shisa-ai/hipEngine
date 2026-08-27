@@ -32,6 +32,7 @@ def test_qwen4_exp_qsa_build_and_registry_contract() -> None:
         plan_qwen4_exp_qsa_build,
         qwen4_exp_qsa_score_f32,
         qwen4_exp_qsa_split_norm_rope_rows_f32,
+        qwen4_exp_qsa_topk_expand_f32_i64,
         register_qwen4_exp_qsa_kernels,
     )
     from hipengine.kernels.registry import resolve
@@ -57,6 +58,116 @@ def test_qwen4_exp_qsa_build_and_registry_contract() -> None:
         )
         is qwen4_exp_qsa_split_norm_rope_rows_f32
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="qsa_select_blocks",
+            quant="f32_i64",
+            variant="strict_device_expand",
+        )
+        is qwen4_exp_qsa_topk_expand_f32_i64
+    )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("query_position", [4095, 4094])
+def test_qwen4_exp_qsa_gpu_topk_expands_blocks_tail_and_breaks_ties(
+    query_position: int,
+) -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
+        qwen4_exp_qsa_topk_expand_f32_i64,
+    )
+
+    runtime = get_hip_runtime()
+    ratio, budget = 4, 512
+    blocks = (query_position + 1) // ratio
+    scores = np.zeros(blocks, dtype=np.float32)
+    high = min(124, blocks)
+    scores[-high:] = np.arange(1, high + 1, dtype=np.float32)
+    selected_high = np.arange(blocks - high, blocks, dtype=np.int64)
+    selected_ties = np.arange(budget - high, dtype=np.int64)
+    selected_blocks = np.sort(np.concatenate((selected_ties, selected_high)))
+    expected = np.concatenate(
+        [
+            (selected_blocks[:, None] * ratio + np.arange(ratio)).reshape(-1),
+            np.arange(blocks * ratio, query_position + 1, dtype=np.int64),
+        ]
+    )
+
+    allocations = []
+    try:
+        d_scores = _upload(scores, runtime, allocations)
+        output_shape = (budget * ratio + ratio - 1,)
+        d_selected = _alloc(output_shape, np.int64, runtime, allocations)
+        d_count = _alloc((1,), np.int32, runtime, allocations)
+        qwen4_exp_qsa_topk_expand_f32_i64(
+            d_scores.ptr,
+            d_selected.ptr,
+            d_count.ptr,
+            blocks,
+            query_position,
+            ratio,
+            budget,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        actual_count = _download(d_count, (1,), np.int32, runtime)
+        actual = _download(d_selected, output_shape, np.int64, runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    assert int(actual_count[0]) == expected.size
+    np.testing.assert_array_equal(actual[: expected.size], expected)
+    np.testing.assert_array_equal(actual[expected.size :], -1)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("blocks", [513, 4_096, 65_536])
+def test_qwen4_exp_qsa_gpu_topk_matches_host_lexsort(blocks: int) -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
+        qwen4_exp_qsa_topk_expand_f32_i64,
+    )
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(4347 + blocks)
+    ratio, budget = 4, 512
+    scores = rng.uniform(0.0, 10.0, size=blocks).astype(np.float32)
+    selected_blocks = np.sort(
+        np.lexsort((np.arange(blocks, dtype=np.int64), -scores))[:budget]
+    )
+    expected = (
+        selected_blocks[:, None] * ratio + np.arange(ratio, dtype=np.int64)
+    ).reshape(-1)
+    output_shape = (budget * ratio + ratio - 1,)
+
+    allocations = []
+    try:
+        d_scores = _upload(scores, runtime, allocations)
+        d_selected = _alloc(output_shape, np.int64, runtime, allocations)
+        d_count = _alloc((1,), np.int32, runtime, allocations)
+        qwen4_exp_qsa_topk_expand_f32_i64(
+            d_scores.ptr,
+            d_selected.ptr,
+            d_count.ptr,
+            blocks,
+            blocks * ratio - 1,
+            ratio,
+            budget,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        actual_count = _download(d_count, (1,), np.int32, runtime)
+        actual = _download(d_selected, output_shape, np.int64, runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    assert int(actual_count[0]) == expected.size
+    np.testing.assert_array_equal(actual[: expected.size], expected)
+    np.testing.assert_array_equal(actual[expected.size :], -1)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

@@ -104,6 +104,16 @@ _ARGS_SCORE = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+_ARGS_TOPK_EXPAND = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _ARGS_SELECT = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -539,6 +549,46 @@ def qwen4_exp_qsa_score_f32(
     )
 
 
+def qwen4_exp_qsa_topk_expand_f32_i64(
+    scores_ptr: int,
+    selected_positions_ptr: int,
+    selected_count_ptr: int,
+    blocks: int,
+    query_position: int,
+    ratio: int,
+    budget: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """GPU exact top-k with lower-index ties and sorted token expansion."""
+
+    if blocks <= 0 or ratio <= 0 or budget <= 0 or budget > blocks:
+        raise ValueError("blocks, ratio, and budget must satisfy blocks >= budget > 0")
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_qsa_topk_expand_f32_i64",
+        _ARGS_TOPK_EXPAND,
+        ctypes.c_int,
+    )
+    _check_launch(
+        runtime,
+        fn(
+            scores_ptr,
+            selected_positions_ptr,
+            selected_count_ptr,
+            blocks,
+            query_position,
+            ratio,
+            budget,
+            stream,
+        ),
+    )
+
+
 def qwen4_exp_qsa_select_blocks_f32_i64(
     scores_ptr: int,
     block_starts_ptr: int,
@@ -645,6 +695,12 @@ def register_qwen4_exp_qsa_kernels(*, replace: bool = True) -> None:
             "f32_i64",
             "strict",
         ): qwen4_exp_qsa_select_blocks_f32_i64,
+        KernelKey(
+            "hip_gfx1100",
+            "qsa_select_blocks",
+            "f32_i64",
+            "strict_device_expand",
+        ): qwen4_exp_qsa_topk_expand_f32_i64,
     }
     for key, function in registrations.items():
         register(key, function, replace=replace)
@@ -669,6 +725,7 @@ __all__ = [
     "qwen4_exp_qsa_split_norm_rope_f32",
     "qwen4_exp_qsa_split_norm_rope_rows_f32",
     "qwen4_exp_qsa_select_blocks_f32_i64",
+    "qwen4_exp_qsa_topk_expand_f32_i64",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_f32",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32",
     "register_qwen4_exp_qsa_kernels",

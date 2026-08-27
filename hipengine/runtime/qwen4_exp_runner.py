@@ -46,6 +46,7 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
     qwen4_exp_qsa_split_norm_rope_f32,
     qwen4_exp_qsa_split_norm_rope_rows_f32,
+    qwen4_exp_qsa_topk_expand_f32_i64,
 )
 from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
@@ -823,6 +824,72 @@ class Qwen4ExpQSAIndexDeviceState:
         )
         self.pooled_count = complete
 
+    def select_positions_device(
+        self,
+        prepared_query_ptr: int,
+        *,
+        query_position: int,
+        output_positions_ptr: int | None = None,
+        output_count_ptr: int | None = None,
+        key_norm_weight_ptr: int,
+        rotary_dim: int,
+        theta: float,
+        eps: float = 1e-6,
+        stream: int = 0,
+    ) -> int:
+        """Score and select entirely on device with strict tie/order semantics."""
+
+        if self.closed:
+            raise RuntimeError("QSA index state is closed")
+        position = int(query_position)
+        if position < 0 or position >= self.count:
+            raise ValueError("QSA query position must identify an appended index key")
+        blocks = (position + 1) // self.compression_ratio
+        if blocks <= self.block_budget:
+            raise ValueError("native QSA selection requires more blocks than the budget")
+        self.prepare_complete_blocks(
+            blocks,
+            key_norm_weight_ptr=key_norm_weight_ptr,
+            rotary_dim=rotary_dim,
+            theta=theta,
+            eps=eps,
+            stream=stream,
+        )
+        qwen4_exp_qsa_score_f32(
+            int(prepared_query_ptr),
+            self.pooled_keys.ptr,
+            self.scores.ptr,
+            1,
+            blocks,
+            self.index_heads,
+            self.index_dim,
+            stream=stream,
+            runtime=self.runtime,
+        )
+        positions_ptr = (
+            self.selected_positions.ptr
+            if output_positions_ptr is None
+            else int(output_positions_ptr)
+        )
+        count_ptr = (
+            self.selected_count.ptr
+            if output_count_ptr is None
+            else int(output_count_ptr)
+        )
+        qwen4_exp_qsa_topk_expand_f32_i64(
+            self.scores.ptr,
+            positions_ptr,
+            count_ptr,
+            blocks,
+            position,
+            self.compression_ratio,
+            self.block_budget,
+            stream=stream,
+            runtime=self.runtime,
+        )
+        tail = position + 1 - blocks * self.compression_ratio
+        return self.block_budget * self.compression_ratio + tail
+
     def select_positions_host(
         self,
         prepared_query_ptr: int,
@@ -914,7 +981,7 @@ class Qwen4ExpQSAIndexDeviceState:
         position = int(query_position)
         if position != self.count - 1:
             raise ValueError("QSA query position must identify the latest index key")
-        selected = self.select_positions_host(
+        selected_count = self.select_positions_device(
             prepared_query_ptr,
             query_position=position,
             key_norm_weight_ptr=key_norm_weight_ptr,
@@ -923,23 +990,7 @@ class Qwen4ExpQSAIndexDeviceState:
             eps=eps,
             stream=stream,
         )
-        copy_host_to_device(
-            self.selected_starts,
-            host_array_ptr(self.selected_starts_host),
-            runtime=self.runtime,
-        )
-        copy_host_to_device(
-            self.selected_count,
-            host_array_ptr(self.selected_count_host),
-            runtime=self.runtime,
-        )
-        copy_host_to_device(
-            self.selected_positions,
-            host_array_ptr(selected),
-            selected.nbytes,
-            runtime=self.runtime,
-        )
-        return int(selected.size), self.selected_positions
+        return selected_count, self.selected_positions
 
     def restore_count(self, count: int) -> None:
         if self.closed:
@@ -2040,21 +2091,38 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         )
         for local_row in range(dense_rows, count):
             position = start + local_row
-            selected = index_state.select_positions_host(
+            selected_count = index_state.select_positions_device(
                 scratch.index_query.ptr
                 + local_row * index_heads * index_dim * DType.FP32.itemsize,
                 query_position=position,
+                output_positions_ptr=metadata.selected_positions.ptr
+                + local_row * metadata.selection_capacity * DType.INT64.itemsize,
+                output_count_ptr=metadata.selected_counts.ptr
+                + local_row * DType.INT32.itemsize,
                 key_norm_weight_ptr=weights.index_k_norm_weight_ptr,
                 rotary_dim=index_rotary_dim,
                 theta=theta,
                 eps=eps,
                 stream=stream,
             )
-            if selected.size > metadata.selection_capacity:
+            if selected_count > metadata.selection_capacity:
                 raise ValueError("QSA selection exceeds prefill metadata capacity")
-            metadata.selected_positions_host[local_row, : selected.size] = selected
-            metadata.selected_counts_host[local_row] = selected.size
-        metadata.upload_selections(count)
+        last_row = count - 1
+        active_runtime.memcpy_async(
+            index_state.selected_positions.ptr,
+            metadata.selected_positions.ptr
+            + last_row * metadata.selection_capacity * DType.INT64.itemsize,
+            index_state.selected_positions.nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            stream,
+        )
+        active_runtime.memcpy_async(
+            index_state.selected_count.ptr,
+            metadata.selected_counts.ptr + last_row * DType.INT32.itemsize,
+            DType.INT32.itemsize,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            stream,
+        )
         qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32(
             scratch.query.ptr + dense_rows * q_width * DType.FP32.itemsize,
             attention_state.key_cache.ptr,

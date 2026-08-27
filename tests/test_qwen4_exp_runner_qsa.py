@@ -287,7 +287,13 @@ def test_qwen4_exp_qsa_runner_switches_to_native_sparse_selection_above_budget()
             runtime.device_synchronize()
             actual = _download(output, (hidden,), np.float32, runtime)
             np.testing.assert_allclose(actual, expected, rtol=3e-4, atol=3e-4)
-        np.testing.assert_array_equal(index_state.selected_positions_host[: selected.size], selected)
+        device_selected = _download(
+            index_state.selected_positions,
+            (index_state.selected_positions.nbytes // np.dtype(np.int64).itemsize,),
+            np.int64,
+            runtime,
+        )
+        np.testing.assert_array_equal(device_selected[: selected.size], selected)
     finally:
         if scratch is not None:
             scratch.close()
@@ -508,7 +514,12 @@ def test_qwen4_exp_qsa_prefill_mixer_matches_serial_across_sparse_boundary() -> 
             serial_outputs.append(_download(output, (hidden,), np.float32, runtime))
             if position == rows - 1 and position + 1 > serial_index.dense_equivalent_limit:
                 count = block_budget * ratio
-                serial_selected = serial_index.selected_positions_host[:count].copy()
+                serial_selected = _download(
+                    serial_index.selected_positions,
+                    (serial_index.selected_positions.nbytes // np.dtype(np.int64).itemsize,),
+                    np.int64,
+                    runtime,
+                )[:count]
         bulk_output = run_qwen4_exp_qsa_prefill_token_mixer(
             d_mixed.ptr,
             weights,
@@ -567,6 +578,12 @@ def test_qwen4_exp_qsa_prefill_mixer_matches_serial_across_sparse_boundary() -> 
             np.float32,
             runtime,
         )
+        bulk_selected = _download(
+            bulk_index.selected_positions,
+            (bulk_index.selected_positions.nbytes // np.dtype(np.int64).itemsize,),
+            np.int64,
+            runtime,
+        )
     finally:
         if metadata is not None:
             metadata.close()
@@ -594,7 +611,7 @@ def test_qwen4_exp_qsa_prefill_mixer_matches_serial_across_sparse_boundary() -> 
     assert bulk_index.count == serial_index.count == rows
     if serial_selected is not None:
         np.testing.assert_array_equal(
-            metadata.selected_positions_host[-1, : serial_selected.size], serial_selected
+            bulk_selected[: serial_selected.size], serial_selected
         )
 
 

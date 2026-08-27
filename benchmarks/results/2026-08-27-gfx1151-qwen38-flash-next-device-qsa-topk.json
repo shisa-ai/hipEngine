@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "accepted_exact_default",
+  "scope": "Device-only deterministic QSA top-512 selection and sorted token expansion",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "workload": {"kind": "natural chat archive retrieval", "tokens": 4096, "needle_token_offset": 720, "qsa_layers": 12, "chunk_size": 64, "generated_tokens": 100},
+  "timing": {"before_persistent_host_topk_seconds": 303.528440865, "device_topk_seconds": 294.43378401599966, "reduction_percent": 2.9963112593608154, "speedup": 1.0308886321567845, "total_vs_pre_qsa_units_seconds": 304.94368645299994, "total_reduction_percent": 3.446505995663608},
+  "structural": {
+    "score_d2h_bytes_removed": 75399168,
+    "score_d2h_synchronizations_removed": 24540,
+    "host_lexsort_rows_removed": 24540,
+    "host_lexsort_score_values_removed": 18849792,
+    "selection_metadata_h2d_bytes_removed": 403341312,
+    "final_state_d2d_bytes": 6302208,
+    "algorithm": "four-pass nonnegative-FP32 radix threshold plus stable wave-prefix compaction; exact-threshold ties take lower block indices; output positions are ascending"
+  },
+  "micro_65536_blocks": {"iterations_gpu": 1000, "iterations_host": 100, "gpu_us": 128.22404000007737, "host_lexsort_us": 3656.214530001307, "speedup": 28.514267137419015},
+  "correctness": {
+    "tie_fixture_exact": true,
+    "tail_4094_exact": true,
+    "tail_4095_exact": true,
+    "host_lexsort_blocks": [513, 4096, 65536],
+    "all_host_lexsort_positions_exact": true,
+    "natural_generated_ids_equal": true,
+    "final_answer": "VIOLET-7391",
+    "retrieval_exact": true,
+    "needle_selected_layers": 12,
+    "transformers_cpu_selected_positions": 2048,
+    "position_mismatches": 0,
+    "repeat_exact": true,
+    "rollback_isolation_exact": true
+  },
+  "memory": {"tracked_peak_bytes": 82874289648, "tracked_after_close_bytes": 0, "tracked_after_close_allocations": 0},
+  "validation": {"qsa_hip_runner_and_gate_tests": "15 passed", "natural_gate_exit_code": 0, "rocprof_kernel": "qsa_topk_expand_f32_i64_kernel", "rocprof_duration_ns_513_4096_65536_blocks": [114416, 179980, 669181], "rocprof_workgroup": 1024, "rocprof_vgpr": 24, "rocprof_scratch_bytes": 0, "score_error_note": "The first post-change report read the intentionally stale host score mirror after D2H removal. Binding selected-position parity passed; the diagnostic script now explicitly downloads the final score row after timing."},
+  "command": "uv run python scripts/qwen4_exp_qsa_retrieval_gate.py /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --target-tokens 4096 --max-tokens 128 --json-out /tmp/qwen4exp-qsa-retrieval-device-topk.json",
+  "decision": {"promoted": true, "reason": "3.00% same-host wall win with exact control/output and elimination of per-row score D2H and host sort", "next": "split-k sparse BF16 attention and batched paged score generation"}
+}
