@@ -39,6 +39,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     build_gguf_q4_k_selected_prefill,
     gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out,
+    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out,
@@ -77,6 +78,15 @@ def test_gguf_q4_k_selected_wmma_registry_and_build_plan(monkeypatch: pytest.Mon
             variant="selected_dual_grouped_rowbatch8_bf16_bf16_out",
         )
         is gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q4_k",
+            variant="selected_dual_grouped_rowbatch8_out4_bf16_bf16_out",
+        )
+        is gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out
     )
     assert (
         resolve(
@@ -401,7 +411,7 @@ def test_grouped_rowbatch8_matches_strict_selected_dual_bits() -> None:
             device = malloc(host.nbytes, runtime=runtime)
             copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
             devices.append(device)
-        for _ in range(4):
+        for _ in range(6):
             outputs.append(
                 malloc(
                     fixture.compact_rows
@@ -438,6 +448,19 @@ def test_grouped_rowbatch8_matches_strict_selected_dual_bits() -> None:
             fixture.out_features_a,
             runtime=runtime,
         )
+        gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out(
+            devices[0].ptr,
+            devices[1].ptr,
+            devices[2].ptr,
+            devices[3].ptr,
+            outputs[4].ptr,
+            outputs[5].ptr,
+            fixture.compact_rows,
+            fixture.num_experts,
+            fixture.in_features,
+            fixture.out_features_a,
+            runtime=runtime,
+        )
         got = []
         for output in outputs:
             host = np.empty(
@@ -449,6 +472,8 @@ def test_grouped_rowbatch8_matches_strict_selected_dual_bits() -> None:
             got.append(host)
         np.testing.assert_array_equal(got[2], got[0])
         np.testing.assert_array_equal(got[3], got[1])
+        np.testing.assert_array_equal(got[4], got[0])
+        np.testing.assert_array_equal(got[5], got[1])
     finally:
         for output in reversed(outputs):
             free(output, runtime=runtime)
