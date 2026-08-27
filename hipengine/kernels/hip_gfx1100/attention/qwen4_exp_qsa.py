@@ -104,6 +104,18 @@ _ARGS_SCORE = (
     ctypes.c_int64,
     ctypes.c_void_p,
 )
+_ARGS_TOPK_EXPAND_ROWS = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _ARGS_TOPK_EXPAND = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -688,6 +700,52 @@ def qwen4_exp_qsa_topk_expand_f32_i64(
     )
 
 
+def qwen4_exp_qsa_topk_expand_rows_f32_i64(
+    scores_ptr: int,
+    query_positions_ptr: int,
+    selected_positions_ptr: int,
+    selected_counts_ptr: int,
+    rows: int,
+    score_stride: int,
+    output_stride: int,
+    ratio: int,
+    budget: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Batched exact top-k over variable visible prefixes."""
+
+    if rows <= 0 or score_stride < budget or ratio <= 0 or budget <= 0:
+        raise ValueError("invalid batched top-k rows, score stride, ratio, or budget")
+    if output_stride < budget * ratio + ratio - 1:
+        raise ValueError("batched top-k output stride is too small")
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_qsa_topk_expand_rows_f32_i64",
+        _ARGS_TOPK_EXPAND_ROWS,
+        ctypes.c_int,
+    )
+    _check_launch(
+        runtime,
+        fn(
+            scores_ptr,
+            query_positions_ptr,
+            selected_positions_ptr,
+            selected_counts_ptr,
+            rows,
+            score_stride,
+            output_stride,
+            ratio,
+            budget,
+            stream,
+        ),
+    )
+
+
 def qwen4_exp_qsa_select_blocks_f32_i64(
     scores_ptr: int,
     block_starts_ptr: int,
@@ -812,6 +870,12 @@ def register_qwen4_exp_qsa_kernels(*, replace: bool = True) -> None:
             "f32_i64",
             "strict_device_expand",
         ): qwen4_exp_qsa_topk_expand_f32_i64,
+        KernelKey(
+            "hip_gfx1100",
+            "qsa_select_blocks",
+            "f32_i64",
+            "strict_device_expand_rows",
+        ): qwen4_exp_qsa_topk_expand_rows_f32_i64,
     }
     for key, function in registrations.items():
         register(key, function, replace=replace)
@@ -837,6 +901,7 @@ __all__ = [
     "qwen4_exp_qsa_split_norm_rope_rows_f32",
     "qwen4_exp_qsa_select_blocks_f32_i64",
     "qwen4_exp_qsa_topk_expand_f32_i64",
+    "qwen4_exp_qsa_topk_expand_rows_f32_i64",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_f32",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32",

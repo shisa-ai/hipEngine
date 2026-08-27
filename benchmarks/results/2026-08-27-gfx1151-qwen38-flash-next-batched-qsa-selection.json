@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "accepted_exact_default",
+  "scope": "Chunk-batched paged QSA score generation and deterministic top-512 expansion",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "workload": {"kind": "paired same-residency natural chat archive retrieval", "tokens": 4096, "needle_token_offset": 720, "qsa_layers": 12, "chunk_size": 64, "generated_tokens": 100},
+  "timing": {"scalar_seconds": 295.70580923000034, "batched_seconds": 290.97050947499974, "reduction_percent": 1.601354997837555, "speedup": 1.0162741570049298},
+  "final_chunk_micro": {"rows": 64, "max_blocks": 1024, "scalar_ms": 2.7351354000074934, "batched_ms": 0.46885920000931947, "speedup": 5.833596525353454},
+  "structural": {"scalar_score_topk_launches": 49080, "batched_score_topk_launches": 768, "launch_reduction_percent": 98.43520782396088, "scalar_visible_score_values": 18849792, "batched_score_values": 19051968, "extra_score_work_percent": 1.07256355932204, "max_262k_score_workspace_bytes": 16777216},
+  "correctness": {"variable_prefix_rows_exact": true, "tails_exact": true, "mean_kl": 0.0, "max_kl": 0.0, "top1_agreement": true, "all_12_layer_control_exact": true, "generated_ids_exact": true, "final_answer": "VIOLET-7391", "retrieval_exact": true, "repeat_exact": true, "rollback_isolation_exact": true},
+  "memory": {"tracked_peak_bytes": 82874560240, "tracked_after_close_bytes": 0, "tracked_after_close_allocations": 0, "added_4k_workspace_bytes": 270592},
+  "rocprof": {"kernel": "qsa_topk_expand_f32_i64_kernel", "rows": 3, "duration_ns": 125836, "workgroup": 1024, "grid_x": 3072, "vgpr": 24, "scratch_bytes": 0},
+  "validation": {"focused_qsa_tests": "14 passed", "paired_gate_exit_code": 0},
+  "fallback": {"flag": "HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION=0", "route": "per-row device score/top-k"},
+  "decision": {"promoted": true, "reason": "1.60% paired same-residency wall win with exact arithmetic/control/task output and 98.44% score/top-k launch reduction", "next": "natural 16K/64K requalification and then practical 262K execution"}
+}
