@@ -277,9 +277,10 @@ K0.
 The strict checkpoint passes all ten direct-owner and blocking-server C2 cells,
 accepts **257/346 (74.28%)** drafts, and records physical width-2 proposal plus
 normally R6 target/accept/commit with zero candidate D2H/recovery. It remains
-**22.390 vs 31.281 tok/s (0.7158x AR)**. Realized C1 inside resident capacity 2
-stays K0 because singleton continuation in the physical provider owner is not
-qualified. Evidence: [`explicit C2 ownership`](../benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json).
+**22.390 vs 31.281 tok/s (0.7158x AR)**. The real unflagged public blocking
+route independently passes 10/10 at **22.036 vs 30.652 tok/s (0.7189x)**.
+Realized C1 inside resident capacity 2 stays K0 because singleton continuation
+in the physical provider owner is not qualified. Evidence: [`explicit C2 ownership`](../benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json).
 
 Exit: explicit C2 is functionally qualified; automatic still selects K0.
 

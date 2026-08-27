@@ -2,7 +2,7 @@
   "schema": 1,
   "date": "2026-08-27",
   "kind": "w7900_qwen36_27b_dense_mtp2_c2_explicit_ownership",
-  "status": "passed_explicit_strict_scope_automatic_k0",
+  "status": "passed_public_explicit_strict_scope_automatic_k0",
   "performance_claim": false,
   "source_commit": "3c0c17d8e2e98e5de65013aa0fda4688caa04e40",
   "hardware": {
@@ -42,7 +42,8 @@
   },
   "commands": {
     "direct_owner_full": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt PYTHONPATH=. uv run python /tmp/specdec2-c2-profile-wrapper.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --scope full --concurrency 2 --budgets 2 --max-tokens 24 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-c2-6-hipcc-version.txt --require-cached-build --output /tmp/gfx1100-cn-campaign-c2-k2-d24-full.json --fail-on-fail",
-    "blocking_server_c1_c2": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt PYTHONPATH=. uv run python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile strict --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2 --expected-mtp-widths 1,2 --max-tokens 24 --candidate-budget 2 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --correctness-contract ar_exact --output /tmp/gfx1100-cn-campaign-server-c1-c2-strict.json"
+    "blocking_server_c1_c2": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt PYTHONPATH=. uv run python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile strict --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2 --expected-mtp-widths 1,2 --max-tokens 24 --candidate-budget 2 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --correctness-contract ar_exact --output /tmp/gfx1100-cn-campaign-server-c1-c2-strict.json",
+    "public_blocking_c2": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt PYTHONPATH=. uv run python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.6-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile strict --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 2 --expected-mtp-widths 2 --max-tokens 24 --candidate-budget 2 --batch-window-ms 20 --max-sequence-length 1024 --correctness-contract ar_exact --output /tmp/gfx1100-cn-campaign-server-public-c2-strict-green.json"
   },
   "raw_sources": {
     "direct_owner_full": {
@@ -54,6 +55,12 @@
       "path": "/tmp/gfx1100-cn-campaign-server-c1-c2-strict.json",
       "bytes": 2086363,
       "sha256": "0626555d66848db0d32ec90690a194328201b20c432f3ce8303fc3939191df7a"
+    },
+    "public_blocking_c2": {
+      "path": "/tmp/gfx1100-cn-campaign-server-public-c2-strict-green.json",
+      "bytes": 1450795,
+      "sha256": "b256d9c130a59ca3eae8eff56620632262628789bb0007f40f4c2269be03936e",
+      "source_commit": "1196a9ac6b356dd51cc8f333d13380395fd847ac"
     }
   },
   "direct_owner_full": {
@@ -98,6 +105,19 @@
     },
     "overall_harness_status": "expected-width mismatch only because the diagnostic invocation deliberately requested C1 engagement; C2 passed every declared route/correctness cell"
   },
+  "public_unflagged_blocking": {
+    "status": "complete",
+    "cells": 10,
+    "exact_cells": 10,
+    "engaged_cells": 10,
+    "budget_conformed_cells": 10,
+    "decision_reason": "qualified_explicit_dense_c2_k2_d24",
+    "true_ar_tok_s": 30.651852764952647,
+    "mtp_tok_s": 22.03587200739031,
+    "mtp_over_true_ar": 0.7189083210195419,
+    "diagnostic_package_override": false,
+    "diagnostic_plan_override": false
+  },
   "ownership": {
     "proposal": "request-major device proposal, physical width 2",
     "target": "one packed target frontier, normally R6",
@@ -111,10 +131,10 @@
   },
   "decision": {
     "backend_adapter_construction": "enable gfx1100 capacity>1 adapter",
-    "public_scope": "strict explicit-only exact C2/K2/D24 key",
+    "public_scope": "validated unflagged strict explicit-only exact C2/K2/D24 key",
     "automatic_policy": "K0 unchanged",
     "production_profile": "not yet qualified; requires strict-teacher KL/top-1/task/determinism/isolation packet",
     "performance": "blocked: 0.716x true AR and every category trails AR",
-    "next": "validate the unflagged explicit blocking/SSE/lifecycle route after registration, then run the production numerical packet before any automatic or performance promotion"
+    "next": "validate SSE plus delayed/refill/cancel/failure lifecycle, then run the production numerical packet before any automatic or performance promotion"
   }
 }
