@@ -358,11 +358,12 @@ safe policy; this campaign does not claim a product MTP promotion.
 
 ## 6. Proposed follow-up: CR compact-rollback capacity sweep
 
-Status: **planned from source review only; no GPU work was run for this intake.**
+Status: **closed at CR-S0 on 2026-08-27; exact rollback capacity measured, but
+no current product cell is memory-limited, so no D1 implementation is admitted.**
 This is not a reopening of the completed throughput campaign. The Eaman source
-adds one genuinely new capacity mechanism, but its own report labels the
-headline context/TG table directional. The sweep below must establish a local
-product premise before implementation or measurement.
+adds one genuine capacity mechanism, but its own report labels the headline
+context/TG table directional. Local CR-S0 evidence is
+[`compact-rollback premise`](../benchmarks/results/2026-08-27-gfx1151-qwen38-compact-rollback-cr-s0-premise.json).
 
 ### Intake decision and local source map
 
@@ -376,42 +377,46 @@ resample.
 hipEngine already has most of the control plumbing but not the compact storage
 policy:
 
-- `_initial_state_only_journal_applies()` and producer capture retain one
-  pre-verify Conv/GDN snapshot for the native B3 target owner;
+- `_initial_state_only_journal_applies()` retains one pre-verify Conv/GDN
+  snapshot, borrowing producer capture where available (the qualified FP16
+  eager owner instead allocates the same one-group journal checkpoint);
 - `_ensure_verify_linear_state_row_buffers(rows)` still allocates Conv/GDN
   state for every verify row so a selected row can commit directly; and
 - `verify_target_block(..., advance_state_only=True)` already supports
   target-state replay without the LM-head/sample work.
 
-The known **83,794,462-byte** per-request admission/provider allocation is only
-an aggregate. Do not call it rollback savings until CR-S0 attributes every
-plane. The currently fingerprinted public key also rejects context 68, while
-the external claim concerns 56K–85K context. A local rollback-memory reduction
-has no product value unless it unlocks a retained context or residency cell.
+CR-S0 attributes the known **83,794,462-byte** B3 request allocation: one
+complete FP16 Conv/GDN state group is **83,361,792 bytes (79.5 MiB)**, and the
+per-request delta is almost entirely the required initial target checkpoint.
+The separate target-session verify-row store is `K+1` groups:
+**166,723,584/250,085,376/333,447,168 bytes** for B1/B2/B3. A D1 design could
+remove one/two/three groups (**79.5/159.0/238.5 MiB**, at most
+1,272/2,544/3,816 BF16-KV-token equivalents) but must retain the initial
+checkpoint and add deep replay. The currently fingerprinted public key rejects
+context 68, while c2-c8 remain typed K0 for physical lifecycle/economics. The
+capacity therefore unlocks no retained product cell.
 
 ### CR-S0 — premise, ownership, and baseline (measurement before code)
 
-- [ ] **CR-S0.0 Product-premise gate.** Name the exact currently inadmissible
-  context/resident-capacity cell that fewer rollback rows could unlock. Confirm
-  the limiting `ResourceClaimSet` plane and the route's context capability. If
-  another plane or the context-68 product fingerprint remains limiting, stop;
-  do not build a memory feature for a short-only route.
-- [ ] **CR-S0.1 Exact state-plane byte attribution.** For physical B1/B2/B3,
-  report live Conv/GDN state, initial checkpoint, captured verify-row states,
-  hidden rows, target accept buffers, NextN provider state, and unrelated
-  admission workspace separately. Record row capacity, allocation lifetime,
-  pointers, current/peak bytes, and bytes per additional rollback row.
-- [ ] **CR-S0.2 Admission claim and fallback.** Model full-depth and compact-D1
-  bytes as exact pre-mutation resource claims. Reserve persistent per-request
-  buffers before admission, fail closed on a missing claim/allocation, and name
-  the unchanged full-row journal as strict fallback. No first-cycle/lazy
-  allocation may consume headroom after admission.
-- [ ] **CR-S0.3 Matched baselines.** Freeze same-host AR and full-row B1/B2/B3
-  results on the full category suite plus heldouts. Separately freeze a
-  memory-pressure context/capacity row; never compare speed from two different
-  fitted contexts as an old→new throughput result.
+- [x] **CR-S0.0 Product-premise gate — failed/stop.** No current cell is
+  rollback-memory limited. C1 is fingerprinted to context 1-67; c2-c8 have
+  physical streaming/refill/survivor and economics blockers. Automatic remains
+  K0 and D1 is not admitted.
+- [x] **CR-S0.1 Exact state-plane byte attribution.** One state group is
+  83,361,792 bytes. Verify rows scale exactly as `(K+1) * group`; the initial
+  checkpoint is one additional group, hidden/metadata are only tens/hundreds
+  of KiB/bytes, and the full-attention NextN provider checkpoint owns zero
+  buffer bytes. Every probe completed and reclaimed with no KFD owner.
+- [x] **CR-S0.2 Admission claim and fallback — not admitted.** The present row
+  claims are logical counts rather than byte claims, but changing them cannot
+  unlock a product cell. Keep the existing full-row journal/fallback; do not
+  add a D1 claim or public flag.
+- [x] **CR-S0.3 Matched baselines — existing evidence sufficient.** Commit
+  `865e6141f` supplies fresh full-suite C1 B3 at 14.221 vs 9.778 tok/s
+  (+45.45%, 79.29% accept). A new full-suite/capacity rerun would not change
+  the failed premise and is skipped under focused-validation discipline.
 
-### CR-S1 — RED and bounded D1 prototype
+### CR-S1 — RED and bounded D1 prototype (**not admitted: CR-S0 stop**)
 
 - [ ] **CR-S1.1 RED every commit outcome.** Cover accepted counts `0..K` for
   B1/B2/B3 across multiple cycles, full accept, shallow/deep rejection,
@@ -435,7 +440,7 @@ has no product value unless it unlocks a retained context or residency cell.
   Steady cycles must allocate/free zero bytes; reclaim must return all
   request-owned bytes exactly once.
 
-### CR-S2 — economics, capacity, and lifecycle gates
+### CR-S2 — economics, capacity, and lifecycle gates (**not admitted**)
 
 - [ ] **CR-S2.1 Diagnostic screen.** One natural prompt may screen full rows vs
   D1 at B1/B2/B3 for byte savings, replay frequency, and replay cost. It is not
@@ -461,7 +466,7 @@ win with a speed cost may remain an explicit capacity profile, but must not
 replace automatic B3. Reject D1 if saved state bytes do not increase context or
 residency, if replay erases the product benefit, or if any lifecycle/gate fails.
 
-### CR-S3 — conditional follow-ups only
+### CR-S3 — conditional follow-ups only (**not admitted**)
 
 - [ ] **CR-S3.1 Replay-aware budget policy, conditional.** T3 already rejected
   adaptive K. Reopen only if retained D1 changes the measured cost surface; use
