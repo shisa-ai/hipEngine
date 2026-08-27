@@ -50,12 +50,20 @@ def _hip_available() -> bool:
     return True
 
 
-@pytest.mark.parametrize("rows", [1, 3])
+@pytest.mark.parametrize(
+    ("rows", "grouped_prefill"), [(1, False), (3, False), (16, True)]
+)
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle(rows: int) -> None:
+def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle(
+    rows: int, grouped_prefill: bool, monkeypatch
+) -> None:
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
+    if grouped_prefill:
+        monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "1")
+    else:
+        monkeypatch.delenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", raising=False)
     rng = np.random.default_rng(510)
     hidden, ffn, experts, top_k = 256, 256, 4, 2
     mixed = rng.normal(0.0, 0.1, size=(rows, hidden)).astype(np.float32)
@@ -175,12 +183,6 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle(rows: int) 
             serial_selected = np.asarray(selected_rows)
             serial_routing = np.asarray(routing_rows)
         finite_boundaries = {
-            "expert_gate": bf16_to_float32(
-                _download(scratch.expert_gate, (rows * top_k, ffn), np.uint16, runtime)
-            ),
-            "expert_up": bf16_to_float32(
-                _download(scratch.expert_up, (rows * top_k, ffn), np.uint16, runtime)
-            ),
             "expert_intermediate": bf16_to_float32(
                 _download(scratch.expert_intermediate, (rows * top_k, ffn), np.uint16, runtime)
             ),
@@ -194,6 +196,32 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle(rows: int) 
                 scratch.shared_down, (rows, hidden), np.float32, runtime
             ),
         }
+        if grouped_prefill:
+            finite_boundaries["group_gate_up"] = bf16_to_float32(
+                _download(
+                    scratch.group_gate_up,
+                    (rows * top_k, 2 * ffn),
+                    np.uint16,
+                    runtime,
+                )
+            )
+        else:
+            finite_boundaries["expert_gate"] = bf16_to_float32(
+                _download(
+                    scratch.expert_gate,
+                    (rows * top_k, ffn),
+                    np.uint16,
+                    runtime,
+                )
+            )
+            finite_boundaries["expert_up"] = bf16_to_float32(
+                _download(
+                    scratch.expert_up,
+                    (rows * top_k, ffn),
+                    np.uint16,
+                    runtime,
+                )
+            )
     finally:
         if serial_scratch is not None:
             serial_scratch.close()
@@ -206,14 +234,22 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle(rows: int) 
         assert np.isfinite(boundary).all(), name
     np.testing.assert_array_equal(selected, expected.selected_experts.astype(np.int64))
     if serial_bits is not None:
-        np.testing.assert_array_equal(actual_bits, serial_bits)
+        if grouped_prefill:
+            np.testing.assert_allclose(
+                bf16_to_float32(actual_bits),
+                bf16_to_float32(serial_bits),
+                rtol=2e-2,
+                atol=2e-2,
+            )
+        else:
+            np.testing.assert_array_equal(actual_bits, serial_bits)
         np.testing.assert_array_equal(selected, serial_selected)
         np.testing.assert_array_equal(routing, serial_routing)
     np.testing.assert_allclose(routing, expected.routing_weights, rtol=2e-6, atol=2e-6)
     np.testing.assert_allclose(
         bf16_to_float32(actual_bits),
         expected.output,
-        rtol=2e-2,
+        rtol=3e-2 if grouped_prefill else 2e-2,
         atol=2e-2,
     )
 

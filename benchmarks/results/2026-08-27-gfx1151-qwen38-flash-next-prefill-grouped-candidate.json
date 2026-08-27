@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "rejected_correctness_default_off_candidate",
+  "scope": "Qwen4Exp grouped/WMMA/peer prefill optimization campaign; no public performance promotion",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "device_total_bytes": 133143986176
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "artifact": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL"
+  },
+  "candidate_environment": {
+    "HIPENGINE_GGUF_WMMA_PREFILL": "1",
+    "HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL": "1",
+    "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "1",
+    "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA": "1",
+    "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL": "1",
+    "HIPENGINE_GGUF_Q8_0_WMMA_TILE_M": "64",
+    "HIPENGINE_GGUF_Q8_0_WMMA_TILE_N": "32"
+  },
+  "warm_baseline": {
+    "command": "uv run python /tmp/qwen4exp_warm_perf.py",
+    "prefill_512_tok_s": 8.674190628320213,
+    "decode_32_tok_s": 5.738567280181355,
+    "model_load_seconds": 23.48905759400077
+  },
+  "structural_prefill": {
+    "workload": "[264] * 512, one residency, one discarded warm run, interleaved Q4 tile sweep",
+    "best_q4_tile": [64, 16],
+    "median_seconds": 2.41784927450135,
+    "median_tok_s": 211.7584439193768,
+    "baseline_to_candidate_speedup": 24.4125,
+    "top1": 264,
+    "command": "HIPENGINE_GGUF_WMMA_PREFILL=1 HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL=1 HIPENGINE_QWEN4_EXP_Q5_1_WMMA=1 HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA=1 HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL=1 HIPENGINE_GGUF_Q8_0_WMMA_TILE_M=64 HIPENGINE_GGUF_Q8_0_WMMA_TILE_N=32 uv run python /tmp/qwen4exp_q4_tile_sweep512.py"
+  },
+  "natural_suite": {
+    "prompt_file": "/tmp/qwen4exp-canonical-plus-heldouts.jsonl",
+    "prompt_count": 18,
+    "tokens": 687,
+    "strict_seconds": 128.0980973120022,
+    "strict_tok_s": 5.363077,
+    "candidate_seconds": 19.214843649002432,
+    "candidate_tok_s": 35.75360864493251,
+    "speedup": 6.6667,
+    "strict_to_candidate_mean_kl": 0.17168812531725103,
+    "strict_to_candidate_p95_kl": 0.5689353897344971,
+    "strict_to_candidate_p99_kl": 1.1888126508240142,
+    "strict_to_candidate_max_kl": 1.3437819660963952,
+    "top1_agreement_rate": 0.9444444444444444,
+    "passed": false,
+    "command": "<candidate environment> uv run python /tmp/qwen4exp_wmma64_gate.py"
+  },
+  "profile_512": {
+    "dispatches": 9060,
+    "span_ms": 3004.582073,
+    "kernel_ms": 2854.145911,
+    "gap_ms": 150.436162,
+    "top_buckets_before_final_q5k_and_q8_tile_tuning": {
+      "q4_grouped_wmma_ms": 962.992,
+      "q8_dense_wmma_ms": 626.633,
+      "q5k_direct_selected_ms": 313.614,
+      "dense_f32_gemv_ms": 248.758,
+      "q5_1_grouped_wmma_ms": 148.280,
+      "qsa_attention_ms": 145.701,
+      "peer_gdn_prepare_recurrence_gate_ms": 114.515
+    }
+  },
+  "correctness": {
+    "focused_tests": 79,
+    "focused_tests_passed": 79,
+    "direct_fallback_retained": true,
+    "production_profile_passed": false
+  },
+  "decision": {
+    "promoted": false,
+    "reason": "Natural-suite strict comparison fails binding mean/tail/max KL and per-category top1 requirements. Candidate remains explicit and default-off despite large structural speedup.",
+    "next": "Develop strict-compatible prompt arithmetic and replacement Q4 layout; warm decode remains 5.74 tok/s and needs separate repack/graph work."
+  }
+}

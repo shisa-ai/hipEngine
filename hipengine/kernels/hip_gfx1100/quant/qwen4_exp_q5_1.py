@@ -12,6 +12,31 @@ from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("qwen4_exp_q5_1.hip")
 _OUTPUT_NAME = "qwen4_exp_q5_1.so"
+_ARGS_GROUPED_WMMA = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+_ARGS_GROUPED = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _ARGS = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -62,6 +87,100 @@ def build_qwen4_exp_q5_1(
         load=load,
         require_cached=require_cached,
     )
+
+
+def qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
+    input_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    weights_ptr: int,
+    output_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run compact grouped Q5_1 down projection through WMMA."""
+
+    if compact_rows <= 0 or num_experts <= 0 or wmma_total_rows <= 0:
+        raise ValueError("compact_rows, num_experts, and wmma_total_rows must be positive")
+    if wmma_total_rows % 16:
+        raise ValueError("wmma_total_rows must be divisible by 16")
+    if in_features <= 0 or in_features % 32 or out_features <= 0:
+        raise ValueError("Q5_1 grouped WMMA projection has invalid feature geometry")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out",
+        _ARGS_GROUPED_WMMA,
+        ctypes.c_int,
+    )
+    error = fn(
+        input_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        weights_ptr,
+        output_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        wmma_total_rows,
+        stream,
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
+def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
+    input_ptr: int,
+    expert_start_ptr: int,
+    weights_ptr: int,
+    output_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run grouped Q5_1 rows with eight-way expert-weight reuse."""
+
+    if compact_rows <= 0 or num_experts <= 0:
+        raise ValueError("compact_rows and num_experts must be positive")
+    if in_features <= 0 or in_features % 32 or out_features <= 0:
+        raise ValueError("Q5_1 grouped projection has invalid feature geometry")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+        _ARGS_GROUPED,
+        ctypes.c_int,
+    )
+    error = fn(
+        input_ptr,
+        expert_start_ptr,
+        weights_ptr,
+        output_ptr,
+        compact_rows,
+        num_experts,
+        in_features,
+        out_features,
+        stream,
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
 
 
 def qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
@@ -115,6 +234,26 @@ def qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
 
 
 def register_qwen4_exp_q5_1_kernels(*, replace: bool = True) -> None:
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_1",
+            "selected_grouped_wmma_prefill_compact_bf16_bf16_out",
+        ),
+        qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q5_1",
+            "selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+        ),
+        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
+        replace=replace,
+    )
     for layer in ("linear", "moe_linear"):
         register(
             KernelKey(
@@ -135,5 +274,7 @@ __all__ = [
     "build_qwen4_exp_q5_1",
     "plan_qwen4_exp_q5_1_build",
     "qwen4_exp_q5_1_selected_gemv_bf16_bf16_out",
+    "qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+    "qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out",
     "register_qwen4_exp_q5_1_kernels",
 ]

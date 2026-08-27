@@ -138,13 +138,21 @@ def test_qwen4_exp_runner_gdn_token_mixer_matches_reduced_cpu_oracle() -> None:
     np.testing.assert_allclose(actual_matrix, next_matrix[0], rtol=8e-5, atol=8e-5)
 
 
+@pytest.mark.parametrize("peer_prefill", [False, True])
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_qwen4_exp_runner_gdn_bulk_matches_serial_reduced() -> None:
+def test_qwen4_exp_runner_gdn_bulk_matches_serial_reduced(
+    peer_prefill: bool, monkeypatch
+) -> None:
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
+    if peer_prefill:
+        monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL", "1")
+    else:
+        monkeypatch.delenv("HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL", raising=False)
     rng = np.random.default_rng(3518)
-    rows, hidden, k_heads, v_heads, head_dim, kernel_size = 5, 8, 2, 4, 4, 4
+    rows, k_heads, v_heads, kernel_size = 5, 2, 4, 4
+    hidden, head_dim = (256, 128) if peer_prefill else (8, 4)
     qkv_width = 2 * k_heads * head_dim + v_heads * head_dim
     core_width = v_heads * head_dim
     mixed = rng.normal(0.0, 0.1, size=(rows, hidden)).astype(np.float32)
