@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "kind": "hipengine_cuda_sm120a_moonshine_exact_shape_graph_cache_rejection",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "model": {
+    "id": "shisa-ai/shisa-realtime-asr-0.92b",
+    "revision": "cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+    "precision": "FP16 storage/boundaries with FP32-sensitive arithmetic"
+  },
+  "hardware": {
+    "host": "linode-gpu1",
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition 97887 MiB",
+    "driver": "610.43.02",
+    "power_limit_watts": 600,
+    "cuda_toolkit": "13.3",
+    "architecture": "sm_120a"
+  },
+  "hypothesis": "A bounded LRU keyed by exact PCM sample/frame geometry can replay encoder plus D2D handoff plus cross-KV without GroupNorm padding changes and remove Python/launch overhead.",
+  "candidate": {
+    "cache_capacity": 32,
+    "key": ["sample_count", "encoder_frames"],
+    "scope": "exact-shape encoder + handoff + cross-KV CUDA graph",
+    "cold_capture": "outside the driver's internal timed wall; outer request pays only on first unseen shape",
+    "lifecycle": "LRU eviction destroyed graph exec then graph; route close destroyed all remaining entries",
+    "implementation_retained": false
+  },
+  "screen": {
+    "protocol": "20 FLEURS-through-EOU fixtures; two warmup traversals; five alternating iterations; 100 observations/route",
+    "baseline": {
+      "p50_ms": 39.207145,
+      "p95_ms": 46.30997995,
+      "mean_ms": 37.75495171,
+      "exact": true
+    },
+    "candidate": {
+      "p50_ms": 39.204149,
+      "p95_ms": 46.2995375,
+      "mean_ms": 37.72701401,
+      "exact": true
+    },
+    "saved_ms": {
+      "p50": 0.002996,
+      "p95": 0.01044245,
+      "mean": 0.0279377
+    },
+    "improvement_percent": {
+      "p50": 0.00764,
+      "p95": 0.02255,
+      "mean": 0.073998
+    },
+    "verdict": "null/insufficient; does not justify graph-memory and cold-capture complexity"
+  },
+  "decision": "Reject and remove. The current encoder is device-work bound; exact-shape graph replay does not materially reduce complete route latency. Preserve the GroupNorm no-padding rule and continue with device-side family work.",
+  "raw_sha256": {
+    "downstream_screen_json": "1df07a02d58580449fba69269af96c82655621c8db85cba36d9fea420a47c8b9",
+    "removed_prototype_diff": "34973747baae846572e3bdbce6521fc504674bbe7f49eec7492db12cb353606f"
+  },
+  "limitations": [
+    "The screen is sufficient to reject a near-zero candidate but not to claim a tiny positive speedup.",
+    "The prototype was measured from an uncommitted worktree and removed; its exact diff and observations remain ignored and hash-pinned.",
+    "The current production fixture distribution repeatedly hits exact shapes after warmup; real cold first-seen shapes would make the candidate less favorable."
+  ]
+}
