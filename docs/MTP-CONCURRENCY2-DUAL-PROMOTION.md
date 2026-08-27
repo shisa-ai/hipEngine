@@ -1,6 +1,6 @@
 # CONCURRENCY2 MTP Dual-Model Promotion — W7900
 
-- Status: **active; M0 audit complete, 35B adapter and both qualification packets open**
+- Status: **active; 35B quality qualified, 35B performance/serving and 27B qualification open**
 - Started: **2026-08-27**
 - Binding host: **`epyc` / AMD Radeon Pro W7900 / `gfx1100` / GPU 0**
 - Normative contracts: [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
@@ -150,7 +150,7 @@ components, but no strict/production profile and `_resolved_mtp2_adapter()`
 returns `None`; its unmodified MTP request executes K0 AR with zero cycles.
 Evidence: [`current-state audit`](../benchmarks/results/2026-08-27-w7900-dual-concurrency2-mtp-current-state-audit.json).
 
-### M1 — 35B MoE Generation-2 C1 — implementation complete
+### M1 — 35B MoE Generation-2 C1 — quality qualified
 
 - [x] Add a model-attached MoE NextN provider adapter around the retained
   device-resident MoE draft runner.
@@ -171,6 +171,18 @@ failures/drain residue. Dirty-worktree feedback (not a performance claim) is
 acceptance. Production generated IDs match AR in 8/10 cells and remain
 explicitly diagnostic. Evidence:
 [`35B MoE C1 owner`](../benchmarks/results/2026-08-27-w7900-35b-moe-generation2-mtp-c1-owner.json).
+
+The first binding strict-vs-N2 packet rejected the incumbent all-bulk target
+route despite passing global KL tails: top-1 was `98.905%` and `general_ja`
+failed its binding scope. A prompt-independent shape repair now selects the
+native N2 graph for K2 and registered serial-exact target fallback for K1,
+including terminal zero acceptance. The repaired full packet passes 276 aligned
+rows at mean/p95/p99/max KL
+`0.000407/0.002124/0.006020/0.023325`, 100% top-1, every category/shape/
+transition scope, exact 252-row K2 graph/eager reconciliation, three repeats,
+reverse-order isolation, paired task non-inferiority, profiles/fallback, and
+clean drain. Automatic remains K0 pending fresh performance and serving gates.
+Evidence: [`35B production quality`](../benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-quality.json).
 
 ### D1 — 27B Dense C1 closure
 
