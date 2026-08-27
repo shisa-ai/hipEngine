@@ -1,7 +1,7 @@
 # CONCURRENCY2 gfx1151 MTP Dynamic Admission Campaign
 
-- Status: **D6 economics complete with no optimization candidate; D7 policy closure is next**
-- Scope: **true AR / intent K0 / engaged MTP are separated; best C>1 is C2/K3 at 0.8170x AR, the profile is mandatory model-work bound, and automatic C>1 remains pure K0**
+- Status: **D0-D7 complete: automatic strict C1/K3 retained at 1.5916x AR; automatic C2-C8 pure K0**
+- Scope: **explicit production C1-C8 is correctness-qualified/default-off; no C>1 optimization premise passed; typed model-plugin evidence is the sole automatic policy owner**
 - Hardware lane when execution is approved: **Radeon 8060S / `hip_gfx1151`**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile**
 - First functional width: **two independent resident requests (`C_due=2`)**
@@ -40,6 +40,10 @@ Evidence:
 D6 now closes the three-arm economics matrix and profiles the only plausible
 cell, rejecting blind optimization and every automatic C>1 cell. Evidence:
 [`D6 economics`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d6-economics.json).
+D7 closes public policy and cleanup: current-source automatic C1 retains its
+full-suite win; C2-C8 group at the normal AR width and select pure K0 with zero
+provider mutation. Evidence:
+[`D7 closure`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json).
 
 ## 1. Executive decision
 
@@ -407,17 +411,28 @@ operation-complete >=1.10x projection, followed by D5 requalification. Evidence:
 
 ### D7 — automatic policy and closure
 
-- [ ] Publish exact static eligibility and dynamic cycle-policy fingerprints.
-- [ ] Prove independent HTTP children engage only retained C/K/load cells and
+- [x] Publish exact static eligibility and dynamic cycle-policy fingerprints.
+- [x] Prove independent HTTP children engage only retained C/K/load cells and
   use true AR for every losing/unqualified cell before speculative mutation.
-- [ ] Prove route changes occur only at transaction boundaries and terminal
+- [x] Prove route changes occur only at transaction boundaries and terminal
   telemetry reports actual MTP use rather than requested intent.
-- [ ] Run below/near/above-load, mixed AR/MTP, cancellation, overload, restart,
+- [x] Run below/near/above-load, mixed AR/MTP, cancellation, overload, restart,
   and soak with SLO-goodput and complete drain.
-- [ ] Remove superseded frontend concurrency guesses, temporary flags, duplicate
+- [x] Remove superseded frontend concurrency guesses, temporary flags, duplicate
   compatibility routes, and stale evidence rows according to `REFACTOR.md`.
-- [ ] Publish artifacts/worklogs and update benchmark rollup/changelog only for
+- [x] Publish artifacts/worklogs and update benchmark rollup/changelog only for
   retained product/default results.
+
+Exit passed. Exact retained C1 evidence/policy/static fingerprints are published
+in the closure artifact. The current 10-prompt automatic C1 suite reaches
+**15.609 vs 9.807 tok/s (1.5916x)**, every cell >=1.462x, all categories
+positive, and exact IDs. Independent cap4 C2-C4 and cap8 C5-C8 requests group at
+the normal AR width, match paired AR, report pure K0, and execute zero provider
+state/catch-up/proposal cycles. Two fresh public server lifecycles drain; D2-D6
+bind mixed/cancel/pressure/failure/blocking/SSE/overload/soak correctness. Broad
+legacy default booleans and the one-off D6 K0 switch are removed; explicit
+diagnostics and strict AR fallback remain. Evidence:
+[`D7`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json).
 
 ## 6. RED contract inventory
 
@@ -524,3 +539,8 @@ The campaign closes only when:
 Closure may retain no automatic C>N cell if correct normal-owner MTP still loses
 true AR. That is a valid measured result. Closing before the normal-owner route
 and transition matrix work is not.
+
+**Definition of done passed at D7.** All eight conditions are satisfied. The
+measured closure retains no automatic C>N cell, preserves explicit production
+C1-C8 diagnostics and strict fallback, and publishes pure K0 for every losing
+automatic width.
