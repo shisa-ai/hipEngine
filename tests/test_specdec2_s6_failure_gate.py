@@ -6,21 +6,24 @@ from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
 from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFTransactionalVerifier
 from scripts.specdec2_s6_failure_gate import (
     _failure_phase_specs,
-    _invoke_original_args,
     _outcomes,
     _recent_rows,
     _resident_capacity,
+    _set_owner_method,
 )
 
 
-def test_failure_gate_handles_staticmethod_injection_owner() -> None:
-    assert _invoke_original_args(("self", "pending"), staticmethod_owner=True) == (
-        "pending",
-    )
-    assert _invoke_original_args(("self", "pending"), staticmethod_owner=False) == (
-        "self",
-        "pending",
-    )
+def test_failure_gate_preserves_staticmethod_binding() -> None:
+    class Owner:
+        @staticmethod
+        def method(value):
+            return ("original", value)
+
+    original = Owner.method
+    _set_owner_method(Owner, "method", lambda value: ("replacement", value))
+    assert Owner().method(7) == ("replacement", 7)
+    _set_owner_method(Owner, "method", original)
+    assert Owner().method(7) == ("original", 7)
 
 
 def test_failure_gate_preserves_normal_owner_capacity() -> None:
