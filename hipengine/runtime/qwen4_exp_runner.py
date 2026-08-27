@@ -28,18 +28,23 @@ from hipengine.core.memory import (
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.backends import load_backend_kernel_package
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
+    qwen35_paged_full_attn_decode_context_bf16_batch_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
 )
 from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
+    qwen35_write_paged_kv_f32_batch_spans,
     qwen35_write_paged_kv_f32_spans,
 )
 from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_gate_context_f32,
     qwen4_exp_qsa_norm_rope_f32,
+    qwen4_exp_qsa_norm_rope_rows_f32,
     qwen4_exp_qsa_pool_norm_rope_f32,
     qwen4_exp_qsa_score_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
+    qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
     qwen4_exp_qsa_split_norm_rope_f32,
+    qwen4_exp_qsa_split_norm_rope_rows_f32,
 )
 from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
@@ -417,6 +422,156 @@ class Qwen4ExpDenseAttentionState:
         self.closed = True
 
 
+@dataclass
+class Qwen4ExpQSAPrefillMetadata:
+    block_tables: DeviceBuffer
+    positions: DeviceBuffer
+    context_counts: DeviceBuffer
+    selected_positions: DeviceBuffer
+    selected_counts: DeviceBuffer
+    block_tables_host: np.ndarray
+    positions_host: np.ndarray
+    context_counts_host: np.ndarray
+    selected_positions_host: np.ndarray
+    selected_counts_host: np.ndarray
+    rows: int
+    block_table_len: int
+    selection_capacity: int
+    max_positions: int
+    runtime: HipRuntime
+    closed: bool = False
+
+    @classmethod
+    def allocate(
+        cls,
+        attention_state: Qwen4ExpDenseAttentionState,
+        *,
+        rows: int,
+        selection_capacity: int,
+    ) -> "Qwen4ExpQSAPrefillMetadata":
+        if attention_state.closed:
+            raise RuntimeError("QSA prefill metadata requires an open attention state")
+        count = int(rows)
+        selected = int(selection_capacity)
+        if count <= 0 or selected <= 0:
+            raise ValueError("QSA prefill rows and selection capacity must be positive")
+        tables = np.ascontiguousarray(
+            np.tile(attention_state.block_host, (count, 1)), dtype=np.int32
+        )
+        positions = np.zeros(count, dtype=np.int64)
+        contexts = np.ones(count, dtype=np.int64)
+        selected_positions = np.full((count, selected), -1, dtype=np.int64)
+        selected_counts = np.zeros(count, dtype=np.int32)
+        hosts = (tables, positions, contexts, selected_positions, selected_counts)
+        buffers: list[DeviceBuffer] = []
+        try:
+            for host in hosts:
+                buffer = malloc(host.nbytes, runtime=attention_state.runtime)
+                buffers.append(buffer)
+                copy_host_to_device(
+                    buffer, host_array_ptr(host), runtime=attention_state.runtime
+                )
+        except Exception:
+            for buffer in reversed(buffers):
+                free(buffer, runtime=attention_state.runtime)
+            raise
+        return cls(
+            *buffers,
+            *hosts,
+            count,
+            int(attention_state.block_host.size),
+            selected,
+            attention_state.max_positions,
+            attention_state.runtime,
+        )
+
+    def set_contiguous(self, start_position: int, rows: int) -> None:
+        if self.closed:
+            raise RuntimeError("QSA prefill metadata is closed")
+        start = int(start_position)
+        count = int(rows)
+        if count <= 0 or count > self.rows:
+            raise ValueError("active QSA prefill rows exceed metadata capacity")
+        if start < 0 or start + count > self.max_positions:
+            raise ValueError("QSA prefill positions exceed attention capacity")
+        self.positions_host[:count] = np.arange(start, start + count, dtype=np.int64)
+        self.context_counts_host[:count] = self.positions_host[:count] + 1
+        self.selected_positions_host[:count] = -1
+        self.selected_counts_host[:count] = 0
+        copy_host_to_device(
+            self.positions,
+            host_array_ptr(self.positions_host),
+            count * np.dtype(np.int64).itemsize,
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            self.context_counts,
+            host_array_ptr(self.context_counts_host),
+            count * np.dtype(np.int64).itemsize,
+            runtime=self.runtime,
+        )
+
+    def spans(self, *, start_row: int, rows: int, decode: bool) -> KVLiveSpans:
+        if self.closed:
+            raise RuntimeError("QSA prefill metadata is closed")
+        start = int(start_row)
+        count = int(rows)
+        if start < 0 or count <= 0 or start + count > self.rows:
+            raise ValueError("QSA prefill span slice is outside metadata rows")
+        device = Device("hip", 0)
+        table_offset = start * self.block_table_len * np.dtype(np.int32).itemsize
+        live_buffer = self.context_counts if decode else self.positions
+        live_offset = start * np.dtype(np.int64).itemsize
+        return KVLiveSpans.paged_uniform(
+            block_table=Tensor.from_handle(
+                self.block_tables.ptr + table_offset,
+                (count, self.block_table_len),
+                DType.INT32,
+                device,
+            ),
+            live_counts=Tensor.from_handle(
+                live_buffer.ptr + live_offset,
+                (count,),
+                DType.INT64,
+                device,
+            ),
+            max_live_count=self.max_positions if decode else self.max_positions - 1,
+            storage_dtype=DType.BF16,
+        )
+
+    def upload_selections(self, rows: int) -> None:
+        count = int(rows)
+        if count <= 0 or count > self.rows:
+            raise ValueError("selection rows exceed QSA prefill metadata capacity")
+        copy_host_to_device(
+            self.selected_positions,
+            host_array_ptr(self.selected_positions_host),
+            count * self.selection_capacity * np.dtype(np.int64).itemsize,
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            self.selected_counts,
+            host_array_ptr(self.selected_counts_host),
+            count * np.dtype(np.int32).itemsize,
+            runtime=self.runtime,
+        )
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        for buffer in reversed(
+            (
+                self.block_tables,
+                self.positions,
+                self.context_counts,
+                self.selected_positions,
+                self.selected_counts,
+            )
+        ):
+            free(buffer, runtime=self.runtime)
+        self.closed = True
+
+
 def _qsa_select_starts_host(
     scores: object,
     block_starts: object,
@@ -582,7 +737,7 @@ class Qwen4ExpQSAIndexDeviceState:
         )
         self.count += 1
 
-    def select(
+    def select_positions_host(
         self,
         prepared_query_ptr: int,
         *,
@@ -592,13 +747,15 @@ class Qwen4ExpQSAIndexDeviceState:
         theta: float,
         eps: float = 1e-6,
         stream: int = 0,
-    ) -> tuple[int, DeviceBuffer]:
+    ) -> np.ndarray:
+        """Return exact selected logical positions for any appended sparse query."""
+
         if self.closed:
             raise RuntimeError("QSA index state is closed")
         position = int(query_position)
-        if position != self.count - 1:
-            raise ValueError("QSA query position must identify the latest index key")
-        blocks = self.count // self.compression_ratio
+        if position < 0 or position >= self.count:
+            raise ValueError("QSA query position must identify an appended index key")
+        blocks = (position + 1) // self.compression_ratio
         if blocks <= self.block_budget:
             raise ValueError("native QSA selection requires more blocks than the budget")
         self.query_position_host[0] = position
@@ -648,19 +805,8 @@ class Qwen4ExpQSAIndexDeviceState:
         )
         self.selected_starts_host[:] = chosen
         self.selected_count_host[0] = self.block_budget
-        copy_host_to_device(
-            self.selected_starts,
-            host_array_ptr(self.selected_starts_host),
-            runtime=self.runtime,
-        )
-        copy_host_to_device(
-            self.selected_count,
-            host_array_ptr(self.selected_count_host),
-            runtime=self.runtime,
-        )
-        count = self.block_budget
         output_count = 0
-        for start in self.selected_starts_host[:count].tolist():
+        for start in chosen.tolist():
             stop = output_count + self.compression_ratio
             self.selected_positions_host[output_count:stop] = np.arange(
                 int(start), int(start) + self.compression_ratio, dtype=np.int64
@@ -673,13 +819,48 @@ class Qwen4ExpQSAIndexDeviceState:
             output_count += int(tail.size)
         selected = self.selected_positions_host[:output_count]
         selected.sort()
+        return selected.copy()
+
+    def select(
+        self,
+        prepared_query_ptr: int,
+        *,
+        query_position: int,
+        key_norm_weight_ptr: int,
+        rotary_dim: int,
+        theta: float,
+        eps: float = 1e-6,
+        stream: int = 0,
+    ) -> tuple[int, DeviceBuffer]:
+        position = int(query_position)
+        if position != self.count - 1:
+            raise ValueError("QSA query position must identify the latest index key")
+        selected = self.select_positions_host(
+            prepared_query_ptr,
+            query_position=position,
+            key_norm_weight_ptr=key_norm_weight_ptr,
+            rotary_dim=rotary_dim,
+            theta=theta,
+            eps=eps,
+            stream=stream,
+        )
+        copy_host_to_device(
+            self.selected_starts,
+            host_array_ptr(self.selected_starts_host),
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            self.selected_count,
+            host_array_ptr(self.selected_count_host),
+            runtime=self.runtime,
+        )
         copy_host_to_device(
             self.selected_positions,
             host_array_ptr(selected),
             selected.nbytes,
             runtime=self.runtime,
         )
-        return output_count, self.selected_positions
+        return int(selected.size), self.selected_positions
 
     def restore_count(self, count: int) -> None:
         if self.closed:
@@ -1586,6 +1767,209 @@ def run_qwen4_exp_dense_qsa_token_mixer(
         stream=stream,
         runtime=active_runtime,
     )
+    return scratch.output
+
+
+def run_qwen4_exp_qsa_prefill_token_mixer(
+    mixed_ptr: int,
+    weights: Qwen4ExpQSAMixerDeviceWeights,
+    *,
+    attention_state: Qwen4ExpDenseAttentionState,
+    index_state: Qwen4ExpQSAIndexDeviceState,
+    scratch: Qwen4ExpQSAScratch,
+    metadata: Qwen4ExpQSAPrefillMetadata,
+    start_position: int,
+    rows: int,
+    hidden: int,
+    query_heads: int,
+    kv_heads: int,
+    head_dim: int,
+    rotary_dim: int,
+    theta: float,
+    index_heads: int,
+    index_dim: int,
+    index_rotary_dim: int,
+    eps: float = 1e-6,
+    stream: int = 0,
+    runtime: HipRuntime | None = None,
+) -> DeviceBuffer:
+    """Execute one contiguous QSA prompt chunk over shared paged state."""
+
+    count = int(rows)
+    start = int(start_position)
+    if count <= 0 or count > metadata.rows:
+        raise ValueError("QSA prefill rows must fit metadata capacity")
+    if start != index_state.count:
+        raise ValueError("QSA prefill start must equal the contiguous index cursor")
+    if start + count > attention_state.max_positions:
+        raise ValueError("QSA prefill chunk exceeds attention capacity")
+    if scratch.closed or attention_state.closed or index_state.closed or metadata.closed:
+        raise RuntimeError("Qwen4Exp QSA prefill scratch/state is closed")
+    active_runtime = runtime or scratch.runtime
+    if any(
+        owner is not active_runtime
+        for owner in (attention_state.runtime, index_state.runtime, metadata.runtime)
+    ) or scratch.runtime is not active_runtime:
+        raise ValueError("runtime must match all QSA prefill owners")
+    required = {"attn_q", "attn_k", "attn_v", "attn_output", "index_q", "index_k"}
+    missing = sorted(required - set(weights.projections))
+    if missing:
+        raise ValueError("missing Qwen4Exp QSA prefill weights: " + ", ".join(missing))
+    if index_heads != index_state.index_heads or index_dim != index_state.index_dim:
+        raise ValueError("QSA index geometry must match its state owner")
+    if weights.index_q_norm_weight_ptr == 0 or weights.index_k_norm_weight_ptr == 0:
+        raise ValueError("QSA index norm weights are required for prefill")
+    metadata.set_contiguous(start, count)
+    q_width = query_heads * head_dim
+    kv_width = kv_heads * head_dim
+    for slot, output, out_features in (
+        ("attn_q", scratch.q_projected, q_width * 2),
+        ("attn_k", scratch.key_projected, kv_width),
+        ("attn_v", scratch.value_projected, kv_width),
+        ("index_q", scratch.index_q_projected, index_heads * index_dim),
+        ("index_k", scratch.index_k_projected, index_dim),
+    ):
+        launch_gguf_linear(
+            weights.projections[slot],
+            mixed_ptr,
+            output.ptr,
+            count,
+            hidden,
+            out_features,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    qwen4_exp_qsa_split_norm_rope_rows_f32(
+        scratch.q_projected.ptr,
+        scratch.key_projected.ptr,
+        weights.q_norm_weight_ptr,
+        weights.k_norm_weight_ptr,
+        metadata.positions.ptr,
+        scratch.query.ptr,
+        scratch.key.ptr,
+        scratch.gate.ptr,
+        count,
+        query_heads,
+        kv_heads,
+        head_dim,
+        rotary_dim,
+        theta,
+        eps,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    qwen4_exp_qsa_norm_rope_rows_f32(
+        scratch.index_q_projected.ptr,
+        weights.index_q_norm_weight_ptr,
+        metadata.positions.ptr,
+        scratch.index_query.ptr,
+        count,
+        index_heads,
+        index_dim,
+        index_rotary_dim,
+        theta,
+        eps,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    for row in range(count):
+        index_state.append(
+            scratch.index_k_projected.ptr + row * index_dim * DType.FP32.itemsize,
+            position=start + row,
+            stream=stream,
+        )
+    qwen35_write_paged_kv_f32_batch_spans(
+        scratch.key.ptr,
+        scratch.value_projected.ptr,
+        attention_state.key_cache.ptr,
+        attention_state.value_cache.ptr,
+        metadata.spans(start_row=0, rows=count, decode=False),
+        count,
+        attention_state.block_size,
+        kv_heads,
+        head_dim,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    dense_rows = max(0, min(count, index_state.dense_equivalent_limit - start))
+    if dense_rows:
+        qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+            scratch.query.ptr,
+            attention_state.key_cache.ptr,
+            attention_state.value_cache.ptr,
+            scratch.context.ptr,
+            metadata.spans(start_row=0, rows=dense_rows, decode=True),
+            dense_rows,
+            start + dense_rows,
+            attention_state.block_size,
+            query_heads,
+            kv_heads,
+            head_dim,
+            head_dim ** -0.5,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    sparse_rows = count - dense_rows
+    if sparse_rows:
+        for local_row in range(dense_rows, count):
+            position = start + local_row
+            selected = index_state.select_positions_host(
+                scratch.index_query.ptr
+                + local_row * index_heads * index_dim * DType.FP32.itemsize,
+                query_position=position,
+                key_norm_weight_ptr=weights.index_k_norm_weight_ptr,
+                rotary_dim=index_rotary_dim,
+                theta=theta,
+                eps=eps,
+                stream=stream,
+            )
+            if selected.size > metadata.selection_capacity:
+                raise ValueError("QSA selection exceeds prefill metadata capacity")
+            metadata.selected_positions_host[local_row, : selected.size] = selected
+            metadata.selected_counts_host[local_row] = selected.size
+        metadata.upload_selections(count)
+        qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32(
+            scratch.query.ptr + dense_rows * q_width * DType.FP32.itemsize,
+            attention_state.key_cache.ptr,
+            attention_state.value_cache.ptr,
+            metadata.selected_positions.ptr
+            + dense_rows * metadata.selection_capacity * DType.INT64.itemsize,
+            metadata.selected_counts.ptr + dense_rows * DType.INT32.itemsize,
+            scratch.context.ptr + dense_rows * q_width * DType.FP32.itemsize,
+            metadata.spans(start_row=dense_rows, rows=sparse_rows, decode=True),
+            rows=sparse_rows,
+            selected_stride=metadata.selection_capacity,
+            block_size=attention_state.block_size,
+            query_heads=query_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            scale=head_dim ** -0.5,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    qwen4_exp_qsa_gate_context_f32(
+        scratch.context.ptr,
+        scratch.gate.ptr,
+        scratch.gated.ptr,
+        count * q_width,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    launch_gguf_linear(
+        weights.projections["attn_output"],
+        scratch.gated.ptr,
+        scratch.output.ptr,
+        count,
+        q_width,
+        hidden,
+        activation_dtype=GGUF_ACTIVATION_F32,
+        output_dtype=GGUF_OUTPUT_F32,
+        stream=stream,
+        runtime=active_runtime,
+    )
+    attention_state.set_position(start + count - 1)
     return scratch.output
 
 
@@ -2781,6 +3165,7 @@ __all__ = [
     "Qwen4ExpGRScratch",
     "Qwen4ExpPLEScratch",
     "Qwen4ExpQSAIndexDeviceState",
+    "Qwen4ExpQSAPrefillMetadata",
     "Qwen4ExpRunnerSnapshot",
     "Qwen4ExpTokenResult",
     "Qwen4ExpQSALayerDeviceWeights",
@@ -2789,6 +3174,7 @@ __all__ = [
     "Qwen4ExpQSAScratch",
     "run_qwen4_exp_dense_qsa_layer",
     "run_qwen4_exp_dense_qsa_token_mixer",
+    "run_qwen4_exp_qsa_prefill_token_mixer",
     "run_qwen4_exp_gdn_layer",
     "run_qwen4_exp_gdn_token_mixer",
     "run_qwen4_exp_moe",
