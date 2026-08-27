@@ -321,7 +321,10 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
 
 def _install_diagnostic_plan(llm: LLM) -> None:
     def resolve(self: LLM, **kwargs: Any) -> dict[str, Any]:
-        del self
+        kwargs.setdefault(
+            "candidate_budget",
+            int(getattr(self, "speculative_candidate_budget", 2)),
+        )
         return _diagnostic_plan(**kwargs)
 
     llm.resolve_speculative_mtp_serving_plan = MethodType(resolve, llm)
