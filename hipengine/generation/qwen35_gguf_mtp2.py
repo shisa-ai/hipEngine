@@ -778,14 +778,22 @@ class Qwen35GGUFMTP2Adapter:
         )
 
     def claims_fit(self, plan: SpecRequestPlan) -> bool:
+        request_ids = tuple(int(value) for value in plan.speculative_request_ids)
+        physical_singleton = bool(
+            len(request_ids) == 1
+            and (eligibility := self._static_eligibility(request_ids[0])) is not None
+            and eligibility.eligible
+            and int(eligibility.max_realized_group_rows) > 1
+        )
         return bool(
             self.enabled
             and self._active_claims is None
-            and 1 <= len(plan.speculative_request_ids) <= 4
+            and 1 <= len(request_ids) <= 4
             and not (
-                len(plan.speculative_request_ids) == 1
+                len(request_ids) == 1
                 and int(getattr(self.owner, "capacity", 1)) > 1
-                and not self._singleton_only(plan.speculative_request_ids[0])
+                and not self._singleton_only(request_ids[0])
+                and not physical_singleton
             )
             and not any(
                 request_id in self._disabled_requests
