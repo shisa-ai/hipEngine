@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 W7900 27B Dense Generation-2 automatic MTP promotion] Promote only exact Q4_K_M/production-manifest/BF16/C1/K3/max-seq1024/context4-95/D24/greedy_fast. Real unflagged blocking+SSE executes 7 cycles with 16/20 accepted; all horizon/context/sampling/capacity negatives select stable K0. `benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-automatic.json`.
+
 - [2026-08-27 W7900 27B Dense Generation-2 production qualified] Exact C1/K3 D24 reaches **22.302→32.076 tok/s (+43.82%)**, train/heldout **+49.29/+36.38%**, and every category **+32.30% to +52.66%**. All 30 cells are exact; explicit blocking/SSE, controls, soak, overload, and drain pass. Automatic exact-key rerun is next. `benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-performance.json`.
 
 - [2026-08-27 W7900 35B MoE Generation-2 automatic MTP promotion] Promote only exact Q4_K_M/production-manifest/BF16/C1/K2/max-seq1024/context4-95/D24/greedy_fast. Real unflagged blocking+SSE executes 9 cycles with 14/17 accepted; D25, context bounds, sampling, and capacity2 select stable K0. `benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-automatic.json`.

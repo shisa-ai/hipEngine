@@ -1,6 +1,6 @@
 # CONCURRENCY2 MTP Dual-Model Promotion — W7900
 
-- Status: **active; 35B automatic promoted, 27B and cross-model closure open**
+- Status: **active; both automatic keys promoted, cross-model closure open**
 - Started: **2026-08-27**
 - Binding host: **`epyc` / AMD Radeon Pro W7900 / `gfx1100` / GPU 0**
 - Normative contracts: [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
@@ -206,10 +206,13 @@ fallback. The binding full packet is exact in 30/30 cells and measures
 graph cycles, accepts 459/645 drafts, and reports zero failures. Real explicit
 blocking/SSE parity, sampler/context K0, 20-request alternating soak with
 bounded KV, bounded overload (3 accepted/5 truthful 429), and clean drain pass.
-Automatic exact-key publication/rerun is next. Evidence:
+The real unflagged automatic D24 request executes MTP; D25, context outside
+4-95, processed sampling, and resident capacity 2 select stable K0. The exact
+27B key is now promoted automatically. Evidence:
 [`27B quality`](../benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-quality.json),
 [`27B performance`](../benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-performance.json),
-[`27B serving`](../benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-serving.json).
+[`27B serving`](../benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-serving.json),
+[`27B automatic`](../benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-automatic.json).
 
 ### Q1/Q2 — independent qualification and promotion
 
