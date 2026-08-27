@@ -251,7 +251,10 @@ repeated-token 64K checkpoint passes teacher KL `5.74e-6`, top-1 exact, and
 clean teardown in 10,336.580 s; strict remains measured through 4K. The real
 complete 262,144-token owner also allocates at
 91.126 GB tracked, leaves 38.915 GB physical memory free, and tears down to zero
-tracked bytes; this is capacity-only evidence. Natural retrieval,
+tracked bytes; this is capacity-only evidence. On the same artifact, an exact
+Q5_1 wave-tail reduction cuts its 43-launch decode bucket 45.096→38.157 ms and
+raises a warm 32-token eager diagnostic from 5.74→5.89 tok/s; this is not a
+serving/topline decode claim. Natural retrieval,
 strict-above-4K, 262K inference, and lifecycle/index-reference gates remain
 open, so this is not a broad long-context, speed, serving/c>N, MTP, or vision
 claim.
@@ -261,7 +264,8 @@ claim.
 [`4K structural artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json) ·
 [`16K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json) ·
 [`64K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-64k.json) ·
-[`262K capacity artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-262k-capacity.json).
+[`262K capacity artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-262k-capacity.json) ·
+[`Exact Q5 wave-tail artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-q5-wave-tail.json).
 
 ## Current Qwen3.6-35B quantization quality
 

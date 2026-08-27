@@ -238,14 +238,20 @@ __global__ void q5_1_selected_gemv_bf16_bf16_kernel(
   }
   partial[threadIdx.x] = value;
   __syncthreads();
-  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+  for (int stride = blockDim.x / 2; stride >= 32; stride >>= 1) {
     if (threadIdx.x < stride) {
       partial[threadIdx.x] += partial[threadIdx.x + stride];
     }
     __syncthreads();
   }
-  if (threadIdx.x == 0) {
-    output[pair] = float_to_bf16_bits(partial[0]);
+  if (threadIdx.x < 32) {
+    float reduced = partial[threadIdx.x];
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      reduced += __shfl_down(reduced, offset, 32);
+    }
+    if (threadIdx.x == 0) {
+      output[pair] = float_to_bf16_bits(reduced);
+    }
   }
 }
 
