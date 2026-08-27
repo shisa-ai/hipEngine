@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 Qwen3.8-Flash-Next exact first-QSA-row requalification] At 2,052 tokens, promoted exact chunk64 matches serial logits bit-for-bit and improves **370.565→136.129 s (2.722x)**; llama KL is **7.65e-5**, top-1 264 agrees, and teardown is zero. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-exact-prefill.json`.
+
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next exact chunk64 prefill promotion] Promote immediate PLE copies + batched projections + exact serial Conv + exact grouped Q5_1 down: **687/687 rows bit-exact**, natural-suite prefill **5.265→12.117 tok/s (2.301x)**, warm p512 **8.674→16.555 tok/s (1.909x)**, public output/lifecycle pass. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json`.
 
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next full-row fast-profile rejection] The 687-row teacher-forced packet rejects the ~35.97-tok/s candidate at mean/p95/p99/max KL **0.01280/0.05553/0.12148/0.82237** and top-1 **94.47%**; every category misses its 97% floor. The prior 18-final-row packet was insufficient; no fast-profile exposure. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-fast-allrows-rejected.json`.

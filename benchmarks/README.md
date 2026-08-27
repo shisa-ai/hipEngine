@@ -238,7 +238,8 @@ general-Japanese/mixed prompts measured:
 The exact chunk64 prefill default additionally passes all 687 teacher-forced
 category+heldout rows bit-for-bit and improves same-residency natural-suite
 prefill **5.265→12.117 tok/s (2.301x)**; warm repeated-token p512 is 16.555
-tok/s. The heldout row is admitted as its predeclared subset; the containing merged
+tok/s. At the first selected-QSA row (2,052 tokens), chunk64 is bit-exact to
+serial and improves **370.565→136.129 s (2.722x)**. The heldout row is admitted as its predeclared subset; the containing merged
 18-prompt diagnostic is not called a pass because one repeated canonical row
 exceeded the ceiling. The scanner validates 111.335 GB across four exact hashes, 1,224 tensors, one
 28.800-GB IQ4_NL sparse-mmap PLE table, 82.523 GB hot weights, and zero
@@ -271,6 +272,7 @@ claim.
 [`Exact prefill promotion`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json) ·
 [`Heldout artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json) ·
 [`2,052 transition artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json) ·
+[`Exact 2,052 prefill`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-exact-prefill.json) ·
 [`4K structural artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json) ·
 [`16K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json) ·
 [`64K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-64k.json) ·
