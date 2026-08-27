@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "accepted_physical_capacity_ownership",
+  "scope": "real 262144-token runner allocation and teardown; no 262K inference correctness or speed claim",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "device_total_bytes": 133143986176
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "revision": "f5d08274bafd880402bd16f5e3e6c514136ec06c",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "artifact": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL"
+  },
+  "configuration": {
+    "max_sequence_length": 262144,
+    "prefill_chunk_size": 2,
+    "backend": "hip_gfx1151",
+    "owners": "real resident weights plus complete QSA BF16 K/V, FP32 raw index, metadata, GDN/PLE state, and bounded prompt scratch"
+  },
+  "command": "uv run python - <<'PY' # instantiate Qwen4ExpGGUFTextGenerator(..., max_sequence_length=262144, prefill_chunk_size=2), measure memory_stats/mem_get_info, close # PY",
+  "result": {
+    "device_free_before_bytes": 130570047488,
+    "device_free_resident_bytes": 38915162112,
+    "device_free_after_close_bytes": 130354065408,
+    "tracked_resident_bytes": 91126119496,
+    "tracked_active_allocations": 1583,
+    "allocation_seconds": 29.471129972997005,
+    "process_max_rss_kib": 1266852,
+    "tracked_after_close_bytes": 0,
+    "tracked_after_close_allocations": 0,
+    "tracked_teardown_passed": true
+  },
+  "remaining_scope": [
+    "64K and 262K inference correctness",
+    "natural long-context retrieval",
+    "strict serial above 4K",
+    "reference index-selection parity",
+    "non-contiguous pages, prefix reuse, cancellation, compaction, rollback, repeatability, and isolation"
+  ]
+}
