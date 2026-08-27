@@ -27,9 +27,22 @@ def test_mtp_c1c8_parser_defaults_to_production_profile() -> None:
     strict = parser.parse_args(
         ("--execution-profile", "strict", "--output", "/tmp/out.json")
     )
+    normal_owner = parser.parse_args(
+        (
+            "--widths",
+            "2",
+            "--resident-capacity",
+            "4",
+            "--output",
+            "/tmp/out.json",
+        )
+    )
 
     assert default.execution_profile == "production"
+    assert default.resident_capacity is None
     assert strict.execution_profile == "strict"
+    assert normal_owner.widths == (2,)
+    assert normal_owner.resident_capacity == 4
 
 
 def test_mtp_c1c8_parses_complete_widths() -> None:
