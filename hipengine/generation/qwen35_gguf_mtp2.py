@@ -703,8 +703,19 @@ class Qwen35GGUFMTP2Adapter:
             existing = self._states.get(int(semantics[0].request_id))
             owner = getattr(targets[0], "_target_scratch_owner", None)
             automatic_singleton = bool(singleton_only[0])
-            if (existing is not None and existing.verifier is None) or (
+            eligibility = static_eligibilities[0]
+            physical_singleton = bool(
+                eligibility is not None
+                and eligibility.eligible
+                and int(eligibility.max_realized_group_rows) > 1
+            )
+            if (
+                existing is not None
+                and existing.verifier is None
+                and not physical_singleton
+            ) or (
                 not automatic_singleton
+                and not physical_singleton
                 and (
                     int(getattr(owner, "slot_count", 1)) > 1
                     or int(getattr(self.owner, "capacity", 1)) > 1
@@ -1073,7 +1084,7 @@ class Qwen35GGUFMTP2Adapter:
             proposal_started = time.perf_counter()
             device_draft = None
             device_proposal = None
-            if len(ids) == 1:
+            if len(ids) == 1 and states[0].verifier is not None:
                 verifier = states[0].verifier
                 remaining_by_id = {
                     int(item.request_id): int(item.remaining_decode)
@@ -1116,10 +1127,9 @@ class Qwen35GGUFMTP2Adapter:
                     sum(1 for count in budgets if depth < count)
                     for depth in range(max(budgets))
                 )
-                batched_shapes = tuple(shape for shape in physical_shapes if shape > 1)
                 for row in rows:
-                    row.mtp2_proposal_batch_calls += len(batched_shapes)
-                    row.mtp2_proposal_physical_rows.extend(batched_shapes)
+                    row.mtp2_proposal_batch_calls += len(physical_shapes)
+                    row.mtp2_proposal_physical_rows.extend(physical_shapes)
                     row.mtp2_candidate_device_handoffs += 1
             proposal_seconds = time.perf_counter() - proposal_started
             for index, (request_id, state) in enumerate(zip(ids, states, strict=True)):
@@ -1242,7 +1252,11 @@ class Qwen35GGUFMTP2Adapter:
             raise ValueError("GGUF MTP2 target frontier requires commit=True")
         if self._active_claims != complete_claims:
             raise RuntimeError("GGUF MTP2 target does not own complete claims")
-        if len(plan.speculative_request_ids) > 1 and (
+        physical_provider = any(
+            self._states[int(request_id)].verifier is None
+            for request_id in plan.speculative_request_ids
+        )
+        if (len(plan.speculative_request_ids) > 1 or physical_provider) and (
             frontier.target_batch is not None
             or (
                 frontier.candidate_graph is not None
@@ -2424,12 +2438,12 @@ class Qwen35GGUFMTP2Adapter:
 
         accepted = tuple(int(value) for value in accepted_counts)
         if (
-            len(states) <= 1
+            not states
             or len(states) != len(accepted)
             or proposal.request_ids
             != tuple(int(state.request_id) for state in states)
         ):
-            raise ValueError("physical device repair requires aligned C>1 rows")
+            raise ValueError("physical device repair requires aligned request rows")
         if any(
             value < 0 or value > count
             for value, count in zip(
@@ -2596,8 +2610,8 @@ class Qwen35GGUFMTP2Adapter:
     ) -> None:
         accepted = tuple(int(value) for value in accepted_counts)
         counts = tuple(int(value) for value in candidate_counts)
-        if len(states) <= 1 or len(accepted) != len(states) or len(counts) != len(states):
-            raise ValueError("physical provider repair requires aligned C>1 rows")
+        if not states or len(accepted) != len(states) or len(counts) != len(states):
+            raise ValueError("physical provider repair requires aligned request rows")
         if len({state.provider_group_key for state in states}) != 1:
             raise RuntimeError("physical provider repair requires one provider group")
         executor = states[0].provider.executor
