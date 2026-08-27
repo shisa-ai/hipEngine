@@ -256,8 +256,13 @@ class Qwen35GGUFMoEMTP2Adapter:
         if rid in self._states:
             self._release_state(rid)
         sink = self._prompt_sinks.pop(rid, None)
-        if sink is None or not sink.finished:
+        if sink is None:
+            if len(prompt) > 95:
+                self._disabled_requests.add(rid)
+                return
             raise RuntimeError("MoE MTP2 prefill lost its target-hidden sink")
+        if not sink.finished:
+            raise RuntimeError("MoE MTP2 prefill target-hidden sink is incomplete")
         from hipengine.generation.qwen35_gguf import (
             _allocate_mtp_dense_kv,
             _new_mtp_context,

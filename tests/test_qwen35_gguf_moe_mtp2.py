@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
 from hipengine.generation.qwen35_gguf_moe_mtp2 import (
@@ -106,6 +108,24 @@ def test_moe_adapter_capability_is_c1_k2_and_short_context_only() -> None:
     assert adapter.capability(
         (SpeculativeRequestSemantics(7, "greedy", "verify_chain", 6, 3),)
     ) is not None
+
+
+def test_moe_prefill_missing_sink_fails_closed_only_beyond_context_limit() -> None:
+    adapter = object.__new__(Qwen35GGUFMoEMTP2Adapter)
+    adapter._intents = {7: 2}
+    adapter._disabled_requests = set()
+    adapter._states = {}
+    adapter._prompt_sinks = {}
+    target = SimpleNamespace()
+    row = SimpleNamespace(lease=SimpleNamespace(session=target))
+    adapter.owner = SimpleNamespace(_row=lambda request_id: row)
+
+    adapter.observe_prefill_result(7, tuple(range(96)), SimpleNamespace(token_id=1))
+
+    assert adapter._disabled_requests == {7}
+    adapter._disabled_requests.clear()
+    with pytest.raises(RuntimeError, match="lost its target-hidden sink"):
+        adapter.observe_prefill_result(7, tuple(range(95)), SimpleNamespace(token_id=1))
 
 
 def test_builtin_registry_exposes_distinct_dense_and_moe_factories() -> None:
