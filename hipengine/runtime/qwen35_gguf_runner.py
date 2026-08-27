@@ -24782,8 +24782,8 @@ class Qwen35GGUFResidentSession:
 
         result_tuple = tuple(results)
         sessions = tuple(destination_sessions)
-        if len(result_tuple) <= 1 or len(result_tuple) != len(sessions):
-            raise ValueError("packed device commit requires aligned C>1 rows")
+        if not result_tuple or len(result_tuple) != len(sessions):
+            raise ValueError("packed device commit requires aligned request rows")
         accepted = getattr(accept_buffers, "accepted_counts", None)
         commit_positions = getattr(accept_buffers, "commit_positions", None)
         if (
@@ -24886,10 +24886,10 @@ class Qwen35GGUFResidentSession:
         result_tuple = tuple(results)
         sessions = tuple(destination_sessions)
         accepted = tuple(int(value) for value in accepted_counts)
-        if len(result_tuple) <= 1 or not (
+        if not result_tuple or not (
             len(result_tuple) == len(sessions) == len(accepted)
         ):
-            raise ValueError("packed selected-state commit requires aligned C>1 rows")
+            raise ValueError("packed selected-state commit requires aligned request rows")
         accepted_device = getattr(accept_buffers, "accepted_counts", None)
         if (
             not isinstance(accepted_device, Tensor)
