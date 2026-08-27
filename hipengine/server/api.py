@@ -14401,7 +14401,9 @@ def _mtp_response_summary(
     )
     summary = {
         "effective_route": (
-            _SPECULATIVE_MTP_DEFAULT_ROUTE
+            _SPECULATIVE_MTP_BATCH_ROUTE
+            if used
+            else _SPECULATIVE_MTP_DEFAULT_ROUTE
             if backend_k0_fallback
             else selected_route
         ),
