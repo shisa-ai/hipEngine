@@ -95,6 +95,17 @@ _EXPECTED_MOE_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxyType(
     }
 )
 
+_EXPECTED_MOE_Q4_K_M_QTYPES: Mapping[str, GGMLQuantizationType] = (
+    MappingProxyType(
+        {
+            **_EXPECTED_MOE_QTYPES,
+            "ffn_gate_exps": GGMLQuantizationType.Q4_K,
+            "ffn_up_exps": GGMLQuantizationType.Q4_K,
+            "ffn_down_exps": GGMLQuantizationType.Q5_K,
+        }
+    )
+)
+
 _EXPECTED_DENSE_QTYPES: Mapping[str, GGMLQuantizationType] = MappingProxyType(
     {
         "attn_q": GGMLQuantizationType.Q4_K,
@@ -355,7 +366,11 @@ def _expected_qtypes(
             raise ValueError("Qwen3.8 native-XL quant variant requires a dense model")
         return dict(_EXPECTED_QWEN38_NATIVE_XL_QTYPES)
     if config.is_moe:
-        architecture_qtypes = _EXPECTED_MOE_QTYPES
+        architecture_qtypes = (
+            _EXPECTED_MOE_Q4_K_M_QTYPES
+            if file_type_name == "MOSTLY_Q4_K_M"
+            else _EXPECTED_MOE_QTYPES
+        )
     elif file_type_name == "MOSTLY_Q4_K_S":
         architecture_qtypes = _EXPECTED_DENSE_Q4_K_S_QTYPES
     else:

@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 from collections import defaultdict
 import concurrent.futures
+from contextlib import nullcontext
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -36,6 +37,9 @@ from hipengine.core.memory import (  # noqa: E402
     DeviceBuffer,
     copy_device_to_host,
     host_array_ptr,
+)
+from hipengine.core.specdec2_scope import (  # noqa: E402
+    moe_physical_c2_numerics_session,
 )
 from hipengine.loading.gguf import scan_gguf  # noqa: E402
 from hipengine.runtime.prefill import PrefillConfig  # noqa: E402
@@ -445,7 +449,15 @@ def _teacher_metrics(
                     "input_token_ids": inputs,
                 }
             )
-        sessions[0].verify_target_blocks_batch(jobs, device_result=False)
+        weights = getattr(sessions[0].runner, "weights", None)
+        config = getattr(weights, "config", None)
+        scope = (
+            moe_physical_c2_numerics_session(True)
+            if bool(getattr(config, "is_moe", False))
+            else nullcontext()
+        )
+        with scope:
+            sessions[0].verify_target_blocks_batch(jobs, device_result=False)
         runtime = sessions[0].runtime
         if runtime is None or sessions[0].runner is None:
             raise GateError("strict physical C2 target lost runtime/runner")
