@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from types import MappingProxyType
-from typing import Mapping
+from typing import Mapping, Sequence
 
 import numpy as np
 
@@ -125,6 +125,23 @@ from hipengine.kernels.registry import resolve
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen4_exp_materialize import Qwen4ExpResidentWeights
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
+
+
+def stage_qwen4_exp_ple_rows(
+    staging: object,
+    rows: Sequence[Sequence[int]],
+    *,
+    hidden: int,
+) -> np.ndarray:
+    """Copy PLE ring views immediately into one owned prompt-row matrix."""
+
+    width = int(hidden)
+    if width <= 0:
+        raise ValueError("PLE hidden width must be positive")
+    output = np.empty((len(rows), width), dtype=np.float32)
+    for row_index, row in enumerate(rows):
+        output[row_index] = staging.stage(row).reshape(width)
+    return output
 
 
 @dataclass(frozen=True)
@@ -3692,10 +3709,11 @@ class Qwen4ExpGGUFResidentModelRunner:
             heads_per_ngram=cfg.ple_heads_per_ngram,
             ngram_size=cfg.ple_ngram_size,
         )
-        staged = np.ascontiguousarray(
-            np.stack([self.resident.ple_staging.stage(row) for row in rows]),
-            dtype=np.float32,
-        ).reshape(count, cfg.hidden_size)
+        staged = stage_qwen4_exp_ple_rows(
+            self.resident.ple_staging,
+            rows,
+            hidden=cfg.hidden_size,
+        )
         copy_host_to_device(
             self.prefill_ple_embeddings,
             host_array_ptr(staged),
@@ -3947,6 +3965,7 @@ __all__ = [
     "run_qwen4_exp_dense_qsa_layer",
     "run_qwen4_exp_dense_qsa_token_mixer",
     "run_qwen4_exp_qsa_prefill_token_mixer",
+    "stage_qwen4_exp_ple_rows",
     "run_qwen4_exp_gdn_layer",
     "run_qwen4_exp_qsa_prefill_layer",
     "run_qwen4_exp_gdn_token_mixer",

@@ -27,8 +27,9 @@ should be removed or collapsed.
   `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL`,
   `HIPENGINE_QWEN4_EXP_Q4_TILE_M/N`, and
   `HIPENGINE_GGUF_Q8_0_WMMA_TILE_M/N`. They raise warm repeated-token 512
-  prefill from 8.67 to 211.76 tok/s and natural-suite wall by 6.67x, but fail
-  the complete production numerical gate (mean/max KL 0.17169/1.34378).
+  prefill from 8.67 to 211.76 tok/s and corrected natural-suite wall by 6.60x,
+  but still fail the complete production numerical gate after the PLE ownership
+  fix (mean/p95/max KL 0.00476/0.01458/0.01548; top-1 100%).
   Keep them default-off for bisection while strict-compatible arithmetic and a
   Q4 replacement layout are developed. Promote and collapse the duplicate
   direct/grouped routes only after the full category+heldout mean/tail/max,

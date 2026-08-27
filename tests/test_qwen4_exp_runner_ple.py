@@ -18,6 +18,7 @@ from hipengine.quant.gguf import bf16_to_float32
 from hipengine.runtime.qwen4_exp_runner import (
     Qwen4ExpPLEScratch,
     run_qwen4_exp_ple,
+    stage_qwen4_exp_ple_rows,
 )
 from tests.test_qwen4_exp_runner_gr import _dense_f32_weight
 
@@ -28,6 +29,25 @@ def _hip_available() -> bool:
     except OSError:
         return False
     return True
+
+
+def test_qwen4_exp_prompt_staging_copies_two_buffer_ring_views_immediately() -> None:
+    class Ring:
+        def __init__(self) -> None:
+            self.buffers = (np.empty(4, np.float32), np.empty(4, np.float32))
+            self.index = 0
+
+        def stage(self, row):
+            buffer = self.buffers[self.index]
+            buffer.fill(float(row[0]))
+            self.index = 1 - self.index
+            return buffer
+
+    actual = stage_qwen4_exp_ple_rows(Ring(), [[1], [2], [3]], hidden=4)
+    np.testing.assert_array_equal(
+        actual,
+        np.asarray([[1] * 4, [2] * 4, [3] * 4], dtype=np.float32),
+    )
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

@@ -256,8 +256,9 @@ Q5_1 wave-tail reduction cuts its 43-launch decode bucket 45.096→38.157 ms and
 raises a warm 32-token eager diagnostic from 5.74→5.89 tok/s; this is not a
 serving/topline decode claim. A default-off grouped/WMMA/peer prefill candidate
 reaches 211.76 tok/s on a warm repeated-token p512 and 35.75 tok/s over the
-18-prompt natural suite (6.67x), but is blocked from promotion by strict→candidate
-mean/max KL `0.17169/1.34378` and 94.44% top-1. Natural retrieval,
+18-prompt natural suite (6.60x after the PLE ownership fix), but remains blocked
+from promotion by strict→candidate mean/p95 KL `0.00476/0.01458`; max KL is
+`0.01548` and top-1 is now 100%. Natural retrieval,
 strict-above-4K, 262K inference, and lifecycle/index-reference gates remain
 open, so this is not a broad long-context, speed, serving/c>N, MTP, or vision
 claim.
@@ -269,7 +270,8 @@ claim.
 [`64K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-64k.json) ·
 [`262K capacity artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-262k-capacity.json) ·
 [`Exact Q5 wave-tail artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-q5-wave-tail.json) ·
-[`Blocked prefill candidate`](results/2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json).
+[`Blocked prefill candidate`](results/2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json) ·
+[`PLE staging correction`](results/2026-08-27-gfx1151-qwen38-flash-next-ple-staging-fix.json).
 
 ## Current Qwen3.6-35B quantization quality
 

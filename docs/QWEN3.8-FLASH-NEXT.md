@@ -559,13 +559,16 @@ change. Physical host identity is mandatory.
 Current default-off F7 candidate evidence (2026-08-27): grouped Q4/Q5/Q8 MoE,
 Q5_1 WMMA down, peer-GDN, and tuned Q4/Q8 tiles raise warm repeated-token 512
 prefill from `8.67` to `211.76 tok/s` and the 18-prompt natural suite from
-`5.36` to `35.75 tok/s`. It is not promoted: strict→candidate mean/p95/p99/max
-KL are `0.17169/0.56894/1.18881/1.34378` and top-1 is `94.44%`. Warm eager
+`5.36` to `35.43 tok/s` after the PLE ring-ownership fix. It is not promoted:
+strict→candidate mean/p95/p99/max KL are now
+`0.00476/0.01458/0.01530/0.01548` and top-1 is `100%`; mean/p95 still miss the
+production envelope. Warm eager
 decode baseline was `5.74 tok/s`; an exact Q5_1 wave-tail reduction raises the
 strict path to `5.89 tok/s` while cutting its bucket 15.4%. A Q5_1 wave64 decode candidate reaches
 `6.10-6.22 tok/s` but is rejected at production mean/p95 KL
 `0.002565/0.007202`. Exact evidence and rejected sub-experiments are in
 [`2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json),
+[`2026-08-27-gfx1151-qwen38-flash-next-ple-staging-fix.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-ple-staging-fix.json),
 [`2026-08-27-gfx1151-qwen38-flash-next-q5-wave-tail.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-q5-wave-tail.json), and
 [`2026-08-27-gfx1151-qwen38-flash-next-decode-wave64-candidate.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-decode-wave64-candidate.json).
 A one-layout 45.587-GB Q4T16 replacement was also measured and removed:
