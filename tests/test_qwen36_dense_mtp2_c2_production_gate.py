@@ -26,21 +26,18 @@ def test_repeat_verdict_requires_all_three_identical_physical_schedules() -> Non
             "start_position": 40,
             "repeats": [0, 1, 2],
             "inputs_equal": True,
-            "logits_equal": True,
-            "top1_equal": True,
             "passed": True,
         }
     ]
 
 
-def test_repeat_verdict_fails_on_missing_repeat_or_logit_drift() -> None:
+def test_repeat_verdict_fails_on_missing_repeat_or_input_drift() -> None:
     missing = _repeat_verdict((_capture(repeat=0), _capture(repeat=1)), 3)
     drift_rows = [_capture(repeat=index) for index in range(3)]
     drift_rows[-1] = deepcopy(drift_rows[-1])
-    drift_rows[-1]["candidate_logits_sha256"] = "drift"
+    drift_rows[-1]["inputs"] = (264, 7047, 999)
     drift = _repeat_verdict(tuple(drift_rows), 3)
 
     assert missing["passed"] is False
     assert drift["passed"] is False
-    assert drift["rows"][0]["inputs_equal"] is True
-    assert drift["rows"][0]["logits_equal"] is False
+    assert drift["rows"][0]["inputs_equal"] is False
