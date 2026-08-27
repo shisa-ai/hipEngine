@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "status": "accepted_correctness_bringup",
+  "date": "2026-08-27",
+  "model": "Qwen/Qwen3.8-Flash-Next",
+  "model_revision": "f5d08274bafd880402bd16f5e3e6c514136ec06c",
+  "quant": "unsloth/UD-Q4_K_XL",
+  "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+  "host": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "device_total_bytes": 133143986176
+  },
+  "artifact": {
+    "file_bytes": 111334654784,
+    "tensor_count": 1224,
+    "tensor_bytes": 111323630080,
+    "parts": [
+      {"bytes": 10946624, "sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082"},
+      {"bytes": 49859583136, "sha256": "3f342f1c1580473f1ee94ddd5b28206e8c07a70fa1a366f59d1d6c922919a6c9"},
+      {"bytes": 49376141504, "sha256": "56758f40269cad5cd9b0d3d6fbae0f40f6d5be6de49e4ab392dbe83157d9cbd3"},
+      {"bytes": 12087983520, "sha256": "753bda48b98ba4f1636134a90a967de1b2d3908a236c026e464777342e53510a"}
+    ],
+    "device_weight_bytes": 82523491840,
+    "ple_mmap": {
+      "name": "per_layer_token_embd.weight",
+      "shape": [320001536, 160],
+      "byte_shape": [320001536, 90],
+      "qtype": "IQ4_NL",
+      "bytes": 28800138240
+    },
+    "replacement_payload_bytes": 0,
+    "alternate_layout_bytes": 0,
+    "license_sha256": "a0dc422560841fd68e06d974907f8b4c709bca44a67daad2b528437bdf676c08"
+  },
+  "memory_admission": {
+    "physical_free_bytes": 130570047488,
+    "scratch_bytes": 4294967296,
+    "reserve_bytes": 4294967296,
+    "required_bytes_at_2051": 91304773552,
+    "required_bytes_at_262144": 99716186032,
+    "projected_262144_passed": true,
+    "measured_owned_peak_bytes_at_2051": 82718198780,
+    "measured_active_allocations_after_close": 0
+  },
+  "same_artifact_logits": {
+    "llama_cpp_commit": "bea3b12daee45876b0129a3602dc8f534ce30bf0",
+    "llama_debug_sha256": "e36ea6554f6112c02ef0c2d7bf20549a5f4b5ef6530f433ba4c0915b10bf5426",
+    "prompt_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "mean_kl": 0.014062757183980428,
+    "p95_kl": 0.041544923327341964,
+    "p99_kl": 0.047757329500875086,
+    "max_kl": 0.049310431044258356,
+    "top1_agreement_rate": 1.0,
+    "threshold_max_kl": 0.05,
+    "threshold_min_top1": 0.9,
+    "passed": true,
+    "command": "uv run python scripts/qwen4_exp_compare_suite.py /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --context 2051 --json-out /tmp/qwen4exp-unsloth-category-logits.json"
+  },
+  "public_api": {
+    "command": "LLM(model, backend='hip_gfx1151', quant='gguf_ud_q4_k_xl', max_sequence_length=2051).generate(['The answer to 2 + 2 is'], SamplingParams(max_tokens=4, temperature=0.0, top_k=1, ignore_eos=True))",
+    "output": " 4.\n\n",
+    "elapsed_seconds_including_load": 50.21773916999882,
+    "tracked_teardown_passed": true
+  },
+  "scope": {
+    "supported": ["torch-free text", "c1", "greedy", "BF16 KV", "FP32 GDN state", "native QSA implementation"],
+    "not_yet_claimed": ["real >2051-token qualification", "cN serving", "MTP", "vision/multimodal", "performance qualification"]
+  }
+}

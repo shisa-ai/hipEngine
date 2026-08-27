@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 Qwen3.8-Flash-Next text bring-up; correctness only] Same-artifact support moves **unavailable→working** through public `LLM.generate()` on pinned `UD-Q4_K_XL`; frozen llama.cpp full logits across 10 canonical prompts pass mean/p95/p99/max KL **0.01406/0.04154/0.04776/0.04931** and top-1 **0/10→10/10**. Four-part SHA, sparse 28.800-GB PLE, measured 82.718-GB tracked peak, and zero post-close bytes pass. No speed, >2,051-token, serving/c>N, MTP, or vision claim. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json`.
+
 - [2026-08-26 gfx1151 Qwen3.8 Q4_K_M serving closure; retained metric unchanged] Close S5 at **12.940 vs 9.025 tok/s (1.4337x)** public complete-wall and **1.3147x** real automatic HTTP. The completed 10,576-test milestone had 19 isolated test-hygiene failures; focused repairs pass 19/19 without a prohibited broad rerun. Exact auto scope is unchanged and all other keys remain K0. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json`.
 
 - [2026-08-26 gfx1151 Qwen3.8 Q4_K_M exact automatic MTP promotion] Promote only the content-verified strict/BF16/resident-C1+physical-C1/B3/context1-67/natural25/raw-greedy scope: full-suite complete-wall is **12.940 vs 9.025 tok/s (1.4337x)** and S4 auto rerun is **12.418 vs 9.445 tok/s (1.3147x)** with exact IDs. Context68, sampling changes, and every other key remain K0. `benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s4-auto.json`.
