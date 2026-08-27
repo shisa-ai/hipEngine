@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+from hipengine.core.specdec2_scope import q5_t16_physical_rowtile_session
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     build_paro_combine,
@@ -1250,6 +1251,28 @@ def test_q4_t16_dense_c_n_chunked_rowtile_composes_bit_exact_vs_c1(
         groups,
     )
     np.testing.assert_array_equal(candidate, expected)
+
+
+def test_q5_t16_dense_decode_uses_request_scoped_physical_rowtile(
+    monkeypatch,
+) -> None:
+    symbols: list[str] = []
+    monkeypatch.setattr(
+        selected_t16_mod,
+        "_launch_dense_q5_t16",
+        lambda symbol, *args, **kwargs: symbols.append(symbol),
+    )
+
+    gguf_q5_k_t16_gemv_decode_bf16_bf16_out(1, 2, 3, 6, 6_144, 5_120)
+    with q5_t16_physical_rowtile_session(True):
+        gguf_q5_k_t16_gemv_decode_bf16_bf16_out(1, 2, 3, 6, 6_144, 5_120)
+        gguf_q5_k_t16_gemv_decode_bf16_bf16_out(1, 2, 3, 3, 6_144, 5_120)
+
+    assert symbols == [
+        selected_t16_mod._Q5_DENSE_DIRECT_BF16,
+        selected_t16_mod._Q5_DENSE_ROWTILE_BF16,
+        selected_t16_mod._Q5_DENSE_DIRECT_BF16,
+    ]
 
 
 @pytest.mark.parametrize("rows", [1, 2, 3, 4, 5, 6, 7, 8])
