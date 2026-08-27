@@ -1,7 +1,7 @@
 # CONCURRENCY2 gfx1151 MTP Dynamic Admission Campaign
 
-- Status: **D3 dynamic physical C1↔C2 lifecycle retained; D4 width/packing expansion is next**
-- Scope: **binding cancel/survivor/refill, pressure transitional-K0 catch-up/re-entry, mixed acceptance, blocking/SSE, and zero drain pass; automatic C>1 remains pure K0**
+- Status: **D4 explicit production C1-C8 functionality retained; D5 production correctness is next**
+- Scope: **C3/C4 are physical; C5-C8 decompose as 4+1/4+2/4+3/4+4 with fair mixed/failure safety; every width loses AR and automatic C>1 remains pure K0**
 - Hardware lane when execution is approved: **Radeon 8060S / `hip_gfx1151`**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile**
 - First functional width: **two independent resident requests (`C_due=2`)**
@@ -30,6 +30,9 @@ retained but economically rejected for automatic use. Evidence:
 D3 now closes the binding physical C1↔C2 transition sequence plus pressure K0,
 refill, cancellation, public blocking/SSE, and final drain. Evidence:
 [`D3 lifecycle`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d3-lifecycle.json).
+D4 now gives every C1-C8 width a truthful explicit functional route: physical
+through C4 and decomposed into bounded C4 frontiers above it. Evidence:
+[`D4 widths`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d4-widths.json).
 
 ## 1. Executive decision
 
@@ -308,20 +311,27 @@ unchanged. Evidence:
 
 ### D4 — width/packing expansion
 
-- [ ] Wire the existing verifier-specific packing concepts into the actual
+- [x] Wire the existing verifier-specific packing concepts into the actual
   Generation-2 fairness owner rather than creating a second scheduler.
-- [ ] Bound groups by capability max requests, frontier rows, transaction bytes,
+- [x] Bound groups by capability max requests, frontier rows, transaction bytes,
   deadlines, and round budgets before mutation.
-- [ ] Prove C3/C4 using qualified physical groups and exact request mapping.
-- [ ] For C5-C8, choose and label either multiple <=C4 frontiers or a newly
+- [x] Prove C3/C4 using qualified physical groups and exact request mapping.
+- [x] For C5-C8, choose and label either multiple <=C4 frontiers or a newly
   qualified wider owner. A decomposed C8 route is not a physical C8 claim.
-- [ ] Serve each due speculative request at most once before a peer repeats;
+- [x] Serve each due speculative request at most once before a peer repeats;
   preserve AR progress and SLO guards.
-- [ ] Repeat shrinking, refill, mixed-K, failure, and ownership gates across
+- [x] Repeat shrinking, refill, mixed-K, failure, and ownership gates across
   every retained decomposition.
 
-Exit: every C1-C8 width has an explicit functional MTP or typed pre-mutation K0
-verdict. Only exact functional widths proceed to production/performance gates.
+Exit passed. Full-suite C3/C4 are physical `C3/R6` and `C4/R8`; C5-C8 lower in
+stable due order to `4+1`, `4+2`, `4+3`, and `4+4`, with corresponding bounded
+target frontiers. All 60 cells engage, are deterministic, and diagnostically
+match AR; C8 subgroup failure isolates one C4 fallback while its peer executes
+MTP and following health restores both. Wide mixed due work partitions eligible
+rows while decoding the AR peer once. Every width loses AR (**0.3346x-0.6613x**),
+so all automatic C>1 remains pure K0. Exact functional widths proceed to D5;
+none is performance-promotable. Evidence:
+[`D4`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d4-widths.json).
 
 ### D5 — Q4_K_M production correctness and serving qualification
 
