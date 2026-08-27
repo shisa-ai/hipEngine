@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 Qwen3.8-Flash-Next 16K QSA; chunk-only structural correctness] A 16,384 repeated-token teacher→size-2-chunk checkpoint moves **unqualified→passed** at KL **7.55e-5**, top-1 **264==264**, zero teardown bytes, and **2,434.172 s** wall. Strict remains measured through 4K; natural retrieval, strict-above-4K, 64K+, and lifecycle/index-reference scopes remain open. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json`.
+
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next 4K QSA; structural correctness only] A 4,096 repeated-token checkpoint moves **unqualified→passed**: teacher→strict/chunk KL **4.40e-5/4.78e-5**, strict→chunk **3.19e-5**, top-1 **264==264**, teardown zero; diagnostic size-2 chunk wall **854.982→574.759 s (1.488x)**. Natural retrieval, 16K+, and lifecycle/index-reference scopes remain open. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json`.
 
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next first sparse-QSA row; structural correctness only] Token 2,052 moves **unqualified→passed** on one repeated-token transition workload: teacher→strict/chunk KL **7.65e-5/4.98e-5**, top-1 **264==264**, teardown zero; diagnostic size-2 chunk wall **381.725→245.855 s (1.553x)**. Natural 4K+ and lifecycle/index-reference scopes remain open. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json`.

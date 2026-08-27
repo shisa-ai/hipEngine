@@ -491,12 +491,15 @@ with zero tracked bytes after close. The measured 381.725→245.855 s prefill
 wall is diagnostic only. A repeated-token structural 4,096-token checkpoint
 also passes: teacher→serial/chunk KL `4.40e-5/4.78e-5`, serial→chunk KL
 `3.19e-5`, top-1 264 exact, and zero tracked bytes after close; diagnostic
-serial/chunk walls are `854.982/574.759` seconds. This does not close natural
-retrieval, selected-index, 16K/64K/262K, or lifecycle/isolation gates; exact
-evidence is in
+serial/chunk walls are `854.982/574.759` seconds. A practical chunk-only 16K
+checkpoint also passes teacher KL `7.55e-5`, top-1 264 exact, and zero teardown
+bytes in 2,434.172 seconds; strict serial remains measured through 4K. This does
+not close natural retrieval, selected-index, strict-above-4K, 64K/262K, or
+lifecycle/isolation gates; exact evidence is in
 [`2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json)
 and
-[`2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json).
+[`2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json), and
+[`2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json).
 
 ### F6 — Native QSA and 262K context ownership
 

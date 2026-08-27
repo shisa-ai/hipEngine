@@ -245,13 +245,16 @@ qualifies only the first native sparse-QSA row at token 2,052: teacher→strict
 serial KL `7.65e-5`, teacher→size-2 chunk KL `4.98e-5`, top-1 exact, and clean
 teardown. A repeated-token structural 4K checkpoint also passes teacher→strict/
 chunk KL `4.40e-5/4.78e-5`, strict→chunk KL `3.19e-5`, top-1 exact, and clean
-teardown. Natural retrieval, 16K+, and lifecycle/index-reference gates remain
-open, so this is not a broad long-context, speed, serving/c>N, MTP, or vision
-claim.
+teardown. A chunk-only repeated-token 16K checkpoint passes teacher KL
+`7.55e-5`, top-1 exact, and clean teardown in 2,434.172 s; strict remains
+measured through 4K. Natural retrieval, strict-above-4K, 64K+, and lifecycle/
+index-reference gates remain open, so this is not a broad long-context, speed,
+serving/c>N, MTP, or vision claim.
 [`Bring-up artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json) ·
 [`Heldout artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json) ·
 [`2,052 transition artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json) ·
-[`4K structural artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json).
+[`4K structural artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json) ·
+[`16K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json).
 
 ## Current Qwen3.6-35B quantization quality
 
