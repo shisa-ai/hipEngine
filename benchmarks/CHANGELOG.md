@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 Qwen3.8-Flash-Next 4K QSA; structural correctness only] A 4,096 repeated-token checkpoint moves **unqualified→passed**: teacher→strict/chunk KL **4.40e-5/4.78e-5**, strict→chunk **3.19e-5**, top-1 **264==264**, teardown zero; diagnostic size-2 chunk wall **854.982→574.759 s (1.488x)**. Natural retrieval, 16K+, and lifecycle/index-reference scopes remain open. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json`.
+
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next first sparse-QSA row; structural correctness only] Token 2,052 moves **unqualified→passed** on one repeated-token transition workload: teacher→strict/chunk KL **7.65e-5/4.98e-5**, top-1 **264==264**, teardown zero; diagnostic size-2 chunk wall **381.725→245.855 s (1.553x)**. Natural 4K+ and lifecycle/index-reference scopes remain open. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json`.
 
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next heldout logits; correctness only] The predeclared eight category heldouts with matched BF16 K/V pass mean/p95/p99/max KL **0.00987/0.02331/0.02766/0.02874**, top-1 **8/8**, and zero teardown bytes. The containing merged 18-row diagnostic is not called a pass because one canonical repeat exceeded the ceiling. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json`.
