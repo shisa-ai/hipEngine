@@ -135,9 +135,11 @@ def _response_mtp(payload: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
 
 
 def _mtp_engaged(route: str, summary: Mapping[str, Any]) -> bool:
+    """Use committed-cycle truth, not the frontend's pre-cycle route label."""
+
+    del route
     return bool(
-        route == "speculative_mtp"
-        and summary.get("used") is True
+        summary.get("used") is True
         and int(summary.get("draft_tokens", 0) or 0) > 0
         and int(summary.get("draft_cycles", 0) or 0) > 0
     )
