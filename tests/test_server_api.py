@@ -37,6 +37,10 @@ from hipengine.generation.sampling import (
 )
 from hipengine.server import ServerConfig, create_app, render_chat_prompt
 from hipengine.server.__main__ import build_parser
+from hipengine.speculative import (
+    SpeculativeMTPStaticEligibility,
+    SpeculativeMTPStaticState,
+)
 from hipengine.speculative.policy import DEFAULT_AUTO_DEPTH_POLICY
 from hipengine.server.api import (
     ChatCompletionRequest,
@@ -50,6 +54,7 @@ from hipengine.server.api import (
     _backend_scheduler_token_chunks,
     _chat_session_message_copy,
     _coerce_generation_output,
+    _execution_route_for_static_intent,
     _generation_route_for_request,
     _GenerationBatcher,
     _MTPCircuitBreaker,
@@ -62,6 +67,7 @@ from hipengine.server.api import (
     _request_completion_cap,
     _request_control,
     _resolve_realized_generation_route,
+    _sampling_for_realized_generation_route,
     _serving_plan_route_decision,
     _ServerMetrics,
     _startup_memory_summary,
@@ -71,6 +77,80 @@ from hipengine.server.api import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _test_static_eligibility() -> SpeculativeMTPStaticEligibility:
+    return SpeculativeMTPStaticEligibility(
+        state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+        reason="qualified_test_singleton",
+        max_candidate_count=3,
+        max_realized_group_rows=1,
+        automatic_eligible=True,
+        strict_fallback_key="gguf_target_ar",
+        evidence_key="test-singleton",
+        evidence_fingerprint="sha256:test-singleton",
+    )
+
+
+def test_automatic_realized_mtp_propagates_typed_static_intent() -> None:
+    sampling = SamplingParams(max_tokens=25)
+    eligibility = _test_static_eligibility()
+    route_decision = {
+        "requested_route": _SPECULATIVE_MTP_AUTO_ROUTE,
+        "selected_route": _SPECULATIVE_MTP_DEFAULT_ROUTE,
+        "static_intent_allowed": True,
+        "static_eligibility": eligibility.as_dict(),
+    }
+
+    automatic = _sampling_for_realized_generation_route(
+        sampling,
+        route_decision,
+    )
+    pure_k0 = _sampling_for_realized_generation_route(
+        automatic,
+        {
+            **route_decision,
+            "static_intent_allowed": False,
+        },
+    )
+
+    assert automatic.speculative_mtp_static_eligibility == eligibility
+    assert pure_k0.speculative_mtp_static_eligibility is None
+    assert _execution_route_for_static_intent(
+        _SPECULATIVE_MTP_DEFAULT_ROUTE,
+        route_decision,
+    ) == _SPECULATIVE_MTP_BATCH_ROUTE
+
+
+def test_independent_frontend_c1_intent_survives_queue_c2_k0_selection() -> None:
+    eligibility = _test_static_eligibility()
+    selected, decision = _serving_plan_route_decision(
+        {
+            "admitted": True,
+            "selected_candidate_count": 3,
+            "automatic_eligible": True,
+            "reason": eligibility.reason,
+            "plan_fingerprint": "sha256:test-plan",
+            "evidence_key": eligibility.evidence_key,
+            "evidence_fingerprint": eligibility.evidence_fingerprint,
+            "strict_fallback_key": eligibility.strict_fallback_key,
+            "static_intent_allowed": True,
+            "static_eligibility": eligibility.as_dict(),
+            "key": {"realized_group_rows": 1},
+        },
+        requested_route=_SPECULATIVE_MTP_AUTO_ROUTE,
+        group_rows=2,
+        output_horizon_tokens=25,
+    )
+
+    assert selected == _SPECULATIVE_MTP_DEFAULT_ROUTE
+    assert decision["reason"] == "physical_group_not_qualified"
+    assert decision["k0_class"] == "transitional_k0"
+    assert decision["static_eligibility"]["eligible"] is True
+    assert decision["static_eligibility"]["max_realized_group_rows"] == 1
+    assert _execution_route_for_static_intent(selected, decision) == (
+        _SPECULATIVE_MTP_BATCH_ROUTE
+    )
 
 
 def test_prepared_context_tokens_finds_resident_model_owner_session() -> None:

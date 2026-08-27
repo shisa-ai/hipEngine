@@ -193,6 +193,73 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         strict_fallback_key="gguf_target_ar",
         automatic_eligible=True,
     ),
+    SpeculativeMTPServingEvidence(
+        evidence_key="qwen38-q4km-gfx1151-strict-bf16-cap4-realized-c1-b3",
+        artifact_sha256=(
+            "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+        ),
+        artifact_size_bytes=17_106_775_008,
+        backend="hip_gfx1151",
+        target_arch="gfx1151",
+        weight_quant="gguf_q4_k_m",
+        execution_profile="strict",
+        execution_profile_manifest_sha256=(
+            "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+        ),
+        kv_storage="bf16",
+        kv_layout="uniform",
+        realized_group_rows=1,
+        resident_capacity=4,
+        candidate_budget=3,
+        sampling_modes=("greedy_fast",),
+        max_sequence_length=1024,
+        min_context_tokens=1,
+        max_context_tokens=67,
+        min_output_horizon_tokens=25,
+        max_output_horizon_tokens=25,
+        reason="qualified_automatic_realized_singleton_c1_b3",
+        evidence_artifacts=(
+            "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s4-auto.json",
+            "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json",
+            "benchmarks/results/2026-08-27-gfx1151-qwen38-realized-singleton-auto.json",
+        ),
+        strict_fallback_key="gguf_target_ar",
+        automatic_eligible=True,
+    ),
+    SpeculativeMTPServingEvidence(
+        evidence_key="qwen38-q4km-gfx1151-production-bf16-c1-b3-context128",
+        artifact_sha256=(
+            "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+        ),
+        artifact_size_bytes=17_106_775_008,
+        backend="hip_gfx1151",
+        target_arch="gfx1151",
+        weight_quant="gguf_q4_k_m",
+        execution_profile="production",
+        execution_profile_manifest_sha256=(
+            "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51"
+        ),
+        kv_storage="bf16",
+        kv_layout="uniform",
+        realized_group_rows=1,
+        resident_capacity=1,
+        candidate_budget=3,
+        sampling_modes=("greedy_fast",),
+        max_sequence_length=1024,
+        min_context_tokens=68,
+        max_context_tokens=128,
+        min_output_horizon_tokens=24,
+        max_output_horizon_tokens=24,
+        reason="qualified_explicit_production_c1_b3_context128",
+        evidence_artifacts=(
+            "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json",
+            "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t11-t13-ownership.json",
+            "benchmarks/results/2026-08-27-gfx1151-qwen38-postcampaign-mtp-c1-c8.json",
+            "benchmarks/results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json",
+        ),
+        strict_fallback_key="gguf_target_ar",
+        automatic_eligible=False,
+    ),
 )
 
 

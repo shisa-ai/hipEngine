@@ -1,0 +1,197 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_c68_c128_production_explicit",
+  "created_at": "2026-08-27T08:35:00Z",
+  "status": "retained_explicit_only_production_scope",
+  "passed": true,
+  "performance_claim": true,
+  "speed_claim_eligible": true,
+  "decision": {
+    "scope": "retain explicit-only production C1/B3 at context 68-128 and output horizon 24",
+    "automatic": "unchanged K0; the new evidence row is automatic_eligible=false",
+    "outside": "context 129 and every other unqualified axis fail closed before MTP mutation",
+    "upper_context": "do not expand above 128; diagnostic economics fall to 1.063x at 256, 1.017x at 512, and 0.897x at 1020",
+    "compact_rollback": "remains closed; 128-token residency is nowhere near rollback-memory limited"
+  },
+  "physical_host": "gfx1151 / AMD RYZEN AI MAX+ 395 / Radeon 8060S / HIP 7.15.0",
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "hip_visible_devices": "0",
+    "gpu_max_hw_queues": "2",
+    "kfd_collisions": "none"
+  },
+  "source": {
+    "measurement_commit": "d8f4f3a775617c0384ee257ed30e80a3daa23565",
+    "measurement_tree": "clean detached worktree",
+    "candidate_runtime_difference": "none; candidate changes only generic evidence-row resolution and model-plugin serving evidence",
+    "registry_test_red": "production context128 resolved execution_profile_not_qualified before implementation",
+    "registry_test_green": "23/23 capability tests pass after generic multi-row resolver and production evidence row"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "qualified_key": {
+    "evidence_key": "qwen38-q4km-gfx1151-production-bf16-c1-b3-context128",
+    "plan_fingerprint": "sha256:5a720ac2bc89fcae8ea59b89720a6be36c72e491ce0ac08bb61219c61cd8f645",
+    "execution_profile": "production",
+    "execution_profile_manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+    "strict_fallback_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+    "kv_storage": "bf16",
+    "kv_layout": "uniform",
+    "realized_group_rows": 1,
+    "resident_capacity": 1,
+    "candidate_budget": 3,
+    "sampling_mode": "greedy_fast",
+    "max_sequence_length": 1024,
+    "min_context_tokens": 68,
+    "max_context_tokens": 128,
+    "output_horizon_tokens": 24,
+    "automatic_eligible": false,
+    "strict_fallback_key": "gguf_target_ar"
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "heldouts": 4,
+    "padding": "same content-agnostic neutral sentence repeated before the assistant turn to the largest token length <=128",
+    "actual_context_min": 121,
+    "actual_context_max": 128,
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "surface": "blocking OpenAI barrier-to-completion complete wall",
+    "warmup": "one excluded AR/MTP pair",
+    "order": "counterbalanced by prompt index",
+    "runs": 1,
+    "sampling": "raw greedy; temperature=0, top_p=1",
+    "true_ar": "same process, prompt, context, output horizon, and public surface",
+    "route_plan": "temporary content-agnostic explicit-only 68-128 plan semantically identical to the retained evidence row; automatic never enabled"
+  },
+  "public_performance": {
+    "ar_tok_s": 9.349642088338383,
+    "mtp_tok_s": 13.087601606327324,
+    "mtp_vs_ar_ratio": 1.3997970705906722,
+    "mtp_vs_ar_pct": 39.979707059067216,
+    "ar_wall_seconds": 25.66943180630915,
+    "mtp_wall_seconds": 18.337966513587162,
+    "generated_tokens_each_arm": 240,
+    "minimum_cell_ratio": 1.2830648177548287,
+    "cells_above_1_10": 10,
+    "cells_total": 10,
+    "draft_tokens": 186,
+    "accepted_draft_tokens": 163,
+    "accept_per_draft": 0.8763440860215054,
+    "categories": {
+      "code": {"ar_tok_s": 9.346082464356252, "mtp_tok_s": 13.005700979763567, "ratio": 1.39156711160684},
+      "general_en": {"ar_tok_s": 9.35068509939806, "mtp_tok_s": 13.350247462047928, "ratio": 1.4277293396295996},
+      "general_ja": {"ar_tok_s": 9.346661040028783, "mtp_tok_s": 13.181384677152785, "ratio": 1.410277383624066},
+      "mixed_ja_en": {"ar_tok_s": 9.358711942082403, "mtp_tok_s": 12.904439594259314, "ratio": 1.3788691941925453}
+    },
+    "splits": {
+      "train": {"rows": 6, "ar_tok_s": 9.35814372457616, "mtp_tok_s": 12.978816052329284, "ratio": 1.3869006967957325},
+      "heldout": {"rows": 4, "ar_tok_s": 9.336918557770336, "mtp_tok_s": 13.25424278590125, "ratio": 1.4195521470914891}
+    },
+    "reverse_order_repeat": {
+      "ar_tok_s": 9.33855125597696,
+      "mtp_tok_s": 13.062560413762013,
+      "mtp_vs_ar_ratio": 1.398778039088405,
+      "mtp_vs_ar_pct": 39.877803908840505,
+      "ratio_delta_vs_primary_pct": -0.07279851656191161,
+      "minimum_cell_ratio": 1.283456010544452,
+      "cells_above_1_10": 10,
+      "accepted_draft_tokens": 163,
+      "draft_tokens": 186,
+      "accept_per_draft": 0.8763440860215054,
+      "final_current_bytes": 0,
+      "final_active_allocations": 0
+    }
+  },
+  "direct_cross_check": {
+    "surface": "direct true-AR versus host-proposal eager-native MTP with cycle logits",
+    "ar_tok_s": 5.245405877753584,
+    "mtp_tok_s": 6.294634061192838,
+    "mtp_vs_ar_ratio": 1.2000280260273395,
+    "cells_positive": 10,
+    "categories_positive": 4,
+    "draft_tokens": 198,
+    "accepted_draft_tokens": 168,
+    "accept_per_draft": 0.8484848484848485,
+    "exact_diagnostic_cells": 10
+  },
+  "upper_context_screen": {
+    "surface": "synthetic transition-seed diagnostic only",
+    "rows": {
+      "68": {"ratio": 1.2983975527766098, "exact": true},
+      "128": {"ratio": 1.2435849554179226, "exact": true},
+      "256": {"ratio": 1.0626386857949153, "exact": true},
+      "512": {"ratio": 1.0165764088088387, "exact": true},
+      "1020": {"ratio": 0.897297583723401, "exact": true, "split_k_calls": 372}
+    },
+    "decision": "128 is the largest admitted product bucket; 256 misses the 1.10 product floor and no larger scope is benchmarked for promotion"
+  },
+  "correctness": {
+    "public_generated_id_equality": "10/10 diagnostic cells",
+    "direct_generated_id_equality": "10/10 diagnostic cells",
+    "gpu_accept_matches_cpu": true,
+    "production_numerical_gate_reused": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json",
+    "reuse_reason": "same model, quant, BF16 KV, production/strict manifests, B3 target/provider arithmetic; the retained 1,170-row gate includes the harder long_c8_p512 scenario",
+    "teacher_forced_rows": 1170,
+    "kl_mean": 0.00012391210401986377,
+    "kl_p95": 0.000350302086656365,
+    "kl_p99": 0.001110227899242281,
+    "kl_max": 0.04978771577044094,
+    "top1_agreement": 0.9974358974358974,
+    "determinism_isolation_manifest": "passed",
+    "bf16_relative": "normative N/A; model quant and BF16 KV unchanged",
+    "task_gate": "full canonical category+heldout public suite is exact diagnostically and non-regressive; no new target semantics"
+  },
+  "actual_plan_gate": {
+    "passed": true,
+    "context128_explicit": "MTP engaged with qualified_explicit_production_c1_b3_context128 and automatic_eligible=false",
+    "context128_automatic": "K0/AR and IDs equal explicit false",
+    "context129_explicit": "pre-mutation K0 context_bucket_not_qualified and IDs equal AR",
+    "blocking_ids_equal_ar": true,
+    "sse_text_equal_blocking": true,
+    "sse_verify_chain_delta": 1,
+    "post_gate_active_allocations": 0,
+    "post_gate_current_bytes": 0,
+    "existing_ownership_gate": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t11-t13-ownership.json"
+  },
+  "resolver_change": {
+    "behavior": "evaluate every independently qualified model-plugin evidence row; first exact row admits, otherwise reject against the closest row with declaration-order tie break",
+    "scope_merge": false,
+    "typed_failure_reasons_preserved": true,
+    "prompt_or_benchmark_fields_added": false,
+    "strict_existing_row_unchanged": true
+  },
+  "commands": {
+    "public_performance": "cd /tmp/hipengine-qwen38-long-screen && HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 /home/lhl/hipEngine/.venv/bin/python /tmp/qwen38_public_c128_screen.py",
+    "public_reverse_order_repeat": "cd /tmp/hipengine-qwen38-long-screen && QWEN38_C128_OUT=/tmp/qwen38-public-production-c68-c128-b3-screen-repeat.json QWEN38_C128_ORDER_OFFSET=1 HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 /home/lhl/hipEngine/.venv/bin/python /tmp/qwen38_public_c128_screen.py",
+    "direct_cross_check": "cd /tmp/hipengine-qwen38-long-screen && HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 /home/lhl/hipEngine/.venv/bin/python /tmp/qwen38_natural_c128_screen.py",
+    "actual_plan": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python /tmp/qwen38_c128_actual_plan_smoke.py",
+    "capability_tests": ".venv/bin/python -m pytest -q tests/test_speculative_mtp_serving_capability.py",
+    "server_tests": ".venv/bin/python -m pytest -q tests/test_server_api.py::test_artifact_scoped_explicit_mtp_uses_one_plan_in_capability_route_and_response tests/test_server_api.py::test_artifact_scoped_explicit_mtp_fails_to_k0_before_backend_mutation tests/test_server_api.py::test_auto_and_enabled_share_explicit_only_plan_fingerprint_and_k0 tests/test_server_api.py::test_promoted_artifact_plan_routes_auto_only_inside_exact_scope"
+  },
+  "raw_sources": [
+    {"path": "/tmp/qwen38-public-production-c68-c128-b3-screen.json", "sha256": "cc600645fe514db6f7c1bb3d733838ab31cd48e96be6739a49f914c11412443f", "size_bytes": 727224, "retained_in_git": false},
+    {"path": "/tmp/qwen38-public-production-c68-c128-b3-screen-repeat.json", "sha256": "0741aadc8261e69f3a168d21e92d02935868abaf8f72519dc4a3a29e8874b3e3", "size_bytes": 727243, "retained_in_git": false},
+    {"path": "/tmp/qwen38_public_c128_screen.py", "sha256": "bf8331b0bb49bf64229854c7189a48eab5c66ddb963d229d478aefccac5beee2", "size_bytes": 10056, "retained_in_git": false},
+    {"path": "/tmp/qwen38-natural-c68-c128-b3-screen.json", "sha256": "e8de8a4f470aba092534bcacbd202f4caec368a7e43ae5104674c878c0c8e6ef", "size_bytes": 8530, "retained_in_git": false},
+    {"path": "/tmp/qwen38_natural_c128_screen.py", "sha256": "ac6b2439da39614ebdc78d6dd833c3f0cab1378fb857803eff285fa142df7872", "size_bytes": 9408, "retained_in_git": false},
+    {"path": "/tmp/qwen38-c128-actual-plan-smoke.json", "sha256": "029bcb66122f6dd64cd64045b2c3d8079b2a4f1c2cb1512fb0ef295d960c0cd0", "size_bytes": 60711, "retained_in_git": false},
+    {"path": "/tmp/qwen38_c128_actual_plan_smoke.py", "sha256": "e04717a2accdaebc8d3d0d539c90ef438cf5f4b8ebde150aa1daf6cf46f7f5fe", "size_bytes": 5723, "retained_in_git": false},
+    {"path": "/tmp/qwen38-long-c128-c1020-b3-screen.json", "sha256": "b4b66ad9be2b30a050555b2b542646e13e6dc291cc51485dacb8f522e6bc16d4", "size_bytes": 3803, "retained_in_git": false, "note": "valid 128/256 rows followed by a mechanical AOTriton wrapper cache miss; 512/1020 rerun separately"},
+    {"path": "/tmp/qwen38-long-c512-c1020-b3-screen.json", "sha256": "fd2606b4e6ccf3719489434865ca5934f5036d35eea35b8697895a7a05b2238b", "size_bytes": 4385, "retained_in_git": false}
+  ],
+  "limitations": [
+    "One measured counterbalanced arm per padded prompt after one warmup pair; scope is bounded to explicit-only production C1/B3 context 68-128/horizon24.",
+    "Neutral padding is content agnostic and applied to every category/heldout; it creates a context-bucket qualification workload, not a new model-quality task.",
+    "Automatic production policy remains K0 because the wider CONCURRENCY2 dynamic realized-group lifecycle is still unqualified.",
+    "No performance or correctness result transfers above context128, to C>1, another profile/quant/KV layout, processed sampling, or a different model artifact."
+  ]
+}

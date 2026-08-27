@@ -72,6 +72,14 @@ class SpecTransactionMode(StrEnum):
     REVERSIBLE_JOURNAL = "reversible_journal"
 
 
+class SpecK0Class(StrEnum):
+    """Whether a K0 row is provider-free or keeps an eligible provider synced."""
+
+    NOT_K0 = "not_k0"
+    PURE = "pure_k0"
+    TRANSITIONAL = "transitional_k0"
+
+
 class SpecPlanReason(StrEnum):
     """Stable pre-mutation reason for a speculative or K=0 decision."""
 
@@ -207,6 +215,7 @@ class SpecRequestPlan:
     resident_slots: tuple[int, ...]
     candidate_counts: tuple[int, ...]
     reasons: tuple[SpecPlanReason, ...]
+    k0_classes: tuple[SpecK0Class, ...]
     mode: str
     capability_key: str | None
     provider_key: str | None
@@ -235,11 +244,23 @@ class SpecRequestPlan:
         reasons = tuple(SpecPlanReason(reason) for reason in self.reasons)
         if len(reasons) != len(request_ids):
             raise ValueError("reasons must align with request_ids")
-        for count, reason in zip(counts, reasons, strict=True):
+        k0_classes = tuple(SpecK0Class(value) for value in self.k0_classes)
+        if len(k0_classes) != len(request_ids):
+            raise ValueError("k0_classes must align with request_ids")
+        for count, reason, k0_class in zip(
+            counts,
+            reasons,
+            k0_classes,
+            strict=True,
+        ):
             if count > 0 and reason is not SpecPlanReason.SPECULATIVE_QUALIFIED:
                 raise ValueError("positive candidate counts require speculative-qualified reason")
             if count == 0 and reason is SpecPlanReason.SPECULATIVE_QUALIFIED:
                 raise ValueError("speculative-qualified reason requires positive candidate count")
+            if count > 0 and k0_class is not SpecK0Class.NOT_K0:
+                raise ValueError("speculative rows require not_k0 classification")
+            if count == 0 and k0_class is SpecK0Class.NOT_K0:
+                raise ValueError("K0 rows require pure or transitional classification")
         mode = str(self.mode)
         if mode not in {"decode", "verify_chain", "verify_tree"}:
             raise ValueError("mode must be decode, verify_chain, or verify_tree")
@@ -283,6 +304,7 @@ class SpecRequestPlan:
         object.__setattr__(self, "resident_slots", slots)
         object.__setattr__(self, "candidate_counts", counts)
         object.__setattr__(self, "reasons", reasons)
+        object.__setattr__(self, "k0_classes", k0_classes)
         object.__setattr__(self, "mode", mode)
         object.__setattr__(self, "capability_key", capability_key)
         object.__setattr__(self, "provider_key", provider_key)
@@ -652,6 +674,7 @@ __all__ = [
     "CandidateGraph",
     "ProviderAttachment",
     "ProviderCatchupMode",
+    "SpecK0Class",
     "SpecPlanReason",
     "SpecRequestPlan",
     "SpecTransactionMode",

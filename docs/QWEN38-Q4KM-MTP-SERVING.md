@@ -1,12 +1,12 @@
 # Qwen3.8 Q4_K_M Exact MTP Serving Campaign
 
-- Status: **Complete; one exact automatic scope retained**
+- Status: **Complete; strict automatic C1 is retained on capacity-1 and normal capacity-4 singleton ownership, plus one explicit-only production context scope**
 - Started: **2026-08-26**
 - Primary host: **Radeon 8060S / `hip_gfx1151`**
 - Model: **Qwen3.8-27B `Q4_K_M`, BF16 KV**
 - Serving profile at entry: **strict**
 - Direct-leaf premise: **exact natural25 B3 at 21.157528 tok/s / 1.809537x true AR**
-- Current public policy: **`auto` selects MTP only for the exact qualified key; every other key selects AR/K0**
+- Current public policy: **`auto` selects strict MTP for the exact qualified C1/B3 key at resident capacity 1 or realized singleton capacity 4; c2+, production automatic, and every unqualified key select AR/K0**
 - Dependencies: [`PLAN.md`](PLAN.md), [`MTP-FIX.md`](MTP-FIX.md),
   [`API.md`](API.md), [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
   [`TESTING.md`](TESTING.md), and [`BENCHMARK.md`](BENCHMARK.md)
@@ -209,8 +209,56 @@ repairs passed their affected files/bundles and the exact failed-node rerun is
 policy. Closure evidence:
 [`2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json`](../benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json).
 
-The retained automatic route remains only the fingerprinted key in Section 8.
-Q4_K_S, MoE, wrong artifact/backend/quant/profile/manifest/KV/capacity/group/B,
-stochastic or processed sampling, context/output mismatches, grown sessions,
-hard thinking controls, DMS, and physical C>1 remain K0. Final server,
-`/dev/kfd`, `hipcc`, and clang ownership is zero.
+The retained automatic route remains only strict C1/B3: Section 8's capacity-1
+key and post-closure S7's normal capacity-4 realized-singleton key. S6 adds a
+separate explicit-only production key. Q4_K_S, MoE, wrong artifact/backend/
+quant/profile/manifest/KV/capacity/group/B, stochastic or processed sampling,
+all other context/output buckets, grown sessions, hard thinking controls, DMS,
+and physical C>1 remain K0. Final server, `/dev/kfd`, `hipcc`, and clang
+ownership is zero.
+
+## 10. S6 — Post-closure production context 68-128
+
+A second, non-overlapping evidence row now qualifies **explicit-only**
+production MTP for the pinned Q4_K_M artifact, production manifest, BF16 KV,
+resident/physical C1, B3, raw greedy, max-sequence 1024, context **68-128**, and
+output horizon 24. Its plan fingerprint is
+`sha256:5a720ac2bc89fcae8ea59b89720a6be36c72e491ce0ac08bb61219c61cd8f645`;
+`automatic_eligible=false` and strict AR remains the fallback.
+
+The content-agnostically padded full category+heldout OpenAI suite measures
+**13.088 vs 9.350 tok/s (+39.98%, 1.3998x)** complete wall. All 10 cells exceed
+1.10x (minimum 1.283x), every category and train/heldout split is positive, and
+acceptance is **163/186 (87.63%)**. Exact generated-ID equality is diagnostic;
+the binding production numerical evidence reuses the unchanged 1,170-row gate,
+which already covers the harder p512 context and passes every mean/tail/max KL,
+top-1, determinism, isolation, and manifest threshold. Actual-plan blocking
+and SSE smokes engage the explicit key, while automatic remains K0 and context
+129 fails closed before MTP mutation; all ownership returns to zero.
+
+The scope stops at 128. Diagnostic eager-native ratios fall to **1.063x/1.017x/
+0.897x** at contexts 256/512/1020, so no wider bucket is admitted. Evidence:
+[`production context128`](../benchmarks/results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json).
+
+## 11. S7 — Normal-owner automatic realized singleton
+
+The strict C1/B3 key now also qualifies `resident_capacity=4` when the actual
+Generation-2 due group is one row. The automatic intent owns a private one-slot
+NextN provider and a transactional journal bound to the target session's
+slot-local scratch view. If another eligible row becomes due, capability
+returns unavailable before proposal, both requests execute transitional K0/AR,
+and target-output catch-up keeps each private provider synchronized. A survivor
+may re-enter MTP only after the group shrinks to one between transactions.
+
+Clean commit `b663a9d20` measures **15.769 vs 9.878 true-AR tok/s (+59.65%,
+1.5965x)** over the canonical ten-prompt blocking OpenAI suite. All 10 cells
+exceed 1.10x (minimum 1.470x), every category and train/heldout split is
+positive, and acceptance is **165/210 (78.57%)**. Blocking/SSE exactness,
+slot-local journal ownership, public c2 pre-mutation K0, C1->C2->C1 survivor
+re-entry, cancellation, following health, and final zero ownership pass.
+
+Two independent concurrent automatic requests truthfully report
+`physical_group_not_qualified`, use no MTP, and match independent AR; this is K0
+crossover evidence, not physical C2 MTP throughput. Production context68-128
+remains explicit-only. Evidence:
+[`realized singleton`](../benchmarks/results/2026-08-27-gfx1151-qwen38-realized-singleton-auto.json).

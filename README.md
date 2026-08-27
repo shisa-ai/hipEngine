@@ -232,7 +232,8 @@ Each value is the total tokens per second across all active requests:
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — public C1 MTP-3 automatic scope | **12.940 tok/s** | **1.4337x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — normal-owner C1 MTP-3 automatic | **15.769 tok/s** | **1.5965x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C1 MTP-3 c68-128 explicit | **13.088 tok/s** | **1.3998x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
 ### RTX PRO 6000 Blackwell (`sm_120a`)
@@ -241,8 +242,7 @@ Each value is the total tokens per second across all active requests:
 | --- | --- | ---: | ---: |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
 
-Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary.
-llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
+Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary. llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 Full commands, software versions, model hashes, memory use, and correctness

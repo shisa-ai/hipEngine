@@ -9,9 +9,10 @@ oracle fields.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 import hashlib
 import json
-from typing import Sequence
+from typing import Mapping, Sequence
 
 
 _DEFAULT_STRICT_FALLBACK = "gguf_target_ar"
@@ -242,6 +243,139 @@ class SpeculativeMTPServingEvidence:
         }
 
 
+class SpeculativeMTPStaticState(StrEnum):
+    """Request-local provider intent decided before resident scheduling."""
+
+    PERMANENT_AR = "permanent_ar"
+    SPECULATIVE_CAPABLE = "speculative_capable"
+
+
+@dataclass(frozen=True, slots=True)
+class SpeculativeMTPStaticEligibility:
+    """Typed static eligibility with no selected future C_due or K.
+
+    ``max_realized_group_rows`` is an evidence bound, not a prediction of the
+    resident due group. The Generation-2 cycle planner remains the only owner of
+    actual C_due and candidate counts.
+    """
+
+    state: SpeculativeMTPStaticState
+    reason: str
+    max_candidate_count: int
+    max_realized_group_rows: int
+    automatic_eligible: bool
+    strict_fallback_key: str
+    evidence_key: str | None = None
+    evidence_fingerprint: str | None = None
+    evidence_artifacts: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        state = SpeculativeMTPStaticState(self.state)
+        reason = _required_text(self.reason, "static eligibility reason")
+        fallback = _required_text(self.strict_fallback_key, "strict_fallback_key")
+        candidates = int(self.max_candidate_count)
+        rows = int(self.max_realized_group_rows)
+        if min(candidates, rows) < 0:
+            raise ValueError("static eligibility bounds must be non-negative")
+        if state is SpeculativeMTPStaticState.SPECULATIVE_CAPABLE:
+            if candidates <= 0 or rows <= 0:
+                raise ValueError("speculative-capable eligibility requires positive bounds")
+            evidence_key = _required_text(self.evidence_key, "evidence_key")
+            evidence_fingerprint = _required_text(
+                self.evidence_fingerprint,
+                "evidence_fingerprint",
+            )
+        else:
+            if candidates or rows or self.automatic_eligible:
+                raise ValueError("permanent-AR eligibility cannot retain speculative bounds")
+            evidence_key = None if self.evidence_key is None else _required_text(
+                self.evidence_key,
+                "evidence_key",
+            )
+            evidence_fingerprint = (
+                None
+                if self.evidence_fingerprint is None
+                else _required_text(self.evidence_fingerprint, "evidence_fingerprint")
+            )
+        artifacts = tuple(
+            _required_text(value, "evidence_artifact")
+            for value in self.evidence_artifacts
+        )
+        object.__setattr__(self, "state", state)
+        object.__setattr__(self, "reason", reason)
+        object.__setattr__(self, "max_candidate_count", candidates)
+        object.__setattr__(self, "max_realized_group_rows", rows)
+        object.__setattr__(self, "automatic_eligible", bool(self.automatic_eligible))
+        object.__setattr__(self, "strict_fallback_key", fallback)
+        object.__setattr__(self, "evidence_key", evidence_key)
+        object.__setattr__(self, "evidence_fingerprint", evidence_fingerprint)
+        object.__setattr__(self, "evidence_artifacts", artifacts)
+
+    @property
+    def eligible(self) -> bool:
+        return self.state is SpeculativeMTPStaticState.SPECULATIVE_CAPABLE
+
+    @property
+    def fingerprint(self) -> str:
+        return _canonical_sha256(self.as_dict())
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "state": self.state.value,
+            "eligible": self.eligible,
+            "reason": self.reason,
+            "max_candidate_count": self.max_candidate_count,
+            "max_realized_group_rows": self.max_realized_group_rows,
+            "automatic_eligible": self.automatic_eligible,
+            "strict_fallback_key": self.strict_fallback_key,
+            "evidence_key": self.evidence_key,
+            "evidence_fingerprint": self.evidence_fingerprint,
+            "evidence_artifacts": list(self.evidence_artifacts),
+        }
+
+    @classmethod
+    def from_mapping(
+        cls,
+        payload: Mapping[str, object],
+    ) -> "SpeculativeMTPStaticEligibility":
+        state = payload.get("state")
+        if state is None:
+            state = (
+                SpeculativeMTPStaticState.SPECULATIVE_CAPABLE
+                if bool(payload.get("eligible"))
+                else SpeculativeMTPStaticState.PERMANENT_AR
+            )
+        artifacts = payload.get("evidence_artifacts")
+        return cls(
+            state=SpeculativeMTPStaticState(state),
+            reason=str(payload.get("reason") or "model_plugin_scope_not_qualified"),
+            max_candidate_count=int(payload.get("max_candidate_count", 0) or 0),
+            max_realized_group_rows=int(
+                payload.get("max_realized_group_rows", 0) or 0
+            ),
+            automatic_eligible=bool(payload.get("automatic_eligible")),
+            strict_fallback_key=str(
+                payload.get("strict_fallback_key") or _DEFAULT_STRICT_FALLBACK
+            ),
+            evidence_key=(
+                None
+                if payload.get("evidence_key") is None
+                else str(payload.get("evidence_key"))
+            ),
+            evidence_fingerprint=(
+                None
+                if payload.get("evidence_fingerprint") is None
+                else str(payload.get("evidence_fingerprint"))
+            ),
+            evidence_artifacts=(
+                tuple(str(value) for value in artifacts)
+                if isinstance(artifacts, Sequence)
+                and not isinstance(artifacts, (str, bytes, bytearray))
+                else ()
+            ),
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class SpeculativeMTPServingDecision:
     """Immutable candidate-or-K0 decision resolved before backend mutation."""
@@ -256,6 +390,25 @@ class SpeculativeMTPServingDecision:
     evidence_fingerprint: str | None = None
     evidence_artifacts: tuple[str, ...] = ()
     automatic_eligible: bool = False
+
+    @property
+    def static_eligibility(self) -> SpeculativeMTPStaticEligibility:
+        eligible = bool(self.admitted and self.selected_candidate_count > 0)
+        return SpeculativeMTPStaticEligibility(
+            state=(
+                SpeculativeMTPStaticState.SPECULATIVE_CAPABLE
+                if eligible
+                else SpeculativeMTPStaticState.PERMANENT_AR
+            ),
+            reason=self.reason,
+            max_candidate_count=(self.selected_candidate_count if eligible else 0),
+            max_realized_group_rows=(self.key.realized_group_rows if eligible else 0),
+            automatic_eligible=(self.automatic_eligible if eligible else False),
+            strict_fallback_key=self.strict_fallback_key,
+            evidence_key=self.evidence_key,
+            evidence_fingerprint=self.evidence_fingerprint,
+            evidence_artifacts=self.evidence_artifacts,
+        )
 
     @property
     def plan_fingerprint(self) -> str:
@@ -286,6 +439,7 @@ class SpeculativeMTPServingDecision:
             "evidence_fingerprint": self.evidence_fingerprint,
             "evidence_artifacts": list(self.evidence_artifacts),
             "automatic_eligible": self.automatic_eligible,
+            "static_eligibility": self.static_eligibility.as_dict(),
         }
 
 
@@ -316,100 +470,65 @@ def _reject(
     )
 
 
-def resolve_speculative_mtp_serving_plan(
-    evidence_rows: Sequence[SpeculativeMTPServingEvidence],
-    *,
+def _evidence_checks(
     key: SpeculativeMTPServingKey,
-) -> SpeculativeMTPServingDecision:
-    """Resolve one exact model-plugin evidence row or fail closed to K0."""
-
-    evidence = tuple(evidence_rows)
-    if not key.content_verified or key.artifact_sha256 is None:
-        return _reject(key, "artifact_identity_unverified", evidence[0] if evidence else None)
-    if not evidence:
-        return _reject(key, "no_model_plugin_evidence", None)
-
-    identity_rows = tuple(
-        candidate
-        for candidate in evidence
-        if key.artifact_sha256 == candidate.artifact_sha256
-        and key.artifact_size_bytes == candidate.artifact_size_bytes
-    )
-    if not identity_rows:
-        return _reject(key, "artifact_not_qualified", evidence[0])
-
-    def checks_for(row: SpeculativeMTPServingEvidence):
-        return (
-            (key.backend == row.backend, "backend_not_qualified"),
-            (key.target_arch == row.target_arch, "target_arch_not_qualified"),
-            (key.weight_quant == row.weight_quant, "weight_quant_not_qualified"),
-            (
-                key.execution_profile == row.execution_profile,
-                "execution_profile_not_qualified",
-            ),
-            (
-                key.execution_profile_manifest_sha256
-                == row.execution_profile_manifest_sha256,
-                "execution_profile_manifest_not_qualified",
-            ),
-            (key.kv_storage == row.kv_storage, "kv_storage_not_qualified"),
-            (key.kv_layout == row.kv_layout, "kv_layout_not_qualified"),
-            (
-                key.realized_group_rows == row.realized_group_rows,
-                "physical_group_not_qualified",
-            ),
-            (
-                key.resident_capacity == row.resident_capacity,
-                "resident_capacity_not_qualified",
-            ),
-            (
-                key.candidate_budget == row.candidate_budget,
-                "candidate_budget_not_qualified",
-            ),
-            (
-                key.sampling_mode in row.sampling_modes,
-                "sampling_mode_not_qualified",
-            ),
-            (
-                key.max_sequence_length == row.max_sequence_length,
-                "max_sequence_length_not_qualified",
-            ),
-            (
-                row.min_context_tokens
-                <= key.context_tokens
-                <= row.max_context_tokens,
-                "context_bucket_not_qualified",
-            ),
-            (
-                row.min_output_horizon_tokens
-                <= key.output_horizon_tokens
-                <= row.max_output_horizon_tokens,
-                "output_horizon_not_qualified",
-            ),
-            (key.memory_fit, "insufficient_memory"),
-        )
-
-    evaluated = tuple((row, checks_for(row)) for row in identity_rows)
-    exact = next(
+    row: SpeculativeMTPServingEvidence,
+) -> tuple[tuple[bool, str], ...]:
+    return (
         (
-            (row, checks)
-            for row, checks in evaluated
-            if all(passed for passed, _reason in checks)
+            key.artifact_sha256 == row.artifact_sha256
+            and key.artifact_size_bytes == row.artifact_size_bytes,
+            "artifact_not_qualified",
         ),
-        None,
+        (key.backend == row.backend, "backend_not_qualified"),
+        (key.target_arch == row.target_arch, "target_arch_not_qualified"),
+        (key.weight_quant == row.weight_quant, "weight_quant_not_qualified"),
+        (
+            key.execution_profile == row.execution_profile,
+            "execution_profile_not_qualified",
+        ),
+        (
+            key.execution_profile_manifest_sha256
+            == row.execution_profile_manifest_sha256,
+            "execution_profile_manifest_not_qualified",
+        ),
+        (key.kv_storage == row.kv_storage, "kv_storage_not_qualified"),
+        (key.kv_layout == row.kv_layout, "kv_layout_not_qualified"),
+        (
+            key.realized_group_rows == row.realized_group_rows,
+            "physical_group_not_qualified",
+        ),
+        (
+            key.resident_capacity == row.resident_capacity,
+            "resident_capacity_not_qualified",
+        ),
+        (
+            key.candidate_budget == row.candidate_budget,
+            "candidate_budget_not_qualified",
+        ),
+        (key.sampling_mode in row.sampling_modes, "sampling_mode_not_qualified"),
+        (
+            key.max_sequence_length == row.max_sequence_length,
+            "max_sequence_length_not_qualified",
+        ),
+        (
+            row.min_context_tokens <= key.context_tokens <= row.max_context_tokens,
+            "context_bucket_not_qualified",
+        ),
+        (
+            row.min_output_horizon_tokens
+            <= key.output_horizon_tokens
+            <= row.max_output_horizon_tokens,
+            "output_horizon_not_qualified",
+        ),
+        (key.memory_fit, "insufficient_memory"),
     )
-    if exact is None:
-        # Multiple independently qualified widths/profiles can share one model
-        # artifact. Report the nearest row's first failed axis rather than
-        # letting tuple order make every non-first width unreachable.
-        row, checks = min(
-            evaluated,
-            key=lambda item: sum(not passed for passed, _reason in item[1]),
-        )
-        reason = next(reason for passed, reason in checks if not passed)
-        return _reject(key, reason, row)
-    row, _checks = exact
 
+
+def _admit(
+    key: SpeculativeMTPServingKey,
+    row: SpeculativeMTPServingEvidence,
+) -> SpeculativeMTPServingDecision:
     return SpeculativeMTPServingDecision(
         key=key,
         admitted=True,
@@ -424,9 +543,49 @@ def resolve_speculative_mtp_serving_plan(
     )
 
 
+def resolve_speculative_mtp_serving_plan(
+    evidence_rows: Sequence[SpeculativeMTPServingEvidence],
+    *,
+    key: SpeculativeMTPServingKey,
+) -> SpeculativeMTPServingDecision:
+    """Resolve one exact model-plugin evidence row or fail closed to K0.
+
+    A model artifact may carry independently qualified profile/shape scopes.
+    The first exact row wins. When no row admits, rejection is attributed to the
+    row matching the most key axes (ties preserve declaration order), keeping a
+    stable and useful pre-mutation failure reason without merging scopes.
+    """
+
+    evidence = tuple(evidence_rows)
+    if not key.content_verified or key.artifact_sha256 is None:
+        return _reject(key, "artifact_identity_unverified", evidence[0] if evidence else None)
+    if not evidence:
+        return _reject(key, "no_model_plugin_evidence", None)
+
+    rejected: list[tuple[int, int, SpeculativeMTPServingEvidence, str]] = []
+    for index, row in enumerate(evidence):
+        checks = _evidence_checks(key, row)
+        failed_reason = next((reason for passed, reason in checks if not passed), None)
+        if failed_reason is None:
+            return _admit(key, row)
+        rejected.append(
+            (
+                sum(bool(passed) for passed, _reason in checks),
+                -index,
+                row,
+                failed_reason,
+            )
+        )
+
+    _matched, _order, row, reason = max(rejected, key=lambda item: (item[0], item[1]))
+    return _reject(key, reason, row)
+
+
 __all__ = [
     "SpeculativeMTPServingDecision",
     "SpeculativeMTPServingEvidence",
     "SpeculativeMTPServingKey",
+    "SpeculativeMTPStaticEligibility",
+    "SpeculativeMTPStaticState",
     "resolve_speculative_mtp_serving_plan",
 ]

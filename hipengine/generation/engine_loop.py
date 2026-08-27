@@ -661,7 +661,11 @@ class SubmitPollTextGenerator:
                 None,
             )
             if callable(register_speculative):
-                register_speculative(request_id, max(1, desired))
+                register_speculative(
+                    request_id,
+                    max(1, desired),
+                    static_eligibility=request.speculative_mtp_static_eligibility,
+                )
             timing_observer = getattr(
                 self._runner,
                 "record_prompt_tokenize_ms",
@@ -1884,6 +1888,8 @@ class ResidentEngineLoop:
         self._speculative_candidate_counts: dict[int, int] = {}
         self._speculative_cancel_probes: dict[int, Callable[[], bool]] = {}
         self._speculative_cycle_sequence = 0
+        self._last_speculative_plan = None
+        self._recent_speculative_plans = deque(maxlen=32)
 
     def reconfigure(self, config: EngineLoopConfig) -> None:
         """Apply an idle resource/policy generation without replacing the loop."""
@@ -1929,6 +1935,16 @@ class ResidentEngineLoop:
         self._cold_prefill_cohort_request_ids = frozenset()
         self._round_prefill_tokens = 0
         self._round_decode_rows = 0
+        self._last_speculative_plan = None
+        self._recent_speculative_plans.clear()
+
+    @property
+    def last_speculative_plan(self):
+        return self._last_speculative_plan
+
+    @property
+    def recent_speculative_plans(self):
+        return tuple(self._recent_speculative_plans)
 
     @property
     def pending_count(self) -> int:
@@ -1949,6 +1965,29 @@ class ResidentEngineLoop:
         resource_snapshot = getattr(self.runner, "resource_observability_snapshot", None)
         if callable(resource_snapshot):
             snapshot["resources"] = resource_snapshot()
+        plan = self._last_speculative_plan
+        snapshot["recent_speculative_plans"] = [
+            {
+                "request_ids": list(recent.request_ids),
+                "candidate_counts": list(recent.candidate_counts),
+                "reasons": [reason.value for reason in recent.reasons],
+                "k0_classes": [value.value for value in recent.k0_classes],
+                "execution_route": recent.execution_route,
+            }
+            for recent in self._recent_speculative_plans
+        ]
+        snapshot["last_speculative_plan"] = (
+            None
+            if plan is None
+            else {
+                "request_ids": list(plan.request_ids),
+                "candidate_counts": list(plan.candidate_counts),
+                "reasons": [reason.value for reason in plan.reasons],
+                "k0_classes": [value.value for value in plan.k0_classes],
+                "execution_route": plan.execution_route,
+                "logical_frontier_rows": plan.logical_frontier_rows,
+            }
+        )
         snapshot["scheduler_policy"] = {
             "prefill_decode_policy": self.prefill_decode_policy,
             "prefill_chunk_tokens": int(self.prefill_chunk_size),
@@ -2257,6 +2296,72 @@ class ResidentEngineLoop:
         speculative = self._maybe_run_speculative_cycle(work)
         if speculative is not None:
             return speculative
+        desired = tuple(
+            self._speculative_candidate_counts.get(int(request_id), 0)
+            for request_id in work.request_ids
+        )
+        if any(desired) and not all(desired):
+            spec_ids = tuple(
+                request_id
+                for request_id, count in zip(work.request_ids, desired, strict=True)
+                if count > 0
+            )
+            spec_work = self._decode_work_subset(work, spec_ids)
+            disjoint_speculative = self._maybe_run_speculative_cycle(spec_work)
+            if disjoint_speculative is not None:
+                ar_ids = tuple(
+                    request_id
+                    for request_id, count in zip(
+                        work.request_ids,
+                        desired,
+                        strict=True,
+                    )
+                    if count == 0
+                )
+                ar_events = self._run_ar_decode(
+                    self._decode_work_subset(work, ar_ids)
+                )
+                return (*disjoint_speculative, *ar_events)
+        return self._run_ar_decode(work)
+
+    @staticmethod
+    def _decode_work_subset(
+        work: WorkItem,
+        request_ids: Sequence[int],
+    ) -> WorkItem:
+        selected = tuple(int(request_id) for request_id in request_ids)
+        if not selected or any(request_id not in work.request_ids for request_id in selected):
+            raise ValueError("decode work subset must be a non-empty request subset")
+        selected_set = set(selected)
+        row_indices = tuple(
+            index
+            for index, request_id in enumerate(work.row_to_request)
+            if int(request_id) in selected_set
+        )
+        slots = ()
+        if work.slot_ids:
+            slot_by_request = dict(
+                zip(work.request_ids, work.slot_ids, strict=True)
+            )
+            slots = tuple(int(slot_by_request[request_id]) for request_id in selected)
+        selected_slots = set(slots)
+        active_mask = (
+            tuple(index in selected_slots for index in range(len(work.active_mask)))
+            if work.active_mask
+            else ()
+        )
+        return WorkItem(
+            kind=work.kind,
+            request_ids=selected,
+            row_to_request=tuple(work.row_to_request[index] for index in row_indices),
+            token_rows=tuple(work.token_rows[index] for index in row_indices)
+            if work.token_rows
+            else (),
+            slot_ids=slots,
+            active_mask=active_mask,
+        )
+
+    def _run_ar_decode(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
         start = time.perf_counter()
         decode_batch = getattr(self.runner, "decode_batch", None)
         if callable(decode_batch):
@@ -2341,6 +2446,8 @@ class ResidentEngineLoop:
                 graph_available=graph_available,
                 target_physical_available=target_available,
             )
+        self._last_speculative_plan = plan
+        self._recent_speculative_plans.append(plan)
         if plan.is_ar_only:
             prepare_k0 = getattr(self.runner, "prepare_speculative_k0", None)
             if callable(prepare_k0):
