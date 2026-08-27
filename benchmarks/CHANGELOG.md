@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 W7900 35B MoE Generation-2 explicit serving qualified] Blocking/SSE completion+chat parity, sampler/context K0, continuation, disconnect health, five-request load, bounded overload **3 accepted / 5 truthful 429**, fail-once recovery, following MTP, 30-request soak, bounded memory, and zero final owners pass. Automatic exact-key publication is next. `benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-serving.json`.
+
 - [2026-08-27 W7900 35B MoE Generation-2 C1/K2 production quality+performance] A depth-composed bulk target (F32 residual+post-norm K2, incumbent BF16 K1) passes 275 strict-teacher rows at mean/p95/p99/max KL **0.000454/0.001902/0.009633/0.016425** and **99.636%** top-1. Full-suite D24 reaches **67.858→77.358 tok/s (+14.00%)**, train/heldout **+15.31/+12.11%**, and every category **+8.02% to +16.97%**. Explicit route retained; automatic awaits serving gates. `benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-performance.json`.
 
 - [2026-08-27 W7900 model-owned MTP OLD vs current; diagnostic/not retained] Full-suite D24 C1-C8 moves **79.584/75.671/95.426/110.257/102.914/96.620/104.152/110.218 → 82.446/110.986/129.095/136.007/114.736/125.641/131.960/135.143 tok/s** (**+3.60/+46.67/+35.28/+23.35/+11.49/+30.04/+26.70/+22.61%**). Current MTP beats same-protocol CONCURRENCY2 AR **5.80-76.46%**, but this is a legacy-prelaunch diagnostic: Generation-2 MoE MTP is K0, current AR equality is 65/80, and OLD has one C5 non-invariant cell. `benchmarks/results/2026-08-27-w7900-old-vs-current-model-owned-mtp-c1-c8.json`.

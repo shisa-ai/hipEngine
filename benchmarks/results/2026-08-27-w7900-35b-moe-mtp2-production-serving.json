@@ -1,0 +1,651 @@
+{
+  "checks": {
+    "all": true,
+    "blocking_sse": true,
+    "cancellation_health": true,
+    "fault": true,
+    "negative_k0": true,
+    "openai": true,
+    "overload": true,
+    "soak": true
+  },
+  "decision": "explicit_serving_qualified_automatic_policy_ready",
+  "execution_profile": {
+    "manifest_sha256": "2b64229e062c85d08244149191f515c226c6897ecd753d86849dad9fe7c92ca9",
+    "name": "production"
+  },
+  "kind": "qwen36_moe_mtp2_production_serving",
+  "model": {
+    "kv": "bf16",
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "quant": "UD-Q4_K_M",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "size_bytes": 22663387424
+  },
+  "packets": {
+    "fault": {
+      "calls": 7,
+      "checks": {
+        "drain": true,
+        "first_recovered": true,
+        "following_mtp": true,
+        "health": true,
+        "responses": true
+      },
+      "engine_service": {
+        "active_children": 0,
+        "command_queue_depth": 0,
+        "driver_thread_id": 139787897927360,
+        "last_speculative_draft_depth": null,
+        "last_speculative_route": "engine_service_verify_chain",
+        "last_speculative_work_kind": "verify_chain",
+        "sole_driver": true,
+        "speculative_routes": {
+          "engine_service_verify_chain": 2,
+          "legacy_prelaunch_fallback": 0
+        }
+      },
+      "health": {
+        "model": "qwen36-35b",
+        "object": "hipengine.health",
+        "status": "ok"
+      },
+      "recent_summary": [
+        {
+          "cycles": 0,
+          "failures": [
+            "precommit_failure_ar_fallback",
+            "RuntimeError:injected_pre_target_failure"
+          ],
+          "recoverable": 1,
+          "used": false
+        },
+        {
+          "cycles": 6,
+          "failures": [],
+          "recoverable": 0,
+          "used": true
+        }
+      ],
+      "requests": {
+        "active": 0,
+        "admitted_current": 0,
+        "admitted_total": 3,
+        "completed_buffered": 0,
+        "pending": 0,
+        "reclaimed_total": 3
+      },
+      "specs": [
+        {
+          "acceptance_rate": null,
+          "accepted_draft_tokens": 0,
+          "decision_reason": "backend_k0_fallback",
+          "draft_cycles": 0,
+          "draft_tokens": 0,
+          "effective_route": "default",
+          "rejected_draft_tokens": 0,
+          "selected_route": "speculative_mtp",
+          "used": false
+        },
+        {
+          "acceptance_rate": 0.75,
+          "accepted_draft_tokens": 9,
+          "draft_cycles": 6,
+          "draft_tokens": 12,
+          "effective_route": "speculative_mtp",
+          "rejected_draft_tokens": 3,
+          "thinking_controls": "prompt_hint_only",
+          "thinking_policy": "hint",
+          "used": true
+        }
+      ],
+      "statuses": [
+        200,
+        200
+      ]
+    },
+    "openai": {
+      "chat": {
+        "blocking_ids": [
+          248068,
+          271,
+          248069,
+          271,
+          9419,
+          1017,
+          248046,
+          198
+        ],
+        "blocking_status": 200,
+        "blocking_text": "\n\nHello there",
+        "chunks": 6,
+        "path": "gguf_specdec2_mtp2",
+        "spec": {
+          "acceptance_rate": 0.8,
+          "accepted_draft_tokens": 4,
+          "draft_cycles": 3,
+          "draft_tokens": 5,
+          "effective_route": "speculative_mtp",
+          "rejected_draft_tokens": 1,
+          "thinking_controls": "prompt_hint_only",
+          "thinking_policy": "hint",
+          "used": true
+        },
+        "sse_status": 200,
+        "sse_text": "\n\nHello there"
+      },
+      "checks": {
+        "all": true,
+        "chat_blocking_sse": true,
+        "completion_blocking_sse": true,
+        "concurrent_load": true,
+        "continuation": true,
+        "disconnect_health": true,
+        "drain": true,
+        "negative_k0": true
+      },
+      "completion": {
+        "blocking_ids": [
+          271,
+          248068,
+          198,
+          8160,
+          579,
+          264,
+          7047,
+          1817
+        ],
+        "blocking_status": 200,
+        "blocking_text": "\n\n<think>\nHere's a thinking process",
+        "chunks": 9,
+        "path": "gguf_specdec2_mtp2",
+        "spec": {
+          "acceptance_rate": 0.42857142857142855,
+          "accepted_draft_tokens": 3,
+          "draft_cycles": 4,
+          "draft_tokens": 7,
+          "effective_route": "speculative_mtp",
+          "rejected_draft_tokens": 4,
+          "thinking_controls": "prompt_hint_only",
+          "thinking_policy": "hint",
+          "used": true
+        },
+        "sse_status": 200,
+        "sse_text": "\n\n<think>\nHere's a thinking process",
+        "usage": {
+          "completion_tokens": 8,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": 3,
+            "rejected_prediction_tokens": 4
+          },
+          "prompt_tokens": 5,
+          "total_tokens": 13
+        }
+      },
+      "continuation": {
+        "spec": {
+          "acceptance_rate": null,
+          "accepted_draft_tokens": 0,
+          "decision_reason": "automatic_mtp_scope_not_promoted",
+          "draft_cycles": 0,
+          "draft_tokens": 0,
+          "effective_route": "default",
+          "rejected_draft_tokens": 0,
+          "requested_route": "speculative_mtp_auto",
+          "used": false
+        },
+        "status": 200,
+        "tokens": 4
+      },
+      "controls": {
+        "auto": {
+          "acceptance_rate": null,
+          "accepted_draft_tokens": 0,
+          "decision_reason": "automatic_mtp_scope_not_promoted",
+          "draft_cycles": 0,
+          "draft_tokens": 0,
+          "effective_route": "default",
+          "rejected_draft_tokens": 0,
+          "requested_route": "speculative_mtp_auto",
+          "used": false
+        },
+        "long_context": {
+          "acceptance_rate": null,
+          "accepted_draft_tokens": 0,
+          "decision_reason": "backend_k0_fallback",
+          "draft_cycles": 0,
+          "draft_tokens": 0,
+          "effective_route": "default",
+          "rejected_draft_tokens": 0,
+          "selected_route": "speculative_mtp",
+          "used": false
+        },
+        "paths": [
+          "gguf_packed_ar_server_decode",
+          "gguf_packed_ar_host_sampler_decode",
+          "gguf_packed_ar_server_decode"
+        ],
+        "temperature": {
+          "acceptance_rate": null,
+          "accepted_draft_tokens": 0,
+          "decision_reason": "unsupported_sampling_k0",
+          "draft_cycles": 0,
+          "draft_tokens": 0,
+          "effective_route": "default",
+          "rejected_draft_tokens": 0,
+          "requested_route": "speculative_mtp",
+          "used": false
+        }
+      },
+      "final": {
+        "engine_service": {
+          "active_children": 0,
+          "command_queue_depth": 0,
+          "driver_thread_id": 139852175636160,
+          "last_speculative_draft_depth": null,
+          "last_speculative_route": "engine_service_verify_chain",
+          "last_speculative_work_kind": "verify_chain",
+          "sole_driver": true,
+          "speculative_routes": {
+            "engine_service_verify_chain": 11,
+            "legacy_prelaunch_fallback": 0
+          }
+        },
+        "health": {
+          "model": "qwen36-35b",
+          "object": "hipengine.health",
+          "status": "ok"
+        },
+        "requests": {
+          "active": 0,
+          "admitted_current": 0,
+          "admitted_total": 15,
+          "completed_buffered": 0,
+          "pending": 0,
+          "reclaimed_total": 15
+        }
+      },
+      "load": {
+        "accepted": 5,
+        "rejected": 0,
+        "rows": [
+          {
+            "id": 0,
+            "status": 200,
+            "wall": 0.20777369616553187
+          },
+          {
+            "id": 1,
+            "status": 200,
+            "wall": 0.40896227303892374
+          },
+          {
+            "id": 2,
+            "status": 200,
+            "wall": 0.6278477609157562
+          },
+          {
+            "id": 3,
+            "status": 200,
+            "wall": 0.8492865529842675
+          },
+          {
+            "id": 4,
+            "status": 200,
+            "wall": 1.0486253849230707
+          }
+        ]
+      }
+    },
+    "overload": {
+      "accepted": 3,
+      "checks": {
+        "accepted_mtp": true,
+        "bounded": true,
+        "drain": true,
+        "health": true,
+        "rejected_429": true
+      },
+      "engine_service": {
+        "active_children": 0,
+        "command_queue_depth": 0,
+        "driver_thread_id": 140064772323008,
+        "last_speculative_draft_depth": null,
+        "last_speculative_route": "engine_service_verify_chain",
+        "last_speculative_work_kind": "verify_chain",
+        "sole_driver": true,
+        "speculative_routes": {
+          "engine_service_verify_chain": 3,
+          "legacy_prelaunch_fallback": 0
+        }
+      },
+      "health": {
+        "model": "qwen36-35b",
+        "object": "hipengine.health",
+        "status": "ok"
+      },
+      "rejected": 5,
+      "requests": {
+        "active": 0,
+        "admitted_current": 0,
+        "admitted_total": 4,
+        "completed_buffered": 0,
+        "pending": 0,
+        "reclaimed_total": 4
+      },
+      "rows": [
+        {
+          "error": null,
+          "id": 0,
+          "status": 200,
+          "used": true,
+          "wall": 5.718341321218759
+        },
+        {
+          "error": {
+            "code": "engine_busy",
+            "hipengine": {
+              "code": "engine_busy",
+              "retryable": true,
+              "routing": {
+                "fallback_used": false,
+                "loaded_model_count": 1,
+                "matched": true,
+                "max_queued_requests": 2,
+                "multiple_models": false,
+                "overload_source": "generation_queue_cap",
+                "policy": "single_model_exact",
+                "reason": "engine_busy",
+                "requested_model": "qwen36-35b",
+                "served_model": "qwen36-35b"
+              },
+              "status_code": 429
+            },
+            "message": "generation queue is full",
+            "param": null,
+            "type": "rate_limit_error"
+          },
+          "id": 1,
+          "status": 429,
+          "used": null,
+          "wall": 5.435010734945536
+        },
+        {
+          "error": {
+            "code": "engine_busy",
+            "hipengine": {
+              "code": "engine_busy",
+              "retryable": true,
+              "routing": {
+                "fallback_used": false,
+                "loaded_model_count": 1,
+                "matched": true,
+                "max_queued_requests": 2,
+                "multiple_models": false,
+                "overload_source": "generation_queue_cap",
+                "policy": "single_model_exact",
+                "reason": "engine_busy",
+                "requested_model": "qwen36-35b",
+                "served_model": "qwen36-35b"
+              },
+              "status_code": 429
+            },
+            "message": "generation queue is full",
+            "param": null,
+            "type": "rate_limit_error"
+          },
+          "id": 2,
+          "status": 429,
+          "used": null,
+          "wall": 5.393538060132414
+        },
+        {
+          "error": null,
+          "id": 3,
+          "status": 200,
+          "used": true,
+          "wall": 6.106596015859395
+        },
+        {
+          "error": {
+            "code": "engine_busy",
+            "hipengine": {
+              "code": "engine_busy",
+              "retryable": true,
+              "routing": {
+                "fallback_used": false,
+                "loaded_model_count": 1,
+                "matched": true,
+                "max_queued_requests": 2,
+                "multiple_models": false,
+                "overload_source": "generation_queue_cap",
+                "policy": "single_model_exact",
+                "reason": "engine_busy",
+                "requested_model": "qwen36-35b",
+                "served_model": "qwen36-35b"
+              },
+              "status_code": 429
+            },
+            "message": "generation queue is full",
+            "param": null,
+            "type": "rate_limit_error"
+          },
+          "id": 4,
+          "status": 429,
+          "used": null,
+          "wall": 5.473872083239257
+        },
+        {
+          "error": null,
+          "id": 5,
+          "status": 200,
+          "used": true,
+          "wall": 6.55202138889581
+        },
+        {
+          "error": {
+            "code": "engine_busy",
+            "hipengine": {
+              "code": "engine_busy",
+              "retryable": true,
+              "routing": {
+                "fallback_used": false,
+                "loaded_model_count": 1,
+                "matched": true,
+                "max_queued_requests": 2,
+                "multiple_models": false,
+                "overload_source": "generation_queue_cap",
+                "policy": "single_model_exact",
+                "reason": "engine_busy",
+                "requested_model": "qwen36-35b",
+                "served_model": "qwen36-35b"
+              },
+              "status_code": 429
+            },
+            "message": "generation queue is full",
+            "param": null,
+            "type": "rate_limit_error"
+          },
+          "id": 6,
+          "status": 429,
+          "used": null,
+          "wall": 5.510778435971588
+        },
+        {
+          "error": {
+            "code": "engine_busy",
+            "hipengine": {
+              "code": "engine_busy",
+              "retryable": true,
+              "routing": {
+                "fallback_used": false,
+                "loaded_model_count": 1,
+                "matched": true,
+                "max_queued_requests": 2,
+                "multiple_models": false,
+                "overload_source": "generation_queue_cap",
+                "policy": "single_model_exact",
+                "reason": "engine_busy",
+                "requested_model": "qwen36-35b",
+                "served_model": "qwen36-35b"
+              },
+              "status_code": 429
+            },
+            "message": "generation queue is full",
+            "param": null,
+            "type": "rate_limit_error"
+          },
+          "id": 7,
+          "status": 429,
+          "used": null,
+          "wall": 5.5303411316126585
+        }
+      ]
+    },
+    "soak": {
+      "after": {
+        "kv": {
+          "cow_fork_events": 0,
+          "cow_forked_pages": 0,
+          "current_bytes": 173015040,
+          "current_pages": 33,
+          "free_pages": 1,
+          "grow_events": 0,
+          "grow_failures": 0,
+          "high_water_observed_bytes": 173015040,
+          "high_water_observed_pages": 33,
+          "pinned_pages": 32,
+          "prefix_reuse_events": 0,
+          "prefix_reused_pages": 0,
+          "refcounted_pages": 32,
+          "shrink_events": 0
+        },
+        "model": {
+          "active_request_ids": [],
+          "active_requests": 0,
+          "available_sessions": 1,
+          "capacity": 1,
+          "kv_layout_audits": [],
+          "packed_workspace_current_bytes": 651390164,
+          "packed_workspace_release_events": 0,
+          "packed_workspace_released_bytes": 0,
+          "persistent_bf16_mirror_bytes": 0,
+          "persistent_bf16_payload_bytes": 0,
+          "persistent_int8_payload_bytes": 0,
+          "persistent_kv_total_bytes": 0,
+          "persistent_scale_bytes": 0
+        }
+      },
+      "before": {
+        "kv": {
+          "cow_fork_events": 0,
+          "cow_forked_pages": 0,
+          "current_bytes": 173015040,
+          "current_pages": 33,
+          "free_pages": 1,
+          "grow_events": 0,
+          "grow_failures": 0,
+          "high_water_observed_bytes": 173015040,
+          "high_water_observed_pages": 33,
+          "pinned_pages": 32,
+          "prefix_reuse_events": 0,
+          "prefix_reused_pages": 0,
+          "refcounted_pages": 32,
+          "shrink_events": 0
+        },
+        "model": {
+          "active_request_ids": [],
+          "active_requests": 0,
+          "available_sessions": 1,
+          "capacity": 1,
+          "kv_layout_audits": [],
+          "packed_workspace_current_bytes": 651390164,
+          "packed_workspace_release_events": 0,
+          "packed_workspace_released_bytes": 0,
+          "persistent_bf16_mirror_bytes": 0,
+          "persistent_bf16_payload_bytes": 0,
+          "persistent_int8_payload_bytes": 0,
+          "persistent_kv_total_bytes": 0,
+          "persistent_scale_bytes": 0
+        }
+      },
+      "checks": {
+        "all_200": true,
+        "auto_k0": true,
+        "drain": true,
+        "explicit_mtp": true,
+        "health": true,
+        "kv_pages_bounded": true,
+        "workspace_bounded": true
+      },
+      "engine_service": {
+        "active_children": 0,
+        "command_queue_depth": 0,
+        "driver_thread_id": 140346543568576,
+        "last_speculative_draft_depth": null,
+        "last_speculative_route": "engine_service_verify_chain",
+        "last_speculative_work_kind": "verify_chain",
+        "sole_driver": true,
+        "speculative_routes": {
+          "engine_service_verify_chain": 20,
+          "legacy_prelaunch_fallback": 0
+        }
+      },
+      "health": {
+        "model": "qwen36-35b",
+        "object": "hipengine.health",
+        "status": "ok"
+      },
+      "requests": {
+        "active": 0,
+        "admitted_current": 0,
+        "admitted_total": 31,
+        "completed_buffered": 0,
+        "pending": 0,
+        "reclaimed_total": 31
+      },
+      "requests_total": 30
+    }
+  },
+  "performance_artifact": "benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-performance.json",
+  "performance_claim": false,
+  "quality_artifact": "benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-quality.json",
+  "raw_sources": [
+    {
+      "path": "/tmp/server-gate-35b-explicit.json",
+      "sha256": "a203ab7edb26eff7114010f352599d2558a90b68b8d09bf35a568c9a15e603d6"
+    },
+    {
+      "path": "/tmp/server-overload-35b.json",
+      "sha256": "7ded12f3d319885a911ddd76caa59956c1625824082da6ad01e1bfa5c315ee05"
+    },
+    {
+      "path": "/tmp/server-fault-35b.json",
+      "sha256": "ec4c8079bc7e0f91028d1c5dd65a5d8083af10b39c0ddc4ce65f70ac122429e1"
+    },
+    {
+      "path": "/tmp/server-soak-35b.json",
+      "sha256": "8943f221ae6306364e8ccda0b49716ee8c14fa21dfa7e0d56c94fc9d3ff09dd9"
+    }
+  ],
+  "schema": 1,
+  "scope": {
+    "candidate_budget": 2,
+    "context_tokens": [
+      4,
+      95
+    ],
+    "max_sequence_length": 1024,
+    "output_horizon_tokens": [
+      24,
+      24
+    ],
+    "physical_group_rows": 1,
+    "resident_capacity": 1,
+    "sampling_modes": [
+      "greedy_fast"
+    ]
+  },
+  "source_commit": "80c237675800bfff6762f6f84c5c0e43ac0783f1",
+  "status": "passed"
+}
