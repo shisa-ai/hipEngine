@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from scripts.qwen4_exp_compare_logits import compare_logits
+from scripts.qwen4_exp_compare_logits import _run_llama_debug, compare_logits
 
 
 def test_qwen4_exp_compare_logits_reports_kl_top1_and_errors() -> None:
@@ -18,6 +18,25 @@ def test_qwen4_exp_compare_logits_reports_kl_top1_and_errors() -> None:
     assert 0.0 < report["kl_teacher_to_hipengine"] < 0.05
     assert report["mean_absolute_logit_error"] == pytest.approx(1.0 / 6.0)
     assert report["max_absolute_logit_error"] == pytest.approx(0.2)
+
+
+def test_qwen4_exp_llama_debug_replaces_invalid_diagnostic_bytes(tmp_path) -> None:
+    executable = tmp_path / "fake-llama-debug"
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import os\n"
+        "os.write(1, b'stdout-\\xff')\n"
+        "os.write(2, b'stderr-\\xfe')\n"
+        "raise SystemExit(9)\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+
+    with pytest.raises(RuntimeError, match="exit code 9") as failure:
+        _run_llama_debug(executable, tmp_path / "model.gguf", "prompt", tmp_path, 16)
+
+    assert "stdout-\ufffd" in str(failure.value)
+    assert "stderr-\ufffd" in str(failure.value)
 
 
 def test_qwen4_exp_compare_logits_rejects_shape_or_nonfinite_values() -> None:

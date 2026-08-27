@@ -86,7 +86,14 @@ def _run_llama_debug(
         "-ngl",
         "99",
     ]
-    result = subprocess.run(command, check=False, text=True, capture_output=True)
+    result = subprocess.run(
+        command,
+        check=False,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+    )
     if result.returncode != 0:
         raise RuntimeError(
             "llama-debug failed with exit code "
