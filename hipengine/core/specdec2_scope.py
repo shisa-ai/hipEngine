@@ -23,6 +23,10 @@ _moe_physical_c2_disable_f32_residual: ContextVar[bool] = ContextVar(
     "moe_physical_c2_disable_f32_residual",
     default=False,
 )
+_moe_physical_c2_pairreuse: ContextVar[bool] = ContextVar(
+    "moe_physical_c2_pairreuse",
+    default=False,
+)
 
 
 @contextlib.contextmanager
@@ -93,9 +97,28 @@ def moe_physical_c2_f32_residual_disabled() -> bool:
     return bool(_moe_physical_c2_disable_f32_residual.get())
 
 
+@contextlib.contextmanager
+def moe_physical_c2_pairreuse_session(enabled: bool) -> Iterator[None]:
+    """Select independently qualified R5/R6 MoE target weight reuse."""
+
+    token = _moe_physical_c2_pairreuse.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _moe_physical_c2_pairreuse.reset(token)
+
+
+def moe_physical_c2_pairreuse_enabled() -> bool:
+    """Return whether the current physical MoE C2 target selected pair reuse."""
+
+    return bool(_moe_physical_c2_pairreuse.get())
+
+
 __all__ = [
     "moe_physical_c2_f32_residual_disabled",
     "moe_physical_c2_numerics_session",
+    "moe_physical_c2_pairreuse_enabled",
+    "moe_physical_c2_pairreuse_session",
     "q4_t16_physical_extra_rowtiles_enabled",
     "q4_t16_physical_extra_rowtiles_session",
     "q5_t16_physical_rowtile_enabled",

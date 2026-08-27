@@ -26,6 +26,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from hipengine.core.specdec2_scope import moe_physical_c2_pairreuse_session
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen35_gguf_runner as qgr
 from hipengine.runtime.gguf_linear import set_gemv_decode_enabled
@@ -590,6 +591,58 @@ def test_physical_c8_t16_pairreuse_uses_backend_scope_and_env_rollback(
         )
 
     assert calls == ["pairreuse", "baseline"]
+
+
+def test_physical_c2_t16_pairreuse_is_request_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = _FakeWeight(
+        "ffn_gate_exps",
+        "gguf_q4_k_t16_v1",
+        12,
+        experts=256,
+        out_features=512,
+        in_features=2048,
+    )
+    up = _FakeWeight(
+        "ffn_up_exps",
+        "gguf_q4_k_t16_v1",
+        13,
+        experts=256,
+        out_features=512,
+        in_features=2048,
+    )
+    calls: list[str] = []
+    monkeypatch.delenv("HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE", raising=False)
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_t16_selected_dual_pairreuse_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("pairreuse"),
+    )
+    monkeypatch.setattr(
+        qgr,
+        "gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("baseline"),
+    )
+    kwargs = dict(
+        x_rows=6,
+        rows=48,
+        num_experts=256,
+        in_features=2048,
+        out_features=512,
+        stream=7,
+        runtime=object(),
+    )
+
+    assert qgr._launch_selected_raw_gguf_moe_pair(
+        gate, up, 100, 130, 150, 160, **kwargs
+    )
+    with moe_physical_c2_pairreuse_session(True):
+        assert qgr._launch_selected_raw_gguf_moe_pair(
+            gate, up, 100, 130, 150, 160, **kwargs
+        )
+
+    assert calls == ["baseline", "pairreuse"]
 
 
 def test_qwen_q5_t16_tile8_uses_gfx1151_capability_and_peer_fallback(
