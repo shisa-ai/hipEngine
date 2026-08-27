@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 Qwen3.8-Flash-Next natural QSA 16K] First retained natural 16,384-token retrieval row: **946.9997 s / 17.301 prompt tok/s**; `VIOLET-7391`, all 12 needle controls, Transformers CPU top-512 oracle, replay/rollback, and zero teardown pass. The historical repeated-token/chunk2 row is not used as an old→new wall comparison. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-16k.json`.
+
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next exact grouped Q4_K gate/up] Reuse each dequantized gate/up weight across grouped expert rows while preserving the strict 128-thread tree: paired 508-token **34.552→26.207 s (-24.15%)**, paired natural 4K **291.624→231.798 s (-20.51%, 1.258x)**; primitive bits/logits/control/IDs exact. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-gate-up.json`.
 
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next batched QSA score/top-k] Batch variable-prefix prompt rows exactly: score/top-k launches **49,080→768 (-98.44%)**, final-chunk micro **2.735→0.469 ms (5.83x)**, paired natural 4K **295.706→290.971 s (-1.60%)**; logits/control/IDs exact. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-batched-qsa-selection.json`.
