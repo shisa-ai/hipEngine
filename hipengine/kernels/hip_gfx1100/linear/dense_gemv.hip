@@ -487,6 +487,52 @@ __global__ void dense_gemv_bf16_f32w_bf16_out_kernel(
   }
 }
 
+__global__ void dense_gemv_f32_bf16w_f32_out_kernel(
+    const float* __restrict__ x,
+    const uint16_t* __restrict__ weight,
+    float* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  const int64_t out_col = blockIdx.x;
+  const int64_t row = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int64_t x_base = row * in_features;
+  const int64_t w_base = out_col * in_features;
+
+  float acc = 0.0f;
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (in_features / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(tid) * 8; k_base < main_end; k_base += vec_stride) {
+    const float* x_ptr = x + x_base + k_base;
+    const uint16_t* w_ptr = weight + w_base + k_base;
+    acc = fmaf(x_ptr[0], bf16_bits_to_float(w_ptr[0]), acc);
+    acc = fmaf(x_ptr[1], bf16_bits_to_float(w_ptr[1]), acc);
+    acc = fmaf(x_ptr[2], bf16_bits_to_float(w_ptr[2]), acc);
+    acc = fmaf(x_ptr[3], bf16_bits_to_float(w_ptr[3]), acc);
+    acc = fmaf(x_ptr[4], bf16_bits_to_float(w_ptr[4]), acc);
+    acc = fmaf(x_ptr[5], bf16_bits_to_float(w_ptr[5]), acc);
+    acc = fmaf(x_ptr[6], bf16_bits_to_float(w_ptr[6]), acc);
+    acc = fmaf(x_ptr[7], bf16_bits_to_float(w_ptr[7]), acc);
+  }
+  for (int64_t in_col = main_end + tid; in_col < in_features; in_col += blockDim.x) {
+    acc = fmaf(x[x_base + in_col], bf16_bits_to_float(weight[w_base + in_col]), acc);
+  }
+
+  __shared__ float sdata[256];
+  sdata[tid] = acc;
+  __syncthreads();
+  for (int s = blockDim.x >> 1; s > 0; s >>= 1) {
+    if (tid < s) {
+      sdata[tid] += sdata[tid + s];
+    }
+    __syncthreads();
+  }
+  if (tid == 0) {
+    out[row * out_features + out_col] = sdata[0];
+  }
+}
+
 // Same-input dense-F32 pair for Qwen3.6 linear-attention alpha/beta. Each
 // output block preserves the scalar kernel's 256-way FMA and reduction tree;
 // combining the two independent grids changes only launch ownership.
@@ -1260,6 +1306,34 @@ extern "C" int hipengine_dense_gemv_rowtile_out_bf16(
   hipLaunchKernelGGL(
       (dense_gemv_rowtile_out_kernel<uint16_t, 4>),
       dim3(static_cast<unsigned int>(out_features)),
+      dim3(static_cast<unsigned int>(threads)),
+      0,
+      stream,
+      x,
+      weight,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_dense_gemv_f32_bf16w_f32_out(
+    const float* x,
+    const uint16_t* weight,
+    float* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || weight == nullptr || out == nullptr || rows <= 0 ||
+      in_features <= 0 || out_features <= 0 || !valid_threads(threads)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      dense_gemv_f32_bf16w_f32_out_kernel,
+      dim3(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows)),
       dim3(static_cast<unsigned int>(threads)),
       0,
       stream,
