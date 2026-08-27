@@ -72,6 +72,7 @@ def _run_llama_debug(
     prompt: str,
     output_directory: Path,
     context: int,
+    llama_batch: int = 0,
 ) -> tuple[np.ndarray, np.ndarray, list[str]]:
     command = [
         str(executable),
@@ -91,6 +92,8 @@ def _run_llama_debug(
         "-ngl",
         "99",
     ]
+    if llama_batch > 0:
+        command.extend(("-b", str(llama_batch)))
     result = subprocess.run(
         command,
         check=False,
@@ -121,6 +124,7 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--context", type=int, default=2051)
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--llama-debug", type=Path, default=_DEFAULT_LLAMA_DEBUG)
+    parser.add_argument("--llama-batch", type=int, default=0)
     parser.add_argument("--json-out", type=Path)
     parser.add_argument("--keep-llama-output", type=Path)
     parser.add_argument("--max-kl", type=float, default=0.05)
@@ -142,6 +146,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise FileNotFoundError(f"llama-debug is not executable: {executable}")
     if args.context <= 0:
         raise ValueError("--context must be positive")
+    if args.llama_batch < 0:
+        raise ValueError("--llama-batch must be non-negative")
 
     temporary = None
     if args.keep_llama_output is None:
@@ -159,6 +165,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.prompt,
             llama_output,
             args.context,
+            args.llama_batch,
         )
         index = load_gguf_index(first_part)
         plugin = resolve_model(index.architecture or "")
@@ -180,6 +187,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"llama={teacher_tokens.tolist()} hipengine={hip_tokens.tolist()}"
             )
         free_after_residency, _ = runtime.mem_get_info()
+        teacher_to_serial = None
         serial_to_chunked = None
         prefill_timings: dict[str, float] = {}
         if args.prefill_mode == "both":
@@ -187,6 +195,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             serial = generator.runner.prefill_serial(hip_tokens.tolist())
             prefill_timings["serial_seconds"] = perf_counter() - started
             serial_logits = serial.logits.copy()
+            teacher_to_serial = compare_logits(teacher_logits, serial_logits)
             started = perf_counter()
             actual = generator.runner.prefill_chunked(hip_tokens.tolist())
             prefill_timings["chunked_seconds"] = perf_counter() - started
@@ -241,11 +250,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             "max_kl": float(args.max_kl),
             "require_top1": bool(args.require_top1),
         }
+        if teacher_to_serial is not None:
+            report["teacher_to_serial"] = teacher_to_serial
         if serial_to_chunked is not None:
             report["serial_to_chunked"] = serial_to_chunked
         passed = bool(metrics["kl_teacher_to_hipengine"] <= args.max_kl) and teardown_passed
         if args.require_top1:
             passed = passed and bool(metrics["top1_agreement"])
+        if teacher_to_serial is not None:
+            passed = passed and bool(
+                teacher_to_serial["kl_teacher_to_hipengine"] <= args.max_kl
+            )
+            if args.require_top1:
+                passed = passed and bool(teacher_to_serial["top1_agreement"])
         if serial_to_chunked is not None:
             passed = passed and bool(
                 serial_to_chunked["kl_teacher_to_hipengine"] <= args.max_kl

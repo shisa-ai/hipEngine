@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "accepted_transition_correctness",
+  "scope": "single repeated-token first-native-sparse-row qualification; not a broad long-context or public performance claim",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "device_total_bytes": 133143986176
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "revision": "f5d08274bafd880402bd16f5e3e6c514136ec06c",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "artifact": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL"
+  },
+  "workload": {
+    "prompt_construction": "' a' repeated 2052 times",
+    "token_count": 2052,
+    "unique_token_ids": [264],
+    "context_capacity": 2052,
+    "llama_batch": 2052,
+    "prefill_chunk_size": 2,
+    "qsa_dense_equivalent_max_tokens": 2051,
+    "qualified_transition": "position 2051 / token 2052, first native sparse QSA row"
+  },
+  "command": "prompt=$(python3 - <<'PY'\\nprint(' a' * 2052, end='')\\nPY\\n); uv run python scripts/qwen4_exp_compare_logits.py /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --prompt \"$prompt\" --context 2052 --llama-batch 2052 --prefill-mode both --prefill-chunk-size 2 --json-out /tmp/qwen4exp-long-2052-size2.json",
+  "result": {
+    "teacher_top1": 264,
+    "serial_top1": 264,
+    "chunked_top1": 264,
+    "teacher_to_serial_kl": 0.00007649459242953562,
+    "teacher_to_chunk_kl": 0.00004976174953768112,
+    "serial_to_chunk_kl": 0.00003954075966212306,
+    "serial_seconds": 381.72514024200063,
+    "chunked_seconds": 245.85543391700048,
+    "diagnostic_speedup": 1.5526406480438788,
+    "diagnostic_wall_reduction_percent": 35.593596544063985,
+    "tracked_peak_bytes": 82720880528,
+    "tracked_teardown_passed": true,
+    "owned_bytes_after_close": 0
+  },
+  "remaining_scope": [
+    "natural category/retrieval prompts at and above transition",
+    "4K, 16K, 64K, and 262K checkpoints",
+    "reference index-selection parity",
+    "non-contiguous pages, prefix reuse, cancellation, compaction, rollback, and isolation"
+  ]
+}

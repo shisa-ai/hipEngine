@@ -237,8 +237,13 @@ general-Japanese/mixed prompts measured:
 The scanner validates 111.335 GB across four exact hashes, 1,224 tensors, one
 28.800-GB IQ4_NL sparse-mmap PLE table, 82.523 GB hot weights, and zero
 alternate/replacement layouts. `"The answer to 2 + 2 is"` generated
-`" 4.\n\n"` through the public API. This is not a speed, real >2,051-token,
-serving/c>N, MTP, or vision claim. [`Bring-up artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json).
+`" 4.\n\n"` through the public API. A separate repeated-token structural gate
+qualifies only the first native sparse-QSA row at token 2,052: teacher→strict
+serial KL `7.65e-5`, teacher→size-2 chunk KL `4.98e-5`, top-1 exact, and clean
+teardown. Natural 4K+ and lifecycle/index-reference gates remain open, so this
+is not a broad long-context, speed, serving/c>N, MTP, or vision claim.
+[`Bring-up artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json) ·
+[`2,052 transition artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json).
 
 ## Current Qwen3.6-35B quantization quality
 
