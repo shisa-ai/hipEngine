@@ -98,18 +98,24 @@ def test_speculative_stream_event_decorator_attaches_tokenizer_text() -> None:
         GeneratedTokenEvent(
             request_id=0,
             token_id=99,
+            finished=False,
+            stream_chunk=GenerationStreamChunk(text=""),
+        ),
+        GeneratedTokenEvent(
+            request_id=0,
+            token_id=3,
             finished=True,
             stream_chunk=GenerationStreamChunk(
                 text="",
-                generated_token_ids=(1, 2, 99),
+                generated_token_ids=(1, 2, 99, 3),
             ),
         ),
     )
 
     decorated = runner.decorate_speculative_stream_events(events)
 
-    assert [event.stream_chunk.text for event in decorated] == ["B", "C", ""]
-    assert decorated[2].stream_chunk.generated_token_ids == (1, 2, 99)
+    assert [event.stream_chunk.text for event in decorated] == ["B", "C", "", ""]
+    assert decorated[3].stream_chunk.generated_token_ids == (1, 2, 99, 3)
 
 
 def test_submit_poll_adapter_explicitly_delegates_model_owned_mtp_route() -> None:
