@@ -2135,6 +2135,14 @@ def _serving_plan_route_decision(
             ),
         )
     )
+    static_max_rows = int(static_payload.get("max_realized_group_rows", 0) or 0)
+    if (
+        route == _SPECULATIVE_MTP_AUTO_ROUTE
+        and int(group_rows) > static_max_rows
+    ):
+        # Losing/unqualified automatic widths must select true AR before provider
+        # mutation. Explicit requests retain typed intent for functional routes.
+        static_intent_allowed = False
     if admitted and planned_rows != int(group_rows):
         admitted = False
         reason = "physical_group_not_qualified"
