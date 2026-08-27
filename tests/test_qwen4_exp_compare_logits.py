@@ -42,6 +42,8 @@ def test_qwen4_exp_llama_debug_matches_bf16_kv_contract(tmp_path, monkeypatch) -
 
     monkeypatch.setattr("scripts.qwen4_exp_compare_logits.subprocess.run", run)
 
+    prompt_file = tmp_path / "prompt.txt"
+    prompt_file.write_text("prompt", encoding="utf-8")
     _run_llama_debug(
         tmp_path / "llama-debug",
         tmp_path / "model.gguf",
@@ -49,6 +51,7 @@ def test_qwen4_exp_llama_debug_matches_bf16_kv_contract(tmp_path, monkeypatch) -
         tmp_path,
         2052,
         llama_batch=2052,
+        prompt_file=prompt_file,
     )
 
     assert captured
@@ -56,6 +59,8 @@ def test_qwen4_exp_llama_debug_matches_bf16_kv_contract(tmp_path, monkeypatch) -
     assert command[command.index("-ctk") + 1] == "bf16"
     assert command[command.index("-ctv") + 1] == "bf16"
     assert command[command.index("-b") + 1] == "2052"
+    assert command[command.index("-f") + 1] == str(prompt_file)
+    assert "-p" not in command
 
 
 def test_qwen4_exp_llama_debug_replaces_invalid_diagnostic_bytes(tmp_path) -> None:

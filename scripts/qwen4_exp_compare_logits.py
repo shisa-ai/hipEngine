@@ -73,25 +73,32 @@ def _run_llama_debug(
     output_directory: Path,
     context: int,
     llama_batch: int = 0,
+    prompt_file: Path | None = None,
 ) -> tuple[np.ndarray, np.ndarray, list[str]]:
     command = [
         str(executable),
         "-m",
         str(first_part),
-        "-p",
-        prompt,
-        "--save-logits",
-        "--logits-output-dir",
-        str(output_directory),
-        "-c",
-        str(context),
-        "-ctk",
-        "bf16",
-        "-ctv",
-        "bf16",
-        "-ngl",
-        "99",
     ]
+    if prompt_file is None:
+        command.extend(("-p", prompt))
+    else:
+        command.extend(("-f", str(prompt_file)))
+    command.extend(
+        [
+            "--save-logits",
+            "--logits-output-dir",
+            str(output_directory),
+            "-c",
+            str(context),
+            "-ctk",
+            "bf16",
+            "-ctv",
+            "bf16",
+            "-ngl",
+            "99",
+        ]
+    )
     if llama_batch > 0:
         command.extend(("-b", str(llama_batch)))
     result = subprocess.run(
@@ -172,6 +179,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             llama_output,
             args.context,
             args.llama_batch,
+            (
+                args.prompt_file.expanduser().resolve()
+                if args.prompt_file is not None
+                else None
+            ),
         )
         index = load_gguf_index(first_part)
         plugin = resolve_model(index.architecture or "")
