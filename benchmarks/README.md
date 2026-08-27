@@ -139,9 +139,9 @@ strict or production/BF16/resident-C2/physical-C2/D24 keys. Production passes
 **0.000159/0.000786/0.002098/0.003763**, **99.644%** top-1, every scope,
 three physical repeats, mapped row-permutation isolation, tasks, and lifecycle.
 Direct ownership remains **22.390 vs 31.281 tok/s (0.7158x AR)**; the real
-unflagged public blocking route passes 10/10 at **22.036 vs 30.652 tok/s
-(0.7189x)**. Concurrent SSE K2 plus cancel/survivor drain also pass. Production
-and automatic stay K0. [`Quality`](results/2026-08-27-w7900-27b-dense-mtp2-c2-production-quality.json) · [`Explicit C2`](results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json) · [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
+unflagged strict/production blocking routes pass 10/10 at **22.036/22.002 vs
+30.652/30.623 tok/s (0.7189x/0.7185x)**. Concurrent SSE K2 plus cancel/survivor
+drain also pass. Automatic stays K0. [`Quality`](results/2026-08-27-w7900-27b-dense-mtp2-c2-production-quality.json) · [`Explicit C2`](results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json) · [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
 
 ## Where detailed evidence lives
 

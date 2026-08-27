@@ -286,10 +286,10 @@ KL **0.000159/0.000786/0.002098/0.003763**, **99.644%** top-1, every scope,
 three physical full-logit repeats, exact mapped row-permutation logits, paired
 tasks, registered fallback, and clean lifecycle. Free-running reverse-pair IDs
 remain explicitly diagnostic rather than a production gate. It remains
-**22.390 vs 31.281 tok/s (0.7158x AR)**. The real unflagged public blocking
-route independently passes 10/10 at **22.036 vs 30.652 tok/s (0.7189x)**.
-Realized C1 inside resident capacity 2 stays K0 because singleton continuation
-in the physical provider owner is not qualified. Evidence: [`explicit C2 ownership`](../benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json).
+**22.390 vs 31.281 tok/s (0.7158x AR)**. The real unflagged strict/production
+public routes independently pass 10/10 at **22.036/22.002 vs 30.652/30.623 tok/s
+(0.7189x/0.7185x)**. Realized C1 inside resident capacity 2 stays K0 because
+singleton continuation in the physical provider owner is not qualified. Evidence: [`explicit C2 ownership`](../benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json).
 
 Exit: explicit C2 is functionally qualified; automatic still selects K0.
 
