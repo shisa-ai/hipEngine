@@ -27,17 +27,16 @@ should be removed or collapsed.
   after every model/plugin and non-server caller has migrated to the typed plan;
   do not remove the independent explicit diagnostic hook or strict AR fallback.
 
-## 2026-08-27 automatic realized-singleton intent seam
+## 2026-08-27 automatic realized-singleton intent seam — closed
 
-- `SamplingParams.speculative_mtp_singleton_only` and the matching internal
-  `GenerationRequest`/GGUF adapter set are a narrow handoff from public
-  automatic route resolution to the normal resident cycle owner. They retain
-  strict cap-4 realized-C1 MTP while forcing C2+ to transitional K0 before
-  proposal; they are not a general static-eligibility model.
-- Remove these fields and the request-local set when Dynamic Admission D1
-  introduces the typed static eligibility/intent result and distinguishes pure
-  from transitional K0 directly. Keep the slot-local journal binding, strict AR
-  fallback, C1->C2->C1 lifecycle tests, and typed pre-mutation reasons.
+- Dynamic Admission D1 removed `SamplingParams.speculative_mtp_singleton_only`,
+  the matching internal `GenerationRequest` field, and the GGUF request-local
+  set. `SpeculativeMTPStaticEligibility` now carries typed provider intent while
+  the resident due `WorkItem` remains the sole C/K owner.
+- Pure and transitional K0 are explicit in plan/telemetry; the retained
+  slot-local journal, strict AR fallback, C1->C2->C1 lifecycle coverage, and
+  typed pre-mutation reasons remain. No temporary flag or duplicate intent path
+  remains from this seam.
 
 ## 2026-08-21 codebase simplification review
 

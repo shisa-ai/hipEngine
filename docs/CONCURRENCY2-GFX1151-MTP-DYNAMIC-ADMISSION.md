@@ -1,7 +1,7 @@
 # CONCURRENCY2 gfx1151 MTP Dynamic Admission Campaign
 
-- Status: **D0 handoff/no-repeat audit complete at `a2b82a7d4`; D1 typed static eligibility is next**
-- Scope: **D0 used source/host RED only; singleton prerequisite GPU evidence is reused, and no D1-D7 GPU work has started**
+- Status: **D1 typed static eligibility retained on merged source `998ba54f7`; D2 normal-owner production C2/K1 is next**
+- Scope: **D1 host/fake plus integrated gfx1151 blocking/SSE, C2 transitional-K0, and mixed-intent gates pass; automatic C2+ and arithmetic are unchanged**
 - Hardware lane when execution is approved: **Radeon 8060S / `hip_gfx1151`**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile**
 - First functional width: **two independent resident requests (`C_due=2`)**
@@ -20,8 +20,10 @@ singleton-routing prerequisite has landed cleanly at `b663a9d20`: strict
 realized-C1 automatic is retained at 1.5965x AR, public C2 remains pre-mutation
 K0, and C1->C2 K0->C1 survivor lifecycle passes. D0 must reuse
 [`realized-singleton evidence`](../benchmarks/results/2026-08-27-gfx1151-qwen38-realized-singleton-auto.json)
-and its two worklogs instead of duplicating that code or GPU packet. Remaining
-campaign execution starts from this handoff after explicit approval.
+and its two worklogs instead of duplicating that code or GPU packet. D1 then
+replaced the temporary singleton-only bool/set with typed static eligibility,
+pure/transitional K0 telemetry, and mixed disjoint execution. Evidence:
+[`D1 closure`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d1-static-eligibility.json).
 
 ## 1. Executive decision
 
@@ -194,22 +196,22 @@ Exit passed. Evidence:
 
 ### D1 — split eligibility from cycle selection (RED/GREEN, host/fake first)
 
-- [ ] Introduce or adapt a typed static eligibility/intention result that does
+- [x] Introduce or adapt a typed static eligibility/intention result that does
   not select future C/K. Keep model-plugin evidence and strict fallback.
-- [ ] Submit eligible explicit requests into the ordinary Generation-2
+- [x] Submit eligible explicit requests into the ordinary Generation-2
   speculative-intent lifecycle without executing a whole-request legacy route.
-- [ ] Resolve C/K only from the actual due `WorkItem`; preserve immutable
+- [x] Resolve C/K only from the actual due `WorkItem`; preserve immutable
   pre-mutation `SpecRequestPlan` and atomic claim composition.
-- [ ] Keep pure-AR requests provider-free. Preserve stable reasons for artifact,
+- [x] Keep pure-AR requests provider-free. Preserve stable reasons for artifact,
   profile, sampler, context, horizon, memory, and capability misses.
-- [ ] Distinguish pure and transitional K0 in plan/telemetry and bind provider
+- [x] Distinguish pure and transitional K0 in plan/telemetry and bind provider
   catch-up behavior to `ProviderCatchupMode`.
-- [ ] Make mixed due groups plan safely: an AR-only neighbor must not cause the
+- [x] Make mixed due groups plan safely: an AR-only neighbor must not cause the
   adapter capability for eligible speculative peers to disappear, and it must
   not acquire provider state. Either one mixed frontier or explicit disjoint
   work items is acceptable if fairness, target ownership, and physical labels
   are exact.
-- [ ] Response telemetry must distinguish requested intent, static eligibility,
+- [x] Response telemetry must distinguish requested intent, static eligibility,
   cycle K histogram, effective route, actual MTP cycles, and final K0 reason.
 
 Required host/fake transition matrix:
@@ -224,8 +226,12 @@ claim miss / context miss / physical-bucket miss / circuit break
 precommit failure / postcommit recovery / cancellation
 ```
 
-Exit: planner and telemetry are correct without GPU execution; automatic policy
-remains unchanged.
+Exit passed on merged source `998ba54f7`: host/fake gates pass, automatic
+blocking/SSE remains healthy, two independent C1 intents reach resident C2 as
+`transitional_k0`, and a mixed eligible/permanent-AR pair records
+`transitional_k0`/`pure_k0` before disjoint MTP+AR execution. Every gate drains
+to zero ownership. Automatic policy and arithmetic remain unchanged. Evidence:
+[`D1`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d1-static-eligibility.json).
 
 ### D2 — normal-owner functional C2 (speed is not a gate)
 
