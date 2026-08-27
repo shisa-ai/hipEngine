@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [candidate/default-on source pending downstream CUDA Moonshine exact-row cross-KV] `shisa-realtime-asr-0.92b` / FP16 / RTX PRO 6000 Blackwell: project only valid encoder rows into the padded cache instead of all 1,248 bucket rows; 20-fixture screen improves **38.100/45.137 -> 34.866/42.050 ms P50/P95 (-8.49%/-6.84%)** with 200/200 exact text, exact primitive prefix, zero tail, and exact six-file streams. Source retained pending downstream seven-pair/full-quality promotion; `benchmarks/results/2026-08-27-cuda-sm120a-moonshine-exact-cross-kv-candidate.json`.
+
 - [rejected/removed CUDA Moonshine exact-shape graph cache] `shisa-realtime-asr-0.92b` / FP16 / RTX PRO 6000 Blackwell: bounded exact `(samples,frames)` encoder+handoff+cross-KV graph LRU is exact but moves 20-fixture complete E2 only **39.207/46.310 -> 39.204/46.300 ms P50/P95 (-0.008%/-0.023%)**, insufficient for graph memory/cold-capture complexity; prototype removed; `benchmarks/results/2026-08-27-cuda-sm120a-moonshine-exact-shape-graph-cache-rejected.json`.
 
 - [correction CUDA Moonshine RT-3 profile attribution] Encoder-only node selection corrects QKV/O/fc2 from full-route family totals to **3.391/1.158/1.006 ms**; fc1 remains **4.313 ms** and encoder kernel sum remains **15.369 ms**. The rowbatch4 rejection and all measured complete-route values are unchanged; `benchmarks/results/2026-08-27-cuda-sm120a-moonshine-encoder-rowbatch4-rejected.json`.

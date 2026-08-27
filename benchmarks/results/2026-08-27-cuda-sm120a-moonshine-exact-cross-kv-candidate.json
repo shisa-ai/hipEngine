@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "kind": "hipengine_cuda_sm120a_moonshine_exact_cross_kv_candidate",
+  "status": "candidate_complete_pending_downstream_promotion",
+  "performance_claim": false,
+  "model": {
+    "id": "shisa-ai/shisa-realtime-asr-0.92b",
+    "revision": "cb0b524b74f6e0bfe6a8780b8dc9854ffa429c7d",
+    "precision": "FP16 storage/boundaries with FP32-sensitive arithmetic"
+  },
+  "hardware": {
+    "host": "linode-gpu1",
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition 97887 MiB",
+    "driver": "610.43.02",
+    "power_limit_watts": 600,
+    "cuda_toolkit": "13.3",
+    "architecture": "sm_120a"
+  },
+  "source": {
+    "base_commit": "566c046b66f31d1dfae91da8ce4fbaaa06ba5fee",
+    "implementation_sha256": {
+      "hipengine/runtime/moonshine_cuda.py": "0358ea59bfda293cbdaed9ad45daea7dbedec6d5955449456ab05948f3e963fa",
+      "scripts/benchmark_moonshine_cuda_complete.py": "4e5c633989a7691cadd94ad2300ba85f9d8593598b1cd63f8889acb3e520db1a"
+    }
+  },
+  "candidate": {
+    "control": "Track exact source_frames from D2D handoff; zero padded cross-cache; project only valid rows into capacity-strided head-major cache via the existing exact batch=1 kernel.",
+    "fallback": "cross_kv_exact_rows=false retains full decoder-bucket projection for paired diagnosis/rollback",
+    "math_changed": false,
+    "allocation_changed": false,
+    "cache_abi_changed": false
+  },
+  "correctness": {
+    "red_first": "padded-source CPU test failed because precompute dispatched eight full-capacity single kernels",
+    "cpu_contract": "exact source rows, output capacity, full cache zeroing, and source-frame telemetry pass",
+    "gpu_primitive": "batch=1 exact-row prefix is byte-exact to the parent head-major projection; padded tail is zero",
+    "six_file_complete": "all timed streams exact through EOS",
+    "downstream_screen": "200/200 route observations exact"
+  },
+  "performance": {
+    "downstream_20_fixture_screen": {
+      "protocol": "AOT attention + conditional EOS; 20 FLEURS-through-EOU fixtures; two warmup traversals; five alternating iterations; 100 observations/route",
+      "full_bucket_p50_ms": 38.0995105,
+      "full_bucket_p95_ms": 45.1371643,
+      "exact_rows_p50_ms": 34.866291,
+      "exact_rows_p95_ms": 42.05043395,
+      "p50_improvement_percent": 8.4862,
+      "p95_improvement_percent": 6.838,
+      "p50_saved_ms": 3.2332195,
+      "p95_saved_ms": 3.08673035
+    },
+    "six_short_file_candidate": {
+      "median_of_medians_ms": 4.638982,
+      "all_timed_tokens_exact": true
+    }
+  },
+  "decision": "Retain source candidate and run downstream seven-pair E2, full FLEURS/external quality, stage, lifecycle, and product EOU gates before default promotion.",
+  "raw_sha256": {
+    "downstream_screen_json": "a23962ac9686a0ab988ea3196466983a4fb5bcaa70b6cfaaf8e52e9b538820d5",
+    "short_candidate_json": "49e754aae029793f18de75f78712511cacdbdb6d3aa19c18b3c6617700244508"
+  },
+  "limitations": [
+    "The 100-observation screen is not a retained promotion claim.",
+    "Full padded-cache zeroing is included in the candidate wall and preserves deterministic tail state.",
+    "The broader downstream campaign owns product quality, fallback, and EOU promotion."
+  ]
+}

@@ -602,6 +602,70 @@ def test_moonshine_cuda_projection_head_major_cross_kv_on_model_derived_fixtures
     not _cuda_sm120a_enabled() or not _projection_fixture_inputs_available(),
     reason="CUDA sm_120a gate or model-derived fixtures are not available",
 )
+def test_moonshine_cuda_exact_rows_write_padded_cross_kv_prefix() -> None:
+    from safetensors import safe_open
+
+    from hipengine.core.cuda import get_cuda_runtime
+    from hipengine.kernels.cuda_sm120a.linear.moonshine_projection import (
+        build_moonshine_projection,
+        moonshine_f16_projection_pair_head_major,
+        moonshine_f16_projection_pair_head_major_batch,
+    )
+
+    runtime = get_cuda_runtime()
+    runtime.set_device(0)
+    library = build_moonshine_projection(load=True)
+    allocations = []
+    try:
+        with safe_open(_CHECKPOINT, framework="np") as store:
+            kw = store.get_tensor(
+                "model.decoder.layers.0.encoder_attn.k_proj.weight"
+            ).astype(np.float16)
+            vw = store.get_tensor(
+                "model.decoder.layers.0.encoder_attn.v_proj.weight"
+            ).astype(np.float16)
+        with np.load(os.path.join(_FIXTURE_DIR, "audio-konichiwa-fp16.npz")) as fx:
+            encoder = fx["encoder.output"][0]
+        frames, capacity = int(encoder.shape[0]), 207
+        device_enc = _upload(encoder, runtime, allocations)
+        device_kw = _upload(kw, runtime, allocations)
+        device_vw = _upload(vw, runtime, allocations)
+        exact_k = _alloc((8, frames, 52), runtime, allocations)
+        exact_v = _alloc((8, frames, 52), runtime, allocations)
+        padded_k = _alloc((8, capacity, 52), runtime, allocations)
+        padded_v = _alloc((8, capacity, 52), runtime, allocations)
+        runtime.memset(padded_k.ptr, 0, padded_k.nbytes)
+        runtime.memset(padded_v.ptr, 0, padded_v.nbytes)
+        moonshine_f16_projection_pair_head_major(
+            device_enc.ptr, device_kw.ptr, device_vw.ptr,
+            exact_k.ptr, exact_v.ptr, frames, 416, 416, 416, 52,
+            library=library, runtime=runtime,
+        )
+        moonshine_f16_projection_pair_head_major_batch(
+            device_enc.ptr, device_kw.ptr, device_vw.ptr,
+            padded_k.ptr, padded_v.ptr, 1, frames, capacity,
+            416, 416, 416, 52, library=library, runtime=runtime,
+        )
+        runtime.device_synchronize()
+        actual_k = _download(padded_k, (8, capacity, 52), runtime)
+        actual_v = _download(padded_v, (8, capacity, 52), runtime)
+        np.testing.assert_array_equal(
+            actual_k[:, :frames], _download(exact_k, (8, frames, 52), runtime)
+        )
+        np.testing.assert_array_equal(
+            actual_v[:, :frames], _download(exact_v, (8, frames, 52), runtime)
+        )
+        assert np.count_nonzero(actual_k[:, frames:]) == 0
+        assert np.count_nonzero(actual_v[:, frames:]) == 0
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+
+@pytest.mark.skipif(
+    not _cuda_sm120a_enabled() or not _projection_fixture_inputs_available(),
+    reason="CUDA sm_120a gate or model-derived fixtures are not available",
+)
 def test_moonshine_cuda_projection_tied_lm_selected_tokens_on_model_derived_fixtures() -> None:
     """Tied LM head argmax reproduces every pinned selected token (C1C-R2)."""
     from safetensors import safe_open

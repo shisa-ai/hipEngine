@@ -257,6 +257,7 @@ def fake_decoder_libraries(
             "hipengine_cuda_sm120a_moonshine_f16_projection_bias_gated_silu",
             "hipengine_cuda_sm120a_moonshine_f16_projection_bias_residual",
             "hipengine_cuda_sm120a_moonshine_f16_projection_pair_head_major",
+            "hipengine_cuda_sm120a_moonshine_f16_projection_pair_head_major_batch",
             "hipengine_cuda_sm120a_moonshine_f16_projection_triple",
         ),
         attention=FakeLibrary(
@@ -697,6 +698,40 @@ def test_cuda_resident_runtime_precompute_cross_kv_dispatch_and_contract() -> No
         with resident.no_allocation_region("token-step"):
             resident.token_step()
         assert resident.self_cache_length == 1
+    finally:
+        resident.close()
+
+
+def test_cuda_resident_runtime_precompute_cross_kv_uses_exact_source_rows() -> None:
+    runtime = FakeCudaRuntime()
+    resident = MoonshineCudaResidentRuntime(
+        loaded_model=fake_loaded_model(runtime),
+        encoder_frames=40,
+        runtime=runtime,  # type: ignore[arg-type]
+    )
+    trace: list[tuple[str, tuple[object, ...]]] = []
+    try:
+        resident.prepare_decoder_kernels(libraries=fake_decoder_libraries(trace))
+        resident.set_encoder_state_from_device(
+            hidden_fp16_ptr=0x1000,
+            attention_mask_int32_ptr=0x2000,
+            source_frames=24,
+        )
+        resident.precompute_cross_kv()
+
+        names = [name for name, _args in trace]
+        assert names == [
+            "hipengine_cuda_sm120a_moonshine_f16_projection_pair_head_major_batch"
+        ] * 8
+        for _name, args in trace:
+            # input, wA, wB, outA, outB, batch, rows, output_frames,
+            # in_features, outA, outB, head_dim, threads, stream
+            assert args[5] == 1
+            assert args[6] == 24
+            assert args[7] == 40
+        cross = resident.workspace.allocation("cross_kv").buffer
+        assert (cross.ptr, 0, cross.nbytes, resident.stream) in runtime.sets
+        assert resident.allocation_contract()["encoder_source_frames"] == 24
     finally:
         resident.close()
 
