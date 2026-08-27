@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 Qwen3.8-Flash-Next exact grouped Q5_1 output8] Execute eight adjacent down outputs sequentially per CTA with the same strict 256-thread reduction: full-shape CTAs **1,310,720→163,840 (-87.5%)**, paired 508-token **26.993→24.837 s (-7.99%)**, paired natural 4K **237.131→222.228 s (-6.28%)**; CPU/BF16 oracle, logits/control/IDs exact. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q5-1-out8.json`.
+
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next exact grouped Q4_K output4] Execute four adjacent gate/up outputs sequentially per CTA with the same strict 128-thread trees: full-shape CTAs **327,680→81,920 (-75%)**, paired 508-token **27.161→25.624 s (-5.66%)**, paired natural 4K **235.774→228.569 s (-3.06%)**; primitive bits/logits/control/IDs exact. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-out4.json`.
 
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next natural QSA 16K] First retained natural 16,384-token retrieval row: **946.9997 s / 17.301 prompt tok/s**; `VIOLET-7391`, all 12 needle controls, Transformers CPU top-512 oracle, replay/rollback, and zero teardown pass. The historical repeated-token/chunk2 row is not used as an old→new wall comparison. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-16k.json`.

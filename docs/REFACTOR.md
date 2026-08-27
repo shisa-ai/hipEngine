@@ -18,6 +18,12 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-08-27 Qwen4Exp exact grouped Q5_1 output batching
+
+- `HIPENGINE_QWEN4_EXP_Q5_1_OUT8` defaults on and batches eight adjacent output
+  columns sequentially per exact grouped-Q5_1 CTA. Remove the flag and output1
+  wrapper after natural 64K plus serving/cancellation/graph soak.
+
 ## 2026-08-27 Qwen4Exp exact grouped Q4_K output batching
 
 - `HIPENGINE_QWEN4_EXP_Q4_OUT4` defaults on and batches four adjacent output

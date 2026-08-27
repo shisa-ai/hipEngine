@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "accepted_exact_default",
+  "scope": "Exact output8 scheduling for grouped rowbatch8 Q5_1 expert down",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "workload": {"kind": "paired same-residency strict prompt prefill", "natural_tokens": 4096, "short_tokens": 508, "chunk_size": 64},
+  "timing": {
+    "natural_4k": {"output1_seconds": 237.13096777600003, "output8_seconds": 222.22829147899938, "reduction_percent": 6.2845761718807225, "speedup": 1.0670602118111003},
+    "short_output4": {"output1_seconds": 27.838943902999745, "candidate_seconds": 25.692011230999924, "reduction_percent": 7.711975998372845},
+    "short_output8": {"output1_seconds": 26.993328972999734, "candidate_seconds": 24.837488881001264, "reduction_percent": 7.986566214766859, "speedup": 1.0867978281672235},
+    "short_output16": {"output1_seconds": 26.857160599000053, "candidate_seconds": 24.900196706001225, "decision": "flat/slower than output8"}
+  },
+  "structural": {"ctas_per_moe_layer_chunk_output1": 1310720, "ctas_per_moe_layer_chunk_output8": 163840, "cta_reduction_percent": 87.5, "arithmetic": "eight adjacent outputs execute sequentially with unchanged 256-thread shared-memory reduction"},
+  "correctness": {"primitive_bf16_bits_exact": true, "cpu_dequant_oracle_exact": true, "mean_kl": 0.0, "max_kl": 0.0, "top1_agreement": true, "all_12_layer_control_exact": true, "generated_ids_exact": true, "retrieval_exact": true, "repeat_exact": true, "rollback_isolation_exact": true},
+  "memory": {"tracked_peak_bytes": 82874560240, "tracked_after_close_bytes": 0, "tracked_after_close_allocations": 0, "new_persistent_allocations": 0},
+  "rocprof": {"output1": {"duration_ns": 5010, "grid_x": 12288}, "output8": {"duration_ns": 15509, "grid_x": 1536}, "workgroup": 256, "vgpr": 32, "scratch_bytes": 0, "note": "reduced fixture; full-shape wall is binding because empty-expert scheduling dominates there"},
+  "fallback": {"flag": "HIPENGINE_QWEN4_EXP_Q5_1_OUT8=0", "route": "exact grouped rowbatch8 output1"},
+  "decision": {"promoted": true, "reason": "6.28% paired natural 4K wall reduction with exact primitive/full-model/control/task behavior", "next": "natural 64K requalification"}
+}
