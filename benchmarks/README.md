@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-26**
+Last updated: **2026-08-27**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -221,6 +221,24 @@ load, context/graph/prefix/pressure, and lifecycle packets pass. Product closure
 remains blocked at c32: **10.590 tok/s**, **18.617 s TTFT p95**, **2.125 s ITL
 p99**, **24.171 s E2E p95**, and **0/3 SLO runs**; C2 64K and heavy-load SLOs
 also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen38-concurrency2-campaign-final.json).
+
+## Qwen3.8-Flash-Next text bring-up (correctness-only; no speed claim)
+
+On physical host `zbook` (Ryzen AI Max+ Pro 395 / Radeon 8060S, `gfx1151`),
+the pinned four-part Unsloth `UD-Q4_K_XL` artifact now runs through public
+`LLM.generate()` under the strict c1/greedy text scope. Frozen same-artifact
+llama.cpp PR #27742 full logits over all 10 canonical code/general-English/
+general-Japanese/mixed prompts measured:
+
+| Artifact | Context scope | Mean / p95 / p99 / max KL ↓ | Top-1 | Tracked peak / after close |
+| --- | --- | ---: | ---: | ---: |
+| Qwen3.8-Flash-Next `UD-Q4_K_XL` | real ≤2,051-token text gate | **0.01406 / 0.04154 / 0.04776 / 0.04931** | **10/10** | 82.718 GB / **0 B** |
+
+The scanner validates 111.335 GB across four exact hashes, 1,224 tensors, one
+28.800-GB IQ4_NL sparse-mmap PLE table, 82.523 GB hot weights, and zero
+alternate/replacement layouts. `"The answer to 2 + 2 is"` generated
+`" 4.\n\n"` through the public API. This is not a speed, real >2,051-token,
+serving/c>N, MTP, or vision claim. [`Bring-up artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json).
 
 ## Current Qwen3.6-35B quantization quality
 

@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next Implementation Campaign
 
-Status: **active — F0 source download and Q4_K_M artifact production in progress**
+Status: **active — strict gfx1151 text c1/greedy works through 2,051 tokens; official BF16 source completion, real long-context QSA, serving, MTP, and vision qualification remain open**
 
 This campaign brings the open-weight `Qwen/Qwen3.8-Flash-Next` checkpoint to
 hipEngine as a torch-free, registry-composed, text-generation path first, then
@@ -9,10 +9,14 @@ performance qualification. The first hardware lane is the local Radeon 8060S /
 `gfx1151` host with 128 GiB unified memory. `gfx1100` remains a required peer
 correctness lane, but no W7900 result may be inferred from this host.
 
-The initial artifact is a local `Q4_K_M` GGUF. `Q4_K_S` remains a fallback if
-measured whole-process headroom proves insufficient; it is not selected merely
-because its filename is smaller. The 51.2B-parameter n-gram table must remain a
-sparse mmap/host owner rather than consuming accelerator-resident capacity.
+The operational bring-up artifact is the independently published, revision-
+pinned Unsloth `UD-Q4_K_XL` split GGUF. It passed all-part SHA-256, complete
+tensor-map, sparse-PLE, real memory, same-artifact llama.cpp full-logit, and
+public `LLM.generate()` gates on gfx1151. A local conventional `Q4_K_M` remains
+a reproducibility/quant-quality follow-up once the official BF16 snapshot is
+complete; it is not required to relabel the verified working artifact. The
+51.2B-parameter n-gram table remains one IQ4_NL sparse mmap/host owner rather
+than consuming accelerator-resident capacity.
 
 This document is the campaign authority. Architecture-wide decisions also stay
 consistent with [`PLAN.md`](PLAN.md); numerical and evidence rules remain
@@ -39,7 +43,8 @@ normative in [`TESTING.md`](TESTING.md),
 | Repository storage | `360,023,351,155` bytes across 144 frozen files |
 | Frozen tree manifest | SHA-256 `dfd29ff3e73cd8fac3c10531d0d61196fa5f4af67ad75df5d2c96401544a7502` over the local HF tree record |
 | Source path | `/models/hf/Qwen3.8-Flash-Next` |
-| Primary GGUF path | `/models/gguf/Qwen3.8-Flash-Next-Q4_K_M.gguf` |
+| Operational GGUF path | `/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL` (4 parts, revision `8bdc666649440e9bdc97e16f3f75782c98478ff5`) |
+| Planned local conventional quant | `/models/gguf/Qwen3.8-Flash-Next-Q4_K_M.gguf` (not yet produced) |
 | Native context | 262,144 tokens |
 | Extended context | up to 1,000,000 tokens; not an initial support claim |
 
@@ -82,12 +87,15 @@ a 4-bit GGUF and 75 GB for its smallest dynamic 1-bit file. The local 128 GiB
 unified-memory host can run the Q4 target only if PLE is offloaded sparsely and
 the runtime avoids duplicate raw/repacked weight owners.
 
-`Q4_K_M` is the primary quant because it gives the stronger conventional K-quant
-quality point while sparse PLE ownership leaves adequate runtime headroom.
-`Q4_K_S` is produced only if F0/F3 measurement shows a concrete capacity
-blocker. The campaign never reports “fits” from file size alone; fit means a
-successful resident model, declared context, scratch/state/KV allocation,
-generation, and clean teardown.
+The operational `UD-Q4_K_XL` artifact was selected when it became available
+because it provides independent imatrix provenance and one file that actually
+fits the 128-GiB lane while retaining high-bit sensitive roles. Its exact mixed
+payload is 44.35 GB Q4_K, 27.05 GB Q5_1, 9.61 GB Q8_0, 1.15 GB Q5_K, 313 MB
+F32, 39 MB BF16, and 28.80 GB IQ4_NL PLE. `Q4_K_M` remains the conventional
+local follow-up; `Q4_K_S` is produced only if that follow-up has a concrete
+capacity blocker. The campaign never reports “fits” from file size alone: the
+working artifact measured 82,718,198,780 peak hipEngine-owned bytes at 2,051,
+ran generation, and returned to zero tracked allocations after close.
 
 ### 2.1 Expected memory model (planning values, not measurements)
 
@@ -446,6 +454,29 @@ determinism; prompt chunk boundaries; fresh-prefix recomputation; zero teardown.
 `LLM.generate()` and the CLI resolve the new plugin without architecture
 branches.
 
+### Current retained text evidence (2026-08-27)
+
+On physical host `zbook` (`machine-id 87c566d30a5645cf8d12ed7ef6b6e1e8`),
+AMD Ryzen AI Max+ Pro 395 / Radeon 8060S (`gfx1151`, 133,143,986,176 device
+bytes), the pinned four-part artifact is 111,334,654,784 bytes / 1,224 tensors.
+All four expected part hashes pass. The scanner reports no unknown or duplicate
+tensors, 82,523,491,840 hot-device bytes, zero alternate/replacement layouts,
+and one 28,800,138,240-byte IQ4_NL PLE mmap tensor shaped
+`[320001536, 160]` (raw bytes `[320001536, 90]`).
+
+Frozen llama.cpp PR #27742 (`bea3b12da`, `llama-debug` SHA-256
+`e36ea6554f6112c02ef0c2d7bf20549a5f4b5ef6530f433ba4c0915b10bf5426`)
+versus hipEngine on all 10 prompts in
+`benchmarks/prompts/mtpbench-code-general-ja.jsonl` measured mean/p95/p99/max
+teacher→hipEngine KL `0.01406 / 0.04154 / 0.04776 / 0.04931` and `10/10`
+top-1 agreement. The public API resolved `gguf_ud_q4_k_xl` and generated
+`" 4.\n\n"` for `The answer to 2 + 2 is`. Measured tracked peak was
+82,718,198,780 bytes; close returned active allocations/current bytes to zero.
+Exact commands, hashes, category rows, memory plan, and unsupported-scope list
+are retained in
+[`2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json).
+These are correctness/bring-up results, not a speed or 262K-capacity claim.
+
 ### F6 — Native QSA and 262K context ownership
 
 Add a QSA index-cache backend or model-attention state that mirrors
@@ -617,11 +648,11 @@ core interfaces.
 
 - [ ] F0 exact source downloaded and Q4_K_M produced, scanned, hashed, and
       llama-smoked.
-- [ ] F1 qwen4exp plugin and real GGUF tensor map pass.
-- [ ] F2 CPU GR/PLE/QSA/GDN reduced-model oracles pass.
-- [ ] F3 one-layout residency fits; PLE is sparse mmap-owned; teardown is zero.
-- [ ] F4 missing native primitives pass RED/GREEN and kernel traces.
-- [ ] F5 strict text AR works below the QSA budget through public APIs.
+- [x] F1 qwen4exp plugin and real GGUF tensor map pass.
+- [x] F2 CPU GR/PLE/QSA/GDN reduced-model oracles pass.
+- [x] F3 one-layout residency fits; PLE is sparse mmap-owned; teardown is zero.
+- [x] F4 missing native primitives pass RED/GREEN and kernel traces.
+- [x] F5 strict text AR works below the QSA budget through public APIs.
 - [ ] F6 QSA passes long-context correctness and capacity through 262K.
 - [ ] F7 retained prefill/decode/batching paths are measured and documented.
 - [ ] F8 official MTP is correct and either promoted in scope or honestly
