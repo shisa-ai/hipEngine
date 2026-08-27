@@ -1756,7 +1756,8 @@ def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
     )
     plan = SimpleNamespace(
         request_ids=(7,),
-        reasons=(mtp2_module.SpecPlanReason.NO_PROVIDER,),
+        reasons=(mtp2_module.SpecPlanReason.RESOURCE_CLAIM_MISS,),
+        k0_classes=(mtp2_module.SpecK0Class.TRANSITIONAL,),
     )
 
     adapter.prepare_k0(plan, (), stream=None)
