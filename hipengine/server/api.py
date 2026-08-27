@@ -11927,8 +11927,8 @@ def _speculative_mtp_route_for_request(
         and not explicit_requested
         and not _engine_supports_default_mtp(engine)
     ):
-        # A broad dense-model boolean is not default evidence. Keep the K0
-        # reason visible so enabled/capabilities/response reporting agree.
+        # Missing typed automatic evidence stays K0 so enabled/capabilities/
+        # response reporting agree.
         return _SPECULATIVE_MTP_K0_ROUTE
     thinking_policy = _request_speculative_mtp_thinking(config, request)
     if thinking_policy == "hint":

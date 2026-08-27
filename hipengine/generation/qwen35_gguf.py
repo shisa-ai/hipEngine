@@ -1687,28 +1687,6 @@ class Qwen35GGUFBringupGenerator:
             return resolver(key=key)
         return resolve_speculative_mtp_serving_plan((), key=key)
 
-    @property
-    def supports_default_mtp(self) -> bool:
-        """Whether default-on MTP serving is safe for this model.
-
-        Dense Qwen models can be served through the fast ``native`` verify path
-        (llama.cpp-style; validated ``all_gpu_accept_match_cpu`` with rare
-        sub-token-level argmax differences vs AR) and the token-exact
-        ``serial_exact`` rollback control, so MTP may be enabled by default.
-        MoE MTP can differ from plain AR, so it stays request-opt-in.  The
-        dense serving verify mode/budget are selected by
-        ``HIPENGINE_GGUF_MTP_VERIFY_MODE`` (default ``native``) and
-        ``HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`` (default ``3``).
-        """
-
-        if not self.supports_speculative_mtp:
-            return False
-        try:
-            config = qwen35_gguf_config_from_metadata(self.weight_index)
-        except Exception:
-            return False
-        return not bool(config.is_moe)
-
     def generate(self, request: GenerationRequest) -> list[str]:
         outputs = self.generate_detailed(request)
         return [output.text for output in outputs]

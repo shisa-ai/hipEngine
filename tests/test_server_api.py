@@ -311,7 +311,6 @@ class ResidentSessionPromptFakeLLM(PromptPreparingFakeLLM):
 
 class SpeculativeMTPFakeLLM(FakeLLM):
     supports_speculative_mtp = True
-    supports_default_mtp = True
 
     def __init__(self, token_map: dict[str, list[int]] | None = None) -> None:
         super().__init__(token_map=token_map)
@@ -1933,27 +1932,6 @@ def test_capabilities_endpoint_does_not_infer_default_mtp_from_dense_boolean() -
     assert payload["automatic_route_promoted"] is False
     assert payload["certified_default_scopes"] == []
     assert "auto_route" not in payload
-
-
-def test_capabilities_endpoint_enabled_default_mtp_falls_back_for_non_dense() -> None:
-    class MoESpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
-        supports_default_mtp = False
-
-    app = create_app(
-        ServerConfig(
-            model="fake-path",
-            served_model_name="fake-model",
-            eager_load=False,
-            speculative_mtp_serving="enabled",
-        ),
-        llm=MoESpeculativeMTPFakeLLM(),
-    )
-    client = TestClient(app)
-
-    payload = client.get("/v1/hipengine/capabilities").json()["sampling"]["speculative_mtp"]
-
-    assert payload["policy"] == "enabled"
-    assert payload["default_enabled"] is False
 
 
 def test_capabilities_endpoint_advertises_live_stream_logprobs_when_engine_supports_metadata() -> None:
@@ -7133,7 +7111,7 @@ def test_completions_enabled_mode_requires_model_plugin_default_evidence() -> No
     )
     client = TestClient(app)
 
-    # A broad dense supports_default_mtp boolean is not artifact evidence.
+    # Automatic admission requires immutable model-plugin evidence.
     response = client.post(
         "/v1/completions",
         json={
@@ -7157,58 +7135,6 @@ def test_completions_enabled_mode_requires_model_plugin_default_evidence() -> No
     )
 
     # Existing operator-selected explicit compatibility remains independent.
-    explicit_response = client.post(
-        "/v1/completions",
-        json={
-            "model": "fake-model",
-            "prompt": "three",
-            "max_tokens": 3,
-            "temperature": 0.0,
-            "top_p": 1.0,
-            "speculative_mtp": True,
-        },
-    )
-    assert explicit_response.status_code == 200
-    assert explicit_response.json()["choices"][0]["text"] == "mtp:three"
-    assert len(fake.mtp_calls) == 1
-
-
-def test_completions_enabled_mode_falls_back_to_ar_when_engine_not_dense_default() -> None:
-    class MoESpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
-        supports_default_mtp = False
-
-    fake = MoESpeculativeMTPFakeLLM()
-    app = create_app(
-        ServerConfig(
-            model="fake-path",
-            served_model_name="fake-model",
-            speculative_mtp_serving="enabled",
-            max_active_requests=4,
-        ),
-        llm=fake,
-    )
-    client = TestClient(app)
-
-    response = client.post(
-        "/v1/completions",
-        json={
-            "model": "fake-model",
-            "prompt": ["one", "two"],
-            "max_tokens": 3,
-            "temperature": 0.0,
-            "top_p": 1.0,
-        },
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert [choice["text"] for choice in body["choices"]] == [
-        "generated:one",
-        "generated:two",
-    ]
-    assert fake.mtp_calls == []
-    assert body["hipengine"]["generation_shape"]["route"] == "default"
-
-    # Explicit speculative_mtp=true still opts into MTP on the same engine.
     explicit_response = client.post(
         "/v1/completions",
         json={
