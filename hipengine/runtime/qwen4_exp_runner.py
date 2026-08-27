@@ -9,6 +9,7 @@ architecture branches to the engine or dispatch layer.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from types import MappingProxyType
 from typing import Mapping
 
@@ -51,19 +52,45 @@ from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     shared_gate_combine_batch_out_bf16,
     shared_gate_combine_out_bf16,
     weighted_sum_batch_out_bf16_f32w,
+    weighted_lanes_sum_out_bf16_f32w,
     weighted_sum_out_bf16_f32w,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
+    silu_mul_dual_out_bf16,
     silu_mul_separate_out_bf16,
+)
+from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
+    qwen35_moe_group_count,
+    qwen35_moe_group_prefix,
+    qwen35_moe_group_scatter_gather_lowp,
+    qwen35_moe_wmma_tile_map,
 )
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_select
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_decode_f32,
     qwen35_linear_attn_conv_prefill_f32,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
+    gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
+    gguf_q5_k_selected_wmma_prefill_compact_bf16_bf16_out,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
+    gguf_q8_0_wmma_prefill_bf16_bf16_out,
+)
+from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
+    qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
+    qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
+)
+from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+    qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32,
+)
 from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
     qwen4_exp_gdn_decode_f32,
     qwen4_exp_gdn_prefill_f32,
+    qwen4_exp_gdn_prefill_prepare_f32,
+    qwen4_exp_gdn_prefill_sigmoid_gate_f32,
 )
 from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_gated_mean_f32,
@@ -1324,6 +1351,18 @@ class Qwen4ExpMoEScratch:
     shared_down_bf16: DeviceBuffer
     shared_gate_logits: DeviceBuffer
     output: DeviceBuffer
+    group_counts: DeviceBuffer
+    group_padded_counts: DeviceBuffer
+    group_expert_start: DeviceBuffer
+    group_scatter_offsets: DeviceBuffer
+    group_sorted_lanes: DeviceBuffer
+    group_sorted_experts: DeviceBuffer
+    group_sorted_weights: DeviceBuffer
+    group_wmma_expert_start: DeviceBuffer
+    group_tile_expert: DeviceBuffer
+    group_wmma_total: DeviceBuffer
+    group_gate_up: DeviceBuffer
+    group_lane_to_row: DeviceBuffer
     runtime: HipRuntime
     closed: bool = False
 
@@ -1343,6 +1382,7 @@ class Qwen4ExpMoEScratch:
             raise ValueError("Qwen4Exp MoE dimensions must be positive with top_k <= experts")
         active_runtime = runtime or get_hip_runtime()
         compact = rows * top_k
+        tile_capacity = (compact + 15 * experts + 15) // 16
         byte_sizes = (
             rows * experts * 4,
             compact * DType.INT64.itemsize,
@@ -1360,6 +1400,18 @@ class Qwen4ExpMoEScratch:
             rows * hidden * 2,
             rows * 4,
             rows * hidden * 2,
+            experts * DType.INT32.itemsize,
+            experts * DType.INT32.itemsize,
+            (experts + 1) * DType.INT64.itemsize,
+            experts * DType.INT32.itemsize,
+            compact * DType.INT64.itemsize,
+            compact * DType.INT64.itemsize,
+            compact * DType.FP32.itemsize,
+            (experts + 1) * DType.INT64.itemsize,
+            tile_capacity * DType.INT64.itemsize,
+            DType.INT64.itemsize,
+            compact * 2 * ffn * DType.BF16.itemsize,
+            compact * DType.INT64.itemsize,
         )
         buffers: list[DeviceBuffer] = []
         try:
@@ -1392,6 +1444,18 @@ class Qwen4ExpMoEScratch:
                 self.shared_down_bf16,
                 self.shared_gate_logits,
                 self.output,
+                self.group_counts,
+                self.group_padded_counts,
+                self.group_expert_start,
+                self.group_scatter_offsets,
+                self.group_sorted_lanes,
+                self.group_sorted_experts,
+                self.group_sorted_weights,
+                self.group_wmma_expert_start,
+                self.group_tile_expert,
+                self.group_wmma_total,
+                self.group_gate_up,
+                self.group_lane_to_row,
             )
         ):
             free(buffer, runtime=self.runtime)
@@ -2154,6 +2218,8 @@ def run_qwen4_exp_moe(
         selected_rows: int,
         in_features: int,
         out_features: int,
+        *,
+        selected_ptr: int | None = None,
     ) -> None:
         weight = weights[slot]
         function = resolve(
@@ -2164,7 +2230,7 @@ def run_qwen4_exp_moe(
         )
         function(
             input_ptr,
-            scratch.selected.ptr,
+            scratch.selected.ptr if selected_ptr is None else selected_ptr,
             weight.allocation("raw").tensor.ptr,
             output_ptr,
             x_rows,
@@ -2176,41 +2242,228 @@ def run_qwen4_exp_moe(
             runtime=active_runtime,
         )
 
-    selected_projection(
-        "expert_gate", scratch.hidden_bf16.ptr, scratch.expert_gate.ptr,
-        rows, compact, hidden, ffn,
+    grouped_prefill = (
+        rows >= 16
+        and os.environ.get("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "")
+        not in {"", "0", "false", "False"}
+        and (
+            weights["expert_gate"].spec.quant_key,
+            weights["expert_up"].spec.quant_key,
+        )
+        in {
+            ("gguf_q4_k", "gguf_q4_k"),
+            ("gguf_q5_k", "gguf_q5_k"),
+        }
     )
-    selected_projection(
-        "expert_up", scratch.hidden_bf16.ptr, scratch.expert_up.ptr,
-        rows, compact, hidden, ffn,
-    )
-    silu_mul_separate_out_bf16(
-        scratch.expert_gate.ptr,
-        scratch.expert_up.ptr,
-        scratch.expert_intermediate.ptr,
-        compact,
-        ffn,
-        stream=stream,
-        runtime=active_runtime,
-    )
-    selected_projection(
-        "expert_down", scratch.expert_intermediate.ptr, scratch.expert_down.ptr,
-        compact, compact, ffn, hidden,
-    )
-    if rows == 1:
-        weighted_sum_out_bf16_f32w(
-            scratch.expert_down.ptr,
-            scratch.routing.ptr,
-            scratch.routed.ptr,
+    if grouped_prefill:
+        active_runtime.memset(
+            scratch.group_counts.ptr, 0, scratch.group_counts.nbytes
+        )
+        qwen35_moe_group_count(
+            scratch.selected.ptr,
+            scratch.group_counts.ptr,
             compact,
+            experts,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        qwen35_moe_group_prefix(
+            scratch.group_counts.ptr,
+            scratch.group_padded_counts.ptr,
+            scratch.group_expert_start.ptr,
+            scratch.group_wmma_total.ptr,
+            experts,
+            1,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        active_runtime.memset(
+            scratch.group_scatter_offsets.ptr,
+            0,
+            scratch.group_scatter_offsets.nbytes,
+        )
+        qwen35_moe_group_scatter_gather_lowp(
+            scratch.hidden_bf16.ptr,
+            scratch.selected.ptr,
+            scratch.routing.ptr,
+            scratch.group_expert_start.ptr,
+            scratch.group_scatter_offsets.ptr,
+            scratch.group_sorted_lanes.ptr,
+            scratch.group_sorted_experts.ptr,
+            scratch.group_sorted_weights.ptr,
+            scratch.expert_down.ptr,
+            compact,
+            experts,
+            top_k,
             hidden,
             stream=stream,
             runtime=active_runtime,
         )
-    else:
-        weighted_sum_batch_out_bf16_f32w(
+        tile_capacity = scratch.group_tile_expert.nbytes // DType.INT64.itemsize
+        qwen35_moe_wmma_tile_map(
+            scratch.group_expert_start.ptr,
+            scratch.group_wmma_expert_start.ptr,
+            scratch.group_tile_expert.ptr,
+            scratch.group_wmma_total.ptr,
+            experts,
+            tile_capacity=tile_capacity,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        wmma_total_host = np.empty(1, dtype=np.int64)
+        if stream:
+            active_runtime.stream_synchronize(stream)
+        copy_device_to_host(
+            host_array_ptr(wmma_total_host),
+            scratch.group_wmma_total,
+            DType.INT64.itemsize,
+            runtime=active_runtime,
+        )
+        wmma_total_rows = int(wmma_total_host[0])
+        if wmma_total_rows <= 0 or wmma_total_rows > tile_capacity * 16:
+            raise RuntimeError("Qwen4Exp grouped MoE WMMA row count is invalid")
+        if weights["expert_gate"].spec.quant_key == "gguf_q4_k":
+            gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
+                scratch.expert_down.ptr,
+                scratch.group_expert_start.ptr,
+                scratch.group_wmma_expert_start.ptr,
+                scratch.group_tile_expert.ptr,
+                weights["expert_gate"].allocation("raw").tensor.ptr,
+                weights["expert_up"].allocation("raw").tensor.ptr,
+                scratch.group_gate_up.ptr,
+                compact,
+                hidden,
+                ffn,
+                ffn,
+                experts,
+                wmma_total_rows,
+                tile_m=int(
+                    os.environ.get(
+                        "HIPENGINE_QWEN4_EXP_Q4_TILE_M",
+                        "64" if rows >= 512 else "16",
+                    )
+                ),
+                tile_n=int(os.environ.get("HIPENGINE_QWEN4_EXP_Q4_TILE_N", "16")),
+                stream=stream,
+                runtime=active_runtime,
+            )
+            silu_mul_dual_out_bf16(
+                scratch.group_gate_up.ptr,
+                scratch.expert_intermediate.ptr,
+                rows=compact,
+                features=ffn,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        else:
+            for slot, output in (
+                ("expert_gate", scratch.expert_gate),
+                ("expert_up", scratch.expert_up),
+            ):
+                gguf_q5_k_selected_wmma_prefill_compact_bf16_bf16_out(
+                    scratch.expert_down.ptr,
+                    scratch.group_expert_start.ptr,
+                    scratch.group_wmma_expert_start.ptr,
+                    scratch.group_tile_expert.ptr,
+                    weights[slot].allocation("raw").tensor.ptr,
+                    output.ptr,
+                    compact,
+                    hidden,
+                    ffn,
+                    experts,
+                    wmma_total_rows,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+            silu_mul_separate_out_bf16(
+                scratch.expert_gate.ptr,
+                scratch.expert_up.ptr,
+                scratch.expert_intermediate.ptr,
+                compact,
+                ffn,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        if weights["expert_down"].spec.quant_key == "gguf_q5_1":
+            q5_wmma = os.environ.get(
+                "HIPENGINE_QWEN4_EXP_Q5_1_WMMA", ""
+            ) not in {"", "0", "false", "False"}
+            if q5_wmma:
+                qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
+                    scratch.expert_intermediate.ptr,
+                    scratch.group_expert_start.ptr,
+                    scratch.group_wmma_expert_start.ptr,
+                    scratch.group_tile_expert.ptr,
+                    weights["expert_down"].allocation("raw").tensor.ptr,
+                    scratch.expert_down.ptr,
+                    compact,
+                    experts,
+                    ffn,
+                    hidden,
+                    wmma_total_rows,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+            else:
+                qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
+                    scratch.expert_intermediate.ptr,
+                    scratch.group_expert_start.ptr,
+                    weights["expert_down"].allocation("raw").tensor.ptr,
+                    scratch.expert_down.ptr,
+                    compact,
+                    experts,
+                    ffn,
+                    hidden,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+        elif (
+            weights["expert_down"].spec.quant_key == "gguf_q8_0"
+            and os.environ.get("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA", "")
+            not in {"", "0", "false", "False"}
+        ):
+            expert_start_host = np.empty(experts + 1, dtype=np.int64)
+            copy_device_to_host(
+                host_array_ptr(expert_start_host),
+                scratch.group_expert_start,
+                expert_start_host.nbytes,
+                runtime=active_runtime,
+            )
+            expert_weight_bytes = hidden * (ffn // 32) * 34
+            for expert in range(experts):
+                start_row = int(expert_start_host[expert])
+                expert_rows = int(expert_start_host[expert + 1]) - start_row
+                if expert_rows <= 0:
+                    continue
+                gguf_q8_0_wmma_prefill_bf16_bf16_out(
+                    scratch.expert_intermediate.ptr
+                    + start_row * ffn * DType.BF16.itemsize,
+                    weights["expert_down"].allocation("raw").tensor.ptr
+                    + expert * expert_weight_bytes,
+                    scratch.expert_down.ptr
+                    + start_row * hidden * DType.BF16.itemsize,
+                    expert_rows,
+                    ffn,
+                    hidden,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+        else:
+            selected_projection(
+                "expert_down",
+                scratch.expert_intermediate.ptr,
+                scratch.expert_down.ptr,
+                compact,
+                compact,
+                ffn,
+                hidden,
+                selected_ptr=scratch.group_sorted_experts.ptr,
+            )
+        weighted_lanes_sum_out_bf16_f32w(
             scratch.expert_down.ptr,
-            scratch.routing.ptr,
+            scratch.group_sorted_weights.ptr,
+            scratch.group_sorted_lanes.ptr,
+            scratch.group_lane_to_row.ptr,
             scratch.routed.ptr,
             rows,
             top_k,
@@ -2218,6 +2471,49 @@ def run_qwen4_exp_moe(
             stream=stream,
             runtime=active_runtime,
         )
+    else:
+        selected_projection(
+            "expert_gate", scratch.hidden_bf16.ptr, scratch.expert_gate.ptr,
+            rows, compact, hidden, ffn,
+        )
+        selected_projection(
+            "expert_up", scratch.hidden_bf16.ptr, scratch.expert_up.ptr,
+            rows, compact, hidden, ffn,
+        )
+        silu_mul_separate_out_bf16(
+            scratch.expert_gate.ptr,
+            scratch.expert_up.ptr,
+            scratch.expert_intermediate.ptr,
+            compact,
+            ffn,
+            stream=stream,
+            runtime=active_runtime,
+        )
+        selected_projection(
+            "expert_down", scratch.expert_intermediate.ptr, scratch.expert_down.ptr,
+            compact, compact, ffn, hidden,
+        )
+        if rows == 1:
+            weighted_sum_out_bf16_f32w(
+                scratch.expert_down.ptr,
+                scratch.routing.ptr,
+                scratch.routed.ptr,
+                compact,
+                hidden,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        else:
+            weighted_sum_batch_out_bf16_f32w(
+                scratch.expert_down.ptr,
+                scratch.routing.ptr,
+                scratch.routed.ptr,
+                rows,
+                top_k,
+                hidden,
+                stream=stream,
+                runtime=active_runtime,
+            )
     for slot, output in (
         ("shared_gate", scratch.shared_gate),
         ("shared_up", scratch.shared_up),
@@ -2825,24 +3121,80 @@ def run_qwen4_exp_gdn_token_mixer(
             stream=stream,
             runtime=active_runtime,
         )
-        qwen4_exp_gdn_prefill_f32(
-            scratch.conv.ptr,
-            scratch.gate.ptr,
-            scratch.alpha.ptr,
-            scratch.beta.ptr,
-            dt_bias_ptr,
-            a_ptr,
-            norm_weight_ptr,
-            recurrent_state_ptr,
-            scratch.core.ptr,
-            rows,
-            num_k_heads,
-            num_v_heads,
-            head_dim,
-            head_dim,
-            stream=stream,
-            runtime=active_runtime,
+        peer_prefill = (
+            head_dim == 128
+            and os.environ.get("HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL", "")
+            not in {"", "0", "false", "False"}
         )
+        if peer_prefill:
+            compact_width = rows * num_k_heads * head_dim
+            query_ptr = scratch.qkv.ptr
+            key_ptr = query_ptr + compact_width * DType.FP32.itemsize
+            value_ptr = key_ptr + compact_width * DType.FP32.itemsize
+            qwen4_exp_gdn_prefill_prepare_f32(
+                scratch.conv.ptr,
+                scratch.alpha.ptr,
+                scratch.beta.ptr,
+                dt_bias_ptr,
+                a_ptr,
+                query_ptr,
+                key_ptr,
+                value_ptr,
+                scratch.beta.ptr,
+                scratch.alpha.ptr,
+                rows,
+                num_k_heads,
+                num_v_heads,
+                head_dim,
+                head_dim,
+                stream=stream,
+                runtime=active_runtime,
+            )
+            qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32(
+                query_ptr,
+                key_ptr,
+                value_ptr,
+                scratch.beta.ptr,
+                scratch.alpha.ptr,
+                recurrent_state_ptr,
+                scratch.core.ptr,
+                rows,
+                num_k_heads,
+                num_v_heads,
+                head_dim,
+                head_dim,
+                stream=stream,
+                runtime=active_runtime,
+            )
+            qwen4_exp_gdn_prefill_sigmoid_gate_f32(
+                scratch.core.ptr,
+                scratch.gate.ptr,
+                norm_weight_ptr,
+                rows,
+                num_v_heads,
+                head_dim,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        else:
+            qwen4_exp_gdn_prefill_f32(
+                scratch.conv.ptr,
+                scratch.gate.ptr,
+                scratch.alpha.ptr,
+                scratch.beta.ptr,
+                dt_bias_ptr,
+                a_ptr,
+                norm_weight_ptr,
+                recurrent_state_ptr,
+                scratch.core.ptr,
+                rows,
+                num_k_heads,
+                num_v_heads,
+                head_dim,
+                head_dim,
+                stream=stream,
+                runtime=active_runtime,
+            )
     launch_gguf_linear(
         weights["ssm_out"],
         scratch.core.ptr,

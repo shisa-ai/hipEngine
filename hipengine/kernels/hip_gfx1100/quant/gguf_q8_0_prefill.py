@@ -14,6 +14,7 @@ family (``wmma_prefill_*``).
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -98,6 +99,15 @@ def _default_tiles(rows: int, in_features: int, out_features: int) -> tuple[int,
     See ``tests/test_gguf_q8_0_wmma_prefill.py`` for dispatch pinning tests.
     """
 
+    override_m = os.environ.get("HIPENGINE_GGUF_Q8_0_WMMA_TILE_M")
+    override_n = os.environ.get("HIPENGINE_GGUF_Q8_0_WMMA_TILE_N")
+    if override_m is not None or override_n is not None:
+        if override_m is None or override_n is None:
+            raise ValueError("Q8_0 WMMA tile override requires both M and N")
+        tile = (int(override_m), int(override_n))
+        if tile not in _ALLOWED_TILES:
+            raise ValueError(f"unsupported Q8_0 WMMA tile override: {tile}")
+        return tile
     tile_n = 32 if rows >= 32 else 16
     if out_features <= 512:
         tile_m = 16

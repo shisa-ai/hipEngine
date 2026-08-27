@@ -32,6 +32,8 @@ def test_qwen4_exp_q5_1_selected_build_and_registry_contract() -> None:
     from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
         plan_qwen4_exp_q5_1_build,
         qwen4_exp_q5_1_selected_gemv_bf16_bf16_out,
+        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
+        qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
         register_qwen4_exp_q5_1_kernels,
     )
     from hipengine.kernels.registry import resolve
@@ -48,6 +50,24 @@ def test_qwen4_exp_q5_1_selected_build_and_registry_contract() -> None:
         )
         is qwen4_exp_q5_1_selected_gemv_bf16_bf16_out
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q5_1",
+            variant="selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
+        )
+        is qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q5_1",
+            variant="selected_grouped_wmma_prefill_compact_bf16_bf16_out",
+        )
+        is qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out
+    )
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
@@ -56,6 +76,8 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
     from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
         build_qwen4_exp_q5_1,
         qwen4_exp_q5_1_selected_gemv_bf16_bf16_out,
+        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
+        qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
     )
 
     runtime = get_hip_runtime()
@@ -95,12 +117,33 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
         expected[row] = x[row] @ weight.T
     expected_bits = float_array_to_bf16_bits(expected)
 
+    order = np.argsort(selected, kind="stable")
+    grouped_x_bits = x_bits[order]
+    grouped_expected_bits = expected_bits[order]
+    counts = np.bincount(selected, minlength=experts)
+    expert_start = np.concatenate(([0], np.cumsum(counts))).astype(np.int64)
+    padded = ((counts + 15) // 16) * 16
+    expert_start_wmma = np.concatenate(([0], np.cumsum(padded))).astype(np.int64)
+    tile_expert = np.concatenate(
+        [np.full(value // 16, expert, dtype=np.int64) for expert, value in enumerate(padded)]
+    )
+
     allocations = []
     try:
         d_x = _upload(x_bits, runtime, allocations)
         d_selected = _upload(selected, runtime, allocations)
         d_weight = _upload(raw, runtime, allocations)
         d_output = _alloc(expected_bits.shape, np.uint16, runtime, allocations)
+        d_grouped_x = _upload(grouped_x_bits, runtime, allocations)
+        d_expert_start = _upload(expert_start, runtime, allocations)
+        d_grouped_output = _alloc(
+            grouped_expected_bits.shape, np.uint16, runtime, allocations
+        )
+        d_expert_start_wmma = _upload(expert_start_wmma, runtime, allocations)
+        d_tile_expert = _upload(tile_expert, runtime, allocations)
+        d_wmma_output = _alloc(
+            grouped_expected_bits.shape, np.uint16, runtime, allocations
+        )
         qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
             d_x.ptr,
             d_selected.ptr,
@@ -114,13 +157,53 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
             library=library,
             runtime=runtime,
         )
+        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out(
+            d_grouped_x.ptr,
+            d_expert_start.ptr,
+            d_weight.ptr,
+            d_grouped_output.ptr,
+            rows,
+            experts,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
+            d_grouped_x.ptr,
+            d_expert_start.ptr,
+            d_expert_start_wmma.ptr,
+            d_tile_expert.ptr,
+            d_weight.ptr,
+            d_wmma_output.ptr,
+            rows,
+            experts,
+            in_features,
+            out_features,
+            int(expert_start_wmma[-1]),
+            library=library,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         actual = _download(d_output, expected_bits.shape, np.uint16, runtime)
+        grouped_actual = _download(
+            d_grouped_output, grouped_expected_bits.shape, np.uint16, runtime
+        )
+        wmma_actual = _download(
+            d_wmma_output, grouped_expected_bits.shape, np.uint16, runtime
+        )
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
 
     np.testing.assert_array_equal(actual, expected_bits)
+    np.testing.assert_array_equal(grouped_actual, grouped_expected_bits)
+    np.testing.assert_allclose(
+        bf16_to_float32(wmma_actual),
+        bf16_to_float32(grouped_expected_bits),
+        rtol=2e-2,
+        atol=2e-2,
+    )
 
 
 def _upload(array: np.ndarray, runtime, allocations):
