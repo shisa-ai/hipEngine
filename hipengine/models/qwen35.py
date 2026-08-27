@@ -146,13 +146,14 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
         max_context_tokens=95,
         min_output_horizon_tokens=24,
         max_output_horizon_tokens=24,
-        reason="qualified_explicit_production_dense_c2_k2_d24",
+        reason="qualified_automatic_production_dense_c2_k2_d24",
         evidence_artifacts=(
             "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-production-quality.json",
             "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json",
+            "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-automatic-promotion.json",
         ),
         strict_fallback_key="gguf_target_ar",
-        automatic_eligible=False,
+        automatic_eligible=True,
     ),
 )
 

@@ -273,7 +273,7 @@ def test_qwen36_dense_strict_c2_k2_plan_is_explicit_only() -> None:
     ).reason == "physical_group_not_qualified"
 
 
-def test_qwen36_dense_production_c2_k2_plan_is_explicit_only() -> None:
+def test_qwen36_dense_production_c2_k2_plan_is_exact_automatic_scope() -> None:
     evidence = next(
         row
         for row in Qwen35GGUFModel().speculative_mtp_serving_evidence
@@ -306,10 +306,14 @@ def test_qwen36_dense_production_c2_k2_plan_is_explicit_only() -> None:
     decision = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(key=key)
 
     assert decision.admitted is True
-    assert decision.automatic_eligible is False
+    assert decision.automatic_eligible is True
     assert decision.selected_candidate_count == 2
-    assert decision.reason == "qualified_explicit_production_dense_c2_k2_d24"
+    assert decision.reason == "qualified_automatic_production_dense_c2_k2_d24"
     assert decision.strict_fallback_key == "gguf_target_ar"
+    assert decision.evidence_artifacts[-1] == (
+        "benchmarks/results/"
+        "2026-08-27-w7900-27b-dense-mtp2-c2-automatic-promotion.json"
+    )
 
 
 def test_qwen36_moe_production_c1_k2_plan_is_exact_automatic_scope() -> None:
