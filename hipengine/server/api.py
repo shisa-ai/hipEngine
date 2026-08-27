@@ -2209,6 +2209,39 @@ def _resolve_realized_generation_route(
         isinstance(precomputed_decision, Mapping)
         and precomputed_decision.get("plan_fingerprint") is not None
     ):
+        if (
+            route == _SPECULATIVE_MTP_BATCH_ROUTE
+            and not bool(precomputed_decision.get("admitted"))
+            and str(precomputed_decision.get("reason"))
+            == "physical_group_not_qualified"
+        ):
+            key = (
+                precomputed_decision.get("key")
+                if isinstance(precomputed_decision.get("key"), Mapping)
+                else {}
+            )
+            artifacts = precomputed_decision.get("evidence_artifacts")
+            return route, {
+                "requested_route": route,
+                "selected_route": route,
+                "reason": "physical_group_deferred_to_resident_owner",
+                "policy_cell": precomputed_decision.get("evidence_key"),
+                "selected_candidate_count": 0,
+                "policy_reason": str(precomputed_decision.get("reason")),
+                "policy_fingerprint": precomputed_decision.get("plan_fingerprint"),
+                "realized_group_rows": int(group_rows),
+                "output_horizon_tokens": int(sampling.max_tokens),
+                "exact_default_required": True,
+                "automatic_eligible": bool(
+                    precomputed_decision.get("automatic_eligible")
+                ),
+                "evidence": (
+                    artifacts[0]
+                    if isinstance(artifacts, list) and artifacts
+                    else "model_plugin_speculative_mtp_serving_plan"
+                ),
+                "deferred_key_rows": int(key.get("realized_group_rows", 0) or 0),
+            }
         return _serving_plan_route_decision(
             precomputed_decision,
             requested_route=route,

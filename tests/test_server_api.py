@@ -61,6 +61,7 @@ from hipengine.server.api import (
     _prepared_context_tokens,
     _request_completion_cap,
     _request_control,
+    _resolve_realized_generation_route,
     _serving_plan_route_decision,
     _ServerMetrics,
     _startup_memory_summary,
@@ -5610,6 +5611,16 @@ def test_explicit_c2_intent_survives_request_time_c1_plan_rejection() -> None:
     assert plan is not None
     assert plan["admitted"] is False
     assert plan["reason"] == "physical_group_not_qualified"
+    deferred_route, deferred = _resolve_realized_generation_route(
+        route,
+        group_rows=1,
+        sampling=SamplingParams(max_tokens=25),
+        precomputed_decision=plan,
+    )
+    assert deferred_route == _SPECULATIVE_MTP_BATCH_ROUTE
+    assert deferred is not None
+    assert deferred["reason"] == "physical_group_deferred_to_resident_owner"
+    assert deferred["deferred_key_rows"] == 1
 
     outside_route, outside_plan = _generation_route_for_request(
         ServerConfig(
