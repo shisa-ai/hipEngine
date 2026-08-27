@@ -1913,6 +1913,18 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
         rid: SimpleNamespace(
             runtime=Runtime(),
             target_layout=SimpleNamespace(max_sequence_length=1024),
+            runner=SimpleNamespace(
+                hidden_size=4,
+                weights=SimpleNamespace(
+                    root=lambda name: SimpleNamespace(
+                        allocation=lambda: SimpleNamespace(
+                            tensor=SimpleNamespace(ptr=0x6000)
+                        )
+                    ),
+                    config=SimpleNamespace(rms_norm_eps=1e-6),
+                ),
+            ),
+            _prefill_hidden_a=DeviceBuffer(0x5000 + rid * 0x100, 16),
             _last_target_hidden_ptr=0,
         )
         for rid in (7, 8)
@@ -1988,6 +2000,7 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
             self.request_id = int(request_id)
             self.total_rows = len(tuple(prompt_tokens))
             self.closed = False
+            self.transform_hidden_rows = kwargs.get("transform_hidden_rows")
 
         def take_final_pending_buffer(self):
             return carried[self.request_id]
@@ -2001,6 +2014,26 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
         Sink,
         raising=False,
     )
+    norm_allocations = iter((DeviceBuffer(0x9000, 16), DeviceBuffer(0xA000, 16)))
+    freed_norm: list[int] = []
+    norm_calls: list[tuple[int, ...]] = []
+    monkeypatch.setattr(
+        mtp2_module,
+        "malloc",
+        lambda *args, **kwargs: next(norm_allocations),
+    )
+    monkeypatch.setattr(
+        mtp2_module,
+        "free",
+        lambda buffer, **kwargs: freed_norm.append(int(buffer.ptr)),
+    )
+    monkeypatch.setattr(
+        mtp2_module,
+        "gguf_rmsnorm_bf16_f32_weight",
+        lambda src, weight, dst, **kwargs: norm_calls.append(
+            (int(src), int(weight), int(dst), int(kwargs["rows"]), int(kwargs["stream"]))
+        ),
+    )
     adapter = Qwen35GGUFMTP2Adapter(
         owner,
         enabled=True,
@@ -2013,6 +2046,8 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
 
     sinks = adapter.begin_prompt_streaming((7, 8), checkpoints={})
     assert adapter._active_prompt_claims is not None
+    assert sinks[0].transform_hidden_rows(0xB000, 2, 3) == 0x9000
+    assert norm_calls == [(0xB000, 0x6000, 0x9000, 2, 3)]
     assert adapter._active_prompt_claims.units_by_pool() == {
         "gguf_mtp2.carried_hidden_rows": 2,
         "gguf_mtp2.prompt_rows": 4,
@@ -2034,6 +2069,7 @@ def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(
     assert rows[7].mtp2_prompt_streaming and rows[8].mtp2_prompt_streaming
     assert rows[7].mtp2_prompt_prime_rows == 2
     assert rows[8].mtp2_prompt_carried_bytes == 8
+    assert freed_norm == [0x9000, 0xA000]
     adapter.observe_prefill_result(7, rows[7].prompt_ids, SimpleNamespace(token_id=9))
     assert adapter._states[7].root_hidden_buffer is carried[7]
     assert released_pool == []
