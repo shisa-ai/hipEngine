@@ -530,10 +530,14 @@ Correctness-first prefill is 304.944 seconds before persistent pooling and
 303.528 seconds after persistent pooling, then 294.434 seconds after exact
 device top-k. The retained structural wins are pool launches `24,540→384`,
 prepared block work `18,849,792→12,288`, and removal of 24,540 score D2H
-synchronizations plus 403.341 MB of selection-metadata H2D. Evidence:
+synchronizations plus 403.341 MB of selection-metadata H2D. Production wave32
+H128 sparse attention then improves the primitive 9.41% and paired natural 4K
+298.078→290.941 seconds; four sparse categories and the retrieval task have
+bit-exact final logits/control. Evidence:
 [`2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json) and
 [`2026-08-27-gfx1151-qwen38-flash-next-persistent-qsa-pool.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-persistent-qsa-pool.json), and
-[`2026-08-27-gfx1151-qwen38-flash-next-device-qsa-topk.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-device-qsa-topk.json).
+[`2026-08-27-gfx1151-qwen38-flash-next-device-qsa-topk.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-device-qsa-topk.json), and
+[`2026-08-27-gfx1151-qwen38-flash-next-wave32-sparse-attention.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-wave32-sparse-attention.json).
 
 ### F6 — Native QSA and 262K context ownership
 
@@ -594,8 +598,10 @@ this host—until reproduced under the declared same-host protocol.
 The pinned vLLM/SGLang implementations establish the long-context performance
 design. hipEngine now updates its persistent compressed-QSA K cache only when a
 four-token group completes and performs deterministic GPU top-k/block-tail
-expansion without score D2H or host sorting. Remaining work is to batch paged
-score generation and use split-k sparse attention. MTP step 0
+expansion without score D2H or host sorting. The production H128 sparse kernel
+uses one barrier-free wave32 per query head and retains the strict shared-memory
+fallback. Remaining work is to batch paged score generation; split-k attention
+is now optional follow-up only if its production packet beats wave32. MTP step 0
 selects target-aligned QSA rows and later draft steps reuse those indices.
 
 Current exact F7 default (2026-08-27): immediate PLE ring ownership, batched
