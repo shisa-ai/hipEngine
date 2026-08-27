@@ -1,0 +1,178 @@
+{
+  "checks": {
+    "capacity_k0": true,
+    "drain": true,
+    "negative_k0": true,
+    "positive_auto": true
+  },
+  "evidence": [
+    "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-quality.json",
+    "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-performance.json",
+    "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-serving.json"
+  ],
+  "execution_profile": {
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "name": "production"
+  },
+  "kind": "qwen36_dense_mtp2_automatic_serving",
+  "model": {
+    "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+    "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+    "size_bytes": 17106773120
+  },
+  "performance_claim": false,
+  "rows": {
+    "capacity2": {
+      "path": "gguf_packed_ar_server_decode",
+      "spec": {
+        "acceptance_rate": null,
+        "accepted_draft_tokens": 0,
+        "decision_reason": "resident_capacity_not_qualified",
+        "draft_cycles": 0,
+        "draft_tokens": 0,
+        "effective_route": "default",
+        "rejected_draft_tokens": 0,
+        "requested_route": "speculative_mtp_auto",
+        "used": false
+      },
+      "status": 200
+    },
+    "d25": {
+      "path": "gguf_packed_ar_server_decode",
+      "spec": {
+        "acceptance_rate": null,
+        "accepted_draft_tokens": 0,
+        "decision_reason": "output_horizon_not_qualified",
+        "draft_cycles": 0,
+        "draft_tokens": 0,
+        "effective_route": "default",
+        "rejected_draft_tokens": 0,
+        "requested_route": "speculative_mtp_auto",
+        "used": false
+      },
+      "status": 200
+    },
+    "final": {
+      "engine_service": {
+        "active_children": 0,
+        "command_queue_depth": 0,
+        "driver_thread_id": 139742880462528,
+        "last_speculative_draft_depth": null,
+        "last_speculative_route": "engine_service_verify_chain",
+        "last_speculative_work_kind": "verify_chain",
+        "sole_driver": true,
+        "speculative_routes": {
+          "engine_service_verify_chain": 2,
+          "legacy_prelaunch_fallback": 0
+        }
+      },
+      "health": {
+        "model": "qwen36-27b",
+        "object": "hipengine.health",
+        "status": "ok"
+      },
+      "requests": {
+        "active": 0,
+        "admitted_current": 0,
+        "admitted_total": 7,
+        "completed_buffered": 0,
+        "pending": 0,
+        "reclaimed_total": 7
+      }
+    },
+    "long_context": {
+      "path": "gguf_packed_ar_server_decode",
+      "spec": {
+        "acceptance_rate": null,
+        "accepted_draft_tokens": 0,
+        "decision_reason": "context_bucket_not_qualified",
+        "draft_cycles": 0,
+        "draft_tokens": 0,
+        "effective_route": "default",
+        "rejected_draft_tokens": 0,
+        "requested_route": "speculative_mtp_auto",
+        "used": false
+      },
+      "status": 200
+    },
+    "positive": {
+      "chunks": 25,
+      "ids": [
+        248068,
+        198,
+        8160,
+        579,
+        264,
+        7047,
+        1817,
+        25,
+        271,
+        16,
+        13,
+        220,
+        2972,
+        15771,
+        2598,
+        279,
+        2570,
+        5952,
+        64700,
+        198,
+        256,
+        471,
+        2972,
+        4987
+      ],
+      "spec": {
+        "acceptance_rate": 0.8,
+        "accepted_draft_tokens": 16,
+        "decision_reason": "qualified_automatic_dense_c1_k3_d24",
+        "draft_cycles": 7,
+        "draft_tokens": 20,
+        "effective_route": "speculative_mtp",
+        "rejected_draft_tokens": 4,
+        "requested_route": "speculative_mtp_auto",
+        "thinking_controls": "prompt_hint_only",
+        "thinking_policy": "hint",
+        "used": true
+      },
+      "sse_status": 200,
+      "sse_text": "<think>\nHere's a thinking process:\n\n1.  **Understand the User Request:**\n   - **Function",
+      "status": 200,
+      "text": "<think>\nHere's a thinking process:\n\n1.  **Understand the User Request:**\n   - **Function"
+    },
+    "sampling": {
+      "path": "gguf_packed_ar_host_sampler_decode",
+      "spec": {
+        "acceptance_rate": null,
+        "accepted_draft_tokens": 0,
+        "decision_reason": "sampling_mode_not_qualified",
+        "draft_cycles": 0,
+        "draft_tokens": 0,
+        "effective_route": "default",
+        "rejected_draft_tokens": 0,
+        "requested_route": "speculative_mtp",
+        "used": false
+      },
+      "status": 200
+    },
+    "short_context": {
+      "path": "gguf_packed_ar_server_decode",
+      "spec": {
+        "acceptance_rate": null,
+        "accepted_draft_tokens": 0,
+        "decision_reason": "context_bucket_not_qualified",
+        "draft_cycles": 0,
+        "draft_tokens": 0,
+        "effective_route": "default",
+        "rejected_draft_tokens": 0,
+        "requested_route": "speculative_mtp_auto",
+        "used": false
+      },
+      "status": 200
+    }
+  },
+  "schema": 1,
+  "source_commit": "34db59ca65abb9edcd8874d239d2f8272bdbf810",
+  "status": "passed"
+}
