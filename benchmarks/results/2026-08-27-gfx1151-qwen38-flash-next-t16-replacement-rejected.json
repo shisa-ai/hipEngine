@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "rejected_and_removed",
+  "scope": "Qwen4Exp one-layout Q4 expert gate/up T16 replacement diagnostic",
+  "host": {"identity": "zbook", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "layout": {
+    "replaced_tensors": 94,
+    "source_q4_bytes": 44352921600,
+    "t16_replacement_bytes": 45586841600,
+    "alternate_layout_bytes": 0,
+    "raw_profile_device_weight_bytes": 82523491840,
+    "t16_profile_device_weight_bytes": 83755568640
+  },
+  "plain_profile": {
+    "load_repack_seconds": 153.68048888600606,
+    "warm_512_prefill_tok_s": 26.59060094406585,
+    "warm_32_decode_tok_s": 3.659522134566173
+  },
+  "optimized_prefill_stack": {
+    "load_repack_seconds": 149.0847959179955,
+    "warm_512_prefill_tok_s": 213.51740775895257,
+    "warm_32_decode_tok_s": 6.560550802999688,
+    "peak_tracked_bytes": 84604202320,
+    "after_close_bytes": 0
+  },
+  "paired_decode_gate": {
+    "command": "uv run python /tmp/qwen4exp_t16_decode_gate.py",
+    "steps": 32,
+    "raw_strict_tok_s": 5.924614509211362,
+    "t16_tok_s": 3.615383310645694,
+    "mean_kl": 0.0030098587507372916,
+    "p95_kl": 0.008337545393463782,
+    "p99_kl": 0.009862845860245984,
+    "max_kl": 0.010528723629484892,
+    "top1_agreement_rate": 1.0
+  },
+  "decision": {
+    "retained": false,
+    "reason": "T16 is neutral for optimized prefill, 39% slower for paired decode, and fails production mean/p95 KL. Experimental planner/materializer/runtime code was removed; raw strict profile remains."
+  }
+}

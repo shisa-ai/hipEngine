@@ -563,6 +563,10 @@ strict path to `5.89 tok/s` while cutting its bucket 15.4%. A Q5_1 wave64 decode
 [`2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json),
 [`2026-08-27-gfx1151-qwen38-flash-next-q5-wave-tail.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-q5-wave-tail.json), and
 [`2026-08-27-gfx1151-qwen38-flash-next-decode-wave64-candidate.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-decode-wave64-candidate.json).
+A one-layout 45.587-GB Q4T16 replacement was also measured and removed:
+optimized p512 was neutral (`213.52` vs `211.76 tok/s`), paired decode regressed
+`5.925→3.615 tok/s`, and mean/p95 KL failed (`0.003010/0.008338`). See
+[`2026-08-27-gfx1151-qwen38-flash-next-t16-replacement-rejected.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-t16-replacement-rejected.json).
 
 **Promotion:** keep every exact/non-regressive measured win in scope. Update
 benchmark rollups only for retained complete-model rows, never microbench-only
