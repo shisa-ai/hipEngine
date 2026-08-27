@@ -196,13 +196,13 @@ production policy remains MTP at no automatic cell (K0) until those gates pass.
 
 - [x] **T0.1 Matched-quant AR c1-c8** — done 2026-08-27; see §1a.
   Crossover between c1 and c2; MTP only wins c1 (+31.7%).
-- [ ] **T0.2 C1 serving-vs-direct attribution (G1).** Operation-complete
-  breakdown of serving C1/B3 against the direct leaf: prefill share, NextN
-  activation/catch-up, proposal/target/accept/commit owners, HTTP boundary.
-  Include a rocprof marker pass and assert the expected kernel owners actually
-  execute at serving shapes (Ling skinny-GEMM lesson: no silent wrong-owner
-  dispatch). Exit: named owner list with ms/token and a ranked gap closure
-  order.
+- [x] **T0.2 C1 serving-vs-direct attribution (G1).** Cached production
+  c1/B3 profile leaf: 2,807.7-ms arm; target prefill/activation 1,680.8 ms
+  (59.9%), including provider streaming open **981.9 ms / 189 allocations / only
+  0.052 ms GPU**; eight cycles 1,068.3 ms (proposal 147.1, target/accept/commit/
+  provider 919.3); reclaim 51.6 ms. Cycles 2-8 have zero malloc/free. Expected
+  Q4/Q5/Q6 rows4/rows2 owners execute; no R6/R8/R12/R16 dispatch. Evidence:
+  [`T0.2 profile`](../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t02-actual-owner-profile.json).
 - [x] **T0.3 c>1 legacy acceptance attribution** — accept-per-draft is stable
   (0.64-0.67) on the forced legacy route; its flat line is not an acceptance
   collapse. Wide timing fields are chunk-wall copies and are not additive.

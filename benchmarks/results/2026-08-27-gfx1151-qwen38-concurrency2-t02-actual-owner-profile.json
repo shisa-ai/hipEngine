@@ -1,0 +1,725 @@
+{
+ "schema": 1,
+ "kind": "concurrency2_gfx1151_mtp_t02_actual_owner_profile",
+ "created_at": "2026-08-27T09:25:00Z",
+ "status": "complete_profile_target_rows4_no_wider_premise",
+ "passed": true,
+ "performance_claim": false,
+ "decision": "Actual staged production c1/B3 owner is target/accept/commit dominated after activation. Provider admission is the largest complete-wall startup owner. No R6/R8/R12/R16 kernel executes, so T2.2 wider target work has no current public-route premise.",
+ "physical_host": "gfx1151 / Radeon 8060S / HIP 7.15.0 / rocprofv3 1.3.2 / queue 1",
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "quant": "Q4_K_M",
+  "kv": "BF16"
+ },
+ "runtime_profile": {
+  "profile": "production",
+  "manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+  "strict_fallback_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+ },
+ "protocol": {
+  "leaf": "scripts/specdec2_perf_bridge.py --profile-child",
+  "prompt": "code_merge_intervals",
+  "scope": "canonical full suite row 1",
+  "c": 1,
+  "budget": 3,
+  "max_tokens": 24,
+  "runs": 1,
+  "warmup": false,
+  "require_cached_build": true,
+  "roctx_markers": true,
+  "traces": [
+   "kernel",
+   "marker",
+   "hip",
+   "memory_copy",
+   "memory_allocation"
+  ],
+  "note": "profile timing overhead is diagnostic; full-suite T1.4 is the performance evidence"
+ },
+ "operation_complete": {
+  "arm_wall_ms": 2807.697635,
+  "target_prefill_activation_ms": 1680.79798,
+  "target_prefill_pct": 59.86392405819012,
+  "provider_streaming_open_ms": 981.92441,
+  "provider_streaming_open_pct": 34.97258386229328,
+  "nextn_prompt_prime_ms": 26.033576,
+  "cycle_total_ms": 1068.287114,
+  "cycle_pct": 38.04850994932722,
+  "proposal_ms": 147.149376,
+  "target_accept_commit_provider_ms": 919.30513,
+  "terminal_reclaim_ms": 51.55443,
+  "unattributed_boundary_ms": 7.058110999999961
+ },
+ "stages": {
+  "provider_streaming_open": {
+   "windows": 1,
+   "marker_wall_ms": 981.92441,
+   "kernel_sum_ms": 0.052218,
+   "kernel_union_ms": 0.052218,
+   "kernel_rows": 21,
+   "memory_alloc_events": 189,
+   "memory_free_events": 0,
+   "memory_alloc_bytes": 1169949948,
+   "top_kernels": [
+    {
+     "name": "__amd_rocclr_copyBuffer",
+     "calls": 21,
+     "duration_ms": 0.052218
+    }
+   ]
+  },
+  "nextn_prompt_prime": {
+   "windows": 1,
+   "marker_wall_ms": 26.033576,
+   "kernel_sum_ms": 25.480383,
+   "kernel_union_ms": 25.480383,
+   "kernel_rows": 63,
+   "memory_alloc_events": 0,
+   "memory_free_events": 0,
+   "memory_alloc_bytes": 0,
+   "top_kernels": [
+    {
+     "name": "(anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 13,
+     "duration_ms": 13.875644
+    },
+    {
+     "name": "(anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 4,
+     "duration_ms": 7.68378
+    },
+    {
+     "name": "(anonymous namespace)::q6_k_t16_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 2,
+     "duration_ms": 1.687047
+    },
+    {
+     "name": "(anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 2,
+     "duration_ms": 1.290181
+    },
+    {
+     "name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_kernel<_Float16>(float const*, float const*, float const*, float const*, float const*, _Float16*, float*, long, long, long, long)",
+     "calls": 3,
+     "duration_ms": 0.455896
+    },
+    {
+     "name": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+     "calls": 6,
+     "duration_ms": 0.16014
+    },
+    {
+     "name": "void (anonymous namespace)::qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, int const*, long const*, long const*, long, long, long, long, long, long, long, long, long, float)",
+     "calls": 1,
+     "duration_ms": 0.06953
+    },
+    {
+     "name": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+     "calls": 3,
+     "duration_ms": 0.039034
+    },
+    {
+     "name": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+     "calls": 4,
+     "duration_ms": 0.036628
+    },
+    {
+     "name": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_tile32x128_kernel(float const*, float const*, float const*, float*, long, long)",
+     "calls": 3,
+     "duration_ms": 0.034505
+    },
+    {
+     "name": "void (anonymous namespace)::silu_mul_separate_out_kernel<unsigned short>(unsigned short const*, unsigned short const*, unsigned short*, long, long)",
+     "calls": 3,
+     "duration_ms": 0.033904
+    },
+    {
+     "name": "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_compact_peer_normalized_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
+     "calls": 3,
+     "duration_ms": 0.030337
+    }
+   ]
+  },
+  "target_prefill": {
+   "windows": 1,
+   "marker_wall_ms": 1680.79798,
+   "kernel_sum_ms": 551.826751,
+   "kernel_union_ms": 551.826751,
+   "kernel_rows": 2166,
+   "memory_alloc_events": 499,
+   "memory_free_events": 6,
+   "memory_alloc_bytes": 1616702566,
+   "top_kernels": [
+    {
+     "name": "(anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 288,
+     "duration_ms": 345.734362
+    },
+    {
+     "name": "(anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 40,
+     "duration_ms": 79.784438
+    },
+    {
+     "name": "(anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 48,
+     "duration_ms": 30.945125
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 144,
+     "duration_ms": 26.231832
+    },
+    {
+     "name": "(anonymous namespace)::q6_k_t16_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 24,
+     "duration_ms": 20.285597
+    },
+    {
+     "name": "void (anonymous namespace)::gguf_q6_k_pack8_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 72,
+     "duration_ms": 14.535281
+    },
+    {
+     "name": "void (anonymous namespace)::gguf_q8_0_pack8_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 36,
+     "duration_ms": 9.289837
+    },
+    {
+     "name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_kernel<_Float16>(float const*, float const*, float const*, float const*, float const*, _Float16*, float*, long, long, long, long)",
+     "calls": 48,
+     "duration_ms": 7.249287
+    },
+    {
+     "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+     "calls": 1,
+     "duration_ms": 4.625883
+    },
+    {
+     "name": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+     "calls": 96,
+     "duration_ms": 2.562888
+    },
+    {
+     "name": "__amd_rocclr_copyBuffer",
+     "calls": 316,
+     "duration_ms": 1.878928
+    },
+    {
+     "name": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+     "calls": 173,
+     "duration_ms": 1.757976
+    }
+   ]
+  },
+  "proposal": {
+   "windows": 8,
+   "marker_wall_ms": 147.149376,
+   "kernel_sum_ms": 137.80235,
+   "kernel_union_ms": 137.80235,
+   "kernel_rows": 602,
+   "memory_alloc_events": 2,
+   "memory_free_events": 0,
+   "memory_alloc_bytes": 20480,
+   "top_kernels": [
+    {
+     "name": "(anonymous namespace)::q6_k_t16_qmicro_planar_gemv_top1_stage1_kernel(unsigned short const*, unsigned char const*, float*, float*, int*, long, long)",
+     "calls": 22,
+     "duration_ms": 101.971766
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 88,
+     "duration_ms": 16.158614
+    },
+    {
+     "name": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 6>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+     "calls": 44,
+     "duration_ms": 10.06061
+    },
+    {
+     "name": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+     "calls": 22,
+     "duration_ms": 6.998255
+    },
+    {
+     "name": "gguf_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, float const*, unsigned short*, float, long)",
+     "calls": 88,
+     "duration_ms": 0.858969
+    },
+    {
+     "name": "(anonymous namespace)::top1_stage2_gather_kernel(float const*, int const*, int*, float*, float const*, float*, long, long, long, long)",
+     "calls": 22,
+     "duration_ms": 0.44307
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_col4_gemv_kernel<unsigned short, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 22,
+     "duration_ms": 0.340282
+    },
+    {
+     "name": "gguf_add_rmsnorm_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, unsigned short*, unsigned short*, float, long)",
+     "calls": 22,
+     "duration_ms": 0.286417
+    },
+    {
+     "name": "void (anonymous namespace)::qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false>(float const*, unsigned short const*, unsigned short const*, int const*, long const*, float*, long, long, long, long, long, long, long, float)",
+     "calls": 22,
+     "duration_ms": 0.231514
+    },
+    {
+     "name": "__amd_rocclr_copyBuffer",
+     "calls": 118,
+     "duration_ms": 0.195964
+    },
+    {
+     "name": "gguf_split_qgate_head_rmsnorm_partial_rotary_position_qk_bf16_f32_weight_kernel(unsigned short const*, unsigned short const*, float const*, float const*, float const*, float const*, long const*, float*, float*, unsigned short*, float, long, long, long, long, long)",
+     "calls": 22,
+     "duration_ms": 0.070175
+    },
+    {
+     "name": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+     "calls": 22,
+     "duration_ms": 0.056185
+    }
+   ]
+  },
+  "target_accept_commit_provider": {
+   "windows": 8,
+   "marker_wall_ms": 919.30513,
+   "kernel_sum_ms": 811.542446,
+   "kernel_union_ms": 811.542446,
+   "kernel_rows": 12578,
+   "memory_alloc_events": 0,
+   "memory_free_events": 0,
+   "memory_alloc_bytes": 0,
+   "top_kernels": [
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 448,
+     "duration_ms": 222.194058
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 1720,
+     "duration_ms": 139.178145
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 560,
+     "duration_ms": 84.416897
+    },
+    {
+     "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 4, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 224,
+     "duration_ms": 78.087778
+    },
+    {
+     "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 336,
+     "duration_ms": 43.897049
+    },
+    {
+     "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_col8_kernel<unsigned short, unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 168,
+     "duration_ms": 37.435313
+    },
+    {
+     "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+     "calls": 7,
+     "duration_ms": 33.599789
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 64,
+     "duration_ms": 30.955905
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 168,
+     "duration_ms": 24.357478
+    },
+    {
+     "name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, _Float16, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, _Float16 const*, _Float16*, _Float16*, long const*, float*, unsigned short*, float, long, long, long, long, long)",
+     "calls": 384,
+     "duration_ms": 17.360548
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 104,
+     "duration_ms": 14.808754
+    },
+    {
+     "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 2, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 32,
+     "duration_ms": 10.88395
+    }
+   ]
+  },
+  "cycle_total": {
+   "windows": 8,
+   "marker_wall_ms": 1068.287114,
+   "kernel_sum_ms": 949.344796,
+   "kernel_union_ms": 949.344796,
+   "kernel_rows": 13180,
+   "memory_alloc_events": 2,
+   "memory_free_events": 0,
+   "memory_alloc_bytes": 20480,
+   "top_kernels": [
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 448,
+     "duration_ms": 222.194058
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 1808,
+     "duration_ms": 155.336759
+    },
+    {
+     "name": "(anonymous namespace)::q6_k_t16_qmicro_planar_gemv_top1_stage1_kernel(unsigned short const*, unsigned char const*, float*, float*, int*, long, long)",
+     "calls": 22,
+     "duration_ms": 101.971766
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 560,
+     "duration_ms": 84.416897
+    },
+    {
+     "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 4, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 224,
+     "duration_ms": 78.087778
+    },
+    {
+     "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 336,
+     "duration_ms": 43.897049
+    },
+    {
+     "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_col8_kernel<unsigned short, unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 168,
+     "duration_ms": 37.435313
+    },
+    {
+     "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+     "calls": 7,
+     "duration_ms": 33.599789
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 64,
+     "duration_ms": 30.955905
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 168,
+     "duration_ms": 24.357478
+    },
+    {
+     "name": "void (anonymous namespace)::qwen35_gdn_recurrent_rmsnorm_gate_lowp_c1_exact_tloop_kernel<unsigned short, _Float16, false, false>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, _Float16 const*, _Float16*, _Float16*, long const*, float*, unsigned short*, float, long, long, long, long, long)",
+     "calls": 384,
+     "duration_ms": 17.360548
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 104,
+     "duration_ms": 14.808754
+    }
+   ]
+  },
+  "terminal_reclaim": {
+   "windows": 1,
+   "marker_wall_ms": 51.55443,
+   "kernel_sum_ms": 0.204062,
+   "kernel_union_ms": 0.204062,
+   "kernel_rows": 100,
+   "memory_alloc_events": 0,
+   "memory_free_events": 195,
+   "memory_alloc_bytes": 0,
+   "top_kernels": [
+    {
+     "name": "__amd_rocclr_fillBufferUnAligned",
+     "calls": 96,
+     "duration_ms": 0.196248
+    },
+    {
+     "name": "__amd_rocclr_copyBuffer",
+     "calls": 3,
+     "duration_ms": 0.006131
+    },
+    {
+     "name": "(anonymous namespace)::set_decode_position_i64_kernel(long*, long*, long)",
+     "calls": 1,
+     "duration_ms": 0.001683
+    }
+   ]
+  },
+  "arm_complete": {
+   "windows": 1,
+   "marker_wall_ms": 2807.697635,
+   "kernel_sum_ms": 1501.378013,
+   "kernel_union_ms": 1501.378013,
+   "kernel_rows": 15447,
+   "memory_alloc_events": 501,
+   "memory_free_events": 201,
+   "memory_alloc_bytes": 1616723046,
+   "top_kernels": [
+    {
+     "name": "(anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 288,
+     "duration_ms": 345.734362
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 448,
+     "duration_ms": 222.194058
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_single_local32_gemv_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 1952,
+     "duration_ms": 181.568591
+    },
+    {
+     "name": "(anonymous namespace)::q6_k_t16_qmicro_planar_gemv_top1_stage1_kernel(unsigned short const*, unsigned char const*, float*, float*, int*, long, long)",
+     "calls": 22,
+     "duration_ms": 101.971766
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 560,
+     "duration_ms": 84.416897
+    },
+    {
+     "name": "(anonymous namespace)::q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 40,
+     "duration_ms": 79.784438
+    },
+    {
+     "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 4, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 224,
+     "duration_ms": 78.087778
+    },
+    {
+     "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 336,
+     "duration_ms": 43.897049
+    },
+    {
+     "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_col8_kernel<unsigned short, unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 168,
+     "duration_ms": 37.435313
+    },
+    {
+     "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+     "calls": 7,
+     "duration_ms": 33.599789
+    },
+    {
+     "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+     "calls": 64,
+     "duration_ms": 30.955905
+    },
+    {
+     "name": "(anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+     "calls": 48,
+     "duration_ms": 30.945125
+    }
+   ]
+  }
+ },
+ "cycle_allocation_gate": {
+  "passed_steady_state": true,
+  "cycle1": {
+   "active_delta": 2,
+   "allocated_bytes": 20480,
+   "current_bytes_delta": 20480,
+   "freed_bytes": 0
+  },
+  "cycles2_8": [
+   {
+    "active_delta": 0,
+    "allocated_bytes": 0,
+    "current_bytes_delta": 0,
+    "freed_bytes": 0
+   },
+   {
+    "active_delta": 0,
+    "allocated_bytes": 0,
+    "current_bytes_delta": 0,
+    "freed_bytes": 0
+   },
+   {
+    "active_delta": 0,
+    "allocated_bytes": 0,
+    "current_bytes_delta": 0,
+    "freed_bytes": 0
+   },
+   {
+    "active_delta": 0,
+    "allocated_bytes": 0,
+    "current_bytes_delta": 0,
+    "freed_bytes": 0
+   },
+   {
+    "active_delta": 0,
+    "allocated_bytes": 0,
+    "current_bytes_delta": 0,
+    "freed_bytes": 0
+   },
+   {
+    "active_delta": 0,
+    "allocated_bytes": 0,
+    "current_bytes_delta": 0,
+    "freed_bytes": 0
+   },
+   {
+    "active_delta": 0,
+    "allocated_bytes": 0,
+    "current_bytes_delta": 0,
+    "freed_bytes": 0
+   }
+  ],
+  "interpretation": "first cycle reserves two persistent 10,240-byte proposal/repair rows; cycles 2-8 have zero malloc/free"
+ },
+ "route": {
+  "realized": "specdec2",
+  "execution_routes": [
+   "eager",
+   "eager",
+   "eager",
+   "eager",
+   "eager",
+   "eager",
+   "eager",
+   "eager"
+  ],
+  "cycles": 8,
+  "candidate_counts": [
+   3,
+   3,
+   3,
+   3,
+   3,
+   3,
+   3,
+   1
+  ],
+  "accepted_counts": [
+   3,
+   3,
+   3,
+   1,
+   0,
+   1,
+   3,
+   1
+  ],
+  "candidate_d2h_after_target": 0,
+  "recoverable_failures": 0,
+  "prompt_streaming": true,
+  "prompt_carried_bytes": 10240
+ },
+ "owner_ranking": {
+  "startup": "provider_streaming_open 981.9 ms, 189 allocation events, 0.052 ms GPU: request admission/provider construction is the largest recoverable wall",
+  "proposal": "Q6 LM-head top1 stage1 101.97 ms/22 calls = 74.0% of proposal kernel time",
+  "target": "rows4 Q4 dual-silu 222.19 ms, Q4 local32 139.18 ms, Q4 rowtile 84.42 ms, Q6 planar rowtile 78.09 ms; target stage 919.31 ms wall / 811.54 ms kernel",
+  "wider_rows": "No R6/R8/R12/R16 dispatch; only rows4 and rows2 tails. Public c2+ is K0."
+ },
+ "correctness": {
+  "profile_child_status": "complete",
+  "route_complete": true,
+  "generated_tokens": 24,
+  "generated_token_ids": [
+   248068,
+   198,
+   760,
+   1156,
+   6587,
+   264,
+   12654,
+   709,
+   421,
+   78161,
+   48142,
+   7629,
+   7308,
+   26126,
+   11,
+   5346,
+   264,
+   16338,
+   26864,
+   10970,
+   1228,
+   2424,
+   13,
+   2302
+  ],
+  "production_gate": "benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t04-production-suite.json",
+  "bit_exactness": "diagnostic only"
+ },
+ "raw_sources": [
+  {
+   "path": "/tmp/gfx1151-t02-profile-warm.json",
+   "sha256": "b9dffbe09e47122ebe6aaa24ecbe6d051fb9bd29c06b64d20024e844568c2185",
+   "size_bytes": 41801,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t02-profiled.json",
+   "sha256": "ffc7c09032f119e0b03d653f6b7d750cbbf9a58054da00d5a61279c4919c20ec",
+   "size_bytes": 41813,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t02-profile-summary.json",
+   "sha256": "9239a19c89d940f224f7020ce6380b58dfb32d399ddf4dcc65cb86c4bced29be",
+   "size_bytes": 44861,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t02-rocprof/t02_agent_info.csv",
+   "sha256": "451e25118e13a812152459e811846372844a889afafc0976d1a1cabd11136078",
+   "size_bytes": 1336,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t02-rocprof/t02_marker_api_trace.csv",
+   "sha256": "d707c8e495e23c0010c0215060e3b63de8b228302c1b520f8ad99e09b09906a0",
+   "size_bytes": 12406,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t02-rocprof/t02_memory_allocation_trace.csv",
+   "sha256": "3ffc74cb41f3750768cb583cfbaf433122a93dac6388391a1365ae1bf0214b2c",
+   "size_bytes": 516623,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t02-rocprof/t02_memory_copy_trace.csv",
+   "sha256": "20b16fe8d35a94fec3f439e8f41e67e19bd4794e3f0e06143f80603739c6a6f8",
+   "size_bytes": 108412,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t02-rocprof/t02_hip_api_trace.csv",
+   "sha256": "b046658bbfa03a169cf5770df4d0b0169366cccd02c1989fa75c61ade2de2a50",
+   "size_bytes": 12327049,
+   "retained_in_git": false
+  },
+  {
+   "path": "/tmp/gfx1151-t02-rocprof/t02_kernel_trace.csv",
+   "sha256": "650c68a079a95b69686462d80b6b71b39cde6c9334d8cd2253fc2d0467098d0c",
+   "size_bytes": 8720625,
+   "retained_in_git": false
+  }
+ ],
+ "command": "rocprofv3 --kernel-trace --marker-trace --hip-trace --memory-copy-trace --memory-allocation-trace --output-format csv --output-directory /tmp/gfx1151-t02-rocprof --output-file t02 -- .venv/bin/python scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --target-arch gfx1151 --quant-label Q4_K_M --execution-profile production --gpu-max-hw-queues 2 --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --scope full --limit 1 --concurrency 1 --budgets 3 --max-tokens 24 --runs 1 --max-sequence-length 1024 --no-warmup --compiler-version-file /tmp/gfx1151-old-vs-c2-c1-c8/hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output /tmp/gfx1151-t02-profiled.json --fail-on-fail",
+ "limitations": [
+  "Single canonical prompt profiling leaf; full-suite performance/correctness comes from T0.4/T1.4.",
+  "rocprof overhead reverses complete-wall comparison; no speed ratio is claimed from profile wall."
+ ]
+}
