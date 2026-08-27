@@ -251,9 +251,12 @@ production policy remains MTP at no automatic cell (K0) until those gates pass.
   Close provider repair; C2/C4 remain K0 unless T2.2 finds a new target-cost
   premise. Evidence:
   [`T2.1 closeout`](../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t21-acceptance-closeout.json).
-- [ ] **T2.2 Target-owner continuation.** Only with a new premise, extend the
-  retained small-M Q4 WMMA direction to the remaining R6/R8/R12/R16 families;
-  prior campaign gates apply (no retry of rejected composites).
+- [x] **T2.2 Target-owner continuation closeout.** T0.2 public c1/B3 executes
+  only rows4 plus rows2 tails; R6/R8/R12/R16 dispatch count is zero. Physical
+  C2/C4 remains K0 and best retained K3 is only 0.6975x/0.5843x AR. No current
+  dispatch satisfies the >=1.15x leaf / >=0.5-ms-token admission premise; do
+  not implement wider kernels. Evidence:
+  [`T2.2 closeout`](../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t22-target-owner-closeout.json).
 - [x] **T2.3 Measured K=0 crossover policy.** Automatic remains K0 with stable
   typed reasons; no cell promotes. Capacity-matched c1/B3 is +46.84%, but the
   HTTP plan sees `len(prompts)`, not concurrent independent children, while the
