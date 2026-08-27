@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "kind": "qwen36_dual_model_mtp2_campaign_final",
+  "status": "passed",
+  "decision": "promote exact automatic keys for both models; keep every unqualified axis K0",
+  "performance_claim": true,
+  "host": {
+    "hostname": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "device": 0,
+    "gpu_max_hw_queues": 1
+  },
+  "models": {
+    "qwen36_35b_a3b_moe": {
+      "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "size_bytes": 22663387424,
+      "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+      "quant": "UD-Q4_K_M",
+      "kv": "bf16",
+      "execution_profile": "production",
+      "manifest_sha256": "2b64229e062c85d08244149191f515c226c6897ecd753d86849dad9fe7c92ca9",
+      "automatic_scope": "resident C1 / physical C1 / K2 / max-seq1024 / context4-95 / D24 / greedy_fast",
+      "quality": {
+        "rows": 275,
+        "mean_kl": 0.00045391374589643063,
+        "p95_kl": 0.0019024698162674564,
+        "p99_kl": 0.009632850000021398,
+        "max_kl": 0.016424897750774253,
+        "top1_agreement": 0.9963636363636363
+      },
+      "performance": {
+        "true_ar_tok_s": 67.8578124073276,
+        "mtp_tok_s": 77.35769988018944,
+        "speedup": 1.1399969603475752,
+        "train_speedup": 1.1531195105262142,
+        "heldout_speedup": 1.1210591445107183,
+        "minimum_category_speedup": 1.0802357716041484
+      },
+      "artifacts": [
+        "benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-quality.json",
+        "benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-performance.json",
+        "benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-production-serving.json",
+        "benchmarks/results/2026-08-27-w7900-35b-moe-mtp2-automatic.json"
+      ]
+    },
+    "qwen36_27b_dense": {
+      "path": "/models/gguf/Qwen3.6-27B-Q4_K_M.gguf",
+      "size_bytes": 17106773120,
+      "sha256": "a7cbd3ecc0e3f9b333edee61ae66bc87ed713c5d49587a8355814722ed329e0f",
+      "quant": "Q4_K_M",
+      "kv": "bf16",
+      "execution_profile": "production",
+      "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+      "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d",
+      "automatic_scope": "resident C1 / physical C1 / K3 / max-seq1024 / context4-95 / D24 / greedy_fast",
+      "quality": {
+        "cross_arm_exact_cells": 30,
+        "total_cells": 30,
+        "graph_cycles": 222,
+        "accepted_drafts": 459,
+        "candidate_drafts": 645,
+        "failures": 0
+      },
+      "performance": {
+        "true_ar_tok_s": 22.302074225770685,
+        "mtp_tok_s": 32.075529378024775,
+        "speedup": 1.438230769627723,
+        "train_speedup": 1.492909356681911,
+        "heldout_speedup": 1.3637621664501678,
+        "minimum_category_speedup": 1.3229752715803123
+      },
+      "artifacts": [
+        "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-quality.json",
+        "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-performance.json",
+        "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-serving.json",
+        "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-automatic.json"
+      ]
+    }
+  },
+  "cross_model": {
+    "artifact": "benchmarks/results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json",
+    "discovery_capabilities": true,
+    "real_automatic_requests": true,
+    "wrong_budget_k0": true,
+    "zero_legacy_prelaunch_fallback": true,
+    "zero_final_owners": true,
+    "generic_dispatch_branch_audit": true,
+    "co_resident_rate_claimed": false
+  },
+  "completion_checklist": {
+    "engine_service_owned_cycles": true,
+    "true_ar_same_command_denominators": true,
+    "full_category_and_heldout_suites": true,
+    "strict_fallbacks": true,
+    "profile_quality_and_tasks": true,
+    "repeat_and_isolation": true,
+    "blocking_and_sse": true,
+    "negative_k0_axes": true,
+    "cancellation_and_failure_recovery": true,
+    "bounded_overload_and_soak": true,
+    "lifecycle_and_memory_bounded": true,
+    "automatic_exact_keys": true,
+    "cross_model_fail_closed_audit": true,
+    "benchmark_rollup_updated": true
+  },
+  "research_followup": "docs/BRIDGESPEC-AUDIT.md"
+}
