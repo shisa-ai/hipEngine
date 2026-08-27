@@ -1,6 +1,6 @@
 # CONCURRENCY2 MTP Dual-Model Promotion — W7900
 
-- Status: **active; both automatic keys promoted, cross-model closure open**
+- Status: **complete; both exact automatic keys promoted and cross-model audit passed**
 - Started: **2026-08-27**
 - Binding host: **`epyc` / AMD Radeon Pro W7900 / `gfx1100` / GPU 0**
 - Normative contracts: [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
@@ -220,11 +220,17 @@ Run the full Section 3/4 packet independently for 35B and 27B. Promote only a
 passing exact key. One model cannot borrow another model’s quality, speed,
 manifest, context, or policy evidence.
 
-### X1 — cross-model fail-closed serving
+### X1 — cross-model fail-closed serving — complete
 
-Verify discovery/capabilities, explicit/automatic blocking and SSE, unsupported
-sampling/context/profile/hash K0 before mutation, cancellation/failure recovery,
-and zero final owners for both adapters in one shared architecture.
+Independent real servers for both exact models pass discovery/capabilities,
+unflagged automatic D24, opposite-budget K0, and zero final owners through the
+same generic model-plugin/profile/serving/SPECDEC2 machinery. Their per-model
+packets additionally cover explicit/automatic blocking+SSE, sampling/context/
+horizon/capacity K0, cancellation/fault recovery, overload, soak, and lifecycle.
+Static audits find no backend/quant/profile dispatch branches. The models were
+run sequentially to avoid a co-residency spill confound; no co-resident rate is
+claimed. Evidence:
+[`cross-model audit`](../benchmarks/results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
 
 ## 6. Prompt-to-artifact completion checklist
 
