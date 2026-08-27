@@ -597,13 +597,17 @@ def _capture_graph_eager(
 
 def _live_cycle_from_result(result: Any, kwargs: Mapping[str, Any], index: int) -> LiveCycle:
     target = result.target_result
+    target_top1 = tuple(
+        int(token)
+        for token in getattr(target, "target_top1", target.token_ids)
+    )
     cycle = LiveCycle(
         cycle=index,
         root_token=int(kwargs["root_token"]),
         root_position=int(kwargs["root_position"]),
         remaining_decode=int(kwargs["remaining_decode"]),
         draft_tokens=tuple(int(token) for token in result.draft_token_ids),
-        target_tokens=tuple(int(token) for token in target.target_top1),
+        target_tokens=target_top1,
         output_tokens=tuple(int(token) for token in result.output_token_ids),
         accepted=int(result.accepted_draft_tokens),
         graph=bool(getattr(target, "device_accept_commit", False)),
