@@ -617,7 +617,10 @@ production packet beats wave32. Natural 16K now passes in `946.9997 s`
 (`17.301 tok/s`): exact retrieval, all-layer needle control, CPU index oracle,
 replay/rollback, and zero teardown. Evidence:
 [`2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-16k.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-16k.json).
-The next binding work is natural 64K requalification. MTP step 0
+Natural 64K also passes in `3832.663 s` (`17.099 tok/s`) with exact
+retrieval/control/CPU-oracle/replay/rollback and zero teardown. Evidence:
+[`2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-64k.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-64k.json).
+The next binding work is practical 262K execution. MTP step 0
 selects target-aligned QSA rows and later draft steps reuse those indices.
 
 Current exact F7 default (2026-08-27): immediate PLE ring ownership, batched
