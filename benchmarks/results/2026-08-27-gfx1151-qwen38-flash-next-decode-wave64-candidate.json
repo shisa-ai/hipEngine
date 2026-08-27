@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "date": "2026-08-27",
+  "status": "rejected_production_numerics_default_off_candidate",
+  "scope": "Qwen4Exp Q5_1 64-thread selected decode diagnostic",
+  "host": {"identity": "zbook", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "candidate": {"flag": "HIPENGINE_QWEN4_EXP_Q5_1_WAVE64=1", "fallback": "selected_gemv_bf16_bf16_out (256 threads)"},
+  "warm_independent": {"steps": 32, "baseline_tok_s": 5.738567280181355, "candidate_tok_s": 6.22045678608647, "speedup": 1.08398},
+  "paired_teacher_forced": {
+    "command": "uv run python /tmp/qwen4exp_decode_wave64_gate.py",
+    "steps": 32,
+    "baseline_seconds": 5.561500395997427,
+    "baseline_tok_s": 5.753842977882403,
+    "candidate_seconds": 5.243478199001402,
+    "candidate_tok_s": 6.1028193091551834,
+    "speedup": 1.06065,
+    "mean_kl": 0.0025645868127103185,
+    "p95_kl": 0.007201674029186766,
+    "p99_kl": 0.01034913098830144,
+    "max_kl": 0.011209533391378554,
+    "top1_agreement_rate": 1.0
+  },
+  "thresholds": {"mean_kl": 0.001, "p95_kl": 0.005, "p99_kl": 0.02, "max_kl": 0.05},
+  "decision": {"promoted": false, "reason": "mean and p95 KL exceed production envelope; direct 256-thread reduction remains default"}
+}

@@ -2222,11 +2222,18 @@ def run_qwen4_exp_moe(
         selected_ptr: int | None = None,
     ) -> None:
         weight = weights[slot]
+        variant = (
+            "selected_gemv_wave64_bf16_bf16_out"
+            if weight.spec.quant_key == "gguf_q5_1"
+            and os.environ.get("HIPENGINE_QWEN4_EXP_Q5_1_WAVE64", "")
+            not in {"", "0", "false", "False"}
+            else "selected_gemv_bf16_bf16_out"
+        )
         function = resolve(
             backend=backend,
             layer="linear",
             quant=weight.spec.quant_key,
-            variant="selected_gemv_bf16_bf16_out",
+            variant=variant,
         )
         function(
             input_ptr,
