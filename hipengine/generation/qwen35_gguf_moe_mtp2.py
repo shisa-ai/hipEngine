@@ -364,6 +364,8 @@ class Qwen35GGUFMoEMTP2Adapter:
         ):
             return None
         item = semantics[0]
+        if int(item.remaining_decode) <= 2:
+            return None
         rid = int(item.request_id)
         state = self._states.get(rid)
         if state is None or rid in self._disabled_requests:
@@ -450,7 +452,7 @@ class Qwen35GGUFMoEMTP2Adapter:
             item = semantics.get(rid)
             if (
                 item is not None
-                and int(item.remaining_decode) <= 1
+                and int(item.remaining_decode) <= 2
                 and int(row.mtp2_cycles) > 0
             ):
                 # The retained native complete-cycle graph owns selected target
@@ -522,7 +524,7 @@ class Qwen35GGUFMoEMTP2Adapter:
             draft_cache_len=cache_before,
             cycle_id=int(plan.cycle_id),
             transaction_id=transaction_id,
-            target_bulk_attention_mode=("native" if budget == 2 else "bulk"),
+            target_bulk_attention_mode="native",
         )
         state.cache_len = int(native.draft_cache_len_after)
         output_ids = tuple(int(token) for token in native.output_token_ids)

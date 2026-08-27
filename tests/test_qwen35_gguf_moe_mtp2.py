@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import numpy as np
-
 from hipengine.core.dtype import DType
 from hipengine.core.memory import DeviceBuffer
 from hipengine.generation.qwen35_gguf_moe_mtp2 import (
@@ -102,6 +100,12 @@ def test_moe_adapter_capability_is_c1_k2_and_short_context_only() -> None:
     assert adapter.capability(
         (SpeculativeRequestSemantics(7, "greedy", "verify_chain", 96, 8),)
     ) is None
+    assert adapter.capability(
+        (SpeculativeRequestSemantics(7, "greedy", "verify_chain", 6, 2),)
+    ) is None
+    assert adapter.capability(
+        (SpeculativeRequestSemantics(7, "greedy", "verify_chain", 6, 3),)
+    ) is not None
 
 
 def test_builtin_registry_exposes_distinct_dense_and_moe_factories() -> None:
