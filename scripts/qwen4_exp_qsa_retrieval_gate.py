@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from time import perf_counter
 
 import numpy as np
 
+from hipengine.core.dtype import DType
 from hipengine.core.memory import (
     copy_device_to_host,
     host_array_ptr,
@@ -209,11 +211,28 @@ def main() -> int:
         native = selected_by_layer[int(layer)][: cpu_selection.size].copy()
         native.sort()
         score_count = prepared.block_starts.size
-        copy_device_to_host(
+        batched_selection = os.environ.get(
+            "HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION", "1"
+        ) not in {"", "0", "false", "False"}
+        score_source = state.scores
+        score_offset = 0
+        if batched_selection:
+            final_rows = (len(token_ids) - 1) % runner.prefill_chunk_size + 1
+            final_start = len(token_ids) - final_rows
+            dense_rows = max(
+                0,
+                min(final_rows, state.dense_equivalent_limit - final_start),
+            )
+            sparse_rows = final_rows - dense_rows
+            if sparse_rows <= 0:
+                raise RuntimeError("natural QSA gate did not reach a sparse score row")
+            score_source = runner.qsa_prefill_metadata.scores
+            score_offset = (sparse_rows - 1) * score_count * DType.FP32.itemsize
+        runner.runtime.memcpy(
             host_array_ptr(state.scores_host),
-            state.scores,
+            score_source.ptr + score_offset,
             score_count * np.dtype(np.float32).itemsize,
-            runtime=runner.runtime,
+            MemcpyKind.DEVICE_TO_HOST,
         )
         scores = state.scores_host[:score_count]
         ranking = np.sort(scores)[::-1]

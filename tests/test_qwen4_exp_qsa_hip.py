@@ -34,6 +34,7 @@ def test_qwen4_exp_qsa_build_and_registry_contract() -> None:
         qwen4_exp_qsa_split_norm_rope_rows_f32,
         qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32,
         qwen4_exp_qsa_topk_expand_f32_i64,
+        qwen4_exp_qsa_topk_expand_rows_f32_i64,
         register_qwen4_exp_qsa_kernels,
     )
     from hipengine.kernels.registry import resolve
@@ -67,6 +68,15 @@ def test_qwen4_exp_qsa_build_and_registry_contract() -> None:
             variant="strict_device_expand",
         )
         is qwen4_exp_qsa_topk_expand_f32_i64
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="qsa_select_blocks",
+            quant="f32_i64",
+            variant="strict_device_expand_rows",
+        )
+        is qwen4_exp_qsa_topk_expand_rows_f32_i64
     )
     assert (
         resolve(
@@ -178,6 +188,70 @@ def test_qwen4_exp_qsa_gpu_topk_matches_host_lexsort(blocks: int) -> None:
     assert int(actual_count[0]) == expected.size
     np.testing.assert_array_equal(actual[: expected.size], expected)
     np.testing.assert_array_equal(actual[expected.size :], -1)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_qsa_gpu_topk_rows_match_variable_host_prefixes() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
+        qwen4_exp_qsa_topk_expand_rows_f32_i64,
+    )
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(4351)
+    ratio, budget, stride = 4, 512, 1_024
+    positions = np.asarray([2_051, 2_998, 4_095], dtype=np.int64)
+    scores = rng.uniform(0.0, 10.0, size=(positions.size, stride)).astype(np.float32)
+    output_shape = (positions.size, budget * ratio + ratio - 1)
+    expected: list[np.ndarray] = []
+    for row, position in enumerate(positions):
+        blocks = (int(position) + 1) // ratio
+        selected_blocks = np.sort(
+            np.lexsort(
+                (np.arange(blocks, dtype=np.int64), -scores[row, :blocks])
+            )[:budget]
+        )
+        expected.append(
+            np.concatenate(
+                (
+                    (
+                        selected_blocks[:, None] * ratio
+                        + np.arange(ratio, dtype=np.int64)
+                    ).reshape(-1),
+                    np.arange(blocks * ratio, int(position) + 1, dtype=np.int64),
+                )
+            )
+        )
+
+    allocations = []
+    try:
+        d_scores = _upload(scores, runtime, allocations)
+        d_positions = _upload(positions, runtime, allocations)
+        d_selected = _alloc(output_shape, np.int64, runtime, allocations)
+        d_counts = _alloc(positions.shape, np.int32, runtime, allocations)
+        qwen4_exp_qsa_topk_expand_rows_f32_i64(
+            d_scores.ptr,
+            d_positions.ptr,
+            d_selected.ptr,
+            d_counts.ptr,
+            positions.size,
+            stride,
+            output_shape[1],
+            ratio,
+            budget,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        actual = _download(d_selected, output_shape, np.int64, runtime)
+        counts = _download(d_counts, positions.shape, np.int32, runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    for row, values in enumerate(expected):
+        assert int(counts[row]) == values.size
+        np.testing.assert_array_equal(actual[row, : values.size], values)
+        np.testing.assert_array_equal(actual[row, values.size :], -1)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

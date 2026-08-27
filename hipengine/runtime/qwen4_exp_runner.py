@@ -49,6 +49,7 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_split_norm_rope_f32,
     qwen4_exp_qsa_split_norm_rope_rows_f32,
     qwen4_exp_qsa_topk_expand_f32_i64,
+    qwen4_exp_qsa_topk_expand_rows_f32_i64,
 )
 from hipengine.kernels.hip_gfx1100.convert.cast import bf16_to_f32, f32_to_bf16
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
@@ -477,6 +478,7 @@ class Qwen4ExpQSAPrefillMetadata:
     context_counts: DeviceBuffer
     selected_positions: DeviceBuffer
     selected_counts: DeviceBuffer
+    scores: DeviceBuffer
     block_tables_host: np.ndarray
     positions_host: np.ndarray
     context_counts_host: np.ndarray
@@ -485,6 +487,7 @@ class Qwen4ExpQSAPrefillMetadata:
     rows: int
     block_table_len: int
     selection_capacity: int
+    score_blocks: int
     max_positions: int
     runtime: HipRuntime
     closed: bool = False
@@ -496,13 +499,21 @@ class Qwen4ExpQSAPrefillMetadata:
         *,
         rows: int,
         selection_capacity: int,
+        score_blocks: int | None = None,
     ) -> "Qwen4ExpQSAPrefillMetadata":
         if attention_state.closed:
             raise RuntimeError("QSA prefill metadata requires an open attention state")
         count = int(rows)
         selected = int(selection_capacity)
-        if count <= 0 or selected <= 0:
-            raise ValueError("QSA prefill rows and selection capacity must be positive")
+        score_capacity = (
+            attention_state.max_positions
+            if score_blocks is None
+            else int(score_blocks)
+        )
+        if count <= 0 or selected <= 0 or score_capacity <= 0:
+            raise ValueError(
+                "QSA prefill rows, selection capacity, and score blocks must be positive"
+            )
         tables = np.ascontiguousarray(
             np.tile(attention_state.block_host, (count, 1)), dtype=np.int32
         )
@@ -519,6 +530,12 @@ class Qwen4ExpQSAPrefillMetadata:
                 copy_host_to_device(
                     buffer, host_array_ptr(host), runtime=attention_state.runtime
                 )
+            buffers.append(
+                malloc(
+                    count * score_capacity * DType.FP32.itemsize,
+                    runtime=attention_state.runtime,
+                )
+            )
         except Exception:
             for buffer in reversed(buffers):
                 free(buffer, runtime=attention_state.runtime)
@@ -529,6 +546,7 @@ class Qwen4ExpQSAPrefillMetadata:
             count,
             int(attention_state.block_host.size),
             selected,
+            score_capacity,
             attention_state.max_positions,
             attention_state.runtime,
         )
@@ -614,6 +632,7 @@ class Qwen4ExpQSAPrefillMetadata:
                 self.context_counts,
                 self.selected_positions,
                 self.selected_counts,
+                self.scores,
             )
         ):
             free(buffer, runtime=self.runtime)
@@ -2098,24 +2117,60 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             eps=eps,
             stream=stream,
         )
-        for local_row in range(dense_rows, count):
-            position = start + local_row
-            selected_count = index_state.select_positions_device(
+        batched_selection = os.environ.get(
+            "HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION", "1"
+        ) not in {"", "0", "false", "False"}
+        if batched_selection:
+            score_blocks = (start + count) // index_state.compression_ratio
+            if score_blocks > metadata.score_blocks:
+                raise ValueError("QSA score width exceeds prefill metadata capacity")
+            qwen4_exp_qsa_score_f32(
                 scratch.index_query.ptr
-                + local_row * index_heads * index_dim * DType.FP32.itemsize,
-                query_position=position,
-                output_positions_ptr=metadata.selected_positions.ptr
-                + local_row * metadata.selection_capacity * DType.INT64.itemsize,
-                output_count_ptr=metadata.selected_counts.ptr
-                + local_row * DType.INT32.itemsize,
-                key_norm_weight_ptr=weights.index_k_norm_weight_ptr,
-                rotary_dim=index_rotary_dim,
-                theta=theta,
-                eps=eps,
+                + dense_rows * index_heads * index_dim * DType.FP32.itemsize,
+                index_state.pooled_keys.ptr,
+                metadata.scores.ptr,
+                sparse_rows,
+                score_blocks,
+                index_heads,
+                index_dim,
                 stream=stream,
+                runtime=active_runtime,
             )
-            if selected_count > metadata.selection_capacity:
-                raise ValueError("QSA selection exceeds prefill metadata capacity")
+            qwen4_exp_qsa_topk_expand_rows_f32_i64(
+                metadata.scores.ptr,
+                metadata.positions.ptr + dense_rows * DType.INT64.itemsize,
+                metadata.selected_positions.ptr
+                + dense_rows * metadata.selection_capacity * DType.INT64.itemsize,
+                metadata.selected_counts.ptr + dense_rows * DType.INT32.itemsize,
+                sparse_rows,
+                score_blocks,
+                metadata.selection_capacity,
+                index_state.compression_ratio,
+                index_state.block_budget,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        else:
+            for local_row in range(dense_rows, count):
+                position = start + local_row
+                selected_count = index_state.select_positions_device(
+                    scratch.index_query.ptr
+                    + local_row * index_heads * index_dim * DType.FP32.itemsize,
+                    query_position=position,
+                    output_positions_ptr=metadata.selected_positions.ptr
+                    + local_row
+                    * metadata.selection_capacity
+                    * DType.INT64.itemsize,
+                    output_count_ptr=metadata.selected_counts.ptr
+                    + local_row * DType.INT32.itemsize,
+                    key_norm_weight_ptr=weights.index_k_norm_weight_ptr,
+                    rotary_dim=index_rotary_dim,
+                    theta=theta,
+                    eps=eps,
+                    stream=stream,
+                )
+                if selected_count > metadata.selection_capacity:
+                    raise ValueError("QSA selection exceeds prefill metadata capacity")
         last_row = count - 1
         active_runtime.memcpy_async(
             index_state.selected_positions.ptr,
@@ -3582,6 +3637,10 @@ class Qwen4ExpGGUFResidentModelRunner:
             self.attention_states[0],
             rows=prefill_rows,
             selection_capacity=cfg.qsa_dense_equivalent_max_tokens,
+            score_blocks=(
+                self.max_sequence_length + cfg.qsa_compression_ratio - 1
+            )
+            // cfg.qsa_compression_ratio,
         )
         for nbytes in (
             np.dtype(np.int64).itemsize,

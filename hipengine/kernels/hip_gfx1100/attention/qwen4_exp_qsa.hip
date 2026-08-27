@@ -641,11 +641,15 @@ __global__ void qsa_score_f32_kernel(
 }
 
 __global__ __launch_bounds__(1024) void qsa_topk_expand_f32_i64_kernel(
-    const float* __restrict__ scores,
-    int64_t* __restrict__ selected_positions,
-    int32_t* __restrict__ selected_count,
-    int64_t blocks,
-    int64_t query_position,
+    const float* __restrict__ score_rows,
+    const int64_t* __restrict__ query_positions,
+    int64_t* __restrict__ selected_rows,
+    int32_t* __restrict__ selected_counts,
+    int64_t rows,
+    int64_t score_stride,
+    int64_t output_stride,
+    int64_t scalar_blocks,
+    int64_t scalar_query_position,
     int64_t ratio,
     int64_t budget) {
   __shared__ int histogram[256];
@@ -662,6 +666,15 @@ __global__ __launch_bounds__(1024) void qsa_topk_expand_f32_i64_kernel(
   __shared__ int tile_count;
   __shared__ int equal_tile_count;
 
+  const int64_t row = blockIdx.x;
+  if (row >= rows) return;
+  const int64_t query_position = query_positions
+      ? query_positions[row] : scalar_query_position;
+  const int64_t blocks = query_positions
+      ? (query_position + 1) / ratio : scalar_blocks;
+  const float* scores = score_rows + row * score_stride;
+  int64_t* selected_positions = selected_rows + row * output_stride;
+  int32_t* selected_count = selected_counts + row;
   const int tid = threadIdx.x;
   const int lane = tid % warpSize;
   const int wave = tid / warpSize;
@@ -1193,9 +1206,38 @@ extern "C" int hipengine_qwen4_exp_qsa_topk_expand_f32_i64(
   hipLaunchKernelGGL(
       qsa_topk_expand_f32_i64_kernel,
       dim3(1), dim3(threads), 0, stream,
-      static_cast<const float*>(scores),
+      static_cast<const float*>(scores), nullptr,
       static_cast<int64_t*>(selected_positions),
-      static_cast<int32_t*>(selected_count), blocks, query_position, ratio, budget);
+      static_cast<int32_t*>(selected_count), 1, blocks,
+      budget * ratio + ratio - 1, blocks, query_position, ratio, budget);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_qsa_topk_expand_rows_f32_i64(
+    const void* scores,
+    const void* query_positions,
+    void* selected_positions,
+    void* selected_counts,
+    int64_t rows,
+    int64_t score_stride,
+    int64_t output_stride,
+    int64_t ratio,
+    int64_t budget,
+    hipStream_t stream) {
+  if (!scores || !query_positions || !selected_positions || !selected_counts ||
+      rows <= 0 || score_stride < budget || ratio <= 0 || budget <= 0 ||
+      output_stride < budget * ratio + ratio - 1) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 1024;
+  hipLaunchKernelGGL(
+      qsa_topk_expand_f32_i64_kernel,
+      dim3(static_cast<uint32_t>(rows)), dim3(threads), 0, stream,
+      static_cast<const float*>(scores),
+      static_cast<const int64_t*>(query_positions),
+      static_cast<int64_t*>(selected_positions),
+      static_cast<int32_t*>(selected_counts), rows, score_stride, output_stride,
+      0, 0, ratio, budget);
   return static_cast<int>(hipGetLastError());
 }
 
