@@ -1,7 +1,7 @@
 # CONCURRENCY2 gfx1151 MTP Dynamic Admission Campaign
 
-- Status: **D1 typed static eligibility retained on merged source `998ba54f7`; D2 normal-owner production C2/K1 is next**
-- Scope: **D1 host/fake plus integrated gfx1151 blocking/SSE, C2 transitional-K0, and mixed-intent gates pass; automatic C2+ and arithmetic are unchanged**
+- Status: **D2 normal-owner production C2/K1-K3 retained explicit/default-off; D3 dynamic lifecycle is next**
+- Scope: **C2/K1 passes the full functional/failure packet but is 0.5277x true AR; automatic C2 remains pure K0 and D5/D6 still own correctness/economics promotion**
 - Hardware lane when execution is approved: **Radeon 8060S / `hip_gfx1151`**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile**
 - First functional width: **two independent resident requests (`C_due=2`)**
@@ -24,6 +24,9 @@ and its two worklogs instead of duplicating that code or GPU packet. D1 then
 replaced the temporary singleton-only bool/set with typed static eligibility,
 pure/transitional K0 telemetry, and mixed disjoint execution. Evidence:
 [`D1 closure`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d1-static-eligibility.json).
+D2 now proves real physical C2/K1-K3 through that seam; K1 is mechanically
+retained but economically rejected for automatic use. Evidence:
+[`D2 functional`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d2-c2-k1-functional.json).
 
 ## 1. Executive decision
 
@@ -235,23 +238,31 @@ to zero ownership. Automatic policy and arithmetic remain unchanged. Evidence:
 
 ### D2 — normal-owner functional C2 (speed is not a gate)
 
-- [ ] Use two independent `EngineService`/OpenAI children, not one multi-prompt
+- [x] Use two independent `EngineService`/OpenAI children, not one multi-prompt
   request and not `legacy_prelaunch_fallback`.
-- [ ] Start explicit-only with production Q4_K_M C2/K1. Then cover K2/K3 after
+- [x] Start explicit-only with production Q4_K_M C2/K1. Then cover K2/K3 after
   K1 ownership passes.
-- [ ] Prove nonzero Generation-2 speculative cycles, one physical proposal group,
+- [x] Prove nonzero Generation-2 speculative cycles, one physical proposal group,
   target frontier R4/R6/R8, target execution, accept, selected commit, and
   committed publication.
-- [ ] Assert no hidden whole-request fallback and no per-request full target
+- [x] Assert no hidden whole-request fallback and no per-request full target
   backbone loop. Physical decomposition and weight sweeps are explicit.
-- [ ] Compare output, target state, Conv/GDN, KV/`KVLiveSpans`, provider cursor,
+- [x] Compare output, target state, Conv/GDN, KV/`KVLiveSpans`, provider cursor,
   following AR, and final ownership against independent controls.
-- [ ] Inject failure before proposal, after proposal, before target commit, and
+- [x] Inject failure before proposal, after proposal, before target commit, and
   after selected commit; preserve both requests or fail only the named request
   according to the transaction contract.
 
-Exit: real C2 MTP functions through the normal resident owner. It may be slower
-than AR and remains explicit/default-off.
+Exit passed. Full-suite C2/K1 executes **230** physical proposal-C2/target-R4/
+accept/selected-commit cycles with **220/230** drafts accepted, 10/10
+deterministic and diagnostically AR-equal cells, and zero final ownership.
+Proposal and packed-target precommit failures use exact AR fallback; postcommit
+readback failure rebuilds canonical target state before exact AR, and all
+following pairs re-enter C2 MTP. K2 executes only `(2,2)`/R6 after a RED caught
+and fixed static-K widening; K3 executes `(3,3)`/R8 plus a bounded tail. K1 is
+**7.757 vs 14.699 tok/s (0.5277x, -47.23%)**, so the functional route remains
+explicit/default-off and automatic C2 stays pure K0. Evidence:
+[`D2`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d2-c2-k1-functional.json).
 
 ### D3 — dynamic switching and lifecycle
 

@@ -1,0 +1,152 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_dynamic_admission_d2_c2_k1_functional",
+  "created_at": "2026-08-27T15:50:00Z",
+  "status": "retained_functional_explicit_default_off",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "Retain normal-owner production C2 MTP as an explicit functional milestone. K1 passes the complete functional/ownership/failure packet but reaches only 0.5277x true AR, so automatic C2 remains pure K0 and performance promotion is rejected. K2/K3 functional probes pass; no K2/K3 speed claim is made.",
+  "source": {
+    "full_suite_commit": "8dfc1e26bb2d7992fadb759c81fa0771ec585f01",
+    "failure_gate_commit": "f37955b455588441c755370f1cddc130de701cd9",
+    "route_truth_commit": "e91ce24d950958b34e4fa98988ff263abb9a439e",
+    "static_k_registration_commit": "3114d8697c56cf8f80c4553f72423128be32c62b",
+    "static_k_capability_commit": "7c280e8bbe082a1c6822f290589014a136585916",
+    "d1_artifact": "benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d1-static-eligibility.json"
+  },
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "hip_visible_devices": "0",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "execution_profile": "production",
+    "execution_profile_manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+    "strict_fallback_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+  },
+  "protocol": {
+    "surface": "blocking OpenAI completions through two independent children under one resident capacity-4 owner",
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_cells": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "concurrency": 2,
+    "resident_capacity": 4,
+    "candidate_budget": 1,
+    "max_tokens": 24,
+    "max_sequence_length": 1024,
+    "batch_window_ms": 50.0,
+    "sampling": "raw greedy",
+    "warmup": "one excluded AR and one excluded MTP arm",
+    "order": "counterbalanced by prompt index",
+    "correctness_contract": "MTP self-determinism is binding for D2; generated-ID equality against AR is diagnostic until D5 production correctness",
+    "timing": "barrier-to-last-completion complete wall",
+    "automatic_policy": "unchanged; explicit diagnostic only"
+  },
+  "k1_full_suite": {
+    "passed_cells": 10,
+    "engaged_cells": 10,
+    "deterministic_cells": 10,
+    "diagnostic_ar_equal_cells": 10,
+    "generated_tokens_per_arm": 480,
+    "ar_wall_seconds": 32.65579712251201,
+    "mtp_wall_seconds": 61.87830789736472,
+    "ar_tok_s": 14.698768436098016,
+    "mtp_tok_s": 7.757161052240769,
+    "mtp_vs_ar_ratio": 0.5277422449346383,
+    "mtp_vs_ar_percent": -47.22577550653617,
+    "min_cell_ratio": 0.4667912214877783,
+    "max_cell_ratio": 0.564982791969311,
+    "draft_cycles": 230,
+    "draft_tokens": 230,
+    "accepted_draft_tokens": 220,
+    "acceptance_rate": 0.9565217391304348,
+    "proposal_batch_calls": 230,
+    "target_batch_calls": 230,
+    "device_accept_calls": 230,
+    "selected_commit_batch_calls": 230,
+    "proposal_physical_rows": {"2": 230},
+    "target_physical_rows": {"4": 230},
+    "recoverable_failures": 0,
+    "final_current_allocated_bytes": 0,
+    "final_active_allocations": 0
+  },
+  "additional_k_functional": {
+    "k2": {
+      "source_commit": "7c280e8bbe082a1c6822f290589014a136585916",
+      "independent_requests": 2,
+      "cycles": 8,
+      "cycle_candidate_counts": [[2, 2]],
+      "draft_tokens": 32,
+      "accepted_draft_tokens": 30,
+      "acceptance_rate": 0.9375,
+      "ids_match_controls": true,
+      "effective_route": "speculative_mtp",
+      "zero_final_allocations": true
+    },
+    "k3": {
+      "source_commit": "e91ce24d950958b34e4fa98988ff263abb9a439e",
+      "independent_requests": 2,
+      "cycles": 8,
+      "cycle_candidate_counts": [[3, 3], [1, 1]],
+      "draft_tokens": 44,
+      "accepted_draft_tokens": 30,
+      "acceptance_rate": 0.6818181818181818,
+      "ids_match_controls": true,
+      "effective_route": "speculative_mtp",
+      "zero_final_allocations": true
+    }
+  },
+  "failure_recovery": {
+    "passed": true,
+    "concurrency": 2,
+    "resident_capacity": 4,
+    "candidate_budget": 1,
+    "phases": {
+      "proposal": "precommit exact AR fallback; following C2 MTP healthy",
+      "target": "precommit exact AR fallback; following C2 MTP healthy",
+      "readback": "postcommit canonical target rebuild plus exact AR fallback; following C2 MTP healthy"
+    },
+    "fault_rows": 6,
+    "following_health_rows": 6,
+    "final_active": 0,
+    "final_pending": 0,
+    "final_active_children": 0
+  },
+  "route_truth": {
+    "frontend_selected_route": "default",
+    "frontend_reason": "physical_group_not_qualified",
+    "requested_route": "speculative_mtp",
+    "effective_route": "speculative_mtp",
+    "used": true,
+    "note": "Frontend selected route remains the pre-cycle grouping prediction; committed-cycle telemetry owns the effective route and usage truth."
+  },
+  "static_k_bounds": {
+    "passed": true,
+    "request_registration": "effective K is min(request K, adapter K, static evidence K)",
+    "cycle_capability": "max_candidates_per_request, frontier rows, capability key, and policy fingerprint use the static evidence K bound",
+    "red_observation": "before the fix, a K2 diagnostic could execute K3 cycles when the adapter default was wider"
+  },
+  "commands": {
+    "environment": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/compiler-version-gfx1151.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONDONTWRITEBYTECODE=1",
+    "full_suite": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --execution-profile production --widths 2 --resident-capacity 4 --expected-mtp-widths 2 --max-tokens 24 --candidate-budget 1 --batch-window-ms 50 --max-sequence-length 1024 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/qwen38-dynamic-admission-d2-c2-k1.json",
+    "failure_gate": ".venv/bin/python scripts/specdec2_s6_failure_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --execution-profile production --concurrency 2 --resident-capacity 4 --candidate-budget 1 --max-sequence-length 1024 --max-tokens 5 --output /tmp/qwen38-dynamic-admission-d2-c2-k1-failures.json --fail-on-fail",
+    "k_probes": "QWEN38_D2_BUDGET=<1|2|3> QWEN38_D2_OUT=/tmp/qwen38-dynamic-admission-d2-c2-k<K>-probe.json .venv/bin/python /tmp/qwen38_d2_c2_probe.py"
+  },
+  "raw_sources": [
+    {"path": "/tmp/qwen38-dynamic-admission-d2-c2-k1.json", "sha256": "b2d7b1cf07d9c52a53ca668a1199cc5ea7a7307c4c35e1964f9945bdffb49e59", "size_bytes": 935928, "retained_in_git": false},
+    {"path": "/tmp/qwen38-dynamic-admission-d2-c2-k1-failures.json", "sha256": "44678b94aad9e370d7dc31c64351645c15f40cda883d92f55390daf42dae07eb", "size_bytes": 115218, "retained_in_git": false},
+    {"path": "/tmp/qwen38-dynamic-admission-d2-c2-k1-probe.json", "sha256": "39df7d0b361be79ee39bd73fefeb5118c5992d2b21700c53dedd7aab2d1c57c2", "size_bytes": 74987, "retained_in_git": false},
+    {"path": "/tmp/qwen38-dynamic-admission-d2-c2-k2-probe.json", "sha256": "a7e7e1bf6f3287c780e25916804806b07beaf191fcd096a57eebbc73e41fba89", "size_bytes": 67044, "retained_in_git": false},
+    {"path": "/tmp/qwen38-dynamic-admission-d2-c2-k3-probe.json", "sha256": "e5f874e533a086a0a443a78fda36f3adabed626973c97444ef2967ddb0e29883", "size_bytes": 67425, "retained_in_git": false},
+    {"path": "/tmp/qwen38_d2_c2_probe.py", "sha256": "8ed2862de5c716e9c3a71e5f5e05846c38c7d8a9ad6f02dd0b715c7eb5234285", "size_bytes": 6552, "retained_in_git": false}
+  ],
+  "next": "D3 dynamic C1-C2 lifecycle. Do not profile or promote C2 economics until D5 production correctness and D6 economics; automatic C2 remains pure K0."
+}
