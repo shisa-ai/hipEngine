@@ -191,6 +191,47 @@ class _NoSpecRunner(_CycleRunner):
         return None
 
 
+class _SwitchableQualificationRunner(_CycleRunner):
+    def __init__(self) -> None:
+        super().__init__()
+        self.enabled = True
+        self.k0_prepares = []
+
+    def speculative_capability(self, request_semantics):
+        if not self.enabled:
+            return None
+        return super().speculative_capability(request_semantics)
+
+    def prepare_speculative_k0(self, plan, request_semantics, *, stream=None):
+        self.k0_prepares.append(
+            (
+                plan,
+                tuple(item.request_id for item in request_semantics),
+                stream,
+            )
+        )
+
+
+class _C1OnlyRunner(_CycleRunner):
+    def __init__(self) -> None:
+        super().__init__()
+        self.k0_prepares = []
+
+    def speculative_capability(self, request_semantics):
+        if len(tuple(request_semantics)) != 1:
+            return None
+        return super().speculative_capability(request_semantics)
+
+    def prepare_speculative_k0(self, plan, request_semantics, *, stream=None):
+        self.k0_prepares.append(
+            (
+                plan,
+                tuple(item.request_id for item in request_semantics),
+                stream,
+            )
+        )
+
+
 def test_runner_can_select_bounded_opaque_cycle_before_frontier_mutation() -> None:
     runner = _OpaquePreferredRunner()
     loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)
@@ -293,6 +334,102 @@ def test_late_ar_arrival_joins_future_mixed_cycle_without_second_loop() -> None:
         ar_id
     ]
     assert loop.completed[ar_id].generated_tokens == (8001,)
+    assert loop.active_count == 1
+
+
+def test_realized_route_switches_mtp_k0_mtp_only_at_cycle_boundaries() -> None:
+    runner = _SwitchableQualificationRunner()
+    loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)
+    request_id = loop.submit_speculative(
+        [10],
+        max_new_tokens=6,
+        desired_candidate_count=1,
+    )
+
+    loop.poll(max_ticks=2)
+    runner.enabled = False
+    loop.poll(max_ticks=1)
+    runner.enabled = True
+    loop.poll(max_ticks=1)
+
+    assert [plan.request_ids for plan in runner.cycle_plans] == [
+        (request_id,),
+        (request_id,),
+    ]
+    assert len(runner.k0_prepares) == 1
+    assert runner.k0_prepares[0][1] == (request_id,)
+    assert len(runner.decodes) == 1
+    assert runner.decodes[0].request_ids == (request_id,)
+    assert loop.completed.get(request_id) is None
+    assert loop.active_count == 1
+
+
+def test_realized_c2_without_capability_prepares_k0_before_one_ar_batch() -> None:
+    runner = _C1OnlyRunner()
+    loop = ResidentEngineLoop(
+        runner,
+        capacity=2,
+        prefill_chunk_size=8,
+        prefill_decode_policy="protect_ttft",
+    )
+    first = loop.submit_speculative(
+        [10],
+        max_new_tokens=2,
+        desired_candidate_count=1,
+    )
+    second = loop.submit_speculative(
+        [20],
+        max_new_tokens=2,
+        desired_candidate_count=1,
+    )
+
+    loop.poll(max_ticks=3)
+
+    assert runner.cycle_plans == []
+    assert len(runner.k0_prepares) == 1
+    assert runner.k0_prepares[0][1] == (first, second)
+    assert len(runner.decodes) == 1
+    assert runner.decodes[0].request_ids == (first, second)
+    assert loop.completed.get(first) is None
+    assert loop.completed.get(second) is None
+    assert loop.active_count == 2
+
+
+def test_realized_speculative_width_switches_c1_c2_c1_at_cycle_boundaries() -> None:
+    runner = _CycleRunner()
+    loop = ResidentEngineLoop(
+        runner,
+        capacity=2,
+        prefill_chunk_size=8,
+        prefill_decode_policy="protect_ttft",
+    )
+    survivor = loop.submit_speculative(
+        [10],
+        max_new_tokens=8,
+        desired_candidate_count=1,
+    )
+    loop.poll(max_ticks=2)
+    late = loop.submit_speculative(
+        [20],
+        max_new_tokens=2,
+        desired_candidate_count=1,
+    )
+
+    loop.poll(max_ticks=1)  # admit and prefill the late request
+    loop.poll(max_ticks=2)  # one C2 cycle, then the survivor returns to C1
+
+    assert [plan.request_ids for plan in runner.cycle_plans[:3]] == [
+        (survivor,),
+        (survivor, late),
+        (survivor,),
+    ]
+    assert [plan.candidate_counts for plan in runner.cycle_plans[:3]] == [
+        (1,),
+        (1, 1),
+        (1,),
+    ]
+    assert loop.completed[late].generated_tokens == (101, 8001)
+    assert loop.completed.get(survivor) is None
     assert loop.active_count == 1
 
 
