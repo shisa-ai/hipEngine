@@ -98,7 +98,7 @@ Rows use different models and tests; compare only matching protocols. The RX 790
 W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE K2 and 27B
 Dense K3; other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
 
-Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 auto at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-realized-singleton-auto.json); [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json); otherwise K0. Dynamic Admission [D5](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d5-production-correctness.json) correctness-qualifies explicit C1-C8 (physical through C4, decomposed above), but every C>1 width is only **0.3346x-0.6613x true AR**, so automatic C>1 remains pure K0.
+Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 auto at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-realized-singleton-auto.json); [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json); otherwise K0. Dynamic Admission [D6](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d6-economics.json) correctness-qualifies explicit C1-C8, but best C>1 is only **0.8170x true AR** and intent K0 also loses, so automatic C>1 remains pure K0.
 `Q4_K_S` uses FP16 recurrent state with FP32 rollback. Its exact W8192 DMS
 sidecar stays default-off. [`DMS`](../docs/DMS.md).
 
