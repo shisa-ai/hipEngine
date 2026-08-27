@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-27 gfx1151 Qwen3.8-Flash-Next PLE staging correctness fix] Copy two-buffer PLE ring views immediately: plain chunk64 mean/max KL improves **0.13033→0.00564 / 0.64962→0.02663**, and the 35.43-tok/s fast stack improves **0.17169→0.00476 / 1.34378→0.01548**, with top-1 **94.44%→100%**. Fast promotion remains blocked on mean/p95. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-ple-staging-fix.json`.
+
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next grouped prefill; blocked] A default-off grouped Q4/Q5/Q8 + peer-GDN candidate improves warm repeated-token p512 **8.67→211.76 tok/s (24.4x)** and the 18-prompt natural suite **5.36→35.75 tok/s (6.67x)**, but fails strict→candidate mean/max KL **0.17169/1.34378** and top-1 **94.44%**; no promotion. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json`.
 
 - [2026-08-27 gfx1151 Qwen3.8-Flash-Next exact Q5_1 decode reduction] Promote the bit-exact wave-tail tree: the 43-launch Q5 bucket improves **45.096→38.157 ms (-15.39%)** and warm eager decode **5.74→5.89 tok/s (+2.64%)** with unchanged BF16 output bits/token. `benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-q5-wave-tail.json`.

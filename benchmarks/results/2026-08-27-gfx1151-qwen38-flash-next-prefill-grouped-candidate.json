@@ -1,7 +1,8 @@
 {
   "schema": 1,
   "date": "2026-08-27",
-  "status": "rejected_correctness_default_off_candidate",
+  "status": "superseded_pre_ple_staging_fix",
+  "superseded_by": "benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-ple-staging-fix.json",
   "scope": "Qwen4Exp grouped/WMMA/peer prefill optimization campaign; no public performance promotion",
   "host": {
     "identity": "zbook",
