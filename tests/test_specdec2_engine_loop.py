@@ -383,6 +383,39 @@ def test_wide_due_work_partitions_each_speculative_row_once_per_tick() -> None:
     assert all(loop.completed[request_id].generated_tokens for request_id in request_ids)
 
 
+def test_wide_mixed_due_work_partitions_spec_rows_and_decodes_ar_once() -> None:
+    runner = _PartitionedRunner()
+    loop = ResidentEngineLoop(
+        runner,
+        capacity=6,
+        prefill_chunk_size=8,
+        prefill_decode_policy="protect_ttft",
+    )
+    spec_ids = tuple(
+        loop.submit_speculative(
+            [10 + index],
+            max_new_tokens=2,
+            desired_candidate_count=1,
+        )
+        for index in range(5)
+    )
+    ar_id = loop.submit([99], max_new_tokens=1)
+
+    events = loop.poll(max_ticks=8)
+
+    assert [plan.request_ids for plan in runner.cycle_plans] == [
+        spec_ids[:2],
+        spec_ids[2:4],
+        spec_ids[4:],
+    ]
+    assert runner.decodes[-1].request_ids == (ar_id,)
+    assert [event.request_id for event in events if event.kind == "completed"] == [
+        *spec_ids,
+        ar_id,
+    ]
+    assert loop.completed[ar_id].generated_tokens == (9000 + ar_id * 10,)
+
+
 def test_missing_capability_uses_normal_decode_k0_path() -> None:
     runner = _NoSpecRunner()
     loop = ResidentEngineLoop(runner, capacity=1, prefill_chunk_size=8)

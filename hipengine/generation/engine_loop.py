@@ -2313,7 +2313,16 @@ class ResidentEngineLoop:
                 if count > 0
             )
             spec_work = self._decode_work_subset(work, spec_ids)
-            disjoint_speculative = self._maybe_run_speculative_cycle(spec_work)
+            spec_desired = tuple(
+                self._speculative_candidate_counts[int(request_id)]
+                for request_id in spec_ids
+            )
+            disjoint_speculative = self._maybe_run_partitioned_speculative_decode(
+                spec_work,
+                spec_desired,
+            )
+            if disjoint_speculative is None:
+                disjoint_speculative = self._maybe_run_speculative_cycle(spec_work)
             if disjoint_speculative is not None:
                 ar_ids = tuple(
                     request_id
