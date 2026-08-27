@@ -329,7 +329,15 @@ def resolve_speculative_mtp_serving_plan(
     if not evidence:
         return _reject(key, "no_model_plugin_evidence", None)
 
-    row = evidence[0]
+    row = next(
+        (
+            candidate
+            for candidate in evidence
+            if key.artifact_sha256 == candidate.artifact_sha256
+            and key.artifact_size_bytes == candidate.artifact_size_bytes
+        ),
+        evidence[0],
+    )
     checks = (
         (
             key.artifact_sha256 == row.artifact_sha256
