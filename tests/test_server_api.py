@@ -7124,6 +7124,48 @@ def test_mtp_summary_treats_owned_zero_draft_timing_as_realized_mtp() -> None:
     }
 
 
+def test_mtp_summary_reports_resident_dynamic_mtp_after_frontend_k0() -> None:
+    details = [
+        GenerationOutput(
+            text="done",
+            telemetry=GenerationTelemetry.from_decode_counts(
+                prompt_tokens=4,
+                generated_tokens=3,
+                row_index=0,
+                execution_path="resident_verify_chain",
+                timing={
+                    "mtp_cycles_count": 1,
+                    "mtp_generated_draft_tokens": 2,
+                    "mtp_accepted_draft_tokens": 1,
+                },
+                timing_scope="choice",
+                timing_owner=True,
+            ),
+        )
+    ]
+
+    assert _mtp_response_summary(
+        "default",
+        details,
+        route_decision={
+            "requested_route": "speculative_mtp_auto",
+            "reason": "physical_group_not_qualified",
+        },
+    ) == {
+        "effective_route": "speculative_mtp",
+        "selected_route": "default",
+        "used": True,
+        "draft_tokens": 2,
+        "accepted_draft_tokens": 1,
+        "rejected_draft_tokens": 1,
+        "acceptance_rate": 0.5,
+        "draft_cycles": 1,
+        "decision_reason": "resident_dynamic_mtp",
+        "requested_route": "speculative_mtp_auto",
+        "selection_reason": "physical_group_not_qualified",
+    }
+
+
 def test_mtp_summary_reports_selected_mtp_backend_k0_fallback_truthfully() -> None:
     details = [
         GenerationOutput(
