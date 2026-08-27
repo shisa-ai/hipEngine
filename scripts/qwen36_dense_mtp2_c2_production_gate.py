@@ -369,7 +369,7 @@ def _teacher_metrics(
     max_sequence_length: int,
     compiler_version_file: Path | None,
     require_cached_build: bool,
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
     """Run the physical C2 target on strict-teacher resident states."""
 
     prompt_by_id = {str(row["id"]): row for row in prompts}
@@ -405,6 +405,7 @@ def _teacher_metrics(
     ]
     metrics_rows: list[dict[str, Any]] = []
     repeat_rows: list[dict[str, Any]] = []
+    permutation_metrics: list[dict[str, Any]] = []
 
     def strict_inputs(
         session: Qwen35GGUFResidentSession,
@@ -503,6 +504,22 @@ def _teacher_metrics(
                 }
             )
             candidate_logits = candidate_runs[0]
+            permuted_group = tuple(reversed(group))
+            permuted_logits, permuted_inputs = run_physical(permuted_group)
+            permuted_by_prompt: dict[str, np.ndarray] = {}
+            permuted_offset = 0
+            for capture, inputs in zip(
+                permuted_group, permuted_inputs, strict=True
+            ):
+                prompt_id = str(capture["prompt_id"])
+                permuted_by_prompt[prompt_id] = np.ascontiguousarray(
+                    permuted_logits[
+                        permuted_offset : permuted_offset + len(inputs)
+                    ]
+                )
+                permuted_offset += len(inputs)
+            if permuted_offset != int(permuted_logits.shape[0]):
+                raise GateError("permuted physical C2 logit row accounting drifted")
             offset = 0
             for session, capture, inputs in zip(
                 sessions, group, input_runs[0], strict=True
@@ -527,21 +544,33 @@ def _teacher_metrics(
                     top_k=5,
                 )
                 candidate_top1 = np.argmax(candidate_slice, axis=1)
+                permuted_slice = permuted_by_prompt[prompt_id]
+                if permuted_slice.shape != candidate_slice.shape:
+                    raise GateError("permuted physical C2 prompt shape changed")
+                permutation_values = per_row_metrics(
+                    candidate_slice,
+                    permuted_slice,
+                    np.asarray(candidate_top1, dtype=np.int64),
+                    top_k=5,
+                )
                 for row_index in range(len(inputs)):
                     strict_row = strict_logits[row_index]
                     top2 = np.partition(strict_row, -2)[-2:]
+                    common_scope = {
+                        "prompt_id": prompt_id,
+                        "category": str(prompt["category"]),
+                        "heldout": bool(prompt["heldout"]),
+                        "shape": f"k{len(inputs) - 1}",
+                        "transition": (
+                            "prefill_to_verify"
+                            if output_index <= 2
+                            else "verify_to_verify"
+                        ),
+                        "position": int(capture["start_position"]) + row_index,
+                    }
                     metrics_rows.append(
                         {
-                            "prompt_id": prompt_id,
-                            "category": str(prompt["category"]),
-                            "heldout": bool(prompt["heldout"]),
-                            "shape": f"k{len(inputs) - 1}",
-                            "transition": (
-                                "prefill_to_verify"
-                                if output_index <= 2
-                                else "verify_to_verify"
-                            ),
-                            "position": int(capture["start_position"]) + row_index,
+                            **common_scope,
                             "strict_top1": int(strict_tokens[row_index]),
                             "candidate_top1": int(candidate_top1[row_index]),
                             "strict_margin": float(top2.max() - top2.min()),
@@ -562,17 +591,57 @@ def _teacher_metrics(
                             ),
                         }
                     )
+                    permutation_metrics.append(
+                        {
+                            **common_scope,
+                            "strict_top1": int(candidate_top1[row_index]),
+                            "candidate_top1": int(
+                                np.argmax(permuted_slice[row_index])
+                            ),
+                            "strict_margin": 0.0,
+                            "kl": float(
+                                permutation_values["kl_nats"][row_index]
+                            ),
+                            "top1_equal": bool(
+                                permutation_values["top1_equal"][row_index]
+                            ),
+                            "top5_overlap": float(
+                                permutation_values["topk_set_overlap"][row_index]
+                            ),
+                            "teacher_nll": float(
+                                permutation_values["teacher_nll_nats"][row_index]
+                            ),
+                            "strict_teacher_nll": float(
+                                permutation_values[
+                                    "reference_teacher_nll_nats"
+                                ][row_index]
+                            ),
+                            "delta_p": float(
+                                permutation_values["delta_p"][row_index]
+                            ),
+                            "max_abs_logit_delta": float(
+                                permutation_values[
+                                    "max_abs_logit_delta"
+                                ][row_index]
+                            ),
+                        }
+                    )
             if offset != int(candidate_logits.shape[0]):
                 raise GateError("strict physical C2 logit row accounting drifted")
     finally:
         for session in sessions:
             session.close()
         runner.close()
-    return metrics_rows, {
-        "passed": bool(repeat_rows) and all(row["passed"] for row in repeat_rows),
-        "cycles": len(repeat_rows),
-        "rows": repeat_rows,
-    }
+    return (
+        metrics_rows,
+        {
+            "passed": bool(repeat_rows)
+            and all(row["passed"] for row in repeat_rows),
+            "cycles": len(repeat_rows),
+            "rows": repeat_rows,
+        },
+        numerical_verdict(permutation_metrics),
+    )
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -622,7 +691,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         Qwen35GGUFResidentSession.verify_target_blocks_batch = original
     captures: list[dict[str, Any]] = context["captures"]
     repeat_gate = _repeat_verdict(captures, args.repeat_runs)
-    row_metrics, physical_repeat_gate = _teacher_metrics(
+    (
+        row_metrics,
+        physical_repeat_gate,
+        physical_permutation_gate,
+    ) = _teacher_metrics(
         model,
         prompts,
         strict_outputs,
@@ -644,7 +717,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             {
                 "prompt_id": prompt_id,
                 "repeat_exact": repeat_exact,
-                "neighbor_permutation_isolation": permutation_equal,
+                "neighbor_permutation_generated_ids_equal_diagnostic": permutation_equal,
                 "strict_generated_ids_equal_diagnostic": strict_equal,
             }
         )
@@ -718,8 +791,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             repeat_gate["passed"] and physical_repeat_gate["passed"]
         ),
         "output_repeat": all(row["repeat_exact"] for row in output_checks),
-        "neighbor_permutation_isolation": all(
-            row["neighbor_permutation_isolation"] for row in output_checks
+        "neighbor_permutation_isolation": bool(
+            physical_permutation_gate["passed"]
         ),
         "task_noninferiority": bool(tasks["passed"]),
         "profiles": all(profile_checks.values()),
@@ -809,6 +882,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "live_schedule": repeat_gate,
             "strict_teacher_physical_logits": physical_repeat_gate,
         },
+        "neighbor_permutation_isolation": physical_permutation_gate,
         "output_control": output_checks,
         "tasks": tasks,
         "lifecycle": {
