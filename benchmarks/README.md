@@ -277,7 +277,9 @@ primitive **1,982→1,796 us (-9.41%)** and paired natural 4K
 **298.078→290.941 s (-2.39%)**; four sparse categories retain bit-exact final
 logits/control and the retrieval IDs remain identical. Exact chunk-batched QSA
 score/top-k then reduces launches **49,080→768** and paired natural 4K
-**295.706→290.971 s (-1.60%)**. Natural retrieval above 4K,
+**295.706→290.971 s (-1.60%)**. Exact grouped Q4_K gate/up subsequently
+reduces paired natural 4K **291.624→231.798 s (-20.51%, 1.258x)** with the
+strict reduction tree and exact final logits/control/IDs. Natural retrieval above 4K,
 strict-above-4K, 262K inference, and broader lifecycle gates remain open, so
 this is not a broad long-context, speed, serving/c>N, MTP, or vision claim.
 [`Bring-up artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json) ·
@@ -291,6 +293,7 @@ this is not a broad long-context, speed, serving/c>N, MTP, or vision claim.
 [`Device QSA top-k`](results/2026-08-27-gfx1151-qwen38-flash-next-device-qsa-topk.json) ·
 [`Wave32 sparse attention`](results/2026-08-27-gfx1151-qwen38-flash-next-wave32-sparse-attention.json) ·
 [`Batched QSA selection`](results/2026-08-27-gfx1151-qwen38-flash-next-batched-qsa-selection.json) ·
+[`Exact grouped Q4_K`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-gate-up.json) ·
 [`16K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json) ·
 [`64K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-64k.json) ·
 [`262K capacity artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-262k-capacity.json) ·

@@ -534,12 +534,15 @@ synchronizations plus 403.341 MB of selection-metadata H2D. Production wave32
 H128 sparse attention then improves the primitive 9.41% and paired natural 4K
 298.078→290.941 seconds; four sparse categories and the retrieval task have
 bit-exact final logits/control. Exact chunk-batched score/top-k then reduces
-launches `49,080→768` and paired natural 4K `295.706→290.971 s` (1.60%). Evidence:
+launches `49,080→768` and paired natural 4K `295.706→290.971 s` (1.60%).
+Exact grouped Q4_K gate/up then reuses each dequantized weight across adjacent
+expert rows and cuts paired natural 4K `291.624→231.798 s` (20.51%). Evidence:
 [`2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json) and
 [`2026-08-27-gfx1151-qwen38-flash-next-persistent-qsa-pool.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-persistent-qsa-pool.json), and
 [`2026-08-27-gfx1151-qwen38-flash-next-device-qsa-topk.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-device-qsa-topk.json), and
 [`2026-08-27-gfx1151-qwen38-flash-next-wave32-sparse-attention.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-wave32-sparse-attention.json), and
-[`2026-08-27-gfx1151-qwen38-flash-next-batched-qsa-selection.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-batched-qsa-selection.json).
+[`2026-08-27-gfx1151-qwen38-flash-next-batched-qsa-selection.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-batched-qsa-selection.json), and
+[`2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-gate-up.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-gate-up.json).
 
 ### F6 — Native QSA and 262K context ownership
 
@@ -602,9 +605,10 @@ design. hipEngine now updates its persistent compressed-QSA K cache only when a
 four-token group completes and performs deterministic GPU top-k/block-tail
 expansion without score D2H or host sorting. The production H128 sparse kernel
 uses one barrier-free wave32 per query head and retains the strict shared-memory
-fallback. Prompt score generation and deterministic top-k are now batched per
-chunk. Split-k attention is optional follow-up only if its production packet
-beats wave32; the next binding work is natural 16K/64K requalification. MTP step 0
+fallback. Prompt score generation/top-k and strict Q4_K gate/up are now
+batched/grouped per chunk. Split-k attention is optional follow-up only if its
+production packet beats wave32; the next binding work is natural 16K/64K
+requalification. MTP step 0
 selects target-aligned QSA rows and later draft steps reuse those indices.
 
 Current exact F7 default (2026-08-27): immediate PLE ring ownership, batched
