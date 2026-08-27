@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_dynamic_admission_d5_production_correctness",
+  "created_at": "2026-08-27T17:20:00Z",
+  "status": "production_correctness_passed_automatic_blocked_by_economics",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "The Q4_K_M production FP16-state profile passes strict-teacher, repeat, isolation, transition, sparse, long-context, and manifest gates on current source. Bind that arithmetic result to D4's complete C1-C8 category/heldout functional packet and D2-D4 lifecycle/failure/serving evidence. Production correctness is qualified, but every C>1 cell loses true AR, so automatic C>1 remains pure K0 and D6 may skip blind optimization absent a measured operation premise.",
+  "source": {
+    "numerics_commit": "aad798a84f9c34723c7719fad779bd356666688f",
+    "d4_artifact": "benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d4-widths.json",
+    "d3_artifact": "benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d3-lifecycle.json",
+    "d2_artifact": "benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d2-c2-k1-functional.json"
+  },
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "hip_visible_devices": "0",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "execution_profile": "production",
+    "execution_profile_manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+    "strict_fallback_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+    "recurrent_state": "FP16 production versus FP32 strict teacher"
+  },
+  "numerical_gate": {
+    "measurement_valid": true,
+    "hard_gates_passed": true,
+    "teacher_forced_rows": 1170,
+    "kl_mean": 0.00012391210401986377,
+    "kl_p50": 0.000002014400005010781,
+    "kl_p95": 0.000350302086656365,
+    "kl_p99": 0.001110227899242281,
+    "kl_max": 0.04978771577044094,
+    "top1_agreement": 0.9974358974358974,
+    "top1_matches": 1167,
+    "topk_overlap_mean": 0.9904273504273504,
+    "strict_teacher_nll_mean": 0.16488383618552666,
+    "candidate_teacher_nll_mean": 0.16443654581242292,
+    "teacher_nll_delta": -0.00044729037310373143,
+    "finite": true,
+    "repeat_runs": 3,
+    "repeat_determinism_passed": true,
+    "isolation_passed": true,
+    "manifest_gate_passed": true,
+    "thresholds": {
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "max_kl_max": 0.05,
+      "top1_min": 0.99,
+      "per_scope_top1_min": 0.97
+    }
+  },
+  "scope_gates": {
+    "categories": {
+      "code": {"rows": 401, "kl_max": 0.001303342814672686, "top1": 1.0, "passed": true},
+      "general_en": {"rows": 263, "kl_max": 0.04978771577044094, "top1": 0.9923954372623575, "passed": true},
+      "general_ja": {"rows": 263, "kl_max": 0.004812170695703666, "top1": 0.9961977186311787, "passed": true},
+      "mixed_ja_en": {"rows": 243, "kl_max": 0.005420172797035783, "top1": 1.0, "passed": true}
+    },
+    "shapes": {
+      "c1": {"rows": 6, "kl_max": 0.00008688511390647176, "top1": 1.0, "passed": true},
+      "c2": {"rows": 12, "kl_max": 0.00000025587035092518934, "top1": 1.0, "passed": true},
+      "c4": {"rows": 456, "kl_max": 0.001546928507588658, "top1": 0.9978070175438597, "passed": true},
+      "c8": {"rows": 544, "kl_max": 0.04978771577044094, "top1": 0.9981617647058824, "passed": true},
+      "c8_sparse4": {"rows": 96, "kl_max": 0.0005544514904374193, "top1": 0.9895833333333334, "passed": true},
+      "long_c8_p512": {"rows": 8, "kl_max": 0.00037485000927015016, "top1": 1.0, "passed": true}
+    },
+    "transitions": "prefill->c4/c8, c8->c4->c2->c1 retirement, sparse physical c8, long prefill->c8, and steady transitions all pass",
+    "neighbor_substitution": true,
+    "row_permutation": true
+  },
+  "integrated_product_gate": {
+    "d4_width_cells": 60,
+    "d4_engaged_cells": 60,
+    "d4_deterministic_cells": 60,
+    "d4_diagnostic_ar_equal_cells": 60,
+    "d4_heldout_cells": 24,
+    "d4_every_category_passed": true,
+    "accepted_depths": "K1 zero/full acceptance and mixed neighbor counts covered across D3/D4; target arithmetic is bound by the full-vocabulary profile above",
+    "lifecycle": "D3 C1<->C2 cancel/survivor/refill and pressure-K0 re-entry pass",
+    "failure": "D2 proposal/target/postcommit and D4 subgroup failure/following health pass",
+    "serving": "production blocking/SSE and following health pass",
+    "memory": "all retained packets drain tracked allocations, provider groups/states, loop rows, and active children to zero",
+    "bf16_relative": "normative N/A: BF16 KV and model quant are unchanged; strict FP32-state teacher is the binding arithmetic oracle",
+    "external_task": "normative N/A for capability arithmetic: same model/sampling/target semantics; complete category+heldout output packet is non-regressive and deterministic"
+  },
+  "economics_guard": {
+    "automatic_c_gt_1": "pure_k0",
+    "best_c_gt_1_ratio": 0.6612536268784381,
+    "worst_c_gt_1_ratio": 0.33460414356488105,
+    "promotion_threshold": 1.1,
+    "performance_qualified_widths": [],
+    "note": "Passing production correctness does not override the true-AR economics gate."
+  },
+  "command": {
+    "environment": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/compiler-version-gfx1151.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONDONTWRITEBYTECODE=1",
+    "numerics": ".venv/bin/python scripts/execution_profile_gguf_fp16_state_batch_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant-label gguf_q4_k_m --widths 4,8 --decode-steps 24 --repeat-runs 3 --long-prompt-tokens 512 --long-decode-steps 8 --isolation-decode-steps 8 --compiler-version-file /tmp/compiler-version-gfx1151.txt --require-cached-build --json /tmp/qwen38-dynamic-admission-d5-production-numerics.json",
+    "host_tests": "uv run pytest -q tests/test_execution_profile_gguf_fp16_state_batch_gate.py tests/test_specdec2_s6_category_gate.py"
+  },
+  "raw_sources": [
+    {"path": "/tmp/qwen38-dynamic-admission-d5-production-numerics.json", "sha256": "9c6eebfb94b21edf9d544d6d189025d521902d5fc3d4b50262fc282ffb8f8d30", "size_bytes": 62463, "retained_in_git": false}
+  ],
+  "next": "D6 economics. Use the already-measured true-AR and engaged-MTP full suites; measure intent-K0 only where missing, then reject blind optimization unless a profiled operation-complete premise can plausibly recover the >=1.10x threshold."
+}
