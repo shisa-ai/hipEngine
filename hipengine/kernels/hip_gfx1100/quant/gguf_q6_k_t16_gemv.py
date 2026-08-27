@@ -13,6 +13,7 @@ from typing import Mapping
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.core.specdec2_scope import q6_t16_physical_rowtile_enabled
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     gguf_q6_k_pack8_top1_stage2_gather_f32,
 )
@@ -208,10 +209,15 @@ def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch exact planar-qmicro Q6T16 GEMV with BF16 input/output."""
+    """Launch planar-qmicro Q6T16 GEMV with BF16 input/output."""
 
+    symbol = (
+        _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16
+        if q6_t16_physical_rowtile_enabled() and int(rows) == 6
+        else _Q6_T16_QMICRO_PLANAR_BF16_BF16
+    )
     _launch(
-        _Q6_T16_QMICRO_PLANAR_BF16_BF16,
+        symbol,
         x_ptr,
         tiles_ptr,
         out_ptr,

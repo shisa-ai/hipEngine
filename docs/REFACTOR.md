@@ -228,7 +228,9 @@ fallback count is not a success metric.
   local `q4_t16_physical_extra_rowtiles_session(...)` selects exact C1-equivalent
   rows6 rowtiles for K5120/N17408 gate/up and K6144/N5120 attention output only
   when the production adapter and backend capability agree; strict keeps the
-  registered single-wave/shared-B fallbacks.
+  registered single-wave/shared-B fallbacks. The same request-local policy
+  selects the bit-exact planar-Q6 rows6 col8 rowtile while strict keeps the
+  serial-row planar owner.
   The scope avoids changing the existing C1 production manifest while C2 owns
   an independent policy fingerprint and quality/economics packet.
 - Removal trigger: after one release window with the exact C2 production key,

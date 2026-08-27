@@ -68,6 +68,7 @@ from hipengine.speculative.provider import SpeculativeRequestSemantics
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.core.specdec2_scope import (
     q4_t16_physical_extra_rowtiles_session,
+    q6_t16_physical_rowtile_session,
 )
 from hipengine.speculative.transaction import (
     SpecCycleResult,
@@ -199,6 +200,14 @@ class Qwen35GGUFMTP2Adapter:
             and backend_package_capability(
                 str(self.generator.backend),
                 "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES",
+                (),
+            )
+        )
+        self.production_physical_q6_rowtile = bool(
+            str(profile) == "production"
+            and backend_package_capability(
+                str(self.generator.backend),
+                "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS",
                 (),
             )
         )
@@ -750,7 +759,9 @@ class Qwen35GGUFMTP2Adapter:
             policy_fingerprint=(
                 f"dense-nextn:{realized_verify_mode}:b{self.candidate_budget}:"
                 "extra-rowtiles"
-                f"{int(getattr(self, 'production_physical_extra_rowtiles', False))}"
+                f"{int(getattr(self, 'production_physical_extra_rowtiles', False))}:"
+                "q6-rowtile"
+                f"{int(getattr(self, 'production_physical_q6_rowtile', False))}"
             ),
             execution_profile=profile,
             kv_backend_key=str(getattr(target, "kv_storage_dtype", "bf16")),
@@ -2096,8 +2107,13 @@ class Qwen35GGUFMTP2Adapter:
             raise RuntimeError("physical target owner has no packed verifier")
         target_started = time.perf_counter()
         device_result = batch is None
-        with q4_t16_physical_extra_rowtiles_session(
-            bool(getattr(self, "production_physical_extra_rowtiles", False))
+        with (
+            q4_t16_physical_extra_rowtiles_session(
+                bool(getattr(self, "production_physical_extra_rowtiles", False))
+            ),
+            q6_t16_physical_rowtile_session(
+                bool(getattr(self, "production_physical_q6_rowtile", False))
+            ),
         ):
             results = list(verify_batch(jobs, device_result=device_result))
         target_seconds = time.perf_counter() - target_started
