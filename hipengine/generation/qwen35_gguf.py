@@ -6096,9 +6096,13 @@ class Qwen35GGUFResidentModelRunner:
         row = self._row(request_id)
         adapter = self._resolved_mtp2_adapter()
         adapter_budget = int(getattr(adapter, "candidate_budget", candidate_budget))
+        evidence_budget = int(
+            getattr(static_eligibility, "max_candidate_count", candidate_budget)
+        )
         effective_budget = min(
             max(1, int(candidate_budget)),
             max(1, adapter_budget),
+            max(1, evidence_budget),
         )
         row.mtp2_candidate_budget = effective_budget
         if adapter is not None:
