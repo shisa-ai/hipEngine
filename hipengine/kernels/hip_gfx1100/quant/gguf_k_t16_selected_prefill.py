@@ -25,6 +25,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
 )
 from hipengine.kernels.registry import KernelKey, register
+from hipengine.core.specdec2_scope import (
+    q4_t16_physical_gate_up_rowtile_enabled,
+)
 
 _SOURCE = Path(__file__).with_name("gguf_k_t16_selected_prefill.hip")
 _OUTPUT_NAME = "gguf_k_t16_selected_prefill.so"
@@ -276,7 +279,11 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
     elif shape in GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES:
         fn = gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
     elif shape in GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES:
-        fn = gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
+        fn = (
+            gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
+            if q4_t16_physical_gate_up_rowtile_enabled()
+            else gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
+        )
     else:
         fn = gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
     return fn(
