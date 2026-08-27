@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
+from hipengine.core.specdec2_scope import q6_t16_physical_rowtile_session
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.quant import gguf_q6_k_t16_gemv as t16_mod
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
@@ -122,6 +123,32 @@ def _run_residual(fn, x, tiles, residual, rows, in_features, out_features, libra
     finally:
         for buffer in reversed(buffers):
             free(buffer)
+
+
+def test_q6_planar_decode_uses_request_scoped_physical_rowtile(monkeypatch) -> None:
+    symbols: list[str] = []
+    monkeypatch.setattr(
+        t16_mod,
+        "_launch",
+        lambda symbol, *args, **kwargs: symbols.append(symbol),
+    )
+
+    gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
+        1, 2, 3, 6, 5_120, 10_240
+    )
+    with q6_t16_physical_rowtile_session(True):
+        gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
+            1, 2, 3, 6, 5_120, 10_240
+        )
+        gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
+            1, 2, 3, 3, 5_120, 10_240
+        )
+
+    assert symbols == [
+        t16_mod._Q6_T16_QMICRO_PLANAR_BF16_BF16,
+        t16_mod._Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16,
+        t16_mod._Q6_T16_QMICRO_PLANAR_BF16_BF16,
+    ]
 
 
 def test_p9_h3_q6_t16_registry_key_resolves() -> None:
