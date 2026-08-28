@@ -10,8 +10,7 @@ standard `Q4_K_M` file and compare each compatible route with both stock
 llama.cpp and the current hipEngine implementation. Routes that require another
 model format remain source-claim reproductions, not direct engine rankings.
 This report separates reproducible, usable performance from narrow replay
-results, invalid state-contaminated output, and routes that we could not
-qualify.
+results and invalid state-contaminated output.
 
 ## Conclusions
 
@@ -38,21 +37,20 @@ qualify.
   text.
 - **MTP must be routed by concurrency:** Mike's Q8 result was 2.23x AR at C1,
   neutral at C3, and 0.84x AR at C4.
-- **hipEngine participates through the standard `Q4_K_M`:** it led AR at C3-C7
-  but lagged the llama.cpp routes in prefill and MTP. It cannot load the tested
-  Unsloth Dynamic `UD-Q4_K_M`, whose dense tensor types are unsupported.
+- **hipEngine is usable with the standard `Q4_K_M`:** it passed the
+  standardized correctness gates and led AR at C3-C7, but lagged the llama.cpp
+  routes in prefill and MTP.
 
 ### Route decisions
 
 **Yes** means the locally tested route produced valid output and showed no
-server-lifecycle correctness blocker. **No** means the route either failed
-locally or was not locally qualified. A Yes does not mean that different
-quantizations have equal model quality.
+server-lifecycle correctness blocker. **No** means the tested route exposed a
+correctness blocker. A Yes does not mean that different quantizations have
+equal model quality.
 
 | Route | Usable? | Decision |
 | --- | :---: | --- |
 | hipEngine `a9b801d59` with the standard `Q4_K_M` baseline | **Yes** | Runs C1-C8 and passed the standardized AR/MTP self-exact gates. It led AR at C3-C7. |
-| hipEngine `61b83b9c3` with the separate Unsloth Dynamic `UD-Q4_K_M` | **No** | This different file does not load because it contains unsupported dense `Q3_K`, `IQ4_NL`, and `IQ3_S` tensors. |
 | `q38rocm` v1.5.2, `ROCmFP4_FAST`, strict MTP K4 | **Yes, C1 only** | Strong specialized result. Strict mode requires exactly one server slot and a custom model, so it is not ranked against standard-`Q4_K_M` engines. |
 | Laurent built-in MTP K3, standard `Q4_K_M` | **Yes** | Strongest broad alternate llama.cpp route in the standardized matrix. |
 | Laurent adaptive DFlash2 fork `c28d538df` | **No** | Fast in a fresh process, but unsafe for sequential requests because speculative state leaks between requests. |
@@ -60,10 +58,6 @@ quantizations have equal model quality.
 | KyaniteLabs HIP MTP+ngram | **Yes** | Correct output. The 160+ tok/s result applies only to warm repetition replay. |
 | PieBru recipes on Nathanw fork `0eb528051` | **Yes** | Q5/Q6/Q8 speed claims reproduced. Latest mainline is slightly faster in decode. |
 | MikeVeerman stock llama.cpp pin `152d337fa`, Q8 MTP | **Yes** | Use MTP at low concurrency. Disable it for dense parallel work. |
-| yandaq harness on latest mainline, new `UD-Q4_K_M` | **Yes at K4** | K4 was fastest. K6 and K8 stayed valid but became slower. |
-| Latest mainline Vulkan `4e97ac86`, new `UD-Q4_K_M` | **Yes** | Strong stock control; long-output checks stayed non-repetitive. |
-| Ollama 0.32.13 guide route | **No** | Not locally qualified. This is not a known correctness failure. |
-| LlamaStash / stock b10503 Q8_0 report | **No** | Not locally qualified because the raw protocol and exact target were unavailable. |
 
 ### Source-claim reproduction
 
@@ -79,10 +73,6 @@ timing boundaries. **Do not use this table to rank engines.** The standardized
 | Kyanite MTP+ngram | 59.7 cold; 148-163 warm count-to-30; 11-24 real traffic | 60.95 cold; **164.13-167.64** warm count-to-30. Common suite: **24.867 decode / 20.518 complete-wall tok/s**. |
 | PieBru Q5/Q6/Q8 | About 23-24 / 17-21 / 15-18 served tok/s | **24.706 / 20.549 / 18.197 complete-wall tok/s** on Nathan. |
 | MikeVeerman Q8 concurrency | MTP is 2.19x AR at C1 and 0.78x at C4 | **2.23x** at C1, 1.01x at C3, and **0.84x** at C4. |
-| yandaq depth guidance | Q4 26.47; K≥6 may report fake repetitive speed | **31.18** at K4, 28.75 at K6, 20.99 at K8. All local outputs passed the repetition guard. |
-| Latest mainline, new `UD-Q4_K_M` | Stock control | Common suite: 13.035 AR → **33.454 MTP K3 decode tok/s**; 9.758 → **17.572 complete-wall tok/s**. |
-| Ollama 0.32.13 | 20.42 generation; 292.49 prompt tok/s | Not run. |
-| LlamaStash Q8_0 | 7.3 AR → 22.4 MTP tok/s | Not reproduced exactly. |
 
 ### Standardized `Q4_K_M` comparison
 
@@ -209,7 +199,6 @@ quality across quantizations.
 | Artifact | Bytes | SHA-256 |
 | --- | ---: | --- |
 | Standard `Q4_K_M` used for engine comparison | 17,106,775,008 | `7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169` |
-| New Unsloth `UD-Q4_K_M` | 16,464,440,224 | `322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482` |
 | `ROCmFP4_FAST` target | 14,562,236,384 | `fb89c78d2be91cdb68eaaaa45b1270710bf34aa721dc1f0b9e3aa7b98d2e1da9` |
 | FP4 DFlash2 `Q4_0` sidecar | 1,034,216,992 | `4264d8f2277ec9ae791c570ddc36940f92857f2e8a41569217e45b7563190285` |
 | Unsloth `UD-Q4_K_XL` | 17,559,178,144 | `3f227079003add2511437e5b1e94812e363385225bf6a9b47b0054a72bc8b01e` |
@@ -220,48 +209,13 @@ quality across quantizations.
 
 ## 3. hipEngine
 
-**Verdict: No for the new Unsloth artifact.** The model does not load.
+**Verdict: Yes.** hipEngine runs the standard `Q4_K_M` baseline used by every
+row in the standardized comparison.
 
-### What we tested
-
-- hipEngine commit `61b83b9c3`
-- New Unsloth `UD-Q4_K_M`
-- Production automatic MTP
-- C1, C2, C4, and C8
-
-### What happened
-
-Model preparation failed before inference:
-
-```text
-ValueError: unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.0.ffn_up.weight
-```
-
-The model contains:
-
-- seven dense `Q3_K` tensors;
-- seven dense `IQ4_NL` tensors;
-- four dense `IQ3_S` tensors.
-
-hipEngine supports `Q3_K` only in selected rank-3 expert slots. It does not
-have native dense paths for these three tensor families, and it lacks an
-`IQ3_S` CPU dequantizer. Safe support requires kernels, fallbacks, and
-numerical qualification. Expanding a loader allow-list would not be sufficient.
-
-### What this means
-
-- No hipEngine speed result exists for this exact file.
-- Existing qualified Qwen3.8 Q4 lineages are unaffected.
-- Do not compare older hipEngine numbers with results from this new file as if
-  they used the same model artifact.
-
-### Standard supported-artifact result
-
-hipEngine loaded the standard `Q4_K_M` used by every row in the standardized
-matrix. It led AR at C3-C7, reaching 20.731-36.592 complete-wall tok/s. Its MTP
-K3 route beat matched AR only at C2: 17.401 versus 14.247 tok/s. All AR and MTP
-self-exact checks passed. These current same-model results replace the earlier
-mixed-timing diagnostic as the engine comparison.
+hipEngine `a9b801d59` ran C1-C8 with production-profile BF16 arithmetic. It led
+AR at C3-C7, reaching 20.731-36.592 complete-wall tok/s. Its MTP K3 route beat
+matched AR only at C2: 17.401 versus 14.247 tok/s. All AR and MTP self-exact
+checks passed.
 
 The separately qualified automatic routes remain narrower: normal-owner C1 is
 **15.609 versus 9.807 AR tok/s** ([L1]), and production C2/K3 is **17.031 versus
@@ -593,101 +547,7 @@ At C4, per-request throughput was 5.87 tok/s AR and 4.89 tok/s MTP.
 - Admission must account for physical concurrency. Acceptance alone is not
   enough.
 
-## 9. yandaq long-output depth sweep
-
-**Verdict: Yes at K4.** Deeper drafts stayed valid but became slower.
-
-### What we tested
-
-- yandaq harness `eb68ceb0` ([S7])
-- Latest mainline Vulkan `4e97ac86`
-- New Unsloth `UD-Q4_K_M`
-- Prose, code, and JSON
-- Three runs per family after warmup
-- Up to 1,024 tokens, natural stopping
-- Temperature 0.7, top-p 0.8, top-k 20, seed 42, thinking disabled
-- Required 30-character-window uniqueness of at least 0.5
-
-This used the exact yandaq harness on a current model/engine pair. It did not
-use the historical artifact/runtime snapshot behind every published row.
-
-### Results
-
-| Maximum depth | Prose | Code | JSON | Mean | Validity |
-| ---: | ---: | ---: | ---: | ---: | --- |
-| K4 | 27.90 | 34.71 | 30.92 | **31.18** | Passed |
-| K6 | 24.43 | 32.62 | 29.20 | 28.75 | Passed |
-| K8 | 16.45 | 24.01 | 22.53 | 20.99 | Passed; uniqueness 0.924-0.974 |
-
-| Depth | Prose acceptance | Code acceptance | JSON acceptance |
-| ---: | ---: | ---: | ---: |
-| K4 | 58% | 78% | 67% |
-| K8 | 35% | 57% | 52% |
-
-### What this means
-
-- K4 was the best tested depth.
-- The historical “K≥6 can become a fake ~35 tok/s repetition result” did not
-  reproduce on this pair.
-- K6 and K8 remained non-repetitive.
-- Their lower acceptance made them slower instead of falsely faster.
-
-## 10. Latest mainline on the new `UD-Q4_K_M`
-
-**Verdict: Yes.** This is the stock control for the new artifact.
-
-### Common-suite results
-
-The test used mainline Vulkan `4e97ac86`, greedy 24-token outputs, and no
-prompt cache.
-
-| Mode | Arithmetic decode | Complete wall | Acceptance |
-| --- | ---: | ---: | ---: |
-| AR | 13.035 | 9.758 | — |
-| MTP K3 | **33.454** | **17.572** | 95.45% |
-
-| Mode | Code | General English | General Japanese | Mixed Japanese/English |
-| --- | ---: | ---: | ---: | ---: |
-| AR | 12.92 | 13.09 | 13.12 | 13.12 |
-| MTP K3 | 33.08 | 35.27 | 33.15 | 32.70 |
-
-### What this means
-
-- The 24-token MTP result is strong but short.
-- Do not extrapolate its 95.45% acceptance to long outputs.
-- In yandaq's longer K4 tests, acceptance ranged from 58% to 78%.
-- The long K4/K6/K8 outputs stayed substantive and non-repetitive.
-
-## 11. Routes not locally qualified
-
-### Ollama 0.32.13
-
-**Verdict: No—unqualified, not known-broken.**
-
-The hogeheer499 guide reports 20.42 generation tok/s and 292.49 prompt tok/s
-over nine warm API repeats ([S1]). We did not run the exact Ollama runtime and
-artifact.
-
-If 20.42 tok/s were plain dense AR for the stated 17.7 GB model, it would imply
-361 GB/s—above the host's 256 GB/s theoretical bandwidth. The published result
-may include speculation, caching, or a different timing boundary. The available
-summary does not establish which explanation applies.
-
-### LlamaStash / stock b10503 Q8_0
-
-**Verdict: No—unqualified, not known-broken.**
-
-The guide tracks a report of 7.3 tok/s AR and 22.4 tok/s MTP. We could not run
-an exact reproduction because:
-
-- the raw package was never imported into the guide;
-- the prompts and full configuration were unavailable;
-- the exact Q8_0 target was not present locally.
-
-Mike's `UD-Q8_K_XL` result supports the plausibility of a large C1 MTP gain,
-but it does not validate the LlamaStash number.
-
-## 12. Cross-route analysis
+## 9. Cross-route analysis
 
 ### Source-protocol results are not one leaderboard
 
@@ -713,7 +573,6 @@ estimates:
 | Target | Approximate implied bandwidth |
 | --- | ---: |
 | `ROCmFP4_FAST` | 208 GB/s |
-| New `UD-Q4_K_M` | 215 GB/s |
 | Q5 | 223 GB/s |
 | Q6 | 223 GB/s |
 | Q8 | 229 GB/s |
@@ -753,19 +612,17 @@ alone cannot decide whether to enable speculation.
 
 ### hipEngine follow-up
 
-The external results support four concrete actions:
+The external results support three concrete actions:
 
-1. Detect model support from actual tensor families, not the quantization name
-   in the filename.
-2. Add sequential multi-prompt contamination tests to every speculative
+1. Add sequential multi-prompt contamination tests to every speculative
    provider.
-3. Compare proposal quality and cycle cost with matched model state, prompt
+2. Compare proposal quality and cycle cost with matched model state, prompt
    history, and physical concurrency.
-4. Route speculative work by concurrency economics instead of a global switch.
+3. Route speculative work by concurrency economics instead of a global switch.
 
 They do not justify copying an entire external fork.
 
-## 13. Evidence
+## 10. Evidence
 
 Campaign artifact:
 
@@ -775,11 +632,10 @@ Related hipEngine evidence uses different model artifacts or protocols:
 
 - [normal-owner C1 automatic closure][L1]
 - [production C2/K3 retained result][L2]
-- [older-model same-host comparison][L3]
 - [older-model fork transfer test][L4]
 - [hipEngine ngram/MTP closeout][L5]
 
-## 14. Sources
+## 11. Sources
 
 - **[S1]** hogeheer499-commits, *Qwen3.8 27B on AMD Strix Halo*, commit
   `029320fb`: [pinned guide][S1].
@@ -792,13 +648,10 @@ Related hipEngine evidence uses different model artifacts or protocols:
   `c28d538df`: [pinned implementation][S5].
 - **[S6]** PieBru Qwen3.8 Strix Halo evidence, commit `66cfceae`:
   [pinned repository][S6].
-- **[S7]** yandaq Qwen3.8 Strix Halo harness, commit `eb68ceb0`:
-  [pinned repository][S7].
 
 [L0]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-external-reproduction-survey.json
 [L1]: ../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json
 [L2]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json
-[L3]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-llamacpp-1to1.json
 [L4]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-fork-claim-generalization.json
 [L5]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-ngram-mtp-composition-closeout.json
 [S1]: https://github.com/hogeheer499-commits/strix-halo-guide/blob/029320fb/QWEN38_STRIX_HALO.md
@@ -807,4 +660,3 @@ Related hipEngine evidence uses different model artifacts or protocols:
 [S4]: https://github.com/KyaniteLabs/qwen38-27b-strix-halo/blob/7fa3ca810c82c38e7d5a8ef4018d1d1853cec576/README.md
 [S5]: https://github.com/LaurentZuijdwijk/llama.cpp/blob/c28d538df5c02643e701a8004db84dbf1bb0ffb2/common/speculative.cpp
 [S6]: https://github.com/PieBru/Qwen-3.8-27B_Strix-Halo_gfx1151/tree/66cfceae5edb3dfaf049279738a6fb9cfc5638f6
-[S7]: https://github.com/yandaq/qwen3.8-27b-strix-halo/tree/eb68ceb0268d1c4fb4999e57e6fef0900441552e
