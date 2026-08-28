@@ -3545,6 +3545,13 @@ class Qwen4ExpRunnerSnapshot:
 class Qwen4ExpTokenResult:
     token_id: int
     logits: np.ndarray
+    hidden_seeds: np.ndarray | None = None
+
+    @property
+    def hidden_seed(self) -> np.ndarray | None:
+        if self.hidden_seeds is None:
+            return None
+        return self.hidden_seeds[-1]
 
 
 class Qwen4ExpGGUFResidentModelRunner:
@@ -3698,6 +3705,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             cfg.hidden_size * 2,
             cfg.hidden_size * 4,
             cfg.vocab_size * 4,
+            cfg.residual_width * DType.BF16.itemsize,
         ):
             self._buffers.append(malloc(nbytes, runtime=self.runtime))
         for nbytes in (
@@ -3723,6 +3731,12 @@ class Qwen4ExpGGUFResidentModelRunner:
     @property
     def logits_buffer(self) -> DeviceBuffer:
         return self._buffers[3]
+
+    @property
+    def last_target_hidden(self) -> DeviceBuffer:
+        """Authoritative pre-final-mix widened BF16 target row for MTP."""
+
+        return self._buffers[4]
 
     @property
     def prefill_token_ids(self) -> DeviceBuffer:
@@ -3781,7 +3795,12 @@ class Qwen4ExpGGUFResidentModelRunner:
         self._ple_hash_states = {}
         self.position = 0
 
-    def step(self, token_id: int) -> Qwen4ExpTokenResult:
+    def step(
+        self,
+        token_id: int,
+        *,
+        capture_hidden_seed: bool = False,
+    ) -> Qwen4ExpTokenResult:
         self._require_open()
         if self.position >= self.max_sequence_length:
             raise ValueError("Qwen4Exp dense runner sequence capacity exceeded")
@@ -3924,6 +3943,17 @@ class Qwen4ExpGGUFResidentModelRunner:
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
                 ).ptr
+        self.runtime.memcpy(
+            self.last_target_hidden.ptr,
+            residual_ptr,
+            self.last_target_hidden.nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+        )
+        hidden_seeds = (
+            self._read_hidden_seed_rows(self.last_target_hidden.ptr, 1)
+            if capture_hidden_seed
+            else None
+        )
         head_read = run_qwen4_exp_gr_read(
             residual_ptr,
             self.resident.weight("root.head_hc_norm").allocation("raw").tensor.ptr,
@@ -3950,11 +3980,33 @@ class Qwen4ExpGGUFResidentModelRunner:
         copy_device_to_host(
             host_array_ptr(logits), self.logits_buffer, runtime=self.runtime
         )
-        result = Qwen4ExpTokenResult(int(np.argmax(logits)), logits)
+        result = Qwen4ExpTokenResult(
+            int(np.argmax(logits)), logits, hidden_seeds=hidden_seeds
+        )
         self.position += 1
         return result
 
-    def _prefill_chunk(self, token_ids: tuple[int, ...]) -> int:
+    def _read_hidden_seed_rows(self, source_ptr: int, rows: int) -> np.ndarray:
+        count = int(rows)
+        if count <= 0 or int(source_ptr) <= 0:
+            raise ValueError("target hidden capture requires positive rows and pointer")
+        bits = np.empty((count, self.config.residual_width), dtype=np.uint16)
+        copy_device_to_host(
+            host_array_ptr(bits),
+            DeviceBuffer(int(source_ptr), bits.nbytes),
+            bits.nbytes,
+            runtime=self.runtime,
+        )
+        return np.ascontiguousarray(
+            (bits.astype(np.uint32) << 16).view(np.float32)
+        )
+
+    def _prefill_chunk(
+        self,
+        token_ids: tuple[int, ...],
+        *,
+        capture_hidden_seeds: bool = False,
+    ) -> tuple[int, np.ndarray | None]:
         count = len(token_ids)
         if count <= 0 or count > min(self.prefill_chunk_size, self.max_sequence_length):
             raise ValueError("Qwen4Exp prefill chunk has invalid row count")
@@ -4121,38 +4173,75 @@ class Qwen4ExpGGUFResidentModelRunner:
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
                 ).ptr
+        hidden_seeds = (
+            self._read_hidden_seed_rows(residual_ptr, count)
+            if capture_hidden_seeds
+            else None
+        )
         self.position += count
-        return residual_ptr + (
-            (count - 1)
-            * cfg.residual_branch_count
-            * cfg.hidden_size
-            * DType.BF16.itemsize
+        return (
+            residual_ptr
+            + (count - 1)
+            * cfg.residual_width
+            * DType.BF16.itemsize,
+            hidden_seeds,
         )
 
-    def prefill_serial(self, token_ids: list[int] | tuple[int, ...]) -> Qwen4ExpTokenResult:
+    def prefill_serial(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        capture_hidden_seeds: bool = False,
+    ) -> Qwen4ExpTokenResult:
         if not token_ids:
             raise ValueError("Qwen4Exp prefill requires at least one token")
         self.reset()
         result = None
+        captured: list[np.ndarray] = []
         for token in token_ids:
-            result = self.step(int(token))
+            result = self.step(
+                int(token), capture_hidden_seed=capture_hidden_seeds
+            )
+            if result.hidden_seeds is not None:
+                captured.append(result.hidden_seeds)
         assert result is not None
-        return result
+        if not capture_hidden_seeds:
+            return result
+        return Qwen4ExpTokenResult(
+            result.token_id,
+            result.logits,
+            hidden_seeds=np.concatenate(captured, axis=0),
+        )
 
-    def prefill_chunked(self, token_ids: list[int] | tuple[int, ...]) -> Qwen4ExpTokenResult:
+    def prefill_chunked(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        capture_hidden_seeds: bool = False,
+    ) -> Qwen4ExpTokenResult:
         if not token_ids:
             raise ValueError("Qwen4Exp prefill requires at least one token")
         if len(token_ids) > self.max_sequence_length:
             raise ValueError("Qwen4Exp prefill exceeds sequence capacity")
         self.reset()
         last_residual_ptr = 0
+        captured: list[np.ndarray] = []
         values = tuple(int(token) for token in token_ids)
         for start in range(0, len(values), self.prefill_chunk_size):
-            last_residual_ptr = self._prefill_chunk(
-                values[start : start + self.prefill_chunk_size]
+            last_residual_ptr, hidden_rows = self._prefill_chunk(
+                values[start : start + self.prefill_chunk_size],
+                capture_hidden_seeds=capture_hidden_seeds,
             )
+            if hidden_rows is not None:
+                captured.append(hidden_rows)
         cfg = self.config
         assert self.head_scratch is not None
+        self.runtime.memcpy(
+            self.last_target_hidden.ptr,
+            last_residual_ptr,
+            self.last_target_hidden.nbytes,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+        )
         head_read = run_qwen4_exp_gr_read(
             last_residual_ptr,
             self.resident.weight("root.head_hc_norm").allocation("raw").tensor.ptr,
@@ -4182,10 +4271,25 @@ class Qwen4ExpGGUFResidentModelRunner:
         copy_device_to_host(
             host_array_ptr(logits), self.logits_buffer, runtime=self.runtime
         )
-        return Qwen4ExpTokenResult(int(np.argmax(logits)), logits)
+        return Qwen4ExpTokenResult(
+            int(np.argmax(logits)),
+            logits,
+            hidden_seeds=(
+                np.concatenate(captured, axis=0)
+                if capture_hidden_seeds
+                else None
+            ),
+        )
 
-    def prefill(self, token_ids: list[int] | tuple[int, ...]) -> Qwen4ExpTokenResult:
-        return self.prefill_chunked(token_ids)
+    def prefill(
+        self,
+        token_ids: list[int] | tuple[int, ...],
+        *,
+        capture_hidden_seeds: bool = False,
+    ) -> Qwen4ExpTokenResult:
+        return self.prefill_chunked(
+            token_ids, capture_hidden_seeds=capture_hidden_seeds
+        )
 
     def generate(
         self,
