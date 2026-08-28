@@ -359,7 +359,7 @@ def test_p9_h3_q6_t16_bf16_f32_matches_cpu_oracle(rows, in_features, out_feature
         ),
     ],
 )
-@pytest.mark.parametrize("rows", [2, 3, 4, 5, 6])
+@pytest.mark.parametrize("rows", [2, 3, 4, 5, 6, 7, 8])
 def test_q6_t16_rowtile_col8_is_bit_exact_to_t16_decode(
     candidate,
     reference,
