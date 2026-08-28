@@ -15,6 +15,7 @@ from scripts.gguf_mtp_c1c8_server_bench import (
     _mtp_engaged,
     _parse_expected_mtp_widths,
     _parse_widths,
+    _request_mtp_value,
     _render_messages,
     _resident_observability,
     build_parser,
@@ -40,11 +41,26 @@ def test_mtp_c1c8_parser_defaults_to_production_profile() -> None:
         )
     )
 
+    automatic = parser.parse_args(
+        ("--mtp-request-mode", "automatic", "--output", "/tmp/out.json")
+    )
+
     assert default.execution_profile == "production"
+    assert default.mtp_request_mode == "explicit"
     assert default.resident_capacity is None
     assert strict.execution_profile == "strict"
+    assert automatic.mtp_request_mode == "automatic"
     assert normal_owner.widths == (2,)
     assert normal_owner.resident_capacity == 4
+
+
+def test_mtp_c1c8_request_mode_separates_explicit_and_automatic() -> None:
+    assert _request_mtp_value(arm="ar", request_mode="explicit") is False
+    assert _request_mtp_value(arm="ar", request_mode="automatic") is False
+    assert _request_mtp_value(arm="mtp", request_mode="explicit") is True
+    assert _request_mtp_value(arm="mtp", request_mode="automatic") is None
+    with pytest.raises(ValueError, match="request mode"):
+        _request_mtp_value(arm="mtp", request_mode="unknown")
 
 
 def test_mtp_c1c8_parses_complete_widths() -> None:

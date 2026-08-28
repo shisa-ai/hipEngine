@@ -330,28 +330,39 @@ def _install_diagnostic_plan(llm: LLM) -> None:
     llm.resolve_speculative_mtp_serving_plan = MethodType(resolve, llm)
 
 
+def _request_mtp_value(*, arm: str, request_mode: str) -> bool | None:
+    if arm == "ar":
+        return False
+    if arm != "mtp":
+        raise ValueError(f"unknown benchmark arm {arm!r}")
+    if request_mode == "explicit":
+        return True
+    if request_mode == "automatic":
+        return None
+    raise ValueError(f"unknown MTP request mode {request_mode!r}")
+
+
 def _request(
     client: TestClient,
     *,
     model: str,
     prompt: str,
     max_tokens: int,
-    mtp: bool,
+    mtp: bool | None,
     barrier: threading.Barrier,
 ) -> dict[str, Any]:
     barrier.wait(timeout=30.0)
+    request_payload: dict[str, Any] = {
+        "model": model,
+        "prompt": prompt,
+        "max_tokens": int(max_tokens),
+        "temperature": 0.0,
+        "top_p": 1.0,
+    }
+    if mtp is not None:
+        request_payload["speculative_mtp"] = bool(mtp)
     started = time.perf_counter()
-    response = client.post(
-        "/v1/completions",
-        json={
-            "model": model,
-            "prompt": prompt,
-            "max_tokens": int(max_tokens),
-            "temperature": 0.0,
-            "top_p": 1.0,
-            "speculative_mtp": bool(mtp),
-        },
-    )
+    response = client.post("/v1/completions", json=request_payload)
     completed = time.perf_counter()
     payload = response.json()
     if response.status_code != 200:
@@ -377,6 +388,7 @@ def _run_arm(
     width: int,
     max_tokens: int,
     arm: str,
+    mtp_request_mode: str,
 ) -> dict[str, Any]:
     memory_before = memory_stats()
     barrier = threading.Barrier(int(width) + 1)
@@ -388,7 +400,7 @@ def _run_arm(
                 model=model,
                 prompt=prompt,
                 max_tokens=max_tokens,
-                mtp=arm == "mtp",
+                mtp=_request_mtp_value(arm=arm, request_mode=mtp_request_mode),
                 barrier=barrier,
             )
             for _ in range(int(width))
@@ -675,7 +687,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 generation_batch_window_ms=float(args.batch_window_ms),
                 max_context_tokens=int(args.max_sequence_length),
                 max_active_requests=resident_capacity,
-                speculative_mtp_serving="opt_in",
+                speculative_mtp_serving=(
+                    "opt_in" if args.mtp_request_mode == "explicit" else "auto"
+                ),
                 speculative_candidate_budget=int(args.candidate_budget),
                 shutdown_grace_seconds=5.0,
             ),
@@ -693,6 +707,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         width=width,
                         max_tokens=int(args.max_tokens),
                         arm=arm,
+                        mtp_request_mode=str(args.mtp_request_mode),
                     )
                 for prompt_index, prompt in enumerate(prompts):
                     order = ARMS if (prompt_index + width) % 2 else tuple(reversed(ARMS))
@@ -706,6 +721,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             width=width,
                             max_tokens=int(args.max_tokens),
                             arm=arm,
+                            mtp_request_mode=str(args.mtp_request_mode),
                         )
                     ar_ids = [row["generated_ids"] for row in measured["ar"]["rows"]]
                     mtp_ids = [row["generated_ids"] for row in measured["mtp"]["rows"]]
@@ -806,6 +822,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "correctness_contract": str(args.correctness_contract),
             "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
             "generation2_diagnostic_plan": bool(args.generation2_diagnostic),
+            "mtp_request_mode": str(args.mtp_request_mode),
+            "server_mtp_mode": (
+                "opt_in" if args.mtp_request_mode == "explicit" else "auto"
+            ),
             "timing": "blocking OpenAI barrier-to-last-completion complete wall",
         },
         "runtime_profile": runtime_profile,
@@ -832,6 +852,15 @@ def build_parser() -> argparse.ArgumentParser:
         default="production",
     )
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
+    parser.add_argument(
+        "--mtp-request-mode",
+        choices=("explicit", "automatic"),
+        default="explicit",
+        help=(
+            "explicit sends speculative_mtp=true through an opt-in server; "
+            "automatic omits the request field through an auto server"
+        ),
+    )
     parser.add_argument("--widths", type=_parse_widths, default=tuple(range(1, 9)))
     parser.add_argument(
         "--resident-capacity",
