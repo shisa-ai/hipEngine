@@ -35,6 +35,7 @@ def test_qwen4_exp_q5_1_selected_build_and_registry_contract() -> None:
         qwen4_exp_q5_1_selected_gemv_logical256_t128_bf16_bf16_out,
         qwen4_exp_q5_1_selected_gemv_logical256_t64_bf16_bf16_out,
         qwen4_exp_q5_1_selected_gemv_wave64_bf16_bf16_out,
+        qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out,
@@ -81,6 +82,15 @@ def test_qwen4_exp_q5_1_selected_build_and_registry_contract() -> None:
             variant="selected_gemv_logical256_t64_bf16_bf16_out",
         )
         is qwen4_exp_q5_1_selected_gemv_logical256_t64_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q5_1",
+            variant="selected_weighted_sum_logical256_t64_bf16_bf16_out",
+        )
+        is qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out
     )
     assert (
         resolve(
@@ -154,12 +164,16 @@ def test_qwen4_exp_gather_bf16_lanes_matches_host_permutation() -> None:
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
     from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
+        weighted_sum_out_bf16_f32w,
+    )
     from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
         build_qwen4_exp_q5_1,
         qwen4_exp_q5_1_selected_gemv_bf16_bf16_out,
         qwen4_exp_q5_1_selected_gemv_logical256_t128_bf16_bf16_out,
         qwen4_exp_q5_1_selected_gemv_logical256_t64_bf16_bf16_out,
         qwen4_exp_q5_1_selected_gemv_wave64_bf16_bf16_out,
+        qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out,
@@ -202,6 +216,7 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
         )
         expected[row] = x[row] @ weight.T
     expected_bits = float_array_to_bf16_bits(expected)
+    routing = np.array([0.19, 0.33, 0.48], dtype=np.float32)
 
     order = np.argsort(selected, kind="stable")
     grouped_x_bits = x_bits[order]
@@ -219,9 +234,12 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
         d_x = _upload(x_bits, runtime, allocations)
         d_selected = _upload(selected, runtime, allocations)
         d_weight = _upload(raw, runtime, allocations)
+        d_routing = _upload(routing, runtime, allocations)
         d_output = _alloc(expected_bits.shape, np.uint16, runtime, allocations)
         d_exact128_output = _alloc(expected_bits.shape, np.uint16, runtime, allocations)
         d_exact64_output = _alloc(expected_bits.shape, np.uint16, runtime, allocations)
+        d_combined = _alloc((out_features,), np.uint16, runtime, allocations)
+        d_fused_combined = _alloc((out_features,), np.uint16, runtime, allocations)
         d_wave64_output = _alloc(expected_bits.shape, np.uint16, runtime, allocations)
         d_grouped_x = _upload(grouped_x_bits, runtime, allocations)
         d_expert_start = _upload(expert_start, runtime, allocations)
@@ -271,6 +289,27 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
             d_weight.ptr,
             d_exact64_output.ptr,
             rows,
+            rows,
+            experts,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        weighted_sum_out_bf16_f32w(
+            d_exact64_output.ptr,
+            d_routing.ptr,
+            d_combined.ptr,
+            rows,
+            out_features,
+            runtime=runtime,
+        )
+        qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out(
+            d_x.ptr,
+            d_selected.ptr,
+            d_weight.ptr,
+            d_routing.ptr,
+            d_fused_combined.ptr,
             rows,
             experts,
             in_features,
@@ -350,6 +389,10 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
         exact64_actual = _download(
             d_exact64_output, expected_bits.shape, np.uint16, runtime
         )
+        combined = _download(d_combined, (out_features,), np.uint16, runtime)
+        fused_combined = _download(
+            d_fused_combined, (out_features,), np.uint16, runtime
+        )
         wave64_actual = _download(
             d_wave64_output, expected_bits.shape, np.uint16, runtime
         )
@@ -372,6 +415,7 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
     np.testing.assert_array_equal(actual, expected_bits)
     np.testing.assert_array_equal(exact128_actual, expected_bits)
     np.testing.assert_array_equal(exact64_actual, expected_bits)
+    np.testing.assert_array_equal(fused_combined, combined)
     np.testing.assert_allclose(
         bf16_to_float32(wave64_actual), expected, rtol=2e-2, atol=2e-2
     )

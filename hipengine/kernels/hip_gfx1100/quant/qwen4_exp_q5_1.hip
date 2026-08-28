@@ -379,6 +379,67 @@ __global__ void qwen4_exp_gather_bf16_lanes_kernel(
 }
 
 __launch_bounds__(64, 4)
+__global__ void q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_kernel(
+    const uint16_t* __restrict__ input,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ weights,
+    const float* __restrict__ routing_weights,
+    uint16_t* __restrict__ output,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t row_bytes) {
+  constexpr int LOGICAL_THREADS = 256;
+  extern __shared__ float partial[];
+  const int64_t out = blockIdx.x;
+  if (out >= out_features) return;
+  float combined = 0.0f;
+  for (int64_t row = 0; row < rows; ++row) {
+    const int64_t expert = selected[row];
+    if (expert < 0 || expert >= num_experts) return;
+    const uint8_t* weight_row = weights
+        + (expert * out_features + out) * row_bytes;
+    float value[4] = {};
+#pragma unroll
+    for (int logical_group = 0; logical_group < 4; ++logical_group) {
+      const int logical = threadIdx.x + logical_group * 64;
+      for (int64_t column = logical; column < in_features;
+           column += LOGICAL_THREADS) {
+        const int64_t block_index = column / 32;
+        const int within = static_cast<int>(column & 31);
+        value[logical_group] +=
+            bf16_bits_to_float(input[row * in_features + column])
+            * dequant_q5_1(weight_row + block_index * 24, within);
+      }
+      partial[logical] = value[logical_group];
+    }
+    __syncthreads();
+    partial[threadIdx.x] += partial[threadIdx.x + 128];
+    partial[threadIdx.x + 64] += partial[threadIdx.x + 192];
+    __syncthreads();
+    partial[threadIdx.x] += partial[threadIdx.x + 64];
+    __syncthreads();
+    if (threadIdx.x < 32) {
+      partial[threadIdx.x] += partial[threadIdx.x + 32];
+    }
+    __syncthreads();
+    if (threadIdx.x < 32) {
+      float reduced = partial[threadIdx.x];
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        reduced += __shfl_down(reduced, offset, 32);
+      }
+      if (threadIdx.x == 0) {
+        const float rounded = bf16_bits_to_float(float_to_bf16_bits(reduced));
+        combined = fmaf(rounded, routing_weights[row], combined);
+      }
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) output[out] = float_to_bf16_bits(combined);
+}
+
+__launch_bounds__(64, 4)
 __global__ void q5_1_selected_gemv_logical256_t64_bf16_bf16_kernel(
     const uint16_t* __restrict__ input,
     const int64_t* __restrict__ selected,
@@ -690,6 +751,36 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf
       static_cast<const int64_t*>(tile_expert),
       static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
       compact_rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out(
+    const void* input,
+    const void* selected,
+    const void* weights,
+    const void* routing_weights,
+    void* output,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!input || !selected || !weights || !routing_weights || !output ||
+      rows <= 0 || num_experts <= 0 || in_features <= 0 ||
+      (in_features % 32) || out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int physical_threads = 64;
+  constexpr int logical_threads = 256;
+  const int64_t row_bytes = (in_features / 32) * 24;
+  hipLaunchKernelGGL(
+      q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_kernel,
+      dim3(static_cast<uint32_t>(out_features)), dim3(physical_threads),
+      logical_threads * sizeof(float), stream,
+      static_cast<const uint16_t*>(input), static_cast<const int64_t*>(selected),
+      static_cast<const uint8_t*>(weights),
+      static_cast<const float*>(routing_weights), static_cast<uint16_t*>(output),
+      rows, num_experts, in_features, out_features, row_bytes);
   return static_cast<int>(hipGetLastError());
 }
 
