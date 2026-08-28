@@ -273,6 +273,28 @@ fallback count is not a success metric.
   runtime environment read. Keep the pure CPU acceptance implementation and
   strict eager fallback.
 
+## SPECDEC2 request-local ngram-mod experiment
+
+- Added 2026-08-28 for the coding/repetition composition spike.
+  `HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD=1` gives an exact request-local 24-token
+  continuation cache first refusal before dense GGUF MTP2; match/min/probe
+  bounds are temporarily adjustable through
+  `HIPENGINE_GGUF_SPECDEC2_NGRAM_{MATCH,MIN,PROBE_MAX}`. A hit verifies only
+  the already-qualified K<=3 prefix, then catches target-attached MTP state up
+  from target-owned hidden rows. A miss, mixed-source physical group, disabled
+  flag, unsupported shape, or failure keeps the registered ordinary MTP/AR
+  paths. Exact request-local keys intentionally replace llama.cpp's shared
+  modulo pool to avoid collisions, cross-tenant history leakage, and
+  benchmark-order/batch-composition contamination.
+- Removal/promotion trigger: retain the flag only through the full canonical +
+  heldout and independent repetitive-code economics gate. If hybrid is not
+  faster than retained MTP without any category/heldout/correctness/lifecycle
+  regression, remove runtime composition and move the cache to research/tests.
+  If it wins, replace environment parsing with a typed cold policy, promote only
+  the measured model/backend/profile/C/K/context scope, remove positive tuning
+  overrides after one release window, and permanently keep ordinary MTP plus AR
+  as strict miss/failure fallbacks.
+
 ## Execution-profile migration seam
 
 - Implemented for campaign P3: public `strict|production|batch_invariant`

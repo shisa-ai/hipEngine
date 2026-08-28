@@ -1,12 +1,12 @@
 """Request-local exact n-gram proposals for speculative target verification.
 
 The proposal rule follows llama.cpp's ``ngram-mod`` confidence shape: a long
-committed-token suffix is extended iteratively and a short verifier prefix is
-returned only when the lookup can sustain a configured minimum horizon.  Unlike
-llama.cpp's process-wide modulo table, hipEngine keeps exact request-local keys.
-That prevents hash-collision candidates, cross-tenant token leakage, benchmark
-order dependence, and batch-composition dependence while retaining the useful
-zero-model-compute proposal mechanism.
+committed-token suffix must match before a short verifier prefix is returned.
+Unlike llama.cpp's process-wide modulo table, hipEngine keeps exact request-local
+keys and copies a bounded contiguous prior continuation without wrapping through
+the current suffix. That prevents hash-collision candidates, cyclic replay,
+cross-tenant token leakage, benchmark-order dependence, and batch-composition
+dependence while retaining the useful zero-model-compute proposal mechanism.
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ class NgramModRequestCache:
     def __init__(self, config: NgramModConfig | None = None) -> None:
         self.config = config or NgramModConfig()
         self._committed_tokens: tuple[int, ...] = ()
-        self._next_by_ngram: dict[tuple[int, ...], int] = {}
+        self._next_by_ngram: dict[tuple[int, ...], tuple[int, int]] = {}
         self.proposal_calls = 0
         self.proposal_hits = 0
         self.probed_tokens = 0
@@ -109,7 +109,7 @@ class NgramModRequestCache:
         n = self.config.n_match
         for next_index in range(start, len(history)):
             key = history[next_index - n : next_index]
-            self._next_by_ngram[key] = history[next_index]
+            self._next_by_ngram[key] = (history[next_index], next_index)
         self._committed_tokens = history
 
     def propose(self, *, max_candidates: int) -> NgramModProposal | None:
@@ -131,15 +131,20 @@ class NgramModRequestCache:
         probe_limit = min(required, self.config.max_probe_tokens)
         if probe_limit < required:
             return None
-        speculative = list(self._committed_tokens)
-        drafted: list[int] = []
-        for _index in range(probe_limit):
-            token = self._next_by_ngram.get(tuple(speculative[-n:]))
-            if token is None:
-                return None
-            token = int(token)
-            drafted.append(token)
-            speculative.append(token)
+        match = self._next_by_ngram.get(self._committed_tokens[-n:])
+        if match is None:
+            return None
+        _first_token, source_index = match
+        # The source continuation must end before the current trailing n-gram.
+        # This is the exact, collision-free analogue of llama.cpp's confidence
+        # gate without allowing a deterministic key cycle to manufacture an
+        # arbitrarily long draft from one short repeated suffix.
+        current_suffix_start = len(self._committed_tokens) - n
+        if source_index + probe_limit > current_suffix_start:
+            return None
+        drafted = self._committed_tokens[
+            source_index : source_index + probe_limit
+        ]
         if len(drafted) < self.config.min_draft_tokens:
             return None
         self.proposal_hits += 1

@@ -38,6 +38,7 @@ from hipengine.speculative import (
     TargetVerifyBatch,
     TargetVerifyBuffers,
 )
+from hipengine.speculative.ngram_mod import NgramModConfig, RequestLocalNgramMod
 
 
 class _AdapterDouble:
@@ -2517,3 +2518,238 @@ def test_mtp2_streaming_prompt_failure_drains_provider_and_sink() -> None:
     assert adapter._prompt_streaming_group_keys == {}
     assert adapter._active_prompt_claims is None
     assert adapter._provider_groups == {}
+
+
+def _ngram_replay_prompt(seed: int) -> tuple[tuple[int, ...], int, tuple[int, ...]]:
+    prefix = tuple(range(seed, seed + 24))
+    continuation = tuple(range(seed + 1_000, seed + 1_024))
+    # The first generated root completes the second occurrence of ``prefix``.
+    return (*prefix, *continuation, *prefix[:-1]), prefix[-1], continuation
+
+
+def test_physical_adapter_uses_ngram_first_and_skips_mtp_proposal() -> None:
+    prompts = tuple(_ngram_replay_prompt(seed) for seed in (100, 500))
+    runtime = SimpleNamespace(memcpy=lambda *args: None)
+    targets = tuple(
+        SimpleNamespace(
+            position=len(prompt),
+            last_target_hidden=Tensor.from_handle(
+                0x1000 + index * 0x100,
+                (1, 8),
+                DType.BF16,
+                Device("hip", 0),
+            ),
+            runtime=runtime,
+        )
+        for index, (prompt, _root, _continuation) in enumerate(prompts)
+    )
+    provider = SimpleNamespace(
+        executor=SimpleNamespace(
+            hidden_size=8,
+            capture_request_checkpoint=lambda request_id: f"checkpoint-{request_id}",
+        ),
+        propose_batch_device=lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("n-gram hit must skip MTP proposal compute")
+        ),
+    )
+    rows = tuple(
+        SimpleNamespace(
+            prompt_ids=prompt,
+            lease=SimpleNamespace(session=target),
+            slot=SimpleNamespace(generated_ids=[root], seq_position=target.position),
+            mtp2_candidate_device_handoffs=0,
+        )
+        for (prompt, root, _continuation), target in zip(prompts, targets, strict=True)
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(
+        capacity=2,
+        _row=lambda request_id: rows[(10, 20).index(request_id)],
+        _flush_row_owner=lambda row: None,
+    )
+    adapter._ngram = RequestLocalNgramMod(
+        NgramModConfig(n_match=24, min_draft_tokens=24, max_probe_tokens=24)
+    )
+    adapter._states = {
+        request_id: _MTP2RequestState(
+            request_id=request_id,
+            provider=provider,
+            provider_pool_key=None,
+            provider_group_key=(10, 20),
+            verifier=None,
+            root_hidden_buffer=SimpleNamespace(ptr=1),
+        )
+        for request_id in (10, 20)
+    }
+    adapter._cycle_hidden_tensors = lambda runtime, hidden_size: (
+        Tensor.from_handle(0x4000, (2, 8), DType.BF16, Device("hip", 0)),
+        Tensor.from_handle(0x5000, (2, 8), DType.BF16, Device("hip", 0)),
+    )
+    adapter._stage_ngram_tokens = lambda tokens, runtime: Tensor.from_handle(
+        0x6000,
+        (len(tuple(tokens)),),
+        DType.INT32,
+        Device("hip", 0),
+    )
+    plan = SimpleNamespace(
+        speculative_request_ids=(10, 20),
+        request_ids=(10, 20),
+        candidate_counts=(3, 3),
+        provider_key="nextn",
+        cycle_id=9,
+        resident_slots=(0, 1),
+    )
+    semantics = tuple(
+        SpeculativeRequestSemantics(
+            request_id,
+            "greedy",
+            "verify_chain",
+            len(prompt) + 1,
+            8,
+        )
+        for request_id, (prompt, _root, _continuation) in zip(
+            (10, 20), prompts, strict=True
+        )
+    )
+
+    graph = adapter.propose_batch(plan, semantics)
+
+    assert graph.method_key == "ngram_mod+mtp2"
+    assert graph.candidate_tokens == tuple(
+        token
+        for _prompt, _root, continuation in prompts
+        for token in continuation[:3]
+    )
+    assert graph.token_ids is not None and graph.token_ids.ptr == 0x6000
+    assert dict(graph.provider_metadata)["proposal_source"] == "request_local_ngram_mod"
+    assert all(state.proposal_source == "ngram_mod" for state in adapter._states.values())
+    assert all(state.proposal_device_batch is None for state in adapter._states.values())
+    assert [row.mtp2_ngram_cycles for row in rows] == [1, 1]
+
+
+def test_ngram_mixed_group_hit_fails_closed_to_one_physical_mtp_source() -> None:
+    hit_prompt, hit_root, _continuation = _ngram_replay_prompt(100)
+    miss_prompt = tuple(range(1_000, 1_071))
+    rows = (
+        SimpleNamespace(
+            prompt_ids=hit_prompt,
+            slot=SimpleNamespace(generated_ids=[hit_root]),
+            lease=SimpleNamespace(session=SimpleNamespace(runtime=object())),
+        ),
+        SimpleNamespace(
+            prompt_ids=miss_prompt,
+            slot=SimpleNamespace(generated_ids=[1_071]),
+            lease=SimpleNamespace(session=SimpleNamespace(runtime=object())),
+        ),
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter._ngram = RequestLocalNgramMod(
+        NgramModConfig(n_match=24, min_draft_tokens=24, max_probe_tokens=24)
+    )
+    context = MtpProposalContext(
+        request_ids=(10, 20),
+        root_tokens=(hit_root, 1_071),
+        root_positions=(len(hit_prompt), len(miss_prompt)),
+        target_hidden=Tensor.from_handle(
+            0x7000, (2, 8), DType.BF16, Device("hip", 0)
+        ),
+    )
+
+    assert adapter._try_ngram_proposal(
+        (10, 20), rows, (3, 3), context
+    ) is None
+    assert [row.mtp2_ngram_lookup_calls for row in rows] == [1, 1]
+    assert [getattr(row, "mtp2_ngram_lookup_hits", 0) for row in rows] == [1, 0]
+    assert [getattr(row, "mtp2_ngram_cycles", 0) for row in rows] == [0, 0]
+
+
+def test_ngram_target_rows_catch_mtp_up_through_root_and_accepted_prefix() -> None:
+    calls: list[tuple[object, ...]] = []
+    runtime = SimpleNamespace(
+        memcpy=lambda dst, src, nbytes, kind: calls.append(
+            ("copy", int(dst), int(src), int(nbytes), kind)
+        )
+    )
+    executor = SimpleNamespace(
+        hidden_size=8,
+        runtime=runtime,
+        restore_request_checkpoint=lambda checkpoint: calls.append(
+            ("restore", checkpoint)
+        ),
+        advance_state_only=lambda request_id, token, position, hidden: calls.append(
+            ("one", int(request_id), int(token), int(position), int(hidden.ptr))
+        ),
+        advance_state_batch_only=lambda ids, tokens, positions, hidden: calls.append(
+            (
+                "batch",
+                tuple(ids),
+                tuple(tokens),
+                tuple(positions),
+                int(hidden.ptr),
+            )
+        ),
+    )
+    provider = SimpleNamespace(executor=executor)
+    states = tuple(
+        _MTP2RequestState(
+            request_id=request_id,
+            provider=provider,
+            provider_pool_key=None,
+            provider_group_key=(10, 20),
+            verifier=None,
+            root_hidden_buffer=SimpleNamespace(ptr=1),
+            proposal_checkpoint=f"checkpoint-{request_id}",
+            proposal_context=MtpProposalContext(
+                request_ids=(request_id,),
+                root_tokens=(root,),
+                root_positions=(position,),
+                target_hidden=Tensor.from_handle(
+                    0x8000 + index * 0x100,
+                    (1, 8),
+                    DType.BF16,
+                    Device("hip", 0),
+                ),
+            ),
+            ngram_candidate_tokens=candidates,
+            proposal_source="ngram_mod",
+        )
+        for index, (request_id, root, position, candidates) in enumerate(
+            (
+                (10, 100, 5, (101, 102, 103)),
+                (20, 200, 8, (201, 202, 203)),
+            )
+        )
+    )
+    rows = {10: SimpleNamespace(), 20: SimpleNamespace()}
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(_row=lambda request_id: rows[int(request_id)])
+    adapter._cycle_hidden_tensors = lambda runtime, hidden_size: (
+        Tensor.from_handle(0xA000, (2, 8), DType.BF16, Device("hip", 0)),
+        Tensor.from_handle(0xB000, (2, 8), DType.BF16, Device("hip", 0)),
+    )
+    hidden_rows = (
+        Tensor.from_handle(0xC000, (4, 8), DType.BF16, Device("hip", 0)),
+        Tensor.from_handle(0xD000, (4, 8), DType.BF16, Device("hip", 0)),
+    )
+
+    adapter._repair_provider_states_from_ngram_target_rows(
+        states,
+        hidden_rows,
+        accepted_counts=(2, 0),
+    )
+
+    assert calls[:2] == [
+        ("restore", "checkpoint-10"),
+        ("restore", "checkpoint-20"),
+    ]
+    assert (
+        "batch",
+        (10, 20),
+        (100, 200),
+        (5, 8),
+        0xB000,
+    ) in calls
+    assert any(call[:4] == ("one", 10, 101, 6) for call in calls)
+    assert any(call[:4] == ("one", 10, 102, 7) for call in calls)
+    assert rows[10].mtp2_ngram_accepted_tokens == 2
+    assert rows[20].mtp2_ngram_accepted_tokens == 0
