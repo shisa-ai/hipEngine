@@ -43,6 +43,10 @@ _Q4_ROWTILE_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json"
 )
+_C3_R12_ROWTILE_EVIDENCE = (
+    "benchmarks/results/"
+    "2026-08-28-gfx1151-qwen38-c3-production-r12-rowtiles-retained.json"
+)
 
 
 def _binder(
@@ -126,6 +130,20 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
             quant=_Q4_REGISTRY_QUANT,
         ),
         _selection(
+            layer="linear",
+            scope="specdec2_mtp2_c3_k3_r12_q4_single",
+            selected="t16_wmma_prefill_smallm_bf16_bf16_out",
+            fallback="t16_wmma_prefill_smallm_bf16_bf16_out",
+            quant=_Q4_REGISTRY_QUANT,
+        ),
+        _selection(
+            layer="linear_pair_silu",
+            scope="specdec2_mtp2_c3_k3_r12_q4_gate_up",
+            selected="dense_dual_wmma_prefill_bf16_bf16_out",
+            fallback="dense_dual_wmma_prefill_bf16_bf16_out",
+            quant=_Q4_REGISTRY_QUANT,
+        ),
+        _selection(
             layer="linear_attn_chain_conv_decode",
             scope="specdec2_mtp2_c1",
             selected=_STRICT_CHAIN_VARIANT,
@@ -159,6 +177,22 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             fallback="dense_dual_wmma_prefill_bf16_bf16_out",
             quant=_Q4_REGISTRY_QUANT,
             evidence=_Q4_ROWTILE_EVIDENCE,
+        ),
+        _selection(
+            layer="linear",
+            scope="specdec2_mtp2_c3_k3_r12_q4_single",
+            selected="dense_rowtile_bf16_bf16_out",
+            fallback="t16_wmma_prefill_smallm_bf16_bf16_out",
+            quant=_Q4_REGISTRY_QUANT,
+            evidence=_C3_R12_ROWTILE_EVIDENCE,
+        ),
+        _selection(
+            layer="linear_pair_silu",
+            scope="specdec2_mtp2_c3_k3_r12_q4_gate_up",
+            selected="dense_dual_rowtile_bf16_bf16_out",
+            fallback="dense_dual_wmma_prefill_bf16_bf16_out",
+            quant=_Q4_REGISTRY_QUANT,
+            evidence=_C3_R12_ROWTILE_EVIDENCE,
         ),
         _selection(
             layer="linear_attn_chain_conv_decode",
