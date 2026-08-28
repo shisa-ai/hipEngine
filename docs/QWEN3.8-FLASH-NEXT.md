@@ -777,6 +777,20 @@ AR/K0 until the complete multi-prompt suite proves exact target results,
 GPU-accept==CPU, rollback/repair, lifecycle, and positive economics against
 true same-session AR.
 
+Current short-context component status (2026-08-28): the pinned 34-tensor Q8_0
+sidecar map/materializer, authoritative widened target-hidden handoff, and
+request-owned one-layer draft runner exist. The draft independently normalizes
+embedding/H10240 target hidden, applies fused `eh_proj`, executes one dense HC +
+attention + 512/top-10 MoE block, retains its own K/V cursor, chains widened
+hidden for budgets 1–4, and emits final logits. Its CPU input formula,
+sidecar-only finite output, deterministic repeat, and snapshot/restore replay
+pass at a 16-token reduced capacity. This is **not yet a working MTP product**:
+real target prompt priming, sequential/batched target verification, public
+blocking/SSE, cancellation, exact generated output, and natural economics are
+still binding. Evidence:
+[`2026-08-28-qwen38-flash-next-mtp-q8-sidecar.json`](../benchmarks/results/2026-08-28-qwen38-flash-next-mtp-q8-sidecar.json) and
+[`2026-08-28-gfx1151-qwen38-flash-next-mtp-draft-smoke.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-draft-smoke.json).
+
 ### F9 — Vision
 
 Add the Qwen3-VL-compatible 27-layer vision encoder and multimodal processor as

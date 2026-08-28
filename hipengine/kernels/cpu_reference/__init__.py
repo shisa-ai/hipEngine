@@ -108,6 +108,7 @@ from hipengine.kernels.cpu_reference.qwen4_exp import (
     qsa_select_positions,
     qsa_sparse_gqa_attention,
     qwen4_exp_moe,
+    qwen4_exp_mtp_fuse_inputs,
     qwen4_exp_reduced_qsa_layer,
     sigmoid_gated_rmsnorm,
 )
@@ -327,6 +328,7 @@ __all__ = [
     "qsa_select_positions",
     "qsa_sparse_gqa_attention",
     "qwen4_exp_moe",
+    "qwen4_exp_mtp_fuse_inputs",
     "qwen4_exp_reduced_qsa_layer",
     "register_cpu_reference_kernels",
     "register_dms_cpu_reference_kernels",

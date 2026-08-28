@@ -41,6 +41,11 @@ from hipengine.runtime.qwen35_gguf_runner import (
     Qwen35GGUFOneLayerProbe,
     Qwen35GGUFResidentSession,
 )
+from hipengine.runtime.qwen4_exp_mtp import (
+    Qwen4ExpGGUFMTPDraftRunner,
+    Qwen4ExpMTPDraftResult,
+    Qwen4ExpMTPDraftSnapshot,
+)
 from hipengine.runtime.qwen4_exp_runner import (
     Qwen4ExpDecodeState,
     Qwen4ExpDecodeStateSnapshot,
@@ -141,6 +146,9 @@ __all__ = [
     "Qwen4ExpQSAIndexDeviceState",
     "Qwen4ExpRunnerSnapshot",
     "Qwen4ExpTokenResult",
+    "Qwen4ExpGGUFMTPDraftRunner",
+    "Qwen4ExpMTPDraftResult",
+    "Qwen4ExpMTPDraftSnapshot",
     "Qwen4ExpQSAMixerDeviceWeights",
     "Qwen4ExpQSAScratch",
     "bind_qwen4_exp_gdn_layer",
