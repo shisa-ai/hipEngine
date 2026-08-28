@@ -65,8 +65,10 @@ committed.
 | --- | --- |
 | Qwen technical report | `QwenLM/Qwen3.8-Flash-Next/tech_report.pdf`, local SHA-256 `04f263446d74a35cb7cea368574e0c561f3b05c133be2c777ac884404063655d`; architecture/formula authority |
 | Transformers | `huggingface/transformers@fc5c5bde8e656dad91cbf34e61940d984b1c7b91`, `src/transformers/models/qwen4_exp/modular_qwen4_exp.py`; executable formula/control oracle outside the hot path |
-| llama.cpp PR #27742 | `bea3b12daee45876b0129a3602dc8f534ce30bf0`; primary converter, quantizer fixes, target-text comparator, QSA/PLE/GR reference |
-| llama.cpp PR #27739 | `dfa0c0fee2b704fd2ac228d365d40502c3006c40`; alternate MTP/PLE reference only, not the primary quantizer |
+| llama.cpp PR #27742 | merged as `ggml-org/llama.cpp@6c84c7d5d8833c6e0df69628f75a0f599797934e`; **primary basic implementation guide** for converter, target text graph, QSA, PLE, hyper-connections, quantizer fixes, and stock Qwen3-VL vision. The already-frozen comparator binary remains `bea3b12daee45876b0129a3602dc8f534ce30bf0`; do not mix those identities. |
+| llama.cpp PR #27739 | `dfa0c0fee2b704fd2ac228d365d40502c3006c40`; MTP design reference, used through EngramHalo's Qwen4Exp port rather than as the target-text/quantizer authority |
+| EngramHalo.cpp | `Aristo94/EngramHalo.cpp@4ff3affc2ac5861f7dda42bcf5ff653c776b816f`; PR #27742-based gfx1151 reference. MTP runtime `0f1c3e2ef41117033d91a83d7634fca4dfe12107`, MTP converter `2cc66f08ca03c6e3f385ec15412f92ad6d490794`; performance patches are ideas to validate in-tree, not inherited evidence. |
+| EngramHalo Q8_0 MTP sidecar | `EasiiX/Qwen3.8-Flash-Next-MTP-Strix-Halo-GGUF@6f7900648b1c6b14f067a182c640e47971e9ab35`; one 4,137,429,088-byte GGUF, external bring-up artifact pending local hash/inventory/oracle validation |
 | vLLM PR #53896 | `vllm-project/vllm@2a4cd640ff1a61b66124ddbaaf02a73781f7295a`; paged raw/persistent-compressed QSA caches, GPU scoring/top-k/expansion, split-k sparse attention, MTP step-0 index reuse, and AMD path reference |
 | vLLM PR #53899 | `vllm-project/vllm@95dc96d1d012a25ff5c3823a1e77197c8dae4654`; PLE CPU-offload protocol/reference; known TP1 warmup deadlock is explicitly not inherited |
 | SGLang PR #36497 | `sgl-project/sglang@7c66045d71f067c1c5da2b85baad3c47d9a19cb7`; persistent compressed-QSA cache, fused exact index prep/compression, fast top-k, sparse attention, PLE offload, HC and MTP reference |
@@ -74,10 +76,42 @@ committed.
 | SGLang PD PR #36651 | `sgl-project/sglang@7bcf5ba35654131cd2ff49bee73eca9677a33ca1`; PLE/GDN/QSA pending/compressed-state transfer and exact aggregate/PD parity reference |
 | Unsloth guide/repository | Memory-size expectation and independent GGUF comparator; no unverified quality claim transfers into hipEngine |
 
-The llama.cpp worktree is local and external to hipEngine:
-`/home/lhl/llama.cpp/llama.cpp-qwen4exp` at PR #27742 commit `bea3b12da`.
-Ported ideas must cite this commit and exact source path. Kernel development
-still occurs only in this tree.
+The historical comparator worktree is local and external to hipEngine:
+`/home/lhl/llama.cpp/llama.cpp-qwen4exp` at pre-merge PR #27742 commit
+`bea3b12da`. It remains the frozen oracle for evidence already recorded against
+that binary. New implementation decisions use the final merged PR identity
+`6c84c7d5d` from the read-only `/tmp/EngramHalo.cpp` clone (or a separately
+pinned read-only checkout), then EngramHalo `4ff3affc2`. Ported ideas cite exact
+commit + source path. Kernel development still occurs only in this tree.
+
+### 1.3 Basic implementation parity checklist from #27742 and EngramHalo
+
+This checklist is reviewed before adding new Qwen4Exp code. It prevents local
+optimization work from replacing missing product functionality.
+
+| Reference surface | Reference implementation | hipEngine short-context requirement |
+| --- | --- | --- |
+| Target text graph | #27742 `src/models/qwen4exp.cpp`: widened HC residual, PLE, 36 GDN + 12 attention layers, 512/top-10 MoE, final HC mixer | Already present; preserve same-artifact 512/1K logits and public AR while completing the rows below. |
+| Conversion/artifact | #27742 `conversion/qwen4exp.py` and quantizer fixes | Keep frozen target GGUF identity; support distinct MTP/mmproj artifacts rather than hiding them inside target mapping. |
+| QSA/cache | #27742 final `llama-memory-hybrid-idx.*` plus `qwen4exp.cpp` | Existing native QSA remains historical/available, but no more full-model long-context runs before the ladder permits them. |
+| Vision | #27742 `Qwen4ExpVisionModel(Qwen3VLVisionModel)`, stock Qwen3-VL clip path, plus image-placeholder PLE hashing | Add optional processor/vision/mmproj plugins and one 512/1K image generation gate; do not advertise vision before it passes. |
+| Target→draft handoff | EngramHalo `0f1c3e2ef`, `src/models/qwen4exp.cpp` | Expose the authoritative pre-final-mix widened target hidden row (`4×2560`) to the MTP cycle without host reconstruction. |
+| MTP input | EngramHalo: RMSNorm token embedding and widened hidden independently; concatenate and apply fused `eh_proj=[fc_embedding|fc_hidden]` | Loader validates both source projections or one fused sidecar projection; CPU/HIP fixture proves the fused equation. |
+| MTP layer | EngramHalo: one dense-attention Qwen4Exp HC+MoE block, no PLE, own transactional K/V; indexer tensors may exist but are not used | Implement a model-owned one-layer draft runner with independent state and strict target rollback/commit. QSA/IndexShare is deferred. |
+| MTP output | EngramHalo: preserve widened draft hidden for chaining, then its own final HC mixer and shared output head | Draft emits logits + next widened hidden; candidate budgets 1–4 use existing proposal/verify/accept interfaces. |
+| MTP sidecar conversion | EngramHalo `2cc66f08c`: filter `mtp.*`, remap final HC mixer, pad compression ratios with dense `0`, omit PLE, fuse `fc_embedding/fc_hidden` | First accept the pinned external Q8_0 sidecar after exact inventory/hash checks; add a reproducible local converter only if mapping cannot be proven directly. |
+| Public speculative route | EngramHalo generic draft-MTP driver with `n_max=4`; Q8_0 sidecar and confidence gate are external findings | Wire hipEngine's existing provider/transaction/streaming surfaces at 512/1K. AR stays default until the natural multi-prompt exact/economics gate passes. |
+| Public server | #27742/EngramHalo run through normal llama-server surfaces | Prove hipEngine blocking + SSE, chat/reasoning/tool template basics, cancellation/reset/close, and exact response-owned token accounting at 512/1K. |
+
+EngramHalo's gfx1151 performance patches are tracked after functionality:
+wide GPU top-k (`79b55adce`), H256/GQA2 quantized-KV FA selection
+(`21be595b7`), chunked GDN prefill (`083dde319`), decode-graph reuse
+(`954198cfd`), and true selected-K/V gather (`942b9cc74`). hipEngine already
+has exact GPU QSA selection and selected sparse attention; that is not evidence
+that MTP, serving, or vision works. Q8_0 KV, Q8_0 draft quantization,
+`ubatch=2048`, hipBLASLt, confidence threshold `0.75`, SSD-lazy PLE, and the
+reported rates are external hypotheses only. Each needs an in-tree RED gate and
+same-host complete-model evidence before promotion.
 
 ---
 
