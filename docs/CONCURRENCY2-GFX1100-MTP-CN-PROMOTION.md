@@ -555,15 +555,15 @@ and stop rather than weakening the gate.
 
 P7 exits on clean merge `a4c7da9fa` plus harness `230232754`. Explicit strict
 C1/K3/D24 remains exact and engaged at **32.802 vs 21.823 tok/s = 1.5031x AR**.
-Explicit production C2/K3/D24 is physical and exact-ID diagnostic but only
+Explicit production C2/K3/D24 was physical and exact-ID diagnostic but only
 **17.527 vs 30.668 tok/s = 0.5715x AR**, with 55.03% acceptance and three
-recoverable accept-identity failures. Automatic C2/C5 are pure K0 at parity and
-all allocations drain. Evidence:
+recoverable accept-identity failures. P8 supersedes those failures below.
+Automatic C2/C5 are pure K0 at parity and all allocations drain. Evidence:
 [`P7 route audit`](../benchmarks/results/2026-08-28-w7900-qwen38-q4km-cn-p7-route-audit.json).
 
 #### P8 — Explicit C2 ownership, acceptance, and correctness baseline
 
-- [ ] Prove one physical C2 proposal/target/accept/selected-commit transaction:
+- [x] Prove one physical C2 proposal/target/accept/selected-commit transaction:
       two request IDs, request-major candidate rows, one R=2(1+K) target
       frontier, grouped accept/commit telemetry, no request-serial target or
       mislabeled singleton route, and zero candidate D2H before target.
@@ -579,6 +579,21 @@ all allocations drain. Evidence:
 - [ ] Prove C1 -> C2 -> C1 and K0 <-> MTP with delayed arrival, asymmetric
       retirement/cancellation, refill, prefix policy, and ordinary-AR negative
       keys before retaining any new performance result.
+
+P8 correctness checkpoint (2026-08-28): mixed positive-K/K0 due groups now fail
+closed before mutation, and private resident-slot K/V ownership is exact for
+both singleton ragged tails and packed batch import. The oracle localizes the
+old defect to nonzero private slots: finite inputs/K/V produced 12 `INT_MAX`
+proposal rows after slot-0 K/V was imported. The retained zero-copy local view
+plus slot-offset copy map moves **12 -> 0 sentinel rows**, acceptance
+**269/492 = 54.67% -> 279/470 = 59.36% (+4.69 points)**, and oracle ratio
+**0.5565x -> 0.5617x AR**. Default no-oracle is **17.097 vs 30.471 tok/s =
+0.5611x**, 10/10 exact-ID diagnostic, zero candidate D2H/failures, and full
+drain. GPU accept equals CPU on every oracle cycle. The rejected checkpoint/full
+replay candidate left 12 sentinels and regressed to 0.5479x, so it was removed.
+C2 remains 19.53 acceptance points below C1 and lacks its independent full §5
+profile/lifecycle packet; P8 stays open and automatic stays K0. Evidence:
+[`provider KV ownership repair`](../benchmarks/results/2026-08-28-w7900-qwen38-q4km-c2-provider-kv-ownership-repaired.json).
 
 Exit: an explicit-only, correctness-qualified physical C2 baseline and an
 explained acceptance curve. Automatic remains K0.

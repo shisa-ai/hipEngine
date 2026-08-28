@@ -1,0 +1,1338 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_c2_provider_kv_ownership_repair",
+  "created_at": "2026-08-28T19:48:38.346595+00:00",
+  "status": "retained_correctness_repair_p8_acceptance_gap_remains",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "Retain mixed-K/K0 fail-closed plus private resident-slot singleton and packed-copy KV ownership repairs. Physical C2 no longer emits INT_MAX/NaN proposals; acceptance rises 54.67% to 59.36%. The default route remains only 0.5611x AR and 19.53 points below C1 acceptance, so automatic remains K0 and P8 stays open.",
+  "source": {
+    "head": "24f4cfe87886d40a58f4f5aa1089197dd3143336",
+    "mixed_k0_fix": "fef9a3f5dc4a06fedb21366f483795d64c4ff933",
+    "oracle_trace": "860a344ff4c6ba1f3c3a41c015aad6e8a3a17117",
+    "singleton_local_kv": "40c9ba315",
+    "packed_private_slot_copy": "24f4cfe87886d40a58f4f5aa1089197dd3143336",
+    "rejected_full_accept_replay": "21fc8fdaa",
+    "rejection_cleanup": "b651d94ab"
+  },
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X",
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_index": 0,
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "arch": "gfx1100",
+    "rocm": "7.2.4",
+    "hipcc": "7.2.53211-3d9ef42",
+    "gpu_max_hw_queues": "unset",
+    "power_profile": "BOOTUP DEFAULT"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106773984,
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "kv": "BF16"
+  },
+  "suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "heldouts": 4,
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "sampling": "raw greedy",
+    "prompt_cache": false
+  },
+  "root_cause": {
+    "mixed_plan": "A mixed positive-K/K0 due group was admitted although the physical target result owned only positive-K request IDs; it now fails claims_fit before mutation and falls back as a whole.",
+    "private_singleton": "NextN singleton ragged tails need cache-local K/V pointers plus a zero-based page table for nonzero private slots.",
+    "private_batch_import": "Resident slot views without external allocations share batch-shaped private KV planes. Packed gather/scatter previously used identity physical rows for every slot, importing slot 0 KV into nonzero slots after histories diverged.",
+    "localization": "Selected target hidden, fused hidden, Q/K/V, and pre/post-write live K/V were finite; non-finites first appeared in the attention context. Correct physical-page rebasing removed them. GPU accept matched CPU on every oracle cycle."
+  },
+  "comparison": {
+    "pre_fix_oracle": {
+      "source": {
+        "commit": "860a344ff4c6ba1f3c3a41c015aad6e8a3a17117",
+        "dirty": false
+      },
+      "runtime_profile": {
+        "requested": "production",
+        "resolved": "production",
+        "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+        "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+      },
+      "protocol": {
+        "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain",
+          "mixed_ja_en_translate",
+          "mixed_ja_en_review"
+        ],
+        "widths": [
+          2
+        ],
+        "resident_capacity": 2,
+        "expected_mtp_widths": [
+          2
+        ],
+        "max_tokens": 24,
+        "candidate_budget": 3,
+        "batch_window_ms": 20.0,
+        "warmup_arms_per_width": 2,
+        "runs": 1,
+        "sampling": "raw greedy, no processed target, natural stop/EOS",
+        "execution_profile": "production",
+        "correctness_contract": "mtp_self_exact",
+        "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+        "generation2_diagnostic_plan": true,
+        "mtp_request_mode": "explicit",
+        "server_mtp_mode": "opt_in",
+        "timing": "blocking OpenAI barrier-to-last-completion complete wall"
+      },
+      "summary": {
+        "ar": {
+          "wall_seconds": 15.61317313509062,
+          "generated_tokens": 480,
+          "tok_s": 30.743270176207783
+        },
+        "mtp": {
+          "wall_seconds": 28.05778554547578,
+          "generated_tokens": 480,
+          "tok_s": 17.107551100995508
+        },
+        "mtp_vs_ar_ratio": 0.5564649109526104,
+        "mtp_vs_ar_percent": -44.35350890473896,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "mtp_expected": true,
+        "route_expectation_passed": true
+      },
+      "acceptance": {
+        "scopes": {
+          "all": {
+            "cycles": 173,
+            "proposed_draft_tokens": 492,
+            "accepted_draft_tokens": 269,
+            "draft_acceptance": 0.5467479674796748,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 173,
+                "accepted_cycles": 110,
+                "position_acceptance": 0.6358381502890174,
+                "conditional_opportunities": 173,
+                "conditional_position_acceptance": 0.6358381502890174
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 165,
+                "accepted_cycles": 92,
+                "position_acceptance": 0.5575757575757576,
+                "conditional_opportunities": 104,
+                "conditional_position_acceptance": 0.8846153846153846
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 154,
+                "accepted_cycles": 67,
+                "position_acceptance": 0.43506493506493504,
+                "conditional_opportunities": 85,
+                "conditional_position_acceptance": 0.788235294117647
+              }
+            ]
+          },
+          "train": {
+            "cycles": 109,
+            "proposed_draft_tokens": 309,
+            "accepted_draft_tokens": 155,
+            "draft_acceptance": 0.5016181229773463,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 109,
+                "accepted_cycles": 63,
+                "position_acceptance": 0.5779816513761468,
+                "conditional_opportunities": 109,
+                "conditional_position_acceptance": 0.5779816513761468
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 103,
+                "accepted_cycles": 50,
+                "position_acceptance": 0.4854368932038835,
+                "conditional_opportunities": 58,
+                "conditional_position_acceptance": 0.8620689655172413
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 97,
+                "accepted_cycles": 42,
+                "position_acceptance": 0.4329896907216495,
+                "conditional_opportunities": 48,
+                "conditional_position_acceptance": 0.875
+              }
+            ]
+          },
+          "heldout": {
+            "cycles": 64,
+            "proposed_draft_tokens": 183,
+            "accepted_draft_tokens": 114,
+            "draft_acceptance": 0.6229508196721312,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 64,
+                "accepted_cycles": 47,
+                "position_acceptance": 0.734375,
+                "conditional_opportunities": 64,
+                "conditional_position_acceptance": 0.734375
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 62,
+                "accepted_cycles": 42,
+                "position_acceptance": 0.6774193548387096,
+                "conditional_opportunities": 46,
+                "conditional_position_acceptance": 0.9130434782608695
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 57,
+                "accepted_cycles": 25,
+                "position_acceptance": 0.43859649122807015,
+                "conditional_opportunities": 37,
+                "conditional_position_acceptance": 0.6756756756756757
+              }
+            ]
+          }
+        },
+        "categories": {
+          "code": {
+            "cycles": 73,
+            "proposed_draft_tokens": 210,
+            "accepted_draft_tokens": 105,
+            "draft_acceptance": 0.5,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 73,
+                "accepted_cycles": 41,
+                "position_acceptance": 0.5616438356164384,
+                "conditional_opportunities": 73,
+                "conditional_position_acceptance": 0.5616438356164384
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 70,
+                "accepted_cycles": 34,
+                "position_acceptance": 0.4857142857142857,
+                "conditional_opportunities": 38,
+                "conditional_position_acceptance": 0.8947368421052632
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 67,
+                "accepted_cycles": 30,
+                "position_acceptance": 0.44776119402985076,
+                "conditional_opportunities": 32,
+                "conditional_position_acceptance": 0.9375
+              }
+            ]
+          },
+          "general_en": {
+            "cycles": 26,
+            "proposed_draft_tokens": 76,
+            "accepted_draft_tokens": 62,
+            "draft_acceptance": 0.8157894736842105,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 26,
+                "accepted_cycles": 26,
+                "position_acceptance": 1.0,
+                "conditional_opportunities": 26,
+                "conditional_position_acceptance": 1.0
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 26,
+                "accepted_cycles": 22,
+                "position_acceptance": 0.8461538461538461,
+                "conditional_opportunities": 26,
+                "conditional_position_acceptance": 0.8461538461538461
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 24,
+                "accepted_cycles": 14,
+                "position_acceptance": 0.5833333333333334,
+                "conditional_opportunities": 20,
+                "conditional_position_acceptance": 0.7
+              }
+            ]
+          },
+          "general_ja": {
+            "cycles": 34,
+            "proposed_draft_tokens": 94,
+            "accepted_draft_tokens": 56,
+            "draft_acceptance": 0.5957446808510638,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 34,
+                "accepted_cycles": 25,
+                "position_acceptance": 0.7352941176470589,
+                "conditional_opportunities": 34,
+                "conditional_position_acceptance": 0.7352941176470589
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 32,
+                "accepted_cycles": 20,
+                "position_acceptance": 0.625,
+                "conditional_opportunities": 23,
+                "conditional_position_acceptance": 0.8695652173913043
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 28,
+                "accepted_cycles": 11,
+                "position_acceptance": 0.39285714285714285,
+                "conditional_opportunities": 18,
+                "conditional_position_acceptance": 0.6111111111111112
+              }
+            ]
+          },
+          "mixed_ja_en": {
+            "cycles": 40,
+            "proposed_draft_tokens": 112,
+            "accepted_draft_tokens": 46,
+            "draft_acceptance": 0.4107142857142857,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 40,
+                "accepted_cycles": 18,
+                "position_acceptance": 0.45,
+                "conditional_opportunities": 40,
+                "conditional_position_acceptance": 0.45
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 37,
+                "accepted_cycles": 16,
+                "position_acceptance": 0.43243243243243246,
+                "conditional_opportunities": 17,
+                "conditional_position_acceptance": 0.9411764705882353
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 35,
+                "accepted_cycles": 12,
+                "position_acceptance": 0.34285714285714286,
+                "conditional_opportunities": 15,
+                "conditional_position_acceptance": 0.8
+              }
+            ]
+          }
+        }
+      },
+      "recoverable_failures": 0,
+      "candidate_d2h_after_target": 173,
+      "final_memory": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 24422608828,
+        "total_allocated_bytes": 25588598486,
+        "total_freed_bytes": 25588598486,
+        "active_allocations": 0,
+        "peak_allocations": 1760
+      },
+      "out_of_vocab_proposal_trace_rows": 12
+    },
+    "post_fix_oracle": {
+      "source": {
+        "commit": "24f4cfe87886d40a58f4f5aa1089197dd3143336",
+        "dirty": false
+      },
+      "runtime_profile": {
+        "requested": "production",
+        "resolved": "production",
+        "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+        "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+      },
+      "protocol": {
+        "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain",
+          "mixed_ja_en_translate",
+          "mixed_ja_en_review"
+        ],
+        "widths": [
+          2
+        ],
+        "resident_capacity": 2,
+        "expected_mtp_widths": [
+          2
+        ],
+        "max_tokens": 24,
+        "candidate_budget": 3,
+        "batch_window_ms": 20.0,
+        "warmup_arms_per_width": 2,
+        "runs": 1,
+        "sampling": "raw greedy, no processed target, natural stop/EOS",
+        "execution_profile": "production",
+        "correctness_contract": "mtp_self_exact",
+        "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+        "generation2_diagnostic_plan": true,
+        "mtp_request_mode": "explicit",
+        "server_mtp_mode": "opt_in",
+        "timing": "blocking OpenAI barrier-to-last-completion complete wall"
+      },
+      "summary": {
+        "ar": {
+          "wall_seconds": 15.663050596602261,
+          "generated_tokens": 480,
+          "tok_s": 30.645371221882215
+        },
+        "mtp": {
+          "wall_seconds": 27.88721022196114,
+          "generated_tokens": 480,
+          "tok_s": 17.21219140170574
+        },
+        "mtp_vs_ar_ratio": 0.5616571350069155,
+        "mtp_vs_ar_percent": -43.83428649930845,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "mtp_expected": true,
+        "route_expectation_passed": true
+      },
+      "acceptance": {
+        "scopes": {
+          "all": {
+            "cycles": 166,
+            "proposed_draft_tokens": 470,
+            "accepted_draft_tokens": 279,
+            "draft_acceptance": 0.5936170212765958,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 166,
+                "accepted_cycles": 120,
+                "position_acceptance": 0.7228915662650602,
+                "conditional_opportunities": 166,
+                "conditional_position_acceptance": 0.7228915662650602
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 156,
+                "accepted_cycles": 92,
+                "position_acceptance": 0.5897435897435898,
+                "conditional_opportunities": 110,
+                "conditional_position_acceptance": 0.8363636363636363
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 148,
+                "accepted_cycles": 67,
+                "position_acceptance": 0.4527027027027027,
+                "conditional_opportunities": 86,
+                "conditional_position_acceptance": 0.7790697674418605
+              }
+            ]
+          },
+          "train": {
+            "cycles": 99,
+            "proposed_draft_tokens": 278,
+            "accepted_draft_tokens": 166,
+            "draft_acceptance": 0.5971223021582733,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 99,
+                "accepted_cycles": 72,
+                "position_acceptance": 0.7272727272727273,
+                "conditional_opportunities": 99,
+                "conditional_position_acceptance": 0.7272727272727273
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 91,
+                "accepted_cycles": 53,
+                "position_acceptance": 0.5824175824175825,
+                "conditional_opportunities": 64,
+                "conditional_position_acceptance": 0.828125
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 88,
+                "accepted_cycles": 41,
+                "position_acceptance": 0.4659090909090909,
+                "conditional_opportunities": 52,
+                "conditional_position_acceptance": 0.7884615384615384
+              }
+            ]
+          },
+          "heldout": {
+            "cycles": 67,
+            "proposed_draft_tokens": 192,
+            "accepted_draft_tokens": 113,
+            "draft_acceptance": 0.5885416666666666,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 67,
+                "accepted_cycles": 48,
+                "position_acceptance": 0.7164179104477612,
+                "conditional_opportunities": 67,
+                "conditional_position_acceptance": 0.7164179104477612
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 65,
+                "accepted_cycles": 39,
+                "position_acceptance": 0.6,
+                "conditional_opportunities": 46,
+                "conditional_position_acceptance": 0.8478260869565217
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 60,
+                "accepted_cycles": 26,
+                "position_acceptance": 0.43333333333333335,
+                "conditional_opportunities": 34,
+                "conditional_position_acceptance": 0.7647058823529411
+              }
+            ]
+          }
+        },
+        "categories": {
+          "code": {
+            "cycles": 68,
+            "proposed_draft_tokens": 193,
+            "accepted_draft_tokens": 110,
+            "draft_acceptance": 0.5699481865284974,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 68,
+                "accepted_cycles": 45,
+                "position_acceptance": 0.6617647058823529,
+                "conditional_opportunities": 68,
+                "conditional_position_acceptance": 0.6617647058823529
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 63,
+                "accepted_cycles": 35,
+                "position_acceptance": 0.5555555555555556,
+                "conditional_opportunities": 40,
+                "conditional_position_acceptance": 0.875
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 62,
+                "accepted_cycles": 30,
+                "position_acceptance": 0.4838709677419355,
+                "conditional_opportunities": 34,
+                "conditional_position_acceptance": 0.8823529411764706
+              }
+            ]
+          },
+          "general_en": {
+            "cycles": 26,
+            "proposed_draft_tokens": 76,
+            "accepted_draft_tokens": 61,
+            "draft_acceptance": 0.8026315789473685,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 26,
+                "accepted_cycles": 26,
+                "position_acceptance": 1.0,
+                "conditional_opportunities": 26,
+                "conditional_position_acceptance": 1.0
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 26,
+                "accepted_cycles": 22,
+                "position_acceptance": 0.8461538461538461,
+                "conditional_opportunities": 26,
+                "conditional_position_acceptance": 0.8461538461538461
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 24,
+                "accepted_cycles": 13,
+                "position_acceptance": 0.5416666666666666,
+                "conditional_opportunities": 20,
+                "conditional_position_acceptance": 0.65
+              }
+            ]
+          },
+          "general_ja": {
+            "cycles": 35,
+            "proposed_draft_tokens": 97,
+            "accepted_draft_tokens": 55,
+            "draft_acceptance": 0.5670103092783505,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 35,
+                "accepted_cycles": 26,
+                "position_acceptance": 0.7428571428571429,
+                "conditional_opportunities": 35,
+                "conditional_position_acceptance": 0.7428571428571429
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 33,
+                "accepted_cycles": 18,
+                "position_acceptance": 0.5454545454545454,
+                "conditional_opportunities": 24,
+                "conditional_position_acceptance": 0.75
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 29,
+                "accepted_cycles": 11,
+                "position_acceptance": 0.3793103448275862,
+                "conditional_opportunities": 16,
+                "conditional_position_acceptance": 0.6875
+              }
+            ]
+          },
+          "mixed_ja_en": {
+            "cycles": 37,
+            "proposed_draft_tokens": 104,
+            "accepted_draft_tokens": 53,
+            "draft_acceptance": 0.5096153846153846,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 37,
+                "accepted_cycles": 23,
+                "position_acceptance": 0.6216216216216216,
+                "conditional_opportunities": 37,
+                "conditional_position_acceptance": 0.6216216216216216
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 34,
+                "accepted_cycles": 17,
+                "position_acceptance": 0.5,
+                "conditional_opportunities": 20,
+                "conditional_position_acceptance": 0.85
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 33,
+                "accepted_cycles": 13,
+                "position_acceptance": 0.3939393939393939,
+                "conditional_opportunities": 16,
+                "conditional_position_acceptance": 0.8125
+              }
+            ]
+          }
+        }
+      },
+      "recoverable_failures": 0,
+      "candidate_d2h_after_target": 166,
+      "final_memory": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 24422608828,
+        "total_allocated_bytes": 25588598486,
+        "total_freed_bytes": 25588598486,
+        "active_allocations": 0,
+        "peak_allocations": 1760
+      },
+      "out_of_vocab_proposal_trace_rows": 0
+    },
+    "post_fix_default": {
+      "source": {
+        "commit": "24f4cfe87886d40a58f4f5aa1089197dd3143336",
+        "dirty": false
+      },
+      "runtime_profile": {
+        "requested": "production",
+        "resolved": "production",
+        "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+        "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+      },
+      "protocol": {
+        "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain",
+          "mixed_ja_en_translate",
+          "mixed_ja_en_review"
+        ],
+        "widths": [
+          2
+        ],
+        "resident_capacity": 2,
+        "expected_mtp_widths": [
+          2
+        ],
+        "max_tokens": 24,
+        "candidate_budget": 3,
+        "batch_window_ms": 20.0,
+        "warmup_arms_per_width": 2,
+        "runs": 1,
+        "sampling": "raw greedy, no processed target, natural stop/EOS",
+        "execution_profile": "production",
+        "correctness_contract": "mtp_self_exact",
+        "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+        "generation2_diagnostic_plan": true,
+        "mtp_request_mode": "explicit",
+        "server_mtp_mode": "opt_in",
+        "timing": "blocking OpenAI barrier-to-last-completion complete wall"
+      },
+      "summary": {
+        "ar": {
+          "wall_seconds": 15.752837878651917,
+          "generated_tokens": 480,
+          "tok_s": 30.47070018098079
+        },
+        "mtp": {
+          "wall_seconds": 28.074797881767154,
+          "generated_tokens": 480,
+          "tok_s": 17.097184529037353
+        },
+        "mtp_vs_ar_ratio": 0.5611024501402524,
+        "mtp_vs_ar_percent": -43.88975498597476,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "mtp_expected": true,
+        "route_expectation_passed": true
+      },
+      "acceptance": {
+        "scopes": {
+          "all": {
+            "cycles": 166,
+            "proposed_draft_tokens": 470,
+            "accepted_draft_tokens": 279,
+            "draft_acceptance": 0.5936170212765958,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 166,
+                "accepted_cycles": 120,
+                "position_acceptance": 0.7228915662650602,
+                "conditional_opportunities": 166,
+                "conditional_position_acceptance": 0.7228915662650602
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 156,
+                "accepted_cycles": 92,
+                "position_acceptance": 0.5897435897435898,
+                "conditional_opportunities": 110,
+                "conditional_position_acceptance": 0.8363636363636363
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 148,
+                "accepted_cycles": 67,
+                "position_acceptance": 0.4527027027027027,
+                "conditional_opportunities": 86,
+                "conditional_position_acceptance": 0.7790697674418605
+              }
+            ]
+          },
+          "train": {
+            "cycles": 99,
+            "proposed_draft_tokens": 278,
+            "accepted_draft_tokens": 166,
+            "draft_acceptance": 0.5971223021582733,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 99,
+                "accepted_cycles": 72,
+                "position_acceptance": 0.7272727272727273,
+                "conditional_opportunities": 99,
+                "conditional_position_acceptance": 0.7272727272727273
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 91,
+                "accepted_cycles": 53,
+                "position_acceptance": 0.5824175824175825,
+                "conditional_opportunities": 64,
+                "conditional_position_acceptance": 0.828125
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 88,
+                "accepted_cycles": 41,
+                "position_acceptance": 0.4659090909090909,
+                "conditional_opportunities": 52,
+                "conditional_position_acceptance": 0.7884615384615384
+              }
+            ]
+          },
+          "heldout": {
+            "cycles": 67,
+            "proposed_draft_tokens": 192,
+            "accepted_draft_tokens": 113,
+            "draft_acceptance": 0.5885416666666666,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 67,
+                "accepted_cycles": 48,
+                "position_acceptance": 0.7164179104477612,
+                "conditional_opportunities": 67,
+                "conditional_position_acceptance": 0.7164179104477612
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 65,
+                "accepted_cycles": 39,
+                "position_acceptance": 0.6,
+                "conditional_opportunities": 46,
+                "conditional_position_acceptance": 0.8478260869565217
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 60,
+                "accepted_cycles": 26,
+                "position_acceptance": 0.43333333333333335,
+                "conditional_opportunities": 34,
+                "conditional_position_acceptance": 0.7647058823529411
+              }
+            ]
+          }
+        },
+        "categories": {
+          "code": {
+            "cycles": 68,
+            "proposed_draft_tokens": 193,
+            "accepted_draft_tokens": 110,
+            "draft_acceptance": 0.5699481865284974,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 68,
+                "accepted_cycles": 45,
+                "position_acceptance": 0.6617647058823529,
+                "conditional_opportunities": 68,
+                "conditional_position_acceptance": 0.6617647058823529
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 63,
+                "accepted_cycles": 35,
+                "position_acceptance": 0.5555555555555556,
+                "conditional_opportunities": 40,
+                "conditional_position_acceptance": 0.875
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 62,
+                "accepted_cycles": 30,
+                "position_acceptance": 0.4838709677419355,
+                "conditional_opportunities": 34,
+                "conditional_position_acceptance": 0.8823529411764706
+              }
+            ]
+          },
+          "general_en": {
+            "cycles": 26,
+            "proposed_draft_tokens": 76,
+            "accepted_draft_tokens": 61,
+            "draft_acceptance": 0.8026315789473685,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 26,
+                "accepted_cycles": 26,
+                "position_acceptance": 1.0,
+                "conditional_opportunities": 26,
+                "conditional_position_acceptance": 1.0
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 26,
+                "accepted_cycles": 22,
+                "position_acceptance": 0.8461538461538461,
+                "conditional_opportunities": 26,
+                "conditional_position_acceptance": 0.8461538461538461
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 24,
+                "accepted_cycles": 13,
+                "position_acceptance": 0.5416666666666666,
+                "conditional_opportunities": 20,
+                "conditional_position_acceptance": 0.65
+              }
+            ]
+          },
+          "general_ja": {
+            "cycles": 35,
+            "proposed_draft_tokens": 97,
+            "accepted_draft_tokens": 55,
+            "draft_acceptance": 0.5670103092783505,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 35,
+                "accepted_cycles": 26,
+                "position_acceptance": 0.7428571428571429,
+                "conditional_opportunities": 35,
+                "conditional_position_acceptance": 0.7428571428571429
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 33,
+                "accepted_cycles": 18,
+                "position_acceptance": 0.5454545454545454,
+                "conditional_opportunities": 24,
+                "conditional_position_acceptance": 0.75
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 29,
+                "accepted_cycles": 11,
+                "position_acceptance": 0.3793103448275862,
+                "conditional_opportunities": 16,
+                "conditional_position_acceptance": 0.6875
+              }
+            ]
+          },
+          "mixed_ja_en": {
+            "cycles": 37,
+            "proposed_draft_tokens": 104,
+            "accepted_draft_tokens": 53,
+            "draft_acceptance": 0.5096153846153846,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 37,
+                "accepted_cycles": 23,
+                "position_acceptance": 0.6216216216216216,
+                "conditional_opportunities": 37,
+                "conditional_position_acceptance": 0.6216216216216216
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 34,
+                "accepted_cycles": 17,
+                "position_acceptance": 0.5,
+                "conditional_opportunities": 20,
+                "conditional_position_acceptance": 0.85
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 33,
+                "accepted_cycles": 13,
+                "position_acceptance": 0.3939393939393939,
+                "conditional_opportunities": 16,
+                "conditional_position_acceptance": 0.8125
+              }
+            ]
+          }
+        }
+      },
+      "recoverable_failures": 0,
+      "candidate_d2h_after_target": 0,
+      "final_memory": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 24422608828,
+        "total_allocated_bytes": 25588598486,
+        "total_freed_bytes": 25588598486,
+        "active_allocations": 0,
+        "peak_allocations": 1760
+      }
+    },
+    "acceptance_delta_points": 4.686905379692097,
+    "ratio_relative_delta_pct": 0.9330730387683506,
+    "c1_reference_acceptance": 0.7889447236180904,
+    "remaining_c1_c2_acceptance_gap_points": 19.532770234149467
+  },
+  "mixed_plan_gpu_validation": {
+    "source": {
+      "commit": "fef9a3f5dc4a06fedb21366f483795d64c4ff933",
+      "dirty": false
+    },
+    "runtime_profile": {
+      "requested": "production",
+      "resolved": "production",
+      "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+      "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+    },
+    "protocol": {
+      "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review"
+      ],
+      "widths": [
+        2
+      ],
+      "resident_capacity": 2,
+      "expected_mtp_widths": [
+        2
+      ],
+      "max_tokens": 24,
+      "candidate_budget": 3,
+      "batch_window_ms": 20.0,
+      "warmup_arms_per_width": 2,
+      "runs": 1,
+      "sampling": "raw greedy, no processed target, natural stop/EOS",
+      "execution_profile": "production",
+      "correctness_contract": "mtp_self_exact",
+      "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+      "generation2_diagnostic_plan": true,
+      "mtp_request_mode": "explicit",
+      "server_mtp_mode": "opt_in",
+      "timing": "blocking OpenAI barrier-to-last-completion complete wall"
+    },
+    "summary": {
+      "ar": {
+        "wall_seconds": 15.618521289434284,
+        "generated_tokens": 480,
+        "tok_s": 30.732742946972415
+      },
+      "mtp": {
+        "wall_seconds": 27.944270614534616,
+        "generated_tokens": 480,
+        "tok_s": 17.17704522050893
+      },
+      "mtp_vs_ar_ratio": 0.5589167634710295,
+      "mtp_vs_ar_percent": -44.108323652897056,
+      "exact_cells": 10,
+      "engaged_cells": 10,
+      "budget_conformed_cells": 10,
+      "cells": 10,
+      "mtp_expected": true,
+      "route_expectation_passed": true
+    },
+    "acceptance": {
+      "scopes": {
+        "all": {
+          "cycles": 173,
+          "proposed_draft_tokens": 492,
+          "accepted_draft_tokens": 269,
+          "draft_acceptance": 0.5467479674796748,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 173,
+              "accepted_cycles": 110,
+              "position_acceptance": 0.6358381502890174,
+              "conditional_opportunities": 173,
+              "conditional_position_acceptance": 0.6358381502890174
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 165,
+              "accepted_cycles": 92,
+              "position_acceptance": 0.5575757575757576,
+              "conditional_opportunities": 104,
+              "conditional_position_acceptance": 0.8846153846153846
+            },
+            {
+              "position": 3,
+              "proposed_cycles": 154,
+              "accepted_cycles": 67,
+              "position_acceptance": 0.43506493506493504,
+              "conditional_opportunities": 85,
+              "conditional_position_acceptance": 0.788235294117647
+            }
+          ]
+        },
+        "train": {
+          "cycles": 109,
+          "proposed_draft_tokens": 309,
+          "accepted_draft_tokens": 155,
+          "draft_acceptance": 0.5016181229773463,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 109,
+              "accepted_cycles": 63,
+              "position_acceptance": 0.5779816513761468,
+              "conditional_opportunities": 109,
+              "conditional_position_acceptance": 0.5779816513761468
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 103,
+              "accepted_cycles": 50,
+              "position_acceptance": 0.4854368932038835,
+              "conditional_opportunities": 58,
+              "conditional_position_acceptance": 0.8620689655172413
+            },
+            {
+              "position": 3,
+              "proposed_cycles": 97,
+              "accepted_cycles": 42,
+              "position_acceptance": 0.4329896907216495,
+              "conditional_opportunities": 48,
+              "conditional_position_acceptance": 0.875
+            }
+          ]
+        },
+        "heldout": {
+          "cycles": 64,
+          "proposed_draft_tokens": 183,
+          "accepted_draft_tokens": 114,
+          "draft_acceptance": 0.6229508196721312,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 64,
+              "accepted_cycles": 47,
+              "position_acceptance": 0.734375,
+              "conditional_opportunities": 64,
+              "conditional_position_acceptance": 0.734375
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 62,
+              "accepted_cycles": 42,
+              "position_acceptance": 0.6774193548387096,
+              "conditional_opportunities": 46,
+              "conditional_position_acceptance": 0.9130434782608695
+            },
+            {
+              "position": 3,
+              "proposed_cycles": 57,
+              "accepted_cycles": 25,
+              "position_acceptance": 0.43859649122807015,
+              "conditional_opportunities": 37,
+              "conditional_position_acceptance": 0.6756756756756757
+            }
+          ]
+        }
+      },
+      "categories": {
+        "code": {
+          "cycles": 73,
+          "proposed_draft_tokens": 210,
+          "accepted_draft_tokens": 105,
+          "draft_acceptance": 0.5,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 73,
+              "accepted_cycles": 41,
+              "position_acceptance": 0.5616438356164384,
+              "conditional_opportunities": 73,
+              "conditional_position_acceptance": 0.5616438356164384
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 70,
+              "accepted_cycles": 34,
+              "position_acceptance": 0.4857142857142857,
+              "conditional_opportunities": 38,
+              "conditional_position_acceptance": 0.8947368421052632
+            },
+            {
+              "position": 3,
+              "proposed_cycles": 67,
+              "accepted_cycles": 30,
+              "position_acceptance": 0.44776119402985076,
+              "conditional_opportunities": 32,
+              "conditional_position_acceptance": 0.9375
+            }
+          ]
+        },
+        "general_en": {
+          "cycles": 26,
+          "proposed_draft_tokens": 76,
+          "accepted_draft_tokens": 62,
+          "draft_acceptance": 0.8157894736842105,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 26,
+              "accepted_cycles": 26,
+              "position_acceptance": 1.0,
+              "conditional_opportunities": 26,
+              "conditional_position_acceptance": 1.0
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 26,
+              "accepted_cycles": 22,
+              "position_acceptance": 0.8461538461538461,
+              "conditional_opportunities": 26,
+              "conditional_position_acceptance": 0.8461538461538461
+            },
+            {
+              "position": 3,
+              "proposed_cycles": 24,
+              "accepted_cycles": 14,
+              "position_acceptance": 0.5833333333333334,
+              "conditional_opportunities": 20,
+              "conditional_position_acceptance": 0.7
+            }
+          ]
+        },
+        "general_ja": {
+          "cycles": 34,
+          "proposed_draft_tokens": 94,
+          "accepted_draft_tokens": 56,
+          "draft_acceptance": 0.5957446808510638,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 34,
+              "accepted_cycles": 25,
+              "position_acceptance": 0.7352941176470589,
+              "conditional_opportunities": 34,
+              "conditional_position_acceptance": 0.7352941176470589
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 32,
+              "accepted_cycles": 20,
+              "position_acceptance": 0.625,
+              "conditional_opportunities": 23,
+              "conditional_position_acceptance": 0.8695652173913043
+            },
+            {
+              "position": 3,
+              "proposed_cycles": 28,
+              "accepted_cycles": 11,
+              "position_acceptance": 0.39285714285714285,
+              "conditional_opportunities": 18,
+              "conditional_position_acceptance": 0.6111111111111112
+            }
+          ]
+        },
+        "mixed_ja_en": {
+          "cycles": 40,
+          "proposed_draft_tokens": 112,
+          "accepted_draft_tokens": 46,
+          "draft_acceptance": 0.4107142857142857,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 40,
+              "accepted_cycles": 18,
+              "position_acceptance": 0.45,
+              "conditional_opportunities": 40,
+              "conditional_position_acceptance": 0.45
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 37,
+              "accepted_cycles": 16,
+              "position_acceptance": 0.43243243243243246,
+              "conditional_opportunities": 17,
+              "conditional_position_acceptance": 0.9411764705882353
+            },
+            {
+              "position": 3,
+              "proposed_cycles": 35,
+              "accepted_cycles": 12,
+              "position_acceptance": 0.34285714285714286,
+              "conditional_opportunities": 15,
+              "conditional_position_acceptance": 0.8
+            }
+          ]
+        }
+      }
+    },
+    "recoverable_failures": 0,
+    "candidate_d2h_after_target": 0,
+    "final_memory": {
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 24422608828,
+      "total_allocated_bytes": 25588598486,
+      "total_freed_bytes": 25588598486,
+      "active_allocations": 0,
+      "peak_allocations": 1760
+    }
+  },
+  "rejected_candidate": {
+    "full_accept_checkpoint_replay": {
+      "pre_ratio": 0.5564649109526104,
+      "candidate_ratio": 0.5478648330631857,
+      "pre_acceptance": 0.5467479674796748,
+      "candidate_acceptance": 0.5445344129554656,
+      "sentinel_rows_before": 12,
+      "sentinel_rows_candidate": 12,
+      "decision": "rejected and removed"
+    }
+  },
+  "gates": {
+    "all_outputs_exact_diagnostic": true,
+    "gpu_cpu_accept_parity": true,
+    "sentinel_rows_zero": true,
+    "recoverable_failures_zero": true,
+    "default_candidate_d2h_zero": true,
+    "final_allocations_zero": true
+  },
+  "next": "Continue P8 differential provider state/target tracing for the remaining 19.53-point C1/C2 acceptance gap; independently qualify a Qwen3.8 gfx1100 physical execution profile before P9 attribution.",
+  "raw_sources": [
+    {
+      "name": "pre_fix_oracle",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-oracle-trace-d24.json",
+      "size_bytes": 1591688,
+      "sha256": "6b27868c863e03aea989af3eb75103b61491cf6e251c3c40a69088d350b8e44f",
+      "retained_in_git": false
+    },
+    {
+      "name": "post_fix_oracle",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-private-slot-copy-full-d24.json",
+      "size_bytes": 1568335,
+      "sha256": "7ab4d5a610753bd2ab59928b52ce08e4825e24afeba18e76cb98c07db65715f7",
+      "retained_in_git": false
+    },
+    {
+      "name": "post_fix_default",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-private-slot-copy-default-d24.json",
+      "size_bytes": 1453472,
+      "sha256": "58b43fc3bb61c008c58d521bf5c790d92a984b00a3e61323ce7a902367dbf4bc",
+      "retained_in_git": false
+    },
+    {
+      "name": "mixed_plan_fixed",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-production-d24-mixed-k0-fixed.json",
+      "size_bytes": 1470069,
+      "sha256": "c3f3c8b6cbdb82d14b1a1b413e59d5a2894a8e19ff4d75b932d4cbf557639e52",
+      "retained_in_git": false
+    }
+  ]
+}
