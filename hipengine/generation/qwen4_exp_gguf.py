@@ -35,12 +35,15 @@ class Qwen4ExpGGUFTextGenerator:
         runner: Any | None = None,
         max_sequence_length: int = 2_051,
         prefill_chunk_size: int = 64,
+        vision_model_path: str | Path | None = None,
     ) -> None:
         self.model_path = Path(model_path)
         self.weight_index = weight_index
         self.model_plugin = model_plugin
         self.backend = str(backend)
         self._resident = None
+        self._vision_resident = None
+        self._vision_runner = None
         self._speculative_provider = None
         self._closed = False
         if tokenizer is None:
@@ -75,6 +78,35 @@ class Qwen4ExpGGUFTextGenerator:
                 self._resident = None
                 raise
         self.runner = runner
+        if vision_model_path is not None:
+            from hipengine.loading.qwen4_exp_vision_gguf import build_qwen4_exp_vision_gguf_map
+            from hipengine.loading.qwen4_exp_vision_materialize import materialize_qwen4_exp_vision_weights, plan_qwen4_exp_vision_residency
+            from hipengine.runtime.qwen4_exp_vision import Qwen4ExpVisionRunner
+            vision_paths = discover_gguf_files(Path(vision_model_path))
+            vision_readers = tuple(GGUFReader(path) for path in vision_paths)
+            vision_map = build_qwen4_exp_vision_gguf_map(tuple(reader.info for reader in vision_readers))
+            vision_plan = plan_qwen4_exp_vision_residency(vision_map)
+            self._vision_resident = materialize_qwen4_exp_vision_weights(
+                vision_readers, plan=vision_plan, backend=self.backend,
+                runtime=self.runner.runtime,
+            )
+            try:
+                source = vision_readers[0]
+                self._vision_runner = Qwen4ExpVisionRunner(
+                    self._vision_resident,
+                    patch_weight0=source.tensor_data('v.patch_embd.weight'),
+                    patch_weight1=source.tensor_data('v.patch_embd.weight.1'),
+                    patch_bias=source.tensor_data('v.patch_embd.bias'),
+                    position_embedding=source.tensor_data('v.position_embd.weight'),
+                )
+            except Exception:
+                self._vision_resident.close()
+                self._vision_resident = None
+                raise
+
+    @property
+    def supports_vision(self) -> bool:
+        return self._vision_runner is not None
 
     def count_tokens(self, text: str) -> int:
         self._require_open()
@@ -179,12 +211,65 @@ class Qwen4ExpGGUFTextGenerator:
             return {}
         return dict(self._speculative_provider.capabilities())
 
+    def generate_multimodal_detailed(
+        self,
+        prompt: str,
+        image: Any,
+        request: GenerationRequest,
+    ) -> GenerationOutput:
+        self._require_open()
+        if self._vision_runner is None:
+            raise NotImplementedError('Qwen4Exp vision model is not attached')
+        if len(request.prompts) != 1:
+            raise ValueError('basic Qwen4Exp vision supports one prompt/image')
+        if request.temperature != 0.0 or request.top_k not in (0, 1):
+            raise ValueError('basic Qwen4Exp vision supports greedy generation')
+        rendered = (
+            '<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>\n'
+            + str(prompt)
+            + '<|im_end|>\n<|im_start|>assistant\n'
+        )
+        token_ids = [int(token) for token in self.tokenizer.encode(rendered)]
+        image_positions = [index for index, token in enumerate(token_ids) if token == 248056]
+        if len(image_positions) != 1:
+            raise RuntimeError('basic Qwen4Exp vision prompt must contain one image token')
+        if len(token_ids) + request.max_tokens > min(1024, self.runner.max_sequence_length):
+            raise ValueError('Qwen4Exp multimodal request exceeds 1K basic scope')
+        image_embedding = self._vision_runner.encode(image)[0]
+        result = self.runner.prefill(
+            token_ids, embedding_overrides={image_positions[0]: image_embedding}
+        )
+        generated = []
+        reason = 'length'
+        for index in range(request.max_tokens):
+            token = int(result.token_id); generated.append(token)
+            if not request.ignore_eos and token == self.tokenizer.eos_token_id:
+                reason = 'eos'; break
+            if index + 1 < request.max_tokens:
+                result = self.runner.step(token)
+        return GenerationOutput(
+            text=self.tokenizer.decode(generated, skip_special=False),
+            generated_token_ids=tuple(generated),
+            finish_details=FinishDetails(
+                reason=reason,
+                eos_token_id=self.tokenizer.eos_token_id if reason == 'eos' else None,
+                length_limit=request.max_tokens if reason == 'length' else None,
+                sampler_mode='greedy_vision',
+            ),
+        )
+
     def close(self) -> None:
         if self._closed:
             return
         if self._speculative_provider is not None:
             self._speculative_provider.close()
             self._speculative_provider = None
+        if self._vision_runner is not None:
+            self._vision_runner.close()
+            self._vision_runner = None
+        if self._vision_resident is not None:
+            self._vision_resident.close()
+            self._vision_resident = None
         self.runner.close()
         if self._resident is not None:
             self._resident.close()
@@ -201,12 +286,14 @@ def make_qwen4_exp_gguf_generator_gfx1151(
     model_path: str | Path,
     weight_index: object,
     model_plugin: object,
+    vision_model_path: str | Path | None = None,
 ) -> Qwen4ExpGGUFTextGenerator:
     return Qwen4ExpGGUFTextGenerator(
         model_path=model_path,
         weight_index=weight_index,
         model_plugin=model_plugin,
         backend="hip_gfx1151",
+        vision_model_path=vision_model_path,
     )
 
 

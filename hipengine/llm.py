@@ -238,6 +238,7 @@ class LLM:
         speculative_provider: str | None = None,
         draft_model: str | None = None,
         speculative_candidate_budget: int = 4,
+        vision_model: str | None = None,
     ) -> None:
         if max_active_requests is not None and int(max_active_requests) <= 0:
             raise ValueError("max_active_requests must be positive when set")
@@ -278,6 +279,11 @@ class LLM:
         self.speculative_provider = provider
         self.draft_model = drafter
         self.speculative_candidate_budget = candidate_budget
+        self.vision_model = (
+            None if vision_model is None else str(vision_model).strip()
+        )
+        if self.vision_model == "":
+            raise ValueError("vision_model must be non-empty when set")
         if prefix_cache is None:
             self.prefix_cache = None
         else:
@@ -323,6 +329,30 @@ class LLM:
         if len(outputs) != len(prompt_tuple):
             raise RuntimeError(f"generator returned {len(outputs)} outputs for {len(prompt_tuple)} prompts")
         return [output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output)) for output in outputs]
+
+    def generate_multimodal_detailed(
+        self,
+        prompt: str,
+        image: Any,
+        sampling_params: SamplingParams | None = None,
+    ):
+        """Generate one basic image+text request through a model-owned vision path."""
+
+        from hipengine.generation import GenerationOutput
+
+        generator = self._get_text_generator()
+        detailed = getattr(generator, "generate_multimodal_detailed", None)
+        if not callable(detailed):
+            raise NotImplementedError("multimodal generation is not supported")
+        params = sampling_params or SamplingParams()
+        request = _generation_request((str(prompt),), params)
+        output = detailed(str(prompt), image, request)
+        return output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output))
+
+    @property
+    def supports_vision(self) -> bool:
+        generator = self._text_generator
+        return bool(generator is not None and getattr(generator, "supports_vision", False))
 
     def generate_speculative_mtp_detailed(
         self,
@@ -812,6 +842,8 @@ class LLM:
             "weight_index": weight_index,
             "model_plugin": model_plugin,
         }
+        if self.vision_model is not None:
+            factory_kwargs["vision_model_path"] = self.vision_model
         generator = (
             factory(**factory_kwargs)
             if profile_resolution is None

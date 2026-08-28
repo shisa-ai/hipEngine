@@ -46,6 +46,7 @@ from hipengine.runtime.qwen4_exp_mtp import (
     Qwen4ExpMTPDraftResult,
     Qwen4ExpMTPDraftSnapshot,
 )
+from hipengine.runtime.qwen4_exp_vision import Qwen4ExpVisionRunner
 from hipengine.runtime.qwen4_exp_runner import (
     Qwen4ExpDecodeState,
     Qwen4ExpDecodeStateSnapshot,
@@ -149,6 +150,7 @@ __all__ = [
     "Qwen4ExpGGUFMTPDraftRunner",
     "Qwen4ExpMTPDraftResult",
     "Qwen4ExpMTPDraftSnapshot",
+    "Qwen4ExpVisionRunner",
     "Qwen4ExpQSAMixerDeviceWeights",
     "Qwen4ExpQSAScratch",
     "bind_qwen4_exp_gdn_layer",

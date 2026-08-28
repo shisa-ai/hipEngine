@@ -22,7 +22,8 @@ class Qwen4ExpGGUFModel:
     native_context_length: int = 262144
     qsa_dense_equivalent_max_tokens: int = 2051
     ple_device_resident: bool = False
-    vision_supported: bool = False
+    vision_supported: bool = True
+    vision_scope: str = "one_32x32_rgb_image_to_one_token"
     mtp_supported: bool = True
     weight_name_templates: tuple[str, ...] = (
         "token_embd.weight",
