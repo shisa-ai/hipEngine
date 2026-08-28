@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-28 gfx1151 Qwen3.8 production C2/K3 automatic retained] Scope T2 standard-Q4 singleton/pair rowtiles to profile-qualified R8 actual shapes with strict WMMA fallbacks. Steady target/cycle falls **197.46→124.28 ms (-37.06%) / 244.75→172.36 ms (-29.58%)**. Automatic D24 reaches **17.031 vs 14.887 tok/s (1.1441x AR)** with every category positive; canonical+heldout D24 full-logit gates pass **432 rows**, while D120 is explicitly rejected at max KL 0.08574. `benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json`.
+
 - [2026-08-28 gfx1151 Qwen3.8 C2 verifier Q5 rowtile retained] Add only actual K6144/N5120 recurrent-output weights to the verifier-local capability. Existing exact col8 ownership replaces 48 direct calls **27.51→8.27 ms (-69.93%)**; clean K3 improves **14.154→14.762 tok/s (+4.29%)** and **0.9747x→1.0233x AR**. Mixed remains 0.9536x and aggregate is below 1.10x, so automatic C2 stays K0. `benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json`.
 
 - [2026-08-28 gfx1151 Qwen3.8 C2 verifier Q6 rowtiles retained] Route only actual standard-Q6 QKV and planar-Q6 down/V target shapes through existing exact rows2-8 col8 rowtiles. Clean K3 improves **11.724→14.154 tok/s (+20.73%)** and **0.8170x→0.9747x AR**; steady R8 target/cycle falls **317.11→218.26 ms (-31.17%) / 364.27→265.93 ms (-27.00%)**. All K1-K3 cells remain exact, but category/aggregate promotion fails, so automatic C2 stays K0. `benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json`.

@@ -1,7 +1,7 @@
 # CONCURRENCY2 gfx1151 MTP Dynamic Admission Campaign
 
-- Status: **D0-D7 complete; post-closure D6 reopen retains exact C2 Q5/Q6 verifier rowtiles at 1.0233x AR; automatic strict C1/K3 remains 1.5916x and automatic C2-C8 remains pure K0**
-- Scope: **explicit production C1-C8 is correctness-qualified/default-off; a scoped C2 target-owner win is retained but no C>1 product cell passes; typed model-plugin evidence is the sole automatic policy owner**
+- Status: **D0-D7 complete; post-closure D6 reopen retains automatic production C2/K3 at 1.1441x AR; automatic strict C1/K3 remains 1.5916x and C3-C8 remains pure K0**
+- Scope: **production C2/K3 is qualified only for context1-128/D24; explicit production C1 remains available, C3-C8 and every scope miss use K0; typed model-plugin evidence is the sole automatic policy owner**
 - Hardware lane when execution is approved: **Radeon 8060S / `hip_gfx1151`**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile**
 - First functional width: **two independent resident requests (`C_due=2`)**
@@ -43,7 +43,8 @@ automatic C>1 cell. A post-closure cycle-local audit later disproved its
 rowtiles; the policy verdict remains K0. Evidence:
 [`D6 economics`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d6-economics.json),
 [`D6 Q6 reopen`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json),
-and [`D6 Q5 extension`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json).
+[`D6 Q5 extension`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json),
+and [`D6 production-Q4 promotion`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json).
 D7 closes public policy and cleanup: current-source automatic C1 retains its
 full-suite win; C2-C8 group at the normal AR width and select pure K0 with zero
 provider mutation. Evidence:
@@ -442,6 +443,25 @@ aggregate C2 win but remains **7.50%** short of the binding 1.10x gate and fails
 category non-regression, so automatic C2 remains pure K0. Evidence:
 [`D6-R2`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json).
 
+**Post-closure D6-R3 (2026-08-28):** the final Q4 wall is not exact to gfx1151's
+strict WMMA schedule, so it is admitted only as a T2 production-profile route.
+At physical R8, six actual standard-Q4 shapes move from 264 strict small-M WMMA
+calls (**128.24 ms**) to 64 dual rowtile+SiLU plus 136 singleton rowtiles
+(**55.46 ms combined**); narrow K remains strict shared-B. Clean target/cycle
+becomes **124.28/172.36 ms**, down **37.06%/29.58%** from D6-R2.
+
+The combined strict-teacher D24 gate passes 240 canonical plus 192 category-
+heldout rows: canonical mean/p95/p99/max KL is
+`6.056e-5/3.389e-4/5.657e-4/0.001155`, top-1 99.583%; heldout max KL is
+`0.000727`, top-1 100%; all three repeats are exact. A D120 diagnostic reaches
+max KL **0.08574** and is rejected, so the manifest/evidence binds D24 only.
+Automatic C2/K3 measures **17.031 vs 14.887 tok/s (1.1441x AR)** with all ten
+cells exact/engaged/budget-conformed and category ratios
+**1.1290x/1.3282x/1.0766x/1.0874x**. Static admission now carries an evidence
+max-group2 bound independently of the current C1 row; actual C2 still owns K3.
+Promote only production context1-128/D24; C3-C8 and misses stay K0. Evidence:
+[`D6-R3`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json).
+
 ### D7 — automatic policy and closure
 
 - [x] Publish exact static eligibility and dynamic cycle-policy fingerprints.
@@ -459,9 +479,10 @@ category non-regression, so automatic C2 remains pure K0. Evidence:
 Exit passed. Exact retained C1 evidence/policy/static fingerprints are published
 in the closure artifact. The current 10-prompt automatic C1 suite reaches
 **15.609 vs 9.807 tok/s (1.5916x)**, every cell >=1.462x, all categories
-positive, and exact IDs. Independent cap4 C2-C4 and cap8 C5-C8 requests group at
-the normal AR width, match paired AR, report pure K0, and execute zero provider
-state/catch-up/proposal cycles. Two fresh public server lifecycles drain; D2-D6
+positive, and exact IDs. At D7 closure, cap4 C2-C4 and cap8 C5-C8 requests
+grouped at normal AR width and selected pure K0. D6-R3 later supersedes only
+the production context1-128/D24 C2/K3 cell; C3-C8 still use K0. Two fresh
+public server lifecycles drain; D2-D6
 bind mixed/cancel/pressure/failure/blocking/SSE/overload/soak correctness. Broad
 legacy default booleans and the one-off D6 K0 switch are removed; explicit
 diagnostics and strict AR fallback remain. Evidence:

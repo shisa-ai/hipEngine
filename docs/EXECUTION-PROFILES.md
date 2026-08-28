@@ -110,6 +110,29 @@ Evidence:
 [`serving rejection`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-fp16-state-serving-screen-rejected.json)
 and [`retained opt-in packet`](../benchmarks/results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json).
 
+### 2.4 Qwen3.8 Q4_K_M production C2/K3 decision
+
+The 2026-08-28 gfx1151 Qwen3.8 `Q4_K_M` production manifest qualifies one
+bounded T1+T2 serving cell: FP16 recurrent state plus standard-Q4 singleton and
+gate/up rowtiles for packed C2/K3 physical R8. Six actual Q4 shapes select the
+rowtile association; narrow K and every strict/profile/shape miss retain
+registered small-M/shared-B or dual-WMMA fallbacks.
+
+The binding D24 strict-teacher packet covers 240 canonical and 192 category-
+heldout full-logit rows with three deterministic repeats. Canonical
+mean/p95/p99/max KL is `6.056e-5/3.389e-4/5.657e-4/0.001155` and top-1 is
+`99.583%`; heldout maximum KL is `0.000727` and top-1 is `100%`. Control
+positions/input tokens remain exact. A D120 diagnostic fails the absolute tail
+ceiling at max KL `0.08574`; therefore no long-horizon authorization transfers
+from this result.
+
+The automatic context1-128/D24 C2/K3 cell measures **17.031 vs 14.887 tok/s
+(1.1441x AR)** with every category non-regressive. Static eligibility carries
+an evidence bound of max group2 before independent requests form the resident
+group; the realized C2 row remains the sole K3 owner. C3-C8, D25+, longer
+contexts, and all identity/profile/backend/quant/KV misses select K0. Evidence:
+[`production C2 result`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json).
+
 ## 3. Profile is orthogonal to model representation
 
 An execution profile selects implementation arithmetic and reproducibility. It
