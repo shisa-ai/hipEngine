@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8-Flash-Next exact Q4 logical128/t64 decode] Logical lanes `tid`/`tid+64` preserve the four strict wave sums and BF16 SiLU boundaries, contract Q4 cycle-wall **1,076.767→814.906 ms (-24.32%)** across 1,974 launches, and improve counterbalanced graph decode **12.003→13.167 tok/s (+8.84%)** with primitive bits, full-logit SHA, and IDs exact. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-q4-logical128-t64-decode.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8-Flash-Next exact Q5 logical256/t128 decode] Two logical partials per physical lane preserve all 256 strict slots and the original tree, contract Q5 cycle-wall **692.930→410.364 ms (-40.78%)** across 1,806 launches, and improve counterbalanced graph decode **11.380→12.140 tok/s (+6.27%)** with BF16 bits, full-logit SHA, and IDs exact. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-q5-logical256-t128-decode.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8-Flash-Next MoE27 + Q8-32 production] Dense-Q8 WMMA layers 32–47 added to certified MoE27 profile passes **450 rows / 3 repeats** at mean/p95/p99/max KL **1.20e-4/4.93e-4/1.72e-3/8.69e-3**, **449/450 top-1**, task/c2/state gates, and improves p508/p1012 **59.445→73.361 / 58.866→71.834 tok/s**. Manifest `1be08e5c...`; omitted stays strict. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json`.

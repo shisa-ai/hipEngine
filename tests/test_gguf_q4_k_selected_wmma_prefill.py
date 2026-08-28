@@ -39,6 +39,7 @@ from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
     gguf_q4_k_selected_dual_silu_gemv_bf16_bf16_out,
+    gguf_q4_k_selected_dual_silu_logical128_t64_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     build_gguf_q4_k_selected_prefill,
@@ -434,7 +435,7 @@ def test_selected_dual_silu_matches_unfused_bf16_boundaries() -> None:
             devices.append(device)
         outputs = [
             malloc(selected_rows * out_features * 2, runtime=runtime)
-            for _ in range(4)
+            for _ in range(5)
         ]
         allocations.extend(outputs)
         gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
@@ -451,15 +452,23 @@ def test_selected_dual_silu_matches_unfused_bf16_boundaries() -> None:
             outputs[3].ptr, x_rows, selected_rows, experts, in_features,
             out_features, threads=128, runtime=runtime,
         )
+        gguf_q4_k_selected_dual_silu_logical128_t64_gemv_bf16_bf16_out(
+            devices[0].ptr, devices[1].ptr, devices[2].ptr, devices[3].ptr,
+            outputs[4].ptr, x_rows, selected_rows, experts, in_features,
+            out_features, runtime=runtime,
+        )
         runtime.device_synchronize()
         expected = np.empty((selected_rows, out_features), dtype=np.uint16)
         actual = np.empty_like(expected)
+        exact64 = np.empty_like(expected)
         copy_device_to_host(host_array_ptr(expected), outputs[2], runtime=runtime)
         copy_device_to_host(host_array_ptr(actual), outputs[3], runtime=runtime)
+        copy_device_to_host(host_array_ptr(exact64), outputs[4], runtime=runtime)
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
     np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(exact64, expected)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
