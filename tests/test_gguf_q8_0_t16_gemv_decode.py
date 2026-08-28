@@ -25,6 +25,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
     gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out,
     gguf_q8_0_t16_triple_gemv_decode_fp16_fp16_out,
     gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out,
+    gguf_q8_0_t16_gemv_decode_rowtile4_f32_bf16_out,
     gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out,
     plan_gguf_q8_0_t16_gemv_build,
     register_gguf_q8_0_t16_gemv_kernels,
@@ -610,6 +611,39 @@ def test_q8_t16_dual_split_q8_1_dp4a_matches_oracle_and_quality_gate(q8_t16_libr
     assert float(np.mean(kl)) <= 0.05, f"KL={float(np.mean(kl))}"
     top1 = float(np.mean(np.argmax(full_ref, axis=-1) == np.argmax(actual, axis=-1)))
     assert top1 >= 0.90, f"top1={top1}"
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q8_t16_f32_bf16_rowtile6_matches_exact_single(q8_t16_library) -> None:
+    rows, in_features, out_features = 6, 4096, 2048
+    rng = np.random.default_rng(20260828)
+    qweight = make_q8_0_weight(out_features, in_features)
+    tiles = repack_gguf_q8_0_tile16(qweight).tiles
+    x = rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+
+    actual = _run_single(
+        gguf_q8_0_t16_gemv_decode_rowtile4_f32_bf16_out,
+        x,
+        tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q8_t16_library,
+        threads=128,
+    )
+    expected = _run_single(
+        gguf_q8_0_t16_gemv_decode_f32_bf16_out,
+        x,
+        tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q8_t16_library,
+        threads=128,
+    )
+    np.testing.assert_array_equal(actual, expected)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

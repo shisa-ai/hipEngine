@@ -184,6 +184,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
     gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out,
+    gguf_q8_0_t16_gemv_decode_rowtile4_f32_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_expert_pack8_gemv import (
     build_gguf_expert_pack8_gemv,
@@ -5341,6 +5342,7 @@ class Qwen35GGUFFullStackRunner:
         input_norm_ptr: int | None = None,
         projections_ready: bool = False,
         conv_ready: bool = False,
+        defer_ssm_out: bool = False,
         stream: int = 0,
         stage_prefix: str = "decode_linear_attn",
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
@@ -5520,6 +5522,8 @@ class Qwen35GGUFFullStackRunner:
             ssm_out_activation_dtype = GGUF_ACTIVATION_BF16
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_gdn")
+        if defer_ssm_out:
+            return
         launch_gguf_linear(
             ssm_out_weight,
             ssm_out_input_ptr,
@@ -7377,8 +7381,17 @@ class Qwen35GGUFFullStackRunner:
                 row_scratch,
                 projections_ready=True,
                 conv_ready=True,
+                defer_ssm_out=True,
                 stream=stream,
                 stage_prefix="packed_moe_c2_exact_attn",
+            )
+            runtime.memcpy_async(
+                scratch.recurrent_out.ptr
+                + row * cfg.ssm_inner_size * DType.FP32.itemsize,
+                row_scratch.recurrent_out.ptr,
+                cfg.ssm_inner_size * DType.FP32.itemsize,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
             )
             runtime.memcpy_async(
                 recurrent_rows.ptr + row * recurrent_nbytes,
@@ -7387,6 +7400,17 @@ class Qwen35GGUFFullStackRunner:
                 HipMemcpyKind.DEVICE_TO_DEVICE,
                 stream,
             )
+        gguf_q8_0_t16_gemv_decode_rowtile4_f32_bf16_out(
+            scratch.recurrent_out.ptr,
+            layer.weight("ssm_out").allocation("tiles").tensor.ptr,
+            scratch.attn_out.ptr,
+            rows,
+            cfg.ssm_inner_size,
+            self.hidden_size,
+            threads=128,
+            stream=stream,
+            runtime=runtime,
+        )
         self._run_post_attention_ffn_rows(
             layer_id,
             hidden_ptr,
