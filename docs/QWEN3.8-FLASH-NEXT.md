@@ -735,7 +735,7 @@ MoE graphs plus exact Q5_1 logical256/physical64 and Q4_K
 logical128/physical64 decode owners plus exact fused Q5 down+weighted combine
 now reach **13.523 tok/s** counterbalanced, with all generated IDs and full-logit
 SHA rows exact. Exact strict remains 1.17x behind llama.cpp HIP; explicit
-`production` reaches **14.611 tok/s** and closes that gap to **1.08x**. Current
+`production` reaches **15.479 tok/s** and closes that gap to **1.024x**. Current
 exact/production p508 is **58.466/73.361 tok/s** versus same-host llama.cpp
 Vulkan/HIP `316/275 tok/s`.
 
@@ -762,8 +762,10 @@ Binding implementation order:
    second exact Q5 contraction to physical64 reaches `13.302 tok/s` (+1.69%);
    fusing exact per-route BF16 down publication with ordered weighted `fmaf`
    reaches `13.523 tok/s` (+1.06%). Production one-plane Q8_1 DP4A is rejected
-   on all Q4 layers at 445/450 top-1 but certified on layers 24–47: combined
-   prefill+decode production passes 448/450 and reaches `14.611 tok/s` (+6.21%).
+   on all Q4 layers at 445/450 top-1; bisection finds the definitive maximal
+   combined prefill+decode suffix at layers 13–47: suffix13
+   passes 447/450 while suffix12 fails 445/450, and decode reaches
+   `15.479 tok/s` (+10.37%).
    Next port Vulkan/llama.cpp `mul_mat_id` dataflow to the remaining strict
    layers and Q8 projections; do not widen the certified DP4A suffix without a
    fresh complete profile gate.
@@ -882,16 +884,16 @@ CPU top-512, replay/rollback, and teardown pass. Current 64K is not rerun becaus
 
 Explicit gfx1151 `production` selects cooperative Q4 gate/up plus Q5_1 down on
 certified prefill layers 27–47, dense-Q8 WMMA prefill layers 32–47, and
-one-plane Q8_1 DP4A Q4 gate/up+SiLU decode layers 24–47. Manifest
-`16acf27d...` falls back to strict `3fbb4e0a...`. The combined 450-row gate
-passes mean/p95/p99/max KL `1.67e-4/7.97e-4/2.92e-3/5.77e-3`, **448/450
-(99.556%) top-1**, three deterministic logits/state repeats, task/c2/lifecycle
+one-plane Q8_1 DP4A Q4 gate/up+SiLU decode layers 13–47. Manifest
+`59e309eb...` falls back to strict `a1d82289...`. The combined 450-row gate
+passes mean/p95/p99/max KL `2.57e-4/1.48e-3/3.77e-3/7.38e-3`, **447/450
+(99.333%) top-1**, three deterministic logits/state repeats, task/c2/lifecycle
 gates, and no BF16-relative claim because no qualified full-BF16 target runtime
-exists. Decode improves **13.704→14.611 tok/s (+6.21%)**; Q4 target cycle-wall
-falls **825.340→563.274 ms (-31.75%)**. Existing p508/p1012 production remains
-**73.361/71.834 tok/s**. The all-layer DP4A candidate is rejected at 445/450;
+exists. Decode improves **13.874→15.479 tok/s (+10.37%)**; Q4 target cycle-wall
+falls **825.340→449.778 ms (-45.50%)**. Existing p508/p1012 production remains
+**73.361/71.834 tok/s**. Suffix12 and all-layer DP4A are rejected at 445/450;
 omitted profile remains exact strict. Evidence:
-[`2026-08-29-gfx1151-qwen38-flash-next-production-dp4a24-decode.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-dp4a24-decode.json).
+[`2026-08-29-gfx1151-qwen38-flash-next-production-dp4a13-decode.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-dp4a13-decode.json).
 
 The broader default-off F7 research candidate still remains rejected: grouped Q4/Q5/Q8 MoE,
 Q5_1 WMMA down, peer-GDN, and tuned Q4/Q8 tiles raise warm repeated-token 512
