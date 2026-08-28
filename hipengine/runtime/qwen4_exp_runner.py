@@ -2883,7 +2883,38 @@ def run_qwen4_exp_moe(
             gate_weight.spec.quant_key,
             "selected_dual_gemv_bf16_bf16_out",
         )
-        if (
+        fused_key = KernelKey(
+            backend,
+            "linear",
+            gate_weight.spec.quant_key,
+            "selected_dual_silu_gemv_bf16_bf16_out",
+        )
+        fused_silu = bool(
+            rows == 1
+            and gate_weight.spec.quant_key == up_weight.spec.quant_key
+            and is_registered(fused_key)
+        )
+        if fused_silu:
+            resolve(
+                backend=fused_key.backend,
+                layer=fused_key.layer,
+                quant=fused_key.quant,
+                variant=fused_key.variant,
+            )(
+                scratch.hidden_bf16.ptr,
+                scratch.selected.ptr,
+                gate_weight.allocation("raw").tensor.ptr,
+                up_weight.allocation("raw").tensor.ptr,
+                scratch.expert_intermediate.ptr,
+                rows,
+                compact,
+                experts,
+                hidden,
+                ffn,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        elif (
             rows == 1
             and gate_weight.spec.quant_key == up_weight.spec.quant_key
             and is_registered(dual_key)
@@ -2917,15 +2948,16 @@ def run_qwen4_exp_moe(
                 "expert_up", scratch.hidden_bf16.ptr, scratch.expert_up.ptr,
                 rows, compact, hidden, ffn,
             )
-        silu_mul_separate_out_bf16(
-            scratch.expert_gate.ptr,
-            scratch.expert_up.ptr,
-            scratch.expert_intermediate.ptr,
-            compact,
-            ffn,
-            stream=stream,
-            runtime=active_runtime,
-        )
+        if not fused_silu:
+            silu_mul_separate_out_bf16(
+                scratch.expert_gate.ptr,
+                scratch.expert_up.ptr,
+                scratch.expert_intermediate.ptr,
+                compact,
+                ffn,
+                stream=stream,
+                runtime=active_runtime,
+            )
         selected_projection(
             "expert_down", scratch.expert_intermediate.ptr, scratch.expert_down.ptr,
             compact, compact, ffn, hidden,

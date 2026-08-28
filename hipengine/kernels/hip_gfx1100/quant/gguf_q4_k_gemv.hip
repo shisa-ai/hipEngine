@@ -358,7 +358,7 @@ __global__ void gguf_q4_k_selected_prefill_out_kernel(
   }
 }
 
-template <typename scalar_t, typename out_t>
+template <typename scalar_t, typename out_t, bool FUSE_SILU = false>
 __launch_bounds__(256, 2)
 __global__ void gguf_q4_k_selected_dual_prefill_out_kernel(
     const scalar_t* __restrict__ x,
@@ -404,8 +404,15 @@ __global__ void gguf_q4_k_selected_dual_prefill_out_kernel(
   const float total_b = reduce_block_sum(acc_b);
   if (threadIdx.x == 0) {
     const int64_t out_idx = static_cast<int64_t>(row) * out_features + out_col;
-    store_output<out_t>(out_a, out_idx, total_a);
-    store_output<out_t>(out_b, out_idx, total_b);
+    if constexpr (FUSE_SILU) {
+      const float gate = bf16_bits_to_float(float_to_bf16_bits(total_a));
+      const float up = bf16_bits_to_float(float_to_bf16_bits(total_b));
+      const float sig = 1.0f / (1.0f + expf(-gate));
+      store_output<out_t>(out_a, out_idx, gate * sig * up);
+    } else {
+      store_output<out_t>(out_a, out_idx, total_a);
+      store_output<out_t>(out_b, out_idx, total_b);
+    }
   }
 }
 
@@ -675,7 +682,7 @@ int launch_gguf_q4_k_selected_dual_gemv_out(
   }
   const dim3 block(static_cast<unsigned int>(threads));
   const dim3 grid(static_cast<unsigned int>(out_features), static_cast<unsigned int>(rows));
-  gguf_q4_k_selected_dual_prefill_out_kernel<scalar_t, out_t><<<grid, block, 0, stream>>>(
+  gguf_q4_k_selected_dual_prefill_out_kernel<scalar_t, out_t, false><<<grid, block, 0, stream>>>(
       x,
       selected,
       qweight_a,
@@ -687,6 +694,40 @@ int launch_gguf_q4_k_selected_dual_gemv_out(
       static_cast<int>(num_experts),
       static_cast<int>(in_features),
       static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename scalar_t>
+int launch_gguf_q4_k_selected_dual_silu_gemv_out(
+    const scalar_t* x,
+    const int64_t* selected,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || selected == nullptr || qweight_a == nullptr ||
+      qweight_b == nullptr || out == nullptr || x_rows <= 0 || rows <= 0 ||
+      (rows % x_rows) != 0 || num_experts <= 0 || in_features <= 0 ||
+      out_features <= 0 || (in_features % QK_K) != 0 ||
+      (threads != 64 && threads != 128 && threads != 256)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(static_cast<unsigned int>(threads));
+  const dim3 grid(
+      static_cast<unsigned int>(out_features),
+      static_cast<unsigned int>(rows));
+  gguf_q4_k_selected_dual_prefill_out_kernel<scalar_t, uint16_t, true>
+      <<<grid, block, 0, stream>>>(
+          x, selected, qweight_a, qweight_b, out, out,
+          static_cast<int>(x_rows), static_cast<int>(rows),
+          static_cast<int>(num_experts), static_cast<int>(in_features),
+          static_cast<int>(out_features));
   return static_cast<int>(hipGetLastError());
 }
 
@@ -1995,6 +2036,24 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
     hipStream_t stream) {
   return launch_gguf_q4_k_selected_dual_gemv_out<uint16_t, uint16_t>(
       x, selected, qweight_a, qweight_b, out_a, out_b, x_rows, rows, num_experts,
+      in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_selected_dual_silu_gemv_bf16_bf16_out(
+    const uint16_t* x,
+    const int64_t* selected,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  return launch_gguf_q4_k_selected_dual_silu_gemv_out<uint16_t>(
+      x, selected, qweight_a, qweight_b, out, x_rows, rows, num_experts,
       in_features, out_features, threads, stream);
 }
 

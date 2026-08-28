@@ -200,7 +200,7 @@ same-host/same-GGUF PR #27742 reference measures Vulkan/HIP pp508
 **18.716/15.848** versus then-current hipEngine **58.466/55.046/5.890**. The
 first exact parity units improve counterbalanced decode **5.698→6.305 tok/s
 (+10.66%)** via raw-Q8 output packing, then **6.065→6.223 (+2.61%)** via Q4
-dual gate/up. Chunk-batched PLE plus exact bulk Conv reduce p508 launches
+dual gate/up; exact SiLU fusion adds **6.400→6.420 (+0.31%)**. Chunk-batched PLE plus exact bulk Conv reduce p508 launches
 **29,341→11,053** and improve **57.825→58.408 tok/s (+1.01%)**. Exact paged
 QSA index scatter then removes 6,072 more p508 submissions (p512 trace
 **11,053→4,933**), wall-neutral at 58.678→58.669 tok/s; the llama.cpp gap is
@@ -210,7 +210,7 @@ binding control exact; 64K historical evidence is retained but not rerun because
 prompts but remains opt-in at **0.955x AR**. <=1K image/video/PNG chat and
 request-owned c2 blocking/SSE pass with zero teardown; packed c-aware speed,
 remote media, multimodal SSE, and 128K+/262K inference are not claimed.
-Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`PLE/Conv`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-ple-conv-bulk.json) · [`QSA scatter`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-qsa-index-scatter.json) · [`Q4 dual`](results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-dual-decode.json).
+Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`PLE/Conv`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-ple-conv-bulk.json) · [`QSA scatter`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-qsa-index-scatter.json) · [`Q4+SiLU`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-q4-dual-silu-decode.json).
 
 ## Current Qwen3.6-35B quantization quality
 
