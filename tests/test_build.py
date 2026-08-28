@@ -154,8 +154,13 @@ def test_build_hip_environment_require_cached_is_fail_closed(
         )
 
 
-def test_build_hip_dry_run_does_not_create_cache_or_run_compiler(tmp_path: Path) -> None:
+def test_build_hip_dry_run_does_not_create_cache_or_run_compiler(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     source = write_source(tmp_path / "smoke.hip", "extern \"C\" void smoke_host() {}\n")
+    monkeypatch.delenv("HIPENGINE_HIP_ARCH", raising=False)
+    monkeypatch.delenv("HIPENGINE_HIP_OFFLOAD_ARCH", raising=False)
 
     artifact = build_hip(
         sources=[source],
