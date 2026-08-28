@@ -220,7 +220,17 @@ _RAW_K_PREFILL_ROWBATCH_VARIANTS = frozenset(
         "prefill_bf16_f32_out",
     }
 )
-_RAW_K_PREFILL_VARIANTS = frozenset({"rowbatch", "coltile"})
+_RAW_K_PREFILL_VARIANTS = frozenset(
+    {
+        "rowbatch",
+        "coltile",
+        "coltile8",
+        "coltile8x8",
+        "coltile16",
+        "coltile16x4",
+        "coltile32",
+    }
+)
 _raw_k_prefill_rowbatch: ContextVar[int] = ContextVar(
     "raw_k_prefill_rowbatch",
     default=0,
@@ -1499,7 +1509,9 @@ def raw_k_prefill_variant_session(variant: str) -> Iterator[None]:
 
     selected = str(variant).strip().lower()
     if selected not in _RAW_K_PREFILL_VARIANTS:
-        raise ValueError("raw-K prefill variant must be 'rowbatch' or 'coltile'")
+        raise ValueError(
+            "raw-K prefill variant must be rowbatch or a supported coltile geometry"
+        )
     token = _raw_k_prefill_variant.set(selected)
     try:
         yield
@@ -2062,10 +2074,18 @@ def _raw_k_prefill_rowbatch_dispatch(
         else dispatch.key.variant[len("gemv_") :]
     )
     selected_variant = f"rowbatch{selected}_{output_variant}"
+    coltile_geometry = {
+        "coltile": (4, 8),
+        "coltile8": (8, 4),
+        "coltile8x8": (8, 8),
+        "coltile16": (16, 2),
+        "coltile16x4": (16, 4),
+        "coltile32": (32, 1),
+    }.get(geometry)
     if (
-        geometry == "coltile"
+        coltile_geometry is not None
         and selected == 32
-        and out_features % 4 == 0
+        and out_features % coltile_geometry[0] == 0
         and (
             backend_package_capability(
                 dispatch.key.backend,
@@ -2093,11 +2113,15 @@ def _raw_k_prefill_rowbatch_dispatch(
             "GGUF_RAW_K_PREFILL_COLTILE2_SHAPES",
             frozenset(),
         )
-        geometry = (
-            "coltile2_rowbatch16"
-            if shape_key in coltile2_shapes
-            else "coltile4_rowbatch8"
-        )
+        if geometry == "coltile":
+            geometry = (
+                "coltile2_rowbatch16"
+                if shape_key in coltile2_shapes
+                else "coltile4_rowbatch8"
+            )
+        else:
+            coltile_width, coltile_rows = coltile_geometry
+            geometry = f"coltile{coltile_width}_rowbatch{coltile_rows}"
         selected_variant = f"{geometry}_{output_variant}"
         role_variants = backend_package_capability(
             dispatch.key.backend,

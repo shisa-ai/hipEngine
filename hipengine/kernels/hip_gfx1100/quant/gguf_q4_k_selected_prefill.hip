@@ -131,6 +131,35 @@ __device__ inline float gguf_q4_k_weight(
       - dmin * static_cast<float>(gguf_q4_k_min(scales, subblock));
 }
 
+struct q4_k_weight_pair {
+  float first;
+  float second;
+};
+
+__device__ inline q4_k_weight_pair gguf_q4_k_weight_pair128(
+    const uint8_t* __restrict__ row,
+    int64_t block_index,
+    int lane128) {
+  const int subblock = lane128 >> 5;
+  const int lane = lane128 & 31;
+  const uint8_t* block = row + block_index * Q4_K_BLOCK_BYTES;
+  const float d = fp16_bytes_to_float(block);
+  const float dmin = fp16_bytes_to_float(block + 2);
+  const uint8_t* scales = block + 4;
+  const uint8_t* qs = block + Q4_K_QS_OFFSET;
+  const int paired_subblock = subblock + 4;
+  const uint8_t q0 = gguf_q4_k_quant(qs, subblock, lane);
+  const uint8_t q1 = gguf_q4_k_quant(qs, paired_subblock, lane);
+  return {
+      d * static_cast<float>(gguf_q4_k_scale(scales, subblock))
+          * static_cast<float>(q0)
+          - dmin * static_cast<float>(gguf_q4_k_min(scales, subblock)),
+      d * static_cast<float>(gguf_q4_k_scale(scales, paired_subblock))
+          * static_cast<float>(q1)
+          - dmin * static_cast<float>(gguf_q4_k_min(scales, paired_subblock)),
+  };
+}
+
 __device__ inline float reduce_block_sum_strict(float value, float* wave_sums) {
   const int lane = threadIdx.x & 31;
   const int wave = threadIdx.x >> 5;
@@ -151,7 +180,7 @@ __device__ inline float reduce_block_sum_strict(float value, float* wave_sums) {
 // Exact grouped counterpart of the selected dual scalar prefill kernel. The
 // column assignment and wave/block reduction tree are unchanged; only Q4_K
 // weight dequantization is shared across up to eight rows of one expert.
-template <int ROW_BATCH, int OUT_BATCH>
+template <int ROW_BATCH, int OUT_BATCH, bool PAIR_BLOCK_WEIGHTS = false>
 __global__ __launch_bounds__(128, 2)
 void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
     const uint16_t* __restrict__ input,
@@ -166,51 +195,82 @@ void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
     int64_t out_features) {
   __shared__ float wave_sums[8];
   const int64_t out_base = blockIdx.x * OUT_BATCH;
-  const int64_t expert = blockIdx.y;
-  if (out_base >= out_features || expert >= num_experts) return;
-  const int64_t start = expert_start[expert];
-  const int64_t end = expert_start[expert + 1];
-  if (start < 0 || end < start || end > compact_rows || start == end) return;
+  if (out_base >= out_features) return;
   const int64_t row_bytes = (in_features / QK_K) * Q4_K_BLOCK_BYTES;
   const int64_t expert_bytes = out_features * row_bytes;
+  // Launching gridDim.y == num_experts preserves the original one-expert CTA.
+  // A smaller fixed worker grid iterates experts without changing any output's
+  // column assignment or strict 128-thread reduction tree.
+  for (int64_t expert = blockIdx.y; expert < num_experts; expert += gridDim.y) {
+    const int64_t start = expert_start[expert];
+    const int64_t end = expert_start[expert + 1];
+    if (start < 0 || end < start || end > compact_rows || start == end) continue;
 #pragma unroll
-  for (int out_offset = 0; out_offset < OUT_BATCH; ++out_offset) {
-    const int64_t out = out_base + out_offset;
-    if (out >= out_features) break;
-    const uint8_t* weight_a = qweight_a + expert * expert_bytes + out * row_bytes;
-    const uint8_t* weight_b = qweight_b + expert * expert_bytes + out * row_bytes;
-    for (int64_t base = start; base < end; base += ROW_BATCH) {
-      float acc_a[ROW_BATCH] = {};
-      float acc_b[ROW_BATCH] = {};
-      for (int64_t column = threadIdx.x; column < in_features; column += blockDim.x) {
-        const float wa = gguf_q4_k_weight(weight_a, column);
-        const float wb = gguf_q4_k_weight(weight_b, column);
+    for (int out_offset = 0; out_offset < OUT_BATCH; ++out_offset) {
+      const int64_t out = out_base + out_offset;
+      if (out >= out_features) break;
+      const uint8_t* weight_a = qweight_a + expert * expert_bytes + out * row_bytes;
+      const uint8_t* weight_b = qweight_b + expert * expert_bytes + out * row_bytes;
+      for (int64_t base = start; base < end; base += ROW_BATCH) {
+        float acc_a[ROW_BATCH] = {};
+        float acc_b[ROW_BATCH] = {};
+        if (PAIR_BLOCK_WEIGHTS) {
+          for (int64_t block_index = 0; block_index < in_features / QK_K;
+               ++block_index) {
+            const int64_t column0 = block_index * QK_K + threadIdx.x;
+            const int64_t column1 = column0 + 128;
+            const q4_k_weight_pair wa =
+                gguf_q4_k_weight_pair128(weight_a, block_index, threadIdx.x);
+            const q4_k_weight_pair wb =
+                gguf_q4_k_weight_pair128(weight_b, block_index, threadIdx.x);
 #pragma unroll
-        for (int row = 0; row < ROW_BATCH; ++row) {
-          const int64_t compact_row = base + row;
-          if (compact_row < end) {
-            const float value = bf16_bits_to_float(
-                input[compact_row * in_features + column]);
-            acc_a[row] += value * wa;
-            acc_b[row] += value * wb;
+            for (int row = 0; row < ROW_BATCH; ++row) {
+              const int64_t compact_row = base + row;
+              if (compact_row < end) {
+                const float value0 = bf16_bits_to_float(
+                    input[compact_row * in_features + column0]);
+                acc_a[row] += value0 * wa.first;
+                acc_b[row] += value0 * wb.first;
+                const float value1 = bf16_bits_to_float(
+                    input[compact_row * in_features + column1]);
+                acc_a[row] += value1 * wa.second;
+                acc_b[row] += value1 * wb.second;
+              }
+            }
+          }
+        } else {
+          for (int64_t column = threadIdx.x; column < in_features;
+               column += blockDim.x) {
+            const float wa = gguf_q4_k_weight(weight_a, column);
+            const float wb = gguf_q4_k_weight(weight_b, column);
+#pragma unroll
+            for (int row = 0; row < ROW_BATCH; ++row) {
+              const int64_t compact_row = base + row;
+              if (compact_row < end) {
+                const float value = bf16_bits_to_float(
+                    input[compact_row * in_features + column]);
+                acc_a[row] += value * wa;
+                acc_b[row] += value * wb;
+              }
+            }
           }
         }
-      }
 #pragma unroll
-      for (int row = 0; row < ROW_BATCH; ++row) {
-        const float total = reduce_block_sum_strict(acc_a[row], wave_sums);
-        if (threadIdx.x == 0 && base + row < end) {
-          output_a[(base + row) * out_features + out] = float_to_bf16_bits(total);
+        for (int row = 0; row < ROW_BATCH; ++row) {
+          const float total = reduce_block_sum_strict(acc_a[row], wave_sums);
+          if (threadIdx.x == 0 && base + row < end) {
+            output_a[(base + row) * out_features + out] = float_to_bf16_bits(total);
+          }
+          __syncthreads();
         }
-        __syncthreads();
-      }
 #pragma unroll
-      for (int row = 0; row < ROW_BATCH; ++row) {
-        const float total = reduce_block_sum_strict(acc_b[row], wave_sums);
-        if (threadIdx.x == 0 && base + row < end) {
-          output_b[(base + row) * out_features + out] = float_to_bf16_bits(total);
+        for (int row = 0; row < ROW_BATCH; ++row) {
+          const float total = reduce_block_sum_strict(acc_b[row], wave_sums);
+          if (threadIdx.x == 0 && base + row < end) {
+            output_b[(base + row) * out_features + out] = float_to_bf16_bits(total);
+          }
+          __syncthreads();
         }
-        __syncthreads();
       }
     }
   }
@@ -1345,6 +1405,42 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf1
       (gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<row_batch, out_batch>),
       dim3(static_cast<uint32_t>((out_features + out_batch - 1) / out_batch),
            static_cast<uint32_t>(num_experts)),
+      dim3(threads), 0, stream,
+      static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(expert_start),
+      static_cast<const uint8_t*>(qweight_a),
+      static_cast<const uint8_t*>(qweight_b),
+      static_cast<uint16_t*>(output_a), static_cast<uint16_t*>(output_b),
+      compact_rows, num_experts, in_features, out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(
+    const void* input,
+    const void* expert_start,
+    const void* qweight_a,
+    const void* qweight_b,
+    void* output_a,
+    void* output_b,
+    int64_t compact_rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!input || !expert_start || !qweight_a || !qweight_b || !output_a ||
+      !output_b || compact_rows <= 0 || num_experts <= 0 || in_features <= 0 ||
+      (in_features % QK_K) || out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int row_batch = 8;
+  constexpr int out_batch = 4;
+  constexpr int expert_workers = 64;
+  constexpr int threads = 128;
+  const int64_t worker_count = num_experts < expert_workers ? num_experts : expert_workers;
+  hipLaunchKernelGGL(
+      (gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<row_batch, out_batch, true>),
+      dim3(static_cast<uint32_t>((out_features + out_batch - 1) / out_batch),
+           static_cast<uint32_t>(worker_count)),
       dim3(threads), 0, stream,
       static_cast<const uint16_t*>(input),
       static_cast<const int64_t*>(expert_start),

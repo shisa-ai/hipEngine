@@ -23,6 +23,11 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q8_0_gemv_fp16_f32_out,
     gguf_q8_0_gemv_rowbatch32_f32_f32_out,
     gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out,
+    gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out,
+    gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out,
+    gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out,
+    gguf_q8_0_gemv_coltile16_rowbatch4_f32_f32_out,
+    gguf_q8_0_gemv_coltile32_rowbatch1_f32_f32_out,
     plan_gguf_k_gemv_build,
 )
 from hipengine.kernels.registry import resolve
@@ -264,16 +269,19 @@ def test_q8_0_f32_rowbatch32_matches_scalar_prefill_bits() -> None:
     try:
         for host in (x, weight):
             device = malloc(host.nbytes, runtime=runtime); copy_host_to_device(device, host_array_ptr(host), runtime=runtime); bufs.append(device)
-        baseline = malloc(rows * out_features * 4, runtime=runtime); candidate = malloc(rows * out_features * 4, runtime=runtime); coltile = malloc(rows * out_features * 4, runtime=runtime); bufs.extend((baseline, candidate, coltile))
+        baseline = malloc(rows * out_features * 4, runtime=runtime); candidate = malloc(rows * out_features * 4, runtime=runtime); coltiles = [malloc(rows * 32 * 4, runtime=runtime) for _ in range(6)]; bufs.extend((baseline, candidate, *coltiles))
         gguf_q8_0_gemv_f32_f32_out(bufs[0].ptr, bufs[1].ptr, baseline.ptr, rows, in_features, out_features, library=library, runtime=runtime)
         gguf_q8_0_gemv_rowbatch32_f32_f32_out(bufs[0].ptr, bufs[1].ptr, candidate.ptr, rows, in_features, out_features, library=library, runtime=runtime)
-        # Coltile requires output width divisible by four; cover the first 32 columns.
-        gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out(bufs[0].ptr, bufs[1].ptr, coltile.ptr, rows, in_features, 32, library=library, runtime=runtime)
-        runtime.device_synchronize(); got0=np.empty((rows,out_features),np.float32);got1=np.empty_like(got0);got2=np.empty((rows,32),np.float32);copy_device_to_host(host_array_ptr(got0),baseline,runtime=runtime);copy_device_to_host(host_array_ptr(got1),candidate,runtime=runtime);copy_device_to_host(host_array_ptr(got2),coltile,got2.nbytes,runtime=runtime)
+        # Constant-32 accumulator tiles cover every factorization of 32.
+        for wrapper, output in zip((gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out, gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out, gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out, gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out, gguf_q8_0_gemv_coltile16_rowbatch4_f32_f32_out, gguf_q8_0_gemv_coltile32_rowbatch1_f32_f32_out), coltiles, strict=True):
+            wrapper(bufs[0].ptr, bufs[1].ptr, output.ptr, rows, in_features, 32, library=library, runtime=runtime)
+        runtime.device_synchronize(); got0=np.empty((rows,out_features),np.float32);got1=np.empty_like(got0);got_tiles=[np.empty((rows,32),np.float32) for _ in coltiles];copy_device_to_host(host_array_ptr(got0),baseline,runtime=runtime);copy_device_to_host(host_array_ptr(got1),candidate,runtime=runtime)
+        for got, output in zip(got_tiles, coltiles, strict=True): copy_device_to_host(host_array_ptr(got),output,got.nbytes,runtime=runtime)
     finally:
         for buf in reversed(bufs): free(buf,runtime=runtime)
     np.testing.assert_array_equal(got1, got0)
-    np.testing.assert_array_equal(got2, got0[:, :32])
+    for got in got_tiles:
+        np.testing.assert_array_equal(got, got0[:, :32])
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
