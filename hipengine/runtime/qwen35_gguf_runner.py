@@ -182,6 +182,9 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
+    gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_expert_pack8_gemv import (
     build_gguf_expert_pack8_gemv,
     register_gguf_expert_pack8_gemv_kernels,
@@ -5336,6 +5339,7 @@ class Qwen35GGUFFullStackRunner:
         *,
         hidden_f32_ptr: int | None = None,
         input_norm_ptr: int | None = None,
+        projections_ready: bool = False,
         stream: int = 0,
         stage_prefix: str = "decode_linear_attn",
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
@@ -5348,7 +5352,11 @@ class Qwen35GGUFFullStackRunner:
         recurrent_state = scratch.layer_recurrent_states[layer_id]
         if conv_state is None or recurrent_state is None:
             raise ValueError(f"layer {layer_id} has no linear-attention state")
-        if input_norm_ptr is None:
+        if projections_ready:
+            if hidden_f32_ptr is not None or input_norm_ptr is not None:
+                raise ValueError("precomputed projections require BF16 row inputs")
+            attn_norm_f32_ptr = None
+        elif input_norm_ptr is None:
             attn_norm_f32_ptr = self._run_attention_norm_rows(
                 hidden_ptr=hidden_ptr,
                 hidden_f32_ptr=hidden_f32_ptr,
@@ -5366,19 +5374,21 @@ class Qwen35GGUFFullStackRunner:
             attn_norm_f32_ptr = None
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_norm")
-        pair_fused = launch_gguf_linear_pair(
-            layer.weight("attn_qkv"),
-            layer.weight("attn_gate"),
-            scratch.norm.ptr,
-            scratch.linear_qkv.ptr,
-            scratch.linear_z.ptr,
-            rows=1,
-            in_features=self.hidden_size,
-            out_features=self.linear_qkv_width,
-            out_features_b=cfg.ssm_inner_size,
-            stream=stream,
-            runtime=runtime,
-        )
+        pair_fused = bool(projections_ready)
+        if not projections_ready:
+            pair_fused = launch_gguf_linear_pair(
+                layer.weight("attn_qkv"),
+                layer.weight("attn_gate"),
+                scratch.norm.ptr,
+                scratch.linear_qkv.ptr,
+                scratch.linear_z.ptr,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=self.linear_qkv_width,
+                out_features_b=cfg.ssm_inner_size,
+                stream=stream,
+                runtime=runtime,
+            )
         if not pair_fused:
             launch_gguf_linear(
                 layer.weight("attn_qkv"),
@@ -7281,6 +7291,36 @@ class Qwen35GGUFFullStackRunner:
         hidden_row_nbytes = self.hidden_size * DType.BF16.itemsize
         segment_rows = rows // segments
         runtime = self.runtime or get_hip_runtime()
+        assert self.weights is not None
+        layer = self.weights.layer(layer_id)
+        cfg = self.weights.config
+        qkv_row_nbytes = self.linear_qkv_width * DType.BF16.itemsize
+        gate_row_nbytes = cfg.ssm_inner_size * DType.BF16.itemsize
+        for row in range(rows):
+            gguf_rmsnorm_bf16_f32_weight(
+                hidden_ptr + row * hidden_row_nbytes,
+                layer.weight("attn_norm").allocation().tensor.ptr,
+                scratch.norm.ptr + row * hidden_row_nbytes,
+                rows=1,
+                hidden_size=self.hidden_size,
+                eps=cfg.rms_norm_eps,
+                stream=stream,
+                runtime=runtime,
+            )
+        gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out(
+            scratch.norm.ptr,
+            layer.weight("attn_qkv").allocation("tiles").tensor.ptr,
+            layer.weight("attn_gate").allocation("tiles").tensor.ptr,
+            scratch.linear_qkv.ptr,
+            scratch.linear_z.ptr,
+            rows,
+            self.hidden_size,
+            self.linear_qkv_width,
+            cfg.ssm_inner_size,
+            threads=128,
+            stream=stream,
+            runtime=runtime,
+        )
         conv_states = list(decode_scratch.layer_conv_states)
         recurrent_states = list(decode_scratch.layer_recurrent_states)
         for row in range(rows):
@@ -7295,6 +7335,18 @@ class Qwen35GGUFFullStackRunner:
             )
             row_scratch = replace(
                 decode_scratch,
+                norm=DeviceBuffer(
+                    scratch.norm.ptr + row * hidden_row_nbytes,
+                    hidden_row_nbytes,
+                ),
+                linear_qkv=DeviceBuffer(
+                    scratch.linear_qkv.ptr + row * qkv_row_nbytes,
+                    qkv_row_nbytes,
+                ),
+                linear_z=DeviceBuffer(
+                    scratch.linear_z.ptr + row * gate_row_nbytes,
+                    gate_row_nbytes,
+                ),
                 layer_conv_states=tuple(conv_states),
                 layer_recurrent_states=tuple(recurrent_states),
             )
@@ -7303,6 +7355,7 @@ class Qwen35GGUFFullStackRunner:
                 hidden_ptr + row * hidden_row_nbytes,
                 scratch.attn_out.ptr + row * hidden_row_nbytes,
                 row_scratch,
+                projections_ready=True,
                 stream=stream,
                 stage_prefix="packed_moe_c2_exact_attn",
             )
