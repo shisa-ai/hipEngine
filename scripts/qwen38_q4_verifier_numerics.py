@@ -126,7 +126,8 @@ def _make_sessions(
         )
     sessions = (owner, peer)
     if any(
-        bool(session.fp16_recurrent_state) is not bool(fp16_state)
+        session.runner is None
+        or bool(session.runner.fp16_recurrent_state) is not bool(fp16_state)
         for session in sessions
     ):
         stack.close()
