@@ -2435,6 +2435,24 @@ def run_qwen4_exp_gr_read(
     )
 
 
+def _qwen4_exp_production_moe_prefill_enabled(
+    weight: GGUFDeviceWeight, *, rows: int
+) -> bool:
+    if rows < 16 or os.environ.get(
+        "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL", "0"
+    ) in {"", "0", "false", "False"}:
+        return False
+    parts = weight.spec.slot_path.split(".")
+    if len(parts) < 3 or parts[0] != "layers":
+        return False
+    admitted = backend_package_capability(
+        str(weight.backend),
+        "QWEN4_EXP_PRODUCTION_MOE_PREFILL_LAYERS",
+        (),
+    )
+    return int(parts[1]) in admitted
+
+
 def run_qwen4_exp_moe(
     mixed_ptr: int,
     weights: Mapping[str, GGUFDeviceWeight],
@@ -2568,14 +2586,19 @@ def run_qwen4_exp_moe(
             runtime=active_runtime,
         )
 
+    production_grouped_moe = _qwen4_exp_production_moe_prefill_enabled(
+        weights["expert_gate"], rows=rows
+    )
     exact_grouped_down = (
-        weights["expert_down"].spec.quant_key == "gguf_q5_1"
+        not production_grouped_moe
+        and weights["expert_down"].spec.quant_key == "gguf_q5_1"
         and rows >= 2
         and os.environ.get("HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN", "1")
         not in {"", "0", "false", "False"}
     )
     exact_grouped_q4_gate = (
-        rows >= 2
+        not production_grouped_moe
+        and rows >= 2
         and weights["expert_gate"].spec.quant_key == "gguf_q4_k"
         and weights["expert_up"].spec.quant_key == "gguf_q4_k"
         and os.environ.get("HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4", "1")
@@ -2587,9 +2610,11 @@ def run_qwen4_exp_moe(
         )
     )
     grouped_prefill = exact_grouped_down or exact_grouped_q4_gate or (
-        rows >= 16
-        and os.environ.get("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "")
-        not in {"", "0", "false", "False"}
+        (production_grouped_moe or (
+            rows >= 16
+            and os.environ.get("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "")
+            not in {"", "0", "false", "False"}
+        ))
         and (
             weights["expert_gate"].spec.quant_key,
             weights["expert_up"].spec.quant_key,
@@ -2794,7 +2819,7 @@ def run_qwen4_exp_moe(
                 runtime=active_runtime,
             )
         if weights["expert_down"].spec.quant_key == "gguf_q5_1":
-            q5_wmma = os.environ.get(
+            q5_wmma = production_grouped_moe or os.environ.get(
                 "HIPENGINE_QWEN4_EXP_Q5_1_WMMA", ""
             ) not in {"", "0", "false", "False"}
             if exact_grouped_down:

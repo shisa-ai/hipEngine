@@ -779,10 +779,12 @@ Binding implementation order:
    T1/T2 cooperative math needs full teacher-forced category+heldout rows,
    three deterministic repeats, applicable state/task/BF16 gates, a manifest,
    and a registered strict fallback. Final-prompt KL or 100% top-1 is not a
-   promotion gate. Late-layer WMMA (layers 32–47) is promising diagnostic
-   evidence (`18` final-prompt rows mean/p95/max KL
-   `0.000196/0.000730/0.002009`, p508 `55.74→62.27 tok/s`) but remains paused
-   pending the complete production packet; it does not outrank T0/grouped work.
+   promotion gate. Late-layer WMMA (layers 32–47) now has that complete packet:
+   450 rows / three repeats pass mean/p95/p99/max KL
+   `6.77e-5/2.18e-4/1.35e-3/5.39e-3`, top-1 449/450, every category/scope,
+   deterministic state, task/free-generation, c2, manifest, and teardown.
+   Explicit `production` improves p508/p1012 **59.473→65.193** /
+   **58.660→64.231 tok/s**; omitted/`strict` remains exact.
 7. **Keep MTP separate.** It may improve serving economics only under the full
    anti-gaming suite and same-protocol no-MTP denominator; it cannot mask the
    base AR or 5× prefill gap.
@@ -854,7 +856,16 @@ CPU top-512, replay/rollback, and teardown pass. Current 64K is not rerun becaus
 [`2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json) and
 [`2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json).
 
-Current default-off F7 research candidate: grouped Q4/Q5/Q8 MoE,
+Explicit gfx1151 `production` now selects cooperative Q4 gate/up plus Q5_1 down
+only on layers 32–47. The stable manifest is `eec7baf3...`; strict fallback is
+`0a0a9205...`. The unchanged calibrated 450-row gate passes at mean/p95/p99/max
+KL `6.77e-5/2.18e-4/1.35e-3/5.39e-3`, 99.778% top-1, three bit-stable repeats,
+state/task/c2/lifecycle gates, and no BF16-relative claim because no qualified
+full-BF16 target runtime exists. Public p508 reaches **65.286 tok/s** steady;
+omitted profile remains strict. Evidence:
+[`2026-08-29-gfx1151-qwen38-flash-next-late-moe-production.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-late-moe-production.json).
+
+The broader default-off F7 research candidate still remains rejected: grouped Q4/Q5/Q8 MoE,
 Q5_1 WMMA down, peer-GDN, and tuned Q4/Q8 tiles raise warm repeated-token 512
 prefill from `8.67` to `211.76 tok/s` and the 18-prompt natural suite from
 `5.36` to `35.43 tok/s` after the PLE ring-ownership fix. It is not promoted:

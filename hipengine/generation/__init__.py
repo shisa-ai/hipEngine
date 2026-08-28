@@ -158,10 +158,14 @@ def register_builtin_generators() -> None:
     from hipengine.generation.qwen38_gguf_profiles import (
         register_qwen38_gguf_gfx1151_profiles,
     )
+    from hipengine.generation.qwen4_exp_profiles import (
+        register_qwen4_exp_gfx1151_profiles,
+    )
 
     register_qwen36_dense_gguf_gfx1100_profiles()
     register_qwen36_gguf_gfx1151_profiles()
     register_qwen38_gguf_gfx1151_profiles()
+    register_qwen4_exp_gfx1151_profiles()
 
 
 __all__ = [
