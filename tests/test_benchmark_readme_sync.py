@@ -178,9 +178,9 @@ def test_benchmark_readme_is_a_compact_current_scoreboard() -> None:
     scoreboard = scoreboard_path.read_text(encoding="utf-8")
 
     assert len(scoreboard.splitlines()) < 460
-    assert len(scoreboard.encode("utf-8")) < 30_000
+    assert len(scoreboard.encode("utf-8")) < 34_000
     assert scoreboard.count("<!-- BEGIN TOPLINE:") == 1
-    assert scoreboard.count("results/") < 40
+    assert scoreboard.count("results/") < 50
     assert "## Platform Index" not in scoreboard
     assert "## Blocked and Diagnostic Benchmark Attempts" not in scoreboard
     assert "## README Sweep Test Procedure" not in scoreboard

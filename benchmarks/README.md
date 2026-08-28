@@ -98,6 +98,12 @@ Rows use different models and tests; compare only matching protocols. The RX 790
 W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE K2 and 27B
 Dense K3; other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
 
+W7900 canonical Qwen3.8 `Q4_K_M` strict C1/K3 D24 is **32.153 vs
+21.958 tok/s (1.4643x)** over three fresh full-suite runs, with 30/30 exact
+cells and 78.89% draft acceptance. Automatic C2-C8 selects typed K0; explicit
+physical C2/C3/C4 MTP is exact but only **0.5137x/0.4597x/0.4790x AR**, so it
+remains diagnostic/default-off. [`Rebaseline`](results/2026-08-28-w7900-qwen38-q4km-canonical-rebaseline.json).
+
 Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 automatic at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) is **15.609 vs 9.807 tok/s (1.5916x)**; [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) remains available. Exact C2 verifier [Q6](results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json) and [Q5](results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json), followed by [production-profile Q4 rowtiles](results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json), lift K3 **11.724→17.031 tok/s (+45.27%)** and **0.8170x→1.1441x true AR**. Production C2/K3 is automatic only for the qualified context1-128/D24 cell; C3-C8 and scope misses remain K0.
 
 The [Qwen3.8 external reproduction survey](results/2026-08-28-gfx1151-qwen38-external-reproduction-survey.json) locally qualifies seven Strix Halo routes. `q38rocm` strict MTP K4 is the fastest tested route without a server-lifecycle blocker at **35.575 arithmetic / 32.969 token-weighted decode tok/s** on the ten-prompt suite. Laurent adaptive DFlash2 reaches **56.532 tok/s** on valid structured JSON and **34.483 token-weighted decode tok/s** on fresh-process diverse traffic, but is rejected for sequential serving because cross-request speculative state contamination produced invalid output. These cross-model rows are survey evidence, not hipEngine topline comparisons.
@@ -395,6 +401,7 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | Platform / model | Contract | True AR | MTP | MTP / AR | Status and evidence |
 | --- | --- | ---: | ---: | ---: | --- |
 | W7900 / Qwen3.6-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 29.457 | **60.929** | **2.0684x** | Current clean snapshot; all ten prompts, greedy outputs, and GPU/CPU acceptance agree. The ratio replaces stale historical denominators. [`artifact`](results/2026-08-23-w7900-qwen36-27b-current-default-publication.json) |
+| W7900 / Qwen3.8-27B Dense `Q4_K_M` | Strict served C1/K3 D24, three runs | 21.958 | **32.153** | **1.4643x** | 30/30 AR=MTP cells; acceptance 78.89%. Same-host current/Laurent llama.cpp HIP complete wall is 20.974/25.432 and 19.781/26.879 AR/MTP; physical C2-C4 MTP is exact but rejected at <=0.514x AR. [`artifact`](results/2026-08-28-w7900-qwen38-q4km-canonical-rebaseline.json) |
 | RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 35.287 | **62.440** | **1.7695x** | Clean idle-card correction; exact greedy and GPU/CPU acceptance, retained fusion improves matched AR 3.764% and B3 0.439% with every category non-regressive. [`artifact`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Exact natural25 B3 | 11.692 | **21.158** | **1.8095x** | Clean current-main direct-leaf snapshot; all ten prompts and 30 MTP comparisons are exact, GPU/CPU acceptance agrees, and cached profiling confirms the qualified scalar-C1 and native Q4 rows4/2 owners. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 normal-cap4 realized-C1 B3, automatic | 9.807 | **15.609** | **1.5916x** | Current-source 10/10 >1.10x; all categories positive; 78.57% acceptance; C2-C8 group at normal AR width and select pure K0. [`artifact`](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) |
