@@ -35,7 +35,7 @@ class Qwen4ExpGGUFTextGenerator:
         tokenizer: Any | None = None,
         runner: Any | None = None,
         max_sequence_length: int = 2_051,
-        prefill_chunk_size: int = 64,
+        prefill_chunk_size: int = 256,
         vision_model_path: str | Path | None = None,
     ) -> None:
         self.model_path = Path(model_path)

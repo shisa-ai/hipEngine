@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next Implementation Campaign
 
-Status: **active — the bounded 512/1K basic product gate is complete; optimize short-context prefill/MTP verification before any new long-context qualification**
+Status: **active — 512/1K basics pass and exact short prefill now exceeds 50 tok/s; finish general multimodal/native-concurrency support before campaign closure**
 
 This campaign brings the open-weight `Qwen/Qwen3.8-Flash-Next` checkpoint to
 hipEngine as a torch-free, registry-composed, text-generation path first, then
@@ -607,7 +607,7 @@ These are hard campaign stop rules, not aspirational targets:
 | Full-model context proposed | Minimum retained prompt-prefill rate required first |
 | --- | ---: |
 | 4K | `20 tok/s` |
-| 16K | `50 tok/s` |
+| 16K | `50 tok/s` (**met: p508 first/steady 51.220/58.466; p1006 55.046**) |
 | 64K | `100 tok/s` |
 | 128K or greater (including 262K) | `200 tok/s` |
 
@@ -767,7 +767,12 @@ versus the prior exact `222.228 s` (33.90% lower, 1.513x). Retrieval, all 12
 needle controls, CPU top-512 selection, replay/rollback, and teardown pass.
 Evidence:
 [`2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-4k-current.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-4k-current.json).
-The 16K gate remains blocked because `27.886 < 50 tok/s`; do not run it.
+The subsequent exact Q4-metadata/chunk256 promotion reaches **51.220 tok/s on
+the first p508 run and 58.466 tok/s steady median**, plus **55.046 tok/s at
+p1006**, all with bit-exact full logits. The 50 tok/s short-prefill prerequisite
+is therefore met and 16K is eligible, but it is not rerun in that optimization
+unit. Evidence:
+[`2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json).
 
 Current default-off F7 research candidate: grouped Q4/Q5/Q8 MoE,
 Q5_1 WMMA down, peer-GDN, and tuned Q4/Q8 tiles raise warm repeated-token 512

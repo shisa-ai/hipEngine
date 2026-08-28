@@ -287,14 +287,15 @@ cuts full-shape CTAs **1,310,720→163,840** and paired natural 4K
 Q8 FP32 coltile8/rowbatch4 now improves natural p508 **14.718→11.988 s
 (42.376 tok/s, 1.228x)** and paired p1012 **31.346→24.432 s (41.422 tok/s,
 1.283x)** with bit-exact logits; profiled kernel wall falls 14.230→11.692 s.
-Extending exact grouped Q4 to Q8-down layers then reaches **45.404 tok/s**
-(`12.021→11.189 s`, -6.92%) with exact logits. Natural 16K now
+Exact Q4 metadata reuse plus chunk256 then crosses the next ladder gate:
+p508 first/steady reaches **51.220/58.466 tok/s** and p1006 **55.046 tok/s**,
+all with bit-exact logits. Natural 16K now
 passes at **17.301 prompt tok/s** with retrieval, all-layer needle control,
 independent CPU index selection, replay/rollback, and teardown exact. The permitted current-default natural 4K requalification now improves
 **222.228→146.883 s (-33.90%, 27.886 tok/s)** with exact retrieval/control/
-CPU-oracle/lifecycle. The 16K rerun remains blocked by the implementation
-ladder because current 4K throughput is below 50 tok/s. Historical natural
-16K/64K evidence remains retained but is not rerun. Natural retrieval above 4K,
+CPU-oracle/lifecycle. The short-prefill 50 tok/s prerequisite is now met, so a
+current 16K rerun is eligible but has not yet been performed. Historical natural
+16K/64K evidence remains retained. Natural retrieval above 4K,
 strict-above-4K, 262K inference, and broader lifecycle gates remain open, so
 the implementation-first 512/1K gate now includes explicit MTP, blocking/SSE,
 chat/tool/reasoning, c2 isolation, and one bounded 32×32 image path. Q8 MTP is
@@ -317,6 +318,7 @@ remains open; no broader claim is made.
 [`Exact grouped Q5_1 output8`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q5-1-out8.json) ·
 [`Exact scheduling wave`](results/2026-08-28-gfx1151-qwen38-flash-next-exact-scheduling-wave.json) ·
 [`All-Q4 exact grouping`](results/2026-08-28-gfx1151-qwen38-flash-next-all-q4-grouped.json) ·
+[`Exact Q4 metadata + chunk256`](results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json) ·
 [`Basic MTP full suite`](results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json) ·
 [`Basic vision`](results/2026-08-28-gfx1151-qwen38-flash-next-basic-vision.json) ·
 [`Natural QSA 16K`](results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-16k.json) ·

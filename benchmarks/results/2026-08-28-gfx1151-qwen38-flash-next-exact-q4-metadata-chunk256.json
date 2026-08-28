@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_exact_default_50_tok_s_gate_met",
+  "scope": "Exact Q4_K metadata reuse plus Qwen4Exp chunk256 at 512/1K",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "cpu": "AMD Ryzen AI Max+ Pro 395", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "implementation": {
+    "q4": "Each fixed-worker exact Q4 gate/up CTA predecodes d*scale and dmin*min once per block/subblock into 2 KiB LDS; strict lane quant bytes, ordered FMAs, wave32 reduction, and serial wave accumulation are unchanged.",
+    "prefill": "Public Qwen4Exp runner/generator default prefill chunk grows 64 to 256. Chunk128/256/512 were screened; 256 is the exact winner.",
+    "fallback": "Qwen4ExpGGUFTextGenerator(prefill_chunk_size=64) retains the preceding schedule; direct selected Q4 remains the primitive fallback."
+  },
+  "p508": {
+    "chunk_screen_seconds": {"chunk64": 11.804975505001494, "chunk128": 10.456243907996395, "chunk256": 10.224293940998905, "chunk512": 10.32289850700181},
+    "chunk256_first_seconds": 9.917937872000039,
+    "chunk256_first_prompt_tokens_per_second": 51.22032488569697,
+    "chunk256_steady_seconds": [8.757045303995255, 8.688770969994948, 8.630127204000019],
+    "chunk256_steady_median_seconds": 8.688770969994948,
+    "chunk256_steady_prompt_tokens_per_second": 58.466266604826316,
+    "repeats_exact": true
+  },
+  "p1006": {"chunk64_seconds": 22.986247244996775, "chunk256_seconds": 18.275564220995875, "reduction_percent": 20.493484533567067, "speedup": 1.2577585549227002, "chunk256_prompt_tokens_per_second": 55.04618012527664, "full_logits_exact": true, "mean_kl": 0.0, "max_logit_error": 0.0, "top1_exact": true},
+  "profiler": {
+    "chunk256_wall_seconds_under_profiler": 10.197927708999487,
+    "total_kernel_seconds": 8.840990705,
+    "launches": 29341,
+    "q8_seconds": 2.432718,
+    "q5_1_seconds": 2.001353,
+    "q4_seconds": 1.959065,
+    "gdn_seconds": 1.077452,
+    "q4_kernel": "gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<8,4,true>",
+    "q5_kernel": "q5_1_selected_grouped_prefill_logical256_bf16_bf16_kernel<8,8>",
+    "q8_kernel": "gguf_k_prefill_out_coltile_rowbatch_kernel<float,float,8,8,4>",
+    "compiler_spawned_under_profiler": false,
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace -f csv -o qwen4exp-prefill512-final50 -d /tmp -- uv run python -c '<cached p512 chunk256 profile>'"
+  },
+  "correctness": {"q4_primitive_bf16_bits_exact": true, "p508_chunk_variants_full_logits_exact": true, "p1006_full_logits_exact": true, "qwen4exp_focused_tests_passed": 141, "q4_focused_test_passed": 1},
+  "context_ladder": {"short_prefill_requirement_tok_s": 50, "met": true, "p508_first_tok_s": 51.22032488569697, "p508_steady_tok_s": 58.466266604826316, "p1006_tok_s": 55.04618012527664, "16k_eligible": true, "16k_run_in_this_unit": false},
+  "rejected": {"strict_prepared_gdn": "exact but neutral (10.461 s versus direct 10.434 s); removed", "q8_scale_cache": "exact but slower (45.80 tok/s); removed"},
+  "commands": ["uv run python /tmp/qwen4exp_chunk256_repeat.py", "uv run python /tmp/qwen4exp_chunk256_1k_gate.py", "uv run pytest -q tests/test_qwen4_exp*.py tests/test_generation_qwen4_exp_gguf.py tests/test_llm_split_gguf_path.py -x"]
+}
