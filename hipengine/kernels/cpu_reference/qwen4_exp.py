@@ -942,6 +942,36 @@ def qwen4_exp_reduced_qsa_layer(
     return Qwen4ExpReducedLayerResult(output_state, attention_output, selection, moe)
 
 
+def qwen4_exp_mtp_fuse_inputs(
+    token_embedding: ArrayLike,
+    target_hidden: ArrayLike,
+    embedding_norm_weight: ArrayLike,
+    hidden_norm_weight: ArrayLike,
+    *,
+    branches: int,
+    eps: float = 1.0e-6,
+) -> np.ndarray:
+    """Reference ``[norm(e), norm(h_branch)]`` input for the MTP projection."""
+
+    branch_count = int(branches)
+    if branch_count <= 0:
+        raise ValueError("MTP branch count must be positive")
+    embedding = np.asarray(token_embedding, dtype=np.float32).reshape(-1)
+    hidden = np.asarray(target_hidden, dtype=np.float32).reshape(-1)
+    if embedding.size <= 0 or hidden.shape != (branch_count * embedding.size,):
+        raise ValueError("MTP hidden must contain one embedding-width row per branch")
+    e_norm = _rmsnorm_last(
+        embedding.reshape(1, -1), embedding_norm_weight, eps=eps
+    )[0]
+    h_norm = _rmsnorm_last(
+        hidden.reshape(1, -1), hidden_norm_weight, eps=eps
+    )[0].reshape(branch_count, embedding.size)
+    repeated = np.repeat(e_norm.reshape(1, -1), branch_count, axis=0)
+    return np.ascontiguousarray(
+        np.concatenate((repeated, h_norm), axis=1), dtype=np.float32
+    )
+
+
 def _rmsnorm_last(value: ArrayLike, weight: ArrayLike, *, eps: float) -> np.ndarray:
     x = np.asarray(value, dtype=np.float32)
     gamma = np.asarray(weight, dtype=np.float32)
@@ -1006,6 +1036,7 @@ __all__ = [
     "qsa_select_positions",
     "qsa_sparse_gqa_attention",
     "qwen4_exp_moe",
+    "qwen4_exp_mtp_fuse_inputs",
     "qwen4_exp_reduced_qsa_layer",
     "sigmoid_gated_rmsnorm",
 ]
