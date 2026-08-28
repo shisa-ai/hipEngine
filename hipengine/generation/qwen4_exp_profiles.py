@@ -21,7 +21,7 @@ QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
 PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
 _EVIDENCE = (
     "benchmarks/results/"
-    "2026-08-29-gfx1151-qwen38-flash-next-late-moe28-production.json"
+    "2026-08-29-gfx1151-qwen38-flash-next-late-moe27-production.json"
 )
 
 
@@ -48,14 +48,14 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
     return (
         _selection(
             "moe_linear",
-            "prefill_rows_ge16_layers28_47_gate_up",
+            "prefill_rows_ge16_layers27_47_gate_up",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
             "gguf_q4_k",
         ),
         _selection(
             "moe_linear",
-            "prefill_rows_ge16_layers28_47_down",
+            "prefill_rows_ge16_layers27_47_down",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "gguf_q5_1",
@@ -67,7 +67,7 @@ def _production_selections() -> tuple[VariantSelection, ...]:
     return (
         _selection(
             "moe_linear",
-            "prefill_rows_ge16_layers28_47_gate_up",
+            "prefill_rows_ge16_layers27_47_gate_up",
             "selected_dual_wmma_prefill_compact_bf16_bf16_out",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
             "gguf_q4_k",
@@ -75,7 +75,7 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             "moe_linear",
-            "prefill_rows_ge16_layers28_47_down",
+            "prefill_rows_ge16_layers27_47_down",
             "selected_grouped_wmma_prefill_compact_bf16_bf16_out",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "gguf_q5_1",
