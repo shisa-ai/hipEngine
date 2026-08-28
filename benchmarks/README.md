@@ -298,10 +298,12 @@ current 16K rerun is eligible but has not yet been performed. Historical natural
 16K/64K evidence remains retained. Natural retrieval above 4K,
 strict-above-4K, 262K inference, and broader lifecycle gates remain open, so
 the implementation-first 512/1K gate now includes explicit MTP, blocking/SSE,
-chat/tool/reasoning, c2 isolation, and one bounded 32×32 image path. Q8 MTP is
-exact on all 10 category+heldout prompts with 84.28% acceptance but is
-**0.955x AR**, so AR remains default. General multimodal/long-context scope
-remains open; no broader claim is made.
+chat/tool/reasoning and c2 isolation. <=1K multimodal now covers general
+merge-compatible grids, multiple images, videos, explicit text T/H/W MRoPE,
+and bounded PNG chat input; a 32×64 encoder matches Transformers at relative
+L2 1.48e-6. Q8 MTP is exact on all 10 category+heldout prompts with 84.28%
+acceptance but is **0.955x AR**, so AR remains default. Long-context multimodal,
+remote media URLs, multimodal SSE, and broader lifecycle scope remain open.
 [`Bring-up artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json) ·
 [`Exact prefill promotion`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json) ·
 [`Heldout artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json) ·
@@ -320,7 +322,7 @@ remains open; no broader claim is made.
 [`All-Q4 exact grouping`](results/2026-08-28-gfx1151-qwen38-flash-next-all-q4-grouped.json) ·
 [`Exact Q4 metadata + chunk256`](results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json) ·
 [`Basic MTP full suite`](results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json) ·
-[`Basic vision`](results/2026-08-28-gfx1151-qwen38-flash-next-basic-vision.json) ·
+[`General multimodal`](results/2026-08-28-gfx1151-qwen38-flash-next-general-multimodal.json) ·
 [`Natural QSA 16K`](results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-16k.json) ·
 [`Natural QSA 64K`](results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-64k.json) ·
 [`Current natural QSA 4K`](results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-4k-current.json) ·

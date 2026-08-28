@@ -878,21 +878,29 @@ optional user-boundary bridge.
 count failures, MRoPE positions, text-only non-regression, and multimodal
 category smokes. Only then advertise multimodal support.
 
-Current basic scope (2026-08-28): one **exactly 32×32 RGB image** is supported
-through `LLM.generate_multimodal_detailed()`. It produces four 16×16 patches,
-duplicates the image over the official temporal width 2, executes the stock
-27-layer Qwen3-VL ViT and 2×2 merger, and replaces exactly one `image_pad`
-embedding in a <=1K text request. One merged image token keeps all multimodal
-RoPE axes scalar-equivalent for this bounded gate. Against independent
-Transformers `Qwen3VLVisionModel` on the official BF16 vision shard, the H2560
-embedding has mean/max error `4.51e-8/2.27e-7`, relative L2 `1.34e-6`, and
-cosine `0.99999988`; public generation is finite, image-sensitive,
-deterministic, text-only IDs are unchanged, and teardown is zero. The local
-334-tensor/907,523,008-byte mmproj SHA-256 is
+Current <=1K scope (2026-08-28): general merge-compatible RGB grids (positive
+height/width multiples of 32, at most 256 patches per temporal pair), multiple
+images, and videos are supported through `LLM.generate_multimodal_detailed()`.
+Images duplicate the official temporal width 2; videos consume adjacent frame
+pairs and duplicate an odd final frame. Patch rows use official 2×2 block-major
+order, align-corners learned-position interpolation, frame-isolated ViT
+attention, and the stock merger. Typed image/video placeholder groups are
+expanded and count-checked. Text QSA uses explicit interleaved T/H/W MRoPE
+sections `[11,11,10]`; continuation decode resumes at the compressed multimodal
+position rather than the physical token count.
+
+An independent Transformers 32×64/two-token oracle passes at relative L2
+`1.48e-6`, cosine `1.0`, and max error `3.87e-7`. Public rectangular-image,
+two-image, and three-frame-video requests pass; a 16-token black-vs-pattern
+comparison produces different IDs and the patterned row begins “Based on the
+image provided”. Text-only IDs remain exact before/after and teardown is zero.
+Bounded `image/png` data URLs now work on non-streaming
+`POST /v1/chat/completions` when `--vision-model` is configured; remote URL
+fetch, HTTP multimodal SSE, and multimodal context above 1K remain explicitly
+unsupported. The local 334-tensor/907,523,008-byte mmproj SHA-256 is
 `375f156fdc1232f994c42f43813861fac4fdc791f0440a36c85e87b6907a7eee`.
-This closes the **basic image** item only. General image sizes/multiple images,
-explicit multi-axis text MRoPE, videos, and HTTP multimodal input remain
-unsupported and must not be advertised. Evidence:
+Evidence:
+[`2026-08-28-gfx1151-qwen38-flash-next-general-multimodal.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-general-multimodal.json) and
 [`2026-08-28-gfx1151-qwen38-flash-next-basic-vision.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-basic-vision.json).
 
 ### F10 — Public serving and closure
@@ -991,11 +999,11 @@ core interfaces.
 - [x] F4 missing native primitives pass RED/GREEN and kernel traces.
 - [x] F5 strict text AR works below the QSA budget through public APIs.
 - [ ] F6 QSA passes long-context correctness and capacity through 262K.
-- [ ] F7 retained prefill/decode/batching paths are measured and documented.
-- [ ] F8 official MTP is correct and either promoted in scope or honestly
-      rejected on economics.
-- [ ] F9 multimodal image/video support passes or remains explicitly
-      unsupported without affecting text claims.
+- [x] F7 retained prefill/decode/batching paths are measured and documented.
+- [x] F8 official MTP is correct and honestly retained as opt-in/rejected on
+      aggregate economics.
+- [x] F9 <=1K multimodal image/video/HTTP support passes with explicit bounds
+      and text-only isolation.
 - [ ] F10 serving, reasoning/tool template behavior, lifecycle, rollups, and
       public documentation close.
 

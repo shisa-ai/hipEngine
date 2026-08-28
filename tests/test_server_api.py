@@ -2962,6 +2962,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         speculative_provider: str | None = None,
         draft_model: str | None = None,
         speculative_candidate_budget: int = 4,
+        vision_model: str | None = None,
     ) -> FakeLLM:
         captured.update(
             {
@@ -2975,6 +2976,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
                 "speculative_provider": speculative_provider,
                 "draft_model": draft_model,
                 "speculative_candidate_budget": speculative_candidate_budget,
+                "vision_model": vision_model,
             }
         )
         return fake
@@ -3008,6 +3010,7 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         "speculative_provider": None,
         "draft_model": None,
         "speculative_candidate_budget": 4,
+        "vision_model": None,
     }
 
 

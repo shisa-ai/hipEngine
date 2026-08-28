@@ -351,6 +351,86 @@ def qwen4_exp_qsa_norm_rope_rows_f32(
     )
 
 
+def qwen4_exp_qsa_split_norm_mrope_f32(
+    q_projected_ptr: int, key_ptr: int, q_weight_ptr: int, k_weight_ptr: int,
+    positions_ptr: int, query_out_ptr: int, key_out_ptr: int, gate_out_ptr: int,
+    num_q_heads: int, num_kv_heads: int, head_dim: int, rotary_dim: int,
+    theta: float, eps: float = 1e-6, *, stream: int = 0,
+    library: ctypes.CDLL | None = None, runtime: HipRuntime | None = None,
+) -> None:
+    """Apply strict interleaved T/H/W MRoPE to one QSA row."""
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, "hipengine_qwen4_exp_qsa_split_norm_mrope_f32",
+        _ARGS_SPLIT, ctypes.c_int,
+    )
+    _check_launch(runtime, fn(
+        q_projected_ptr, key_ptr, q_weight_ptr, k_weight_ptr, positions_ptr,
+        query_out_ptr, key_out_ptr, gate_out_ptr, num_q_heads, num_kv_heads,
+        head_dim, rotary_dim, float(theta), float(eps), stream,
+    ))
+
+
+def qwen4_exp_qsa_norm_mrope_f32(
+    input_ptr: int, weight_ptr: int, positions_ptr: int, output_ptr: int,
+    heads: int, head_dim: int, rotary_dim: int, theta: float,
+    eps: float = 1e-6, *, stream: int = 0,
+    library: ctypes.CDLL | None = None, runtime: HipRuntime | None = None,
+) -> None:
+    """Apply strict interleaved T/H/W MRoPE to index queries for one row."""
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, "hipengine_qwen4_exp_qsa_norm_mrope_f32",
+        _ARGS_NORM, ctypes.c_int,
+    )
+    _check_launch(runtime, fn(
+        input_ptr, weight_ptr, positions_ptr, output_ptr, heads, head_dim,
+        rotary_dim, float(theta), float(eps), stream,
+    ))
+
+
+def qwen4_exp_qsa_split_norm_mrope_rows_f32(
+    q_projected_ptr: int, key_ptr: int, q_weight_ptr: int, k_weight_ptr: int,
+    positions_ptr: int, query_out_ptr: int, key_out_ptr: int, gate_out_ptr: int,
+    rows: int, num_q_heads: int, num_kv_heads: int, head_dim: int,
+    rotary_dim: int, theta: float, eps: float = 1e-6, *, stream: int = 0,
+    library: ctypes.CDLL | None = None, runtime: HipRuntime | None = None,
+) -> None:
+    """Apply strict interleaved T/H/W MRoPE to QSA prompt rows."""
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, "hipengine_qwen4_exp_qsa_split_norm_mrope_rows_f32",
+        _ARGS_SPLIT_ROWS, ctypes.c_int,
+    )
+    _check_launch(runtime, fn(
+        q_projected_ptr, key_ptr, q_weight_ptr, k_weight_ptr, positions_ptr,
+        query_out_ptr, key_out_ptr, gate_out_ptr, rows, num_q_heads,
+        num_kv_heads, head_dim, rotary_dim, float(theta), float(eps), stream,
+    ))
+
+
+def qwen4_exp_qsa_norm_mrope_rows_f32(
+    input_ptr: int, weight_ptr: int, positions_ptr: int, output_ptr: int,
+    rows: int, heads: int, head_dim: int, rotary_dim: int, theta: float,
+    eps: float = 1e-6, *, stream: int = 0,
+    library: ctypes.CDLL | None = None, runtime: HipRuntime | None = None,
+) -> None:
+    """Apply strict interleaved T/H/W MRoPE to index-query prompt rows."""
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library, "hipengine_qwen4_exp_qsa_norm_mrope_rows_f32",
+        _ARGS_NORM_ROWS, ctypes.c_int,
+    )
+    _check_launch(runtime, fn(
+        input_ptr, weight_ptr, positions_ptr, output_ptr, rows, heads,
+        head_dim, rotary_dim, float(theta), float(eps), stream,
+    ))
+
+
 def qwen4_exp_qsa_gate_context_f32(
     context_ptr: int,
     gate_ptr: int,
@@ -817,6 +897,18 @@ def register_qwen4_exp_qsa_kernels(*, replace: bool = True) -> None:
             "strict_rows",
         ): qwen4_exp_qsa_norm_rope_rows_f32,
         KernelKey(
+            "hip_gfx1100", "qsa_split_norm_rope", "f32", "strict_mrope"
+        ): qwen4_exp_qsa_split_norm_mrope_f32,
+        KernelKey(
+            "hip_gfx1100", "qsa_split_norm_rope", "f32", "strict_mrope_rows"
+        ): qwen4_exp_qsa_split_norm_mrope_rows_f32,
+        KernelKey(
+            "hip_gfx1100", "qsa_norm_rope", "f32", "strict_mrope"
+        ): qwen4_exp_qsa_norm_mrope_f32,
+        KernelKey(
+            "hip_gfx1100", "qsa_norm_rope", "f32", "strict_mrope_rows"
+        ): qwen4_exp_qsa_norm_mrope_rows_f32,
+        KernelKey(
             "hip_gfx1100",
             "qsa_gate_context",
             "f32",
@@ -895,10 +987,14 @@ __all__ = [
     "qwen4_exp_qsa_gate_context_f32",
     "qwen4_exp_qsa_norm_rope_f32",
     "qwen4_exp_qsa_norm_rope_rows_f32",
+    "qwen4_exp_qsa_norm_mrope_f32",
+    "qwen4_exp_qsa_norm_mrope_rows_f32",
     "qwen4_exp_qsa_pool_norm_rope_f32",
     "qwen4_exp_qsa_score_f32",
     "qwen4_exp_qsa_split_norm_rope_f32",
     "qwen4_exp_qsa_split_norm_rope_rows_f32",
+    "qwen4_exp_qsa_split_norm_mrope_f32",
+    "qwen4_exp_qsa_split_norm_mrope_rows_f32",
     "qwen4_exp_qsa_select_blocks_f32_i64",
     "qwen4_exp_qsa_topk_expand_f32_i64",
     "qwen4_exp_qsa_topk_expand_rows_f32_i64",

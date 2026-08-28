@@ -40,6 +40,8 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_gate_context_f32,
     qwen4_exp_qsa_norm_rope_f32,
     qwen4_exp_qsa_norm_rope_rows_f32,
+    qwen4_exp_qsa_norm_mrope_f32,
+    qwen4_exp_qsa_norm_mrope_rows_f32,
     qwen4_exp_qsa_pool_norm_rope_f32,
     qwen4_exp_qsa_score_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
@@ -48,6 +50,8 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32,
     qwen4_exp_qsa_split_norm_rope_f32,
     qwen4_exp_qsa_split_norm_rope_rows_f32,
+    qwen4_exp_qsa_split_norm_mrope_f32,
+    qwen4_exp_qsa_split_norm_mrope_rows_f32,
     qwen4_exp_qsa_topk_expand_f32_i64,
     qwen4_exp_qsa_topk_expand_rows_f32_i64,
 )
@@ -1800,6 +1804,7 @@ def run_qwen4_exp_dense_qsa_token_mixer(
     index_heads: int = 0,
     index_dim: int = 0,
     index_rotary_dim: int = 0,
+    rope_positions_ptr: int | None = None,
     eps: float = 1e-6,
     stream: int = 0,
     runtime: HipRuntime | None = None,
@@ -1859,10 +1864,17 @@ def run_qwen4_exp_dense_qsa_token_mixer(
                 output_dtype=GGUF_OUTPUT_F32,
                 stream=stream, runtime=active_runtime,
             )
-            qwen4_exp_qsa_norm_rope_f32(
+            index_rope = (
+                qwen4_exp_qsa_norm_mrope_f32
+                if rope_positions_ptr is not None
+                else qwen4_exp_qsa_norm_rope_f32
+            )
+            index_rope(
                 scratch.index_q_projected.ptr,
                 weights.index_q_norm_weight_ptr,
-                attention_state.position.ptr,
+                attention_state.position.ptr
+                if rope_positions_ptr is None
+                else int(rope_positions_ptr),
                 scratch.index_query.ptr,
                 index_heads,
                 index_dim,
@@ -1881,12 +1893,19 @@ def run_qwen4_exp_dense_qsa_token_mixer(
                 eps=eps,
                 stream=stream,
             )
-    qwen4_exp_qsa_split_norm_rope_f32(
+    split_rope = (
+        qwen4_exp_qsa_split_norm_mrope_f32
+        if rope_positions_ptr is not None
+        else qwen4_exp_qsa_split_norm_rope_f32
+    )
+    split_rope(
         scratch.q_projected.ptr,
         scratch.key_projected.ptr,
         weights.q_norm_weight_ptr,
         weights.k_norm_weight_ptr,
-        attention_state.position.ptr,
+        attention_state.position.ptr
+        if rope_positions_ptr is None
+        else int(rope_positions_ptr),
         scratch.query.ptr,
         scratch.key.ptr,
         scratch.gate.ptr,
@@ -1993,6 +2012,7 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
     index_heads: int,
     index_dim: int,
     index_rotary_dim: int,
+    rope_positions_ptr: int | None = None,
     eps: float = 1e-6,
     stream: int = 0,
     runtime: HipRuntime | None = None,
@@ -2045,12 +2065,19 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             stream=stream,
             runtime=active_runtime,
         )
-    qwen4_exp_qsa_split_norm_rope_rows_f32(
+    split_rope_rows = (
+        qwen4_exp_qsa_split_norm_mrope_rows_f32
+        if rope_positions_ptr is not None
+        else qwen4_exp_qsa_split_norm_rope_rows_f32
+    )
+    split_rope_rows(
         scratch.q_projected.ptr,
         scratch.key_projected.ptr,
         weights.q_norm_weight_ptr,
         weights.k_norm_weight_ptr,
-        metadata.positions.ptr,
+        metadata.positions.ptr
+        if rope_positions_ptr is None
+        else int(rope_positions_ptr),
         scratch.query.ptr,
         scratch.key.ptr,
         scratch.gate.ptr,
@@ -2064,10 +2091,17 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         stream=stream,
         runtime=active_runtime,
     )
-    qwen4_exp_qsa_norm_rope_rows_f32(
+    index_rope_rows = (
+        qwen4_exp_qsa_norm_mrope_rows_f32
+        if rope_positions_ptr is not None
+        else qwen4_exp_qsa_norm_rope_rows_f32
+    )
+    index_rope_rows(
         scratch.index_q_projected.ptr,
         weights.index_q_norm_weight_ptr,
-        metadata.positions.ptr,
+        metadata.positions.ptr
+        if rope_positions_ptr is None
+        else int(rope_positions_ptr),
         scratch.index_query.ptr,
         count,
         index_heads,
@@ -2929,6 +2963,7 @@ def run_qwen4_exp_dense_qsa_layer(
     index_heads: int = 0,
     index_dim: int = 0,
     index_rotary_dim: int = 0,
+    rope_positions_ptr: int | None = None,
     stream: int = 0,
     runtime: HipRuntime | None = None,
 ) -> DeviceBuffer:
@@ -2959,6 +2994,7 @@ def run_qwen4_exp_dense_qsa_layer(
         head_dim=head_dim, rotary_dim=rotary_dim, theta=theta,
         index_state=index_state, index_heads=index_heads, index_dim=index_dim,
         index_rotary_dim=index_rotary_dim,
+        rope_positions_ptr=rope_positions_ptr,
         stream=stream, runtime=active_runtime,
     )
     qwen4_exp_gr_write_bf16_f32(
@@ -3017,6 +3053,7 @@ def run_qwen4_exp_qsa_prefill_layer(
     ffn: int,
     experts: int,
     top_k: int,
+    rope_positions_ptr: int | None = None,
     stream: int = 0,
     runtime: HipRuntime | None = None,
 ) -> DeviceBuffer:
@@ -3059,6 +3096,7 @@ def run_qwen4_exp_qsa_prefill_layer(
         index_heads=index_heads,
         index_dim=index_dim,
         index_rotary_dim=index_rotary_dim,
+        rope_positions_ptr=rope_positions_ptr,
         stream=stream,
         runtime=active_runtime,
     )
@@ -3726,6 +3764,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             cfg.hidden_size * 4,
             cfg.vocab_size * 4,
             cfg.residual_width * DType.BF16.itemsize,
+            3 * np.dtype(np.int64).itemsize,
         ):
             self._buffers.append(malloc(nbytes, runtime=self.runtime))
         for nbytes in (
@@ -3733,6 +3772,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             prefill_rows * cfg.hidden_size * DType.BF16.itemsize,
             prefill_rows * cfg.hidden_size * DType.FP32.itemsize,
             prefill_rows * cfg.residual_branch_count * cfg.hidden_size * DType.BF16.itemsize,
+            3 * prefill_rows * np.dtype(np.int64).itemsize,
         ):
             self._prefill_buffers.append(malloc(nbytes, runtime=self.runtime))
 
@@ -3759,6 +3799,10 @@ class Qwen4ExpGGUFResidentModelRunner:
         return self._buffers[4]
 
     @property
+    def rope_position_buffer(self) -> DeviceBuffer:
+        return self._buffers[5]
+
+    @property
     def prefill_token_ids(self) -> DeviceBuffer:
         return self._prefill_buffers[0]
 
@@ -3773,6 +3817,10 @@ class Qwen4ExpGGUFResidentModelRunner:
     @property
     def prefill_residual(self) -> DeviceBuffer:
         return self._prefill_buffers[3]
+
+    @property
+    def prefill_rope_positions(self) -> DeviceBuffer:
+        return self._prefill_buffers[4]
 
     def snapshot(self) -> Qwen4ExpRunnerSnapshot:
         """Capture mutable non-append state plus the shared KV/index cursor."""
@@ -3820,6 +3868,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         token_id: int,
         *,
         capture_hidden_seed: bool = False,
+        rope_positions: tuple[int, int, int] | None = None,
     ) -> Qwen4ExpTokenResult:
         self._require_open()
         if self.position >= self.max_sequence_length:
@@ -3831,6 +3880,20 @@ class Qwen4ExpGGUFResidentModelRunner:
         assert self.ple_scratch is not None
         assert self.head_scratch is not None
         token_host = np.asarray([int(token_id)], dtype=np.int64)
+        rope_positions_ptr = None
+        if rope_positions is not None:
+            rope_host = np.ascontiguousarray(rope_positions, dtype=np.int64)
+            if rope_host.shape != (3,) or np.any(rope_host < 0):
+                raise ValueError(
+                    "Qwen4Exp decode MRoPE positions must be three nonnegative values"
+                )
+            copy_host_to_device(
+                self.rope_position_buffer,
+                host_array_ptr(rope_host),
+                rope_host.nbytes,
+                runtime=self.runtime,
+            )
+            rope_positions_ptr = self.rope_position_buffer.ptr
         if token_host[0] < 0 or token_host[0] >= cfg.vocab_size:
             raise ValueError("token_id is outside Qwen4Exp vocabulary")
         copy_host_to_device(
@@ -3958,6 +4021,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     index_heads=cfg.indexer_head_count,
                     index_dim=cfg.indexer_key_length,
                     index_rotary_dim=cfg.rope_dimension_count,
+                    rope_positions_ptr=rope_positions_ptr,
                     ffn=cfg.expert_feed_forward_length,
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,
@@ -4027,6 +4091,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         *,
         capture_hidden_seeds: bool = False,
         embedding_overrides: Mapping[int, np.ndarray] | None = None,
+        mrope_positions: np.ndarray | None = None,
     ) -> tuple[int, np.ndarray | None]:
         count = len(token_ids)
         if count <= 0 or count > min(self.prefill_chunk_size, self.max_sequence_length):
@@ -4048,6 +4113,21 @@ class Qwen4ExpGGUFResidentModelRunner:
             token_host.nbytes,
             runtime=self.runtime,
         )
+        rope_positions_ptr = None
+        if mrope_positions is not None:
+            rope_host = np.ascontiguousarray(mrope_positions, dtype=np.int64)
+            if rope_host.shape != (3, count) or np.any(rope_host < 0):
+                raise ValueError(
+                    "Qwen4Exp prompt MRoPE positions must have shape [3, rows] "
+                    "and be nonnegative"
+                )
+            copy_host_to_device(
+                self.prefill_rope_positions,
+                host_array_ptr(rope_host),
+                rope_host.nbytes,
+                runtime=self.runtime,
+            )
+            rope_positions_ptr = self.prefill_rope_positions.ptr
         token_weight = self.resident.weight("root.token_embedding")
         embedding = resolve(
             backend=self.backend,
@@ -4209,6 +4289,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                     index_heads=cfg.indexer_head_count,
                     index_dim=cfg.indexer_key_length,
                     index_rotary_dim=cfg.rope_dimension_count,
+                    rope_positions_ptr=rope_positions_ptr,
                     ffn=cfg.expert_feed_forward_length,
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,
@@ -4260,6 +4341,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         *,
         capture_hidden_seeds: bool = False,
         embedding_overrides: Mapping[int, np.ndarray] | None = None,
+        mrope_positions: np.ndarray | None = None,
     ) -> Qwen4ExpTokenResult:
         if not token_ids:
             raise ValueError("Qwen4Exp prefill requires at least one token")
@@ -4269,6 +4351,13 @@ class Qwen4ExpGGUFResidentModelRunner:
         last_residual_ptr = 0
         captured: list[np.ndarray] = []
         values = tuple(int(token) for token in token_ids)
+        rope_values = None
+        if mrope_positions is not None:
+            rope_values = np.ascontiguousarray(mrope_positions, dtype=np.int64)
+            if rope_values.shape != (3, len(values)) or np.any(rope_values < 0):
+                raise ValueError(
+                    "Qwen4Exp prompt MRoPE positions must have shape [3, tokens]"
+                )
         raw_rowbatch = os.environ.get("HIPENGINE_QWEN4_EXP_RAW_ROWBATCH", "32")
         if raw_rowbatch in {"", "0", "false", "False"}:
             selected_raw_rowbatch = 0
@@ -4285,6 +4374,13 @@ class Qwen4ExpGGUFResidentModelRunner:
                     values[start : start + self.prefill_chunk_size],
                     capture_hidden_seeds=capture_hidden_seeds,
                     embedding_overrides=embedding_overrides,
+                    mrope_positions=(
+                        None
+                        if rope_values is None
+                        else np.ascontiguousarray(
+                            rope_values[:, start : start + self.prefill_chunk_size]
+                        )
+                    ),
                 )
                 if hidden_rows is not None:
                     captured.append(hidden_rows)
@@ -4341,11 +4437,13 @@ class Qwen4ExpGGUFResidentModelRunner:
         *,
         capture_hidden_seeds: bool = False,
         embedding_overrides: Mapping[int, np.ndarray] | None = None,
+        mrope_positions: np.ndarray | None = None,
     ) -> Qwen4ExpTokenResult:
         return self.prefill_chunked(
             token_ids,
             capture_hidden_seeds=capture_hidden_seeds,
             embedding_overrides=embedding_overrides,
+            mrope_positions=mrope_positions,
         )
 
     def generate(

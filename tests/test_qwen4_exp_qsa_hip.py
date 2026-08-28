@@ -90,6 +90,72 @@ def test_qwen4_exp_qsa_build_and_registry_contract() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_qsa_mrope_rows_match_interleaved_three_axis_oracle() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
+        qwen4_exp_qsa_norm_mrope_rows_f32,
+    )
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(4388)
+    rows, heads, head_dim, rotary_dim = 3, 2, 64, 64
+    values = rng.normal(0.0, 0.2, size=(rows, heads, head_dim)).astype(np.float32)
+    weight = rng.normal(1.0, 0.05, size=head_dim).astype(np.float32)
+    positions = np.asarray(
+        [[7, 8, 9], [17, 18, 19], [27, 28, 29]], dtype=np.int64
+    )
+    normalized = values / np.sqrt(
+        np.mean(values * values, axis=-1, keepdims=True, dtype=np.float32)
+        + np.float32(1e-6)
+    ) * weight
+    expected = normalized.copy()
+    half = rotary_dim // 2
+    for row in range(rows):
+        for pair in range(half):
+            axis = (
+                1
+                if pair % 3 == 1 and pair < 33
+                else 2
+                if pair % 3 == 2 and pair < 30
+                else 0
+            )
+            angle = np.float32(positions[axis, row]) * np.float32(
+                10_000_000.0 ** (-2.0 * pair / rotary_dim)
+            )
+            c, s = np.cos(angle), np.sin(angle)
+            x = normalized[row, :, pair].copy()
+            y = normalized[row, :, pair + half].copy()
+            expected[row, :, pair] = x * c - y * s
+            expected[row, :, pair + half] = x * s + y * c
+
+    allocations = []
+    try:
+        d_values = _upload(values, runtime, allocations)
+        d_weight = _upload(weight, runtime, allocations)
+        d_positions = _upload(positions, runtime, allocations)
+        d_output = _alloc(values.shape, np.float32, runtime, allocations)
+        qwen4_exp_qsa_norm_mrope_rows_f32(
+            d_values.ptr,
+            d_weight.ptr,
+            d_positions.ptr,
+            d_output.ptr,
+            rows,
+            heads,
+            head_dim,
+            rotary_dim,
+            10_000_000.0,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        actual = _download(d_output, values.shape, np.float32, runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    np.testing.assert_allclose(actual, expected, rtol=3e-5, atol=3e-5)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize("query_position", [4095, 4094])
 def test_qwen4_exp_qsa_gpu_topk_expands_blocks_tail_and_breaks_ties(
     query_position: int,

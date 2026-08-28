@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_general_multimodal_1k",
+  "scope": "Qwen4Exp general image grids, multiple images, videos, text MRoPE, and bounded HTTP input at <=1K",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "cpu": "AMD Ryzen AI Max+ Pro 395", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "target": {"model": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "vision": {"path": "/models/gguf/Qwen3.8-Flash-Next-mmproj/Qwen3.8-Flash-Next-BF16.gguf", "sha256": "375f156fdc1232f994c42f43813861fac4fdc791f0440a36c85e87b6907a7eee", "tensors": 334, "payload_bytes": 907523008, "max_patch_tokens_per_temporal_pair": 256, "grid_contract": "RGB height/width positive multiples of 32; temporal pairs; spatial merge 2"},
+  "transformers_oracle": {"source": "huggingface/transformers@fc5c5bde8e656dad91cbf34e61940d984b1c7b91", "image_shape": [32,64,3], "grid_thw": [1,2,4], "merged_shape": [2,2560], "relative_l2": 0.0000014821115428276244, "cosine": 1.0, "max_absolute_error": 0.00000038743019104003906, "finite": true},
+  "text_mrope": {"axes": ["temporal","height","width"], "sections": [11,11,10], "layout": "interleaved THW pair frequencies", "position_control": "Qwen3.5/Qwen4Exp text runs plus compressed vision-grid advancement", "primitive_oracle_passed": true, "kernel": "qsa_norm_rope_rows_f32_kernel<true>", "duration_ns": 12143, "workgroup": 256, "grid": [512,3], "scratch_bytes": 0},
+  "public_cases": [
+    {"name":"rectangle_32x64","seconds":1.1577569159999257,"generated_ids":[248068,271],"finite":true},
+    {"name":"two_images","seconds":1.1056531159993028,"generated_ids":[248068,271],"finite":true},
+    {"name":"three_frame_video","seconds":1.2190027909964556,"generated_ids":[248068,271],"finite":true}
+  ],
+  "sensitivity": {"prompt":"Describe colors precisely.", "tokens":16, "black_ids":[248068,271,248069,271,15,15,15,15,15,15,248046,198,248044,248045,248045,248046], "pattern_ids":[248068,271,248069,271,27775,383,279,2099,3766,11,1532,369,264,22825,3874,314], "ids_differ":true, "pattern_prefix":"Based on the image provided, here is a precise description of"},
+  "http": {"route":"POST /v1/chat/completions", "status":200, "transport":"base64 image/png data URL", "external_urls_rejected":true, "streaming_supported":false, "cli":"--vision-model /path/to/mmproj.gguf", "response_text":"<think>\\n\\n"},
+  "correctness": {"placeholder_count_failures":true, "typed_image_video_markers":true, "multiple_images":true, "odd_video_final_frame_duplicate":true, "text_only_ids_exact_before_after":true, "focused_qwen4exp_tests_passed":153, "server_suite_protocol":"initial full server run passed through node 554; isolated vision-capability error repaired; repaired node plus four-node tail pass"},
+  "memory": {"tracked_peak_bytes":84002567288, "tracked_after_close_bytes":0, "tracked_after_close_allocations":0},
+  "limits": {"context_tokens":1024, "http_png_only":true, "http_streaming":false, "remote_url_fetch":false, "long_context_multimodal_qsa":false},
+  "commands": ["python3 /tmp/qwen4exp_vision_transformers_32x64.py", "uv run python /tmp/qwen4exp_vision_32x64_compare.py", "uv run python /tmp/qwen4exp_general_multimodal_public.py", "uv run python /tmp/qwen4exp_multimodal_sensitivity.py", "uv run python /tmp/qwen4exp_multimodal_http_physical.py", "uv run pytest -q tests/test_qwen4_exp*.py tests/test_generation_qwen4_exp_gguf.py tests/test_llm_split_gguf_path.py -x"]
+}
