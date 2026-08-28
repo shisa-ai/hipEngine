@@ -2563,7 +2563,7 @@ def run_qwen4_exp_moe(
         weight = weights[slot]
         variant = "selected_gemv_bf16_bf16_out"
         if weight.spec.quant_key == "gguf_q5_1":
-            variant = "selected_gemv_logical256_t128_bf16_bf16_out"
+            variant = "selected_gemv_logical256_t64_bf16_bf16_out"
             if os.environ.get("HIPENGINE_QWEN4_EXP_Q5_1_WAVE64", "") not in {
                 "", "0", "false", "False",
             }:
