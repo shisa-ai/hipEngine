@@ -22,12 +22,14 @@ import hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_pack8_gemv  # noqa: F401
 from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.kernels.registry import _KERNELS
 from hipengine.loading.qwen35_gguf_materialize import (
+    LAYOUT_GGUF_Q4_K_T16,
     LAYOUT_GGUF_Q5_K_T16,
     LAYOUT_GGUF_Q6_K_T16,
     LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
     LAYOUT_RAW_GGUF,
 )
 from hipengine.runtime.gguf_linear import (
+    GGUFLinearDispatch,
     GGUF_OUTPUT_BF16,
     GGUF_OUTPUT_F32,
     gemv_decode_session,
@@ -35,8 +37,10 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear,
     launch_gguf_linear_pair_concat,
     native_batch_decode_session,
+    target_verifier_production_q4_rowtile_session,
     q4k_rowtile_session,
     target_verifier_rowtile_session,
+    _q4_t16_dense_native_dispatch,
     set_gemv_decode_enabled,
 )
 
@@ -245,6 +249,63 @@ def test_native_batch_decode_q6_planar_t16_rows_5_8_route_to_true_rowtile() -> N
             extra_keys=(_Q6_PLANAR_ROWTILE, _Q6_PLANAR_WMMA),
         )
         assert key == _Q6_PLANAR_ROWTILE
+
+
+def test_production_target_verifier_q4_scope_is_shape_local(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.runtime.gguf_linear as gguf_linear
+
+    original_capability = gguf_linear.backend_package_capability
+
+    def capability(backend: str, name: str, default=None):
+        if name == "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS":
+            return frozenset({8})
+        if name == "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES":
+            return frozenset({(5_120, 12_288), (17_408, 5_120)})
+        return original_capability(backend, name, default)
+
+    monkeypatch.setattr(gguf_linear, "backend_package_capability", capability)
+    dispatch = GGUFLinearDispatch(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_single_local32_bf16_bf16_out",
+        ),
+        "t16",
+    )
+    assert (
+        _q4_t16_dense_native_dispatch(
+            dispatch,
+            rows=8,
+            in_features=5_120,
+            out_features=12_288,
+        )
+        == dispatch
+    )
+    with target_verifier_production_q4_rowtile_session(True):
+        selected = _q4_t16_dense_native_dispatch(
+            dispatch,
+            rows=8,
+            in_features=5_120,
+            out_features=12_288,
+        )
+        excluded_shape = _q4_t16_dense_native_dispatch(
+            dispatch,
+            rows=8,
+            in_features=5_120,
+            out_features=1_024,
+        )
+        excluded_rows = _q4_t16_dense_native_dispatch(
+            dispatch,
+            rows=6,
+            in_features=5_120,
+            out_features=12_288,
+        )
+    assert selected.key.variant == "dense_rowtile_bf16_bf16_out"
+    assert excluded_shape == dispatch
+    assert excluded_rows == dispatch
 
 
 def test_target_verifier_scope_routes_only_backend_admitted_q5_q6(

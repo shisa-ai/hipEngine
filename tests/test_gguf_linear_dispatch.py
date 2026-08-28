@@ -47,6 +47,7 @@ from hipengine.runtime.gguf_linear import (
     resolve_gguf_linear_dispatch,
     resolve_q8_mmq_prefill_policy,
     set_wmma_prefill_enabled,
+    target_verifier_production_q4_rowtile_session,
     wmma_prefill_session,
 )
 from hipengine.runtime.prefill import PrefillConfig
@@ -4913,6 +4914,63 @@ def test_gfx1151_q4_t16_dense_pair_q8x2_quantizes_workspace(
     assert fused_calls == [
         (
             (900, 14, 14, 400, 1, 5_120, 17_408),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
+def test_gfx1151_production_verifier_q4_scope_routes_gate_up_rowtile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight_a = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1",
+        "dense_dual_rowtile_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=candidate_key.backend,
+        layer=candidate_key.layer,
+        quant=candidate_key.quant,
+        variant=candidate_key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+    register(
+        candidate_key,
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+        replace=True,
+    )
+    try:
+        with target_verifier_production_q4_rowtile_session(True):
+            assert launch_gguf_linear_pair_silu(
+                weight_a,
+                weight_b,
+                x_ptr=100,
+                out_ptr=400,
+                rows=8,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        register(candidate_key, original, replace=True)
+
+    assert calls == [
+        (
+            (100, 14, 14, 400, 8, 5_120, 17_408),
             {"stream": 7, "runtime": "runtime-sentinel"},
         )
     ]

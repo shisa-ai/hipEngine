@@ -18,6 +18,17 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-08-28 Qwen3.8 production verifier-Q4 selector — open
+
+- `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` currently carries the resolved
+  Qwen3.8 production-profile decision from the cold-path binder into resident
+  sessions. The session freezes it once; hot verifier methods consume only the
+  typed boolean and never reread the environment.
+- Remove the environment handoff when `ResolvedRuntimePlan` (RF-1) carries
+  profile scope selections directly into `Qwen35GGUFResidentSession`. Preserve
+  the profile manifest selections, strict WMMA fallbacks, R8/actual-shape
+  bounds, and benchmark rollback evidence.
+
 ## 2026-08-26 speculative-MTP default capability migration — closed
 
 - Dynamic Admission D7 removed the legacy broad `supports_default_mtp`

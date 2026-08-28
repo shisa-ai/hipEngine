@@ -1107,6 +1107,21 @@ GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT = {
         {(5_120, 1_024), (17_408, 5_120)}
     ),
 }
+# Profile-qualified T2 production owner: use per-row-direct-equivalent Q4
+# rowtiles only for C2/K3 R8 actual target shapes. Narrow K5120/N1024 is
+# excluded because the historical broad native-verify divergence localized
+# there; strict small-M/shared-B WMMA remains the manifest fallback.
+GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS = frozenset({8})
+GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES = frozenset(
+    {
+        (5_120, 6_144),
+        (5_120, 10_240),
+        (5_120, 12_288),
+        (5_120, 17_408),
+        (6_144, 5_120),
+        (17_408, 5_120),
+    }
+)
 GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
     # Standard and planar Q6 col8 rowtiles are exact and qualified through R8.
     "gguf_q6_k_t16_v1": 8,
@@ -2423,6 +2438,8 @@ __all__ = [
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
     "GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT",
+    "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS",
+    "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES",
     "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE",
     "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
