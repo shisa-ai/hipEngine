@@ -395,6 +395,113 @@ def test_target_verifier_scope_routes_only_backend_admitted_q5_q6(
     assert key == _Q5_T16_DECODE
 
 
+def test_target_verifier_chunks_only_admitted_q6_r12_to_r8_plus_r4(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.runtime.gguf_linear as gguf_linear
+
+    original_capability = gguf_linear.backend_package_capability
+
+    def capability(backend: str, name: str, default=None):
+        if name == "GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT":
+            return {"gguf_q6_k_t16_v1": frozenset({(5_120, 10_240)})}
+        if name == "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT":
+            return {"gguf_q6_k_t16_v1": 8}
+        if name == "GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT":
+            return {"gguf_q6_k_t16_v1": frozenset({12})}
+        return original_capability(backend, name, default)
+
+    monkeypatch.setattr(gguf_linear, "backend_package_capability", capability)
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16,
+        quant_key="gguf_q6_k_t16_v1",
+    )
+    keys = (_Q6_T16_DECODE, _Q6_T16_ROWTILE, _Q6_T16_WMMA)
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+            missing="none",
+        )
+        for key in keys
+    }
+    calls: list[tuple[KernelKey, tuple[object, ...]]] = []
+
+    def capture(key: KernelKey):
+        def fake(*args, **_kwargs):
+            calls.append((key, args))
+
+        return fake
+
+    try:
+        for key in keys:
+            register(key, capture(key), replace=True)
+        with target_verifier_rowtile_session(True):
+            launch_gguf_linear(
+                weight,
+                x_ptr=500,
+                out_ptr=600,
+                rows=12,
+                in_features=5_120,
+                out_features=10_240,
+                backend="hip_gfx1100",
+                stream=7,
+                runtime="runtime-sentinel",
+                use_wmma_prefill=False,
+            )
+            with target_verifier_production_q4_rowtile_session(True):
+                launch_gguf_linear(
+                    weight,
+                    x_ptr=100,
+                    out_ptr=200,
+                    rows=12,
+                    in_features=5_120,
+                    out_features=10_240,
+                    backend="hip_gfx1100",
+                    stream=7,
+                    runtime="runtime-sentinel",
+                    use_wmma_prefill=False,
+                )
+                launch_gguf_linear(
+                    weight,
+                    x_ptr=300,
+                    out_ptr=400,
+                    rows=16,
+                    in_features=5_120,
+                    out_features=10_240,
+                    backend="hip_gfx1100",
+                    stream=7,
+                    runtime="runtime-sentinel",
+                    use_wmma_prefill=False,
+                )
+    finally:
+        for key, fn in originals.items():
+            if fn is None:
+                _KERNELS.pop(key, None)
+            else:
+                register(key, fn, replace=True)
+        gguf_linear.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (_Q6_T16_DECODE, (500, 14, 600, 12, 5_120, 10_240)),
+        (_Q6_T16_ROWTILE, (100, 14, 200, 8, 5_120, 10_240)),
+        (
+            _Q6_T16_ROWTILE,
+            (
+                100 + 8 * 5_120 * 2,
+                14,
+                200 + 8 * 10_240 * 2,
+                4,
+                5_120,
+                10_240,
+            ),
+        ),
+        (_Q6_T16_DECODE, (300, 14, 400, 16, 5_120, 10_240)),
+    ]
+
+
 def test_native_batch_decode_routes_c2_c8_q6_head_to_exact_pack8_and_restores() -> None:
     for rows in (2, 4, 8):
         key, _, _ = _capture_launch(
