@@ -4243,6 +4243,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel(
     const float* a_log,
     const float* norm_weight,
     state_t* recurrent_state,
+    state_t* recurrent_state_rows,
     float* out,
     const int32_t* __restrict__ cu_seqlens,
     const int64_t* __restrict__ state_indices,
@@ -4350,7 +4351,9 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel(
 
     float out_acc = 0.0f;
     if (value_idx < head_v_dim) {
-      const int64_t state_col = state_slot * state_stride + v_head * head_k_dim * head_v_dim + value_idx;
+      const int64_t state_local_col = v_head * head_k_dim * head_v_dim + value_idx;
+      const int64_t state_col = state_slot * state_stride + state_local_col;
+      const int64_t row_state_col = token * state_stride + state_local_col;
       float kv_mem = 0.0f;
       for (int64_t idx = 0; idx + 7 < head_k_dim; idx += 8) {
         kv_mem += k_shared[idx + 0] * k_scale * gdn_state_read_qwen35(recurrent_state_v, state_col + (idx + 0) * head_v_dim) * decay;
@@ -4411,6 +4414,17 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel(
         gdn_state_write_qwen35(recurrent_state_v, so5, ns5);
         gdn_state_write_qwen35(recurrent_state_v, so6, ns6);
         gdn_state_write_qwen35(recurrent_state_v, so7, ns7);
+        if (recurrent_state_rows != nullptr) {
+          const int64_t row_base = row_state_col + idx * head_v_dim;
+          gdn_state_write_qwen35(recurrent_state_rows, row_base + 0 * head_v_dim, ns0);
+          gdn_state_write_qwen35(recurrent_state_rows, row_base + 1 * head_v_dim, ns1);
+          gdn_state_write_qwen35(recurrent_state_rows, row_base + 2 * head_v_dim, ns2);
+          gdn_state_write_qwen35(recurrent_state_rows, row_base + 3 * head_v_dim, ns3);
+          gdn_state_write_qwen35(recurrent_state_rows, row_base + 4 * head_v_dim, ns4);
+          gdn_state_write_qwen35(recurrent_state_rows, row_base + 5 * head_v_dim, ns5);
+          gdn_state_write_qwen35(recurrent_state_rows, row_base + 6 * head_v_dim, ns6);
+          gdn_state_write_qwen35(recurrent_state_rows, row_base + 7 * head_v_dim, ns7);
+        }
         out_acc += q_norm0 * ns0 + q_norm1 * ns1 + q_norm2 * ns2 + q_norm3 * ns3
                  + q_norm4 * ns4 + q_norm5 * ns5 + q_norm6 * ns6 + q_norm7 * ns7;
       }
@@ -4420,6 +4434,9 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel(
         const int64_t state_offset = state_col + idx * head_v_dim;
         const float new_state = gdn_state_read_qwen35(recurrent_state_v, state_offset) * decay + k_norm * delta;
         gdn_state_write_qwen35(recurrent_state_v, state_offset, new_state);
+        if (recurrent_state_rows != nullptr) {
+          gdn_state_write_qwen35(recurrent_state_rows, row_state_col + idx * head_v_dim, new_state);
+        }
         out_acc += q_norm * new_state;
       }
       out_shared[value_idx] = out_acc;
@@ -7769,6 +7786,7 @@ extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16(
       a_log,
       norm_weight,
       recurrent_state,
+      static_cast<float*>(nullptr),
       out,
       cu_seqlens,
       state_indices,
@@ -7778,6 +7796,28 @@ extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16(
       num_v_heads,
       head_k_dim,
       head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_state_rows_bf16(
+    const float* conv_out, const uint16_t* gate, const uint16_t* a, const uint16_t* b,
+    const float* dt_bias, const float* a_log, const float* norm_weight,
+    float* recurrent_state, float* recurrent_state_rows, float* out,
+    const int32_t* cu_seqlens, const int64_t* state_indices,
+    int64_t total_tokens, int64_t segments, float eps, int64_t num_k_heads,
+    int64_t num_v_heads, int64_t head_k_dim, int64_t head_v_dim, hipStream_t stream) {
+  if (total_tokens <= 0 || segments <= 0 || recurrent_state_rows == nullptr ||
+      !valid_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const size_t shared_bytes = static_cast<size_t>((2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<uint16_t>),
+      dim3(static_cast<unsigned int>(segments), static_cast<unsigned int>(num_v_heads)),
+      dim3(threads), shared_bytes, stream, conv_out, gate, a, b, dt_bias, a_log,
+      norm_weight, recurrent_state, recurrent_state_rows, out, cu_seqlens,
+      state_indices, segments, eps, num_k_heads, num_v_heads, head_k_dim, head_v_dim);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -7820,6 +7860,7 @@ extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp
       a_log,
       norm_weight,
       recurrent_state,
+      static_cast<half_t*>(nullptr),
       out,
       cu_seqlens,
       state_indices,
@@ -7871,6 +7912,7 @@ extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16(
       a_log,
       norm_weight,
       recurrent_state,
+      static_cast<float*>(nullptr),
       out,
       cu_seqlens,
       state_indices,
