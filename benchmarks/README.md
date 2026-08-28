@@ -99,6 +99,9 @@ W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE K2 and 27B
 Dense K3; other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
 
 Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 automatic at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) is **15.609 vs 9.807 tok/s (1.5916x)**; [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) remains available. Exact C2 verifier [Q6](results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json) and [Q5](results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json), followed by [production-profile Q4 rowtiles](results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json), lift K3 **11.724→17.031 tok/s (+45.27%)** and **0.8170x→1.1441x true AR**. Production C2/K3 is automatic only for the qualified context1-128/D24 cell; C3-C8 and scope misses remain K0.
+
+The [Qwen3.8 external reproduction survey](results/2026-08-28-gfx1151-qwen38-external-reproduction-survey.json) locally qualifies seven Strix Halo routes. `q38rocm` strict MTP K4 is the fastest tested route without a server-lifecycle blocker at **35.575 arithmetic / 32.969 token-weighted decode tok/s** on the ten-prompt suite. Laurent adaptive DFlash2 reaches **56.532 tok/s** on valid structured JSON and **34.483 token-weighted decode tok/s** on fresh-process diverse traffic, but is rejected for sequential serving because cross-request speculative state contamination produced invalid output. These cross-model rows are survey evidence, not hipEngine topline comparisons.
+
 `Q4_K_S` uses FP16 recurrent state with FP32 rollback. Its exact W8192 DMS
 sidecar stays default-off. [`DMS`](../docs/DMS.md).
 
