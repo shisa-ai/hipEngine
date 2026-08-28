@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_ranked_optimization_ladder",
+  "scope": "Same-host Flash-Next Q4 gap attribution after exact Q8 F32 decode-pack promotion",
+  "host": {"identity":"zbook","machine_id":"87c566d30a5645cf8d12ed7ef6b6e1e8","gpu":"AMD Radeon 8060S Graphics","arch":"gfx1151"},
+  "model": {"id":"Qwen/Qwen3.8-Flash-Next","quant":"Unsloth UD-Q4_K_XL","quant_revision":"8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "reference": {"artifact":"benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json","llama_cpp_commit":"bea3b12daee45876b0129a3602dc8f534ce30bf0","vulkan":{"pp508_tok_s":316.379678,"pp1006_tok_s":290.45029,"tg32_tok_s":18.716255},"hip":{"pp508_tok_s":274.996036,"pp1006_tok_s":284.485107,"tg32_tok_s":15.847834}},
+  "prefill_p508_before_next_iteration": {"wall_seconds":10.197927708999487,"kernel_seconds":8.840990705,"launches":29341,"families_seconds":{"q8_dense":2.432718,"q5_1_expert_down":2.001353,"q4_expert_gate_up":1.959065,"gdn":1.077452,"other":1.370402705},"source":"/tmp/qwen4exp-prefill512-final50_kernel_trace.csv"},
+  "decode_trace_before_q8_pack": {"tokens":41,"kernel_seconds":6.04555034,"launches":80599,"per_token_ms":{"q8_dense":63.905925,"q4_selected":43.151398,"q5_1_down":24.420562,"gdn":3.731812,"other":12.24275},"source":"/tmp/qwen4exp-decode32-current_kernel_trace.csv"},
+  "decode_trace_after_q8_pack": {"tokens":41,"kernel_seconds":4.322284572,"launches":80599,"per_token_ms":{"q4_selected":41.046,"q8_dense":28.560,"q5_1_down":22.096,"gdn":3.219,"other":10.500},"source":"/tmp/qwen4exp-decode32-q8f32pack8_kernel_trace.csv","accepted_artifact":"benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q8-f32-pack8-decode.json"},
+  "llama_cpp_source_findings": {"qwen4exp_graph":"src/models/qwen4exp.cpp build_layer_ffn","moe_owner":"src/llama-graph.cpp build_moe_ffn","mechanism":"gate/up/down are backend mul_mat_id nodes; HIP/Vulkan use MMQ/cooperative matrix contraction and graph scheduling rather than hipEngine scalar strict output ownership"},
+  "existing_hipengine_lineage": ["raw output-pack8 activation reuse in quant/gguf_k_gemv.hip","selected pack8/output tiling in quant/gguf_*selected*.hip","Qwen3.x pair/quad contractions and operation-complete gate/up/SiLU/down kernels","T16/qmicro/X8 replacement layouts only when one-layout memory and numerical gates pass"],
+  "production_candidate_screen": {"full_fast_p508_tok_s":151.18178227083098,"full_fast_speedup_vs_exact":2.592,"corrected_weight_split":{"p508_tok_s":151.18178227083098,"mean_kl":0.004065074311090691,"p95_kl":0.010484071815452026,"p99_kl":0.01573296251117449,"max_kl":0.017045185185105123,"top1_rate":1.0},"binding_thresholds":{"mean_kl":0.001,"p95_kl":0.005,"p99_kl":0.02,"max_kl":0.05},"decision":"not retained; corrected cooperative packet still fails mean/p95"},
+  "ranked_ladder": [
+    {"rank":1,"target":"Q4 selected c1 output-pack/operation-complete reuse","current_ms_per_token":41.046,"policy":"exact first; registered scalar fallback"},
+    {"rank":2,"target":"Q5_1 selected-down c1 adjacent-output reuse","current_ms_per_token":22.096,"policy":"preserve 256 logical partials/reduction or prove production profile"},
+    {"rank":3,"target":"Q8 bulk prefill closer-precision cooperative contraction","current_seconds_p508":2.432718,"policy":"corrected WMMA must clear mean/p95; scalar exact stays default otherwise"},
+    {"rank":4,"target":"Q4/Q5 bulk selected cooperative contraction","current_seconds_p508":3.960418,"policy":"use full category+heldout/task gate, not one prompt"},
+    {"rank":5,"target":"host/launch contraction after math owners","decode_launches_per_token":1965.829,"policy":"fuse only exact operation chains after dominant kernel wall falls"}
+  ],
+  "decision": "Continue exact c1 output-pack and operation-complete work immediately; do not return to optional quantization or broad feature work."
+}
