@@ -665,6 +665,58 @@ def test_nextn_provider_advances_only_a_fully_accepted_tail() -> None:
         provider.advance_full_accept_tail(41, accepted_count=3)
 
 
+def test_nextn_executor_bulk_prompt_stages_hidden_rows_until_finish() -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    executor.hidden_size = 8
+    executor._bulk_prompt_prime = True
+    executor._prompt_prime_hidden = DeviceBuffer(0x10000, 4 * 128 * 16)
+    executor._prompt_prime_capacity = 128
+    executor._prompt_prime_rows = {}
+    executor._slot = lambda _request_id: 1
+    executor.scratch = SimpleNamespace(max_positions=128)
+    copies: list[tuple[int, int, int, int]] = []
+    executor.runtime = SimpleNamespace(
+        memcpy_async=lambda dst, src, nbytes, _kind, stream: copies.append(
+            (int(dst), int(src), int(nbytes), int(stream))
+        )
+    )
+
+    executor.enqueue_prompt_rows(
+        7,
+        (11, 22),
+        position_start=3,
+        target_hidden_base_ptr=0x20000,
+        hidden_stride_bytes=32,
+        stream=5,
+    )
+
+    assert executor._prompt_prime_rows == {7: {3: 11, 4: 22}}
+    assert copies == [
+        (0x10000 + (128 + 3) * 16, 0x20000, 16, 5),
+        (0x10000 + (128 + 4) * 16, 0x20020, 16, 5),
+    ]
+
+
+def test_nextn_executor_bulk_prompt_finish_materializes_and_releases() -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    executor._bulk_prompt_prime = True
+    executor._prompt_prime_rows = {7: {0: 11}}
+    executor._prompt_priming_staging = {7: [np.asarray([11], dtype=np.int64)]}
+    calls: list[tuple[str, int, int]] = []
+    executor._prime_prompt_rows_bulk = lambda request_id, stream: calls.append(
+        ("prime", int(request_id), int(stream))
+    )
+    executor.runtime = SimpleNamespace(
+        stream_synchronize=lambda stream: calls.append(("sync", 0, int(stream)))
+    )
+
+    executor.finish_prompt_priming(7, stream=5, synchronize=True)
+
+    assert calls == [("prime", 7, 5), ("sync", 0, 5)]
+    assert executor._prompt_prime_rows == {}
+    assert executor._prompt_priming_staging == {}
+
+
 def test_nextn_executor_enqueues_prompt_rows_on_target_stream_without_scoring(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

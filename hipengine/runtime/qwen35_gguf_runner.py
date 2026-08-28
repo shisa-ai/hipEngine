@@ -4858,6 +4858,7 @@ class Qwen35GGUFFullStackRunner:
         sync_stage_timings: bool = False,
         stage_prefix: str = "target_block_full_attn",
         split_workspace: _GGUFPackedARAttentionWorkspace | None = None,
+        kv_write_only: bool = False,
     ) -> str:
         """Run row-bulk QKV/KV write with the c1-equivalent batch decode attention."""
 
@@ -5126,6 +5127,8 @@ class Qwen35GGUFFullStackRunner:
             f"{stage_prefix}_kv_write",
             t_stage,
         )
+        if kv_write_only:
+            return "kv_write_only"
         attention_route = "kv_live_spans_batch"
         if direct_retained_batch:
             assert retained_decode_spans is not None
@@ -21589,6 +21592,103 @@ class Qwen35GGUFResidentSession:
                 require_logits=bool(require_logits),
             )
         return linear_attention_decode_paths, full_attention_decode_paths
+
+    def prime_hidden_sequence_kv(
+        self,
+        hidden_rows_ptr: int,
+        *,
+        session: "Qwen35GGUFResidentSession",
+        positions: Sequence[int],
+        stream: int = 0,
+    ) -> None:
+        """Append one caller-owned hidden sequence to a NextN full-attention KV."""
+
+        pos = tuple(int(value) for value in positions)
+        rows = len(pos)
+        if rows <= 0 or pos != tuple(range(pos[0], pos[0] + rows)):
+            raise ValueError("prompt KV positions must be a non-empty contiguous range")
+        if int(hidden_rows_ptr) <= 0:
+            raise ValueError("prompt KV hidden pointer must be non-zero")
+        if self.runner is None or self.runner.weights is None or self.scratch is None:
+            raise RuntimeError("GGUF resident session is closed")
+        if session.runner is not self.runner or session.scratch is None:
+            raise NotImplementedError("prompt KV sequence requires a shared live session")
+        if int(session.position) != pos[0]:
+            raise ValueError("prompt KV positions must begin at the session cursor")
+        if tuple(self.runner.weights.config.layer_types) != (FULL_ATTENTION,):
+            raise NotImplementedError("prompt KV sequence requires one NextN attention block")
+        if self._bulk_prefill_scratch is None or self._prefill_hidden_b is None:
+            raise RuntimeError("GGUF prompt KV packed buffers are closed")
+        slot_capacity = _packed_ar_slot_capacity(pos[-1] + 1)
+        layout = _build_gguf_packed_verify_layout(
+            (
+                _GGUFPackedVerifySlotBlock(
+                    input_token_ids=(0,) * rows,
+                    start_position=pos[0],
+                    active=True,
+                ),
+            ),
+            slot_capacity=slot_capacity,
+        )
+        runtime = self.runtime or get_hip_runtime()
+        packed_state, packed_scratch_base = self._ensure_packed_verify_workspace(
+            slot_count=1,
+            rows=rows,
+            max_sequence_length=slot_capacity,
+            runtime=runtime,
+            stream=stream,
+        )
+        layout = _rebind_packed_verify_layout_pages(layout, packed_state)
+        self._sync_packed_decode_initial_state(
+            (session,),
+            layout,
+            packed_state,
+            runtime=runtime,
+            stream=stream,
+            copy_linear_state=False,
+        )
+        packed_scratch = packed_scratch_base.for_packed_verify_layout(
+            layout,
+            runtime=runtime,
+            stream=stream,
+            metadata_prepare_fn=self.runner._packed_decode_metadata_kernel(),
+        )
+        layer_scratch = replace(
+            self._packed_full_attention_scratch_for_layer(
+                packed_scratch,
+                packed_state,
+                0,
+            ),
+            cos_table=self.scratch.cos_table,
+            sin_table=self.scratch.sin_table,
+        )
+        self.runner._run_full_attention_decode_batch_layer_rows(
+            0,
+            int(hidden_rows_ptr),
+            self._prefill_hidden_b.ptr,
+            layer_scratch,
+            stream=stream,
+            expert_sidecar=None,
+            stage_timings=None,
+            sync_stage_timings=False,
+            stage_prefix="nextn_prompt_kv",
+            split_workspace=None,
+            kv_write_only=True,
+        )
+        self._scatter_packed_decode_state(
+            (session,),
+            layout,
+            packed_state,
+            runtime=runtime,
+            stream=stream,
+            copy_full_kv=False,
+            copy_kv=True,
+            copy_linear_state=False,
+        )
+        if stream:
+            runtime.stream_synchronize(stream)
+        else:
+            runtime.device_synchronize()
 
     def step_hidden_batch_native(
         self,
