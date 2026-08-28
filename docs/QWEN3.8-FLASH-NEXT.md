@@ -826,6 +826,23 @@ optional user-boundary bridge.
 count failures, MRoPE positions, text-only non-regression, and multimodal
 category smokes. Only then advertise multimodal support.
 
+Current basic scope (2026-08-28): one **exactly 32×32 RGB image** is supported
+through `LLM.generate_multimodal_detailed()`. It produces four 16×16 patches,
+duplicates the image over the official temporal width 2, executes the stock
+27-layer Qwen3-VL ViT and 2×2 merger, and replaces exactly one `image_pad`
+embedding in a <=1K text request. One merged image token keeps all multimodal
+RoPE axes scalar-equivalent for this bounded gate. Against independent
+Transformers `Qwen3VLVisionModel` on the official BF16 vision shard, the H2560
+embedding has mean/max error `4.51e-8/2.27e-7`, relative L2 `1.34e-6`, and
+cosine `0.99999988`; public generation is finite, image-sensitive,
+deterministic, text-only IDs are unchanged, and teardown is zero. The local
+334-tensor/907,523,008-byte mmproj SHA-256 is
+`375f156fdc1232f994c42f43813861fac4fdc791f0440a36c85e87b6907a7eee`.
+This closes the **basic image** item only. General image sizes/multiple images,
+explicit multi-axis text MRoPE, videos, and HTTP multimodal input remain
+unsupported and must not be advertised. Evidence:
+[`2026-08-28-gfx1151-qwen38-flash-next-basic-vision.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-basic-vision.json).
+
 ### F10 — Public serving and closure
 
 Qualify:

@@ -116,6 +116,7 @@ from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple import (
     qwen4_exp_ple_repeat_gated_value_f32,
     qwen4_exp_ple_signed_sqrt_gate_f32,
 )
+from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_F32,
     GGUF_OUTPUT_F32,
@@ -4006,6 +4007,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         token_ids: tuple[int, ...],
         *,
         capture_hidden_seeds: bool = False,
+        embedding_overrides: Mapping[int, np.ndarray] | None = None,
     ) -> tuple[int, np.ndarray | None]:
         count = len(token_ids)
         if count <= 0 or count > min(self.prefill_chunk_size, self.max_sequence_length):
@@ -4043,6 +4045,27 @@ class Qwen4ExpGGUFResidentModelRunner:
             cfg.vocab_size,
             runtime=self.runtime,
         )
+        start = self.position
+        if embedding_overrides:
+            row_nbytes = cfg.hidden_size * DType.BF16.itemsize
+            for absolute_position, values in embedding_overrides.items():
+                position = int(absolute_position)
+                if not start <= position < start + count:
+                    continue
+                row = np.asarray(values, dtype=np.float32).reshape(-1)
+                if row.shape != (cfg.hidden_size,):
+                    raise ValueError("Qwen4Exp embedding override must have hidden_size values")
+                bits = np.ascontiguousarray(float_array_to_bf16_bits(row), dtype=np.uint16)
+                copy_host_to_device(
+                    DeviceBuffer(
+                        self.prefill_embeddings.ptr
+                        + (position - start) * row_nbytes,
+                        row_nbytes,
+                    ),
+                    host_array_ptr(bits),
+                    bits.nbytes,
+                    runtime=self.runtime,
+                )
         qwen4_exp_repeat_bf16_branches(
             self.prefill_embeddings.ptr,
             self.prefill_residual.ptr,
@@ -4051,7 +4074,6 @@ class Qwen4ExpGGUFResidentModelRunner:
             rows=count,
             runtime=self.runtime,
         )
-        start = self.position
         positions = list(range(start, start + count))
         rows, self._ple_hash_states = ple_hash_rows(
             token_host.tolist(),
@@ -4218,6 +4240,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         token_ids: list[int] | tuple[int, ...],
         *,
         capture_hidden_seeds: bool = False,
+        embedding_overrides: Mapping[int, np.ndarray] | None = None,
     ) -> Qwen4ExpTokenResult:
         if not token_ids:
             raise ValueError("Qwen4Exp prefill requires at least one token")
@@ -4231,6 +4254,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             last_residual_ptr, hidden_rows = self._prefill_chunk(
                 values[start : start + self.prefill_chunk_size],
                 capture_hidden_seeds=capture_hidden_seeds,
+                embedding_overrides=embedding_overrides,
             )
             if hidden_rows is not None:
                 captured.append(hidden_rows)
@@ -4286,9 +4310,12 @@ class Qwen4ExpGGUFResidentModelRunner:
         token_ids: list[int] | tuple[int, ...],
         *,
         capture_hidden_seeds: bool = False,
+        embedding_overrides: Mapping[int, np.ndarray] | None = None,
     ) -> Qwen4ExpTokenResult:
         return self.prefill_chunked(
-            token_ids, capture_hidden_seeds=capture_hidden_seeds
+            token_ids,
+            capture_hidden_seeds=capture_hidden_seeds,
+            embedding_overrides=embedding_overrides,
         )
 
     def generate(

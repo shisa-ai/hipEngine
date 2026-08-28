@@ -446,6 +446,13 @@ class EngineService:
 
         self._control("reconfigure_engine_loop", config)
 
+    def generate_multimodal_detailed(self, prompt: str, image: Any, request: GenerationRequest):
+        return self._control("generate_multimodal_detailed", str(prompt), image, request)
+
+    @property
+    def supports_vision(self) -> bool:
+        return bool(getattr(self._driver, "supports_vision", False))
+
     def count_tokens(self, text: str) -> int:
         return int(self._control("count_tokens", str(text)))
 

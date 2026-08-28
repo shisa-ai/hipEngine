@@ -25,8 +25,12 @@ class _Runner:
     def __init__(self):
         self.steps = []
 
-    def prefill(self, tokens):
-        self.steps.append(("prefill", tuple(tokens)))
+    def prefill(self, tokens, **kwargs):
+        self.steps.append(
+            ("prefill", tuple(tokens), kwargs)
+            if kwargs
+            else ("prefill", tuple(tokens))
+        )
         return SimpleNamespace(token_id=4)
 
     def step(self, token):
@@ -35,6 +39,41 @@ class _Runner:
 
     def close(self):
         self.steps.append(("close",))
+
+
+def test_qwen4_exp_generator_runs_bounded_multimodal_override() -> None:
+    class VisionTokenizer(_Tokenizer):
+        def encode(self, text):
+            if '<|image_pad|>' in text:
+                return [1, 248056, 2]
+            return super().encode(text)
+
+    class Vision:
+        def encode(self, image):
+            assert image == 'image'
+            return __import__('numpy').ones((1, 2560), dtype='float32')
+
+    runner = _Runner()
+    generator = Qwen4ExpGGUFTextGenerator(
+        model_path="unused.gguf",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+        tokenizer=VisionTokenizer(),
+        runner=runner,
+    )
+    generator._vision_runner = Vision()
+    try:
+        output = generator.generate_multimodal_detailed(
+            'describe', 'image', _request(prompts=('describe',), max_tokens=1)
+        )
+        assert output.generated_token_ids == (4,)
+        assert runner.steps[0][0:2] == ('prefill', (1, 248056, 2))
+        overrides = runner.steps[0][2]['embedding_overrides']
+        assert tuple(overrides) == (1,)
+        assert overrides[1].shape == (2560,)
+    finally:
+        generator._vision_runner = None
+        generator.close()
 
 
 def test_qwen4_exp_generator_exposes_tokenizer_control_surface() -> None:

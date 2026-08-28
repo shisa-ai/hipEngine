@@ -34,7 +34,8 @@ def test_qwen4_exp_model_plugin_freezes_layer_and_state_geometry() -> None:
     assert "blk.{layer}.ssm_a.weight" not in plugin.weight_name_templates
     assert "blk.{layer}.ssm_dt.weight" not in plugin.weight_name_templates
     assert plugin.ple_device_resident is False
-    assert plugin.vision_supported is False
+    assert plugin.vision_supported is True
+    assert plugin.vision_scope == "one_32x32_rgb_image_to_one_token"
     assert plugin.mtp_supported is True
 
 

@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_basic_vision_scope",
+  "scope": "One 32x32 RGB image -> four ViT patches -> one merged H2560 image token -> public text generation",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "target": {"model": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "mmproj": {"source": "Qwen/Qwen3.8-Flash-Next@f5d08274bafd880402bd16f5e3e6c514136ec06c", "converter": "llama.cpp PR #27742 pre-merge bea3b12da", "path": "/models/gguf/Qwen3.8-Flash-Next-mmproj/Qwen3.8-Flash-Next-BF16.gguf", "file_bytes": 907542784, "tensor_payload_bytes": 907523008, "tensor_count": 334, "sha256": "375f156fdc1232f994c42f43813861fac4fdc791f0440a36c85e87b6907a7eee"},
+  "geometry": {"image": [32, 32, 3], "temporal_frames": 2, "patch_size": 16, "patches": 4, "vision_layers": 27, "vision_hidden": 1152, "heads": 16, "head_dim": 72, "intermediate": 4304, "merge": 2, "image_tokens": 1, "text_hidden": 2560},
+  "reference": {"source": "transformers Qwen3VLVisionModel with official BF16 model-00001-of-00131.safetensors", "mean_absolute_error": 4.507534256958934e-08, "max_absolute_error": 2.2724270820617676e-07, "relative_l2": 1.3374263971854816e-06, "cosine": 0.9999998807907104},
+  "correctness": {"mmproj_inventory_exact": true, "primitive_numpy_parity": true, "same_image_repeat_exact": true, "different_image_changes_embedding": true, "finite_embedding": true, "public_generation_ids": [248068, 271, 248069, 271], "public_generation_text": "<think>\n\n</think>\n\n", "text_only_nonregression_ids": [264, 264, 264, 264]},
+  "memory": {"tracked_peak_bytes": 83715055616, "tracked_after_close_bytes": 0, "tracked_after_close_allocations": 0},
+  "validation": {"primitive": "uv run pytest -q tests/test_qwen4_exp_vision_hip.py -x", "runner": "uv run pytest -q tests/test_qwen4_exp_vision_runner.py -x", "public": "uv run python /tmp/qwen4exp_vision_public_smoke.py", "reference": "python3 /tmp/qwen4exp_vision_transformers_oracle.py && uv run python /tmp/qwen4exp_vision_compare.py"},
+  "rocprof": {"layernorm_ns": 3646, "bias_residual_ns": 1242, "gelu_ns": 1322, "attention_ns": 167916, "attention_grid": 64, "attention_workgroup": 1, "attention_vgpr": 96, "scratch_bytes": 0, "note": "Reduced four-patch primitive trace; correctness-first one-thread attention is retained only for the bounded basic image scope."},
+  "limitations": {"images": 1, "exact_size": "32x32 RGB", "videos": false, "multiple_image_tokens": false, "http_multimodal": false, "reason": "Implementation-first basic gate keeps one merged image token scalar-equivalent for text MRoPE; general grids require explicit multi-axis text MRoPE ownership."},
+  "claims": {"basic_vision": true, "general_multimodal": false, "performance_claim": false}
+}
