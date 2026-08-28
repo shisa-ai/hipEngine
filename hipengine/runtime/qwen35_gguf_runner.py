@@ -18,6 +18,7 @@ import numpy as np
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
 from hipengine.core.specdec2_scope import (
+    moe_physical_c2_exact_linear_enabled,
     moe_physical_c2_f32_residual_disabled,
     moe_physical_c2_pairreuse_enabled,
 )
@@ -7240,6 +7241,95 @@ class Qwen35GGUFFullStackRunner:
                 next_norm_weight_ptr=next_norm_weight_ptr,
                 next_norm_out_ptr=next_norm_out_ptr,
             )
+
+    def _run_moe_physical_c2_linear_rows_exact(
+        self,
+        layer_id: int,
+        hidden_ptr: int,
+        out_ptr: int,
+        scratch,
+        *,
+        rows: int,
+        decode_scratch,
+        linear_state_rows: tuple[object, object],
+        stream: int = 0,
+    ) -> None:
+        """Run one MoE C2 linear layer row-exact over transaction-local state."""
+
+        rows = int(rows)
+        segments = int(getattr(scratch, "gdn_active_segments", 1))
+        if rows != 6 or segments != 2:
+            raise ValueError("MoE C2 exact linear owner requires two R3 segments")
+        conv_state = decode_scratch.layer_conv_states[layer_id]
+        recurrent_state = decode_scratch.layer_recurrent_states[layer_id]
+        if conv_state is None or recurrent_state is None:
+            raise RuntimeError("MoE C2 exact linear owner lost packed state")
+        state_capacity = int(getattr(scratch, "gdn_segment_capacity", segments))
+        conv_nbytes, conv_remainder = divmod(int(conv_state.nbytes), state_capacity)
+        recurrent_nbytes, recurrent_remainder = divmod(
+            int(recurrent_state.nbytes), state_capacity
+        )
+        conv_rows, recurrent_rows = linear_state_rows
+        if (
+            conv_remainder
+            or recurrent_remainder
+            or state_capacity < segments
+            or int(conv_rows.nbytes) < rows * conv_nbytes
+            or int(recurrent_rows.nbytes) < rows * recurrent_nbytes
+        ):
+            raise RuntimeError("MoE C2 exact linear state storage is misaligned")
+        hidden_row_nbytes = self.hidden_size * DType.BF16.itemsize
+        segment_rows = rows // segments
+        runtime = self.runtime or get_hip_runtime()
+        conv_states = list(decode_scratch.layer_conv_states)
+        recurrent_states = list(decode_scratch.layer_recurrent_states)
+        for row in range(rows):
+            segment = row // segment_rows
+            conv_states[layer_id] = DeviceBuffer(
+                conv_state.ptr + segment * conv_nbytes,
+                conv_nbytes,
+            )
+            recurrent_states[layer_id] = DeviceBuffer(
+                recurrent_state.ptr + segment * recurrent_nbytes,
+                recurrent_nbytes,
+            )
+            row_scratch = replace(
+                decode_scratch,
+                layer_conv_states=tuple(conv_states),
+                layer_recurrent_states=tuple(recurrent_states),
+            )
+            self._run_linear_attention_attn_only(
+                layer_id,
+                hidden_ptr + row * hidden_row_nbytes,
+                scratch.attn_out.ptr + row * hidden_row_nbytes,
+                row_scratch,
+                stream=stream,
+                stage_prefix="packed_moe_c2_exact_attn",
+            )
+            runtime.memcpy_async(
+                conv_rows.ptr + row * conv_nbytes,
+                conv_states[layer_id].ptr,
+                conv_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+            runtime.memcpy_async(
+                recurrent_rows.ptr + row * recurrent_nbytes,
+                recurrent_states[layer_id].ptr,
+                recurrent_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                stream,
+            )
+        self._run_post_attention_ffn_rows(
+            layer_id,
+            hidden_ptr,
+            scratch.attn_out.ptr,
+            out_ptr,
+            scratch,
+            rows=rows,
+            stream=stream,
+            stage_prefix="packed_moe_c2_exact_ffn",
+        )
 
     def _run_linear_attention_prefill_layer_rows(
         self,
@@ -18499,28 +18589,45 @@ class Qwen35GGUFResidentSession:
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 layer_start = time.perf_counter()
                 if layer_type == LINEAR_ATTENTION:
-                    self.runner._run_linear_attention_prefill_layer_rows(
-                        layer_id,
-                        src.ptr,
-                        dst.ptr,
-                        packed_scratch,
-                        rows=rows,
-                        stream=stream,
-                        decode_scratch=linear_decode_scratch,
-                        expert_sidecar=None,
-                        linear_state_rows=(
-                            self._verify_linear_state_row_pair(layer_id)
-                            if capture_linear_state_rows
-                            else None
-                        ),
-                        commit_final_linear_state=not defer_linear_state_commit,
-                        hidden_f32_ptr=None,
-                        out_f32_ptr=None,
-                        stage_timings=None,
-                        sync_stage_timings=False,
-                        stage_prefix="packed_verify_gpu_linear_attn",
-                        gpu_stage_recorder=gpu_stage_recorder,
+                    linear_state_rows = (
+                        self._verify_linear_state_row_pair(layer_id)
+                        if capture_linear_state_rows
+                        else None
                     )
+                    if (
+                        moe_physical_c2_exact_linear_enabled()
+                        and rows == 6
+                        and linear_state_rows is not None
+                    ):
+                        self.runner._run_moe_physical_c2_linear_rows_exact(
+                            layer_id,
+                            src.ptr,
+                            dst.ptr,
+                            packed_scratch,
+                            rows=rows,
+                            decode_scratch=linear_decode_scratch,
+                            linear_state_rows=linear_state_rows,
+                            stream=stream,
+                        )
+                    else:
+                        self.runner._run_linear_attention_prefill_layer_rows(
+                            layer_id,
+                            src.ptr,
+                            dst.ptr,
+                            packed_scratch,
+                            rows=rows,
+                            stream=stream,
+                            decode_scratch=linear_decode_scratch,
+                            expert_sidecar=None,
+                            linear_state_rows=linear_state_rows,
+                            commit_final_linear_state=not defer_linear_state_commit,
+                            hidden_f32_ptr=None,
+                            out_f32_ptr=None,
+                            stage_timings=None,
+                            sync_stage_timings=False,
+                            stage_prefix="packed_verify_gpu_linear_attn",
+                            gpu_stage_recorder=gpu_stage_recorder,
+                        )
                     add_stage("packed_verify_linear_attn_layers", layer_start)
                 elif layer_type == FULL_ATTENTION:
                     key_cache, value_cache = packed_state.full_cache(layer_id)

@@ -1484,6 +1484,7 @@ def create_qwen35_gguf_moe_mtp2_adapter(
     adapter.production_physical_q6_rowtile = False
     adapter.moe_physical_c2_numerics = True
     adapter.moe_physical_c2_pairreuse = True
+    adapter.moe_physical_c2_exact_linear = True
     adapter.target_key = "qwen_moe_gguf"
     adapter.provider_key = "qwen_nextn_moe"
     adapter.policy_prefix = "moe-nextn"

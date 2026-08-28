@@ -266,6 +266,19 @@ fallback count is not a success metric.
   physical-C2 target manifest after qualification, preserving the C1 production
   and strict fallbacks plus the focused scope test.
 
+## SPECDEC2 MoE physical-C2 exact-linear fallback
+
+- Added 2026-08-27 after the packed rows6 linear-attention composite failed the
+  binding MoE production gate. The request-local
+  `moe_physical_c2_exact_linear_session(...)` keeps one layer-major physical
+  target owner but executes two transaction-local R3 state segments and scalar
+  attention rows, then one row-batched MoE FFN. This is the strict-arithmetic
+  correctness fallback; it is intentionally too slow for automatic promotion.
+- Removal trigger: replace scalar Q8/Conv/GDN launches with independently
+  exact, row-amortized R6 kernels that preserve every selected state journal and
+  pass the complete quality gate at >=1.10x AR. Then delete this scope and keep
+  the row-exact implementation only as the registered fallback.
+
 ## SPECDEC2 physical production scope
 
 - Added 2026-08-27 for the gfx1100 physical-C2 production campaign. The backend-
