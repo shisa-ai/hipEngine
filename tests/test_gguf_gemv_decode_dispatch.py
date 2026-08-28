@@ -23,6 +23,7 @@ from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.kernels.registry import _KERNELS
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_GGUF_Q5_K_T16,
+    LAYOUT_GGUF_Q6_K_T16,
     LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
     LAYOUT_RAW_GGUF,
 )
@@ -92,7 +93,16 @@ _Q5_T16_WMMA = KernelKey(
     "hip_gfx1100", "linear", "gguf_q5_k_t16_v1", "t16_wmma_prefill_bf16_bf16_out"
 )
 
-# Planar-qmicro Q6T16 native batch decode family for the rows 5-8 rowtile.
+# Standard and planar-qmicro Q6T16 native batch decode families.
+_Q6_T16_DECODE = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_decode_bf16_bf16_out"
+)
+_Q6_T16_ROWTILE = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_rowtile_bf16_bf16_out"
+)
+_Q6_T16_WMMA = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_wmma_prefill_bf16_bf16_out"
+)
 _Q6_PLANAR_DECODE = KernelKey(
     "hip_gfx1100",
     "linear",
@@ -237,7 +247,7 @@ def test_native_batch_decode_q6_planar_t16_rows_5_8_route_to_true_rowtile() -> N
         assert key == _Q6_PLANAR_ROWTILE
 
 
-def test_target_verifier_scope_routes_only_backend_admitted_q6_planar(
+def test_target_verifier_scope_routes_only_backend_admitted_q6(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import hipengine.runtime.gguf_linear as gguf_linear
@@ -246,9 +256,14 @@ def test_target_verifier_scope_routes_only_backend_admitted_q6_planar(
 
     def capability(backend: str, name: str, default=None):
         if name == "GGUF_T16_TARGET_VERIFIER_ROWTILE_QUANTS":
-            return frozenset({"gguf_q6_k_t16_qmicro_planar_v1"})
+            return frozenset(
+                {"gguf_q6_k_t16_v1", "gguf_q6_k_t16_qmicro_planar_v1"}
+            )
         if name == "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT":
-            return {"gguf_q6_k_t16_qmicro_planar_v1": 8}
+            return {
+                "gguf_q6_k_t16_v1": 8,
+                "gguf_q6_k_t16_qmicro_planar_v1": 8,
+            }
         return original_capability(backend, name, default)
 
     monkeypatch.setattr(gguf_linear, "backend_package_capability", capability)
@@ -260,6 +275,15 @@ def test_target_verifier_scope_routes_only_backend_admitted_q6_planar(
         extra_keys=(_Q6_PLANAR_ROWTILE, _Q6_PLANAR_WMMA),
     )
     assert key == _Q6_PLANAR_ROWTILE
+
+    key, _, _ = _capture_launch(
+        rows=8,
+        target_verifier_rowtile=True,
+        quant_key="gguf_q6_k_t16_v1",
+        layout=LAYOUT_GGUF_Q6_K_T16,
+        extra_keys=(_Q6_T16_DECODE, _Q6_T16_ROWTILE, _Q6_T16_WMMA),
+    )
+    assert key == _Q6_T16_ROWTILE
 
     # The target-verifier scope must not act like the broad native-batch scope.
     key, _, _ = _capture_launch(

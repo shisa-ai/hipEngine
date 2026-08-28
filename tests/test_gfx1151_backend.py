@@ -555,10 +555,11 @@ def test_gfx1151_backend_admits_dense_q6_qmicro_planar_exact_routes() -> None:
         )
 
 
-def test_gfx1151_target_verifier_admits_planar_q6_rowtile_through_r8() -> None:
+def test_gfx1151_target_verifier_admits_q6_rowtiles_through_r8() -> None:
     assert GGUF_T16_TARGET_VERIFIER_ROWTILE_QUANTS == frozenset(
-        {"gguf_q6_k_t16_qmicro_planar_v1"}
+        {"gguf_q6_k_t16_v1", "gguf_q6_k_t16_qmicro_planar_v1"}
     )
+    assert GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT["gguf_q6_k_t16_v1"] == 8
     assert (
         GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[
             "gguf_q6_k_t16_qmicro_planar_v1"

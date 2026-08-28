@@ -1101,10 +1101,11 @@ GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
 # owners. Keeping this separate from broad native batch decode prevents the
 # verifier from changing unrelated Q4/Q5 projection ownership.
 GGUF_T16_TARGET_VERIFIER_ROWTILE_QUANTS = frozenset(
-    {"gguf_q6_k_t16_qmicro_planar_v1"}
+    {"gguf_q6_k_t16_v1", "gguf_q6_k_t16_qmicro_planar_v1"}
 )
 GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
-    # Planar Q6's true col8 rowtile is exact and qualified through R8.
+    # Standard and planar Q6 col8 rowtiles are exact and qualified through R8.
+    "gguf_q6_k_t16_v1": 8,
     "gguf_q6_k_t16_qmicro_planar_v1": 8,
     # Q5: the 27B ssm_out/ffn_down/qkv/v shapes rowtile to c8; the narrow
     # 0.8B SSM-out shape keeps cap 4 so its measured direct leaf wins at c5-c8.
