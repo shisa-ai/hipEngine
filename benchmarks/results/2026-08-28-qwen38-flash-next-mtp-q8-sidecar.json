@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_artifact_inventory",
+  "scope": "Pinned external Qwen3.8-Flash-Next MTP-only Q8_0 GGUF bring-up artifact",
+  "source": {
+    "repo": "EasiiX/Qwen3.8-Flash-Next-MTP-Strix-Halo-GGUF",
+    "revision": "6f7900648b1c6b14f067a182c640e47971e9ab35",
+    "file": "mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+    "path": "/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf",
+    "file_bytes": 4137429088,
+    "sha256": "9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d",
+    "license": "Qwen Community License 1.0"
+  },
+  "lineage": {
+    "target_base": "Qwen/Qwen3.8-Flash-Next@f5d08274bafd880402bd16f5e3e6c514136ec06c",
+    "llamacpp_base": "ggml-org/llama.cpp PR #27742 merge 6c84c7d5d8833c6e0df69628f75a0f599797934e",
+    "engramhalo_runtime": "Aristo94/EngramHalo.cpp@0f1c3e2ef41117033d91a83d7634fca4dfe12107",
+    "engramhalo_converter": "Aristo94/EngramHalo.cpp@2cc66f08ca03c6e3f385ec15412f92ad6d490794"
+  },
+  "gguf": {
+    "architecture": "qwen4exp",
+    "block_count": 49,
+    "nextn_predict_layers": 1,
+    "mtp_block_id": 48,
+    "tensor_count": 34,
+    "tensor_payload_bytes": 4126482432,
+    "bytes_by_qtype": {
+      "Q8_0": 4117775360,
+      "F32": 5430272,
+      "BF16": 3276800
+    },
+    "roles": {
+      "shared_roots": 5,
+      "nextn_inputs": 3,
+      "draft_layer": 26,
+      "ple_present": false,
+      "draft_attention": "dense; indexer tensors present but not required by the reference runtime"
+    }
+  },
+  "validation": {
+    "strict_inventory": true,
+    "strict_shapes": true,
+    "strict_qtypes": true,
+    "alternate_layout_bytes": 0,
+    "replacement_payload_bytes": 0,
+    "test": "uv run pytest -q tests/test_qwen4_exp_mtp_gguf.py -x",
+    "result": "3 passed"
+  },
+  "claim": {
+    "model_execution": false,
+    "performance_claim": false,
+    "note": "Artifact mapping only; draft execution, target handoff, speculative correctness, and economics remain open."
+  }
+}
