@@ -712,7 +712,13 @@ hosted Strix Halo 128-GB llama.cpp PR #27742 run (`UD-Q4_K_XL`, Ubuntu
 `23.0 tok/s`, and at depth 16K pp512/pp4096/tg128
 `305.3/317.9/19.4 tok/s`; Q4-XL comments report roughly `260–400 tok/s`
 prefill and `16–17 tok/s` short-context decode, falling toward `12 tok/s`
-around 100K. Sources:
+around 100K. The first binding same-host/same-GGUF PR #27742 run now measures
+Vulkan/HIP pp508 `316.380/274.996 tok/s`, pp1006 `290.450/284.485`, and tg32
+`18.716/15.848`, versus retained hipEngine `58.466/55.046/5.890`. Vulkan is
+therefore 5.41x/5.28x/3.18x faster on the shape-matched rows; closing this gap
+is the active F7 priority. Evidence:
+[`2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json).
+External report sources:
 [`r/StrixHalo benchmark`](https://www.reddit.com/r/StrixHalo/comments/1vz5yb3/qwen38flashnext_125ba6b_running_on_strix_halo/)
 and
 [`r/LocalLLM PLE mmap/layout`](https://www.reddit.com/r/LocalLLM/comments/1vz927j/got_qwen38nextflash_ngram_ssd_offload_working_in/).
