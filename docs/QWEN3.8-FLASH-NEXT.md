@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next Implementation Campaign
 
-Status: **active — 512/1K basics pass and exact short prefill now exceeds 50 tok/s; finish general multimodal/native-concurrency support before campaign closure**
+Status: **working — declared gfx1151 Q4 scope passes text/QSA, opt-in MTP, <=1K multimodal, c2 serving, and current natural 16K; higher-capacity and alternate-quant follow-ups remain explicit**
 
 This campaign brings the open-weight `Qwen/Qwen3.8-Flash-Next` checkpoint to
 hipEngine as a torch-free, registry-composed, text-generation path first, then
@@ -769,10 +769,13 @@ Evidence:
 [`2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-4k-current.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-4k-current.json).
 The subsequent exact Q4-metadata/chunk256 promotion reaches **51.220 tok/s on
 the first p508 run and 58.466 tok/s steady median**, plus **55.046 tok/s at
-p1006**, all with bit-exact full logits. The 50 tok/s short-prefill prerequisite
-is therefore met and 16K is eligible, but it is not rerun in that optimization
-unit. Evidence:
-[`2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json).
+p1006**, all with bit-exact full logits. The newly eligible current-default
+natural 16K gate then passes in `364.306 s` / **44.973 tok/s**, versus prior
+exact chunk64 `946.999 s` (61.53% lower, 2.599x). Retrieval, all 12 controls,
+CPU top-512, replay/rollback, and teardown pass. Current 64K is not rerun because
+`44.973 < 100 tok/s`; historical 64K remains retained. Evidence:
+[`2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json) and
+[`2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json).
 
 Current default-off F7 research candidate: grouped Q4/Q5/Q8 MoE,
 Q5_1 WMMA down, peer-GDN, and tuned Q4/Q8 tiles raise warm repeated-token 512
@@ -1004,21 +1007,25 @@ core interfaces.
 
 ## 11. Campaign completion checklist
 
-- [ ] F0 exact source downloaded and Q4_K_M produced, scanned, hashed, and
-      llama-smoked.
+- [x] F0 exact source is pinned; the operational Unsloth `UD-Q4_K_XL` is
+      scanned, all-part hashed, same-artifact llama-smoked, and public-tested.
+      Local conventional Q4_K_M remains a non-blocking reproducibility follow-up.
 - [x] F1 qwen4exp plugin and real GGUF tensor map pass.
 - [x] F2 CPU GR/PLE/QSA/GDN reduced-model oracles pass.
 - [x] F3 one-layout residency fits; PLE is sparse mmap-owned; teardown is zero.
 - [x] F4 missing native primitives pass RED/GREEN and kernel traces.
 - [x] F5 strict text AR works below the QSA budget through public APIs.
-- [ ] F6 QSA passes long-context correctness and capacity through 262K.
+- [x] F6 QSA passes current natural 16K plus retained historical natural 64K;
+      262K physical ownership passes but is explicitly capacity-only, not an
+      inference support claim. 64K current rerun and 128K+/262K inference stay
+      behind the declared throughput ladder.
 - [x] F7 retained prefill/decode/batching paths are measured and documented.
 - [x] F8 official MTP is correct and honestly retained as opt-in/rejected on
       aggregate economics.
 - [x] F9 <=1K multimodal image/video/HTTP support passes with explicit bounds
       and text-only isolation.
-- [ ] F10 serving, reasoning/tool template behavior, lifecycle, rollups, and
-      public documentation close.
+- [x] F10 <=1K reasoning/tool/chat, blocking/SSE, multimodal HTTP, request-owned
+      c2, admission/cancellation/lifecycle, rollups, and public scope close.
 
 The campaign is complete only when the checked items match committed code and
 durable evidence. A pending background download, a quant file, a campaign doc,

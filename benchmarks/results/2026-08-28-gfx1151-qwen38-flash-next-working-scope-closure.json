@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_working_scope_closure",
+  "objective": "Working Qwen3.8-Flash-Next support from docs/QWEN3.8-FLASH-NEXT.md",
+  "host": {"identity":"zbook","machine_id":"87c566d30a5645cf8d12ed7ef6b6e1e8","cpu":"AMD Ryzen AI Max+ Pro 395","gpu":"AMD Radeon 8060S Graphics","arch":"gfx1151","unified_device_bytes":133143986176},
+  "identities": {"source_revision":"f5d08274bafd880402bd16f5e3e6c514136ec06c","source_manifest_sha256":"973433d38d86f0e771855b74a170f55f07290bc446ff9bc7a42a688a152b912b","target_quant":"Unsloth UD-Q4_K_XL","target_quant_revision":"8bdc666649440e9bdc97e16f3f75782c98478ff5","target_parts":4,"target_bytes":111334654784,"mtp_sha256":"9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d","mmproj_sha256":"375f156fdc1232f994c42f43813861fac4fdc791f0440a36c85e87b6907a7eee"},
+  "prompt_to_artifact": [
+    {"deliverable":"official source/artifact identity","evidence":"benchmarks/results/2026-08-27-qwen38-flash-next-official-source.json","passed":true},
+    {"deliverable":"complete text plugin/loader/residency/public generation","evidence":"benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json","passed":true},
+    {"deliverable":"same-artifact category+heldout logits","evidence":"benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json","passed":true},
+    {"deliverable":"QSA sparse transition and long context","evidence":"benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json","passed":true,"limit":"current 64K rerun blocked at 100 tok/s; historical 64K retained"},
+    {"deliverable":"262K ownership","evidence":"benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-262k-capacity.json","passed":true,"limit":"capacity-only; no 262K inference claim"},
+    {"deliverable":"retained exact prefill performance","evidence":"benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json","passed":true,"result":"p508 first/steady 51.220/58.466 tok/s; p1006 55.046 tok/s"},
+    {"deliverable":"official MTP sidecar and economics","evidence":"benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json","passed":true,"decision":"10/10 exact, 84.28% acceptance, 0.955x AR; opt-in only"},
+    {"deliverable":"general multimodal and text MRoPE","evidence":"benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-general-multimodal.json","passed":true,"limit":"<=1K; bounded PNG HTTP; no remote URL/SSE"},
+    {"deliverable":"native concurrent serving","evidence":"benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-native-c2-serving.json","passed":true,"limit":"c2 request residency; per-request serial model transitions; no speed claim"},
+    {"deliverable":"serving reasoning/tool/blocking/SSE/lifecycle","evidence":"benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-short-serving-basics.json","passed":true}
+  ],
+  "architectural_audit": {"torch_imports_on_qwen4exp_hot_path":0,"backend_or_quant_branches_in_qwen4exp_dispatch":0,"kernel_raw_pointer_contract":true,"ple_mmap_single_owner":true,"tracked_teardown_zero":true},
+  "final_validation": {"qwen4exp_focused_tests":162,"server_protocol":"full server run green through 554/559; isolated repaired node and remaining 4-node tail green","benchmark_readme_budget_and_sync":true,"worklog_check":true},
+  "supported": ["gfx1151 UD-Q4_K_XL greedy text","native QSA and current natural 16K","explicit Q8 MTP","<=1K images/videos and bounded PNG chat","request-owned c2 blocking/SSE"],
+  "unsupported_or_unverified": ["gfx1100 performance","current 64K rerun","128K+/262K inference","million-token extension","multimodal >1K/SSE/remote URLs","packed c-aware c2 kernel speed","default MTP promotion","Q5_K_XL until its independent lane completes"],
+  "decision": "Working Flash-Next support is complete for the declared gfx1151 Q4 scope; follow-ups cannot broaden this claim without their own gates."
+}

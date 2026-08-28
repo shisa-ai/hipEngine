@@ -4,6 +4,10 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-28 gfx1151 Qwen3.8-Flash-Next working-scope closure] Declared gfx1151 `UD-Q4_K_XL` scope closes with text/QSA/current natural 16K, exact prefill >50 tok/s, opt-in exact MTP, <=1K image/video + bounded PNG chat, request-owned c2, and zero teardown. Current 64K, 128K+/262K inference, remote/SSE multimodal, packed c2 speed, gfx1100, and Q5 remain explicit follow-ups. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-working-scope-closure.json`.
+
+- [2026-08-28 gfx1151 Qwen3.8-Flash-Next current natural 16K] True current exact chunk256 reduces natural 16K **946.999→364.306 s (-61.53%, 44.973 tok/s, 2.599x)**; retrieval, all 12 controls, Transformers CPU top-512, replay/rollback, and teardown pass. Current 64K is blocked because 44.973<100 tok/s. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json`.
+
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next native c2 serving] Request-owned c2 over one shared weight/PLE layout preserves **2/2 exact c1 IDs**, emits 6 correctly owned native stream chunks, passes two simultaneous blocking HTTP 200 and two simultaneous SSE 200+`[DONE]`, admission/cancellation, and zero shutdown; c2 adds 550.3 MB tracked state. Transitions remain per-request serial, so no c-aware speed claim. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-native-c2-serving.json`.
 
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next general multimodal] <=1K support now covers merge-compatible grids, multiple images, videos, typed placeholders, explicit interleaved text T/H/W MRoPE, and bounded PNG `/v1/chat/completions`; 32×64 encoder vs Transformers is **relative L2 1.48e-6 / cosine 1.0**, 16-token visual sensitivity diverges as expected, HTTP returns 200, and teardown is zero. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-general-multimodal.json`.
