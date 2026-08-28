@@ -1,7 +1,7 @@
 # CONCURRENCY2 gfx1151 MTP Dynamic Admission Campaign
 
-- Status: **D0-D7 complete: automatic strict C1/K3 retained at 1.5916x AR; automatic C2-C8 pure K0**
-- Scope: **explicit production C1-C8 is correctness-qualified/default-off; no C>1 optimization premise passed; typed model-plugin evidence is the sole automatic policy owner**
+- Status: **D0-D7 complete; post-closure D6 reopen retains exact C2 Q6 verifier rowtiles at 0.9747x AR; automatic strict C1/K3 remains 1.5916x and automatic C2-C8 remains pure K0**
+- Scope: **explicit production C1-C8 is correctness-qualified/default-off; a scoped C2 target-owner win is retained but no C>1 product cell passes; typed model-plugin evidence is the sole automatic policy owner**
 - Hardware lane when execution is approved: **Radeon 8060S / `hip_gfx1151`**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile**
 - First functional width: **two independent resident requests (`C_due=2`)**
@@ -37,9 +37,12 @@ D5 now binds the complete explicit capability packet to current-source
 production numerical, repeat, isolation, transition, and manifest evidence.
 Evidence:
 [`D5 correctness`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d5-production-correctness.json).
-D6 now closes the three-arm economics matrix and profiles the only plausible
-cell, rejecting blind optimization and every automatic C>1 cell. Evidence:
-[`D6 economics`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d6-economics.json).
+D6 originally closed the three-arm economics matrix and rejected every
+automatic C>1 cell. A post-closure cycle-local audit later disproved its
+"mandatory model work is irreducible" inference and retained verifier-only Q6
+rowtiles; the policy verdict remains K0. Evidence:
+[`D6 economics`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d6-economics.json)
+and [`D6 Q6 reopen`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json).
 D7 closes public policy and cleanup: current-source automatic C1 retains its
 full-suite win; C2-C8 group at the normal AR width and select pure K0 with zero
 provider mutation. Evidence:
@@ -398,16 +401,33 @@ remain default-off; a losing automatic cell selects pure K0 before provider
 mutation unless a separately qualified transitional policy proves its shadow
 cost acceptable.
 
-Exit passed with no candidate. Full intent-K0 C1-C8 is exact/zero-cycle but
-costs **0.4969x-0.8782x AR**. C2 K1/K2/K3 is
-**0.5277x/0.7617x/0.8170x AR**; K3 still needs **34.6%** throughput to reach
-1.10x. Cached K3 profiling records a **2.050-s** marked window, **1.844 s
-(90.0%)** of GPU kernels, mandatory Q4/Q6 model-work dominance, and only
-**1.016 ms** of physical copy events. No accept/readback micro-optimization or
-kernel micro-tune can bridge the gap; no candidate is admitted. Reopen only for
-a materially different fused/shared-weight target dataflow with an
-operation-complete >=1.10x projection, followed by D5 requalification. Evidence:
-[`D6`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d6-economics.json).
+The original exit retained no candidate. Full intent-K0 C1-C8 was exact and
+zero-cycle but cost **0.4969x-0.8782x AR**; C2 K1/K2/K3 measured
+**0.5277x/0.7617x/0.8170x AR**. Its whole-request profile correctly found GPU
+model-work dominance and negligible physical copies, but incorrectly treated
+that kernel wall as irreducible rather than checking for repeated weight
+streaming inside the active Q6 owners.
+
+**Post-closure D6-R1 (2026-08-28):** cycle-local markers isolate full-budget
+C2/K3 at **364.27 ms**, including **317.11 ms** target/accept/commit and only
+**11.61 ms** uncovered. The target was issuing 40 planar-Q6 direct launches
+(**84.32 ms**) and 24 standard-Q6 direct launches (**36.27 ms**) even though
+existing rows8 col8 rowtiles are BF16-bit exact. A verifier-only,
+backend/quant/actual-shape capability now routes only Qwen3.8 standard QKV and
+planar down/V through those registered rowtiles. Proposal, Q4/Q5, AR, prefill,
+and peer backends are unchanged; the old broad native-batch scope is not used.
+
+Clean tracing moves planar Q6 **84.32→13.40 ms** and standard Q6
+**36.27→8.83 ms**, reducing steady target **317.11→218.26 ms (-31.17%)** and
+cycle **364.27→265.93 ms (-27.00%)**. The complete ten-prompt C2 rerank is
+K1/K2/K3 **0.5850x/0.9422x/0.9747x AR**; K3 improves
+**11.724→14.154 tok/s (+20.73%)** with unchanged 314/398 acceptance and all 30
+cells exact/engaged/budget-conformed. General English reaches 1.017x AR, but
+code/Japanese/mixed and aggregate remain below AR; K3 still needs **12.86%**
+for the 1.10x gate. A single-prompt D128 screen remains only 0.899x complete
+AR, so no wider horizon claim is admitted. Retain the scoped exact owner win,
+but keep automatic C2-C8 pure K0. Evidence:
+[`D6-R1`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json).
 
 ### D7 — automatic policy and closure
 

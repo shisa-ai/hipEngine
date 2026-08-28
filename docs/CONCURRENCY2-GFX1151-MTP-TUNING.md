@@ -40,7 +40,9 @@ every phase names its evidence and exit gate before implementation.
 - **Post-closure supersession:** strict capacity-4 automatic C1/B3 now engages
   only for an actual realized singleton at **15.769 vs 9.878 tok/s (+59.65%)**.
   C2 due groups fail closed before proposal and survivors re-enter only after
-  the group shrinks. Physical C2/C4 and production automatic remain K0.
+  the group shrinks. A later exact verifier-Q6 routing fix lifts explicit
+  production C2/K3 **0.8170x→0.9747x AR**, but still fails aggregate/category
+  promotion; production automatic C2+ therefore remains K0.
 
 ## 1. Why this campaign exists — three measured gaps
 
