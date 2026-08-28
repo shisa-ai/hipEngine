@@ -294,6 +294,23 @@ def test_raw_k_prefill_rowbatch_dispatch_is_exactly_scoped() -> None:
         )
         is q8
     )
+    q8_gfx1151 = GGUFLinearDispatch(
+        KernelKey(
+            "hip_gfx1151",
+            "linear",
+            "gguf_q8_0",
+            "prefill_bf16_bf16_out",
+        ),
+        "raw",
+    )
+    assert _raw_k_prefill_rowbatch_dispatch(
+        q8_gfx1151,
+        rows=128,
+        in_features=3072,
+        out_features=72,
+        row_batch=8,
+        variant="rowbatch",
+    ).key.variant == "rowbatch8_bf16_bf16_out"
 
 
 def test_raw_k_prefill_coltile_dispatch_is_exactly_scoped(monkeypatch) -> None:

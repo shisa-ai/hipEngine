@@ -2044,16 +2044,14 @@ def _raw_k_prefill_rowbatch_dispatch(
     rowbatch_supported = bool(
         backend_package_capability(
             dispatch.key.backend,
-            "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
+            "GGUF_RAW_Q8_F32_PREFILL_ROWBATCH_SUPPORTED",
             False,
         )
-        or (
-            dispatch.key.quant == "gguf_q8_0"
-            and backend_package_capability(
-                dispatch.key.backend,
-                "GGUF_RAW_Q8_F32_PREFILL_ROWBATCH_SUPPORTED",
-                False,
-            )
+        if dispatch.key.quant == "gguf_q8_0"
+        else backend_package_capability(
+            dispatch.key.backend,
+            "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
+            False,
         )
     )
     if (
