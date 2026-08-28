@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-28 gfx1151 Qwen3.8-Flash-Next matched llama.cpp gap] Same-host/same-`UD-Q4_K_XL` PR #27742 Vulkan/HIP measure pp508 **316.380/274.996**, pp1006 **290.450/284.485**, tg32 **18.716/15.848 tok/s**, versus retained hipEngine **58.466/55.046/5.890**. Vulkan is **5.41x/5.28x/3.18x** faster; Q4 parity is now the binding priority. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json`.
+
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next working-scope closure] Declared gfx1151 `UD-Q4_K_XL` scope closes with text/QSA/current natural 16K, exact prefill >50 tok/s, opt-in exact MTP, <=1K image/video + bounded PNG chat, request-owned c2, and zero teardown. Current 64K, 128K+/262K inference, remote/SSE multimodal, packed c2 speed, gfx1100, and Q5 remain explicit follow-ups. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-working-scope-closure.json`.
 
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next current natural 16K] True current exact chunk256 reduces natural 16K **946.999→364.306 s (-61.53%, 44.973 tok/s, 2.599x)**; retrieval, all 12 controls, Transformers CPU top-512, replay/rollback, and teardown pass. Current 64K is blocked because 44.973<100 tok/s. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json`.
