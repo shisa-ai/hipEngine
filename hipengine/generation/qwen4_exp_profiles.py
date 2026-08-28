@@ -20,14 +20,14 @@ QWEN4_EXP_BACKEND = "hip_gfx1151"
 QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
 PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
 PRODUCTION_Q8_PREFILL_LAYERS = tuple(range(32, 48))
-PRODUCTION_Q4_DP4A_DECODE_LAYERS = tuple(range(24, 48))
+PRODUCTION_Q4_DP4A_DECODE_LAYERS = tuple(range(13, 48))
 _PREFILL_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json"
 )
 _DECODE_EVIDENCE = (
     "benchmarks/results/"
-    "2026-08-29-gfx1151-qwen38-flash-next-production-dp4a24-decode.json"
+    "2026-08-29-gfx1151-qwen38-flash-next-production-dp4a13-decode.json"
 )
 
 
@@ -75,7 +75,7 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             "linear",
-            "decode_c1_layers24_47_q4_gate_up",
+            "decode_c1_layers13_47_q4_gate_up",
             "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
             "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
             "gguf_q4_k",
@@ -111,7 +111,7 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             "linear",
-            "decode_c1_layers24_47_q4_gate_up",
+            "decode_c1_layers13_47_q4_gate_up",
             "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out",
             "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
             "gguf_q4_k",

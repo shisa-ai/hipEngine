@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8-Flash-Next maximal production DP4A13 decode] Full three-repeat bisection certifies definitive suffix 13–47 and rejects suffix12 at 445/450. Combined production passes mean/p95/p99/max KL **2.57e-4/1.48e-3/3.77e-3/7.38e-3**, **447/450 top-1**, task/c2/state gates, and improves decode **13.874→15.479 tok/s (+10.37%)** with Q4 target cycle-wall **825.340→449.778 ms (-45.50%)**. Omitted stays exact strict. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-dp4a13-decode.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8-Flash-Next production DP4A24 decode] Combined prior MoE27/Q8-32 prefill plus one-plane Q8_1 DP4A decode layers 24–47 passes **450 rows / 3 repeats** at mean/p95/p99/max KL **1.67e-4/7.97e-4/2.92e-3/5.77e-3**, **448/450 top-1**, task/c2/state gates, and improves decode **13.704→14.611 tok/s (+6.21%)** with Q4 target cycle-wall **825.340→563.274 ms (-31.75%)**. All-layer DP4A is rejected at 445/450; omitted stays exact strict. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-dp4a24-decode.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8-Flash-Next exact fused Q5 down+weighted decode] One H=2560 output CTA preserves each route's Q5 BF16 publication and ordered weighted `fmaf`, removes **1,806 launches**, contracts target cycle-wall **369.241→313.535 ms (-15.09%)**, and improves counterbalanced graph decode **13.379→13.523 tok/s (+1.06%)** with fused/unfused bits, full-logit SHA, and IDs exact. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-q5-fused-weighted-decode.json`.

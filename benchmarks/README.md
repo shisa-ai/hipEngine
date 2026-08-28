@@ -204,14 +204,15 @@ exact Q4_K logical128/physical64 reaches **13.167 tok/s** (+8.84%); Q5_1's
 second exact contraction to physical64 reaches **13.302 tok/s** (+1.69%); exact
 Q5 down+weighted fusion reaches **13.523 tok/s** (+1.06%), with primitive bits,
 full logits, and IDs exact—1.17x behind llama.cpp HIP. Explicit production
-Q4-DP4A decode layers 24–47 reach **14.611 tok/s**, 1.08x behind llama.cpp HIP.
+Q4-DP4A decode layers 13–47 reach **15.479 tok/s**, 1.024x behind llama.cpp HIP.
 Matched HIP pp508 is **1.798 s kernels / 5,543 launches** versus hipEngine
 **8.753 s / 4,933**, making MMQ/cooperative dataflow the remaining target.
 Exact PLE/Conv/QSA cuts p512 launches **29,341→4,933**. Explicit production
-(MoE prefill 27–47 + dense-Q8 prefill 32–47 + Q4-DP4A decode 24–47) passes 450
+(MoE prefill 27–47 + dense-Q8 prefill 32–47 + Q4-DP4A decode 13–47) passes 450
 rows/three repeats at KL mean/p95/p99/max
-`1.67e-4/7.97e-4/2.92e-3/5.77e-3`, 99.556% top-1, and reaches p508/p1012
-**73.361/71.834 tok/s** plus tg32 **14.611 tok/s**; omitted stays strict.
+`2.57e-4/1.48e-3/3.77e-3/7.38e-3`, 99.333% top-1, and reaches p508/p1012
+**73.361/71.834 tok/s** plus tg32 **15.479 tok/s**; suffix12 fails and omitted
+stays strict.
 Current natural 16K improves **946.999→364.306 s (-61.53%, 44.973 tok/s)** with every
 binding control exact; 64K historical evidence is retained but not rerun because
 44.973<100 tok/s. 262K is capacity-only (91.126 GB tracked), not inference. Q8 MTP is exact on 10/10

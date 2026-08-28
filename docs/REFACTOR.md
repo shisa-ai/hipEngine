@@ -24,7 +24,7 @@ should be removed or collapsed.
   `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`/tile plus
   `HIPENGINE_QWEN4_EXP_Q4_DP4A64{,_LAYERS}` bridges are bound by explicit
   strict/production manifests. They select certified MoE prefill layers 27–47,
-  dense-Q8 prefill layers 32–47, and Q4 DP4A decode layers 24–47. Remove
+  dense-Q8 prefill layers 32–47, and Q4 DP4A decode layers 13–47. Remove
   process-global env binding once Qwen4Exp profile state is request-local;
   retain exact grouped Q4/Q5, coltile-Q8, and logical128/t64 Q4 fallbacks.
 
