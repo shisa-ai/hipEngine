@@ -35,6 +35,7 @@ from hipengine.speculative import (
     SpeculativeMTPStaticEligibility,
     SpeculativeMTPStaticState,
     SpeculativeRequestSemantics,
+    TargetAcceptSummary,
     TargetVerifyBatch,
     TargetVerifyBuffers,
 )
@@ -684,6 +685,94 @@ def test_packed_target_device_result_binds_identity_and_only_device_rows() -> No
     assert result.pre_output_norm_hidden is not None
     assert result.pre_output_norm_hidden.ptr == 0x4000
     assert not hasattr(result, "token_ids")
+
+
+def test_device_chain_oracle_trace_preserves_per_request_proposal_and_target_rows() -> None:
+    draft = DraftBatch(
+        request_ids=(10, 20),
+        candidate_tokens=(101, 102, 201),
+        parent_positions=(5, 6, 8),
+        draft_depths=(1, 2, 1),
+        row_to_request=(10, 10, 20),
+        tree_parents=(-1, 0, -1),
+        active_mask=(True, True, True),
+    )
+    batch = TargetVerifyBatch.from_draft(
+        draft,
+        root_tokens=(100, 200),
+        root_positions=(5, 8),
+    )
+    top1 = [0] * batch.rows
+    candidate_by_id = {
+        request_id: tuple(
+            sorted(
+                (
+                    row
+                    for row in batch.candidate_rows
+                    if batch.row_to_request[row] == request_id
+                ),
+                key=lambda row: batch.draft_depths[row],
+            )
+        )
+        for request_id in batch.request_ids
+    }
+    root_by_id = dict(zip(batch.request_ids, batch.root_rows, strict=True))
+    for row, value in zip(
+        (root_by_id[10], *candidate_by_id[10]),
+        (101, 102, 999),
+        strict=True,
+    ):
+        top1[row] = value
+    for row, value in zip(
+        (root_by_id[20], *candidate_by_id[20]),
+        (201, 888),
+        strict=True,
+    ):
+        top1[row] = value
+    summary = TargetAcceptSummary(
+        request_ids=(10, 20),
+        accepted_counts=(2, 0),
+        accepted_tokens=((101, 102), ()),
+        commit_rows=(candidate_by_id[10][-1], root_by_id[20]),
+        commit_tokens=(102, 200),
+        commit_positions=(7, 8),
+        full_accept=(True, False),
+        next_tokens=(999, 201),
+        candidate_counts=(2, 1),
+        transaction_id=7,
+    )
+
+    traces = mtp2_module._device_chain_oracle_trace_rows(
+        batch,
+        top1,
+        summary,
+        cycle_id=3,
+    )
+
+    assert traces == (
+        {
+            "cycle_id": 3,
+            "request_id": 10,
+            "root_token": 100,
+            "root_position": 5,
+            "candidate_tokens": [101, 102],
+            "target_top1": [101, 102, 999],
+            "accepted_count": 2,
+            "accepted_tokens": [101, 102],
+            "next_token": 999,
+        },
+        {
+            "cycle_id": 3,
+            "request_id": 20,
+            "root_token": 200,
+            "root_position": 8,
+            "candidate_tokens": [201],
+            "target_top1": [201, 888],
+            "accepted_count": 0,
+            "accepted_tokens": [],
+            "next_token": 201,
+        },
+    )
 
 
 def test_physical_accept_enqueue_keeps_candidate_and_target_ids_on_device(
