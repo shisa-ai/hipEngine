@@ -18,14 +18,27 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
-## 2026-08-26 speculative-MTP default capability migration
+## 2026-08-28 Qwen3.8 production verifier-Q4 selector — open
 
-- Dense generators still expose the legacy broad `supports_default_mtp`
-  boolean for compatibility and bisection, but OpenAI default admission now
-  requires an immutable model-plugin `SpeculativeMTPServingDecision` with
-  `automatic_eligible=true`. Remove the broad property and its remaining tests
-  after every model/plugin and non-server caller has migrated to the typed plan;
-  do not remove the independent explicit diagnostic hook or strict AR fallback.
+- `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` currently carries the resolved
+  Qwen3.8 production-profile decision from the cold-path binder into resident
+  sessions. The session freezes it once; hot verifier methods consume only the
+  typed boolean and never reread the environment.
+- Remove the environment handoff when `ResolvedRuntimePlan` (RF-1) carries
+  profile scope selections directly into `Qwen35GGUFResidentSession`. Preserve
+  the profile manifest selections, strict WMMA fallbacks, R8/actual-shape
+  bounds, and benchmark rollback evidence.
+
+## 2026-08-26 speculative-MTP default capability migration — closed
+
+- Dynamic Admission D7 removed the legacy broad `supports_default_mtp`
+  properties from the LLM, generator, and resident wrapper plus their redundant
+  tests/diagnostic reporting. OpenAI automatic admission now has one owner:
+  immutable model-plugin `SpeculativeMTPServingDecision` evidence with
+  `automatic_eligible=true` and exact static bounds.
+- Independent explicit diagnostics and the strict AR fallback remain. The D6
+  one-off `--force-cycle-k0` benchmark switch was also removed after its
+  fingerprinted evidence packet closed.
 
 ## 2026-08-27 automatic realized-singleton intent seam — closed
 

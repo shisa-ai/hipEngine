@@ -122,33 +122,44 @@ def test_automatic_realized_mtp_propagates_typed_static_intent() -> None:
     ) == _SPECULATIVE_MTP_BATCH_ROUTE
 
 
-def test_independent_frontend_c1_intent_survives_queue_c2_k0_selection() -> None:
+def test_automatic_width_above_static_bound_becomes_pure_k0() -> None:
     eligibility = _test_static_eligibility()
-    selected, decision = _serving_plan_route_decision(
-        {
-            "admitted": True,
-            "selected_candidate_count": 3,
-            "automatic_eligible": True,
-            "reason": eligibility.reason,
-            "plan_fingerprint": "sha256:test-plan",
-            "evidence_key": eligibility.evidence_key,
-            "evidence_fingerprint": eligibility.evidence_fingerprint,
-            "strict_fallback_key": eligibility.strict_fallback_key,
-            "static_intent_allowed": True,
-            "static_eligibility": eligibility.as_dict(),
-            "key": {"realized_group_rows": 1},
-        },
+    plan = {
+        "admitted": True,
+        "selected_candidate_count": 3,
+        "automatic_eligible": True,
+        "reason": eligibility.reason,
+        "plan_fingerprint": "sha256:test-plan",
+        "evidence_key": eligibility.evidence_key,
+        "evidence_fingerprint": eligibility.evidence_fingerprint,
+        "strict_fallback_key": eligibility.strict_fallback_key,
+        "static_intent_allowed": True,
+        "static_eligibility": eligibility.as_dict(),
+        "key": {"realized_group_rows": 1},
+    }
+    selected, automatic = _serving_plan_route_decision(
+        plan,
         requested_route=_SPECULATIVE_MTP_AUTO_ROUTE,
+        group_rows=2,
+        output_horizon_tokens=25,
+    )
+    _explicit_selected, explicit = _serving_plan_route_decision(
+        plan,
+        requested_route=_SPECULATIVE_MTP_BATCH_ROUTE,
         group_rows=2,
         output_horizon_tokens=25,
     )
 
     assert selected == _SPECULATIVE_MTP_DEFAULT_ROUTE
-    assert decision["reason"] == "physical_group_not_qualified"
-    assert decision["k0_class"] == "transitional_k0"
-    assert decision["static_eligibility"]["eligible"] is True
-    assert decision["static_eligibility"]["max_realized_group_rows"] == 1
-    assert _execution_route_for_static_intent(selected, decision) == (
+    assert automatic["reason"] == "physical_group_not_qualified"
+    assert automatic["k0_class"] == "pure_k0"
+    assert automatic["static_intent_allowed"] is False
+    assert _execution_route_for_static_intent(selected, automatic) == (
+        _SPECULATIVE_MTP_DEFAULT_ROUTE
+    )
+    assert explicit["k0_class"] == "transitional_k0"
+    assert explicit["static_intent_allowed"] is True
+    assert _execution_route_for_static_intent(selected, explicit) == (
         _SPECULATIVE_MTP_BATCH_ROUTE
     )
 
@@ -302,7 +313,6 @@ class ResidentSessionPromptFakeLLM(PromptPreparingFakeLLM):
 
 class SpeculativeMTPFakeLLM(FakeLLM):
     supports_speculative_mtp = True
-    supports_default_mtp = True
 
     def __init__(self, token_map: dict[str, list[int]] | None = None) -> None:
         super().__init__(token_map=token_map)
@@ -1973,27 +1983,6 @@ def test_capabilities_endpoint_does_not_infer_default_mtp_from_dense_boolean() -
     assert payload["automatic_route_promoted"] is False
     assert payload["certified_default_scopes"] == []
     assert "auto_route" not in payload
-
-
-def test_capabilities_endpoint_enabled_default_mtp_falls_back_for_non_dense() -> None:
-    class MoESpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
-        supports_default_mtp = False
-
-    app = create_app(
-        ServerConfig(
-            model="fake-path",
-            served_model_name="fake-model",
-            eager_load=False,
-            speculative_mtp_serving="enabled",
-        ),
-        llm=MoESpeculativeMTPFakeLLM(),
-    )
-    client = TestClient(app)
-
-    payload = client.get("/v1/hipengine/capabilities").json()["sampling"]["speculative_mtp"]
-
-    assert payload["policy"] == "enabled"
-    assert payload["default_enabled"] is False
 
 
 def test_capabilities_endpoint_advertises_live_stream_logprobs_when_engine_supports_metadata() -> None:
@@ -5598,7 +5587,7 @@ def test_generation_batcher_uses_registered_plain_ar_cap_without_widening_mtp() 
             (tuple(f"prompt-{index}" for index in range(8)), sampling),
         ]
         assert batcher._route_request_cap(_SPECULATIVE_MTP_DEFAULT_ROUTE) == 8
-        assert batcher._route_request_cap(_SPECULATIVE_MTP_AUTO_ROUTE) == 4
+        assert batcher._route_request_cap(_SPECULATIVE_MTP_AUTO_ROUTE) == 8
         assert batcher._route_request_cap(_SPECULATIVE_MTP_BATCH_ROUTE) == 4
 
     asyncio.run(run())
@@ -7082,7 +7071,7 @@ def test_mtp_summary_honors_batch_timing_ownership() -> None:
         )
 
     assert _mtp_accepted_rejected_counts(details) == (4, 2)
-    assert _mtp_response_summary("speculative_mtp", details) == {
+    expected = {
         "effective_route": "speculative_mtp",
         "used": True,
         "draft_tokens": 6,
@@ -7090,6 +7079,14 @@ def test_mtp_summary_honors_batch_timing_ownership() -> None:
         "rejected_draft_tokens": 2,
         "acceptance_rate": 4 / 6,
         "draft_cycles": 2,
+    }
+    assert _mtp_response_summary("speculative_mtp", details) == expected
+    # Frontend grouping may predict K0 before the resident due work selects K>0.
+    # Committed-cycle telemetry owns the effective route and records that change.
+    assert _mtp_response_summary("default", details) == {
+        **expected,
+        "selected_route": "default",
+        "decision_reason": "resident_dynamic_mtp",
     }
 
 
@@ -7337,7 +7334,7 @@ def test_completions_enabled_mode_requires_model_plugin_default_evidence() -> No
     )
     client = TestClient(app)
 
-    # A broad dense supports_default_mtp boolean is not artifact evidence.
+    # Automatic admission requires immutable model-plugin evidence.
     response = client.post(
         "/v1/completions",
         json={
@@ -7361,58 +7358,6 @@ def test_completions_enabled_mode_requires_model_plugin_default_evidence() -> No
     )
 
     # Existing operator-selected explicit compatibility remains independent.
-    explicit_response = client.post(
-        "/v1/completions",
-        json={
-            "model": "fake-model",
-            "prompt": "three",
-            "max_tokens": 3,
-            "temperature": 0.0,
-            "top_p": 1.0,
-            "speculative_mtp": True,
-        },
-    )
-    assert explicit_response.status_code == 200
-    assert explicit_response.json()["choices"][0]["text"] == "mtp:three"
-    assert len(fake.mtp_calls) == 1
-
-
-def test_completions_enabled_mode_falls_back_to_ar_when_engine_not_dense_default() -> None:
-    class MoESpeculativeMTPFakeLLM(SpeculativeMTPFakeLLM):
-        supports_default_mtp = False
-
-    fake = MoESpeculativeMTPFakeLLM()
-    app = create_app(
-        ServerConfig(
-            model="fake-path",
-            served_model_name="fake-model",
-            speculative_mtp_serving="enabled",
-            max_active_requests=4,
-        ),
-        llm=fake,
-    )
-    client = TestClient(app)
-
-    response = client.post(
-        "/v1/completions",
-        json={
-            "model": "fake-model",
-            "prompt": ["one", "two"],
-            "max_tokens": 3,
-            "temperature": 0.0,
-            "top_p": 1.0,
-        },
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert [choice["text"] for choice in body["choices"]] == [
-        "generated:one",
-        "generated:two",
-    ]
-    assert fake.mtp_calls == []
-    assert body["hipengine"]["generation_shape"]["route"] == "default"
-
-    # Explicit speculative_mtp=true still opts into MTP on the same engine.
     explicit_response = client.post(
         "/v1/completions",
         json={

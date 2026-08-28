@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_dynamic_admission_d3_lifecycle",
+  "created_at": "2026-08-27T16:20:00Z",
+  "status": "d3_binding_lifecycle_passed",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "Retain dynamic physical C1<->C2 switching, cancellation/survivor/refill, resource-pressure transitional K0 catch-up/re-entry, mixed acceptance, public blocking/SSE, and final drain. Automatic C2 remains pure K0; D4 width expansion is admitted.",
+  "source": {
+    "binding_commit": "15bf839a79270212f11336f020eece8773998842",
+    "openai_commit": "45aff44e04fd6594e717fadf1a4ed229d6b7241f",
+    "physical_c1_commits": [
+      "581582ffc52c803ca80c19a2facc9c3cd3dd7538",
+      "b5e0e53f1",
+      "938bbc7dc",
+      "20afb4889",
+      "216513fdb",
+      "45aff44e0"
+    ],
+    "transitional_catchup_commit": "15bf839a7",
+    "d2_artifact": "benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d2-c2-k1-functional.json"
+  },
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "hip_visible_devices": "0",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "execution_profile": "production",
+    "execution_profile_manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+    "candidate_budget": 1,
+    "resident_capacity": 4
+  },
+  "binding_sequence": {
+    "passed": true,
+    "sequence": [
+      "A physical C1 MTP",
+      "A+B physical C2 MTP",
+      "cancel B",
+      "A survivor physical C1 MTP",
+      "A+C resource_claim_miss transitional K0 with provider catch-up",
+      "A+C physical C2 MTP re-entry",
+      "cancel A",
+      "C survivor physical C1 MTP",
+      "C exact completion and final drain"
+    ],
+    "cycle_count": 18,
+    "key_cycle_indices": {
+      "initial_c1": 0,
+      "first_c2": 2,
+      "survivor_c1": 4,
+      "refill_c2": 6,
+      "final_c1": 8
+    },
+    "physical_c1": {
+      "proposal_width": 1,
+      "target_rows": 2
+    },
+    "physical_c2": {
+      "proposal_width": 2,
+      "target_rows": 4
+    },
+    "cancelled_requests": 2,
+    "cancel_reasons": ["cancelled", "cancelled"],
+    "resource_pressure_k0": {
+      "k0_classes": ["transitional_k0", "transitional_k0"],
+      "reasons": ["resource_claim_miss", "resource_claim_miss"],
+      "provider_catchup_and_reentry": true
+    },
+    "mixed_acceptance_observed": [[1, 1], [0, 1], [1, 0], [0, 1]],
+    "different_horizons": true,
+    "survivor_output_matches_independent_control": true,
+    "final_active": 0,
+    "final_pending": 0,
+    "final_active_children": 0,
+    "final_provider_states": 0,
+    "final_provider_groups": 0,
+    "final_current_allocated_bytes": 0,
+    "final_active_allocations": 0
+  },
+  "physical_c1": {
+    "passed": true,
+    "cycles": 2,
+    "candidate_counts": [1, 1],
+    "accepted_counts": [1, 1],
+    "proposal_physical_rows": [1, 1],
+    "target_physical_rows": [2, 2],
+    "device_accept_calls": 2,
+    "selected_commit_calls": 2,
+    "recoverable_failures": 0,
+    "note": "C4-bounded physical provider intent uses request-major device proposal plus packed target/selected commit for a single live request; it does not reopen the automatic singleton policy."
+  },
+  "openai": {
+    "passed": true,
+    "blocking_ids_match_ar_control": true,
+    "blocking_effective_route": "speculative_mtp",
+    "blocking_used": true,
+    "sse_text_matches_blocking": true,
+    "sse_done": true,
+    "sse_resident_mtp_used": true,
+    "following_health": true,
+    "final_drain": true,
+    "final_current_allocated_bytes": 0,
+    "final_active_allocations": 0
+  },
+  "reused_and_host_gates": {
+    "focused_host_bundle": "64/64 passed: engine loop, GGUF MTP2 seam, S4 neighbor/prefix, S6 failure/soak",
+    "d1_mixed_permanent_ar": "reused: transitional/pure K0 mixed disjoint execution and zero ownership",
+    "d2_failure_recovery": "reused: physical C2 proposal/target/postcommit recovery and following health",
+    "prefix_restore_cow": "reused S4 typed pre-mutation K0 evidence; physical C1 changes do not alter prefix admission",
+    "compaction_refill": "host identity/compaction tests plus real B cancellation, survivor A, C refill, A cancellation, survivor C"
+  },
+  "commands": {
+    "environment": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/compiler-version-gfx1151.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONDONTWRITEBYTECODE=1",
+    "binding": ".venv/bin/python /tmp/qwen38_d3_lifecycle.py",
+    "openai": ".venv/bin/python /tmp/qwen38_d3_openai_smoke.py",
+    "physical_c1": ".venv/bin/python /tmp/qwen38_d3_c1_probe.py",
+    "host": "uv run pytest -q tests/test_specdec2_engine_loop.py tests/test_qwen35_gguf_mtp2_seam.py tests/test_specdec2_s4_neighbor_gate.py tests/test_specdec2_s4_prefix_gate.py tests/test_specdec2_s6_failure_gate.py tests/test_specdec2_s6_soak_gate.py"
+  },
+  "raw_sources": [
+    {"path": "/tmp/qwen38-dynamic-admission-d3-binding-lifecycle.json", "sha256": "2ad3046a450b98e470bb93030849acd5112214f35dbc5e3b0c5fa33a28ececf5", "size_bytes": 48662, "retained_in_git": false},
+    {"path": "/tmp/qwen38_d3_lifecycle.py", "sha256": "ebfae0ccd8f4815d60723a90c16259fffc62e1c84a67a400dfd7771d45494086", "size_bytes": 10988, "retained_in_git": false},
+    {"path": "/tmp/qwen38-dynamic-admission-d3-openai-smoke.json", "sha256": "edc20fd4b6f6f31cace00bd7e9c57ce5c88dc45ffb4c6f7586ea187a6a5a0346", "size_bytes": 39348, "retained_in_git": false},
+    {"path": "/tmp/qwen38_d3_openai_smoke.py", "sha256": "58e69c8f501336444bd1d8be7bf795935ee40969f579f9c5ffc27f318cff5c1c", "size_bytes": 4026, "retained_in_git": false},
+    {"path": "/tmp/qwen38-d3-c1-probe.json", "sha256": "52e21aa8740964bb941e13f42e12e4f22363273aac39074e0ce6503e51c00745", "size_bytes": 18749, "retained_in_git": false},
+    {"path": "/tmp/qwen38_d3_c1_probe.py", "sha256": "7da0bb9df63d6dd861084602164a1653f25fd43a902677ce4971f59523c23988", "size_bytes": 3196, "retained_in_git": false}
+  ],
+  "next": "D4 width/packing expansion. Automatic C2 remains pure K0 and no performance promotion is made."
+}

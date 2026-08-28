@@ -17,8 +17,8 @@ from hipengine.speculative.serving import (
 
 
 _MODEL_SHA256 = "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
-_STRICT_MANIFEST_SHA256 = "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
-_PRODUCTION_MANIFEST_SHA256 = "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51"
+_STRICT_MANIFEST_SHA256 = "af82558349e40e6f1e9e383da3340d7eb0a03dc62734d03c464fd432867a692e"
+_PRODUCTION_MANIFEST_SHA256 = "534a8bac3ca74428e3c1a60e9c3cbd91254f8963ddfcd678949052783331c565"
 
 
 def _key(**changes) -> SpeculativeMTPServingKey:
@@ -97,6 +97,42 @@ def test_qwen38_q4km_production_c1_b3_context128_is_explicit_only() -> None:
     assert over.reason == "context_bucket_not_qualified"
 
 
+def test_qwen38_q4km_production_c2_k3_d24_is_automatic() -> None:
+    evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
+    key = _key(
+        execution_profile="production",
+        execution_profile_manifest_sha256=_PRODUCTION_MANIFEST_SHA256,
+        realized_group_rows=2,
+        resident_capacity=4,
+        context_tokens=128,
+        output_horizon_tokens=24,
+    )
+
+    singleton = resolve_speculative_mtp_serving_plan(
+        evidence,
+        key=replace(key, realized_group_rows=1),
+    )
+    decision = resolve_speculative_mtp_serving_plan(evidence, key=key)
+    over_horizon = resolve_speculative_mtp_serving_plan(
+        evidence,
+        key=replace(key, output_horizon_tokens=25),
+    )
+
+    assert singleton.admitted is True
+    assert singleton.automatic_eligible is True
+    assert singleton.static_eligibility.max_realized_group_rows == 2
+    assert singleton.reason == "qualified_automatic_production_cap4_c1_or_c2_k3_d24"
+    assert decision.admitted is True
+    assert decision.selected_route == "speculative_mtp"
+    assert decision.selected_candidate_count == 3
+    assert decision.reason == "qualified_automatic_production_c2_k3_d24"
+    assert decision.automatic_eligible is True
+    assert decision.static_eligibility.max_realized_group_rows == 2
+    assert decision.strict_fallback_key == "gguf_target_ar"
+    assert over_horizon.admitted is False
+    assert over_horizon.reason == "output_horizon_not_qualified"
+
+
 def test_qwen38_q4km_strict_c1_b3_plan_is_automatic_product_scope() -> None:
     decision = resolve_speculative_mtp_serving_plan((_evidence(),), key=_key())
 
@@ -166,6 +202,7 @@ def test_serving_resolver_selects_exact_physical_width_among_same_artifact_rows(
         evidence_key="qwen38-q4km-gfx1151-strict-bf16-c2-b3-natural25",
         realized_group_rows=2,
         resident_capacity=2,
+        max_realized_group_rows=2,
         reason="qualified_explicit_c2_b3",
         automatic_eligible=False,
     )
@@ -202,6 +239,7 @@ def test_serving_resolver_prefers_future_c2_intent_on_equal_score() -> None:
         evidence_key="future-c2",
         realized_group_rows=2,
         resident_capacity=2,
+        max_realized_group_rows=2,
         reason="qualified_future_c2",
         automatic_eligible=True,
     )
@@ -565,6 +603,7 @@ def test_llm_capability_selects_matching_row_for_resident_capacity() -> None:
         evidence_key="fake-c2-cap2",
         realized_group_rows=2,
         resident_capacity=2,
+        max_realized_group_rows=2,
     )
     calls = []
 

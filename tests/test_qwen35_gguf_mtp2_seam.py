@@ -199,6 +199,31 @@ def test_resident_runner_delegates_staged_methods_without_backend_branches() -> 
     assert runner.speculative_kv_live_spans_owner(SimpleNamespace(operation_id="op"))
 
 
+def test_resident_runner_bounds_cycle_intent_by_static_evidence_k() -> None:
+    runner = object.__new__(Qwen35GGUFResidentModelRunner)
+    adapter = _AdapterDouble()
+    adapter.candidate_budget = 3
+    runner._mtp2_adapter = adapter
+    runner._mtp2_adapter_resolved = True
+    runner.generator = SimpleNamespace(target_arch="gfx1151")
+    runner._rows = {7: SimpleNamespace(mtp2_candidate_budget=0)}
+    eligibility = SpeculativeMTPStaticEligibility(
+        state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+        reason="qualified_test_k2",
+        max_candidate_count=2,
+        max_realized_group_rows=4,
+        automatic_eligible=False,
+        strict_fallback_key="gguf_target_ar",
+        evidence_key="test-k2",
+        evidence_fingerprint="sha256:test-k2",
+    )
+
+    runner.register_speculative_request(7, 3, static_eligibility=eligibility)
+
+    assert runner._rows[7].mtp2_candidate_budget == 2
+    assert adapter.calls == [("register", 7, 2, eligibility)]
+
+
 def test_resident_runner_delegates_bounded_complete_cycle_when_plugin_selects_it() -> None:
     adapter = SimpleNamespace(
         staged_frontier=False,
@@ -307,6 +332,25 @@ def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
     assert capability.max_candidates_per_request == 3
     assert capability.max_frontier_rows == 16
     assert capability.max_context_tokens == 1023
+
+    adapter.register_request(
+        7,
+        3,
+        static_eligibility=SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="qualified_test_k2",
+            max_candidate_count=2,
+            max_realized_group_rows=4,
+            automatic_eligible=False,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key="test-k2-capability",
+            evidence_fingerprint="sha256:test-k2-capability",
+        ),
+    )
+    bounded = adapter.capability(semantics)
+    assert bounded is not None
+    assert bounded.max_candidates_per_request == 2
+    assert bounded.max_frontier_rows == 12
 
     target.runner = SimpleNamespace(fp16_recurrent_state=True)
     assert adapter.capability(semantics) is None
@@ -1749,7 +1793,8 @@ def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
     )
     plan = SimpleNamespace(
         request_ids=(7,),
-        reasons=(mtp2_module.SpecPlanReason.NO_PROVIDER,),
+        reasons=(mtp2_module.SpecPlanReason.RESOURCE_CLAIM_MISS,),
+        k0_classes=(mtp2_module.SpecK0Class.TRANSITIONAL,),
     )
 
     adapter.prepare_k0(plan, (), stream=None)
@@ -2463,6 +2508,7 @@ def test_mtp2_static_capability_requires_its_qualified_realized_width() -> None:
 
     assert adapter.capability((one,)) is not None
     assert adapter.capability((one, two)) is None
+    assert adapter.partition_max_requests((7, 8)) == 0
 
     adapter._static_eligibility_by_request = {
         rid: SpeculativeMTPStaticEligibility(
@@ -2477,8 +2523,82 @@ def test_mtp2_static_capability_requires_its_qualified_realized_width() -> None:
         )
         for rid in (7, 8)
     }
-    assert adapter.capability((one,)) is None
+    assert adapter.capability((one,)) is not None
     assert adapter.capability((one, two)) is not None
+
+
+def test_mtp2_physical_intent_allows_c1_before_or_after_c2() -> None:
+    target = SimpleNamespace(
+        runner=SimpleNamespace(fp16_recurrent_state=False),
+        _target_scratch_owner=SimpleNamespace(slot_count=4),
+        target_layout=SimpleNamespace(max_sequence_length=1024),
+        kv_storage_dtype="bf16",
+    )
+    row = SimpleNamespace(
+        native_greedy=True,
+        first_token_emitted=True,
+        lease=SimpleNamespace(session=target),
+        slot=SimpleNamespace(),
+    )
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.enabled = True
+    adapter.candidate_budget = 1
+    adapter.target_verify_mode = "native"
+    adapter.quant = "gguf_q4_k_m"
+    adapter.generator = SimpleNamespace(
+        backend="hip_gfx1151",
+        execution_profile="production",
+        execution_profile_fell_back_to_strict=False,
+        execution_profile_manifest_sha256="production-manifest",
+        execution_profile_manifest={
+            "selections": (
+                {
+                    "layer": "gdn_chain_recurrent_rmsnorm_gate",
+                    "scope": "specdec2_mtp2_target_state_rows",
+                    "selected_variant": "bf16_c1_exact_state_rows_tloop_fp16state",
+                    "strict_fallback_variant": "bf16_c1_exact_state_rows_tloop",
+                },
+            )
+        },
+    )
+    adapter.owner = SimpleNamespace(capacity=4, _row=lambda rid: row)
+    adapter._intents = {7: 1}
+    adapter._static_eligibility_by_request = {
+        7: SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="qualified_test_physical_c4",
+            max_candidate_count=1,
+            max_realized_group_rows=4,
+            automatic_eligible=False,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key="test-physical-c4",
+            evidence_fingerprint="sha256:test-physical-c4",
+        )
+    }
+    adapter._disabled_requests = set()
+    adapter._prompt_hidden_rows = {7: object()}
+    adapter._states = {}
+    semantics = (
+        SpeculativeRequestSemantics(7, "greedy", "verify_chain", 32, 25),
+    )
+
+    assert adapter.capability(semantics) is not None
+    assert adapter.partition_max_requests((7,)) == 4
+    adapter._active_claims = None
+    assert adapter.claims_fit(SimpleNamespace(speculative_request_ids=(7,))) is True
+
+    adapter._prompt_hidden_rows = {}
+    adapter._states = {
+        7: _MTP2RequestState(
+            request_id=7,
+            provider=SimpleNamespace(executor=SimpleNamespace(max_requests=4)),
+            provider_pool_key=None,
+            provider_group_key=(7, 8),
+            verifier=None,
+            root_hidden_buffer=SimpleNamespace(ptr=7),
+        )
+    }
+    assert adapter.capability(semantics) is not None
 
 
 def test_mtp2_long_prompt_selects_k0_before_provider_streaming() -> None:

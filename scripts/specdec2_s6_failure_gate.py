@@ -9,10 +9,33 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from hipengine import LLM
+from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
 from hipengine.generation.registry import GenerationRequest
 from hipengine.runtime.qwen35_gguf_mtp import Qwen35GGUFTransactionalVerifier
 from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNDraftProvider
 from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+
+def _set_owner_method(
+    owner: type[Any],
+    method_name: str,
+    method: Callable[..., Any],
+) -> None:
+    """Replace a class method without changing staticmethod binding semantics."""
+
+    descriptor = owner.__dict__.get(method_name)
+    setattr(
+        owner,
+        method_name,
+        staticmethod(method) if isinstance(descriptor, staticmethod) else method,
+    )
+
+
+def _resident_capacity(concurrency: int, requested: int | None) -> int:
+    capacity = int(concurrency) if requested is None else int(requested)
+    if capacity < int(concurrency):
+        raise ValueError("resident capacity cannot be smaller than concurrency")
+    return capacity
 
 
 def _request(prompt: str, *, max_tokens: int) -> GenerationRequest:
@@ -59,11 +82,37 @@ def _recent_rows(snapshot: dict[str, Any], request_ids: set[int]) -> list[dict[s
     ]
 
 
-def _failure_phase_specs() -> tuple[
+def _failure_phase_specs(
+    concurrency: int = 1,
+) -> tuple[
     tuple[str, type[Any], str, Callable[..., Any], bool], ...
 ]:
-    """Return C1 graph owners and whether failure follows owned target work."""
+    """Return active-path owners and whether failure follows target commit."""
 
+    if int(concurrency) > 1:
+        return (
+            (
+                "proposal",
+                Qwen35GGUFNextNDraftProvider,
+                "propose_batch_device",
+                Qwen35GGUFNextNDraftProvider.propose_batch_device,
+                False,
+            ),
+            (
+                "target",
+                Qwen35GGUFResidentSession,
+                "verify_target_blocks_batch",
+                Qwen35GGUFResidentSession.verify_target_blocks_batch,
+                False,
+            ),
+            (
+                "readback",
+                Qwen35GGUFMTP2Adapter,
+                "_read_target_batch_accept",
+                Qwen35GGUFMTP2Adapter._read_target_batch_accept,
+                True,
+            ),
+        )
     return (
         (
             "proposal",
@@ -90,12 +139,19 @@ def _failure_phase_specs() -> tuple[
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    concurrency = int(args.concurrency)
+    resident_capacity = _resident_capacity(
+        concurrency,
+        getattr(args, "resident_capacity", None),
+    )
+    candidate_budget = int(getattr(args, "candidate_budget", 2))
     llm = LLM(
         str(args.model),
         backend="hip_gfx1151",
         execution_profile=str(args.execution_profile),
-        max_active_requests=int(args.concurrency),
+        max_active_requests=resident_capacity,
         max_sequence_length=int(args.max_sequence_length),
+        speculative_candidate_budget=candidate_budget,
     )
     service = llm._get_text_generator()
     greeting = _request(
@@ -106,8 +162,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "Write one short farewell.",
         max_tokens=int(args.max_tokens),
     )
-    concurrency = int(args.concurrency)
-    phases = _failure_phase_specs()
+    phases = _failure_phase_specs(concurrency)
     results: list[dict[str, Any]] = []
     try:
         ar_greeting = _ids(
@@ -137,14 +192,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     raise RuntimeError(f"injected SPECDEC2 {__phase} failure")
                 return __original(*call_args, **call_kwargs)
 
-            setattr(owner, method_name, fail_once)
+            _set_owner_method(owner, method_name, fail_once)
             fault_ids = set(
                 range(next_request_id, next_request_id + concurrency)
             )
             fault_output, fault_errors = _outcomes(
                 service.submit_speculative_children((greeting,) * concurrency)
             )
-            setattr(owner, method_name, original)
+            _set_owner_method(owner, method_name, original)
             next_request_id += concurrency
             health_ids = set(
                 range(next_request_id, next_request_id + concurrency)
@@ -228,7 +283,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         final = service.live_loop_snapshot()
     finally:
         for _, owner, method_name, original, _fail_after in phases:
-            setattr(owner, method_name, original)
+            _set_owner_method(owner, method_name, original)
         llm.close()
 
     passed = bool(
@@ -245,6 +300,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "execution_profile": str(args.execution_profile),
         "workload": {
             "concurrency": concurrency,
+            "resident_capacity": resident_capacity,
+            "candidate_budget": candidate_budget,
             "max_sequence_length": int(args.max_sequence_length),
             "max_tokens": int(args.max_tokens),
         },
@@ -267,6 +324,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="strict",
     )
     parser.add_argument("--concurrency", type=int, choices=(1, 2), default=2)
+    parser.add_argument("--resident-capacity", type=int, default=None)
+    parser.add_argument("--candidate-budget", type=int, choices=(1, 2, 3), default=2)
     parser.add_argument("--max-sequence-length", type=int, default=256)
     parser.add_argument("--max-tokens", type=int, default=5)
     parser.add_argument("--output", type=Path, required=True)

@@ -22,11 +22,14 @@ import hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_pack8_gemv  # noqa: F401
 from hipengine.kernels.registry import KernelKey, register, resolve
 from hipengine.kernels.registry import _KERNELS
 from hipengine.loading.qwen35_gguf_materialize import (
+    LAYOUT_GGUF_Q4_K_T16,
     LAYOUT_GGUF_Q5_K_T16,
+    LAYOUT_GGUF_Q6_K_T16,
     LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
     LAYOUT_RAW_GGUF,
 )
 from hipengine.runtime.gguf_linear import (
+    GGUFLinearDispatch,
     GGUF_OUTPUT_BF16,
     GGUF_OUTPUT_F32,
     gemv_decode_session,
@@ -34,7 +37,10 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear,
     launch_gguf_linear_pair_concat,
     native_batch_decode_session,
+    target_verifier_production_q4_rowtile_session,
     q4k_rowtile_session,
+    target_verifier_rowtile_session,
+    _q4_t16_dense_native_dispatch,
     set_gemv_decode_enabled,
 )
 
@@ -91,7 +97,16 @@ _Q5_T16_WMMA = KernelKey(
     "hip_gfx1100", "linear", "gguf_q5_k_t16_v1", "t16_wmma_prefill_bf16_bf16_out"
 )
 
-# Planar-qmicro Q6T16 native batch decode family for the rows 5-8 rowtile.
+# Standard and planar-qmicro Q6T16 native batch decode families.
+_Q6_T16_DECODE = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_decode_bf16_bf16_out"
+)
+_Q6_T16_ROWTILE = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_rowtile_bf16_bf16_out"
+)
+_Q6_T16_WMMA = KernelKey(
+    "hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_wmma_prefill_bf16_bf16_out"
+)
 _Q6_PLANAR_DECODE = KernelKey(
     "hip_gfx1100",
     "linear",
@@ -132,6 +147,7 @@ def _capture_launch(
     extra_keys: tuple[KernelKey, ...] = (),
     remove_keys: tuple[KernelKey, ...] = (),
     native_batch_decode: bool = False,
+    target_verifier_rowtile: bool = False,
     libraries=None,
 ):
     weight = _fake_weight(layout=layout, quant_key=quant_key)
@@ -169,7 +185,10 @@ def _capture_launch(
             # registry stores ``None`` and the resolver treats it the same
             # as an unregistered key (see ``_KERNELS.get`` short-circuit).
             register(k, None, replace=True)
-        with native_batch_decode_session(native_batch_decode):
+        with (
+            native_batch_decode_session(native_batch_decode),
+            target_verifier_rowtile_session(target_verifier_rowtile),
+        ):
             launch_gguf_linear(
                 weight,
                 x_ptr=100,
@@ -230,6 +249,150 @@ def test_native_batch_decode_q6_planar_t16_rows_5_8_route_to_true_rowtile() -> N
             extra_keys=(_Q6_PLANAR_ROWTILE, _Q6_PLANAR_WMMA),
         )
         assert key == _Q6_PLANAR_ROWTILE
+
+
+def test_production_target_verifier_q4_scope_is_shape_local(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.runtime.gguf_linear as gguf_linear
+
+    original_capability = gguf_linear.backend_package_capability
+
+    def capability(backend: str, name: str, default=None):
+        if name == "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS":
+            return frozenset({8})
+        if name == "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES":
+            return frozenset({(5_120, 12_288), (17_408, 5_120)})
+        return original_capability(backend, name, default)
+
+    monkeypatch.setattr(gguf_linear, "backend_package_capability", capability)
+    dispatch = GGUFLinearDispatch(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_single_local32_bf16_bf16_out",
+        ),
+        "t16",
+    )
+    assert (
+        _q4_t16_dense_native_dispatch(
+            dispatch,
+            rows=8,
+            in_features=5_120,
+            out_features=12_288,
+        )
+        == dispatch
+    )
+    with target_verifier_production_q4_rowtile_session(True):
+        selected = _q4_t16_dense_native_dispatch(
+            dispatch,
+            rows=8,
+            in_features=5_120,
+            out_features=12_288,
+        )
+        excluded_shape = _q4_t16_dense_native_dispatch(
+            dispatch,
+            rows=8,
+            in_features=5_120,
+            out_features=1_024,
+        )
+        excluded_rows = _q4_t16_dense_native_dispatch(
+            dispatch,
+            rows=6,
+            in_features=5_120,
+            out_features=12_288,
+        )
+    assert selected.key.variant == "dense_rowtile_bf16_bf16_out"
+    assert excluded_shape == dispatch
+    assert excluded_rows == dispatch
+
+
+def test_target_verifier_scope_routes_only_backend_admitted_q5_q6(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.runtime.gguf_linear as gguf_linear
+
+    original_capability = gguf_linear.backend_package_capability
+
+    def capability(backend: str, name: str, default=None):
+        if name == "GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT":
+            return {
+                "gguf_q5_k_t16_v1": frozenset({(6_144, 5_120)}),
+                "gguf_q6_k_t16_v1": frozenset({(5_120, 10_240)}),
+                "gguf_q6_k_t16_qmicro_planar_v1": frozenset(
+                    {(5_120, 1_024), (17_408, 5_120)}
+                ),
+            }
+        if name == "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT":
+            return {
+                "gguf_q5_k_t16_v1": {
+                    "default": 4,
+                    "shapes": {(6_144, 5_120): 8},
+                },
+                "gguf_q6_k_t16_v1": 8,
+                "gguf_q6_k_t16_qmicro_planar_v1": 8,
+            }
+        return original_capability(backend, name, default)
+
+    monkeypatch.setattr(gguf_linear, "backend_package_capability", capability)
+    key, _, _ = _capture_launch(
+        rows=8,
+        in_features=17_408,
+        out_features=5_120,
+        target_verifier_rowtile=True,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        extra_keys=(_Q6_PLANAR_ROWTILE, _Q6_PLANAR_WMMA),
+    )
+    assert key == _Q6_PLANAR_ROWTILE
+
+    key, _, _ = _capture_launch(
+        rows=8,
+        in_features=5_120,
+        out_features=10_240,
+        target_verifier_rowtile=True,
+        quant_key="gguf_q6_k_t16_v1",
+        layout=LAYOUT_GGUF_Q6_K_T16,
+        extra_keys=(_Q6_T16_DECODE, _Q6_T16_ROWTILE, _Q6_T16_WMMA),
+    )
+    assert key == _Q6_T16_ROWTILE
+
+    # A quant match without an admitted actual shape keeps the old owner.
+    key, _, _ = _capture_launch(
+        rows=8,
+        in_features=1_024,
+        out_features=2_048,
+        target_verifier_rowtile=True,
+        quant_key="gguf_q6_k_t16_v1",
+        layout=LAYOUT_GGUF_Q6_K_T16,
+        extra_keys=(_Q6_T16_DECODE, _Q6_T16_ROWTILE, _Q6_T16_WMMA),
+    )
+    assert key == _Q6_T16_DECODE
+
+    key, _, _ = _capture_launch(
+        rows=8,
+        in_features=6_144,
+        out_features=5_120,
+        target_verifier_rowtile=True,
+        quant_key="gguf_q5_k_t16_v1",
+        layout=LAYOUT_GGUF_Q5_K_T16,
+        extra_keys=(_Q5_T16_DECODE, _Q5_T16_ROWTILE, _Q5_T16_WMMA),
+    )
+    assert key == _Q5_T16_ROWTILE
+
+    # The target-verifier scope must not act like the broad native-batch scope:
+    # unmeasured Q5 shapes retain their old owner.
+    key, _, _ = _capture_launch(
+        rows=8,
+        in_features=2_048,
+        out_features=1_024,
+        target_verifier_rowtile=True,
+        quant_key="gguf_q5_k_t16_v1",
+        layout=LAYOUT_GGUF_Q5_K_T16,
+        extra_keys=(_Q5_T16_DECODE, _Q5_T16_ROWTILE, _Q5_T16_WMMA),
+    )
+    assert key == _Q5_T16_DECODE
 
 
 def test_native_batch_decode_routes_c2_c8_q6_head_to_exact_pack8_and_restores() -> None:

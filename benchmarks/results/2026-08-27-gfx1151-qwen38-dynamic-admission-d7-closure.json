@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_dynamic_admission_d7_closure",
+  "created_at": "2026-08-27T18:30:00Z",
+  "status": "campaign_complete_automatic_c1_only",
+  "passed": true,
+  "performance_claim": true,
+  "decision": "Close Dynamic Admission. Retain the previously qualified strict Q4_K_M/BF16/cap4/realized-C1/K3 automatic cell at 1.5916x current-source true AR. Publish no automatic C2-C8 cell: all losing widths use normal-owner pure K0 before provider mutation. Keep production C1-C8 routes explicit/default-off as correctness-qualified diagnostics. Reopen C>1 only for a materially different target dataflow with a >=1.10x operation-complete premise.",
+  "source": {
+    "pure_k0_policy_commit": "ae90a95d1507f03898c06a4b3353d371e56f51f4",
+    "normal_width_auto_group_commit": "76eb142734a3ceef525675ce2f0b156388b067c0",
+    "cleanup_commit": "d36228260",
+    "d6_artifact": "benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d6-economics.json",
+    "d5_artifact": "benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d5-production-correctness.json"
+  },
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "hip_visible_devices": "0",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "retained_automatic_cell": {
+    "execution_profile": "strict",
+    "execution_profile_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941",
+    "resident_capacity": 4,
+    "realized_group_rows": 1,
+    "candidate_budget": 3,
+    "context_tokens": "1-67",
+    "output_horizon_tokens": 25,
+    "max_sequence_length": 1024,
+    "sampling": "raw greedy",
+    "evidence_key": "qwen38-q4km-gfx1151-strict-bf16-cap4-realized-c1-b3",
+    "evidence_fingerprint": "sha256:e348e5633a51b2d10cdc37bd23f083f0485141f114010ff59afccd7f2a558f2d",
+    "policy_fingerprint": "sha256:523481782ce6633258586459a207dcdfddd074108e45986e3ef1c86075eed3a2",
+    "static_eligibility_fingerprint": "sha256:36d6a8a81bd1760461281c388c5730d77df7df93a4e17afdef82df191098c140",
+    "current_source_full_suite": {
+      "cells": 10,
+      "ar_tok_s": 9.806788575381578,
+      "automatic_tok_s": 15.608969989089239,
+      "ratio": 1.5916494853649785,
+      "gain_percent": 59.16494853649785,
+      "minimum_cell_ratio": 1.4620774971934447,
+      "all_cells_above_1_10": true,
+      "all_categories_positive": true,
+      "accepted_draft_tokens": 165,
+      "draft_tokens": 210,
+      "acceptance_rate": 0.7857142857142857,
+      "ids_exact": true,
+      "final_current_allocated_bytes": 0
+    }
+  },
+  "automatic_c2_c8": {
+    "selected_policy": "pure_k0_true_ar",
+    "provider_mutation": false,
+    "mtp_cycles": 0,
+    "provider_catchups": 0,
+    "proposal_calls": 0,
+    "ids_match_normal_width_true_ar": true,
+    "cap4": {
+      "2": {"reason": "physical_group_not_qualified", "realized_group_rows": 2},
+      "3": {"reason": "physical_group_not_qualified", "realized_group_rows": 3},
+      "4": {"reason": "physical_group_not_qualified", "realized_group_rows": 4}
+    },
+    "cap8": {
+      "5": {"reason": "resident_capacity_not_qualified", "realized_group_rows": 5},
+      "6": {"reason": "resident_capacity_not_qualified", "realized_group_rows": 6},
+      "7": {"reason": "resident_capacity_not_qualified", "realized_group_rows": 7},
+      "8": {"reason": "resident_capacity_not_qualified", "realized_group_rows": 8}
+    },
+    "cap8_permanent_ar_policy_fingerprint": "sha256:ceffcbe5e6c33106374880bd38e4c31022741dc9de0884cc9d35bf8a19225015",
+    "cap8_permanent_ar_static_fingerprint": "sha256:65e3611052607e138d379e2df5962d3919fdd4f107fbed46f7059b161afbc3a1"
+  },
+  "explicit_default_off": {
+    "production_c1_c8_functional": true,
+    "production_correctness": true,
+    "physical_max_requests": 4,
+    "c5_c8_decomposition": {"5": [4, 1], "6": [4, 2], "7": [4, 3], "8": [4, 4]},
+    "automatic_promotion": false,
+    "best_c_gt_1_ratio": 0.8169989652710817,
+    "promotion_threshold": 1.1
+  },
+  "product_validation": {
+    "public_policy_requests": 72,
+    "fresh_server_lifecycles": 2,
+    "cap4_policy_passed": true,
+    "cap8_policy_passed": true,
+    "normal_ar_grouping_before_pure_k0": true,
+    "blocking_sse": "D3 current-source production blocking/SSE and following health pass",
+    "cancellation_refill_pressure": "D3 binding lifecycle passes",
+    "failure": "D2 pre/postcommit and D4 subgroup failure/following health pass",
+    "overload_restart_soak": "Retained S5 product packet plus current full server tests and two fresh D7 server lifecycles pass",
+    "complete_drain": true,
+    "final_current_allocated_bytes": 0,
+    "final_active_allocations": 0
+  },
+  "cleanup": {
+    "legacy_supports_default_mtp_properties_removed": true,
+    "one_off_force_cycle_k0_switch_removed": true,
+    "automatic_admission_owner": "typed model-plugin serving decision only",
+    "explicit_diagnostic_hook_retained": true,
+    "strict_ar_fallback_retained": true,
+    "focused_tests": "637/637 passed across LLM, server, C1-C8 benchmark, GGUF MTP2, and PARO gate",
+    "refactor_ledger_closed": true
+  },
+  "raw_sources": [
+    {"path": "/tmp/qwen38-dynamic-admission-d7-policy.json", "sha256": "f60e41e0f130cddd52d146c16f4735aad97fc4fd73c4597f71e9977f4f52de12", "size_bytes": 657094, "retained_in_git": false},
+    {"path": "/tmp/qwen38_d7_policy.py", "sha256": "bc804c456e82bae05a81b65412e75dc3c023730851a3160793e363867f598f45", "size_bytes": 4653, "retained_in_git": false},
+    {"path": "/tmp/qwen38-dynamic-admission-d7-auto-c1-suite.json", "sha256": "3f5e291eec2dd1a83e0df6b56738bfa6936cae910e93a95e499978b43e22fe16", "size_bytes": 715082, "retained_in_git": false}
+  ],
+  "reopen_trigger": "A materially different fused/shared-weight physical target dataflow with an operation-complete profile projecting >=1.10x true AR for a fixed C/K cell, followed by complete D5-D7 requalification.",
+  "next": "Campaign complete. Preserve automatic C1, pure K0 C2-C8, explicit diagnostics, and strict fallback."
+}

@@ -1,7 +1,7 @@
 # CONCURRENCY2 gfx1151 MTP Dynamic Admission Campaign
 
-- Status: **D1 typed static eligibility retained on merged source `998ba54f7`; D2 normal-owner production C2/K1 is next**
-- Scope: **D1 host/fake plus integrated gfx1151 blocking/SSE, C2 transitional-K0, and mixed-intent gates pass; automatic C2+ and arithmetic are unchanged**
+- Status: **D0-D7 complete; post-closure D6 reopen retains automatic production C2/K3 at 1.1441x AR; automatic strict C1/K3 remains 1.5916x and C3-C8 remains pure K0**
+- Scope: **production C2/K3 is qualified only for context1-128/D24; explicit production C1 remains available, C3-C8 and every scope miss use K0; typed model-plugin evidence is the sole automatic policy owner**
 - Hardware lane when execution is approved: **Radeon 8060S / `hip_gfx1151`**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile**
 - First functional width: **two independent resident requests (`C_due=2`)**
@@ -24,6 +24,31 @@ and its two worklogs instead of duplicating that code or GPU packet. D1 then
 replaced the temporary singleton-only bool/set with typed static eligibility,
 pure/transitional K0 telemetry, and mixed disjoint execution. Evidence:
 [`D1 closure`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d1-static-eligibility.json).
+D2 now proves real physical C2/K1-K3 through that seam; K1 is mechanically
+retained but economically rejected for automatic use. Evidence:
+[`D2 functional`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d2-c2-k1-functional.json).
+D3 now closes the binding physical C1↔C2 transition sequence plus pressure K0,
+refill, cancellation, public blocking/SSE, and final drain. Evidence:
+[`D3 lifecycle`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d3-lifecycle.json).
+D4 now gives every C1-C8 width a truthful explicit functional route: physical
+through C4 and decomposed into bounded C4 frontiers above it. Evidence:
+[`D4 widths`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d4-widths.json).
+D5 now binds the complete explicit capability packet to current-source
+production numerical, repeat, isolation, transition, and manifest evidence.
+Evidence:
+[`D5 correctness`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d5-production-correctness.json).
+D6 originally closed the three-arm economics matrix and rejected every
+automatic C>1 cell. A post-closure cycle-local audit later disproved its
+"mandatory model work is irreducible" inference and retained verifier-only Q6
+rowtiles; the policy verdict remains K0. Evidence:
+[`D6 economics`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d6-economics.json),
+[`D6 Q6 reopen`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json),
+[`D6 Q5 extension`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json),
+and [`D6 production-Q4 promotion`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json).
+D7 closes public policy and cleanup: current-source automatic C1 retains its
+full-suite win; C2-C8 group at the normal AR width and select pure K0 with zero
+provider mutation. Evidence:
+[`D7 closure`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json).
 
 ## 1. Executive decision
 
@@ -235,38 +260,46 @@ to zero ownership. Automatic policy and arithmetic remain unchanged. Evidence:
 
 ### D2 — normal-owner functional C2 (speed is not a gate)
 
-- [ ] Use two independent `EngineService`/OpenAI children, not one multi-prompt
+- [x] Use two independent `EngineService`/OpenAI children, not one multi-prompt
   request and not `legacy_prelaunch_fallback`.
-- [ ] Start explicit-only with production Q4_K_M C2/K1. Then cover K2/K3 after
+- [x] Start explicit-only with production Q4_K_M C2/K1. Then cover K2/K3 after
   K1 ownership passes.
-- [ ] Prove nonzero Generation-2 speculative cycles, one physical proposal group,
+- [x] Prove nonzero Generation-2 speculative cycles, one physical proposal group,
   target frontier R4/R6/R8, target execution, accept, selected commit, and
   committed publication.
-- [ ] Assert no hidden whole-request fallback and no per-request full target
+- [x] Assert no hidden whole-request fallback and no per-request full target
   backbone loop. Physical decomposition and weight sweeps are explicit.
-- [ ] Compare output, target state, Conv/GDN, KV/`KVLiveSpans`, provider cursor,
+- [x] Compare output, target state, Conv/GDN, KV/`KVLiveSpans`, provider cursor,
   following AR, and final ownership against independent controls.
-- [ ] Inject failure before proposal, after proposal, before target commit, and
+- [x] Inject failure before proposal, after proposal, before target commit, and
   after selected commit; preserve both requests or fail only the named request
   according to the transaction contract.
 
-Exit: real C2 MTP functions through the normal resident owner. It may be slower
-than AR and remains explicit/default-off.
+Exit passed. Full-suite C2/K1 executes **230** physical proposal-C2/target-R4/
+accept/selected-commit cycles with **220/230** drafts accepted, 10/10
+deterministic and diagnostically AR-equal cells, and zero final ownership.
+Proposal and packed-target precommit failures use exact AR fallback; postcommit
+readback failure rebuilds canonical target state before exact AR, and all
+following pairs re-enter C2 MTP. K2 executes only `(2,2)`/R6 after a RED caught
+and fixed static-K widening; K3 executes `(3,3)`/R8 plus a bounded tail. K1 is
+**7.757 vs 14.699 tok/s (0.5277x, -47.23%)**, so the functional route remains
+explicit/default-off and automatic C2 stays pure K0. Evidence:
+[`D2`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d2-c2-k1-functional.json).
 
 ### D3 — dynamic switching and lifecycle
 
-- [ ] Exercise delayed second arrival `C1 -> C2`, retirement/cancel `C2 -> C1`,
+- [x] Exercise delayed second arrival `C1 -> C2`, retirement/cancel `C2 -> C1`,
   and repeated `C1 -> C2 -> C1` without reconstructing the request scheduler.
-- [ ] Exercise two speculative peers with different remaining horizons and
+- [x] Exercise two speculative peers with different remaining horizons and
   accepted counts, including reject beside full accept.
-- [ ] Exercise mixed permanent-AR and speculative-capable peers, transitional
+- [x] Exercise mixed permanent-AR and speculative-capable peers, transitional
   K0, provider catch-up, and later MTP re-entry.
-- [ ] Exercise refill into a live provider group, survivor continuation, slot
+- [x] Exercise refill into a live provider group, survivor continuation, slot
   permutation/compaction, prefix restore/COW, pressure/regrow, and neighbor
   substitution.
-- [ ] Exercise blocking plus SSE disconnect/deadline/backpressure, overload,
+- [x] Exercise blocking plus SSE disconnect/deadline/backpressure, overload,
   restart, and repeated clean reopen.
-- [ ] Assert zero cross-talk, duplicate/missing output, stale workspace reads,
+- [x] Assert zero cross-talk, duplicate/missing output, stale workspace reads,
   delayed OOM, sticky fallback, active claims, provider rows, pages, collectors,
   and background owners.
 
@@ -280,42 +313,66 @@ C arrives while A is transitional K0 -> exact catch-up -> A+C execute C2 MTP
 A retires -> C survives -> final reclaim
 ```
 
-Exit: switching is mechanically safe and repeatable. Width expansion and
-production qualification are now admitted; performance tuning still waits for
-D5. Automatic serving remains unchanged.
+Exit passed. The binding A -> A+B -> A -> A+C -> C sequence executes physical
+C1/R2 and C2/R4 between transactions, cancels B and A truthfully, reuses the
+live provider group for C, crosses a typed `resource_claim_miss` transitional
+K0 with exact provider catch-up, re-enters C2, observes mixed accepted counts,
+and drains loop/service/provider/memory ownership to zero. Public production
+blocking/SSE and following health pass. Host controlled-neighbor, prefix/COW,
+failure, compaction/refill, and soak contracts plus D1 mixed permanent-AR
+coverage are green/reused. Width expansion and production qualification are now
+admitted; performance tuning still waits for D5/D6. Automatic serving remains
+unchanged. Evidence:
+[`D3`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d3-lifecycle.json).
 
 ### D4 — width/packing expansion
 
-- [ ] Wire the existing verifier-specific packing concepts into the actual
+- [x] Wire the existing verifier-specific packing concepts into the actual
   Generation-2 fairness owner rather than creating a second scheduler.
-- [ ] Bound groups by capability max requests, frontier rows, transaction bytes,
+- [x] Bound groups by capability max requests, frontier rows, transaction bytes,
   deadlines, and round budgets before mutation.
-- [ ] Prove C3/C4 using qualified physical groups and exact request mapping.
-- [ ] For C5-C8, choose and label either multiple <=C4 frontiers or a newly
+- [x] Prove C3/C4 using qualified physical groups and exact request mapping.
+- [x] For C5-C8, choose and label either multiple <=C4 frontiers or a newly
   qualified wider owner. A decomposed C8 route is not a physical C8 claim.
-- [ ] Serve each due speculative request at most once before a peer repeats;
+- [x] Serve each due speculative request at most once before a peer repeats;
   preserve AR progress and SLO guards.
-- [ ] Repeat shrinking, refill, mixed-K, failure, and ownership gates across
+- [x] Repeat shrinking, refill, mixed-K, failure, and ownership gates across
   every retained decomposition.
 
-Exit: every C1-C8 width has an explicit functional MTP or typed pre-mutation K0
-verdict. Only exact functional widths proceed to production/performance gates.
+Exit passed. Full-suite C3/C4 are physical `C3/R6` and `C4/R8`; C5-C8 lower in
+stable due order to `4+1`, `4+2`, `4+3`, and `4+4`, with corresponding bounded
+target frontiers. All 60 cells engage, are deterministic, and diagnostically
+match AR; C8 subgroup failure isolates one C4 fallback while its peer executes
+MTP and following health restores both. Wide mixed due work partitions eligible
+rows while decoding the AR peer once. Every width loses AR (**0.3346x-0.6613x**),
+so all automatic C>1 remains pure K0. Exact functional widths proceed to D5;
+none is performance-promotable. Evidence:
+[`D4`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d4-widths.json).
 
 ### D5 — Q4_K_M production correctness and serving qualification
 
-- [ ] Bind the selected production and strict-fallback variant manifests for
+- [x] Bind the selected production and strict-fallback variant manifests for
   every C/K/R/route/decomposition. Q4_K_S evidence is control only.
-- [ ] Run strict-teacher mean/p95/p99/max KL and top-1 gates by category, shape,
+- [x] Run strict-teacher mean/p95/p99/max KL and top-1 gates by category, shape,
   transition, and accepted depth; generated-ID equality remains diagnostic.
-- [ ] Run deterministic repeat, neighbor/permutation isolation,
+- [x] Run deterministic repeat, neighbor/permutation isolation,
   batch-composition invariance, BF16-relative/task gates where applicable, and
   finite-logit checks.
-- [ ] Run the full committed code/general English/general Japanese/mixed suite
+- [x] Run the full committed code/general English/general Japanese/mixed suite
   plus heldouts under blocking and SSE.
-- [ ] Bind dynamic transitions, K0 catch-up, failure recovery, memory/pressure,
+- [x] Bind dynamic transitions, K0 catch-up, failure recovery, memory/pressure,
   soak, and final drain to the production profile.
 
-Exit: explicit production C>N MTP is qualified independently of speed.
+Exit passed. Current-source Q4_K_M FP16 production state versus FP32 strict
+teacher passes **1,170** full-vocabulary rows at mean/p95/p99/max KL
+**0.000123912/0.000350302/0.001110228/0.049787716** and **99.7436%** top-1.
+Every category/shape/transition scope, three deterministic repeats, sparse/long
+contexts, c8->c4->c2->c1 retirement, neighbor substitution, permutation, and
+manifest gate pass. D4's 60/60 category/heldout functional cells and D2-D4
+blocking/SSE/lifecycle/failure/pressure/drain packets bind the integrated
+capability. Explicit production C>N MTP is correctness-qualified independently
+of speed; automatic C>1 remains pure K0 because economics still fail. Evidence:
+[`D5`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d5-production-correctness.json).
 
 ### D6 — economics and optimization (only after D5)
 
@@ -325,18 +382,18 @@ For each eligible width and K, measure three distinct arms:
 2. **intent K0:** provider activation/catch-up ownership present but cycle K=0;
 3. **engaged MTP:** nonzero proposal/target/accept/commit cycles.
 
-- [ ] Use same-host, same-process where ownership permits, counterbalanced true
+- [x] Use same-host, same-process where ownership permits, counterbalanced true
   AR and MTP with exact authoritative token counts and complete wall.
-- [ ] Report activation, provider priming/open, K0 catch-up, proposal, target,
+- [x] Report activation, provider priming/open, K0 catch-up, proposal, target,
   accept/commit, provider repair, scheduler, readback, reclaim, TTFT, ITL, E2E,
   goodput, memory, and occupancy separately.
-- [ ] Start with C2 K1/K2/K3, then C4 and other functional widths. Do not tune
+- [x] Start with C2 K1/K2/K3, then C4 and other functional widths. Do not tune
   C5-C8 before their physical decomposition and lifecycle are qualified.
-- [ ] Profile final cached target R4/R6/R8/R12/R16 families and only implement
+- [x] Profile final cached target R4/R6/R8/R12/R16 families and only implement
   kernel/dataflow work with a measured operation-complete premise.
-- [ ] Keep every exact non-regressive owner win. Do not use prompt/token/category
+- [x] Keep every exact non-regressive owner win. Do not use prompt/token/category
   features, fixed-suite reranking, or verifier-derived K0 as the AR baseline.
-- [ ] Rebuild the offline C/K/load LUT from retained evidence. Online adaptation
+- [x] Rebuild the offline C/K/load LUT from retained evidence. Online adaptation
   is out of scope until a fixed cell wins and passes the complete gate.
 
 Promotion requires `>=1.10x` true AR overall, no category/heldout/task/SLO
@@ -346,19 +403,90 @@ remain default-off; a losing automatic cell selects pure K0 before provider
 mutation unless a separately qualified transitional policy proves its shadow
 cost acceptable.
 
+The original exit retained no candidate. Full intent-K0 C1-C8 was exact and
+zero-cycle but cost **0.4969x-0.8782x AR**; C2 K1/K2/K3 measured
+**0.5277x/0.7617x/0.8170x AR**. Its whole-request profile correctly found GPU
+model-work dominance and negligible physical copies, but incorrectly treated
+that kernel wall as irreducible rather than checking for repeated weight
+streaming inside the active Q6 owners.
+
+**Post-closure D6-R1 (2026-08-28):** cycle-local markers isolate full-budget
+C2/K3 at **364.27 ms**, including **317.11 ms** target/accept/commit and only
+**11.61 ms** uncovered. The target was issuing 40 planar-Q6 direct launches
+(**84.32 ms**) and 24 standard-Q6 direct launches (**36.27 ms**) even though
+existing rows8 col8 rowtiles are BF16-bit exact. A verifier-only,
+backend/quant/actual-shape capability now routes only Qwen3.8 standard QKV and
+planar down/V through those registered rowtiles. Proposal, Q4/Q5, AR, prefill,
+and peer backends are unchanged; the old broad native-batch scope is not used.
+
+Clean tracing moves planar Q6 **84.32→13.40 ms** and standard Q6
+**36.27→8.83 ms**, reducing steady target **317.11→218.26 ms (-31.17%)** and
+cycle **364.27→265.93 ms (-27.00%)**. The complete ten-prompt C2 rerank is
+K1/K2/K3 **0.5850x/0.9422x/0.9747x AR**; K3 improves
+**11.724→14.154 tok/s (+20.73%)** with unchanged 314/398 acceptance and all 30
+cells exact/engaged/budget-conformed. General English reaches 1.017x AR, but
+code/Japanese/mixed and aggregate remain below AR; K3 still needs **12.86%**
+for the 1.10x gate. A single-prompt D128 screen remains only 0.899x complete
+AR, so no wider horizon claim is admitted. Retain the scoped exact owner win,
+but keep automatic C2-C8 pure K0. Evidence:
+[`D6-R1`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json).
+
+**Post-closure D6-R2 (2026-08-28):** the remaining 48 target Q5 recurrent-output
+calls were the same verifier-local routing miss. Existing exact K6144/N5120
+col8 ownership is BF16-bit identical through R8 and measures **0.5264→0.1519
+ms (3.46x)** at R8. Admitting only that actual shape replaces **27.51→8.27
+ms (-69.93%)** per steady cycle, reducing target **218.26→197.46 ms (-9.53%)**
+and cycle **265.93→244.75 ms (-7.96%)**. Clean ten-prompt C2/K3 improves
+**14.154→14.762 tok/s (+4.29%)** and **0.9747x→1.0233x AR**; code and English
+are positive, Japanese is 0.9987x, and mixed remains 0.9536x. This is the first
+aggregate C2 win but remains **7.50%** short of the binding 1.10x gate and fails
+category non-regression, so automatic C2 remains pure K0. Evidence:
+[`D6-R2`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json).
+
+**Post-closure D6-R3 (2026-08-28):** the final Q4 wall is not exact to gfx1151's
+strict WMMA schedule, so it is admitted only as a T2 production-profile route.
+At physical R8, six actual standard-Q4 shapes move from 264 strict small-M WMMA
+calls (**128.24 ms**) to 64 dual rowtile+SiLU plus 136 singleton rowtiles
+(**55.46 ms combined**); narrow K remains strict shared-B. Clean target/cycle
+becomes **124.28/172.36 ms**, down **37.06%/29.58%** from D6-R2.
+
+The combined strict-teacher D24 gate passes 240 canonical plus 192 category-
+heldout rows: canonical mean/p95/p99/max KL is
+`6.056e-5/3.389e-4/5.657e-4/0.001155`, top-1 99.583%; heldout max KL is
+`0.000727`, top-1 100%; all three repeats are exact. A D120 diagnostic reaches
+max KL **0.08574** and is rejected, so the manifest/evidence binds D24 only.
+Automatic C2/K3 measures **17.031 vs 14.887 tok/s (1.1441x AR)** with all ten
+cells exact/engaged/budget-conformed and category ratios
+**1.1290x/1.3282x/1.0766x/1.0874x**. Static admission now carries an evidence
+max-group2 bound independently of the current C1 row; actual C2 still owns K3.
+Promote only production context1-128/D24; C3-C8 and misses stay K0. Evidence:
+[`D6-R3`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json).
+
 ### D7 — automatic policy and closure
 
-- [ ] Publish exact static eligibility and dynamic cycle-policy fingerprints.
-- [ ] Prove independent HTTP children engage only retained C/K/load cells and
+- [x] Publish exact static eligibility and dynamic cycle-policy fingerprints.
+- [x] Prove independent HTTP children engage only retained C/K/load cells and
   use true AR for every losing/unqualified cell before speculative mutation.
-- [ ] Prove route changes occur only at transaction boundaries and terminal
+- [x] Prove route changes occur only at transaction boundaries and terminal
   telemetry reports actual MTP use rather than requested intent.
-- [ ] Run below/near/above-load, mixed AR/MTP, cancellation, overload, restart,
+- [x] Run below/near/above-load, mixed AR/MTP, cancellation, overload, restart,
   and soak with SLO-goodput and complete drain.
-- [ ] Remove superseded frontend concurrency guesses, temporary flags, duplicate
+- [x] Remove superseded frontend concurrency guesses, temporary flags, duplicate
   compatibility routes, and stale evidence rows according to `REFACTOR.md`.
-- [ ] Publish artifacts/worklogs and update benchmark rollup/changelog only for
+- [x] Publish artifacts/worklogs and update benchmark rollup/changelog only for
   retained product/default results.
+
+Exit passed. Exact retained C1 evidence/policy/static fingerprints are published
+in the closure artifact. The current 10-prompt automatic C1 suite reaches
+**15.609 vs 9.807 tok/s (1.5916x)**, every cell >=1.462x, all categories
+positive, and exact IDs. At D7 closure, cap4 C2-C4 and cap8 C5-C8 requests
+grouped at normal AR width and selected pure K0. D6-R3 later supersedes only
+the production context1-128/D24 C2/K3 cell; C3-C8 still use K0. Two fresh
+public server lifecycles drain; D2-D6
+bind mixed/cancel/pressure/failure/blocking/SSE/overload/soak correctness. Broad
+legacy default booleans and the one-off D6 K0 switch are removed; explicit
+diagnostics and strict AR fallback remain. Evidence:
+[`D7`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json).
 
 ## 6. RED contract inventory
 
@@ -465,3 +593,8 @@ The campaign closes only when:
 Closure may retain no automatic C>N cell if correct normal-owner MTP still loses
 true AR. That is a valid measured result. Closing before the normal-owner route
 and transition matrix work is not.
+
+**Definition of done passed at D7.** All eight conditions are satisfied. The
+measured closure retains no automatic C>N cell, preserves explicit production
+C1-C8 diagnostics and strict fallback, and publishes pure K0 for every losing
+automatic width.

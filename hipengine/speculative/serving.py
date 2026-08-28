@@ -154,6 +154,7 @@ class SpeculativeMTPServingEvidence:
     max_output_horizon_tokens: int
     reason: str
     evidence_artifacts: tuple[str, ...]
+    max_realized_group_rows: int | None = None
     strict_fallback_key: str = _DEFAULT_STRICT_FALLBACK
     automatic_eligible: bool = False
 
@@ -198,6 +199,16 @@ class SpeculativeMTPServingEvidence:
             if value <= 0:
                 raise ValueError(f"{name} must be positive")
             object.__setattr__(self, name, value)
+        max_group_rows = (
+            self.realized_group_rows
+            if self.max_realized_group_rows is None
+            else int(self.max_realized_group_rows)
+        )
+        if not self.realized_group_rows <= max_group_rows <= self.resident_capacity:
+            raise ValueError(
+                "max_realized_group_rows must cover the evidence row and fit capacity"
+            )
+        object.__setattr__(self, "max_realized_group_rows", max_group_rows)
         if self.max_context_tokens < self.min_context_tokens:
             raise ValueError("context-token bounds are invalid")
         if self.max_output_horizon_tokens < self.min_output_horizon_tokens:
@@ -228,6 +239,7 @@ class SpeculativeMTPServingEvidence:
             "kv_storage": self.kv_storage,
             "kv_layout": self.kv_layout,
             "realized_group_rows": self.realized_group_rows,
+            "max_realized_group_rows": self.max_realized_group_rows,
             "resident_capacity": self.resident_capacity,
             "candidate_budget": self.candidate_budget,
             "sampling_modes": list(self.sampling_modes),
@@ -390,6 +402,7 @@ class SpeculativeMTPServingDecision:
     evidence_fingerprint: str | None = None
     evidence_artifacts: tuple[str, ...] = ()
     automatic_eligible: bool = False
+    static_max_realized_group_rows: int | None = None
     static_eligibility_override: SpeculativeMTPStaticEligibility | None = None
 
     @property
@@ -405,7 +418,15 @@ class SpeculativeMTPServingDecision:
             ),
             reason=self.reason,
             max_candidate_count=(self.selected_candidate_count if eligible else 0),
-            max_realized_group_rows=(self.key.realized_group_rows if eligible else 0),
+            max_realized_group_rows=(
+                int(
+                    self.static_max_realized_group_rows
+                    if self.static_max_realized_group_rows is not None
+                    else self.key.realized_group_rows
+                )
+                if eligible
+                else 0
+            ),
             automatic_eligible=(self.automatic_eligible if eligible else False),
             strict_fallback_key=self.strict_fallback_key,
             evidence_key=self.evidence_key,
@@ -425,6 +446,7 @@ class SpeculativeMTPServingDecision:
                 "evidence_key": self.evidence_key,
                 "evidence_fingerprint": self.evidence_fingerprint,
                 "automatic_eligible": self.automatic_eligible,
+                "static_max_realized_group_rows": self.static_max_realized_group_rows,
                 "static_eligibility": self.static_eligibility.as_dict(),
             }
         )
@@ -443,6 +465,7 @@ class SpeculativeMTPServingDecision:
             "evidence_fingerprint": self.evidence_fingerprint,
             "evidence_artifacts": list(self.evidence_artifacts),
             "automatic_eligible": self.automatic_eligible,
+            "static_max_realized_group_rows": self.static_max_realized_group_rows,
             "static_eligibility": self.static_eligibility.as_dict(),
         }
 
@@ -547,6 +570,7 @@ def _admit(
         evidence_fingerprint=_canonical_sha256(row.as_dict()),
         evidence_artifacts=row.evidence_artifacts,
         automatic_eligible=row.automatic_eligible,
+        static_max_realized_group_rows=row.max_realized_group_rows,
     )
 
 

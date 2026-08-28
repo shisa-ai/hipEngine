@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_dynamic_admission_d4_widths",
+  "created_at": "2026-08-27T16:55:00Z",
+  "status": "retained_functional_all_widths_default_off",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "Retain explicit production K1 functional MTP at every realized C1-C8 width. C3/C4 are physical C3/R6 and C4/R8; C5-C8 lower truthfully to 4+1, 4+2, 4+3, and 4+4 frontiers under the resident fairness owner. Every width loses true AR, so automatic C>1 remains pure K0 and no performance promotion is made.",
+  "source": {
+    "c3_c4_suite_commit": "26c63e7236650ab412a313af9eab6b7db9a454f7",
+    "partition_commit": "9bfc7154aaf793b9a43dfe608663b1db0ab685b5",
+    "mixed_partition_commit": "0fba39f21ec1c12df5d1dd817404d782b4acb2ab",
+    "failure_commit": "0fba39f21ec1c12df5d1dd817404d782b4acb2ab",
+    "d3_artifact": "benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d3-lifecycle.json"
+  },
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "hip_visible_devices": "0",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "execution_profile": "production",
+    "execution_profile_manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+    "strict_fallback_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+  },
+  "protocol": {
+    "surface": "blocking OpenAI complete wall, independent children, normal resident capacity-8 owner",
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_cells_per_width": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "widths": [3, 4, 5, 6, 7, 8],
+    "candidate_budget": 1,
+    "max_tokens": 24,
+    "max_sequence_length": 1024,
+    "batch_window_ms": 50.0,
+    "sampling": "raw greedy",
+    "warmup": "one excluded AR and one excluded MTP arm per width",
+    "order": "counterbalanced by prompt index and width",
+    "correctness_contract": "MTP self-determinism binding for D4; generated-ID equality against AR is diagnostic until D5",
+    "automatic_policy": "unchanged; automatic C>1 remains pure K0"
+  },
+  "width_results": {
+    "3": {"decomposition": [3], "target_rows": [6], "ar_tok_s": 20.413478314717576, "mtp_tok_s": 13.498486572811345, "ratio": 0.6612536268784381, "min_cell_ratio": 0.6061371694146327, "max_cell_ratio": 0.7011635612185952, "cells": 10, "engaged_cells": 10, "deterministic_cells": 10, "diagnostic_ar_equal_cells": 10, "cycles": 345, "accepted_drafts": 330, "drafts": 345},
+    "4": {"decomposition": [4], "target_rows": [8], "ar_tok_s": 26.144940218181567, "mtp_tok_s": 15.364636479341163, "ratio": 0.5876715093292267, "min_cell_ratio": 0.5244899357785464, "max_cell_ratio": 0.6216023724468771, "cells": 10, "engaged_cells": 10, "deterministic_cells": 10, "diagnostic_ar_equal_cells": 10, "cycles": 460, "accepted_drafts": 440, "drafts": 460},
+    "5": {"decomposition": [4, 1], "target_rows": [8, 2], "ar_tok_s": 30.541695985793883, "mtp_tok_s": 10.647157581137389, "ratio": 0.34861055476715475, "min_cell_ratio": 0.3410043814077686, "max_cell_ratio": 0.3628801525610821, "cells": 10, "engaged_cells": 10, "deterministic_cells": 10, "diagnostic_ar_equal_cells": 10, "cycles": 575, "accepted_drafts": 550, "drafts": 575},
+    "6": {"decomposition": [4, 2], "target_rows": [8, 4], "ar_tok_s": 34.589584564194375, "mtp_tok_s": 11.573818319367287, "ratio": 0.33460414356488105, "min_cell_ratio": 0.30311765659212003, "max_cell_ratio": 0.3545297082115378, "cells": 10, "engaged_cells": 10, "deterministic_cells": 10, "diagnostic_ar_equal_cells": 10, "cycles": 690, "accepted_drafts": 660, "drafts": 690},
+    "7": {"decomposition": [4, 3], "target_rows": [8, 6], "ar_tok_s": 28.653909628653352, "mtp_tok_s": 14.509468433276515, "ratio": 0.5063695886988954, "min_cell_ratio": 0.4807164101129622, "max_cell_ratio": 0.5278046960580386, "cells": 10, "engaged_cells": 10, "deterministic_cells": 10, "diagnostic_ar_equal_cells": 10, "cycles": 805, "accepted_drafts": 770, "drafts": 805},
+    "8": {"decomposition": [4, 4], "target_rows": [8, 8], "ar_tok_s": 31.284299838002273, "mtp_tok_s": 15.294327831838386, "ratio": 0.4888818963836858, "min_cell_ratio": 0.45404148511104864, "max_cell_ratio": 0.5098235145303138, "cells": 10, "engaged_cells": 10, "deterministic_cells": 10, "diagnostic_ar_equal_cells": 10, "cycles": 920, "accepted_drafts": 880, "drafts": 920}
+  },
+  "topology": {
+    "physical_max_requests": 4,
+    "stable_request_order": true,
+    "one_due_service_per_fairness_tick": true,
+    "c5_c8_are_not_physical_width_claims": true,
+    "proposal_counts": {"c3": {"3": 345}, "c4": {"4": 460}, "c5": {"4": 460, "1": 115}, "c6": {"4": 460, "2": 230}, "c7": {"4": 460, "3": 345}, "c8": {"4": 920}},
+    "target_counts": {"c3": {"6": 345}, "c4": {"8": 460}, "c5": {"8": 460, "2": 115}, "c6": {"8": 460, "4": 230}, "c7": {"8": 460, "6": 345}, "c8": {"8": 920}}
+  },
+  "failure_and_fairness": {
+    "passed": true,
+    "c8_fault_decomposition": [4, 4],
+    "faulted_subgroup": [8, 9, 10, 11],
+    "faulted_subgroup_contract": "precommit exact AR fallback for four rows",
+    "peer_subgroup_contract": "other C4 frontier executes MTP in the same due tick",
+    "following_c8_contract": "both C4 frontiers execute MTP and match controls",
+    "mixed_wide_host_contract": "five speculative rows partition 2+2+1 while one permanent-AR peer decodes exactly once",
+    "automatic_singleton_guard": "max-realized-row=1 evidence returns no partition bound and remains composed K0",
+    "final_current_allocated_bytes": 0,
+    "final_active_allocations": 0
+  },
+  "raw_sources": [
+    {"path": "/tmp/qwen38-dynamic-admission-d4-c3-c4-k1.json", "sha256": "5b8682dccef830802156ba5ba7bab05059567d4ce393ed366228cab7bbe91496", "size_bytes": 2143569, "retained_in_git": false},
+    {"path": "/tmp/qwen38-dynamic-admission-d4-c5-c8-k1.json", "sha256": "678730acae2e2371ce1253197c5e56d96f34bd6ec0dcbde9082f22dd5f5345cc", "size_bytes": 10787193, "retained_in_git": false},
+    {"path": "/tmp/qwen38-dynamic-admission-d4-c8-failure.json", "sha256": "c99279377cceb8d807077f95eadd6208be17eb51b3ccd56e66d02d56449d4d38", "size_bytes": 225104, "retained_in_git": false},
+    {"path": "/tmp/qwen38_d4_c8_failure.py", "sha256": "0eddcfbe665d3b59ad42ac8709188bd36be12c0f40e574bcf361f3508e3da308", "size_bytes": 4814, "retained_in_git": false}
+  ],
+  "commands": {
+    "environment": "HIP_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/compiler-version-gfx1151.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONDONTWRITEBYTECODE=1",
+    "c3_c4": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --execution-profile production --widths 3,4 --resident-capacity 8 --expected-mtp-widths 3,4 --max-tokens 24 --candidate-budget 1 --batch-window-ms 50 --max-sequence-length 1024 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/qwen38-dynamic-admission-d4-c3-c4-k1.json",
+    "c5_c8": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --execution-profile production --widths 5,6,7,8 --resident-capacity 8 --expected-mtp-widths 5,6,7,8 --max-tokens 24 --candidate-budget 1 --batch-window-ms 50 --max-sequence-length 1024 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/qwen38-dynamic-admission-d4-c5-c8-k1.json",
+    "failure": ".venv/bin/python /tmp/qwen38_d4_c8_failure.py"
+  },
+  "next": "D5 production correctness. Automatic C>1 remains pure K0; D6 owns economics and any optimization decision."
+}

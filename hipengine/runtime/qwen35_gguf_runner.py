@@ -325,6 +325,7 @@ from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_F32,
     GGUF_OUTPUT_F32,
     Q6T16F16RocblasPrefillSession,
+    TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV,
     gemv_decode_session,
     gguf_gemv_decode_enabled,
     gguf_native_batch_decode_enabled,
@@ -346,6 +347,8 @@ from hipengine.runtime.gguf_linear import (
     q8_t16_rowtile_all_session,
     resolve_gguf_linear_dispatch,
     resolve_q8_mmq_prefill_policy,
+    target_verifier_production_q4_rowtile_session,
+    target_verifier_rowtile_session,
     wmma_prefill_session,
 )
 from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
@@ -14587,6 +14590,12 @@ class Qwen35GGUFResidentSession:
         # The full-stack runner has already resolved it against the detected
         # device, so keep the resident session on that concrete identity too.
         self.backend = self.runner.backend
+        # Freeze this experimental T2 axis at session construction so strict
+        # and candidate owners can coexist in one numerical evaluator process.
+        self.target_verifier_production_q4_rowtile = _env_flag(
+            TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV,
+            False,
+        )
         if self.runner.weights is None:
             raise RuntimeError("GGUF full-stack runner did not materialize weights")
         if self.small_weight_arena_enabled:
@@ -18483,8 +18492,8 @@ class Qwen35GGUFResidentSession:
 
         setup_start = time.perf_counter()
         job_list = list(jobs)
-        if len(job_list) <= 1:
-            raise NotImplementedError("packed target verifier requires at least two jobs")
+        if not job_list:
+            raise NotImplementedError("packed target verifier requires at least one job")
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         if self._prefill_token_buf is None or self._prefill_hidden_a is None or self._prefill_hidden_b is None:
@@ -18640,7 +18649,14 @@ class Qwen35GGUFResidentSession:
             layer_recurrent_states=packed_state.layer_recurrent_states,
         )
         block_wmma_prefill = bool(job_list[0].get("use_wmma_prefill", True))
-        with wmma_prefill_session(block_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
+        with (
+            wmma_prefill_session(block_wmma_prefill),
+            gemv_decode_session(self.use_gemv_decode),
+            target_verifier_rowtile_session(True),
+            target_verifier_production_q4_rowtile_session(
+                self.target_verifier_production_q4_rowtile
+            ),
+        ):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 layer_start = time.perf_counter()
                 if layer_type == LINEAR_ATTENTION:
@@ -25059,8 +25075,8 @@ class Qwen35GGUFResidentSession:
 
         result_tuple = tuple(results)
         sessions = tuple(destination_sessions)
-        if len(result_tuple) <= 1 or len(result_tuple) != len(sessions):
-            raise ValueError("packed device commit requires aligned C>1 rows")
+        if not result_tuple or len(result_tuple) != len(sessions):
+            raise ValueError("packed device commit requires aligned request rows")
         accepted = getattr(accept_buffers, "accepted_counts", None)
         commit_positions = getattr(accept_buffers, "commit_positions", None)
         if (
@@ -25163,10 +25179,10 @@ class Qwen35GGUFResidentSession:
         result_tuple = tuple(results)
         sessions = tuple(destination_sessions)
         accepted = tuple(int(value) for value in accepted_counts)
-        if len(result_tuple) <= 1 or not (
+        if not result_tuple or not (
             len(result_tuple) == len(sessions) == len(accepted)
         ):
-            raise ValueError("packed selected-state commit requires aligned C>1 rows")
+            raise ValueError("packed selected-state commit requires aligned request rows")
         accepted_device = getattr(accept_buffers, "accepted_counts", None)
         if (
             not isinstance(accepted_device, Tensor)
