@@ -18,6 +18,17 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-08-28 Qwen4Exp native c2 runner pool
+
+- `Qwen4ExpResidentServingRunner` provides request-owned c2 residency and
+  scheduler-native stream events while invoking one request transition at a
+  time inside each resident-loop tick. Collapse the runner pool into packed
+  c-aware kernels only after a complete exact c2 performance packet proves a
+  gain; do not relabel the current functionality result as native batch math.
+- The primary generator runner is reused as one pool row and a second runner is
+  allocated lazily/eagerly by resident prepare. Remove the dedicated pool once
+  Qwen4Exp owns a multi-slot state/KV slab; preserve shared-once weights/PLE.
+
 ## 2026-08-28 Qwen4Exp bounded general multimodal
 
 - `Qwen4ExpVisionRunner` preallocates at most 256 patch tokens per temporal pair
