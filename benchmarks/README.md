@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-27**
+Last updated: **2026-08-28**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -95,44 +95,19 @@ llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hi
 
 ## Current default notes
 
-Strix Halo Qwen3.8 `Q4_K_M` automatic MTP is limited to the content-verified
-strict/BF16/C1/B3/natural25/raw-greedy key; every other typed scope selects
-K0/strict AR. [`Serving closure`](results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json).
+Strix Halo Qwen3.8 `Q4_K_M` automatic MTP is restricted to its verified
+strict/BF16/C1/B3/raw-greedy key; other scopes use K0/AR.
+[`Serving closure`](results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json).
+Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback; its exact
+DMS sidecar remains default-off pending serving gates. [`DMS`](../docs/DMS.md).
 
-Strix Halo Qwen3.8 `Q4_K_S` defaults to FP16 recurrent state with FP32 rollback
-([`evidence`](results/2026-08-20-gfx1151-qwen38-27b-r2-fp16-state-repaired-production.json)).
-The exact `Q4_K_M` W8192 DMS sidecar passes 32K/128K at 100% top-1, saves
-3.750 GiB live K/V at 128K, and matches dense c1 decode. It stays default-off
-pending serving gates. [`DMS status`](../docs/DMS.md).
-
-### Agentic quality (quality-only; no speed claim)
-
-| Model | Overall | Development | Sealed heldout | Code / instruction / repository / tool | Valid calls |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Qwen3.6-35B-A3B `UD-Q4_K_M` (reference) | 44/68 (64.71%) | 20/34 | 24/34 | 14/16 · 4/16 · 10/16 · 16/20 | 56/64 |
-| Qwen3.8-27B `Q4_K_M` | **50/68 (73.53%)** | **22/34** | **28/34** | 14/16 · **12/16** · 10/16 · 14/20 | **64/64** |
-| Ornith-1.5-35B-A3B `Q4_K_M` | 42/68 (61.76%) | 16/34 | 26/34 | 14/16 · 4/16 · 10/16 · 14/20 | 60/64 |
-
-All 34 repeat pairs, 10 controls, and ownership gates pass; these are same-host
-model-quality rows. The campaign retains **no implementation** because all seven
-development failures are model-owned. [`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
-
-gfx1151 Qwen3.8 `Q4_K_S` P9 is exact in **540/540** fixed cells. C1/K2 reaches
-**1.4087x AR**, but capacity-4 automatic serving executes zero speculative
-cycles (`physical_streaming_category_rejected`); physical C2/C4 is
-**0.6975x/0.5843x AR**. No automatic cell promotes: K0 remains default and
-production FP16 stays explicit-compatible.
-[`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json) · [`P9 no-go`](results/2026-08-26-gfx1151-specdec2-perf-p9-product-no-go.json)
-
-gfx1100 dense C1 K1/K2/K3 remains exact at **1.272x/1.407x/1.439x AR** but
-2.7%-3.9% behind direct; packed PARO is **0.979x AR**. Automatic stays K0.
+Agentic quality is quality-only: Qwen3.8-27B `Q4_K_M` scores **50/68 (73.53%)**
+with 64/64 valid calls; no runtime mechanism is retained.
+[`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
+Generation-2 automatic serving remains K0: gfx1151 P9 is exact 540/540 but c2/c4
+are 0.6975x/0.5843x AR; gfx1100 exact speculative cells remain behind direct.
+[`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json) ·
 [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
-
-Physical C2 target repair plus exact R6 projection routing moves D24 K2
-acceptance **18.43%→74.28%** and throughput **16.974→22.393 tok/s (+31.93%)**,
-now **0.7156x** true AR with 10/10 exact. Capability stays false/K0. P512/d128
-AR keeps C1 exact at **77.176 vs old 72.169 tok/s**; C8 raw **161.882** remains
-diagnostic. [`C2 target`](results/2026-08-26-w7900-specdec2-c2-r6-target-rowtile-retained.json) · [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
 
 ## Where detailed evidence lives
 
@@ -142,19 +117,10 @@ for protocols, and [`worklog/entries/`](../worklog/entries/) for decisions.
 
 ## Benchmark harness catalog
 
-There is no single "run everything" benchmark. Different questions are answered
-by different harnesses, each with a specific timing scope, numerical contract,
-and shape. The table below is the map: it says what each harness measures so a
-result is only compared against like-for-like rows. A ✓ marks what a harness
-owns and reports; a column left blank means that axis is not measured by that
-harness (not that it is zero). Always run hipEngine rows through the hermetic
-thecrock wrapper for the target architecture (see `docs/BENCHMARK.md`).
-
-Legend: **AR** = true no-MTP autoregressive decode · **MTP** = speculative
-multi-token-prediction decode (with a true-AR denominator where a ratio is
-reported) · **Prefill** = prompt-processing tok/s · **Decode** = generation
-tok/s · **Mem** = tracked/HIP/GTT memory usage · **Conc** = per-concurrency
-(c=1..8) sweep.
+Compare only matching harness scopes. ✓ marks a reported axis; blanks are
+unmeasured. **AR/MTP/Prefill/Decode/Mem/Conc** mean true autoregressive,
+speculative, prompt, generation, memory, and concurrency respectively. Use the
+hermetic target-architecture wrapper; see `docs/BENCHMARK.md`.
 
 | Harness (`scripts/`) | What it answers | AR | MTP | Prefill | Decode | Mem | Conc | Canonical entrypoint |
 | --- | --- | :-: | :-: | :-: | :-: | :-: | :-: | --- |
@@ -173,16 +139,7 @@ tok/s · **Mem** = tracked/HIP/GTT memory usage · **Conc** = per-concurrency
 | `exact_token_generation.py` | Direct/HTTP generated-token identity gate (correctness, not throughput) | ✓ | ✓ | | | | | `direct --model-path ...` then `http --oracle ...` |
 | `benchmark_matrix.py` | Join exact-token direct/server rows into a validated matrix report | ✓ | ✓ | | | | | `build --manifest ...` |
 
-The two rows that most closely produce the README **concurrency scoreboards**
-are `qwen35_batch_retained_bench.py` (direct engine) and `server_f1_concurrency_bench.py`
-(OpenAI server). The **single-request** tables come from `qwen35_readme_sweep.py`
-(GGUF/PARO) and `qwen35_gguf_bench.py`. The **speculative-decode** tables come
-from `gguf_ar_mtp_suite.py` / `gguf_mtp_category_bench.py` with a
-`gguf_true_ar_category_bench.py` true-AR denominator.
-
-This catalog is maintained alongside the harnesses themselves: when a harness
-learns a new axis (for example MTP added to a previously AR-only bench), update
-this table in the same unit.
+Keep this catalog synchronized whenever a harness gains a measured axis.
 
 ## Evidence status
 
@@ -235,108 +192,16 @@ general-Japanese/mixed prompts measured:
 | Qwen3.8-Flash-Next `UD-Q4_K_XL` | real ≤2,051-token canonical text gate | **0.01406 / 0.04154 / 0.04776 / 0.04931** | **10/10** | 82.718 GB / **0 B** |
 | Qwen3.8-Flash-Next `UD-Q4_K_XL` | predeclared eight category heldouts, matched BF16 K/V | **0.00987 / 0.02331 / 0.02766 / 0.02874** | **8/8** | same residency / **0 B** |
 
-The exact chunk64 prefill default additionally passes all 687 teacher-forced
-category+heldout rows bit-for-bit and improves same-residency natural-suite
-prefill **5.265→12.117 tok/s (2.301x)**; warm repeated-token p512 is 16.555
-tok/s. At the first selected-QSA row (2,052 tokens), chunk64 is bit-exact to
-serial and improves **370.565→136.129 s (2.722x)**. The heldout row is admitted as its predeclared subset; the containing merged
-18-prompt diagnostic is not called a pass because one repeated canonical row
-exceeded the ceiling. The scanner validates 111.335 GB across four exact hashes, 1,224 tensors, one
-28.800-GB IQ4_NL sparse-mmap PLE table, 82.523 GB hot weights, and zero
-alternate/replacement layouts. `"The answer to 2 + 2 is"` generated
-`" 4.\n\n"` through the public API. A separate repeated-token structural gate
-qualifies only the first native sparse-QSA row at token 2,052: teacher→strict
-serial KL `7.65e-5`, teacher→size-2 chunk KL `4.98e-5`, top-1 exact, and clean
-teardown. A repeated-token structural 4K checkpoint also passes teacher→strict/
-chunk KL `4.40e-5/4.78e-5`, strict→chunk KL `3.19e-5`, top-1 exact, and clean
-teardown. A chunk-only repeated-token 16K checkpoint passes teacher KL
-`7.55e-5`, top-1 exact, and clean teardown in 2,434.172 s. A chunk-only
-repeated-token 64K checkpoint passes teacher KL `5.74e-6`, top-1 exact, and
-clean teardown in 10,336.580 s; strict remains measured through 4K. The real
-complete 262,144-token owner also allocates at
-91.126 GB tracked, leaves 38.915 GB physical memory free, and tears down to zero
-tracked bytes; this is capacity-only evidence. On the same artifact, an exact
-Q5_1 wave-tail reduction cuts its 43-launch decode bucket 45.096→38.157 ms and
-raises a warm 32-token eager diagnostic from 5.74→5.89 tok/s; this is not a
-serving/topline decode claim. A default-off grouped/WMMA/peer prefill candidate
-reaches 211.76 tok/s on a warm repeated-token p512 and 35.75 tok/s over the
-18-prompt natural suite (6.60x after the PLE ownership fix), but remains blocked
-from promotion by strict→candidate mean/p95 KL `0.00476/0.01458`; max KL is
-`0.01548` and final-row top-1 is 100%. The binding 687-row packet rejects the
-profile at mean/p95/max KL `0.01280/0.05553/0.82237` and 94.47% top-1, so it is
-not offered as a user-facing fast profile. A natural chat-formatted 4K
-retrieval row now returns `VIOLET-7391` exactly, retains its token-720 block in
-all 12 QSA layers, matches the Transformers CPU control 2,048/2,048 positions,
-replays/rolls back bit-exactly, and tears down to zero. Persistent compressed
-QSA keys reduce pool launches 24,540→384 and prepared block work 18,849,792→
-12,288; exact device radix top-512 then removes 24,540 score D2H synchronizations
-and 403.341 MB metadata H2D. Same-gate wall moves
-**304.944→303.528→294.434 s**; the device-selection step is a measured
-**3.00%** win. Production wave32 H128 sparse attention further improves its
-primitive **1,982→1,796 us (-9.41%)** and paired natural 4K
-**298.078→290.941 s (-2.39%)**; four sparse categories retain bit-exact final
-logits/control and the retrieval IDs remain identical. Exact chunk-batched QSA
-score/top-k then reduces launches **49,080→768** and paired natural 4K
-**295.706→290.971 s (-1.60%)**. Exact grouped Q4_K gate/up subsequently
-reduces paired natural 4K **291.624→231.798 s (-20.51%, 1.258x)** with the
-strict reduction tree and exact final logits/control/IDs. Exact output4
-scheduling then cuts full-shape CTAs **327,680→81,920** and paired natural 4K
-**235.774→228.569 s (-3.06%)**. Exact Q5_1-down output8 scheduling then
-cuts full-shape CTAs **1,310,720→163,840** and paired natural 4K
-**237.131→222.228 s (-6.28%)**. Exact fixed-worker Q4/Q5 scheduling plus raw-
-Q8 FP32 coltile8/rowbatch4 now improves natural p508 **14.718→11.988 s
-(42.376 tok/s, 1.228x)** and paired p1012 **31.346→24.432 s (41.422 tok/s,
-1.283x)** with bit-exact logits; profiled kernel wall falls 14.230→11.692 s.
-Exact Q4 metadata reuse plus chunk256 then crosses the next ladder gate:
-p508 first/steady reaches **51.220/58.466 tok/s** and p1006 **55.046 tok/s**,
-all with bit-exact logits. Natural 16K now
-passes at **17.301 prompt tok/s** with retrieval, all-layer needle control,
-independent CPU index selection, replay/rollback, and teardown exact. The permitted current-default natural 4K requalification now improves
-**222.228→146.883 s (-33.90%, 27.886 tok/s)** with exact retrieval/control/
-CPU-oracle/lifecycle. The short-prefill 50 tok/s prerequisite is now met, so a
-current 16K rerun is eligible but has not yet been performed. Historical natural
-16K/64K evidence remains retained. Natural retrieval above 4K,
-strict-above-4K, 262K inference, and broader lifecycle gates remain open, so
-the implementation-first 512/1K gate now includes explicit MTP, blocking/SSE,
-chat/tool/reasoning and c2 isolation. <=1K multimodal now covers general
-merge-compatible grids, multiple images, videos, explicit text T/H/W MRoPE,
-and bounded PNG chat input; a 32×64 encoder matches Transformers at relative
-L2 1.48e-6. Q8 MTP is exact on all 10 category+heldout prompts with 84.28%
-acceptance but is **0.955x AR**, so AR remains default. Native <=1K c2 serving also passes exact c1-vs-c2 IDs, request-owned state,
-two simultaneous blocking chats, two simultaneous SSE chats, admission/
-cancellation, and zero shutdown; model transitions remain per-request serial,
-so no c-aware throughput claim is made. Long-context multimodal, remote media
-URLs, multimodal SSE, and broader capacities remain open.
-[`Bring-up artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json) ·
-[`Exact prefill promotion`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json) ·
-[`Heldout artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json) ·
-[`2,052 transition artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-transition.json) ·
-[`Exact 2,052 prefill`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-2052-exact-prefill.json) ·
-[`4K structural artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-4k.json) ·
-[`Natural 4K retrieval`](results/2026-08-27-gfx1151-qwen38-flash-next-natural-4k-qsa.json) ·
-[`Persistent QSA pool`](results/2026-08-27-gfx1151-qwen38-flash-next-persistent-qsa-pool.json) ·
-[`Device QSA top-k`](results/2026-08-27-gfx1151-qwen38-flash-next-device-qsa-topk.json) ·
-[`Wave32 sparse attention`](results/2026-08-27-gfx1151-qwen38-flash-next-wave32-sparse-attention.json) ·
-[`Batched QSA selection`](results/2026-08-27-gfx1151-qwen38-flash-next-batched-qsa-selection.json) ·
-[`Exact grouped Q4_K`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-gate-up.json) ·
-[`Exact grouped Q4_K output4`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-out4.json) ·
-[`Exact grouped Q5_1 output8`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q5-1-out8.json) ·
-[`Exact scheduling wave`](results/2026-08-28-gfx1151-qwen38-flash-next-exact-scheduling-wave.json) ·
-[`All-Q4 exact grouping`](results/2026-08-28-gfx1151-qwen38-flash-next-all-q4-grouped.json) ·
-[`Exact Q4 metadata + chunk256`](results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json) ·
-[`Basic MTP full suite`](results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json) ·
-[`General multimodal`](results/2026-08-28-gfx1151-qwen38-flash-next-general-multimodal.json) ·
-[`Native c2 serving`](results/2026-08-28-gfx1151-qwen38-flash-next-native-c2-serving.json) ·
-[`Natural QSA 16K`](results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-16k.json) ·
-[`Natural QSA 64K`](results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-64k.json) ·
-[`Current natural QSA 4K`](results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-4k-current.json) ·
-[`16K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json) ·
-[`64K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-64k.json) ·
-[`262K capacity artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-262k-capacity.json) ·
-[`Exact Q5 wave-tail artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-q5-wave-tail.json) ·
-[`Blocked prefill candidate`](results/2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json) ·
-[`PLE staging correction`](results/2026-08-27-gfx1151-qwen38-flash-next-ple-staging-fix.json) ·
-[`Full-row rejection`](results/2026-08-27-gfx1151-qwen38-flash-next-fast-allrows-rejected.json).
+The pinned 111.335-GB/four-hash artifact owns one 28.800-GB sparse-mmap PLE
+table and 82.523 GB hot weights. Exact batching passes 687/687 rows; p508
+first/steady is **51.220/58.466 tok/s** and p1006 is **55.046 tok/s**. Current
+natural 16K improves **946.999→364.306 s (-61.53%, 44.973 tok/s)** with every
+binding control exact; 64K historical evidence is retained but not rerun because
+44.973<100 tok/s. 262K is capacity-only (91.126 GB tracked), not inference. Q8 MTP is exact on 10/10
+prompts but remains opt-in at **0.955x AR**. <=1K image/video/PNG chat and
+request-owned c2 blocking/SSE pass with zero teardown; packed c-aware speed,
+remote media, multimodal SSE, and 128K+/262K inference are not claimed.
+Evidence: [`prefill`](results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json) · [`MTP`](results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json) · [`multimodal`](results/2026-08-28-gfx1151-qwen38-flash-next-general-multimodal.json) · [`closure`](results/2026-08-28-gfx1151-qwen38-flash-next-working-scope-closure.json).
 
 ## Current Qwen3.6-35B quantization quality
 

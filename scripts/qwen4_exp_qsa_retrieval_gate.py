@@ -92,6 +92,7 @@ def main() -> int:
     parser.add_argument("model", type=Path)
     parser.add_argument("--target-tokens", type=int, default=4_096)
     parser.add_argument("--max-tokens", type=int, default=128)
+    parser.add_argument("--prefill-chunk-size", type=int, default=256)
     parser.add_argument("--json-out", type=Path, required=True)
     parser.add_argument("--teacher-logits", type=Path)
     parser.add_argument("--teacher-tokens", type=Path)
@@ -108,7 +109,7 @@ def main() -> int:
             model_plugin=resolve_model(info.architecture or ""),
             backend="hip_gfx1151",
             max_sequence_length=args.target_tokens + args.max_tokens + 4,
-            prefill_chunk_size=64,
+            prefill_chunk_size=args.prefill_chunk_size,
         )
         runner = generator.runner
         config = runner.config
@@ -295,6 +296,7 @@ def main() -> int:
             "model": str(args.model.resolve()),
             "target_tokens": int(args.target_tokens),
             "tokens": len(token_ids),
+            "prefill_chunk_size": int(runner.prefill_chunk_size),
             "needle_token_offset": needle,
             "prefill_seconds": prefill_seconds,
             "tokenizer_match": tokenizer_match,
