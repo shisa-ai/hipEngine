@@ -251,6 +251,55 @@ class _PhysicalTargetCommitError(RuntimeError):
     """Target state may be committed; AR fallback requires canonical rebuild."""
 
 
+def _device_chain_oracle_trace_rows(
+    batch: TargetVerifyBatch,
+    target_top1: Sequence[int],
+    summary: TargetAcceptSummary,
+    *,
+    cycle_id: int,
+) -> tuple[dict[str, Any], ...]:
+    """Render bounded per-request proposal/target evidence after device accept."""
+
+    top1 = tuple(int(value) for value in target_top1)
+    if len(top1) != batch.rows:
+        raise ValueError("device-chain oracle top-1 rows do not match target batch")
+    if summary.request_ids != batch.request_ids:
+        raise ValueError("device-chain oracle summary request IDs do not match target batch")
+    traces: list[dict[str, Any]] = []
+    for index, request_id in enumerate(batch.request_ids):
+        candidate_rows = tuple(
+            sorted(
+                (
+                    row
+                    for row in batch.candidate_rows
+                    if int(batch.row_to_request[row]) == int(request_id)
+                ),
+                key=lambda row: int(batch.draft_depths[row]),
+            )
+        )
+        root_row = int(batch.root_rows[index])
+        traces.append(
+            {
+                "cycle_id": int(cycle_id),
+                "request_id": int(request_id),
+                "root_token": int(batch.tokens[root_row]),
+                "root_position": int(batch.positions[root_row]),
+                "candidate_tokens": [int(batch.tokens[row]) for row in candidate_rows],
+                "target_top1": [int(top1[row]) for row in (root_row, *candidate_rows)],
+                "accepted_count": int(summary.accepted_counts[index]),
+                "accepted_tokens": [
+                    int(token) for token in summary.accepted_tokens[index]
+                ],
+                "next_token": (
+                    None
+                    if summary.next_tokens is None
+                    else summary.next_tokens[index]
+                ),
+            }
+        )
+    return tuple(traces)
+
+
 class Qwen35GGUFMTP2Adapter:
     """Staged C1/C2/C4 adapter over the retained exact dense components."""
 
@@ -2227,8 +2276,8 @@ class Qwen35GGUFMTP2Adapter:
             mode=pending.batch.mode,
         )
 
-    @staticmethod
     def _qualify_target_batch_device_accept(
+        self,
         frontier: TargetFrontier,
         proposal: Qwen35GGUFNextNBatchDeviceProposal,
         target_results: Sequence[Any],
@@ -2317,6 +2366,16 @@ class Qwen35GGUFMTP2Adapter:
             raise RuntimeError(
                 "physical GPU device-chain accept does not match CPU oracle"
             )
+        for trace in _device_chain_oracle_trace_rows(
+            batch,
+            top1,
+            summary,
+            cycle_id=frontier.cycle_id,
+        ):
+            row = self.owner._row(int(trace["request_id"]))
+            traces = getattr(row, "mtp2_device_chain_oracle_trace", None)
+            if traces is not None and len(traces) < 64:
+                traces.append(trace)
         return time.perf_counter() - started
 
     def _accept_target_batch_on_device(
