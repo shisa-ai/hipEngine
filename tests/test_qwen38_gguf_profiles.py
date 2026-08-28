@@ -73,6 +73,16 @@ def test_qwen38_strict_profile_resolves_and_disables_fp16_state() -> None:
     assert selections[
         ("gdn_chain_recurrent_rmsnorm_gate", "specdec2_mtp2_target_state_rows")
     ]["selected_variant"] == "bf16_c1_exact_state_rows_tloop"
+    for budget, physical_rows in ((1, 6), (2, 9), (3, 12)):
+        assert selections[
+            ("linear", f"specdec2_mtp2_c3_k{budget}_r{physical_rows}_q4_single")
+        ]["selected_variant"] == "t16_wmma_prefill_smallm_bf16_bf16_out"
+        assert selections[
+            (
+                "linear_pair_silu",
+                f"specdec2_mtp2_c3_k{budget}_r{physical_rows}_q4_gate_up",
+            )
+        ]["selected_variant"] == "dense_dual_wmma_prefill_bf16_bf16_out"
 
 
 def test_qwen38_production_profile_resolves_fp16_state_with_strict_fallbacks() -> None:
@@ -99,6 +109,23 @@ def test_qwen38_production_profile_resolves_fp16_state_with_strict_fallbacks() -
             "dense_dual_rowtile_bf16_bf16_out",
             "dense_dual_wmma_prefill_bf16_bf16_out",
         ),
+        **{
+            ("linear", f"specdec2_mtp2_c3_k{budget}_r{rows}_q4_single"): (
+                "dense_rowtile_bf16_bf16_out",
+                "t16_wmma_prefill_smallm_bf16_bf16_out",
+            )
+            for budget, rows in ((1, 6), (2, 9), (3, 12))
+        },
+        **{
+            (
+                "linear_pair_silu",
+                f"specdec2_mtp2_c3_k{budget}_r{rows}_q4_gate_up",
+            ): (
+                "dense_dual_rowtile_bf16_bf16_out",
+                "dense_dual_wmma_prefill_bf16_bf16_out",
+            )
+            for budget, rows in ((1, 6), (2, 9), (3, 12))
+        },
         ("gdn_chain_recurrent_rmsnorm_gate", "specdec2_mtp2_target_state_rows"): (
             "bf16_c1_exact_state_rows_tloop_fp16state",
             "bf16_c1_exact_state_rows_tloop",

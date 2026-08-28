@@ -19,6 +19,7 @@ from scripts.gguf_mtp_c1c8_server_bench import (
     _resident_observability,
     build_parser,
     summarize,
+    summarize_acceptance,
 )
 
 
@@ -252,6 +253,113 @@ def test_mtp_c1c8_summary_uses_complete_wall() -> None:
     k0 = summarize(cells, widths=(2,), expected_mtp_widths=())["2"]
     assert k0["mtp_expected"] is False
     assert k0["route_expectation_passed"] is False
+
+
+def test_mtp_c1c8_summarizes_acceptance_by_scope_and_position() -> None:
+    cells = [
+        {
+            "category": "code",
+            "heldout": False,
+            "width": 1,
+            "mtp": {
+                "resident_observability": {
+                    "routes": {
+                        "recent_completed": [
+                            {
+                                "specdec2_mtp2_candidate_counts": [3, 3, 2],
+                                "specdec2_mtp2_accepted_counts": [3, 1, 0],
+                            }
+                        ]
+                    }
+                }
+            },
+        },
+        {
+            "category": "general_en",
+            "heldout": True,
+            "width": 1,
+            "mtp": {
+                "resident_observability": {
+                    "routes": {
+                        "recent_completed": [
+                            {
+                                "specdec2_mtp2_candidate_counts": [3],
+                                "specdec2_mtp2_accepted_counts": [2],
+                            }
+                        ]
+                    }
+                }
+            },
+        },
+    ]
+
+    summary = summarize_acceptance(cells)
+
+    assert summary["denominators"] == {
+        "draft_acceptance": "accepted draft tokens / proposed draft tokens",
+        "position_acceptance": "cycles accepting through this position / cycles proposing this position",
+        "conditional_position_acceptance": "cycles accepting through this position / cycles accepting the preceding positions while proposing this position",
+    }
+    all_rows = summary["scopes"]["all"]
+    assert all_rows["cycles"] == 4
+    assert all_rows["proposed_draft_tokens"] == 11
+    assert all_rows["accepted_draft_tokens"] == 6
+    assert all_rows["draft_acceptance"] == pytest.approx(6 / 11)
+    assert all_rows["positions"] == [
+        {
+            "position": 1,
+            "proposed_cycles": 4,
+            "accepted_cycles": 3,
+            "position_acceptance": pytest.approx(3 / 4),
+            "conditional_opportunities": 4,
+            "conditional_position_acceptance": pytest.approx(3 / 4),
+        },
+        {
+            "position": 2,
+            "proposed_cycles": 4,
+            "accepted_cycles": 2,
+            "position_acceptance": pytest.approx(2 / 4),
+            "conditional_opportunities": 3,
+            "conditional_position_acceptance": pytest.approx(2 / 3),
+        },
+        {
+            "position": 3,
+            "proposed_cycles": 3,
+            "accepted_cycles": 1,
+            "position_acceptance": pytest.approx(1 / 3),
+            "conditional_opportunities": 2,
+            "conditional_position_acceptance": pytest.approx(1 / 2),
+        },
+    ]
+    assert summary["scopes"]["train"]["draft_acceptance"] == pytest.approx(4 / 8)
+    assert summary["scopes"]["heldout"]["draft_acceptance"] == pytest.approx(2 / 3)
+    assert summary["categories"]["code"]["draft_acceptance"] == pytest.approx(4 / 8)
+    assert summary["categories"]["general_en"]["draft_acceptance"] == pytest.approx(2 / 3)
+
+
+def test_mtp_c1c8_acceptance_summary_rejects_malformed_cycle_counts() -> None:
+    cells = [
+        {
+            "category": "code",
+            "heldout": False,
+            "width": 1,
+            "mtp": {
+                "resident_observability": {
+                    "routes": {
+                        "recent_completed": [
+                            {
+                                "specdec2_mtp2_candidate_counts": [3],
+                                "specdec2_mtp2_accepted_counts": [4],
+                            }
+                        ]
+                    }
+                }
+            },
+        }
+    ]
+
+    with pytest.raises(ValueError, match="accepted count 4 exceeds candidate count 3"):
+        summarize_acceptance(cells)
 
 
 def test_mtp_c1c8_summary_accepts_expected_k0() -> None:

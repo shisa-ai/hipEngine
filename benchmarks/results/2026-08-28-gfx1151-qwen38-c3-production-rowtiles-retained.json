@@ -1,0 +1,859 @@
+{
+  "commands": {
+    "numerics": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. .venv/bin/python scripts/qwen38_q4_verifier_numerics.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --concurrency 3 --candidate-budget <1|2|3> --prompts <canonical|heldout.jsonl> --decode-steps 24 --repeat-runs 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/<output>.json",
+    "profile": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. rocprofv3 --kernel-trace --marker-trace --hip-runtime-trace --memory-copy-trace --memory-allocation-trace --output-format csv --output-directory /tmp/qwen38-c3k2-r9-final-rocprof -- .venv/bin/python scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --target-arch gfx1151 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 3 --budgets 2 --max-tokens 12 --runs 1 --warmup --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output /tmp/qwen38-c3k2-r9-final-profile.json",
+    "server": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 3 --resident-capacity 3 --expected-mtp-widths 3 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/<output>.json"
+  },
+  "cycle_profile": {
+    "expected_owner_evidence": {
+      "q4_rowtile_calls_per_steady_target": 400,
+      "q5_rowtile_calls_per_steady_target": 96,
+      "q6_rowtile_calls_per_steady_target": 131
+    },
+    "final_clean_r9_target_steady_ms": [
+      196.366794,
+      195.558106,
+      195.163816
+    ],
+    "final_r9_profile_sha256": "800a336663f0be74ce9b89559f965cf796fef3d2dea5df78fc780807ae9863e6",
+    "final_r9_profile_source": "/tmp/qwen38-c3k2-r9-final-profile.json",
+    "final_r9_stage_summary_sha256": "cc1b376aa441bae7786293d5a3fa81f90f35405082e0fa05e945bafecb9b62e2",
+    "final_r9_stage_summary_source": "/tmp/qwen38-c3k2-r9-final-stage-summary.json",
+    "parent_clean_r12_target_ms": [
+      399.481762,
+      398.773433
+    ],
+    "parent_clean_r9_target_ms": 495.374991,
+    "profiler": "rocprofv3 kernel+marker+HIP runtime+copy+allocation traces; cached build only",
+    "r9_target_reduction_percent": -60.602812102801536
+  },
+  "date": "2026-08-28",
+  "decision": {
+    "automatic_policy": "unchanged: C3 remains exact pure K0 because complete C3/K3 D24 is 0.9589x true AR and mixed_ja_en is 0.8445x",
+    "excluded": [
+      "strict profile",
+      "C4+",
+      "R16+",
+      "peer backends",
+      "narrow K5120/N1024 Q4",
+      "unlisted shapes",
+      "D25+"
+    ],
+    "implementation": "retain production-profile C3/K1-K3 physical R6/R9/R12 shape-scoped rowtile reuse with strict WMMA fallbacks",
+    "scope": "Qwen3.8-27B Q4_K_M, hip_gfx1151, production/BF16, C3, K1-K3 physical R6/R9/R12, actual verifier shapes only"
+  },
+  "hardware": {
+    "backend": "hip_gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "gpu_max_hw_queues": 2,
+    "hip_visible_devices": 0,
+    "physical_host": "gfx1151",
+    "rocm": "HIP 7.15.0-0000000",
+    "target_arch": "gfx1151"
+  },
+  "kind": "gfx1151_qwen38_c3_production_verifier_rowtiles_retained",
+  "limitations": [
+    "C3 remains diagnostic/default-off because aggregate and mixed-category complete wall trail true AR.",
+    "Numerical authorization is D24 only; no D25+ or long-horizon scope transfers.",
+    "Cross-width generated-ID equality is diagnostic rather than a production-profile requirement.",
+    "Raw profiler CSV files remain local and are represented by hashes in the compact stage summary."
+  ],
+  "model": {
+    "kv_dtype": "bf16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008
+  },
+  "numerical_gate": {
+    "c3_k1_r6": {
+      "canonical": {
+        "hard_gates_passed": true,
+        "measurement_valid": true,
+        "protocol": {
+          "candidate_budget": 1,
+          "concurrency": 3,
+          "decode_steps": 24,
+          "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "physical_shape": "C3_K1_R6",
+          "prompt_count": 10,
+          "prompts": "/tmp/hipengine-gfx1151-c3-r12/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "repeat_runs": 3,
+          "rows_per_job": 2,
+          "teacher_rows": 240,
+          "teacher_source": "strict fixed-schedule trajectory"
+        },
+        "repeat_determinism": {
+          "mismatches": [],
+          "passed": true,
+          "runs": 3,
+          "trajectory_sha256_by_capture": [
+            [
+              "c8f74f35b67ca706ecb21255c5415729ac18331b8edc8ab80bd81b8cdc69d675",
+              "c8f74f35b67ca706ecb21255c5415729ac18331b8edc8ab80bd81b8cdc69d675",
+              "c8f74f35b67ca706ecb21255c5415729ac18331b8edc8ab80bd81b8cdc69d675"
+            ],
+            [
+              "d6226f38f08d8f8bb348957c9d71232033d0459cbe0ef278c94b5cb57279bddc",
+              "d6226f38f08d8f8bb348957c9d71232033d0459cbe0ef278c94b5cb57279bddc",
+              "d6226f38f08d8f8bb348957c9d71232033d0459cbe0ef278c94b5cb57279bddc"
+            ],
+            [
+              "931bc6e986add9d577d24c95859164e806f38ede4f5f6e85a0dea644af483645",
+              "931bc6e986add9d577d24c95859164e806f38ede4f5f6e85a0dea644af483645",
+              "931bc6e986add9d577d24c95859164e806f38ede4f5f6e85a0dea644af483645"
+            ],
+            [
+              "1dcdf0acf4b35cec12777997e0c27a79b3d5714d361c9f13ca3c9ef21a7e7e30",
+              "1dcdf0acf4b35cec12777997e0c27a79b3d5714d361c9f13ca3c9ef21a7e7e30",
+              "1dcdf0acf4b35cec12777997e0c27a79b3d5714d361c9f13ca3c9ef21a7e7e30"
+            ],
+            [
+              "3ffe0e2c4e7345676c89f7f7d5d3531a3e5ab56b591a9b4f1591c97665f73352",
+              "3ffe0e2c4e7345676c89f7f7d5d3531a3e5ab56b591a9b4f1591c97665f73352",
+              "3ffe0e2c4e7345676c89f7f7d5d3531a3e5ab56b591a9b4f1591c97665f73352"
+            ],
+            [
+              "fcb7ae59a04817c03dad29603cc183116aa9382b7b7d9c0e83fa73881a2b1596",
+              "fcb7ae59a04817c03dad29603cc183116aa9382b7b7d9c0e83fa73881a2b1596",
+              "fcb7ae59a04817c03dad29603cc183116aa9382b7b7d9c0e83fa73881a2b1596"
+            ],
+            [
+              "288695d804aae2e99811ecdb014fe41db6eec21696525d7b312e6487bd71c2ae",
+              "288695d804aae2e99811ecdb014fe41db6eec21696525d7b312e6487bd71c2ae",
+              "288695d804aae2e99811ecdb014fe41db6eec21696525d7b312e6487bd71c2ae"
+            ],
+            [
+              "dfac75795430a3d1894eb46e452c7f42acc5ec8f9a5813702481a5c89def7b77",
+              "dfac75795430a3d1894eb46e452c7f42acc5ec8f9a5813702481a5c89def7b77",
+              "dfac75795430a3d1894eb46e452c7f42acc5ec8f9a5813702481a5c89def7b77"
+            ],
+            [
+              "eb845a54a39e85b5957c1645031abd03cb317a388fc28ea49c4f9a8631c203d6",
+              "eb845a54a39e85b5957c1645031abd03cb317a388fc28ea49c4f9a8631c203d6",
+              "eb845a54a39e85b5957c1645031abd03cb317a388fc28ea49c4f9a8631c203d6"
+            ],
+            [
+              "395ed0cf8486b583700a6fe999fb894042d87b98654e5d9fa3463bb929a46ec6",
+              "395ed0cf8486b583700a6fe999fb894042d87b98654e5d9fa3463bb929a46ec6",
+              "395ed0cf8486b583700a6fe999fb894042d87b98654e5d9fa3463bb929a46ec6"
+            ]
+          ]
+        },
+        "scope_failures": [],
+        "source": "/tmp/qwen38-c3k1-tail-numerics-canonical-d24-clean.json",
+        "source_clean": true,
+        "source_commit": "b3aa883c53c5adcce634cfea4afd0254c30fc130",
+        "source_sha256": "461b499007f04aa2d2d21e2ec44359710bcf1a2d663230d269d1a0e8d3ab1b07",
+        "status": "passed",
+        "summary": {
+          "candidate_teacher_nll_mean": 0.17447435813061093,
+          "kl_max": 0.0007398904553133681,
+          "kl_mean": 6.440007637955542e-05,
+          "kl_p50": 2.919555052222778e-06,
+          "kl_p95": 0.000377007467192666,
+          "kl_p99": 0.0006267488141364516,
+          "max_abs_logit_delta": 0.671119213104248,
+          "rows": 240,
+          "strict_margin_min": 0.06370258331298828,
+          "strict_teacher_nll_mean": 0.17543853217181382,
+          "teacher_delta_p_mean": 0.0004164351432739249,
+          "teacher_nll_delta": -0.0009641740412028865,
+          "top1_agreement": 1.0,
+          "top1_matches": 240,
+          "topk_overlap_mean": 0.9883333333333334
+        },
+        "teardown_exact": true
+      },
+      "heldout": {
+        "hard_gates_passed": true,
+        "measurement_valid": true,
+        "protocol": {
+          "candidate_budget": 1,
+          "concurrency": 3,
+          "decode_steps": 24,
+          "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "physical_shape": "C3_K1_R6",
+          "prompt_count": 8,
+          "prompts": "/tmp/hipengine-gfx1151-c3-r12/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+          "repeat_runs": 3,
+          "rows_per_job": 2,
+          "teacher_rows": 192,
+          "teacher_source": "strict fixed-schedule trajectory"
+        },
+        "repeat_determinism": {
+          "mismatches": [],
+          "passed": true,
+          "runs": 3,
+          "trajectory_sha256_by_capture": [
+            [
+              "775b570ac0082265fe2ce83435a34bc90583e05ad38d93b97e64e701e2d41a72",
+              "775b570ac0082265fe2ce83435a34bc90583e05ad38d93b97e64e701e2d41a72",
+              "775b570ac0082265fe2ce83435a34bc90583e05ad38d93b97e64e701e2d41a72"
+            ],
+            [
+              "de3072ec9d28ebf47bf1e8ce9bb4399cbb0798fb0ab88352d57822fe054fa86f",
+              "de3072ec9d28ebf47bf1e8ce9bb4399cbb0798fb0ab88352d57822fe054fa86f",
+              "de3072ec9d28ebf47bf1e8ce9bb4399cbb0798fb0ab88352d57822fe054fa86f"
+            ],
+            [
+              "447bab7e22c76d1177af2dc6aa4a8aa45bb119a021161f0b3d2720cea791811c",
+              "447bab7e22c76d1177af2dc6aa4a8aa45bb119a021161f0b3d2720cea791811c",
+              "447bab7e22c76d1177af2dc6aa4a8aa45bb119a021161f0b3d2720cea791811c"
+            ],
+            [
+              "64028bcf6b41c04bd56aaefbe03683bf233c5a8bbf25abc6e6855be576206caa",
+              "64028bcf6b41c04bd56aaefbe03683bf233c5a8bbf25abc6e6855be576206caa",
+              "64028bcf6b41c04bd56aaefbe03683bf233c5a8bbf25abc6e6855be576206caa"
+            ],
+            [
+              "fd5fc708f0962efcbceb3f3f9565d30e12c8321edc5445bdb7a9c42bea379776",
+              "fd5fc708f0962efcbceb3f3f9565d30e12c8321edc5445bdb7a9c42bea379776",
+              "fd5fc708f0962efcbceb3f3f9565d30e12c8321edc5445bdb7a9c42bea379776"
+            ],
+            [
+              "9dd18110b6361f1be937f1c4235537aa3b748485c6ca1a0034586abee1c570e5",
+              "9dd18110b6361f1be937f1c4235537aa3b748485c6ca1a0034586abee1c570e5",
+              "9dd18110b6361f1be937f1c4235537aa3b748485c6ca1a0034586abee1c570e5"
+            ],
+            [
+              "a94d233158e147693b7bb6a7978ad103a248af2aeacb86a19e634bec5da6622f",
+              "a94d233158e147693b7bb6a7978ad103a248af2aeacb86a19e634bec5da6622f",
+              "a94d233158e147693b7bb6a7978ad103a248af2aeacb86a19e634bec5da6622f"
+            ],
+            [
+              "ed3ea70c722946c7d6945ca01ae4d1bbf2181fe3c647c364232593e2b58e618a",
+              "ed3ea70c722946c7d6945ca01ae4d1bbf2181fe3c647c364232593e2b58e618a",
+              "ed3ea70c722946c7d6945ca01ae4d1bbf2181fe3c647c364232593e2b58e618a"
+            ]
+          ]
+        },
+        "scope_failures": [],
+        "source": "/tmp/qwen38-c3k1-tail-numerics-heldouts-d24-clean.json",
+        "source_clean": true,
+        "source_commit": "b3aa883c53c5adcce634cfea4afd0254c30fc130",
+        "source_sha256": "070052760a17173960191e27243440584159d4201990fe343019ad2e35e54b88",
+        "status": "passed",
+        "summary": {
+          "candidate_teacher_nll_mean": 0.16479157756180843,
+          "kl_max": 0.0007971501051986035,
+          "kl_mean": 4.957159343692461e-05,
+          "kl_p50": 2.6874662450376772e-06,
+          "kl_p95": 0.0002044917056664773,
+          "kl_p99": 0.0007280386061836931,
+          "max_abs_logit_delta": 0.36258983612060547,
+          "rows": 192,
+          "strict_margin_min": 0.041561126708984375,
+          "strict_teacher_nll_mean": 0.16510404967106887,
+          "teacher_delta_p_mean": 0.000282683346867208,
+          "teacher_nll_delta": -0.0003124721092604421,
+          "top1_agreement": 1.0,
+          "top1_matches": 192,
+          "topk_overlap_mean": 0.9947916666666666
+        },
+        "teardown_exact": true
+      }
+    },
+    "c3_k2_r9": {
+      "canonical": {
+        "hard_gates_passed": true,
+        "measurement_valid": true,
+        "protocol": {
+          "candidate_budget": 2,
+          "concurrency": 3,
+          "decode_steps": 24,
+          "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "physical_shape": "C3_K2_R9",
+          "prompt_count": 10,
+          "prompts": "/tmp/hipengine-gfx1151-c3-r12/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "repeat_runs": 3,
+          "rows_per_job": 3,
+          "teacher_rows": 240,
+          "teacher_source": "strict fixed-schedule trajectory"
+        },
+        "repeat_determinism": {
+          "mismatches": [],
+          "passed": true,
+          "runs": 3,
+          "trajectory_sha256_by_capture": [
+            [
+              "1dbbf4d5a9ce06f8b0b619ec9fcaa73c6c8763c41acb8dd9a3fe59e36d9092a6",
+              "1dbbf4d5a9ce06f8b0b619ec9fcaa73c6c8763c41acb8dd9a3fe59e36d9092a6",
+              "1dbbf4d5a9ce06f8b0b619ec9fcaa73c6c8763c41acb8dd9a3fe59e36d9092a6"
+            ],
+            [
+              "5bd93daa552913cfca4c4d33d98be41ddab767c1954d0167bb2d3788ff1f07be",
+              "5bd93daa552913cfca4c4d33d98be41ddab767c1954d0167bb2d3788ff1f07be",
+              "5bd93daa552913cfca4c4d33d98be41ddab767c1954d0167bb2d3788ff1f07be"
+            ],
+            [
+              "6e4487f877d149a8d7ff3bc3381fb2df5f5a90dc2390349de5b671037e71a092",
+              "6e4487f877d149a8d7ff3bc3381fb2df5f5a90dc2390349de5b671037e71a092",
+              "6e4487f877d149a8d7ff3bc3381fb2df5f5a90dc2390349de5b671037e71a092"
+            ],
+            [
+              "63b23dfe7d12d233df525235073d9075883b586894bd1642bf3bc207ea0e5252",
+              "63b23dfe7d12d233df525235073d9075883b586894bd1642bf3bc207ea0e5252",
+              "63b23dfe7d12d233df525235073d9075883b586894bd1642bf3bc207ea0e5252"
+            ],
+            [
+              "6faf563815282c2480a7c8b6b680e1979d280074e45ab39b7560c3962c655868",
+              "6faf563815282c2480a7c8b6b680e1979d280074e45ab39b7560c3962c655868",
+              "6faf563815282c2480a7c8b6b680e1979d280074e45ab39b7560c3962c655868"
+            ],
+            [
+              "1c4f57e20c4f2a00c1a4fc4c52d48cb42ed2c0353b508b74b22631568ab201ad",
+              "1c4f57e20c4f2a00c1a4fc4c52d48cb42ed2c0353b508b74b22631568ab201ad",
+              "1c4f57e20c4f2a00c1a4fc4c52d48cb42ed2c0353b508b74b22631568ab201ad"
+            ],
+            [
+              "931ad7518d1b1437fa88e0663ae8d6d7b4c2f90484338554e3e00cd4dca46770",
+              "931ad7518d1b1437fa88e0663ae8d6d7b4c2f90484338554e3e00cd4dca46770",
+              "931ad7518d1b1437fa88e0663ae8d6d7b4c2f90484338554e3e00cd4dca46770"
+            ],
+            [
+              "3dbbe9419f6351e0f5180d8e57fc94923c3a2f3ee9f5624cf095e532e9c27d9c",
+              "3dbbe9419f6351e0f5180d8e57fc94923c3a2f3ee9f5624cf095e532e9c27d9c",
+              "3dbbe9419f6351e0f5180d8e57fc94923c3a2f3ee9f5624cf095e532e9c27d9c"
+            ],
+            [
+              "2a1b587112f639eba5918c39c97cc668384122a9256c0aa6f57b7ed6dad8e6e6",
+              "2a1b587112f639eba5918c39c97cc668384122a9256c0aa6f57b7ed6dad8e6e6",
+              "2a1b587112f639eba5918c39c97cc668384122a9256c0aa6f57b7ed6dad8e6e6"
+            ],
+            [
+              "7134165f29148f66b6d340cf3ad2e198daa478a3e1a83c3d7b665aa196a78da6",
+              "7134165f29148f66b6d340cf3ad2e198daa478a3e1a83c3d7b665aa196a78da6",
+              "7134165f29148f66b6d340cf3ad2e198daa478a3e1a83c3d7b665aa196a78da6"
+            ]
+          ]
+        },
+        "scope_failures": [],
+        "source": "/tmp/qwen38-c3k2-tail-numerics-canonical-d24-clean.json",
+        "source_clean": true,
+        "source_commit": "b3aa883c53c5adcce634cfea4afd0254c30fc130",
+        "source_sha256": "2f4941576761a97db197db10846a5c6cbe8679d307c2173f493b549571108f5f",
+        "status": "passed",
+        "summary": {
+          "candidate_teacher_nll_mean": 0.1741403705812114,
+          "kl_max": 0.0008648157025840097,
+          "kl_mean": 5.577403521534548e-05,
+          "kl_p50": 3.17307040096363e-06,
+          "kl_p95": 0.0002777528997172555,
+          "kl_p99": 0.0005525271295255176,
+          "max_abs_logit_delta": 0.37294530868530273,
+          "rows": 240,
+          "strict_margin_min": 0.04146385192871094,
+          "strict_teacher_nll_mean": 0.17407610719807345,
+          "teacher_delta_p_mean": 2.9121280847054242e-05,
+          "teacher_nll_delta": 6.426338313794688e-05,
+          "top1_agreement": 1.0,
+          "top1_matches": 240,
+          "topk_overlap_mean": 0.9941666666666666
+        },
+        "teardown_exact": true
+      },
+      "heldout": {
+        "hard_gates_passed": true,
+        "measurement_valid": true,
+        "protocol": {
+          "candidate_budget": 2,
+          "concurrency": 3,
+          "decode_steps": 24,
+          "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "physical_shape": "C3_K2_R9",
+          "prompt_count": 8,
+          "prompts": "/tmp/hipengine-gfx1151-c3-r12/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+          "repeat_runs": 3,
+          "rows_per_job": 3,
+          "teacher_rows": 192,
+          "teacher_source": "strict fixed-schedule trajectory"
+        },
+        "repeat_determinism": {
+          "mismatches": [],
+          "passed": true,
+          "runs": 3,
+          "trajectory_sha256_by_capture": [
+            [
+              "a060d3b52a15051e4b824861a6334741146ff1e66a1873254a8fc82310ac1f91",
+              "a060d3b52a15051e4b824861a6334741146ff1e66a1873254a8fc82310ac1f91",
+              "a060d3b52a15051e4b824861a6334741146ff1e66a1873254a8fc82310ac1f91"
+            ],
+            [
+              "f0ce4edc47d2bd4611469bfe5fefbed21c6d029a630db75d6e3e5bf1d866e608",
+              "f0ce4edc47d2bd4611469bfe5fefbed21c6d029a630db75d6e3e5bf1d866e608",
+              "f0ce4edc47d2bd4611469bfe5fefbed21c6d029a630db75d6e3e5bf1d866e608"
+            ],
+            [
+              "f37b1c14088096fdfceead30d65021a7e05a343a27369e647b3ade69a26c9939",
+              "f37b1c14088096fdfceead30d65021a7e05a343a27369e647b3ade69a26c9939",
+              "f37b1c14088096fdfceead30d65021a7e05a343a27369e647b3ade69a26c9939"
+            ],
+            [
+              "ea5487ec34d67611b4c49d43911818340751cd9077c2335c7587a383a9053be1",
+              "ea5487ec34d67611b4c49d43911818340751cd9077c2335c7587a383a9053be1",
+              "ea5487ec34d67611b4c49d43911818340751cd9077c2335c7587a383a9053be1"
+            ],
+            [
+              "d6659e20c257c8faa5f473c1b5255c8fa1733db8d1859b8c062243fa55ee71b8",
+              "d6659e20c257c8faa5f473c1b5255c8fa1733db8d1859b8c062243fa55ee71b8",
+              "d6659e20c257c8faa5f473c1b5255c8fa1733db8d1859b8c062243fa55ee71b8"
+            ],
+            [
+              "f7e6b9f07f0fb145672bbace9a1be907ae46a9960ce88d84319a50f75422eff1",
+              "f7e6b9f07f0fb145672bbace9a1be907ae46a9960ce88d84319a50f75422eff1",
+              "f7e6b9f07f0fb145672bbace9a1be907ae46a9960ce88d84319a50f75422eff1"
+            ],
+            [
+              "d18ca9b91ef982be2ba82ba31ded80daac69d7dddb2d834d2e88975cfab461cf",
+              "d18ca9b91ef982be2ba82ba31ded80daac69d7dddb2d834d2e88975cfab461cf",
+              "d18ca9b91ef982be2ba82ba31ded80daac69d7dddb2d834d2e88975cfab461cf"
+            ],
+            [
+              "dbfce346e52f4f8df9b17f154b7f78d9c7780e99ef4fb238dd2a455abeec2ab7",
+              "dbfce346e52f4f8df9b17f154b7f78d9c7780e99ef4fb238dd2a455abeec2ab7",
+              "dbfce346e52f4f8df9b17f154b7f78d9c7780e99ef4fb238dd2a455abeec2ab7"
+            ]
+          ]
+        },
+        "scope_failures": [],
+        "source": "/tmp/qwen38-c3k2-tail-numerics-heldouts-d24-clean.json",
+        "source_clean": true,
+        "source_commit": "b3aa883c53c5adcce634cfea4afd0254c30fc130",
+        "source_sha256": "2394149a417e966094bd72ac49e7e2bc14112ebe4b89de10e41ca4b216eddb1d",
+        "status": "passed",
+        "summary": {
+          "candidate_teacher_nll_mean": 0.1654027832130297,
+          "kl_max": 0.0008451434938693754,
+          "kl_mean": 4.168520527048981e-05,
+          "kl_p50": 2.9671377574613403e-06,
+          "kl_p95": 0.00022008181433386443,
+          "kl_p99": 0.00043635757821860875,
+          "max_abs_logit_delta": 0.39045047760009766,
+          "rows": 192,
+          "strict_margin_min": 0.0082855224609375,
+          "strict_teacher_nll_mean": 0.16545188751386028,
+          "teacher_delta_p_mean": -8.899536996258486e-05,
+          "teacher_nll_delta": -4.910430083057693e-05,
+          "top1_agreement": 1.0,
+          "top1_matches": 192,
+          "topk_overlap_mean": 0.9927083333333333
+        },
+        "teardown_exact": true
+      }
+    },
+    "c3_k3_r12": {
+      "canonical": {
+        "hard_gates_passed": true,
+        "measurement_valid": true,
+        "protocol": {
+          "candidate_budget": 3,
+          "concurrency": 3,
+          "decode_steps": 24,
+          "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "physical_shape": "C3_K3_R12",
+          "prompt_count": 10,
+          "prompts": "/tmp/hipengine-gfx1151-c3-r12/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+          "repeat_runs": 3,
+          "rows_per_job": 4,
+          "teacher_rows": 240,
+          "teacher_source": "strict fixed-schedule trajectory"
+        },
+        "repeat_determinism": {
+          "mismatches": [],
+          "passed": true,
+          "runs": 3,
+          "trajectory_sha256_by_capture": [
+            [
+              "5bd26eb75e40f848d054d81c3a585e21eb865b705d7e80997f2e58b26d6ca816",
+              "5bd26eb75e40f848d054d81c3a585e21eb865b705d7e80997f2e58b26d6ca816",
+              "5bd26eb75e40f848d054d81c3a585e21eb865b705d7e80997f2e58b26d6ca816"
+            ],
+            [
+              "c3fa9a66503f5e4fe9df786b0975a2dfee1f1d91867e7260d983fd629621e1c9",
+              "c3fa9a66503f5e4fe9df786b0975a2dfee1f1d91867e7260d983fd629621e1c9",
+              "c3fa9a66503f5e4fe9df786b0975a2dfee1f1d91867e7260d983fd629621e1c9"
+            ],
+            [
+              "fbb4c5253ee06da43a7675710d6b0fd4299b5b0a5272922ae6ed9ddf17efe7f2",
+              "fbb4c5253ee06da43a7675710d6b0fd4299b5b0a5272922ae6ed9ddf17efe7f2",
+              "fbb4c5253ee06da43a7675710d6b0fd4299b5b0a5272922ae6ed9ddf17efe7f2"
+            ],
+            [
+              "c4f5edc09b795e189214e85b481807582a074ad8c8c8dcf71390d841e67322a1",
+              "c4f5edc09b795e189214e85b481807582a074ad8c8c8dcf71390d841e67322a1",
+              "c4f5edc09b795e189214e85b481807582a074ad8c8c8dcf71390d841e67322a1"
+            ],
+            [
+              "ee42ccf4f76bde1949b906ed15d06447b34db0496bf40fcc18a4989a8ad950e6",
+              "ee42ccf4f76bde1949b906ed15d06447b34db0496bf40fcc18a4989a8ad950e6",
+              "ee42ccf4f76bde1949b906ed15d06447b34db0496bf40fcc18a4989a8ad950e6"
+            ],
+            [
+              "60cf72e9ab7580c07e5ca705ab2da29a7931a93b657cdf72fa08b7114751f439",
+              "60cf72e9ab7580c07e5ca705ab2da29a7931a93b657cdf72fa08b7114751f439",
+              "60cf72e9ab7580c07e5ca705ab2da29a7931a93b657cdf72fa08b7114751f439"
+            ],
+            [
+              "77cc8508465008d07fa5b86fa1bd998032d1e9be4064e00f1c5d0619c87e1e3d",
+              "77cc8508465008d07fa5b86fa1bd998032d1e9be4064e00f1c5d0619c87e1e3d",
+              "77cc8508465008d07fa5b86fa1bd998032d1e9be4064e00f1c5d0619c87e1e3d"
+            ],
+            [
+              "4254b2e39f7d70597655e1db8df0c447b59f13a9475e88fb2202d951f8088ab2",
+              "4254b2e39f7d70597655e1db8df0c447b59f13a9475e88fb2202d951f8088ab2",
+              "4254b2e39f7d70597655e1db8df0c447b59f13a9475e88fb2202d951f8088ab2"
+            ],
+            [
+              "142d65a640512cad1b083727e827690b4268e0c0ab44e422e377a4e018386b45",
+              "142d65a640512cad1b083727e827690b4268e0c0ab44e422e377a4e018386b45",
+              "142d65a640512cad1b083727e827690b4268e0c0ab44e422e377a4e018386b45"
+            ],
+            [
+              "0fe546e4cd311820b7fc9c4818ad94add79ebd9704f56b5b351b9e5dfe8f22ae",
+              "0fe546e4cd311820b7fc9c4818ad94add79ebd9704f56b5b351b9e5dfe8f22ae",
+              "0fe546e4cd311820b7fc9c4818ad94add79ebd9704f56b5b351b9e5dfe8f22ae"
+            ]
+          ]
+        },
+        "scope_failures": [],
+        "source": "/tmp/qwen38-c3k3-final-numerics-canonical-d24-clean.json",
+        "source_clean": true,
+        "source_commit": "b3aa883c53c5adcce634cfea4afd0254c30fc130",
+        "source_sha256": "67efa78bbf4ee6ab356fccda7f9ee64db1a274ceb03ce43de6b8957fd930de15",
+        "status": "passed",
+        "summary": {
+          "candidate_teacher_nll_mean": 0.17454587326372664,
+          "kl_max": 0.0008685188215045755,
+          "kl_mean": 4.979289671534688e-05,
+          "kl_p50": 2.0478560623855097e-06,
+          "kl_p95": 0.0003003184654087804,
+          "kl_p99": 0.0005699325438902229,
+          "max_abs_logit_delta": 0.37294530868530273,
+          "rows": 240,
+          "strict_margin_min": 0.04146385192871094,
+          "strict_teacher_nll_mean": 0.17407610719807345,
+          "teacher_delta_p_mean": -0.00016306319111643604,
+          "teacher_nll_delta": 0.0004697660656531877,
+          "top1_agreement": 1.0,
+          "top1_matches": 240,
+          "topk_overlap_mean": 0.9900000000000001
+        },
+        "teardown_exact": true
+      },
+      "heldout": {
+        "hard_gates_passed": true,
+        "measurement_valid": true,
+        "protocol": {
+          "candidate_budget": 3,
+          "concurrency": 3,
+          "decode_steps": 24,
+          "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+          "physical_shape": "C3_K3_R12",
+          "prompt_count": 8,
+          "prompts": "/tmp/hipengine-gfx1151-c3-r12/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+          "repeat_runs": 3,
+          "rows_per_job": 4,
+          "teacher_rows": 192,
+          "teacher_source": "strict fixed-schedule trajectory"
+        },
+        "repeat_determinism": {
+          "mismatches": [],
+          "passed": true,
+          "runs": 3,
+          "trajectory_sha256_by_capture": [
+            [
+              "3336f199c9325c6c7d7b2a39f502b06656a1499c08148c0443ed0b476c7955e5",
+              "3336f199c9325c6c7d7b2a39f502b06656a1499c08148c0443ed0b476c7955e5",
+              "3336f199c9325c6c7d7b2a39f502b06656a1499c08148c0443ed0b476c7955e5"
+            ],
+            [
+              "063b3cd4f3ca7959d0ace4dec7bce8d60ac47ccabbbeb5c3f2b2aa850eb17c03",
+              "063b3cd4f3ca7959d0ace4dec7bce8d60ac47ccabbbeb5c3f2b2aa850eb17c03",
+              "063b3cd4f3ca7959d0ace4dec7bce8d60ac47ccabbbeb5c3f2b2aa850eb17c03"
+            ],
+            [
+              "4cb7c3642ebad5d062914233077bb6049783448d6695d1aee336a89901d31cc6",
+              "4cb7c3642ebad5d062914233077bb6049783448d6695d1aee336a89901d31cc6",
+              "4cb7c3642ebad5d062914233077bb6049783448d6695d1aee336a89901d31cc6"
+            ],
+            [
+              "d1cccd7b37bd4343caf8a184babd3d5b54c9ee010a219b541a6f9798704ed6fa",
+              "d1cccd7b37bd4343caf8a184babd3d5b54c9ee010a219b541a6f9798704ed6fa",
+              "d1cccd7b37bd4343caf8a184babd3d5b54c9ee010a219b541a6f9798704ed6fa"
+            ],
+            [
+              "c82205674c8f4897ec6a0a98ef98a6097cf684d1a65cfca3cbfd7e5ca4073c6b",
+              "c82205674c8f4897ec6a0a98ef98a6097cf684d1a65cfca3cbfd7e5ca4073c6b",
+              "c82205674c8f4897ec6a0a98ef98a6097cf684d1a65cfca3cbfd7e5ca4073c6b"
+            ],
+            [
+              "f49f726c12704ebd966f30b933a6f24cf177db385efed6ce8bfa613193894844",
+              "f49f726c12704ebd966f30b933a6f24cf177db385efed6ce8bfa613193894844",
+              "f49f726c12704ebd966f30b933a6f24cf177db385efed6ce8bfa613193894844"
+            ],
+            [
+              "78f4031a50455ad87ee81fb20f58c328b9356e0a006e3c6360b30475982a170f",
+              "78f4031a50455ad87ee81fb20f58c328b9356e0a006e3c6360b30475982a170f",
+              "78f4031a50455ad87ee81fb20f58c328b9356e0a006e3c6360b30475982a170f"
+            ],
+            [
+              "925b43b2d446e55011c6487d5c4ba0ad5a5a8292477f2a03f87da651e34d8f86",
+              "925b43b2d446e55011c6487d5c4ba0ad5a5a8292477f2a03f87da651e34d8f86",
+              "925b43b2d446e55011c6487d5c4ba0ad5a5a8292477f2a03f87da651e34d8f86"
+            ]
+          ]
+        },
+        "scope_failures": [],
+        "source": "/tmp/qwen38-c3k3-final-numerics-heldouts-d24-clean.json",
+        "source_clean": true,
+        "source_commit": "b3aa883c53c5adcce634cfea4afd0254c30fc130",
+        "source_sha256": "041183fa211508b4a35c18748836ec170f24c0434db476d89038742548e89d6b",
+        "status": "passed",
+        "summary": {
+          "candidate_teacher_nll_mean": 0.16553846776103595,
+          "kl_max": 0.0008451434938693754,
+          "kl_mean": 4.601380209307793e-05,
+          "kl_p50": 2.7200113741779364e-06,
+          "kl_p95": 0.00021574895164813232,
+          "kl_p99": 0.00047689342519609165,
+          "max_abs_logit_delta": 0.39045047760009766,
+          "rows": 192,
+          "strict_margin_min": 0.0082855224609375,
+          "strict_teacher_nll_mean": 0.16545188751386028,
+          "teacher_delta_p_mean": -6.285646055847795e-05,
+          "teacher_nll_delta": 8.658024717567159e-05,
+          "top1_agreement": 1.0,
+          "top1_matches": 192,
+          "topk_overlap_mean": 0.9958333333333332
+        },
+        "teardown_exact": true
+      }
+    }
+  },
+  "passed": true,
+  "performance": {
+    "correctness": {
+      "all_generated_ids_ar_equal": true,
+      "final_budget_conformed_cells": 10,
+      "final_engaged_cells": 10,
+      "final_exact_cells": 10,
+      "parent_exact_cells": 10
+    },
+    "delta": {
+      "complete_wall_percent": -4.336765117142338,
+      "mtp_over_ar_points": 0.03891381996998222,
+      "mtp_tok_s_percent": 4.533366577507891
+    },
+    "final_r6_r9_r12": {
+      "ar_tok_s": 20.788219873660644,
+      "category_rates": {
+        "code": {
+          "ar_tok_s": 20.72814646771066,
+          "cells": 4,
+          "mtp_over_ar": 0.9777858606480702,
+          "mtp_tok_s": 20.26768853356972
+        },
+        "general_en": {
+          "ar_tok_s": 20.489116047298715,
+          "cells": 2,
+          "mtp_over_ar": 1.0614347466722924,
+          "mtp_tok_s": 21.747859701203712
+        },
+        "general_ja": {
+          "ar_tok_s": 20.714699933127193,
+          "cells": 2,
+          "mtp_over_ar": 0.9546066186908255,
+          "mtp_tok_s": 19.774389660357617
+        },
+        "mixed_ja_en": {
+          "ar_tok_s": 21.298176184111266,
+          "cells": 2,
+          "mtp_over_ar": 0.8445483668070829,
+          "mtp_tok_s": 17.98733991226068
+        }
+      },
+      "mtp_over_ar": 0.9589155060289074,
+      "mtp_tok_s": 19.934146379591485,
+      "physical_target_histogram": {
+        "12": 186,
+        "6": 15,
+        "9": 12
+      },
+      "source": "/tmp/qwen38-c3k3-all-rowtiles-server-canonical-d24-clean.json",
+      "source_commit": "b3aa883c53c5adcce634cfea4afd0254c30fc130",
+      "source_sha256": "8e6263006b1737adc53f2bd92ae6755f8de96e7ce5ececdaabef7e1ad6bb933e"
+    },
+    "parent_r12_only": {
+      "ar_tok_s": 20.727841657216132,
+      "category_rates": {
+        "code": {
+          "ar_tok_s": 21.30988857936343,
+          "cells": 4,
+          "mtp_over_ar": 0.9188363458892045,
+          "mtp_tok_s": 19.580300153568388
+        },
+        "general_en": {
+          "ar_tok_s": 20.530474041966386,
+          "cells": 2,
+          "mtp_over_ar": 1.0130026192237054,
+          "mtp_tok_s": 20.79742397841624
+        },
+        "general_ja": {
+          "ar_tok_s": 20.632966932168358,
+          "cells": 2,
+          "mtp_over_ar": 0.8752652281197902,
+          "mtp_tok_s": 18.05931850867243
+        },
+        "mixed_ja_en": {
+          "ar_tok_s": 19.922660861328826,
+          "cells": 2,
+          "mtp_over_ar": 0.8868636223572128,
+          "mtp_tok_s": 17.66868317847235
+        }
+      },
+      "mtp_over_ar": 0.9200016860589252,
+      "mtp_tok_s": 19.069649273001268,
+      "source": "/tmp/qwen38-c3k3-r12-server-canonical-d24-clean.json",
+      "source_commit": "8c6c2195434b847e1693491e70e83511ed71bb57",
+      "source_sha256": "3daecede2964a81aa945ca6b21160573c15b5e58199ee3a0459d4c087f6150eb"
+    }
+  },
+  "performance_claim": true,
+  "protocol": {
+    "candidate_budget": 3,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "concurrency": 3,
+    "correctness": "mtp_self_exact plus AR/MTP diagnostic equality",
+    "decode_tokens_per_request": 24,
+    "generated_tokens_per_arm": 720,
+    "prompt_count": 10,
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sampling": "raw greedy",
+    "scope_split": "six train / four category-heldout",
+    "server_timing": "blocking OpenAI barrier-to-last-completion complete wall"
+  },
+  "raw_sources": [
+    {
+      "bytes": 1053972,
+      "path": "/tmp/qwen38-c3k3-r12-server-canonical-d24-clean.json",
+      "sha256": "3daecede2964a81aa945ca6b21160573c15b5e58199ee3a0459d4c087f6150eb"
+    },
+    {
+      "bytes": 1053966,
+      "path": "/tmp/qwen38-c3k3-all-rowtiles-server-canonical-d24-clean.json",
+      "sha256": "8e6263006b1737adc53f2bd92ae6755f8de96e7ce5ececdaabef7e1ad6bb933e"
+    },
+    {
+      "bytes": 79234,
+      "path": "/tmp/qwen38-c3k3-r12-stage-summary.json",
+      "sha256": "33bdbf03620b128a80802fa54168be18d3823dcb48a99ed6d74f4e6a47259dac"
+    },
+    {
+      "bytes": 63467,
+      "path": "/tmp/qwen38-c3k2-r9-final-profile.json",
+      "sha256": "800a336663f0be74ce9b89559f965cf796fef3d2dea5df78fc780807ae9863e6"
+    },
+    {
+      "bytes": 58033,
+      "path": "/tmp/qwen38-c3k2-r9-final-stage-summary.json",
+      "sha256": "cc1b376aa441bae7786293d5a3fa81f90f35405082e0fa05e945bafecb9b62e2"
+    },
+    {
+      "bytes": 951,
+      "path": "/tmp/qwen38-c3-same-width-isolation-summary.json",
+      "sha256": "a8bca025722ebbe92f5b24fc9a08ba438a27773b594d2d6e5deb1cab46fd0767"
+    },
+    {
+      "bytes": 20124,
+      "path": "/tmp/qwen38-c3k1-tail-numerics-canonical-d24-clean.json",
+      "sha256": "461b499007f04aa2d2d21e2ec44359710bcf1a2d663230d269d1a0e8d3ab1b07"
+    },
+    {
+      "bytes": 18603,
+      "path": "/tmp/qwen38-c3k1-tail-numerics-heldouts-d24-clean.json",
+      "sha256": "070052760a17173960191e27243440584159d4201990fe343019ad2e35e54b88"
+    },
+    {
+      "bytes": 20124,
+      "path": "/tmp/qwen38-c3k2-tail-numerics-canonical-d24-clean.json",
+      "sha256": "2f4941576761a97db197db10846a5c6cbe8679d307c2173f493b549571108f5f"
+    },
+    {
+      "bytes": 18617,
+      "path": "/tmp/qwen38-c3k2-tail-numerics-heldouts-d24-clean.json",
+      "sha256": "2394149a417e966094bd72ac49e7e2bc14112ebe4b89de10e41ca4b216eddb1d"
+    },
+    {
+      "bytes": 20151,
+      "path": "/tmp/qwen38-c3k3-final-numerics-canonical-d24-clean.json",
+      "sha256": "67efa78bbf4ee6ab356fccda7f9ee64db1a274ceb03ce43de6b8957fd930de15"
+    },
+    {
+      "bytes": 18606,
+      "path": "/tmp/qwen38-c3k3-final-numerics-heldouts-d24-clean.json",
+      "sha256": "041183fa211508b4a35c18748836ec170f24c0434db476d89038742548e89d6b"
+    },
+    {
+      "bytes": 19293,
+      "path": "/tmp/qwen38-c3k1-same-width-isolation-d12-clean.json",
+      "sha256": "aeb5546e3dac1d08235571eb97917366b4fce48a36567c282bfd6be98fddbbc7"
+    },
+    {
+      "bytes": 19314,
+      "path": "/tmp/qwen38-c3k2-same-width-isolation-d12-clean.json",
+      "sha256": "70a15a8ec337d30fa2eb188f915c230ebc40a303ad344dc2dfd6c82d5a553ffe"
+    },
+    {
+      "bytes": 19320,
+      "path": "/tmp/qwen38-c3k3-same-width-isolation-d12-clean.json",
+      "sha256": "1fdb743d1fc94e7c129ae0db42fad6c7011ee6c5006dea9bc8e5201f7ccb6c9f"
+    }
+  ],
+  "same_width_isolation": {
+    "fixture_sha256": "0270182abef68a9cb41e96e03149b641db2667e4ce3f7fa7352d8ceaad3633f1",
+    "passed": true,
+    "protocol": "same target at slot0 with two neighbor sets, then slot1 with row permutation; D12, three repeats, full logits",
+    "results": {
+      "1": {
+        "candidate_equal_across_neighbors_and_slots": true,
+        "candidate_runs_each_repeat": true,
+        "hard_gates_passed": true,
+        "hash": "440215bdeb35edc8648ff01e36ba38f56867fea7e8e3b1a624d401684cdfd494",
+        "source": "/tmp/qwen38-c3k1-same-width-isolation-d12-clean.json",
+        "strict_equal": true
+      },
+      "2": {
+        "candidate_equal_across_neighbors_and_slots": true,
+        "candidate_runs_each_repeat": true,
+        "hard_gates_passed": true,
+        "hash": "9153ecf6c2cf5f84bfa19fa900466d1be6bc90f892630d6fa3220305829d7431",
+        "source": "/tmp/qwen38-c3k2-same-width-isolation-d12-clean.json",
+        "strict_equal": true
+      },
+      "3": {
+        "candidate_equal_across_neighbors_and_slots": true,
+        "candidate_runs_each_repeat": true,
+        "hard_gates_passed": true,
+        "hash": "677b5f8778f09049003087f39946c955a6c641423b01926016a574caa6a40935",
+        "source": "/tmp/qwen38-c3k3-same-width-isolation-d12-clean.json",
+        "strict_equal": true
+      }
+    }
+  },
+  "schema": 1,
+  "source": {
+    "all_retained_sources_tracked_clean": true,
+    "production_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "r12_implementation_commit": "bca7cae8bbced0df99468ff87f4536307f7bbc39",
+    "r12_manifest_commit": "8c6c2195434b847e1693491e70e83511ed71bb57",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b",
+    "tail_implementation_and_final_manifest_commit": "b3aa883c53c5adcce634cfea4afd0254c30fc130"
+  },
+  "status": "retained_diagnostic_not_automatic"
+}

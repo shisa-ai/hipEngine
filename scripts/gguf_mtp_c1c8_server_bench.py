@@ -415,6 +415,150 @@ def _run_arm(
     }
 
 
+def _acceptance_cycle_rows(
+    cells: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for cell in cells:
+        mtp = cell.get("mtp")
+        mtp = mtp if isinstance(mtp, Mapping) else {}
+        resident = mtp.get("resident_observability")
+        resident = resident if isinstance(resident, Mapping) else {}
+        routes = resident.get("routes")
+        routes = routes if isinstance(routes, Mapping) else {}
+        completed = routes.get("recent_completed")
+        if not isinstance(completed, Sequence) or isinstance(
+            completed, (str, bytes, bytearray)
+        ):
+            continue
+        for request in completed:
+            if not isinstance(request, Mapping):
+                continue
+            candidates = request.get("specdec2_mtp2_candidate_counts")
+            accepted = request.get("specdec2_mtp2_accepted_counts")
+            if candidates is None and accepted is None:
+                continue
+            if (
+                not isinstance(candidates, Sequence)
+                or isinstance(candidates, (str, bytes, bytearray))
+                or not isinstance(accepted, Sequence)
+                or isinstance(accepted, (str, bytes, bytearray))
+            ):
+                raise ValueError("MTP acceptance telemetry must contain cycle-count sequences")
+            if len(candidates) != len(accepted):
+                raise ValueError("MTP candidate and accepted cycle counts must have equal length")
+            for candidate_count, accepted_count in zip(candidates, accepted, strict=True):
+                if (
+                    not isinstance(candidate_count, int)
+                    or isinstance(candidate_count, bool)
+                    or int(candidate_count) < 0
+                    or not isinstance(accepted_count, int)
+                    or isinstance(accepted_count, bool)
+                    or int(accepted_count) < 0
+                ):
+                    raise ValueError("MTP candidate and accepted cycle counts must be nonnegative integers")
+                if int(accepted_count) > int(candidate_count):
+                    raise ValueError(
+                        f"accepted count {int(accepted_count)} exceeds candidate count {int(candidate_count)}"
+                    )
+                rows.append(
+                    {
+                        "width": int(cell["width"]),
+                        "category": str(cell["category"]),
+                        "heldout": bool(cell["heldout"]),
+                        "candidate_count": int(candidate_count),
+                        "accepted_count": int(accepted_count),
+                    }
+                )
+    return rows
+
+
+def _acceptance_rollup(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    proposed = sum(int(row["candidate_count"]) for row in rows)
+    accepted = sum(int(row["accepted_count"]) for row in rows)
+    max_position = max((int(row["candidate_count"]) for row in rows), default=0)
+    positions: list[dict[str, Any]] = []
+    for position in range(1, max_position + 1):
+        proposed_cycles = sum(
+            int(row["candidate_count"]) >= position for row in rows
+        )
+        accepted_cycles = sum(
+            int(row["accepted_count"]) >= position for row in rows
+        )
+        conditional_opportunities = sum(
+            int(row["candidate_count"]) >= position
+            and int(row["accepted_count"]) >= position - 1
+            for row in rows
+        )
+        positions.append(
+            {
+                "position": position,
+                "proposed_cycles": proposed_cycles,
+                "accepted_cycles": accepted_cycles,
+                "position_acceptance": (
+                    accepted_cycles / proposed_cycles if proposed_cycles else None
+                ),
+                "conditional_opportunities": conditional_opportunities,
+                "conditional_position_acceptance": (
+                    accepted_cycles / conditional_opportunities
+                    if conditional_opportunities
+                    else None
+                ),
+            }
+        )
+    return {
+        "cycles": len(rows),
+        "proposed_draft_tokens": proposed,
+        "accepted_draft_tokens": accepted,
+        "draft_acceptance": accepted / proposed if proposed else None,
+        "positions": positions,
+    }
+
+
+def _acceptance_scopes(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    return {
+        "all": _acceptance_rollup(rows),
+        "train": _acceptance_rollup([row for row in rows if not bool(row["heldout"])]),
+        "heldout": _acceptance_rollup([row for row in rows if bool(row["heldout"])]),
+    }
+
+
+def _acceptance_categories(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    return {
+        category: _acceptance_rollup(
+            [row for row in rows if str(row["category"]) == category]
+        )
+        for category in sorted({str(row["category"]) for row in rows})
+    }
+
+
+def summarize_acceptance(cells: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Roll up request-local MTP acceptance without changing its denominator."""
+
+    rows = _acceptance_cycle_rows(cells)
+    widths = sorted({int(row["width"]) for row in rows})
+    return {
+        "denominators": {
+            "draft_acceptance": "accepted draft tokens / proposed draft tokens",
+            "position_acceptance": "cycles accepting through this position / cycles proposing this position",
+            "conditional_position_acceptance": "cycles accepting through this position / cycles accepting the preceding positions while proposing this position",
+        },
+        "scopes": _acceptance_scopes(rows),
+        "categories": _acceptance_categories(rows),
+        "by_width": {
+            str(width): {
+                "scopes": _acceptance_scopes(
+                    [row for row in rows if int(row["width"]) == width]
+                ),
+                "categories": _acceptance_categories(
+                    [row for row in rows if int(row["width"]) == width]
+                ),
+            }
+            for width in widths
+        },
+    }
+
+
 def summarize(
     cells: Sequence[Mapping[str, Any]],
     *,
@@ -634,7 +778,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for row in summary.values()
     )
     payload = {
-        "schema": 1,
+        "schema": 2,
         "kind": "gguf_mtp_c1c8_server_bench",
         "date": datetime.now(timezone.utc).isoformat(),
         "status": "complete" if passed else "failed",
@@ -666,6 +810,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "runtime_profile": runtime_profile,
         "summary": summary,
+        "acceptance": summarize_acceptance(cells),
         "cells": cells,
         "initial_memory": initial_memory,
         "final_memory": memory_stats(),

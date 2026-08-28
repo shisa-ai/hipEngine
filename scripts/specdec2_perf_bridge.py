@@ -147,7 +147,7 @@ def _parse_unique_ints(value: str, *, allowed: frozenset[int], label: str) -> tu
 def parse_concurrencies(value: str) -> tuple[int, ...]:
     return _parse_unique_ints(
         value,
-        allowed=frozenset({1, 2, 4}),
+        allowed=frozenset({1, 2, 3, 4}),
         label="concurrency",
     )
 
@@ -164,12 +164,12 @@ def bridge_service_capacity(concurrencies: Sequence[int]) -> int:
     """Return one honest service capacity or require a separate C1 packet."""
 
     selected = tuple(int(value) for value in concurrencies)
-    if not selected or any(value not in {1, 2, 4} for value in selected):
-        raise ValueError("bridge concurrency must be a non-empty subset of 1,2,4")
+    if not selected or any(value not in {1, 2, 3, 4} for value in selected):
+        raise ValueError("bridge concurrency must be a non-empty subset of 1,2,3,4")
     if 1 in selected and any(value > 1 for value in selected):
         raise ValueError(
-            "strict C1 and physical C2/C4 require separate bridge invocations "
-            "with capacity 1 and capacity 4"
+            "strict C1 and physical C2/C3/C4 require separate bridge invocations "
+            "with independent service capacities"
         )
     return max(selected)
 

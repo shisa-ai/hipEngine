@@ -14,6 +14,29 @@ def test_q4_verifier_numerics_parser_freezes_product_horizon() -> None:
     assert args.decode_steps == 24
     assert args.repeat_runs == 3
     assert args.backend == "hip_gfx1151"
+    assert args.concurrency == 2
+    assert args.candidate_budget == 3
+
+
+def test_q4_verifier_numerics_accepts_c3_tail_budget_and_pads_final_group() -> None:
+    args = gate.build_parser().parse_args(
+        (
+            "--concurrency",
+            "3",
+            "--candidate-budget",
+            "1",
+            "--output",
+            "/tmp/out.json",
+        )
+    )
+    rows = tuple({"id": f"p{index}"} for index in range(5))
+
+    assert args.concurrency == 3
+    assert args.candidate_budget == 1
+    assert gate._prompt_groups(rows, 3) == (
+        ((rows[0], rows[1], rows[2]), 3),
+        ((rows[3], rows[4], rows[4]), 2),
+    )
 
 
 def test_q4_verifier_environment_restores_caller(
