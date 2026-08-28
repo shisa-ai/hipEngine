@@ -1,0 +1,360 @@
+{
+  "actual_weight_leaf": {
+    "all_exact": true,
+    "rows": {
+      "2": {
+        "direct_ms": 0.1539674997329712,
+        "exact": true,
+        "rowtile_ms": 0.09032800048589706,
+        "speedup": 1.704537894171699
+      },
+      "3": {
+        "direct_ms": 0.22179250419139862,
+        "exact": true,
+        "rowtile_ms": 0.09692050144076347,
+        "speedup": 2.288396168966947
+      },
+      "4": {
+        "direct_ms": 0.2824829965829849,
+        "exact": true,
+        "rowtile_ms": 0.1162554994225502,
+        "speedup": 2.4298463125280025
+      },
+      "5": {
+        "direct_ms": 0.34061498939991,
+        "exact": true,
+        "rowtile_ms": 0.12389099970459938,
+        "speedup": 2.749311816129165
+      },
+      "6": {
+        "direct_ms": 0.40503500401973724,
+        "exact": true,
+        "rowtile_ms": 0.1298624947667122,
+        "speedup": 3.118952895116877
+      },
+      "7": {
+        "direct_ms": 0.46398399770259857,
+        "exact": true,
+        "rowtile_ms": 0.1448099985718727,
+        "speedup": 3.204088131195665
+      },
+      "8": {
+        "direct_ms": 0.5263610184192657,
+        "exact": true,
+        "rowtile_ms": 0.1519235000014305,
+        "speedup": 3.464645156373501
+      }
+    },
+    "shape": [
+      5120,
+      6144
+    ],
+    "tensor": "blk.0.ssm_out.weight"
+  },
+  "commands": {
+    "full_suite": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --widths 2 --resident-capacity 4 --expected-mtp-widths 2 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/qwen38-c2k3-q5-q6-rowtiles-full-clean.json",
+    "profile": "GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. rocprofv3 --kernel-trace --marker-trace --hip-runtime-trace --memory-copy-trace --memory-allocation-trace --output-format csv --output-directory /tmp/qwen38-c2k3-q5-q6-rowtiles-rocprof-clean -- .venv/bin/python3 -u scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --target-arch gfx1151 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 2 --budgets 3 --max-tokens 12 --runs 1 --warmup --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output /tmp/qwen38-c2k3-q5-q6-rowtiles-profile-clean.json --fail-on-fail"
+  },
+  "correctness": {
+    "RED": "backend capability assertion failed before Q5 admission",
+    "actual_weight": "7/7 R2-R8 BF16-bit exact",
+    "focused_tests": "2/2 capability/dispatch and 10/10 Q5/Q6 verifier/Q5 GPU rowtile tests pass",
+    "full_suite": "10/10 exact/engaged/budget-conformed and zero final tracked memory",
+    "production_transfer": "prior col8 production correctness plus D5 numerical/determinism/isolation/transition manifest evidence transfer because selected Q5 operation is BF16-bit exact"
+  },
+  "cycle_profile": {
+    "baseline_q6_only": {
+      "cycle": {
+        "kernel_count": 1522.0,
+        "kernel_sum_ms": 254.2688415,
+        "uncovered_ms": 11.657613999999999,
+        "wall_ms": 265.9264555
+      },
+      "proposal": {
+        "kernel_count": 151.0,
+        "kernel_sum_ms": 45.1969,
+        "uncovered_ms": 2.318063,
+        "wall_ms": 47.514963
+      },
+      "target_accept_commit_provider": {
+        "kernel_count": 1371.0,
+        "kernel_sum_ms": 209.0719415,
+        "uncovered_ms": 9.185993,
+        "wall_ms": 218.2579345
+      }
+    },
+    "final_q5_q6": {
+      "cycle": {
+        "kernel_count": 1522.0,
+        "kernel_sum_ms": 234.0395805,
+        "uncovered_ms": 10.7074925,
+        "wall_ms": 244.747073
+      },
+      "proposal": {
+        "kernel_count": 151.0,
+        "kernel_sum_ms": 45.157022,
+        "uncovered_ms": 1.9790795,
+        "wall_ms": 47.136101499999995
+      },
+      "target_accept_commit_provider": {
+        "kernel_count": 1371.0,
+        "kernel_sum_ms": 188.88255850000002,
+        "uncovered_ms": 8.573221499999999,
+        "wall_ms": 197.45578
+      }
+    },
+    "incremental_delta_pct": {
+      "cycle_wall": -7.964375887377617,
+      "kernel_sum": -7.95585525959932,
+      "target_wall": -9.530995767762107
+    },
+    "next_top_kernel": {
+      "calls": 264,
+      "kernel": "gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false,1>",
+      "ms": 128.237
+    },
+    "protocol": "clean marker-window C2/K3 p1/D12; median steady full-budget cycles 1-2",
+    "q5": {
+      "baseline_calls": 48,
+      "baseline_kernel": "qk_t16_selected_direct_gemv_kernel<bf16,Q5,dense_single_expert>",
+      "baseline_ms": 27.51345,
+      "delta_pct": -69.93107007663524,
+      "final_calls": 48,
+      "final_kernel": "q5_k_t16_dense_rowtile_gemv_kernel<bf16,R8,C8>",
+      "final_ms": 8.273
+    }
+  },
+  "date": "2026-08-28",
+  "decision": {
+    "automatic_policy": "keep C2 pure K0: K3 is 1.0233x aggregate but below 1.10x and mixed category is 0.9536x",
+    "implementation": "retain existing exact Q5 col8 rowtile for packed target verifier K6144/N5120 rows2-8",
+    "next": "Q4 is now 128.2 ms/cycle; exact small-M WMMA is already selected, while the much faster generic rowtile changes arithmetic and requires a separate production-profile numerical campaign",
+    "remaining_to_1_10_pct": 7.499261148280967
+  },
+  "evidence": {
+    "baseline_stage": {
+      "bytes": 79628,
+      "path": "/tmp/qwen38-c2k3-q6-both-rowtiles-stage-summary-clean.json",
+      "retained_in_git": false,
+      "sha256": "e058319f82b6b3461173bd96df22f6a2011736e907a4c7262e260bd11fa2e3d7"
+    },
+    "baseline_suite": {
+      "bytes": 931564,
+      "path": "/tmp/qwen38-c2k3-q6-both-rowtiles-full-clean.json",
+      "retained_in_git": false,
+      "sha256": "add272e96b23ee29f6f0692d50d390c9955ac18c49130f36aa61bf016502fbe1"
+    },
+    "copy_trace": {
+      "bytes": 116590,
+      "path": "/tmp/qwen38-c2k3-q5-q6-rowtiles-rocprof-clean/gfx1151/1791763_memory_copy_trace.csv",
+      "retained_in_git": false,
+      "sha256": "c29515780394d3326e94c99490e6534749ce714308653e446c50ae73f6379592"
+    },
+    "final_stage": {
+      "bytes": 80061,
+      "path": "/tmp/qwen38-c2k3-q5-q6-rowtiles-stage-summary-clean.json",
+      "retained_in_git": false,
+      "sha256": "f8f4e468a00f5a7c32946b55fa518ee740079756c97eaee63b9b473199c89b8e"
+    },
+    "final_suite": {
+      "bytes": 931545,
+      "path": "/tmp/qwen38-c2k3-q5-q6-rowtiles-full-clean.json",
+      "retained_in_git": false,
+      "sha256": "c623662c8ef1fafbdc6b68dd46c5ebd51439e8092e6a0ad2114d48e14e000b26"
+    },
+    "hip_trace": {
+      "bytes": 5347661,
+      "path": "/tmp/qwen38-c2k3-q5-q6-rowtiles-rocprof-clean/gfx1151/1791763_hip_api_trace.csv",
+      "retained_in_git": false,
+      "sha256": "82171a6abaf999d80c1c2ae0a952b06099c92fb7cd92d449dc172412af7e0050"
+    },
+    "kernel_trace": {
+      "bytes": 7088366,
+      "path": "/tmp/qwen38-c2k3-q5-q6-rowtiles-rocprof-clean/gfx1151/1791763_kernel_trace.csv",
+      "retained_in_git": false,
+      "sha256": "5c1b61f6aa3501e9d3f5ee7b02262cf912ffec2b1ff97cc812e0d7cd167071e8"
+    },
+    "leaf_screen": {
+      "bytes": 7214,
+      "path": "/tmp/qwen38-q5-verifier-rowtile-screen.json",
+      "retained_in_git": false,
+      "sha256": "eb49e08d58a3d9362bacd9007993656e0cab886dda4eb5271dcd2a02b085c1d3"
+    },
+    "marker_trace": {
+      "bytes": 10273,
+      "path": "/tmp/qwen38-c2k3-q5-q6-rowtiles-rocprof-clean/gfx1151/1791763_marker_api_trace.csv",
+      "retained_in_git": false,
+      "sha256": "eb1d26a75502fb88ab562d4aba5fad59a309ffc3fe90b37135a241bdcf927116"
+    },
+    "profile_child": {
+      "bytes": 47336,
+      "path": "/tmp/qwen38-c2k3-q5-q6-rowtiles-profile-clean.json",
+      "retained_in_git": false,
+      "sha256": "bb236d14915a5229026bd226c83919d669976c4a9622fe2d212d6e97080a3295"
+    }
+  },
+  "full_suite": {
+    "acceptance": {
+      "accepted": 314,
+      "cycles": 142,
+      "drafts": 398,
+      "rate": 0.7889447236180904
+    },
+    "baseline_q6_only": {
+      "ar": {
+        "generated_tokens": 480,
+        "tok_s": 14.521879312642497,
+        "wall_seconds": 33.053573140641674
+      },
+      "budget_conformed_cells": 10,
+      "cells": 10,
+      "engaged_cells": 10,
+      "exact_cells": 10,
+      "mtp": {
+        "generated_tokens": 480,
+        "tok_s": 14.154309041339825,
+        "wall_seconds": 33.91193442209624
+      },
+      "mtp_expected": true,
+      "mtp_vs_ar_percent": -2.5311480930892416,
+      "mtp_vs_ar_ratio": 0.9746885190691076,
+      "route_expectation_passed": true
+    },
+    "categories": {
+      "code": {
+        "ar_tok_s": 14.551180910245487,
+        "mtp_tok_s": 14.99528586633401,
+        "ratio": 1.0305202003073048
+      },
+      "general_en": {
+        "ar_tok_s": 14.620894431129773,
+        "mtp_tok_s": 16.3884557798203,
+        "ratio": 1.1208928329943455
+      },
+      "general_ja": {
+        "ar_tok_s": 14.433632267126816,
+        "mtp_tok_s": 14.41484264370768,
+        "ratio": 0.9986982054779149
+      },
+      "mixed_ja_en": {
+        "ar_tok_s": 13.99266254564368,
+        "mtp_tok_s": 13.343350694637454,
+        "ratio": 0.9535962616915695
+      }
+    },
+    "correctness": {
+      "ar_mtp_generated_ids_equal": true,
+      "budget_conformed_cells": 10,
+      "engaged_cells": 10,
+      "exact_cells": 10
+    },
+    "final_memory": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 23423800176,
+      "peak_allocations": 1774,
+      "total_allocated_bytes": 24656374068,
+      "total_freed_bytes": 24656374068
+    },
+    "final_q5_q6": {
+      "ar": {
+        "generated_tokens": 480,
+        "tok_s": 14.426275068011897,
+        "wall_seconds": 33.27262219367549
+      },
+      "budget_conformed_cells": 10,
+      "cells": 10,
+      "engaged_cells": 10,
+      "exact_cells": 10,
+      "mtp": {
+        "generated_tokens": 480,
+        "tok_s": 14.761871295956205,
+        "wall_seconds": 32.51620274805464
+      },
+      "mtp_expected": true,
+      "mtp_vs_ar_percent": 2.3262846879194887,
+      "mtp_vs_ar_ratio": 1.0232628468791949,
+      "route_expectation_passed": true
+    },
+    "incremental": {
+      "mtp_tok_s_pct": 4.2924190283107455,
+      "ratio_pct": 4.983574430165549
+    },
+    "protocol": "ten canonical prompts; four categories; six train/four heldout; blocking OpenAI barrier-to-last-completion; C2 capacity4; D24; K3; one run; raw greedy",
+    "splits": {
+      "heldout": {
+        "ar_tok_s": 14.361651712788658,
+        "mtp_tok_s": 14.902380600697827,
+        "ratio": 1.0376508843636463
+      },
+      "train": {
+        "ar_tok_s": 14.469681373361635,
+        "mtp_tok_s": 14.669661245422713,
+        "ratio": 1.0138206133847036
+      }
+    },
+    "total_vs_pre_rowtile_d6": {
+      "mtp_tok_s": [
+        11.7239113252131,
+        14.761871295956205
+      ],
+      "mtp_tok_s_pct": 25.912512355921336,
+      "ratio": [
+        0.8169989652710817,
+        1.0232628468791949
+      ],
+      "ratio_pct": 25.246529111536198
+    }
+  },
+  "hardware": {
+    "GPU_MAX_HW_QUEUES": 2,
+    "HIP": "7.15.0",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "physical_host": "AMD Ryzen AI MAX+ 395 / Radeon 8060S"
+  },
+  "implementation": {
+    "arithmetic_changed": false,
+    "launch_count_delta": 0,
+    "proposal_q4_q6_peer_backends_changed": false,
+    "scope": "target verifier only; gfx1151; gguf_q5_k_t16_v1; K6144/N5120; rows2-8",
+    "selected_variant": "t16_gemv_rowtile_bf16_bf16_out (gfx1151 wrapper selects col8)",
+    "strict_fallback": "t16_gemv_decode_bf16_bf16_out",
+    "workspace_bytes_delta": 0
+  },
+  "kind": "gfx1151_qwen38_c2_q5_verifier_rowtile_retained",
+  "model": {
+    "KV": "BF16",
+    "execution_profile": "production",
+    "manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sampled_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 17106775008,
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+    },
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "strict_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+  },
+  "performance_claim": true,
+  "product_speed_claim_eligible": false,
+  "schema": 1,
+  "source": {
+    "baseline_commit": "e88022bd0f0c007228ca0b12f3e6fb70ac6bbab0",
+    "candidate_commit": "f4a53691f52c55dc4e42193149a8667f7a7e120a",
+    "candidate_tracked_clean": true,
+    "prior_q5_col8_correctness": "benchmarks/results/2026-08-24-gfx1151-qwen38-q5-rowtile-col8-production-correctness.json",
+    "prior_q6_artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json"
+  },
+  "status": "retained_scoped_default_automatic_c2_k0"
+}

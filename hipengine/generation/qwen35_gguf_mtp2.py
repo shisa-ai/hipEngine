@@ -45,6 +45,7 @@ from hipengine.speculative.frontier import (
     CandidateGraph,
     ProviderAttachment,
     ProviderCatchupMode,
+    SpecK0Class,
     SpecPlanReason,
     SpecRequestPlan,
     SpecTransactionMode,
@@ -787,8 +788,17 @@ class Qwen35GGUFMTP2Adapter:
             for eligibility in static_eligibilities
             if eligibility is not None
         )
-        if static_bounds and len(semantics) != min(static_bounds):
+        if static_bounds and len(semantics) > min(static_bounds):
             return None
+        static_candidate_bounds = tuple(
+            int(eligibility.max_candidate_count)
+            for eligibility in static_eligibilities
+            if eligibility is not None
+        )
+        max_candidate_count = min(
+            self.candidate_budget,
+            *(static_candidate_bounds or (self.candidate_budget,)),
+        )
         singleton_only = tuple(
             self._singleton_only(item.request_id)
             for item in semantics
@@ -818,8 +828,19 @@ class Qwen35GGUFMTP2Adapter:
             existing = self._states.get(int(semantics[0].request_id))
             owner = getattr(targets[0], "_target_scratch_owner", None)
             automatic_singleton = bool(singleton_only[0])
-            if (existing is not None and existing.verifier is None) or (
+            eligibility = static_eligibilities[0]
+            physical_singleton = bool(
+                eligibility is not None
+                and eligibility.eligible
+                and int(eligibility.max_realized_group_rows) > 1
+            )
+            if (
+                existing is not None
+                and existing.verifier is None
+                and not physical_singleton
+            ) or (
                 not automatic_singleton
+                and not physical_singleton
                 and (
                     int(getattr(owner, "slot_count", 1)) > 1
                     or int(getattr(self.owner, "capacity", 1)) > 1
@@ -848,11 +869,11 @@ class Qwen35GGUFMTP2Adapter:
         )
         profile = str(getattr(self.generator, "execution_profile", None) or "legacy_exact")
         max_requests = min(4, max(1, int(getattr(self.owner, "capacity", 4))))
-        max_frontier_rows = max_requests * (self.candidate_budget + 1)
+        max_frontier_rows = max_requests * (max_candidate_count + 1)
         return SpeculativeCapability(
             capability_key=(
                 f"gguf_mtp2_c{max_requests}:{self.generator.backend}:{self.quant}:"
-                f"{realized_verify_mode}:{self.candidate_budget}"
+                f"{realized_verify_mode}:{max_candidate_count}"
             ),
             target_key=str(getattr(self, "target_key", "qwen_dense_gguf")),
             provider_key=str(
@@ -861,7 +882,7 @@ class Qwen35GGUFMTP2Adapter:
             method_key="mtp2",
             policy_fingerprint=(
                 f"{getattr(self, 'policy_prefix', 'dense-nextn')}:"
-                f"{realized_verify_mode}:b{self.candidate_budget}:"
+                f"{realized_verify_mode}:b{max_candidate_count}:"
                 "prompt-streaming"
                 f"{int(getattr(self, 'physical_prompt_streaming', False))}:"
                 "extra-rowtiles"
@@ -878,7 +899,7 @@ class Qwen35GGUFMTP2Adapter:
             supported_modes=("verify_chain",),
             supported_sampling_modes=("greedy",),
             max_requests=max_requests,
-            max_candidates_per_request=self.candidate_budget,
+            max_candidates_per_request=max_candidate_count,
             max_frontier_rows=max_frontier_rows,
             proposal_widths=tuple(
                 width for width in (1, 2, 4) if width <= max_requests
@@ -892,15 +913,41 @@ class Qwen35GGUFMTP2Adapter:
             max_context_tokens=max_context,
         )
 
+    def partition_max_requests(self, request_ids: Sequence[int]) -> int:
+        """Return a physical subgroup bound without selecting a future due C/K."""
+
+        ids = tuple(int(value) for value in request_ids)
+        if not self.enabled or not ids:
+            return 0
+        eligibility = tuple(self._static_eligibility(request_id) for request_id in ids)
+        if any(row is None or not row.eligible for row in eligibility):
+            return 0
+        bound = min(
+            4,
+            max(1, int(getattr(self.owner, "capacity", 1))),
+            *(int(row.max_realized_group_rows) for row in eligibility if row is not None),
+        )
+        # Exact automatic-singleton evidence must fail the composed due group to
+        # K0; it may not be reinterpreted as many independently profitable C1s.
+        return bound if bound > 1 else 0
+
     def claims_fit(self, plan: SpecRequestPlan) -> bool:
+        request_ids = tuple(int(value) for value in plan.speculative_request_ids)
+        physical_singleton = bool(
+            len(request_ids) == 1
+            and (eligibility := self._static_eligibility(request_ids[0])) is not None
+            and eligibility.eligible
+            and int(eligibility.max_realized_group_rows) > 1
+        )
         return bool(
             self.enabled
             and self._active_claims is None
-            and 1 <= len(plan.speculative_request_ids) <= 4
+            and 1 <= len(request_ids) <= 4
             and not (
-                len(plan.speculative_request_ids) == 1
+                len(request_ids) == 1
                 and int(getattr(self.owner, "capacity", 1)) > 1
-                and not self._singleton_only(plan.speculative_request_ids[0])
+                and not self._singleton_only(request_ids[0])
+                and not physical_singleton
             )
             and not any(
                 request_id in self._disabled_requests
@@ -917,6 +964,25 @@ class Qwen35GGUFMTP2Adapter:
     ) -> None:
         del request_semantics, stream
         reason_by_id = dict(zip(plan.request_ids, plan.reasons, strict=True))
+        k0_by_id = dict(
+            zip(
+                plan.request_ids,
+                getattr(
+                    plan,
+                    "k0_classes",
+                    tuple(
+                        SpecK0Class.TRANSITIONAL
+                        if reason in {
+                            SpecPlanReason.NO_PROVIDER,
+                            SpecPlanReason.POLICY_SELECTED_AR,
+                        }
+                        else SpecK0Class.PURE
+                        for reason in plan.reasons
+                    ),
+                ),
+                strict=True,
+            )
+        )
         ids = tuple(
             int(request_id)
             for request_id in plan.request_ids
@@ -942,10 +1008,7 @@ class Qwen35GGUFMTP2Adapter:
                 self.owner._flush_row_owner(self.owner._row(request_id))
             self._ensure_request_states(attach)
         for rid in ids:
-            if reason_by_id[rid] not in {
-                SpecPlanReason.NO_PROVIDER,
-                SpecPlanReason.POLICY_SELECTED_AR,
-            }:
+            if k0_by_id[rid] is not SpecK0Class.TRANSITIONAL:
                 continue
             state = self._states.get(rid)
             if state is None:
@@ -1199,7 +1262,7 @@ class Qwen35GGUFMTP2Adapter:
             proposal_started = time.perf_counter()
             device_draft = None
             device_proposal = None
-            if len(ids) == 1:
+            if len(ids) == 1 and states[0].verifier is not None:
                 verifier = states[0].verifier
                 remaining_by_id = {
                     int(item.request_id): int(item.remaining_decode)
@@ -1242,10 +1305,9 @@ class Qwen35GGUFMTP2Adapter:
                     sum(1 for count in budgets if depth < count)
                     for depth in range(max(budgets))
                 )
-                batched_shapes = tuple(shape for shape in physical_shapes if shape > 1)
                 for row in rows:
-                    row.mtp2_proposal_batch_calls += len(batched_shapes)
-                    row.mtp2_proposal_physical_rows.extend(batched_shapes)
+                    row.mtp2_proposal_batch_calls += len(physical_shapes)
+                    row.mtp2_proposal_physical_rows.extend(physical_shapes)
                     row.mtp2_candidate_device_handoffs += 1
             proposal_seconds = time.perf_counter() - proposal_started
             for index, (request_id, state) in enumerate(zip(ids, states, strict=True)):
@@ -1370,7 +1432,11 @@ class Qwen35GGUFMTP2Adapter:
             raise ValueError("GGUF MTP2 target frontier requires commit=True")
         if self._active_claims != complete_claims:
             raise RuntimeError("GGUF MTP2 target does not own complete claims")
-        if len(plan.speculative_request_ids) > 1 and (
+        physical_provider = any(
+            self._states[int(request_id)].verifier is None
+            for request_id in plan.speculative_request_ids
+        )
+        if (len(plan.speculative_request_ids) > 1 or physical_provider) and (
             frontier.target_batch is not None
             or (
                 frontier.candidate_graph is not None
@@ -2572,12 +2638,12 @@ class Qwen35GGUFMTP2Adapter:
 
         accepted = tuple(int(value) for value in accepted_counts)
         if (
-            len(states) <= 1
+            not states
             or len(states) != len(accepted)
             or proposal.request_ids
             != tuple(int(state.request_id) for state in states)
         ):
-            raise ValueError("physical device repair requires aligned C>1 rows")
+            raise ValueError("physical device repair requires aligned request rows")
         if any(
             value < 0 or value > count
             for value, count in zip(
@@ -2744,8 +2810,8 @@ class Qwen35GGUFMTP2Adapter:
     ) -> None:
         accepted = tuple(int(value) for value in accepted_counts)
         counts = tuple(int(value) for value in candidate_counts)
-        if len(states) <= 1 or len(accepted) != len(states) or len(counts) != len(states):
-            raise ValueError("physical provider repair requires aligned C>1 rows")
+        if not states or len(accepted) != len(states) or len(counts) != len(states):
+            raise ValueError("physical provider repair requires aligned request rows")
         if len({state.provider_group_key for state in states}) != 1:
             raise RuntimeError("physical provider repair requires one provider group")
         executor = states[0].provider.executor

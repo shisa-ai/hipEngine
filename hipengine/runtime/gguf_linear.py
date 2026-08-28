@@ -132,6 +132,19 @@ _wmma_prefill_session_enabled: bool | None = None
 _GEMV_DECODE_ENV = "HIPENGINE_GGUF_GEMV_DECODE"
 _gemv_decode_session_enabled: bool | None = None
 _native_batch_decode_session_enabled = False
+_target_verifier_rowtile_session_enabled: ContextVar[bool] = ContextVar(
+    "gguf_target_verifier_rowtile_session_enabled",
+    default=False,
+)
+_target_verifier_production_q4_rowtile_session_enabled: ContextVar[bool] = (
+    ContextVar(
+        "gguf_target_verifier_production_q4_rowtile_session_enabled",
+        default=False,
+    )
+)
+TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV = (
+    "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE"
+)
 
 # Small-B weight-amortized row-tile GEMV for raw K-quants and resident-pack8
 # Q4_K verifier continuation blocks. Default ON: every specialization preserves
@@ -1206,6 +1219,37 @@ def gguf_native_batch_decode_enabled() -> bool:
     """Return whether the current execution context owns native batch decode."""
 
     return _native_batch_decode_session_enabled
+
+
+@contextlib.contextmanager
+def target_verifier_rowtile_session(enabled: bool = True) -> Iterator[None]:
+    """Allow backend-admitted T16 rowtiles inside a packed target verifier.
+
+    This scope is intentionally narrower than :func:`native_batch_decode_session`:
+    the backend capability names the eligible quant plugins, and every unrelated
+    projection keeps its verifier owner.
+    """
+
+    token = _target_verifier_rowtile_session_enabled.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _target_verifier_rowtile_session_enabled.reset(token)
+
+
+@contextlib.contextmanager
+def target_verifier_production_q4_rowtile_session(
+    enabled: bool = True,
+) -> Iterator[None]:
+    """Enable a production-numerics Q4 verifier candidate in one context."""
+
+    token = _target_verifier_production_q4_rowtile_session_enabled.set(
+        bool(enabled)
+    )
+    try:
+        yield
+    finally:
+        _target_verifier_production_q4_rowtile_session_enabled.reset(token)
 
 
 def _env_gemv_decode_enabled() -> bool:
@@ -2658,6 +2702,34 @@ def _q4_t16_sidecar_decode_variants(
     return ("dense_rowtile_bf16_bf16_out",)
 
 
+def _target_verifier_production_q4_rowtile_scope_enabled(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> bool:
+    if not _target_verifier_production_q4_rowtile_session_enabled.get():
+        return False
+    admitted_rows = backend_package_capability(
+        dispatch.key.backend,
+        "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS",
+        (),
+    )
+    shapes = backend_package_capability(
+        dispatch.key.backend,
+        "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES",
+        (),
+    )
+    try:
+        return int(rows) in admitted_rows and (
+            int(in_features),
+            int(out_features),
+        ) in shapes
+    except TypeError:
+        return False
+
+
 def _q4_t16_dense_native_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -2673,8 +2745,14 @@ def _q4_t16_dense_native_dispatch(
             0,
         )
     )
+    verifier_candidate = _target_verifier_production_q4_rowtile_scope_enabled(
+        dispatch,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
     if (
-        not _native_batch_decode_session_enabled
+        not (_native_batch_decode_session_enabled or verifier_candidate)
         or dispatch.abi != "t16"
         or not 2 <= rows <= max_rows
     ):
@@ -4320,7 +4398,15 @@ def launch_gguf_linear_pair_silu(
             in_features=in_features,
             out_features=out_features,
             use_sidecar=use_q4_t16_sidecar,
-            native_batch=_native_batch_decode_session_enabled,
+            native_batch=(
+                _native_batch_decode_session_enabled
+                or _target_verifier_production_q4_rowtile_scope_enabled(
+                    dispatch_a,
+                    rows=rows,
+                    in_features=in_features,
+                    out_features=out_features,
+                )
+            ),
         )
         decode_tiles_a = None
         decode_tiles_b = None
@@ -5793,7 +5879,24 @@ def _native_batch_decode_dispatch(
 ) -> GGUFLinearDispatch:
     """Select registered compact c=2..8 native projection families."""
 
-    if not _native_batch_decode_session_enabled or rows <= 1 or rows > 8:
+    verifier_rowtile_shapes = backend_package_capability(
+        dispatch.key.backend,
+        "GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT",
+        {},
+    )
+    quant_verifier_shapes = (
+        verifier_rowtile_shapes.get(dispatch.key.quant, ())
+        if isinstance(verifier_rowtile_shapes, Mapping)
+        else ()
+    )
+    verifier_rowtile_enabled = bool(
+        _target_verifier_rowtile_session_enabled.get()
+        and (int(in_features), int(out_features)) in quant_verifier_shapes
+    )
+    if (
+        not _native_batch_decode_session_enabled
+        and not verifier_rowtile_enabled
+    ) or rows <= 1 or rows > 8:
         return dispatch
     t16_rowtile_max_rows = 6
     t16_rowtile_limits = backend_package_capability(
@@ -6315,6 +6418,9 @@ __all__ = [
     "launch_gguf_linear_triple",
     "gguf_native_batch_decode_enabled",
     "native_batch_decode_session",
+    "target_verifier_rowtile_session",
+    "target_verifier_production_q4_rowtile_session",
+    "TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV",
     "q4_pack8_dual_wmma_silu_prefill_session",
     "q4_t16_unequal_pair_prefill_session",
     "q5_f32_ordered_prefill_session",

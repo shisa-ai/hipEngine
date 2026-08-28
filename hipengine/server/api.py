@@ -2135,6 +2135,14 @@ def _serving_plan_route_decision(
             ),
         )
     )
+    static_max_rows = int(static_payload.get("max_realized_group_rows", 0) or 0)
+    if (
+        route == _SPECULATIVE_MTP_AUTO_ROUTE
+        and int(group_rows) > static_max_rows
+    ):
+        # Losing/unqualified automatic widths must select true AR before provider
+        # mutation. Explicit requests retain typed intent for functional routes.
+        static_intent_allowed = False
     if admitted and planned_rows != int(group_rows):
         admitted = False
         reason = "physical_group_not_qualified"
@@ -2768,7 +2776,13 @@ class _GenerationBatcher:
         route_name = str(route)
         limit = self._max_active_requests
         route_limit = self._route_max_active_requests.get(route_name)
-        if route_name == _SPECULATIVE_MTP_DEFAULT_ROUTE:
+        if route_name in {
+            _SPECULATIVE_MTP_DEFAULT_ROUTE,
+            _SPECULATIVE_MTP_AUTO_ROUTE,
+        }:
+            # Automatic requests must reach their normal AR group width before
+            # static evidence decides MTP or pure K0. Explicit MTP stays bounded
+            # by its registered physical owner.
             engine = self._engine_factory()
             independent = _engine_supports_independent_generation(engine)
             if independent:
@@ -12012,8 +12026,8 @@ def _speculative_mtp_route_for_request(
         and not explicit_requested
         and not _engine_supports_default_mtp(engine)
     ):
-        # A broad dense-model boolean is not default evidence. Keep the K0
-        # reason visible so enabled/capabilities/response reporting agree.
+        # Missing typed automatic evidence stays K0 so enabled/capabilities/
+        # response reporting agree.
         return _SPECULATIVE_MTP_K0_ROUTE
     thinking_policy = _request_speculative_mtp_thinking(config, request)
     if thinking_policy == "hint":

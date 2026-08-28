@@ -12,6 +12,7 @@ from hipengine.execution_profiles import (
 )
 from hipengine.generation.qwen38_gguf_profiles import (
     FP16_RECURRENT_STATE_ENV,
+    PRODUCTION_Q4_VERIFIER_ROWTILE_ENV,
     QWEN38_GGUF_BACKEND,
     QWEN38_GGUF_MODEL,
     QWEN38_GGUF_QUANT,
@@ -26,6 +27,7 @@ def _isolate_profile_registry(monkeypatch: pytest.MonkeyPatch):
     clear_runtime_profile_registry_for_tests()
     for name in (
         FP16_RECURRENT_STATE_ENV,
+        PRODUCTION_Q4_VERIFIER_ROWTILE_ENV,
         VERIFY_CAPTURE_PREFILL_GDN_ENV,
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
     ):
@@ -62,6 +64,7 @@ def test_qwen38_strict_profile_resolves_and_disables_fp16_state() -> None:
 
     assert os.environ[FP16_RECURRENT_STATE_ENV] == "0"
     assert os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] == "1"
+    assert os.environ[PRODUCTION_Q4_VERIFIER_ROWTILE_ENV] == "0"
     assert resolved.profile is ExecutionProfile.STRICT
     assert resolved.manifest_sha256 == resolved.strict_manifest_sha256
     assert resolved.manifest["graph_policy"] == "specdec2_eager_c1"
@@ -85,8 +88,17 @@ def test_qwen38_production_profile_resolves_fp16_state_with_strict_fallbacks() -
     assert resolved.manifest_sha256 != resolved.strict_manifest_sha256
     assert os.environ[FP16_RECURRENT_STATE_ENV] == "1"
     assert os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] == "1"
+    assert os.environ[PRODUCTION_Q4_VERIFIER_ROWTILE_ENV] == "1"
     selections = _selection_map(resolved)
     expected = {
+        ("linear", "specdec2_mtp2_c2_k3_r8_q4_single"): (
+            "dense_rowtile_bf16_bf16_out",
+            "t16_wmma_prefill_smallm_bf16_bf16_out",
+        ),
+        ("linear_pair_silu", "specdec2_mtp2_c2_k3_r8_q4_gate_up"): (
+            "dense_dual_rowtile_bf16_bf16_out",
+            "dense_dual_wmma_prefill_bf16_bf16_out",
+        ),
         ("gdn_chain_recurrent_rmsnorm_gate", "specdec2_mtp2_target_state_rows"): (
             "bf16_c1_exact_state_rows_tloop_fp16state",
             "bf16_c1_exact_state_rows_tloop",

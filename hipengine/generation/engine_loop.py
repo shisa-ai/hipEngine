@@ -431,12 +431,6 @@ class SubmitPollTextGenerator:
     def last_speculative_submission(self) -> GenerationSubmission | None:
         return self._last_speculative_submission
 
-    @property
-    def supports_default_mtp(self) -> bool:
-        """Whether default-on MTP serving is safe for the wrapped model."""
-
-        return bool(getattr(self._inner, "supports_default_mtp", False))
-
     def generate_speculative_mtp_detailed(
         self,
         request: GenerationRequest,
@@ -2293,13 +2287,19 @@ class ResidentEngineLoop:
         return (EngineLoopEvent(kind="work", request_ids=work.request_ids, work_kind=work.kind),)
 
     def _run_decode(self, work: WorkItem) -> tuple[EngineLoopEvent, ...]:
-        speculative = self._maybe_run_speculative_cycle(work)
-        if speculative is not None:
-            return speculative
         desired = tuple(
             self._speculative_candidate_counts.get(int(request_id), 0)
             for request_id in work.request_ids
         )
+        partitioned = self._maybe_run_partitioned_speculative_decode(
+            work,
+            desired,
+        )
+        if partitioned is not None:
+            return partitioned
+        speculative = self._maybe_run_speculative_cycle(work)
+        if speculative is not None:
+            return speculative
         if any(desired) and not all(desired):
             spec_ids = tuple(
                 request_id
@@ -2307,7 +2307,16 @@ class ResidentEngineLoop:
                 if count > 0
             )
             spec_work = self._decode_work_subset(work, spec_ids)
-            disjoint_speculative = self._maybe_run_speculative_cycle(spec_work)
+            spec_desired = tuple(
+                self._speculative_candidate_counts[int(request_id)]
+                for request_id in spec_ids
+            )
+            disjoint_speculative = self._maybe_run_partitioned_speculative_decode(
+                spec_work,
+                spec_desired,
+            )
+            if disjoint_speculative is None:
+                disjoint_speculative = self._maybe_run_speculative_cycle(spec_work)
             if disjoint_speculative is not None:
                 ar_ids = tuple(
                     request_id
@@ -2323,6 +2332,42 @@ class ResidentEngineLoop:
                 )
                 return (*disjoint_speculative, *ar_events)
         return self._run_ar_decode(work)
+
+    def _maybe_run_partitioned_speculative_decode(
+        self,
+        work: WorkItem,
+        desired: Sequence[int],
+    ) -> tuple[EngineLoopEvent, ...] | None:
+        """Lower one wide all-spec due item into bounded fair frontiers.
+
+        The resident scheduler remains the sole fairness owner: request order is
+        stable, every due row is served exactly once in this tick, and each
+        physical subgroup resolves its own immutable plan before mutation.
+        """
+
+        counts = tuple(int(value) for value in desired)
+        if len(work.request_ids) <= 1 or not counts or not all(counts):
+            return None
+        resolve_width = getattr(
+            self.runner,
+            "speculative_partition_max_requests",
+            None,
+        )
+        if not callable(resolve_width):
+            return None
+        max_requests = int(resolve_width(work))
+        if max_requests <= 0 or len(work.request_ids) <= max_requests:
+            return None
+        events: list[EngineLoopEvent] = []
+        for start in range(0, len(work.request_ids), max_requests):
+            request_ids = work.request_ids[start : start + max_requests]
+            subgroup = self._decode_work_subset(work, request_ids)
+            speculative = self._maybe_run_speculative_cycle(subgroup)
+            if speculative is None:
+                events.extend(self._run_ar_decode(subgroup))
+            else:
+                events.extend(speculative)
+        return tuple(events)
 
     @staticmethod
     def _decode_work_subset(

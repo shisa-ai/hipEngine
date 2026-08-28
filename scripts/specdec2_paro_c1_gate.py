@@ -77,7 +77,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         snapshot = adapter.live_loop_snapshot()
         engine_capability = {
             "llm_supports_speculative_mtp": bool(llm.supports_speculative_mtp),
-            "llm_supports_default_mtp": bool(llm.supports_default_mtp),
             "generator_type": type(adapter).__name__,
             "generator_supports_speculative_mtp": bool(
                 getattr(adapter, "supports_speculative_mtp", False)

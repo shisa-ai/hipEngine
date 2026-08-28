@@ -1687,28 +1687,6 @@ class Qwen35GGUFBringupGenerator:
             return resolver(key=key)
         return resolve_speculative_mtp_serving_plan((), key=key)
 
-    @property
-    def supports_default_mtp(self) -> bool:
-        """Whether default-on MTP serving is safe for this model.
-
-        Dense Qwen models can be served through the fast ``native`` verify path
-        (llama.cpp-style; validated ``all_gpu_accept_match_cpu`` with rare
-        sub-token-level argmax differences vs AR) and the token-exact
-        ``serial_exact`` rollback control, so MTP may be enabled by default.
-        MoE MTP can differ from plain AR, so it stays request-opt-in.  The
-        dense serving verify mode/budget are selected by
-        ``HIPENGINE_GGUF_MTP_VERIFY_MODE`` (default ``native``) and
-        ``HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET`` (default ``3``).
-        """
-
-        if not self.supports_speculative_mtp:
-            return False
-        try:
-            config = qwen35_gguf_config_from_metadata(self.weight_index)
-        except Exception:
-            return False
-        return not bool(config.is_moe)
-
     def generate(self, request: GenerationRequest) -> list[str]:
         outputs = self.generate_detailed(request)
         return [output.text for output in outputs]
@@ -6105,9 +6083,13 @@ class Qwen35GGUFResidentModelRunner:
         row = self._row(request_id)
         adapter = self._resolved_mtp2_adapter()
         adapter_budget = int(getattr(adapter, "candidate_budget", candidate_budget))
+        evidence_budget = int(
+            getattr(static_eligibility, "max_candidate_count", candidate_budget)
+        )
         effective_budget = min(
             max(1, int(candidate_budget)),
             max(1, adapter_budget),
+            max(1, evidence_budget),
         )
         row.mtp2_candidate_budget = effective_budget
         if adapter is not None:
@@ -6135,6 +6117,11 @@ class Qwen35GGUFResidentModelRunner:
         # intent and session graph cache directly in the adapter's later
         # telemetry. Uncaptured S3 shapes conservatively plan eager.
         return False
+
+    def speculative_partition_max_requests(self, work) -> int:
+        adapter = self._resolved_mtp2_adapter()
+        resolve = None if adapter is None else getattr(adapter, "partition_max_requests", None)
+        return 0 if not callable(resolve) else int(resolve(work.request_ids))
 
     def speculative_claims_fit(self, plan) -> bool:
         adapter = self._resolved_mtp2_adapter()
