@@ -77,6 +77,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out,
     gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out,
+    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
@@ -89,6 +90,7 @@ from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
     qwen4_exp_gather_bf16_lanes,
     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out,
+    qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out,
     qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
@@ -2554,8 +2556,14 @@ def run_qwen4_exp_moe(
                 raise RuntimeError("Qwen4Exp grouped MoE WMMA row count is invalid")
         if exact_grouped_down:
             if exact_grouped_q4_gate:
+                expert_grid_mode = os.environ.get(
+                    "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
+                )
+                expert_grid64 = expert_grid_mode in {"64", "q4"}
                 grouped_q4_gate = (
-                    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out
+                    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out
+                    if expert_grid64
+                    else gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out
                     if os.environ.get("HIPENGINE_QWEN4_EXP_Q4_OUT4", "1")
                     not in {"", "0", "false", "False"}
                     else gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out
@@ -2678,7 +2686,12 @@ def run_qwen4_exp_moe(
             ) not in {"", "0", "false", "False"}
             if exact_grouped_down:
                 grouped_q5_down = (
-                    qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out
+                    qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out
+                    if os.environ.get(
+                        "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
+                    )
+                    in {"64", "q5"}
+                    else qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out
                     if os.environ.get("HIPENGINE_QWEN4_EXP_Q5_1_OUT8", "1")
                     not in {"", "0", "false", "False"}
                     else qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out
@@ -4260,7 +4273,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         else:
             selected_raw_rowbatch = int(raw_rowbatch)
         selected_raw_variant = os.environ.get(
-            "HIPENGINE_QWEN4_EXP_RAW_VARIANT", "coltile"
+            "HIPENGINE_QWEN4_EXP_RAW_VARIANT", "coltile8"
         )
         with raw_k_prefill_rowbatch_session(selected_raw_rowbatch), raw_k_prefill_variant_session(selected_raw_variant):
             for start in range(0, len(values), self.prefill_chunk_size):

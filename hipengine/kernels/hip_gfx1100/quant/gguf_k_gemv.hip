@@ -643,8 +643,8 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
     int in_features,
     int out_features) {
   static_assert(
-      COL_TILE * ROW_BATCH == 32,
-      "WPF-1T screens only constant-32-accumulator output tiles");
+      COL_TILE * ROW_BATCH == 32 || COL_TILE * ROW_BATCH == 64,
+      "exact coltile screens require 32 or 64 accumulators");
   const int out_col_base = static_cast<int>(blockIdx.x) * COL_TILE;
   const int row_base = static_cast<int>(blockIdx.y) * ROW_BATCH;
   const int tid = threadIdx.x;
@@ -4418,6 +4418,11 @@ extern "C" int hipengine_gguf_q8_0_gemv_coltile##COL_TILE##_rowbatch##ROW_BATCH#
 }
 
 HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(4, 8)
+HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(8, 4)
+HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(8, 8)
+HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(16, 2)
+HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(16, 4)
+HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(32, 1)
 
 #undef HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT
 

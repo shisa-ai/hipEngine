@@ -283,9 +283,11 @@ strict reduction tree and exact final logits/control/IDs. Exact output4
 scheduling then cuts full-shape CTAs **327,680→81,920** and paired natural 4K
 **235.774→228.569 s (-3.06%)**. Exact Q5_1-down output8 scheduling then
 cuts full-shape CTAs **1,310,720→163,840** and paired natural 4K
-**237.131→222.228 s (-6.28%)**. Exact raw-Q8 FP32 coltile4/rowbatch8 now
-improves natural p508 **26.264→14.718 s (34.517 tok/s, 1.785x)** and p1012
-**56.550→29.622 s (34.164 tok/s, 1.909x)** with bit-exact logits. Natural 16K now
+**237.131→222.228 s (-6.28%)**. Exact fixed-worker Q4/Q5 scheduling plus raw-
+Q8 FP32 coltile8/rowbatch4 now improves natural p508 **14.718→11.988 s
+(42.376 tok/s, 1.228x)** and paired p1012 **31.346→24.432 s (41.422 tok/s,
+1.283x)** with bit-exact logits; profiled kernel wall falls 14.230→11.692 s.
+Natural 16K now
 passes at **17.301 prompt tok/s** with retrieval, all-layer needle control,
 independent CPU index selection, replay/rollback, and teardown exact. The permitted current-default natural 4K requalification now improves
 **222.228→146.883 s (-33.90%, 27.886 tok/s)** with exact retrieval/control/
@@ -312,7 +314,7 @@ remains open; no broader claim is made.
 [`Exact grouped Q4_K`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-gate-up.json) ·
 [`Exact grouped Q4_K output4`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-out4.json) ·
 [`Exact grouped Q5_1 output8`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q5-1-out8.json) ·
-[`Exact Q8 coltile prefill`](results/2026-08-28-gfx1151-qwen38-flash-next-exact-q8-coltile-prefill.json) ·
+[`Exact scheduling wave`](results/2026-08-28-gfx1151-qwen38-flash-next-exact-scheduling-wave.json) ·
 [`Basic MTP full suite`](results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json) ·
 [`Basic vision`](results/2026-08-28-gfx1151-qwen38-flash-next-basic-vision.json) ·
 [`Natural QSA 16K`](results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-16k.json) ·

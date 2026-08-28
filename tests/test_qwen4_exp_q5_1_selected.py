@@ -35,6 +35,7 @@ def test_qwen4_exp_q5_1_selected_build_and_registry_contract() -> None:
         qwen4_exp_q5_1_selected_gemv_wave64_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out,
+        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
         register_qwen4_exp_q5_1_kernels,
     )
@@ -78,6 +79,15 @@ def test_qwen4_exp_q5_1_selected_build_and_registry_contract() -> None:
             variant="selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out",
         )
         is qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="moe_linear",
+            quant="gguf_q5_1",
+            variant="selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+        )
+        is qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out
     )
     assert (
         resolve(
@@ -130,13 +140,14 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
         qwen4_exp_q5_1_selected_gemv_wave64_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out,
+        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out,
         qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
     )
 
     runtime = get_hip_runtime()
     library = build_qwen4_exp_q5_1(load=True)
     rng = np.random.default_rng(51)
-    rows, experts, in_features, out_features = 3, 4, 64, 48
+    rows, experts, in_features, out_features = 3, 68, 64, 48
     blocks_per_row = in_features // 32
     raw = np.empty((experts, out_features, blocks_per_row * 24), dtype=np.uint8)
     for expert in range(experts):
@@ -156,7 +167,7 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
                     0, 256, size=16, dtype=np.uint8
                 )
     # Router selection is an int64 contract shared by all selected GGUF kernels.
-    selected = np.array([3, 0, 2], dtype=np.int64)
+    selected = np.array([67, 0, 2], dtype=np.int64)
     x_bits = float_array_to_bf16_bits(
         rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
     )
@@ -194,6 +205,9 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
             grouped_expected_bits.shape, np.uint16, runtime, allocations
         )
         d_grouped_out8 = _alloc(
+            grouped_expected_bits.shape, np.uint16, runtime, allocations
+        )
+        d_grouped_expertgrid64 = _alloc(
             grouped_expected_bits.shape, np.uint16, runtime, allocations
         )
         d_expert_start_wmma = _upload(expert_start_wmma, runtime, allocations)
@@ -251,6 +265,18 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
             library=library,
             runtime=runtime,
         )
+        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out(
+            d_grouped_x.ptr,
+            d_expert_start.ptr,
+            d_weight.ptr,
+            d_grouped_expertgrid64.ptr,
+            rows,
+            experts,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
         qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
             d_grouped_x.ptr,
             d_expert_start.ptr,
@@ -277,6 +303,9 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
         grouped_out8 = _download(
             d_grouped_out8, grouped_expected_bits.shape, np.uint16, runtime
         )
+        grouped_expertgrid64 = _download(
+            d_grouped_expertgrid64, grouped_expected_bits.shape, np.uint16, runtime
+        )
         wmma_actual = _download(
             d_wmma_output, grouped_expected_bits.shape, np.uint16, runtime
         )
@@ -290,6 +319,7 @@ def test_qwen4_exp_q5_1_selected_matches_cpu_dequant_oracle() -> None:
     )
     np.testing.assert_array_equal(grouped_actual, grouped_expected_bits)
     np.testing.assert_array_equal(grouped_out8, grouped_expected_bits)
+    np.testing.assert_array_equal(grouped_expertgrid64, grouped_expected_bits)
     np.testing.assert_allclose(
         bf16_to_float32(wmma_actual),
         bf16_to_float32(grouped_expected_bits),

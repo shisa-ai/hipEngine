@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-28 gfx1151 Qwen3.8-Flash-Next exact scheduling wave] Exact fixed-worker Q4/Q5 plus Q8 coltile8/rowbatch4 reduce natural p508 **14.718→11.988 s (-18.55%, 42.376 tok/s)** and paired p1012 **31.346→24.432 s (-22.06%, 41.422 tok/s)** with bit-exact logits; cached kernel wall falls **14.230→11.692 s (-17.84%)**. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-scheduling-wave.json`.
+
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next short MTP full suite] Complete 10-prompt category+heldout packet: **10/10 exact AR IDs**, **134/159 = 84.28%** draft acceptance, MTP/AR **0.955x**; one code row wins 1.198x but aggregate economics reject default promotion, so AR remains default. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json`.
 
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next current natural QSA 4K] After the 20 tok/s prerequisite is met, current exact default reduces natural 4K **222.228→146.883 s (-33.90%, 27.886 tok/s, 1.513x)**; retrieval, all 12 controls, Transformers CPU top-512, replay/rollback, and zero teardown pass. 16K remains blocked because 27.886<50 tok/s. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-4k-current.json`.

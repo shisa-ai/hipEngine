@@ -21,10 +21,16 @@ should be removed or collapsed.
 ## 2026-08-28 Qwen4Exp exact raw-Q8 prefill tiling
 
 - `HIPENGINE_QWEN4_EXP_RAW_ROWBATCH` defaults to `32` and
-  `HIPENGINE_QWEN4_EXP_RAW_VARIANT` defaults to `coltile`, selecting exact
-  coltile4/rowbatch8 for raw Q8_0 FP32 projections. Remove both flags and the
-  scalar/rowbatch geometry ladder after short-context serving/graph soak; keep
-  the registered scalar strict fallback.
+  `HIPENGINE_QWEN4_EXP_RAW_VARIANT` defaults to `coltile8`, selecting exact
+  coltile8/rowbatch4 for raw Q8_0 FP32 projections. `coltile` restores the
+  preceding coltile4/rowbatch8 owner. Remove both flags and the losing geometry
+  ladder after short-context serving/graph soak; keep the registered scalar
+  strict fallback.
+- `HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID` defaults to `64`, selecting exact
+  fixed-worker Q4_K/Q5_1 grouped kernels. `0`, `q4`, and `q5` isolate rollback
+  and family attribution. Remove the flag plus full-512-expert launch wrappers
+  after serving/cancellation/graph soak; retain direct selected primitives as
+  the strict unfused fallback.
 
 ## 2026-08-27 Qwen4Exp exact grouped Q5_1 output batching
 
