@@ -53,6 +53,9 @@ _ARGS_NORM_ROWS = (ctypes.c_void_p,) * 4 + (ctypes.c_int64,) * 4 + (
     ctypes.c_float,
     ctypes.c_void_p,
 )
+_ARGS_SCATTER_INDEX = (ctypes.c_void_p,) * 3 + (ctypes.c_int64,) * 4 + (
+    ctypes.c_void_p,
+)
 _ARGS_GATE = (
     ctypes.c_void_p,
     ctypes.c_void_p,
@@ -650,6 +653,48 @@ def qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32(
     )
 
 
+def qwen4_exp_qsa_scatter_index_keys_f32(
+    source_ptr: int,
+    destination_ptr: int,
+    block_table_ptr: int,
+    start_position: int,
+    rows: int,
+    block_size: int,
+    index_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Scatter one contiguous index-key chunk through the paged block table."""
+
+    if start_position < 0 or rows <= 0 or block_size <= 0 or index_dim <= 0:
+        raise ValueError(
+            "start_position must be nonnegative and rows/block_size/index_dim positive"
+        )
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_qsa_scatter_index_keys_f32",
+        _ARGS_SCATTER_INDEX,
+        ctypes.c_int,
+    )
+    _check_launch(
+        runtime,
+        fn(
+            source_ptr,
+            destination_ptr,
+            block_table_ptr,
+            start_position,
+            rows,
+            block_size,
+            index_dim,
+            stream,
+        ),
+    )
+
+
 def qwen4_exp_qsa_pool_norm_rope_f32(
     raw_keys_ptr: int,
     member_indices_ptr: int,
@@ -940,6 +985,12 @@ def register_qwen4_exp_qsa_kernels(*, replace: bool = True) -> None:
         ): qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32,
         KernelKey(
             "hip_gfx1100",
+            "qsa_index_append",
+            "f32",
+            "strict_rows_paged",
+        ): qwen4_exp_qsa_scatter_index_keys_f32,
+        KernelKey(
+            "hip_gfx1100",
             "qsa_pool_norm_rope",
             "f32",
             "strict",
@@ -991,6 +1042,7 @@ __all__ = [
     "qwen4_exp_qsa_norm_mrope_rows_f32",
     "qwen4_exp_qsa_pool_norm_rope_f32",
     "qwen4_exp_qsa_score_f32",
+    "qwen4_exp_qsa_scatter_index_keys_f32",
     "qwen4_exp_qsa_split_norm_rope_f32",
     "qwen4_exp_qsa_split_norm_rope_rows_f32",
     "qwen4_exp_qsa_split_norm_mrope_f32",

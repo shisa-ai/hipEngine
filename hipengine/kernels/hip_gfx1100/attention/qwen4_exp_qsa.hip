@@ -19,6 +19,28 @@ __device__ inline int64_t qwen4_exp_mrope_position(
   return positions[static_cast<int64_t>(axis) * rows + row];
 }
 
+__global__ void qsa_scatter_index_keys_f32_kernel(
+    const float* __restrict__ source,
+    float* __restrict__ destination,
+    const int32_t* __restrict__ block_table,
+    int64_t start_position,
+    int64_t rows,
+    int64_t block_size,
+    int64_t index_dim) {
+  const int64_t element =
+      static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (element >= rows * index_dim) return;
+  const int64_t row = element / index_dim;
+  const int64_t column = element - row * index_dim;
+  const int64_t logical = start_position + row;
+  const int64_t logical_block = logical / block_size;
+  const int64_t block_offset = logical - logical_block * block_size;
+  const int64_t physical =
+      static_cast<int64_t>(block_table[logical_block]) * block_size
+      + block_offset;
+  destination[physical * index_dim + column] = source[element];
+}
+
 template <bool MROPE>
 __global__ void qsa_split_norm_rope_f32_kernel(
     const float* __restrict__ q_projected,
@@ -1250,6 +1272,31 @@ extern "C" int hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f
       static_cast<const int32_t*>(selected_counts),
       static_cast<const int32_t*>(block_tables), static_cast<float*>(output),
       rows, selected_stride, block_size, block_table_len, query_heads, kv_heads, scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_qsa_scatter_index_keys_f32(
+    const void* source,
+    void* destination,
+    const void* block_table,
+    int64_t start_position,
+    int64_t rows,
+    int64_t block_size,
+    int64_t index_dim,
+    hipStream_t stream) {
+  if (!source || !destination || !block_table || start_position < 0 ||
+      rows <= 0 || block_size <= 0 || index_dim <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  const int64_t elements = rows * index_dim;
+  hipLaunchKernelGGL(
+      qsa_scatter_index_keys_f32_kernel,
+      dim3(static_cast<uint32_t>((elements + threads - 1) / threads)),
+      dim3(threads), 0, stream,
+      static_cast<const float*>(source), static_cast<float*>(destination),
+      static_cast<const int32_t*>(block_table), start_position, rows,
+      block_size, index_dim);
   return static_cast<int>(hipGetLastError());
 }
 
