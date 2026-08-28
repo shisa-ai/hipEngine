@@ -4245,6 +4245,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel(
     state_t* recurrent_state,
     state_t* recurrent_state_rows,
     float* out,
+    uint16_t* out_bf16,
     const int32_t* __restrict__ cu_seqlens,
     const int64_t* __restrict__ state_indices,
     int64_t segments,
@@ -4457,8 +4458,14 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel(
       const int64_t pos = v_head * head_v_dim + value_idx;
       const int64_t out_pos = (token * num_v_heads + v_head) * head_v_dim + value_idx;
       const float inv_rms = rsqrtf((norm_partial[0] / static_cast<float>(head_v_dim)) + eps);
-      out[out_pos] = out_shared[value_idx] * inv_rms * norm_weight[value_idx] *
+      const float gated = out_shared[value_idx] * inv_rms * norm_weight[value_idx] *
           silu_f32(scalar_to_float_qwen35(gate[token * num_v_heads * head_v_dim + pos]));
+      if (out != nullptr) {
+        out[out_pos] = gated;
+      }
+      if (out_bf16 != nullptr) {
+        out_bf16[out_pos] = float_to_bf16_bits(gated);
+      }
     }
     __syncthreads();
   }
@@ -7788,6 +7795,7 @@ extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16(
       recurrent_state,
       static_cast<float*>(nullptr),
       out,
+      static_cast<uint16_t*>(nullptr),
       cu_seqlens,
       state_indices,
       segments,
@@ -7802,7 +7810,7 @@ extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16(
 extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_state_rows_bf16(
     const float* conv_out, const uint16_t* gate, const uint16_t* a, const uint16_t* b,
     const float* dt_bias, const float* a_log, const float* norm_weight,
-    float* recurrent_state, float* recurrent_state_rows, float* out,
+    float* recurrent_state, float* recurrent_state_rows, float* out, uint16_t* out_bf16,
     const int32_t* cu_seqlens, const int64_t* state_indices,
     int64_t total_tokens, int64_t segments, float eps, int64_t num_k_heads,
     int64_t num_v_heads, int64_t head_k_dim, int64_t head_v_dim, hipStream_t stream) {
@@ -7816,7 +7824,7 @@ extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_state_r
       (qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel<uint16_t>),
       dim3(static_cast<unsigned int>(segments), static_cast<unsigned int>(num_v_heads)),
       dim3(threads), shared_bytes, stream, conv_out, gate, a, b, dt_bias, a_log,
-      norm_weight, recurrent_state, recurrent_state_rows, out, cu_seqlens,
+      norm_weight, recurrent_state, recurrent_state_rows, out, out_bf16, cu_seqlens,
       state_indices, segments, eps, num_k_heads, num_v_heads, head_k_dim, head_v_dim);
   return static_cast<int>(hipGetLastError());
 }
@@ -7862,6 +7870,7 @@ extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp
       recurrent_state,
       static_cast<half_t*>(nullptr),
       out,
+      static_cast<uint16_t*>(nullptr),
       cu_seqlens,
       state_indices,
       segments,
@@ -7914,6 +7923,7 @@ extern "C" int hipengine_qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16(
       recurrent_state,
       static_cast<float*>(nullptr),
       out,
+      static_cast<uint16_t*>(nullptr),
       cu_seqlens,
       state_indices,
       segments,

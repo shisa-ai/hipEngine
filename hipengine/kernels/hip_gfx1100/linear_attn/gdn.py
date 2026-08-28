@@ -4308,7 +4308,7 @@ def qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_state_rows_bf16(
     conv_out_ptr: int, gate_ptr: int, a_ptr: int, b_ptr: int,
     dt_bias_ptr: int, a_log_ptr: int, norm_weight_ptr: int,
     recurrent_state_ptr: int, recurrent_state_rows_ptr: int, out_ptr: int,
-    cu_seqlens_ptr: int, state_indices_ptr: int, total_tokens: int,
+    out_bf16_ptr: int, cu_seqlens_ptr: int, state_indices_ptr: int, total_tokens: int,
     segments: int, eps: float, num_k_heads: int, num_v_heads: int,
     head_k_dim: int, head_v_dim: int, *, stream: int = 0,
     library: ctypes.CDLL | None = None, runtime: HipRuntime | None = None,
@@ -4321,7 +4321,7 @@ def qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_state_rows_bf16(
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_SEGMENTS_LOWP_STATE_ROWS_BF16)
-    fn.argtypes = [ctypes.c_void_p] * 12 + [
+    fn.argtypes = [ctypes.c_void_p] * 13 + [
         ctypes.c_int64, ctypes.c_int64, ctypes.c_float,
         ctypes.c_int64, ctypes.c_int64, ctypes.c_int64, ctypes.c_int64,
         ctypes.c_void_p,
@@ -4330,7 +4330,7 @@ def qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_state_rows_bf16(
     args = (
         conv_out_ptr, gate_ptr, a_ptr, b_ptr, dt_bias_ptr, a_log_ptr,
         norm_weight_ptr, recurrent_state_ptr, recurrent_state_rows_ptr, out_ptr,
-        cu_seqlens_ptr, state_indices_ptr,
+        out_bf16_ptr, cu_seqlens_ptr, state_indices_ptr,
     )
     err = fn(
         *(ctypes.c_void_p(value) for value in args),
