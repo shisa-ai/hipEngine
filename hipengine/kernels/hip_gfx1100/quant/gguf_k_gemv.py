@@ -324,6 +324,7 @@ gguf_q8_0_gemv_bf16_fp16_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "
 gguf_q8_0_gemv_bf16_bf16_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_bf16_bf16_out"))
 gguf_q8_0_dual_gemv_f32_f32_out = _make_dual_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "dual_gemv_f32_f32_out"))
 gguf_q8_0_dual_gemv_bf16_bf16_out = _make_dual_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "dual_gemv_bf16_bf16_out"))
+gguf_q8_0_pack8_gemv_f32_f32_out = _make_pack8_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "pack8_gemv_f32_f32_out"))
 gguf_q8_0_pack8_gemv_bf16_f32_out = _make_pack8_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "pack8_gemv_bf16_f32_out"))
 gguf_q8_0_pack8_gemv_bf16_bf16_out = _make_pack8_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "pack8_gemv_bf16_bf16_out"))
 gguf_q8_0_exact_prefill_tile8x2_bf16_bf16_out = _make_pack8_wrapper(
@@ -1357,6 +1358,7 @@ _WRAPPERS = {
         "gemv_bf16_bf16_out": gguf_q8_0_gemv_bf16_bf16_out,
         "dual_gemv_f32_f32_out": gguf_q8_0_dual_gemv_f32_f32_out,
         "dual_gemv_bf16_bf16_out": gguf_q8_0_dual_gemv_bf16_bf16_out,
+        "pack8_gemv_f32_f32_out": gguf_q8_0_pack8_gemv_f32_f32_out,
         "pack8_gemv_bf16_f32_out": gguf_q8_0_pack8_gemv_bf16_f32_out,
         "pack8_gemv_bf16_bf16_out": gguf_q8_0_pack8_gemv_bf16_bf16_out,
         "exact_prefill_tile8x2_bf16_bf16_out": gguf_q8_0_exact_prefill_tile8x2_bf16_bf16_out,

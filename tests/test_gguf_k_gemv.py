@@ -19,6 +19,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
     gguf_q8_0_gemv_bf16_bf16_out,
     gguf_q8_0_gemv_bf16_f32_out,
     gguf_q8_0_dual_gemv_f32_f32_out,
+    gguf_q8_0_pack8_gemv_f32_f32_out,
     gguf_q8_0_gemv_f32_f32_out,
     gguf_q8_0_gemv_fp16_f32_out,
     gguf_q8_0_gemv_rowbatch32_f32_f32_out,
@@ -282,6 +283,53 @@ def test_q8_0_f32_rowbatch32_matches_scalar_prefill_bits() -> None:
     np.testing.assert_array_equal(got1, got0)
     for got in got_tiles:
         np.testing.assert_array_equal(got, got0[:, :32])
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q8_0_pack8_f32_matches_scalar_gemv_bits() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+
+    rows, in_features, out_features = 1, 256, 32
+    rng = np.random.default_rng(3816)
+    x = np.ascontiguousarray(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    weight = np.ascontiguousarray(make_q8_0_weight(out_features, in_features))
+    runtime = get_hip_runtime()
+    library = build_gguf_k_gemv(load=True)
+    buffers = []
+    try:
+        for host in (x, weight):
+            device = malloc(host.nbytes, runtime=runtime)
+            copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
+            buffers.append(device)
+        baseline = malloc(rows * out_features * 4, runtime=runtime)
+        candidate = malloc(rows * out_features * 4, runtime=runtime)
+        buffers.extend((baseline, candidate))
+        gguf_q8_0_gemv_f32_f32_out(
+            buffers[0].ptr, buffers[1].ptr, baseline.ptr,
+            rows, in_features, out_features, library=library, runtime=runtime,
+        )
+        gguf_q8_0_pack8_gemv_f32_f32_out(
+            buffers[0].ptr, buffers[1].ptr, candidate.ptr,
+            rows, in_features, out_features, library=library, runtime=runtime,
+        )
+        runtime.device_synchronize()
+        got = np.empty((rows, out_features), dtype=np.float32)
+        expected = np.empty_like(got)
+        copy_device_to_host(host_array_ptr(got), candidate, runtime=runtime)
+        copy_device_to_host(host_array_ptr(expected), baseline, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+    np.testing.assert_array_equal(got, expected)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
