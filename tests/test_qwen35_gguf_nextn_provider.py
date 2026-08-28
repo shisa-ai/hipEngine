@@ -201,6 +201,77 @@ def test_nextn_physical_batch_publishes_consumed_positions_not_next_cursors(
     assert calls == [(0x1000, 0x2000, 36), (0x3000, 0x4000, 41)]
 
 
+def test_nextn_singleton_block_uses_the_sessions_bound_kv_scratch(monkeypatch) -> None:
+    captured = []
+    parent_scratch = SimpleNamespace(
+        set_full_attention_position=lambda *args: None,
+        attn_out=SimpleNamespace(ptr=0x9100),
+    )
+    bound_scratch = SimpleNamespace(
+        set_full_attention_position=lambda *args: None,
+        attn_out=SimpleNamespace(ptr=0xA100),
+    )
+    parent_calls = []
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    executor.closed = False
+    executor.hidden_size = 8
+    executor.vocab_size = 32
+    executor._request_slots = {7: 1}
+    executor._batch_sessions = (
+        SimpleNamespace(scratch=SimpleNamespace()),
+        SimpleNamespace(scratch=bound_scratch),
+    )
+    executor.scratch = SimpleNamespace(
+        for_slot=lambda slot, **kwargs: parent_calls.append((slot, kwargs))
+        or parent_scratch
+    )
+    executor.runtime = object()
+    executor._token_buf = SimpleNamespace(ptr=0x1000)
+    executor._embedding_buf = SimpleNamespace(ptr=0x2000)
+    executor._fusion_buf = SimpleNamespace(ptr=0x3000)
+    executor._fused_buf = SimpleNamespace(ptr=0x4000)
+    executor._layer_out_buf = SimpleNamespace(ptr=0x5000)
+    executor._final_hidden_buf = SimpleNamespace(ptr=0x6000)
+
+    allocation = lambda ptr: SimpleNamespace(
+        allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=ptr))
+    )
+    fallback = {
+        "token_embedding": allocation(0x7000),
+    }
+    nextn = {
+        "enorm": allocation(0x7100),
+        "hnorm": allocation(0x7200),
+        "eh_proj": allocation(0x7300),
+    }
+    executor.weights = SimpleNamespace(
+        fallback=lambda name: fallback[name],
+        nextn=lambda name: nextn[name],
+        config=SimpleNamespace(rms_norm_eps=1.0e-6),
+    )
+    executor.runner = SimpleNamespace(
+        _run_full_attention_layer=lambda layer, hidden, out, scratch, **kwargs: (
+            captured.append(scratch)
+        )
+    )
+    monkeypatch.setattr(nextn_mod, "launch_gguf_embedding", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        nextn_mod, "gguf_rmsnorm_bf16_f32_weight", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(nextn_mod, "launch_gguf_linear", lambda *args, **kwargs: None)
+
+    executor._run_block(
+        7,
+        0,
+        5,
+        Tensor.from_handle(0x8000, (1, 8), DType.BF16, Device("hip", 0)),
+        token_ready=True,
+    )
+
+    assert captured == [bound_scratch]
+    assert parent_calls == []
+
+
 def test_nextn_provider_keeps_physical_batch_candidates_device_resident_until_materialized() -> None:
     calls = []
     device = Qwen35GGUFNextNBatchDeviceProposal(

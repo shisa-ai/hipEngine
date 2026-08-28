@@ -742,7 +742,13 @@ class Qwen35GGUFNextNExecutor:
         if token_id < 0 or token_id >= self.vocab_size:
             raise ValueError("token_id is outside the GGUF vocabulary")
         slot = self._slot(request_id)
-        slot_scratch = self.scratch.for_slot(slot, span_role="decode")
+        # Resident slot sessions may replace their KV planes/block table when
+        # the scheduler binds a global-pool allocation. Rebuilding a view from
+        # the executor's original parent scratch combines the bound page table
+        # with the wrong cache owner for nonzero singleton/ragged-tail slots.
+        slot_scratch = self._batch_sessions[slot].scratch
+        if slot_scratch is None:
+            raise RuntimeError("GGUF NextN bound request scratch is unavailable")
         if position_ready:
             # Graph capture supplies dynamic device metadata. Keep the host mirror
             # coherent only so the full-attention helper does not enqueue a
