@@ -287,8 +287,11 @@ cuts full-shape CTAs **1,310,720→163,840** and paired natural 4K
 improves natural p508 **26.264→14.718 s (34.517 tok/s, 1.785x)** and p1012
 **56.550→29.622 s (34.164 tok/s, 1.909x)** with bit-exact logits. Natural 16K now
 passes at **17.301 prompt tok/s** with retrieval, all-layer needle control,
-independent CPU index selection, replay/rollback, and teardown exact. Natural
-64K likewise passes at **17.099 prompt tok/s** with the same gates. Natural retrieval above 4K,
+independent CPU index selection, replay/rollback, and teardown exact. The permitted current-default natural 4K requalification now improves
+**222.228→146.883 s (-33.90%, 27.886 tok/s)** with exact retrieval/control/
+CPU-oracle/lifecycle. The 16K rerun remains blocked by the implementation
+ladder because current 4K throughput is below 50 tok/s. Historical natural
+16K/64K evidence remains retained but is not rerun. Natural retrieval above 4K,
 strict-above-4K, 262K inference, and broader lifecycle gates remain open, so
 the implementation-first 512/1K gate now includes explicit MTP, blocking/SSE,
 chat/tool/reasoning, c2 isolation, and one bounded 32×32 image path. MTP is
@@ -313,6 +316,7 @@ scope remains open; no broader claim is made.
 [`Basic vision`](results/2026-08-28-gfx1151-qwen38-flash-next-basic-vision.json) ·
 [`Natural QSA 16K`](results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-16k.json) ·
 [`Natural QSA 64K`](results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-64k.json) ·
+[`Current natural QSA 4K`](results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-4k-current.json) ·
 [`16K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json) ·
 [`64K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-64k.json) ·
 [`262K capacity artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-262k-capacity.json) ·

@@ -751,9 +751,13 @@ teacher-forced category+heldout rows; its pre-Q8 natural-suite row was
 Evidence:
 [`2026-08-28-gfx1151-qwen38-flash-next-exact-q8-coltile-prefill.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q8-coltile-prefill.json) and
 [`2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json).
-The current p508 rate exceeds the 20 tok/s prerequisite for a future 4K run,
-but the campaign remains at 512/1K until short-context optimization is
-explicitly complete; it does not automatically escalate.
+After the bounded basic/short optimization gate closed, the permitted current-
+default natural 4K requalification passes at `146.883 s` / `27.886 tok/s`,
+versus the prior exact `222.228 s` (33.90% lower, 1.513x). Retrieval, all 12
+needle controls, CPU top-512 selection, replay/rollback, and teardown pass.
+Evidence:
+[`2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-4k-current.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-4k-current.json).
+The 16K gate remains blocked because `27.886 < 50 tok/s`; do not run it.
 
 Current default-off F7 research candidate: grouped Q4/Q5/Q8 MoE,
 Q5_1 WMMA down, peer-GDN, and tuned Q4/Q8 tiles raise warm repeated-token 512
