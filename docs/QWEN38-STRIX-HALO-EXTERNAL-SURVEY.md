@@ -51,7 +51,8 @@ quantizations have equal model quality.
 
 | Route | Usable? | Decision |
 | --- | :---: | --- |
-| hipEngine `61b83b9c3` with the new Unsloth `UD-Q4_K_M` | **No** | The exact model does not load. It contains unsupported dense `Q3_K`, `IQ4_NL`, and `IQ3_S` tensors. |
+| hipEngine `a9b801d59` with the standard `Q4_K_M` baseline | **Yes** | Runs C1-C8 and passed the standardized AR/MTP self-exact gates. It led AR at C3-C7. |
+| hipEngine `61b83b9c3` with the separate Unsloth Dynamic `UD-Q4_K_M` | **No** | This different file does not load because it contains unsupported dense `Q3_K`, `IQ4_NL`, and `IQ3_S` tensors. |
 | `q38rocm` v1.5.2, `ROCmFP4_FAST`, strict MTP K4 | **Yes, C1 only** | Strong specialized result. Strict mode requires exactly one server slot and a custom model, so it is not ranked against standard-`Q4_K_M` engines. |
 | Laurent built-in MTP K3, standard `Q4_K_M` | **Yes** | Strongest broad alternate llama.cpp route in the standardized matrix. |
 | Laurent adaptive DFlash2 fork `c28d538df` | **No** | Fast in a fresh process, but unsafe for sequential requests because speculative state leaks between requests. |

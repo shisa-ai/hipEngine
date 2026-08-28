@@ -578,7 +578,8 @@
           78.894,
           78.894
         ],
-        "correctness_gate_passed": true
+        "correctness_gate_passed": true,
+        "locally_correct_usable": true
       },
       "mainline_vulkan": {
         "implementation": "stock llama.cpp mainline",
@@ -624,7 +625,8 @@
           81.287,
           79.719
         ],
-        "correctness_gate_passed": true
+        "correctness_gate_passed": true,
+        "locally_correct_usable": true
       },
       "stock_hip": {
         "implementation": "stock llama.cpp",
@@ -670,7 +672,8 @@
           76.039,
           80.513
         ],
-        "correctness_gate_passed": true
+        "correctness_gate_passed": true,
+        "locally_correct_usable": true
       },
       "laurent_vulkan": {
         "implementation": "LaurentZuijdwijk fork",
@@ -716,7 +719,8 @@
           73.153,
           70.699
         ],
-        "correctness_gate_passed": true
+        "correctness_gate_passed": true,
+        "locally_correct_usable": true
       },
       "nathan_vulkan": {
         "implementation": "Nathanw fork",
@@ -762,7 +766,8 @@
           79.984,
           80.435
         ],
-        "correctness_gate_passed": true
+        "correctness_gate_passed": true,
+        "locally_correct_usable": true
       },
       "q38rocm_normal_vulkan": {
         "implementation": "q38rocm v1.5.2 normal MTP",
@@ -808,7 +813,8 @@
           81.227,
           81.347
         ],
-        "correctness_gate_passed": true
+        "correctness_gate_passed": true,
+        "locally_correct_usable": true
       }
     },
     "winners": {
