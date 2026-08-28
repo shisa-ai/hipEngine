@@ -108,12 +108,20 @@ def test_qwen38_q4km_production_c2_k3_d24_is_automatic() -> None:
         output_horizon_tokens=24,
     )
 
+    singleton = resolve_speculative_mtp_serving_plan(
+        evidence,
+        key=replace(key, realized_group_rows=1),
+    )
     decision = resolve_speculative_mtp_serving_plan(evidence, key=key)
     over_horizon = resolve_speculative_mtp_serving_plan(
         evidence,
         key=replace(key, output_horizon_tokens=25),
     )
 
+    assert singleton.admitted is True
+    assert singleton.automatic_eligible is True
+    assert singleton.static_eligibility.max_realized_group_rows == 2
+    assert singleton.reason == "qualified_automatic_production_cap4_c1_or_c2_k3_d24"
     assert decision.admitted is True
     assert decision.selected_route == "speculative_mtp"
     assert decision.selected_candidate_count == 3

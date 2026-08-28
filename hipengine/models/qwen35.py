@@ -198,6 +198,39 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         automatic_eligible=False,
     ),
     SpeculativeMTPServingEvidence(
+        evidence_key="qwen38-q4km-gfx1151-production-bf16-cap4-c1-intent-k3-d24",
+        artifact_sha256=(
+            "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+        ),
+        artifact_size_bytes=17_106_775_008,
+        backend="hip_gfx1151",
+        target_arch="gfx1151",
+        weight_quant="gguf_q4_k_m",
+        execution_profile="production",
+        execution_profile_manifest_sha256=(
+            "534a8bac3ca74428e3c1a60e9c3cbd91254f8963ddfcd678949052783331c565"
+        ),
+        kv_storage="bf16",
+        kv_layout="uniform",
+        realized_group_rows=1,
+        resident_capacity=4,
+        candidate_budget=3,
+        sampling_modes=("greedy_fast",),
+        max_sequence_length=1024,
+        min_context_tokens=1,
+        max_context_tokens=128,
+        min_output_horizon_tokens=24,
+        max_output_horizon_tokens=24,
+        reason="qualified_automatic_production_cap4_c1_or_c2_k3_d24",
+        evidence_artifacts=(
+            "benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json",
+            "benchmarks/results/2026-08-27-gfx1151-qwen38-realized-singleton-auto.json",
+        ),
+        max_realized_group_rows=2,
+        strict_fallback_key="gguf_target_ar",
+        automatic_eligible=True,
+    ),
+    SpeculativeMTPServingEvidence(
         evidence_key="qwen38-q4km-gfx1151-production-bf16-c2-k3-d24",
         artifact_sha256=(
             "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
