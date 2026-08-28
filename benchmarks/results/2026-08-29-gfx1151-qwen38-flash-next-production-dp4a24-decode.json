@@ -1,0 +1,130 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "accepted_explicit_production_profile",
+  "supersedes": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json",
+  "scope": "Qwen4Exp gfx1151 production: prior MoE27/Q8-32 prefill plus one-plane Q8_1 DP4A Q4 gate/up+SiLU decode layers 24-47",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+  },
+  "profile": {
+    "name": "production",
+    "classification": "T2",
+    "moe_prefill_layers": [27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+    "q8_prefill_layers": [32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+    "q4_dp4a_decode_layers": [24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47],
+    "manifest_sha256": "16acf27d05eb4af6a1e16b976734e5fd18e2e1f149991b59730ff680e4f7011e",
+    "strict_manifest_sha256": "3fbb4e0a835b5651ed1a33e5b0b70dc5c4e9e77af241e5566736953f7983811e",
+    "omitted_profile_behavior": "strict exact prefill/decode",
+    "decode_selected_variant": "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out",
+    "decode_strict_fallback": "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out"
+  },
+  "implementation": {
+    "change": "Quantize the shared c1 hidden row to Q8_1 once per Q4 MoE layer; a 64-thread CTA computes the same 128 logical DP4A partials for gate/up, preserves the candidate's four-wave tree and both BF16 projection boundaries, then publishes exact candidate SiLU/product bits.",
+    "new_tracked_device_bytes": 0,
+    "scratch_reuse": "existing request-owned grouped-MoE scratch",
+    "all_layer_candidate": "rejected: 445/450 top-1 versus 446 required",
+    "retained_scope": "maximal screened suffix 24-47"
+  },
+  "all_layer_rejection": {
+    "command": "uv run python /tmp/qwen4exp_dp4a64_execution_gate.py",
+    "rows": 450,
+    "mean_kl": 0.0002977645826165164,
+    "p95_kl": 0.001465907998219311,
+    "p99_kl": 0.004144989759589065,
+    "max_kl": 0.007577486131901838,
+    "top1_matches": 445,
+    "top1_rate": 0.9888888888888889,
+    "hard_gates_passed": false
+  },
+  "numerical_gate": {
+    "command": "uv run python /tmp/qwen4exp_production_dp4a24_execution_gate.py",
+    "protocol": "18 category+heldout prompts, strict plus three teacher-forced combined-production repeats, 450 full-vocabulary rows",
+    "rows": 450,
+    "mean_kl": 0.0001672673258590804,
+    "p50_kl": 0.000005189054498670582,
+    "p95_kl": 0.0007967114422366119,
+    "p99_kl": 0.002922069042892147,
+    "max_kl": 0.005767899074455744,
+    "top1_matches": 448,
+    "top1_rate": 0.9955555555555555,
+    "top5_overlap_mean": 0.9871111111111112,
+    "teacher_nll_delta": 0.0007740839944494204,
+    "hard_gates_passed": true,
+    "scope_failures": [],
+    "repeat_determinism": true,
+    "state_repeat_exact": true
+  },
+  "category_gates": {
+    "note": "Every code/general_en/general_ja/mixed_ja_en category and c1/prefill transition satisfies its binding top-1 and KL floor; full detail is in /tmp/qwen4exp-production-dp4a24-execution-gate.json."
+  },
+  "free_generation_task_gate": {
+    "command": "uv run python /tmp/qwen4exp_production_dp4a24_free_generation.py",
+    "prompts": 18,
+    "tokens_per_prompt": 32,
+    "strict_candidate_exact": 15,
+    "candidate_repeat_exact": 18,
+    "divergences": ["heldout_code_rate_limiter", "heldout_general_ja_speculative", "heldout_mixed_review"],
+    "verdict": "pass deterministic task non-inferiority; alternatives are task-valid code imports/typing and semantically equivalent Japanese/mixed wording"
+  },
+  "performance": {
+    "command": "uv run python /tmp/qwen4exp_decode_q4_dp4a64_suffix24_paired.py",
+    "protocol": "one residency, graph-key-isolated strict/candidate, counterbalanced S/C/C/S/S/C, p1 + 8 warm + 32 measured",
+    "strict_seconds": [2.3680715180089464, 2.3351643180067185, 2.3254042259941343],
+    "production_seconds": [2.216056403995026, 2.1901127279998036, 2.1382951269915793],
+    "strict_median_seconds": 2.3351643180067185,
+    "production_median_seconds": 2.1901127279998036,
+    "strict_tok_s": 13.703532446622427,
+    "production_tok_s": 14.61112005372669,
+    "reduction_percent": 6.211622406543538,
+    "speedup": 1.066230193611718,
+    "candidate_repeat_exact": true
+  },
+  "kernel_trace": {
+    "command": "HIPENGINE_QWEN4_EXP_Q4_DP4A64=1 HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS=24,...,47 rocprofv3 --kernel-trace --output-format csv --output-file /tmp/q4dp4a64suffix24 -- uv run python /tmp/qwen4exp_decode32_profile.py",
+    "expected_dp4a_kernel": "gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64_kernel",
+    "expected_quantizer": "gguf_quantize_q8_1_kernel<unsigned short>",
+    "expected_symbols_present": true,
+    "strict_q4_launches": 1974,
+    "strict_q4_cycle_wall_ms": 825.340243,
+    "production_exact_q4_launches": 966,
+    "production_exact_q4_cycle_wall_ms": 398.963873,
+    "production_dp4a_launches": 1008,
+    "production_dp4a_cycle_wall_ms": 162.473757,
+    "production_quantize_launches": 1008,
+    "production_quantize_cycle_wall_ms": 1.836854,
+    "production_target_cycle_wall_ms": 563.274484,
+    "target_cycle_wall_reduction_percent": 31.75245133418267
+  },
+  "isolation_lifecycle": {
+    "command": "uv run python /tmp/qwen4exp_production_dp4a24_c2_physical.py",
+    "serial_c2_ids_exact": [true, true],
+    "stream_chunks": 6,
+    "c2_wall_seconds": 30.69531731000461,
+    "tracked_after_serial_bytes": 0,
+    "tracked_after_c2_bytes": 0
+  },
+  "same_host_reference_after": {
+    "llama_cpp_hip_tg32": 15.847834,
+    "llama_cpp_vulkan_tg32": 18.716255,
+    "hipengine_production_tg32": 14.61112005372669,
+    "hipengine_fraction_of_hip": 0.9219632193097612,
+    "hipengine_fraction_of_vulkan": 0.7806647245256431,
+    "remaining_gap_to_hip": 1.0846419673321264,
+    "remaining_gap_to_vulkan": 1.2809596342496865
+  },
+  "bf16_relative_gate": {
+    "applicable": false,
+    "reason": "No qualified full-BF16 Qwen4Exp target runtime; same-quant strict remains binding."
+  },
+  "decision": "Extend the explicit gfx1151 production profile with DP4A decode layers 24-47. Strict/omitted profile remains exact. The all-layer candidate is rejected; no threshold changed."
+}

@@ -669,6 +669,115 @@ __global__ void gguf_q4_k_selected_dual_q8_1_dp4a_prefill_out_kernel(
   }
 }
 
+__launch_bounds__(64, 4)
+__global__ void gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64_kernel(
+    const gguf_q8_1_block* __restrict__ xq,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    uint16_t* __restrict__ out,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int in_features,
+    int out_features,
+    int q8_blocks_per_row) {
+  __shared__ float wave_sums[8];
+  const int out_col = blockIdx.x;
+  const int row = blockIdx.y;
+  if (out_col >= out_features || row >= rows) return;
+  const int64_t expert_id = selected[row];
+  if (expert_id < 0 || expert_id >= num_experts) return;
+  const int lanes_per_x_row = rows / x_rows;
+  const int x_row = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
+  const int row_bytes = (in_features / QK_K) * Q4_K_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const uint8_t* weight_a = qweight_a + expert_id * expert_bytes
+      + static_cast<int64_t>(out_col) * row_bytes;
+  const uint8_t* weight_b = qweight_b + expert_id * expert_bytes
+      + static_cast<int64_t>(out_col) * row_bytes;
+  const gguf_q8_1_block* xq_row =
+      xq + static_cast<int64_t>(x_row) * q8_blocks_per_row;
+  float acc_a[2] = {};
+  float acc_b[2] = {};
+  const int groups4 = in_features >> 2;
+#pragma unroll
+  for (int logical_slot = 0; logical_slot < 2; ++logical_slot) {
+    const int logical = threadIdx.x + logical_slot * 64;
+    for (int group = logical; group < groups4; group += 128) {
+      const int k4 = group << 2;
+      const int block_idx = k4 / QK_K;
+      const int within = k4 - block_idx * QK_K;
+      const int subblock = within >> 5;
+      const int lane4 = within & 31;
+      const int q8_index = block_idx * 8 + subblock;
+      const gguf_q8_1_block* xb = xq_row + q8_index;
+      const uint32_t x_pack =
+          *reinterpret_cast<const uint32_t*>(xb->qs + lane4);
+      const float xd = static_cast<float>(xb->d);
+      const uint8_t* block_a =
+          weight_a + static_cast<int64_t>(block_idx) * Q4_K_BLOCK_BYTES;
+      const uint8_t* block_b =
+          weight_b + static_cast<int64_t>(block_idx) * Q4_K_BLOCK_BYTES;
+      const float d_a = fp16_bytes_to_float(block_a);
+      const float dmin_a = fp16_bytes_to_float(block_a + 2);
+      const float d_b = fp16_bytes_to_float(block_b);
+      const float dmin_b = fp16_bytes_to_float(block_b + 2);
+      const uint8_t* scales_a = block_a + 4;
+      const uint8_t* scales_b = block_b + 4;
+      const uint32_t q4_a = gguf_q4_k_pack4(block_a + 16, subblock, lane4);
+      const uint32_t q4_b = gguf_q4_k_pack4(block_b + 16, subblock, lane4);
+      const int dot_a = gguf_q4_k_dp4a(q4_a, x_pack, 0);
+      const int dot_b = gguf_q4_k_dp4a(q4_b, x_pack, 0);
+      const int q8_sum = gguf_q4_k_dp4a(0x01010101u, x_pack, 0);
+      const float scale_a =
+          static_cast<float>(gguf_q4_k_scale(scales_a, subblock));
+      const float min_a =
+          static_cast<float>(gguf_q4_k_min(scales_a, subblock));
+      const float scale_b =
+          static_cast<float>(gguf_q4_k_scale(scales_b, subblock));
+      const float min_b =
+          static_cast<float>(gguf_q4_k_min(scales_b, subblock));
+      acc_a[logical_slot] += xd * (
+          d_a * scale_a * static_cast<float>(dot_a)
+          - dmin_a * min_a * static_cast<float>(q8_sum));
+      acc_b[logical_slot] += xd * (
+          d_b * scale_b * static_cast<float>(dot_b)
+          - dmin_b * min_b * static_cast<float>(q8_sum));
+    }
+  }
+  const int lane = threadIdx.x & 31;
+  const int wave = threadIdx.x >> 5;
+#pragma unroll
+  for (int logical_slot = 0; logical_slot < 2; ++logical_slot) {
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      acc_a[logical_slot] += __shfl_down(acc_a[logical_slot], offset, 32);
+      acc_b[logical_slot] += __shfl_down(acc_b[logical_slot], offset, 32);
+    }
+  }
+  if (lane == 0) {
+    wave_sums[wave] = acc_a[0];
+    wave_sums[wave + 2] = acc_a[1];
+    wave_sums[wave + 4] = acc_b[0];
+    wave_sums[wave + 6] = acc_b[1];
+  }
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    float total_a = 0.0f;
+    float total_b = 0.0f;
+#pragma unroll
+    for (int wave_idx = 0; wave_idx < 4; ++wave_idx) {
+      total_a += wave_sums[wave_idx];
+      total_b += wave_sums[wave_idx + 4];
+    }
+    const float gate = bf16_bits_to_float(float_to_bf16_bits(total_a));
+    const float up = bf16_bits_to_float(float_to_bf16_bits(total_b));
+    const float sig = 1.0f / (1.0f + expf(-gate));
+    out[static_cast<int64_t>(row) * out_features + out_col] =
+        float_to_bf16_bits(gate * sig * up);
+  }
+}
+
 template <typename scalar_t, typename out_t>
 __launch_bounds__(256, 2)
 __global__ void gguf_q4_k_selected_pack8_prefill_out_kernel(
@@ -804,6 +913,35 @@ int launch_gguf_q4_k_selected_dual_silu_gemv_out(
           static_cast<int>(x_rows), static_cast<int>(rows),
           static_cast<int>(num_experts), static_cast<int>(in_features),
           static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+int launch_gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64(
+    const gguf_q8_1_block* xq,
+    const int64_t* selected,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!xq || !selected || !qweight_a || !qweight_b || !out || x_rows <= 0 ||
+      rows <= 0 || rows % x_rows || num_experts <= 0 || in_features <= 0 ||
+      in_features % QK_K || out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t q8_blocks_per_row = in_features / Q8_1_BLOCK;
+  hipLaunchKernelGGL(
+      gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64_kernel,
+      dim3(static_cast<unsigned int>(out_features),
+           static_cast<unsigned int>(rows)), dim3(64), 0, stream,
+      xq, selected, qweight_a, qweight_b, out,
+      static_cast<int>(x_rows), static_cast<int>(rows),
+      static_cast<int>(num_experts), static_cast<int>(in_features),
+      static_cast<int>(out_features), static_cast<int>(q8_blocks_per_row));
   return static_cast<int>(hipGetLastError());
 }
 
@@ -2160,6 +2298,24 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_silu_gemv_bf16_bf16_out(
   return launch_gguf_q4_k_selected_dual_silu_gemv_out<uint16_t>(
       x, selected, qweight_a, qweight_b, out, x_rows, rows, num_experts,
       in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out(
+    const void* xq,
+    const int64_t* selected,
+    const uint8_t* qweight_a,
+    const uint8_t* qweight_b,
+    uint16_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_gguf_q4_k_selected_dual_q8_1_dp4a_silu_logical128_t64(
+      reinterpret_cast<const gguf_q8_1_block*>(xq), selected, qweight_a,
+      qweight_b, out, x_rows, rows, num_experts, in_features, out_features,
+      stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_selected_dual_silu_logical128_t64_gemv_bf16_bf16_out(

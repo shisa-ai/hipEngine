@@ -734,9 +734,10 @@ trace ownership remained about `1,861 launches/token`. Request-owned stateless
 MoE graphs plus exact Q5_1 logical256/physical64 and Q4_K
 logical128/physical64 decode owners plus exact fused Q5 down+weighted combine
 now reach **13.523 tok/s** counterbalanced, with all generated IDs and full-logit
-SHA rows exact. The remaining same-host gap is 1.17x to HIP / 1.38x to Vulkan. Current
-p508 is `10.2 s` wall / `8.84 s` kernels / 29,341
-launches versus same-host llama.cpp Vulkan/HIP `316/275 tok/s`.
+SHA rows exact. Exact strict remains 1.17x behind llama.cpp HIP; explicit
+`production` reaches **14.611 tok/s** and closes that gap to **1.08x**. Current
+exact/production p508 is **58.466/73.361 tok/s** versus same-host llama.cpp
+Vulkan/HIP `316/275 tok/s`.
 
 Binding implementation order:
 
@@ -760,10 +761,12 @@ Binding implementation order:
    exact Q4_K physical64 owner then reaches `13.167 tok/s` (+8.84%), and a
    second exact Q5 contraction to physical64 reaches `13.302 tok/s` (+1.69%);
    fusing exact per-route BF16 down publication with ordered weighted `fmaf`
-   reaches `13.523 tok/s` (+1.06%). Next port
-   Vulkan/llama.cpp
-   `mul_mat_id` *grid/dataflow* inside those graphs: wider output/expert tiles,
-   achieved-bandwidth accounting, and residual-Q8_1x2 selected MMQ.
+   reaches `13.523 tok/s` (+1.06%). Production one-plane Q8_1 DP4A is rejected
+   on all Q4 layers at 445/450 top-1 but certified on layers 24–47: combined
+   prefill+decode production passes 448/450 and reaches `14.611 tok/s` (+6.21%).
+   Next port Vulkan/llama.cpp `mul_mat_id` dataflow to the remaining strict
+   layers and Q8 projections; do not widen the certified DP4A suffix without a
+   fresh complete profile gate.
 3. **Retain exact Q4/Q5 micro-wins only atop the grouped shape.** The Q5_1
    logical256 contraction is now the selected default at 64 physical threads:
    the first t128 step cut Q5 cycle-wall `692.930→410.364 ms`, and t64 then cuts
@@ -878,14 +881,17 @@ CPU top-512, replay/rollback, and teardown pass. Current 64K is not rerun becaus
 [`2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json).
 
 Explicit gfx1151 `production` selects cooperative Q4 gate/up plus Q5_1 down on
-certified selected-MoE suffix layers 27–47 plus dense-Q8 WMMA suffix 32–47.
-Manifest `1be08e5c...` falls back to strict `a1dda611...`. The unchanged
-450-row gate passes mean/p95/p99/max KL
-`1.20e-4/4.93e-4/1.72e-3/8.69e-3`, 99.778% top-1, three bit-stable repeats,
-state/task/c2/lifecycle gates, and no BF16-relative claim because no qualified
-full-BF16 target runtime exists. p508/p1012 reach **73.361/71.834 tok/s**;
-omitted profile remains strict. Evidence:
-[`2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json).
+certified prefill layers 27–47, dense-Q8 WMMA prefill layers 32–47, and
+one-plane Q8_1 DP4A Q4 gate/up+SiLU decode layers 24–47. Manifest
+`16acf27d...` falls back to strict `3fbb4e0a...`. The combined 450-row gate
+passes mean/p95/p99/max KL `1.67e-4/7.97e-4/2.92e-3/5.77e-3`, **448/450
+(99.556%) top-1**, three deterministic logits/state repeats, task/c2/lifecycle
+gates, and no BF16-relative claim because no qualified full-BF16 target runtime
+exists. Decode improves **13.704→14.611 tok/s (+6.21%)**; Q4 target cycle-wall
+falls **825.340→563.274 ms (-31.75%)**. Existing p508/p1012 production remains
+**73.361/71.834 tok/s**. The all-layer DP4A candidate is rejected at 445/450;
+omitted profile remains exact strict. Evidence:
+[`2026-08-29-gfx1151-qwen38-flash-next-production-dp4a24-decode.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-dp4a24-decode.json).
 
 The broader default-off F7 research candidate still remains rejected: grouped Q4/Q5/Q8 MoE,
 Q5_1 WMMA down, peer-GDN, and tuned Q4/Q8 tiles raise warm repeated-token 512
