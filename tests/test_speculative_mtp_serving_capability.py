@@ -195,6 +195,29 @@ def test_serving_resolver_selects_exact_physical_width_among_same_artifact_rows(
     assert c1_decision.evidence_key == c1_capacity2.evidence_key
 
 
+def test_serving_resolver_prefers_future_c2_intent_on_equal_score() -> None:
+    c1 = _evidence()
+    c2 = replace(
+        c1,
+        evidence_key="future-c2",
+        realized_group_rows=2,
+        resident_capacity=2,
+        reason="qualified_future_c2",
+        automatic_eligible=True,
+    )
+
+    decision = resolve_speculative_mtp_serving_plan(
+        (c1, c2),
+        key=_key(realized_group_rows=1, resident_capacity=2),
+    )
+
+    assert decision.admitted is False
+    assert decision.reason == "physical_group_not_qualified"
+    assert decision.static_eligibility.eligible is True
+    assert decision.static_eligibility.max_realized_group_rows == 2
+    assert decision.static_eligibility.evidence_key == "future-c2"
+
+
 def test_qwen36_dense_production_row_resolves_after_qwen38_evidence() -> None:
     evidence = next(
         row
@@ -382,6 +405,46 @@ def test_qwen36_moe_production_c1_k2_plan_is_exact_automatic_scope() -> None:
     assert Qwen35MoeGGUFModel().resolve_speculative_mtp_serving_plan(
         key=replace(key, output_horizon_tokens=25)
     ).reason == "output_horizon_not_qualified"
+
+
+def test_qwen36_moe_production_c2_k2_plan_is_exact_automatic_scope() -> None:
+    evidence = Qwen35MoeGGUFModel().speculative_mtp_serving_evidence[1]
+    key = SpeculativeMTPServingKey(
+        artifact_sha256=evidence.artifact_sha256,
+        artifact_size_bytes=evidence.artifact_size_bytes,
+        content_verified=True,
+        backend=evidence.backend,
+        target_arch=evidence.target_arch,
+        weight_quant=evidence.weight_quant,
+        execution_profile=evidence.execution_profile,
+        execution_profile_manifest_sha256=evidence.execution_profile_manifest_sha256,
+        kv_storage=evidence.kv_storage,
+        kv_layout=evidence.kv_layout,
+        realized_group_rows=2,
+        resident_capacity=2,
+        candidate_budget=2,
+        sampling_mode="greedy_fast",
+        max_sequence_length=1024,
+        context_tokens=95,
+        output_horizon_tokens=24,
+        memory_fit=True,
+    )
+
+    decision = Qwen35MoeGGUFModel().resolve_speculative_mtp_serving_plan(key=key)
+
+    assert decision.admitted is True
+    assert decision.automatic_eligible is True
+    assert decision.selected_candidate_count == 2
+    assert decision.reason == "qualified_automatic_production_moe_c2_k2_d24"
+    for changed, reason in (
+        ({"realized_group_rows": 3}, "physical_group_not_qualified"),
+        ({"realized_group_rows": 1}, "physical_group_not_qualified"),
+        ({"candidate_budget": 3}, "candidate_budget_not_qualified"),
+        ({"output_horizon_tokens": 25}, "output_horizon_not_qualified"),
+    ):
+        assert Qwen35MoeGGUFModel().resolve_speculative_mtp_serving_plan(
+            key=replace(key, **changed)
+        ).reason == reason
 
 
 def test_rejected_serving_plan_exposes_permanent_ar_static_eligibility() -> None:
