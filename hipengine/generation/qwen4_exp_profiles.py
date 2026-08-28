@@ -19,9 +19,10 @@ QWEN4_EXP_MODEL = "qwen4_exp_gguf"
 QWEN4_EXP_BACKEND = "hip_gfx1151"
 QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
 PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
+PRODUCTION_Q8_PREFILL_LAYERS = tuple(range(32, 48))
 _EVIDENCE = (
     "benchmarks/results/"
-    "2026-08-29-gfx1151-qwen38-flash-next-late-moe27-production.json"
+    "2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json"
 )
 
 
@@ -60,6 +61,13 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "gguf_q5_1",
         ),
+        _selection(
+            "linear",
+            "prefill_rows_ge16_layers32_47_q8",
+            "coltile8_rowbatch4_f32_f32_out",
+            "coltile8_rowbatch4_f32_f32_out",
+            "gguf_q8_0",
+        ),
     )
 
 
@@ -81,6 +89,14 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             "gguf_q5_1",
             evidence=_EVIDENCE,
         ),
+        _selection(
+            "linear",
+            "prefill_rows_ge16_layers32_47_q8",
+            "wmma_prefill_f32_f32_out",
+            "coltile8_rowbatch4_f32_f32_out",
+            "gguf_q8_0",
+            evidence=_EVIDENCE,
+        ),
     )
 
 
@@ -94,6 +110,13 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL": "0",
         "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "0",
         "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA": "0",
+        "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": (
+            ",".join(map(str, PRODUCTION_Q8_PREFILL_LAYERS))
+            if production
+            else ""
+        ),
+        "HIPENGINE_GGUF_Q8_0_WMMA_TILE_M": "64",
+        "HIPENGINE_GGUF_Q8_0_WMMA_TILE_N": "32",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN": "1",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "1",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL": "1",
@@ -167,6 +190,7 @@ __all__ = [
     "QWEN4_EXP_BACKEND",
     "QWEN4_EXP_MODEL",
     "QWEN4_EXP_QUANTS",
+    "PRODUCTION_Q8_PREFILL_LAYERS",
     "qwen4_exp_gfx1151_profiles_registered",
     "register_qwen4_exp_gfx1151_profiles",
 ]
