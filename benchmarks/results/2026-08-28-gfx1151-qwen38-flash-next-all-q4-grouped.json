@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_exact_default",
+  "scope": "Extend exact grouped Q4_K gate/up to Q8_0-down Qwen4Exp layers",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "model": {"id": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "implementation": {"change": "Remove the unrelated Q5_1-down admission condition from exact grouped Q4_K gate/up. Four Q8_0-down layers now use the same sorted compact exact Q4 owner; selected Q8_0 down consumes sorted expert IDs through its existing strict primitive.", "arithmetic": "unchanged exact grouped Q4 bit contract and strict selected Q8_0 down", "fallback": "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL=0 retains the preceding Q5_1-down-only admission"},
+  "timing": {"tokens": 508, "paired_preceding_seconds": 12.020746668997162, "paired_candidate_seconds": 11.188535116998537, "reduction_percent": 6.923126948053829, "speedup": 1.0743807427242429, "candidate_prompt_tokens_per_second": 45.40362028521543},
+  "correctness": {"full_logits_exact": true, "top1_exact": true, "reduced_moe_bundle_passed": 3},
+  "decision": {"promoted": true, "target_50_tok_s_met": false, "next": "Optimize Q8 expert down and strict GDN at 512/1K; do not run 16K."},
+  "command": "uv run python /tmp/qwen4exp_allq4_gate.py"
+}

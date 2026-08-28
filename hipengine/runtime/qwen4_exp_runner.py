@@ -2466,13 +2466,18 @@ def run_qwen4_exp_moe(
         not in {"", "0", "false", "False"}
     )
     exact_grouped_q4_gate = (
-        exact_grouped_down
+        rows >= 2
         and weights["expert_gate"].spec.quant_key == "gguf_q4_k"
         and weights["expert_up"].spec.quant_key == "gguf_q4_k"
         and os.environ.get("HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4", "1")
         not in {"", "0", "false", "False"}
+        and (
+            exact_grouped_down
+            or os.environ.get("HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL", "1")
+            not in {"", "0", "false", "False"}
+        )
     )
-    grouped_prefill = exact_grouped_down or (
+    grouped_prefill = exact_grouped_down or exact_grouped_q4_gate or (
         rows >= 16
         and os.environ.get("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "")
         not in {"", "0", "false", "False"}
@@ -2531,7 +2536,7 @@ def run_qwen4_exp_moe(
         )
         tile_capacity = scratch.group_tile_expert.nbytes // DType.INT64.itemsize
         wmma_total_rows = 0
-        if not exact_grouped_down:
+        if not exact_grouped_down and not exact_grouped_q4_gate:
             qwen35_moe_wmma_tile_map(
                 scratch.group_expert_start.ptr,
                 scratch.group_wmma_expert_start.ptr,
@@ -2554,70 +2559,69 @@ def run_qwen4_exp_moe(
             wmma_total_rows = int(wmma_total_host[0])
             if wmma_total_rows <= 0 or wmma_total_rows > tile_capacity * 16:
                 raise RuntimeError("Qwen4Exp grouped MoE WMMA row count is invalid")
-        if exact_grouped_down:
-            if exact_grouped_q4_gate:
-                expert_grid_mode = os.environ.get(
-                    "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
-                )
-                expert_grid64 = expert_grid_mode in {"64", "q4"}
-                grouped_q4_gate = (
-                    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out
-                    if expert_grid64
-                    else gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out
-                    if os.environ.get("HIPENGINE_QWEN4_EXP_Q4_OUT4", "1")
-                    not in {"", "0", "false", "False"}
-                    else gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out
-                )
-                grouped_q4_gate(
-                    scratch.expert_down.ptr,
-                    scratch.group_expert_start.ptr,
-                    weights["expert_gate"].allocation("raw").tensor.ptr,
-                    weights["expert_up"].allocation("raw").tensor.ptr,
-                    scratch.expert_gate.ptr,
-                    scratch.expert_up.ptr,
-                    compact,
-                    experts,
-                    hidden,
-                    ffn,
-                    stream=stream,
-                    runtime=active_runtime,
-                )
-                silu_mul_separate_out_bf16(
-                    scratch.expert_gate.ptr,
-                    scratch.expert_up.ptr,
-                    scratch.expert_intermediate.ptr,
-                    compact,
-                    ffn,
-                    stream=stream,
-                    runtime=active_runtime,
-                )
-            else:
-                selected_projection(
-                    "expert_gate", scratch.hidden_bf16.ptr, scratch.expert_gate.ptr,
-                    rows, compact, hidden, ffn,
-                )
-                selected_projection(
-                    "expert_up", scratch.hidden_bf16.ptr, scratch.expert_up.ptr,
-                    rows, compact, hidden, ffn,
-                )
-                silu_mul_separate_out_bf16(
-                    scratch.expert_gate.ptr,
-                    scratch.expert_up.ptr,
-                    scratch.expert_intermediate.ptr,
-                    compact,
-                    ffn,
-                    stream=stream,
-                    runtime=active_runtime,
-                )
-                qwen4_exp_gather_bf16_lanes(
-                    scratch.expert_intermediate.ptr,
-                    scratch.group_sorted_lanes.ptr,
-                    scratch.expert_gate.ptr,
-                    compact,
-                    ffn,
-                    stream=stream,
-                    runtime=active_runtime,
-                )
+        if exact_grouped_q4_gate:
+            expert_grid_mode = os.environ.get(
+                "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
+            )
+            expert_grid64 = expert_grid_mode in {"64", "q4"}
+            grouped_q4_gate = (
+                gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out
+                if expert_grid64
+                else gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out
+                if os.environ.get("HIPENGINE_QWEN4_EXP_Q4_OUT4", "1")
+                not in {"", "0", "false", "False"}
+                else gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out
+            )
+            grouped_q4_gate(
+                scratch.expert_down.ptr,
+                scratch.group_expert_start.ptr,
+                weights["expert_gate"].allocation("raw").tensor.ptr,
+                weights["expert_up"].allocation("raw").tensor.ptr,
+                scratch.expert_gate.ptr,
+                scratch.expert_up.ptr,
+                compact,
+                experts,
+                hidden,
+                ffn,
+                stream=stream,
+                runtime=active_runtime,
+            )
+            silu_mul_separate_out_bf16(
+                scratch.expert_gate.ptr,
+                scratch.expert_up.ptr,
+                scratch.expert_intermediate.ptr,
+                compact,
+                ffn,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        elif exact_grouped_down:
+            selected_projection(
+                "expert_gate", scratch.hidden_bf16.ptr, scratch.expert_gate.ptr,
+                rows, compact, hidden, ffn,
+            )
+            selected_projection(
+                "expert_up", scratch.hidden_bf16.ptr, scratch.expert_up.ptr,
+                rows, compact, hidden, ffn,
+            )
+            silu_mul_separate_out_bf16(
+                scratch.expert_gate.ptr,
+                scratch.expert_up.ptr,
+                scratch.expert_intermediate.ptr,
+                compact,
+                ffn,
+                stream=stream,
+                runtime=active_runtime,
+            )
+            qwen4_exp_gather_bf16_lanes(
+                scratch.expert_intermediate.ptr,
+                scratch.group_sorted_lanes.ptr,
+                scratch.expert_gate.ptr,
+                compact,
+                ffn,
+                stream=stream,
+                runtime=active_runtime,
+            )
         elif weights["expert_gate"].spec.quant_key == "gguf_q4_k":
             gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
                 scratch.expert_down.ptr,
