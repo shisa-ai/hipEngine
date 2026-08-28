@@ -1097,10 +1097,11 @@ GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
         },
     },
 }
-# Packed target verification may reuse only these exact actual-weight Q6
-# rowtiles. Shape-scoped ownership prevents unrelated gfx1151 models and Q4/Q5
+# Packed target verification may reuse only these exact actual-weight Q5/Q6
+# rowtiles. Shape-scoped ownership prevents unrelated gfx1151 models and Q4
 # projections from inheriting an unmeasured verifier policy.
 GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT = {
+    "gguf_q5_k_t16_v1": frozenset({(6_144, 5_120)}),
     "gguf_q6_k_t16_v1": frozenset({(5_120, 10_240)}),
     "gguf_q6_k_t16_qmicro_planar_v1": frozenset(
         {(5_120, 1_024), (17_408, 5_120)}

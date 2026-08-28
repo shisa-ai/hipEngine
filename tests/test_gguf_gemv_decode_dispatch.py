@@ -247,7 +247,7 @@ def test_native_batch_decode_q6_planar_t16_rows_5_8_route_to_true_rowtile() -> N
         assert key == _Q6_PLANAR_ROWTILE
 
 
-def test_target_verifier_scope_routes_only_backend_admitted_q6(
+def test_target_verifier_scope_routes_only_backend_admitted_q5_q6(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import hipengine.runtime.gguf_linear as gguf_linear
@@ -257,6 +257,7 @@ def test_target_verifier_scope_routes_only_backend_admitted_q6(
     def capability(backend: str, name: str, default=None):
         if name == "GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT":
             return {
+                "gguf_q5_k_t16_v1": frozenset({(6_144, 5_120)}),
                 "gguf_q6_k_t16_v1": frozenset({(5_120, 10_240)}),
                 "gguf_q6_k_t16_qmicro_planar_v1": frozenset(
                     {(5_120, 1_024), (17_408, 5_120)}
@@ -264,6 +265,10 @@ def test_target_verifier_scope_routes_only_backend_admitted_q6(
             }
         if name == "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT":
             return {
+                "gguf_q5_k_t16_v1": {
+                    "default": 4,
+                    "shapes": {(6_144, 5_120): 8},
+                },
                 "gguf_q6_k_t16_v1": 8,
                 "gguf_q6_k_t16_qmicro_planar_v1": 8,
             }
@@ -304,9 +309,23 @@ def test_target_verifier_scope_routes_only_backend_admitted_q6(
     )
     assert key == _Q6_T16_DECODE
 
-    # The target-verifier scope must not act like the broad native-batch scope.
     key, _, _ = _capture_launch(
         rows=8,
+        in_features=6_144,
+        out_features=5_120,
+        target_verifier_rowtile=True,
+        quant_key="gguf_q5_k_t16_v1",
+        layout=LAYOUT_GGUF_Q5_K_T16,
+        extra_keys=(_Q5_T16_DECODE, _Q5_T16_ROWTILE, _Q5_T16_WMMA),
+    )
+    assert key == _Q5_T16_ROWTILE
+
+    # The target-verifier scope must not act like the broad native-batch scope:
+    # unmeasured Q5 shapes retain their old owner.
+    key, _, _ = _capture_launch(
+        rows=8,
+        in_features=2_048,
+        out_features=1_024,
         target_verifier_rowtile=True,
         quant_key="gguf_q5_k_t16_v1",
         layout=LAYOUT_GGUF_Q5_K_T16,
