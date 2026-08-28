@@ -2536,3 +2536,12 @@ def test_gfx1151_gguf_lazy_registration_rebinds_source_kernels() -> None:
             variant=linear_key.variant,
         )
     )
+
+
+def test_gfx1151_scopes_qwen4_exp_moe_graph_replay() -> None:
+    assert backend_package_capability(
+        "hip_gfx1151", "QWEN4_EXP_MOE_GRAPH", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1100", "QWEN4_EXP_MOE_GRAPH", False
+    ) is False
