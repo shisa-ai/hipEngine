@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next Implementation Campaign
 
-Status: **working — declared gfx1151 Q4 scope passes text/QSA, opt-in MTP, <=1K multimodal, c2 serving, and current natural 16K; higher-capacity and alternate-quant follow-ups remain explicit**
+Status: **active performance bring-up — declared gfx1151 Q4 functionality passes, but same-host llama.cpp parity is the binding objective; no alternate-quant or feature expansion outranks base AR prefill/decode**
 
 This campaign brings the open-weight `Qwen/Qwen3.8-Flash-Next` checkpoint to
 hipEngine as a torch-free, registry-composed, text-generation path first, then
@@ -45,7 +45,7 @@ normative in [`TESTING.md`](TESTING.md),
 | Source path | `/models/hf/Qwen3.8-Flash-Next` |
 | Operational GGUF path | `/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL` (4 parts, revision `8bdc666649440e9bdc97e16f3f75782c98478ff5`) |
 | Planned local conventional quant | `/models/gguf/Qwen3.8-Flash-Next-Q4_K_M.gguf` (not yet produced) |
-| Higher-quality GGUF candidate | Unsloth `UD-Q5_K_XL`, frozen revision `ff34bcdd8a6ecffbe75b392e57b866df8f6bba8f`: six parts / 158,286,406,650 bytes; part 3 is the sole 54,400,261,312-byte Q8_0 PLE tensor, leaving 103,886,145,338 bytes of non-PLE artifact payload before runtime scratch/context |
+| Higher-quality GGUF candidate | Unsloth `UD-Q5_K_XL`, frozen revision `ff34bcdd8a6ecffbe75b392e57b866df8f6bba8f`: optional/deferred; it is not part of the active bring-up and cannot displace `UD-Q4_K_XL` performance parity |
 | Native context | 262,144 tokens |
 | Extended context | up to 1,000,000 tokens; not an initial support claim |
 
@@ -722,8 +722,64 @@ External report sources:
 [`r/StrixHalo benchmark`](https://www.reddit.com/r/StrixHalo/comments/1vz5yb3/qwen38flashnext_125ba6b_running_on_strix_halo/)
 and
 [`r/LocalLLM PLE mmap/layout`](https://www.reddit.com/r/LocalLLM/comments/1vz927j/got_qwen38nextflash_ngram_ssd_offload_working_in/).
-Treat all of these as external target lines only—not old→new comparisons to
-this host—until reproduced under the declared same-host protocol.
+Treat external rows as target lines only—not old→new comparisons to this host.
+The PR #27742 HIP/Vulkan rows above are now the reproduced same-host references.
+
+#### Active Q4 parity order (review reset, 2026-08-28)
+
+The completed baseline and decode trace supersede the earlier feature/checklist
+priority. Post exact Q8 packing and Q4 dual fusion, controlled decode is about
+**6.22 tok/s / 161 ms/token** versus llama.cpp HIP/Vulkan `15.85/18.72 tok/s`.
+The current trace contains about **1,919 launches/token** and approximately
+`105 ms/token` of kernel work (`Q4 selected 41.0`, `Q8 dense 28.6`, `Q5_1 down
+22.1`, GDN `3.2`, other `10.5 ms`); the remaining roughly `55 ms/token` host/
+submission gap is measured explicitly in every next packet rather than left as
+a rank-5 inference. Current p508 is `10.2 s` wall / `8.84 s` kernels / 29,341
+launches versus same-host llama.cpp Vulkan/HIP `316/275 tok/s`.
+
+Binding implementation order:
+
+1. **Contract exact prefill plumbing first.** PLE now flattens all
+   `16 × chunk_rows` indices and gathers/dequantizes once per chunk; registered
+   decode-order-exact K4 bulk Conv replaces row-serial launches. Together they
+   cut p508 kernel launches `29,341→11,053` and improve counterbalanced p508
+   `57.825→58.408 tok/s` (+1.01%) with bit-exact logits. Next, replace 6,096
+   per-row QSA index-key D2D copies with one block-table-aware scatter/chunk;
+   only then revisit asynchronous PLE next-chunk overlap.
+2. **Make selected MoE launch-wide.** Port llama.cpp/Vulkan `mul_mat_id` dataflow:
+   one layer/quant-family launch iterates the selected expert set. This is ahead
+   of further chain fusion because it attacks under-occupancy, kernel wall,
+   launch count, and Python/ctypes overhead together while preserving each
+   output element's reduction order.
+3. **Retain exact Q4/Q5 micro-wins only atop the grouped shape.** Screen raw-Q4
+   selected pack8 and dual/SiLU owners; for Q5_1 use pack2/pack4 only when the
+   exact 256-logical-partial tree and BF16 boundary remain intact. The naïve raw
+   Q4 selected pack8 (`+0.05%`), Q5_1 pack8 (`-6.3%`), Q5 metadata LDS cache
+   (`-2.9%`), and device argmax (`-0.09%`) screens are rejected and removed.
+4. **Mine Vulkan cooperative-matrix geometry first, HIP second.** Profile the
+   same-host llama.cpp HIP peer with `rocprofv3` for a semantic kernel-time
+   budget, but use Vulkan's faster cooperative path as the primary existence
+   proof. Report achieved bytes/s before assuming a projection is bandwidth-
+   bound.
+5. **Contract submissions early.** Apply the existing stateless `MoeGraphCache`
+   around fixed MoE layers after grouped launch ownership works. Keep GDN/QSA
+   stateful transitions outside replay until exact state/cursor reuse is proven.
+6. **Maintain strict and production targets.** T0 packing/fusion stays exact.
+   T1/T2 cooperative math needs full teacher-forced category+heldout rows,
+   three deterministic repeats, applicable state/task/BF16 gates, a manifest,
+   and a registered strict fallback. Final-prompt KL or 100% top-1 is not a
+   promotion gate. Late-layer WMMA (layers 32–47) is promising diagnostic
+   evidence (`18` final-prompt rows mean/p95/max KL
+   `0.000196/0.000730/0.002009`, p508 `55.74→62.27 tok/s`) but remains paused
+   pending the complete production packet; it does not outrank T0/grouped work.
+7. **Keep MTP separate.** It may improve serving economics only under the full
+   anti-gaming suite and same-protocol no-MTP denominator; it cannot mask the
+   base AR or 5× prefill gap.
+
+All sub-3% A/Bs are counterbalanced in one residency after warmup; fixed clocks
+are preferred, and globally shifted profiles are used only for symbol/launch
+structure, not speed claims. Current T0 PLE/Conv evidence:
+[`2026-08-29-gfx1151-qwen38-flash-next-exact-ple-conv-bulk.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-ple-conv-bulk.json).
 
 The pinned vLLM/SGLang implementations establish the long-context performance
 design. hipEngine now updates its persistent compressed-QSA K cache only when a

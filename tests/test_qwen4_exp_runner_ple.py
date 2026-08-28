@@ -31,23 +31,28 @@ def _hip_available() -> bool:
     return True
 
 
-def test_qwen4_exp_prompt_staging_copies_two_buffer_ring_views_immediately() -> None:
+def test_qwen4_exp_prompt_staging_batches_rows_in_one_ring_view() -> None:
     class Ring:
         def __init__(self) -> None:
-            self.buffers = (np.empty(4, np.float32), np.empty(4, np.float32))
-            self.index = 0
+            self.buffer = np.empty(12, np.float32)
+            self.calls: list[np.ndarray] = []
 
         def stage(self, row):
-            buffer = self.buffers[self.index]
-            buffer.fill(float(row[0]))
-            self.index = 1 - self.index
-            return buffer
+            indices = np.asarray(row, dtype=np.int64)
+            self.calls.append(indices.copy())
+            self.buffer[:] = np.repeat(indices.astype(np.float32), 4)
+            return self.buffer
 
-    actual = stage_qwen4_exp_ple_rows(Ring(), [[1], [2], [3]], hidden=4)
+    ring = Ring()
+    actual = stage_qwen4_exp_ple_rows(ring, [[1], [2], [3]], hidden=4)
+    assert len(ring.calls) == 1
+    np.testing.assert_array_equal(ring.calls[0], np.asarray([1, 2, 3]))
     np.testing.assert_array_equal(
         actual,
         np.asarray([[1] * 4, [2] * 4, [3] * 4], dtype=np.float32),
     )
+    ring.buffer.fill(-1)
+    assert np.all(actual == -1), "batched rows remain valid until the next ring stage"
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

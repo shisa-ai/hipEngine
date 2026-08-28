@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8-Flash-Next exact PLE/Conv bulk] One PLE gather/dequant per chunk and decode-order-exact K4 bulk Conv cut p508 calls/launches **508→2 / 29,341→11,053 (-62.33%)** and improve counterbalanced prefill **57.825→58.408 tok/s (+1.01%)** with bit-exact full logits/state and serial fallback. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-ple-conv-bulk.json`.
+
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next exact Q4 dual decode] Registered selected dual gate/up halves Q4 launches **94→47/token** and improves counterbalanced complete-model decode **6.065→6.223 tok/s (+2.61%)** with exact primitive output/32-token IDs, zero new residency, and singleton fallback. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-dual-decode.json`.
 
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next ranked performance gap] After exact Q8 pack promotion, decode kernel ownership is Q4 selected **41.05**, Q8 **28.56**, Q5_1 **22.10**, GDN **3.22 ms/token**; p508 Q8/Q5_1/Q4/GDN own **7.471/8.841 s**. Q4/Q5 exact output packing is next; corrected ~151 tok/s WMMA remains rejected at mean/p95 KL 0.004065/0.010484. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-performance-gap-profile.json`.
