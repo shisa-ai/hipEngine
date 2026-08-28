@@ -54,6 +54,11 @@ Our evidence supports these narrower conclusions:
    the same MTP+ngram flag stack gave only 1.07x AR on `general_en` and drafted
    3,917 tokens to accept 935. It should not be presented as general prose or
    chat throughput.
+6. **The current automatic C2 result is positive but narrowly qualified.**
+   Production C2/K3 at context 1-128 and a 24-token output horizon now measures
+   17.031 versus 14.887 tok/s, or 1.1441x AR, with all ten cells and four
+   categories positive. C3+, output horizons above 24, and scope misses remain
+   K0 ([L4]).
 
 ## 1. Evidence labels and comparison rules
 
@@ -121,6 +126,8 @@ and request overhead that decode-only timing excludes.
 | [L1] | [hipEngine row-scaling diagnostic][L1] | Direct packed AR rates and exact local byte budget | Dirty-tree diagnostic; synthetic prompt; no correctness gate |
 | [L2] | [hipEngine/llama.cpp same-host diagnostic][L2] | Closest same-GGUF, same-suite C1 comparison | Reused hipEngine runs, F16/BF16 KV mismatch, one run per arm |
 | [L3] | [External-configuration transfer test][L3] | Mainline/fork fixed and adaptive MTP plus MTP+ngram on our GGUF and suite | One run; MTP rather than DFlash2; fork/mainline versions differ |
+| [L4] | [Retained production C2/K3 result][L4] | Automatic context1-128/D24 C2/K3 at 1.1441x AR; D120 rejection; C3+ fail-closed | One run for throughput; production numerical scope is D24 only |
+| [L5] | [Ngram/MTP composition closeout][L5] | Repetition-heavy strict C2/K3 D80 +2.425% over MTP-only; D96 and D120 blockers | One run; default-off diagnostic; still 0.9875x true AR |
 
 External pages were fetched at the pinned commits on 2026-08-28. The local
 artifacts retain commands, model hashes, protocol details, and limitations.
@@ -328,47 +335,63 @@ Qwen3.8 comparison set. It used a 124B/5.5B-active mixture-of-experts model and
 a different runtime. At most, it can motivate a qualitative concurrency-shape
 investigation; its absolute rates and model economics do not transfer.
 
-## 8. Implications for hipEngine
+The current hipEngine result is stronger than the survey's original intake.
+Automatic production C2/K3 now reaches **17.031 versus 14.887 tok/s (1.1441x
+AR)** at context 1-128 and D24, with category ratios
+1.1290x/1.3282x/1.0766x/1.0874x for code/general English/general
+Japanese/mixed ([L4]). This supersedes the old 0.92x diagnostic. It does not
+qualify C3: C3/K3 requires 12 target-verification rows, while the retained
+production bucket is physical R8 and C3+ fails closed.
 
-1. **Do not open an AR decode-kernel campaign from these external rates.** The
-   local direct diagnostic is in the published implied-bandwidth band, and the
-   nearest same-quant published row differs by less than 1%. The served
-   24-token row is lower, but its complete-wall timing includes prefill and
-   serving overhead and needs a separate attribution study.
-2. **Prioritize C1 draft acceptance over verifier cycle cost.** The closest
-   same-host comparison shows near-equal complete-wall throughput and an
-   11.59-point acceptance deficit. Candidate investigations include NextN
-   priming, cursor synchronization, `p_min` handling, and acceptance by draft
-   position. These are hypotheses, not established causes.
-3. **Keep adaptive depth rejected as the default for the tested C1 MTP
-   configuration.** It improved over a fixed deep draft but lost to fixed
-   depth 3. Reconsider it only for a different method or workload, such as
-   C>1 frontier economics, with a full-suite gate.
-4. **Treat ngram composition as prompt-sensitive.** The local stack can help
-   repetition-heavy output, but it did not provide a broad suite win and its
-   acceptance was low. The separate local closeout retains it default-off with
-   correctness and long-horizon blockers documented in
-   [`2026-08-28-gfx1151-qwen38-ngram-mtp-composition-closeout.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-ngram-mtp-composition-closeout.json).
-5. **Bisect the fork/mainline fixed-depth-3 delta before porting anything.** A
-   local approximately 18% MTP-path difference is worth investigating, but the current test
-   confounds fork edits with upstream movement between builds 10438 and 10681.
-6. **For C>1, compare crossover shape under a matched protocol.** External
-   concurrency data are useful for hypothesis formation, not as an absolute
-   target. A retained comparison requires the same model, quant, suite,
-   generation length, timing boundary, and host.
+## 8. Recommended priorities
 
-## 9. Open measurements
+1. **Trace C1 proposals against llama.cpp at identical teacher-forced
+   histories.** The closest same-host comparison shows near-equal complete-wall
+   throughput but 78.57% hipEngine versus 90.16% llama.cpp acceptance. Compare
+   proposal top-1 at depths 1, 2, and 3 from the same committed target history;
+   this avoids allowing a depth-1 mismatch to contaminate depths 2-3. Start at
+   NextN prompt priming, hidden-seed/cursor alignment, and proposal-state
+   repair. `p_min` is not a leading explanation: llama.cpp used
+   `--spec-draft-p-min 0.0`, and hipEngine used raw greedy proposals.
+2. **Fix long-horizon correctness before qualifying fixed K4.** The ngram
+   premise is measured: strict repetition-heavy C2/K3 D80 improves MTP-only
+   20.434 to 20.930 tok/s (+2.425%), but remains 0.9875x true AR ([L5]). The
+   strict D96 SQL terminal mismatch and the separate production D120 numerical
+   tail must be resolved under their respective contracts before a wider
+   product cell. Then qualify fixed K4 at R5 for C1 and R10 for C2 before
+   reconsidering adaptive depth.
+3. **Bisect the approximately 18% fork/mainline fixed-K3 difference.** Do not
+   port the fork's speculative diff wholesale. Separate upstream build
+   10438-to-10681 changes, Qwen graph/model changes, and the adaptive
+   controller. Adaptive logic is inactive in the fixed-K3 arm, while the
+   fork's GDN-flatten commit explicitly reports single-stream MTP as flat.
+4. **Publish acceptance by category and draft depth.** The raw C1/C2 route
+   telemetry already records candidate and accepted counts, but the compact
+   retained artifacts expose only aggregate acceptance. Observed rollout
+   counts are useful, but the C1 parity campaign still needs independent
+   teacher-forced depth agreement. Do not substitute the reconstructed C2
+   category rates (about 79.7%/84.2%/68.2%/84.2%) for the C1 78.57% result;
+   they come from a different concurrency/profile cell.
+5. **Screen C3/K3 only after an R12 premise exists.** C2 is already retained at
+   1.1441x AR in its narrow D24 bucket. C3 is the next concurrency milestone,
+   but it needs a qualified R12 verifier path plus the same correctness,
+   category, lifecycle, and serving gates.
 
-The highest-value missing evidence is:
+Do not start another AR decode-kernel campaign from unmatched external rates,
+port Vulkan/Wave64 behavior without an independent HIP mechanism,
+default-enable ngram composition, reopen adaptive C1 depth, or optimize toward
+cross-quant/prompt headline rates.
 
-1. **Per-category and per-position hipEngine acceptance.** Current local
-   artifacts publish aggregate 78.57% acceptance but not the category and
-   draft-position distributions needed to distinguish content mix from a
-   position-2/3 degradation.
-2. **A repeated, same-lifecycle hipEngine/llama.cpp A/B.** Use the same GGUF,
+## 9. Supporting measurements still needed
+
+1. **A repeated, same-lifecycle hipEngine/llama.cpp A/B.** Use the same GGUF,
    KV dtype if both engines support it, 10-prompt suite, output length, server
    timing boundary, and at least three interleaved runs per arm. Report both
    decode-only and complete-wall rates without mixing them.
+2. **A compact acceptance artifact.** Preserve C1 and C2 per-category totals,
+   observed accepted-length histograms, and teacher-forced depth-1/2/3 top-1
+   agreement. The currently reconstructable C2 rollout rates are not yet a
+   committed reporting surface.
 3. **A true FP4+DFlash2 reproduction.** Reproducing Laurent's 65.6 tok/s claim
    requires the published FP4 target, FP4 DFlash2 sidecar, pinned fork,
    structured and prose prompts, 300-token generation, power profile, and
@@ -376,9 +399,8 @@ The highest-value missing evidence is:
 4. **A controlled Vulkan/HIP backend A/B.** The present AR table cannot
    attribute its spread to backend because model formats, quants, engines, and
    hosts differ.
-5. **A bisect of llama.cpp build 10438 to the fork's build 10681.** Hold the
-   local fixed-depth-3 arm constant and separate upstream changes from the
-   fork's speculative edits.
+5. **A commit-level llama.cpp bisect.** Hold the local fixed-depth-3 arm
+   constant from build 10438 through 10681 before transferring any change.
 
 ## 10. Limitations
 
@@ -429,6 +451,8 @@ The highest-value missing evidence is:
 - **[L1]** [`2026-08-28-gfx1151-qwen38-row-scaling-baseline.json`][L1]
 - **[L2]** [`2026-08-28-gfx1151-qwen38-llamacpp-1to1.json`][L2]
 - **[L3]** [`2026-08-28-gfx1151-qwen38-fork-claim-generalization.json`][L3]
+- **[L4]** [`2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json`][L4]
+- **[L5]** [`2026-08-28-gfx1151-qwen38-ngram-mtp-composition-closeout.json`][L5]
 
 [S1]: https://github.com/hogeheer499-commits/strix-halo-guide/blob/029320fb/QWEN38_STRIX_HALO.md
 [S2]: https://github.com/MikeVeerman/qwen38-27-Strix-Halo-bench/blob/cc527064/README.md
@@ -439,3 +463,5 @@ The highest-value missing evidence is:
 [L1]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-row-scaling-baseline.json
 [L2]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-llamacpp-1to1.json
 [L3]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-fork-claim-generalization.json
+[L4]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json
+[L5]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-ngram-mtp-composition-closeout.json
