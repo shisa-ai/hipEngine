@@ -1,0 +1,1049 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_repaired_c2_k1_k3_screen",
+  "created_at": "2026-08-28T19:58:09.363927+00:00",
+  "status": "complete_k2_selected_p8_open",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "Select physical C2/K2 for P8/P9. One-run K2 is 1.0450x AR at 80.29% acceptance, but code is 0.8796x and aggregate is below 1.10x. K1 and K3 remain losing controls. Automatic stays K0.",
+  "source": {
+    "head": "5e8004f9a0f82d04b89352b7f0a843f795200d96",
+    "provider_kv_repair_artifact": "benchmarks/results/2026-08-28-w7900-qwen38-q4km-c2-provider-kv-ownership-repaired.json"
+  },
+  "hardware": {
+    "host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_index": 0,
+    "arch": "gfx1100",
+    "rocm": "7.2.4",
+    "gpu_max_hw_queues": "unset"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "size_bytes": 17106773984,
+    "kv": "BF16"
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "heldouts": 4,
+    "C": 2,
+    "D": 24,
+    "budgets": [
+      1,
+      2,
+      3
+    ],
+    "sampling": "raw greedy",
+    "timing": "blocking barrier-to-last-completion complete wall",
+    "runs": 1
+  },
+  "c2_rows": {
+    "1": {
+      "source": {
+        "commit": "5e8004f9a0f82d04b89352b7f0a843f795200d96",
+        "dirty": false
+      },
+      "runtime_profile": {
+        "requested": "production",
+        "resolved": "production",
+        "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+        "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+      },
+      "summary": {
+        "ar": {
+          "wall_seconds": 15.733892298303545,
+          "generated_tokens": 480,
+          "tok_s": 30.507390726943925
+        },
+        "mtp": {
+          "wall_seconds": 30.372866129502654,
+          "generated_tokens": 480,
+          "tok_s": 15.803579351168063
+        },
+        "mtp_vs_ar_ratio": 0.5180246154978586,
+        "mtp_vs_ar_percent": -48.19753845021414,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "mtp_expected": true,
+        "route_expectation_passed": true
+      },
+      "acceptance": {
+        "scopes": {
+          "all": {
+            "cycles": 228,
+            "proposed_draft_tokens": 228,
+            "accepted_draft_tokens": 209,
+            "draft_acceptance": 0.9166666666666666,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 228,
+                "accepted_cycles": 209,
+                "position_acceptance": 0.9166666666666666,
+                "conditional_opportunities": 228,
+                "conditional_position_acceptance": 0.9166666666666666
+              }
+            ]
+          },
+          "train": {
+            "cycles": 136,
+            "proposed_draft_tokens": 136,
+            "accepted_draft_tokens": 126,
+            "draft_acceptance": 0.9264705882352942,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 136,
+                "accepted_cycles": 126,
+                "position_acceptance": 0.9264705882352942,
+                "conditional_opportunities": 136,
+                "conditional_position_acceptance": 0.9264705882352942
+              }
+            ]
+          },
+          "heldout": {
+            "cycles": 92,
+            "proposed_draft_tokens": 92,
+            "accepted_draft_tokens": 83,
+            "draft_acceptance": 0.9021739130434783,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 92,
+                "accepted_cycles": 83,
+                "position_acceptance": 0.9021739130434783,
+                "conditional_opportunities": 92,
+                "conditional_position_acceptance": 0.9021739130434783
+              }
+            ]
+          }
+        },
+        "categories": {
+          "code": {
+            "cycles": 90,
+            "proposed_draft_tokens": 90,
+            "accepted_draft_tokens": 84,
+            "draft_acceptance": 0.9333333333333333,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 90,
+                "accepted_cycles": 84,
+                "position_acceptance": 0.9333333333333333,
+                "conditional_opportunities": 90,
+                "conditional_position_acceptance": 0.9333333333333333
+              }
+            ]
+          },
+          "general_en": {
+            "cycles": 44,
+            "proposed_draft_tokens": 44,
+            "accepted_draft_tokens": 41,
+            "draft_acceptance": 0.9318181818181818,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 44,
+                "accepted_cycles": 41,
+                "position_acceptance": 0.9318181818181818,
+                "conditional_opportunities": 44,
+                "conditional_position_acceptance": 0.9318181818181818
+              }
+            ]
+          },
+          "general_ja": {
+            "cycles": 48,
+            "proposed_draft_tokens": 48,
+            "accepted_draft_tokens": 42,
+            "draft_acceptance": 0.875,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 48,
+                "accepted_cycles": 42,
+                "position_acceptance": 0.875,
+                "conditional_opportunities": 48,
+                "conditional_position_acceptance": 0.875
+              }
+            ]
+          },
+          "mixed_ja_en": {
+            "cycles": 46,
+            "proposed_draft_tokens": 46,
+            "accepted_draft_tokens": 42,
+            "draft_acceptance": 0.9130434782608695,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 46,
+                "accepted_cycles": 42,
+                "position_acceptance": 0.9130434782608695,
+                "conditional_opportunities": 46,
+                "conditional_position_acceptance": 0.9130434782608695
+              }
+            ]
+          }
+        }
+      },
+      "economics": {
+        "full": {
+          "ar_tok_s": 30.507390726943925,
+          "mtp_tok_s": 15.803579351168063,
+          "ratio": 0.5180246154978586
+        },
+        "train": {
+          "ar_tok_s": 30.64046209706763,
+          "mtp_tok_s": 15.956919896260313,
+          "ratio": 0.5207793487483804
+        },
+        "heldout": {
+          "ar_tok_s": 30.309936875775904,
+          "mtp_tok_s": 15.579015826901294,
+          "ratio": 0.5139903751944876
+        },
+        "categories": {
+          "code": {
+            "ar_tok_s": 30.96198417785626,
+            "mtp_tok_s": 16.15633931816016,
+            "ratio": 0.5218121430898164
+          },
+          "general_en": {
+            "ar_tok_s": 30.747637875160187,
+            "mtp_tok_s": 16.147382191964454,
+            "ratio": 0.525158461197089
+          },
+          "general_ja": {
+            "ar_tok_s": 30.653767087168802,
+            "mtp_tok_s": 15.308728370176631,
+            "ratio": 0.4994077343461199
+          },
+          "mixed_ja_en": {
+            "ar_tok_s": 29.27903882393952,
+            "mtp_tok_s": 15.30412767601483,
+            "ratio": 0.5226991148186758
+          }
+        }
+      },
+      "failures": 0,
+      "candidate_d2h_after_target": 0,
+      "final_memory": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 23774860652,
+        "total_allocated_bytes": 24940850310,
+        "total_freed_bytes": 24940850310,
+        "active_allocations": 0,
+        "peak_allocations": 1760
+      }
+    },
+    "2": {
+      "source": {
+        "commit": "5e8004f9a0f82d04b89352b7f0a843f795200d96",
+        "dirty": false
+      },
+      "runtime_profile": {
+        "requested": "production",
+        "resolved": "production",
+        "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+        "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+      },
+      "summary": {
+        "ar": {
+          "wall_seconds": 15.636357750743628,
+          "generated_tokens": 480,
+          "tok_s": 30.697685973395714
+        },
+        "mtp": {
+          "wall_seconds": 14.963444642256945,
+          "generated_tokens": 480,
+          "tok_s": 32.07817527820261
+        },
+        "mtp_vs_ar_ratio": 1.0449704680021583,
+        "mtp_vs_ar_percent": 4.4970468002158315,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "mtp_expected": true,
+        "route_expectation_passed": true
+      },
+      "acceptance": {
+        "scopes": {
+          "all": {
+            "cycles": 175,
+            "proposed_draft_tokens": 340,
+            "accepted_draft_tokens": 273,
+            "draft_acceptance": 0.8029411764705883,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 175,
+                "accepted_cycles": 154,
+                "position_acceptance": 0.88,
+                "conditional_opportunities": 175,
+                "conditional_position_acceptance": 0.88
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 165,
+                "accepted_cycles": 119,
+                "position_acceptance": 0.7212121212121212,
+                "conditional_opportunities": 144,
+                "conditional_position_acceptance": 0.8263888888888888
+              }
+            ]
+          },
+          "train": {
+            "cycles": 105,
+            "proposed_draft_tokens": 204,
+            "accepted_draft_tokens": 163,
+            "draft_acceptance": 0.7990196078431373,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 105,
+                "accepted_cycles": 92,
+                "position_acceptance": 0.8761904761904762,
+                "conditional_opportunities": 105,
+                "conditional_position_acceptance": 0.8761904761904762
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 99,
+                "accepted_cycles": 71,
+                "position_acceptance": 0.7171717171717171,
+                "conditional_opportunities": 86,
+                "conditional_position_acceptance": 0.8255813953488372
+              }
+            ]
+          },
+          "heldout": {
+            "cycles": 70,
+            "proposed_draft_tokens": 136,
+            "accepted_draft_tokens": 110,
+            "draft_acceptance": 0.8088235294117647,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 70,
+                "accepted_cycles": 62,
+                "position_acceptance": 0.8857142857142857,
+                "conditional_opportunities": 70,
+                "conditional_position_acceptance": 0.8857142857142857
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 66,
+                "accepted_cycles": 48,
+                "position_acceptance": 0.7272727272727273,
+                "conditional_opportunities": 58,
+                "conditional_position_acceptance": 0.8275862068965517
+              }
+            ]
+          }
+        },
+        "categories": {
+          "code": {
+            "cycles": 75,
+            "proposed_draft_tokens": 144,
+            "accepted_draft_tokens": 105,
+            "draft_acceptance": 0.7291666666666666,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 75,
+                "accepted_cycles": 58,
+                "position_acceptance": 0.7733333333333333,
+                "conditional_opportunities": 75,
+                "conditional_position_acceptance": 0.7733333333333333
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 69,
+                "accepted_cycles": 47,
+                "position_acceptance": 0.6811594202898551,
+                "conditional_opportunities": 52,
+                "conditional_position_acceptance": 0.9038461538461539
+              }
+            ]
+          },
+          "general_en": {
+            "cycles": 34,
+            "proposed_draft_tokens": 66,
+            "accepted_draft_tokens": 54,
+            "draft_acceptance": 0.8181818181818182,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 34,
+                "accepted_cycles": 32,
+                "position_acceptance": 0.9411764705882353,
+                "conditional_opportunities": 34,
+                "conditional_position_acceptance": 0.9411764705882353
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 32,
+                "accepted_cycles": 22,
+                "position_acceptance": 0.6875,
+                "conditional_opportunities": 30,
+                "conditional_position_acceptance": 0.7333333333333333
+              }
+            ]
+          },
+          "general_ja": {
+            "cycles": 34,
+            "proposed_draft_tokens": 66,
+            "accepted_draft_tokens": 56,
+            "draft_acceptance": 0.8484848484848485,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 34,
+                "accepted_cycles": 33,
+                "position_acceptance": 0.9705882352941176,
+                "conditional_opportunities": 34,
+                "conditional_position_acceptance": 0.9705882352941176
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 32,
+                "accepted_cycles": 23,
+                "position_acceptance": 0.71875,
+                "conditional_opportunities": 31,
+                "conditional_position_acceptance": 0.7419354838709677
+              }
+            ]
+          },
+          "mixed_ja_en": {
+            "cycles": 32,
+            "proposed_draft_tokens": 64,
+            "accepted_draft_tokens": 58,
+            "draft_acceptance": 0.90625,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 32,
+                "accepted_cycles": 31,
+                "position_acceptance": 0.96875,
+                "conditional_opportunities": 32,
+                "conditional_position_acceptance": 0.96875
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 32,
+                "accepted_cycles": 27,
+                "position_acceptance": 0.84375,
+                "conditional_opportunities": 31,
+                "conditional_position_acceptance": 0.8709677419354839
+              }
+            ]
+          }
+        }
+      },
+      "economics": {
+        "full": {
+          "ar_tok_s": 30.697685973395714,
+          "mtp_tok_s": 32.07817527820261,
+          "ratio": 1.0449704680021583
+        },
+        "train": {
+          "ar_tok_s": 30.811713410957076,
+          "mtp_tok_s": 32.41406595744906,
+          "ratio": 1.0520046556684566
+        },
+        "heldout": {
+          "ar_tok_s": 30.5282185461368,
+          "mtp_tok_s": 31.587191978707985,
+          "ratio": 1.0346883468149566
+        },
+        "categories": {
+          "code": {
+            "ar_tok_s": 31.09583808167934,
+            "mtp_tok_s": 27.351380546997312,
+            "ratio": 0.8795833215735664
+          },
+          "general_en": {
+            "ar_tok_s": 30.964541728461075,
+            "mtp_tok_s": 35.84121275326006,
+            "ratio": 1.1574921104133955
+          },
+          "general_ja": {
+            "ar_tok_s": 30.830218753863864,
+            "mtp_tok_s": 36.096684158312875,
+            "ratio": 1.1708215386499319
+          },
+          "mixed_ja_en": {
+            "ar_tok_s": 29.558929214875597,
+            "mtp_tok_s": 36.842527319708246,
+            "ratio": 1.2464094031243582
+          }
+        }
+      },
+      "failures": 0,
+      "candidate_d2h_after_target": 0,
+      "final_memory": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 24098734740,
+        "total_allocated_bytes": 25264724398,
+        "total_freed_bytes": 25264724398,
+        "active_allocations": 0,
+        "peak_allocations": 1760
+      }
+    },
+    "3": {
+      "source": {
+        "commit": "24f4cfe87886d40a58f4f5aa1089197dd3143336",
+        "dirty": false
+      },
+      "runtime_profile": {
+        "requested": "production",
+        "resolved": "production",
+        "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+        "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+      },
+      "summary": {
+        "ar": {
+          "wall_seconds": 15.752837878651917,
+          "generated_tokens": 480,
+          "tok_s": 30.47070018098079
+        },
+        "mtp": {
+          "wall_seconds": 28.074797881767154,
+          "generated_tokens": 480,
+          "tok_s": 17.097184529037353
+        },
+        "mtp_vs_ar_ratio": 0.5611024501402524,
+        "mtp_vs_ar_percent": -43.88975498597476,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "mtp_expected": true,
+        "route_expectation_passed": true
+      },
+      "acceptance": {
+        "scopes": {
+          "all": {
+            "cycles": 166,
+            "proposed_draft_tokens": 470,
+            "accepted_draft_tokens": 279,
+            "draft_acceptance": 0.5936170212765958,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 166,
+                "accepted_cycles": 120,
+                "position_acceptance": 0.7228915662650602,
+                "conditional_opportunities": 166,
+                "conditional_position_acceptance": 0.7228915662650602
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 156,
+                "accepted_cycles": 92,
+                "position_acceptance": 0.5897435897435898,
+                "conditional_opportunities": 110,
+                "conditional_position_acceptance": 0.8363636363636363
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 148,
+                "accepted_cycles": 67,
+                "position_acceptance": 0.4527027027027027,
+                "conditional_opportunities": 86,
+                "conditional_position_acceptance": 0.7790697674418605
+              }
+            ]
+          },
+          "train": {
+            "cycles": 99,
+            "proposed_draft_tokens": 278,
+            "accepted_draft_tokens": 166,
+            "draft_acceptance": 0.5971223021582733,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 99,
+                "accepted_cycles": 72,
+                "position_acceptance": 0.7272727272727273,
+                "conditional_opportunities": 99,
+                "conditional_position_acceptance": 0.7272727272727273
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 91,
+                "accepted_cycles": 53,
+                "position_acceptance": 0.5824175824175825,
+                "conditional_opportunities": 64,
+                "conditional_position_acceptance": 0.828125
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 88,
+                "accepted_cycles": 41,
+                "position_acceptance": 0.4659090909090909,
+                "conditional_opportunities": 52,
+                "conditional_position_acceptance": 0.7884615384615384
+              }
+            ]
+          },
+          "heldout": {
+            "cycles": 67,
+            "proposed_draft_tokens": 192,
+            "accepted_draft_tokens": 113,
+            "draft_acceptance": 0.5885416666666666,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 67,
+                "accepted_cycles": 48,
+                "position_acceptance": 0.7164179104477612,
+                "conditional_opportunities": 67,
+                "conditional_position_acceptance": 0.7164179104477612
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 65,
+                "accepted_cycles": 39,
+                "position_acceptance": 0.6,
+                "conditional_opportunities": 46,
+                "conditional_position_acceptance": 0.8478260869565217
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 60,
+                "accepted_cycles": 26,
+                "position_acceptance": 0.43333333333333335,
+                "conditional_opportunities": 34,
+                "conditional_position_acceptance": 0.7647058823529411
+              }
+            ]
+          }
+        },
+        "categories": {
+          "code": {
+            "cycles": 68,
+            "proposed_draft_tokens": 193,
+            "accepted_draft_tokens": 110,
+            "draft_acceptance": 0.5699481865284974,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 68,
+                "accepted_cycles": 45,
+                "position_acceptance": 0.6617647058823529,
+                "conditional_opportunities": 68,
+                "conditional_position_acceptance": 0.6617647058823529
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 63,
+                "accepted_cycles": 35,
+                "position_acceptance": 0.5555555555555556,
+                "conditional_opportunities": 40,
+                "conditional_position_acceptance": 0.875
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 62,
+                "accepted_cycles": 30,
+                "position_acceptance": 0.4838709677419355,
+                "conditional_opportunities": 34,
+                "conditional_position_acceptance": 0.8823529411764706
+              }
+            ]
+          },
+          "general_en": {
+            "cycles": 26,
+            "proposed_draft_tokens": 76,
+            "accepted_draft_tokens": 61,
+            "draft_acceptance": 0.8026315789473685,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 26,
+                "accepted_cycles": 26,
+                "position_acceptance": 1.0,
+                "conditional_opportunities": 26,
+                "conditional_position_acceptance": 1.0
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 26,
+                "accepted_cycles": 22,
+                "position_acceptance": 0.8461538461538461,
+                "conditional_opportunities": 26,
+                "conditional_position_acceptance": 0.8461538461538461
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 24,
+                "accepted_cycles": 13,
+                "position_acceptance": 0.5416666666666666,
+                "conditional_opportunities": 20,
+                "conditional_position_acceptance": 0.65
+              }
+            ]
+          },
+          "general_ja": {
+            "cycles": 35,
+            "proposed_draft_tokens": 97,
+            "accepted_draft_tokens": 55,
+            "draft_acceptance": 0.5670103092783505,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 35,
+                "accepted_cycles": 26,
+                "position_acceptance": 0.7428571428571429,
+                "conditional_opportunities": 35,
+                "conditional_position_acceptance": 0.7428571428571429
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 33,
+                "accepted_cycles": 18,
+                "position_acceptance": 0.5454545454545454,
+                "conditional_opportunities": 24,
+                "conditional_position_acceptance": 0.75
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 29,
+                "accepted_cycles": 11,
+                "position_acceptance": 0.3793103448275862,
+                "conditional_opportunities": 16,
+                "conditional_position_acceptance": 0.6875
+              }
+            ]
+          },
+          "mixed_ja_en": {
+            "cycles": 37,
+            "proposed_draft_tokens": 104,
+            "accepted_draft_tokens": 53,
+            "draft_acceptance": 0.5096153846153846,
+            "positions": [
+              {
+                "position": 1,
+                "proposed_cycles": 37,
+                "accepted_cycles": 23,
+                "position_acceptance": 0.6216216216216216,
+                "conditional_opportunities": 37,
+                "conditional_position_acceptance": 0.6216216216216216
+              },
+              {
+                "position": 2,
+                "proposed_cycles": 34,
+                "accepted_cycles": 17,
+                "position_acceptance": 0.5,
+                "conditional_opportunities": 20,
+                "conditional_position_acceptance": 0.85
+              },
+              {
+                "position": 3,
+                "proposed_cycles": 33,
+                "accepted_cycles": 13,
+                "position_acceptance": 0.3939393939393939,
+                "conditional_opportunities": 16,
+                "conditional_position_acceptance": 0.8125
+              }
+            ]
+          }
+        }
+      },
+      "economics": {
+        "full": {
+          "ar_tok_s": 30.47070018098079,
+          "mtp_tok_s": 17.097184529037353,
+          "ratio": 0.5611024501402524
+        },
+        "train": {
+          "ar_tok_s": 30.593560618239778,
+          "mtp_tok_s": 17.34991825384545,
+          "ratio": 0.5671101337417223
+        },
+        "heldout": {
+          "ar_tok_s": 30.288248674807758,
+          "mtp_tok_s": 16.73159448974977,
+          "ratio": 0.5524120813121252
+        },
+        "categories": {
+          "code": {
+            "ar_tok_s": 30.89751163316001,
+            "mtp_tok_s": 16.555768158372267,
+            "ratio": 0.5358285273887294
+          },
+          "general_en": {
+            "ar_tok_s": 30.791032342555347,
+            "mtp_tok_s": 21.704721700757293,
+            "ratio": 0.704903994750441
+          },
+          "general_ja": {
+            "ar_tok_s": 30.591528285175073,
+            "mtp_tok_s": 16.962825430760223,
+            "ratio": 0.5544942139742838
+          },
+          "mixed_ja_en": {
+            "ar_tok_s": 29.243055936254517,
+            "mtp_tok_s": 15.011267577972394,
+            "ratio": 0.5133275951287276
+          }
+        }
+      },
+      "failures": 0,
+      "candidate_d2h_after_target": 0,
+      "final_memory": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 24422608828,
+        "total_allocated_bytes": 25588598486,
+        "total_freed_bytes": 25588598486,
+        "active_allocations": 0,
+        "peak_allocations": 1760
+      }
+    }
+  },
+  "c1_k2": {
+    "summary": {
+      "ar": {
+        "wall_seconds": 11.011999043636024,
+        "generated_tokens": 240,
+        "tok_s": 21.794407995222183
+      },
+      "mtp": {
+        "wall_seconds": 7.408637058921158,
+        "generated_tokens": 240,
+        "tok_s": 32.39462239697684
+      },
+      "mtp_vs_ar_ratio": 1.4863731285602464,
+      "mtp_vs_ar_percent": 48.637312856024636,
+      "exact_cells": 10,
+      "engaged_cells": 10,
+      "budget_conformed_cells": 10,
+      "cells": 10,
+      "mtp_expected": true,
+      "route_expectation_passed": true
+    },
+    "acceptance": {
+      "scopes": {
+        "all": {
+          "cycles": 83,
+          "proposed_draft_tokens": 161,
+          "accepted_draft_tokens": 146,
+          "draft_acceptance": 0.906832298136646,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 83,
+              "accepted_cycles": 81,
+              "position_acceptance": 0.9759036144578314,
+              "conditional_opportunities": 83,
+              "conditional_position_acceptance": 0.9759036144578314
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 78,
+              "accepted_cycles": 65,
+              "position_acceptance": 0.8333333333333334,
+              "conditional_opportunities": 76,
+              "conditional_position_acceptance": 0.8552631578947368
+            }
+          ]
+        },
+        "train": {
+          "cycles": 50,
+          "proposed_draft_tokens": 97,
+          "accepted_draft_tokens": 87,
+          "draft_acceptance": 0.8969072164948454,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 50,
+              "accepted_cycles": 49,
+              "position_acceptance": 0.98,
+              "conditional_opportunities": 50,
+              "conditional_position_acceptance": 0.98
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 47,
+              "accepted_cycles": 38,
+              "position_acceptance": 0.8085106382978723,
+              "conditional_opportunities": 46,
+              "conditional_position_acceptance": 0.8260869565217391
+            }
+          ]
+        },
+        "heldout": {
+          "cycles": 33,
+          "proposed_draft_tokens": 64,
+          "accepted_draft_tokens": 59,
+          "draft_acceptance": 0.921875,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 33,
+              "accepted_cycles": 32,
+              "position_acceptance": 0.9696969696969697,
+              "conditional_opportunities": 33,
+              "conditional_position_acceptance": 0.9696969696969697
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 31,
+              "accepted_cycles": 27,
+              "position_acceptance": 0.8709677419354839,
+              "conditional_opportunities": 30,
+              "conditional_position_acceptance": 0.9
+            }
+          ]
+        }
+      },
+      "categories": {
+        "code": {
+          "cycles": 33,
+          "proposed_draft_tokens": 63,
+          "accepted_draft_tokens": 59,
+          "draft_acceptance": 0.9365079365079365,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 33,
+              "accepted_cycles": 32,
+              "position_acceptance": 0.9696969696969697,
+              "conditional_opportunities": 33,
+              "conditional_position_acceptance": 0.9696969696969697
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 30,
+              "accepted_cycles": 27,
+              "position_acceptance": 0.9,
+              "conditional_opportunities": 29,
+              "conditional_position_acceptance": 0.9310344827586207
+            }
+          ]
+        },
+        "general_en": {
+          "cycles": 17,
+          "proposed_draft_tokens": 33,
+          "accepted_draft_tokens": 28,
+          "draft_acceptance": 0.8484848484848485,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 17,
+              "accepted_cycles": 16,
+              "position_acceptance": 0.9411764705882353,
+              "conditional_opportunities": 17,
+              "conditional_position_acceptance": 0.9411764705882353
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 16,
+              "accepted_cycles": 12,
+              "position_acceptance": 0.75,
+              "conditional_opportunities": 15,
+              "conditional_position_acceptance": 0.8
+            }
+          ]
+        },
+        "general_ja": {
+          "cycles": 17,
+          "proposed_draft_tokens": 33,
+          "accepted_draft_tokens": 29,
+          "draft_acceptance": 0.8787878787878788,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 17,
+              "accepted_cycles": 17,
+              "position_acceptance": 1.0,
+              "conditional_opportunities": 17,
+              "conditional_position_acceptance": 1.0
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 16,
+              "accepted_cycles": 12,
+              "position_acceptance": 0.75,
+              "conditional_opportunities": 16,
+              "conditional_position_acceptance": 0.75
+            }
+          ]
+        },
+        "mixed_ja_en": {
+          "cycles": 16,
+          "proposed_draft_tokens": 32,
+          "accepted_draft_tokens": 30,
+          "draft_acceptance": 0.9375,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 16,
+              "accepted_cycles": 16,
+              "position_acceptance": 1.0,
+              "conditional_opportunities": 16,
+              "conditional_position_acceptance": 1.0
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 16,
+              "accepted_cycles": 14,
+              "position_acceptance": 0.875,
+              "conditional_opportunities": 16,
+              "conditional_position_acceptance": 0.875
+            }
+          ]
+        }
+      }
+    }
+  },
+  "derived": {
+    "k2_c1_c2_acceptance_gap_points": 10.389112166605774,
+    "k2_wall_reduction_for_1_10_pct": 5.002684727076523,
+    "k2_wall_reduction_for_code_parity_pct": 12.041667842643356
+  },
+  "gates": {
+    "all_cells_exact_diagnostic": true,
+    "all_engaged": true,
+    "all_failures_zero": true,
+    "all_final_allocations_zero": true,
+    "promotion_passed": false
+  },
+  "next": "Complete P8 production profile/numerical/lifecycle qualification for K2, then P9 profiles the correctness-qualified K2 cycle. A global wall reduction must close both the 1.10x aggregate floor and code non-regression; no category-conditioned policy.",
+  "raw_sources": [
+    {
+      "name": "c2_k1",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k1-default-d24.json",
+      "sha256": "bd48f8eba55387eaeb9385665893a1cfa519b7743b47dceb29bebe70a89e313d",
+      "size_bytes": 1469428,
+      "retained_in_git": false
+    },
+    {
+      "name": "c2_k2",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k2-default-d24.json",
+      "sha256": "d50c54d8e79b0d7aec32b370abd1f0168a2634f372365f02c907c7d2e9e2cf4b",
+      "size_bytes": 1399283,
+      "retained_in_git": false
+    },
+    {
+      "name": "c2_k3",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-private-slot-copy-default-d24.json",
+      "sha256": "58b43fc3bb61c008c58d521bf5c790d92a984b00a3e61323ce7a902367dbf4bc",
+      "size_bytes": 1453472,
+      "retained_in_git": false
+    },
+    {
+      "name": "c1_k2",
+      "path": "/tmp/gfx1100-qwen38-p8-c1-k2-strict-d24.json",
+      "sha256": "9484ef2dc9111de641aed30e915a89df12162f807a56e0eb174c5f1bf0c30867",
+      "size_bytes": 747487,
+      "retained_in_git": false
+    }
+  ]
+}

@@ -595,6 +595,16 @@ C2 remains 19.53 acceptance points below C1 and lacks its independent full §5
 profile/lifecycle packet; P8 stays open and automatic stays K0. Evidence:
 [`provider KV ownership repair`](../benchmarks/results/2026-08-28-w7900-qwen38-q4km-c2-provider-kv-ownership-repaired.json).
 
+The repaired one-run fixed-depth screen selects K2: K1/K2/K3 are
+**0.5180x / 1.0450x / 0.5611x AR** at **91.67% / 80.29% / 59.36%** draft
+acceptance. C1/K2 is 90.68%, leaving a 10.39-point physical acceptance gap.
+K2 train/heldout are 1.0520x/1.0347x and general EN/general JA/mixed are
+1.1575x/1.1708x/1.2464x, but code is only **0.8796x**. Thus promotion needs at
+least **12.04% complete-wall reduction** to make code non-regressive; the
+aggregate 1.10x floor alone needs 5.00%. These are screen rows, not profile or
+performance claims. Evidence:
+[`repaired K1-K3 screen`](../benchmarks/results/2026-08-28-w7900-qwen38-q4km-repaired-c2-k1-k3-screen.json).
+
 Exit: an explicit-only, correctness-qualified physical C2 baseline and an
 explained acceptance curve. Automatic remains K0.
 
