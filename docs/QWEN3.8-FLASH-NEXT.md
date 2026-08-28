@@ -784,8 +784,10 @@ Binding implementation order:
    layer 0–26 fails final-prompt mean or p95. The complete 450-row/three-repeat
    gate passes mean/p95/p99/max KL `1.05e-4/3.81e-4/1.52e-3/5.59e-3`, top-1
    448/450, every scope, deterministic state, task/free-generation, c2,
-   manifest, and teardown. Explicit `production` improves p508/p1012
-   **59.401→67.243** / **58.723→66.268 tok/s**; omitted/`strict` stays exact.
+   manifest, and teardown. Adding dense-Q8 WMMA on its maximal passing suffix
+   layers 32–47 still passes 450 rows at mean/p95/p99/max KL
+   `1.20e-4/4.93e-4/1.72e-3/8.69e-3`, 449/450 top-1, and raises p508/p1012
+   **59.445→73.361** / **58.866→71.834 tok/s**; omitted/`strict` stays exact.
 7. **Keep MTP separate.** It may improve serving economics only under the full
    anti-gaming suite and same-protocol no-MTP denominator; it cannot mask the
    base AR or 5× prefill gap.
@@ -858,13 +860,14 @@ CPU top-512, replay/rollback, and teardown pass. Current 64K is not rerun becaus
 [`2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json).
 
 Explicit gfx1151 `production` selects cooperative Q4 gate/up plus Q5_1 down on
-the definitive certified suffix layers 27–47. Manifest `fcd96b73...` falls back
-to strict `d4bf4f8a...`. The unchanged 450-row gate passes mean/p95/p99/max KL
-`1.05e-4/3.81e-4/1.52e-3/5.59e-3`, 99.556% top-1, three bit-stable repeats,
+certified selected-MoE suffix layers 27–47 plus dense-Q8 WMMA suffix 32–47.
+Manifest `1be08e5c...` falls back to strict `a1dda611...`. The unchanged
+450-row gate passes mean/p95/p99/max KL
+`1.20e-4/4.93e-4/1.72e-3/8.69e-3`, 99.778% top-1, three bit-stable repeats,
 state/task/c2/lifecycle gates, and no BF16-relative claim because no qualified
-full-BF16 target runtime exists. p508/p1012 reach **67.243/66.268 tok/s**;
+full-BF16 target runtime exists. p508/p1012 reach **73.361/71.834 tok/s**;
 omitted profile remains strict. Evidence:
-[`2026-08-29-gfx1151-qwen38-flash-next-late-moe27-production.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-late-moe27-production.json).
+[`2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json).
 
 The broader default-off F7 research candidate still remains rejected: grouped Q4/Q5/Q8 MoE,
 Q5_1 WMMA down, peer-GDN, and tuned Q4/Q8 tiles raise warm repeated-token 512

@@ -20,10 +20,11 @@ should be removed or collapsed.
 
 ## 2026-08-29 Qwen4Exp late-layer production prefill
 
-- `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` is bound by explicit strict/
-  production manifests and selects certified definitive suffix layers 27–47 only. Remove the env
-  bridge after Qwen4Exp profile state is request-local rather than process
-  global; retain registry-declared exact grouped Q4/Q5 fallbacks.
+- `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` and the temporary
+  `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`/tile bridge are bound by explicit
+  strict/production manifests. They select certified MoE layers 27–47 and
+  dense-Q8 layers 32–47. Remove process-global env binding once Qwen4Exp profile
+  state is request-local; retain exact grouped Q4/Q5 and coltile-Q8 fallbacks.
 
 ## 2026-08-29 Qwen4Exp per-layer MoE graphs
 

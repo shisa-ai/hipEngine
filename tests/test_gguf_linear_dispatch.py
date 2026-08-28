@@ -48,6 +48,7 @@ from hipengine.runtime.gguf_linear import (
     resolve_q8_mmq_prefill_policy,
     set_wmma_prefill_enabled,
     wmma_prefill_session,
+    wmma_prefill_weight_filter_session,
 )
 from hipengine.runtime.prefill import PrefillConfig
 
@@ -3625,6 +3626,18 @@ def test_wmma_prefill_session_context_manager_restores_previous_state() -> None:
         key, _, _ = _capture_launch(rows=4)
         assert key == _WMMA_BF16
     # Restored to the previous explicit-off session state.
+    key, _, _ = _capture_launch(rows=4)
+    assert key == _PREFILL_PACK8_BF16
+
+
+def test_wmma_prefill_weight_filter_scopes_enabled_session() -> None:
+    with wmma_prefill_session(True):
+        with wmma_prefill_weight_filter_session(lambda _weight: False):
+            key, _, _ = _capture_launch(rows=4)
+            assert key == _PREFILL_PACK8_BF16
+        with wmma_prefill_weight_filter_session(lambda _weight: True):
+            key, _, _ = _capture_launch(rows=4)
+            assert key == _WMMA_BF16
     key, _, _ = _capture_launch(rows=4)
     assert key == _PREFILL_PACK8_BF16
 

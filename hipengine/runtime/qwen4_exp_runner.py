@@ -130,6 +130,8 @@ from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_F32,
     raw_k_prefill_rowbatch_session,
     raw_k_prefill_variant_session,
+    wmma_prefill_session,
+    wmma_prefill_weight_filter_session,
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
 )
@@ -4561,7 +4563,31 @@ class Qwen4ExpGGUFResidentModelRunner:
         selected_raw_variant = os.environ.get(
             "HIPENGINE_QWEN4_EXP_RAW_VARIANT", "coltile8"
         )
-        with raw_k_prefill_rowbatch_session(selected_raw_rowbatch), raw_k_prefill_variant_session(selected_raw_variant):
+        q8_wmma_layers_raw = os.environ.get(
+            "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS", ""
+        )
+        q8_wmma_layers = {
+            int(value)
+            for value in q8_wmma_layers_raw.split(",")
+            if value.strip()
+        }
+        def q8_wmma_weight_filter(weight: GGUFDeviceWeight) -> bool:
+            parts = weight.spec.slot_path.split(".")
+            return bool(
+                weight.spec.quant_key == "gguf_q8_0"
+                and len(parts) >= 3
+                and parts[0] == "layers"
+                and int(parts[1]) in q8_wmma_layers
+            )
+
+        with (
+            raw_k_prefill_rowbatch_session(selected_raw_rowbatch),
+            raw_k_prefill_variant_session(selected_raw_variant),
+            wmma_prefill_session(True if q8_wmma_layers else None),
+            wmma_prefill_weight_filter_session(
+                q8_wmma_weight_filter if q8_wmma_layers else None
+            ),
+        ):
             for start in range(0, len(values), self.prefill_chunk_size):
                 last_residual_ptr, hidden_rows = self._prefill_chunk(
                     values[start : start + self.prefill_chunk_size],

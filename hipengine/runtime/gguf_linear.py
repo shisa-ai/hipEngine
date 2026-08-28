@@ -8,7 +8,7 @@ import os
 from contextvars import ContextVar
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Iterator, Mapping
+from typing import Callable, Iterator, Mapping
 
 from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
@@ -123,6 +123,9 @@ _WMMA_PREFILL_ENV = "HIPENGINE_GGUF_WMMA_PREFILL"
 # ``None`` until set, so the env var still controls the default for plain
 # bench/diagnostic invocations.
 _wmma_prefill_session_enabled: bool | None = None
+_wmma_prefill_weight_filter: ContextVar[
+    Callable[[GGUFDeviceWeight], bool] | None
+] = ContextVar("gguf_wmma_prefill_weight_filter", default=None)
 
 # Opt-in env var for the GGUF pack8 GEMV decode family (P9.B). See
 # docs/GGUF.md "P9: closing the qwen35moe gap to PARO" for the wider
@@ -1409,6 +1412,19 @@ def wmma_prefill_session(enabled: bool | None) -> Iterator[None]:
         set_wmma_prefill_enabled(previous)
 
 
+@contextlib.contextmanager
+def wmma_prefill_weight_filter_session(
+    selector: Callable[[GGUFDeviceWeight], bool] | None,
+) -> Iterator[None]:
+    """Restrict an enabled WMMA session through a plugin-owned weight filter."""
+
+    token = _wmma_prefill_weight_filter.set(selector)
+    try:
+        yield
+    finally:
+        _wmma_prefill_weight_filter.reset(token)
+
+
 def _env_wmma_prefill_enabled() -> bool:
     raw = os.environ.get(_WMMA_PREFILL_ENV, "")
     if not raw:
@@ -2405,6 +2421,9 @@ def launch_gguf_linear(
         return
     f_gemv = _resolve_use_gemv_decode(use_gemv_decode)
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
+    wmma_filter = _wmma_prefill_weight_filter.get()
+    if use_wmma and wmma_filter is not None:
+        use_wmma = bool(wmma_filter(weight))
     f_rowtile = (not use_wmma) and _resolve_use_q4k_rowtile(None)
     if (
         _native_batch_decode_session_enabled
@@ -6396,4 +6415,5 @@ __all__ = [
     "resolve_q8_mmq_prefill_policy",
     "set_wmma_prefill_enabled",
     "wmma_prefill_session",
+    "wmma_prefill_weight_filter_session",
 ]
