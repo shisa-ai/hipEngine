@@ -1,6 +1,6 @@
 # gfx1100 Physical C>N MTP Promotion Campaign
 
-- Status: **P5 complete; 27B Dense and 35B MoE physical C2 promoted, P6 cross-model closure next**
+- Status: **complete; 27B Dense and 35B MoE physical C2 promoted automatically**
 - Started: **2026-08-27**
 - Branch: **`campaign/gfx1100-mtp-cn-promotion`**
 - Base commit: **`5c2be8d157c587caf42591b07d7c02b3181adabc`**
@@ -351,17 +351,28 @@ are non-regressive and heldout is **1.1132x**. Public automatic is **92.419 vs
 cancel/survivor, typed K0 controls, and zero final ownership pass. Evidence:
 [`MoE C2 automatic promotion`](../benchmarks/results/2026-08-28-w7900-35b-moe-mtp2-c2-automatic-promotion.json).
 
-### P6 — Cross-model closure
+### P6 — Cross-model closure — complete
 
-- [ ] Independently start real servers for both exact models and prove automatic
+- [x] Independently start real servers for both exact models and prove automatic
       C1, automatic C2, explicit modes, and unsupported-key K0.
-- [ ] Run delayed arrival, C1/C2 switching, retirement/refill, cancellation,
+- [x] Run delayed arrival, C1/C2 switching, retirement/refill, cancellation,
       failure recovery, overload, alternating soak, blocking/SSE, and zero final
       owners for each model.
-- [ ] Audit shared engine/dispatch for backend/model/quant branches and legacy or
+- [x] Audit shared engine/dispatch for backend/model/quant branches and legacy or
       singleton masquerading routes.
-- [ ] Publish compact artifacts, benchmark README/changelog updates, immutable
+- [x] Publish compact artifacts, benchmark README/changelog updates, immutable
       worklogs, campaign completion audit, and branch merge handoff.
+
+P6 merged `origin/main@70445c345` before closure. On the resulting source,
+27B Dense public automatic is **34.372 vs 30.743 tok/s = 1.1181x AR** and
+35B MoE is **93.825 vs 83.887 tok/s = 1.1185x AR**; both engage 10/10 cells,
+all categories are non-regressive, and each drains to zero allocations. Real
+blocking/SSE uses physical resident C2 for both clients and drains all provider
+and prompt owners. Shared generation/speculative dispatch contains no
+backend/model/quant branch and no singleton masquerade. The milestone run passed
+**10,440** tests outside 15 isolated frozen-hash/README/order failures; the
+complete seven-file failure bundle passes after current-source fixture refresh.
+Evidence: [`dual-model final audit`](../benchmarks/results/2026-08-28-w7900-dual-model-physical-c2-campaign-final.json).
 
 ## 8. Merge and coordination boundaries
 
