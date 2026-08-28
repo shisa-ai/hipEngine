@@ -363,9 +363,9 @@ cancel/survivor, typed K0 controls, and zero final ownership pass. Evidence:
 - [x] Publish compact artifacts, benchmark README/changelog updates, immutable
       worklogs, campaign completion audit, and branch merge handoff.
 
-P6 merged `origin/main@70445c345` before closure. On the resulting source,
-27B Dense public automatic is **34.372 vs 30.743 tok/s = 1.1181x AR** and
-35B MoE is **93.825 vs 83.887 tok/s = 1.1185x AR**; both engage 10/10 cells,
+P6 merged `origin/main@c08cf1cce` before closure. On the resulting source,
+27B Dense public automatic is **34.341 vs 30.736 tok/s = 1.1173x AR** and
+35B MoE is **93.644 vs 80.973 tok/s = 1.1565x AR**; both engage 10/10 cells,
 all categories are non-regressive, and each drains to zero allocations. Real
 blocking/SSE uses physical resident C2 for both clients and drains all provider
 and prompt owners. Shared generation/speculative dispatch contains no
