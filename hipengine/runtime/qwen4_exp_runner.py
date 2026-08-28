@@ -2948,7 +2948,7 @@ def run_qwen4_exp_moe(
             backend,
             "linear",
             gate_weight.spec.quant_key,
-            "selected_dual_silu_gemv_bf16_bf16_out",
+            "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
         )
         fused_silu = bool(
             rows == 1

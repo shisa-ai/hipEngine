@@ -199,8 +199,9 @@ same-host/same-GGUF PR #27742 reference measures Vulkan/HIP pp508
 **316.380/274.996 tok/s**, pp1006 **290.450/284.485**, and tg32
 **18.716/15.848** versus then-current hipEngine **58.466/55.046/5.890**. Exact
 per-layer MoE graphs improve eager decode **6.511→11.515 tok/s (1.769x)**; the
-exact Q5_1 logical256/physical128 owner then reaches **12.140 tok/s** (+6.27%)
-with primitive bits, full logits, and IDs exact—1.31x behind llama.cpp HIP.
+exact Q5_1 logical256/physical128 owner reaches **12.140 tok/s** (+6.27%) and
+exact Q4_K logical128/physical64 reaches **13.167 tok/s** (+8.84%), with
+primitive bits, full logits, and IDs exact—1.20x behind llama.cpp HIP.
 Matched HIP pp508 is **1.798 s kernels / 5,543 launches** versus hipEngine
 **8.753 s / 4,933**, making MMQ/cooperative dataflow the remaining target.
 Exact PLE/Conv/QSA cuts p512 launches **29,341→4,933**. Explicit late-layer
