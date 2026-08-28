@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8-Flash-Next maximal late-MoE production] Suffix screen rejects layers 24–47 and certifies maximal 28–47: **450 rows / 3 repeats**, mean/p95/p99/max KL **1.14e-4/4.36e-4/2.23e-3/5.35e-3**, **449/450 top-1**, state/task/c2 gates, and p508/p1012 **59.445→66.693 / 58.674→65.670 tok/s**. Manifest `d6b516d9...`; omitted stays strict. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-late-moe28-production.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8-Flash-Next late-MoE production] Explicit layers-32–47 cooperative MoE passes **450 rows / 3 repeats** at mean/p95/p99/max KL **6.77e-5/2.18e-4/1.35e-3/5.39e-3**, **449/450 top-1**, state/task/c2/lifecycle gates, and improves p508/p1012 **59.473→65.193 / 58.660→64.231 tok/s**. Public manifest `eec7baf3...`; omitted profile stays strict. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-late-moe-production.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8-Flash-Next llama.cpp HIP kernel profile] Same-host PR #27742 pp508 is **1.798 s kernels / 5,543 launches** (Q4/Q5_1/Q8 **0.554/0.382/0.290 s**) versus hipEngine **8.753 s / 4,933**; tg32 kernels are **40.71 ms/token**, led by Q8/Q4/Q5_1 **21.63/4.76/3.06 ms**. Similar-or-higher llama dispatch count proves MMQ/cooperative grid dataflow, not count alone, is the remaining kernel target. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-llamacpp-hip-kernel-profile.json`.

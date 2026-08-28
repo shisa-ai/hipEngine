@@ -203,15 +203,15 @@ per-layer MoE graphs improve eager decode **6.511→11.515 tok/s (1.769x)** with
 Matched HIP pp508 is **1.798 s kernels / 5,543 launches** versus hipEngine
 **8.753 s / 4,933**, making MMQ/cooperative dataflow the remaining target.
 Exact PLE/Conv/QSA cuts p512 launches **29,341→4,933**. Explicit late-layer
-`production` passes 450 rows/three repeats at KL mean/p95/max
-`6.77e-5/2.18e-4/5.39e-3`, 99.778% top-1, and reaches p508/p1012
-**65.193/64.231 tok/s**; omitted profile remains strict. Current natural 16K improves **946.999→364.306 s (-61.53%, 44.973 tok/s)** with every
+layers-28–47 `production` passes 450 rows/three repeats at KL mean/p95/max
+`1.14e-4/4.36e-4/5.35e-3`, 99.778% top-1, and reaches p508/p1012
+**66.693/65.670 tok/s**; layers 24–47 fail and omitted profile remains strict. Current natural 16K improves **946.999→364.306 s (-61.53%, 44.973 tok/s)** with every
 binding control exact; 64K historical evidence is retained but not rerun because
 44.973<100 tok/s. 262K is capacity-only (91.126 GB tracked), not inference. Q8 MTP is exact on 10/10
 prompts but remains opt-in at **0.955x AR**. <=1K image/video/PNG chat and
 request-owned c2 blocking/SSE pass with zero teardown; packed c-aware speed,
 remote media, multimodal SSE, and 128K+/262K inference are not claimed.
-Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-late-moe-production.json).
+Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-late-moe28-production.json).
 
 ## Current Qwen3.6-35B quantization quality
 

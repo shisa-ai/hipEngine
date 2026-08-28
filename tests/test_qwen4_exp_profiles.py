@@ -65,14 +65,14 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     assert production.manifest["kv_policy"] == "paged_bf16_qsa_index_f32"
     assert production.manifest["graph_policy"] == "request_owned_exact_moe_graph_c1"
     selections = _selection_map(production)
-    gate = selections[("moe_linear", "prefill_rows_ge16_layers32_47_gate_up")]
+    gate = selections[("moe_linear", "prefill_rows_ge16_layers28_47_gate_up")]
     assert gate["selected_variant"] == "selected_dual_wmma_prefill_compact_bf16_bf16_out"
     assert gate["strict_fallback_variant"].startswith(
         "selected_dual_grouped_rowbatch8"
     )
-    down = selections[("moe_linear", "prefill_rows_ge16_layers32_47_down")]
+    down = selections[("moe_linear", "prefill_rows_ge16_layers28_47_down")]
     assert down["selected_variant"] == "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
-    assert down["evidence_artifact"].endswith("late-moe-production.json")
+    assert down["evidence_artifact"].endswith("late-moe28-production.json")
 
 
 def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
@@ -93,8 +93,8 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
             spec=SimpleNamespace(slot_path=f"layers.{layer}.expert_gate"),
         )
 
-    assert not _qwen4_exp_production_moe_prefill_enabled(weight(31), rows=256)
-    assert _qwen4_exp_production_moe_prefill_enabled(weight(32), rows=256)
+    assert not _qwen4_exp_production_moe_prefill_enabled(weight(27), rows=256)
+    assert _qwen4_exp_production_moe_prefill_enabled(weight(28), rows=256)
     assert _qwen4_exp_production_moe_prefill_enabled(weight(47), rows=16)
     assert not _qwen4_exp_production_moe_prefill_enabled(weight(47), rows=15)
 

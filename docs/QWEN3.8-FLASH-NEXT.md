@@ -779,12 +779,13 @@ Binding implementation order:
    T1/T2 cooperative math needs full teacher-forced category+heldout rows,
    three deterministic repeats, applicable state/task/BF16 gates, a manifest,
    and a registered strict fallback. Final-prompt KL or 100% top-1 is not a
-   promotion gate. Late-layer WMMA (layers 32–47) now has that complete packet:
-   450 rows / three repeats pass mean/p95/p99/max KL
-   `6.77e-5/2.18e-4/1.35e-3/5.39e-3`, top-1 449/450, every category/scope,
+   promotion gate. The maximal screened production suffix is now layers 28–47:
+   layers 24–47 fail the final-prompt envelope, while 28–47 pass the complete
+   450-row/three-repeat gate at mean/p95/p99/max KL
+   `1.14e-4/4.36e-4/2.23e-3/5.35e-3`, top-1 449/450, every scope,
    deterministic state, task/free-generation, c2, manifest, and teardown.
-   Explicit `production` improves p508/p1012 **59.473→65.193** /
-   **58.660→64.231 tok/s**; omitted/`strict` remains exact.
+   Explicit `production` improves p508/p1012 **59.445→66.693** /
+   **58.674→65.670 tok/s**; omitted/`strict` remains exact.
 7. **Keep MTP separate.** It may improve serving economics only under the full
    anti-gaming suite and same-protocol no-MTP denominator; it cannot mask the
    base AR or 5× prefill gap.
@@ -856,14 +857,14 @@ CPU top-512, replay/rollback, and teardown pass. Current 64K is not rerun becaus
 [`2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json) and
 [`2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json).
 
-Explicit gfx1151 `production` now selects cooperative Q4 gate/up plus Q5_1 down
-only on layers 32–47. The stable manifest is `eec7baf3...`; strict fallback is
-`0a0a9205...`. The unchanged calibrated 450-row gate passes at mean/p95/p99/max
-KL `6.77e-5/2.18e-4/1.35e-3/5.39e-3`, 99.778% top-1, three bit-stable repeats,
+Explicit gfx1151 `production` selects cooperative Q4 gate/up plus Q5_1 down on
+the maximal certified suffix layers 28–47. Manifest `d6b516d9...` falls back to
+strict `19fcd78f...`. The unchanged 450-row gate passes at mean/p95/p99/max KL
+`1.14e-4/4.36e-4/2.23e-3/5.35e-3`, 99.778% top-1, three bit-stable repeats,
 state/task/c2/lifecycle gates, and no BF16-relative claim because no qualified
-full-BF16 target runtime exists. Public p508 reaches **65.286 tok/s** steady;
+full-BF16 target runtime exists. p508/p1012 reach **66.693/65.670 tok/s**;
 omitted profile remains strict. Evidence:
-[`2026-08-29-gfx1151-qwen38-flash-next-late-moe-production.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-late-moe-production.json).
+[`2026-08-29-gfx1151-qwen38-flash-next-late-moe28-production.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-late-moe28-production.json).
 
 The broader default-off F7 research candidate still remains rejected: grouped Q4/Q5/Q8 MoE,
 Q5_1 WMMA down, peer-GDN, and tuned Q4/Q8 tiles raise warm repeated-token 512
