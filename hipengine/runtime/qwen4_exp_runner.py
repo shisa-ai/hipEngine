@@ -81,6 +81,9 @@ from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_select
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_decode_f32,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+    gguf_q4_k_quantize_bf16_q8_1,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out,
     gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out,
@@ -2950,12 +2953,64 @@ def run_qwen4_exp_moe(
             gate_weight.spec.quant_key,
             "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
         )
+        dp4a_key = KernelKey(
+            backend,
+            "linear",
+            gate_weight.spec.quant_key,
+            "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out",
+        )
+        dp4a_layers_raw = os.environ.get("HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", "")
+        dp4a_layers = {
+            int(value) for value in dp4a_layers_raw.split(",") if value.strip()
+        }
+        gate_parts = gate_weight.spec.slot_path.split(".")
+        gate_layer = (
+            int(gate_parts[1])
+            if len(gate_parts) >= 3 and gate_parts[0] == "layers"
+            else -1
+        )
+        use_dp4a = bool(
+            rows == 1
+            and gate_weight.spec.quant_key == up_weight.spec.quant_key
+            and os.environ.get("HIPENGINE_QWEN4_EXP_Q4_DP4A64", "")
+            not in {"", "0", "false", "False"}
+            and (not dp4a_layers or gate_layer in dp4a_layers)
+            and is_registered(dp4a_key)
+        )
         fused_silu = bool(
             rows == 1
             and gate_weight.spec.quant_key == up_weight.spec.quant_key
             and is_registered(fused_key)
         )
-        if fused_silu:
+        if use_dp4a:
+            gguf_q4_k_quantize_bf16_q8_1(
+                scratch.hidden_bf16.ptr,
+                scratch.group_gate_up.ptr,
+                rows,
+                hidden,
+                stream=stream,
+                runtime=active_runtime,
+            )
+            resolve(
+                backend=dp4a_key.backend,
+                layer=dp4a_key.layer,
+                quant=dp4a_key.quant,
+                variant=dp4a_key.variant,
+            )(
+                scratch.group_gate_up.ptr,
+                scratch.selected.ptr,
+                gate_weight.allocation("raw").tensor.ptr,
+                up_weight.allocation("raw").tensor.ptr,
+                scratch.expert_intermediate.ptr,
+                rows,
+                compact,
+                experts,
+                hidden,
+                ffn,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        elif fused_silu:
             resolve(
                 backend=fused_key.backend,
                 layer=fused_key.layer,
@@ -3009,7 +3064,7 @@ def run_qwen4_exp_moe(
                 "expert_up", scratch.hidden_bf16.ptr, scratch.expert_up.ptr,
                 rows, compact, hidden, ffn,
             )
-        if not fused_silu:
+        if not fused_silu and not use_dp4a:
             silu_mul_separate_out_bf16(
                 scratch.expert_gate.ptr,
                 scratch.expert_up.ptr,
@@ -4221,7 +4276,13 @@ class Qwen4ExpGGUFResidentModelRunner:
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
                     moe_graph_cache=self.moe_graph_cache,
-                    moe_graph_key=("gdn", layer),
+                    moe_graph_key=(
+                        "gdn", layer,
+                        os.environ.get("HIPENGINE_QWEN4_EXP_Q4_DP4A64", ""),
+                        os.environ.get(
+                            "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
+                        ),
+                    ),
                 ).ptr
             else:
                 binding = self.qsa_bindings[layer]
@@ -4248,7 +4309,13 @@ class Qwen4ExpGGUFResidentModelRunner:
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
                     moe_graph_cache=self.moe_graph_cache,
-                    moe_graph_key=("qsa", layer),
+                    moe_graph_key=(
+                        "qsa", layer,
+                        os.environ.get("HIPENGINE_QWEN4_EXP_Q4_DP4A64", ""),
+                        os.environ.get(
+                            "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS", ""
+                        ),
+                    ),
                 ).ptr
         self.runtime.memcpy(
             self.last_target_hidden.ptr,

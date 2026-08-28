@@ -12,6 +12,7 @@ from hipengine.execution_profiles import (
 )
 from hipengine.generation.qwen4_exp_profiles import (
     PRODUCTION_MOE_PREFILL_ENV,
+    PRODUCTION_Q4_DP4A_DECODE_LAYERS,
     QWEN4_EXP_BACKEND,
     QWEN4_EXP_MODEL,
     QWEN4_EXP_QUANTS,
@@ -29,6 +30,8 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
     clear_runtime_profile_registry_for_tests()
     for name in (
         PRODUCTION_MOE_PREFILL_ENV,
+        "HIPENGINE_QWEN4_EXP_Q4_DP4A64",
+        "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -76,6 +79,14 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     q8 = selections[("linear", "prefill_rows_ge16_layers32_47_q8")]
     assert q8["selected_variant"] == "wmma_prefill_f32_f32_out"
     assert q8["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
+    dp4a = selections[("linear", "decode_c1_layers24_47_q4_gate_up")]
+    assert dp4a["selected_variant"] == (
+        "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out"
+    )
+    assert dp4a["strict_fallback_variant"] == (
+        "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out"
+    )
+    assert dp4a["evidence_artifact"].endswith("production-dp4a24-decode.json")
 
 
 def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
@@ -93,6 +104,11 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"].split(",")[-1] == "47"
     assert os.environ["HIPENGINE_GGUF_Q8_0_WMMA_TILE_M"] == "64"
     assert os.environ["HIPENGINE_GGUF_Q8_0_WMMA_TILE_N"] == "32"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "1"
+    assert tuple(
+        int(value)
+        for value in os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS"].split(",")
+    ) == PRODUCTION_Q4_DP4A_DECODE_LAYERS
 
     def weight(layer: int):
         return SimpleNamespace(
@@ -110,6 +126,8 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     strict.binder(SimpleNamespace(), strict)
     assert os.environ[PRODUCTION_MOE_PREFILL_ENV] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS"] == ""
     assert not _qwen4_exp_production_moe_prefill_enabled(weight(47), rows=256)
 
 

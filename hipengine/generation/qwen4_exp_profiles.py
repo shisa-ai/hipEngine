@@ -1,4 +1,4 @@
-"""Qwen4Exp gfx1151 strict and late-layer production prefill plans."""
+"""Qwen4Exp gfx1151 strict and certified production prefill/decode plans."""
 
 from __future__ import annotations
 
@@ -20,9 +20,14 @@ QWEN4_EXP_BACKEND = "hip_gfx1151"
 QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
 PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
 PRODUCTION_Q8_PREFILL_LAYERS = tuple(range(32, 48))
-_EVIDENCE = (
+PRODUCTION_Q4_DP4A_DECODE_LAYERS = tuple(range(24, 48))
+_PREFILL_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json"
+)
+_DECODE_EVIDENCE = (
+    "benchmarks/results/"
+    "2026-08-29-gfx1151-qwen38-flash-next-production-dp4a24-decode.json"
 )
 
 
@@ -68,6 +73,13 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
             "coltile8_rowbatch4_f32_f32_out",
             "gguf_q8_0",
         ),
+        _selection(
+            "linear",
+            "decode_c1_layers24_47_q4_gate_up",
+            "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+            "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+            "gguf_q4_k",
+        ),
     )
 
 
@@ -79,7 +91,7 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             "selected_dual_wmma_prefill_compact_bf16_bf16_out",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
             "gguf_q4_k",
-            evidence=_EVIDENCE,
+            evidence=_PREFILL_EVIDENCE,
         ),
         _selection(
             "moe_linear",
@@ -87,7 +99,7 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             "selected_grouped_wmma_prefill_compact_bf16_bf16_out",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "gguf_q5_1",
-            evidence=_EVIDENCE,
+            evidence=_PREFILL_EVIDENCE,
         ),
         _selection(
             "linear",
@@ -95,7 +107,15 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             "wmma_prefill_f32_f32_out",
             "coltile8_rowbatch4_f32_f32_out",
             "gguf_q8_0",
-            evidence=_EVIDENCE,
+            evidence=_PREFILL_EVIDENCE,
+        ),
+        _selection(
+            "linear",
+            "decode_c1_layers24_47_q4_gate_up",
+            "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out",
+            "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+            "gguf_q4_k",
+            evidence=_DECODE_EVIDENCE,
         ),
     )
 
@@ -110,6 +130,12 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL": "0",
         "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "0",
         "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA": "0",
+        "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": (
+            ",".join(map(str, PRODUCTION_Q4_DP4A_DECODE_LAYERS))
+            if production
+            else ""
+        ),
         "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": (
             ",".join(map(str, PRODUCTION_Q8_PREFILL_LAYERS))
             if production
@@ -187,6 +213,7 @@ def qwen4_exp_gfx1151_profiles_registered() -> bool:
 
 __all__ = [
     "PRODUCTION_MOE_PREFILL_ENV",
+    "PRODUCTION_Q4_DP4A_DECODE_LAYERS",
     "QWEN4_EXP_BACKEND",
     "QWEN4_EXP_MODEL",
     "QWEN4_EXP_QUANTS",
