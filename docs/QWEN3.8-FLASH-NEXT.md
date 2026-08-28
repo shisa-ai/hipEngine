@@ -795,6 +795,20 @@ cold/warm synthetic timings are not a speed comparison. Evidence:
 [`2026-08-28-qwen38-flash-next-mtp-q8-sidecar.json`](../benchmarks/results/2026-08-28-qwen38-flash-next-mtp-q8-sidecar.json),
 [`2026-08-28-gfx1151-qwen38-flash-next-mtp-draft-smoke.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-draft-smoke.json), and
 [`2026-08-28-gfx1151-qwen38-flash-next-mtp-public-smoke.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-public-smoke.json).
+The binding four-category natural 512 functionality/economics row also passes
+exact output: 4/4 category IDs equal true AR, with `51/62` accepted drafts
+(`82.26%`). Its correctness-first serial target verifier is slower than AR
+(`0.826x`), so MTP remains explicit opt-in and AR stays default. This is a
+successful basic implementation gate and a failed promotion/economics gate; the
+next post-basics MTP optimization is multirow target verification. Evidence:
+[`2026-08-28-gfx1151-qwen38-flash-next-mtp-natural-512.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-natural-512.json).
+The 1K edge and real OpenAI completion surfaces pass too: natural
+`1008+16` IDs equal AR with `14/15` draft acceptance; explicit speculative
+`/v1/completions` returns HTTP 200 on blocking and buffered SSE, reports the
+`speculative` route, and closes to zero tracked bytes. Serial verification is
+still slower (`0.807x` AR), so this closes basic 1K/blocking/SSE functionality,
+not economics or default promotion. Evidence:
+[`2026-08-28-gfx1151-qwen38-flash-next-mtp-1k-http.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-1k-http.json).
 
 ### F9 — Vision
 
