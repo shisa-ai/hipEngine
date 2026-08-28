@@ -378,6 +378,64 @@ __global__ void qwen4_exp_gather_bf16_lanes_kernel(
   }
 }
 
+__launch_bounds__(128, 2)
+__global__ void q5_1_selected_gemv_logical256_t128_bf16_bf16_kernel(
+    const uint16_t* __restrict__ input,
+    const int64_t* __restrict__ selected,
+    const uint8_t* __restrict__ weights,
+    uint16_t* __restrict__ output,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t row_bytes) {
+  constexpr int LOGICAL_THREADS = 256;
+  extern __shared__ float partial[];
+  const int64_t pair = blockIdx.x;
+  const int64_t row = pair / out_features;
+  const int64_t out = pair - row * out_features;
+  const int64_t input_row = row / (rows / x_rows);
+  const int64_t expert = selected[row];
+  if (expert < 0 || expert >= num_experts) return;
+  const uint8_t* weight_row = weights
+      + (expert * out_features + out) * row_bytes;
+  float value0 = 0.0f;
+  float value1 = 0.0f;
+  const int logical0 = threadIdx.x;
+  const int logical1 = threadIdx.x + blockDim.x;
+  for (int64_t column = logical0; column < in_features;
+       column += LOGICAL_THREADS) {
+    const int64_t block_index = column / 32;
+    const int within = static_cast<int>(column & 31);
+    value0 += bf16_bits_to_float(input[input_row * in_features + column])
+        * dequant_q5_1(weight_row + block_index * 24, within);
+  }
+  for (int64_t column = logical1; column < in_features;
+       column += LOGICAL_THREADS) {
+    const int64_t block_index = column / 32;
+    const int within = static_cast<int>(column & 31);
+    value1 += bf16_bits_to_float(input[input_row * in_features + column])
+        * dequant_q5_1(weight_row + block_index * 24, within);
+  }
+  partial[logical0] = value0;
+  partial[logical1] = value1;
+  __syncthreads();
+  for (int stride = LOGICAL_THREADS / 2; stride >= 32; stride >>= 1) {
+    if (threadIdx.x < stride) {
+      partial[threadIdx.x] += partial[threadIdx.x + stride];
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x < 32) {
+    float reduced = partial[threadIdx.x];
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      reduced += __shfl_down(reduced, offset, 32);
+    }
+    if (threadIdx.x == 0) output[pair] = float_to_bf16_bits(reduced);
+  }
+}
+
 __global__ void q5_1_selected_gemv_bf16_bf16_kernel(
     const uint16_t* __restrict__ input,
     const int64_t* __restrict__ selected,
@@ -577,6 +635,35 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf
       static_cast<const int64_t*>(tile_expert),
       static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
       compact_rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_q5_1_selected_gemv_logical256_t128_bf16_bf16_out(
+    const void* input,
+    const void* selected,
+    const void* weights,
+    void* output,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!input || !selected || !weights || !output || x_rows <= 0 || rows <= 0 ||
+      rows % x_rows || num_experts <= 0 || in_features <= 0 ||
+      (in_features % 32) || out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int physical_threads = 128;
+  constexpr int logical_threads = 256;
+  const int64_t row_bytes = (in_features / 32) * 24;
+  hipLaunchKernelGGL(
+      q5_1_selected_gemv_logical256_t128_bf16_bf16_kernel,
+      dim3(static_cast<uint32_t>(rows * out_features)),
+      dim3(physical_threads), logical_threads * sizeof(float), stream,
+      static_cast<const uint16_t*>(input), static_cast<const int64_t*>(selected),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      x_rows, rows, num_experts, in_features, out_features, row_bytes);
   return static_cast<int>(hipGetLastError());
 }
 

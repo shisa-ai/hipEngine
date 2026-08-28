@@ -731,9 +731,10 @@ The completed baseline and decode trace supersede the earlier feature/checklist
 priority. Before graph replay, exact Q8/Q4 packing/fusion brought controlled decode to
 about **6.42 tok/s** versus llama.cpp HIP/Vulkan `15.85/18.72 tok/s`; eager
 trace ownership remained about `1,861 launches/token`. Request-owned stateless
-MoE graphs now reach **11.515 tok/s** counterbalanced (1.769x eager), with all
-48 captures and 192 full-logit rows exact. The remaining same-host gap is
-1.38x to HIP / 1.63x to Vulkan. Current p508 is `10.2 s` wall / `8.84 s` kernels / 29,341
+MoE graphs plus the exact Q5_1 logical256/physical128 decode owner now reach
+**12.140 tok/s** counterbalanced, with all generated IDs and full-logit SHA rows
+exact. The remaining same-host gap is 1.31x to HIP / 1.54x to Vulkan. Current
+p508 is `10.2 s` wall / `8.84 s` kernels / 29,341
 launches versus same-host llama.cpp Vulkan/HIP `316/275 tok/s`.
 
 Binding implementation order:
@@ -752,12 +753,15 @@ Binding implementation order:
    rows; workgroups, not Python calls, own individual output elements. The
    existing self-validating `MoeGraphCache` now collapses each exact stateless
    per-layer chain to one graph launch and improves eager `6.511→11.515 tok/s`
-   (1.769x), with stateful GDN/QSA excluded. Next port Vulkan/llama.cpp
+   (1.769x), with stateful GDN/QSA excluded. The exact Q5_1 decode owner now
+   maps two logical partials per physical lane, preserves the strict 256-slot
+   tree, and improves graph decode `11.380→12.140 tok/s` (+6.27%). Next port Vulkan/llama.cpp
    `mul_mat_id` *grid/dataflow* inside those graphs: wider output/expert tiles,
    achieved-bandwidth accounting, and residual-Q8_1x2 selected MMQ.
-3. **Retain exact Q4/Q5 micro-wins only atop the grouped shape.** Screen raw-Q4
-   selected pack8 and dual/SiLU owners; for Q5_1 use pack2/pack4 only when the
-   exact 256-logical-partial tree and BF16 boundary remain intact. The naïve raw
+3. **Retain exact Q4/Q5 micro-wins only atop the grouped shape.** The Q5_1
+   physical128/logical256 contraction is now the selected default: Q5 cycle-wall
+   falls `692.930→410.364 ms` across 1,806 traced launches while output bits stay
+   exact. Further pack2/pack4 work must retain that tree. The naïve raw
    Q4 selected pack8 (`+0.05%`), Q5_1 pack8 (`-6.3%`), Q5 metadata LDS cache
    (`-2.9%`), and device argmax (`-0.09%`) screens are rejected and removed.
 4. **Mine Vulkan cooperative-matrix geometry first, HIP second.** The same-host
@@ -889,10 +893,15 @@ into that owner removes another 47 launches/token and improves the next paired
 median `6.400→6.420 tok/s` (+0.31%). Exact request-owned per-layer MoE graph
 replay then gives the structural jump: `6.511→11.515 tok/s` (1.769x), 192/192
 full-logit rows exact, 48 captures/zero rejects, c2 exact, and teardown zero.
-All add no tracked resident bytes. A Q5_1 wave64 decode candidate reaches
+The exact Q5_1 logical256/physical128 selected owner then improves complete graph
+decode `11.380→12.140 tok/s` (+6.27%) and contracts Q5 cycle-wall
+`692.930→410.364 ms` (-40.78%) across 1,806 launches with strict BF16 bits,
+full logits, and IDs exact. All add no tracked resident bytes. A Q5_1 wave64
+decode candidate reaches
 `6.10-6.22 tok/s` but is rejected at production mean/p95 KL
 `0.002565/0.007202`. Exact evidence and rejected sub-experiments are in
 [`2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json),
+[`2026-08-29-gfx1151-qwen38-flash-next-exact-q5-logical256-t128-decode.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-q5-logical256-t128-decode.json),
 [`2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json),
 [`2026-08-27-gfx1151-qwen38-flash-next-ple-staging-fix.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-ple-staging-fix.json),
 [`2026-08-27-gfx1151-qwen38-flash-next-fast-allrows-rejected.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-fast-allrows-rejected.json),

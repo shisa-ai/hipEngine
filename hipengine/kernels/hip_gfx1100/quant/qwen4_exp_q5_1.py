@@ -303,6 +303,45 @@ def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_
         runtime.check(int(error))
 
 
+def qwen4_exp_q5_1_selected_gemv_logical256_t128_bf16_bf16_out(
+    input_ptr: int,
+    selected_ptr: int,
+    weights_ptr: int,
+    output_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact logical-256 selected Q5_1 with 128 physical threads."""
+
+    if x_rows <= 0 or rows <= 0 or rows % x_rows:
+        raise ValueError("rows must be positive and divisible by positive x_rows")
+    if num_experts <= 0 or in_features <= 0 or out_features <= 0:
+        raise ValueError("num_experts, in_features, and out_features must be positive")
+    if in_features % 32:
+        raise ValueError("Q5_1 in_features must be divisible by 32")
+    library = library or build_qwen4_exp_q5_1(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_q5_1_selected_gemv_logical256_t128_bf16_bf16_out",
+        _ARGS,
+        ctypes.c_int,
+    )
+    error = fn(
+        input_ptr, selected_ptr, weights_ptr, output_ptr, x_rows, rows,
+        num_experts, in_features, out_features, stream,
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
 def qwen4_exp_q5_1_selected_gemv_wave64_bf16_bf16_out(
     input_ptr: int,
     selected_ptr: int,
@@ -444,6 +483,16 @@ def register_qwen4_exp_q5_1_kernels(*, replace: bool = True) -> None:
             qwen4_exp_q5_1_selected_gemv_wave64_bf16_bf16_out,
             replace=replace,
         )
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                layer,
+                "gguf_q5_1",
+                "selected_gemv_logical256_t128_bf16_bf16_out",
+            ),
+            qwen4_exp_q5_1_selected_gemv_logical256_t128_bf16_bf16_out,
+            replace=replace,
+        )
     for layer in ("linear", "moe_linear"):
         register(
             KernelKey(
@@ -465,6 +514,7 @@ __all__ = [
     "plan_qwen4_exp_q5_1_build",
     "qwen4_exp_gather_bf16_lanes",
     "qwen4_exp_q5_1_selected_gemv_bf16_bf16_out",
+    "qwen4_exp_q5_1_selected_gemv_logical256_t128_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_gemv_wave64_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out",
