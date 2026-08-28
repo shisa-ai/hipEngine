@@ -205,6 +205,23 @@ capacity/dynamic-lifecycle blockers.
 
 ## 2. External source review (commit-pinned, read-only)
 
+> **Superseded for speed comparison (2026-08-28).** The absolute AR/MTP rates
+> quoted in this table are not comparable across sources as published.
+> [`QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md`](QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md)
+> renormalizes every row onto implied memory bandwidth (AR) and cycle
+> efficiency (MTP), and is the authority for which external numbers may be
+> cited. Headlines are prompt-class overfit: within one source, host and
+> config, MTP speedup ranges 1.76x-2.27x purely by prompt class, while cycle
+> efficiency is constant to within 0.7 points. Four rows below are struck as
+> comparison targets there, including the guide's 20.42 tok/s baseline, which
+> implies 141% of theoretical peak bandwidth and is therefore speculation-on
+> rather than AR. The survey also records that hipEngine AR is at **parity**
+> with stock llama.cpp on the identical quant (12.332 vs 12.27 tok/s), that
+> our MTP cycle efficiency is 47-54% against 70-77% at matched K=3, and that
+> **T3 adaptive-K and the B4 clamp should be reopened** once the verifier
+> rowtile work lands, because both limits sat on top of the rows>4
+> amortization cliff. The *mechanism* columns below remain valid intake.
+
 | Project | Commit | Mechanism worth transferring | Not transferable |
 | --- | --- | --- | --- |
 | `julianmb/q38rocm` | `5d097740` | Draft-budget sweep discipline (`n_max` 3-6 × `p_min` 0.50-0.55); default `DRAFT_N=4, DRAFT_P=0.0`; Vulkan-Wave64 vs ROCm MTP note (36 vs 28 tok/s) | Vulkan numbers (we are HIP-native); ROCmFP4 artifacts; q8_0/turbo4 KV (our INT8 KV failed quality gates) |
@@ -317,8 +334,22 @@ capacity/dynamic-lifecycle blockers.
   content-agnostic simulation rejects a provider: best short ngram has 46.9%
   coverage / 28.4% accept / 1.37 visible tokens per cycle; deep n12 reaches
   1.45 visible/cycle but only 12.2% accept and 630 verifier rows. MTP B3 is
-  3.43 visible/cycle / 79.29% accept. Heldout coverage is weaker; no code
-  candidate.
+  3.43 visible/cycle / 79.29% accept. Heldout coverage is weaker; that
+  short-suffix algorithm had no code candidate.
+
+  **Post-campaign correction (2026-08-28):** llama.cpp's current 24-token
+  `ngram-mod` mechanism is materially different. hipEngine now has a
+  request-local exact, no-cyclic-replay first-refusal composer ahead of MTP.
+  Canonical production D24 makes 142 lookups / zero hits and is neutral versus
+  MTP-only (17.116 vs 17.130 tok/s). On the independent 2-train/2-heldout
+  repetition-heavy code suite at strict C2/K3 D80, all four rows are exact and
+  hybrid improves MTP-only **20.434 -> 20.930 tok/s (+2.425%)**, with every
+  prompt +1.63%..+3.21%, 40 row-owned hit cycles, and 116/120 candidates
+  accepted. It still trails true AR by 1.25%; D96 also exposes a pre-existing
+  SQL terminal mismatch, and the production D120 numerical gate remains
+  rejected. The implementation is therefore retained explicit/default-off,
+  not promoted. Evidence:
+  [`ngram+MTP closeout`](../benchmarks/results/2026-08-28-gfx1151-qwen38-ngram-mtp-composition-closeout.json).
 - [x] **T4.2 KV-quant (q8_0 / turbo4-class):** closed parked — our INT8 KV
   lane failed quality gates; external llama.cpp claims do not transfer.
 - [x] **T4.3 DFlash2:** closed parked — measured 8.85 tok/s = 0.66x AR on this

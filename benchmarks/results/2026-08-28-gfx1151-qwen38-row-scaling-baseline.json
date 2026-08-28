@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_row_scaling_baseline",
+  "created_at": "2026-08-28T00:00:00Z",
+  "status": "diagnostic_row_scaling_anchor",
+  "passed": true,
+  "performance_claim": false,
+  "claim_scope": "Direct packed AR graph model-step row scaling on one host. Diagnostic anchor for the external-report requalification in docs/QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md. Not a retained performance claim, not HTTP serving goodput, and not the speculative verify frontier path.",
+  "decision": "Establish the local weight-amortization curve so external Strix Halo AR/MTP reports can be normalized onto implied memory bandwidth. Rows 1-4 amortize weights nearly perfectly (1.000 -> 1.126 weight sweeps per step); rows 4-8 cost +88% wall for 2x rows (2.122 sweeps). R=1 gives 198.4 GB/s streamed, 90% of the 220 GB/s practical roof and 78% of the 256 GB/s theoretical peak.",
+  "source": {
+    "hipengine_commit": "da553a644",
+    "git_dirty": true,
+    "dirty_note": "Working tree carried another owner's in-flight verifier-rowtile changes to hipengine/kernels/hip_gfx1151/__init__.py, hipengine/runtime/gguf_linear.py, hipengine/runtime/qwen35_gguf_runner.py and associated tests. The measured path here is the direct packed AR graph, which those changes target only via the verifier capability; treat the absolute rates as working-tree diagnostics."
+  },
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "backend": "hip_gfx1151",
+    "hostname": "gfx1151",
+    "memory": "LPDDR5X-8000, 256-bit, 256 GB/s theoretical, 221-234 GB/s measured for large streams"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "architecture": "qwen35, dense",
+    "ar_blocks": 64,
+    "mtp_block": 64,
+    "hidden_size": 5120,
+    "ffn_size": 17408,
+    "vocab_size": 248320,
+    "file_tensor_bytes": 17095778304,
+    "byte_budget": {
+      "ar_blocks_bytes": 15048100000,
+      "output_weight_bytes": 1042944000,
+      "token_embd_bytes": 715161600,
+      "mtp_block_bytes": 289500000,
+      "streamed_bytes_per_ar_token": 16091044000,
+      "note": "streamed = ar_blocks + output.weight; token_embd is a row lookup, not a stream; mtp block is not read during AR"
+    },
+    "quant_mix_bytes": {
+      "Q4_K": 11370332160,
+      "Q6_K": 4526592000,
+      "Q5_K": 1038090240,
+      "F32": 105058304,
+      "Q8_0": 55705600
+    }
+  },
+  "protocol": {
+    "harness": "scripts/gguf_packed_ar_bench.py",
+    "route": "direct packed AR graph, state-bound groups",
+    "prompt_length": 128,
+    "decode_steps": 8,
+    "warmup_runs": 1,
+    "measured_runs": 2,
+    "samples_reported": 3,
+    "timing_scope": "synchronized per-step model-step completion latency; graph capture, diagnostic token readback and final state flush excluded"
+  },
+  "results": {
+    "rows_1": {
+      "aggregate_tok_s": 12.331719890227792,
+      "per_request_tok_s": 12.331719890227792,
+      "step_ms": 81.089,
+      "weight_sweeps_per_step": 1.0,
+      "implied_streamed_gb_s": 198.4,
+      "stdev_pct_of_median": 0.00904847915265081
+    },
+    "rows_2": {
+      "aggregate_tok_s": 23.708251619209317,
+      "per_request_tok_s": 11.854125809604659,
+      "step_ms": 84.359,
+      "weight_sweeps_per_step": 1.04,
+      "stdev_pct_of_median": 0.10459155716204245
+    },
+    "rows_4": {
+      "aggregate_tok_s": 43.82833537456462,
+      "per_request_tok_s": 10.957083843641154,
+      "step_ms": 91.264,
+      "weight_sweeps_per_step": 1.126,
+      "stdev_pct_of_median": 0.11979307504251706
+    },
+    "rows_8": {
+      "aggregate_tok_s": 46.50288509831991,
+      "per_request_tok_s": 5.8128606372899885,
+      "step_ms": 172.033,
+      "weight_sweeps_per_step": 2.122,
+      "stdev_pct_of_median": 0.08104732939550376
+    },
+    "scaling_c1_to_c4": 3.5541,
+    "scaling_c4_to_c8": 1.0610,
+    "cliff": "rows 4 -> 8 costs +88.5% step wall for 2x rows; the native path chunks rows 5-8 into <=4-row rowtile groups rather than a true 8-row tile"
+  },
+  "cross_reference": {
+    "external_ar_band_implied_gb_s": "204-228 (80-89% of 256 GB/s theoretical) across julianmb, MikeVeerman and LaurentZuijdwijk rows",
+    "nearest_matched_external": {
+      "source": "julianmb/q38rocm stock llama.cpp Q4_K_M",
+      "ar_tok_s": 12.27,
+      "hipengine_ar_tok_s": 12.331719890227792,
+      "delta_pct": 0.5,
+      "verdict": "parity"
+    },
+    "survey_doc": "docs/QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md"
+  },
+  "command": "python3 scripts/gguf_packed_ar_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --configurations c1,c2,c4,native_c8 --prompt-length 128 --decode-steps 8 --warmup-runs 1 --measured-runs 2 --json <out>",
+  "raw_sources": [
+    {
+      "path": "scratchpad/rowscale-baseline.json",
+      "retained_in_git": false
+    }
+  ],
+  "limitations": [
+    "Direct packed AR graph model-step packet, not HTTP/SSE serving goodput and not the speculative verify frontier route.",
+    "Fixed synthetic repeated-token fixture at prompt length 128; category diversity is gated separately and this is not a retainable throughput row.",
+    "Working tree was dirty with another owner's in-flight verifier-rowtile changes; absolute rates are working-tree diagnostics.",
+    "No correctness gate or rocprof kernel-trace was joined to this packet; it is a scaling-shape anchor only.",
+    "c3, c5, c6, c7, chunked_c8 and serial_c4 controls were not run."
+  ],
+  "next": "Emit per-category acceptance alongside per-category tok/s in the next full-suite MTP run so hipEngine cycle efficiency can be tested for content-invariance the way docs/QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md section 5 tests the external engines."
+}

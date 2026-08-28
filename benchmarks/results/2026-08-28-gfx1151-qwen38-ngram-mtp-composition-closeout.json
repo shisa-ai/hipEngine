@@ -1,0 +1,302 @@
+{
+  "canonical_production_d24": {
+    "category_compare": {
+      "code": {
+        "hybrid_over_control": 1.0019713383798794,
+        "hybrid_over_true_ar": 1.2052247710301864,
+        "mtp_control_tok_s": 17.443756423260222,
+        "mtp_hybrid_tok_s": 17.478143969786665
+      },
+      "general_en": {
+        "hybrid_over_control": 0.9992024632588696,
+        "hybrid_over_true_ar": 1.329816595667559,
+        "mtp_control_tok_s": 19.301590122346116,
+        "mtp_hybrid_tok_s": 19.286196395061307
+      },
+      "general_ja": {
+        "hybrid_over_control": 0.9921086045580745,
+        "hybrid_over_true_ar": 1.078432950792365,
+        "mtp_control_tok_s": 16.80200543447245,
+        "mtp_hybrid_tok_s": 16.669414165371645
+      },
+      "mixed_ja_en": {
+        "hybrid_over_control": 1.0006098957556326,
+        "hybrid_over_true_ar": 1.094482231771858,
+        "mtp_control_tok_s": 15.174206318762222,
+        "mtp_hybrid_tok_s": 15.18346100279113
+      }
+    },
+    "control": {
+      "ar_tok_s": 14.26938585129294,
+      "engaged_cells": 10,
+      "exact_cells": 10,
+      "mtp_over_ar": 1.2004892553559041,
+      "mtp_tok_s": 17.130244395004734
+    },
+    "final_memory": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 23423800224,
+      "peak_allocations": 1775,
+      "total_allocated_bytes": 24656374116,
+      "total_freed_bytes": 24656374116
+    },
+    "hybrid": {
+      "ar_tok_s": 14.549979328548073,
+      "engaged_cells": 10,
+      "exact_cells": 10,
+      "mtp_over_ar": 1.1763344923835293,
+      "mtp_tok_s": 17.11564254763844
+    },
+    "hybrid_mtp_over_control_mtp": 0.9991475984212723,
+    "interpretation": "No 24-token continuation can engage soon enough inside D24; lookup overhead is aggregate-neutral and automatic production MTP remains unchanged.",
+    "ngram": {
+      "accepted_tokens": 0,
+      "cycles": 0,
+      "lookup_calls": 142,
+      "lookup_hits": 0,
+      "probed_tokens": 0
+    },
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl; 10 prompts, four categories, default train/heldout split"
+  },
+  "code_repetition_strict_d80": {
+    "control_median_wall_seconds": 7.8817555465502664,
+    "control_memory_after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 24469586816,
+      "peak_allocations": 1810,
+      "total_allocated_bytes": 25621736256,
+      "total_freed_bytes": 25621736256
+    },
+    "control_mtp_tok_s": 20.43432167366933,
+    "correctness": {
+      "cells": 4,
+      "control_exact_cells": 4,
+      "generated_id_equality": "binding strict AR/MTP equality",
+      "hybrid_exact_cells": 4
+    },
+    "heldout_hybrid_over_control": 1.0242656270985286,
+    "hybrid_median_wall_seconds": 7.701946760993451,
+    "hybrid_memory_after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 24469586840,
+      "peak_allocations": 1811,
+      "total_allocated_bytes": 25621736280,
+      "total_freed_bytes": 25621736280
+    },
+    "hybrid_mtp_tok_s": 20.92989337942633,
+    "hybrid_over_control": 1.024251928381629,
+    "hybrid_over_control_median_wall": 1.0233458878821986,
+    "hybrid_over_true_ar": 0.9875374077839565,
+    "hybrid_true_ar_tok_s": 21.19402588140252,
+    "ngram": {
+      "accepted_tokens": 116,
+      "cycles": 40,
+      "lookup_calls": 186,
+      "lookup_hits": 40,
+      "probed_tokens": 960
+    },
+    "per_prompt": [
+      {
+        "exact_control": true,
+        "exact_hybrid": true,
+        "hybrid_over_control": 1.0320893856655815,
+        "hybrid_over_true_ar": 0.9599756750792335,
+        "mtp_control_wall_seconds": 8.134730031015351,
+        "mtp_hybrid_wall_seconds": 7.881807665107772,
+        "prompt_id": "code_copy_python",
+        "split": "train",
+        "true_ar_wall_seconds": 7.56634363415651
+      },
+      {
+        "exact_control": true,
+        "exact_hybrid": true,
+        "hybrid_over_control": 1.0162998259517355,
+        "hybrid_over_true_ar": 0.9704968496817166,
+        "mtp_control_wall_seconds": 7.920886368025094,
+        "mtp_hybrid_wall_seconds": 7.793848002096638,
+        "prompt_id": "code_copy_typescript",
+        "split": "train",
+        "true_ar_wall_seconds": 7.563904932932928
+      },
+      {
+        "exact_control": true,
+        "exact_hybrid": true,
+        "hybrid_over_control": 1.017695012832098,
+        "hybrid_over_true_ar": 1.0342357287740591,
+        "mtp_control_wall_seconds": 7.421614275081083,
+        "mtp_hybrid_wall_seconds": 7.2925721178762615,
+        "prompt_id": "code_copy_rust",
+        "split": "heldout",
+        "true_ar_wall_seconds": 7.542238638969138
+      },
+      {
+        "exact_control": true,
+        "exact_hybrid": true,
+        "hybrid_over_control": 1.0305621306176536,
+        "hybrid_over_true_ar": 0.9887853533036792,
+        "mtp_control_wall_seconds": 7.842624725075439,
+        "mtp_hybrid_wall_seconds": 7.610045519890264,
+        "prompt_id": "code_copy_sql",
+        "split": "heldout",
+        "true_ar_wall_seconds": 7.524701548041776
+      }
+    ],
+    "profile_manifest_sha256": "af82558349e40e6f1e9e383da3340d7eb0a03dc62734d03c464fd432867a692e",
+    "suite": {
+      "candidate_budgets": [
+        3
+      ],
+      "categories": [
+        "code"
+      ],
+      "concurrency": [
+        2
+      ],
+      "counterbalance": "even prompt+run index true_ar\u2192legacy_native\u2192specdec2; odd index reverse",
+      "heldout_ids": [
+        "code_copy_rust",
+        "code_copy_sql"
+      ],
+      "legacy_native_scope": "C1 current-source direct dense transactional control only; C>1 skipped because direct dense ownership is request-serial",
+      "max_sequence_length": 1024,
+      "max_tokens": 80,
+      "prompt_file": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-repetition.jsonl",
+      "prompt_file_sha256": "2cf2d3f76f17b371c9d86e0b71b3e9b493e5f31d4373e157f27af7e8fe6db164",
+      "prompt_ids": [
+        "code_copy_python",
+        "code_copy_typescript",
+        "code_copy_rust",
+        "code_copy_sql"
+      ],
+      "runs": 1,
+      "sampling": "raw greedy; temperature=0, top_p=1",
+      "scope": "full",
+      "selection_complete": true,
+      "service_capacity": 2,
+      "warmup": true
+    },
+    "train_hybrid_over_control": 1.0242389052108976
+  },
+  "commands": {
+    "canonical_hybrid": "HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD=1 HIPENGINE_GGUF_SPECDEC2_NGRAM_MATCH=24 HIPENGINE_GGUF_SPECDEC2_NGRAM_MIN=24 HIPENGINE_GGUF_SPECDEC2_NGRAM_PROBE_MAX=64 GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --widths 2 --resident-capacity 4 --expected-mtp-widths 2 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --correctness-contract mtp_self_exact --output /tmp/qwen38-c2k3-ngram-hybrid-full-clean.json",
+    "canonical_mtp_control": "HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD=0 GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --widths 2 --resident-capacity 4 --expected-mtp-widths 2 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --correctness-contract mtp_self_exact --output /tmp/qwen38-c2k3-ngram-control-full-clean.json",
+    "code_d96_blocker": "HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD=0 GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/gguf_ngram_mtp_code_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --target-arch gfx1151 --quant-label Q4_K_M --execution-profile strict --scope full --concurrency 2 --budgets 3 --max-tokens 96 --runs 1 --warmup --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --fail-on-fail --output /tmp/qwen38-c2k3-ngram-code-control-d96-clean.json",
+    "code_hybrid_d80": "HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD=1 HIPENGINE_GGUF_SPECDEC2_NGRAM_MATCH=24 HIPENGINE_GGUF_SPECDEC2_NGRAM_MIN=24 HIPENGINE_GGUF_SPECDEC2_NGRAM_PROBE_MAX=64 GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/gguf_ngram_mtp_code_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --target-arch gfx1151 --quant-label Q4_K_M --execution-profile strict --scope full --concurrency 2 --budgets 3 --max-tokens 80 --runs 1 --warmup --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --fail-on-fail --output /tmp/qwen38-c2k3-ngram-code-hybrid-d80-clean.json",
+    "code_mtp_control_d80": "HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD=0 GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/gguf_ngram_mtp_code_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --target-arch gfx1151 --quant-label Q4_K_M --execution-profile strict --scope full --concurrency 2 --budgets 3 --max-tokens 80 --runs 1 --warmup --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --fail-on-fail --output /tmp/qwen38-c2k3-ngram-code-control-d80-clean.json"
+  },
+  "created_at": "2026-08-28T07:29:38.635028+00:00",
+  "decision": {
+    "implementation": "Retain the request-local exact ngram/MTP composition as explicit default-off functionality with ordinary MTP and AR fallbacks.",
+    "measured_premise": "Repetition-heavy strict C2/K3 hybrid improves MTP-only 2.425% with every train/heldout prompt positive and exact, proving composition works but K3 is too narrow for the community-scale gains.",
+    "product_policy": "Reject automatic/default promotion: production D24 has zero hits, strict D80 hybrid remains below true AR, D96 strict has a heldout terminal mismatch, and prior production D120 numerics failed."
+  },
+  "host": {
+    "backend": "hip_gfx1151",
+    "device": "AMD Radeon 8060S Graphics",
+    "gpu_max_hw_queues": "2",
+    "hostname": "gfx1151",
+    "queue_source": "environment",
+    "target_arch": "gfx1151"
+  },
+  "kind": "gfx1151_qwen38_request_local_ngram_mtp_composition_closeout",
+  "long_horizon_blocker": {
+    "cells": 4,
+    "exact_cells": 3,
+    "failing_prompt": "code_copy_sql",
+    "interpretation": "AR reaches its terminal suffix at 87 tokens; strict MTP continues to 96. This pre-existing long-horizon mismatch blocks D96 before hybrid economics.",
+    "mtp_tokens_per_request": 96,
+    "scope": "same code repetition suite, strict C2/K3 D96",
+    "status": "failed",
+    "true_ar_tokens_per_request": 87
+  },
+  "model": {
+    "execution_profile": "strict",
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 17106775008,
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+    },
+    "kv": "bf16",
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "recurrent_state": "fp32"
+  },
+  "next": "A product win requires a correctness-qualified long horizon and K>3 target frontier so accepted ngram runs reduce target weight sweeps rather than only replacing NextN scoring. Do not widen automatic policy from this diagnostic.",
+  "passed": true,
+  "performance_claim": false,
+  "raw_sources": {
+    "canonical_control": {
+      "path": "/tmp/qwen38-c2k3-ngram-control-full-clean.json",
+      "retained_in_git": false,
+      "sha256": "40962737e57c146cf4f375ffce085ff9648d9104e952fa69e6c75a9d15858757",
+      "size_bytes": 943167
+    },
+    "canonical_hybrid": {
+      "path": "/tmp/qwen38-c2k3-ngram-hybrid-full-clean.json",
+      "retained_in_git": false,
+      "sha256": "032c07f6eab3b6290a5969b88d5c70f4ce598b7559deeb6e1cda45752fe52bcd",
+      "size_bytes": 943473
+    },
+    "code_control_d80": {
+      "path": "/tmp/qwen38-c2k3-ngram-code-control-d80-clean.json",
+      "retained_in_git": false,
+      "sha256": "7d464bfd8d1822af0d172eca87f7b1546887ac06ab6f94fe3e6eb9a563b832a5",
+      "size_bytes": 308616
+    },
+    "code_control_d96_failed": {
+      "path": "/tmp/qwen38-c2k3-ngram-code-control-d96-clean.json",
+      "retained_in_git": false,
+      "sha256": "8fc3b849d1ade48c5a5370bfe9c0af9c112055d26e7242e53e1ee74daa118dd5",
+      "size_bytes": 339770
+    },
+    "code_hybrid_d80": {
+      "path": "/tmp/qwen38-c2k3-ngram-code-hybrid-d80-clean.json",
+      "retained_in_git": false,
+      "sha256": "372df29aa862f1d8e8f7357a25f814a8b4eacf4abb9c39bd22032346e3b28c42",
+      "size_bytes": 305633
+    },
+    "plumbing_smoke": {
+      "path": "/tmp/qwen38-c2k3-ngram-mtp-plumbing-clean.json",
+      "retained_in_git": false,
+      "sha256": "bb096792d90317536a2a279e6707db3886bae98759cece4ebabd78495177ce16",
+      "size_bytes": 49148
+    }
+  },
+  "schema": 1,
+  "source": {
+    "benchmark_fixture_commit": "bd607315b92bea8445f2bd57226b018c60b1a45b",
+    "canonical_control_commit": "b8afcf90d21b08440250ac541d4f2875dbacb361",
+    "canonical_hybrid_commit": "a5d0407d4681b5638cffabc7e64a749477c0906a",
+    "canonical_runtime_code_identical": true,
+    "canonical_runtime_diff_between_arms": [
+      "benchmarks/results/2026-08-28-gfx1151-qwen38-fork-claim-generalization.json",
+      "docs/QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md"
+    ],
+    "implementation_commit": "b8afcf90d21b08440250ac541d4f2875dbacb361",
+    "llamacpp_reference_commit": "9d57ce456c94d241dde672b2db9cf18879766568"
+  },
+  "status": "implementation_retained_default_off_product_promotion_rejected",
+  "validation": {
+    "affected_specdec2_packet": "117 passed",
+    "benchmark_wrapper_tests": "8 passed including cache tests",
+    "clean_plumbing_smoke": {
+      "exact": true,
+      "ngram_hits": 0,
+      "status": "complete"
+    },
+    "focused_cache_and_seam_tests": "55 passed",
+    "gguf_generation_packet": "116 passed",
+    "production_numerics_dependency": "benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json: D24 canonical+heldout pass; D120 rejected at max KL 0.08367-0.08574 diagnostics."
+  }
+}
