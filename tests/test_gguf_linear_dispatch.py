@@ -4919,8 +4919,88 @@ def test_gfx1151_q4_t16_dense_pair_q8x2_quantizes_workspace(
     ]
 
 
-def test_gfx1151_production_verifier_q4_scope_routes_gate_up_rowtile(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    ("rows", "chunks"),
+    (
+        (6, ((6, 0),)),
+        (9, ((7, 0), (2, 7))),
+        (12, ((8, 0), (4, 8))),
+    ),
+)
+def test_gfx1151_production_verifier_q4_scope_chunks_single_rowtiles(
+    rows: int,
+    chunks: tuple[tuple[int, int], ...],
+) -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "dense_rowtile_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=candidate_key.backend,
+        layer=candidate_key.layer,
+        quant=candidate_key.quant,
+        variant=candidate_key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+    register(
+        candidate_key,
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+        replace=True,
+    )
+    try:
+        with target_verifier_production_q4_rowtile_session(True):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=400,
+                rows=rows,
+                in_features=5_120,
+                out_features=12_288,
+                backend="hip_gfx1151",
+                stream=7,
+                runtime="runtime-sentinel",
+                use_wmma_prefill=False,
+            )
+    finally:
+        register(candidate_key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            (
+                100 + row_base * 5_120 * 2,
+                14,
+                400 + row_base * 12_288 * 2,
+                chunk_rows,
+                5_120,
+                12_288,
+            ),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+        for chunk_rows, row_base in chunks
+    ]
+
+
+@pytest.mark.parametrize(
+    ("rows", "chunks"),
+    (
+        (6, ((6, 0),)),
+        (9, ((7, 0), (2, 7))),
+        (12, ((8, 0), (4, 8))),
+    ),
+)
+def test_gfx1151_production_verifier_q4_scope_chunks_gate_up_rowtiles(
+    rows: int,
+    chunks: tuple[tuple[int, int], ...],
 ) -> None:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
@@ -4958,7 +5038,7 @@ def test_gfx1151_production_verifier_q4_scope_routes_gate_up_rowtile(
                 weight_b,
                 x_ptr=100,
                 out_ptr=400,
-                rows=8,
+                rows=rows,
                 in_features=5_120,
                 out_features=17_408,
                 backend="hip_gfx1151",
@@ -4970,9 +5050,18 @@ def test_gfx1151_production_verifier_q4_scope_routes_gate_up_rowtile(
 
     assert calls == [
         (
-            (100, 14, 14, 400, 8, 5_120, 17_408),
+            (
+                100 + row_base * 5_120 * 2,
+                14,
+                14,
+                400 + row_base * 17_408 * 2,
+                chunk_rows,
+                5_120,
+                17_408,
+            ),
             {"stream": 7, "runtime": "runtime-sentinel"},
         )
+        for chunk_rows, row_base in chunks
     ]
 
 

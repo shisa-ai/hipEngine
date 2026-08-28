@@ -26,8 +26,8 @@ should be removed or collapsed.
   typed boolean and never reread the environment.
 - Remove the environment handoff when `ResolvedRuntimePlan` (RF-1) carries
   profile scope selections directly into `Qwen35GGUFResidentSession`. Preserve
-  the profile manifest selections, strict WMMA fallbacks, R8/actual-shape
-  bounds, and benchmark rollback evidence.
+  the profile manifest selections, strict WMMA fallbacks, qualified
+  R6/R8/R9/R12 actual-shape bounds, and benchmark rollback evidence.
 
 ## 2026-08-26 speculative-MTP default capability migration — closed
 
