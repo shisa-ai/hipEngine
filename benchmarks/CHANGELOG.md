@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-28 gfx1151 Qwen3.8-Flash-Next short MTP full suite] Complete 10-prompt category+heldout packet: **10/10 exact AR IDs**, **134/159 = 84.28%** draft acceptance, MTP/AR **0.955x**; one code row wins 1.198x but aggregate economics reject default promotion, so AR remains default. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json`.
+
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next current natural QSA 4K] After the 20 tok/s prerequisite is met, current exact default reduces natural 4K **222.228→146.883 s (-33.90%, 27.886 tok/s, 1.513x)**; retrieval, all 12 controls, Transformers CPU top-512, replay/rollback, and zero teardown pass. 16K remains blocked because 27.886<50 tok/s. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-4k-current.json`.
 
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next exact Q8/F32 coltile prefill] Add the missing gfx1151 raw-Q8 F32 coltile4/rowbatch8 owner while preserving scalar K/reduction order: natural p508 **26.264→14.718 s (34.517 tok/s, 1.785x)**, p1012 **56.550→29.622 s (34.164 tok/s, 1.909x)**, Q8 bucket **13.972→3.121 s**; primitive/full logits bit-exact. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q8-coltile-prefill.json`.

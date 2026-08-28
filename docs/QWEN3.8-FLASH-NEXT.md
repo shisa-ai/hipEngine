@@ -827,13 +827,18 @@ cold/warm synthetic timings are not a speed comparison. Evidence:
 [`2026-08-28-qwen38-flash-next-mtp-q8-sidecar.json`](../benchmarks/results/2026-08-28-qwen38-flash-next-mtp-q8-sidecar.json),
 [`2026-08-28-gfx1151-qwen38-flash-next-mtp-draft-smoke.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-draft-smoke.json), and
 [`2026-08-28-gfx1151-qwen38-flash-next-mtp-public-smoke.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-public-smoke.json).
-The binding four-category natural 512 functionality/economics row also passes
-exact output: 4/4 category IDs equal true AR, with `51/62` accepted drafts
-(`82.26%`). Its correctness-first serial target verifier is slower than AR
-(`0.826x`), so MTP remains explicit opt-in and AR stays default. This is a
-successful basic implementation gate and a failed promotion/economics gate; the
-next post-basics MTP optimization is multirow target verification. Evidence:
-[`2026-08-28-gfx1151-qwen38-flash-next-mtp-natural-512.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-natural-512.json).
+The complete 10-prompt category+heldout short-context packet now supersedes
+the earlier four-row smoke: **10/10 exact AR generated-ID rows**, `134/159`
+accepted drafts (`84.28%`), and clean teardown. One code prompt reaches
+`1.198x` AR, but aggregate MTP remains slower at `0.955x`, so MTP stays
+explicit opt-in and AR stays default. This completes F8 with a successful
+functionality/correctness gate and a failed promotion/economics gate. A
+multirow target-verification candidate was removed after it changed a
+continuation-row target token; serial exact verification remains binding.
+Evidence:
+[`2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json),
+[`2026-08-28-gfx1151-qwen38-flash-next-mtp-natural-512.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-natural-512.json), and
+[`2026-08-28-gfx1151-qwen38-flash-next-mtp-batch-verify-rejected.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-batch-verify-rejected.json).
 The 1K edge and real OpenAI completion surfaces pass too: natural
 `1008+16` IDs equal AR with `14/15` draft acceptance; explicit speculative
 `/v1/completions` returns HTTP 200 on blocking and buffered SSE, reports the
