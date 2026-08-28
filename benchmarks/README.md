@@ -197,16 +197,13 @@ table and 82.523 GB hot weights. Exact batching passes 687/687 rows; p508
 first/steady is **51.220/58.466 tok/s** and p1006 is **55.046 tok/s**. A
 same-host/same-GGUF PR #27742 reference measures Vulkan/HIP pp508
 **316.380/274.996 tok/s**, pp1006 **290.450/284.485**, and tg32
-**18.716/15.848** versus then-current hipEngine **58.466/55.046/5.890**. The
-first exact parity units improve counterbalanced decode **5.698→6.305 tok/s
-(+10.66%)** via raw-Q8 output packing, then **6.065→6.223 (+2.61%)** via Q4
-dual gate/up; exact SiLU fusion adds **6.400→6.420 (+0.31%)**. Exact per-layer
-MoE graph replay then reaches **11.515 tok/s (1.769x eager)** with 192/192
-full-logit rows, c2, and teardown exact—now 1.38x behind llama.cpp HIP. Chunk-batched PLE plus exact bulk Conv reduce p508 launches
-**29,341→11,053** and improve **57.825→58.408 tok/s (+1.01%)**. Exact paged
-QSA index scatter then removes 6,072 more p508 submissions (p512 trace
-**11,053→4,933**), wall-neutral at 58.678→58.669 tok/s; the llama.cpp gap is
-still binding. Current natural 16K improves **946.999→364.306 s (-61.53%, 44.973 tok/s)** with every
+**18.716/15.848** versus then-current hipEngine **58.466/55.046/5.890**. Exact
+per-layer MoE graphs improve eager decode **6.511→11.515 tok/s (1.769x)** with
+192/192 full-logit rows, c2, and teardown exact—1.38x behind llama.cpp HIP.
+Matched HIP pp508 is **1.798 s kernels / 5,543 launches** versus hipEngine
+**8.753 s / 4,933**, making MMQ/cooperative dataflow the remaining target.
+Exact PLE/Conv/QSA contractions cut p512 launches **29,341→4,933** and improve
+paired p508 **57.825→58.408 tok/s**; the remaining llama.cpp gap is binding. Current natural 16K improves **946.999→364.306 s (-61.53%, 44.973 tok/s)** with every
 binding control exact; 64K historical evidence is retained but not rerun because
 44.973<100 tok/s. 262K is capacity-only (91.126 GB tracked), not inference. Q8 MTP is exact on 10/10
 prompts but remains opt-in at **0.955x AR**. <=1K image/video/PNG chat and

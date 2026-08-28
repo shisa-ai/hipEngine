@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8-Flash-Next llama.cpp HIP kernel profile] Same-host PR #27742 pp508 is **1.798 s kernels / 5,543 launches** (Q4/Q5_1/Q8 **0.554/0.382/0.290 s**) versus hipEngine **8.753 s / 4,933**; tg32 kernels are **40.71 ms/token**, led by Q8/Q4/Q5_1 **21.63/4.76/3.06 ms**. Similar-or-higher llama dispatch count proves MMQ/cooperative grid dataflow, not count alone, is the remaining kernel target. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-llamacpp-hip-kernel-profile.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8-Flash-Next exact MoE graph decode] Request-owned per-layer stateless graph replay improves counterbalanced eager **6.511→11.515 tok/s (1.769x, -43.46%)**; 48 captures/zero rejects, 192/192 full-logit rows and IDs exact, physical c2 exact, teardown zero, and stateful GDN/QSA remain eager. Remaining gap is 1.38x to same-host llama.cpp HIP. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8-Flash-Next exact Q4 dual+SiLU decode] Folding the standalone BF16-boundary SiLU/product into selected Q4 dual gate/up removes **47 launches/token** and improves counterbalanced decode **6.400→6.420 tok/s (+0.31%)** with primitive BF16-bit identity, exact 32-token IDs, zero new residency, and dual/singleton fallbacks. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-q4-dual-silu-decode.json`.

@@ -760,11 +760,15 @@ Binding implementation order:
    exact 256-logical-partial tree and BF16 boundary remain intact. The naïve raw
    Q4 selected pack8 (`+0.05%`), Q5_1 pack8 (`-6.3%`), Q5 metadata LDS cache
    (`-2.9%`), and device argmax (`-0.09%`) screens are rejected and removed.
-4. **Mine Vulkan cooperative-matrix geometry first, HIP second.** Profile the
-   same-host llama.cpp HIP peer with `rocprofv3` for a semantic kernel-time
-   budget, but use Vulkan's faster cooperative path as the primary existence
-   proof. Report achieved bytes/s before assuming a projection is bandwidth-
-   bound.
+4. **Mine Vulkan cooperative-matrix geometry first, HIP second.** The same-host
+   HIP profile is complete. pp508 has `1.798 s` kernels / 5,543 launches:
+   Q4_K/Q5_1/Q8_0 `0.554/0.382/0.290 s`, dense rocBLAS `0.119 s`, GDN
+   `0.085 s`. tg32 has `40.71 ms/token` kernels: Q8/Q4/Q5_1/dense
+   `21.63/4.76/3.06/2.74 ms`. llama.cpp emits ~4,362 kernel rows/token under
+   tracing—more than hipEngine—so fewer rows alone are not the explanation;
+   MMQ/cooperative grid dataflow is. Use Vulkan's faster path as the primary
+   shape proof and report achieved bytes/s before calling a projection
+   bandwidth-bound.
 5. **Measure submission honestly.** HIP-event instrumentation shows median
    unprofiled step wall/stream/post-stream-host `193.91/193.74/0.18 ms`; logits
    D2H/NumPy is not the old inferred 55 ms gap. Inter-launch stalls live inside
@@ -782,6 +786,9 @@ Binding implementation order:
 7. **Keep MTP separate.** It may improve serving economics only under the full
    anti-gaming suite and same-protocol no-MTP denominator; it cannot mask the
    base AR or 5× prefill gap.
+
+Same-host HIP kernel evidence:
+[`2026-08-29-gfx1151-qwen38-flash-next-llamacpp-hip-kernel-profile.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-llamacpp-hip-kernel-profile.json).
 
 All sub-3% A/Bs are counterbalanced in one residency after warmup; fixed clocks
 are preferred, and globally shifted profiles are used only for symbol/launch
