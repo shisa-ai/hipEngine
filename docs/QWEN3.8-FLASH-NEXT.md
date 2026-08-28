@@ -779,13 +779,13 @@ Binding implementation order:
    T1/T2 cooperative math needs full teacher-forced category+heldout rows,
    three deterministic repeats, applicable state/task/BF16 gates, a manifest,
    and a registered strict fallback. Final-prompt KL or 100% top-1 is not a
-   promotion gate. The maximal screened production suffix is now layers 28–47:
-   layers 24–47 fail the final-prompt envelope, while 28–47 pass the complete
-   450-row/three-repeat gate at mean/p95/p99/max KL
-   `1.14e-4/4.36e-4/2.23e-3/5.35e-3`, top-1 449/450, every scope,
-   deterministic state, task/free-generation, c2, manifest, and teardown.
-   Explicit `production` improves p508/p1012 **59.445→66.693** /
-   **58.674→65.670 tok/s**; omitted/`strict` remains exact.
+   promotion gate. The definitive maximal suffix is layers 27–47: layer 27 is
+   the only individually admissible layer before the earlier suffix; every
+   layer 0–26 fails final-prompt mean or p95. The complete 450-row/three-repeat
+   gate passes mean/p95/p99/max KL `1.05e-4/3.81e-4/1.52e-3/5.59e-3`, top-1
+   448/450, every scope, deterministic state, task/free-generation, c2,
+   manifest, and teardown. Explicit `production` improves p508/p1012
+   **59.401→67.243** / **58.723→66.268 tok/s**; omitted/`strict` stays exact.
 7. **Keep MTP separate.** It may improve serving economics only under the full
    anti-gaming suite and same-protocol no-MTP denominator; it cannot mask the
    base AR or 5× prefill gap.
@@ -858,13 +858,13 @@ CPU top-512, replay/rollback, and teardown pass. Current 64K is not rerun becaus
 [`2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json).
 
 Explicit gfx1151 `production` selects cooperative Q4 gate/up plus Q5_1 down on
-the maximal certified suffix layers 28–47. Manifest `d6b516d9...` falls back to
-strict `19fcd78f...`. The unchanged 450-row gate passes at mean/p95/p99/max KL
-`1.14e-4/4.36e-4/2.23e-3/5.35e-3`, 99.778% top-1, three bit-stable repeats,
+the definitive certified suffix layers 27–47. Manifest `fcd96b73...` falls back
+to strict `d4bf4f8a...`. The unchanged 450-row gate passes mean/p95/p99/max KL
+`1.05e-4/3.81e-4/1.52e-3/5.59e-3`, 99.556% top-1, three bit-stable repeats,
 state/task/c2/lifecycle gates, and no BF16-relative claim because no qualified
-full-BF16 target runtime exists. p508/p1012 reach **66.693/65.670 tok/s**;
+full-BF16 target runtime exists. p508/p1012 reach **67.243/66.268 tok/s**;
 omitted profile remains strict. Evidence:
-[`2026-08-29-gfx1151-qwen38-flash-next-late-moe28-production.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-late-moe28-production.json).
+[`2026-08-29-gfx1151-qwen38-flash-next-late-moe27-production.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-late-moe27-production.json).
 
 The broader default-off F7 research candidate still remains rejected: grouped Q4/Q5/Q8 MoE,
 Q5_1 WMMA down, peer-GDN, and tuned Q4/Q8 tiles raise warm repeated-token 512
