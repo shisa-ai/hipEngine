@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_short_context_serving_basics",
+  "scope": "Qwen4Exp real c2 isolation at p512 plus chat/tool/reasoning blocking and SSE at <=1K",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "target": {"model": "Qwen/Qwen3.8-Flash-Next", "quant": "Unsloth UD-Q4_K_XL", "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "draft": {"provider": "qwen4_exp_mtp", "quant": "Q8_0", "sha256": "9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d", "candidate_budget": 2},
+  "c2": {"prompt_tokens": [512, 512], "generated_tokens": 8, "categories": ["code", "general_en"], "ar_generated_ids": [[248068, 198, 760, 1156, 6587, 264, 12654, 709], [248068, 198, 760, 1156, 6587, 264, 61446, 694]], "mtp_generated_ids": [[248068, 198, 760, 1156, 6587, 264, 12654, 709], [248068, 198, 760, 1156, 6587, 264, 61446, 694]], "per_row_exact": [true, true], "execution": "serial request-isolated target and draft state"},
+  "chat": {"tool_definition_request_status": 200, "tool_choice": "auto", "enable_thinking": false, "finish_reason": "length", "visible_content": "", "visible_content_note": "Four generated tokens are opening thinking markup and are parsed out of visible content.", "low_reasoning_sse_status": 200, "low_reasoning_sse_events": 3, "low_reasoning_sse_done": true, "token_diagnostic_status": 200},
+  "cancellation": {"pre_cancel_checked_before_runner_mutation": true, "focused_test": "test_qwen4_exp_generator_rejects_cancelled_request_before_runner_mutation"},
+  "lifecycle": {"tracked_peak_bytes": 86938243152, "tracked_after_close_bytes": 0, "tracked_after_close_allocations": 0, "note": "Injected public LLM is closed by TestClient lifespan."},
+  "validation": {"real_command": "uv run python /tmp/qwen4exp_short_serving_gate.py", "unit_command": "uv run pytest -q tests/test_generation_qwen4_exp_gguf.py tests/test_qwen4_exp_mtp_provider.py -x", "unit_result": "10 passed"},
+  "claims": {"short_context_basic_serving": true, "native_parallel_c2": false, "performance_claim": false}
+}

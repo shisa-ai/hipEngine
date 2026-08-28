@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
@@ -136,6 +137,7 @@ class Qwen4ExpGGUFTextGenerator:
             raise ValueError("Qwen4Exp F5 supports greedy generation only")
         outputs: list[GenerationOutput] = []
         for prompt in request.prompts:
+            raise_if_generation_deadline_expired(request)
             token_ids = (
                 [int(token) for token in prompt]
                 if not isinstance(prompt, str)
@@ -144,9 +146,11 @@ class Qwen4ExpGGUFTextGenerator:
             if len(token_ids) + request.max_tokens > self.runner.max_sequence_length:
                 raise ValueError("Qwen4Exp request exceeds dense runner capacity")
             result = self.runner.prefill(token_ids)
+            raise_if_generation_deadline_expired(request)
             generated: list[int] = []
             reason = "length"
             for index in range(request.max_tokens):
+                raise_if_generation_deadline_expired(request)
                 token = int(result.token_id)
                 generated.append(token)
                 if not request.ignore_eos and token == self.tokenizer.eos_token_id:
@@ -218,6 +222,7 @@ class Qwen4ExpGGUFTextGenerator:
         request: GenerationRequest,
     ) -> GenerationOutput:
         self._require_open()
+        raise_if_generation_deadline_expired(request)
         if self._vision_runner is None:
             raise NotImplementedError('Qwen4Exp vision model is not attached')
         if len(request.prompts) != 1:
@@ -236,12 +241,14 @@ class Qwen4ExpGGUFTextGenerator:
         if len(token_ids) + request.max_tokens > min(1024, self.runner.max_sequence_length):
             raise ValueError('Qwen4Exp multimodal request exceeds 1K basic scope')
         image_embedding = self._vision_runner.encode(image)[0]
+        raise_if_generation_deadline_expired(request)
         result = self.runner.prefill(
             token_ids, embedding_overrides={image_positions[0]: image_embedding}
         )
         generated = []
         reason = 'length'
         for index in range(request.max_tokens):
+            raise_if_generation_deadline_expired(request)
             token = int(result.token_id); generated.append(token)
             if not request.ignore_eos and token == self.tokenizer.eos_token_id:
                 reason = 'eos'; break

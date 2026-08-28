@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next Implementation Campaign
 
-Status: **active — implementation-first at 512/1K; text AR works, but basic MTP, public serving, and vision must be completed before any further long-context qualification**
+Status: **active — the bounded 512/1K basic product gate is complete; optimize short-context prefill/MTP verification before any new long-context qualification**
 
 This campaign brings the open-weight `Qwen/Qwen3.8-Flash-Next` checkpoint to
 hipEngine as a torch-free, registry-composed, text-generation path first, then
@@ -644,6 +644,24 @@ implementation at 512/1K:
 
 Long-context work resumes only after all five items work and the throughput
 ladder above permits the requested context.
+
+**Basic-gate status (2026-08-28): complete in the bounded declared scope.**
+
+- Reference audit: final #27742 and pinned EngramHalo MTP deltas are mapped.
+- Text/public serving: AR, blocking/SSE completion, chat reasoning/tool rendering,
+  cancellation-before-mutation, reset/close, and exact tokenizer controls pass.
+- MTP: Q8 sidecar loads; natural p512/p1008 IDs equal AR; draft acceptance is
+  82.26%/93.33%; blocking/SSE pass. Serial verification is slower, so AR is
+  still default and MTP is not a performance promotion.
+- Vision: one exactly 32×32 RGB image passes the 27-layer encoder, independent
+  Transformers embedding parity, public generation, and text-only isolation.
+- c2: two varied p512 rows preserve exact independent AR output under isolated
+  sequential target/draft state. Native parallel c2 is not claimed.
+
+Evidence is linked under F8/F9 and in
+[`2026-08-28-gfx1151-qwen38-flash-next-short-serving-basics.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-short-serving-basics.json).
+The campaign now stays at 512/1K for optimization. Do not turn completion of
+this bounded gate into an automatic long-context run.
 
 ### F6 — Native QSA and 262K context ownership
 
