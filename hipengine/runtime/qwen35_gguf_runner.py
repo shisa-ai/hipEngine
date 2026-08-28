@@ -13944,8 +13944,24 @@ def _gguf_device_kv_copy_segments(
     if page_tokens <= 0:
         raise ValueError("GGUF device KV block size must be positive")
     allocation = getattr(session, "_device_kv_allocation", None)
-    if allocation is None or remaining == 0:
-        return () if remaining == 0 else ((start, start, remaining),)
+    if remaining == 0:
+        return ()
+    if allocation is None:
+        # Lightweight resident views share the owner's private batch-shaped KV
+        # planes. Their scratch pointers remain at the physical owner base, so
+        # packed gather/scatter must include the resident slot's row offset.
+        slot_index = int(getattr(session, "_resident_slot_index", 0) or 0)
+        resident_owner = getattr(session, "_resident_batch_owner", None)
+        scratch_owner = (
+            None
+            if resident_owner is None
+            else getattr(resident_owner, "_target_scratch_owner", None)
+        )
+        slot_stride = (
+            0 if scratch_owner is None else int(scratch_owner.max_positions)
+        )
+        physical_start = start + slot_index * slot_stride
+        return ((start, physical_start, remaining),)
     block_ids = tuple(int(block_id) for block_id in allocation.block_ids)
     chunk_start = int(allocation.chunk_start_block_id)
     segments: list[tuple[int, int, int]] = []
