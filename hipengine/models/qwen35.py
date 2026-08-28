@@ -54,6 +54,37 @@ _QWEN36_MOE_Q4KM_MTP_SERVING_EVIDENCE = (
         strict_fallback_key="gguf_target_ar",
         automatic_eligible=True,
     ),
+    SpeculativeMTPServingEvidence(
+        evidence_key="qwen36-moe-q4km-gfx1100-production-bf16-c2-k2-d24",
+        artifact_sha256=(
+            "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b"
+        ),
+        artifact_size_bytes=22_663_387_424,
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        weight_quant="gguf_q4_k_m",
+        execution_profile="production",
+        execution_profile_manifest_sha256=(
+            "2b64229e062c85d08244149191f515c226c6897ecd753d86849dad9fe7c92ca9"
+        ),
+        kv_storage="bf16",
+        kv_layout="uniform",
+        realized_group_rows=2,
+        resident_capacity=2,
+        candidate_budget=2,
+        sampling_modes=("greedy_fast",),
+        max_sequence_length=1024,
+        min_context_tokens=4,
+        max_context_tokens=95,
+        min_output_horizon_tokens=24,
+        max_output_horizon_tokens=24,
+        reason="qualified_automatic_production_moe_c2_k2_d24",
+        evidence_artifacts=(
+            "benchmarks/results/2026-08-28-w7900-35b-moe-mtp2-c2-automatic-promotion.json",
+        ),
+        strict_fallback_key="gguf_target_ar",
+        automatic_eligible=True,
+    ),
 )
 
 

@@ -613,7 +613,11 @@ def resolve_speculative_mtp_serving_plan(
 
     _matched, _order, row, reason, static_eligibility = max(
         rejected,
-        key=lambda item: (item[0], item[1]),
+        key=lambda item: (
+            item[0],
+            item[4] is not None,
+            item[1],
+        ),
     )
     return _reject(
         key,
