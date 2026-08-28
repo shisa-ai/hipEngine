@@ -286,14 +286,20 @@ fallback count is not a success metric.
   paths. Exact request-local keys intentionally replace llama.cpp's shared
   modulo pool to avoid collisions, cross-tenant history leakage, and
   benchmark-order/batch-composition contamination.
-- Removal/promotion trigger: retain the flag only through the full canonical +
-  heldout and independent repetitive-code economics gate. If hybrid is not
-  faster than retained MTP without any category/heldout/correctness/lifecycle
-  regression, remove runtime composition and move the cache to research/tests.
-  If it wins, replace environment parsing with a typed cold policy, promote only
-  the measured model/backend/profile/C/K/context scope, remove positive tuning
-  overrides after one release window, and permanently keep ordinary MTP plus AR
-  as strict miss/failure fallbacks.
+- Current verdict: the full canonical production D24 suite is exact with 142
+  lookups / zero hits and 0.99915x MTP-only throughput. The independent strict
+  C2/K3 D80 repetition-heavy code suite is exact and improves MTP-only
+  **20.434 -> 20.930 tok/s (+2.425%)**, with train/heldout both +2.42%, but
+  remains 0.9875x true AR. Strict D96 also fails one SQL terminal-suffix cell,
+  and the prior production D120 numerical tail remains rejected. Keep explicit
+  and default-off; there is no automatic product cell.
+- Removal/promotion trigger: replace environment parsing with a typed cold
+  policy only after a K>3 frontier (or another materially different lowering)
+  passes canonical + code train/heldout, long-horizon strict and production
+  numerical/task/lifecycle gates, and beats true AR rather than MTP alone.
+  Otherwise remove runtime composition at the end of the next dedicated wider-
+  frontier campaign and keep the cache/harness as research references. Ordinary
+  MTP plus AR remain permanent miss/failure fallbacks.
 
 ## Execution-profile migration seam
 

@@ -334,8 +334,22 @@ capacity/dynamic-lifecycle blockers.
   content-agnostic simulation rejects a provider: best short ngram has 46.9%
   coverage / 28.4% accept / 1.37 visible tokens per cycle; deep n12 reaches
   1.45 visible/cycle but only 12.2% accept and 630 verifier rows. MTP B3 is
-  3.43 visible/cycle / 79.29% accept. Heldout coverage is weaker; no code
-  candidate.
+  3.43 visible/cycle / 79.29% accept. Heldout coverage is weaker; that
+  short-suffix algorithm had no code candidate.
+
+  **Post-campaign correction (2026-08-28):** llama.cpp's current 24-token
+  `ngram-mod` mechanism is materially different. hipEngine now has a
+  request-local exact, no-cyclic-replay first-refusal composer ahead of MTP.
+  Canonical production D24 makes 142 lookups / zero hits and is neutral versus
+  MTP-only (17.116 vs 17.130 tok/s). On the independent 2-train/2-heldout
+  repetition-heavy code suite at strict C2/K3 D80, all four rows are exact and
+  hybrid improves MTP-only **20.434 -> 20.930 tok/s (+2.425%)**, with every
+  prompt +1.63%..+3.21%, 40 row-owned hit cycles, and 116/120 candidates
+  accepted. It still trails true AR by 1.25%; D96 also exposes a pre-existing
+  SQL terminal mismatch, and the production D120 numerical gate remains
+  rejected. The implementation is therefore retained explicit/default-off,
+  not promoted. Evidence:
+  [`ngram+MTP closeout`](../benchmarks/results/2026-08-28-gfx1151-qwen38-ngram-mtp-composition-closeout.json).
 - [x] **T4.2 KV-quant (q8_0 / turbo4-class):** closed parked — our INT8 KV
   lane failed quality gates; external llama.cpp claims do not transfer.
 - [x] **T4.3 DFlash2:** closed parked — measured 8.85 tok/s = 0.66x AR on this
