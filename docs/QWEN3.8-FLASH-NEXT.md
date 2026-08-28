@@ -728,13 +728,12 @@ The PR #27742 HIP/Vulkan rows above are now the reproduced same-host references.
 #### Active Q4 parity order (review reset, 2026-08-28)
 
 The completed baseline and decode trace supersede the earlier feature/checklist
-priority. Post exact Q8 packing and Q4 dual fusion, controlled decode is about
-**6.22 tok/s / 161 ms/token** versus llama.cpp HIP/Vulkan `15.85/18.72 tok/s`.
-The current trace contains about **1,919 launches/token** and approximately
-`105 ms/token` of kernel work (`Q4 selected 41.0`, `Q8 dense 28.6`, `Q5_1 down
-22.1`, GDN `3.2`, other `10.5 ms`); the remaining roughly `55 ms/token` host/
-submission gap is measured explicitly in every next packet rather than left as
-a rank-5 inference. Current p508 is `10.2 s` wall / `8.84 s` kernels / 29,341
+priority. Before graph replay, exact Q8/Q4 packing/fusion brought controlled decode to
+about **6.42 tok/s** versus llama.cpp HIP/Vulkan `15.85/18.72 tok/s`; eager
+trace ownership remained about `1,861 launches/token`. Request-owned stateless
+MoE graphs now reach **11.515 tok/s** counterbalanced (1.769x eager), with all
+48 captures and 192 full-logit rows exact. The remaining same-host gap is
+1.38x to HIP / 1.63x to Vulkan. Current p508 is `10.2 s` wall / `8.84 s` kernels / 29,341
 launches versus same-host llama.cpp Vulkan/HIP `316/275 tok/s`.
 
 Binding implementation order:
@@ -748,11 +747,14 @@ Binding implementation order:
    the paired wall is neutral (`58.678→58.669 tok/s`) but p512 trace launches
    fall another `11,053→4,933`. Only after grouped decode ownership should
    asynchronous PLE next-chunk overlap be revisited.
-2. **Make selected MoE launch-wide.** Port llama.cpp/Vulkan `mul_mat_id` dataflow:
-   one layer/quant-family launch iterates the selected expert set. This is ahead
-   of further chain fusion because it attacks under-occupancy, kernel wall,
-   launch count, and Python/ctypes overhead together while preserving each
-   output element's reduction order.
+2. **Contract MoE submission and then its grids.** Audit corrected an important
+   premise: selected Q4/Q5 already launch once per layer and cover all 10 routed
+   rows; workgroups, not Python calls, own individual output elements. The
+   existing self-validating `MoeGraphCache` now collapses each exact stateless
+   per-layer chain to one graph launch and improves eager `6.511→11.515 tok/s`
+   (1.769x), with stateful GDN/QSA excluded. Next port Vulkan/llama.cpp
+   `mul_mat_id` *grid/dataflow* inside those graphs: wider output/expert tiles,
+   achieved-bandwidth accounting, and residual-Q8_1x2 selected MMQ.
 3. **Retain exact Q4/Q5 micro-wins only atop the grouped shape.** Screen raw-Q4
    selected pack8 and dual/SiLU owners; for Q5_1 use pack2/pack4 only when the
    exact 256-logical-partial tree and BF16 boundary remain intact. The naïve raw
@@ -763,9 +765,12 @@ Binding implementation order:
    budget, but use Vulkan's faster cooperative path as the primary existence
    proof. Report achieved bytes/s before assuming a projection is bandwidth-
    bound.
-5. **Contract submissions early.** Apply the existing stateless `MoeGraphCache`
-   around fixed MoE layers after grouped launch ownership works. Keep GDN/QSA
-   stateful transitions outside replay until exact state/cursor reuse is proven.
+5. **Measure submission honestly.** HIP-event instrumentation shows median
+   unprofiled step wall/stream/post-stream-host `193.91/193.74/0.18 ms`; logits
+   D2H/NumPy is not the old inferred 55 ms gap. Inter-launch stalls live inside
+   the stream span, while `rocprofv3` inflates them further. Continue graph/
+   grouped submission work, but never report profiler wall-minus-kernel as
+   unprofiled Python overhead.
 6. **Maintain strict and production targets.** T0 packing/fusion stays exact.
    T1/T2 cooperative math needs full teacher-forced category+heldout rows,
    three deterministic repeats, applicable state/task/BF16 gates, a manifest,
@@ -859,10 +864,13 @@ model decode median `5.698→6.305 tok/s` (+10.66%). Registered exact Q4 selecte
 dual gate/up then halves Q4 launches `94→47/token` and improves its paired
 median `6.065→6.223 tok/s` (+2.61%). Fusing the exact BF16-boundary SiLU/product
 into that owner removes another 47 launches/token and improves the next paired
-median `6.400→6.420 tok/s` (+0.31%). All retain identical 32-token IDs and add
-no layout. A Q5_1 wave64 decode candidate reaches
+median `6.400→6.420 tok/s` (+0.31%). Exact request-owned per-layer MoE graph
+replay then gives the structural jump: `6.511→11.515 tok/s` (1.769x), 192/192
+full-logit rows exact, 48 captures/zero rejects, c2 exact, and teardown zero.
+All add no tracked resident bytes. A Q5_1 wave64 decode candidate reaches
 `6.10-6.22 tok/s` but is rejected at production mean/p95 KL
 `0.002565/0.007202`. Exact evidence and rejected sub-experiments are in
+[`2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json),
 [`2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json),
 [`2026-08-27-gfx1151-qwen38-flash-next-ple-staging-fix.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-ple-staging-fix.json),
 [`2026-08-27-gfx1151-qwen38-flash-next-fast-allrows-rejected.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-fast-allrows-rejected.json),

@@ -27,7 +27,10 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.core.tensor import Tensor
-from hipengine.kernels.backends import load_backend_kernel_package
+from hipengine.kernels.backends import (
+    backend_package_capability,
+    load_backend_kernel_package,
+)
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_full_attn_decode_context_bf16_batch_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
@@ -142,6 +145,7 @@ from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen4_exp_materialize import Qwen4ExpResidentWeights
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
+from hipengine.runtime.moe_graph import MoeGraphCache
 
 
 def stage_qwen4_exp_ple_rows(
@@ -2443,6 +2447,8 @@ def run_qwen4_exp_moe(
     top_k: int,
     stream: int = 0,
     runtime: HipRuntime | None = None,
+    graph_cache: MoeGraphCache | None = None,
+    graph_key: object | None = None,
 ) -> Qwen4ExpMoEDeviceResult:
     """Run normalized softmax top-k routed experts plus gated shared expert."""
 
@@ -2453,6 +2459,34 @@ def run_qwen4_exp_moe(
     active_runtime = runtime or scratch.runtime
     if active_runtime is not scratch.runtime:
         raise ValueError("runtime must match the MoE scratch owner")
+    if graph_cache is not None:
+        if rows != 1 or graph_key is None:
+            raise ValueError("Qwen4Exp MoE graph requires c1 and an explicit key")
+
+        def eager(graph_stream: int) -> None:
+            run_qwen4_exp_moe(
+                mixed_ptr,
+                weights,
+                scratch=scratch,
+                rows=rows,
+                hidden=hidden,
+                ffn=ffn,
+                experts=experts,
+                top_k=top_k,
+                stream=graph_stream,
+                runtime=active_runtime,
+            )
+
+        graph_cache.run(
+            graph_key,
+            eager=eager,
+            out_ptr=scratch.output.ptr,
+            out_nbytes=rows * hidden * DType.BF16.itemsize,
+            stream=stream,
+        )
+        return Qwen4ExpMoEDeviceResult(
+            scratch.output, scratch.selected, scratch.routing
+        )
     required = {
         "router",
         "expert_gate",
@@ -3073,6 +3107,8 @@ def run_qwen4_exp_dense_qsa_layer(
     rope_positions_ptr: int | None = None,
     stream: int = 0,
     runtime: HipRuntime | None = None,
+    moe_graph_cache: MoeGraphCache | None = None,
+    moe_graph_key: object | None = None,
 ) -> DeviceBuffer:
     """Execute one complete dense-equivalent Qwen4Exp QSA+MoE layer."""
 
@@ -3123,6 +3159,7 @@ def run_qwen4_exp_dense_qsa_layer(
         ffn_read.mixed.ptr, weights.moe, scratch=scratch.moe,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
+        graph_cache=moe_graph_cache, graph_key=moe_graph_key,
     )
     bf16_to_f32(
         moe.output.ptr, scratch.moe_f32.ptr, rows * hidden,
@@ -3285,6 +3322,8 @@ def run_qwen4_exp_gdn_layer(
     top_k: int,
     stream: int = 0,
     runtime: HipRuntime | None = None,
+    moe_graph_cache: MoeGraphCache | None = None,
+    moe_graph_key: object | None = None,
 ) -> DeviceBuffer:
     """Execute one complete strict Qwen4Exp GDN+MoE physical layer."""
 
@@ -3338,6 +3377,7 @@ def run_qwen4_exp_gdn_layer(
         scratch=scratch.moe,
         rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
         stream=stream, runtime=active_runtime,
+        graph_cache=moe_graph_cache, graph_key=moe_graph_key,
     )
     bf16_to_f32(
         moe_output.output.ptr,
@@ -3774,10 +3814,22 @@ class Qwen4ExpGGUFResidentModelRunner:
         self._buffers: list[DeviceBuffer] = []
         self._prefill_buffers: list[DeviceBuffer] = []
         self._ple_hash_states: dict[int, PLEHashState] = {}
+        self.moe_graph_cache: MoeGraphCache | None = None
         self.position = 0
         self.closed = False
         try:
             self._allocate()
+            graph_override = os.environ.get("HIPENGINE_QWEN4_EXP_MOE_GRAPH")
+            graph_enabled = bool(
+                backend_package_capability(
+                    self.backend, "QWEN4_EXP_MOE_GRAPH", False
+                )
+                if graph_override is None
+                else graph_override not in {"", "0", "false", "False"}
+            )
+            self.moe_graph_cache = MoeGraphCache(
+                self.runtime, enabled=graph_enabled
+            )
         except Exception:
             self.close()
             raise
@@ -4113,6 +4165,8 @@ class Qwen4ExpGGUFResidentModelRunner:
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
+                    moe_graph_cache=self.moe_graph_cache,
+                    moe_graph_key=("gdn", layer),
                 ).ptr
             else:
                 binding = self.qsa_bindings[layer]
@@ -4138,6 +4192,8 @@ class Qwen4ExpGGUFResidentModelRunner:
                     experts=cfg.expert_count,
                     top_k=cfg.expert_used_count,
                     runtime=self.runtime,
+                    moe_graph_cache=self.moe_graph_cache,
+                    moe_graph_key=("qsa", layer),
                 ).ptr
         self.runtime.memcpy(
             self.last_target_hidden.ptr,
@@ -4578,6 +4634,9 @@ class Qwen4ExpGGUFResidentModelRunner:
     def close(self) -> None:
         if self.closed:
             return
+        if self.moe_graph_cache is not None:
+            self.moe_graph_cache.close()
+            self.moe_graph_cache = None
         for buffer in reversed(self._prefill_buffers):
             free(buffer, runtime=self.runtime)
         self._prefill_buffers = []

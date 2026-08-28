@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8-Flash-Next exact MoE graph decode] Request-owned per-layer stateless graph replay improves counterbalanced eager **6.511→11.515 tok/s (1.769x, -43.46%)**; 48 captures/zero rejects, 192/192 full-logit rows and IDs exact, physical c2 exact, teardown zero, and stateful GDN/QSA remain eager. Remaining gap is 1.38x to same-host llama.cpp HIP. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8-Flash-Next exact Q4 dual+SiLU decode] Folding the standalone BF16-boundary SiLU/product into selected Q4 dual gate/up removes **47 launches/token** and improves counterbalanced decode **6.400→6.420 tok/s (+0.31%)** with primitive BF16-bit identity, exact 32-token IDs, zero new residency, and dual/singleton fallbacks. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-q4-dual-silu-decode.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8-Flash-Next exact QSA index scatter] Block-table-aware chunk scatter replaces p508's **6,096 per-row D2D copies with 24 kernels** and cuts p512 trace launches **11,053→4,933 (-55.37%)** with bit-exact logits/paged placement and zero new residency. Paired wall is neutral **58.678→58.669 tok/s**; retained as grouped/graph submission prerequisite. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-qsa-index-scatter.json`.

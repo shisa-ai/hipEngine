@@ -196,25 +196,26 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle(
                 scratch.shared_down, (rows, hidden), np.float32, runtime
             ),
         }
-        # The promoted exact grouped-Q4 owner writes the separate expert
-        # gate/up planes. ``group_gate_up`` belongs only to the WMMA route and
-        # is intentionally untouched here.
-        finite_boundaries["expert_gate"] = bf16_to_float32(
-            _download(
-                scratch.expert_gate,
-                (rows * top_k, ffn),
-                np.uint16,
-                runtime,
+        # The c1 operation-complete Q4 owner writes only the authoritative
+        # BF16 post-SiLU intermediate. Multirow strict/grouped fallbacks retain
+        # separate gate/up planes and keep those surfaces testable.
+        if rows > 1:
+            finite_boundaries["expert_gate"] = bf16_to_float32(
+                _download(
+                    scratch.expert_gate,
+                    (rows * top_k, ffn),
+                    np.uint16,
+                    runtime,
+                )
             )
-        )
-        finite_boundaries["expert_up"] = bf16_to_float32(
-            _download(
-                scratch.expert_up,
-                (rows * top_k, ffn),
-                np.uint16,
-                runtime,
+            finite_boundaries["expert_up"] = bf16_to_float32(
+                _download(
+                    scratch.expert_up,
+                    (rows * top_k, ffn),
+                    np.uint16,
+                    runtime,
+                )
             )
-        )
     finally:
         if serial_scratch is not None:
             serial_scratch.close()
