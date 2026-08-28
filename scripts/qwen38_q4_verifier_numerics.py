@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Evaluate the scoped Qwen3.8 C2/K3 production Q4 verifier rowtiles.
+"""Evaluate scoped Qwen3.8 C2/C3 K3 production Q4 verifier rowtiles.
 
 The strict side uses FP32 recurrent state and the strict small-M/shared-B Q4
-WMMA target owners. The candidate uses FP16 recurrent state and the profile-
-selected Q4 rowtiles only inside an R8 packed target verifier. Both sides replay
+WMMA target owners. The candidate uses FP16 recurrent state and profile-selected
+Q4 rowtiles inside an R8 or R12 packed target verifier. Both sides replay
 identical strict-teacher token blocks and emit full-vocabulary logits.
 """
 
@@ -50,12 +50,11 @@ from scripts.gguf_gdn_semantic_gate import _load_suites
 from scripts.gguf_mtp_bench import build_chat_prompt
 from scripts.gguf_mtp_category_bench import prompt_sha256
 
-KIND = "qwen38_c2k3_production_q4_verifier_numerics"
+KIND = "qwen38_production_q4_verifier_numerics"
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 DEFAULT_PROMPTS = ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
 VERIFY_CAPTURE_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
 ROWS_PER_JOB = 4
-PHYSICAL_ROWS = 8
 
 
 class GateError(RuntimeError):
@@ -81,7 +80,7 @@ def _make_sessions(
     fp16_state: bool,
     q4_rowtile: bool,
     max_sequence_length: int,
-) -> tuple[ExitStack, tuple[Any, Any]]:
+) -> tuple[ExitStack, tuple[Any, ...]]:
     from hipengine.runtime.prefill import PrefillConfig
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
@@ -110,21 +109,25 @@ def _make_sessions(
                 prefill_config=PrefillConfig(attn_aotriton_min_tokens=512),
             )
         )
-        peer = stack.enter_context(
-            Qwen35GGUFResidentSession(
-                args.model,
-                backend=str(args.backend),
-                runtime=owner.runtime,
-                shared_runner=owner.runner,
-                compiler_version=compiler_version,
-                require_cached_build=bool(args.require_cached_build),
-                max_sequence_length=max_sequence_length,
-                use_wmma_prefill=True,
-                use_gemv_decode=True,
-                prefill_config=PrefillConfig(attn_aotriton_min_tokens=512),
+        sessions_list = [owner]
+        for _ in range(1, int(args.concurrency)):
+            sessions_list.append(
+                stack.enter_context(
+                    Qwen35GGUFResidentSession(
+                        args.model,
+                        backend=str(args.backend),
+                        runtime=owner.runtime,
+                        shared_runner=owner.runner,
+                        compiler_version=compiler_version,
+                        require_cached_build=bool(args.require_cached_build),
+                        max_sequence_length=max_sequence_length,
+                        use_wmma_prefill=True,
+                        use_gemv_decode=True,
+                        prefill_config=PrefillConfig(attn_aotriton_min_tokens=512),
+                    )
+                )
             )
-        )
-    sessions = (owner, peer)
+    sessions = tuple(sessions_list)
     if any(
         session.runner is None
         or bool(session.runner.fp16_recurrent_state) is not bool(fp16_state)
@@ -159,7 +162,7 @@ def _strict_teacher_tokens(
     sessions: Sequence[Any],
     token_rows: Sequence[Sequence[int]],
     decode_steps: int,
-) -> tuple[tuple[int, ...], tuple[int, ...]]:
+) -> tuple[tuple[int, ...], ...]:
     results = _prefill(sessions, token_rows)
     sequences = [[int(result.token_id)] for result in results]
     for _ in range(int(decode_steps)):
@@ -189,14 +192,14 @@ def _read_packed_logits(owner: Any, rows: int) -> np.ndarray:
     return result
 
 
-def _capture_verifier_pair(
+def _capture_verifier_group(
     sessions: Sequence[Any],
     token_rows: Sequence[Sequence[int]],
     teacher_tokens: Sequence[Sequence[int]],
     decode_steps: int,
-) -> tuple[tuple[dict[str, object], ...], tuple[dict[str, object], ...]]:
+) -> tuple[tuple[dict[str, object], ...], ...]:
     _prefill(sessions, token_rows)
-    trajectories: list[list[dict[str, object]]] = [[], []]
+    trajectories: list[list[dict[str, object]]] = [[] for _ in sessions]
     for step in range(0, int(decode_steps), ROWS_PER_JOB):
         jobs = [
             {
@@ -210,12 +213,13 @@ def _capture_verifier_pair(
                 "bulk_attention_mode": "bulk",
                 "use_wmma_prefill": True,
             }
-            for index in range(2)
+            for index in range(len(sessions))
         ]
         positions_before = [int(session.position) for session in sessions]
         results = sessions[0].verify_target_blocks_batch(jobs)
-        logits = _read_packed_logits(sessions[0], PHYSICAL_ROWS)
-        for request_index in range(2):
+        physical_rows = len(sessions) * ROWS_PER_JOB
+        logits = _read_packed_logits(sessions[0], physical_rows)
+        for request_index in range(len(sessions)):
             result = results[request_index]
             expected_inputs = tuple(jobs[request_index]["input_token_ids"])
             if (
@@ -235,7 +239,27 @@ def _capture_verifier_pair(
                         ),
                     }
                 )
-    return tuple(tuple(rows) for rows in trajectories)  # type: ignore[return-value]
+    return tuple(tuple(rows) for rows in trajectories)
+
+
+def _prompt_groups(
+    prompt_rows: Sequence[Mapping[str, object]],
+    concurrency: int,
+) -> tuple[tuple[tuple[Mapping[str, object], ...], int], ...]:
+    """Return fixed-width groups, padding only the final physical batch."""
+
+    width = int(concurrency)
+    if width <= 0:
+        raise ValueError("concurrency must be positive")
+    groups: list[tuple[tuple[Mapping[str, object], ...], int]] = []
+    for start in range(0, len(prompt_rows), width):
+        selected = list(prompt_rows[start : start + width])
+        valid = len(selected)
+        if not selected:
+            continue
+        selected.extend(selected[-1] for _ in range(width - valid))
+        groups.append((tuple(selected), valid))
+    return tuple(groups)
 
 
 def _trajectory_sha256(rows: Sequence[Mapping[str, object]]) -> str:
@@ -259,8 +283,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
     prompt_rows = _load_suites((args.prompts,))
     if args.limit is not None:
         prompt_rows = prompt_rows[: max(0, int(args.limit))]
-    if not prompt_rows or len(prompt_rows) % 2:
-        raise GateError("selected prompt count must be positive and even")
+    if not prompt_rows:
+        raise GateError("selected prompt count must be positive")
+    prompt_groups = _prompt_groups(prompt_rows, int(args.concurrency))
 
     from hipengine.loading.gguf import scan_gguf
     from hipengine.tokenization.gguf import Qwen35GGUFTokenizer
@@ -290,23 +315,22 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
         max_sequence_length=max_sequence_length,
     )
     try:
-        for pair_start in range(0, len(prompt_rows), 2):
-            pair_rows = prompt_rows[pair_start : pair_start + 2]
+        for group_index, (group_rows, valid_rows) in enumerate(prompt_groups):
             token_rows = tuple(
-                prompt_tokens[str(row["id"])] for row in pair_rows
+                prompt_tokens[str(row["id"])] for row in group_rows
             )
-            teacher_pair = _strict_teacher_tokens(
+            teacher_group = _strict_teacher_tokens(
                 sessions, token_rows, int(args.decode_steps)
             )
-            capture = _capture_verifier_pair(
-                sessions, token_rows, teacher_pair, int(args.decode_steps)
+            capture = _capture_verifier_group(
+                sessions, token_rows, teacher_group, int(args.decode_steps)
             )
-            for index, row in enumerate(pair_rows):
+            for index, row in enumerate(group_rows[:valid_rows]):
                 request_id = str(row["id"])
                 strict[request_id] = capture[index]
-                teachers[request_id] = teacher_pair[index]
+                teachers[request_id] = teacher_group[index]
             print(
-                f"strict {pair_start // 2 + 1}/{len(prompt_rows) // 2}",
+                f"strict {group_index + 1}/{len(prompt_groups)}",
                 flush=True,
             )
     finally:
@@ -323,21 +347,20 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
     )
     try:
         for repeat in range(int(args.repeat_runs)):
-            for pair_start in range(0, len(prompt_rows), 2):
-                pair_rows = prompt_rows[pair_start : pair_start + 2]
+            for group_rows, valid_rows in prompt_groups:
                 token_rows = tuple(
-                    prompt_tokens[str(row["id"])] for row in pair_rows
+                    prompt_tokens[str(row["id"])] for row in group_rows
                 )
-                teacher_pair = tuple(
-                    teachers[str(row["id"])] for row in pair_rows
+                teacher_group = tuple(
+                    teachers[str(row["id"])] for row in group_rows
                 )
-                capture = _capture_verifier_pair(
+                capture = _capture_verifier_group(
                     sessions,
                     token_rows,
-                    teacher_pair,
+                    teacher_group,
                     int(args.decode_steps),
                 )
-                for index, row in enumerate(pair_rows):
+                for index, row in enumerate(group_rows[:valid_rows]):
                     candidate[str(row["id"])].append(capture[index])
             print(
                 f"candidate {repeat + 1}/{int(args.repeat_runs)}",
@@ -346,15 +369,19 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
     finally:
         stack.close()
 
+    shape_label = (
+        f"c{int(args.concurrency)}_k3_"
+        f"r{int(args.concurrency) * ROWS_PER_JOB}"
+    )
     captures = tuple(
         BatchRouteCapture(
-            scenario_id="c2_k3_r8",
+            scenario_id=shape_label,
             request_id=str(row["id"]),
             category=str(row["category"]),
             strict=strict[str(row["id"])],
             candidate_runs=tuple(candidate[str(row["id"])]),
-            shapes=("c2_k3_r8",) * int(args.decode_steps),
-            transitions=("prefill_to_c2_k3_r8",)
+            shapes=(shape_label,) * int(args.decode_steps),
+            transitions=(f"prefill_to_{shape_label}",)
             + ("steady",) * (int(args.decode_steps) - 1),
             teacher_steps=tuple(range(int(args.decode_steps))),
         )
@@ -386,7 +413,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
             },
         },
         build_profile="qwen38_q4_verifier_numerics",
-        timing_protocol="none_full_logits_teacher_forced_c2_k3_r8_v1",
+        timing_protocol=f"none_full_logits_teacher_forced_{shape_label}_v1",
         warmups=0,
         repetitions=int(args.repeat_runs),
         profiler={"enabled": False, "kind": None, "command": None},
@@ -420,12 +447,20 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
         "candidate": {
             "arithmetic_class": "T1+T2",
             "strict": "FP32 state + strict small-M/shared-B Q4 WMMA",
-            "production": "FP16 state + scoped R8 Q4 singleton/pair rowtiles",
+            "production": (
+                "FP16 state + scoped R8 Q4 rowtiles"
+                if int(args.concurrency) == 2
+                else "FP16 state + scoped R12 -> R8+R4 Q4/Q5/Q6 rowtiles"
+            ),
             "strict_fallbacks": [
                 "linear/gguf_q4_k_t16_v1/t16_wmma_prefill_smallm_bf16_bf16_out",
                 "linear_pair_silu/gguf_q4_k_t16_v1/dense_dual_wmma_prefill_bf16_bf16_out",
             ],
-            "excluded": ["rows!=8", "narrow K5120/N1024", "peer backends"],
+            "excluded": [
+                "rows outside the selected R8/R12 cell",
+                "narrow K5120/N1024",
+                "peer backends",
+            ],
         },
         "protocol": {
             "model": str(args.model.resolve()),
@@ -434,14 +469,16 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
             "decode_steps": int(args.decode_steps),
             "teacher_rows": len(prompt_rows) * int(args.decode_steps),
             "repeat_runs": int(args.repeat_runs),
-            "physical_shape": "C2/K3 R8",
+            "concurrency": int(args.concurrency),
+            "physical_shape": shape_label.upper(),
             "teacher_source": "strict fixed-schedule trajectory",
         },
         "quality": quality,
         "control": {
             "request_positions_exact": True,
             "input_tokens_exact": True,
-            "same_width_pairing": True,
+            "same_width_grouping": True,
+            "final_group_padding": -len(prompt_rows) % int(args.concurrency),
         },
         "prompts": [
             {
@@ -479,6 +516,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", default="hip_gfx1151")
+    parser.add_argument("--concurrency", type=int, choices=(2, 3), default=2)
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--decode-steps", type=int, default=24)

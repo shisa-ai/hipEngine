@@ -194,6 +194,7 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT,
     GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS,
     GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES,
+    GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT,
     GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT,
     TARGET_ARCH,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out,
@@ -557,8 +558,15 @@ def test_gfx1151_backend_admits_dense_q6_qmicro_planar_exact_routes() -> None:
         )
 
 
-def test_gfx1151_target_verifier_admits_q5_q6_rowtiles_through_r8() -> None:
-    assert GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS == frozenset({8})
+def test_gfx1151_target_verifier_admits_scoped_rowtile_rows_and_shapes() -> None:
+    assert GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT == {
+        "gguf_q5_k_t16_v1": frozenset({12}),
+        "gguf_q6_k_t16_v1": frozenset({12}),
+        "gguf_q6_k_t16_qmicro_planar_v1": frozenset({12}),
+    }
+    assert GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS == frozenset(
+        {8, 12}
+    )
     assert GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES == frozenset(
         {
             (5_120, 6_144),

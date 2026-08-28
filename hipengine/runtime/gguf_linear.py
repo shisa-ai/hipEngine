@@ -142,6 +142,10 @@ _target_verifier_production_q4_rowtile_session_enabled: ContextVar[bool] = (
         default=False,
     )
 )
+_target_verifier_rowtile_chunk_child_enabled: ContextVar[bool] = ContextVar(
+    "gguf_target_verifier_rowtile_chunk_child_enabled",
+    default=False,
+)
 TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV = (
     "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE"
 )
@@ -2230,30 +2234,59 @@ def _native_rowtile_chunk_groups(
     in_features: int,
     out_features: int,
 ) -> list[tuple[int, int]] | None:
-    """General c=N decode chunking: rows 9..511 -> <=8-row rowtile8 groups.
+    """Chunk qualified decode/verifier rows 9..511 into rowtile8 groups.
 
-    In a native batch-decode session the single Q4/Q5 projections currently
-    fall to WMMA prefill for every concurrency above 8 (the Q4T16
-    ``rows > 1 -> t16_wmma_prefill`` rewrite in ``resolve_gguf_linear_dispatch``
-    and the ``_native_batch_decode_dispatch`` early return for rows > 8). This
-    returns ``_rowtile8_row_chunks`` groups (all groups 2..8 rows, tail-1 folded
-    into the prior group) so each group lands on the native rowtile owner, and
-    ``None`` otherwise. rows >= 512 stays on WMMA (bulk prefill).
-
-    The gate only fires for quants that would resolve to a ``t16_wmma_prefill``
-    leaf at these rows AND have a registered native rowtile owner; quants that
-    already keep a native per-row decode leaf at rows 9+ (e.g. Q5's direct
-    grid.y=rows kernel) are left on their measured path.
+    Native batch decode keeps its prior rule: only projections that would
+    otherwise resolve to WMMA are chunked. Packed target verification has a
+    narrower production-profile, shape-qualified rule: exact Q5/Q6 verifier
+    rowtiles and an explicitly admitted production-Q4 physical row may reuse
+    the same row-independent leaves. The original physical row count owns admission;
+    child R8/R4 chunks cannot independently broaden production scope.
     """
 
-    if not _native_batch_decode_session_enabled:
-        return None
     rows = int(rows)
     if not _ROWTILE_MAX_ROWS < rows < _NATIVE_ROWTILE_CHUNK_MAX_ROWS:
         return None
     resolved = resolve_gguf_linear_dispatch(weight, backend=backend, rows=rows)
-    if not resolved.key.variant.startswith("t16_wmma_prefill"):
+    native_scope = bool(_native_batch_decode_session_enabled)
+    if native_scope and not resolved.key.variant.startswith("t16_wmma_prefill"):
+        native_scope = False
+
+    verifier_rowtile_shapes = backend_package_capability(
+        backend,
+        "GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT",
+        {},
+    )
+    quant_shapes = (
+        verifier_rowtile_shapes.get(weight.spec.quant_key, ())
+        if isinstance(verifier_rowtile_shapes, Mapping)
+        else ()
+    )
+    verifier_chunk_rows = backend_package_capability(
+        backend,
+        "GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT",
+        {},
+    )
+    quant_chunk_rows = (
+        verifier_chunk_rows.get(weight.spec.quant_key, ())
+        if isinstance(verifier_chunk_rows, Mapping)
+        else ()
+    )
+    verifier_scope = bool(
+        _target_verifier_rowtile_session_enabled.get()
+        and _target_verifier_production_q4_rowtile_session_enabled.get()
+        and rows in quant_chunk_rows
+        and (int(in_features), int(out_features)) in quant_shapes
+    )
+    production_q4_scope = _target_verifier_production_q4_rowtile_scope_enabled(
+        resolved,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    )
+    if not (native_scope or verifier_scope or production_q4_scope):
         return None
+
     candidates = (
         "dense_rowtile_bf16_bf16_out",
         "dense_rowtile_col4_bf16_bf16_out",
@@ -2261,9 +2294,7 @@ def _native_rowtile_chunk_groups(
     )
     quant = weight.spec.quant_key
     if not any(
-        is_registered(
-            KernelKey(backend, "linear", quant, variant)
-        )
+        is_registered(KernelKey(backend, "linear", quant, variant))
         for variant in candidates
     ):
         return None
@@ -2363,23 +2394,27 @@ def launch_gguf_linear(
     )
     if native_rowtile_groups is not None:
         element_nbytes = DType.BF16.itemsize
-        for chunk_rows, row_base in native_rowtile_groups:
-            launch_gguf_linear(
-                weight,
-                x_ptr + row_base * in_features * element_nbytes,
-                out_ptr + row_base * out_features * element_nbytes,
-                chunk_rows,
-                in_features,
-                out_features,
-                activation_dtype=activation_dtype,
-                output_dtype=output_dtype,
-                backend=resolved_backend,
-                stream=stream,
-                libraries=libraries,
-                runtime=runtime,
-                use_wmma_prefill=use_wmma_prefill,
-                use_gemv_decode=use_gemv_decode,
-            )
+        token = _target_verifier_rowtile_chunk_child_enabled.set(True)
+        try:
+            for chunk_rows, row_base in native_rowtile_groups:
+                launch_gguf_linear(
+                    weight,
+                    x_ptr + row_base * in_features * element_nbytes,
+                    out_ptr + row_base * out_features * element_nbytes,
+                    chunk_rows,
+                    in_features,
+                    out_features,
+                    activation_dtype=activation_dtype,
+                    output_dtype=output_dtype,
+                    backend=resolved_backend,
+                    stream=stream,
+                    libraries=libraries,
+                    runtime=runtime,
+                    use_wmma_prefill=use_wmma_prefill,
+                    use_gemv_decode=use_gemv_decode,
+                )
+        finally:
+            _target_verifier_rowtile_chunk_child_enabled.reset(token)
         return
     f_gemv = _resolve_use_gemv_decode(use_gemv_decode)
     use_wmma = _resolve_use_wmma_prefill(use_wmma_prefill)
@@ -2709,7 +2744,11 @@ def _target_verifier_production_q4_rowtile_scope_enabled(
     in_features: int,
     out_features: int,
 ) -> bool:
-    if not _target_verifier_production_q4_rowtile_session_enabled.get():
+    if (
+        not _target_verifier_production_q4_rowtile_session_enabled.get()
+        or dispatch.abi != "t16"
+        or dispatch.key.quant != "gguf_q4_k_t16_v1"
+    ):
         return False
     admitted_rows = backend_package_capability(
         dispatch.key.backend,
@@ -2722,7 +2761,11 @@ def _target_verifier_production_q4_rowtile_scope_enabled(
         (),
     )
     try:
-        return int(rows) in admitted_rows and (
+        row_admitted = int(rows) in admitted_rows or bool(
+            _target_verifier_rowtile_chunk_child_enabled.get()
+            and 2 <= int(rows) <= _ROWTILE_MAX_ROWS
+        )
+        return row_admitted and (
             int(in_features),
             int(out_features),
         ) in shapes
@@ -4237,6 +4280,57 @@ def launch_gguf_linear_pair_silu(
             and dispatch_a.key.quant in _Q4_T16_DENSE_QUANTS
             else None
         )
+        production_q4_chunk_groups = (
+            _rowtile8_row_chunks(rows)
+            if rows > _ROWTILE_MAX_ROWS
+            and dense_pair_quant == "gguf_q4_k_t16_v1"
+            and _target_verifier_production_q4_rowtile_scope_enabled(
+                dispatch_a,
+                rows=rows,
+                in_features=in_features,
+                out_features=out_features,
+            )
+            and _target_verifier_production_q4_rowtile_scope_enabled(
+                dispatch_b,
+                rows=rows,
+                in_features=in_features,
+                out_features=out_features,
+            )
+            else None
+        )
+        if production_q4_chunk_groups is not None:
+            token = _target_verifier_rowtile_chunk_child_enabled.set(True)
+            try:
+                for chunk_rows, row_base in production_q4_chunk_groups:
+                    launched = launch_gguf_linear_pair_silu(
+                        weight_a,
+                        weight_b,
+                        int(x_ptr) + row_base * in_features * DType.BF16.itemsize,
+                        int(out_ptr)
+                        + row_base * out_features * DType.BF16.itemsize,
+                        chunk_rows,
+                        in_features,
+                        out_features,
+                        backend=resolved_backend,
+                        stream=stream,
+                        libraries=libraries,
+                        runtime=runtime,
+                        use_gemv_decode=use_gemv_decode,
+                        use_q4_t16_sidecar=use_q4_t16_sidecar,
+                        use_q4_t16_dual_interleaved=use_q4_t16_dual_interleaved,
+                        registered_decode_variant=registered_decode_variant,
+                        q8_1_workspace_ptr=q8_1_workspace_ptr,
+                        pair_workspace_ptr=pair_workspace_ptr,
+                        pair_workspace_nbytes=pair_workspace_nbytes,
+                    )
+                    if not launched:
+                        raise RuntimeError(
+                            "admitted production Q4 verifier chunk lost its "
+                            "rowtile owner"
+                        )
+            finally:
+                _target_verifier_rowtile_chunk_child_enabled.reset(token)
+            return True
         qmicro_q8x2_rowbatch = (
             _native_batch_decode_session_enabled
             and _resolve_use_gemv_decode(use_gemv_decode)
