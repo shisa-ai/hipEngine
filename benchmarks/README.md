@@ -294,9 +294,10 @@ ladder because current 4K throughput is below 50 tok/s. Historical natural
 16K/64K evidence remains retained but is not rerun. Natural retrieval above 4K,
 strict-above-4K, 262K inference, and broader lifecycle gates remain open, so
 the implementation-first 512/1K gate now includes explicit MTP, blocking/SSE,
-chat/tool/reasoning, c2 isolation, and one bounded 32×32 image path. MTP is
-slower than AR under serial verification and general multimodal/long-context
-scope remains open; no broader claim is made.
+chat/tool/reasoning, c2 isolation, and one bounded 32×32 image path. Q8 MTP is
+exact on all 10 category+heldout prompts with 84.28% acceptance but is
+**0.955x AR**, so AR remains default. General multimodal/long-context scope
+remains open; no broader claim is made.
 [`Bring-up artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json) ·
 [`Exact prefill promotion`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json) ·
 [`Heldout artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json) ·
@@ -312,7 +313,7 @@ scope remains open; no broader claim is made.
 [`Exact grouped Q4_K output4`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-out4.json) ·
 [`Exact grouped Q5_1 output8`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q5-1-out8.json) ·
 [`Exact Q8 coltile prefill`](results/2026-08-28-gfx1151-qwen38-flash-next-exact-q8-coltile-prefill.json) ·
-[`Basic MTP 512`](results/2026-08-28-gfx1151-qwen38-flash-next-mtp-natural-512.json) ·
+[`Basic MTP full suite`](results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json) ·
 [`Basic vision`](results/2026-08-28-gfx1151-qwen38-flash-next-basic-vision.json) ·
 [`Natural QSA 16K`](results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-16k.json) ·
 [`Natural QSA 64K`](results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-64k.json) ·
