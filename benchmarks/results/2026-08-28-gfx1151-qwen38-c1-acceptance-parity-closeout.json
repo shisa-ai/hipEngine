@@ -1,0 +1,739 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_c1_acceptance_parity_closeout",
+  "created_at": "2026-08-28T08:02:39Z",
+  "status": "diagnostic_closed_no_acceptance_defect",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "Close the alleged 11.59-point C1 draft-acceptance deficit. It came from comparing hipEngine raw-rendered natural25 prompts with llama.cpp chat-template max_tokens=24 prompts that had exactly 43 extra prompt tokens per case and a different first generated root. With identical rendered prompt bytes and 25 visible tokens, hipEngine accepts 165/210 (78.571%) and llama.cpp 166/208 (79.808%), a non-actionable -1.236-point difference; all ten output streams are token-exact.",
+  "hardware": {
+    "host_name": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "quant": "Q4_K_M",
+    "hipengine_kv": "BF16",
+    "llamacpp_kv": "F16"
+  },
+  "software": {
+    "hipengine_commit": "072f54389ef1cb5d19fcc08de7d64f0c5add5260",
+    "llamacpp_commit": "9d57ce456c94d241dde672b2db9cf18879766568",
+    "llamacpp_build": 10438,
+    "llamacpp_git_dirty": false
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "visible_output_tokens_per_prompt": 25,
+    "timed_transitions_per_prompt": 24,
+    "candidate_budget": 3,
+    "sampling": "raw greedy, temperature 0, top_k 1, top_p 1, min_p 0, cache off",
+    "prompt_render": "literal Qwen marker string from scripts/gguf_mtp_c1c8_server_bench.py::_render_messages sent to hipEngine /v1/completions and llama.cpp /completion",
+    "runs": 1,
+    "claim_scope": "diagnostic acceptance/proposal parity only; no cross-engine speed claim"
+  },
+  "prior_comparison_requalification": {
+    "artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-llamacpp-1to1.json",
+    "published_values": {
+      "hipengine_acceptance": 0.7857142857142857,
+      "llamacpp_acceptance": 0.9016,
+      "delta_points": -11.59
+    },
+    "invalidating_mismatch": {
+      "llamacpp_surface": "/v1/chat/completions through llama.cpp chat template",
+      "hipengine_surface": "reused raw-rendered natural25 /v1/completions artifact",
+      "extra_llamacpp_prompt_tokens_each": [
+        43,
+        43,
+        43,
+        43,
+        43,
+        43,
+        43,
+        43,
+        43,
+        43
+      ],
+      "llamacpp_first_code_root": 1596,
+      "hipengine_first_code_root": 248068,
+      "llamacpp_reported_max_tokens": 24,
+      "hipengine_actual_source_shape": "natural25 / 25 visible outputs"
+    },
+    "verdict": "Do not use the 90.16% versus 78.57% row as an acceptance-gap claim."
+  },
+  "matched_acceptance": {
+    "hipengine": {
+      "cycles": 73,
+      "proposed_draft_tokens": 210,
+      "accepted_draft_tokens": 165,
+      "draft_acceptance": 0.7857142857142857,
+      "positions": [
+        {
+          "position": 1,
+          "proposed_cycles": 73,
+          "accepted_cycles": 69,
+          "position_acceptance": 0.9452054794520548,
+          "conditional_opportunities": 73,
+          "conditional_position_acceptance": 0.9452054794520548
+        },
+        {
+          "position": 2,
+          "proposed_cycles": 71,
+          "accepted_cycles": 54,
+          "position_acceptance": 0.7605633802816901,
+          "conditional_opportunities": 67,
+          "conditional_position_acceptance": 0.8059701492537313
+        },
+        {
+          "position": 3,
+          "proposed_cycles": 66,
+          "accepted_cycles": 42,
+          "position_acceptance": 0.6363636363636364,
+          "conditional_opportunities": 51,
+          "conditional_position_acceptance": 0.8235294117647058
+        }
+      ]
+    },
+    "llamacpp": {
+      "cycles": 73,
+      "proposed_draft_tokens": 208,
+      "accepted_draft_tokens": 166,
+      "draft_acceptance": 0.7980769230769231,
+      "positions": [
+        {
+          "position": 1,
+          "proposed_cycles": 73,
+          "accepted_cycles": 71,
+          "position_acceptance": 0.9726027397260274,
+          "conditional_opportunities": 73,
+          "conditional_position_acceptance": 0.9726027397260274
+        },
+        {
+          "position": 2,
+          "proposed_cycles": 69,
+          "accepted_cycles": 53,
+          "position_acceptance": 0.7681159420289855,
+          "conditional_opportunities": 67,
+          "conditional_position_acceptance": 0.7910447761194029
+        },
+        {
+          "position": 3,
+          "proposed_cycles": 66,
+          "accepted_cycles": 42,
+          "position_acceptance": 0.6363636363636364,
+          "conditional_opportunities": 51,
+          "conditional_position_acceptance": 0.8235294117647058
+        }
+      ]
+    },
+    "draft_acceptance_delta_points_hip_minus_llama": -1.236263736263743,
+    "category_comparison": {
+      "code": {
+        "hipengine": {
+          "cycles": 29,
+          "proposed_draft_tokens": 82,
+          "accepted_draft_tokens": 66,
+          "draft_acceptance": 0.8048780487804879,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 29,
+              "accepted_cycles": 27,
+              "position_acceptance": 0.9310344827586207,
+              "conditional_opportunities": 29,
+              "conditional_position_acceptance": 0.9310344827586207
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 27,
+              "accepted_cycles": 20,
+              "position_acceptance": 0.7407407407407407,
+              "conditional_opportunities": 25,
+              "conditional_position_acceptance": 0.8
+            },
+            {
+              "position": 3,
+              "proposed_cycles": 26,
+              "accepted_cycles": 19,
+              "position_acceptance": 0.7307692307692307,
+              "conditional_opportunities": 20,
+              "conditional_position_acceptance": 0.95
+            }
+          ]
+        },
+        "llamacpp": {
+          "cycles": 28,
+          "proposed_draft_tokens": 79,
+          "accepted_draft_tokens": 68,
+          "draft_acceptance": 0.8607594936708861,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 28,
+              "accepted_cycles": 27,
+              "position_acceptance": 0.9642857142857143,
+              "conditional_opportunities": 28,
+              "conditional_position_acceptance": 0.9642857142857143
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 26,
+              "accepted_cycles": 22,
+              "position_acceptance": 0.8461538461538461,
+              "conditional_opportunities": 25,
+              "conditional_position_acceptance": 0.88
+            },
+            {
+              "position": 3,
+              "proposed_cycles": 25,
+              "accepted_cycles": 19,
+              "position_acceptance": 0.76,
+              "conditional_opportunities": 21,
+              "conditional_position_acceptance": 0.9047619047619048
+            }
+          ]
+        },
+        "draft_acceptance_delta_points_hip_minus_llama": -5.588144489039825
+      },
+      "general_en": {
+        "hipengine": {
+          "cycles": 14,
+          "proposed_draft_tokens": 41,
+          "accepted_draft_tokens": 34,
+          "draft_acceptance": 0.8292682926829268,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 14,
+              "accepted_cycles": 14,
+              "position_acceptance": 1.0,
+              "conditional_opportunities": 14,
+              "conditional_position_acceptance": 1.0
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 14,
+              "accepted_cycles": 12,
+              "position_acceptance": 0.8571428571428571,
+              "conditional_opportunities": 14,
+              "conditional_position_acceptance": 0.8571428571428571
+            },
+            {
+              "position": 3,
+              "proposed_cycles": 13,
+              "accepted_cycles": 8,
+              "position_acceptance": 0.6153846153846154,
+              "conditional_opportunities": 11,
+              "conditional_position_acceptance": 0.7272727272727273
+            }
+          ]
+        },
+        "llamacpp": {
+          "cycles": 15,
+          "proposed_draft_tokens": 43,
+          "accepted_draft_tokens": 33,
+          "draft_acceptance": 0.7674418604651163,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 15,
+              "accepted_cycles": 15,
+              "position_acceptance": 1.0,
+              "conditional_opportunities": 15,
+              "conditional_position_acceptance": 1.0
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 14,
+              "accepted_cycles": 10,
+              "position_acceptance": 0.7142857142857143,
+              "conditional_opportunities": 14,
+              "conditional_position_acceptance": 0.7142857142857143
+            },
+            {
+              "position": 3,
+              "proposed_cycles": 14,
+              "accepted_cycles": 8,
+              "position_acceptance": 0.5714285714285714,
+              "conditional_opportunities": 10,
+              "conditional_position_acceptance": 0.8
+            }
+          ]
+        },
+        "draft_acceptance_delta_points_hip_minus_llama": 6.182643221781047
+      },
+      "general_ja": {
+        "hipengine": {
+          "cycles": 16,
+          "proposed_draft_tokens": 47,
+          "accepted_draft_tokens": 31,
+          "draft_acceptance": 0.6595744680851063,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 16,
+              "accepted_cycles": 15,
+              "position_acceptance": 0.9375,
+              "conditional_opportunities": 16,
+              "conditional_position_acceptance": 0.9375
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 16,
+              "accepted_cycles": 10,
+              "position_acceptance": 0.625,
+              "conditional_opportunities": 15,
+              "conditional_position_acceptance": 0.6666666666666666
+            },
+            {
+              "position": 3,
+              "proposed_cycles": 15,
+              "accepted_cycles": 6,
+              "position_acceptance": 0.4,
+              "conditional_opportunities": 10,
+              "conditional_position_acceptance": 0.6
+            }
+          ]
+        },
+        "llamacpp": {
+          "cycles": 16,
+          "proposed_draft_tokens": 47,
+          "accepted_draft_tokens": 31,
+          "draft_acceptance": 0.6595744680851063,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 16,
+              "accepted_cycles": 15,
+              "position_acceptance": 0.9375,
+              "conditional_opportunities": 16,
+              "conditional_position_acceptance": 0.9375
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 16,
+              "accepted_cycles": 10,
+              "position_acceptance": 0.625,
+              "conditional_opportunities": 15,
+              "conditional_position_acceptance": 0.6666666666666666
+            },
+            {
+              "position": 3,
+              "proposed_cycles": 15,
+              "accepted_cycles": 6,
+              "position_acceptance": 0.4,
+              "conditional_opportunities": 10,
+              "conditional_position_acceptance": 0.6
+            }
+          ]
+        },
+        "draft_acceptance_delta_points_hip_minus_llama": 0.0
+      },
+      "mixed_ja_en": {
+        "hipengine": {
+          "cycles": 14,
+          "proposed_draft_tokens": 40,
+          "accepted_draft_tokens": 34,
+          "draft_acceptance": 0.85,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 14,
+              "accepted_cycles": 13,
+              "position_acceptance": 0.9285714285714286,
+              "conditional_opportunities": 14,
+              "conditional_position_acceptance": 0.9285714285714286
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 14,
+              "accepted_cycles": 12,
+              "position_acceptance": 0.8571428571428571,
+              "conditional_opportunities": 13,
+              "conditional_position_acceptance": 0.9230769230769231
+            },
+            {
+              "position": 3,
+              "proposed_cycles": 12,
+              "accepted_cycles": 9,
+              "position_acceptance": 0.75,
+              "conditional_opportunities": 10,
+              "conditional_position_acceptance": 0.9
+            }
+          ]
+        },
+        "llamacpp": {
+          "cycles": 14,
+          "proposed_draft_tokens": 39,
+          "accepted_draft_tokens": 34,
+          "draft_acceptance": 0.8717948717948718,
+          "positions": [
+            {
+              "position": 1,
+              "proposed_cycles": 14,
+              "accepted_cycles": 14,
+              "position_acceptance": 1.0,
+              "conditional_opportunities": 14,
+              "conditional_position_acceptance": 1.0
+            },
+            {
+              "position": 2,
+              "proposed_cycles": 13,
+              "accepted_cycles": 11,
+              "position_acceptance": 0.8461538461538461,
+              "conditional_opportunities": 13,
+              "conditional_position_acceptance": 0.8461538461538461
+            },
+            {
+              "position": 3,
+              "proposed_cycles": 12,
+              "accepted_cycles": 9,
+              "position_acceptance": 0.75,
+              "conditional_opportunities": 10,
+              "conditional_position_acceptance": 0.9
+            }
+          ]
+        },
+        "draft_acceptance_delta_points_hip_minus_llama": -2.179487179487183
+      }
+    }
+  },
+  "matched_outputs": {
+    "exact_prompts": 10,
+    "prompts": 10,
+    "rows": [
+      {
+        "prompt_id": "code_merge_intervals",
+        "tokens": 25,
+        "exact": true,
+        "sha256": "d23262c794af040970bd111932a95283779aba90497d45ee7eb0b05e6f85c2fc"
+      },
+      {
+        "prompt_id": "code_topological_sort",
+        "tokens": 25,
+        "exact": true,
+        "sha256": "e9db24ab8c0bbb36443653efb8b0762237d93b21850f562f4e2977c7dddf2d7d"
+      },
+      {
+        "prompt_id": "code_lru_cache",
+        "tokens": 25,
+        "exact": true,
+        "sha256": "a77eb8e8349c0c585088a09c400228409ac9b129352d9dbd6fa49e9a96e5479f"
+      },
+      {
+        "prompt_id": "code_markdown_table",
+        "tokens": 25,
+        "exact": true,
+        "sha256": "ffadab5830c626d761c017ed7fb03e396eef4ee82a425e345c5fce1abd41c31e"
+      },
+      {
+        "prompt_id": "general_en_plan",
+        "tokens": 25,
+        "exact": true,
+        "sha256": "39efb74c4e4eae6919f7a7c4c166c11836560ae43dd1f6e1052bbb59eab2ac8d"
+      },
+      {
+        "prompt_id": "general_en_explain",
+        "tokens": 25,
+        "exact": true,
+        "sha256": "17e7e9b925fbacb9785f5c8917a2488164cc5545919ed7bd1158669eccf6b521"
+      },
+      {
+        "prompt_id": "general_ja_plan",
+        "tokens": 25,
+        "exact": true,
+        "sha256": "d40d993d10a29f854460e22899deb8680e1fe58504e4b41f6f5ef54b4d7da939"
+      },
+      {
+        "prompt_id": "general_ja_explain",
+        "tokens": 25,
+        "exact": true,
+        "sha256": "6a1e15a58a821cd9a935296e4c4f7cec8cd3fb92279acc4d15f865019db6bf39"
+      },
+      {
+        "prompt_id": "mixed_ja_en_translate",
+        "tokens": 25,
+        "exact": true,
+        "sha256": "c2ebf8ad799a05c99a5b0f0b8d826834214537160d285d781b23da465c9eba32"
+      },
+      {
+        "prompt_id": "mixed_ja_en_review",
+        "tokens": 25,
+        "exact": true,
+        "sha256": "dea16e91d5fda9bfedd767ab357c54914273b8787d01666a77ab5a6a137867ce"
+      }
+    ]
+  },
+  "proposal_localization": {
+    "initial_prompt_owned_roots": {
+      "exact_roots": 10,
+      "exact_k3_chains": 10,
+      "prompts": 10,
+      "rows": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "root_token": 248068,
+          "root_position": 36,
+          "llamacpp_root_position": 36,
+          "candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "llamacpp_candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "root_equal": true,
+          "chain_equal": true
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "root_token": 248068,
+          "root_position": 46,
+          "llamacpp_root_position": 46,
+          "candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "llamacpp_candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "root_equal": true,
+          "chain_equal": true
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "root_token": 248068,
+          "root_position": 43,
+          "llamacpp_root_position": 43,
+          "candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "llamacpp_candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "root_equal": true,
+          "chain_equal": true
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "root_token": 248068,
+          "root_position": 48,
+          "llamacpp_root_position": 48,
+          "candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "llamacpp_candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "root_equal": true,
+          "chain_equal": true
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "root_token": 248068,
+          "root_position": 35,
+          "llamacpp_root_position": 35,
+          "candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "llamacpp_candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "root_equal": true,
+          "chain_equal": true
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "root_token": 248068,
+          "root_position": 36,
+          "llamacpp_root_position": 36,
+          "candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "llamacpp_candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "root_equal": true,
+          "chain_equal": true
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "root_token": 248068,
+          "root_position": 39,
+          "llamacpp_root_position": 39,
+          "candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "llamacpp_candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "root_equal": true,
+          "chain_equal": true
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "root_token": 248068,
+          "root_position": 39,
+          "llamacpp_root_position": 39,
+          "candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "llamacpp_candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "root_equal": true,
+          "chain_equal": true
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "root_token": 248068,
+          "root_position": 60,
+          "llamacpp_root_position": 60,
+          "candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "llamacpp_candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "root_equal": true,
+          "chain_equal": true
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "root_token": 248068,
+          "root_position": 67,
+          "llamacpp_root_position": 67,
+          "candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "llamacpp_candidate_tokens": [
+            198,
+            760,
+            1156
+          ],
+          "root_equal": true,
+          "chain_equal": true
+        }
+      ]
+    },
+    "same_visible_history_roots": {
+      "matched_roots": 67,
+      "exact_k3_chains": 57,
+      "depth_top1_matches": [
+        {
+          "depth": 1,
+          "matches": 67,
+          "compared": 67,
+          "rate": 1.0
+        },
+        {
+          "depth": 2,
+          "matches": 59,
+          "compared": 65,
+          "rate": 0.9076923076923077
+        },
+        {
+          "depth": 3,
+          "matches": 53,
+          "compared": 62,
+          "rate": 0.8548387096774194
+        }
+      ]
+    },
+    "bounded_reading": "Initial priming and K3 chain agree 10/10. At later roots with an identical visible target-token history, depth 1 agrees 67/67; differences begin only inside depth 2/3 chain recurrence. hipEngine repairs ordinary accepted provider state from proposal hidden rows, while llama.cpp process()/accept() catches up from target hidden rows and pending_h. This is a semantic localization, not a performance defect: matched aggregate acceptance and outputs are already at parity."
+  },
+  "correctness": {
+    "hipengine_ar_mtp_exact_cells": 10,
+    "hipengine_cells": 10,
+    "cross_engine_output_exact_prompts": 10,
+    "cross_engine_output_prompts": 10,
+    "hipengine_final_active_allocations": 0,
+    "hipengine_final_allocated_bytes": 0
+  },
+  "commands": {
+    "hipengine_acceptance": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile strict --widths 1 --resident-capacity 4 --expected-mtp-widths 1 --max-tokens 25 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --correctness-contract ar_exact --output <out>",
+    "hipengine_trace": "HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE=1 plus the same command under /tmp/qwen38_c1_proposal_trace.py; diagnostic bounded readback only",
+    "llamacpp": "llama-server -m <same GGUF> -ngl 999 -fa on -b 2048 -ub 512 --no-mmap -ctk f16 -ctv f16 -c 4096 -np 1 --no-cache-prompt --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.0 -v; POST exact rendered strings to /completion with n_predict=25, temperature=0, top_k=1, top_p=1, min_p=0, return_tokens=true"
+  },
+  "raw_sources": [
+    {
+      "path": "/tmp/qwen38-c1k3-acceptance-by-position-natural25-clean.json",
+      "sha256": "72076185e4e6f178ac08c1cf5ee5cfc41b94bd5f046545a8cee42534548c570d",
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-c1k3-proposal-trace-clean.json",
+      "sha256": "2ab54aa86bf4e7078171ad623c36c0f67a25ff400f6c3170319bccc51b6a75af",
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-llamacpp-c1k3-raw-natural25.json",
+      "sha256": "e7014f319b165d288674854a9fc030ec8fce91045d57702a6f2aeaa69143f7d5",
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-llamacpp-c1k3-raw-natural25-proposals.json",
+      "sha256": "f2fcc58c74b510546ce659489a352bb6c95024fa7ab3af7f9babb81be01cfbaf",
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-llamacpp-c1k3-raw-natural25.log",
+      "sha256": "e76d5dbf1ee11be393ae26f278118e72c2df603da7a8e6f082133a6106cb396d",
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-c1k3-matched-root-proposal-compare.json",
+      "sha256": "53060e114873cec8cca766cd578fc6bbdf2003640b9c92b0bfb06051f381094c",
+      "retained_in_git": false
+    }
+  ],
+  "limitations": [
+    "One run per engine; this closes an acceptance attribution, not a performance comparison.",
+    "KV types remain BF16 for hipEngine and F16 for llama.cpp. Despite that difference, all 250 generated tokens match exactly.",
+    "Later matched-root proposal comparisons share an identical visible target-token history, but provider internal state reflects each engine's prior accepted-chain repair topology. The 10 initial prompt-owned roots are the strict priming control."
+  ],
+  "next": "No C1 acceptance campaign. Keep fixed K3. Reopen provider target-hidden repair only if a future same-render/same-output protocol demonstrates an economic or quality deficit."
+}
