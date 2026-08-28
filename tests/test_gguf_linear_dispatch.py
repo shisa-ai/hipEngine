@@ -4919,7 +4919,18 @@ def test_gfx1151_q4_t16_dense_pair_q8x2_quantizes_workspace(
     ]
 
 
-def test_gfx1151_production_verifier_q4_scope_chunks_r12_single_rowtiles() -> None:
+@pytest.mark.parametrize(
+    ("rows", "chunks"),
+    (
+        (6, ((6, 0),)),
+        (9, ((7, 0), (2, 7))),
+        (12, ((8, 0), (4, 8))),
+    ),
+)
+def test_gfx1151_production_verifier_q4_scope_chunks_single_rowtiles(
+    rows: int,
+    chunks: tuple[tuple[int, int], ...],
+) -> None:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
     register_gfx1151_kernels(replace=True)
@@ -4951,7 +4962,7 @@ def test_gfx1151_production_verifier_q4_scope_chunks_r12_single_rowtiles() -> No
                 weight,
                 x_ptr=100,
                 out_ptr=400,
-                rows=12,
+                rows=rows,
                 in_features=5_120,
                 out_features=12_288,
                 backend="hip_gfx1151",
@@ -4965,25 +4976,31 @@ def test_gfx1151_production_verifier_q4_scope_chunks_r12_single_rowtiles() -> No
 
     assert calls == [
         (
-            (100, 14, 400, 8, 5_120, 12_288),
-            {"stream": 7, "runtime": "runtime-sentinel"},
-        ),
-        (
             (
-                100 + 8 * 5_120 * 2,
+                100 + row_base * 5_120 * 2,
                 14,
-                400 + 8 * 12_288 * 2,
-                4,
+                400 + row_base * 12_288 * 2,
+                chunk_rows,
                 5_120,
                 12_288,
             ),
             {"stream": 7, "runtime": "runtime-sentinel"},
-        ),
+        )
+        for chunk_rows, row_base in chunks
     ]
 
 
-def test_gfx1151_production_verifier_q4_scope_chunks_r12_gate_up_rowtiles(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    ("rows", "chunks"),
+    (
+        (6, ((6, 0),)),
+        (9, ((7, 0), (2, 7))),
+        (12, ((8, 0), (4, 8))),
+    ),
+)
+def test_gfx1151_production_verifier_q4_scope_chunks_gate_up_rowtiles(
+    rows: int,
+    chunks: tuple[tuple[int, int], ...],
 ) -> None:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
@@ -5021,7 +5038,7 @@ def test_gfx1151_production_verifier_q4_scope_chunks_r12_gate_up_rowtiles(
                 weight_b,
                 x_ptr=100,
                 out_ptr=400,
-                rows=12,
+                rows=rows,
                 in_features=5_120,
                 out_features=17_408,
                 backend="hip_gfx1151",
@@ -5033,21 +5050,18 @@ def test_gfx1151_production_verifier_q4_scope_chunks_r12_gate_up_rowtiles(
 
     assert calls == [
         (
-            (100, 14, 14, 400, 8, 5_120, 17_408),
-            {"stream": 7, "runtime": "runtime-sentinel"},
-        ),
-        (
             (
-                100 + 8 * 5_120 * 2,
+                100 + row_base * 5_120 * 2,
                 14,
                 14,
-                400 + 8 * 17_408 * 2,
-                4,
+                400 + row_base * 17_408 * 2,
+                chunk_rows,
                 5_120,
                 17_408,
             ),
             {"stream": 7, "runtime": "runtime-sentinel"},
-        ),
+        )
+        for chunk_rows, row_base in chunks
     ]
 
 
