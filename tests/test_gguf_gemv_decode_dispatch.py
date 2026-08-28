@@ -255,10 +255,13 @@ def test_target_verifier_scope_routes_only_backend_admitted_q6(
     original_capability = gguf_linear.backend_package_capability
 
     def capability(backend: str, name: str, default=None):
-        if name == "GGUF_T16_TARGET_VERIFIER_ROWTILE_QUANTS":
-            return frozenset(
-                {"gguf_q6_k_t16_v1", "gguf_q6_k_t16_qmicro_planar_v1"}
-            )
+        if name == "GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT":
+            return {
+                "gguf_q6_k_t16_v1": frozenset({(5_120, 10_240)}),
+                "gguf_q6_k_t16_qmicro_planar_v1": frozenset(
+                    {(5_120, 1_024), (17_408, 5_120)}
+                ),
+            }
         if name == "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT":
             return {
                 "gguf_q6_k_t16_v1": 8,
@@ -269,6 +272,8 @@ def test_target_verifier_scope_routes_only_backend_admitted_q6(
     monkeypatch.setattr(gguf_linear, "backend_package_capability", capability)
     key, _, _ = _capture_launch(
         rows=8,
+        in_features=17_408,
+        out_features=5_120,
         target_verifier_rowtile=True,
         quant_key="gguf_q6_k_t16_qmicro_planar_v1",
         layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
@@ -278,12 +283,26 @@ def test_target_verifier_scope_routes_only_backend_admitted_q6(
 
     key, _, _ = _capture_launch(
         rows=8,
+        in_features=5_120,
+        out_features=10_240,
         target_verifier_rowtile=True,
         quant_key="gguf_q6_k_t16_v1",
         layout=LAYOUT_GGUF_Q6_K_T16,
         extra_keys=(_Q6_T16_DECODE, _Q6_T16_ROWTILE, _Q6_T16_WMMA),
     )
     assert key == _Q6_T16_ROWTILE
+
+    # A quant match without an admitted actual shape keeps the old owner.
+    key, _, _ = _capture_launch(
+        rows=8,
+        in_features=1_024,
+        out_features=2_048,
+        target_verifier_rowtile=True,
+        quant_key="gguf_q6_k_t16_v1",
+        layout=LAYOUT_GGUF_Q6_K_T16,
+        extra_keys=(_Q6_T16_DECODE, _Q6_T16_ROWTILE, _Q6_T16_WMMA),
+    )
+    assert key == _Q6_T16_DECODE
 
     # The target-verifier scope must not act like the broad native-batch scope.
     key, _, _ = _capture_launch(

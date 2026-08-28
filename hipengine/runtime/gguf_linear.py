@@ -5813,14 +5813,19 @@ def _native_batch_decode_dispatch(
 ) -> GGUFLinearDispatch:
     """Select registered compact c=2..8 native projection families."""
 
-    verifier_rowtile_quants = backend_package_capability(
+    verifier_rowtile_shapes = backend_package_capability(
         dispatch.key.backend,
-        "GGUF_T16_TARGET_VERIFIER_ROWTILE_QUANTS",
-        (),
+        "GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT",
+        {},
+    )
+    quant_verifier_shapes = (
+        verifier_rowtile_shapes.get(dispatch.key.quant, ())
+        if isinstance(verifier_rowtile_shapes, Mapping)
+        else ()
     )
     verifier_rowtile_enabled = bool(
         _target_verifier_rowtile_session_enabled.get()
-        and dispatch.key.quant in verifier_rowtile_quants
+        and (int(in_features), int(out_features)) in quant_verifier_shapes
     )
     if (
         not _native_batch_decode_session_enabled

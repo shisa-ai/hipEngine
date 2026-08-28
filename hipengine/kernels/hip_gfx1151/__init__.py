@@ -1097,12 +1097,15 @@ GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
         },
     },
 }
-# Packed target verification may reuse only these exact small-row decode
-# owners. Keeping this separate from broad native batch decode prevents the
-# verifier from changing unrelated Q4/Q5 projection ownership.
-GGUF_T16_TARGET_VERIFIER_ROWTILE_QUANTS = frozenset(
-    {"gguf_q6_k_t16_v1", "gguf_q6_k_t16_qmicro_planar_v1"}
-)
+# Packed target verification may reuse only these exact actual-weight Q6
+# rowtiles. Shape-scoped ownership prevents unrelated gfx1151 models and Q4/Q5
+# projections from inheriting an unmeasured verifier policy.
+GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT = {
+    "gguf_q6_k_t16_v1": frozenset({(5_120, 10_240)}),
+    "gguf_q6_k_t16_qmicro_planar_v1": frozenset(
+        {(5_120, 1_024), (17_408, 5_120)}
+    ),
+}
 GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
     # Standard and planar Q6 col8 rowtiles are exact and qualified through R8.
     "gguf_q6_k_t16_v1": 8,
@@ -2418,7 +2421,7 @@ __all__ = [
     "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
-    "GGUF_T16_TARGET_VERIFIER_ROWTILE_QUANTS",
+    "GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT",
     "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE",
     "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
