@@ -1,18 +1,22 @@
 # gfx1100 Physical C>N MTP Promotion Campaign
 
-- Status: **complete; 27B Dense and 35B MoE physical C2 promoted automatically**
+- Status: **Qwen3.6 lanes complete; 27B Dense and 35B MoE physical C2 promoted
+  automatically. Extended 2026-08-28: Qwen3.8-27B effective C=N lane open (§11, P7-P12)**
 - Started: **2026-08-27**
 - Branch: **`campaign/gfx1100-mtp-cn-promotion`**
 - Base commit: **`5c2be8d157c587caf42591b07d7c02b3181adabc`**
 - Binding host: **`epyc` / AMD Radeon Pro W7900 / `gfx1100` / GPU 0**
-- Models: **Qwen3.6-27B Dense `Q4_K_M`** and **Qwen3.6-35B-A3B MoE `UD-Q4_K_M`**
+- Models: **Qwen3.6-27B Dense `Q4_K_M`** and **Qwen3.6-35B-A3B MoE `UD-Q4_K_M`**;
+  extension lane: **Qwen3.8-27B Dense `Q4_K_M`** (§11)
 - KV/profile: **BF16 KV; strict fallback plus independently qualified production profiles**
 - Normative contracts: [`PLAN.md`](PLAN.md), [`CONCURRENCY2.md`](CONCURRENCY2.md),
   [`SPECDEC2.md`](SPECDEC2.md), [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
   [`TESTING.md`](TESTING.md), and [`BENCHMARK.md`](BENCHMARK.md)
 - Starting evidence: [`MTP-CONCURRENCY2-DUAL-PROMOTION.md`](MTP-CONCURRENCY2-DUAL-PROMOTION.md),
   [`MTP-CONCURRENCY2-RECOVERY.md`](MTP-CONCURRENCY2-RECOVERY.md), and
-  [`SPECDEC2-GFX1100.md`](SPECDEC2-GFX1100.md)
+  [`SPECDEC2-GFX1100.md`](SPECDEC2-GFX1100.md); extension evidence:
+  `campaign/qwen38-q4-external-bench@95f9ee32c`, artifact
+  `benchmarks/results/2026-08-28-w7900-qwen38-q4km-canonical-rebaseline.json`
 
 This is the dedicated gfx1100 physical multi-request campaign. It does not
 transfer rates, thresholds, manifests, or promotion decisions from gfx1151. It
@@ -430,3 +434,128 @@ Rules:
   policy stays K0 until the full `>=1.10x` gate passes.
 - Promote the two models independently. One model cannot borrow another's
   profile, correctness, lifecycle, rate, or policy evidence.
+
+## 11. Campaign extension: Qwen3.8-27B effective C=N (P7-P12)
+
+Opened **2026-08-28** after the canonical Qwen3.8 `Q4_K_M` rebaseline. The
+Qwen3.6 lanes above stay closed; this section is a new independent lane on the
+same binding host and contracts. Nothing transfers automatically: Qwen3.8 gets
+its own attribution, kernels' shape qualification, numerical packet, economics,
+and policy keys.
+
+### 11.1 Extension premise (measured)
+
+Frozen lane identity: `/models/gguf/Qwen3.8-27B-Q4_K_M.gguf` on `epyc` /
+W7900 / `gfx1100` GPU 0; 17,106,773,984 bytes; SHA-256
+`7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b`. All
+numbers below are from `campaign/qwen38-q4-external-bench@95f9ee32c`
+(`benchmarks/results/2026-08-28-w7900-qwen38-q4km-canonical-rebaseline.json`),
+measured on `origin/main@d199f2778` plus docs-only commits.
+
+- Retained C1/K3/D24: pooled **21.958 -> 32.153 tok/s = 1.4643x** true AR over
+  three fresh full-suite lifecycles; 30/30 exact cells; 78.89% draft acceptance.
+- Automatic C1-C8: 80/80 exact; only C1 engages; C2-C8 correctly select K0.
+- Explicit physical C2/C3/C4 diagnostics (exact and engaged, but rejected):
+  **0.5137x / 0.4597x / 0.4790x** true AR.
+- Cycle arithmetic (K3, ~2.9 tokens/request/cycle): AR cycle 45.6 / 65.1 /
+  84.0 / 101.8 ms at C1-C4, while the MTP cycle is ~90 / ~368 / ~530 / ~616 ms.
+  The speculative cycle costs ~1.98x one AR step at C1 but ~5.7-6.3x at C>1:
+  each added request adds ~230 ms of cycle cost against ~19 ms for AR.
+
+Two structural causes, both fixable without touching acceptance quality:
+
+1. **The draft chain does not batch.** Each request runs its own K sequential
+   single-row draft forwards: C2/K3 is six tiny memory-bound launches per cycle
+   where three batched R2 steps would do.
+2. **Wide verification runs strict-but-slow routes.** The exact native-K batch
+   fallback was rejected for inexactness, and the promoted Qwen3.6 economics
+   owners (output-normalized prompt streaming, production-scoped rows6 Q4/Q5/Q6
+   target owners) are **not in the measured base**: `origin/main` does not
+   contain this branch's P3/P5 work. The 0.51x row is therefore a pre-economics
+   baseline, not a floor. gfx1151's independent Qwen3.8 C2/K3 promotion
+  (`1.1441x`/`1.1811x` on Strix) is cross-lane reference only.
+
+### 11.2 Extension definition of done
+
+At least one **real physical C2 automatic MTP key** for the frozen Qwen3.8
+identity passes every §1 gate: exact state/control ownership, the production
+numerical/task/determinism/isolation packet, complete same-suite economics at
+`>=1.10x` true AR with no category/heldout/task/SLO regression, automatic
+selection before mutation, and K0 with stable reasons everywhere else. C3/C4
+are evaluated only after C2 promotion under the same gates. If measured
+attribution shows a hard structural blocker instead, record it as a durable
+worklog entry with the profile evidence and stop.
+
+### 11.3 Phase punchlist
+
+### P7 — Lane freeze and base reconciliation
+
+- [ ] Freeze the exact artifact identity, binding host, strict profile, and
+      candidate production profiles for the Qwen3.8 lane; register the
+      rebaseline artifact as the attribution baseline.
+- [ ] Merge latest `origin/main` into this branch; re-run the C1 three-run and
+      explicit physical C2-C4 diagnostic suites on merged source that contains
+      the promoted Qwen3.6 economics owners.
+- [ ] Re-derive the cycle-cost table on merged source before any new kernel
+      work; a materially improved C2 re-ranks P8 targets.
+- [ ] Audit which target R6/R8 kernel routes Qwen3.8 shapes actually select
+      versus the Qwen3.6-qualified owners (`fusion.plan()` / registry audit).
+
+Exit: attribution baseline on full merged source; no promotion claims from the
+stale-base numbers.
+
+### P8 — Physical C2 attribution profile
+
+- [ ] `rocprofv3` operation-complete windows (proposal chain, target frontier,
+      grouped accept, commit, repair) on physical C2/K2 (R6) and C2/K3 (R8) with
+      prebuilt `.so` via `scripts/mtp_verifier_rocprof.py`-style focused
+      children; never the parent harness.
+- [ ] Split the C2 MTP cycle into draft-chain versus target versus
+      accept/commit/copy shares; measured, not inferred.
+- [ ] Identify every unqualified or slow strict route actually taken and its
+      shape gap versus the Qwen3.6 owners.
+
+Exit: ranked cost centers with exact shares; kernel work starts only against
+the top measured share.
+
+### P9 — Verifier target owners for Qwen3.8 shapes
+
+- [ ] Requalify/register production-scoped rows6 (and R8 where C2/K3 is the
+      target route) Q4/Q5/Q6 target owners for Qwen3.8 actual shapes behind
+      registry variants, with strict fallbacks per `EXECUTION-PROFILES.md`.
+- [ ] RED kernel gates per `KERNELS.md` lineage workflow and
+      `scripts/check_lineage.py` before any port; exact state/control always.
+- [ ] Retain every exact or profile-qualified sub-window win immediately.
+
+Exit: target R6/R8 cost at or below the Qwen3.6-qualified level per row.
+
+### P10 — Batched draft chain (R=C)
+
+- [ ] Replace C sequential single-row draft chains with one R=C draft forward
+      per chain level; pass the batch-composition invariance gate.
+- [ ] Preserve per-request provider state, KV, cursor, and output ownership
+      exactly through the batched proposal.
+
+Exit: draft-chain cost independent of C at fixed K.
+
+### P11 — Interleaved-C1 ceiling probe (diagnostic only)
+
+- [ ] Admission experiment: serve C2 due groups as two independent C1/K3
+      cycles; measure complete wall against true AR C2 on merged source.
+- [ ] Label explicitly: this is **not** physical C2 under §10 and cannot be
+      promoted as such; it measures the batching-versus-interleaving ceiling
+      that P9/P10 must beat to be worth their complexity.
+
+Exit: measured ceiling; go/no-go input for P9/P10 scope.
+
+### P12 — Economics, promotion, and wider widths
+
+- [ ] Full-suite three-run economics on the final route; promotion floor
+      `>=1.10x` true AR, every category non-regressive, complete production
+      numerical/task/determinism/isolation packet, model-SHA-keyed automatic
+      policy registration, stable K0 reasons for every other key.
+- [ ] Evaluate C3/C4 only after C2 promotion; keep them K0 otherwise.
+- [ ] Publication: compact artifacts, benchmark rollups, immutable worklogs,
+  focused validation, and merge handoff.
+
+Exit: promotion or a durable, profile-backed structural blocker record.
