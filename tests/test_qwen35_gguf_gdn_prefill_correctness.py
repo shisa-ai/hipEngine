@@ -57,6 +57,7 @@ from hipengine.core.memory import (
 from hipengine.kernels.cpu_reference import gdn_prefill_recurrent_segments
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
+    qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_state_rows_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16,
@@ -601,25 +602,40 @@ def _run_decode_order_segments_mutating(
             buf.free()
 
 
-def _run_lowp_bf16_single(inputs: _GDNInputs, eps: float, state_arr: np.ndarray):
+def _run_lowp_bf16_single(
+    inputs: _GDNInputs, eps: float, state_arr: np.ndarray, *, fused_bf16: bool = False
+):
     owners = [_to_device(value) for value in (
         inputs.conv_out_f32, inputs.gate_u16, inputs.a_u16, inputs.b_u16,
         inputs.dt_bias_f32, inputs.a_log_f32, inputs.norm_weight_f32, state_arr,
     )]
     out_shape = (inputs.tokens, inputs.num_v_heads, inputs.head_v_dim)
     out = _Buf(int(np.prod(out_shape)) * 4)
+    out_bf16 = _Buf(int(np.prod(out_shape)) * 2) if fused_bf16 else None
     try:
-        qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
-            *(owner.ptr for owner in owners), out.ptr, eps, inputs.num_k_heads,
-            inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim,
-        )
+        if out_bf16 is None:
+            qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
+                *(owner.ptr for owner in owners), out.ptr, eps, inputs.num_k_heads,
+                inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim,
+            )
+        else:
+            qwen35_gdn_recurrent_rmsnorm_gate_lowp_f32_bf16_out(
+                *(owner.ptr for owner in owners), out.ptr, out_bf16.ptr, eps,
+                inputs.num_k_heads, inputs.num_v_heads, inputs.head_k_dim,
+                inputs.head_v_dim,
+            )
         return (
-            _from_device(out, out_shape, np.float32),
+            _from_device(
+                out if out_bf16 is None else out_bf16,
+                out_shape,
+                np.float32 if out_bf16 is None else np.uint16,
+            ),
             _from_device(owners[-1], state_arr.shape, np.float32),
         )
     finally:
-        for owner in (*owners, out):
-            owner.free()
+        for owner in (*owners, out, out_bf16):
+            if owner is not None:
+                owner.free()
 
 
 def _run_lowp_bf16_segments_rows(inputs, eps, cu_arr, indices_arr, states):
@@ -631,17 +647,18 @@ def _run_lowp_bf16_segments_rows(inputs, eps, cu_arr, indices_arr, states):
     state_shape = (inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim)
     out_shape = (inputs.tokens, inputs.num_v_heads, inputs.head_v_dim)
     out = _Buf(int(np.prod(out_shape)) * 4)
+    out_bf16 = _Buf(int(np.prod(out_shape)) * 2)
     rows = _Buf(inputs.tokens * int(np.prod(state_shape)) * 4)
     try:
         qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_state_rows_bf16(
-            *(owner.ptr for owner in owners[:8]), rows.ptr, out.ptr,
+            *(owner.ptr for owner in owners[:8]), rows.ptr, out.ptr, out_bf16.ptr,
             owners[8].ptr, owners[9].ptr, inputs.tokens, len(cu_arr) - 1, eps,
             inputs.num_k_heads, inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim,
         )
-        return (_from_device(out, out_shape, np.float32), _from_device(owners[7], states.shape, np.float32),
+        return (_from_device(out_bf16, out_shape, np.uint16), _from_device(owners[7], states.shape, np.float32),
                 _from_device(rows, (inputs.tokens, *state_shape), np.float32))
     finally:
-        for owner in (*owners, out, rows):
+        for owner in (*owners, out, out_bf16, rows):
             owner.free()
 
 
@@ -1602,7 +1619,9 @@ def test_gdn_segments_lowp_state_rows_match_scalar_c1(
         state = states[segment].copy()
         for token in range(int(start), int(end)):
             row_inputs = _slice_gdn_inputs(inputs, token, token + 1, state)
-            row_out, state = _run_lowp_bf16_single(row_inputs, 1e-6, state)
+            row_out, state = _run_lowp_bf16_single(
+                row_inputs, 1e-6, state, fused_bf16=True
+            )
             expected_out[token] = row_out[0]
             expected_rows[token] = state
         expected_final[segment] = state
