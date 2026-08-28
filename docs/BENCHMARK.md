@@ -868,6 +868,27 @@ unless a future protocol defines a shared correctness gate. Reasons:
 - Repeated-token prompts can produce perfect draft acceptance and overstate
   natural-prompt MTP speedups.
 
+## Implementation-stage context escalation
+
+For the active Qwen3.8-Flash-Next campaign, full-model tests stay at 512/1K
+until the basic text AR + MTP + public serving + vision product gate is complete.
+After that, context escalation is rate-gated on the current retained,
+same-host, natural-prompt complete-model prefill path:
+
+| Context to run | Required retained prompt-prefill rate first |
+| --- | ---: |
+| 4K | `>=20 tok/s` |
+| 16K | `>=50 tok/s` |
+| 64K | `>=100 tok/s` |
+| 128K+ | `>=200 tok/s` |
+
+Microbenchmarks, repeated-token-only rows, external engines, and rejected
+numerical profiles do not unlock a context. Reduced position/control fixtures
+are exempt only when they do not instantiate a full long-context run. Existing
+long-context evidence stays retained but is not rerun below the threshold.
+Only explicit user direction may override this ladder. The campaign-specific
+basic gate and evidence are normative in `docs/QWEN3.8-FLASH-NEXT.md`.
+
 ## Standard Workloads
 
 Every new perf number should match one of these shapes unless there's a documented reason not to. Protocol-shape drift is how baselines become uncomparable.

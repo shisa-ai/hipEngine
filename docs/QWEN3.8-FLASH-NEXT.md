@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next Implementation Campaign
 
-Status: **active — official BF16 source and strict gfx1151 text c1/greedy are complete; local Q4_K_M conversion, production-fast numerics, remaining long-context QSA, serving, MTP, and vision qualification remain open**
+Status: **active — implementation-first at 512/1K; text AR works, but basic MTP, public serving, and vision must be completed before any further long-context qualification**
 
 This campaign brings the open-weight `Qwen/Qwen3.8-Flash-Next` checkpoint to
 hipEngine as a torch-free, registry-composed, text-generation path first, then
@@ -550,6 +550,61 @@ Evidence:
 [`2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-out4.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-out4.json), and
 [`2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q5-1-out8.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q5-1-out8.json).
 
+### Implementation-first context escalation guardrails
+
+The binding execution order is:
+
+1. **Fully working first at 512/1K.** Complete basic text AR, MTP, public
+   serving/lifecycle, vision, and c2 isolation at short context.
+2. **Optimize short-context prefill second.** Keep performance work and its
+   complete-model gates at 512/1K until the next threshold is reached.
+3. **Qualify longer context last.** Move up one permitted context rung at a
+   time, running that rung's full correctness/lifecycle/memory gate only after
+   short-context functionality and speed permit it.
+
+These are hard campaign stop rules, not aspirational targets:
+
+| Full-model context proposed | Minimum retained prompt-prefill rate required first |
+| --- | ---: |
+| 4K | `20 tok/s` |
+| 16K | `50 tok/s` |
+| 64K | `100 tok/s` |
+| 128K or greater (including 262K) | `200 tok/s` |
+
+- Until the basic product gate below is complete, implementation and full-model
+  validation stay at **512 or 1,024 tokens** regardless of measured speed.
+- The threshold is a same-host, natural-prompt, complete-model prompt-prefill
+  result from the current retained default at an already-allowed context. A
+  microbenchmark, repeated-token-only row, rejected numerical profile, or
+  external engine result cannot unlock a larger context.
+- Reduced primitive fixtures may exercise position arithmetic above 1K, but
+  must not allocate/run a full long-context model or become a performance row.
+- Existing 4K/16K/64K artifacts remain historical correctness evidence. Do not
+  rerun them until the corresponding threshold is met.
+- Crossing a threshold permits the next scale; it does not replace that scale's
+  correctness, lifecycle, and memory gates. Only an explicit user override may
+  waive these stop rules.
+
+### 512/1K basic product gate
+
+Before returning to long-context verification, complete the basic end-to-end
+implementation at 512/1K:
+
+1. Audit llama.cpp PR #27742 as the primary formula/converter/runtime guide and
+   maintain a hipEngine parity checklist; then audit EngramHalo's delta.
+2. Keep target text AR working through `LLM.generate()` and the public blocking
+   and SSE server surfaces, including reasoning/chat-template/tool-call basics,
+   cancellation, reset, and clean teardown.
+3. Produce/load the official MTP sidecar and pass proposal, target verification,
+   accept/commit/rollback, deterministic greedy output, and a small natural
+   multi-prompt economics smoke against true AR.
+4. Add the basic vision path: one supported image fixture through processor,
+   placeholders/MRoPE, encoder/mmproj, generation, and text-only non-regression.
+5. Pass c1 plus a basic c2 isolation/cancellation smoke at 512/1K.
+
+Long-context work resumes only after all five items work and the throughput
+ladder above permits the requested context.
+
 ### F6 — Native QSA and 262K context ownership
 
 Add a QSA index-cache backend or model-attention state that mirrors
@@ -620,7 +675,9 @@ replay/rollback, and zero teardown. Evidence:
 Natural 64K also passes in `3832.663 s` (`17.099 tok/s`) with exact
 retrieval/control/CPU-oracle/replay/rollback and zero teardown. Evidence:
 [`2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-64k.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-64k.json).
-The next binding work is practical 262K execution. MTP step 0
+Further long-context execution is deferred by the implementation-first
+escalation guardrails: 128K+ requires a retained `>=200 tok/s` prompt-prefill
+row and the 512/1K basic product gate. MTP step 0
 selects target-aligned QSA rows and later draft steps reuse those indices.
 
 Current exact F7 default (2026-08-27): immediate PLE ring ownership, batched
