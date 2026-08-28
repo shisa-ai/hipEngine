@@ -403,6 +403,11 @@ class Qwen35GGUFNextNExecutor:
         # Pageable host token arrays backing nonblocking prompt-prime H2D
         # copies stay alive until the target prefill's completion boundary.
         self._prompt_priming_staging: dict[int, list[np.ndarray]] = {}
+        self._bulk_prompt_prime = bool(
+            self.max_requests > 1 and self.weights.config.is_moe
+        )
+        self._prompt_prime_rows: dict[int, dict[int, int]] = {}
+        self._prompt_prime_capacity = int(max_positions)
         self._token_host = np.zeros((self.max_requests,), dtype=np.int64)
         self._logits_host = np.empty((self.max_requests, self.vocab_size), dtype=np.float32)
         hidden_bytes = self.max_requests * self.hidden_size * DType.BF16.itemsize
@@ -411,6 +416,33 @@ class Qwen35GGUFNextNExecutor:
         self._enorm_buf = malloc(hidden_bytes, runtime=self.runtime)
         self._hnorm_buf = malloc(hidden_bytes, runtime=self.runtime)
         self._batch_input_hidden = malloc(hidden_bytes, runtime=self.runtime)
+        if self._bulk_prompt_prime:
+            prompt_rows_bytes = (
+                self._prompt_prime_capacity
+                * self.hidden_size
+                * DType.BF16.itemsize
+            )
+            self._prompt_prime_tokens = malloc(
+                self._prompt_prime_capacity * DType.INT64.itemsize,
+                runtime=self.runtime,
+            )
+            self._prompt_prime_hidden = malloc(
+                self.max_requests * prompt_rows_bytes,
+                runtime=self.runtime,
+            )
+            self._prompt_prime_embedding = malloc(prompt_rows_bytes, runtime=self.runtime)
+            self._prompt_prime_enorm = malloc(prompt_rows_bytes, runtime=self.runtime)
+            self._prompt_prime_hnorm = malloc(prompt_rows_bytes, runtime=self.runtime)
+            self._prompt_prime_fusion = malloc(2 * prompt_rows_bytes, runtime=self.runtime)
+            self._prompt_prime_fused = malloc(prompt_rows_bytes, runtime=self.runtime)
+        else:
+            self._prompt_prime_tokens = None
+            self._prompt_prime_hidden = None
+            self._prompt_prime_embedding = None
+            self._prompt_prime_enorm = None
+            self._prompt_prime_hnorm = None
+            self._prompt_prime_fusion = None
+            self._prompt_prime_fused = None
         self._batch_candidate_tokens_i32 = malloc(
             self.max_requests
             * _NEXTN_TOP1_RESULT_CAPACITY
@@ -468,6 +500,13 @@ class Qwen35GGUFNextNExecutor:
                 self._enorm_buf,
                 self._hnorm_buf,
                 self._batch_input_hidden,
+                self._prompt_prime_tokens,
+                self._prompt_prime_hidden,
+                self._prompt_prime_embedding,
+                self._prompt_prime_enorm,
+                self._prompt_prime_hnorm,
+                self._prompt_prime_fusion,
+                self._prompt_prime_fused,
                 self._batch_candidate_tokens_i32,
                 self._fusion_buf,
                 self._fused_buf,
@@ -1923,6 +1962,110 @@ class Qwen35GGUFNextNExecutor:
             "last_error": self._proposal_graph_last_error,
         }
 
+    def _prime_prompt_rows_bulk(self, request_id: int, *, stream: int) -> None:
+        """Materialize one request's prompt K/V with batched weight sweeps."""
+
+        queued = self._prompt_prime_rows.get(int(request_id), {})
+        positions = tuple(sorted(queued))
+        if not positions:
+            return
+        if positions != tuple(range(positions[0], positions[0] + len(positions))):
+            raise ValueError("bulk NextN prompt rows must be contiguous")
+        buffers = (
+            self._prompt_prime_tokens,
+            self._prompt_prime_hidden,
+            self._prompt_prime_embedding,
+            self._prompt_prime_enorm,
+            self._prompt_prime_hnorm,
+            self._prompt_prime_fusion,
+            self._prompt_prime_fused,
+        )
+        if any(buffer is None for buffer in buffers):
+            raise RuntimeError("bulk NextN prompt buffers are unavailable")
+        rows = len(positions)
+        tokens = np.ascontiguousarray(
+            [queued[position] for position in positions], dtype=np.int64
+        )
+        self._prompt_priming_staging.setdefault(int(request_id), []).append(tokens)
+        self.runtime.memcpy_async(
+            self._prompt_prime_tokens.ptr,
+            host_array_ptr(tokens),
+            tokens.nbytes,
+            HipMemcpyKind.HOST_TO_DEVICE,
+            int(stream),
+        )
+        hidden_nbytes = self.hidden_size * DType.BF16.itemsize
+        slot = self._slot(int(request_id))
+        hidden_ptr = (
+            self._prompt_prime_hidden.ptr
+            + (slot * self._prompt_prime_capacity + positions[0]) * hidden_nbytes
+        )
+        launch_gguf_embedding(
+            self.weights.fallback("token_embedding"),
+            self._prompt_prime_tokens.ptr,
+            self._prompt_prime_embedding.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            vocab_size=self.vocab_size,
+            stream=int(stream),
+            runtime=self.runtime,
+        )
+        gguf_rmsnorm_bf16_f32_weight(
+            self._prompt_prime_embedding.ptr,
+            self.weights.nextn("enorm").allocation().tensor.ptr,
+            self._prompt_prime_enorm.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            eps=self.weights.config.rms_norm_eps,
+            stream=int(stream),
+            runtime=self.runtime,
+        )
+        gguf_rmsnorm_bf16_f32_weight(
+            hidden_ptr,
+            self.weights.nextn("hnorm").allocation().tensor.ptr,
+            self._prompt_prime_hnorm.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            eps=self.weights.config.rms_norm_eps,
+            stream=int(stream),
+            runtime=self.runtime,
+        )
+        for row in range(rows):
+            destination = self._prompt_prime_fusion.ptr + row * 2 * hidden_nbytes
+            self.runtime.memcpy_async(
+                destination,
+                self._prompt_prime_enorm.ptr + row * hidden_nbytes,
+                hidden_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                int(stream),
+            )
+            self.runtime.memcpy_async(
+                destination + hidden_nbytes,
+                self._prompt_prime_hnorm.ptr + row * hidden_nbytes,
+                hidden_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                int(stream),
+            )
+        launch_gguf_linear(
+            self.weights.nextn("eh_proj"),
+            self._prompt_prime_fusion.ptr,
+            self._prompt_prime_fused.ptr,
+            rows=rows,
+            in_features=2 * self.hidden_size,
+            out_features=self.hidden_size,
+            stream=int(stream),
+            runtime=self.runtime,
+        )
+        self._batch_session.prime_hidden_sequence_kv(
+            self._prompt_prime_fused.ptr,
+            session=self._batch_sessions[slot],
+            positions=positions,
+            stream=int(stream),
+        )
+        self._publish_batch_consumed_positions(
+            (int(request_id),), (positions[-1],)
+        )
+
     def enqueue_prompt_rows(
         self,
         request_id: int,
@@ -1956,6 +2099,29 @@ class Qwen35GGUFNextNExecutor:
         hidden_nbytes = self.hidden_size * DType.BF16.itemsize
         if stride < hidden_nbytes:
             raise ValueError("NextN prompt priming hidden stride is smaller than one row")
+        if getattr(self, "_bulk_prompt_prime", False):
+            if self._prompt_prime_hidden is None:
+                raise RuntimeError("bulk NextN prompt hidden storage is unavailable")
+            slot = self._slot(request_id)
+            queued = self._prompt_prime_rows.setdefault(request_id, {})
+            for row, token in enumerate(tokens.tolist()):
+                position = start + row
+                previous = queued.get(position)
+                if previous is not None and previous != int(token):
+                    raise ValueError("conflicting bulk NextN prompt token at one position")
+                queued[position] = int(token)
+                destination = (
+                    self._prompt_prime_hidden.ptr
+                    + (slot * self._prompt_prime_capacity + position) * hidden_nbytes
+                )
+                self.runtime.memcpy_async(
+                    destination,
+                    base_ptr + row * stride,
+                    hidden_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+            return
         if self._proposal_graph_runtime_library is None:
             self._proposal_graph_runtime_library = build_runtime_state(
                 load=True,
@@ -2019,6 +2185,9 @@ class Qwen35GGUFNextNExecutor:
         """Release host staging after the target-owned completion boundary."""
 
         request_id = int(request_id)
+        if getattr(self, "_bulk_prompt_prime", False):
+            self._prime_prompt_rows_bulk(request_id, stream=int(stream))
+            self._prompt_prime_rows.pop(request_id, None)
         if synchronize:
             self.runtime.stream_synchronize(int(stream))
         self._prompt_priming_staging.pop(request_id, None)
@@ -2336,6 +2505,12 @@ class Qwen35GGUFNextNExecutor:
 
     def reset_request(self, request_id: int) -> None:
         self._provider_root_state_metadata.pop(int(request_id), None)
+        staging = getattr(self, "_prompt_priming_staging", None)
+        if staging is not None:
+            staging.pop(int(request_id), None)
+        queued = getattr(self, "_prompt_prime_rows", None)
+        if queued is not None:
+            queued.pop(int(request_id), None)
         slot = self._request_slots.get(int(request_id))
         if slot is None:
             return
@@ -2346,6 +2521,7 @@ class Qwen35GGUFNextNExecutor:
         request_id = int(request_id)
         self.reset_request(request_id)
         self._prompt_priming_staging.pop(request_id, None)
+        self._prompt_prime_rows.pop(request_id, None)
         self._request_slots.pop(request_id, None)
 
     def close(self) -> None:
@@ -2359,6 +2535,7 @@ class Qwen35GGUFNextNExecutor:
             self.runtime.stream_destroy(proposal_graph.stream)
         self._proposal_graphs.clear()
         self._prompt_priming_staging.clear()
+        self._prompt_prime_rows.clear()
         for buffer in reversed(self._buffers):
             free(buffer, runtime=self.runtime)
         self._batch_session.close()
