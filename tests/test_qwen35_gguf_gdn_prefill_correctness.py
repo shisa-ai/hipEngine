@@ -56,7 +56,9 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.cpu_reference import gdn_prefill_recurrent_segments
 from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+    qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_fp16,
+    qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_state_rows_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16,
     qwen35_gdn_prefill_recurrent_decode_order_exact_f32,
     qwen35_gdn_prefill_recurrent_decode_order_exact_lds32_direct_f32,
@@ -597,6 +599,50 @@ def _run_decode_order_segments_mutating(
             out,
         ):
             buf.free()
+
+
+def _run_lowp_bf16_single(inputs: _GDNInputs, eps: float, state_arr: np.ndarray):
+    owners = [_to_device(value) for value in (
+        inputs.conv_out_f32, inputs.gate_u16, inputs.a_u16, inputs.b_u16,
+        inputs.dt_bias_f32, inputs.a_log_f32, inputs.norm_weight_f32, state_arr,
+    )]
+    out_shape = (inputs.tokens, inputs.num_v_heads, inputs.head_v_dim)
+    out = _Buf(int(np.prod(out_shape)) * 4)
+    try:
+        qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
+            *(owner.ptr for owner in owners), out.ptr, eps, inputs.num_k_heads,
+            inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim,
+        )
+        return (
+            _from_device(out, out_shape, np.float32),
+            _from_device(owners[-1], state_arr.shape, np.float32),
+        )
+    finally:
+        for owner in (*owners, out):
+            owner.free()
+
+
+def _run_lowp_bf16_segments_rows(inputs, eps, cu_arr, indices_arr, states):
+    owners = [_to_device(value) for value in (
+        inputs.conv_out_f32, inputs.gate_u16, inputs.a_u16, inputs.b_u16,
+        inputs.dt_bias_f32, inputs.a_log_f32, inputs.norm_weight_f32, states,
+        np.asarray(cu_arr, dtype=np.int32), np.asarray(indices_arr, dtype=np.int64),
+    )]
+    state_shape = (inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim)
+    out_shape = (inputs.tokens, inputs.num_v_heads, inputs.head_v_dim)
+    out = _Buf(int(np.prod(out_shape)) * 4)
+    rows = _Buf(inputs.tokens * int(np.prod(state_shape)) * 4)
+    try:
+        qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_state_rows_bf16(
+            *(owner.ptr for owner in owners[:8]), rows.ptr, out.ptr,
+            owners[8].ptr, owners[9].ptr, inputs.tokens, len(cu_arr) - 1, eps,
+            inputs.num_k_heads, inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim,
+        )
+        return (_from_device(out, out_shape, np.float32), _from_device(owners[7], states.shape, np.float32),
+                _from_device(rows, (inputs.tokens, *state_shape), np.float32))
+    finally:
+        for owner in (*owners, out, rows):
+            owner.free()
 
 
 def _lowp_fp16_arrays(inputs: _GDNInputs) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -1535,6 +1581,31 @@ def test_gdn_prefill_segments_mutating_matches_per_segment_decode_order() -> Non
         expected_state_after,
         label="packed mutating segments final state",
     )
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_gdn_segments_lowp_state_rows_match_scalar_c1() -> None:
+    inputs = _GDNInputs(tokens=6, num_k_heads=1, num_v_heads=2,
+                        head_k_dim=128, head_v_dim=128, seed=20260828)
+    cu = np.asarray([0, 3, 6], dtype=np.int32)
+    indices = np.asarray([0, 1], dtype=np.int64)
+    states = np.stack((inputs.init_state_f32, inputs.init_state_f32 * 0.75)).astype(np.float32)
+    actual_out, actual_final, actual_rows = _run_lowp_bf16_segments_rows(
+        inputs, 1e-6, cu, indices, states.copy())
+    expected_out = np.empty_like(actual_out)
+    expected_rows = np.empty_like(actual_rows)
+    expected_final = states.copy()
+    for segment, (start, end) in enumerate(zip(cu[:-1], cu[1:], strict=True)):
+        state = states[segment].copy()
+        for token in range(int(start), int(end)):
+            row_inputs = _slice_gdn_inputs(inputs, token, token + 1, state)
+            row_out, state = _run_lowp_bf16_single(row_inputs, 1e-6, state)
+            expected_out[token] = row_out[0]
+            expected_rows[token] = state
+        expected_final[segment] = state
+    np.testing.assert_array_equal(actual_out, expected_out)
+    np.testing.assert_array_equal(actual_rows, expected_rows)
+    np.testing.assert_array_equal(actual_final, expected_final)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
