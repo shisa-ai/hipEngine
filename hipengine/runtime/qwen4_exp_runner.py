@@ -138,7 +138,7 @@ from hipengine.kernels.cpu_reference.qwen4_exp import (
     qsa_prepare_index_keys,
     qsa_select_positions,
 )
-from hipengine.kernels.registry import resolve
+from hipengine.kernels.registry import KernelKey, is_registered, resolve
 from hipengine.kvcache import KVLiveSpans
 from hipengine.loading.qwen4_exp_materialize import Qwen4ExpResidentWeights
 from hipengine.runtime.gguf_weight import GGUFDeviceWeight
@@ -2834,14 +2834,48 @@ def run_qwen4_exp_moe(
             runtime=active_runtime,
         )
     else:
-        selected_projection(
-            "expert_gate", scratch.hidden_bf16.ptr, scratch.expert_gate.ptr,
-            rows, compact, hidden, ffn,
+        gate_weight = weights["expert_gate"]
+        up_weight = weights["expert_up"]
+        dual_key = KernelKey(
+            backend,
+            "linear",
+            gate_weight.spec.quant_key,
+            "selected_dual_gemv_bf16_bf16_out",
         )
-        selected_projection(
-            "expert_up", scratch.hidden_bf16.ptr, scratch.expert_up.ptr,
-            rows, compact, hidden, ffn,
-        )
+        if (
+            rows == 1
+            and gate_weight.spec.quant_key == up_weight.spec.quant_key
+            and is_registered(dual_key)
+        ):
+            resolve(
+                backend=dual_key.backend,
+                layer=dual_key.layer,
+                quant=dual_key.quant,
+                variant=dual_key.variant,
+            )(
+                scratch.hidden_bf16.ptr,
+                scratch.selected.ptr,
+                gate_weight.allocation("raw").tensor.ptr,
+                up_weight.allocation("raw").tensor.ptr,
+                scratch.expert_gate.ptr,
+                scratch.expert_up.ptr,
+                rows,
+                compact,
+                experts,
+                hidden,
+                ffn,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        else:
+            selected_projection(
+                "expert_gate", scratch.hidden_bf16.ptr, scratch.expert_gate.ptr,
+                rows, compact, hidden, ffn,
+            )
+            selected_projection(
+                "expert_up", scratch.hidden_bf16.ptr, scratch.expert_up.ptr,
+                rows, compact, hidden, ffn,
+            )
         silu_mul_separate_out_bf16(
             scratch.expert_gate.ptr,
             scratch.expert_up.ptr,

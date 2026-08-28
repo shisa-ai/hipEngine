@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "accepted_exact_default",
+  "scope": "Qwen4Exp raw-Q4 selected c1 dual gate/up decode",
+  "host": {"identity":"zbook","machine_id":"87c566d30a5645cf8d12ed7ef6b6e1e8","gpu":"AMD Radeon 8060S Graphics","arch":"gfx1151"},
+  "model": {"id":"Qwen/Qwen3.8-Flash-Next","quant":"Unsloth UD-Q4_K_XL","quant_revision":"8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "change": "At c1, resolve the registered selected_dual_gemv sibling when gate/up share a quant key. One CTA owns both matrices for the same expert/output and reuses the BF16 activation traversal. Registry miss, different quant keys, and multirow execution retain two selected singleton calls.",
+  "correctness": {"dual_primitive_matches_two_singletons":true,"generated_ids_exact":true,"generated_tokens":32,"focused_tests_passed":25,"registered_singleton_fallback":true,"new_resident_bytes":0},
+  "paired_complete_model": {"command":"uv run python /tmp/qwen4exp_decode_q4dual_paired.py","protocol":"one residency after exact Q8 F32 pack default; discard one strict+candidate warm pair; counterbalanced S/C/C/S/S/C; each row resets, warms 8, measures 32 generated tokens","strict_seconds":[5.282363988997531,5.272974128994974,5.2765221150039],"candidate_seconds":[5.161389050001162,5.1420861600054195,5.107991331999074],"strict_median_seconds":5.2765221150039,"candidate_median_seconds":5.1420861600054195,"reduction_percent":2.5478137316284286,"speedup":1.026144243953769,"strict_tok_s":6.064600754540067,"candidate_tok_s":6.223155156148973},
+  "kernel_trace": {"command":"HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace -f csv -o qwen4exp-decode32-q4dual -d /tmp -- uv run python /tmp/qwen4exp_decode32_profile.py","tokens_in_trace":41,"expected_kernel":"gguf_q4_k_selected_dual_prefill_out_kernel<unsigned short,unsigned short>","singleton_q4_launches_before":3854,"dual_q4_launches_after":1927,"q4_launches_per_token_before":94,"q4_launches_per_token_after":47,"total_launches_before":80599,"total_launches_after":78672,"launch_reduction":1927,"note":"Absolute cross-profile kernel durations were globally frequency-shifted and are not used as the paired speed claim; the expected symbol and exact halving of Q4 launches are binding trace evidence.","compiler_spawned_under_profiler":false},
+  "validation": {"command":"HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test_gguf_q4_k_selected_wmma_prefill.py tests/test_qwen4_exp_runner_moe.py tests/test_qwen4_exp_artifact.py -x","result":"25 passed"},
+  "decision": "Promote by registered operation capability at c1. Every miss retains the two strict singleton projections."
+}

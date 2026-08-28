@@ -198,15 +198,15 @@ first/steady is **51.220/58.466 tok/s** and p1006 is **55.046 tok/s**. A
 same-host/same-GGUF PR #27742 reference measures Vulkan/HIP pp508
 **316.380/274.996 tok/s**, pp1006 **290.450/284.485**, and tg32
 **18.716/15.848** versus then-current hipEngine **58.466/55.046/5.890**. The
-first exact parity unit subsequently improves a counterbalanced decode harness
-**5.698→6.305 tok/s (+10.66%)** by cutting raw-Q8 kernel wall 55.31%; the
-remaining llama.cpp gap is still binding. Current natural 16K improves **946.999→364.306 s (-61.53%, 44.973 tok/s)** with every
+first exact parity units improve counterbalanced decode **5.698→6.305 tok/s
+(+10.66%)** via raw-Q8 output packing, then **6.065→6.223 (+2.61%)** via Q4
+dual gate/up; the remaining llama.cpp gap is still binding. Current natural 16K improves **946.999→364.306 s (-61.53%, 44.973 tok/s)** with every
 binding control exact; 64K historical evidence is retained but not rerun because
 44.973<100 tok/s. 262K is capacity-only (91.126 GB tracked), not inference. Q8 MTP is exact on 10/10
 prompts but remains opt-in at **0.955x AR**. <=1K image/video/PNG chat and
 request-owned c2 blocking/SSE pass with zero teardown; packed c-aware speed,
 remote media, multimodal SSE, and 128K+/262K inference are not claimed.
-Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`decode`](results/2026-08-28-gfx1151-qwen38-flash-next-exact-q8-f32-pack8-decode.json) · [`closure`](results/2026-08-28-gfx1151-qwen38-flash-next-working-scope-closure.json).
+Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`decode`](results/2026-08-28-gfx1151-qwen38-flash-next-exact-q8-f32-pack8-decode.json) · [`Q4 dual`](results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-dual-decode.json) · [`closure`](results/2026-08-28-gfx1151-qwen38-flash-next-working-scope-closure.json).
 
 ## Current Qwen3.6-35B quantization quality
 
