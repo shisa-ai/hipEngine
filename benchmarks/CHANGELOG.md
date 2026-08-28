@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-28 gfx1151 Qwen3.8 C2 verifier Q5 rowtile retained] Add only actual K6144/N5120 recurrent-output weights to the verifier-local capability. Existing exact col8 ownership replaces 48 direct calls **27.51→8.27 ms (-69.93%)**; clean K3 improves **14.154→14.762 tok/s (+4.29%)** and **0.9747x→1.0233x AR**. Mixed remains 0.9536x and aggregate is below 1.10x, so automatic C2 stays K0. `benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json`.
+
 - [2026-08-28 gfx1151 Qwen3.8 C2 verifier Q6 rowtiles retained] Route only actual standard-Q6 QKV and planar-Q6 down/V target shapes through existing exact rows2-8 col8 rowtiles. Clean K3 improves **11.724→14.154 tok/s (+20.73%)** and **0.8170x→0.9747x AR**; steady R8 target/cycle falls **317.11→218.26 ms (-31.17%) / 364.27→265.93 ms (-27.00%)**. All K1-K3 cells remain exact, but category/aggregate promotion fails, so automatic C2 stays K0. `benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json`.
 
 - [2026-08-27 gfx1151 Qwen3.8 Dynamic Admission D7 closure] Retain only strict cap4 realized-C1/K3 automatic at **9.807→15.609 tok/s (1.5916x, +59.16%)**; all 10 cells are >=1.462x and categories positive. C2-C8 now group at normal AR width and select exact pure K0 with zero provider mutation. Explicit production C1-C8 stays correctness-qualified/default-off; obsolete broad booleans and the D6 switch are removed. `benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json`.

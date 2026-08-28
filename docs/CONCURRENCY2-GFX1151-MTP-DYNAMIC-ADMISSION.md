@@ -1,6 +1,6 @@
 # CONCURRENCY2 gfx1151 MTP Dynamic Admission Campaign
 
-- Status: **D0-D7 complete; post-closure D6 reopen retains exact C2 Q6 verifier rowtiles at 0.9747x AR; automatic strict C1/K3 remains 1.5916x and automatic C2-C8 remains pure K0**
+- Status: **D0-D7 complete; post-closure D6 reopen retains exact C2 Q5/Q6 verifier rowtiles at 1.0233x AR; automatic strict C1/K3 remains 1.5916x and automatic C2-C8 remains pure K0**
 - Scope: **explicit production C1-C8 is correctness-qualified/default-off; a scoped C2 target-owner win is retained but no C>1 product cell passes; typed model-plugin evidence is the sole automatic policy owner**
 - Hardware lane when execution is approved: **Radeon 8060S / `hip_gfx1151`**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile**
@@ -41,8 +41,9 @@ D6 originally closed the three-arm economics matrix and rejected every
 automatic C>1 cell. A post-closure cycle-local audit later disproved its
 "mandatory model work is irreducible" inference and retained verifier-only Q6
 rowtiles; the policy verdict remains K0. Evidence:
-[`D6 economics`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d6-economics.json)
-and [`D6 Q6 reopen`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json).
+[`D6 economics`](../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d6-economics.json),
+[`D6 Q6 reopen`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json),
+and [`D6 Q5 extension`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json).
 D7 closes public policy and cleanup: current-source automatic C1 retains its
 full-suite win; C2-C8 group at the normal AR width and select pure K0 with zero
 provider mutation. Evidence:
@@ -428,6 +429,18 @@ for the 1.10x gate. A single-prompt D128 screen remains only 0.899x complete
 AR, so no wider horizon claim is admitted. Retain the scoped exact owner win,
 but keep automatic C2-C8 pure K0. Evidence:
 [`D6-R1`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json).
+
+**Post-closure D6-R2 (2026-08-28):** the remaining 48 target Q5 recurrent-output
+calls were the same verifier-local routing miss. Existing exact K6144/N5120
+col8 ownership is BF16-bit identical through R8 and measures **0.5264→0.1519
+ms (3.46x)** at R8. Admitting only that actual shape replaces **27.51→8.27
+ms (-69.93%)** per steady cycle, reducing target **218.26→197.46 ms (-9.53%)**
+and cycle **265.93→244.75 ms (-7.96%)**. Clean ten-prompt C2/K3 improves
+**14.154→14.762 tok/s (+4.29%)** and **0.9747x→1.0233x AR**; code and English
+are positive, Japanese is 0.9987x, and mixed remains 0.9536x. This is the first
+aggregate C2 win but remains **7.50%** short of the binding 1.10x gate and fails
+category non-regression, so automatic C2 remains pure K0. Evidence:
+[`D6-R2`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json).
 
 ### D7 — automatic policy and closure
 
