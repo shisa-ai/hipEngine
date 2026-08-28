@@ -16,7 +16,12 @@
     "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
     "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
     "prompts": 10,
-    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
     "heldout_prompts": 4,
     "sampling": "greedy",
     "prompt_cache": false,
@@ -54,6 +59,10 @@
     "dflash2_q8_0": {
       "bytes": 2056414752,
       "sha256": "7f1c9a31a6ed40044c69f6508b50fd63b87abd8e1fb7fe4290303df549153751"
+    },
+    "standard_q4_k_m": {
+      "bytes": 17106775008,
+      "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
     }
   },
   "routes": [
@@ -79,7 +88,10 @@
       "locally_correct_usable": true,
       "claim": {
         "ar_decode_tok_s": 14.02,
-        "mtp_decode_tok_s_range": [30.56, 36.04]
+        "mtp_decode_tok_s_range": [
+          30.56,
+          36.04
+        ]
       },
       "published_protocol_actual": {
         "ar_decode_tok_s": 14.31,
@@ -87,10 +99,30 @@
         "strict_mtp_k4_acceptance_pct": 78.1,
         "prompts": 4,
         "results": [
-          {"name": "Binary Search Tree", "category": "code", "decode_tok_s": 41.44, "acceptance_pct": 88.6},
-          {"name": "Widget Factory", "category": "reasoning", "decode_tok_s": 38.73, "acceptance_pct": 75.7},
-          {"name": "JSON Entity Extractor", "category": "structured", "decode_tok_s": 48.49, "acceptance_pct": 100.0},
-          {"name": "UMA versus Discrete", "category": "technical writing", "decode_tok_s": 26.75, "acceptance_pct": 48.0}
+          {
+            "name": "Binary Search Tree",
+            "category": "code",
+            "decode_tok_s": 41.44,
+            "acceptance_pct": 88.6
+          },
+          {
+            "name": "Widget Factory",
+            "category": "reasoning",
+            "decode_tok_s": 38.73,
+            "acceptance_pct": 75.7
+          },
+          {
+            "name": "JSON Entity Extractor",
+            "category": "structured",
+            "decode_tok_s": 48.49,
+            "acceptance_pct": 100.0
+          },
+          {
+            "name": "UMA versus Discrete",
+            "category": "technical writing",
+            "decode_tok_s": 26.75,
+            "acceptance_pct": 48.0
+          }
         ],
         "repetition_guard_passed": true
       },
@@ -109,7 +141,13 @@
         }
       },
       "command": "source q38rocm/setup_env.sh; q38rocm/engine/bin/llama-server -m Qwen3.8-27B-ROCmFP4-FAST.gguf -dev Vulkan0 -ngl 99 -fa on -np 1 -c 65536 -b 2048 -ub 1024 -t 16 --poll 100 -ctk q8_0 -ctv turbo4 --presence-penalty 0 --repeat-penalty 1 --temperature 0 --no-mmap --cont-batching --kv-unified --port 8000 --host 127.0.0.1 -ctxcp 0 -cram 0 --no-cache-prompt --no-cache-idle-slots --reasoning off --spec-type draft-mtp --spec-draft-n-max 4 --spec-draft-p-min 0 --spec-mtp-strict-qwen; .venv/bin/python scripts/mtp-bench.py --mode server --url http://127.0.0.1:8000 --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 24 --temperature 0 --no-cache-prompt --concurrency 1",
-      "correctness": "All four published-protocol repetition guards passed. All ten common-suite requests completed and every category improved; the compact common-suite harness did not retain response text."
+      "correctness": "All four published-protocol repetition guards passed. All ten common-suite requests completed and every category improved; the compact common-suite harness did not retain response text.",
+      "strict_mode_concurrency": {
+        "server_slots": 1,
+        "c2_c8_supported": false,
+        "failed_np8_error": "Qwen strict MTP requires a single server slot/sequence",
+        "note": "The 38.85 tok/s source-protocol result is C1-only."
+      }
     },
     {
       "id": "laurent-adaptive-dflash2",
@@ -137,10 +175,13 @@
         "failure": "The JSON request emitted repeated prose from the preceding tidal-pattern prompt. The fork's guard passed because it checked emitted length, not content."
       },
       "fresh_server_controls": {
-        "json_300_token_decode_tok_s_range": [56.699, 56.991],
+        "json_300_token_decode_tok_s_range": [
+          56.699,
+          56.991
+        ],
         "json_300_token_contract_valid": false,
         "json_300_token_note": "Clean deterministic JSON prefix, but the 300-token budget truncated the response at object 9.",
-        "json_420_token_bare_decode_tok_s": 14.180,
+        "json_420_token_bare_decode_tok_s": 14.18,
         "json_420_token_adaptive_decode_tok_s": 56.532,
         "json_420_token_contract_valid": true,
         "common_suite_arithmetic_decode_tok_s": 37.752,
@@ -168,29 +209,41 @@
       "locally_correct_usable": true,
       "claim": {
         "count_cold_tok_s": 59.7,
-        "count_warm_tok_s_range": [148, 163],
-        "real_traffic_tok_s_range": [11, 24]
+        "count_warm_tok_s_range": [
+          148,
+          163
+        ],
+        "real_traffic_tok_s_range": [
+          11,
+          24
+        ]
       },
       "count_to_30_actual": {
         "ar_cold_decode_tok_s": 11.94,
         "ar_warm_decode_tok_s": 11.97,
         "mtp_k12_cold_decode_tok_s": 61.09,
-        "mtp_k12_warm_decode_tok_s_range": [59.42, 59.49],
+        "mtp_k12_warm_decode_tok_s_range": [
+          59.42,
+          59.49
+        ],
         "mtp_ngram_cold_decode_tok_s": 60.95,
-        "mtp_ngram_warm_decode_tok_s_range": [164.13, 167.64],
+        "mtp_ngram_warm_decode_tok_s_range": [
+          164.13,
+          167.64
+        ],
         "output_exact_1_to_30": true
       },
       "common_suite_actual": {
         "ar_arithmetic_decode_tok_s": 11.964,
         "ar_complete_wall_tok_s": 11.679,
-        "mtp_k12_arithmetic_decode_tok_s": 24.390,
-        "mtp_k12_complete_wall_tok_s": 20.450,
+        "mtp_k12_arithmetic_decode_tok_s": 24.39,
+        "mtp_k12_complete_wall_tok_s": 20.45,
         "mtp_ngram_arithmetic_decode_tok_s": 24.867,
         "mtp_ngram_complete_wall_tok_s": 20.518,
         "mtp_ngram_acceptance_pct": 29.26,
         "mtp_ngram_category_decode_tok_s": {
           "code": 35.82,
-          "general_en": 16.10,
+          "general_en": 16.1,
           "general_ja": 15.45,
           "mixed_ja_en": 21.15
         }
@@ -209,18 +262,57 @@
       "draft_model": "dflash2_q8_0",
       "locally_correct_usable": true,
       "claim": {
-        "q5_complete_wall_tok_s_range": [23, 24],
-        "q6_complete_wall_tok_s_range": [17, 21],
-        "q8_complete_wall_tok_s_range": [15, 18]
+        "q5_complete_wall_tok_s_range": [
+          23,
+          24
+        ],
+        "q6_complete_wall_tok_s_range": [
+          17,
+          21
+        ],
+        "q8_complete_wall_tok_s_range": [
+          15,
+          18
+        ]
       },
       "actual": {
-        "q5": {"ar_decode_tok_s": 10.695, "dflash_k5_decode_tok_s": 30.659, "complete_wall_tok_s": 24.706, "acceptance_pct": 53.19},
-        "q6": {"ar_decode_tok_s": 8.778, "dflash_k6_decode_tok_s": 26.470, "complete_wall_tok_s": 20.549, "acceptance_pct": 42.92},
-        "q8": {"ar_decode_tok_s": 7.275, "dflash_k6_decode_tok_s": 23.044, "complete_wall_tok_s": 18.197, "acceptance_pct": 43.94},
+        "q5": {
+          "ar_decode_tok_s": 10.695,
+          "dflash_k5_decode_tok_s": 30.659,
+          "complete_wall_tok_s": 24.706,
+          "acceptance_pct": 53.19
+        },
+        "q6": {
+          "ar_decode_tok_s": 8.778,
+          "dflash_k6_decode_tok_s": 26.47,
+          "complete_wall_tok_s": 20.549,
+          "acceptance_pct": 42.92
+        },
+        "q8": {
+          "ar_decode_tok_s": 7.275,
+          "dflash_k6_decode_tok_s": 23.044,
+          "complete_wall_tok_s": 18.197,
+          "acceptance_pct": 43.94
+        },
         "dflash_category_decode_tok_s": {
-          "q5": {"code": 40.11, "general_en": 25.25, "general_ja": 18.08, "mixed_ja_en": 29.73},
-          "q6": {"code": 36.48, "general_en": 19.36, "general_ja": 13.54, "mixed_ja_en": 26.50},
-          "q8": {"code": 31.64, "general_en": 15.33, "general_ja": 13.01, "mixed_ja_en": 23.59}
+          "q5": {
+            "code": 40.11,
+            "general_en": 25.25,
+            "general_ja": 18.08,
+            "mixed_ja_en": 29.73
+          },
+          "q6": {
+            "code": 36.48,
+            "general_en": 19.36,
+            "general_ja": 13.54,
+            "mixed_ja_en": 26.5
+          },
+          "q8": {
+            "code": 31.64,
+            "general_en": 15.33,
+            "general_ja": 13.01,
+            "mixed_ja_en": 23.59
+          }
         }
       },
       "matched_latest_mainline": {
@@ -232,9 +324,24 @@
         "q8_dflash_decode_tok_s": 23.374,
         "q8_complete_wall_tok_s": 18.092,
         "dflash_category_decode_tok_s": {
-          "q5": {"code": 40.94, "general_en": 25.79, "general_ja": 18.11, "mixed_ja_en": 29.82},
-          "q6": {"code": 37.32, "general_en": 19.44, "general_ja": 13.59, "mixed_ja_en": 26.67},
-          "q8": {"code": 32.37, "general_en": 15.40, "general_ja": 13.06, "mixed_ja_en": 23.68}
+          "q5": {
+            "code": 40.94,
+            "general_en": 25.79,
+            "general_ja": 18.11,
+            "mixed_ja_en": 29.82
+          },
+          "q6": {
+            "code": 37.32,
+            "general_en": 19.44,
+            "general_ja": 13.59,
+            "mixed_ja_en": 26.67
+          },
+          "q8": {
+            "code": 32.37,
+            "general_en": 15.4,
+            "general_ja": 13.06,
+            "mixed_ja_en": 23.68
+          }
         },
         "cross_engine_outputs_token_exact": true
       },
@@ -258,10 +365,30 @@
         "slots": 4,
         "context_per_slot": 32768,
         "tokens_per_request": 256,
-        "ar_aggregate_tok_s": {"c1": 7.21, "c2": 13.35, "c3": 18.00, "c4": 21.03},
-        "mtp_aggregate_tok_s": {"c1": 16.07, "c2": 17.48, "c3": 18.21, "c4": 17.58},
-        "mtp_over_ar": {"c1": 2.23, "c2": 1.31, "c3": 1.01, "c4": 0.84},
-        "mtp_acceptance_pct": {"c1": 72.9, "c2": 71.4, "c3": 71.6, "c4": 66.4},
+        "ar_aggregate_tok_s": {
+          "c1": 7.21,
+          "c2": 13.35,
+          "c3": 18.0,
+          "c4": 21.03
+        },
+        "mtp_aggregate_tok_s": {
+          "c1": 16.07,
+          "c2": 17.48,
+          "c3": 18.21,
+          "c4": 17.58
+        },
+        "mtp_over_ar": {
+          "c1": 2.23,
+          "c2": 1.31,
+          "c3": 1.01,
+          "c4": 0.84
+        },
+        "mtp_acceptance_pct": {
+          "c1": 72.9,
+          "c2": 71.4,
+          "c3": 71.6,
+          "c4": 66.4
+        },
         "c4_per_request_ar_tok_s": 5.87,
         "c4_per_request_mtp_tok_s": 4.89
       },
@@ -280,18 +407,37 @@
       "claim": {
         "q4_k_m_mean_decode_tok_s": 26.47,
         "ud_q4_k_xl_mean_decode_tok_s": 26.26,
-        "ud_q8_k_xl_mean_decode_tok_s": 15.20,
+        "ud_q8_k_xl_mean_decode_tok_s": 15.2,
         "depth_warning": "K >= 6 can degenerate into repetitive fake ~35 tok/s output on the published stack."
       },
       "actual": {
         "k4_mean_decode_tok_s": 31.18,
-        "k4_category_decode_tok_s": {"prose": 27.90, "code": 34.71, "json": 30.92},
-        "k4_acceptance": {"prose": 0.58, "code": 0.78, "json": 0.67},
+        "k4_category_decode_tok_s": {
+          "prose": 27.9,
+          "code": 34.71,
+          "json": 30.92
+        },
+        "k4_acceptance": {
+          "prose": 0.58,
+          "code": 0.78,
+          "json": 0.67
+        },
         "k6_mean_decode_tok_s": 28.75,
         "k8_mean_decode_tok_s": 20.99,
-        "k8_category_decode_tok_s": {"prose": 16.45, "code": 24.01, "json": 22.53},
-        "k8_acceptance": {"prose": 0.35, "code": 0.57, "json": 0.52},
-        "k8_uniqueness_range": [0.924, 0.974],
+        "k8_category_decode_tok_s": {
+          "prose": 16.45,
+          "code": 24.01,
+          "json": 22.53
+        },
+        "k8_acceptance": {
+          "prose": 0.35,
+          "code": 0.57,
+          "json": 0.52
+        },
+        "k8_uniqueness_range": [
+          0.924,
+          0.974
+        ],
         "all_outputs_valid_nonrepetitive": true
       },
       "command": "BACKEND=<llama.cpp-4e97ac86-vulkan>/build-vulkan/bin VENDOR=$BACKEND bash qwen38-bench /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf new-unsloth-UD-Q4_K_M-mainline <4|6|8>",
@@ -311,8 +457,18 @@
         "mtp_k3_arithmetic_decode_tok_s": 33.454,
         "mtp_k3_complete_wall_tok_s": 17.572,
         "mtp_k3_acceptance_pct": 95.45,
-        "ar_category_decode_tok_s": {"code": 12.92, "general_en": 13.09, "general_ja": 13.12, "mixed_ja_en": 13.12},
-        "mtp_k3_category_decode_tok_s": {"code": 33.08, "general_en": 35.27, "general_ja": 33.15, "mixed_ja_en": 32.70}
+        "ar_category_decode_tok_s": {
+          "code": 12.92,
+          "general_en": 13.09,
+          "general_ja": 13.12,
+          "mixed_ja_en": 13.12
+        },
+        "mtp_k3_category_decode_tok_s": {
+          "code": 33.08,
+          "general_en": 35.27,
+          "general_ja": 33.15,
+          "mixed_ja_en": 32.7
+        }
       },
       "command": "llama-server -m /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf -ngl 999 -fa on -b 2048 -ub 512 --no-mmap -c 4096 --host 127.0.0.1 --port 8080 --alias llama [--spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.0]; .venv/bin/python scripts/mtp-bench.py --mode server --url http://127.0.0.1:8080 --model llama --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 24 --temperature 0 --no-cache-prompt --timeout 180 --concurrency 1",
       "correctness": "The long-output yandaq K4/K6/K8 controls were substantive and non-repetitive."
@@ -341,5 +497,340 @@
     "invalid_headline": "Laurent's locally observed 66.838 tok/s sequential JSON row was invalid because it repeated state-contaminated prose.",
     "artificial_replay_peak": "Kyanite MTP+ngram reached 167.64 tok/s on warm count-to-30 replay; it is not novel-generation throughput.",
     "concurrency": "MikeVeerman's Q8 crossover reproduced: MTP is 2.23x AR at C1, approximately neutral at C3, and 0.84x AR at C4."
+  },
+  "standardized_q4_k_m_comparison": {
+    "purpose": "Apples-to-apples engine comparison; source-protocol results elsewhere in this artifact are not used for ranking.",
+    "model": "standard_q4_k_m",
+    "suite": "common_suite",
+    "widths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "decode_protocol": {
+      "output_tokens_per_request": 24,
+      "sampling": "greedy",
+      "prompt_cache": false,
+      "timing": "barrier-to-last-completion complete wall per prompt, summed across ten prompts",
+      "arms": [
+        "AR",
+        "built-in MTP K3"
+      ],
+      "repetition_guard": {
+        "minimum_unique_char30_fraction": 0.5,
+        "maximum_word_trigram_repeats": 3
+      }
+    },
+    "prefill_protocol": {
+      "output_tokens_per_request": 1,
+      "sampling": "greedy",
+      "prompt_cache": false,
+      "timing": "prompt tokens / barrier-to-last-completion complete wall; includes one generated token and API overhead",
+      "note": "This common end-to-end boundary is used because llama.cpp exposes internal prompt timing but hipEngine does not expose the same field."
+    },
+    "rows": {
+      "hipengine": {
+        "implementation": "hipEngine",
+        "commit": "a9b801d5916aab05ca74ab95bd3b68308783cdd5",
+        "backend": "HIP/gfx1151",
+        "prefill_complete_wall_tok_s": [
+          71.545,
+          74.873,
+          104.508,
+          124.354,
+          141.449,
+          152.2,
+          162.076,
+          169.964
+        ],
+        "ar_complete_wall_tok_s": [
+          9.637,
+          14.247,
+          20.731,
+          26.216,
+          31.19,
+          34.564,
+          36.592,
+          39.057
+        ],
+        "mtp_k3_complete_wall_tok_s": [
+          7.073,
+          17.401,
+          20.065,
+          16.513,
+          12.966,
+          16.851,
+          17.662,
+          16.069
+        ],
+        "mtp_acceptance_pct": [
+          78.894,
+          78.894,
+          78.894,
+          78.894,
+          78.894,
+          78.894,
+          78.894,
+          78.894
+        ],
+        "correctness_gate_passed": true
+      },
+      "mainline_vulkan": {
+        "implementation": "stock llama.cpp mainline",
+        "commit": "4e97ac86ebe2c4cb8212d98d2641ad6768810896",
+        "backend": "Vulkan/RADV",
+        "prefill_complete_wall_tok_s": [
+          87.43,
+          113.731,
+          114.816,
+          117.862,
+          129.242,
+          138.932,
+          141.491,
+          155.53
+        ],
+        "ar_complete_wall_tok_s": [
+          10.266,
+          17.323,
+          16.696,
+          17.491,
+          23.099,
+          27.534,
+          27.763,
+          35.513
+        ],
+        "mtp_k3_complete_wall_tok_s": [
+          21.009,
+          30.892,
+          27.346,
+          27.015,
+          32.74,
+          32.359,
+          38.383,
+          45.46
+        ],
+        "mtp_acceptance_pct": [
+          80.928,
+          80.513,
+          81.207,
+          81.242,
+          81.011,
+          80.617,
+          81.287,
+          79.719
+        ],
+        "correctness_gate_passed": true
+      },
+      "stock_hip": {
+        "implementation": "stock llama.cpp",
+        "commit": "9d57ce456c94d241dde672b2db9cf18879766568",
+        "backend": "HIP/ROCm",
+        "prefill_complete_wall_tok_s": [
+          136.815,
+          172.019,
+          180.093,
+          192.544,
+          217.389,
+          241.138,
+          242.148,
+          274.119
+        ],
+        "ar_complete_wall_tok_s": [
+          10.754,
+          17.763,
+          17.079,
+          17.903,
+          22.923,
+          25.523,
+          25.466,
+          30.263
+        ],
+        "mtp_k3_complete_wall_tok_s": [
+          17.604,
+          22.989,
+          20.257,
+          19.704,
+          16.753,
+          33.381,
+          41.214,
+          54.834
+        ],
+        "mtp_acceptance_pct": [
+          80.102,
+          80.513,
+          66.667,
+          60.233,
+          49.438,
+          74.313,
+          76.039,
+          80.513
+        ],
+        "correctness_gate_passed": true
+      },
+      "laurent_vulkan": {
+        "implementation": "LaurentZuijdwijk fork",
+        "commit": "c28d538df5c02643e701a8004db84dbf1bb0ffb2",
+        "backend": "Vulkan/RADV",
+        "prefill_complete_wall_tok_s": [
+          135.411,
+          194.071,
+          182.59,
+          184.956,
+          215.525,
+          243.524,
+          245.608,
+          296.816
+        ],
+        "ar_complete_wall_tok_s": [
+          11.156,
+          20.056,
+          18.821,
+          19.693,
+          27.223,
+          33.204,
+          33.416,
+          45.751
+        ],
+        "mtp_k3_complete_wall_tok_s": [
+          21.277,
+          32.378,
+          27.515,
+          25.438,
+          30.757,
+          36.023,
+          42.304,
+          49.999
+        ],
+        "mtp_acceptance_pct": [
+          80.513,
+          74.519,
+          75.121,
+          77.037,
+          72.019,
+          70.675,
+          73.153,
+          70.699
+        ],
+        "correctness_gate_passed": true
+      },
+      "nathan_vulkan": {
+        "implementation": "Nathanw fork",
+        "commit": "0eb528051a56f34567312ce63ab4e14a3fc71d89",
+        "backend": "Vulkan/RADV",
+        "prefill_complete_wall_tok_s": [
+          138.95,
+          184.689,
+          176.805,
+          179.448,
+          201.581,
+          221.233,
+          222.775,
+          257.168
+        ],
+        "ar_complete_wall_tok_s": [
+          11.336,
+          19.889,
+          18.729,
+          19.56,
+          26.636,
+          31.716,
+          31.469,
+          41.227
+        ],
+        "mtp_k3_complete_wall_tok_s": [
+          21.046,
+          30.204,
+          26.906,
+          25.279,
+          28.632,
+          31.947,
+          36.868,
+          45.319
+        ],
+        "mtp_acceptance_pct": [
+          83.333,
+          82.778,
+          84.572,
+          80.191,
+          82.633,
+          82.277,
+          79.984,
+          80.435
+        ],
+        "correctness_gate_passed": true
+      },
+      "q38rocm_normal_vulkan": {
+        "implementation": "q38rocm v1.5.2 normal MTP",
+        "commit": "5d0977403b0dac778598b1af499bf178b46c0b35",
+        "backend": "Vulkan/RADV",
+        "prefill_complete_wall_tok_s": [
+          136.349,
+          175.334,
+          177.615,
+          184.072,
+          207.506,
+          234.828,
+          235.31,
+          269.029
+        ],
+        "ar_complete_wall_tok_s": [
+          10.64,
+          18.667,
+          17.784,
+          18.744,
+          24.685,
+          28.188,
+          27.964,
+          34.933
+        ],
+        "mtp_k3_complete_wall_tok_s": [
+          20.464,
+          27.195,
+          26.24,
+          26.532,
+          32.361,
+          31.043,
+          38.123,
+          45.365
+        ],
+        "mtp_acceptance_pct": [
+          80.513,
+          80.513,
+          81.347,
+          81.137,
+          81.011,
+          80.617,
+          81.227,
+          81.347
+        ],
+        "correctness_gate_passed": true
+      }
+    },
+    "winners": {
+      "prefill": [
+        "C1 Nathan",
+        "C2 Laurent",
+        "C3-C5 stock HIP",
+        "C6-C8 Laurent"
+      ],
+      "ar": [
+        "C1 Nathan",
+        "C2 Laurent",
+        "C3-C7 hipEngine",
+        "C8 Laurent"
+      ],
+      "mtp_k3": [
+        "C1-C3 Laurent",
+        "C4-C5 mainline Vulkan",
+        "C6-C8 stock HIP"
+      ]
+    },
+    "conclusion": "No engine wins every phase and concurrency. Laurent is the strongest broad alternate llama.cpp fork in this matrix; hipEngine leads AR at C3-C7 but its current MTP route loses to AR except at C2.",
+    "kv_precision": "Engine production/default configuration: hipEngine BF16; llama.cpp default F16. This is a deployable-configuration comparison, not identical internal arithmetic."
   }
 }
