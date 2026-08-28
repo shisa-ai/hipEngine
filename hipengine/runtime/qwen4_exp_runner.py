@@ -3019,31 +3019,59 @@ def run_qwen4_exp_moe(
                 stream=stream,
                 runtime=active_runtime,
             )
-        selected_projection(
-            "expert_down", scratch.expert_intermediate.ptr, scratch.expert_down.ptr,
-            compact, compact, ffn, hidden,
+        down_weight = weights["expert_down"]
+        fused_down_key = KernelKey(
+            backend,
+            "linear",
+            down_weight.spec.quant_key,
+            "selected_weighted_sum_logical256_t64_bf16_bf16_out",
         )
-        if rows == 1:
-            weighted_sum_out_bf16_f32w(
-                scratch.expert_down.ptr,
+        fused_down = bool(rows == 1 and is_registered(fused_down_key))
+        if fused_down:
+            resolve(
+                backend=fused_down_key.backend,
+                layer=fused_down_key.layer,
+                quant=fused_down_key.quant,
+                variant=fused_down_key.variant,
+            )(
+                scratch.expert_intermediate.ptr,
+                scratch.selected.ptr,
+                down_weight.allocation("raw").tensor.ptr,
                 scratch.routing.ptr,
                 scratch.routed.ptr,
                 compact,
+                experts,
+                ffn,
                 hidden,
                 stream=stream,
                 runtime=active_runtime,
             )
         else:
-            weighted_sum_batch_out_bf16_f32w(
-                scratch.expert_down.ptr,
-                scratch.routing.ptr,
-                scratch.routed.ptr,
-                rows,
-                top_k,
-                hidden,
-                stream=stream,
-                runtime=active_runtime,
+            selected_projection(
+                "expert_down", scratch.expert_intermediate.ptr,
+                scratch.expert_down.ptr, compact, compact, ffn, hidden,
             )
+            if rows == 1:
+                weighted_sum_out_bf16_f32w(
+                    scratch.expert_down.ptr,
+                    scratch.routing.ptr,
+                    scratch.routed.ptr,
+                    compact,
+                    hidden,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+            else:
+                weighted_sum_batch_out_bf16_f32w(
+                    scratch.expert_down.ptr,
+                    scratch.routing.ptr,
+                    scratch.routed.ptr,
+                    rows,
+                    top_k,
+                    hidden,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
     for slot, output in (
         ("shared_gate", scratch.shared_gate),
         ("shared_up", scratch.shared_up),
