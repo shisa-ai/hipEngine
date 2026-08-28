@@ -68,6 +68,7 @@ from hipengine.generation import (
 from hipengine.generation.constraints import JsonObjectConstraintState, ToolCallConstraintSpec
 from hipengine.generation.registry import normalize_prompt_input
 from hipengine.kvcache import resolve_prefix_cache_mode
+from hipengine.server.multimodal import extract_qwen4_exp_chat_media
 from hipengine.speculative.policy import (
     DEFAULT_AUTO_DEPTH_POLICY,
     select_offline_speculative_depth,
@@ -337,6 +338,7 @@ class ServerConfig:
     speculative_provider: str | None = None
     draft_model: str | None = None
     speculative_candidate_budget: int = 4
+    vision_model: str | None = None
     created: int = field(default_factory=lambda: int(time.time()))
     execution_profile: str | None = None
 
@@ -383,6 +385,12 @@ class ServerConfig:
         object.__setattr__(self, "speculative_provider", provider)
         object.__setattr__(self, "draft_model", drafter)
         object.__setattr__(self, "speculative_candidate_budget", candidate_budget)
+        vision_model = (
+            None if self.vision_model is None else str(self.vision_model).strip()
+        )
+        if vision_model == "":
+            raise ValueError("vision_model must be non-empty when set")
+        object.__setattr__(self, "vision_model", vision_model)
         if int(self.stream_queue_max_chunks) < 2:
             raise ValueError("stream_queue_max_chunks must be at least 2")
         if float(self.shutdown_grace_seconds) < 0.0:
@@ -4094,6 +4102,7 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 speculative_provider=config.speculative_provider,
                 draft_model=config.draft_model,
                 speculative_candidate_budget=config.speculative_candidate_budget,
+                vision_model=config.vision_model,
             )
             _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
         mtp_circuit_breaker.attach(app.state.hipengine_llm)
@@ -6466,6 +6475,111 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             route_unsupported_grammar=True,
         )
         _validate_continuation_resume_request(request)
+        attached_engine = getattr(app.state, "hipengine_llm", None)
+        multimodal_capable = bool(
+            config.vision_model is not None
+            or (
+                attached_engine is not None
+                and getattr(attached_engine, "supports_vision", False)
+            )
+        )
+        try:
+            multimodal_input = (
+                extract_qwen4_exp_chat_media(request.messages)
+                if multimodal_capable
+                else None
+            )
+        except ValueError as exc:
+            raise OpenAIHTTPError(
+                400, str(exc), code="invalid_request", param="messages"
+            ) from exc
+        if multimodal_input is not None:
+            if request.stream:
+                raise OpenAIHTTPError(
+                    400,
+                    "Qwen4Exp HTTP multimodal streaming is not yet supported",
+                    code="unsupported_parameter",
+                    param="stream",
+                )
+            if _request_n(request) != 1:
+                raise OpenAIHTTPError(
+                    400,
+                    "Qwen4Exp HTTP multimodal generation requires n=1",
+                    code="unsupported_parameter",
+                    param="n",
+                )
+            if request.tools or request.continuation_id or request.session:
+                raise OpenAIHTTPError(
+                    400,
+                    "Qwen4Exp HTTP multimodal generation does not combine with "
+                    "tools, continuation, or sessions",
+                    code="unsupported_parameter",
+                )
+            prompt, media = multimodal_input
+            engine = get_llm()
+            control = _request_control(config, request, raw_request)
+            maximum = (
+                request.max_completion_tokens
+                if request.max_completion_tokens is not None
+                else request.max_tokens
+                if request.max_tokens is not None
+                else config.chat_default_max_tokens
+                if config.chat_default_max_tokens is not None
+                else 16
+            )
+            sampling = SamplingParams(
+                max_tokens=int(maximum),
+                temperature=float(
+                    request.temperature if request.temperature is not None else 0.0
+                ),
+                top_p=float(request.top_p if request.top_p is not None else 1.0),
+                top_k=int(request.top_k if request.top_k is not None else 0),
+                ignore_eos=bool(request.ignore_eos),
+                deadline_at=control.deadline_at,
+                cancellation_token=control.cancellation_token,
+            )
+            try:
+                detail = await _await_with_request_control(
+                    run_in_threadpool(
+                        engine.generate_multimodal_detailed,
+                        prompt,
+                        media,
+                        sampling,
+                    ),
+                    control,
+                )
+            except (ValueError, NotImplementedError) as exc:
+                raise OpenAIHTTPError(
+                    400, str(exc), code="invalid_request", param="messages"
+                ) from exc
+            generated_ids = tuple(detail.generated_token_ids or ())
+            finish = getattr(detail, "finish_details", None)
+            finish_reason = (
+                "length"
+                if finish is not None and finish.reason == "length"
+                else "stop"
+            )
+            prompt_tokens = int(engine.count_tokens(prompt))
+            completion_tokens = len(generated_ids)
+            return {
+                "id": f"chatcmpl-{uuid.uuid4().hex}",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": config.model_id,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": detail.text},
+                        "finish_reason": finish_reason,
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                },
+                "hipengine": {"multimodal": True, "transport": "png_data_url"},
+            }
         admitted_session_id = await reserve_chat_session_if_needed(request)
         try:
             continuation = await pop_continuation(

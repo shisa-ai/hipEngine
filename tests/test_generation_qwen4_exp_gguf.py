@@ -34,8 +34,10 @@ class _Runner:
         )
         return SimpleNamespace(token_id=4)
 
-    def step(self, token):
-        self.steps.append(("step", int(token)))
+    def step(self, token, **kwargs):
+        self.steps.append(
+            ("step", int(token), kwargs) if kwargs else ("step", int(token))
+        )
         return SimpleNamespace(token_id={4: 5, 5: 9}.get(int(token), 9))
 
     def close(self):
@@ -80,13 +82,16 @@ def test_qwen4_exp_generator_runs_bounded_multimodal_override() -> None:
     generator._vision_runner = Vision()
     try:
         output = generator.generate_multimodal_detailed(
-            'describe', 'image', _request(prompts=('describe',), max_tokens=1)
+            'describe', 'image', _request(prompts=('describe',), max_tokens=2)
         )
-        assert output.generated_token_ids == (4,)
+        assert output.generated_token_ids == (4, 5)
         assert runner.steps[0][0:2] == ('prefill', (1, 248056, 2))
         overrides = runner.steps[0][2]['embedding_overrides']
         assert tuple(overrides) == (1,)
         assert overrides[1].shape == (2560,)
+        assert runner.steps[0][2]['mrope_positions'].shape == (3, 3)
+        assert runner.steps[1][0:2] == ('step', 4)
+        assert len(runner.steps[1][2]['rope_positions']) == 3
     finally:
         generator._vision_runner = None
         generator.close()

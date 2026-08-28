@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.generation.qwen4_exp_multimodal import (
+    qwen4_exp_multimodal_token_control,
+    render_qwen4_exp_multimodal_prompt,
+)
 from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
@@ -215,6 +219,51 @@ class Qwen4ExpGGUFTextGenerator:
             return {}
         return dict(self._speculative_provider.capabilities())
 
+    def _encode_multimodal_input(self, media: Any):
+        from hipengine.runtime.qwen4_exp_vision import Qwen4ExpVisionFeatures
+
+        if isinstance(media, dict):
+            if "items" in media:
+                raw_items = tuple(media["items"])
+            else:
+                raw_items = tuple(
+                    ({"type": "image", "data": value} for value in media.get("images", ()))
+                ) + tuple(
+                    ({"type": "video", "data": value} for value in media.get("videos", ()))
+                )
+        elif isinstance(media, (list, tuple)):
+            raw_items = tuple({"type": "image", "data": value} for value in media)
+        else:
+            ndim = getattr(media, "ndim", None)
+            kind = "video" if ndim == 4 else "image"
+            raw_items = ({"type": kind, "data": media},)
+        if not raw_items:
+            raise ValueError("Qwen4Exp multimodal input is empty")
+        encoded = []
+        for item in raw_items:
+            if not isinstance(item, dict) or item.get("type") not in {"image", "video"}:
+                raise ValueError("Qwen4Exp media items require type=image|video and data")
+            kind = str(item["type"])
+            data = item.get("data")
+            if kind == "video":
+                method = getattr(self._vision_runner, "encode_video", None)
+                if not callable(method):
+                    raise NotImplementedError("attached Qwen4Exp vision runner lacks video support")
+                feature = method(data)
+            else:
+                method = getattr(self._vision_runner, "encode_image", None)
+                if callable(method):
+                    feature = method(data)
+                else:
+                    values = self._vision_runner.encode(data)
+                    feature = Qwen4ExpVisionFeatures(
+                        values, (1, 2, int(values.shape[0]) * 2), "image"
+                    )
+            if not isinstance(feature, Qwen4ExpVisionFeatures):
+                raise TypeError("Qwen4Exp vision runner returned an invalid feature object")
+            encoded.append(feature)
+        return tuple(encoded)
+
     def generate_multimodal_detailed(
         self,
         prompt: str,
@@ -224,44 +273,51 @@ class Qwen4ExpGGUFTextGenerator:
         self._require_open()
         raise_if_generation_deadline_expired(request)
         if self._vision_runner is None:
-            raise NotImplementedError('Qwen4Exp vision model is not attached')
+            raise NotImplementedError("Qwen4Exp vision model is not attached")
         if len(request.prompts) != 1:
-            raise ValueError('basic Qwen4Exp vision supports one prompt/image')
+            raise ValueError("Qwen4Exp multimodal generation supports one request")
         if request.temperature != 0.0 or request.top_k not in (0, 1):
-            raise ValueError('basic Qwen4Exp vision supports greedy generation')
-        rendered = (
-            '<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>\n'
-            + str(prompt)
-            + '<|im_end|>\n<|im_start|>assistant\n'
+            raise ValueError("Qwen4Exp multimodal generation supports greedy sampling")
+        features = self._encode_multimodal_input(image)
+        multimodal = render_qwen4_exp_multimodal_prompt(prompt, features)
+        token_ids = [int(token) for token in self.tokenizer.encode(multimodal.rendered)]
+        overrides, mrope_positions, next_rope_position = (
+            qwen4_exp_multimodal_token_control(token_ids, multimodal.features)
         )
-        token_ids = [int(token) for token in self.tokenizer.encode(rendered)]
-        image_positions = [index for index, token in enumerate(token_ids) if token == 248056]
-        if len(image_positions) != 1:
-            raise RuntimeError('basic Qwen4Exp vision prompt must contain one image token')
-        if len(token_ids) + request.max_tokens > min(1024, self.runner.max_sequence_length):
-            raise ValueError('Qwen4Exp multimodal request exceeds 1K basic scope')
-        image_embedding = self._vision_runner.encode(image)[0]
+        if len(token_ids) + request.max_tokens > min(
+            1024, self.runner.max_sequence_length
+        ):
+            raise ValueError("Qwen4Exp multimodal request exceeds 1K scope")
         raise_if_generation_deadline_expired(request)
         result = self.runner.prefill(
-            token_ids, embedding_overrides={image_positions[0]: image_embedding}
+            token_ids,
+            embedding_overrides=overrides,
+            mrope_positions=mrope_positions,
         )
-        generated = []
-        reason = 'length'
+        generated: list[int] = []
+        reason = "length"
         for index in range(request.max_tokens):
             raise_if_generation_deadline_expired(request)
-            token = int(result.token_id); generated.append(token)
+            token = int(result.token_id)
+            generated.append(token)
             if not request.ignore_eos and token == self.tokenizer.eos_token_id:
-                reason = 'eos'; break
+                reason = "eos"
+                break
             if index + 1 < request.max_tokens:
-                result = self.runner.step(token)
+                position = next_rope_position + index
+                result = self.runner.step(
+                    token, rope_positions=(position, position, position)
+                )
         return GenerationOutput(
             text=self.tokenizer.decode(generated, skip_special=False),
             generated_token_ids=tuple(generated),
             finish_details=FinishDetails(
                 reason=reason,
-                eos_token_id=self.tokenizer.eos_token_id if reason == 'eos' else None,
-                length_limit=request.max_tokens if reason == 'length' else None,
-                sampler_mode='greedy_vision',
+                eos_token_id=(
+                    self.tokenizer.eos_token_id if reason == "eos" else None
+                ),
+                length_limit=(request.max_tokens if reason == "length" else None),
+                sampler_mode="greedy_multimodal_mrope",
             ),
         )
 

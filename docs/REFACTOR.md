@@ -18,6 +18,18 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-08-28 Qwen4Exp bounded general multimodal
+
+- `Qwen4ExpVisionRunner` preallocates at most 256 patch tokens per temporal pair
+  and public multimodal generation remains capped at 1K. Replace the
+  correctness-first one-thread vision attention and remove this cap only after
+  general-grid Transformers parity plus memory/admission gates pass at larger
+  shapes.
+- HTTP multimodal currently accepts inline bounded PNG data URLs only and is
+  non-streaming `n=1` without tools/session/continuation. Remove the dedicated
+  chat branch after the normal request/batcher/stream owner carries typed media,
+  request cancellation, exact token accounting, and safe remote-media policy.
+
 ## 2026-08-28 Qwen4Exp exact raw-Q8 prefill tiling
 
 - `HIPENGINE_QWEN4_EXP_RAW_ROWBATCH` defaults to `32` and

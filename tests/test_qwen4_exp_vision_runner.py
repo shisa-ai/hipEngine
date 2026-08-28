@@ -27,7 +27,14 @@ def test_real_qwen4_exp_vision_runner_is_finite_deterministic_and_image_sensitiv
         runner=Qwen4ExpVisionRunner(resident,patch_weight0=reader.tensor_data('v.patch_embd.weight'),patch_weight1=reader.tensor_data('v.patch_embd.weight.1'),patch_bias=reader.tensor_data('v.patch_embd.bias'),position_embedding=reader.tensor_data('v.position_embd.weight'))
         black=np.zeros((32,32,3),np.uint8);pattern=np.zeros_like(black);pattern[:16,:16,0]=255;pattern[16:,16:,1]=255
         first=runner.encode(black);repeat=runner.encode(black);other=runner.encode(pattern)
+        rectangle=np.zeros((32,64,3),np.uint8);rectangle[:16,:32,0]=255;rectangle[16:,32:,1]=255
+        rectangular=runner.encode_image(rectangle)
+        video=runner.encode_video(np.stack((black,pattern,black),axis=0))
     finally:
         if runner is not None:runner.close()
         resident.close()
     assert first.shape==(1,2560);assert np.isfinite(first).all();np.testing.assert_array_equal(first,repeat);assert not np.array_equal(first,other)
+    assert rectangular.grid_thw==(1,2,4);assert rectangular.embeddings.shape==(2,2560);assert np.isfinite(rectangular.embeddings).all()
+    assert video.grid_thw==(2,2,2);assert video.embeddings.shape==(2,2560);assert np.isfinite(video.embeddings).all()
+    np.testing.assert_array_equal(video.embeddings[1:],first)
+    assert not np.array_equal(video.embeddings[:1],first)

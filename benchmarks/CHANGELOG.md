@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-28 gfx1151 Qwen3.8-Flash-Next general multimodal] <=1K support now covers merge-compatible grids, multiple images, videos, typed placeholders, explicit interleaved text T/H/W MRoPE, and bounded PNG `/v1/chat/completions`; 32×64 encoder vs Transformers is **relative L2 1.48e-6 / cosine 1.0**, 16-token visual sensitivity diverges as expected, HTTP returns 200, and teardown is zero. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-general-multimodal.json`.
+
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next exact Q4 metadata + chunk256] Exact Q4_K LDS metadata reuse and public chunk256 cross the 16K prerequisite: p508 **51.220 tok/s first / 58.466 steady**, p1006 **22.986→18.276 s (-20.49%, 55.046 tok/s)**, all full logits bit-exact; cache-only p512 profile records 8.841 s kernel wall. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json`.
 
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next all-Q4 exact grouping] Extending exact grouped Q4 gate/up to four Q8_0-down layers removes 64 direct launches and improves paired p508 **12.021→11.189 s (-6.92%, 45.404 tok/s)** with bit-exact logits. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-all-q4-grouped.json`.
