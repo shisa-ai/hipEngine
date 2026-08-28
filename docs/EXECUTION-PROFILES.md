@@ -133,6 +133,31 @@ group; the realized C2 row remains the sole K3 owner. C3-C8, D25+, longer
 contexts, and all identity/profile/backend/quant/KV misses select K0. Evidence:
 [`production C2 result`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json).
 
+### 2.5 Qwen3.8 Q4_K_M production C3 rowtile decision
+
+The same model/profile independently qualifies shape-scoped verifier rowtile
+association at the three observed physical-C3 cells: K1/R6, K2/R9, and K3/R12.
+R9 and R12 decompose into R7+R2 and R8+R4; R6 launches directly. The production
+manifest hash is `af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f`;
+the registered strict rollback hash is
+`393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b`.
+Strict profile, C4+, R16+, peer backends, narrow K5120/N1024 Q4, and unlisted
+shapes retain their prior owners.
+
+Each cell passes 240 canonical plus 192 category-heldout D24 full-logit rows
+with three deterministic repeats (**1,296 rows total, 100% top-1**). The maximum
+KL across all six packets is `0.0008685`. Positions/input ownership and teardown
+are exact. Same-width D12 isolation is full-logit bit-identical when replacing
+both neighbors and moving the observed request from slot 0 to slot 1.
+
+The retained ten-prompt C3/K3 route improves **19.070 -> 19.934 tok/s (+4.53%)**
+and **0.9200x -> 0.9589x true AR**, with 10/10 exact task cells. A clean R9
+trace reduces steady target wall **495.37 -> 195.16-196.37 ms** and names the
+expected Q4/Q5/Q6 rowtiles. Aggregate and `mixed_ja_en` complete wall still
+trail AR, so this is a retained production-profile implementation association,
+not an automatic serving promotion: C3 remains K0. Authorization is D24-only.
+Evidence: [`production C3 rowtiles`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json).
+
 ## 3. Profile is orthogonal to model representation
 
 An execution profile selects implementation arithmetic and reproducibility. It

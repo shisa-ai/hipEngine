@@ -1107,11 +1107,21 @@ GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT = {
         {(5_120, 1_024), (17_408, 5_120)}
     ),
 }
+# Physical target rows above the native rowtile limit must be admitted
+# separately. Keep this bounded to observed C3 K2/K3 R9/R12 cells; C4+ and
+# arbitrary verifier widths retain their prior owners even when the shape is
+# listed. C3/K1 R6 already fits the exact native Q5/Q6 rowtile scope.
+GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT = {
+    "gguf_q5_k_t16_v1": frozenset({9, 12}),
+    "gguf_q6_k_t16_v1": frozenset({9, 12}),
+    "gguf_q6_k_t16_qmicro_planar_v1": frozenset({9, 12}),
+}
 # Profile-qualified T2 production owner: use per-row-direct-equivalent Q4
-# rowtiles only for C2/K3 R8 actual target shapes. Narrow K5120/N1024 is
-# excluded because the historical broad native-verify divergence localized
-# there; strict small-M/shared-B WMMA remains the manifest fallback.
-GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS = frozenset({8})
+# rowtiles for C2/K3 R8 and bounded C3/K1-K3 R6/R9/R12 physical targets on
+# actual shapes. Narrow K5120/N1024 is excluded because the historical broad
+# native-verify divergence localized there; strict small-M/shared-B WMMA
+# remains the manifest fallback.
+GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS = frozenset({6, 8, 9, 12})
 GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES = frozenset(
     {
         (5_120, 6_144),
@@ -2438,6 +2448,7 @@ __all__ = [
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
     "GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT",
+    "GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT",
     "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS",
     "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES",
     "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE",
