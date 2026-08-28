@@ -1746,12 +1746,19 @@ def test_provider_batch_device_repair_never_materializes_candidate_ids() -> None
         accepted_counts=(2, 0),
     )
 
-    assert calls[0] == ("restore", "checkpoint-2")
-    assert calls[1][:4] == ("host", (2,), (190,), (8,))
-    assert calls[2][0] == "device"
-    assert calls[2][1] == (1,)
-    assert calls[2][2] == ((0x5004, (1,)),)
-    assert calls[2][3] == (7,)
+    assert calls[:2] == [
+        ("restore", "checkpoint-1"),
+        ("restore", "checkpoint-2"),
+    ]
+    assert calls[2][:4] == ("host", (1, 2), (90, 190), (5, 8))
+    assert calls[3][0] == "device"
+    assert calls[3][1] == (1,)
+    assert calls[3][2] == ((0x5000, (1,)),)
+    assert calls[3][3] == (6,)
+    assert calls[4][0] == "device"
+    assert calls[4][1] == (1,)
+    assert calls[4][2] == ((0x5004, (1,)),)
+    assert calls[4][3] == (7,)
     assert provider.last_results == {}
 
 
@@ -1841,10 +1848,12 @@ def test_provider_batch_device_repair_uses_root_snapshot_and_kminus1_state() -> 
     )
 
     assert calls == [
+        ("checkpoint", "checkpoint-1"),
         ("root_snapshot", 3),
         ("checkpoint", "checkpoint-4"),
-        ("host", (4,), (390,), (14,)),
-        ("device", (1, 4), (0x5004, 0x5018), (7, 15)),
+        ("host", (1, 4), (90, 390), (5, 14)),
+        ("device", (1, 4), (0x5000, 0x5018), (6, 15)),
+        ("device", (1,), (0x5004,), (7,)),
     ]
 
 

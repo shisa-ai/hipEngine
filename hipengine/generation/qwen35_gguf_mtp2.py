@@ -3152,6 +3152,13 @@ class Qwen35GGUFMTP2Adapter:
             if accepted_count == 0 and callable(root_snapshot_restore):
                 root_snapshot_restore(state.request_id)
                 root_snapshot_requests.add(int(state.request_id))
+            elif accepted_count == count:
+                # The retained proposal state plus one tail-only advance can
+                # corrupt the full-attention provider KV for one physical slot
+                # after full accept. Reconstruct from the exact checkpoint just
+                # like any other accepted prefix: root, then every accepted row.
+                executor.restore_request_checkpoint(checkpoint)
+                restored.append((state, context))
             elif count > 1 and accepted_count == count - 1:
                 # A K-token proposal has already advanced provider state through
                 # candidate K-1. Publishing that state is exact and needs no
@@ -3206,8 +3213,6 @@ class Qwen35GGUFMTP2Adapter:
             request_id = int(state.request_id)
             if request_id in root_snapshot_requests or request_id in keep_proposal_state:
                 candidate_indices = ()
-            elif accepted_count == int(candidate_count):
-                candidate_indices = (int(candidate_count) - 1,)
             else:
                 candidate_indices = tuple(range(accepted_count))
             base = offsets[state.request_id]
