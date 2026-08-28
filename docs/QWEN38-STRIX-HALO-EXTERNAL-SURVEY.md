@@ -194,18 +194,13 @@ The campaign used the checks available for each route:
 These checks establish generation validity. They do not establish equal model
 quality across quantizations.
 
-## 2. Exact model artifacts
+## 2. Standard comparison model
 
-| Artifact | Bytes | SHA-256 |
-| --- | ---: | --- |
-| Standard `Q4_K_M` used for engine comparison | 17,106,775,008 | `7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169` |
-| `ROCmFP4_FAST` target | 14,562,236,384 | `fb89c78d2be91cdb68eaaaa45b1270710bf34aa721dc1f0b9e3aa7b98d2e1da9` |
-| FP4 DFlash2 `Q4_0` sidecar | 1,034,216,992 | `4264d8f2277ec9ae791c570ddc36940f92857f2e8a41569217e45b7563190285` |
-| Unsloth `UD-Q4_K_XL` | 17,559,178,144 | `3f227079003add2511437e5b1e94812e363385225bf6a9b47b0054a72bc8b01e` |
-| Unsloth `UD-Q5_K_XL` | 20,876,938,144 | `8601193d3d5760c37fb8ce1b43afebc69df5fb24e1fbc5a547c32e2200305276` |
-| Unsloth `UD-Q6_K_XL` | 25,299,061,664 | `701d8fa9ed214ab21bfc130cd2a7df19ca89bbef7713e2dfb19f3c63696aa917` |
-| Unsloth `UD-Q8_K_XL` | 31,457,991,680 | `af36ecb6b5db1407953345b746c14ac93f0657dda413910b4348683a2d990377` |
-| DFlash2 `Q8_0` sidecar | 2,056,414,752 | `7f1c9a31a6ed40044c69f6508b50fd63b87abd8e1fb7fe4290303df549153751` |
+Every engine in the standardized tables used the same 17,106,775,008-byte
+`Q4_K_M` file, SHA-256
+`7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169`.
+The [compact artifact][L0] retains hashes for the additional models used only
+to reproduce source-specific claims.
 
 ## 3. hipEngine
 
