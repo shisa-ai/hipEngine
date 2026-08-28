@@ -87,6 +87,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy,
+    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy,
     qwen35_gdn_prefill_recurrent_segments_k2_f32,
@@ -655,10 +656,41 @@ def _run_lowp_bf16_segments_rows(inputs, eps, cu_arr, indices_arr, states):
             owners[8].ptr, owners[9].ptr, inputs.tokens, len(cu_arr) - 1, eps,
             inputs.num_k_heads, inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim,
         )
-        return (_from_device(out_bf16, out_shape, np.uint16), _from_device(owners[7], states.shape, np.float32),
-                _from_device(rows, (inputs.tokens, *state_shape), np.float32))
+        return (
+            _from_device(out_bf16, out_shape, np.uint16),
+            _from_device(out, out_shape, np.float32),
+            _from_device(owners[7], states.shape, np.float32),
+            _from_device(rows, (inputs.tokens, *state_shape), np.float32),
+        )
     finally:
         for owner in (*owners, out, out_bf16, rows):
+            owner.free()
+
+
+def _run_no_copy_f32_bf16_segments_rows(inputs, eps, cu_arr, indices_arr, states):
+    owners = [_to_device(value) for value in (
+        inputs.conv_out_f32, inputs.gate_u16, inputs.a_u16, inputs.b_u16,
+        inputs.dt_bias_f32, inputs.a_log_f32, inputs.norm_weight_f32, states,
+        np.asarray(cu_arr, dtype=np.int32), np.asarray(indices_arr, dtype=np.int64),
+    )]
+    state_shape = (inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim)
+    out_shape = (inputs.tokens, inputs.num_v_heads, inputs.head_v_dim)
+    rows = _Buf(inputs.tokens * int(np.prod(state_shape)) * 4)
+    out = _Buf(int(np.prod(out_shape)) * 2)
+    out_f32 = _Buf(int(np.prod(out_shape)) * 4)
+    try:
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_f32(
+            *(owner.ptr for owner in owners[:8]), rows.ptr, out.ptr, out_f32.ptr,
+            owners[8].ptr, owners[9].ptr, eps, inputs.tokens, len(cu_arr) - 1,
+            inputs.num_k_heads, inputs.num_v_heads, inputs.head_k_dim, inputs.head_v_dim,
+        )
+        return (
+            _from_device(out, out_shape, np.uint16),
+            _from_device(out_f32, out_shape, np.float32),
+            _from_device(rows, (inputs.tokens, *state_shape), np.float32),
+        )
+    finally:
+        for owner in (*owners, rows, out, out_f32):
             owner.free()
 
 
@@ -1610,7 +1642,7 @@ def test_gdn_segments_lowp_state_rows_match_scalar_c1(
     cu = np.asarray([0, 3, 6], dtype=np.int32)
     indices = np.asarray([0, 1], dtype=np.int64)
     states = np.stack((inputs.init_state_f32, inputs.init_state_f32 * 0.75)).astype(np.float32)
-    actual_out, actual_final, actual_rows = _run_lowp_bf16_segments_rows(
+    actual_out, actual_f32, actual_final, actual_rows = _run_lowp_bf16_segments_rows(
         inputs, 1e-6, cu, indices, states.copy())
     expected_out = np.empty_like(actual_out)
     expected_rows = np.empty_like(actual_rows)
@@ -1628,6 +1660,12 @@ def test_gdn_segments_lowp_state_rows_match_scalar_c1(
     np.testing.assert_array_equal(actual_out, expected_out)
     np.testing.assert_array_equal(actual_rows, expected_rows)
     np.testing.assert_array_equal(actual_final, expected_final)
+    no_copy_out, no_copy_f32, no_copy_rows = _run_no_copy_f32_bf16_segments_rows(
+        inputs, 1e-6, cu, indices, states.copy()
+    )
+    np.testing.assert_array_equal(no_copy_out, expected_out)
+    np.testing.assert_array_equal(no_copy_rows, expected_rows)
+    np.testing.assert_array_equal(no_copy_f32.view(np.uint32), actual_f32.view(np.uint32))
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

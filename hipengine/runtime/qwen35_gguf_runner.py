@@ -174,6 +174,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_fp16state,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy,
+    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy_fp16state,
@@ -181,7 +182,6 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16,
     qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state,
-    qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_state_rows_bf16,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
     gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out,
@@ -7337,7 +7337,7 @@ class Qwen35GGUFFullStackRunner:
                 stream=stream,
                 runtime=runtime,
             )
-        qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_state_rows_bf16(
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_f32(
             scratch.conv_out.ptr,
             scratch.linear_z.ptr,
             scratch.linear_alpha.ptr,
@@ -7347,13 +7347,13 @@ class Qwen35GGUFFullStackRunner:
             layer.weight("ssm_norm").allocation().tensor.ptr,
             recurrent_state.ptr,
             recurrent_rows.ptr,
-            scratch.recurrent_out.ptr,
             scratch.recurrent_bf16.ptr,
+            scratch.recurrent_out.ptr,
             scratch.gdn_cu_seqlens.ptr,
             scratch.gdn_state_indices.ptr,
+            cfg.rms_norm_eps,
             rows,
             segments,
-            cfg.rms_norm_eps,
             cfg.ssm_group_count,
             cfg.ssm_time_step_rank,
             cfg.ssm_state_size,

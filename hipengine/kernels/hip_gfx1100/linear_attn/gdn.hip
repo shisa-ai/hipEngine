@@ -4483,6 +4483,7 @@ __global__ void qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_
     const state_t* recurrent_state_initial,
     state_t* recurrent_state_rows,
     uint16_t* out,
+    float* out_f32,
     const int32_t* __restrict__ cu_seqlens,
     const int64_t* __restrict__ state_indices,
     float eps,
@@ -4685,6 +4686,9 @@ __global__ void qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_
       const float gated = out_shared[value_idx] * inv_rms * norm_weight[value_idx] *
           silu_f32(scalar_to_float_qwen35(gate[token * num_v_heads * head_v_dim + pos]));
       out[out_pos] = float_to_bf16_bits(gated);
+      if (out_f32 != nullptr) {
+        out_f32[out_pos] = gated;
+      }
     }
     __syncthreads();
   }
@@ -8185,6 +8189,7 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_o
       recurrent_state_initial,
       recurrent_state_rows,
       out,
+      static_cast<float*>(nullptr),
       cu_seqlens,
       state_indices,
       eps,
@@ -8193,6 +8198,31 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_o
       num_v_heads,
       head_k_dim,
       head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_f32(
+    const float* conv_out, const uint16_t* gate, const uint16_t* a, const uint16_t* b,
+    const float* dt_bias, const float* a_log, const float* norm_weight,
+    const float* recurrent_state_initial, float* recurrent_state_rows,
+    uint16_t* out, float* out_f32, const int32_t* cu_seqlens,
+    const int64_t* state_indices, float eps, int64_t total_tokens, int64_t segments,
+    int64_t num_k_heads, int64_t num_v_heads, int64_t head_k_dim, int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!valid_prefill_shape(total_tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim) ||
+      segments <= 0 || recurrent_state_initial == nullptr || recurrent_state_rows == nullptr ||
+      out == nullptr || out_f32 == nullptr || cu_seqlens == nullptr || state_indices == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int threads = 128;
+  const size_t shared_bytes = static_cast<size_t>((2 * head_k_dim) + (3 * threads) + head_v_dim) * sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<uint16_t, float>),
+      dim3(static_cast<unsigned int>(segments), static_cast<unsigned int>(num_v_heads)),
+      dim3(threads), shared_bytes, stream, conv_out, gate, a, b, dt_bias, a_log,
+      norm_weight, recurrent_state_initial, recurrent_state_rows, out, out_f32,
+      cu_seqlens, state_indices, eps, segments, num_k_heads, num_v_heads,
+      head_k_dim, head_v_dim);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -8242,6 +8272,7 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_o
       recurrent_state_initial,
       recurrent_state_rows,
       out,
+      static_cast<float*>(nullptr),
       cu_seqlens,
       state_indices,
       eps,
