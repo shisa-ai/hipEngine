@@ -1,0 +1,609 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_cn_p7_route_audit",
+  "created_at": "2026-08-28T17:57:40.886493+00:00",
+  "status": "complete_p7_p8_blocked_on_accept_identity_and_profile_qualification",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "P7 closes source/provenance and route attribution. Automatic C2/C5 is pure K0 at ordinary AR speed. Explicit production C2 is physical and already batches proposal rows, but remains 0.5715x AR at 55.03% acceptance and records three recoverable physical-accept identity failures. Do not implement generic draft batching; P8 must explain acceptance/state and independently qualify the inherited production capabilities.",
+  "source": {
+    "artifact_builder_head": "230232754215900cda179be927e6783144b06be5",
+    "merged_origin_main": "8239bab7960ed42dd468de16985bfc5e989b3ca4",
+    "merge_commit": "a4c7da9fa61e2e73517c893c69decb67eb3ee20a",
+    "automatic_harness_commit": "230232754215900cda179be927e6783144b06be5",
+    "tracked_dirty": false
+  },
+  "hardware": {
+    "hostname": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_index": 0,
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "arch": "gfx1100",
+    "rocm": "7.2.4",
+    "hipcc": "HIP 7.2.53211-3d9ef42; clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "power_profile": "BOOTUP DEFAULT",
+    "gpu_max_hw_queues": "unset",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0",
+    "hsa_override_gfx_version": "11.0.0",
+    "foreign_kfd_owners_before_runs": 0
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106773984,
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "quant": "Q4_K_M",
+    "kv": "BF16 uniform paged"
+  },
+  "suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "heldouts": 4,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "sampling": "raw greedy",
+    "prompt_cache": false
+  },
+  "profile_and_route_audit": {
+    "profiles": {
+      "strict": {
+        "manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d",
+        "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d",
+        "source_profile": "strict",
+        "fell_back_to_strict": false,
+        "manifest": {
+          "kind": "hipengine_execution_profile_manifest",
+          "schema_version": 1,
+          "execution_profile": "strict",
+          "backend": "hip_gfx1100",
+          "model": "qwen3_5_gguf",
+          "quant": "gguf_q4_k_m",
+          "kv_policy": "paged_bf16",
+          "graph_policy": "specdec2_eager_c1",
+          "selections": [
+            {
+              "layer": "linear_attn_chain_conv_decode",
+              "scope": "specdec2_mtp2_c1",
+              "selected_variant": "bf16_c1_exact_state_rows_tloop",
+              "strict_fallback_variant": "bf16_c1_exact_state_rows_tloop",
+              "evidence_artifact": "benchmarks/results/2026-08-23-w7900-qwen36-27b-current-default-publication.json",
+              "registry_quant": "gguf_qwen35"
+            }
+          ]
+        },
+        "adapter_flags": {
+          "physical_prompt_streaming": false,
+          "production_physical_extra_rowtiles": false,
+          "production_physical_q5_rowtile": false,
+          "production_physical_q6_rowtile": false,
+          "ngram_enabled": false
+        }
+      },
+      "production": {
+        "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+        "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d",
+        "source_profile": "production",
+        "fell_back_to_strict": false,
+        "manifest": {
+          "kind": "hipengine_execution_profile_manifest",
+          "schema_version": 1,
+          "execution_profile": "production",
+          "backend": "hip_gfx1100",
+          "model": "qwen3_5_gguf",
+          "quant": "gguf_q4_k_m",
+          "kv_policy": "paged_bf16",
+          "graph_policy": "specdec2_eager_c1_exact",
+          "selections": [
+            {
+              "layer": "linear_attn_chain_conv_decode",
+              "scope": "specdec2_mtp2_c1",
+              "selected_variant": "bf16_c1_exact_state_rows_tloop",
+              "strict_fallback_variant": "bf16_c1_exact_state_rows_tloop",
+              "evidence_artifact": "benchmarks/results/2026-08-23-w7900-qwen36-27b-current-default-publication.json",
+              "registry_quant": "gguf_qwen35"
+            }
+          ]
+        },
+        "adapter_flags": {
+          "physical_prompt_streaming": true,
+          "production_physical_extra_rowtiles": true,
+          "production_physical_q5_rowtile": true,
+          "production_physical_q6_rowtile": true,
+          "ngram_enabled": false
+        }
+      }
+    },
+    "backend_capabilities": {
+      "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_PROMPT_STREAMING": true,
+      "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES": [
+        [
+          5120,
+          17408
+        ],
+        [
+          6144,
+          5120
+        ]
+      ],
+      "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS": [
+        6
+      ],
+      "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS": [
+        6
+      ],
+      "GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS": [
+        6
+      ],
+      "GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES": [
+        [
+          17408,
+          5120
+        ],
+        [
+          5120,
+          10240
+        ],
+        [
+          5120,
+          1024
+        ],
+        [
+          5120,
+          12288
+        ],
+        [
+          5120,
+          6144
+        ]
+      ],
+      "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES": [
+        [
+          5120,
+          17408
+        ]
+      ]
+    },
+    "profile_gap": "gfx1100 strict/production manifests name only the generic C1 GDN selection and cite Qwen3.6 evidence; production physical prompt/rowtile owners are enabled through backend capability flags and need independent Qwen3.8 qualification before policy promotion"
+  },
+  "proposal_batching_audit": {
+    "method": "Qwen35GGUFNextNExecutor.run_batch_proposal_device",
+    "method_source_sha256": "7fc5afa16510753a7c99ec281ec1b6902d2604bc6c7991f44b093ee698cbc0e0",
+    "implementation": "one active-row batch forward per shared draft depth; only ragged tails fall to singleton execution",
+    "tests": [
+      "tests/test_qwen35_gguf_nextn_provider.py::test_nextn_provider_physically_batches_one_backbone_per_depth",
+      "tests/test_qwen35_gguf_nextn_provider.py::test_nextn_provider_batches_shared_depth_and_runs_only_ragged_tail_alone"
+    ],
+    "production_c2_observed_proposal_physical_rows": [
+      1,
+      2
+    ],
+    "production_c2_observed_target_physical_rows": [
+      2,
+      3,
+      4,
+      6,
+      7,
+      8
+    ],
+    "candidate_d2h_after_target": [
+      0
+    ],
+    "ngram_lookup_calls": 0
+  },
+  "smokes": {
+    "explicit_strict_c1_k3_d24": {
+      "source": {
+        "commit": "230232754215900cda179be927e6783144b06be5",
+        "dirty": false
+      },
+      "protocol": {
+        "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain",
+          "mixed_ja_en_translate",
+          "mixed_ja_en_review"
+        ],
+        "widths": [
+          1
+        ],
+        "resident_capacity": 1,
+        "expected_mtp_widths": [
+          1
+        ],
+        "max_tokens": 24,
+        "candidate_budget": 3,
+        "batch_window_ms": 20.0,
+        "warmup_arms_per_width": 2,
+        "runs": 1,
+        "sampling": "raw greedy, no processed target, natural stop/EOS",
+        "execution_profile": "strict",
+        "correctness_contract": "ar_exact",
+        "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+        "generation2_diagnostic_plan": false,
+        "mtp_request_mode": "explicit",
+        "server_mtp_mode": "opt_in",
+        "timing": "blocking OpenAI barrier-to-last-completion complete wall"
+      },
+      "runtime_profile": {
+        "requested": "strict",
+        "resolved": "strict",
+        "manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d",
+        "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+      },
+      "summary": {
+        "ar": {
+          "wall_seconds": 10.99774690438062,
+          "generated_tokens": 240,
+          "tok_s": 21.822651683719258
+        },
+        "mtp": {
+          "wall_seconds": 7.31653245864436,
+          "generated_tokens": 240,
+          "tok_s": 32.80242401117814
+        },
+        "mtp_vs_ar_ratio": 1.503136488021312,
+        "mtp_vs_ar_percent": 50.313648802131205,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "mtp_expected": true,
+        "route_expectation_passed": true
+      },
+      "acceptance": {
+        "cycles": 71,
+        "proposed_draft_tokens": 199,
+        "accepted_draft_tokens": 157,
+        "draft_acceptance": 0.7889447236180904,
+        "positions": [
+          {
+            "position": 1,
+            "proposed_cycles": 71,
+            "accepted_cycles": 67,
+            "position_acceptance": 0.9436619718309859,
+            "conditional_opportunities": 71,
+            "conditional_position_acceptance": 0.9436619718309859
+          },
+          {
+            "position": 2,
+            "proposed_cycles": 66,
+            "accepted_cycles": 51,
+            "position_acceptance": 0.7727272727272727,
+            "conditional_opportunities": 62,
+            "conditional_position_acceptance": 0.8225806451612904
+          },
+          {
+            "position": 3,
+            "proposed_cycles": 62,
+            "accepted_cycles": 39,
+            "position_acceptance": 0.6290322580645161,
+            "conditional_opportunities": 48,
+            "conditional_position_acceptance": 0.8125
+          }
+        ]
+      },
+      "final_memory": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 22843633164,
+        "total_allocated_bytes": 23822674178,
+        "total_freed_bytes": 23822674178,
+        "active_allocations": 0,
+        "peak_allocations": 1841
+      }
+    },
+    "explicit_production_c2_k3_d24": {
+      "source": {
+        "commit": "a4c7da9fa61e2e73517c893c69decb67eb3ee20a",
+        "dirty": false
+      },
+      "protocol": {
+        "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain",
+          "mixed_ja_en_translate",
+          "mixed_ja_en_review"
+        ],
+        "widths": [
+          2
+        ],
+        "resident_capacity": 2,
+        "expected_mtp_widths": [
+          2
+        ],
+        "max_tokens": 24,
+        "candidate_budget": 3,
+        "batch_window_ms": 20.0,
+        "warmup_arms_per_width": 2,
+        "runs": 1,
+        "sampling": "raw greedy, no processed target, natural stop/EOS",
+        "execution_profile": "production",
+        "correctness_contract": "mtp_self_exact",
+        "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+        "generation2_diagnostic_plan": true,
+        "timing": "blocking OpenAI barrier-to-last-completion complete wall"
+      },
+      "runtime_profile": {
+        "requested": "production",
+        "resolved": "production",
+        "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+        "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+      },
+      "summary": {
+        "ar": {
+          "wall_seconds": 15.651575319003314,
+          "generated_tokens": 480,
+          "tok_s": 30.66783951243613
+        },
+        "mtp": {
+          "wall_seconds": 27.385569636709988,
+          "generated_tokens": 480,
+          "tok_s": 17.52747912011903
+        },
+        "mtp_vs_ar_ratio": 0.5715263741683353,
+        "mtp_vs_ar_percent": -42.84736258316647,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "mtp_expected": true,
+        "route_expectation_passed": true
+      },
+      "acceptance": {
+        "cycles": 163,
+        "proposed_draft_tokens": 467,
+        "accepted_draft_tokens": 257,
+        "draft_acceptance": 0.550321199143469,
+        "positions": [
+          {
+            "position": 1,
+            "proposed_cycles": 163,
+            "accepted_cycles": 103,
+            "position_acceptance": 0.6319018404907976,
+            "conditional_opportunities": 163,
+            "conditional_position_acceptance": 0.6319018404907976
+          },
+          {
+            "position": 2,
+            "proposed_cycles": 157,
+            "accepted_cycles": 89,
+            "position_acceptance": 0.5668789808917197,
+            "conditional_opportunities": 100,
+            "conditional_position_acceptance": 0.89
+          },
+          {
+            "position": 3,
+            "proposed_cycles": 147,
+            "accepted_cycles": 65,
+            "position_acceptance": 0.4421768707482993,
+            "conditional_opportunities": 83,
+            "conditional_position_acceptance": 0.7831325301204819
+          }
+        ]
+      },
+      "old_strict_ratio": 0.5137076649048492,
+      "relative_ratio_gain_vs_old_strict_pct": 11.255177450816412,
+      "old_strict_acceptance": 0.5479744136460555,
+      "acceptance_delta_points": 0.23467854974135172,
+      "prompt_streaming_all_records": true,
+      "failure_reasons": {
+        "precommit_failure_ar_fallback": 3,
+        "ValueError:physical accept identities do not align": 3
+      },
+      "recoverable_failure_records": 3,
+      "final_memory": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 24422608828,
+        "total_allocated_bytes": 25588598486,
+        "total_freed_bytes": 25588598486,
+        "active_allocations": 0,
+        "peak_allocations": 1760
+      }
+    },
+    "automatic_k0_c2_c5_d8": {
+      "source": {
+        "commit": "230232754215900cda179be927e6783144b06be5",
+        "dirty": false
+      },
+      "protocol": {
+        "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+        "prompt_ids": [
+          "code_merge_intervals",
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain",
+          "mixed_ja_en_translate",
+          "mixed_ja_en_review"
+        ],
+        "widths": [
+          2,
+          5
+        ],
+        "resident_capacity": 5,
+        "expected_mtp_widths": [],
+        "max_tokens": 8,
+        "candidate_budget": 3,
+        "batch_window_ms": 20.0,
+        "warmup_arms_per_width": 2,
+        "runs": 1,
+        "sampling": "raw greedy, no processed target, natural stop/EOS",
+        "execution_profile": "production",
+        "correctness_contract": "ar_exact",
+        "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+        "generation2_diagnostic_plan": false,
+        "mtp_request_mode": "automatic",
+        "server_mtp_mode": "auto",
+        "timing": "blocking OpenAI barrier-to-last-completion complete wall"
+      },
+      "runtime_profile": {
+        "requested": "production",
+        "resolved": "production",
+        "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+        "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+      },
+      "summary": {
+        "2": {
+          "ar": {
+            "wall_seconds": 9.222933085169643,
+            "generated_tokens": 160,
+            "tok_s": 17.348060375421994
+          },
+          "mtp": {
+            "wall_seconds": 9.186537922360003,
+            "generated_tokens": 160,
+            "tok_s": 17.41678980179906
+          },
+          "mtp_vs_ar_ratio": 1.003961793127861,
+          "mtp_vs_ar_percent": 0.39617931278610463,
+          "exact_cells": 10,
+          "engaged_cells": 0,
+          "budget_conformed_cells": 10,
+          "cells": 10,
+          "mtp_expected": false,
+          "route_expectation_passed": true
+        },
+        "5": {
+          "ar": {
+            "wall_seconds": 20.444875991903245,
+            "generated_tokens": 400,
+            "tok_s": 19.564804411550913
+          },
+          "mtp": {
+            "wall_seconds": 20.418779727071524,
+            "generated_tokens": 400,
+            "tok_s": 19.589809251415453
+          },
+          "mtp_vs_ar_ratio": 1.0012780521255698,
+          "mtp_vs_ar_percent": 0.12780521255697508,
+          "exact_cells": 10,
+          "engaged_cells": 0,
+          "budget_conformed_cells": 10,
+          "cells": 10,
+          "mtp_expected": false,
+          "route_expectation_passed": true
+        }
+      },
+      "decisions": [
+        {
+          "effective_route": "default",
+          "requested_route": "speculative_mtp_auto",
+          "selected_route": null,
+          "decision_reason": "automatic_mtp_scope_not_promoted"
+        }
+      ],
+      "final_memory": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 21839655608,
+        "total_allocated_bytes": 23558643492,
+        "total_freed_bytes": 23558643492,
+        "active_allocations": 0,
+        "peak_allocations": 1351
+      }
+    },
+    "diagnostic_scope_guard_d8": {
+      "source": {
+        "commit": "a4c7da9fa61e2e73517c893c69decb67eb3ee20a",
+        "dirty": false
+      },
+      "status": "failed",
+      "summary": {
+        "2": {
+          "ar": {
+            "wall_seconds": 9.101840391755104,
+            "generated_tokens": 160,
+            "tok_s": 17.578862418301235
+          },
+          "mtp": {
+            "wall_seconds": 9.128658126108348,
+            "generated_tokens": 160,
+            "tok_s": 17.52722007875322
+          },
+          "mtp_vs_ar_ratio": 0.9970622479248572,
+          "mtp_vs_ar_percent": -0.29377520751427966,
+          "exact_cells": 10,
+          "engaged_cells": 0,
+          "budget_conformed_cells": 10,
+          "cells": 10,
+          "mtp_expected": true,
+          "route_expectation_passed": false
+        }
+      },
+      "decisions": [
+        {
+          "effective_route": "default",
+          "requested_route": "speculative_mtp",
+          "selected_route": null,
+          "decision_reason": "diagnostic_scope_miss"
+        }
+      ],
+      "reason": "expected fail-closed because diagnostic horizon is frozen to D24"
+    }
+  },
+  "findings": [
+    "The canonical W7900 rebaseline used explicit opt-in requests, not automatic serving.",
+    "Automatic C2/C5 omits the request field and is pure K0 at 1.0040x/1.0013x the explicitly disabled AR control.",
+    "Physical proposal batching already exists and is observed at rows=2; generic draft batching is not an implementation task.",
+    "Production prompt streaming and Q4/Q5/Q6 physical capabilities engage, improving the C2 ratio 11.25% relative, but the cell remains far below AR.",
+    "C2 acceptance remains about 55%, unlike gfx1151's independent 78.89%; do not transfer that acceptance result.",
+    "Three recoverable physical-accept identity failures make P8 ownership/acceptance localization binding before profiling.",
+    "The gfx1100 profile manifest cites Qwen3.6 evidence and does not name the production physical capability selections; Qwen3.8 needs independent profile evidence before promotion."
+  ],
+  "commands": {
+    "production_c2_d24": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HSA_OVERRIDE_GFX_VERSION=11.0.0 PYTHONPATH=. uv run python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile production --widths 2 --resident-capacity 2 --expected-mtp-widths 2 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/gfx1100-qwen38-p7-c2-production-d24.json",
+    "automatic_k0": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HSA_OVERRIDE_GFX_VERSION=11.0.0 PYTHONPATH=. uv run python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile production --widths 2,5 --resident-capacity 5 --expected-mtp-widths none --max-tokens 8 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --mtp-request-mode automatic --correctness-contract ar_exact --output /tmp/gfx1100-qwen38-p7-auto-k0-c2-c5-d8.json",
+    "explicit_c1": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HSA_OVERRIDE_GFX_VERSION=11.0.0 PYTHONPATH=. uv run python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile strict --widths 1 --resident-capacity 1 --expected-mtp-widths 1 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --mtp-request-mode explicit --correctness-contract ar_exact --output /tmp/gfx1100-qwen38-p7-c1-strict-explicit-d24.json"
+  },
+  "raw_sources": [
+    {
+      "name": "production_c2_d24",
+      "path": "/tmp/gfx1100-qwen38-p7-c2-production-d24.json",
+      "size_bytes": 1457318,
+      "sha256": "efa0d18eefbe6705b7f367372b2245de48624ef36d0d872c27715975b4de63af",
+      "retained_in_git": false
+    },
+    {
+      "name": "automatic_k0_c2_c5_d8",
+      "path": "/tmp/gfx1100-qwen38-p7-auto-k0-c2-c5-d8.json",
+      "size_bytes": 1127900,
+      "sha256": "5758ae323c90bb9d76b34cbbe2cbe82e2a79be6f3f47b8b3485fa054da422061",
+      "retained_in_git": false
+    },
+    {
+      "name": "explicit_c1_strict_d24",
+      "path": "/tmp/gfx1100-qwen38-p7-c1-strict-explicit-d24.json",
+      "size_bytes": 749830,
+      "sha256": "e3c8238adc7fe44bd8846d5fb170eec9bc45d4caf29591897936ba38c96a3714",
+      "retained_in_git": false
+    },
+    {
+      "name": "diagnostic_scope_guard_d8",
+      "path": "/tmp/gfx1100-qwen38-p7-c2-production-d8.json",
+      "size_bytes": 462194,
+      "sha256": "39ac0a18d21a6fdce3840077b07771570de98d890d0daf393d938b9f76c1bf76",
+      "retained_in_git": false
+    }
+  ]
+}
