@@ -35,7 +35,7 @@ def test_qwen4_exp_model_plugin_freezes_layer_and_state_geometry() -> None:
     assert "blk.{layer}.ssm_dt.weight" not in plugin.weight_name_templates
     assert plugin.ple_device_resident is False
     assert plugin.vision_supported is False
-    assert plugin.mtp_supported is False
+    assert plugin.mtp_supported is True
 
 
 def test_qwen4_exp_model_plugin_declares_distinct_gdn_and_qsa_sequences() -> None:

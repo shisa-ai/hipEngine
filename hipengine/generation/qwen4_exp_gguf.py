@@ -41,6 +41,7 @@ class Qwen4ExpGGUFTextGenerator:
         self.model_plugin = model_plugin
         self.backend = str(backend)
         self._resident = None
+        self._speculative_provider = None
         self._closed = False
         if tokenizer is None:
             metadata_info = getattr(weight_index, "metadata", None)
@@ -118,9 +119,53 @@ class Qwen4ExpGGUFTextGenerator:
             )
         return outputs
 
+    @property
+    def supports_speculative(self) -> bool:
+        return self._speculative_provider is not None
+
+    @property
+    def supports_speculative_mtp(self) -> bool:
+        return self.supports_speculative
+
+    def attach_speculative_provider(self, provider: Any) -> None:
+        self._require_open()
+        if self._speculative_provider is not None:
+            raise RuntimeError("Qwen4Exp generator already has a speculative provider")
+        self._speculative_provider = provider
+
+    def generate_speculative_detailed(
+        self, request: GenerationRequest
+    ) -> list[GenerationOutput]:
+        self._require_open()
+        if self._speculative_provider is None:
+            raise NotImplementedError("Qwen4Exp speculative provider is not attached")
+        return list(self._speculative_provider.generate_detailed(request))
+
+    def generate_speculative_mtp_detailed(
+        self, request: GenerationRequest
+    ) -> list[GenerationOutput]:
+        return self.generate_speculative_detailed(request)
+
+    def stream_speculative_detailed(self, request: GenerationRequest):
+        self._require_open()
+        if self._speculative_provider is None:
+            raise NotImplementedError("Qwen4Exp speculative provider is not attached")
+        yield from self._speculative_provider.stream_detailed(request)
+
+    def stream_speculative_mtp_detailed(self, request: GenerationRequest):
+        yield from self.stream_speculative_detailed(request)
+
+    def speculative_capabilities(self) -> dict[str, Any]:
+        if self._speculative_provider is None:
+            return {}
+        return dict(self._speculative_provider.capabilities())
+
     def close(self) -> None:
         if self._closed:
             return
+        if self._speculative_provider is not None:
+            self._speculative_provider.close()
+            self._speculative_provider = None
         self.runner.close()
         if self._resident is not None:
             self._resident.close()

@@ -787,9 +787,14 @@ sidecar-only finite output, deterministic repeat, and snapshot/restore replay
 pass at a 16-token reduced capacity. This is **not yet a working MTP product**:
 real target prompt priming, sequential/batched target verification, public
 blocking/SSE, cancellation, exact generated output, and natural economics are
-still binding. Evidence:
-[`2026-08-28-qwen38-flash-next-mtp-q8-sidecar.json`](../benchmarks/results/2026-08-28-qwen38-flash-next-mtp-q8-sidecar.json) and
-[`2026-08-28-gfx1151-qwen38-flash-next-mtp-draft-smoke.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-draft-smoke.json).
+still binding. The first public registry-attached smoke now also passes at
+prompt 16/output 4: AR and MTP both emit IDs `[264,264,264,264]`, provider
+capabilities resolve, exact serial verification trims the draft cursor, and the
+buffered public stream returns the same IDs. This proves integration only; its
+cold/warm synthetic timings are not a speed comparison. Evidence:
+[`2026-08-28-qwen38-flash-next-mtp-q8-sidecar.json`](../benchmarks/results/2026-08-28-qwen38-flash-next-mtp-q8-sidecar.json),
+[`2026-08-28-gfx1151-qwen38-flash-next-mtp-draft-smoke.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-draft-smoke.json), and
+[`2026-08-28-gfx1151-qwen38-flash-next-mtp-public-smoke.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-public-smoke.json).
 
 ### F9 — Vision
 

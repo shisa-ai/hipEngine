@@ -23,7 +23,7 @@ class Qwen4ExpGGUFModel:
     qsa_dense_equivalent_max_tokens: int = 2051
     ple_device_resident: bool = False
     vision_supported: bool = False
-    mtp_supported: bool = False
+    mtp_supported: bool = True
     weight_name_templates: tuple[str, ...] = (
         "token_embd.weight",
         "output.weight",
