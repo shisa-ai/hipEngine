@@ -21,7 +21,7 @@ should be removed or collapsed.
 ## 2026-08-29 Qwen4Exp late-layer production prefill
 
 - `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` is bound by explicit strict/
-  production manifests and selects certified layers 32–47 only. Remove the env
+  production manifests and selects certified maximal suffix layers 28–47 only. Remove the env
   bridge after Qwen4Exp profile state is request-local rather than process
   global; retain registry-declared exact grouped Q4/Q5 fallbacks.
 
