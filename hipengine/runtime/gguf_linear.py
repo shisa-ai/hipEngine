@@ -209,9 +209,16 @@ _ROWTILE_QUANT_BLOCKS: Mapping[str, int] = {
 # the scalar fallback. Keeping the policy context-local avoids backend/quant
 # branches in model code and remains safe for concurrent request owners.
 _RAW_K_PREFILL_ROWBATCHES = frozenset({0, 4, 8, 16, 32})
-_RAW_K_PREFILL_ROWBATCH_QUANTS = frozenset({"gguf_q5_k", "gguf_q6_k"})
+_RAW_K_PREFILL_ROWBATCH_QUANTS = frozenset(
+    {"gguf_q8_0", "gguf_q5_k", "gguf_q6_k"}
+)
 _RAW_K_PREFILL_ROWBATCH_VARIANTS = frozenset(
-    {"prefill_bf16_bf16_out", "prefill_bf16_f32_out"}
+    {
+        "gemv_f32_f32_out",
+        "prefill_f32_f32_out",
+        "prefill_bf16_bf16_out",
+        "prefill_bf16_f32_out",
+    }
 )
 _RAW_K_PREFILL_VARIANTS = frozenset({"rowbatch", "coltile"})
 _raw_k_prefill_rowbatch: ContextVar[int] = ContextVar(
@@ -2012,7 +2019,7 @@ def _raw_k_prefill_rowbatch_dispatch(
     row_batch: int,
     variant: str,
 ) -> GGUFLinearDispatch:
-    """Select exact fixed-grid-Y Q5/Q6 row/output reuse above small-B."""
+    """Select exact fixed-grid-Y Q8/Q5/Q6 row/output reuse above small-B."""
 
     selected = int(row_batch)
     geometry = str(variant)
@@ -2022,28 +2029,57 @@ def _raw_k_prefill_rowbatch_dispatch(
         or rows <= _ROWTILE_MAX_ROWS
     ):
         return dispatch
-    if (
-        not backend_package_capability(
+    rowbatch_supported = bool(
+        backend_package_capability(
             dispatch.key.backend,
             "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
             False,
         )
+        or (
+            dispatch.key.quant == "gguf_q8_0"
+            and backend_package_capability(
+                dispatch.key.backend,
+                "GGUF_RAW_Q8_F32_PREFILL_ROWBATCH_SUPPORTED",
+                False,
+            )
+        )
+    )
+    if (
+        not rowbatch_supported
         or dispatch.abi != "raw"
         or dispatch.key.quant not in _RAW_K_PREFILL_ROWBATCH_QUANTS
         or dispatch.key.variant not in _RAW_K_PREFILL_ROWBATCH_VARIANTS
-        or in_features % 256 != 0
+        or (
+            in_features
+            % (32 if dispatch.key.quant == "gguf_q8_0" else 256)
+            != 0
+        )
     ):
         return dispatch
-    output_variant = dispatch.key.variant[len("prefill_") :]
+    output_variant = (
+        dispatch.key.variant[len("prefill_") :]
+        if dispatch.key.variant.startswith("prefill_")
+        else dispatch.key.variant[len("gemv_") :]
+    )
     selected_variant = f"rowbatch{selected}_{output_variant}"
     if (
         geometry == "coltile"
         and selected == 32
         and out_features % 4 == 0
-        and backend_package_capability(
-            dispatch.key.backend,
-            "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
-            False,
+        and (
+            backend_package_capability(
+                dispatch.key.backend,
+                "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
+                False,
+            )
+            or (
+                dispatch.key.quant == "gguf_q8_0"
+                and backend_package_capability(
+                    dispatch.key.backend,
+                    "GGUF_RAW_Q8_F32_PREFILL_COLTILE_SUPPORTED",
+                    False,
+                )
+            )
         )
     ):
         shape_key = (

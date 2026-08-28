@@ -119,6 +119,8 @@ from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_ple import (
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_F32,
+    raw_k_prefill_rowbatch_session,
+    raw_k_prefill_variant_session,
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
 )
@@ -4250,14 +4252,25 @@ class Qwen4ExpGGUFResidentModelRunner:
         last_residual_ptr = 0
         captured: list[np.ndarray] = []
         values = tuple(int(token) for token in token_ids)
-        for start in range(0, len(values), self.prefill_chunk_size):
-            last_residual_ptr, hidden_rows = self._prefill_chunk(
-                values[start : start + self.prefill_chunk_size],
-                capture_hidden_seeds=capture_hidden_seeds,
-                embedding_overrides=embedding_overrides,
-            )
-            if hidden_rows is not None:
-                captured.append(hidden_rows)
+        raw_rowbatch = os.environ.get("HIPENGINE_QWEN4_EXP_RAW_ROWBATCH", "32")
+        if raw_rowbatch in {"", "0", "false", "False"}:
+            selected_raw_rowbatch = 0
+        elif raw_rowbatch in {"1", "true", "True"}:
+            selected_raw_rowbatch = 32
+        else:
+            selected_raw_rowbatch = int(raw_rowbatch)
+        selected_raw_variant = os.environ.get(
+            "HIPENGINE_QWEN4_EXP_RAW_VARIANT", "coltile"
+        )
+        with raw_k_prefill_rowbatch_session(selected_raw_rowbatch), raw_k_prefill_variant_session(selected_raw_variant):
+            for start in range(0, len(values), self.prefill_chunk_size):
+                last_residual_ptr, hidden_rows = self._prefill_chunk(
+                    values[start : start + self.prefill_chunk_size],
+                    capture_hidden_seeds=capture_hidden_seeds,
+                    embedding_overrides=embedding_overrides,
+                )
+                if hidden_rows is not None:
+                    captured.append(hidden_rows)
         cfg = self.config
         assert self.head_scratch is not None
         self.runtime.memcpy(

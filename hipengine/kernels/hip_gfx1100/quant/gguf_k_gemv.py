@@ -531,6 +531,22 @@ gguf_q6_k_gemv_rowtile_bf16_f32_out = _make_wrapper("gguf_q6_k", _symbol("gguf_q
 gguf_q6_k_gemv_rowtile_f32_f32_out = _make_wrapper("gguf_q6_k", _symbol("gguf_q6_k", "gemv_rowtile_f32_f32_out"))
 
 # WPF-1 fixed-grid-Y weight-amortized variants for arbitrary prefill rows.
+gguf_q8_0_gemv_rowbatch4_f32_f32_out = _make_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "gemv_rowbatch4_f32_f32_out")
+)
+gguf_q8_0_gemv_rowbatch8_f32_f32_out = _make_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "gemv_rowbatch8_f32_f32_out")
+)
+gguf_q8_0_gemv_rowbatch16_f32_f32_out = _make_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "gemv_rowbatch16_f32_f32_out")
+)
+gguf_q8_0_gemv_rowbatch32_f32_f32_out = _make_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "gemv_rowbatch32_f32_f32_out")
+)
+gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out = _make_wrapper(
+    "gguf_q8_0",
+    _symbol("gguf_q8_0", "gemv_coltile4_rowbatch8_f32_f32_out"),
+)
 gguf_q5_k_gemv_rowbatch4_bf16_bf16_out = _make_wrapper(
     "gguf_q5_k", _symbol("gguf_q5_k", "gemv_rowbatch4_bf16_bf16_out")
 )
@@ -1338,6 +1354,11 @@ _WRAPPERS = {
         "rowtile_bf16_bf16_out": gguf_q8_0_gemv_rowtile_bf16_bf16_out,
         "rowtile_bf16_f32_out": gguf_q8_0_gemv_rowtile_bf16_f32_out,
         "rowtile_f32_f32_out": gguf_q8_0_gemv_rowtile_f32_f32_out,
+        "rowbatch4_f32_f32_out": gguf_q8_0_gemv_rowbatch4_f32_f32_out,
+        "rowbatch8_f32_f32_out": gguf_q8_0_gemv_rowbatch8_f32_f32_out,
+        "rowbatch16_f32_f32_out": gguf_q8_0_gemv_rowbatch16_f32_f32_out,
+        "rowbatch32_f32_f32_out": gguf_q8_0_gemv_rowbatch32_f32_f32_out,
+        "coltile4_rowbatch8_f32_f32_out": gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out,
     },
     "gguf_q5_k": {
         "gemv_f32_f32_out": gguf_q5_k_gemv_f32_f32_out,
@@ -1430,6 +1451,11 @@ register_gguf_k_gemv_kernels()
 
 __all__ = [
     "build_gguf_k_gemv",
+    "gguf_q8_0_gemv_rowbatch4_f32_f32_out",
+    "gguf_q8_0_gemv_rowbatch8_f32_f32_out",
+    "gguf_q8_0_gemv_rowbatch16_f32_f32_out",
+    "gguf_q8_0_gemv_rowbatch32_f32_f32_out",
+    "gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out",
     "gguf_q5_k_gemv_f32_f32_out",
     "gguf_q5_q6_attention_q5_qg_mixed_gemv_decode_bf16_f32_out",
     "gguf_q5_q6_attention_q5_qg_mixed_local32_fixed_meta_gemv_decode_bf16_f32_out",

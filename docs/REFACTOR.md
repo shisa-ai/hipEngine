@@ -18,6 +18,14 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-08-28 Qwen4Exp exact raw-Q8 prefill tiling
+
+- `HIPENGINE_QWEN4_EXP_RAW_ROWBATCH` defaults to `32` and
+  `HIPENGINE_QWEN4_EXP_RAW_VARIANT` defaults to `coltile`, selecting exact
+  coltile4/rowbatch8 for raw Q8_0 FP32 projections. Remove both flags and the
+  scalar/rowbatch geometry ladder after short-context serving/graph soak; keep
+  the registered scalar strict fallback.
+
 ## 2026-08-27 Qwen4Exp exact grouped Q5_1 output batching
 
 - `HIPENGINE_QWEN4_EXP_Q5_1_OUT8` defaults on and batches eight adjacent output

@@ -651,7 +651,9 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
   if (out_col_base >= out_features || row_base >= rows) return;
 
   int row_bytes = 0;
-  if constexpr (qtype == 5) {
+  if constexpr (qtype == 8) {
+    row_bytes = (in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  } else if constexpr (qtype == 5) {
     row_bytes = (in_features / QK_K) * Q5_K_BLOCK_BYTES;
   } else {
     row_bytes = (in_features / QK_K) * Q6_K_BLOCK_BYTES;
@@ -668,7 +670,9 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
     float weights[COL_TILE];
 #pragma unroll
     for (int col = 0; col < COL_TILE; ++col) {
-      if constexpr (qtype == 5) {
+      if constexpr (qtype == 8) {
+        weights[col] = q8_0_weight(weight_rows[col], k);
+      } else if constexpr (qtype == 5) {
         weights[col] = q5_k_weight(weight_rows[col], k);
       } else {
         weights[col] = q6_k_weight(weight_rows[col], k);
@@ -4084,8 +4088,10 @@ int launch_gguf_k_gemv_coltile_rowbatch_out(
     int64_t out_features,
     int64_t threads,
     hipStream_t stream) {
+  const bool valid_shape = (qtype == 8) ? ((in_features % Q8_0_BLOCK) == 0)
+                                        : ((in_features % QK_K) == 0);
   if (x == nullptr || qweight == nullptr || out == nullptr || rows <= 0 ||
-      in_features <= 0 || (in_features % QK_K) != 0 || out_features <= 0 ||
+      in_features <= 0 || !valid_shape || out_features <= 0 ||
       (out_features % COL_TILE) != 0 || threads != 128) {
     return static_cast<int>(hipErrorInvalidValue);
   }
@@ -4386,6 +4392,34 @@ HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 16)
 HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(gguf_q6_k, 6, 32)
 
 #undef HIPENGINE_GGUF_K_ROWBATCH_EXPORTS
+
+#define HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(ROW_BATCH) \
+extern "C" int hipengine_gguf_q8_0_gemv_rowbatch##ROW_BATCH##_f32_f32_out( \
+    const float* x, const uint8_t* qweight, float* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_gemv_rowbatch_out<float, float, 8, ROW_BATCH>( \
+      x, qweight, out, rows, in_features, out_features, threads, stream); \
+}
+
+HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(4)
+HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(8)
+HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(16)
+HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(32)
+
+#undef HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT
+
+#define HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(COL_TILE, ROW_BATCH) \
+extern "C" int hipengine_gguf_q8_0_gemv_coltile##COL_TILE##_rowbatch##ROW_BATCH##_f32_f32_out( \
+    const float* x, const uint8_t* qweight, float* out, int64_t rows, \
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) { \
+  return launch_gguf_k_gemv_coltile_rowbatch_out< \
+      float, float, 8, COL_TILE, ROW_BATCH>( \
+      x, qweight, out, rows, in_features, out_features, threads, stream); \
+}
+
+HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(4, 8)
+
+#undef HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT
 
 #define HIPENGINE_GGUF_K_COLTILE_ROWBATCH_EXPORTS( \
     NAME, QTYPE, COL_TILE, ROW_BATCH) \

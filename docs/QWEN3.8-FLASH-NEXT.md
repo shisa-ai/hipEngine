@@ -738,12 +738,22 @@ escalation guardrails: 128K+ requires a retained `>=200 tok/s` prompt-prefill
 row and the 512/1K basic product gate. MTP step 0
 selects target-aligned QSA rows and later draft steps reuse those indices.
 
-Current exact F7 default (2026-08-27): immediate PLE ring ownership, batched
-projections, exact row-serial causal Conv, and exact grouped Q5_1 down make
-chunk64 bit-exact on all 687 teacher-forced category+heldout rows. Natural-suite
-prefill improves `5.265→12.117 tok/s` (2.301x), warm repeated-token p512 reaches
-`16.555 tok/s`, and public generation/lifecycle pass. Evidence:
+Current exact F7 default (updated 2026-08-28): immediate PLE ring ownership,
+batched projections, exact row-serial causal Conv, exact grouped Q4_K/Q5_1
+experts, and raw-Q8 FP32 coltile4/rowbatch8. The Q8 tile preserves each scalar
+thread's K order and reduction tree while sharing activation/output scheduling.
+Paired natural p508 improves `26.264→14.718 s` (`34.517 tok/s`, 1.785x) and
+p1012 `56.550→29.622 s` (`34.164 tok/s`, 1.909x), with bit-exact full logits.
+The Q8 kernel bucket falls `13.972→3.121 s`; total profiled kernel wall
+`25.008→14.230 s`. The earlier chunk64 path remains bit-exact on all 687
+teacher-forced category+heldout rows; its pre-Q8 natural-suite row was
+`5.265→12.117 tok/s` and is now historical. Public generation/lifecycle pass.
+Evidence:
+[`2026-08-28-gfx1151-qwen38-flash-next-exact-q8-coltile-prefill.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q8-coltile-prefill.json) and
 [`2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json).
+The current p508 rate exceeds the 20 tok/s prerequisite for a future 4K run,
+but the campaign remains at 512/1K until short-context optimization is
+explicitly complete; it does not automatically escalate.
 
 Current default-off F7 research candidate: grouped Q4/Q5/Q8 MoE,
 Q5_1 WMMA down, peer-GDN, and tuned Q4/Q8 tiles raise warm repeated-token 512
