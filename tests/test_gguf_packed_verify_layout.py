@@ -22,12 +22,35 @@ from hipengine.runtime.qwen35_gguf_runner import (
     _HipEventStageRecorder,
     _HipWallClockStageRecorder,
     _build_gguf_packed_verify_layout,
+    _gguf_device_kv_copy_segments,
     _packed_ar_prefill_linear_state_plan,
     _packed_ar_slot_capacity,
     _packed_decode_metadata_device_eligible,
     _plan_packed_ar_prefill_chunks,
     _scatter_packed_layer_output_hidden,
 )
+
+
+def test_private_resident_slot_kv_copy_segments_include_slot_base() -> None:
+    owner = SimpleNamespace(
+        _target_scratch_owner=SimpleNamespace(max_positions=1024)
+    )
+    slot = SimpleNamespace(
+        _device_kv_allocation=None,
+        _resident_batch_owner=owner,
+        _resident_slot_index=2,
+    )
+
+    assert _gguf_device_kv_copy_segments(
+        slot,
+        start_position=37,
+        rows=5,
+    ) == ((37, 2 * 1024 + 37, 5),)
+    assert _gguf_device_kv_copy_segments(
+        SimpleNamespace(_device_kv_allocation=None),
+        start_position=37,
+        rows=5,
+    ) == ((37, 37, 5),)
 
 
 def test_long_packed_prefill_requires_slot_local_full_attention() -> None:
