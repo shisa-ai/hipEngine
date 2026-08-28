@@ -2586,7 +2586,12 @@ def test_mtp2_physical_intent_allows_c1_before_or_after_c2() -> None:
     assert adapter.capability(semantics) is not None
     assert adapter.partition_max_requests((7,)) == 4
     adapter._active_claims = None
-    assert adapter.claims_fit(SimpleNamespace(speculative_request_ids=(7,))) is True
+    assert adapter.claims_fit(
+        SimpleNamespace(request_ids=(7,), speculative_request_ids=(7,))
+    ) is True
+    assert adapter.claims_fit(
+        SimpleNamespace(request_ids=(7, 8), speculative_request_ids=(7,))
+    ) is False
 
     adapter._prompt_hidden_rows = {}
     adapter._states = {

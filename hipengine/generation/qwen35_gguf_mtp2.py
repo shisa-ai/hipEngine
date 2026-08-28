@@ -1026,6 +1026,10 @@ class Qwen35GGUFMTP2Adapter:
         return bool(
             self.enabled
             and self._active_claims is None
+            # The staged target result owns every due request in the plan. A
+            # mixed positive-K/K0 group needs a separately declared partition;
+            # this adapter must fail it closed before provider mutation.
+            and tuple(int(value) for value in plan.request_ids) == request_ids
             and 1 <= len(request_ids) <= 4
             and not (
                 len(request_ids) == 1
