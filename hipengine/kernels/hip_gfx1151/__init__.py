@@ -1288,6 +1288,9 @@ GGUF_RAW_Q8_F32_PREFILL_COLTILE_SUPPORTED = True
 # Qwen4Exp MoE is stateless between layer boundaries. Per-layer graph replay
 # self-validates BF16 output before admission and leaves GDN/QSA eager.
 QWEN4_EXP_MOE_GRAPH = True
+# Profile-certified T2 cooperative MoE prefill is confined to late layers where
+# the full 450-row/three-repeat envelope and task/c2 gates pass.
+QWEN4_EXP_PRODUCTION_MOE_PREFILL_LAYERS = tuple(range(32, 48))
 GGUF_RAW_K_PREFILL_ROWBATCH = 0
 GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED = False
 GGUF_RAW_K_PREFILL_COLTILE2_SHAPES = frozenset()
@@ -2443,6 +2446,7 @@ __all__ = [
     "GGUF_RAW_Q8_F32_PREFILL_COLTILE_SUPPORTED",
     "GGUF_RAW_K_PREFILL_VARIANT",
     "QWEN4_EXP_MOE_GRAPH",
+    "QWEN4_EXP_PRODUCTION_MOE_PREFILL_LAYERS",
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
     "LAGUNA_DENSE_Q4_PREFILL_MODE",
     "LAGUNA_F16_BOUNDARY_FUSION",
