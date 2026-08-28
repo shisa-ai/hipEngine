@@ -1,0 +1,427 @@
+{
+  "commands": {
+    "full_suite_template": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -u scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --widths 2 --resident-capacity 4 --expected-mtp-widths 2 --max-tokens 24 --candidate-budget {1,2,3} --batch-window-ms 50 --max-sequence-length 1024 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/<output>.json",
+    "profile": "GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. rocprofv3 --kernel-trace --marker-trace --hip-runtime-trace --memory-copy-trace --memory-allocation-trace --output-format csv --output-directory /tmp/qwen38-c2k3-q6-both-rowtiles-rocprof-clean -- .venv/bin/python3 -u scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --target-arch gfx1151 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 2 --budgets 3 --max-tokens 12 --runs 1 --warmup --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output /tmp/qwen38-c2k3-q6-both-rowtiles-profile-clean.json --fail-on-fail",
+    "tests": "GPU_MAX_HW_QUEUES=2 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. .venv/bin/python3 -m pytest -q tests/test_gguf_gemv_decode_dispatch.py tests/test_gfx1151_backend.py tests/test_gguf_q6_k_t16_gemv_decode.py"
+  },
+  "correctness": {
+    "focused_packet": "121/121 dispatch/backend/Q6 tests pass before shape narrowing; 2/2 shape-scope transfer tests pass",
+    "full_suite": "30/30 K1/K2/K3 cells exact, engaged, and budget-conformed; generated IDs diagnostically equal AR",
+    "lifecycle": "every clean suite returns tracked current/active memory to zero",
+    "operation": "standard and planar col8 rowtiles BF16-bit exact through rows8",
+    "production_gate": "D5 1170-row production numerical/determinism/isolation/transition/manifest evidence transfers because selected operation output is bit-identical"
+  },
+  "cycle_local_profile": {
+    "baseline": {
+      "cycle": {
+        "kernel_count": 1522.0,
+        "kernel_sum_ms": 352.65395750000005,
+        "kernel_union_ms": 352.65395750000005,
+        "uncovered_ms": 11.611355,
+        "wall_ms": 364.2653125
+      },
+      "proposal": {
+        "kernel_count": 151.0,
+        "kernel_sum_ms": 45.1026685,
+        "kernel_union_ms": 45.1026685,
+        "uncovered_ms": 1.8969545,
+        "wall_ms": 46.999623
+      },
+      "target_accept_commit_provider": {
+        "kernel_count": 1371.0,
+        "kernel_sum_ms": 307.551289,
+        "kernel_union_ms": 307.551289,
+        "uncovered_ms": 9.5615235,
+        "wall_ms": 317.1128125
+      }
+    },
+    "delta_pct": {
+      "cycle_wall_ms": -26.996492288845108,
+      "kernel_sum_ms": -27.89848629445766,
+      "target_wall_ms": -31.173410251280842
+    },
+    "final": {
+      "cycle": {
+        "kernel_count": 1522.0,
+        "kernel_sum_ms": 254.2688415,
+        "kernel_union_ms": 254.2688415,
+        "uncovered_ms": 11.657613999999999,
+        "wall_ms": 265.9264555
+      },
+      "proposal": {
+        "kernel_count": 151.0,
+        "kernel_sum_ms": 45.1969,
+        "kernel_union_ms": 45.1969,
+        "uncovered_ms": 2.318063,
+        "wall_ms": 47.514963
+      },
+      "target_accept_commit_provider": {
+        "kernel_count": 1371.0,
+        "kernel_sum_ms": 209.0719415,
+        "kernel_union_ms": 209.0719415,
+        "uncovered_ms": 9.185993,
+        "wall_ms": 218.2579345
+      }
+    },
+    "final_top_target_kernels": [
+      {
+        "calls": 264,
+        "ms": 128.839685,
+        "name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)"
+      },
+      {
+        "calls": 48,
+        "ms": 27.51345,
+        "name": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)"
+      },
+      {
+        "calls": 40,
+        "ms": 13.424758,
+        "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)"
+      },
+      {
+        "calls": 2,
+        "ms": 9.65793,
+        "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)"
+      },
+      {
+        "calls": 24,
+        "ms": 8.831336,
+        "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)"
+      },
+      {
+        "calls": 29,
+        "ms": 8.122127,
+        "name": "(anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)"
+      },
+      {
+        "calls": 48,
+        "ms": 3.431121,
+        "name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, _Float16>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, _Float16 const*, _Float16*, unsigned short*, int const*, long const*, float, long, long, long, long, long)"
+      },
+      {
+        "calls": 362,
+        "ms": 1.887187,
+        "name": "__amd_rocclr_copyBuffer"
+      }
+    ],
+    "kernel_route": {
+      "planar_direct_old": {
+        "calls": 40,
+        "ms": 84.319
+      },
+      "planar_rowtile_new": {
+        "calls": 40,
+        "ms": 13.404
+      },
+      "standard_direct_old": {
+        "calls": 24,
+        "ms": 36.273
+      },
+      "standard_rowtile_new": {
+        "calls": 24,
+        "ms": 8.83
+      }
+    },
+    "protocol": "warm current-source C2/K3 p1/D12 stage markers; use measured full-budget steady cycles 1 and 2"
+  },
+  "date": "2026-08-28",
+  "decision": {
+    "automatic_policy": "C2 remains pure K0 because best K3 is 0.9747x aggregate AR and category non-regression fails",
+    "d6_correction": "supersede the no-kernel-candidate inference; GPU-busy Q6 model kernels contained redundant per-row weight streaming",
+    "implementation": "retain exact verifier-only standard/planar Q6 rowtile dispatch as the scoped gfx1151 default",
+    "next_trigger": "another exact target-cost reduction that closes the remaining 12.86% to the 1.10x aggregate gate and passes every category/task/SLO gate"
+  },
+  "evidence": {
+    "base_profile": {
+      "path": "/tmp/qwen38-c2k3-cycle-stage-summary.json",
+      "retained_in_git": false,
+      "sha256": "f6326bc40a9cc0333a04c697368987a6307eddd9890c3681afea8061652763c3",
+      "size_bytes": 79260
+    },
+    "copy_trace": {
+      "path": "/tmp/qwen38-c2k3-q6-both-rowtiles-rocprof-clean/gfx1151/1764086_memory_copy_trace.csv",
+      "retained_in_git": false,
+      "sha256": "a4d5f67e1c98b6be1228e4d8da744908762149f498c5305a926c4bd04cfcc658",
+      "size_bytes": 116590
+    },
+    "d128": {
+      "path": "/tmp/qwen38-c2k3-q6-rowtiles-d128-diagnostic.json",
+      "retained_in_git": false,
+      "sha256": "c6252a5f6ff65cc045ca7947d8998a4464142bc0e5be251f0d235e5a35cfda06",
+      "size_bytes": 112319
+    },
+    "final_profile": {
+      "path": "/tmp/qwen38-c2k3-q6-both-rowtiles-stage-summary-clean.json",
+      "retained_in_git": false,
+      "sha256": "e058319f82b6b3461173bd96df22f6a2011736e907a4c7262e260bd11fa2e3d7",
+      "size_bytes": 79628
+    },
+    "hip_api_trace": {
+      "path": "/tmp/qwen38-c2k3-q6-both-rowtiles-rocprof-clean/gfx1151/1764086_hip_api_trace.csv",
+      "retained_in_git": false,
+      "sha256": "d4ff8d6e91d6f37e4708b1a9b3d885f3de327b4bf3744cde0148e854367b7b42",
+      "size_bytes": 5347661
+    },
+    "k1": {
+      "path": "/tmp/qwen38-c2k1-q6-both-rowtiles-full-clean.json",
+      "retained_in_git": false,
+      "sha256": "c00fae39387f7dad10a7f68c1515a4618a76a7bf482136d144095b2e6ac7e4d2",
+      "size_bytes": 936083
+    },
+    "k2": {
+      "path": "/tmp/qwen38-c2k2-q6-both-rowtiles-full-clean.json",
+      "retained_in_git": false,
+      "sha256": "7ce226244cafa1a67ad343fcff26815db40a64c40c20bce960aacadebf9cd3f9",
+      "size_bytes": 931898
+    },
+    "k3": {
+      "path": "/tmp/qwen38-c2k3-q6-both-rowtiles-full-clean.json",
+      "retained_in_git": false,
+      "sha256": "add272e96b23ee29f6f0692d50d390c9955ac18c49130f36aa61bf016502fbe1",
+      "size_bytes": 931564
+    },
+    "kernel_trace": {
+      "path": "/tmp/qwen38-c2k3-q6-both-rowtiles-rocprof-clean/gfx1151/1764086_kernel_trace.csv",
+      "retained_in_git": false,
+      "sha256": "d2d86699a877def20a9330edb79dceb4921d44597b32e8b993d98c1d21483b78",
+      "size_bytes": 7096770
+    },
+    "marker_trace": {
+      "path": "/tmp/qwen38-c2k3-q6-both-rowtiles-rocprof-clean/gfx1151/1764086_marker_api_trace.csv",
+      "retained_in_git": false,
+      "sha256": "3dc5e21e6516dc7af180f20fbcd25a371c8340d49bc7bcd76cbb7b7f925a932b",
+      "size_bytes": 10273
+    },
+    "old_k3": {
+      "path": "/tmp/qwen38-dynamic-admission-d6-c2-k3.json",
+      "retained_in_git": false,
+      "sha256": "1594bcfe844a7a5629546325fc63b27d200ee81f844700e37ab6a93d8be25743",
+      "size_bytes": 931607
+    },
+    "planar_screen": {
+      "path": "/tmp/qwen38-q6-verifier-rowtile-screen.json",
+      "retained_in_git": false,
+      "sha256": "63d13ba2b1b405bddd25f9d63a05f56c8ab61364b2c51f71d5539234947593f0",
+      "size_bytes": 3211
+    },
+    "profile_child": {
+      "path": "/tmp/qwen38-c2k3-q6-both-rowtiles-profile-clean.json",
+      "retained_in_git": false,
+      "sha256": "4d357e859cb9bb72e34648ae8b026e672734d45a48a1bf8cfeaa6196ec0553c4",
+      "size_bytes": 47338
+    },
+    "standard_screen": {
+      "path": "/tmp/qwen38-q6-standard-verifier-rowtile-screen.json",
+      "retained_in_git": false,
+      "sha256": "398357aab6f0fbebe667ab8e477085d3f56f0f0a89fda7fef329e70b9221e46c",
+      "size_bytes": 764
+    }
+  },
+  "full_suite": {
+    "acceptance": {
+      "accepted_drafts": 314,
+      "cycles": 142,
+      "drafts": 398,
+      "rate": 0.7889447236180904,
+      "visible_tokens_per_cycle": 3.380281690140845
+    },
+    "best_budget": 3,
+    "budgets": {
+      "1": {
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "engaged_cells": 10,
+        "exact_cells": 10,
+        "mtp_tok_s_delta_pct": 9.602591678562945,
+        "new": {
+          "ar_tok_s": 14.533046115792882,
+          "mtp_tok_s": 8.502049553935967,
+          "ratio": 0.5850149711351218
+        },
+        "old": {
+          "ar_tok_s": 14.698768436098016,
+          "mtp_tok_s": 7.757161052240769,
+          "ratio": 0.5277422449346383
+        },
+        "ratio_delta_pct": 10.852405080358274
+      },
+      "2": {
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "engaged_cells": 10,
+        "exact_cells": 10,
+        "mtp_tok_s_delta_pct": 16.892554957239515,
+        "new": {
+          "ar_tok_s": 14.495793625366622,
+          "mtp_tok_s": 13.65862288850299,
+          "ratio": 0.9422473333644429
+        },
+        "old": {
+          "ar_tok_s": 15.339788235636933,
+          "mtp_tok_s": 11.684767172297203,
+          "ratio": 0.7617293663253776
+        },
+        "ratio_delta_pct": 23.698438713199877
+      },
+      "3": {
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "engaged_cells": 10,
+        "exact_cells": 10,
+        "mtp_tok_s_delta_pct": 20.73026355035612,
+        "new": {
+          "ar_tok_s": 14.521879312642497,
+          "mtp_tok_s": 14.154309041339825,
+          "ratio": 0.9746885190691076
+        },
+        "old": {
+          "ar_tok_s": 14.349970836649819,
+          "mtp_tok_s": 11.7239113252131,
+          "ratio": 0.8169989652710817
+        },
+        "ratio_delta_pct": 19.30107142127213
+      }
+    },
+    "categories": {
+      "code": {
+        "ar_tok_s": 14.489108147193612,
+        "mtp_tok_s": 14.366361950549916,
+        "mtp_vs_ar_ratio": 0.9915283814989351
+      },
+      "general_en": {
+        "ar_tok_s": 15.429887017173852,
+        "mtp_tok_s": 15.692019134647659,
+        "mtp_vs_ar_ratio": 1.0169885960397536
+      },
+      "general_ja": {
+        "ar_tok_s": 14.368231599874184,
+        "mtp_tok_s": 13.775264557811136,
+        "mtp_vs_ar_ratio": 0.9587306873541598
+      },
+      "mixed_ja_en": {
+        "ar_tok_s": 13.914774859520923,
+        "mtp_tok_s": 12.867582079896593,
+        "mtp_vs_ar_ratio": 0.9247423842500903
+      }
+    },
+    "final_memory_after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 23423800176,
+      "peak_allocations": 1774,
+      "total_allocated_bytes": 24656374068,
+      "total_freed_bytes": 24656374068
+    },
+    "k3_old_to_new": {
+      "mtp_tok_s": [
+        11.7239113252131,
+        14.154309041339825
+      ],
+      "mtp_tok_s_delta_pct": 20.73026355035612,
+      "mtp_wall_seconds": [
+        40.94196780282073,
+        33.91193442209624
+      ],
+      "ratio": [
+        0.8169989652710817,
+        0.9746885190691076
+      ],
+      "ratio_delta_pct": 19.30107142127213,
+      "remaining_to_1_10_pct": 12.856566839483573
+    },
+    "protocol": "ten canonical prompts; four categories; six train/four heldout; blocking OpenAI barrier-to-last-completion; C2 capacity4; D24; one run; raw greedy; K1/K2/K3 independently reranked",
+    "splits": {
+      "heldout": {
+        "ar_tok_s": 14.306803421057856,
+        "mtp_tok_s": 14.279523105263367,
+        "mtp_vs_ar_ratio": 0.9980931927984461
+      },
+      "train": {
+        "ar_tok_s": 14.668892122278425,
+        "mtp_tok_s": 14.07204588080033,
+        "mtp_vs_ar_ratio": 0.9593121118825577
+      }
+    }
+  },
+  "hardware": {
+    "GPU_MAX_HW_QUEUES": "2",
+    "architecture": "gfx1151",
+    "backend": "hip_gfx1151",
+    "compiler": "AMD clang 23.0.0git aa451e1fe6a793394d6733051b1778633063ae96+PATCHED:440716f8b87be9d8e20ed910e10e5b6d14d57cf6",
+    "host": "gfx1151",
+    "physical_identity": "AMD Ryzen AI MAX+ 395 / Radeon 8060S",
+    "rocm": "HIP 7.15.0"
+  },
+  "horizon_diagnostic": {
+    "ar_complete_tok_s": 22.345627146996314,
+    "decision": "negative; do not spend full D128 suite",
+    "exact": true,
+    "max_tokens": 128,
+    "mtp_complete_tok_s": 20.092451306711993,
+    "mtp_vs_ar_ratio": 0.899167034987998,
+    "scope": "single canonical code prompt only; non-retainable screening diagnostic"
+  },
+  "implementation": {
+    "arithmetic": "BF16-bit exact: identical K/FMA/wave/block reduction/store boundary; shared weights reused across rows",
+    "capability": {
+      "gguf_q6_k_t16_qmicro_planar_v1": [
+        [
+          5120,
+          1024
+        ],
+        [
+          17408,
+          5120
+        ]
+      ],
+      "gguf_q6_k_t16_v1": [
+        [
+          5120,
+          10240
+        ]
+      ]
+    },
+    "peer_backend_changed": false,
+    "proposal_changed": false,
+    "q4_q5_changed": false,
+    "scope": "packed target verifier only; gfx1151 rows2-8",
+    "selected_variant": "t16_gemv_rowtile_bf16_bf16_out",
+    "strict_fallback": "t16_gemv_decode_bf16_bf16_out"
+  },
+  "kind": "gfx1151_qwen38_c2_q6_verifier_rowtiles_retained",
+  "model": {
+    "execution_profile": "production",
+    "kv": "BF16",
+    "manifest_sha256": "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sampled_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 17106775008,
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+    },
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "strict_manifest_sha256": "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+  },
+  "performance_claim": true,
+  "product_speed_claim_eligible": false,
+  "schema": 1,
+  "source": {
+    "baseline_current_trace_commit": "51d491a77497a845a05a445fb81394fd692a9acc",
+    "baseline_suite_commit": "14d6a4e14d8f23f5a3d49b7360c5d0f37f94f95f",
+    "planar_route_commit": "9c46c1e9fdb0f9200414f86555ad2b650b0f944a",
+    "shape_scope_commit": "4413736cbad3eebfe2ac66b3e61c952aae94d492",
+    "standard_route_commit": "e88022bd0f0c007228ca0b12f3e6fb70ac6bbab0",
+    "tracked_clean_final_evidence": true
+  },
+  "status": "retained_scoped_default_automatic_c2_k0"
+}

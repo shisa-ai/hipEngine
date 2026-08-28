@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-27**
+Last updated: **2026-08-28**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -98,7 +98,7 @@ Rows use different models and tests; compare only matching protocols. The RX 790
 W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE K2 and 27B
 Dense K3; other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
 
-Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 automatic at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) is **15.609 vs 9.807 tok/s (1.5916x)**; [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) remains default-off. Explicit production C1-C8 is correctness-qualified, but best C>1 is only **0.8170x true AR**; automatic C2-C8 is pure K0.
+Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 automatic at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) is **15.609 vs 9.807 tok/s (1.5916x)**; [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) remains default-off. Exact [C2 verifier Q6 rowtiles](results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json) lift explicit production K3 **11.724→14.154 tok/s (+20.73%)** and **0.8170x→0.9747x true AR**. The aggregate and category gate still fails, so automatic C2-C8 remains pure K0.
 `Q4_K_S` uses FP16 recurrent state with FP32 rollback. Its exact W8192 DMS
 sidecar stays default-off. [`DMS`](../docs/DMS.md).
 
