@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-28 W7900 35B MoE physical C2/K2 automatic promotion] Promote exact production/BF16/resident-C2/D24 after scalar-equivalent packed target kernels and bulk NextN prompt KV priming move public automatic **89.945 -> 92.419 tok/s (+2.75%, 1.1223x true AR)**; authoritative three-run is **98.505 vs 86.650 tok/s (1.1368x)**, all categories non-regressive, and full strict-teacher/task/isolation plus blocking/SSE/cancel/drain pass. `benchmarks/results/2026-08-28-w7900-35b-moe-mtp2-c2-automatic-promotion.json`.
+
 - [2026-08-27 W7900 27B Dense physical C2/K2 automatic promotion] Promote exact production/BF16/resident-C2/D24 after output-normalized prompt streaming plus scoped Q4/Q5/Q6 rowtiles move public C2 **22.002 -> 34.488 tok/s (+56.75%, 1.1207x true AR)**; three-run direct is **1.1235x**, full strict-teacher/task/isolation and automatic blocking/SSE/cancel/drain pass, and capacity-1/wrong-K3 remain K0. `benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-automatic-promotion.json`.
 
 - [2026-08-27 gfx1151 Qwen3.8 dynamic MTP admission D1; retained mechanical/no speed claim] Typed static eligibility survives independent frontend C1 children into resident C2 transitional K0; mixed permanent-AR/spec-capable work records pure/transitional K0, executes disjoint MTP+AR safely, preserves blocking/SSE health, and drains to zero ownership. Automatic C2+ and arithmetic remain unchanged. `benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d1-static-eligibility.json`.

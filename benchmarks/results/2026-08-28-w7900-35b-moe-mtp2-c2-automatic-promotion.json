@@ -1,0 +1,154 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "kind": "qwen36_moe_mtp2_c2_automatic_promotion",
+  "status": "passed",
+  "performance_claim": true,
+  "source_commits": {
+    "exact_fallback": "1efe3884bf709c3b9935cca14dfc70ed90663c92",
+    "exact_target_optimization": "1f5e99d5dc200845a7986644179101011de64e3b",
+    "automatic_model_key": "4b9e876de30bfacde978770e25de6618127aa7b6",
+    "bulk_prompt_prime": "b74eaa4f8b953e5a5455b08f925ca6b8675c459d"
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "device": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "gpu_index": 0,
+    "rocm": "HIP 7.2.53211-3d9ef42",
+    "gpu_max_hw_queues": null
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "size_bytes": 22663387424,
+    "quant": "UD-Q4_K_M",
+    "kv": "bf16"
+  },
+  "automatic_key": {
+    "evidence_key": "qwen36-moe-q4km-gfx1100-production-bf16-c2-k2-d24",
+    "execution_profile": "production",
+    "execution_profile_manifest_sha256": "2b64229e062c85d08244149191f515c226c6897ecd753d86849dad9fe7c92ca9",
+    "strict_fallback_manifest_sha256": "6e1424ca788614385fb41c121266486beaff2153bdc559e2bc9d8cd04fed345a",
+    "resident_capacity": 2,
+    "physical_group_rows": 2,
+    "candidate_budget": 2,
+    "max_sequence_length": 1024,
+    "context_tokens": [4, 95],
+    "output_horizon_tokens": 24,
+    "sampling": "greedy_fast",
+    "reason": "qualified_automatic_production_moe_c2_k2_d24",
+    "strict_fallback_key": "gguf_target_ar"
+  },
+  "implementation": {
+    "target_frontier": "request-major C2/K2, logical R6, one grouped target/accept/selected-commit owner",
+    "linear_attention": "exact R6 RMSNorm, Q8 dual projection, alpha/beta, two R3 chain-Conv segments, no-copy segmented GDN journals, FP32 ssm_out rowtile",
+    "moe": "Q4 duplicate-expert pair reuse plus existing selected/shared row-batched owners",
+    "prompt_prime": "request-local prompt-length NextN embedding/norm/fusion plus K/V-only packed attention",
+    "state_control": "exact request/slot/KV/Conv/GDN/selected-commit ownership",
+    "anti_gaming": "no prompt text, token ID, candidate ID, category, or heldout identity participates in policy or dispatch"
+  },
+  "correctness": {
+    "passed": true,
+    "workload": "all 10 committed code/general_en/general_ja/mixed_ja_en prompts, D24, three physical repeats",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "teacher": "strict selected-quant serial target on identical state/context",
+    "candidate": "actual packed production physical-C2 target with bulk NextN prompt K/V priming",
+    "thresholds": {
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "max_kl_max": 0.05,
+      "top1_min": 0.99,
+      "per_scope_top1_min": 0.97
+    },
+    "aggregate": {
+      "rows": 281,
+      "mean_kl": 0.000026624165070222168,
+      "p95_kl": 0.0,
+      "p99_kl": 0.00022855998620755665,
+      "max_kl": 0.0035875174426923794,
+      "top1_agreement": 1.0,
+      "top1_matches": 281,
+      "top1_mismatches": 0,
+      "top5_overlap_mean": 1.0,
+      "finite": true
+    },
+    "repeat_determinism": true,
+    "neighbor_permutation": true,
+    "task_noninferiority": true,
+    "generated_id_equality": "diagnostic outside strict; not used as the production arithmetic gate"
+  },
+  "economics": {
+    "passed": true,
+    "protocol": "same-process counterbalanced true no-MTP AR vs engaged physical C2/K2, complete barrier-to-last wall",
+    "runs": 3,
+    "cells": 30,
+    "generated_tokens_per_arm": 1440,
+    "true_ar_tok_s": 86.64971820896241,
+    "mtp_tok_s": 98.50517446255714,
+    "mtp_over_true_ar": 1.1368204824971777,
+    "repeat_ratios": [1.1411385251924084, 1.1274939553511438, 1.1419224630413132],
+    "categories": {
+      "code": 1.1492431271645243,
+      "general_en": 1.1541167920536577,
+      "general_ja": 1.0877073126404082,
+      "mixed_ja_en": 1.145467514687271
+    },
+    "train_ratio": 1.1532234445358147,
+    "heldout_ratio": 1.1131691838620974,
+    "all_categories_non_regressive": true
+  },
+  "public_automatic": {
+    "passed": true,
+    "cells": 10,
+    "engaged_cells": 10,
+    "budget_conformed_cells": 10,
+    "mtp_self_exact_cells": 10,
+    "true_ar_tok_s": 82.34673487014538,
+    "automatic_mtp_tok_s": 92.41879248955406,
+    "automatic_over_true_ar": 1.1223127745780275,
+    "final_active_allocations": 0
+  },
+  "automatic_sse": {
+    "passed": true,
+    "clients": 2,
+    "http_statuses": [200, 200],
+    "finish_reasons": ["length", "length"],
+    "completion_tokens": [24, 24],
+    "effective_route": "speculative_mtp",
+    "decision_reason": "resident_dynamic_mtp",
+    "physical_cycles_per_request": [8, 8],
+    "active_states_final": 0,
+    "provider_groups_final": 0,
+    "prompt_sinks_final": 0
+  },
+  "cancellation_survivor": {
+    "passed": true,
+    "cancelled_visible_tokens": 5,
+    "survivor_visible_tokens": 24,
+    "physical_cycles_per_request": [2, 2],
+    "survivor_k0_catchups": 19,
+    "active_states_final": 0,
+    "provider_groups_final": 0,
+    "prompt_sinks_final": 0,
+    "command_queue_final": 0,
+    "active_children_final": 0
+  },
+  "negative_controls": {
+    "wrong_width": "physical_group_not_qualified",
+    "wrong_capacity": "physical_group_not_qualified",
+    "wrong_budget": "candidate_budget_not_qualified",
+    "wrong_horizon": "output_horizon_not_qualified",
+    "strict_fallback": "gguf_target_ar"
+  },
+  "raw_sources": {
+    "quality": {"path": "/tmp/gfx1100-moe-c2-bulk-prompt-full-quality.json", "bytes": 229368, "sha256": "1d7608cdc4a16148444329372c43fde85ac82b73727c1592f675851ebed2049c"},
+    "economics": {"path": "/tmp/gfx1100-moe-c2-bulk-prompt-three-run.json", "bytes": 1445973, "sha256": "c6044dcc8a3fd1081accfc839bd0b18b878b41e26c8345225956898ed3fc6a8c"},
+    "public_automatic": {"path": "/tmp/gfx1100-moe-c2-public-automatic-final-v2.json", "bytes": 1315086, "sha256": "242a70f86e33ea02fcd60c1ad336765c613b98d71486a0898c234ab1e53fe28d"},
+    "automatic_sse": {"path": "/tmp/gfx1100-moe-c2-auto-production-sse-probe.json", "bytes": 31023, "sha256": "3aa9ff42bb3605bce5d3fa67a3b9fade3bf8101f48fcc74a266d5a24ab804a7a"},
+    "cancellation": {"path": "/tmp/gfx1100-moe-c2-production-cancel-probe.json", "bytes": 89472, "sha256": "4753e65f35271bb52cb496cd60f23f042a71f86e2ef8f0be6e36a1879f45b7c1"}
+  },
+  "decision": "Promote the exact 35B MoE production C2/K2/D24 key automatically. Keep C4 and all unqualified keys on K0."
+}
