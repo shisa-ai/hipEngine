@@ -126,6 +126,10 @@ def test_qwen4_exp_mtp_provider_keeps_exact_target_output_and_trims_draft() -> N
     assert output.text == "10 11 12 13 14"
     assert [cycle.accepted for cycle in provider.last_cycles] == [1, 2]
     assert provider.last_cycles[0].mismatch_token == 12
+    assert output.telemetry is not None
+    assert output.telemetry.diagnostics["proposed_draft_tokens"] == 4
+    assert output.telemetry.diagnostics["accepted_draft_tokens"] == 3
+    assert output.telemetry.diagnostics["draft_acceptance"] == 0.75
     assert draft.trimmed == [4, 6]
     assert draft.position == target.runner.position == 6
     capability = provider.capabilities()

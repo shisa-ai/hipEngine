@@ -8,10 +8,12 @@ from typing import Any
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.registry import (
+    DecodeState,
     FinishDetails,
     GenerationOutput,
     GenerationRequest,
     GenerationStreamChunk,
+    GenerationTelemetry,
 )
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from hipengine.loading.qwen4_exp_mtp_gguf import build_qwen4_exp_mtp_gguf_map
@@ -214,11 +216,45 @@ class Qwen4ExpMTPTextProvider:
                 )
             )
         self.last_cycles = tuple(cycles)
+        proposed = sum(len(cycle.candidates) for cycle in cycles)
+        accepted = sum(cycle.accepted for cycle in cycles)
+        telemetry = GenerationTelemetry(
+            decode_state=DecodeState(
+                prompt_tokens=len(token_ids),
+                generated_tokens=len(generated),
+                step_index=len(generated),
+                sampler_mode="greedy_speculative_mtp",
+                execution_path="qwen4exp_mtp_serial_exact_verify",
+            ),
+            event="generation_complete",
+            diagnostics={
+                "speculative_provider": self.provider_name,
+                "candidate_budget": self.candidate_budget,
+                "proposed_draft_tokens": proposed,
+                "accepted_draft_tokens": accepted,
+                "draft_acceptance": (
+                    float(accepted / proposed) if proposed else 0.0
+                ),
+                "cycles": [
+                    {
+                        "start_position": cycle.start_position,
+                        "candidates": list(cycle.candidates),
+                        "accepted": cycle.accepted,
+                        "mismatch_token": cycle.mismatch_token,
+                        "committed_position": cycle.committed_position,
+                    }
+                    for cycle in cycles
+                ],
+                "target_verify": "serial_exact",
+                "draft_rollback": "cursor_trim",
+            },
+        )
         return GenerationOutput(
             text=self.target_generator.tokenizer.decode(
                 generated, skip_special=False
             ),
             generated_token_ids=tuple(generated),
+            telemetry=telemetry,
             finish_details=FinishDetails(
                 reason=reason,
                 eos_token_id=eos if reason == "eos" else None,

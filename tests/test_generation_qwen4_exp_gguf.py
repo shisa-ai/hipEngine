@@ -37,6 +37,22 @@ class _Runner:
         self.steps.append(("close",))
 
 
+def test_qwen4_exp_generator_exposes_tokenizer_control_surface() -> None:
+    generator = Qwen4ExpGGUFTextGenerator(
+        model_path="unused.gguf",
+        weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(),
+        tokenizer=_Tokenizer(),
+        runner=_Runner(),
+    )
+    try:
+        assert generator.count_tokens("hello") == 2
+        assert generator.tokenize("hello") == (1, 2)
+        assert generator.detokenize((1, 2)) == "1:2"
+    finally:
+        generator.close()
+
+
 def _request(**overrides):
     values = dict(
         prompts=("hello",),

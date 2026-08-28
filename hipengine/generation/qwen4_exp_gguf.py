@@ -76,6 +76,25 @@ class Qwen4ExpGGUFTextGenerator:
                 raise
         self.runner = runner
 
+    def count_tokens(self, text: str) -> int:
+        self._require_open()
+        return len(self.tokenizer.encode(str(text)))
+
+    def tokenize(self, text: str) -> tuple[int, ...]:
+        self._require_open()
+        return tuple(int(token) for token in self.tokenizer.encode(str(text)))
+
+    def detokenize(
+        self, token_ids: Any, *, skip_special: bool = False
+    ) -> str:
+        self._require_open()
+        return str(
+            self.tokenizer.decode(
+                tuple(int(token) for token in token_ids),
+                skip_special=bool(skip_special),
+            )
+        )
+
     def generate(self, request: GenerationRequest) -> list[str]:
         return [output.text for output in self.generate_detailed(request)]
 
