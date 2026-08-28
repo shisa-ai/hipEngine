@@ -1244,7 +1244,7 @@ SpecDec is planned as a scheduler + plugin feature that reuses the same target-m
 | Draft Type | Status | Integration shape |
 |------------|--------|-------------------|
 | Medusa-style heads | Planned | Model-advertised heads produce shallow candidate rows. |
-| Lookahead decoding | Planned | Scheduler-side n-gram/cache provider emits candidate chains. |
+| Lookahead decoding | Partial | Dense GGUF MTP2 has an opt-in request-local exact `ngram-mod` first-refusal composer for qualified K<=3 chains; ordinary MTP/AR remain miss/failure fallbacks. Broader providers and promotion remain gated. |
 | MTP (multi-token pred) | Research | Qwen3.5 MTP layers provide `DraftBatch` chains attached to the target model; detailed native plan: [`docs/MTP.md`](MTP.md). |
 | EAGLE3 | Research | Draft-model plugin emits feature-conditioned candidate chains/trees. |
 | DFlash (draft model) | Partial | Generic four-axis public-provider registry plus an explicit-only Poolside Laguna B4 library owner; OpenAI routing and broader DFlash/DDTree serving remain. Detailed native plan: [`docs/DFLASH.md`](DFLASH.md). |

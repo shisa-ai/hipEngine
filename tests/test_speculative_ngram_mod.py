@@ -30,8 +30,8 @@ def test_ngram_mod_requires_a_full_confidence_horizon_before_returning_k3() -> N
     assert proposal.n_match == 24
 
 
-def test_ngram_mod_rejects_history_without_an_exact_24_token_replay() -> None:
-    history = tuple(range(71))
+def test_ngram_mod_rejects_a_short_continuation_even_when_k3_is_available() -> None:
+    history, _continuation = _replay_history(continuation=23)
     cache = NgramModRequestCache(
         NgramModConfig(n_match=24, min_draft_tokens=24, max_probe_tokens=64)
     )
