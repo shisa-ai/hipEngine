@@ -1584,8 +1584,11 @@ def test_gdn_prefill_segments_mutating_matches_per_segment_decode_order() -> Non
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
-def test_gdn_segments_lowp_state_rows_match_scalar_c1() -> None:
-    inputs = _GDNInputs(tokens=6, num_k_heads=1, num_v_heads=2,
+@pytest.mark.parametrize("num_k_heads,num_v_heads", [(1, 2), (16, 32)])
+def test_gdn_segments_lowp_state_rows_match_scalar_c1(
+    num_k_heads: int, num_v_heads: int
+) -> None:
+    inputs = _GDNInputs(tokens=6, num_k_heads=num_k_heads, num_v_heads=num_v_heads,
                         head_k_dim=128, head_v_dim=128, seed=20260828)
     cu = np.asarray([0, 3, 6], dtype=np.int32)
     indices = np.asarray([0, 1], dtype=np.int64)
