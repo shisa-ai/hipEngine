@@ -25,6 +25,10 @@ def _hip_available() -> bool:
 
 
 def test_qwen4_exp_gdn_build_and_registry_contract() -> None:
+    from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
+        qwen4_exp_linear_attn_conv_prefill_exact_f32,
+        register_qwen35_linear_attn_conv_kernels,
+    )
     from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
         plan_qwen4_exp_gdn_build,
         qwen4_exp_gdn_decode_f32,
@@ -36,6 +40,16 @@ def test_qwen4_exp_gdn_build_and_registry_contract() -> None:
     artifact = plan_qwen4_exp_gdn_build()
     assert artifact.output_path.name == "qwen4_exp_gdn.so"
     register_qwen4_exp_gdn_kernels()
+    register_qwen35_linear_attn_conv_kernels()
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear_attn_conv_prefill",
+            quant="qwen4_exp",
+            variant="f32_decode_exact_k4",
+        )
+        is qwen4_exp_linear_attn_conv_prefill_exact_f32
+    )
     assert (
         resolve(
             backend="hip_gfx1100",
@@ -148,6 +162,66 @@ def test_qwen4_exp_gdn_decode_matches_cpu_at_production_geometry() -> None:
 
     np.testing.assert_allclose(actual, expected, rtol=5e-5, atol=5e-5)
     np.testing.assert_allclose(actual_state, expected_state[0], rtol=5e-5, atol=5e-5)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_bulk_conv_prefill_matches_serial_decode_bits() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
+        build_qwen35_linear_attn_conv,
+        qwen35_linear_attn_conv_decode_f32,
+        qwen4_exp_linear_attn_conv_prefill_exact_f32,
+    )
+
+    runtime = get_hip_runtime()
+    library = build_qwen35_linear_attn_conv(load=True)
+    rng = np.random.default_rng(40381)
+    rows, channels, kernel_size = 17, 256, 4
+    hidden = rng.normal(0.0, 0.2, size=(rows, channels)).astype(np.float32)
+    weight = rng.normal(0.0, 0.1, size=(channels, kernel_size)).astype(np.float32)
+    state = rng.normal(0.0, 0.1, size=(channels, kernel_size)).astype(np.float32)
+    allocations = []
+    try:
+        d_hidden = _upload(hidden, runtime, allocations)
+        d_weight = _upload(weight, runtime, allocations)
+        d_serial_state = _upload(state, runtime, allocations)
+        d_bulk_state = _upload(state, runtime, allocations)
+        d_serial = _alloc(hidden.shape, np.float32, runtime, allocations)
+        d_bulk = _alloc(hidden.shape, np.float32, runtime, allocations)
+        for row in range(rows):
+            qwen35_linear_attn_conv_decode_f32(
+                d_hidden.ptr + row * channels * 4,
+                d_serial_state.ptr,
+                d_weight.ptr,
+                d_serial.ptr + row * channels * 4,
+                channels,
+                kernel_size,
+                library=library,
+                runtime=runtime,
+            )
+        qwen4_exp_linear_attn_conv_prefill_exact_f32(
+            d_hidden.ptr,
+            d_bulk_state.ptr,
+            d_weight.ptr,
+            d_bulk.ptr,
+            rows,
+            channels,
+            kernel_size,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        serial = _download(d_serial, hidden.shape, np.float32, runtime)
+        bulk = _download(d_bulk, hidden.shape, np.float32, runtime)
+        serial_state = _download(
+            d_serial_state, state.shape, np.float32, runtime
+        )
+        bulk_state = _download(d_bulk_state, state.shape, np.float32, runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+    np.testing.assert_array_equal(bulk, serial)
+    np.testing.assert_array_equal(bulk_state, serial_state)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

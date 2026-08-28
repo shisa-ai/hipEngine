@@ -76,7 +76,6 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_select
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_decode_f32,
-    qwen35_linear_attn_conv_prefill_f32,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out,
@@ -150,15 +149,23 @@ def stage_qwen4_exp_ple_rows(
     *,
     hidden: int,
 ) -> np.ndarray:
-    """Copy PLE ring views immediately into one owned prompt-row matrix."""
+    """Gather one prompt chunk into a single owned PLE row matrix."""
 
     width = int(hidden)
     if width <= 0:
         raise ValueError("PLE hidden width must be positive")
-    output = np.empty((len(rows), width), dtype=np.float32)
-    for row_index, row in enumerate(rows):
-        output[row_index] = staging.stage(row).reshape(width)
-    return output
+    count = len(rows)
+    if count == 0:
+        return np.empty((0, width), dtype=np.float32)
+    indices = np.asarray(rows, dtype=np.int64)
+    if indices.ndim != 2 or indices.shape[0] != count:
+        raise ValueError("PLE prompt row indices must have shape [rows, heads]")
+    staged = np.asarray(staging.stage(indices.reshape(-1)), dtype=np.float32)
+    if staged.size != count * width:
+        raise ValueError("PLE staged values do not match prompt rows × hidden")
+    # The result aliases the active pinned ring buffer until the next stage().
+    # The sole runtime consumer performs its synchronous H2D copy immediately.
+    return staged.reshape(count, width)
 
 
 @dataclass(frozen=True)
@@ -3510,10 +3517,27 @@ def run_qwen4_exp_gdn_token_mixer(
             runtime=active_runtime,
         )
     else:
-        exact_conv = os.environ.get(
+        exact_bulk_conv = os.environ.get(
             "HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL", "1"
         ) not in {"", "0", "false", "False"}
-        if exact_conv:
+        if exact_bulk_conv:
+            resolve(
+                backend=str(weights["attn_qkv"].backend),
+                layer="linear_attn_conv_prefill",
+                quant="qwen4_exp",
+                variant="f32_decode_exact_k4",
+            )(
+                scratch.qkv.ptr,
+                conv_state_ptr,
+                conv_weight_ptr,
+                scratch.conv.ptr,
+                rows,
+                qkv_width,
+                conv_kernel,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        else:
             for row in range(rows):
                 qwen35_linear_attn_conv_decode_f32(
                     scratch.qkv.ptr + row * qkv_width * DType.FP32.itemsize,
@@ -3525,18 +3549,6 @@ def run_qwen4_exp_gdn_token_mixer(
                     stream=stream,
                     runtime=active_runtime,
                 )
-        else:
-            qwen35_linear_attn_conv_prefill_f32(
-                scratch.qkv.ptr,
-                conv_state_ptr,
-                conv_weight_ptr,
-                scratch.conv.ptr,
-                rows,
-                qkv_width,
-                conv_kernel,
-                stream=stream,
-                runtime=active_runtime,
-            )
         peer_prefill = (
             head_dim == 128
             and os.environ.get("HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL", "")
