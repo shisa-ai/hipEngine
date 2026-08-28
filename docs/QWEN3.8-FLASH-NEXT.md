@@ -749,8 +749,12 @@ eight outputs. Relative to the preceding exact default, natural p508 improves
 `14.718→11.988 s` (`42.376 tok/s`, 1.228x) and paired p1012
 `31.346→24.432 s` (`41.422 tok/s`, 1.283x), with bit-exact full logits. Cached
 p512 kernel wall falls `14.230→11.692 s`; grouped Q4/Q5/Q8 buckets fall
-`3.971→2.870`, `3.470→2.534`, and `3.121→2.482 s`. The earlier chunk64 path
-remains bit-exact on all 687
+`3.971→2.870`, `3.470→2.534`, and `3.121→2.482 s`. Extending the exact grouped
+Q4 gate/up owner from Q5_1-down layers to all Q4 gate/up layers then removes 64
+direct launches and improves paired p508 another `12.021→11.189 s` (6.92%,
+**45.404 tok/s**) with bit-exact logits. Evidence:
+[`2026-08-28-gfx1151-qwen38-flash-next-all-q4-grouped.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-all-q4-grouped.json).
+The earlier chunk64 path remains bit-exact on all 687
 teacher-forced category+heldout rows; its pre-Q8 natural-suite row was
 `5.265→12.117 tok/s` and is now historical. Public generation/lifecycle pass.
 Evidence:
