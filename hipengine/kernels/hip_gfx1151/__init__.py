@@ -1097,7 +1097,15 @@ GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
         },
     },
 }
+# Packed target verification may reuse only these exact small-row decode
+# owners. Keeping this separate from broad native batch decode prevents the
+# verifier from changing unrelated Q4/Q5 projection ownership.
+GGUF_T16_TARGET_VERIFIER_ROWTILE_QUANTS = frozenset(
+    {"gguf_q6_k_t16_qmicro_planar_v1"}
+)
 GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT = {
+    # Planar Q6's true col8 rowtile is exact and qualified through R8.
+    "gguf_q6_k_t16_qmicro_planar_v1": 8,
     # Q5: the 27B ssm_out/ffn_down/qkv/v shapes rowtile to c8; the narrow
     # 0.8B SSM-out shape keeps cap 4 so its measured direct leaf wins at c5-c8.
     "gguf_q5_k_t16_v1": {
@@ -2409,6 +2417,7 @@ __all__ = [
     "GGUF_T16_NATIVE_DIRECT_SHAPES_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT",
     "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
+    "GGUF_T16_TARGET_VERIFIER_ROWTILE_QUANTS",
     "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE",
     "GGUF_T16_NATIVE_SPLIT_ROW_CHUNKS_BY_QUANT_SHAPE",
     "GGUF_Q5_T16_SELECTED_QWEN_TILE8",
