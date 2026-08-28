@@ -33,8 +33,12 @@ from hipengine.core.memory import (
     malloc,
 )
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
+from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
+    silu_mul_separate_out_bf16,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
+    gguf_q4_k_selected_dual_silu_gemv_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     build_gguf_q4_k_selected_prefill,
@@ -71,6 +75,15 @@ def _hip_available() -> bool:
 
 def test_gguf_q4_k_selected_wmma_registry_and_build_plan(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS", raising=False)
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="gguf_q4_k",
+            variant="selected_dual_silu_gemv_bf16_bf16_out",
+        )
+        is gguf_q4_k_selected_dual_silu_gemv_bf16_bf16_out
+    )
     assert (
         resolve(
             backend="hip_gfx1100",
@@ -388,6 +401,65 @@ def _build_compact_fixture(
         out_features_b=out_features_b,
         num_experts=num_experts,
     )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_selected_dual_silu_matches_unfused_bf16_boundaries() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.loading.materialize import float_array_to_bf16_bits
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(1901)
+    x_rows, selected_rows, experts = 1, 10, 4
+    in_features, out_features = 256, 32
+    x = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(x_rows, in_features)).astype(np.float32)
+    )
+    selected = np.asarray([0, 2, 1, 3, 0, 1, 2, 3, 1, 0], dtype=np.int64)
+    weight_a = np.stack(
+        [make_q4_k_weight(out_features, in_features) for _ in range(experts)]
+    )
+    weight_b = np.stack(
+        [np.roll(make_q4_k_weight(out_features, in_features), e + 1, axis=0)
+         for e in range(experts)]
+    )
+    allocations = []
+    try:
+        hosts = (x, selected, weight_a, weight_b)
+        devices = []
+        for host in hosts:
+            device = malloc(host.nbytes, runtime=runtime)
+            copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
+            allocations.append(device)
+            devices.append(device)
+        outputs = [
+            malloc(selected_rows * out_features * 2, runtime=runtime)
+            for _ in range(4)
+        ]
+        allocations.extend(outputs)
+        gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
+            devices[0].ptr, devices[1].ptr, devices[2].ptr, devices[3].ptr,
+            outputs[0].ptr, outputs[1].ptr, x_rows, selected_rows, experts,
+            in_features, out_features, threads=128, runtime=runtime,
+        )
+        silu_mul_separate_out_bf16(
+            outputs[0].ptr, outputs[1].ptr, outputs[2].ptr,
+            selected_rows, out_features, runtime=runtime,
+        )
+        gguf_q4_k_selected_dual_silu_gemv_bf16_bf16_out(
+            devices[0].ptr, devices[1].ptr, devices[2].ptr, devices[3].ptr,
+            outputs[3].ptr, x_rows, selected_rows, experts, in_features,
+            out_features, threads=128, runtime=runtime,
+        )
+        runtime.device_synchronize()
+        expected = np.empty((selected_rows, out_features), dtype=np.uint16)
+        actual = np.empty_like(expected)
+        copy_device_to_host(host_array_ptr(expected), outputs[2], runtime=runtime)
+        copy_device_to_host(host_array_ptr(actual), outputs[3], runtime=runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+    np.testing.assert_array_equal(actual, expected)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

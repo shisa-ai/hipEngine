@@ -23,6 +23,9 @@ _SYMBOL_ROWTILE_BF16_F32_OUT = "hipengine_gguf_q4_k_gemv_rowtile_bf16_f32_out"
 _SYMBOL_ROWTILE_BF16_BF16_OUT = "hipengine_gguf_q4_k_gemv_rowtile_bf16_bf16_out"
 _SYMBOL_SELECTED_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_gemv_bf16_bf16_out"
 _SYMBOL_SELECTED_DUAL_BF16_BF16_OUT = "hipengine_gguf_q4_k_selected_dual_gemv_bf16_bf16_out"
+_SYMBOL_SELECTED_DUAL_SILU_BF16_BF16_OUT = (
+    "hipengine_gguf_q4_k_selected_dual_silu_gemv_bf16_bf16_out"
+)
 _SYMBOL_QUANTIZE_BF16_Q8_1 = "hipengine_gguf_q4_k_quantize_bf16_q8_1"
 _SYMBOL_QUANTIZE_BF16_Q8_1X2 = "hipengine_gguf_q4_k_quantize_bf16_q8_1x2"
 _SYMBOL_QUANTIZE_F32_Q8_1 = "hipengine_gguf_q4_k_quantize_f32_q8_1"
@@ -976,6 +979,38 @@ def gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
     _check_launch(runtime, err)
 
 
+def gguf_q4_k_selected_dual_silu_gemv_bf16_bf16_out(
+    x_ptr: int,
+    selected_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact raw-Q4 dual gate/up plus BF16-boundary SiLU product."""
+
+    _validate_selected(x_rows, rows, num_experts, in_features, out_features, threads)
+    library = library or build_gguf_q4_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_SELECTED_DUAL_SILU_BF16_BF16_OUT)
+    fn.argtypes = [ctypes.c_void_p] * 5 + [ctypes.c_int64] * 6 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        x_ptr, selected_ptr, qweight_a_ptr, qweight_b_ptr, out_ptr,
+        x_rows, rows, num_experts, in_features, out_features, threads, stream,
+    )
+    _check_launch(runtime, err)
+
+
 def gguf_q4_k_quantize_bf16_q8_1(
     x_ptr: int,
     xq_ptr: int,
@@ -1257,6 +1292,7 @@ _EXTRA_Q4_K_WRAPPERS = {
     "gemv_bf16_fp16_out": gguf_q4_k_gemv_bf16_fp16_out,
     "selected_gemv_bf16_bf16_out": gguf_q4_k_selected_gemv_bf16_bf16_out,
     "selected_dual_gemv_bf16_bf16_out": gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
+    "selected_dual_silu_gemv_bf16_bf16_out": gguf_q4_k_selected_dual_silu_gemv_bf16_bf16_out,
     "selected_dual_dp4a_gemv_bf16_bf16_out": gguf_q4_k_selected_dual_dp4a_gemv_bf16_bf16_out,
     "selected_pack8_gemv_bf16_bf16_out": gguf_q4_k_selected_pack8_gemv_bf16_bf16_out,
     "prefill_f32_f32_out": gguf_q4_k_prefill_f32_f32_out,
@@ -1296,6 +1332,7 @@ __all__ = [
     "gguf_q4_k_quantize_f32_q8_1",
     "gguf_q4_k_selected_gemv_bf16_bf16_out",
     "gguf_q4_k_selected_dual_gemv_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_silu_gemv_bf16_bf16_out",
     "gguf_q4_k_selected_dual_dp4a_gemv_bf16_bf16_out",
     "gguf_q4_k_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q4_k_selected_pack8_gemv_bf16_bf16_out",

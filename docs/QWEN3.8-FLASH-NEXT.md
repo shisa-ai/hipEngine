@@ -857,7 +857,9 @@ the strict path to `5.89 tok/s`. The subsequent exact raw-Q8 F32 output-pack8
 owner cuts its traced Q8 bucket `2.620→1.171 s` and a counterbalanced complete-
 model decode median `5.698→6.305 tok/s` (+10.66%). Registered exact Q4 selected
 dual gate/up then halves Q4 launches `94→47/token` and improves its paired
-median `6.065→6.223 tok/s` (+2.61%). Both retain identical 32-token IDs and add
+median `6.065→6.223 tok/s` (+2.61%). Fusing the exact BF16-boundary SiLU/product
+into that owner removes another 47 launches/token and improves the next paired
+median `6.400→6.420 tok/s` (+0.31%). All retain identical 32-token IDs and add
 no layout. A Q5_1 wave64 decode candidate reaches
 `6.10-6.22 tok/s` but is rejected at production mean/p95 KL
 `0.002565/0.007202`. Exact evidence and rejected sub-experiments are in
