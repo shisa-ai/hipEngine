@@ -905,6 +905,19 @@ Evidence:
 
 ### F10 — Public serving and closure
 
+Current <=1K native serving status (2026-08-28): Qwen4Exp now exposes a c2
+resident runner pool over one shared weight/PLE layout. Residual, GDN, PLE,
+QSA K/V/index, scratch, and cursors are request-owned; scheduler compaction
+preserves runner identity. Serial c1 and c2 IDs match exactly on both varied
+8-token prompts. Native stream-many emits three correctly owned chunks per
+row. Two simultaneous blocking chats and two simultaneous SSE chats return
+HTTP 200; both streams end in `[DONE]`. Admission rollback and cancellation
+before mutation pass. c2 adds 550,283,960 tracked bytes over c1 and shutdown
+returns to zero. Current model transitions remain per-request serial within
+one scheduler tick, so this is a functionality/isolation result, not a c-aware
+kernel throughput claim. Evidence:
+[`2026-08-28-gfx1151-qwen38-flash-next-native-c2-serving.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-native-c2-serving.json).
+
 Qualify:
 
 - `LLM.generate()` and `hipengine serve`;

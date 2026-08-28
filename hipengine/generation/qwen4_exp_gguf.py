@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+import threading
+import time
+from typing import Any, Sequence
 
+from hipengine.dispatch import RequestState, SlotMove, WorkItem
+from hipengine.generation.batch_scheduler import CompletedRequest, GeneratedToken
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.generation.qwen4_exp_multimodal import (
     qwen4_exp_multimodal_token_control,
@@ -14,6 +19,7 @@ from hipengine.generation.registry import (
     FinishDetails,
     GenerationOutput,
     GenerationRequest,
+    GenerationStreamChunk,
     register_text_generator,
 )
 from hipengine.loading.gguf import GGUFReader, discover_gguf_files
@@ -50,6 +56,8 @@ class Qwen4ExpGGUFTextGenerator:
         self._vision_resident = None
         self._vision_runner = None
         self._speculative_provider = None
+        self._resident_model_runner = None
+        self._lock = threading.RLock()
         self._closed = False
         if tokenizer is None:
             metadata_info = getattr(weight_index, "metadata", None)
@@ -109,9 +117,66 @@ class Qwen4ExpGGUFTextGenerator:
                 self._vision_resident = None
                 raise
 
+    server_plain_ar_max_active_requests = 2
+    server_plain_ar_max_active_requests_by_max_sequence_length = {1024: 2}
+    supports_stream_many = True
+    supports_controlled_streaming = True
+
     @property
     def supports_vision(self) -> bool:
         return self._vision_runner is not None
+
+    def create_resident_model_runner(
+        self, *, capacity: int | None, config: Any | None = None
+    ) -> "Qwen4ExpResidentServingRunner":
+        del config
+        resolved = (
+            self.server_plain_ar_max_active_requests
+            if capacity is None
+            else int(capacity)
+        )
+        if resolved <= 0 or resolved > self.server_plain_ar_max_active_requests:
+            raise ValueError(
+                "Qwen4Exp resident serving capacity must be within 1..2"
+            )
+        with self._lock:
+            current = self._resident_model_runner
+            if current is not None:
+                if current.capacity != resolved:
+                    raise RuntimeError(
+                        "Qwen4Exp resident runner capacity cannot change while live"
+                    )
+                return current
+            current = Qwen4ExpResidentServingRunner(self, capacity=resolved)
+            self._resident_model_runner = current
+            return current
+
+    def prepare_request_scratch(
+        self,
+        *,
+        max_prompt_tokens: int,
+        max_new_tokens: int = 0,
+        sampling_params: Any | None = None,
+        max_batch_size: int = 1,
+        release_after_probe: bool = True,
+    ) -> dict[str, Any]:
+        del sampling_params, release_after_probe
+        batch = int(max_batch_size)
+        required = int(max_prompt_tokens) + max(0, int(max_new_tokens) - 1)
+        if batch <= 0 or batch > self.server_plain_ar_max_active_requests:
+            raise NotImplementedError("Qwen4Exp serving supports at most c2")
+        if required <= 0 or required > self.runner.max_sequence_length:
+            raise ValueError("Qwen4Exp serving scratch exceeds sequence capacity")
+        resident = self.create_resident_model_runner(capacity=batch)
+        resident.prepare(max_sequence_length=required)
+        return {
+            "schema": 1,
+            "backend": self.backend,
+            "execution_path": "qwen4exp_request_owned_runner_pool",
+            "max_batch_size": batch,
+            "max_sequence_length": required,
+            "released_after_probe": False,
+        }
 
     def count_tokens(self, text: str) -> int:
         self._require_open()
@@ -324,6 +389,11 @@ class Qwen4ExpGGUFTextGenerator:
     def close(self) -> None:
         if self._closed:
             return
+        resident_runner = self._resident_model_runner
+        if resident_runner is not None:
+            self._resident_model_runner = None
+            resident_runner.close()
+            return
         if self._speculative_provider is not None:
             self._speculative_provider.close()
             self._speculative_provider = None
@@ -342,6 +412,324 @@ class Qwen4ExpGGUFTextGenerator:
     def _require_open(self) -> None:
         if self._closed:
             raise RuntimeError("Qwen4Exp generator is closed")
+
+
+@dataclass
+class _Qwen4ExpServingRow:
+    request_id: int
+    row_index: int
+    request: GenerationRequest
+    prompt_ids: tuple[int, ...]
+    submitted_at: float
+    runner: Qwen4ExpGGUFResidentModelRunner | None = None
+    prefill_tokens_seen: int = 0
+    next_result: Any | None = None
+    generated_ids: list[int] = field(default_factory=list)
+    emitted_text: str = ""
+
+
+class Qwen4ExpResidentServingRunner:
+    """Request-owned c2 runner pool over one shared Qwen4Exp weight layout."""
+
+    def __init__(self, generator: Qwen4ExpGGUFTextGenerator, *, capacity: int) -> None:
+        self.generator = generator
+        self.capacity = int(capacity)
+        self._rows: dict[int, _Qwen4ExpServingRow] = {}
+        self._outputs: dict[int, GenerationOutput] = {}
+        self._all_runners = [generator.runner]
+        self._available = [generator.runner]
+        self._closed = False
+
+    @property
+    def active_request_ids(self) -> tuple[int, ...]:
+        return tuple(self._rows)
+
+    def prepare(self, *, max_sequence_length: int | None = None) -> int:
+        if self._closed:
+            raise RuntimeError("Qwen4Exp serving runner is closed")
+        required = (
+            self.generator.runner.max_sequence_length
+            if max_sequence_length is None
+            else int(max_sequence_length)
+        )
+        if required <= 0 or required > self.generator.runner.max_sequence_length:
+            raise ValueError("Qwen4Exp serving prepare exceeds sequence capacity")
+        if self.generator._resident is None and self.capacity > 1:
+            raise RuntimeError("Qwen4Exp c2 requires model-owned resident weights")
+        while len(self._all_runners) < self.capacity:
+            runner = Qwen4ExpGGUFResidentModelRunner(
+                self.generator._resident,
+                max_sequence_length=self.generator.runner.max_sequence_length,
+                prefill_chunk_size=self.generator.runner.prefill_chunk_size,
+                backend=self.generator.backend,
+                runtime=self.generator.runner.runtime,
+            )
+            self._all_runners.append(runner)
+            self._available.append(runner)
+        return required
+
+    def prepare_request_scratch(
+        self,
+        *,
+        max_prompt_tokens: int,
+        max_new_tokens: int = 0,
+        sampling_params: Any | None = None,
+        max_batch_size: int = 1,
+        release_after_probe: bool = True,
+    ) -> dict[str, Any]:
+        del sampling_params, release_after_probe
+        batch = int(max_batch_size)
+        if batch <= 0 or batch > self.capacity:
+            raise NotImplementedError(
+                f"Qwen4Exp resident runner owns at most {self.capacity} rows"
+            )
+        required = int(max_prompt_tokens) + max(0, int(max_new_tokens) - 1)
+        self.prepare(max_sequence_length=required)
+        return {
+            "schema": 1,
+            "backend": self.generator.backend,
+            "execution_path": "qwen4exp_request_owned_runner_pool",
+            "max_batch_size": batch,
+            "max_sequence_length": required,
+            "resident_runners": batch,
+            "released_after_probe": False,
+        }
+
+    def prompt_tokens(self, prompt: Any) -> tuple[int, ...]:
+        if isinstance(prompt, str):
+            values = tuple(int(token) for token in self.generator.tokenizer.encode(prompt))
+        else:
+            values = tuple(int(token) for token in prompt)
+        if not values:
+            raise ValueError("Qwen4Exp prompt tokenization produced no IDs")
+        return values
+
+    def scheduler_max_new_tokens(self, request: GenerationRequest) -> int:
+        return max(1, int(request.max_tokens))
+
+    def register_batch(
+        self,
+        request_ids: Sequence[int],
+        request: GenerationRequest,
+        *,
+        prompt_rows: Sequence[Sequence[int]],
+    ) -> None:
+        if request.temperature != 0.0 or request.top_k not in (0, 1):
+            raise ValueError("Qwen4Exp native serving supports greedy generation only")
+        ids = tuple(int(value) for value in request_ids)
+        prompts = tuple(tuple(int(token) for token in row) for row in prompt_rows)
+        if len(ids) != len(request.prompts) or len(prompts) != len(ids):
+            raise ValueError("Qwen4Exp request IDs/prompts must align")
+        now = time.perf_counter()
+        for row_index, (request_id, prompt_ids) in enumerate(
+            zip(ids, prompts, strict=True)
+        ):
+            if request_id in self._rows or request_id in self._outputs:
+                raise ValueError(f"request_id {request_id} is already registered")
+            required = len(prompt_ids) + max(0, int(request.max_tokens) - 1)
+            if required > self.generator.runner.max_sequence_length:
+                raise ValueError("Qwen4Exp native request exceeds sequence capacity")
+            self._rows[request_id] = _Qwen4ExpServingRow(
+                request_id, row_index, request, prompt_ids, now
+            )
+
+    def reserve_admission(self, request: RequestState) -> None:
+        self.prepare()
+        row = self._row(request.request_id)
+        if int(row.request.max_tokens) == 0:
+            return
+        if not self._available:
+            raise RuntimeError("Qwen4Exp scheduler has no free request runner")
+        row.runner = self._available.pop()
+        row.runner.reset()
+
+    def rollback_admission(self, request: RequestState) -> None:
+        self._release_runner(self._row(request.request_id))
+
+    def prefill_batch(self, work: WorkItem, *, commit: bool) -> None:
+        if not commit:
+            raise ValueError("Qwen4Exp native prefill requires commit=True")
+        for request_id, token_row in zip(
+            work.request_ids, work.token_rows, strict=True
+        ):
+            row = self._row(request_id)
+            raise_if_generation_deadline_expired(row.request)
+            chunk = tuple(int(token) for token in token_row)
+            start = row.prefill_tokens_seen
+            if chunk != row.prompt_ids[start : start + len(chunk)]:
+                raise RuntimeError("Qwen4Exp native prefill chunk drift")
+            row.prefill_tokens_seen += len(chunk)
+            if int(row.request.max_tokens) == 0:
+                continue
+            if row.runner is None:
+                raise RuntimeError("Qwen4Exp admitted row has no runner")
+            if row.prefill_tokens_seen == len(row.prompt_ids):
+                row.next_result = row.runner.prefill(row.prompt_ids)
+                raise_if_generation_deadline_expired(row.request)
+
+    def decode_batch(
+        self, work: WorkItem, *, commit: bool
+    ) -> tuple[GeneratedToken, ...]:
+        if not commit:
+            raise ValueError("Qwen4Exp native decode requires commit=True")
+        generated: list[GeneratedToken] = []
+        for request_id in work.request_ids:
+            row = self._row(request_id)
+            raise_if_generation_deadline_expired(row.request)
+            if int(row.request.max_tokens) == 0:
+                finish = FinishDetails(
+                    reason="length", length_limit=0, sampler_mode="greedy"
+                )
+                generated.append(
+                    GeneratedToken(
+                        int(request_id), 0, finished=True,
+                        stream_chunk=GenerationStreamChunk(
+                            text="", finish_details=finish,
+                            generated_token_ids=(),
+                        ),
+                    )
+                )
+                continue
+            if row.next_result is None or row.runner is None:
+                raise RuntimeError("Qwen4Exp native row is not prefilled")
+            token = int(row.next_result.token_id)
+            row.generated_ids.append(token)
+            finish = self._finish(row)
+            visible = self._visible_ids(row, finish)
+            full_text = self.generator.tokenizer.decode(
+                visible, skip_special=False
+            )
+            delta = (
+                full_text[len(row.emitted_text) :]
+                if full_text.startswith(row.emitted_text)
+                else full_text
+            )
+            row.emitted_text = full_text
+            generated.append(
+                GeneratedToken(
+                    int(request_id), token, finished=finish is not None,
+                    stream_chunk=GenerationStreamChunk(
+                        text=delta,
+                        finish_details=finish,
+                        generated_token_ids=(
+                            tuple(row.generated_ids) if finish is not None else None
+                        ),
+                    ),
+                )
+            )
+            if finish is None:
+                row.next_result = row.runner.step(token)
+                raise_if_generation_deadline_expired(row.request)
+        return tuple(generated)
+
+    def compact_batch(self, moves: Sequence[SlotMove]) -> None:
+        for move in moves:
+            self._row(move.request_id)
+
+    def reclaim(self, completed: CompletedRequest) -> None:
+        row = self._rows.pop(int(completed.request_id), None)
+        if row is None:
+            return
+        finish = completed.finish_details
+        if completed.finish_reason not in {"cancel", "disconnect", "timeout"}:
+            finish = self._finish(row) or completed.finish_details
+        visible = self._visible_ids(row, finish)
+        self._outputs[row.request_id] = GenerationOutput(
+            text=self.generator.tokenizer.decode(visible, skip_special=False),
+            generated_token_ids=tuple(row.generated_ids),
+            finish_details=finish,
+        )
+        self._release_runner(row)
+
+    def has_outputs(self, request_ids: Sequence[int]) -> bool:
+        return all(int(value) in self._outputs for value in request_ids)
+
+    def missing_outputs(self, request_ids: Sequence[int]) -> list[int]:
+        return [int(value) for value in request_ids if int(value) not in self._outputs]
+
+    def take_outputs(self, request_ids: Sequence[int]) -> list[GenerationOutput]:
+        return [self._outputs.pop(int(value)) for value in request_ids]
+
+    def discard(self, request_ids: Sequence[int]) -> None:
+        for request_id in request_ids:
+            rid = int(request_id)
+            row = self._rows.pop(rid, None)
+            if row is not None:
+                self._release_runner(row)
+            self._outputs.pop(rid, None)
+
+    def finalize_batch(
+        self,
+        request: GenerationRequest,
+        request_ids: Sequence[int],
+        outputs: Sequence[GenerationOutput],
+    ) -> None:
+        del request, request_ids, outputs
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        for row in tuple(self._rows.values()):
+            self._release_runner(row)
+        self._rows.clear()
+        self._outputs.clear()
+        primary = self.generator.runner
+        for runner in reversed(self._all_runners):
+            if runner is not primary:
+                runner.close()
+        self._all_runners.clear()
+        self._available.clear()
+        self.generator._resident_model_runner = None
+        self.generator.close()
+
+    def _row(self, request_id: int) -> _Qwen4ExpServingRow:
+        try:
+            return self._rows[int(request_id)]
+        except KeyError as exc:
+            raise KeyError(f"unknown Qwen4Exp request_id {request_id}") from exc
+
+    def _release_runner(self, row: _Qwen4ExpServingRow) -> None:
+        runner, row.runner = row.runner, None
+        if runner is not None and runner in self._all_runners and runner not in self._available:
+            self._available.append(runner)
+
+    def _finish(self, row: _Qwen4ExpServingRow) -> FinishDetails | None:
+        ids = tuple(row.generated_ids)
+        request = row.request
+        enough = len(ids) >= int(request.min_tokens)
+        if enough and ids and not request.ignore_eos and ids[-1] == self.generator.tokenizer.eos_token_id:
+            return FinishDetails(
+                reason="eos", eos_token_id=self.generator.tokenizer.eos_token_id,
+                sampler_mode="greedy",
+            )
+        if enough and ids and ids[-1] in set(int(value) for value in request.stop_token_ids):
+            return FinishDetails(
+                reason="stop", stop_sequence=(ids[-1],), sampler_mode="greedy"
+            )
+        if enough:
+            for sequence in request.stop_token_sequences:
+                stop = tuple(int(value) for value in sequence)
+                if stop and len(stop) <= len(ids) and ids[-len(stop) :] == stop:
+                    return FinishDetails(reason="stop", stop_sequence=stop, sampler_mode="greedy")
+        if len(ids) >= int(request.max_tokens):
+            return FinishDetails(
+                reason="length", length_limit=int(request.max_tokens),
+                sampler_mode="greedy",
+            )
+        return None
+
+    def _visible_ids(
+        self, row: _Qwen4ExpServingRow, finish: FinishDetails | None
+    ) -> tuple[int, ...]:
+        ids = tuple(row.generated_ids)
+        if finish is None or finish.reason == "length":
+            return ids
+        if finish.stop_sequence:
+            return ids[: -len(finish.stop_sequence)]
+        if finish.reason in {"stop", "eos"} and ids:
+            return ids[:-1]
+        return ids
 
 
 def make_qwen4_exp_gguf_generator_gfx1151(

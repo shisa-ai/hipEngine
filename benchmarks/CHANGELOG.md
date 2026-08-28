@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-28 gfx1151 Qwen3.8-Flash-Next native c2 serving] Request-owned c2 over one shared weight/PLE layout preserves **2/2 exact c1 IDs**, emits 6 correctly owned native stream chunks, passes two simultaneous blocking HTTP 200 and two simultaneous SSE 200+`[DONE]`, admission/cancellation, and zero shutdown; c2 adds 550.3 MB tracked state. Transitions remain per-request serial, so no c-aware speed claim. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-native-c2-serving.json`.
+
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next general multimodal] <=1K support now covers merge-compatible grids, multiple images, videos, typed placeholders, explicit interleaved text T/H/W MRoPE, and bounded PNG `/v1/chat/completions`; 32×64 encoder vs Transformers is **relative L2 1.48e-6 / cosine 1.0**, 16-token visual sensitivity diverges as expected, HTTP returns 200, and teardown is zero. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-general-multimodal.json`.
 
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next exact Q4 metadata + chunk256] Exact Q4_K LDS metadata reuse and public chunk256 cross the 16K prerequisite: p508 **51.220 tok/s first / 58.466 steady**, p1006 **22.986→18.276 s (-20.49%, 55.046 tok/s)**, all full logits bit-exact; cache-only p512 profile records 8.841 s kernel wall. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json`.
