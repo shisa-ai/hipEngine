@@ -106,7 +106,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         weight_quant="gguf_q4_k_m",
         execution_profile="strict",
         execution_profile_manifest_sha256=(
-            "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+            "af82558349e40e6f1e9e383da3340d7eb0a03dc62734d03c464fd432867a692e"
         ),
         kv_storage="bf16",
         kv_layout="uniform",
@@ -141,7 +141,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         weight_quant="gguf_q4_k_m",
         execution_profile="strict",
         execution_profile_manifest_sha256=(
-            "43032017ad74291215d05258e2f72e6b0f7df9b9a200afac8597d38b3728f941"
+            "af82558349e40e6f1e9e383da3340d7eb0a03dc62734d03c464fd432867a692e"
         ),
         kv_storage="bf16",
         kv_layout="uniform",
@@ -174,7 +174,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         weight_quant="gguf_q4_k_m",
         execution_profile="production",
         execution_profile_manifest_sha256=(
-            "ead97418e6ea1b746f7d5b9e8d2118d5144c7d8a42b0af32ae5a21dd36729e51"
+            "534a8bac3ca74428e3c1a60e9c3cbd91254f8963ddfcd678949052783331c565"
         ),
         kv_storage="bf16",
         kv_layout="uniform",
