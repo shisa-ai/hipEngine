@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-28 W7900 dual-model physical C2 campaign closure] After merging `origin/main@70445c345`, exact current-source public automatic is **34.372 vs 30.743 tok/s (1.1181x AR)** for 27B Dense and **93.825 vs 83.887 tok/s (1.1185x AR)** for 35B MoE; both engage 10/10, post-merge blocking/SSE drains cleanly, and shared-dispatch/negative-key audits pass. `benchmarks/results/2026-08-28-w7900-dual-model-physical-c2-campaign-final.json`.
+
 - [2026-08-28 W7900 35B MoE physical C2/K2 automatic promotion] Promote exact production/BF16/resident-C2/D24 after scalar-equivalent packed target kernels and bulk NextN prompt KV priming move public automatic **89.945 -> 92.419 tok/s (+2.75%, 1.1223x true AR)**; authoritative three-run is **98.505 vs 86.650 tok/s (1.1368x)**, all categories non-regressive, and full strict-teacher/task/isolation plus blocking/SSE/cancel/drain pass. `benchmarks/results/2026-08-28-w7900-35b-moe-mtp2-c2-automatic-promotion.json`.
 
 - [2026-08-28 gfx1151 Qwen3.8 production C2/K3 automatic retained] Scope T2 standard-Q4 singleton/pair rowtiles to profile-qualified R8 actual shapes with strict WMMA fallbacks. Steady target/cycle falls **197.46→124.28 ms (-37.06%) / 244.75→172.36 ms (-29.58%)**. Automatic D24 reaches **17.031 vs 14.887 tok/s (1.1441x AR)** with every category positive; canonical+heldout D24 full-logit gates pass **432 rows**, while D120 is explicitly rejected at max KL 0.08574. `benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json`.

@@ -161,7 +161,7 @@ def test_root_readme_is_compact_model_first_and_synced() -> None:
     assert "## Speculative decode (DFlash / MTP)" not in readme
     assert "H8C-H8Q" not in readme
     assert "SH14-C1" not in readme
-    assert "**122.67 tok/s**" in readme
+    assert "**93.825 tok/s public**" in readme
     assert "**214.788**" in readme
     assert "**Current release: v0.4.0 alpha.**" in readme
     assert "NVIDIA Blackwell (`sm_120a`)" in readme
