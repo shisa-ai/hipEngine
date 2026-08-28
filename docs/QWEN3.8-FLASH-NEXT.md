@@ -743,9 +743,11 @@ Binding implementation order:
    `16 × chunk_rows` indices and gathers/dequantizes once per chunk; registered
    decode-order-exact K4 bulk Conv replaces row-serial launches. Together they
    cut p508 kernel launches `29,341→11,053` and improve counterbalanced p508
-   `57.825→58.408 tok/s` (+1.01%) with bit-exact logits. Next, replace 6,096
-   per-row QSA index-key D2D copies with one block-table-aware scatter/chunk;
-   only then revisit asynchronous PLE next-chunk overlap.
+   `57.825→58.408 tok/s` (+1.01%) with bit-exact logits. Block-table-aware QSA
+   index scatter then replaces 6,096 p508 per-row D2D copies with 24 kernels;
+   the paired wall is neutral (`58.678→58.669 tok/s`) but p512 trace launches
+   fall another `11,053→4,933`. Only after grouped decode ownership should
+   asynchronous PLE next-chunk overlap be revisited.
 2. **Make selected MoE launch-wide.** Port llama.cpp/Vulkan `mul_mat_id` dataflow:
    one layer/quant-family launch iterates the selected expert set. This is ahead
    of further chain fusion because it attacks under-occupancy, kernel wall,
@@ -779,7 +781,8 @@ Binding implementation order:
 All sub-3% A/Bs are counterbalanced in one residency after warmup; fixed clocks
 are preferred, and globally shifted profiles are used only for symbol/launch
 structure, not speed claims. Current T0 PLE/Conv evidence:
-[`2026-08-29-gfx1151-qwen38-flash-next-exact-ple-conv-bulk.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-ple-conv-bulk.json).
+[`2026-08-29-gfx1151-qwen38-flash-next-exact-ple-conv-bulk.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-ple-conv-bulk.json) and
+[`2026-08-29-gfx1151-qwen38-flash-next-exact-qsa-index-scatter.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-qsa-index-scatter.json).
 
 The pinned vLLM/SGLang implementations establish the long-context performance
 design. hipEngine now updates its persistent compressed-QSA K cache only when a

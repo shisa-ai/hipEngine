@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8-Flash-Next exact QSA index scatter] Block-table-aware chunk scatter replaces p508's **6,096 per-row D2D copies with 24 kernels** and cuts p512 trace launches **11,053→4,933 (-55.37%)** with bit-exact logits/paged placement and zero new residency. Paired wall is neutral **58.678→58.669 tok/s**; retained as grouped/graph submission prerequisite. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-qsa-index-scatter.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8-Flash-Next exact PLE/Conv bulk] One PLE gather/dequant per chunk and decode-order-exact K4 bulk Conv cut p508 calls/launches **508→2 / 29,341→11,053 (-62.33%)** and improve counterbalanced prefill **57.825→58.408 tok/s (+1.01%)** with bit-exact full logits/state and serial fallback. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-ple-conv-bulk.json`.
 
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next exact Q4 dual decode] Registered selected dual gate/up halves Q4 launches **94→47/token** and improves counterbalanced complete-model decode **6.065→6.223 tok/s (+2.61%)** with exact primitive output/32-token IDs, zero new residency, and singleton fallback. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-dual-decode.json`.

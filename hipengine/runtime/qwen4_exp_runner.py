@@ -44,6 +44,7 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_norm_mrope_rows_f32,
     qwen4_exp_qsa_pool_norm_rope_f32,
     qwen4_exp_qsa_score_f32,
+    qwen4_exp_qsa_scatter_index_keys_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32,
@@ -823,6 +824,37 @@ class Qwen4ExpQSAIndexDeviceState:
             int(stream),
         )
         self.count += 1
+
+    def append_rows(
+        self,
+        raw_keys_ptr: int,
+        *,
+        start_position: int,
+        rows: int,
+        block_table_ptr: int,
+        block_size: int,
+        stream: int = 0,
+    ) -> None:
+        if self.closed:
+            raise RuntimeError("QSA index state is closed")
+        start = int(start_position)
+        count = int(rows)
+        if start != self.count:
+            raise ValueError("QSA index row start must equal contiguous count")
+        if count <= 0 or start + count > self.capacity:
+            raise ValueError("QSA index row append exceeds state capacity")
+        qwen4_exp_qsa_scatter_index_keys_f32(
+            int(raw_keys_ptr),
+            self.raw_keys.ptr,
+            int(block_table_ptr),
+            start,
+            count,
+            int(block_size),
+            self.index_dim,
+            stream=int(stream),
+            runtime=self.runtime,
+        )
+        self.count += count
 
     def prepare_complete_blocks(
         self,
@@ -2119,12 +2151,14 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         stream=stream,
         runtime=active_runtime,
     )
-    for row in range(count):
-        index_state.append(
-            scratch.index_k_projected.ptr + row * index_dim * DType.FP32.itemsize,
-            position=start + row,
-            stream=stream,
-        )
+    index_state.append_rows(
+        scratch.index_k_projected.ptr,
+        start_position=start,
+        rows=count,
+        block_table_ptr=attention_state.block_table.ptr,
+        block_size=attention_state.block_size,
+        stream=stream,
+    )
     qwen35_write_paged_kv_f32_batch_spans(
         scratch.key.ptr,
         scratch.value_projected.ptr,

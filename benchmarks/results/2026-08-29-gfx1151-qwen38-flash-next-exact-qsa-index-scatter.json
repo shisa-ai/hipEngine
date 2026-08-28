@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "accepted_exact_structural_default",
+  "scope": "Qwen4Exp block-table-aware QSA index-key chunk scatter",
+  "host": {"identity":"zbook","machine_id":"87c566d30a5645cf8d12ed7ef6b6e1e8","gpu":"AMD Radeon 8060S Graphics","arch":"gfx1151"},
+  "model": {"id":"Qwen/Qwen3.8-Flash-Next","quant":"Unsloth UD-Q4_K_XL","quant_revision":"8bdc666649440e9bdc97e16f3f75782c98478ff5"},
+  "change": "Replace one 512-byte D2D memcpy per prompt row per QSA layer with one registered scatter kernel per QSA layer/chunk. Each element maps logical position through the authoritative paged block table; no dense-layout shortcut is taken.",
+  "correctness": {"permuted_block_table_scatter_exact":true,"p508_full_logits_bit_exact":true,"p508_top1_exact":true,"qsa_focused_tests_passed":16,"state_count_contiguous":true,"new_resident_bytes":0,"fallback":"Qwen4ExpQSAIndexDeviceState.append remains the c1/single-row primitive"},
+  "structural": {"p508":{"rows":508,"qsa_layers":12,"chunks":2,"d2d_copy_launches_before":6096,"scatter_launches_after":24,"net_launch_reduction":6072},"p512_trace":{"d2d_copy_launches_before":6144,"scatter_launches_after":24,"total_launches_before":11053,"total_launches_after":4933,"net_launch_reduction":6120,"total_launch_reduction_percent":55.36958382339636}},
+  "paired_complete_model": {"command":"uv run python /tmp/qwen4exp_qsa_scatter_paired.py","protocol":"one residency after PLE/Conv T0 default; discard one control+candidate warm pair; counterbalanced C/N/N/C/C/N; p508 natural prompt","control_seconds":[8.82033368399425,8.6400637570041,8.657422682008473],"candidate_seconds":[8.65874045000237,8.657123972996487,8.659962392994203],"control_median_seconds":8.657422682008473,"candidate_median_seconds":8.65874045000237,"control_tok_s":58.67797133848002,"candidate_tok_s":58.66904117675233,"delta_percent":-0.015218933743473257,"full_logits_bit_exact":true,"decision_basis":"wall neutral; retain exact launch/dataflow contraction as prerequisite for grouped/graph submission"},
+  "kernel_trace": {"command":"HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace -f csv -o qwen4exp-prefill512-qsa-scatter -d /tmp -- uv run python /tmp/qwen4exp_prefill512_default.py","expected_kernel":"qsa_scatter_index_keys_f32_kernel","launches":4933,"kernel_seconds":8.75269733,"profile_wall_seconds":10.06390455600922,"copy_buffer_launches":427,"compiler_spawned_under_profiler":false},
+  "decision":"Promote as T0 structural default. The next priority is layer-wide selected-expert decode ownership, not another single-output micro-kernel."
+}
