@@ -731,10 +731,10 @@ The completed baseline and decode trace supersede the earlier feature/checklist
 priority. Before graph replay, exact Q8/Q4 packing/fusion brought controlled decode to
 about **6.42 tok/s** versus llama.cpp HIP/Vulkan `15.85/18.72 tok/s`; eager
 trace ownership remained about `1,861 launches/token`. Request-owned stateless
-MoE graphs plus exact Q5_1 logical256/physical128 and Q4_K
-logical128/physical64 decode owners now reach **13.167 tok/s** counterbalanced,
+MoE graphs plus exact Q5_1 logical256/physical64 and Q4_K
+logical128/physical64 decode owners now reach **13.302 tok/s** counterbalanced,
 with all generated IDs and full-logit SHA rows exact. The remaining same-host
-gap is 1.20x to HIP / 1.42x to Vulkan. Current
+gap is 1.19x to HIP / 1.41x to Vulkan. Current
 p508 is `10.2 s` wall / `8.84 s` kernels / 29,341
 launches versus same-host llama.cpp Vulkan/HIP `316/275 tok/s`.
 
@@ -757,14 +757,16 @@ Binding implementation order:
    (1.769x), with stateful GDN/QSA excluded. The exact Q5_1 decode owner now
    maps two logical partials per physical lane, preserves the strict 256-slot
    tree, and improves graph decode `11.380→12.140 tok/s` (+6.27%). The analogous
-   exact Q4_K physical64 owner then reaches `13.167 tok/s` (+8.84%). Next port
+   exact Q4_K physical64 owner then reaches `13.167 tok/s` (+8.84%), and a
+   second exact Q5 contraction to physical64 reaches `13.302 tok/s` (+1.69%). Next port
    Vulkan/llama.cpp
    `mul_mat_id` *grid/dataflow* inside those graphs: wider output/expert tiles,
    achieved-bandwidth accounting, and residual-Q8_1x2 selected MMQ.
 3. **Retain exact Q4/Q5 micro-wins only atop the grouped shape.** The Q5_1
-   physical128/logical256 contraction is now the selected default: Q5 cycle-wall
-   falls `692.930→410.364 ms` across 1,806 traced launches while output bits stay
-   exact. Q4_K now maps logical lanes `tid` and `tid+64` onto each physical
+   logical256 contraction is now the selected default at 64 physical threads:
+   the first t128 step cut Q5 cycle-wall `692.930→410.364 ms`, and t64 then cuts
+   its matched trace `444.699→362.525 ms` across 1,806 launches while output bits
+   stay exact. Q4_K maps logical lanes `tid` and `tid+64` onto each physical
    lane while publishing the same four wave sums; its cycle-wall falls
    `1,076.767→814.906 ms` across 1,974 launches and graph decode improves
    `12.003→13.167 tok/s` (+8.84%). Further packing work must retain these trees.
@@ -906,13 +908,17 @@ decode `11.380→12.140 tok/s` (+6.27%) and contracts Q5 cycle-wall
 full logits, and IDs exact. The analogous exact Q4_K logical128/physical64
 owner then improves graph decode `12.003→13.167 tok/s` (+8.84%) and contracts
 Q4 cycle-wall `1,076.767→814.906 ms` (-24.32%) across 1,974 launches, again
-with strict bits, full logits, and IDs exact. All add no tracked resident bytes.
-A Q5_1 wave64 decode candidate reaches
+with strict bits, full logits, and IDs exact. A second exact Q5_1 contraction
+to physical64 then improves `13.077→13.302 tok/s` (+1.69%) and contracts its
+matched Q5 cycle-wall `444.699→362.525 ms` (-18.48%), again with every strict
+partial and output bit preserved. All add no tracked resident bytes. A Q5_1
+wave64 decode candidate reaches
 `6.10-6.22 tok/s` but is rejected at production mean/p95 KL
 `0.002565/0.007202`. Exact evidence and rejected sub-experiments are in
 [`2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json),
 [`2026-08-29-gfx1151-qwen38-flash-next-exact-q5-logical256-t128-decode.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-q5-logical256-t128-decode.json),
 [`2026-08-29-gfx1151-qwen38-flash-next-exact-q4-logical128-t64-decode.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-q4-logical128-t64-decode.json),
+[`2026-08-29-gfx1151-qwen38-flash-next-exact-q5-logical256-t64-decode.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-q5-logical256-t64-decode.json),
 [`2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json),
 [`2026-08-27-gfx1151-qwen38-flash-next-ple-staging-fix.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-ple-staging-fix.json),
 [`2026-08-27-gfx1151-qwen38-flash-next-fast-allrows-rejected.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-fast-allrows-rejected.json),

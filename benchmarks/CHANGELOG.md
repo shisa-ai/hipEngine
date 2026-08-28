@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8-Flash-Next exact Q5 logical256/t64 decode] Four logical partials per lane reconstruct the strict stride-128/64/32 tree, contract matched Q5 cycle-wall **444.699→362.525 ms (-18.48%)** across 1,806 launches, and improve counterbalanced graph decode **13.077→13.302 tok/s (+1.69%)** with BF16 bits, full-logit SHA, and IDs exact. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-q5-logical256-t64-decode.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8-Flash-Next exact Q4 logical128/t64 decode] Logical lanes `tid`/`tid+64` preserve the four strict wave sums and BF16 SiLU boundaries, contract Q4 cycle-wall **1,076.767→814.906 ms (-24.32%)** across 1,974 launches, and improve counterbalanced graph decode **12.003→13.167 tok/s (+8.84%)** with primitive bits, full-logit SHA, and IDs exact. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-q4-logical128-t64-decode.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8-Flash-Next exact Q5 logical256/t128 decode] Two logical partials per physical lane preserve all 256 strict slots and the original tree, contract Q5 cycle-wall **692.930→410.364 ms (-40.78%)** across 1,806 launches, and improve counterbalanced graph decode **11.380→12.140 tok/s (+6.27%)** with BF16 bits, full-logit SHA, and IDs exact. `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-exact-q5-logical256-t128-decode.json`.
