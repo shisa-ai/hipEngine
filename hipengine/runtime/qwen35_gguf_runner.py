@@ -5341,6 +5341,7 @@ class Qwen35GGUFFullStackRunner:
         hidden_f32_ptr: int | None = None,
         input_norm_ptr: int | None = None,
         projections_ready: bool = False,
+        alpha_beta_ready: bool = False,
         conv_ready: bool = False,
         defer_ssm_out: bool = False,
         stream: int = 0,
@@ -5418,7 +5419,8 @@ class Qwen35GGUFFullStackRunner:
         linear_alpha_ptr = scratch.linear_alpha.ptr
         linear_beta_ptr = scratch.linear_beta.ptr
         alpha_beta_conv_fused = (
-            not conv_ready
+            not alpha_beta_ready
+            and not conv_ready
             and attn_norm_f32_ptr is None
             and _try_launch_dense_f32_alpha_beta_conv_decode(
                 layer.weight("ssm_alpha"),
@@ -5440,7 +5442,7 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
             )
         )
-        if not alpha_beta_conv_fused:
+        if not alpha_beta_conv_fused and not alpha_beta_ready:
             self._run_linear_attention_alpha_beta_rows(
                 layer,
                 scratch.norm.ptr,
@@ -7326,6 +7328,16 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        self._run_linear_attention_alpha_beta_rows(
+            layer,
+            scratch.norm.ptr,
+            None,
+            scratch,
+            rows=rows,
+            stream=stream,
+            runtime=runtime,
+        )
+        rank_row_nbytes = cfg.ssm_time_step_rank * DType.BF16.itemsize
         conv_out_row_nbytes = self.linear_qkv_width * DType.FP32.itemsize
         for segment in range(segments):
             row_start = segment * segment_rows
@@ -7367,6 +7379,14 @@ class Qwen35GGUFFullStackRunner:
                     scratch.linear_z.ptr + row * gate_row_nbytes,
                     gate_row_nbytes,
                 ),
+                linear_alpha=DeviceBuffer(
+                    scratch.linear_alpha.ptr + row * rank_row_nbytes,
+                    rank_row_nbytes,
+                ),
+                linear_beta=DeviceBuffer(
+                    scratch.linear_beta.ptr + row * rank_row_nbytes,
+                    rank_row_nbytes,
+                ),
                 conv_out=DeviceBuffer(
                     scratch.conv_out.ptr + row * conv_out_row_nbytes,
                     conv_out_row_nbytes,
@@ -7380,6 +7400,7 @@ class Qwen35GGUFFullStackRunner:
                 scratch.attn_out.ptr + row * hidden_row_nbytes,
                 row_scratch,
                 projections_ready=True,
+                alpha_beta_ready=True,
                 conv_ready=True,
                 defer_ssm_out=True,
                 stream=stream,
