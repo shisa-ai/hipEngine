@@ -205,6 +205,23 @@ capacity/dynamic-lifecycle blockers.
 
 ## 2. External source review (commit-pinned, read-only)
 
+> **Superseded for speed comparison (2026-08-28).** The absolute AR/MTP rates
+> quoted in this table are not comparable across sources as published.
+> [`QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md`](QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md)
+> renormalizes every row onto implied memory bandwidth (AR) and cycle
+> efficiency (MTP), and is the authority for which external numbers may be
+> cited. Headlines are prompt-class overfit: within one source, host and
+> config, MTP speedup ranges 1.76x-2.27x purely by prompt class, while cycle
+> efficiency is constant to within 0.7 points. Four rows below are struck as
+> comparison targets there, including the guide's 20.42 tok/s baseline, which
+> implies 141% of theoretical peak bandwidth and is therefore speculation-on
+> rather than AR. The survey also records that hipEngine AR is at **parity**
+> with stock llama.cpp on the identical quant (12.332 vs 12.27 tok/s), that
+> our MTP cycle efficiency is 47-54% against 70-77% at matched K=3, and that
+> **T3 adaptive-K and the B4 clamp should be reopened** once the verifier
+> rowtile work lands, because both limits sat on top of the rows>4
+> amortization cliff. The *mechanism* columns below remain valid intake.
+
 | Project | Commit | Mechanism worth transferring | Not transferable |
 | --- | --- | --- | --- |
 | `julianmb/q38rocm` | `5d097740` | Draft-budget sweep discipline (`n_max` 3-6 × `p_min` 0.50-0.55); default `DRAFT_N=4, DRAFT_P=0.0`; Vulkan-Wave64 vs ROCm MTP note (36 vs 28 tok/s) | Vulkan numbers (we are HIP-native); ROCmFP4 artifacts; q8_0/turbo4 KV (our INT8 KV failed quality gates) |
