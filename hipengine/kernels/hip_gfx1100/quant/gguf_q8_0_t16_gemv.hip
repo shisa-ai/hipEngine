@@ -1175,6 +1175,13 @@ extern "C" int hipengine_gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out(
                                                      out_features, threads, stream);
 }
 
+extern "C" int hipengine_gguf_q8_0_t16_gemv_decode_rowtile4_f32_bf16_out(
+    const void* x, const void* tiles, void* out, int64_t rows, int64_t in_features,
+    int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_single_rowtile<float, uint16_t, 4>(x, tiles, out, rows, in_features,
+                                                   out_features, threads, stream);
+}
+
 extern "C" int hipengine_gguf_q8_0_t16_gemv_decode_fp16_fp16_out(
     const void* x, const void* tiles, void* out, int64_t rows, int64_t in_features,
     int64_t out_features, int64_t threads, hipStream_t stream) {

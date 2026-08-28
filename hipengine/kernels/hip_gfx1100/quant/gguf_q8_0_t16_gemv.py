@@ -20,6 +20,9 @@ _SOURCE = Path(__file__).with_name("gguf_q8_0_t16_gemv.hip")
 _OUTPUT_NAME = "gguf_q8_0_t16_gemv.so"
 _Q8_0_SINGLE_BF16 = "hipengine_gguf_q8_0_t16_gemv_decode_bf16_bf16_out"
 _Q8_0_SINGLE_ROWTILE4_BF16 = "hipengine_gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out"
+_Q8_0_SINGLE_ROWTILE4_F32_BF16 = (
+    "hipengine_gguf_q8_0_t16_gemv_decode_rowtile4_f32_bf16_out"
+)
 _Q8_0_SINGLE_FP16 = "hipengine_gguf_q8_0_t16_gemv_decode_fp16_fp16_out"
 _Q8_0_SINGLE_F32_BF16 = "hipengine_gguf_q8_0_t16_gemv_decode_f32_bf16_out"
 _Q8_0_DUAL_BF16 = "hipengine_gguf_q8_0_t16_dual_gate_up_gemv_decode_bf16_bf16_out"
@@ -144,6 +147,36 @@ def gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out(
 
     _launch_single(
         _Q8_0_SINGLE_ROWTILE4_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q8_0_t16_gemv_decode_rowtile4_f32_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 0,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact rowtile Q8T16 GEMV with FP32 input and BF16 output."""
+
+    _launch_single(
+        _Q8_0_SINGLE_ROWTILE4_F32_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -913,6 +946,7 @@ __all__ = [
     "gguf_q8_0_t16_gemv_decode_f32_bf16_out",
     "gguf_q8_0_t16_gemv_decode_fp16_fp16_out",
     "gguf_q8_0_t16_gemv_decode_rowtile4_bf16_bf16_out",
+    "gguf_q8_0_t16_gemv_decode_rowtile4_f32_bf16_out",
     "gguf_q8_0_t16_triple_gemv_decode_bf16_bf16_out",
     "gguf_q8_0_t16_triple_gemv_decode_fp16_fp16_out",
     "gguf_q8_0_t16_triple_gemv_decode_rowtile4_bf16_bf16_out",
