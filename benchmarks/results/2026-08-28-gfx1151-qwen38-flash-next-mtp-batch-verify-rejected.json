@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "date": "2026-08-28",
+  "status": "rejected_correctness_removed",
+  "scope": "Qwen4Exp candidate-budget-2 multirow target verification at natural p512",
+  "host": {"identity": "zbook", "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151"},
+  "candidate": {"method": "run root+candidate1 through exact prompt-chunk primitives, capture per-row logits/hidden, rollback and replay accepted prefix", "fallback": "serial exact target.step per candidate"},
+  "single_prompt": {"serial_seconds": 27.231666324005346, "batch_seconds": 25.02007870200032, "speedup": 1.0883925126034162, "generated_ids_exact": true, "accepted": 13, "proposed": 16},
+  "four_category_gate": {"all_exact": false, "failing_category": "general_en", "first_divergence_context": "after continuation verify starting at target position 516", "ar_total_seconds": 75.86865969598875, "candidate_total_seconds": 100.75403749499674, "mtp_vs_ar_ratio": 0.7530086295525006, "accepted": 55, "proposed": 60, "draft_acceptance": 0.9166666666666666},
+  "diagnosis": {"control_bug": true, "detail": "The second row of a continuation multirow target chunk can differ from sequential strict state. It predicted/accepted draft token 61446 where strict AR predicts 14542. This is not admissible numerical drift because acceptance control changed."},
+  "decision": {"retained": false, "code_removed": true, "reason": "Speculative target verification must preserve exact target output on every category; a single divergent acceptance invalidates the route.", "next": "Keep serial verification. A future multirow attempt requires a continuation-specific RED fixture localizing the first recurrent/PLE/attention state divergence before any e2e timing."},
+  "commands": ["uv run python /tmp/qwen4exp_mtp_batch_verify_gate.py", "uv run python /tmp/qwen4exp_mtp_natural512_gate.py"]
+}
