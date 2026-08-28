@@ -336,6 +336,7 @@ from hipengine.runtime.gguf_linear import (
     q8_t16_rowtile_all_session,
     resolve_gguf_linear_dispatch,
     resolve_q8_mmq_prefill_policy,
+    target_verifier_rowtile_session,
     wmma_prefill_session,
 )
 from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
@@ -18477,7 +18478,11 @@ class Qwen35GGUFResidentSession:
             layer_recurrent_states=packed_state.layer_recurrent_states,
         )
         block_wmma_prefill = bool(job_list[0].get("use_wmma_prefill", True))
-        with wmma_prefill_session(block_wmma_prefill), gemv_decode_session(self.use_gemv_decode):
+        with (
+            wmma_prefill_session(block_wmma_prefill),
+            gemv_decode_session(self.use_gemv_decode),
+            target_verifier_rowtile_session(True),
+        ):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 layer_start = time.perf_counter()
                 if layer_type == LINEAR_ATTENTION:

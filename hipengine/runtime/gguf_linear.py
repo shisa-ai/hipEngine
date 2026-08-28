@@ -132,6 +132,10 @@ _wmma_prefill_session_enabled: bool | None = None
 _GEMV_DECODE_ENV = "HIPENGINE_GGUF_GEMV_DECODE"
 _gemv_decode_session_enabled: bool | None = None
 _native_batch_decode_session_enabled = False
+_target_verifier_rowtile_session_enabled: ContextVar[bool] = ContextVar(
+    "gguf_target_verifier_rowtile_session_enabled",
+    default=False,
+)
 
 # Small-B weight-amortized row-tile GEMV for raw K-quants and resident-pack8
 # Q4_K verifier continuation blocks. Default ON: every specialization preserves
@@ -1206,6 +1210,22 @@ def gguf_native_batch_decode_enabled() -> bool:
     """Return whether the current execution context owns native batch decode."""
 
     return _native_batch_decode_session_enabled
+
+
+@contextlib.contextmanager
+def target_verifier_rowtile_session(enabled: bool = True) -> Iterator[None]:
+    """Allow backend-admitted T16 rowtiles inside a packed target verifier.
+
+    This scope is intentionally narrower than :func:`native_batch_decode_session`:
+    the backend capability names the eligible quant plugins, and every unrelated
+    projection keeps its verifier owner.
+    """
+
+    token = _target_verifier_rowtile_session_enabled.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _target_verifier_rowtile_session_enabled.reset(token)
 
 
 def _env_gemv_decode_enabled() -> bool:
@@ -5793,7 +5813,19 @@ def _native_batch_decode_dispatch(
 ) -> GGUFLinearDispatch:
     """Select registered compact c=2..8 native projection families."""
 
-    if not _native_batch_decode_session_enabled or rows <= 1 or rows > 8:
+    verifier_rowtile_quants = backend_package_capability(
+        dispatch.key.backend,
+        "GGUF_T16_TARGET_VERIFIER_ROWTILE_QUANTS",
+        (),
+    )
+    verifier_rowtile_enabled = bool(
+        _target_verifier_rowtile_session_enabled.get()
+        and dispatch.key.quant in verifier_rowtile_quants
+    )
+    if (
+        not _native_batch_decode_session_enabled
+        and not verifier_rowtile_enabled
+    ) or rows <= 1 or rows > 8:
         return dispatch
     t16_rowtile_max_rows = 6
     t16_rowtile_limits = backend_package_capability(
@@ -6315,6 +6347,7 @@ __all__ = [
     "launch_gguf_linear_triple",
     "gguf_native_batch_decode_enabled",
     "native_batch_decode_session",
+    "target_verifier_rowtile_session",
     "q4_pack8_dual_wmma_silu_prefill_session",
     "q4_t16_unequal_pair_prefill_session",
     "q5_f32_ordered_prefill_session",

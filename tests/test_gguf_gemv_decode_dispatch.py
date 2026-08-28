@@ -35,6 +35,7 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair_concat,
     native_batch_decode_session,
     q4k_rowtile_session,
+    target_verifier_rowtile_session,
     set_gemv_decode_enabled,
 )
 
@@ -132,6 +133,7 @@ def _capture_launch(
     extra_keys: tuple[KernelKey, ...] = (),
     remove_keys: tuple[KernelKey, ...] = (),
     native_batch_decode: bool = False,
+    target_verifier_rowtile: bool = False,
     libraries=None,
 ):
     weight = _fake_weight(layout=layout, quant_key=quant_key)
@@ -169,7 +171,10 @@ def _capture_launch(
             # registry stores ``None`` and the resolver treats it the same
             # as an unregistered key (see ``_KERNELS.get`` short-circuit).
             register(k, None, replace=True)
-        with native_batch_decode_session(native_batch_decode):
+        with (
+            native_batch_decode_session(native_batch_decode),
+            target_verifier_rowtile_session(target_verifier_rowtile),
+        ):
             launch_gguf_linear(
                 weight,
                 x_ptr=100,
@@ -230,6 +235,41 @@ def test_native_batch_decode_q6_planar_t16_rows_5_8_route_to_true_rowtile() -> N
             extra_keys=(_Q6_PLANAR_ROWTILE, _Q6_PLANAR_WMMA),
         )
         assert key == _Q6_PLANAR_ROWTILE
+
+
+def test_target_verifier_scope_routes_only_backend_admitted_q6_planar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hipengine.runtime.gguf_linear as gguf_linear
+
+    original_capability = gguf_linear.backend_package_capability
+
+    def capability(backend: str, name: str, default=None):
+        if name == "GGUF_T16_TARGET_VERIFIER_ROWTILE_QUANTS":
+            return frozenset({"gguf_q6_k_t16_qmicro_planar_v1"})
+        if name == "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT":
+            return {"gguf_q6_k_t16_qmicro_planar_v1": 8}
+        return original_capability(backend, name, default)
+
+    monkeypatch.setattr(gguf_linear, "backend_package_capability", capability)
+    key, _, _ = _capture_launch(
+        rows=8,
+        target_verifier_rowtile=True,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        extra_keys=(_Q6_PLANAR_ROWTILE, _Q6_PLANAR_WMMA),
+    )
+    assert key == _Q6_PLANAR_ROWTILE
+
+    # The target-verifier scope must not act like the broad native-batch scope.
+    key, _, _ = _capture_launch(
+        rows=8,
+        target_verifier_rowtile=True,
+        quant_key="gguf_q5_k_t16_v1",
+        layout=LAYOUT_GGUF_Q5_K_T16,
+        extra_keys=(_Q5_T16_DECODE, _Q5_T16_ROWTILE, _Q5_T16_WMMA),
+    )
+    assert key == _Q5_T16_DECODE
 
 
 def test_native_batch_decode_routes_c2_c8_q6_head_to_exact_pack8_and_restores() -> None:
