@@ -20,6 +20,11 @@ The speed columns are not a single leaderboard. Each row retains its model,
 workload, output length, and timing boundary. Compare rates directly only when
 the row or detailed section names a matched protocol.
 
+**Canonical hipEngine artifact decision:** Qwen3.8 remains standardized on the
+existing, qualified `Q4_K_M` artifact family. The new Unsloth `UD-Q4_K_M` is an
+external-runtime comparison artifact only; its filename does not make its
+mixed tensor inventory storage-compatible with hipEngine's resident Q4 path.
+
 | Implementation / route | Published claim | Local result | Correct / usable | Notes |
 | --- | --- | --- | :---: | --- |
 | **hipEngine `61b83b9c3` + new Unsloth `UD-Q4_K_M`** | No external claim; intended same-artifact control | Does not load | **No** | Exact artifact contains unsupported dense `Q3_K`, `IQ4_NL`, and `IQ3_S` tensors. Existing qualified hipEngine Q4 lineages are unaffected. |
@@ -140,7 +145,10 @@ project, not a loader allow-list change.
 
 **Correct / usable: No for this exact artifact.** No tokens were generated, so
 there is no hipEngine speed row for the new file. This does not invalidate the
-already-qualified older Qwen3.8 `Q4_K_M` lineage. On that lineage, the retained
+already-qualified older Qwen3.8 `Q4_K_M` lineage. That existing lineage remains
+the canonical hipEngine artifact family; the mixed-quant Unsloth file stays
+external-only rather than introducing new resident storage formats solely for
+its nominal `UD-Q4_K_M` label. On the canonical lineage, the retained
 normal-owner C1 automatic route is 15.609 versus 9.807 tok/s AR, and production
 C2/K3 is 17.031 versus 14.887 tok/s AR ([L1], [L2]). Those numbers must not be
 compared as same-model results with the new Unsloth artifact.
