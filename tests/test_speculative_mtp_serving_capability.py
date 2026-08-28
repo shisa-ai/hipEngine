@@ -97,6 +97,34 @@ def test_qwen38_q4km_production_c1_b3_context128_is_explicit_only() -> None:
     assert over.reason == "context_bucket_not_qualified"
 
 
+def test_qwen38_q4km_production_c2_k3_d24_is_automatic() -> None:
+    evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
+    key = _key(
+        execution_profile="production",
+        execution_profile_manifest_sha256=_PRODUCTION_MANIFEST_SHA256,
+        realized_group_rows=2,
+        resident_capacity=4,
+        context_tokens=128,
+        output_horizon_tokens=24,
+    )
+
+    decision = resolve_speculative_mtp_serving_plan(evidence, key=key)
+    over_horizon = resolve_speculative_mtp_serving_plan(
+        evidence,
+        key=replace(key, output_horizon_tokens=25),
+    )
+
+    assert decision.admitted is True
+    assert decision.selected_route == "speculative_mtp"
+    assert decision.selected_candidate_count == 3
+    assert decision.reason == "qualified_automatic_production_c2_k3_d24"
+    assert decision.automatic_eligible is True
+    assert decision.static_eligibility.max_realized_group_rows == 2
+    assert decision.strict_fallback_key == "gguf_target_ar"
+    assert over_horizon.admitted is False
+    assert over_horizon.reason == "output_horizon_not_qualified"
+
+
 def test_qwen38_q4km_strict_c1_b3_plan_is_automatic_product_scope() -> None:
     decision = resolve_speculative_mtp_serving_plan((_evidence(),), key=_key())
 
