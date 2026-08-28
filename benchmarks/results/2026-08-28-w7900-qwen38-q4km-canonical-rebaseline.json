@@ -1,0 +1,1006 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_canonical_rebaseline",
+  "created_at": "2026-08-28T16:33:13.314855+00:00",
+  "status": "complete_c1_retained_cgt1_rejected",
+  "passed": true,
+  "performance_claim": true,
+  "decision": "Retain canonical Qwen3.8 Q4_K_M. On W7900, exact C1/K3 improves complete-wall throughput 21.958 to 32.153 tok/s (1.4643x). Automatic C2-C8 correctly use K0; explicit physical C2-C4 MTP is exact but 0.460-0.514x AR and remains rejected. hipEngine C1 complete wall exceeds current and Laurent llama.cpp HIP on the same host/model/protocol.",
+  "source": {
+    "hipengine_commit": "cabb68b44fe44d13da3ec5db672119691cd9157e",
+    "origin_main_base": "d199f2778f2edfc19d8a1a7b19866e8f40a5f924",
+    "dirty": false,
+    "llamacpp_current": "b19cbe925be361d229f0fe03435affe4a2717f37",
+    "llamacpp_laurent": "c28d538df5c02643e701a8004db84dbf1bb0ffb2"
+  },
+  "models": {
+    "w7900": {
+      "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "size_bytes": 17106773984,
+      "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+    },
+    "strix": {
+      "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "size_bytes": 17106775008,
+      "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+    }
+  },
+  "hardware": {
+    "w7900": {
+      "hostname": "epyc",
+      "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+      "gpu": "AMD Radeon Pro W7900",
+      "arch": "gfx1100",
+      "vram_bytes": 48301604864,
+      "rocm": "7.2.4",
+      "hip_visible_devices": "0"
+    },
+    "strix": {
+      "hostname": "strixhalo",
+      "cpu": "AMD Ryzen AI MAX+ 395",
+      "gpu": "AMD Radeon 8060S",
+      "arch": "gfx1151",
+      "unified_memory": "128 GiB",
+      "backend": "Vulkan/RADV",
+      "driver": "Mesa 26.1.6-arch3.1"
+    }
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "heldouts": 4,
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "sampling": "raw greedy",
+    "cache_prompt": false,
+    "timing": "blocking complete wall; external server decode retained separately",
+    "fresh_process_per_hipengine_run_or_width": true
+  },
+  "hipengine_w7900": {
+    "c1_three_run": {
+      "runs": [
+        {
+          "ar_tok_s": 21.990535033628785,
+          "mtp_tok_s": 32.29731096214401,
+          "ratio": 1.4686914580638306,
+          "accepted": 157,
+          "proposed": 199,
+          "acceptance": 0.7889447236180904,
+          "exact_cells": 10,
+          "engaged_cells": 10,
+          "cells": 10
+        },
+        {
+          "ar_tok_s": 21.9747397578395,
+          "mtp_tok_s": 32.147878292333246,
+          "ratio": 1.462946940286948,
+          "accepted": 157,
+          "proposed": 199,
+          "acceptance": 0.7889447236180904,
+          "exact_cells": 10,
+          "engaged_cells": 10,
+          "cells": 10
+        },
+        {
+          "ar_tok_s": 21.90980055729461,
+          "mtp_tok_s": 32.01430141041079,
+          "ratio": 1.4611863456580851,
+          "accepted": 157,
+          "proposed": 199,
+          "acceptance": 0.7889447236180904,
+          "exact_cells": 10,
+          "engaged_cells": 10,
+          "cells": 10
+        }
+      ],
+      "pooled_ar_tok_s": 21.958302813216285,
+      "pooled_mtp_tok_s": 32.1527480490121,
+      "mtp_over_ar": 1.4642638059285698,
+      "gain_percent": 46.42638059285697,
+      "acceptance": 0.7889447236180904,
+      "ids_exact": true,
+      "cells_exact": "30/30"
+    },
+    "direct_ar_p128d24": {
+      "prefill_tok_s": {
+        "samples": [
+          373.9475837892412,
+          372.748880349805,
+          371.90158260251604
+        ],
+        "median": 372.748880349805,
+        "p95": 372.748880349805,
+        "min": 371.90158260251604,
+        "max": 373.9475837892412,
+        "stdev": 1.02801785525657,
+        "stdev_pct_of_median": 0.2757936802631922
+      },
+      "decode_tok_s": {
+        "samples": [
+          29.906069740412207,
+          29.87058211646582,
+          29.846276890262644
+        ],
+        "median": 29.87058211646582,
+        "p95": 29.87058211646582,
+        "min": 29.846276890262644,
+        "max": 29.906069740412207,
+        "stdev": 0.030070196771210336,
+        "stdev_pct_of_median": 0.10066826503067873
+      },
+      "prefill_seconds": {
+        "samples": [
+          0.342293961904943,
+          0.34339472698047757,
+          0.3441770779900253
+        ],
+        "median": 0.34339472698047757,
+        "p95": 0.34339472698047757,
+        "min": 0.342293961904943,
+        "max": 0.3441770779900253,
+        "stdev": 0.0009460340941312701,
+        "stdev_pct_of_median": 0.2754946479376351
+      },
+      "decode_seconds": {
+        "samples": [
+          0.8025126741267741,
+          0.8034660960547626,
+          0.8041203962638974
+        ],
+        "median": 0.8034660960547626,
+        "p95": 0.8034660960547626,
+        "min": 0.8025126741267741,
+        "max": 0.8041203962638974,
+        "stdev": 0.0008084854777751308,
+        "stdev_pct_of_median": 0.10062471605771728
+      },
+      "graph_capture_seconds": {
+        "samples": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "median": 0.0,
+        "p95": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "stdev": 0.0,
+        "stdev_pct_of_median": null
+      },
+      "tracked_peak_allocated_gib": {
+        "samples": [
+          15.508854396641254,
+          15.508854396641254,
+          15.508854396641254
+        ],
+        "median": 15.508854396641254,
+        "p95": 15.508854396641254,
+        "min": 15.508854396641254,
+        "max": 15.508854396641254,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "tracked_current_allocated_gib_before_close": {
+        "samples": [
+          15.508854396641254,
+          15.508854396641254,
+          15.508854396641254
+        ],
+        "median": 15.508854396641254,
+        "p95": 15.508854396641254,
+        "min": 15.508854396641254,
+        "max": 15.508854396641254,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "owned_session_peak_gib": {
+        "samples": [
+          15.508854396641254,
+          15.508854396641254,
+          15.508854396641254
+        ],
+        "median": 15.508854396641254,
+        "p95": 15.508854396641254,
+        "min": 15.508854396641254,
+        "max": 15.508854396641254,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "hip_used_peak_sampled_gib": {
+        "samples": [
+          15.599609375,
+          15.599609375,
+          15.599609375
+        ],
+        "median": 15.599609375,
+        "p95": 15.599609375,
+        "min": 15.599609375,
+        "max": 15.599609375,
+        "stdev": 0.0,
+        "stdev_pct_of_median": 0.0
+      },
+      "finite_final_logits_all": true,
+      "final_token_ids": [
+        9707,
+        9707,
+        9707
+      ]
+    },
+    "automatic_c1_c8": {
+      "1": {
+        "ar_tok_s": 21.990535033628785,
+        "requested_mtp_arm_tok_s": 32.29731096214401,
+        "arm_over_ar": 1.4686914580638306,
+        "engaged_cells": 10,
+        "exact_cells": 10,
+        "cells": 10,
+        "effective_route": "mtp_k3"
+      },
+      "2": {
+        "ar_tok_s": 30.85614154683975,
+        "requested_mtp_arm_tok_s": 30.868333655114604,
+        "arm_over_ar": 1.0003951274418528,
+        "engaged_cells": 0,
+        "exact_cells": 10,
+        "cells": 10,
+        "effective_route": "typed_k0"
+      },
+      "3": {
+        "ar_tok_s": 36.057584447849656,
+        "requested_mtp_arm_tok_s": 36.04911393356023,
+        "arm_over_ar": 0.9997650837009984,
+        "engaged_cells": 0,
+        "exact_cells": 10,
+        "cells": 10,
+        "effective_route": "typed_k0"
+      },
+      "4": {
+        "ar_tok_s": 39.42044084032594,
+        "requested_mtp_arm_tok_s": 39.48913107646464,
+        "arm_over_ar": 1.0017425029927223,
+        "engaged_cells": 0,
+        "exact_cells": 10,
+        "cells": 10,
+        "effective_route": "typed_k0"
+      },
+      "5": {
+        "ar_tok_s": 41.38565254177139,
+        "requested_mtp_arm_tok_s": 33.739217968807296,
+        "arm_over_ar": 0.8152394826867502,
+        "engaged_cells": 0,
+        "exact_cells": 10,
+        "cells": 10,
+        "effective_route": "typed_k0"
+      },
+      "6": {
+        "ar_tok_s": 42.85340683120065,
+        "requested_mtp_arm_tok_s": 35.642549984884944,
+        "arm_over_ar": 0.8317320050020939,
+        "engaged_cells": 0,
+        "exact_cells": 10,
+        "cells": 10,
+        "effective_route": "typed_k0"
+      },
+      "7": {
+        "ar_tok_s": 43.81744402817697,
+        "requested_mtp_arm_tok_s": 37.51791902354483,
+        "arm_over_ar": 0.8562324858432817,
+        "engaged_cells": 0,
+        "exact_cells": 10,
+        "cells": 10,
+        "effective_route": "typed_k0"
+      },
+      "8": {
+        "ar_tok_s": 44.54744142347862,
+        "requested_mtp_arm_tok_s": 39.241510140443616,
+        "arm_over_ar": 0.8808925695059442,
+        "engaged_cells": 0,
+        "exact_cells": 10,
+        "cells": 10,
+        "effective_route": "typed_k0"
+      }
+    },
+    "explicit_diagnostic_physical_c2_c4": {
+      "2": {
+        "ar_tok_s": 30.711667655840515,
+        "mtp_tok_s": 15.776819076815615,
+        "mtp_over_ar": 0.5137076649048492,
+        "accepted": 257,
+        "proposed": 469,
+        "acceptance": 0.5479744136460555,
+        "engaged_cells": 10,
+        "exact_cells": 10,
+        "cells": 10
+      },
+      "3": {
+        "ar_tok_s": 35.731832083214606,
+        "mtp_tok_s": 16.42464328154873,
+        "mtp_over_ar": 0.45966417963954254,
+        "accepted": 321,
+        "proposed": 725,
+        "acceptance": 0.44275862068965516,
+        "engaged_cells": 10,
+        "exact_cells": 10,
+        "cells": 10
+      },
+      "4": {
+        "ar_tok_s": 39.303441927974696,
+        "mtp_tok_s": 18.825542607217994,
+        "mtp_over_ar": 0.47897949094933306,
+        "accepted": 424,
+        "proposed": 910,
+        "acceptance": 0.46593406593406594,
+        "engaged_cells": 10,
+        "exact_cells": 10,
+        "cells": 10
+      }
+    }
+  },
+  "llamacpp_w7900_hip": {
+    "current": {
+      "ar": {
+        "generated_tokens": 720,
+        "wall_seconds": 34.327557298354805,
+        "wall_tok_s": 20.97440239461801,
+        "server_decode_seconds": 24.881436,
+        "server_decode_tok_s": 28.93723658071825
+      },
+      "mtp": {
+        "generated_tokens": 720,
+        "wall_seconds": 28.31034540059045,
+        "wall_tok_s": 25.43239899803495,
+        "server_decode_seconds": 15.093525,
+        "server_decode_tok_s": 47.702574448314756
+      },
+      "mtp_over_ar_wall": 1.2125446303328697,
+      "mtp_over_ar_decode": 1.6484841016263598,
+      "ar_wall_runs": [
+        21.4698189537895,
+        20.769907119241765,
+        20.700549147915474
+      ],
+      "mtp_wall_runs": [
+        29.345170958128367,
+        22.38722533072359,
+        25.50091183501733
+      ],
+      "ar_decode_runs": [
+        29.042624407711983,
+        28.92453167868943,
+        28.845235097680177
+      ],
+      "mtp_decode_runs": [
+        48.87438224817271,
+        46.93395160992254,
+        47.34280610280333
+      ],
+      "ar_decode_median": 28.92453167868943,
+      "mtp_decode_median": 47.34280610280333,
+      "acceptance": {
+        "accepted": 471,
+        "proposed": 588,
+        "rate": 0.8010204081632653,
+        "requests": 30
+      },
+      "ar_self_deterministic": true,
+      "mtp_self_deterministic": true,
+      "ar_mtp_equal_prompts": 10,
+      "prompts": 10,
+      "command_ar": [
+        "/home/lhl/external-qwen38-bench/llama.cpp-upstream/build-hip-gfx1100/bin/llama-server",
+        "-m",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18080",
+        "-c",
+        "1024",
+        "-b",
+        "512",
+        "-ub",
+        "512",
+        "-ngl",
+        "all",
+        "-np",
+        "1",
+        "--no-mmap",
+        "-t",
+        "16",
+        "-tb",
+        "16",
+        "-fa",
+        "on",
+        "-ctk",
+        "f16",
+        "-ctv",
+        "f16"
+      ],
+      "command_mtp": [
+        "/home/lhl/external-qwen38-bench/llama.cpp-upstream/build-hip-gfx1100/bin/llama-server",
+        "-m",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18080",
+        "-c",
+        "1024",
+        "-b",
+        "512",
+        "-ub",
+        "512",
+        "-ngl",
+        "all",
+        "-np",
+        "1",
+        "--no-mmap",
+        "-t",
+        "16",
+        "-tb",
+        "16",
+        "-fa",
+        "on",
+        "-ctk",
+        "f16",
+        "-ctv",
+        "f16",
+        "--spec-type",
+        "draft-mtp",
+        "--spec-draft-n-max",
+        "3",
+        "--spec-draft-n-min",
+        "0"
+      ]
+    },
+    "laurent": {
+      "ar": {
+        "generated_tokens": 720,
+        "wall_seconds": 36.39771025348455,
+        "wall_tok_s": 19.781464135675144,
+        "server_decode_seconds": 25.505540000000003,
+        "server_decode_tok_s": 28.229161193999417
+      },
+      "mtp": {
+        "generated_tokens": 720,
+        "wall_seconds": 26.787125738803297,
+        "wall_tok_s": 26.878583653229445,
+        "server_decode_seconds": 14.775394000000002,
+        "server_decode_tok_s": 48.729665009271486
+      },
+      "mtp_over_ar_wall": 1.3587762497698492,
+      "mtp_over_ar_decode": 1.7262172501119089,
+      "ar_wall_runs": [
+        20.99606440698075,
+        20.37802734810943,
+        18.196147093092573
+      ],
+      "mtp_wall_runs": [
+        29.096727048518733,
+        28.422875507857764,
+        23.77444594022372
+      ],
+      "ar_decode_runs": [
+        28.353099578566614,
+        28.647084156539123,
+        27.703897511278083
+      ],
+      "mtp_decode_runs": [
+        48.49551749869819,
+        48.875238215874596,
+        48.819970459849536
+      ],
+      "ar_decode_median": 28.353099578566614,
+      "mtp_decode_median": 48.819970459849536,
+      "acceptance": {
+        "accepted": 471,
+        "proposed": 588,
+        "rate": 0.8010204081632653,
+        "requests": 30
+      },
+      "ar_self_deterministic": true,
+      "mtp_self_deterministic": true,
+      "ar_mtp_equal_prompts": 10,
+      "prompts": 10,
+      "command_ar": [
+        "/home/lhl/external-qwen38-bench/llama.cpp-laurent/build-hip-gfx1100/bin/llama-server",
+        "-m",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18080",
+        "-c",
+        "1024",
+        "-b",
+        "512",
+        "-ub",
+        "512",
+        "-ngl",
+        "all",
+        "-np",
+        "1",
+        "--no-mmap",
+        "-t",
+        "16",
+        "-tb",
+        "16",
+        "-fa",
+        "on",
+        "-ctk",
+        "f16",
+        "-ctv",
+        "f16"
+      ],
+      "command_mtp": [
+        "/home/lhl/external-qwen38-bench/llama.cpp-laurent/build-hip-gfx1100/bin/llama-server",
+        "-m",
+        "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18080",
+        "-c",
+        "1024",
+        "-b",
+        "512",
+        "-ub",
+        "512",
+        "-ngl",
+        "all",
+        "-np",
+        "1",
+        "--no-mmap",
+        "-t",
+        "16",
+        "-tb",
+        "16",
+        "-fa",
+        "on",
+        "-ctk",
+        "f16",
+        "-ctv",
+        "f16",
+        "--spec-type",
+        "draft-mtp",
+        "--spec-draft-n-max",
+        "3",
+        "--spec-draft-n-min",
+        "0"
+      ]
+    },
+    "hipengine_vs_current_complete_wall": {
+      "ar_ratio": 1.0469095805490383,
+      "mtp_ratio": 1.2642436150634628
+    },
+    "hipengine_vs_laurent_complete_wall": {
+      "ar_ratio": 1.1100443659079458,
+      "mtp_ratio": 1.1962218122735409
+    }
+  },
+  "llamacpp_strix_radv": {
+    "current": {
+      "ar": {
+        "generated_tokens": 720,
+        "wall_seconds": 161.09569800202735,
+        "wall_tok_s": 4.469393093234178,
+        "server_decode_seconds": 73.561784,
+        "server_decode_tok_s": 9.787690847736917
+      },
+      "mtp": {
+        "generated_tokens": 720,
+        "wall_seconds": 50.595670306356624,
+        "wall_tok_s": 14.230466671167756,
+        "server_decode_seconds": 27.623426,
+        "server_decode_tok_s": 26.064833522098237
+      },
+      "mtp_over_ar_wall": 3.183981890675495,
+      "mtp_over_ar_decode": 2.6630217410396524,
+      "ar_wall_runs": [
+        3.0488703413256757,
+        5.549097627894026,
+        6.133755324665065
+      ],
+      "mtp_wall_runs": [
+        13.930334294234514,
+        14.295335845862647,
+        14.476678088555289
+      ],
+      "ar_decode_runs": [
+        7.53212545658803,
+        11.434176352922712,
+        11.58940925014494
+      ],
+      "mtp_decode_runs": [
+        25.808907621854335,
+        26.205173185076113,
+        26.18425379349832
+      ],
+      "ar_decode_median": 11.434176352922712,
+      "mtp_decode_median": 26.18425379349832,
+      "acceptance": {
+        "accepted": 471,
+        "proposed": 581,
+        "rate": 0.810671256454389,
+        "requests": 30
+      },
+      "ar_self_deterministic": false,
+      "mtp_self_deterministic": true,
+      "ar_mtp_equal_prompts": 8,
+      "prompts": 10,
+      "command_ar": [
+        "/home/lhl/external-qwen38-bench/current-llama/build-vulkan-native/bin/llama-server",
+        "-m",
+        "/data/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18080",
+        "-c",
+        "1024",
+        "-b",
+        "512",
+        "-ub",
+        "512",
+        "-ngl",
+        "all",
+        "-np",
+        "1",
+        "--no-mmap",
+        "-t",
+        "16",
+        "-tb",
+        "16",
+        "-fa",
+        "on",
+        "-ctk",
+        "f16",
+        "-ctv",
+        "f16"
+      ],
+      "command_mtp": [
+        "/home/lhl/external-qwen38-bench/current-llama/build-vulkan-native/bin/llama-server",
+        "-m",
+        "/data/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18080",
+        "-c",
+        "1024",
+        "-b",
+        "512",
+        "-ub",
+        "512",
+        "-ngl",
+        "all",
+        "-np",
+        "1",
+        "--no-mmap",
+        "-t",
+        "16",
+        "-tb",
+        "16",
+        "-fa",
+        "on",
+        "-ctk",
+        "f16",
+        "-ctv",
+        "f16",
+        "--spec-type",
+        "draft-mtp",
+        "--spec-draft-n-max",
+        "3",
+        "--spec-draft-n-min",
+        "0"
+      ]
+    },
+    "laurent": {
+      "ar": {
+        "generated_tokens": 720,
+        "wall_seconds": 81.6203659819439,
+        "wall_tok_s": 8.82132775733055,
+        "server_decode_seconds": 62.444590000000005,
+        "server_decode_tok_s": 11.530222233823618
+      },
+      "mtp": {
+        "generated_tokens": 720,
+        "wall_seconds": 49.518472224939615,
+        "wall_tok_s": 14.540028551958784,
+        "server_decode_seconds": 28.989315999999995,
+        "server_decode_tok_s": 24.836736403163155
+      },
+      "mtp_over_ar_wall": 1.6482811830538748,
+      "mtp_over_ar_decode": 2.1540553078244415,
+      "ar_wall_runs": [
+        8.886534180023293,
+        8.795275131232467,
+        8.782897747052248
+      ],
+      "mtp_wall_runs": [
+        14.589994881073915,
+        14.379817846704627,
+        14.6531015585692
+      ],
+      "ar_decode_runs": [
+        11.54868267785657,
+        11.522298191508083,
+        11.519730346152057
+      ],
+      "mtp_decode_runs": [
+        24.594861149711384,
+        24.69406370142408,
+        25.230636931660193
+      ],
+      "ar_decode_median": 11.522298191508083,
+      "mtp_decode_median": 24.69406370142408,
+      "acceptance": {
+        "accepted": 458,
+        "proposed": 635,
+        "rate": 0.721259842519685,
+        "requests": 30
+      },
+      "ar_self_deterministic": false,
+      "mtp_self_deterministic": false,
+      "ar_mtp_equal_prompts": 2,
+      "prompts": 10,
+      "command_ar": [
+        "/home/lhl/external-qwen38-bench/laurent-llama/build-vulkan-native/bin/llama-server",
+        "-m",
+        "/data/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18080",
+        "-c",
+        "1024",
+        "-b",
+        "512",
+        "-ub",
+        "512",
+        "-ngl",
+        "all",
+        "-np",
+        "1",
+        "--no-mmap",
+        "-t",
+        "16",
+        "-tb",
+        "16",
+        "-fa",
+        "on",
+        "-ctk",
+        "f16",
+        "-ctv",
+        "f16"
+      ],
+      "command_mtp": [
+        "/home/lhl/external-qwen38-bench/laurent-llama/build-vulkan-native/bin/llama-server",
+        "-m",
+        "/data/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18080",
+        "-c",
+        "1024",
+        "-b",
+        "512",
+        "-ub",
+        "512",
+        "-ngl",
+        "all",
+        "-np",
+        "1",
+        "--no-mmap",
+        "-t",
+        "16",
+        "-tb",
+        "16",
+        "-fa",
+        "on",
+        "-ctk",
+        "f16",
+        "-ctv",
+        "f16",
+        "--spec-type",
+        "draft-mtp",
+        "--spec-draft-n-max",
+        "3",
+        "--spec-draft-n-min",
+        "0"
+      ]
+    },
+    "comparison_scope": "independent physical-host lane; never compare absolute rates to W7900 as old-to-new"
+  },
+  "commands": {
+    "hipengine_c1": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile strict --widths 1 --resident-capacity 1 --expected-mtp-widths 1 --max-tokens 24 --candidate-budget 3 --max-sequence-length 1024 --correctness-contract ar_exact --output <run>.json",
+    "hipengine_physical_diagnostic": "same, width/capacity=<2|3|4>, --generation2-diagnostic --expected-mtp-widths=<width>",
+    "llamacpp": "python3 /tmp/qwen38_llama_server_bench.py --server <pinned>/llama-server --model <exact Q4_K_M> --prompts <suite> --spec-mode <none|draft-mtp> --repeats 3 --max-tokens 24"
+  },
+  "limitations": [
+    "W7900 and Strix files differ by 1024 bytes and have different full hashes; they are independent lanes.",
+    "llama.cpp server-reported decode excludes prompt work; compare engines on complete-wall rows, not hipEngine complete wall against llama decode.",
+    "The temporary external harness warms one request before three suite repeats; occasional prompt-level wall stalls remain visible in per-repeat data.",
+    "Physical C2-C4 MTP is explicit diagnostic evidence only and is not a product/default route.",
+    "C5-C8 requested-MTP automatic arms execute no draft cycles and are typed K0; their speculative-cap decomposition makes them slower than normal AR and they are not MTP throughput.",
+    "Strix current/Laurent output determinism is weaker under RADV; exact/self-deterministic fields are retained rather than assumed."
+  ],
+  "raw_sources": [
+    {
+      "path": "/tmp/qwen38-q4km-w7900-c1b3-d24-run1.json",
+      "sha256": "a5b094af183ad15b0fb29f87eed76ecdc239a6d67d77a0a17f30174b49bb1294",
+      "size_bytes": 749760,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-w7900-c1b3-d24-run2.json",
+      "sha256": "367219e5a8f08a4fe44915f212e6efeef0c27e55f412759e55d96e809efe9d84",
+      "size_bytes": 749757,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-w7900-c1b3-d24-run3.json",
+      "sha256": "57a53af6028da53d86886c1d16567eb3bc643fe6c1b7636afb5b0eb3ba409c85",
+      "size_bytes": 749749,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-w7900-c2-auto-d24.json",
+      "sha256": "e640147ab3c3d9539cd6466015402e6687b2f726a04ad156cb67eef4ce5ff29a",
+      "size_bytes": 1333485,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-w7900-c3-auto-d24.json",
+      "sha256": "627ac303b6fb38ee2d875bda4a160da63a2482e726bda339f137acf07d688299",
+      "size_bytes": 2084816,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-w7900-c4-auto-d24.json",
+      "sha256": "a366d31559dbd02b5819ab33e1b680c8b7f18dd5b299da3cfead2968c95b6b4e",
+      "size_bytes": 2046153,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-w7900-c5-auto-d24.json",
+      "sha256": "8a565afabb6850da74d66d93122e8c518a7b1fc29f52be05fb02be7533f0e32b",
+      "size_bytes": 3133575,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-w7900-c6-auto-d24.json",
+      "sha256": "8794013dbcfcf3fe06713191c79616f88250cbd60b51a17043c62df1e0cffb86",
+      "size_bytes": 3719646,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-w7900-c7-auto-d24.json",
+      "sha256": "edd5449563133781fe4f4a7697e4ecb847b6a27b69b6bdbf65849c80ea9d3ac7",
+      "size_bytes": 4717853,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-w7900-c8-auto-d24.json",
+      "sha256": "60d2b7ffa266e199b73001608d062ecd50e1c068a4dacc59e216a937d779a9d4",
+      "size_bytes": 3998200,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-w7900-c2-diagnostic-mtp-d24.json",
+      "sha256": "a5d5d0faf4058e86daa9cf61d0d17b4f2ae661f3ce3718d9f1a0292480f03c51",
+      "size_bytes": 1373564,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-w7900-c3-diagnostic-mtp-d24.json",
+      "sha256": "00e83dceabcea92697dc1dd19e1367d33676f0c2a8fb780da9f2f083afdab972",
+      "size_bytes": 2712006,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-w7900-c4-diagnostic-mtp-d24.json",
+      "sha256": "26a58f221419cd895768cb1e882ac738ab961db99d76d3ed1dc10967f8b634c8",
+      "size_bytes": 2705329,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-hipengine-w7900-direct-ar-p128d24.json",
+      "sha256": "ca6f09f1d864f36230a0ad10bfa6f5ed54fcc23fb66616dcdd375eb4c6f4dd64",
+      "size_bytes": 1002105,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-current-w7900-hip-d24-ar.json",
+      "sha256": "fac6991c4cde301e2a805516d023e9d613429a0dcf287f238e5b8246fe95881f",
+      "size_bytes": 18914,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-current-w7900-hip-d24-mtp.json",
+      "sha256": "6f5906efc4d418aca523b1884a64406e176c2201907091ca8fd646f9b3305d64",
+      "size_bytes": 19010,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-current-w7900-hip-d24-mtp.server.log",
+      "sha256": "685f71da4de65685db017531fab77de7689da88051fc0c65434fffbe8b29af5e",
+      "size_bytes": 29445,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-laurent-w7900-hip-d24-ar.json",
+      "sha256": "a2ff6bc60f699ffc2c95baf1e6aaf000b08f0065799d6b2b649384b21c6558e7",
+      "size_bytes": 18916,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-laurent-w7900-hip-d24-mtp.json",
+      "sha256": "f2d9d6d59ed84e75faf012133a5895716450792f5533daee6df1933eddbd74ae",
+      "size_bytes": 19027,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4km-laurent-w7900-hip-d24-mtp.server.log",
+      "sha256": "4b3c47f1b42484fef0cb91327848c3ec32a18871c0acd537aaf130a33a93a2c5",
+      "size_bytes": 29445,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4-strix/qwen38-q4km-laurent-strix-radv-d24-mtp.server.log",
+      "sha256": "89123bfff0b079647bee06f8224215c19f9b3edce6ab8cf10fd21a74ba9e7bcf",
+      "size_bytes": 29332,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4-strix/qwen38-q4km-laurent-strix-radv-d24-mtp.json",
+      "sha256": "a96c7f28d5a60984201d215ba948df8e3f1ca78d78c80fea61b67ac6b7b51d40",
+      "size_bytes": 18867,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4-strix/qwen38-q4km-laurent-strix-radv-d24-ar.server.log",
+      "sha256": "40c021a24e394318445f48fc968227e9ef004ae40a1f0e74320f4e6d036e362f",
+      "size_bytes": 26596,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4-strix/qwen38-q4km-laurent-strix-radv-d24-ar.json",
+      "sha256": "73a2bf525f92bafd2322f812b9b94172022f071b5862d45304051c4a3c7a4d91",
+      "size_bytes": 18934,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4-strix/qwen38-q4km-current-strix-radv-d24-mtp.server.log",
+      "sha256": "a531ffbdd60deb9aaee5e5a5b9e32f7a31801030644a2fb0f6a99e6fe9be03c7",
+      "size_bytes": 29332,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4-strix/qwen38-q4km-current-strix-radv-d24-mtp.json",
+      "sha256": "f6016fe988679b0695137eb85f343c386776feccef3a5306fc082f9adace8a4c",
+      "size_bytes": 19007,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4-strix/qwen38-q4km-current-strix-radv-d24-ar.server.log",
+      "sha256": "cc57bad2986f933f3bda26774034d3e003bb067981c686b6208ce0b709986446",
+      "size_bytes": 26743,
+      "retained_in_git": false
+    },
+    {
+      "path": "/tmp/qwen38-q4-strix/qwen38-q4km-current-strix-radv-d24-ar.json",
+      "sha256": "7500807411edda71a671a458ddfd0baef33dd7854c86d383433050a30b523e28",
+      "size_bytes": 18873,
+      "retained_in_git": false
+    }
+  ]
+}
