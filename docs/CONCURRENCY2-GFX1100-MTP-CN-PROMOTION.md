@@ -1,6 +1,6 @@
 # gfx1100 Physical C>N MTP Promotion Campaign
 
-- Status: **active; 27B Dense physical C2 promoted, 35B MoE P4 next**
+- Status: **P5 complete; 27B Dense and 35B MoE physical C2 promoted, P6 cross-model closure next**
 - Started: **2026-08-27**
 - Branch: **`campaign/gfx1100-mtp-cn-promotion`**
 - Base commit: **`5c2be8d157c587caf42591b07d7c02b3181adabc`**
@@ -318,27 +318,38 @@ permutation isolation, tasks, automatic SSE dynamic admission, cancellation,
 wrong-key K0, and final drain. Strict remains explicit-only. Evidence:
 [`automatic C2 promotion`](../benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-automatic-promotion.json).
 
-### P4 — 35B MoE explicit physical C2 ownership
+### P4 — 35B MoE explicit physical C2 ownership — complete
 
-- [ ] Extend the model-plugin-selected MoE adapter/profile to a physical C2
+- [x] Extend the model-plugin-selected MoE adapter/profile to a physical C2
       candidate without forking the scheduler.
-- [ ] Prove one physical MoE proposal/target group rather than two C1 loops,
+- [x] Prove one physical MoE proposal/target group rather than two C1 loops,
       including router/expert, target hidden, recurrent state, KV, and selected
       commit ownership per request.
-- [ ] Run the complete transition/lifecycle packet from P1/P2.
-- [ ] Run strict fallback plus production numerical/task/determinism/isolation
+- [x] Run the complete transition/lifecycle packet from P1/P2.
+- [x] Run strict fallback plus production numerical/task/determinism/isolation
       gates; production generated-ID equality remains diagnostic.
-- [ ] Publish an explicit functional artifact even if it is slow.
+- [x] Publish an explicit functional artifact even if it is slow.
 
-### P5 — 35B MoE economics and promotion
+### P5 — 35B MoE economics and promotion — complete
 
-- [ ] Establish true same-protocol C2 AR and K1/K2/K3 controls.
-- [ ] Profile target/router/expert/proposal/commit operation-complete wall and
+- [x] Establish true same-protocol C2 AR and K1/K2/K3 controls.
+- [x] Profile target/router/expert/proposal/commit operation-complete wall and
       optimize gfx1100-specific owners behind registry variants.
-- [ ] Pass complete category+heldout correctness, serving, and SLO economics.
-- [ ] Register the exact automatic C2 key only at `>=1.10x` AR with every binding
+- [x] Pass complete category+heldout correctness, serving, and SLO economics.
+- [x] Register the exact automatic C2 key only at `>=1.10x` AR with every binding
       gate; otherwise keep K0 and continue attribution.
-- [ ] Evaluate C4 only after C2 promotion.
+- [x] Evaluate C4 only after C2 promotion; keep it K0 pending independent evidence.
+
+P4/P5 exit passes independently. The final production target combines exact R6
+RMSNorm/Q8/alpha-beta, two R3 chain-Conv segments, no-copy segmented GDN state
+journals with FP32/BF16 outputs, exact FP32 `ssm_out`, row-batched MoE, and bulk
+NextN prompt K/V priming. The full gate covers **281** strict-teacher rows at
+mean/p95/p99/max KL **0.0000266/0/0.000229/0.003588** with **100%** top-1.
+Three-run economics are **98.505 vs 86.650 tok/s = 1.1368x AR**; all categories
+are non-regressive and heldout is **1.1132x**. Public automatic is **92.419 vs
+82.347 tok/s = 1.1223x**, 10/10 engaged/self-repeat exact, and blocking/SSE,
+cancel/survivor, typed K0 controls, and zero final ownership pass. Evidence:
+[`MoE C2 automatic promotion`](../benchmarks/results/2026-08-28-w7900-35b-moe-mtp2-c2-automatic-promotion.json).
 
 ### P6 — Cross-model closure
 
