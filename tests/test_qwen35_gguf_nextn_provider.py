@@ -27,6 +27,7 @@ from hipengine.runtime.qwen35_gguf_nextn import (
     Qwen35GGUFNextNExecutor,
     Qwen35GGUFNextNStateAdvance,
     Qwen35GGUFNextNStepResult,
+    _private_slot_buffer,
 )
 from hipengine.speculative import MtpDraftProvider, MtpProposalContext
 
@@ -201,29 +202,31 @@ def test_nextn_physical_batch_publishes_consumed_positions_not_next_cursors(
     assert calls == [(0x1000, 0x2000, 36), (0x3000, 0x4000, 41)]
 
 
-def test_nextn_singleton_block_uses_the_sessions_bound_kv_scratch(monkeypatch) -> None:
+def test_nextn_private_slot_buffer_rebases_one_slot() -> None:
+    buffer = DeviceBuffer(0x1000, 400)
+
+    slot = _private_slot_buffer(buffer, slot=2, slot_count=4)
+
+    assert slot.ptr == 0x1000 + 200
+    assert slot.nbytes == 100
+    with pytest.raises(ValueError, match="slot-major"):
+        _private_slot_buffer(DeviceBuffer(0x1000, 401), slot=1, slot_count=4)
+
+
+def test_nextn_singleton_block_uses_local_kv_scratch(monkeypatch) -> None:
     captured = []
-    parent_scratch = SimpleNamespace(
-        set_full_attention_position=lambda *args: None,
-        attn_out=SimpleNamespace(ptr=0x9100),
-    )
-    bound_scratch = SimpleNamespace(
+    local_scratch = SimpleNamespace(
         set_full_attention_position=lambda *args: None,
         attn_out=SimpleNamespace(ptr=0xA100),
     )
-    parent_calls = []
+    scratch_calls = []
     executor = object.__new__(Qwen35GGUFNextNExecutor)
     executor.closed = False
     executor.hidden_size = 8
     executor.vocab_size = 32
     executor._request_slots = {7: 1}
-    executor._batch_sessions = (
-        SimpleNamespace(scratch=SimpleNamespace()),
-        SimpleNamespace(scratch=bound_scratch),
-    )
-    executor.scratch = SimpleNamespace(
-        for_slot=lambda slot, **kwargs: parent_calls.append((slot, kwargs))
-        or parent_scratch
+    executor._singleton_slot_scratch = (
+        lambda slot: scratch_calls.append(int(slot)) or local_scratch
     )
     executor.runtime = object()
     executor._token_buf = SimpleNamespace(ptr=0x1000)
@@ -236,9 +239,7 @@ def test_nextn_singleton_block_uses_the_sessions_bound_kv_scratch(monkeypatch) -
     allocation = lambda ptr: SimpleNamespace(
         allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=ptr))
     )
-    fallback = {
-        "token_embedding": allocation(0x7000),
-    }
+    fallback = {"token_embedding": allocation(0x7000)}
     nextn = {
         "enorm": allocation(0x7100),
         "hnorm": allocation(0x7200),
@@ -268,8 +269,8 @@ def test_nextn_singleton_block_uses_the_sessions_bound_kv_scratch(monkeypatch) -
         token_ready=True,
     )
 
-    assert captured == [bound_scratch]
-    assert parent_calls == []
+    assert captured == [local_scratch]
+    assert scratch_calls == [1]
 
 
 def test_nextn_provider_keeps_physical_batch_candidates_device_resident_until_materialized() -> None:

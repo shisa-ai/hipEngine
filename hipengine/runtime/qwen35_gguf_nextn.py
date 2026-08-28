@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 from pathlib import Path
 from typing import Mapping, Protocol, Sequence
@@ -309,6 +309,18 @@ class Qwen35GGUFNextNStepExecutor(Protocol):
     def reset_request(self, request_id: int) -> None: ...
 
     def close(self) -> None: ...
+
+
+def _private_slot_buffer(
+    buffer: DeviceBuffer,
+    *,
+    slot: int,
+    slot_count: int,
+) -> DeviceBuffer:
+    row_nbytes, remainder = divmod(int(buffer.nbytes), int(slot_count))
+    if remainder or row_nbytes <= 0:
+        raise ValueError("NextN private slot buffer is not slot-major")
+    return DeviceBuffer(int(buffer.ptr) + int(slot) * row_nbytes, row_nbytes)
 
 
 class Qwen35GGUFNextNExecutor:
@@ -720,6 +732,47 @@ class Qwen35GGUFNextNExecutor:
         self._request_slots[request_id] = slot
         return slot
 
+    def _singleton_slot_scratch(self, slot: int):
+        """Return one private-slot view with cache-local page coordinates."""
+
+        slot_index = int(slot)
+        scratch = self.scratch.for_slot(slot_index, span_role="decode")
+        if slot_index == 0 or self.max_requests == 1:
+            return scratch
+        if scratch.kv_storage_dtype != DType.BF16:
+            raise NotImplementedError(
+                "NextN private singleton KV rebasing currently requires BF16"
+            )
+        zero = self.scratch.for_slot(0, span_role="decode")
+
+        def sliced(buffers):
+            return tuple(
+                None
+                if buffer is None
+                else _private_slot_buffer(
+                    buffer,
+                    slot=slot_index,
+                    slot_count=self.max_requests,
+                )
+                for buffer in buffers
+            )
+
+        return replace(
+            scratch,
+            full_key_caches=sliced(self.scratch.full_key_caches),
+            full_value_caches=sliced(self.scratch.full_value_caches),
+            block_table=zero.block_table,
+            block_table_tensor=zero.block_table_tensor,
+            append_spans=replace(
+                scratch.append_spans,
+                base_offsets=zero.block_table_tensor,
+            ),
+            decode_spans=replace(
+                scratch.decode_spans,
+                base_offsets=zero.block_table_tensor,
+            ),
+        )
+
     def _run_block(
         self,
         request_id: int,
@@ -742,13 +795,7 @@ class Qwen35GGUFNextNExecutor:
         if token_id < 0 or token_id >= self.vocab_size:
             raise ValueError("token_id is outside the GGUF vocabulary")
         slot = self._slot(request_id)
-        # Resident slot sessions may replace their KV planes/block table when
-        # the scheduler binds a global-pool allocation. Rebuilding a view from
-        # the executor's original parent scratch combines the bound page table
-        # with the wrong cache owner for nonzero singleton/ragged-tail slots.
-        slot_scratch = self._batch_sessions[slot].scratch
-        if slot_scratch is None:
-            raise RuntimeError("GGUF NextN bound request scratch is unavailable")
+        slot_scratch = self._singleton_slot_scratch(slot)
         if position_ready:
             # Graph capture supplies dynamic device metadata. Keep the host mirror
             # coherent only so the full-attention helper does not enqueue a
