@@ -68,6 +68,7 @@ from hipengine.speculative.provider import SpeculativeRequestSemantics
 from hipengine.speculative.serving import SpeculativeMTPStaticEligibility
 from hipengine.runtime.workspace import RuntimeWorkspace
 from hipengine.core.specdec2_scope import (
+    moe_physical_c2_exact_linear_session,
     moe_physical_c2_numerics_session,
     moe_physical_c2_pairreuse_session,
     q4_t16_physical_extra_rowtiles_session,
@@ -2236,6 +2237,9 @@ class Qwen35GGUFMTP2Adapter:
             ),
             moe_physical_c2_pairreuse_session(
                 bool(getattr(self, "moe_physical_c2_pairreuse", False))
+            ),
+            moe_physical_c2_exact_linear_session(
+                bool(getattr(self, "moe_physical_c2_exact_linear", False))
             ),
         ):
             results = list(verify_batch(jobs, device_result=device_result))

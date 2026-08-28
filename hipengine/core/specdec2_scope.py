@@ -27,6 +27,10 @@ _moe_physical_c2_pairreuse: ContextVar[bool] = ContextVar(
     "moe_physical_c2_pairreuse",
     default=False,
 )
+_moe_physical_c2_exact_linear: ContextVar[bool] = ContextVar(
+    "moe_physical_c2_exact_linear",
+    default=False,
+)
 
 
 @contextlib.contextmanager
@@ -114,7 +118,26 @@ def moe_physical_c2_pairreuse_enabled() -> bool:
     return bool(_moe_physical_c2_pairreuse.get())
 
 
+@contextlib.contextmanager
+def moe_physical_c2_exact_linear_session(enabled: bool) -> Iterator[None]:
+    """Select the strict row-exact linear owner for one MoE physical C2 target."""
+
+    token = _moe_physical_c2_exact_linear.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _moe_physical_c2_exact_linear.reset(token)
+
+
+def moe_physical_c2_exact_linear_enabled() -> bool:
+    """Return whether packed MoE C2 uses row-exact linear layers."""
+
+    return bool(_moe_physical_c2_exact_linear.get())
+
+
 __all__ = [
+    "moe_physical_c2_exact_linear_enabled",
+    "moe_physical_c2_exact_linear_session",
     "moe_physical_c2_f32_residual_disabled",
     "moe_physical_c2_numerics_session",
     "moe_physical_c2_pairreuse_enabled",

@@ -4,6 +4,7 @@ from copy import deepcopy
 from types import SimpleNamespace
 
 from hipengine.core.specdec2_scope import (
+    moe_physical_c2_exact_linear_enabled,
     moe_physical_c2_f32_residual_disabled,
     moe_physical_c2_pairreuse_enabled,
     q4_t16_physical_extra_rowtiles_enabled,
@@ -33,6 +34,7 @@ def test_physical_target_scope_replays_captured_production_arithmetic() -> None:
     captured = {
         "moe_f32_residual_disabled": True,
         "moe_pairreuse": True,
+        "moe_exact_linear": True,
         "q4_extra_rowtiles": True,
         "q5_rowtile": True,
         "q6_rowtile": True,
@@ -41,12 +43,14 @@ def test_physical_target_scope_replays_captured_production_arithmetic() -> None:
     with _physical_target_scope(captured):
         assert moe_physical_c2_f32_residual_disabled() is True
         assert moe_physical_c2_pairreuse_enabled() is True
+        assert moe_physical_c2_exact_linear_enabled() is True
         assert q4_t16_physical_extra_rowtiles_enabled() is True
         assert q5_t16_physical_rowtile_enabled() is True
         assert q6_t16_physical_rowtile_enabled() is True
 
     assert moe_physical_c2_f32_residual_disabled() is False
     assert moe_physical_c2_pairreuse_enabled() is False
+    assert moe_physical_c2_exact_linear_enabled() is False
     assert q4_t16_physical_extra_rowtiles_enabled() is False
     assert q5_t16_physical_rowtile_enabled() is False
     assert q6_t16_physical_rowtile_enabled() is False
@@ -84,6 +88,7 @@ def test_packed_capture_records_the_real_adapter_scope(monkeypatch) -> None:
             {
                 "moe_f32_residual_disabled": True,
                 "moe_pairreuse": True,
+                "moe_exact_linear": True,
             }
         ):
             Qwen35GGUFResidentSession.verify_target_blocks_batch(session, jobs)
@@ -93,6 +98,7 @@ def test_packed_capture_records_the_real_adapter_scope(monkeypatch) -> None:
     assert context["captures"][0]["physical_scope"] == {
         "moe_f32_residual_disabled": True,
         "moe_pairreuse": True,
+        "moe_exact_linear": True,
         "q4_extra_rowtiles": False,
         "q5_rowtile": False,
         "q6_rowtile": False,

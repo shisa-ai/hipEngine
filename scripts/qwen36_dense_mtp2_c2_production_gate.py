@@ -39,6 +39,8 @@ from hipengine.core.memory import (  # noqa: E402
     host_array_ptr,
 )
 from hipengine.core.specdec2_scope import (  # noqa: E402
+    moe_physical_c2_exact_linear_enabled,
+    moe_physical_c2_exact_linear_session,
     moe_physical_c2_f32_residual_disabled,
     moe_physical_c2_numerics_session,
     moe_physical_c2_pairreuse_enabled,
@@ -90,6 +92,9 @@ def _physical_target_scope(scope: Mapping[str, Any]):
         ),
         moe_physical_c2_pairreuse_session(
             bool(scope.get("moe_pairreuse", False))
+        ),
+        moe_physical_c2_exact_linear_session(
+            bool(scope.get("moe_exact_linear", False))
         ),
         q4_t16_physical_extra_rowtiles_session(
             bool(scope.get("q4_extra_rowtiles", False))
@@ -173,6 +178,7 @@ def _install_packed_capture(context: dict[str, Any]):
         current_scope = {
             "moe_f32_residual_disabled": moe_physical_c2_f32_residual_disabled(),
             "moe_pairreuse": moe_physical_c2_pairreuse_enabled(),
+            "moe_exact_linear": moe_physical_c2_exact_linear_enabled(),
             "q4_extra_rowtiles": q4_t16_physical_extra_rowtiles_enabled(),
             "q5_rowtile": q5_t16_physical_rowtile_enabled(),
             "q6_rowtile": q6_t16_physical_rowtile_enabled(),
