@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare AR and explicitly enabled MTP over the canonical C1-C8 prompt suite."""
+"""Compare AR with explicit or automatic MTP over the canonical C1-C8 suite."""
 
 from __future__ import annotations
 

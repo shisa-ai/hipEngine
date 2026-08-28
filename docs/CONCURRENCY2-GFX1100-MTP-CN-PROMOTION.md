@@ -452,14 +452,14 @@ W7900 / `gfx1100` GPU 0; 17,106,773,984 bytes; SHA-256
 `7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b`. The
 measured host also has an AMD Ryzen 9 5950X and ROCm 7.2.4. The starting
 protocol is BF16 KV, raw greedy, D24, K3, no prompt cache, the ten-prompt suite
-(including four heldouts), and a fresh process per hipEngine run or width. All rows
-below come from `campaign/qwen38-q4-external-bench@95f9ee32c`, artifact
+(including four heldouts), and a fresh process per hipEngine run or width. All
+rows below come from `campaign/qwen38-q4-external-bench@95f9ee32c`, artifact
 `benchmarks/results/2026-08-28-w7900-qwen38-q4km-canonical-rebaseline.json`,
 measured on `origin/main@d199f2778` plus docs-only commits.
 
 | C | Effective route | True AR tok/s | Requested arm tok/s | Ratio | Draft acceptance | Evidence class |
 | ---: | --- | ---: | ---: | ---: | ---: | --- |
-| 1 | strict MTP K3 | 21.958 | 32.153 tok/s | **1.4643x** | 78.89% | retained three-run aggregate; 30/30 strict AR-ID-equal diagnostics |
+| 1 | explicit strict MTP K3 | 21.958 | 32.153 tok/s | **1.4643x** | 78.89% | retained three-run aggregate; 30/30 strict AR-ID-equal diagnostics |
 | 2 | forced physical K3 | 30.712 | 15.777 tok/s | **0.5137x** | 54.80% | one explicit diagnostic run; 10/10 strict AR-ID-equal |
 | 3 | forced physical K3 | 35.732 | 16.425 tok/s | **0.4597x** | 44.28% | one explicit diagnostic run; 10/10 strict AR-ID-equal |
 | 4 | forced physical K3 | 39.303 | 18.826 tok/s | **0.4790x** | 46.59% | one explicit diagnostic run; 10/10 strict AR-ID-equal |
@@ -481,29 +481,35 @@ throughput by C1's ~2.9 visible tokens/cycle. P9 must record actual physical
 cycle counts, actual visible tokens per cycle, and operation-complete marker
 walls before assigning a cost share or break-even budget.
 
-Automatic C1-C8 is 80/80 strict AR-ID-equal and only C1 engages. C2-C8 select
-K0, but the requested-MTP arms at C5-C8 are only **0.8152x / 0.8317x / 0.8562x /
-0.8809x** ordinary AR because they still pay speculative-cap decomposition.
-Those rows are typed K0, not MTP throughput, but the overhead is a product
-non-regression issue and must be removed or explicitly excluded from any
-promotion scope.
+The old C1-C8 harness always ran an `opt_in` server and sent
+`speculative_mtp=true` on its requested arm. Those rows are **explicit opt-in**,
+not automatic serving evidence. The old C5-C8 slowdown therefore measured an
+explicit request partitioned by the speculative route cap, not an automatic K0
+product regression. Commit `230232754` adds a separate automatic mode (auto
+server, request field omitted). On current merged source, actual automatic C2
+and C5 are pure K0 at **1.0040x / 1.0013x** their explicitly disabled AR arms,
+20/20 AR-ID-equal, with stable `automatic_mtp_scope_not_promoted` reasons.
 
-Current mechanism hypotheses, not yet measured causes:
+P7 resolves the opening mechanism hypotheses:
 
-1. **Source/route gap.** The measured base lacks this branch's promoted Qwen3.6
-   output-normalized prompt streaming and production-scoped target owners.
-   Those implementations are transfer candidates only; their correctness,
-   manifests, rates, and policy evidence do not transfer to Qwen3.8.
-2. **Proposal scaling.** Code/trace audit must confirm whether each physical
-   cycle issues C independent K-step draft chains. If so, one R=C proposal step
-   per depth can reduce launch and weight-stream duplication, but its cost will
-   still scale with C and its arithmetic/ownership must be requalified.
-3. **Acceptance/composition.** The measured C>1 acceptance drop may be a
-   correctness or batch-composition problem rather than an economics problem.
-   It blocks optimization until differential proposal/target/state tracing
-   explains it.
-4. **Other cycle owners.** Target projection, accept/commit, host synchronization,
-   graph selection, copies, and provider repair remain unranked until P9.
+1. **Production transfer candidate engages, but is not qualified.** The merged
+   production diagnostic activates prompt streaming and inherited rows6
+   Q4/Q5/Q6 capabilities, improving C2/K3 from **0.5137x to 0.5715x AR
+   (+11.26% relative)**. Acceptance is unchanged at **257/467 = 55.03%**. The
+   gfx1100 profile manifest still names only a generic C1 GDN selection and
+   cites Qwen3.6 evidence; the physical capabilities need independent Qwen3.8
+   profile/numerical evidence before promotion.
+2. **Physical proposal batching already exists.** The shared executor issues one
+   active-row batch forward per draft depth; current C2 telemetry records
+   proposal rows=2, with rows=1 only for ragged tails. Do not implement another
+   generic C*K-to-K batching layer.
+3. **Acceptance/state is the binding pre-profile blocker.** C2 remains 23.86
+   acceptance points below explicit C1 and records three recoverable
+   `physical accept identities do not align` precommit fallbacks. P8 must explain
+   and repair this before performance attribution.
+4. **Other cycle owners remain unranked.** Proposal-head/projection, target,
+   accept/commit, host synchronization, graph selection, copies, and provider
+   repair wait for the correctness-qualified P9 profile.
 
 The independently qualified gfx1151 Qwen3.8 C2/K3 route is a design reference
 only; its rates and evidence do not transfer. See
@@ -530,26 +536,30 @@ and stop rather than weakening the gate.
 
 #### P7 — Source reconciliation, lane freeze, and route audit
 
-- [ ] Fetch, then merge the latest `origin/main` into this branch, resolve
+- [x] Fetch, then merge the latest `origin/main` into this branch, resolve
       semantic conflicts, and record the exact clean merge commit before
       benchmarking. Confirm that both the Qwen3.8 support and this branch's
       Qwen3.6 economics owners remain present.
-- [ ] Freeze model/suite hashes, ROCm/compiler versions, GPU/queue/power state,
+- [x] Freeze model/suite hashes, ROCm/compiler versions, GPU/queue/power state,
       BF16 KV, sampling, prompt-cache state, warmup/process policy, provider
-      composition (including any ngram contribution), strict and candidate
+      composition (ngram disabled, zero lookup calls), strict and candidate
       production manifests, and exact commands.
-- [ ] Before an expensive run, audit registry/fusion/graph resolution for K0 and
-      C1/C2 K1-K3 (R4/R6/R8). Record selected kernel/variant IDs and distinguish
-      reused owners, strict fallbacks, and missing Qwen3.8 shape evidence.
-- [ ] Run focused true-AR, retained C1, explicit physical C2, and typed-K0 smokes
-      to prove the merged source loads and reaches the expected owners. Defer
-      full C3/C4 reruns until P12.
-- [ ] Audit why requested-MTP C5-C8 K0 controls decompose differently from
-      ordinary AR; negative keys must not inherit avoidable speculative grouping
-      overhead.
+- [x] Audit K0 plus strict/production C1/C2 route resolution. Record manifest
+      selections, backend capability owners, strict fallbacks, and missing
+      Qwen3.8 evidence; actual kernel names/durations remain the cached P9 trace.
+- [x] Run focused true-AR, retained explicit C1, explicit physical C2, and
+      automatic typed-K0 smokes. Defer full C3/C4 reruns until after C2.
+- [x] Separate explicit route-cap decomposition from actual automatic serving;
+      prove automatic C2/C5 use ordinary AR without provider mutation or hidden
+      throughput loss.
 
-Exit: one clean-source provenance/route map and focused functional baseline; no
-kernel work or promotion claim from the stale-base C2-C4 rows.
+P7 exits on clean merge `a4c7da9fa` plus harness `230232754`. Explicit strict
+C1/K3/D24 remains exact and engaged at **32.802 vs 21.823 tok/s = 1.5031x AR**.
+Explicit production C2/K3/D24 is physical and exact-ID diagnostic but only
+**17.527 vs 30.668 tok/s = 0.5715x AR**, with 55.03% acceptance and three
+recoverable accept-identity failures. Automatic C2/C5 are pure K0 at parity and
+all allocations drain. Evidence:
+[`P7 route audit`](../benchmarks/results/2026-08-28-w7900-qwen38-q4km-cn-p7-route-audit.json).
 
 #### P8 — Explicit C2 ownership, acceptance, and correctness baseline
 
@@ -618,17 +628,17 @@ records temporary flags in `REFACTOR.md`, and lands as its own validated commit.
 - [ ] Gate success on the local Qwen3.8 cycle budget and same-route sub-window
       improvement, not an absolute Qwen3.6 per-row time.
 
-##### Track B — Batch the draft chain across requests
+##### Track B — Optimize the already-batched proposal family
 
-- [ ] RED: proposal tokens/logits, provider hidden/KV/cursors, masks/positions,
-      RNG, and checkpoints match C independent C1 chains at identical contexts,
-      including ragged K, EOS/stop, inactive rows, cancellation, and refill.
-- [ ] Replace C*K single-row proposal launches, if confirmed by P9, with K
-      batched proposal forwards at draft rows=C while preserving request-major
-      ownership and `KVLiveSpans` semantics. Cost may grow with C; only launch
-      count—not wall—is expected to become independent of C at fixed K.
-- [ ] Pass same-width neighbor isolation plus the separately declared
-      batch-composition contract; retain a rows=1/strict fallback.
+- [x] P7 confirms one active-row proposal batch per shared depth, request-major
+      device candidates, rows=1 ragged tails, and no candidate D2H before target.
+      Generic draft batching is closed as already implemented.
+- [ ] Preserve exact proposal tokens/logits, provider hidden/KV/cursors,
+      masks/positions, RNG, checkpoints, ragged K, EOS/stop, cancellation, and
+      refill while optimizing only a P9-measured proposal leaf.
+- [ ] If full-vocabulary head or another projection dominates, reuse/requalify a
+      genuine rows=C weight-amortized owner behind the registry; retain the
+      current batched executor and rows=1 strict fallback.
 
 ##### Track C — Recover visible yield only after correctness
 
