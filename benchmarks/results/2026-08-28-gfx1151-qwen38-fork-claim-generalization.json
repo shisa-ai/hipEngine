@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_fork_claim_generalization",
+  "created_at": "2026-08-28T00:00:00Z",
+  "status": "external_claim_generalization_tested",
+  "passed": true,
+  "performance_claim": false,
+  "claim_scope": "External llama.cpp speculative configurations executed against our own Qwen3.8-27B Q4_K_M GGUF and our own mixed 10-prompt category suite, to test whether published structured-data claims generalize. All rows are llama.cpp measurements; no hipEngine row is measured or promoted here.",
+  "decision": "Laurent's adaptive-draft headline does NOT generalize: on our target and suite, adaptive n_max 7 reaches 1.556x own AR versus 1.668x for a plain n_max 3, i.e. adaptive loses by 6.7%, and his reported 4.69x over bare decode does not appear (best arm of any kind is 1.668x). The MECHANISM does generalize: fixed n_max 7 collapses acceptance to 38.6% and the adaptive controller restores it to 61.7% (+18.8% throughput over fixed n7). Mainline --spec-draft-n-min is NOT an adaptive controller and reproduces fixed n7 exactly. The transferable finding is unrelated to adaptive: fork n_max 3 posts +18.4% MTP throughput over mainline n_max 3 at identical AR, acceptance and draft counts, which is a pure MTP cycle-cost win worth bisecting.",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "hostname": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "Q4_K_M",
+    "kv": "F16 (llama.cpp default)"
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "categories": {"code": 4, "general_en": 2, "general_ja": 2, "mixed_ja_en": 2},
+    "max_tokens": 128,
+    "max_tokens_rationale": "128 rather than 24 so a depth-7 draft can actually amortize; at 24 tokens prefill dominates the complete wall and the test would be rigged against the deep-draft claims under test",
+    "temperature": 0,
+    "cache_prompt": false,
+    "concurrency": 1,
+    "harness": "scripts/mtp-bench.py --mode server",
+    "surface": "blocking OpenAI /v1/chat/completions complete wall",
+    "fresh_server_per_arm": true
+  },
+  "builds": {
+    "mainline": {
+      "repo": "https://github.com/ggerganov/llama.cpp",
+      "path": "/home/lhl/llama.cpp/llama.cpp-hip",
+      "version": "0.1.0-dev (build 10438, commit 9d57ce456)",
+      "git_dirty": false
+    },
+    "laurent_fork": {
+      "repo": "https://github.com/LaurentZuijdwijk/llama.cpp",
+      "ref": "laurent/master",
+      "commit": "c28d538df",
+      "version": "0.3.0-dev (build 10681, commit c28d538df)",
+      "path": "/home/lhl/llama.cpp/llama.cpp-laurent",
+      "checkout_method": "git worktree off the existing llama.cpp-hip object store",
+      "build": "build-hip.sh, AMDGPU_TARGETS=gfx1151, Release",
+      "diff_vs_mainline": {
+        "common/speculative.cpp": 337,
+        "common/arg.cpp": 49,
+        "common/common.h": 10
+      },
+      "new_flag": "--spec-draft-adaptive: size each draft from measured acceptance rather than always drafting --spec-draft-n-max"
+    }
+  },
+  "arms": [
+    {"build": "mainline", "name": "ar", "flags": "", "agg_tok_s": 11.37, "vs_own_ar": 1.0, "acceptance": null, "draft": 0, "accepted": 0,
+     "per_category_decode": {"code": 12.3, "general_en": 12.3, "general_ja": 12.2, "mixed_ja_en": 10.7}},
+    {"build": "mainline", "name": "mtp_n3", "flags": "--spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.0", "agg_tok_s": 16.02, "vs_own_ar": 1.4090, "acceptance": 0.6341, "draft": 1301, "accepted": 825,
+     "per_category_decode": {"code": 19.2, "general_en": 13.4, "general_ja": 18.4, "mixed_ja_en": 20.2}},
+    {"build": "mainline", "name": "mtp_n7fix", "flags": "--spec-draft-n-max 7 --spec-draft-n-min 7", "agg_tok_s": 14.83, "vs_own_ar": 1.3043, "acceptance": 0.3843, "draft": 2376, "accepted": 913,
+     "per_category_decode": {"code": 17.7, "general_en": 13.0, "general_ja": 13.7, "mixed_ja_en": 19.8}},
+    {"build": "mainline", "name": "mtp_n7_nmin3", "flags": "--spec-draft-n-max 7 --spec-draft-n-min 3", "agg_tok_s": 14.79, "vs_own_ar": 1.3008, "acceptance": 0.3829, "draft": 2382, "accepted": 912,
+     "per_category_decode": {"code": 17.5, "general_en": 12.9, "general_ja": 13.7, "mixed_ja_en": 19.7},
+     "note": "statistically identical to fixed n7: mainline n_min is not an adaptive controller"},
+    {"build": "mainline", "name": "mtp_ngram", "flags": "--spec-type draft-mtp,ngram-mod --spec-draft-n-max 12 --spec-ngram-mod-n-min 24", "agg_tok_s": 16.26, "vs_own_ar": 1.4301, "acceptance": 0.2387, "draft": 3917, "accepted": 935,
+     "per_category_decode": {"code": 20.1, "general_en": 13.1, "general_ja": 14.6, "mixed_ja_en": 25.0},
+     "note": "KyaniteLabs stack; best aggregate and best mixed_ja_en but only 1.07x on general_en and 23.87% acceptance. Repetition exploit, consistent with their own doc and our T4.1 rejection."},
+    {"build": "laurent_fork", "name": "fork_ar", "flags": "", "agg_tok_s": 11.35, "vs_own_ar": 1.0, "acceptance": null, "draft": 0, "accepted": 0},
+    {"build": "laurent_fork", "name": "fork_n3", "flags": "--spec-type draft-mtp --spec-draft-n-max 3", "agg_tok_s": 18.93, "vs_own_ar": 1.6679, "acceptance": 0.6386, "draft": 1295, "accepted": 827,
+     "per_category_decode": {"code": 22.0, "general_en": 18.0, "general_ja": 18.8, "mixed_ja_en": 23.2},
+     "note": "+18.4% over mainline n3 at identical AR, acceptance and draft count: pure MTP cycle-cost win"},
+    {"build": "laurent_fork", "name": "fork_n7fix", "flags": "--spec-draft-n-max 7", "agg_tok_s": 14.87, "vs_own_ar": 1.3101, "acceptance": 0.3858, "draft": 2369, "accepted": 914,
+     "per_category_decode": {"code": 17.6, "general_en": 13.3, "general_ja": 13.7, "mixed_ja_en": 19.6}},
+    {"build": "laurent_fork", "name": "fork_n7_adaptive", "flags": "--spec-draft-n-max 7 --spec-draft-adaptive", "agg_tok_s": 17.66, "vs_own_ar": 1.5559, "acceptance": 0.6170, "draft": 1410, "accepted": 870,
+     "per_category_decode": {"code": 20.7, "general_en": 16.8, "general_ja": 17.0, "mixed_ja_en": 21.8},
+     "note": "HEADLINE ARM. Recovers +18.8% over fixed n7 but loses 6.7% to plain n_max 3."},
+    {"build": "laurent_fork", "name": "fork_n12_adaptive", "flags": "--spec-draft-n-max 12 --spec-draft-adaptive", "agg_tok_s": 17.62, "vs_own_ar": 1.5524, "acceptance": 0.6016, "draft": 1461, "accepted": 879,
+     "per_category_decode": {"code": 19.8, "general_en": 17.4, "general_ja": 18.6, "mixed_ja_en": 21.5}}
+  ],
+  "claim_verdicts": [
+    {"claim": "LaurentZuijdwijk adaptive n_max 7 = 65.6 t/s, 4.69x bare decode, beats fixed n=3 by 58%", "verdict": "DOES NOT GENERALIZE", "measured": "adaptive 1.556x vs plain n_max 3 at 1.668x; adaptive loses 6.7%. Best arm of any kind is 1.668x, not 4.69x.", "why": "published figure is FP4 plus 300-token structured output; on Q4_K_M with a mixed code/EN/JA suite depth is not the binding constraint"},
+    {"claim": "LaurentZuijdwijk mechanism: fixed deep draft collapses acceptance, acceptance-sized drafts fix it", "verdict": "GENERALIZES", "measured": "fixed n7 acceptance 38.6% on both builds; adaptive holds 61.7% and recovers +18.8% over fixed n7"},
+    {"claim": "mainline --spec-draft-n-min provides adaptive behavior", "verdict": "FALSE", "measured": "n_max 7 n_min 3 = 14.79 tok/s / 38.29% vs fixed n7 14.83 / 38.43%: identical"},
+    {"claim": "KyaniteLabs ngram-mod stacking is a free second provider", "verdict": "REPETITION EXPLOIT", "measured": "best aggregate 16.26 and best mixed_ja_en 25.0, but 1.07x on general_en and 23.87% acceptance drafting 3917 to accept 935"},
+    {"claim": "julianmb ROCmFP4 34.82 t/s", "verdict": "NOT TESTABLE ON THIS FILE", "why": "claim is on a ROCmFP4_FAST 13.55 GiB artifact, a different model file that cannot be derived from our Q4_K_M GGUF"}
+  ],
+  "commands": [
+    "git worktree add /home/lhl/llama.cpp/llama.cpp-laurent laurent/master --detach",
+    "REPO_DIR=/home/lhl/llama.cpp/llama.cpp-laurent BUILD_DIR=.../build AMDGPU_TARGETS=gfx1151 bash ./build-hip.sh",
+    "llama-server -m Qwen3.8-27B-Q4_K_M.gguf -ngl 999 -fa on -b 2048 -ub 512 --no-mmap -c 4096 --alias llama <arm flags>",
+    "PYTHONPATH=. python3 scripts/mtp-bench.py --mode server --url http://127.0.0.1:8080 --model llama --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 128 --temperature 0 --no-cache-prompt --out <arm>.json"
+  ],
+  "limitations": [
+    "Single run per arm, no repeats; no stdev reported.",
+    "Mainline is b10438 and the fork is b10681, so the fork-vs-mainline delta confounds Laurent's 337-line change with upstream movement between those builds. Bisecting b10438..b10681 is required to attribute it. AR is controlled (11.35 vs 11.37) so the delta is specific to the MTP path, not a general speedup.",
+    "No hipEngine arm was run at max_tokens=128, so these llama.cpp rows must NOT be compared against the hipEngine max_tokens=24 rows in section 3.1; timing boundaries differ materially.",
+    "C1 only; no concurrency sweep.",
+    "llama.cpp KV is F16 throughout; hipEngine uses BF16.",
+    "julianmb and KyaniteLabs distributions were not built; their transferable flags were exercised on mainline where mainline supports them."
+  ],
+  "next": "Bisect llama.cpp b10438..b10681 with the fork_n3 arm to isolate the +18.4% MTP cycle-cost win, then diff the responsible change against the hipEngine speculative cycle. Separately, run a hipEngine max_tokens=128 arm so section 3.1 and section 6.3 share a timing boundary."
+}

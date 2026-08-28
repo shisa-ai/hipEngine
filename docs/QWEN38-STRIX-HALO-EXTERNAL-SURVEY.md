@@ -262,6 +262,83 @@ this doc wrongly treated it as if it were:
 Compare cycle efficiency only at matched K, matched target file, and matched
 timing boundary. In practice that means §3.1, not §6.1.
 
+### 6.3 The "spectacular claim" configurations, run on our GGUF
+
+Every headline configuration in §7 was executed against **our** Qwen3.8-27B
+`Q4_K_M` and **our** mixed 10-prompt suite, `max_tokens=128` (not 24 — at 24
+tokens prefill dominates and a depth-7 draft can never show its value, which
+would rig the test against the deep-draft claims), `temperature=0`,
+`--no-cache-prompt`, fresh server per arm.
+
+`LaurentZuijdwijk/llama.cpp` was built from source at the pinned commit
+**`c28d538df`** (build 10681) as a git worktree off our existing checkout. Its
+`common/speculative.cpp` differs from mainline by **337 lines** and it adds a
+real flag mainline does not have, `--spec-draft-adaptive` — *"size each draft
+from measured acceptance rather than always drafting `--spec-draft-n-max`"*.
+Mainline b10438 is the comparison build.
+
+| Build / arm | agg tok/s | vs own AR | Acceptance | Drafts | Accepted |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| mainline AR | 11.37 | 1.000x | — | 0 | 0 |
+| mainline `n_max 3` | 16.02 | 1.409x | 63.41% | 1301 | 825 |
+| mainline `n_max 7` fixed | 14.83 | 1.304x | 38.43% | 2376 | 913 |
+| mainline `n_max 7 n_min 3` | 14.79 | 1.301x | 38.29% | 2382 | 912 |
+| mainline `draft-mtp,ngram-mod n12` | 16.26 | 1.430x | 23.87% | 3917 | 935 |
+| **fork AR** | **11.35** | 1.000x | — | 0 | 0 |
+| **fork `n_max 3`** | **18.93** | **1.668x** | 63.86% | 1295 | 827 |
+| fork `n_max 7` fixed | 14.87 | 1.310x | 38.58% | 2369 | 914 |
+| **fork `n_max 7` + adaptive** | 17.66 | 1.556x | 61.70% | 1410 | 870 |
+| fork `n_max 12` + adaptive | 17.62 | 1.553x | 60.16% | 1461 | 879 |
+
+Four results, in descending order of importance:
+
+1. **The headline claim does not generalize.** Laurent reports adaptive
+   `n_max 7` at 65.6 t/s versus fixed `n=3` at 41.6 — a +58% win for adaptive.
+   On our model and suite **adaptive loses to plain `n_max 3` by 6.7%**
+   (17.66 vs 18.93), and `n_max 12` adaptive is no better. His 4.69x over bare
+   decode does not appear at all: our best configuration of any kind is
+   **1.668x**. The published numbers are FP4 plus 300-token *structured*
+   output; on a Q4_K_M target and a mixed code/EN/JA suite the best policy is
+   simply a shallow draft.
+2. **The mechanism does generalize, and is real.** Fixed `n_max 7` collapses
+   acceptance to 38.6% on both builds; the adaptive controller holds it at
+   61.7% and recovers throughput 14.87 -> 17.66 (+18.8%). Laurent's diagnosis —
+   that a fixed deep draft destroys acceptance and acceptance-sized drafts fix
+   it — reproduces exactly. It simply never overtakes a shallow fixed draft
+   here, because on this target depth was never the binding constraint.
+3. **Mainline's `--spec-draft-n-min` is not an adaptive controller.**
+   `n_max 7 n_min 3` (14.79, 38.29%) is statistically identical to fixed
+   `n_max 7` (14.83, 38.43%). Anyone reading mainline's `n_min` as Laurent's
+   mechanism is measuring nothing. This is why the fork had to be built.
+4. **The genuinely transferable finding is unrelated to adaptive.** Fork
+   `n_max 3` reaches **1.668x** where mainline `n_max 3` reaches **1.409x** —
+   **+18.4% MTP throughput at identical AR (11.35 vs 11.37) and identical
+   acceptance (63.86% vs 63.41%) and identical draft counts.** Same tokens,
+   same acceptance, ~18% less wall: that is a pure MTP **cycle-cost** win
+   somewhere in the fork's 337 changed lines or in upstream between b10438 and
+   b10681. This is the one thing in the entire external survey worth reading
+   the diff for, and §8 promotes it.
+
+The KyaniteLabs ngram-mod stack behaves exactly as their own document admits.
+It posts the best mainline aggregate (16.26) and the best single category
+(`mixed_ja_en` 25.0 decode) but drafts **3917 tokens to accept 935** — a 23.87%
+acceptance — and is worth only 1.07x on `general_en`. It is a repetition
+exploit: excellent where the output echoes the prompt, near-worthless
+otherwise. Our T4.1 rejection stands.
+
+Per-category decode rates make the content dependence concrete
+(AR: code 12.3, general_en 12.3, general_ja 12.2, mixed_ja_en 10.7):
+
+| Arm | code | general_en | general_ja | mixed_ja_en |
+| --- | ---: | ---: | ---: | ---: |
+| fork `n_max 3` | 22.0 | 18.0 | 18.8 | 23.2 |
+| fork `n_max 7` adaptive | 20.7 | 16.8 | 17.0 | 21.8 |
+| mainline `n_max 3` | 19.2 | 13.4 | 18.4 | 20.2 |
+| mainline mtp+ngram | 20.1 | 13.1 | 14.6 | **25.0** |
+
+Even the best arm spans 1.46x (`general_en`) to 2.17x (`mixed_ja_en`) over AR.
+No single-number claim survives that spread.
+
 Two internal consistency checks: our `Q4_K_S` and `Q4_K_M` direct paths land at
 53.2% and 53.9% independently, so ~54% is a stable property of our direct
 route; and serving costs a further 6.5 points (54% -> 47%), matching the
@@ -338,6 +415,18 @@ above, never on raw tok/s.
    Our controller was never able to test that regime.
 4. **Target the c3 crossover.** llama.cpp holds MTP > AR through c3; the
    post-fix hipEngine c2/K3 is 0.92x. c2 then c3 are the ordered milestones.
+5. **Read the `c28d538df` MTP cycle diff — highest-value external item.**
+   §6.3 measures +18.4% MTP throughput at identical AR, identical acceptance,
+   and identical draft counts versus mainline b10438. That is a pure cycle-cost
+   win in a path we have just established we are at parity with (§3.1), so
+   whatever it is likely transfers to us directly. Bisect b10438..b10681 first
+   to separate Laurent's 337-line `common/speculative.cpp` change from upstream
+   movement, then diff the winning commit against our cycle.
+6. **Do not implement adaptive draft depth.** §6.3 measures it losing to a
+   plain shallow draft by 6.7% on our target and suite. This independently
+   re-confirms the T3.1 rejection on a second engine, and it means the "reopen
+   T3 after the rowtile work" item in §8.3 should be re-scoped: the reason to
+   reopen would be C>1 frontier economics, not draft depth at C1.
 
 ## 9. Open measurement gap
 
