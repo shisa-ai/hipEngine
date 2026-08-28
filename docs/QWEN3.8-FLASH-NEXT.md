@@ -793,8 +793,11 @@ production envelope. The binding 687-row teacher-forced packet rejects the
 same profile more strongly: mean/p95/p99/max KL
 `0.01280/0.05553/0.12148/0.82237`, top-1 `94.47%`, and every category below its
 97% top-1 floor. Warm eager
-decode baseline was `5.74 tok/s`; an exact Q5_1 wave-tail reduction raises the
-strict path to `5.89 tok/s` while cutting its bucket 15.4%. A Q5_1 wave64 decode candidate reaches
+decode baseline was `5.74 tok/s`; an exact Q5_1 wave-tail reduction first raised
+the strict path to `5.89 tok/s`. The subsequent exact raw-Q8 F32 output-pack8
+owner cuts its traced Q8 bucket `2.620→1.171 s` and a counterbalanced complete-
+model decode median `5.698→6.305 tok/s` (+10.66%), with identical 32-token IDs
+and no new layout. A Q5_1 wave64 decode candidate reaches
 `6.10-6.22 tok/s` but is rejected at production mean/p95 KL
 `0.002565/0.007202`. Exact evidence and rejected sub-experiments are in
 [`2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-prefill-grouped-candidate.json),

@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-28 gfx1151 Qwen3.8-Flash-Next exact Q8 F32 decode pack8] Registered output-pack reuse cuts raw-Q8 trace **2.620→1.171 s (-55.31%)**, total kernels **6.046→4.322 s (-28.50%)**, and counterbalanced complete-model decode **5.698→6.305 tok/s (+10.66%)** with F32-bit-exact primitive output, identical 32-token IDs, zero new residency, and scalar fallback. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q8-f32-pack8-decode.json`.
+
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next matched llama.cpp gap] Same-host/same-`UD-Q4_K_XL` PR #27742 Vulkan/HIP measure pp508 **316.380/274.996**, pp1006 **290.450/284.485**, tg32 **18.716/15.848 tok/s**, versus retained hipEngine **58.466/55.046/5.890**. Vulkan is **5.41x/5.28x/3.18x** faster; Q4 parity is now the binding priority. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json`.
 
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next working-scope closure] Declared gfx1151 `UD-Q4_K_XL` scope closes with text/QSA/current natural 16K, exact prefill >50 tok/s, opt-in exact MTP, <=1K image/video + bounded PNG chat, request-owned c2, and zero teardown. Current 64K, 128K+/262K inference, remote/SSE multimodal, packed c2 speed, gfx1100, and Q5 remain explicit follow-ups. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-working-scope-closure.json`.

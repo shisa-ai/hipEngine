@@ -5640,17 +5640,17 @@ def _pack8_decode_dispatch(
         and rows == 1
         and out_features % 8 == 0
         and dispatch.key.quant in {"gguf_q8_0", "gguf_q5_k", "gguf_q6_k"}
-        and dispatch.key.variant in {"gemv_bf16_bf16_out", "gemv_bf16_f32_out"}
+        and dispatch.key.variant
+        in {"gemv_bf16_bf16_out", "gemv_bf16_f32_out", "gemv_f32_f32_out"}
     ):
-        return GGUFLinearDispatch(
-            KernelKey(
-                dispatch.key.backend,
-                dispatch.key.layer,
-                dispatch.key.quant,
-                f"pack8_{dispatch.key.variant}",
-            ),
-            dispatch.abi,
+        candidate = KernelKey(
+            dispatch.key.backend,
+            dispatch.key.layer,
+            dispatch.key.quant,
+            f"pack8_{dispatch.key.variant}",
         )
+        if is_registered(candidate):
+            return GGUFLinearDispatch(candidate, dispatch.abi)
     return dispatch
 
 
