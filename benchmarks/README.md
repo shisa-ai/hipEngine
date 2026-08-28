@@ -222,7 +222,7 @@ remains blocked at c32: **10.590 tok/s**, **18.617 s TTFT p95**, **2.125 s ITL
 p99**, **24.171 s E2E p95**, and **0/3 SLO runs**; C2 64K and heavy-load SLOs
 also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen38-concurrency2-campaign-final.json).
 
-## Qwen3.8-Flash-Next text bring-up (correctness-only; no speed claim)
+## Qwen3.8-Flash-Next implementation-first status
 
 On physical host `zbook` (Ryzen AI Max+ Pro 395 / Radeon 8060S, `gfx1151`),
 the pinned four-part Unsloth `UD-Q4_K_XL` artifact now runs through public
@@ -283,12 +283,17 @@ strict reduction tree and exact final logits/control/IDs. Exact output4
 scheduling then cuts full-shape CTAs **327,680→81,920** and paired natural 4K
 **235.774→228.569 s (-3.06%)**. Exact Q5_1-down output8 scheduling then
 cuts full-shape CTAs **1,310,720→163,840** and paired natural 4K
-**237.131→222.228 s (-6.28%)**. Natural 16K now
+**237.131→222.228 s (-6.28%)**. Exact raw-Q8 FP32 coltile4/rowbatch8 now
+improves natural p508 **26.264→14.718 s (34.517 tok/s, 1.785x)** and p1012
+**56.550→29.622 s (34.164 tok/s, 1.909x)** with bit-exact logits. Natural 16K now
 passes at **17.301 prompt tok/s** with retrieval, all-layer needle control,
 independent CPU index selection, replay/rollback, and teardown exact. Natural
 64K likewise passes at **17.099 prompt tok/s** with the same gates. Natural retrieval above 4K,
 strict-above-4K, 262K inference, and broader lifecycle gates remain open, so
-this is not a broad long-context, speed, serving/c>N, MTP, or vision claim.
+the implementation-first 512/1K gate now includes explicit MTP, blocking/SSE,
+chat/tool/reasoning, c2 isolation, and one bounded 32×32 image path. MTP is
+slower than AR under serial verification and general multimodal/long-context
+scope remains open; no broader claim is made.
 [`Bring-up artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json) ·
 [`Exact prefill promotion`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-prefill-promotion.json) ·
 [`Heldout artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json) ·
@@ -303,6 +308,9 @@ this is not a broad long-context, speed, serving/c>N, MTP, or vision claim.
 [`Exact grouped Q4_K`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-gate-up.json) ·
 [`Exact grouped Q4_K output4`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q4-out4.json) ·
 [`Exact grouped Q5_1 output8`](results/2026-08-27-gfx1151-qwen38-flash-next-exact-grouped-q5-1-out8.json) ·
+[`Exact Q8 coltile prefill`](results/2026-08-28-gfx1151-qwen38-flash-next-exact-q8-coltile-prefill.json) ·
+[`Basic MTP 512`](results/2026-08-28-gfx1151-qwen38-flash-next-mtp-natural-512.json) ·
+[`Basic vision`](results/2026-08-28-gfx1151-qwen38-flash-next-basic-vision.json) ·
 [`Natural QSA 16K`](results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-16k.json) ·
 [`Natural QSA 64K`](results/2026-08-27-gfx1151-qwen38-flash-next-natural-qsa-64k.json) ·
 [`16K chunk artifact`](results/2026-08-27-gfx1151-qwen38-flash-next-qsa-16k.json) ·
