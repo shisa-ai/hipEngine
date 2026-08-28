@@ -7296,17 +7296,16 @@ class Qwen35GGUFFullStackRunner:
         cfg = self.weights.config
         qkv_row_nbytes = self.linear_qkv_width * DType.BF16.itemsize
         gate_row_nbytes = cfg.ssm_inner_size * DType.BF16.itemsize
-        for row in range(rows):
-            gguf_rmsnorm_bf16_f32_weight(
-                hidden_ptr + row * hidden_row_nbytes,
-                layer.weight("attn_norm").allocation().tensor.ptr,
-                scratch.norm.ptr + row * hidden_row_nbytes,
-                rows=1,
-                hidden_size=self.hidden_size,
-                eps=cfg.rms_norm_eps,
-                stream=stream,
-                runtime=runtime,
-            )
+        gguf_rmsnorm_bf16_f32_weight(
+            hidden_ptr,
+            layer.weight("attn_norm").allocation().tensor.ptr,
+            scratch.norm.ptr,
+            rows=rows,
+            hidden_size=self.hidden_size,
+            eps=cfg.rms_norm_eps,
+            stream=stream,
+            runtime=runtime,
+        )
         gguf_q8_0_t16_dual_gemv_decode_rowtile4_bf16_bf16_out(
             scratch.norm.ptr,
             layer.weight("attn_qkv").allocation("tiles").tensor.ptr,
