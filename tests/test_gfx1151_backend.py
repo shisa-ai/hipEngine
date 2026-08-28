@@ -560,12 +560,12 @@ def test_gfx1151_backend_admits_dense_q6_qmicro_planar_exact_routes() -> None:
 
 def test_gfx1151_target_verifier_admits_scoped_rowtile_rows_and_shapes() -> None:
     assert GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT == {
-        "gguf_q5_k_t16_v1": frozenset({12}),
-        "gguf_q6_k_t16_v1": frozenset({12}),
-        "gguf_q6_k_t16_qmicro_planar_v1": frozenset({12}),
+        "gguf_q5_k_t16_v1": frozenset({9, 12}),
+        "gguf_q6_k_t16_v1": frozenset({9, 12}),
+        "gguf_q6_k_t16_qmicro_planar_v1": frozenset({9, 12}),
     }
     assert GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS == frozenset(
-        {8, 12}
+        {6, 8, 9, 12}
     )
     assert GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES == frozenset(
         {

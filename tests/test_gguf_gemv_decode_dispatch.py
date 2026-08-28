@@ -408,7 +408,7 @@ def test_target_verifier_chunks_only_admitted_q6_r12_to_r8_plus_r4(
         if name == "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT":
             return {"gguf_q6_k_t16_v1": 8}
         if name == "GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT":
-            return {"gguf_q6_k_t16_v1": frozenset({12})}
+            return {"gguf_q6_k_t16_v1": frozenset({9, 12})}
         return original_capability(backend, name, default)
 
     monkeypatch.setattr(gguf_linear, "backend_package_capability", capability)
@@ -466,6 +466,18 @@ def test_target_verifier_chunks_only_admitted_q6_r12_to_r8_plus_r4(
                 )
                 launch_gguf_linear(
                     weight,
+                    x_ptr=700,
+                    out_ptr=800,
+                    rows=9,
+                    in_features=5_120,
+                    out_features=10_240,
+                    backend="hip_gfx1100",
+                    stream=7,
+                    runtime="runtime-sentinel",
+                    use_wmma_prefill=False,
+                )
+                launch_gguf_linear(
+                    weight,
                     x_ptr=300,
                     out_ptr=400,
                     rows=16,
@@ -494,6 +506,18 @@ def test_target_verifier_chunks_only_admitted_q6_r12_to_r8_plus_r4(
                 14,
                 200 + 8 * 10_240 * 2,
                 4,
+                5_120,
+                10_240,
+            ),
+        ),
+        (_Q6_T16_ROWTILE, (700, 14, 800, 7, 5_120, 10_240)),
+        (
+            _Q6_T16_ROWTILE,
+            (
+                700 + 7 * 5_120 * 2,
+                14,
+                800 + 7 * 10_240 * 2,
+                2,
                 5_120,
                 10_240,
             ),

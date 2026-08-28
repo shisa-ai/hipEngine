@@ -54,7 +54,6 @@ KIND = "qwen38_production_q4_verifier_numerics"
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 DEFAULT_PROMPTS = ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
 VERIFY_CAPTURE_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
-ROWS_PER_JOB = 4
 
 
 class GateError(RuntimeError):
@@ -197,17 +196,19 @@ def _capture_verifier_group(
     token_rows: Sequence[Sequence[int]],
     teacher_tokens: Sequence[Sequence[int]],
     decode_steps: int,
+    *,
+    rows_per_job: int,
 ) -> tuple[tuple[dict[str, object], ...], ...]:
     _prefill(sessions, token_rows)
     trajectories: list[list[dict[str, object]]] = [[] for _ in sessions]
-    for step in range(0, int(decode_steps), ROWS_PER_JOB):
+    for step in range(0, int(decode_steps), int(rows_per_job)):
         jobs = [
             {
                 "session": sessions[index],
                 "input_token_ids": tuple(
                     int(token)
                     for token in teacher_tokens[index][
-                        step : step + ROWS_PER_JOB
+                        step : step + int(rows_per_job)
                     ]
                 ),
                 "bulk_attention_mode": "bulk",
@@ -217,7 +218,7 @@ def _capture_verifier_group(
         ]
         positions_before = [int(session.position) for session in sessions]
         results = sessions[0].verify_target_blocks_batch(jobs)
-        physical_rows = len(sessions) * ROWS_PER_JOB
+        physical_rows = len(sessions) * int(rows_per_job)
         logits = _read_packed_logits(sessions[0], physical_rows)
         for request_index in range(len(sessions)):
             result = results[request_index]
@@ -226,11 +227,11 @@ def _capture_verifier_group(
                 int(result.start_position) != positions_before[request_index]
                 or tuple(result.input_token_ids) != expected_inputs
                 or int(sessions[request_index].position)
-                != positions_before[request_index] + ROWS_PER_JOB
+                != positions_before[request_index] + int(rows_per_job)
             ):
                 raise GateError("packed verifier request/position control drifted")
-            row_base = request_index * ROWS_PER_JOB
-            for row in range(ROWS_PER_JOB):
+            row_base = request_index * int(rows_per_job)
+            for row in range(int(rows_per_job)):
                 trajectories[request_index].append(
                     {
                         "token_id": int(result.token_ids[row]),
@@ -275,8 +276,11 @@ def _trajectory_sha256(rows: Sequence[Mapping[str, object]]) -> str:
 def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object]:
     if not args.model.is_file():
         raise GateError(f"model does not exist: {args.model}")
-    if int(args.decode_steps) <= 0 or int(args.decode_steps) % ROWS_PER_JOB:
-        raise GateError("decode steps must be a positive multiple of four")
+    rows_per_job = int(args.candidate_budget) + 1
+    if int(args.decode_steps) <= 0 or int(args.decode_steps) % rows_per_job:
+        raise GateError(
+            "decode steps must be a positive multiple of candidate budget + one"
+        )
     if int(args.repeat_runs) < 3:
         raise GateError("candidate gate requires at least three repeats")
 
@@ -301,7 +305,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
     max_sequence_length = (
         max(len(tokens) for tokens in prompt_tokens.values())
         + int(args.decode_steps)
-        + ROWS_PER_JOB
+        + rows_per_job
         + 4
     )
     memory_before = memory_stats()
@@ -323,7 +327,11 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
                 sessions, token_rows, int(args.decode_steps)
             )
             capture = _capture_verifier_group(
-                sessions, token_rows, teacher_group, int(args.decode_steps)
+                sessions,
+                token_rows,
+                teacher_group,
+                int(args.decode_steps),
+                rows_per_job=rows_per_job,
             )
             for index, row in enumerate(group_rows[:valid_rows]):
                 request_id = str(row["id"])
@@ -359,6 +367,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
                     token_rows,
                     teacher_group,
                     int(args.decode_steps),
+                    rows_per_job=rows_per_job,
                 )
                 for index, row in enumerate(group_rows[:valid_rows]):
                     candidate[str(row["id"])].append(capture[index])
@@ -370,8 +379,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
         stack.close()
 
     shape_label = (
-        f"c{int(args.concurrency)}_k3_"
-        f"r{int(args.concurrency) * ROWS_PER_JOB}"
+        f"c{int(args.concurrency)}_k{int(args.candidate_budget)}_"
+        f"r{int(args.concurrency) * rows_per_job}"
     )
     captures = tuple(
         BatchRouteCapture(
@@ -448,9 +457,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
             "arithmetic_class": "T1+T2",
             "strict": "FP32 state + strict small-M/shared-B Q4 WMMA",
             "production": (
-                "FP16 state + scoped R8 Q4 rowtiles"
-                if int(args.concurrency) == 2
-                else "FP16 state + scoped R12 -> R8+R4 Q4/Q5/Q6 rowtiles"
+                "FP16 state + shape-scoped Q4/Q5/Q6 verifier rowtiles at "
+                f"physical R{int(args.concurrency) * rows_per_job}"
             ),
             "strict_fallbacks": [
                 "linear/gguf_q4_k_t16_v1/t16_wmma_prefill_smallm_bf16_bf16_out",
@@ -470,6 +478,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
             "teacher_rows": len(prompt_rows) * int(args.decode_steps),
             "repeat_runs": int(args.repeat_runs),
             "concurrency": int(args.concurrency),
+            "candidate_budget": int(args.candidate_budget),
+            "rows_per_job": rows_per_job,
             "physical_shape": shape_label.upper(),
             "teacher_source": "strict fixed-schedule trajectory",
         },
@@ -517,6 +527,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", default="hip_gfx1151")
     parser.add_argument("--concurrency", type=int, choices=(2, 3), default=2)
+    parser.add_argument("--candidate-budget", type=int, choices=(1, 2, 3), default=3)
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--decode-steps", type=int, default=24)
