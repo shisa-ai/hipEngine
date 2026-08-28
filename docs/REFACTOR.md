@@ -70,7 +70,9 @@ should be removed or collapsed.
 
 - `HIPENGINE_QWEN4_EXP_EXACT_CONV_PREFILL` and
   `HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN` default on for the promoted exact
-  chunk64 path. Remove both flags and the old bulk-Conv/direct-down alternatives
+  chunked path. Public runner/generator chunk ownership is now 256 after exact
+  64/128/256/512 screening; constructors retain 64 as rollback. Remove both
+  flags, the old bulk-Conv/direct-down alternatives, and losing chunk policy
   after public serving, rollback, cancellation, and long-context repeatability
   gates stabilize; keep `prefill_serial()` as the registered strict fallback.
 

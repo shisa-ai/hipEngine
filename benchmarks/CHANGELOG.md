@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-28 gfx1151 Qwen3.8-Flash-Next exact Q4 metadata + chunk256] Exact Q4_K LDS metadata reuse and public chunk256 cross the 16K prerequisite: p508 **51.220 tok/s first / 58.466 steady**, p1006 **22.986→18.276 s (-20.49%, 55.046 tok/s)**, all full logits bit-exact; cache-only p512 profile records 8.841 s kernel wall. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json`.
+
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next all-Q4 exact grouping] Extending exact grouped Q4 gate/up to four Q8_0-down layers removes 64 direct launches and improves paired p508 **12.021→11.189 s (-6.92%, 45.404 tok/s)** with bit-exact logits. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-all-q4-grouped.json`.
 
 - [2026-08-28 gfx1151 Qwen3.8-Flash-Next exact scheduling wave] Exact fixed-worker Q4/Q5 plus Q8 coltile8/rowbatch4 reduce natural p508 **14.718→11.988 s (-18.55%, 42.376 tok/s)** and paired p1012 **31.346→24.432 s (-22.06%, 41.422 tok/s)** with bit-exact logits; cached kernel wall falls **14.230→11.692 s (-17.84%)**. `benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-scheduling-wave.json`.

@@ -139,24 +139,21 @@ struct q4_k_weight_pair {
 __device__ inline q4_k_weight_pair gguf_q4_k_weight_pair128(
     const uint8_t* __restrict__ row,
     int64_t block_index,
-    int lane128) {
+    int lane128,
+    const float* __restrict__ d_scales,
+    const float* __restrict__ dmin_mins) {
   const int subblock = lane128 >> 5;
   const int lane = lane128 & 31;
-  const uint8_t* block = row + block_index * Q4_K_BLOCK_BYTES;
-  const float d = fp16_bytes_to_float(block);
-  const float dmin = fp16_bytes_to_float(block + 2);
-  const uint8_t* scales = block + 4;
-  const uint8_t* qs = block + Q4_K_QS_OFFSET;
+  const uint8_t* qs = row + block_index * Q4_K_BLOCK_BYTES + Q4_K_QS_OFFSET;
   const int paired_subblock = subblock + 4;
   const uint8_t q0 = gguf_q4_k_quant(qs, subblock, lane);
   const uint8_t q1 = gguf_q4_k_quant(qs, paired_subblock, lane);
+  const int meta_base = static_cast<int>(block_index) * Q4_K_SUBBLOCKS;
   return {
-      d * static_cast<float>(gguf_q4_k_scale(scales, subblock))
-          * static_cast<float>(q0)
-          - dmin * static_cast<float>(gguf_q4_k_min(scales, subblock)),
-      d * static_cast<float>(gguf_q4_k_scale(scales, paired_subblock))
-          * static_cast<float>(q1)
-          - dmin * static_cast<float>(gguf_q4_k_min(scales, paired_subblock)),
+      d_scales[meta_base + subblock] * static_cast<float>(q0)
+          - dmin_mins[meta_base + subblock],
+      d_scales[meta_base + paired_subblock] * static_cast<float>(q1)
+          - dmin_mins[meta_base + paired_subblock],
   };
 }
 
@@ -194,6 +191,13 @@ void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
     int64_t in_features,
     int64_t out_features) {
   __shared__ float wave_sums[8];
+  constexpr int MAX_Q4_BLOCKS = 16;
+  __shared__ float d_scales_a[MAX_Q4_BLOCKS * Q4_K_SUBBLOCKS];
+  __shared__ float dmin_mins_a[MAX_Q4_BLOCKS * Q4_K_SUBBLOCKS];
+  __shared__ float d_scales_b[MAX_Q4_BLOCKS * Q4_K_SUBBLOCKS];
+  __shared__ float dmin_mins_b[MAX_Q4_BLOCKS * Q4_K_SUBBLOCKS];
+  const int64_t q4_blocks = in_features / QK_K;
+  if (q4_blocks > MAX_Q4_BLOCKS) return;
   const int64_t out_base = blockIdx.x * OUT_BATCH;
   if (out_base >= out_features) return;
   const int64_t row_bytes = (in_features / QK_K) * Q4_K_BLOCK_BYTES;
@@ -211,6 +215,29 @@ void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
       if (out >= out_features) break;
       const uint8_t* weight_a = qweight_a + expert * expert_bytes + out * row_bytes;
       const uint8_t* weight_b = qweight_b + expert * expert_bytes + out * row_bytes;
+      if (PAIR_BLOCK_WEIGHTS) {
+        const int64_t metadata_count = q4_blocks * Q4_K_SUBBLOCKS;
+        for (int64_t metadata = threadIdx.x; metadata < metadata_count;
+             metadata += blockDim.x) {
+          const int64_t block_index = metadata / Q4_K_SUBBLOCKS;
+          const int subblock = static_cast<int>(metadata % Q4_K_SUBBLOCKS);
+          const uint8_t* block_a = weight_a + block_index * Q4_K_BLOCK_BYTES;
+          const uint8_t* block_b = weight_b + block_index * Q4_K_BLOCK_BYTES;
+          const float d_a = fp16_bytes_to_float(block_a);
+          const float dmin_a = fp16_bytes_to_float(block_a + 2);
+          const float d_b = fp16_bytes_to_float(block_b);
+          const float dmin_b = fp16_bytes_to_float(block_b + 2);
+          d_scales_a[metadata] = d_a * static_cast<float>(
+              gguf_q4_k_scale(block_a + 4, subblock));
+          dmin_mins_a[metadata] = dmin_a * static_cast<float>(
+              gguf_q4_k_min(block_a + 4, subblock));
+          d_scales_b[metadata] = d_b * static_cast<float>(
+              gguf_q4_k_scale(block_b + 4, subblock));
+          dmin_mins_b[metadata] = dmin_b * static_cast<float>(
+              gguf_q4_k_min(block_b + 4, subblock));
+        }
+        __syncthreads();
+      }
       for (int64_t base = start; base < end; base += ROW_BATCH) {
         float acc_a[ROW_BATCH] = {};
         float acc_b[ROW_BATCH] = {};
@@ -219,10 +246,10 @@ void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
                ++block_index) {
             const int64_t column0 = block_index * QK_K + threadIdx.x;
             const int64_t column1 = column0 + 128;
-            const q4_k_weight_pair wa =
-                gguf_q4_k_weight_pair128(weight_a, block_index, threadIdx.x);
-            const q4_k_weight_pair wb =
-                gguf_q4_k_weight_pair128(weight_b, block_index, threadIdx.x);
+            const q4_k_weight_pair wa = gguf_q4_k_weight_pair128(
+                weight_a, block_index, threadIdx.x, d_scales_a, dmin_mins_a);
+            const q4_k_weight_pair wb = gguf_q4_k_weight_pair128(
+                weight_b, block_index, threadIdx.x, d_scales_b, dmin_mins_b);
 #pragma unroll
             for (int row = 0; row < ROW_BATCH; ++row) {
               const int64_t compact_row = base + row;
