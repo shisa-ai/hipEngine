@@ -6,8 +6,8 @@
   "decision": "retain exact automatic production physical C2/K2/D24 keys for both models; keep all unqualified axes K0",
   "performance_claim": true,
   "source": {
-    "campaign_merge_commit": "1fd7b5e39",
-    "merged_origin_main": "70445c345",
+    "campaign_merge_commit": "96af5c583",
+    "merged_origin_main": "c08cf1cce",
     "branch": "campaign/gfx1100-mtp-cn-promotion"
   },
   "hardware": {
@@ -57,9 +57,9 @@
         "acceptance_rate": 0.7369942196531792
       },
       "post_main_public_automatic": {
-        "true_ar_tok_s": 30.74278842842689,
-        "mtp_tok_s": 34.372427156865264,
-        "speedup": 1.118064720670626,
+        "true_ar_tok_s": 30.73572236717145,
+        "mtp_tok_s": 34.34139907529564,
+        "speedup": 1.117312248758968,
         "cells": 10,
         "engaged_cells": 10,
         "budget_conformed_cells": 10,
@@ -67,10 +67,10 @@
         "mtp_self_exact_cells": 10,
         "cross_arm_exact_cells": 10,
         "categories": {
-          "code": 1.0750977434261186,
-          "general_en": 1.1290719854812552,
-          "general_ja": 1.2261718687228838,
-          "mixed_ja_en": 1.0986054450061478
+          "code": 1.074488294503644,
+          "general_en": 1.129972808310394,
+          "general_ja": 1.2221271167016965,
+          "mixed_ja_en": 1.098629834554988
         },
         "all_categories_non_regressive": true,
         "final_active_allocations": 0
@@ -115,9 +115,9 @@
       },
       "post_main_public_automatic": {
         "correctness_contract": "mtp_self_exact",
-        "true_ar_tok_s": 83.88691990003599,
-        "mtp_tok_s": 93.82543285993317,
-        "speedup": 1.1184751206951027,
+        "true_ar_tok_s": 80.97325177669613,
+        "mtp_tok_s": 93.64426879881209,
+        "speedup": 1.1564839838352972,
         "cells": 10,
         "engaged_cells": 10,
         "budget_conformed_cells": 10,
@@ -126,10 +126,10 @@
         "cross_arm_exact_cells": 7,
         "generated_id_equality": "diagnostic under production; same diagnostic cells as the pre-merge retained run",
         "categories": {
-          "code": 1.1483139398407376,
-          "general_en": 1.101331656970957,
-          "general_ja": 1.0866090988203834,
-          "mixed_ja_en": 1.1093733195676962
+          "code": 1.2257311472137087,
+          "general_en": 1.1247954478533377,
+          "general_ja": 1.0870759738258027,
+          "mixed_ja_en": 1.12281101816048
         },
         "all_categories_non_regressive": true,
         "final_active_allocations": 0
@@ -167,19 +167,20 @@
     "merged_shared_bundle": "844 passed with six isolated merge-contract failures; all other tests passed",
     "repaired_nodes": "6 passed",
     "affected_files_after_repair": "645 passed",
-    "post_merge_real_server_sse": "both models passed",
+    "post_merge_real_server_sse": "both models passed before and after request-local ngram merge",
+    "post_ngram_adapter_bundle": "137 passed",
     "final_milestone_pytest": "10440 passed, 223 skipped, 4 xfailed, 15 isolated fixture/README failures; all other tests passed",
     "focused_repair": "complete seven-file failure bundle passed after current-source hash/README refresh; Qwen telemetry failures were order-only"
   },
   "commands": {
-    "dense_public": "env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt PYTHONPATH=. uv run python /tmp/gfx1100-c2-auto-server-bench.py --widths 2 --expected-mtp-widths 2 --output /tmp/gfx1100-dense-c2-post-main-public.json",
-    "moe_public": "env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt PYTHONPATH=. uv run python /tmp/gfx1100-moe-c2-auto-server-bench.py --widths 2 --expected-mtp-widths 2 --correctness-contract mtp_self_exact --output /tmp/gfx1100-moe-c2-post-main-public-v2.json",
+    "dense_public": "env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt PYTHONPATH=. uv run python /tmp/gfx1100-c2-auto-server-bench.py --widths 2 --expected-mtp-widths 2 --output /tmp/gfx1100-dense-c2-post-ngram-public.json",
+    "moe_public": "env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_FP16_RECURRENT_STATE=0 HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-c2-6-hipcc-version.txt PYTHONPATH=. uv run python /tmp/gfx1100-moe-c2-auto-server-bench.py --widths 2 --expected-mtp-widths 2 --correctness-contract mtp_self_exact --output /tmp/gfx1100-moe-c2-post-ngram-public.json",
     "milestone": "uv run pytest -v"
   },
   "raw_sources": {
-    "dense_public": {"path": "/tmp/gfx1100-dense-c2-post-main-public.json", "bytes": 1451079, "sha256": "95ed3625984f5a76c6bf5f7eff98fb8721ffde787e2b32724d0a787b0ee58a18"},
-    "moe_public": {"path": "/tmp/gfx1100-moe-c2-post-main-public-v2.json", "bytes": 1315309, "sha256": "d7a1fa323e600d15e2bc14b59a47820498629a1017242d0643b6605dc25b06d3"},
-    "dense_sse": {"path": "/tmp/gfx1100-c2-auto-production-sse-probe.json", "bytes": 26502, "sha256": "7aa46e535c18b3fd8b75bb1ce5a3a16ac6bfa4c7795c41eff98a73ce0e44bba3"},
-    "moe_sse": {"path": "/tmp/gfx1100-moe-c2-auto-production-sse-probe.json", "bytes": 31027, "sha256": "9443386a124255ec5235ac3a5235021e3fe7a770a65277da8515a7db8eea75b4"}
+    "dense_public": {"path": "/tmp/gfx1100-dense-c2-post-ngram-public.json", "bytes": 1462713, "sha256": "5b869ac97b62450cf1100ece3ae8fb93c3e9052cabad2f1d740a444a8b71b886"},
+    "moe_public": {"path": "/tmp/gfx1100-moe-c2-post-ngram-public.json", "bytes": 1326920, "sha256": "34bed3b22c1d26fac7e561911a870971872f7a3b407eec3c37aa651405b02f01"},
+    "dense_sse": {"path": "/tmp/gfx1100-dense-c2-post-ngram-sse.json", "bytes": 27537, "sha256": "4ea86c51352f1489305df858e6c8e434973437332e6aaf31bf16aff7e8c951e8"},
+    "moe_sse": {"path": "/tmp/gfx1100-moe-c2-post-ngram-sse.json", "bytes": 32074, "sha256": "cd3cb112750f5bb279d3ff288d25e568064ec67299bee63a6d81f3560fccac1c"}
   }
 }

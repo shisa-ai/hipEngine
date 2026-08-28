@@ -4,7 +4,7 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
-- [2026-08-28 W7900 dual-model physical C2 campaign closure] After merging `origin/main@70445c345`, exact current-source public automatic is **34.372 vs 30.743 tok/s (1.1181x AR)** for 27B Dense and **93.825 vs 83.887 tok/s (1.1185x AR)** for 35B MoE; both engage 10/10, post-merge blocking/SSE drains cleanly, and shared-dispatch/negative-key audits pass. `benchmarks/results/2026-08-28-w7900-dual-model-physical-c2-campaign-final.json`.
+- [2026-08-28 W7900 dual-model physical C2 campaign closure] After merging `origin/main@c08cf1cce`, exact latest-source public automatic is **34.341 vs 30.736 tok/s (1.1173x AR)** for 27B Dense and **93.644 vs 80.973 tok/s (1.1565x AR)** for 35B MoE; both engage 10/10, post-merge blocking/SSE drains cleanly, and shared-dispatch/negative-key audits pass. `benchmarks/results/2026-08-28-w7900-dual-model-physical-c2-campaign-final.json`.
 
 - [2026-08-28 W7900 35B MoE physical C2/K2 automatic promotion] Promote exact production/BF16/resident-C2/D24 after scalar-equivalent packed target kernels and bulk NextN prompt KV priming move public automatic **89.945 -> 92.419 tok/s (+2.75%, 1.1223x true AR)**; authoritative three-run is **98.505 vs 86.650 tok/s (1.1368x)**, all categories non-regressive, and full strict-teacher/task/isolation plus blocking/SSE/cancel/drain pass. `benchmarks/results/2026-08-28-w7900-35b-moe-mtp2-c2-automatic-promotion.json`.
 
