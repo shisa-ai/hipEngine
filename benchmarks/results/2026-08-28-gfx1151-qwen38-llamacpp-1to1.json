@@ -1,0 +1,104 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_llamacpp_1to1",
+  "created_at": "2026-08-28T00:00:00Z",
+  "status": "cross_engine_diagnostic_parity",
+  "passed": true,
+  "performance_claim": false,
+  "claim_scope": "Same-host, same-GGUF, same-suite hipEngine vs llama.cpp HIP comparison at C1. llama.cpp rows are measured here; hipEngine rows are reused from the retained D7 closure and the current-main direct-leaf artifact and were not re-run in this packet. External diagnostic comparator, not a promoted hipEngine topline.",
+  "decision": "hipEngine and llama.cpp HIP are at parity on Qwen3.8-27B Q4_K_M at C1. AR complete wall 9.807 vs 9.75 tok/s (+0.6%); MTP complete wall 15.609 vs 15.73 tok/s (-0.8%); MTP/AR 1.5916x vs 1.613x. hipEngine converts each speculative cycle slightly better (47.4% vs 43.5% complete-wall cycle efficiency). The single measured deficit is draft acceptance: 78.57% vs 90.16%, -11.6 points on the identical suite. This supersedes the as-published external comparison, which wrongly implied a 47-54% vs 70-77% engine gap; that spread is a target-size and timing-boundary artifact, not an engine gap.",
+  "hardware": {
+    "host": "AMD Ryzen AI MAX+ 395",
+    "device": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "hostname": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "Q4_K_M",
+    "architecture": "qwen35, dense, 64 AR blocks + NextN block 64",
+    "note": "Both engines drive the identical file. llama.cpp creates its MTP draft context against the same file's built-in NextN block, which is the provider hipEngine also uses."
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "categories": {"code": 4, "general_en": 2, "general_ja": 2, "mixed_ja_en": 2},
+    "max_tokens": 24,
+    "temperature": 0,
+    "cache_prompt": false,
+    "concurrency": 1,
+    "harness": "scripts/mtp-bench.py --mode server",
+    "surface": "blocking OpenAI /v1/chat/completions complete wall",
+    "fresh_server_per_arm": true
+  },
+  "llamacpp": {
+    "binary": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server",
+    "version": "0.1.0-dev (build 10438, commit 9d57ce456)",
+    "backend": "HIP",
+    "kv": "F16",
+    "git_dirty": false,
+    "server_flags": "-ngl 999 -fa on -b 2048 -ub 512 --no-mmap -c 4096",
+    "mtp_flags": "--spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.0",
+    "ar": {
+      "decode_tok_s_mean": 12.156,
+      "aggregate_complete_wall_tok_s": 9.75,
+      "wall_s_total": 24.63,
+      "total_predicted": 240
+    },
+    "mtp_k3": {
+      "decode_tok_s_mean": 24.897,
+      "aggregate_complete_wall_tok_s": 15.73,
+      "wall_s_total": 15.26,
+      "total_predicted": 240,
+      "total_draft": 183,
+      "total_draft_accepted": 165,
+      "acceptance": 0.9016
+    },
+    "mtp_over_ar_complete_wall": 1.6133,
+    "mtp_over_ar_decode": 2.0481
+  },
+  "hipengine": {
+    "kv": "BF16",
+    "sampling": "raw greedy",
+    "ar_complete_wall_tok_s": 9.806788575381578,
+    "mtp_b3_complete_wall_tok_s": 15.608969989089239,
+    "mtp_over_ar": 1.5916494853649785,
+    "acceptance": 0.7857142857142857,
+    "ar_direct_decode_tok_s": 12.331719890227792,
+    "mtp_direct_leaf_decode_tok_s": 21.158,
+    "sources": [
+      "benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json",
+      "benchmarks/results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json",
+      "benchmarks/results/2026-08-28-gfx1151-qwen38-row-scaling-baseline.json"
+    ]
+  },
+  "comparison": {
+    "ar_decode_delta_pct": 1.4,
+    "ar_complete_wall_delta_pct": 0.6,
+    "mtp_decode_delta_pct": -15.0,
+    "mtp_complete_wall_delta_pct": -0.8,
+    "acceptance_delta_points": -11.59,
+    "cycle_efficiency_complete_wall": {"llamacpp": 0.435, "hipengine": 0.474},
+    "cycle_efficiency_decode": {"llamacpp": 0.551, "hipengine": 0.539},
+    "cycles_for_240_tokens": {"llamacpp": 61, "hipengine": 70}
+  },
+  "commands": [
+    "llama-server -m Qwen3.8-27B-Q4_K_M.gguf -ngl 999 -fa on -b 2048 -ub 512 --no-mmap -c 4096 --host 127.0.0.1 --port 8080 --alias llama",
+    "llama-server ... --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.0",
+    "PYTHONPATH=. python3 scripts/mtp-bench.py --mode server --url http://127.0.0.1:8080 --model llama --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 24 --temperature 0 --no-cache-prompt --out <arm>.json"
+  ],
+  "raw_sources": [
+    {"path": "scratchpad/ar-clean.json", "retained_in_git": false},
+    {"path": "scratchpad/mtp-clean.json", "retained_in_git": false}
+  ],
+  "limitations": [
+    "hipEngine rows are reused from prior retained artifacts, not re-run inside this packet; a fully simultaneous A/B on one process lifecycle would be stronger.",
+    "KV dtype differs: hipEngine BF16, llama.cpp F16. This is the standing difference recorded in docs/MTP-LLAMACPP-PARITY.md and is not controlled here.",
+    "max_tokens=24 means prefill dominates the complete wall; decode-basis and complete-wall-basis ratios differ substantially (2.048x vs 1.613x for llama.cpp) and must not be mixed.",
+    "Single run per arm, no repeats; per-prompt decode rates were tightly clustered but no stdev is reported.",
+    "C1 only. No concurrency sweep was run against llama.cpp in this packet.",
+    "hipEngine working tree carried another owner's in-flight verifier-rowtile changes; hipEngine rows quoted here predate those changes."
+  ],
+  "next": "Diff hipEngine NextN proposal against llama.cpp common/speculative.cpp draft-mtp to find the 11.6-point acceptance deficit: NextN priming and cursor synchronization, p_min handling, and per-position draft quality at K=2 and K=3."
+}

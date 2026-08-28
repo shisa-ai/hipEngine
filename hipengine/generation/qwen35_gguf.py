@@ -4896,6 +4896,11 @@ class _GGUFResidentLoopRow:
     mtp2_selected_commit_ms: float = 0.0
     mtp2_candidate_readback_ms: float = 0.0
     mtp2_k0_catchups: int = 0
+    mtp2_ngram_lookup_calls: int = 0
+    mtp2_ngram_lookup_hits: int = 0
+    mtp2_ngram_cycles: int = 0
+    mtp2_ngram_probed_tokens: int = 0
+    mtp2_ngram_accepted_tokens: int = 0
     mtp2_proposal_batch_calls: int = 0
     mtp2_proposal_physical_rows: list[int] = field(default_factory=list)
     mtp2_target_batch_calls: int = 0
@@ -8582,6 +8587,19 @@ class Qwen35GGUFResidentModelRunner:
                         row.mtp2_candidate_readback_ms
                     ),
                     "specdec2_mtp2_k0_catchups": float(row.mtp2_k0_catchups),
+                    "specdec2_mtp2_ngram_lookup_calls": float(
+                        row.mtp2_ngram_lookup_calls
+                    ),
+                    "specdec2_mtp2_ngram_lookup_hits": float(
+                        row.mtp2_ngram_lookup_hits
+                    ),
+                    "specdec2_mtp2_ngram_cycles": float(row.mtp2_ngram_cycles),
+                    "specdec2_mtp2_ngram_probed_tokens": float(
+                        row.mtp2_ngram_probed_tokens
+                    ),
+                    "specdec2_mtp2_ngram_accepted_tokens": float(
+                        row.mtp2_ngram_accepted_tokens
+                    ),
                     "specdec2_mtp2_recoverable_failures": float(
                         row.mtp2_recoverable_failures
                     ),
@@ -8690,6 +8708,19 @@ class Qwen35GGUFResidentModelRunner:
                 row.mtp2_candidate_readback_ms
             ),
             "specdec2_mtp2_k0_catchups": int(row.mtp2_k0_catchups),
+            "specdec2_mtp2_ngram_lookup_calls": int(
+                row.mtp2_ngram_lookup_calls
+            ),
+            "specdec2_mtp2_ngram_lookup_hits": int(
+                row.mtp2_ngram_lookup_hits
+            ),
+            "specdec2_mtp2_ngram_cycles": int(row.mtp2_ngram_cycles),
+            "specdec2_mtp2_ngram_probed_tokens": int(
+                row.mtp2_ngram_probed_tokens
+            ),
+            "specdec2_mtp2_ngram_accepted_tokens": int(
+                row.mtp2_ngram_accepted_tokens
+            ),
             "specdec2_mtp2_proposal_batch_calls": int(
                 row.mtp2_proposal_batch_calls
             ),

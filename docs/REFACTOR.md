@@ -337,6 +337,34 @@ fallback count is not a success metric.
   runtime environment read. Keep the pure CPU acceptance implementation and
   strict eager fallback.
 
+## SPECDEC2 request-local ngram-mod experiment
+
+- Added 2026-08-28 for the coding/repetition composition spike.
+  `HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD=1` gives an exact request-local 24-token
+  continuation cache first refusal before dense GGUF MTP2; match/min/probe
+  bounds are temporarily adjustable through
+  `HIPENGINE_GGUF_SPECDEC2_NGRAM_{MATCH,MIN,PROBE_MAX}`. A hit verifies only
+  the already-qualified K<=3 prefix, then catches target-attached MTP state up
+  from target-owned hidden rows. A miss, mixed-source physical group, disabled
+  flag, unsupported shape, or failure keeps the registered ordinary MTP/AR
+  paths. Exact request-local keys intentionally replace llama.cpp's shared
+  modulo pool to avoid collisions, cross-tenant history leakage, and
+  benchmark-order/batch-composition contamination.
+- Current verdict: the full canonical production D24 suite is exact with 142
+  lookups / zero hits and 0.99915x MTP-only throughput. The independent strict
+  C2/K3 D80 repetition-heavy code suite is exact and improves MTP-only
+  **20.434 -> 20.930 tok/s (+2.425%)**, with train/heldout both +2.42%, but
+  remains 0.9875x true AR. Strict D96 also fails one SQL terminal-suffix cell,
+  and the prior production D120 numerical tail remains rejected. Keep explicit
+  and default-off; there is no automatic product cell.
+- Removal/promotion trigger: replace environment parsing with a typed cold
+  policy only after a K>3 frontier (or another materially different lowering)
+  passes canonical + code train/heldout, long-horizon strict and production
+  numerical/task/lifecycle gates, and beats true AR rather than MTP alone.
+  Otherwise remove runtime composition at the end of the next dedicated wider-
+  frontier campaign and keep the cache/harness as research references. Ordinary
+  MTP plus AR remain permanent miss/failure fallbacks.
+
 ## Execution-profile migration seam
 
 - Implemented for campaign P3: public `strict|production|batch_invariant`
