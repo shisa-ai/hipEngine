@@ -56,6 +56,12 @@ the final complete rehash. The local manifest SHA-256 is
 `973433d38d86f0e771855b74a170f55f07290bc446ff9bc7a42a688a152b912b`;
 compact evidence is in
 [`2026-08-27-qwen38-flash-next-official-source.json`](../benchmarks/results/2026-08-27-qwen38-flash-next-official-source.json).
+The pinned MTP sidecar is local at
+`/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf`;
+its 34 tensors carry 4,126,482,432 payload bytes (4,117,775,360 Q8_0,
+5,430,272 F32, 3,276,800 BF16), with no PLE table or alternate device layout.
+Artifact:
+[`2026-08-28-qwen38-flash-next-mtp-q8-sidecar.json`](../benchmarks/results/2026-08-28-qwen38-flash-next-mtp-q8-sidecar.json).
 Model weights and converted GGUF files are local artifacts and are never
 committed.
 
@@ -68,7 +74,7 @@ committed.
 | llama.cpp PR #27742 | merged as `ggml-org/llama.cpp@6c84c7d5d8833c6e0df69628f75a0f599797934e`; **primary basic implementation guide** for converter, target text graph, QSA, PLE, hyper-connections, quantizer fixes, and stock Qwen3-VL vision. The already-frozen comparator binary remains `bea3b12daee45876b0129a3602dc8f534ce30bf0`; do not mix those identities. |
 | llama.cpp PR #27739 | `dfa0c0fee2b704fd2ac228d365d40502c3006c40`; MTP design reference, used through EngramHalo's Qwen4Exp port rather than as the target-text/quantizer authority |
 | EngramHalo.cpp | `Aristo94/EngramHalo.cpp@4ff3affc2ac5861f7dda42bcf5ff653c776b816f`; PR #27742-based gfx1151 reference. MTP runtime `0f1c3e2ef41117033d91a83d7634fca4dfe12107`, MTP converter `2cc66f08ca03c6e3f385ec15412f92ad6d490794`; performance patches are ideas to validate in-tree, not inherited evidence. |
-| EngramHalo Q8_0 MTP sidecar | `EasiiX/Qwen3.8-Flash-Next-MTP-Strix-Halo-GGUF@6f7900648b1c6b14f067a182c640e47971e9ab35`; one 4,137,429,088-byte GGUF, external bring-up artifact pending local hash/inventory/oracle validation |
+| EngramHalo Q8_0 MTP sidecar | `EasiiX/Qwen3.8-Flash-Next-MTP-Strix-Halo-GGUF@6f7900648b1c6b14f067a182c640e47971e9ab35`; one 4,137,429,088-byte GGUF, SHA-256 `9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d`; strict 34-tensor inventory/shape/qtype map passes; execution remains unqualified |
 | vLLM PR #53896 | `vllm-project/vllm@2a4cd640ff1a61b66124ddbaaf02a73781f7295a`; paged raw/persistent-compressed QSA caches, GPU scoring/top-k/expansion, split-k sparse attention, MTP step-0 index reuse, and AMD path reference |
 | vLLM PR #53899 | `vllm-project/vllm@95dc96d1d012a25ff5c3823a1e77197c8dae4654`; PLE CPU-offload protocol/reference; known TP1 warmup deadlock is explicitly not inherited |
 | SGLang PR #36497 | `sgl-project/sglang@7c66045d71f067c1c5da2b85baad3c47d9a19cb7`; persistent compressed-QSA cache, fused exact index prep/compression, fast top-k, sparse attention, PLE offload, HC and MTP reference |
