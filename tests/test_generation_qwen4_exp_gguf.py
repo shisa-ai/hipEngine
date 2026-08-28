@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from hipengine.generation.deadline import GenerationCancellationToken, GenerationCancelled
 from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
 from hipengine.generation.registry import GenerationRequest, resolve_text_generator
 
@@ -39,6 +40,21 @@ class _Runner:
 
     def close(self):
         self.steps.append(("close",))
+
+
+def test_qwen4_exp_generator_rejects_cancelled_request_before_runner_mutation() -> None:
+    runner = _Runner()
+    generator = Qwen4ExpGGUFTextGenerator(
+        model_path="unused.gguf", weight_index=SimpleNamespace(),
+        model_plugin=SimpleNamespace(), tokenizer=_Tokenizer(), runner=runner,
+    )
+    token = GenerationCancellationToken(); token.cancel()
+    try:
+        with pytest.raises(GenerationCancelled):
+            generator.generate_detailed(_request(cancellation_token=token))
+        assert runner.steps == []
+    finally:
+        generator.close()
 
 
 def test_qwen4_exp_generator_runs_bounded_multimodal_override() -> None:
