@@ -5340,6 +5340,7 @@ class Qwen35GGUFFullStackRunner:
         hidden_f32_ptr: int | None = None,
         input_norm_ptr: int | None = None,
         projections_ready: bool = False,
+        conv_ready: bool = False,
         stream: int = 0,
         stage_prefix: str = "decode_linear_attn",
         gpu_stage_recorder: _HipEventStageRecorder | None = None,
@@ -5415,7 +5416,8 @@ class Qwen35GGUFFullStackRunner:
         linear_alpha_ptr = scratch.linear_alpha.ptr
         linear_beta_ptr = scratch.linear_beta.ptr
         alpha_beta_conv_fused = (
-            attn_norm_f32_ptr is None
+            not conv_ready
+            and attn_norm_f32_ptr is None
             and _try_launch_dense_f32_alpha_beta_conv_decode(
                 layer.weight("ssm_alpha"),
                 layer.weight("ssm_beta"),
@@ -5448,7 +5450,7 @@ class Qwen35GGUFFullStackRunner:
             )
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark(f"{stage_prefix}_alpha_beta")
-        if not alpha_beta_conv_fused:
+        if not alpha_beta_conv_fused and not conv_ready:
             qwen35_linear_attn_conv_decode_bf16(
                 scratch.linear_qkv.ptr,
                 conv_state.ptr,
@@ -7320,6 +7322,21 @@ class Qwen35GGUFFullStackRunner:
             stream=stream,
             runtime=runtime,
         )
+        conv_out_row_nbytes = self.linear_qkv_width * DType.FP32.itemsize
+        for segment in range(segments):
+            row_start = segment * segment_rows
+            qwen35_linear_attn_chain_conv_decode_bf16_tloop(
+                scratch.linear_qkv.ptr + row_start * qkv_row_nbytes,
+                conv_state.ptr + segment * conv_nbytes,
+                conv_rows.ptr + row_start * conv_nbytes,
+                layer.weight("ssm_conv1d").allocation().tensor.ptr,
+                scratch.conv_out.ptr + row_start * conv_out_row_nbytes,
+                segment_rows,
+                self.linear_qkv_width,
+                cfg.ssm_conv_kernel,
+                stream=stream,
+                runtime=runtime,
+            )
         conv_states = list(decode_scratch.layer_conv_states)
         recurrent_states = list(decode_scratch.layer_recurrent_states)
         for row in range(rows):
@@ -7346,6 +7363,10 @@ class Qwen35GGUFFullStackRunner:
                     scratch.linear_z.ptr + row * gate_row_nbytes,
                     gate_row_nbytes,
                 ),
+                conv_out=DeviceBuffer(
+                    scratch.conv_out.ptr + row * conv_out_row_nbytes,
+                    conv_out_row_nbytes,
+                ),
                 layer_conv_states=tuple(conv_states),
                 layer_recurrent_states=tuple(recurrent_states),
             )
@@ -7355,15 +7376,9 @@ class Qwen35GGUFFullStackRunner:
                 scratch.attn_out.ptr + row * hidden_row_nbytes,
                 row_scratch,
                 projections_ready=True,
+                conv_ready=True,
                 stream=stream,
                 stage_prefix="packed_moe_c2_exact_attn",
-            )
-            runtime.memcpy_async(
-                conv_rows.ptr + row * conv_nbytes,
-                conv_states[layer_id].ptr,
-                conv_nbytes,
-                HipMemcpyKind.DEVICE_TO_DEVICE,
-                stream,
             )
             runtime.memcpy_async(
                 recurrent_rows.ptr + row * recurrent_nbytes,
