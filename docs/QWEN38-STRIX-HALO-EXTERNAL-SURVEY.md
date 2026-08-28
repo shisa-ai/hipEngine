@@ -1,467 +1,642 @@
-# Qwen3.8-27B on Strix Halo: external claims and local checks
+# Qwen3.8-27B on Strix Halo: external implementation survey
 
 - Survey date: **2026-08-28**
-- Hardware lane: **AMD Ryzen AI MAX+ 395 / Radeon 8060S / `gfx1151`**
-- Local model: **Qwen3.8-27B `Q4_K_M`**, BF16 KV, SHA-256
-  `7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169`
-- Scope: selected public autoregressive (AR) and speculative-decoding reports,
-  plus the local tests that can confirm, qualify, or reject their transfer to
-  hipEngine
-- Supersedes: the intake table in
-  [`CONCURRENCY2-GFX1151-MTP-TUNING.md`](CONCURRENCY2-GFX1151-MTP-TUNING.md)
-  §2
+- Local host: **`gfx1151`**, AMD Ryzen AI MAX+ 395, Radeon 8060S, 128 GB
+- Kernel: **Linux 7.1.6-1-cachyos**
+- Primary evidence: [compact reproduction artifact][L0]
+- Scope: locally tested Qwen3.8-27B autoregressive (AR), Multi-Token
+  Prediction (MTP), DFlash2, and ngram-assisted routes on Strix Halo
 
-## Assessment
+## Executive summary
 
-Public Qwen3.8-27B results on Strix Halo are not one leaderboard. The reported
-7.2-163 tok/s range combines different model files, quantization formats,
-backends, speculative methods, prompts, generation lengths, context states,
-and timing boundaries. The public sources themselves document many of these
-conditions: the [community route guide][S1] lists eight changing variables,
-[MikeVeerman][S2] reports results by prompt and concurrency, [KyaniteLabs][S4]
-labels its 148-163 tok/s count-to-30 result as a repetition artifact, and
-[LaurentZuijdwijk][S5] reports 65.6 tok/s for structured output but 26.1 tok/s
-for prose with the same adaptive configuration.
+“Correct / usable” is deliberately binary. **Yes** means that the locally
+observed outputs passed the route's applicable validity and repetition checks
+and that the tested server lifecycle did not expose a correctness blocker.
+**No** means either a local correctness blocker was observed or the exact route
+was not locally qualified. A Yes is not a claim of equal model quality across
+quantizations.
 
-Our evidence supports these narrower conclusions:
+The speed columns are not a single leaderboard. Each row retains its model,
+workload, output length, and timing boundary. Compare rates directly only when
+the row or detailed section names a matched protocol.
 
-1. **AR decode is near the memory-bandwidth limit.** The published decode-only
-   rows imply approximately 204-228 GB/s on a 256 GB/s theoretical-memory
-   system. hipEngine's direct `Q4_K_M` diagnostic is in that band and is within
-   1% of julianmb's published stock-llama.cpp `Q4_K_M` result. This is a
-   cross-host comparison, not a controlled engine A/B.
-2. **Our closest same-host llama.cpp comparison finds C1 parity, with an
-   acceptance gap.** On the same GGUF and 10-prompt suite, hipEngine and
-   llama.cpp HIP are within 1% on complete-wall AR and MTP throughput.
-   hipEngine's measured draft acceptance is 78.57%; llama.cpp's is 90.16%.
-   The comparison is diagnostic rather than a retained performance claim
-   because the hipEngine rows were reused from earlier runs, KV types differ,
-   and each arm has one run.
-3. **Prompt choice strongly changes speculative throughput.** In the two
-   published per-prompt datasets, acceptance changes by 16.6-23.5 percentage
-   points and speedup by 17-29% across four prompt classes. A derived
-   cycle-efficiency estimate is much more stable within each dataset, but it
-   is not portable across target sizes, draft methods, or timing boundaries.
-4. **The 65.6 tok/s adaptive-DFlash result was not reproduced or refuted.** Our
-   local transfer test used the same fork's adaptive policy with the target's
-   built-in MTP head, not its FP4 DFlash2 sidecar. Adaptive depth recovered
-   18.8% over a fixed deep draft but remained 6.7% slower than fixed depth 3
-   on our `Q4_K_M` mixed suite. This rejects adaptive depth as the best policy
-   for that local MTP configuration; it does not invalidate the published
-   FP4+DFlash2 structured-output result.
-5. **The 148-163 tok/s repetition result is real but narrow.** KyaniteLabs
-   explicitly labels it as repetition-assisted. On our model and mixed suite,
-   the same MTP+ngram flag stack gave only 1.07x AR on `general_en` and drafted
-   3,917 tokens to accept 935. It should not be presented as general prose or
-   chat throughput.
-6. **The current automatic C2 result is positive but narrowly qualified.**
-   Production C2/K3 at context 1-128 and a 24-token output horizon now measures
-   17.031 versus 14.887 tok/s, or 1.1441x AR, with all ten cells and four
-   categories positive. C3+, output horizons above 24, and scope misses remain
-   K0 ([L4]).
+| Implementation / route | Published claim | Local result | Correct / usable | Notes |
+| --- | --- | --- | :---: | --- |
+| **hipEngine `61b83b9c3` + new Unsloth `UD-Q4_K_M`** | No external claim; intended same-artifact control | Does not load | **No** | Exact artifact contains unsupported dense `Q3_K`, `IQ4_NL`, and `IQ3_S` tensors. Existing qualified hipEngine Q4 lineages are unaffected. |
+| **`q38rocm` v1.5.2 / ROCmFPX, `ROCmFP4_FAST`, strict MTP K4** | 14.02 AR; 30.56-36.04 MTP decode tok/s | 14.31 AR; **38.85** MTP on the source protocol. Common suite: 14.782 AR → **35.575** arithmetic / **32.969** token-weighted decode tok/s | **Yes** | Fastest locally tested route without a server-lifecycle correctness blocker. |
+| **Laurent adaptive DFlash2 fork `c28d538df`** | 65.6 structured; 26.1 prose decode tok/s | Valid complete JSON: **56.532**; prose: 25.618. Fresh-process common suite: **37.752** arithmetic / **34.483** token-weighted decode tok/s | **No** | Fastest valid fresh-process route, but sequential requests contaminate speculative state. The local 66.838 tok/s sequential JSON row emitted repeated prose and is invalid. |
+| **KyaniteLabs HIP MTP+ngram** | 59.7 cold and 148-163 warm count-to-30; 11-24 real traffic | 60.95 cold and **164.13-167.64** warm count-to-30; common suite **24.867** decode / **20.518** complete-wall tok/s | **Yes** | Count output was exact. The 160+ peak is warm repetition replay, not novel-generation throughput; ngram added no material general-suite benefit. |
+| **PieBru recipe on Nathanw fork `0eb528051`** | Q5 about 23-24, Q6 17-21, Q8 15-18 served tok/s | Q5 **24.706**, Q6 **20.549**, Q8 **18.197** complete-wall tok/s | **Yes** | Claims confirmed. Latest mainline was about 1.4-1.5% faster in DFlash decode, so the fork is not the source of the decode gain. |
+| **MikeVeerman stock llama.cpp pin `152d337fa`, Q8 MTP** | 2.19x AR at C1; 0.78x AR at C4 | **2.23x** at C1; 1.01x at C3; **0.84x** at C4 | **Yes** | Crossover reproduced. MTP remains saturated while AR gains from batching; acceptance does not collapse. |
+| **yandaq harness + latest mainline + new `UD-Q4_K_M`** | Q4 26.47; other quants 15.20-26.26; K≥6 can produce fake repetitive speed | K4 **31.18**, K6 28.75, K8 20.99 mean decode tok/s | **Yes** | K4 is best. K6/K8 stayed non-repetitive on the current model/engine and slowed instead of producing a fake speedup. |
+| **Latest mainline Vulkan `4e97ac86` + new `UD-Q4_K_M`** | Current stock control | Common suite: 13.035 AR → **33.454** MTP K3 decode; 9.758 → **17.572** complete-wall tok/s | **Yes** | Long-output yandaq controls were substantive and non-repetitive. |
+| **Ollama 0.32.13 guide route** | 20.42 generation; 292.49 prompt tok/s | Not run | **No** | No means not locally qualified, not known-broken. Exact artifact/runtime were deprioritized. |
+| **LlamaStash / stock b10503 Q8_0 report** | 7.3 AR → 22.4 MTP tok/s | Not reproduced exactly | **No** | Raw package and exact prompts/config were unavailable; the guide labels this unimported community evidence. |
 
-## 1. Evidence labels and comparison rules
+### Bottom line
 
-Every result below has one of these labels:
+- **Fastest valid one-task result:** Laurent adaptive DFlash2 at **56.532
+  decode tok/s** for a complete 12-object JSON response, but only in a fresh
+  server process.
+- **Fastest clean reusable route tested:** `q38rocm` strict MTP K4 at
+  **35.575 arithmetic / 32.969 token-weighted decode tok/s** on the common
+  suite.
+- **Fastest common-suite decode:** Laurent at **37.752 arithmetic / 34.483
+  token-weighted decode tok/s**, with a fresh process for every prompt. It is
+  not deployable as a sequential server in the tested state.
+- **Highest raw number:** Kyanite at **167.64 tok/s**, entirely from warm ngram
+  replay of count-to-30. It is not general generation speed.
 
-- **Published:** reported by an external source; we checked the cited,
-  commit-pinned page but did not reproduce the number.
-- **Local:** measured on this host and linked to a committed JSON artifact.
-- **Derived:** calculated from published or local inputs. A derived value is
-  not an independent measurement.
-- **Not tested:** the required model, backend, sidecar, or protocol was not run
-  locally.
+## 1. How the survey was run
 
-Raw tok/s is compared only when the model file, quant, backend, workload,
-context, generation length, and timing boundary are sufficiently matched. A
-same-host result is not automatically matched: the two arms must also use the
-same artifact and protocol.
+### 1.1 Host and common suite
 
-### 1.1 AR diagnostic: implied memory bandwidth
+All local results were measured on physical host `gfx1151`:
 
-For single-request dense AR decode, this survey uses:
+| Item | Value |
+| --- | --- |
+| APU | AMD Ryzen AI MAX+ 395 |
+| GPU | Radeon 8060S / `gfx1151` |
+| Unified memory | 128 GB |
+| Theoretical memory bandwidth | 256 GB/s |
+| Kernel | Linux 7.1.6-1-cachyos |
+| Common suite | `benchmarks/prompts/mtpbench-code-general-ja.jsonl` |
+| Suite SHA-256 | `fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a` |
+| Prompt coverage | 10 prompts: code, general English, general Japanese, and mixed Japanese/English; four category-heldouts |
+| Common sampling | Greedy, prompt cache disabled |
+
+The compact artifact records every model size and full SHA-256, the runtime
+commit, command, rates, acceptance, and correctness verdict ([L0]). Raw local
+logs remain outside Git because compiled binaries, model files, and raw server
+logs are not repository artifacts.
+
+### 1.2 Timing boundaries
+
+The survey keeps three timing boundaries separate:
+
+- **Decode tok/s:** server-reported generated tokens divided by decode time.
+- **Token-weighted decode tok/s:** total generated tokens divided by the sum of
+  decode durations. This prevents short, fast responses from dominating an
+  arithmetic mean.
+- **Complete-wall tok/s:** generated tokens divided by request wall time,
+  including prompt evaluation and request overhead but excluding model load.
+
+A reported rate is not directly comparable when the model file, backend,
+request shape, output length, or timing boundary changes. The executive table
+therefore reports the boundary next to each result instead of bolding one
+cross-route “winner.”
+
+### 1.3 Correctness checks
+
+The campaign used the strongest check available for each source protocol:
+
+- exact task contracts, such as a complete 12-object JSON array or the exact
+  sequence `1…30`;
+- output retention plus character-window and word-trigram repetition checks;
+- fresh-server controls when cross-request state was suspected;
+- matched output hashes or token equality between Nathan and latest mainline;
+- category and heldout coverage on the common suite.
+
+These are generation-validity checks, not perplexity or full downstream model
+quality comparisons. Different quantizations must not be treated as
+quality-equivalent based on speed testing alone.
+
+## 2. Models and exact artifacts
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| New Unsloth `UD-Q4_K_M` | 16,464,440,224 | `322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482` |
+| `ROCmFP4_FAST` target | 14,562,236,384 | `fb89c78d2be91cdb68eaaaa45b1270710bf34aa721dc1f0b9e3aa7b98d2e1da9` |
+| FP4 DFlash2 `Q4_0` sidecar | 1,034,216,992 | `4264d8f2277ec9ae791c570ddc36940f92857f2e8a41569217e45b7563190285` |
+| Unsloth `UD-Q4_K_XL` | 17,559,178,144 | `3f227079003add2511437e5b1e94812e363385225bf6a9b47b0054a72bc8b01e` |
+| Unsloth `UD-Q5_K_XL` | 20,876,938,144 | `8601193d3d5760c37fb8ce1b43afebc69df5fb24e1fbc5a547c32e2200305276` |
+| Unsloth `UD-Q6_K_XL` | 25,299,061,664 | `701d8fa9ed214ab21bfc130cd2a7df19ca89bbef7713e2dfb19f3c63696aa917` |
+| Unsloth `UD-Q8_K_XL` | 31,457,991,680 | `af36ecb6b5db1407953345b746c14ac93f0657dda413910b4348683a2d990377` |
+| DFlash2 `Q8_0` sidecar | 2,056,414,752 | `7f1c9a31a6ed40044c69f6508b50fd63b87abd8e1fb7fe4290303df549153751` |
+
+## 3. hipEngine
+
+### Configuration
+
+The intended campaign control used hipEngine commit `61b83b9c3`, the new
+Unsloth `UD-Q4_K_M`, production automatic MTP, and C1/C2/C4/C8. The model was
+not assumed compatible merely because its filename said `UD-Q4_K_M`.
+
+### Result
+
+Preparation failed before inference:
 
 ```text
-implied GB/s = model file bytes x AR tok/s
+ValueError: unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.0.ffn_up.weight
 ```
 
-The result is a screening diagnostic, not a hardware-counter measurement.
-File size overstates streamed bytes because embeddings are row lookups and
-metadata or non-AR tensors may not be streamed for each token. For our local
-`Q4_K_M`, the file contains 17.096 GB of tensors, while the measured AR stream
-budget is 16.091 GB: 15.048 GB across 64 AR blocks plus 1.043 GB for
-`output.weight`, excluding the 0.715 GB token embedding and the MTP block
-([local row-scaling artifact][L1]).
+Inspection found seven dense `Q3_K`, seven dense `IQ4_NL`, and four dense
+`IQ3_S` tensors. hipEngine supports `Q3_K` only for selected rank-3 expert
+slots, has no native dense path for these three families, and lacks an
+`IQ3_S` CPU dequantizer. Supporting the file safely is a kernel and numerics
+project, not a loader allow-list change.
 
-A reported AR rate that implies materially more than the 256 GB/s theoretical
-LPDDR5X-8000 ceiling is not comparable to these AR rows without another
-explanation, such as speculation, caching, a different timing boundary, or an
-incorrect model-size assumption.
+### Verdict
 
-### 1.2 Speculative diagnostic: estimated cycle efficiency
+**Correct / usable: No for this exact artifact.** No tokens were generated, so
+there is no hipEngine speed row for the new file. This does not invalidate the
+already-qualified older Qwen3.8 `Q4_K_M` lineage. On that lineage, the retained
+normal-owner C1 automatic route is 15.609 versus 9.807 tok/s AR, and production
+C2/K3 is 17.031 versus 14.887 tok/s AR ([L1], [L2]). Those numbers must not be
+compared as same-model results with the new Unsloth artifact.
 
-For fixed draft depth `K`, this survey derives:
+### Prior supported-artifact context
 
-```text
-estimated tokens/cycle = 1 + K x acceptance
-estimated cycle efficiency = measured speedup / estimated tokens/cycle
-```
-
-This estimate assumes `K` draft tokens per cycle, token-level acceptance, and
-one target token emitted per cycle. Adaptive lengths, tree drafts, resampling,
-or different accounting violate the estimate. Even when valid, compare it only
-at matched `K`, target file, draft method, and timing boundary. Target size
-changes how well draft work is amortized; complete-wall timing includes prefill
-and request overhead that decode-only timing excludes.
-
-## 2. Evidence inventory
-
-| ID | Evidence | What it establishes | Main limitation |
-| --- | --- | --- | --- |
-| [S1] | [Strix Halo community route guide at `029320fb`][S1] | Ollama 20.42 tok/s report; eight-variable comparison warning; status of unimported community packages | Aggregates first-party and community reports; not raw evidence for every external row |
-| [S2] | [MikeVeerman benchmark at `cc527064`][S2] | Q6/Q8 Vulkan AR, MTP, prompt-class, context, and c1-c4 concurrency tables | Published on another host; no local reproduction |
-| [S3] | [julianmb ROCmFP4 report at `5d097740`][S3] | Stock `Q4_K_M` control; FP4/FP8/Q3 AR; task-specific MTP results | Custom model format and fork were not run locally |
-| [S4] | [KyaniteLabs report at `7fa3ca81`][S4] | Count-to-30 and prose regimes; MTP+ngram configuration and controls | Different quant and prompt regime; headline warm result is explicitly repetition-assisted |
-| [S5] | [LaurentZuijdwijk fork at `c28d538df`][S5] | Adaptive DFlash2 claim; fixed/adaptive and structured/prose controls; fork implementation | Published FP4 target and sidecar were not run locally |
-| [L1] | [hipEngine row-scaling diagnostic][L1] | Direct packed AR rates and exact local byte budget | Dirty-tree diagnostic; synthetic prompt; no correctness gate |
-| [L2] | [hipEngine/llama.cpp same-host diagnostic][L2] | Closest same-GGUF, same-suite C1 comparison | Reused hipEngine runs, F16/BF16 KV mismatch, one run per arm |
-| [L3] | [External-configuration transfer test][L3] | Mainline/fork fixed and adaptive MTP plus MTP+ngram on our GGUF and suite | One run; MTP rather than DFlash2; fork/mainline versions differ |
-| [L4] | [Retained production C2/K3 result][L4] | Automatic context1-128/D24 C2/K3 at 1.1441x AR; D120 rejection; C3+ fail-closed | One run for throughput; production numerical scope is D24 only |
-| [L5] | [Ngram/MTP composition closeout][L5] | Repetition-heavy strict C2/K3 D80 +2.425% over MTP-only; D96 and D120 blockers | One run; default-off diagnostic; still 0.9875x true AR |
-
-External pages were fetched at the pinned commits on 2026-08-28. The local
-artifacts retain commands, model hashes, protocol details, and limitations.
-
-## 3. Autoregressive decode
-
-### 3.1 Published and local rows
-
-| Evidence | Model / quant | File size | Backend | AR tok/s | Derived GB/s | Assessment |
-| --- | --- | ---: | --- | ---: | ---: | --- |
-| **Local [L1]** | Qwen3.8-27B `Q4_K_M` | 17.096 GB | hipEngine HIP, direct | **12.332** | **210.8** | Diagnostic local anchor |
-| Published [S3] | stock `Q4_K_M` | 15.92 GiB, about 17.1 GB | stock llama.cpp; source's baseline | 12.27 | about 209.8 | Nearest published same-quant row; cross-host |
-| Published [S3] | `ROCmFP4_FAST`, 4.26 bpw | 13.55 GiB | Vulkan fork | 14.02 | 204.0 | Custom format and engine |
-| Published [S3] | `Q3_K_M`, 3.95 bpw | 12.56 GiB | Vulkan fork | 15.15 | 204.3 | Different quant |
-| Published [S3] | `Q3_K_S`, 3.59 bpw | 11.40 GiB | Vulkan fork | 16.69 | 204.3 | Different quant |
-| Published [S3] | `ROCmFP8`, 8.25 bpw | 26.25 GiB | Vulkan fork | 7.66 | 215.9 | Custom format and engine |
-| Published [S2] | Unsloth `UD-Q6_K_XL` | 25.9 GB | llama.cpp Vulkan | 8.43 | 218.3 | Q6 mean rounds to 8.43 |
-| Published [S2] | Unsloth `UD-Q8_K_XL` | 31.5 GB | llama.cpp Vulkan | 7.23 | 227.7 | Q8 mean |
-| Published [S5] | FP4 target | 13.55 GiB class | fork Vulkan | 14.0-14.1 | about 204 | Structured/prose bare controls |
-| **Local [L2]** | Qwen3.8-27B `Q4_K_M` | 17.096 GB | hipEngine HIP, served | **9.807** | **167.7** | Complete-wall, 24-token requests; not decode-only |
-| Published [S1] | Ollama `qwen3.8:27b` `Q4_K_M` | 17.7 GB | Vulkan-RADV | 20.42 “generation” | **361.4** | Cannot be classified as dense AR from the published data |
-
-The 204-228 GB/s cluster supports a memory-bound interpretation of the
-published decode-only rows. It does **not** isolate a Vulkan-versus-HIP backend
-delta because model artifacts, quants, engines, and hosts change together.
-The sources report Vulkan advantages in some configurations, but this survey
-contains no controlled same-file Vulkan/HIP A/B.
-
-The Ollama row is excluded from AR comparisons. At the published 17.7 GB model
-size, 20.42 tok/s implies 361.4 GB/s, or 141% of the stated 256 GB/s peak.
-The route guide reports the number as generation throughput but does not show
-whether NextN speculation contributed. Therefore the supported conclusion is
-**“not a demonstrated AR row,”** not **“proven MTP-on.”**
-
-### 3.2 Local row scaling
-
-The direct packed graph diagnostic used p128/d8 and three reported samples per
-configuration ([L1]):
-
-| Rows | Aggregate tok/s | Step ms | Estimated weight sweeps/step |
-| ---: | ---: | ---: | ---: |
-| 1 | 12.332 | 81.09 | 1.000 |
-| 2 | 23.708 | 84.36 | 1.040 |
-| 4 | 43.828 | 91.26 | 1.126 |
-| 8 | 46.503 | 172.03 | 2.122 |
-
-Rows 1-4 amortize weight reads well; rows 4-8 add 88.5% step wall for twice the
-rows. This result describes hipEngine's direct packed graph on the recorded
-working tree. It is not an HTTP-serving result, a speculative-frontier trace,
-or a retained performance claim.
-
-## 4. Closest same-host llama.cpp comparison
-
-Both engines used the same GGUF, the 10-prompt
-`benchmarks/prompts/mtpbench-code-general-ja.jsonl` suite, 24 output tokens,
-greedy sampling, no prompt cache, concurrency 1, and a fresh server per arm.
-llama.cpp was HIP build 10438 at `9d57ce456`; its MTP context used the GGUF's
-built-in NextN block. Full commands and inputs are in [L2].
+The earlier same-host packet used a different Qwen3.8 `Q4_K_M` file (SHA-256
+`7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169`),
+the same ten-prompt D24 suite, and llama.cpp HIP build 10438 ([L3]):
 
 | Metric | llama.cpp HIP | hipEngine | hipEngine delta |
 | --- | ---: | ---: | ---: |
-| AR decode tok/s | 12.156 | 12.332, direct [L1] | +1.4% |
-| AR complete-wall tok/s | 9.750 | 9.807, served | +0.6% |
-| MTP decode tok/s | 24.897 | 21.158, direct-leaf | -15.0% |
-| MTP complete-wall tok/s | 15.730 | 15.609, served | -0.8% |
-| MTP/AR, complete wall | 1.613x | 1.592x | -1.3% |
-| Draft acceptance, depth 3 | **90.16%** | **78.57%** | **-11.59 points** |
-| Derived cycle efficiency, complete wall | 43.5% | 47.4% | +3.9 points |
-| Derived cycle efficiency, decode basis | 55.1% | 53.9% | -1.2 points |
+| AR decode tok/s | 12.156 | 12.332 direct diagnostic | +1.4% |
+| AR complete-wall tok/s | 9.750 | 9.807 | +0.6% |
+| MTP decode tok/s | 24.897 | 21.158 direct-leaf | -15.0% |
+| MTP complete-wall tok/s | 15.730 | 15.609 | -0.8% |
+| MTP/AR complete wall | 1.613x | 1.592x | -1.3% |
+| Draft acceptance, K3 | 90.16% | 78.57% | -11.59 points |
 
-This is the best local comparison in the survey, but “same-host” must not be
-read as “fully controlled.” The hipEngine values were reused from earlier
-retained artifacts rather than rerun in the llama.cpp measurement packet;
-llama.cpp used F16 KV while hipEngine used BF16; the direct and complete-wall
-rows have different timing boundaries; and there was one run per arm.
+This packet is diagnostic, not a clean retained engine A/B: hipEngine values
+were reused from earlier runs, llama.cpp used F16 KV while hipEngine used BF16,
+direct and complete-wall rows mix timing boundaries, and each arm had one run.
+Within those limits, complete-wall C1 throughput was near parity while proposal
+acceptance differed materially. That finding remains a useful hipEngine
+optimization lead, but it does not repair support for the new artifact.
 
-Within those limits, the complete-wall result does **not** support a large C1
-engine-efficiency deficit. The measured difference is draft acceptance:
-llama.cpp accepted 165 of 183 drafts and needed about 61 cycles to emit 240
-tokens; hipEngine accepted 165 of 210 and needed about 70 cycles. Acceptance
-repair is therefore a better-supported C1 investigation than a verifier
-cycle-cost campaign based only on unmatched published rows.
+The same older-artifact direct row-scaling diagnostic measured 12.332, 23.708,
+43.828, and 46.503 aggregate AR tok/s at physical rows 1, 2, 4, and 8. Rows
+1-4 amortized weight reads well; rows 4-8 added 88.5% step wall for twice the
+rows. It was a synthetic direct-graph result, not HTTP-serving throughput.
 
-## 5. Prompt dependence in published speculative results
+## 4. `q38rocm` / ROCmFPX
 
-### 5.1 MikeVeerman: Q8, maximum draft depth 3
+### Configuration
 
-The source used 256-token generations and reports these per-prompt values
-([S2]). Cycle efficiency is our derived estimate.
+- Published source: `q38rocm` commit `5d097740` ([S3])
+- Installed runtime: verified `q38rocm` v1.5.2 prebuilt
+- Source lineage: ROCmFPX `0fc9568e`
+- Backend: Vulkan/RADV on Radeon 8060S
+- Target: exact `ROCmFP4_FAST` artifact
+- Draft path: built-in MTP, strict maximum depth 4
 
-| Prompt | AR tok/s | MTP tok/s | Acceptance | Speedup | Derived cycle efficiency |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Code | 7.24 | 16.46 | 74.3% | 2.273x | 70.4% |
-| JSON extraction | 7.23 | 16.18 | 73.2% | 2.238x | 70.0% |
-| Reasoning | 7.23 | 15.83 | 71.2% | 2.189x | 69.8% |
-| Prose | 7.23 | 12.72 | 50.8% | 1.759x | 69.7% |
-| **Spread** | | | **23.5 points** | **29%** | **0.7 points** |
+The v1.5.2 release binary was verified against the GitHub release digest. The
+repository installer contained a stale checksum, so the release API digest was
+used rather than weakening checksum validation.
 
-### 5.2 julianmb: `ROCmFP4_FAST`, maximum draft depth 4
+### Claimed versus local source protocol
 
-The source reports greedy task-specific values ([S3]). Cycle efficiency is our
-derived estimate.
+| Metric | Published | Local |
+| --- | ---: | ---: |
+| AR decode tok/s | 14.02 | 14.31 |
+| MTP decode tok/s | 30.56-36.04 | **38.85** mean |
+| Local MTP acceptance | — | 78.1% |
+| Prompts | 4 | 4 |
+| Repetition guard | Reported clean | Passed |
 
-| Prompt | AR tok/s | MTP tok/s | Acceptance | Speedup | Derived cycle efficiency |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| JSON extraction | 14.02 | 35.79 | 88.0% | 2.553x | 56.5% |
-| Code generation | 14.02 | 34.82 | 82.6% | 2.484x | 57.7% |
-| Technical explanation | 14.02 | 32.40 | 76.2% | 2.311x | 57.1% |
-| Reasoning/math | 14.02 | 30.56 | 71.4% | 2.180x | 56.5% |
-| **Spread** | | | **16.6 points** | **17%** | **1.2 points** |
+| Local source-protocol prompt | Decode tok/s | Acceptance |
+| --- | ---: | ---: |
+| Binary search tree / code | 41.44 | 88.6% |
+| Widget factory / reasoning | 38.73 | 75.7% |
+| JSON entity extraction | 48.49 | 100.0% |
+| Unified versus discrete memory | 26.75 | 48.0% |
 
-These datasets support a bounded claim: **within each source's four prompts,
-the derived cycle-efficiency estimate is much more stable than acceptance or
-raw speedup.** They do not establish that acceptance belongs only to content
-or that cycle efficiency belongs only to the engine. Acceptance also depends
-on drafter, target quantization, sampling, depth, and state. Cycle efficiency
-also depends on target size, draft method, depth, and timing boundary.
+### Common-suite result
 
-The practical rule is to publish prompt class and acceptance with every
-speculative rate. A single aggregate can still be useful for a fixed suite,
-but it cannot be transferred to a different prompt mix without the
-per-category distribution.
-
-## 6. Published speculative claims and local verdicts
-
-| Claim | Published evidence | Local test | Verdict |
-| --- | --- | --- | --- |
-| MikeVeerman Q6/Q8 MTP gives 2.1-2.2x at C1 and falls below AR at C4 | [S2], full prompt and c1-c4 tables | No matching Q6/Q8 Vulkan run | **Published, not locally tested** |
-| julianmb `ROCmFP4_FAST` reaches 30.56-36.04 tok/s depending on task/config | [S3], custom quant and fork | Custom model/engine not run | **Published, not locally testable on our GGUF** |
-| Laurent adaptive FP4+DFlash2 reaches 65.6 tok/s structured, 26.1 prose, and 4.7x bare on structured output | [S5], 300-token table | Adaptive policy tested with built-in MTP on `Q4_K_M`, not DFlash2/FP4 | **Not reproduced; not refuted** |
-| Adaptive depth prevents the acceptance collapse of a fixed deep draft | [S5] | Fixed depth 7: 38.58%; adaptive max 7: 61.70%, +18.8% throughput [L3] | **Mechanism reproduced in local MTP transfer test** |
-| Adaptive max 7 is better than a shallow fixed draft on our MTP workload | No external claim for our workload | Adaptive 17.66 vs fixed depth 3 at 18.93 tok/s [L3] | **Refuted for our local configuration (-6.7%)** |
-| KyaniteLabs warm 148-163 tok/s is general generation throughput | [S4] explicitly calls it a repetition artifact and reports real traffic at 11-24 tok/s | Same flag stack is only 1.07x AR on `general_en` [L3] | **Refuted by the source's own scope and local transfer test** |
-| KyaniteLabs MTP+ngram stack helps repetition-heavy output | [S4] count-to-30 and prose controls | Best local mainline aggregate; 25.0 decode tok/s on `mixed_ja_en`, but 23.87% acceptance [L3] | **Prompt-sensitive support, not a general win** |
-| Fork build 10681 reduces local MTP cycle cost versus mainline build 10438 | No clean published A/B for our GGUF | Fixed depth 3: 18.93 vs 16.02 tok/s with similar AR, acceptance, and draft counts [L3] | **Measured about +18%; cause unresolved** |
-
-### 6.1 Local transfer-test details
-
-The local transfer test ran every arm against our `Q4_K_M`, the same mixed
-10-prompt suite, 128 output tokens, greedy sampling, no prompt cache, and a
-fresh server per arm ([L3]). A 128-token output was chosen so depth 7 had time
-to amortize; these results must not be compared directly with the 24-token
-complete-wall rows in §4.
-
-| Build / arm | Aggregate tok/s | vs own AR | Acceptance | Drafted | Accepted |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| mainline AR, b10438 | 11.37 | 1.000x | — | 0 | 0 |
-| mainline fixed depth 3 | 16.02 | 1.409x | 63.41% | 1,301 | 825 |
-| mainline fixed depth 7 | 14.83 | 1.304x | 38.43% | 2,376 | 913 |
-| mainline max 7 / min 3 | 14.79 | 1.301x | 38.29% | 2,382 | 912 |
-| mainline MTP+ngram | 16.26 | 1.430x | 23.87% | 3,917 | 935 |
-| fork AR, b10681 | 11.35 | 1.000x | — | 0 | 0 |
-| **fork fixed depth 3** | **18.93** | **1.668x** | 63.86% | 1,295 | 827 |
-| fork fixed depth 7 | 14.87 | 1.310x | 38.58% | 2,369 | 914 |
-| fork adaptive max 7 | 17.66 | 1.556x | 61.70% | 1,410 | 870 |
-| fork adaptive max 12 | 17.62 | 1.552x | 60.16% | 1,461 | 879 |
-
-Mainline `--spec-draft-n-min 3` did not behave like the fork's adaptive
-controller: with max 7 it was statistically indistinguishable from fixed
-7 in this one-run test. The fork fixed-depth-3 arm was about 18% faster than
-mainline fixed depth 3 while AR, acceptance, and draft counts were similar.
-However, build 10438 and build 10681 differ by upstream changes as well as the
-fork's `common/speculative.cpp` edits. The result localizes the improvement to
-the speculative path; it does not attribute a responsible commit. A bisect is
-required before transferring an implementation idea to hipEngine.
-
-Per-category decode rates show why the aggregate needs its suite attached:
-
-| Arm | code | general_en | general_ja | mixed_ja_en |
+| Mode | Arithmetic decode | Token-weighted decode | Complete wall | Acceptance |
 | --- | ---: | ---: | ---: | ---: |
-| fork fixed depth 3 | 22.0 | 18.0 | 18.8 | 23.2 |
-| fork adaptive max 7 | 20.7 | 16.8 | 17.0 | 21.8 |
-| mainline fixed depth 3 | 19.2 | 13.4 | 18.4 | 20.2 |
-| mainline MTP+ngram | 20.1 | 13.1 | 14.6 | **25.0** |
+| AR | 14.782 | 14.782 | 12.803 | — |
+| Strict MTP K4 | **35.575** | **32.969** | **24.294** | 62.35% |
 
-The MTP+ngram arm's best category was `mixed_ja_en`; its `general_en` result
-was only 1.07x that category's 12.3 tok/s AR control. This is consistent with
-KyaniteLabs' own distinction between repetition-assisted and prose rates.
+| Category | MTP decode tok/s |
+| --- | ---: |
+| Code | 44.79 |
+| General English | 28.41 |
+| General Japanese | 26.47 |
+| Mixed Japanese/English | 33.42 |
 
-## 7. Concurrency and non-transferable comparison shapes
+### Correctness and verdict
 
-MikeVeerman's published Q8 Vulkan sweep uses 256-token outputs ([S2]):
+All four source-protocol repetition guards passed. All ten common-suite
+requests completed and every category improved; the compact common-suite
+harness did not retain response text. No request failure or contamination
+symptom appeared. **Correct / usable: Yes.** This was the fastest locally
+tested route without a server-lifecycle correctness blocker. It uses a custom
+model format and must not be represented as an engine-only comparison against
+Q4/Q5/Q6/Q8 GGUF routes.
 
-| Concurrent requests | AR aggregate tok/s | MTP aggregate tok/s | MTP/AR |
-| ---: | ---: | ---: | ---: |
-| 1 | 7.10 | 15.53 | 2.19x |
-| 2 | 13.01 | 16.63 | 1.28x |
-| 3 | 17.52 | 18.15 | 1.04x |
-| 4 | 21.75 | 16.94 | 0.78x |
+## 5. Laurent adaptive DFlash2 fork
 
-The source also reports acceptance remaining between 67.5% and 76.8%, so its
-explanation is saturation rather than an acceptance collapse. This is a useful
-shape target: speculative decoding stops helping as AR batching consumes the
-available parallelism. The absolute rates do not transfer to hipEngine because
-the target file, quant, backend, output length, and serving stack differ.
+### Configuration
 
-hipEngine's direct packed AR diagnostic scales 12.332 to 43.828 tok/s from one
-to four rows (3.55x, [L1]). MikeVeerman's published AR aggregate scales 7.10
-to 21.75 tok/s (3.06x, [S2]). These are not a scheduler ranking: one is a
-direct synthetic row-scaling diagnostic and the other is a server concurrency
-sweep.
+- Fork: `LaurentZuijdwijk/llama.cpp` commit `c28d538df`, build 10681 ([S5])
+- Backend: Vulkan/RADV
+- Target: exact `ROCmFP4_FAST`
+- DFlash2 sidecar: exact FP4 `Q4_0` sidecar
+- Adaptive policy: minimum 3, maximum 7, probability minimum 0
+- Headline protocol: prose followed by structured JSON, 300 generated tokens
 
-A previously cited CIRU vLLM Ling-3.0-Flash result is excluded from the
-Qwen3.8 comparison set. It used a 124B/5.5B-active mixture-of-experts model and
-a different runtime. At most, it can motivate a qualitative concurrency-shape
-investigation; its absolute rates and model economics do not transfer.
+### Exact headline matrix
 
-The current hipEngine result is stronger than the survey's original intake.
-Automatic production C2/K3 now reaches **17.031 versus 14.887 tok/s (1.1441x
-AR)** at context 1-128 and D24, with category ratios
-1.1290x/1.3282x/1.0766x/1.0874x for code/general English/general
-Japanese/mixed ([L4]). This supersedes the old 0.92x diagnostic. It does not
-qualify C3: C3/K3 requires 12 target-verification rows, while the retained
-production bucket is physical R8 and C3+ fails closed.
+| Policy | Prose decode | JSON decode | JSON validity |
+| --- | ---: | ---: | --- |
+| Bare | 14.148 | 14.128 | Truncated at 300 tokens, but structurally on-task |
+| Fixed K3 | 25.842 | 42.532 | On-task |
+| Fixed K7 | 24.481 | 20.859 | Wrong-task prose appeared in the JSON position |
+| Adaptive K3-K7 | 25.618 | **66.838** | **Invalid: repeated prose from the preceding prompt** |
 
-## 8. Recommended priorities
+The local 66.838 tok/s row numerically reproduces the published 65.6 headline,
+but the emitted sequence is invalid. It repeats “the rhythms of the tides”
+from the preceding prose request instead of producing JSON. The fork's
+reported degeneration flag stayed false because its check covered emitted
+length rather than task content.
 
-1. **Trace C1 proposals against llama.cpp at identical teacher-forced
-   histories.** The closest same-host comparison shows near-equal complete-wall
-   throughput but 78.57% hipEngine versus 90.16% llama.cpp acceptance. Compare
-   proposal top-1 at depths 1, 2, and 3 from the same committed target history;
-   this avoids allowing a depth-1 mismatch to contaminate depths 2-3. Start at
-   NextN prompt priming, hidden-seed/cursor alignment, and proposal-state
-   repair. `p_min` is not a leading explanation: llama.cpp used
-   `--spec-draft-p-min 0.0`, and hipEngine used raw greedy proposals.
-2. **Fix long-horizon correctness before qualifying fixed K4.** The ngram
-   premise is measured: strict repetition-heavy C2/K3 D80 improves MTP-only
-   20.434 to 20.930 tok/s (+2.425%), but remains 0.9875x true AR ([L5]). The
-   strict D96 SQL terminal mismatch and the separate production D120 numerical
-   tail must be resolved under their respective contracts before a wider
-   product cell. Then qualify fixed K4 at R5 for C1 and R10 for C2 before
-   reconsidering adaptive depth.
-3. **Bisect the approximately 18% fork/mainline fixed-K3 difference.** Do not
-   port the fork's speculative diff wholesale. Separate upstream build
-   10438-to-10681 changes, Qwen graph/model changes, and the adaptive
-   controller. Adaptive logic is inactive in the fixed-K3 arm, while the
-   fork's GDN-flatten commit explicitly reports single-stream MTP as flat.
-4. **Publish acceptance by category and draft depth.** The raw C1/C2 route
-   telemetry already records candidate and accepted counts, but the compact
-   retained artifacts expose only aggregate acceptance. Observed rollout
-   counts are useful, but the C1 parity campaign still needs independent
-   teacher-forced depth agreement. Do not substitute the reconstructed C2
-   category rates (about 79.7%/84.2%/68.2%/84.2%) for the C1 78.57% result;
-   they come from a different concurrency/profile cell.
-5. **Screen C3/K3 only after an R12 premise exists.** C2 is already retained at
-   1.1441x AR in its narrow D24 bucket. C3 is the next concurrency milestone,
-   but it needs a qualified R12 verifier path plus the same correctness,
-   category, lifecycle, and serving gates.
+### Fresh-server controls
 
-Do not start another AR decode-kernel campaign from unmatched external rates,
-port Vulkan/Wave64 behavior without an independent HIP mechanism,
-default-enable ngram composition, reopen adaptive C1 depth, or optimize toward
-cross-quant/prompt headline rates.
+Restarting the server before each JSON request removed the contamination:
 
-## 9. Supporting measurements still needed
+| Test | Decode tok/s | Contract result |
+| --- | ---: | --- |
+| Fresh server, 300 tokens, trial 1 | 56.948 | Clean deterministic JSON, truncated at object 9 |
+| Fresh server, 300 tokens, trial 2 | 56.699 | Same output hash, truncated at object 9 |
+| Fresh server, 300 tokens, trial 3 | 56.991 | Same output hash, truncated at object 9 |
+| Fresh server, 420 tokens, bare | 14.180 | Complete valid 12-object JSON |
+| Fresh server, 420 tokens, adaptive | **56.532** | **Complete valid 12-object JSON** |
 
-1. **A repeated, same-lifecycle hipEngine/llama.cpp A/B.** Use the same GGUF,
-   KV dtype if both engines support it, 10-prompt suite, output length, server
-   timing boundary, and at least three interleaved runs per arm. Report both
-   decode-only and complete-wall rates without mixing them.
-2. **A compact acceptance artifact.** Preserve C1 and C2 per-category totals,
-   observed accepted-length histograms, and teacher-forced depth-1/2/3 top-1
-   agreement. The currently reconstructable C2 rollout rates are not yet a
-   committed reporting surface.
-3. **A true FP4+DFlash2 reproduction.** Reproducing Laurent's 65.6 tok/s claim
-   requires the published FP4 target, FP4 DFlash2 sidecar, pinned fork,
-   structured and prose prompts, 300-token generation, power profile, and
-   context depth. The local MTP transfer test is not a substitute.
-4. **A controlled Vulkan/HIP backend A/B.** The present AR table cannot
-   attribute its spread to backend because model formats, quants, engines, and
-   hosts differ.
-5. **A commit-level llama.cpp bisect.** Hold the local fixed-depth-3 arm
-   constant from build 10438 through 10681 before transferring any change.
+The 420-token result is the quality-valid structured number: **56.532 tok/s,
+3.99x bare**. The 65.6/66.838 sequential number is not valid throughput.
 
-## 10. Limitations
+### Fresh-process common suite
 
-- Public reports were checked against their commit-pinned documentation, but
-  their raw logs were not independently audited unless the source table itself
-  exposed them. “Published” means the source states the result, not that we
-  certify its harness.
-- External implied-bandwidth values use model file size rather than exact
-  per-token streamed bytes and therefore run high. They are screening values,
-  not profiler measurements.
-- The published sources use different power limits, LPDDR5X speeds, operating
-  systems, Mesa/ROCm versions, model files, KV types, context sizes, and prompt
-  suites. Same APU name does not make them a same-host lane.
-- The local row-scaling result [L1] was collected on a dirty working tree, uses
-  a fixed synthetic fixture, and has no joined correctness or profiler gate.
-- The local llama.cpp comparison [L2] reuses earlier hipEngine artifacts, has
-  one run per arm, and compares F16 KV with BF16 KV.
-- The local external-configuration test [L3] has one run per arm. Its adaptive
-  rows use MTP, not the DFlash2 sidecar behind the published 65.6 tok/s claim.
-  Its mainline/fork delta also includes version drift.
-- Estimated cycle efficiency is a model, not a directly reported counter. It
-  is unsuitable for adaptive draft lengths and should not be compared across
-  target sizes or timing boundaries.
-- Quality is outside this speed survey except where a linked local artifact
-  states its own correctness contract. No published speed row here implies
-  equal model quality across quantization formats.
+Every prompt used a new server process, preventing cross-request contamination:
 
-## 11. Sources
+| Metric | Result |
+| --- | ---: |
+| Arithmetic decode | 37.752 tok/s |
+| Token-weighted decode | 34.483 tok/s |
+| Acceptance | 60.43% |
+| Code | 51.81 tok/s |
+| General English | 28.42 tok/s |
+| General Japanese | 25.44 tok/s |
+| Mixed Japanese/English | 31.27 tok/s |
+
+All ten outputs were substantive and non-repetitive.
+
+### Earlier built-in-MTP transfer test
+
+Before the exact FP4+DFlash2 artifacts were available, the fork's adaptive
+controller was tested with the older local `Q4_K_M` and its built-in MTP head
+at a 128-token horizon ([L4]):
+
+| Arm | Decode tok/s | Versus own AR | Acceptance |
+| --- | ---: | ---: | ---: |
+| Mainline AR | 11.37 | 1.000x | — |
+| Mainline fixed K3 | 16.02 | 1.409x | 63.41% |
+| Mainline fixed K7 | 14.83 | 1.304x | 38.43% |
+| Laurent AR | 11.35 | 1.000x | — |
+| Laurent fixed K3 | **18.93** | **1.668x** | 63.86% |
+| Laurent fixed K7 | 14.87 | 1.310x | 38.58% |
+| Laurent adaptive K3-K7 | 17.66 | 1.556x | 61.70% |
+
+Adaptive sizing recovered 18.8% over a fixed deep K7 draft but remained 6.7%
+slower than fixed K3 on that model and suite. Mainline `n_max=7,n_min=3`
+behaved like fixed K7 rather than like Laurent's adaptive controller. The
+fork's fixed-K3 arm was about 18% faster than b10438 mainline with similar AR,
+acceptance, and draft counts, but the build-version gap prevents attributing
+that difference to Laurent's patch without a bisect. This transfer test does
+not contradict the exact FP4+DFlash2 result; it shows that adaptive depth is
+not universally the best policy.
+
+### Correctness blocker and verdict
+
+**Correct / usable: No.** The adaptive mechanism is genuinely fast, and
+fresh-process outputs are valid, but the tested server cannot safely serve a
+sequence of unrelated requests. The state leak is a control/correctness defect,
+not permissible numerical drift. Until the speculative state is reset or
+repaired at request boundaries and a sequential multi-prompt gate passes, this
+route must not be promoted as a reusable server.
+
+## 6. KyaniteLabs MTP+ngram profile
+
+### Configuration
+
+- Source profile: KyaniteLabs `7fa3ca81` ([S4])
+- Engine: ggml-org llama.cpp HIP commit `9d57ce456`, build 10438
+- Model: exact Unsloth `UD-Q4_K_XL`
+- Environment: `HSA_ENABLE_SDMA=0`, `HSA_XNACK=1`
+- Context: 98,304; one slot; thinking disabled
+- Production speculation: `draft-mtp,ngram-mod`, MTP maximum depth 12,
+  ngram minimum 24
+
+### Count-to-30 reproduction
+
+| Mode | Cold decode | Warm decode | Output |
+| --- | ---: | ---: | --- |
+| AR | 11.94 | 11.97 | Exact `1…30` |
+| MTP K12 | 61.09 | 59.42-59.49 | Exact `1…30` |
+| MTP K12 + ngram | 60.95 | **164.13-167.64** | Exact `1…30` |
+
+MTP supplies the cold gain. Ngram adds no cold benefit; the 160+ warm result
+comes from replaying a sequence that the server has already seen.
+
+### Common-suite result
+
+| Mode | Arithmetic decode | Complete wall |
+| --- | ---: | ---: |
+| AR | 11.964 | 11.679 |
+| MTP K12 | 24.390 | 20.450 |
+| MTP K12 + ngram | **24.867** | **20.518** |
+
+The production profile's category rates were 35.82 code, 16.10 general
+English, 15.45 general Japanese, and 21.15 mixed Japanese/English tok/s.
+Production improved arithmetic decode by 1.96% over MTP-only, but complete-wall
+throughput improved by only 0.33%, which is noise-scale for this single run.
+
+### Verdict
+
+**Correct / usable: Yes.** Count output was exact and all diverse-suite outputs
+were substantive and non-repetitive. The claim is accurate when described as
+workload-specific: MTP generalizes, while ngram replay does not provide a
+material general-traffic win.
+
+A separate hipEngine ngram-composition closeout remains default-off ([L5]). On
+a repetition-heavy strict C2/K3 D80 control it improved 2.425% over MTP-only
+but still reached only 0.9875x true AR; D96 and D120 retained correctness or
+economics blockers. Kyanite's result therefore does not justify enabling the
+hipEngine provider globally.
+
+## 7. PieBru recipes, Nathanw fork, and latest mainline
+
+### Configuration
+
+- Recipe source: PieBru `66cfceae` ([S6])
+- Nathanw fork: `0eb528051a56f34567312ce63ab4e14a3fc71d89`, build 10580
+- Matched mainline: `4e97ac86ebe2c4cb8212d98d2641ad6768810896`
+- Backend: Vulkan/RADV
+- Targets: exact Unsloth Q5/Q6/Q8 XL artifacts
+- Sidecar: exact DFlash2 `Q8_0`
+- Common suite: 10 prompts, 128-token maximum, thinking disabled
+
+### Claimed versus local complete-wall throughput
+
+| Quant | Published served band | Nathan local | Latest mainline local |
+| --- | ---: | ---: | ---: |
+| Q5 | about 23-24 | **24.706** | **24.886** |
+| Q6 | 17-21 | **20.549** | **20.343** |
+| Q8 | 15-18 | **18.197** | **18.092** |
+
+All published bands are confirmed or conservative.
+
+### Decode details
+
+| Quant | Engine | AR decode | DFlash decode | Acceptance |
+| --- | --- | ---: | ---: | ---: |
+| Q5 | Nathan | 10.695 | 30.659 | 53.19% |
+| Q5 | Mainline | 10.691 | **31.119** | 53.19% |
+| Q6 | Nathan | 8.778 | 26.470 | 42.92% |
+| Q6 | Mainline | **8.803** | **26.867** | 42.92% |
+| Q8 | Nathan | 7.275 | 23.044 | 43.94% |
+| Q8 | Mainline | **7.276** | **23.374** | 43.94% |
+
+Category decode rates preserve the prompt dependence:
+
+| Quant / engine | Code | General English | General Japanese | Mixed Japanese/English |
+| --- | ---: | ---: | ---: | ---: |
+| Q5 Nathan | 40.11 | 25.25 | 18.08 | 29.73 |
+| Q5 mainline | 40.94 | 25.79 | 18.11 | 29.82 |
+| Q6 Nathan | 36.48 | 19.36 | 13.54 | 26.50 |
+| Q6 mainline | 37.32 | 19.44 | 13.59 | 26.67 |
+| Q8 Nathan | 31.64 | 15.33 | 13.01 | 23.59 |
+| Q8 mainline | 32.37 | 15.40 | 13.06 | 23.68 |
+
+Outputs were token-exact between Nathan and mainline for every matched arm and
+were substantive and non-repetitive. Mainline is about 1.4-1.5% faster in
+DFlash decode. Nathan sometimes offsets that difference with faster prefill,
+which explains its small Q6/Q8 complete-wall lead.
+
+### Verdict
+
+**Correct / usable: Yes.** PieBru's served-speed claims are supported. The
+performance comes from the model, DFlash2 sidecar, and configuration rather
+than a current decode advantage in the Nathan fork.
+
+## 8. MikeVeerman Q8 concurrency
+
+### Configuration
+
+- Benchmark source: MikeVeerman `cc527064` ([S2])
+- Exact engine pin: stock llama.cpp
+  `152d337fadb93c2a099653c4072d5512c92c5bfd`
+- Backend: Vulkan/RADV
+- Model: exact Unsloth `UD-Q8_K_XL`
+- Total context: 131,072; four slots of 32,768
+- Server profile: `-ngl 999 -fa on -b 2048 -ub 512 --no-mmap
+  --cache-reuse 256`
+- Workload: greedy 256-token generations, C1 through C4
+
+The pinned build reported that cache reuse was unsupported for this context and
+disabled it. This condition applied to both AR and MTP arms.
+
+### Claimed versus local crossover
+
+| Concurrency | Published AR | Published MTP | Published ratio | Local AR | Local MTP | Local ratio |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| C1 | 7.10 | 15.53 | 2.19x | 7.21 | **16.07** | **2.23x** |
+| C2 | 13.01 | 16.63 | 1.28x | 13.35 | **17.48** | **1.31x** |
+| C3 | 17.52 | 18.15 | 1.04x | 18.00 | **18.21** | **1.01x** |
+| C4 | **21.75** | 16.94 | 0.78x | **21.03** | 17.58 | **0.84x** |
+
+Local MTP acceptance was 72.9%, 71.4%, 71.6%, and 66.4% from C1 through C4.
+At C4, per-request throughput was 5.87 tok/s AR versus 4.89 tok/s MTP.
+
+### Verdict
+
+**Correct / usable: Yes, with concurrency-aware routing.** The central claim
+reproduces: MTP is a large C1 win, approximately neutral at C3, and harmful at
+C4. The loss is caused by saturation rather than acceptance collapse. A server
+should disable MTP for sufficiently dense parallel work instead of applying a
+single speculative policy at every concurrency.
+
+## 9. yandaq long-output depth sweep
+
+### Configuration
+
+- Harness: yandaq `eb68ceb0` ([S7])
+- Engine: latest mainline Vulkan `4e97ac86`
+- Model: new Unsloth `UD-Q4_K_M`
+- Workloads: prose, code, and JSON
+- Three 1,024-token runs per family after warmup, natural stopping
+- Sampling: temperature 0.7, top-p 0.8, top-k 20, seed 42, thinking disabled
+- Validity guard: 30-character-window uniqueness must remain at least 0.5
+
+This is the exact yandaq harness on the current model artifact, not the same
+artifact/runtime snapshot that produced every historical row in the source.
+
+### Results
+
+| Maximum draft depth | Prose | Code | JSON | Mean | Validity |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| K4 | 27.90 | 34.71 | 30.92 | **31.18** | Passed |
+| K6 | 24.43 | 32.62 | 29.20 | 28.75 | Passed |
+| K8 | 16.45 | 24.01 | 22.53 | 20.99 | Passed; uniqueness 0.924-0.974 |
+
+K4 acceptance was 0.58/0.78/0.67 for prose/code/JSON. At K8 it fell to
+0.35/0.57/0.52.
+
+### Verdict
+
+**Correct / usable: Yes at K4.** The source's main operational advice—that a
+shallow draft is best—holds. The historical “K≥6 can become a fake ~35 tok/s
+repetition result” did not reproduce on current mainline plus the new model.
+Here, deeper drafts remained valid and became progressively slower.
+
+## 10. Latest mainline on the new Unsloth `UD-Q4_K_M`
+
+The common-suite stock control used mainline Vulkan `4e97ac86`, 24-token greedy
+outputs, and no prompt cache:
+
+| Mode | Arithmetic decode | Complete wall | Acceptance |
+| --- | ---: | ---: | ---: |
+| AR | 13.035 | 9.758 | — |
+| MTP K3 | **33.454** | **17.572** | 95.45% |
+
+| Mode | Code | General English | General Japanese | Mixed Japanese/English |
+| --- | ---: | ---: | ---: | ---: |
+| AR | 12.92 | 13.09 | 13.12 | 13.12 |
+| MTP K3 | 33.08 | 35.27 | 33.15 | 32.70 |
+
+**Correct / usable: Yes.** The short common-suite outputs were supplemented by
+yandaq's long-output K4/K6/K8 controls, all of which stayed substantive and
+non-repetitive. The high 24-token acceptance must not be extrapolated to long
+outputs; yandaq's K4 acceptance ranged from 58% to 78%.
+
+## 11. Routes not locally qualified
+
+### Ollama 0.32.13
+
+The hogeheer499 guide reports 20.42 generation tok/s and 292.49 prompt tok/s
+over nine warm API repeats ([S1]). We did not install the exact Ollama runtime
+or artifact. At the stated 17.7 GB model size, interpreting 20.42 tok/s as
+plain dense AR would imply 361 GB/s, above the host's 256 GB/s theoretical
+memory bandwidth. The published number may use a broader generation boundary,
+speculation, caching, or another condition not visible in the summary.
+
+**Correct / usable: No—unqualified, not known-broken.** The result remains
+published evidence, not a local AR row.
+
+### LlamaStash / stock b10503 Q8_0
+
+The guide tracks a community report of 7.3 tok/s AR and 22.4 tok/s MTP. The raw
+package was never imported into the guide, the exact prompts/config could not
+be recovered, and the exact Q8_0 target was not present locally.
+
+**Correct / usable: No—unqualified, not known-broken.** MikeVeerman's exact Q8
+concurrency reproduction supports the general plausibility of a large C1 MTP
+uplift, but it uses `UD-Q8_K_XL` and cannot validate the LlamaStash number.
+
+## 12. Cross-route conclusions
+
+### 12.1 No single speed ranking is valid
+
+The measured routes use FP4, Q4, Q5, Q6, and Q8 targets; MTP, DFlash2, and
+ngram drafts; 24-, 128-, 256-, 300-, 420-, and 1,024-token budgets; and decode
+or complete-wall timing. The executive table answers “what happened in each
+published route,” not “which engine is universally fastest.”
+
+For the one exact target/draft pair shared by `q38rocm` and Laurent, Laurent's
+fresh-process adaptive DFlash2 common-suite result is faster than strict MTP
+K4: 34.483 versus 32.969 token-weighted decode tok/s. That advantage is not
+retainable as a server win because Laurent fails sequential-request
+correctness.
+
+The local plain-AR rows remain consistent with memory-bound decode. Multiplying
+file bytes by decode rate gives screening estimates of approximately 208 GB/s
+for `ROCmFP4_FAST`, 215 GB/s for the new `UD-Q4_K_M`, 223 GB/s for Q5, 223 GB/s
+for Q6, and 229 GB/s for Q8. These are not hardware-counter measurements:
+embeddings, metadata, and non-AR tensors are not necessarily streamed per
+token. They do show why an apparent dense-AR row above the 256 GB/s physical
+ceiling needs another explanation.
+
+### 12.2 Prompt dependence is large
+
+Speculative throughput tracks how predictable the continuation is. Code and
+structured output generally accept more draft tokens than explanatory prose or
+Japanese heldouts. Every speculative rate should therefore retain prompt
+category, acceptance, output length, and timing boundary.
+
+### 12.3 Repetition replay is not novel generation
+
+Kyanite's 167.64 tok/s count result is correct but measures replay of a warm,
+repetitive sequence. Laurent's 66.838 tok/s sequential JSON result is different:
+it is not merely narrow, but invalid, because stale state changed the task
+output. The survey keeps those two cases separate.
+
+### 12.4 Concurrency changes the best policy
+
+MikeVeerman's crossover shows that drafting can consume otherwise-idle compute
+at C1 but compete with useful batched work at C4. Acceptance alone cannot drive
+admission; the scheduler must account for current physical width and target
+cycle cost.
+
+### 12.5 hipEngine follow-up
+
+The external campaign does not justify copying an entire fork. The useful
+engineering leads are:
+
+1. make exact-artifact support explicit by tensor family rather than filename;
+2. preserve strict request-boundary state ownership and add sequential
+   multi-prompt contamination tests for every speculative provider;
+3. compare proposal quality and cycle cost at matched model, prompt history,
+   and physical concurrency;
+4. route speculative work by measured concurrency economics rather than a
+   global on/off setting.
+
+## 13. Reproduction evidence
+
+The compact artifact is the durable numeric source for this campaign:
+
+- [`2026-08-28-gfx1151-qwen38-external-reproduction-survey.json`][L0]
+
+Related retained hipEngine evidence remains separate because it used different
+model artifacts or protocols:
+
+- [normal-owner C1 automatic closure][L1]
+- [production C2/K3 retained result][L2]
+- [historical same-host external comparison packet][L3]
+- [older-artifact fork configuration transfer test][L4]
+- [hipEngine ngram/MTP composition closeout][L5]
+
+## 14. Sources
 
 ### External, commit-pinned
 
-- **[S1]** hogeheer499-commits, *Qwen3.8 27B on AMD Strix Halo: What Works,
-  What Is Fast, and What Is Actually Verified*, commit `029320fb`, accessed
-  2026-08-28: [pinned document][S1].
+- **[S1]** hogeheer499-commits, *Qwen3.8 27B on AMD Strix Halo*, commit
+  `029320fb`: [pinned guide][S1].
 - **[S2]** MikeVeerman, *Qwen3.8-27B on AMD Strix Halo: what MTP speculative
-  decoding gives you*, commit `cc527064`, accessed 2026-08-28:
-  [pinned README][S2].
-- **[S3]** julianmb, *Qwen 3.8 27B ROCmFP4_FAST on AMD Strix Halo*, commit
-  `5d097740`, accessed 2026-08-28: [pinned README][S3].
-- **[S4]** KyaniteLabs, *Qwen3.8-27B on Strix Halo — tuned serving profile*,
-  commit `7fa3ca81`, accessed 2026-08-28: [pinned README][S4].
-- **[S5]** LaurentZuijdwijk, *llama.cpp — Adaptive Speculation + Fastest
-  Vulkan on AMD Strix Halo*, commit `c28d538df`, accessed 2026-08-28:
-  [pinned README][S5] and [adaptive implementation][S5-code].
+  decoding gives you*, commit `cc527064`: [pinned benchmark][S2].
+- **[S3]** julianmb, `q38rocm`, commit `5d097740`: [pinned report][S3].
+- **[S4]** KyaniteLabs, `qwen38-27b-strix-halo`, commit `7fa3ca81`:
+  [pinned report][S4].
+- **[S5]** LaurentZuijdwijk, adaptive DFlash2 llama.cpp fork, commit
+  `c28d538df`: [pinned implementation][S5].
+- **[S6]** PieBru, Qwen3.8 Strix Halo evidence, commit `66cfceae`:
+  [pinned repository][S6].
+- **[S7]** yandaq, Qwen3.8 Strix Halo harness, commit `eb68ceb0`:
+  [pinned repository][S7].
 
-### Local artifacts
-
-- **[L1]** [`2026-08-28-gfx1151-qwen38-row-scaling-baseline.json`][L1]
-- **[L2]** [`2026-08-28-gfx1151-qwen38-llamacpp-1to1.json`][L2]
-- **[L3]** [`2026-08-28-gfx1151-qwen38-fork-claim-generalization.json`][L3]
-- **[L4]** [`2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json`][L4]
-- **[L5]** [`2026-08-28-gfx1151-qwen38-ngram-mtp-composition-closeout.json`][L5]
-
-[S1]: https://github.com/hogeheer499-commits/strix-halo-guide/blob/029320fb/QWEN38_STRIX_HALO.md
-[S2]: https://github.com/MikeVeerman/qwen38-27-Strix-Halo-bench/blob/cc527064/README.md
-[S3]: https://github.com/julianmb/q38rocm/blob/5d097740/README.md
-[S4]: https://github.com/KyaniteLabs/qwen38-27b-strix-halo/blob/7fa3ca81/README.md
-[S5]: https://github.com/LaurentZuijdwijk/llama.cpp/blob/c28d538df/README.md
-[S5-code]: https://github.com/LaurentZuijdwijk/llama.cpp/blob/c28d538df/common/speculative.cpp
-[L1]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-row-scaling-baseline.json
-[L2]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-llamacpp-1to1.json
-[L3]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-fork-claim-generalization.json
-[L4]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json
+[L0]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-external-reproduction-survey.json
+[L1]: ../benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json
+[L2]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json
+[L3]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-llamacpp-1to1.json
+[L4]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-fork-claim-generalization.json
 [L5]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-ngram-mtp-composition-closeout.json
+[S1]: https://github.com/hogeheer499-commits/strix-halo-guide/blob/029320fb/QWEN38_STRIX_HALO.md
+[S2]: https://github.com/MikeVeerman/qwen38-27-Strix-Halo-bench/blob/cc52706409b0c550636ff068b06894d27079d734/README.md
+[S3]: https://github.com/julianmb/q38rocm/blob/5d0977403b0dac778598b1af499bf178b46c0b35/README.md
+[S4]: https://github.com/KyaniteLabs/qwen38-27b-strix-halo/blob/7fa3ca810c82c38e7d5a8ef4018d1d1853cec576/README.md
+[S5]: https://github.com/LaurentZuijdwijk/llama.cpp/blob/c28d538df5c02643e701a8004db84dbf1bb0ffb2/common/speculative.cpp
+[S6]: https://github.com/PieBru/Qwen-3.8-27B_Strix-Halo_gfx1151/tree/66cfceae5edb3dfaf049279738a6fb9cfc5638f6
+[S7]: https://github.com/yandaq/qwen3.8-27b-strix-halo/tree/eb68ceb0268d1c4fb4999e57e6fef0900441552e

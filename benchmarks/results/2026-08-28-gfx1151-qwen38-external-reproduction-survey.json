@@ -1,0 +1,345 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-28",
+  "status": "completed",
+  "title": "Qwen3.8-27B Strix Halo external implementation reproduction survey",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "memory_gb": 128,
+    "kernel": "Linux 7.1.6-1-cachyos",
+    "theoretical_memory_bandwidth_gb_s": 256
+  },
+  "common_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "heldout_prompts": 4,
+    "sampling": "greedy",
+    "prompt_cache": false,
+    "note": "Rates from different model files, output lengths, engines, and timing boundaries are not direct rankings."
+  },
+  "models": {
+    "unsloth_ud_q4_k_m": {
+      "bytes": 16464440224,
+      "sha256": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482"
+    },
+    "rocmfp4_fast": {
+      "bytes": 14562236384,
+      "sha256": "fb89c78d2be91cdb68eaaaa45b1270710bf34aa721dc1f0b9e3aa7b98d2e1da9"
+    },
+    "rocmfp4_fast_dflash2_q4_0": {
+      "bytes": 1034216992,
+      "sha256": "4264d8f2277ec9ae791c570ddc36940f92857f2e8a41569217e45b7563190285"
+    },
+    "unsloth_ud_q4_k_xl": {
+      "bytes": 17559178144,
+      "sha256": "3f227079003add2511437e5b1e94812e363385225bf6a9b47b0054a72bc8b01e"
+    },
+    "unsloth_ud_q5_k_xl": {
+      "bytes": 20876938144,
+      "sha256": "8601193d3d5760c37fb8ce1b43afebc69df5fb24e1fbc5a547c32e2200305276"
+    },
+    "unsloth_ud_q6_k_xl": {
+      "bytes": 25299061664,
+      "sha256": "701d8fa9ed214ab21bfc130cd2a7df19ca89bbef7713e2dfb19f3c63696aa917"
+    },
+    "unsloth_ud_q8_k_xl": {
+      "bytes": 31457991680,
+      "sha256": "af36ecb6b5db1407953345b746c14ac93f0657dda413910b4348683a2d990377"
+    },
+    "dflash2_q8_0": {
+      "bytes": 2056414752,
+      "sha256": "7f1c9a31a6ed40044c69f6508b50fd63b87abd8e1fb7fe4290303df549153751"
+    }
+  },
+  "routes": [
+    {
+      "id": "hipengine-new-unsloth-ud-q4-k-m",
+      "implementation": "hipEngine",
+      "commit": "61b83b9c3c01c24c3db701d9d6e907e5d0632935",
+      "model": "unsloth_ud_q4_k_m",
+      "locally_correct_usable": false,
+      "claim": "No external speed claim; this was the campaign's intended same-artifact hipEngine lane.",
+      "actual": "Model preparation fails before inference.",
+      "correctness": "Not executed.",
+      "blocker": "The file contains dense Q3_K, IQ4_NL, and IQ3_S tensors outside hipEngine's supported dense tensor families; IQ3_S also lacks a CPU dequantizer.",
+      "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=<detached-head> .venv/bin/python3 -u scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2,4,8 --resident-capacity 8 --expected-mtp-widths 1,2,4,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --generation2-diagnostic --correctness-contract mtp_self_exact --output <out>",
+      "note": "This is an exact-artifact support failure, not a statement that hipEngine's already-qualified older Q4_K_M lineage is unusable."
+    },
+    {
+      "id": "q38rocm-rocmfp4-fast",
+      "implementation": "julianmb q38rocm v1.5.2 / ROCmFPX",
+      "source_commit": "q38rocm 5d0977403b0dac778598b1af499bf178b46c0b35; ROCmFPX 0fc9568e07ccc8553010864cb8db1957e629cbfa",
+      "model": "rocmfp4_fast",
+      "draft_method": "built-in MTP head, strict maximum depth 4",
+      "locally_correct_usable": true,
+      "claim": {
+        "ar_decode_tok_s": 14.02,
+        "mtp_decode_tok_s_range": [30.56, 36.04]
+      },
+      "published_protocol_actual": {
+        "ar_decode_tok_s": 14.31,
+        "strict_mtp_k4_mean_decode_tok_s": 38.85,
+        "strict_mtp_k4_acceptance_pct": 78.1,
+        "prompts": 4,
+        "results": [
+          {"name": "Binary Search Tree", "category": "code", "decode_tok_s": 41.44, "acceptance_pct": 88.6},
+          {"name": "Widget Factory", "category": "reasoning", "decode_tok_s": 38.73, "acceptance_pct": 75.7},
+          {"name": "JSON Entity Extractor", "category": "structured", "decode_tok_s": 48.49, "acceptance_pct": 100.0},
+          {"name": "UMA versus Discrete", "category": "technical writing", "decode_tok_s": 26.75, "acceptance_pct": 48.0}
+        ],
+        "repetition_guard_passed": true
+      },
+      "common_suite_actual": {
+        "ar_arithmetic_decode_tok_s": 14.782,
+        "ar_complete_wall_tok_s": 12.803,
+        "mtp_k4_arithmetic_decode_tok_s": 35.575,
+        "mtp_k4_token_weighted_decode_tok_s": 32.969,
+        "mtp_k4_complete_wall_tok_s": 24.294,
+        "mtp_k4_acceptance_pct": 62.35,
+        "category_decode_tok_s": {
+          "code": 44.79,
+          "general_en": 28.41,
+          "general_ja": 26.47,
+          "mixed_ja_en": 33.42
+        }
+      },
+      "command": "source q38rocm/setup_env.sh; q38rocm/engine/bin/llama-server -m Qwen3.8-27B-ROCmFP4-FAST.gguf -dev Vulkan0 -ngl 99 -fa on -np 1 -c 65536 -b 2048 -ub 1024 -t 16 --poll 100 -ctk q8_0 -ctv turbo4 --presence-penalty 0 --repeat-penalty 1 --temperature 0 --no-mmap --cont-batching --kv-unified --port 8000 --host 127.0.0.1 -ctxcp 0 -cram 0 --no-cache-prompt --no-cache-idle-slots --reasoning off --spec-type draft-mtp --spec-draft-n-max 4 --spec-draft-p-min 0 --spec-mtp-strict-qwen; .venv/bin/python scripts/mtp-bench.py --mode server --url http://127.0.0.1:8000 --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 24 --temperature 0 --no-cache-prompt --concurrency 1",
+      "correctness": "All four published-protocol repetition guards passed. All ten common-suite requests completed and every category improved; the compact common-suite harness did not retain response text."
+    },
+    {
+      "id": "laurent-adaptive-dflash2",
+      "implementation": "LaurentZuijdwijk llama.cpp adaptive DFlash2 fork",
+      "commit": "c28d538df5c02643e701a8004db84dbf1bb0ffb2",
+      "build": 10681,
+      "backend": "Vulkan/RADV",
+      "model": "rocmfp4_fast",
+      "draft_model": "rocmfp4_fast_dflash2_q4_0",
+      "locally_correct_usable": false,
+      "claim": {
+        "structured_adaptive_decode_tok_s": 65.6,
+        "prose_adaptive_decode_tok_s": 26.1
+      },
+      "exact_sequential_matrix": {
+        "bare_prose_decode_tok_s": 14.148,
+        "bare_json_decode_tok_s": 14.128,
+        "fixed_k3_prose_decode_tok_s": 25.842,
+        "fixed_k3_json_decode_tok_s": 42.532,
+        "fixed_k7_prose_decode_tok_s": 24.481,
+        "fixed_k7_json_decode_tok_s": 20.859,
+        "adaptive_prose_decode_tok_s": 25.618,
+        "adaptive_json_reported_decode_tok_s": 66.838,
+        "adaptive_json_valid": false,
+        "failure": "The JSON request emitted repeated prose from the preceding tidal-pattern prompt. The fork's guard passed because it checked emitted length, not content."
+      },
+      "fresh_server_controls": {
+        "json_300_token_decode_tok_s_range": [56.699, 56.991],
+        "json_300_token_contract_valid": false,
+        "json_300_token_note": "Clean deterministic JSON prefix, but the 300-token budget truncated the response at object 9.",
+        "json_420_token_bare_decode_tok_s": 14.180,
+        "json_420_token_adaptive_decode_tok_s": 56.532,
+        "json_420_token_contract_valid": true,
+        "common_suite_arithmetic_decode_tok_s": 37.752,
+        "common_suite_token_weighted_decode_tok_s": 34.483,
+        "common_suite_acceptance_pct": 60.43,
+        "common_suite_category_decode_tok_s": {
+          "code": 51.81,
+          "general_en": 28.42,
+          "general_ja": 25.44,
+          "mixed_ja_en": 31.27
+        },
+        "common_suite_outputs_clean": true
+      },
+      "command": "Laurent/build-vulkan/bin/llama-server -m Qwen3.8-27B-ROCmFP4-FAST.gguf --host 127.0.0.1 --port 8137 -fa on -ngl 999 -c 8192 --spec-type draft-dflash -md Qwen3.8-27B-DFlash2-Q4_0_ROCMFP4_FAST.gguf --spec-draft-ngl 99 --spec-draft-n-max 7 --spec-draft-adaptive --spec-draft-n-min 3; POST /completion with n_predict=300, temperature=0, cache_prompt=true for prose then JSON",
+      "correctness": "Fresh-process outputs pass; sequential requests do not.",
+      "blocker": "Cross-request speculative state contamination makes the server unsafe for sequential multi-prompt use."
+    },
+    {
+      "id": "kyanite-mtp-ngram",
+      "implementation": "KyaniteLabs llama.cpp HIP profile",
+      "commit": "9d57ce456c94d241dde672b2db9cf18879766568",
+      "build": 10438,
+      "backend": "HIP/ROCm",
+      "model": "unsloth_ud_q4_k_xl",
+      "locally_correct_usable": true,
+      "claim": {
+        "count_cold_tok_s": 59.7,
+        "count_warm_tok_s_range": [148, 163],
+        "real_traffic_tok_s_range": [11, 24]
+      },
+      "count_to_30_actual": {
+        "ar_cold_decode_tok_s": 11.94,
+        "ar_warm_decode_tok_s": 11.97,
+        "mtp_k12_cold_decode_tok_s": 61.09,
+        "mtp_k12_warm_decode_tok_s_range": [59.42, 59.49],
+        "mtp_ngram_cold_decode_tok_s": 60.95,
+        "mtp_ngram_warm_decode_tok_s_range": [164.13, 167.64],
+        "output_exact_1_to_30": true
+      },
+      "common_suite_actual": {
+        "ar_arithmetic_decode_tok_s": 11.964,
+        "ar_complete_wall_tok_s": 11.679,
+        "mtp_k12_arithmetic_decode_tok_s": 24.390,
+        "mtp_k12_complete_wall_tok_s": 20.450,
+        "mtp_ngram_arithmetic_decode_tok_s": 24.867,
+        "mtp_ngram_complete_wall_tok_s": 20.518,
+        "mtp_ngram_acceptance_pct": 29.26,
+        "mtp_ngram_category_decode_tok_s": {
+          "code": 35.82,
+          "general_en": 16.10,
+          "general_ja": 15.45,
+          "mixed_ja_en": 21.15
+        }
+      },
+      "command": "HSA_ENABLE_SDMA=0 HSA_XNACK=1 llama-server -m Qwen3.8-27B-UD-Q4_K_XL.gguf -dev ROCm0 -ngl 99 --flash-attn on -fit off -c 98304 --parallel 1 --jinja --chat-template-kwargs '{\"enable_thinking\": false}' --spec-type draft-mtp,ngram-mod --spec-draft-n-max 12 --spec-ngram-mod-n-min 24",
+      "correctness": "Count output was exactly 1 through 30; all diverse-suite outputs were substantive and non-repetitive.",
+      "note": "The 160+ tok/s peak comes entirely from warm ngram replay. Ngram adds no material benefit on novel traffic."
+    },
+    {
+      "id": "piebru-nathan-dflash2",
+      "implementation": "Nathanw Strix Halo fork using PieBru recipes",
+      "recipe_commit": "66cfceae5edb3dfaf049279738a6fb9cfc5638f6",
+      "commit": "0eb528051a56f34567312ce63ab4e14a3fc71d89",
+      "build": 10580,
+      "backend": "Vulkan/RADV",
+      "draft_model": "dflash2_q8_0",
+      "locally_correct_usable": true,
+      "claim": {
+        "q5_complete_wall_tok_s_range": [23, 24],
+        "q6_complete_wall_tok_s_range": [17, 21],
+        "q8_complete_wall_tok_s_range": [15, 18]
+      },
+      "actual": {
+        "q5": {"ar_decode_tok_s": 10.695, "dflash_k5_decode_tok_s": 30.659, "complete_wall_tok_s": 24.706, "acceptance_pct": 53.19},
+        "q6": {"ar_decode_tok_s": 8.778, "dflash_k6_decode_tok_s": 26.470, "complete_wall_tok_s": 20.549, "acceptance_pct": 42.92},
+        "q8": {"ar_decode_tok_s": 7.275, "dflash_k6_decode_tok_s": 23.044, "complete_wall_tok_s": 18.197, "acceptance_pct": 43.94},
+        "dflash_category_decode_tok_s": {
+          "q5": {"code": 40.11, "general_en": 25.25, "general_ja": 18.08, "mixed_ja_en": 29.73},
+          "q6": {"code": 36.48, "general_en": 19.36, "general_ja": 13.54, "mixed_ja_en": 26.50},
+          "q8": {"code": 31.64, "general_en": 15.33, "general_ja": 13.01, "mixed_ja_en": 23.59}
+        }
+      },
+      "matched_latest_mainline": {
+        "commit": "4e97ac86ebe2c4cb8212d98d2641ad6768810896",
+        "q5_dflash_decode_tok_s": 31.119,
+        "q5_complete_wall_tok_s": 24.886,
+        "q6_dflash_decode_tok_s": 26.867,
+        "q6_complete_wall_tok_s": 20.343,
+        "q8_dflash_decode_tok_s": 23.374,
+        "q8_complete_wall_tok_s": 18.092,
+        "dflash_category_decode_tok_s": {
+          "q5": {"code": 40.94, "general_en": 25.79, "general_ja": 18.11, "mixed_ja_en": 29.82},
+          "q6": {"code": 37.32, "general_en": 19.44, "general_ja": 13.59, "mixed_ja_en": 26.67},
+          "q8": {"code": 32.37, "general_en": 15.40, "general_ja": 13.06, "mixed_ja_en": 23.68}
+        },
+        "cross_engine_outputs_token_exact": true
+      },
+      "command": "llama-server -m Qwen3.8-27B-UD-Q{5,6,8}_K_XL.gguf -ngl all -fa on -c 65536 -np 1 -b 4096 -ub 4096 -t 16 -tb 32 --presence-penalty 0 --chat-template-file sharp.jinja --jinja -md Qwen3.8-27B-DFlash2-Q8_0.gguf -ngld all --spec-type draft-dflash --spec-draft-n-max {5,6,6}; POST /v1/chat/completions with max_tokens=128, temperature=0, cache_prompt=false, enable_thinking=false",
+      "correctness": "All outputs were substantive and non-repetitive; Nathan and latest-mainline outputs were token-exact for every matched arm.",
+      "note": "The claims are confirmed, but current mainline is about 1.4-1.5% faster in DFlash decode. The fork is not the source of the decode gain."
+    },
+    {
+      "id": "mike-stock-q8-concurrency",
+      "implementation": "Stock llama.cpp at MikeVeerman's pin",
+      "commit": "152d337fadb93c2a099653c4072d5512c92c5bfd",
+      "backend": "Vulkan/RADV",
+      "model": "unsloth_ud_q8_k_xl",
+      "locally_correct_usable": true,
+      "claim": {
+        "c1_mtp_over_ar": 2.19,
+        "c4_mtp_over_ar": 0.78
+      },
+      "actual": {
+        "context_total": 131072,
+        "slots": 4,
+        "context_per_slot": 32768,
+        "tokens_per_request": 256,
+        "ar_aggregate_tok_s": {"c1": 7.21, "c2": 13.35, "c3": 18.00, "c4": 21.03},
+        "mtp_aggregate_tok_s": {"c1": 16.07, "c2": 17.48, "c3": 18.21, "c4": 17.58},
+        "mtp_over_ar": {"c1": 2.23, "c2": 1.31, "c3": 1.01, "c4": 0.84},
+        "mtp_acceptance_pct": {"c1": 72.9, "c2": 71.4, "c3": 71.6, "c4": 66.4},
+        "c4_per_request_ar_tok_s": 5.87,
+        "c4_per_request_mtp_tok_s": 4.89
+      },
+      "command": "llama-server -m Qwen3.8-27B-UD-Q8_K_XL.gguf -ngl 999 -fa on -c 131072 -b 2048 -ub 512 --no-mmap --cache-reuse 256 -np 4 --jinja [--spec-type draft-mtp]; python3 scripts/conc_bench.py --levels 1,2,3,4 --n-predict 256",
+      "correctness": "All requests completed; acceptance stayed high through C4.",
+      "note": "The crossover is saturation, not acceptance collapse: MTP is strong at C1, neutral at C3, and harmful at C4."
+    },
+    {
+      "id": "yandaq-current-mainline-k-sweep",
+      "implementation": "yandaq harness on latest stock llama.cpp",
+      "harness_commit": "eb68ceb0268d1c4fb4999e57e6fef0900441552e",
+      "engine_commit": "4e97ac86ebe2c4cb8212d98d2641ad6768810896",
+      "backend": "Vulkan/RADV",
+      "model": "unsloth_ud_q4_k_m",
+      "locally_correct_usable": true,
+      "claim": {
+        "q4_k_m_mean_decode_tok_s": 26.47,
+        "ud_q4_k_xl_mean_decode_tok_s": 26.26,
+        "ud_q8_k_xl_mean_decode_tok_s": 15.20,
+        "depth_warning": "K >= 6 can degenerate into repetitive fake ~35 tok/s output on the published stack."
+      },
+      "actual": {
+        "k4_mean_decode_tok_s": 31.18,
+        "k4_category_decode_tok_s": {"prose": 27.90, "code": 34.71, "json": 30.92},
+        "k4_acceptance": {"prose": 0.58, "code": 0.78, "json": 0.67},
+        "k6_mean_decode_tok_s": 28.75,
+        "k8_mean_decode_tok_s": 20.99,
+        "k8_category_decode_tok_s": {"prose": 16.45, "code": 24.01, "json": 22.53},
+        "k8_acceptance": {"prose": 0.35, "code": 0.57, "json": 0.52},
+        "k8_uniqueness_range": [0.924, 0.974],
+        "all_outputs_valid_nonrepetitive": true
+      },
+      "command": "BACKEND=<llama.cpp-4e97ac86-vulkan>/build-vulkan/bin VENDOR=$BACKEND bash qwen38-bench /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf new-unsloth-UD-Q4_K_M-mainline <4|6|8>",
+      "note": "K4 remains best. The older degeneration warning did not reproduce on this current model/engine pair; excessive depth caused a clean slowdown instead."
+    },
+    {
+      "id": "latest-mainline-new-ud-q4-k-m",
+      "implementation": "Latest stock llama.cpp",
+      "commit": "4e97ac86ebe2c4cb8212d98d2641ad6768810896",
+      "backend": "Vulkan/RADV",
+      "model": "unsloth_ud_q4_k_m",
+      "locally_correct_usable": true,
+      "claim": "Current same-host stock control; no separate external headline.",
+      "common_suite_actual": {
+        "ar_arithmetic_decode_tok_s": 13.035,
+        "ar_complete_wall_tok_s": 9.758,
+        "mtp_k3_arithmetic_decode_tok_s": 33.454,
+        "mtp_k3_complete_wall_tok_s": 17.572,
+        "mtp_k3_acceptance_pct": 95.45,
+        "ar_category_decode_tok_s": {"code": 12.92, "general_en": 13.09, "general_ja": 13.12, "mixed_ja_en": 13.12},
+        "mtp_k3_category_decode_tok_s": {"code": 33.08, "general_en": 35.27, "general_ja": 33.15, "mixed_ja_en": 32.70}
+      },
+      "command": "llama-server -m /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf -ngl 999 -fa on -b 2048 -ub 512 --no-mmap -c 4096 --host 127.0.0.1 --port 8080 --alias llama [--spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.0]; .venv/bin/python scripts/mtp-bench.py --mode server --url http://127.0.0.1:8080 --model llama --prompts-file benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 24 --temperature 0 --no-cache-prompt --timeout 180 --concurrency 1",
+      "correctness": "The long-output yandaq K4/K6/K8 controls were substantive and non-repetitive."
+    },
+    {
+      "id": "ollama-guide-route",
+      "implementation": "Ollama 0.32.13",
+      "locally_correct_usable": false,
+      "claim": "20.42 generation tok/s over nine warm repeats; 292.49 prompt tok/s.",
+      "actual": "Not run locally.",
+      "note": "No means not locally qualified, not a demonstrated defect. The exact artifact/runtime lane was deprioritized."
+    },
+    {
+      "id": "llamastash-stock-q8-0",
+      "implementation": "Community stock llama.cpp b10503 Q8_0 report",
+      "locally_correct_usable": false,
+      "claim": "7.3 tok/s AR to 22.4 tok/s MTP.",
+      "actual": "Not reproduced exactly.",
+      "note": "No means not locally qualified. The guide never imported the raw package, prompts/config were unavailable, and the exact Q8_0 artifact was absent."
+    }
+  ],
+  "overall_conclusions": {
+    "fastest_valid_single_task": "Laurent adaptive DFlash2 at 56.532 decode tok/s for a complete 12-object JSON response in a fresh server process.",
+    "fastest_clean_reusable_tested_route": "q38rocm strict MTP K4 at 35.575 arithmetic / 32.969 token-weighted decode tok/s on the common suite.",
+    "fastest_common_suite_decode": "Laurent adaptive DFlash2 at 37.752 arithmetic / 34.483 token-weighted decode tok/s, but only with a fresh server process per prompt.",
+    "invalid_headline": "Laurent's locally observed 66.838 tok/s sequential JSON row was invalid because it repeated state-contaminated prose.",
+    "artificial_replay_peak": "Kyanite MTP+ngram reached 167.64 tok/s on warm count-to-30 replay; it is not novel-generation throughput.",
+    "concurrency": "MikeVeerman's Q8 crossover reproduced: MTP is 2.23x AR at C1, approximately neutral at C3, and 0.84x AR at C4."
+  }
+}
