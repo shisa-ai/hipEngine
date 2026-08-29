@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8 MTP E2 Q5 true-R12 retained] Scope one exact R12 col8 sweep to Q5 K6144/N5120: leaf improves **0.2654→0.1940 ms (-26.91%)**, traced family **97.11→78.07 ms (-19.60%)**, and clean C3/K3 **29.409→29.564 tok/s (+0.53%)**, exact 471/597 acceptance and every category positive. E2 closes with Q4/planar-Q6 rejected and standard-Q6/Q5 retained. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e2-q5-true-r12-retained.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8 MTP E2 standard-Q6 true-R12 retained] Scope one exact R12 col8 sweep to standard Q6 K5120/N10240: leaf improves **0.6915→0.4468 ms (-35.38%)**, traced family **98.12→75.21 ms (-23.35%)**, and clean C3/K3 **29.198→29.409 tok/s (+0.72%)** to **1.2304x AR**, exact 471/597 acceptance and every category positive. Planar R12 loses +3.73-6.13% and keeps R8+R4. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e2-standard-q6-true-r12-retained.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8 MTP E1b proposal-head rowtile retained] Reuse the exact Q6 F32 rowtile for physical proposal rows2-4: actual row3 improves **13.736→4.711 ms (-65.70%)**; clean C3/K3 improves **27.169→29.198 tok/s (+7.47%)** to **1.2041x AR** and 6.12% above the frozen external row; C2 improves **19.146→21.690 (+13.29%)**. C2/C3 acceptance remains exactly 314/398 and 471/597, with every category positive. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e1b-proposal-head-rowtile-retained.json`.
