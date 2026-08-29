@@ -193,8 +193,13 @@ general-Japanese/mixed prompts measured:
 | Qwen3.8-Flash-Next `UD-Q4_K_XL` | predeclared eight category heldouts, matched BF16 K/V | **0.00987 / 0.02331 / 0.02766 / 0.02874** | **8/8** | same residency / **0 B** |
 
 The pinned 111.335-GB/four-hash artifact owns one 28.800-GB sparse-mmap PLE
-table and 82.523 GB hot weights. Exact batching passes 687/687 rows; p508
-first/steady is **51.220/58.466 tok/s** and p1006 is **55.046 tok/s**. A
+table and 82.523 GB hot weights. Exact batching passes 687/687 rows; the strict
+prefill default chunk is now 512 (PLE staging capacity plumbed to the chunk;
+previously silently capped at 256): same-session counterbalanced sweeps give
+p508 **8.458→8.270 s (-2.22%)** and p1012 **17.062→16.751 s (-1.82%)** with
+identical logits SHAs, and natural 16K improves to **341.177 s / 47.989 tok/s**
+with the full gate passing (prior chunk-256 steady rows were p508 58.466 and
+p1006 55.046 tok/s). A
 same-host/same-GGUF PR #27742 reference measures Vulkan/HIP pp508
 **316.380/274.996 tok/s**, pp1006 **290.450/284.485**, and tg32
 **18.716/15.848** versus then-current hipEngine **58.466/55.046/5.890**. Exact
@@ -213,13 +218,14 @@ rows/three repeats at KL mean/p95/p99/max
 `2.72e-4/1.40e-3/4.00e-3/5.77e-3`, 99.333% top-1, and reaches p508/p1012
 **73.361/71.834 tok/s** plus tg32 **15.543 tok/s**; layers `1,3,4,7,12` and
 omitted profile stay exact strict.
-Current natural 16K improves **946.999→364.306 s (-61.53%, 44.973 tok/s)** with every
+Current natural 16K improves **946.999→341.177 s (-63.96%, 47.989 tok/s; chunk-512 gate**
+re-passed with retrieval/oracle/transactional/teardown exact) with every
 binding control exact; 64K historical evidence is retained but not rerun because
-44.973<100 tok/s. 262K is capacity-only (91.126 GB tracked), not inference. Q8 MTP is exact on 10/10
+47.989<100 tok/s. 262K is capacity-only (91.126 GB tracked), not inference. Q8 MTP is exact on 10/10
 prompts but remains opt-in at **0.955x AR**. <=1K image/video/PNG chat and
 request-owned c2 blocking/SSE pass with zero teardown; packed c-aware speed,
 remote media, multimodal SSE, and 128K+/262K inference are not claimed.
-Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json).
+Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json) · [`chunk512`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-chunk512.json).
 
 ## Current Qwen3.6-35B quantization quality
 
