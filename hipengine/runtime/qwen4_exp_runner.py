@@ -137,6 +137,8 @@ from hipengine.runtime.gguf_linear import (
     wmma_prefill_weight_filter_session,
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
+    q8_mmq_prefill_session,
+    resolve_q8_mmq_prefill_policy,
 )
 from hipengine.kernels.cpu_reference.qwen4_exp import (
     PLEHashState,
@@ -4049,6 +4051,55 @@ class Qwen4ExpGGUFResidentModelRunner:
             3 * prefill_rows * np.dtype(np.int64).itemsize,
         ):
             self._prefill_buffers.append(malloc(nbytes, runtime=self.runtime))
+        self._q8_mmq_policy = None
+        self._q8_mmq_library = None
+        self._q8_mmq_buffers: tuple[DeviceBuffer, ...] = ()
+        if os.environ.get(
+            "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL", "0"
+        ) not in {"", "0", "false", "False"}:
+            policy = resolve_q8_mmq_prefill_policy("gguf_ud_q4_k_xl")
+            if policy is not None:
+                from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
+                    build_gguf_q8_0_mmq_prefill,
+                    q8_mmq_d4x3_nbytes,
+                )
+
+                rows_cap = min(int(self.prefill_chunk_size), int(policy.max_rows))
+                hidden_cap = max(
+                    int(hidden) for hidden, _ in policy.min_rows
+                )
+                self._q8_mmq_policy = policy
+                self._q8_mmq_library = build_gguf_q8_0_mmq_prefill(load=True)
+                workspace = malloc(
+                    q8_mmq_d4x3_nbytes(rows_cap, hidden_cap), runtime=self.runtime
+                )
+                risk_count = malloc(
+                    DType.INT32.itemsize, runtime=self.runtime
+                )
+                risk_indices = malloc(
+                    policy.risk_indices_nbytes(rows_cap), runtime=self.runtime
+                )
+                self._q8_mmq_buffers = (workspace, risk_count, risk_indices)
+                self._buffers.extend(self._q8_mmq_buffers)
+
+    def _q8_mmq_prefill_context(self):
+        """Expose the guarded Q8 MMQ session while a chunked prefill runs."""
+
+        workspace, risk_count, risk_indices = (
+            self._q8_mmq_buffers
+            if self._q8_mmq_buffers
+            else (None, None, None)
+        )
+        return q8_mmq_prefill_session(
+            workspace_ptr=0 if workspace is None else workspace.ptr,
+            workspace_nbytes=0 if workspace is None else workspace.nbytes,
+            risk_count_ptr=0 if risk_count is None else risk_count.ptr,
+            risk_count_nbytes=0 if risk_count is None else risk_count.nbytes,
+            risk_indices_ptr=0 if risk_indices is None else risk_indices.ptr,
+            risk_indices_nbytes=0 if risk_indices is None else risk_indices.nbytes,
+            policy=self._q8_mmq_policy,
+            library=self._q8_mmq_library,
+        )
 
     @property
     def token_id_buffer(self) -> DeviceBuffer:
@@ -4682,6 +4733,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             wmma_prefill_weight_filter_session(
                 q8_wmma_weight_filter if q8_wmma_layers else None
             ),
+            self._q8_mmq_prefill_context(),
         ):
             for start in range(0, len(values), self.prefill_chunk_size):
                 last_residual_ptr, hidden_rows = self._prefill_chunk(
@@ -4783,6 +4835,9 @@ class Qwen4ExpGGUFResidentModelRunner:
         if self.moe_graph_cache is not None:
             self.moe_graph_cache.close()
             self.moe_graph_cache = None
+        self._q8_mmq_policy = None
+        self._q8_mmq_library = None
+        self._q8_mmq_buffers = ()
         for buffer in reversed(self._prefill_buffers):
             free(buffer, runtime=self.runtime)
         self._prefill_buffers = []

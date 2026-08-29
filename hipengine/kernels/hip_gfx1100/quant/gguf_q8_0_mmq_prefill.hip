@@ -182,6 +182,52 @@ __global__ void q8_0_mmq128_quantize_bf16_residual_d4_kernel(
   }
 }
 
+template <int residual_passes>
+__launch_bounds__(256, 2)
+__global__ void q8_0_mmq128_quantize_f32_residual_d4_kernel(
+    const float* __restrict__ x,
+    block_q8_1_mmq_d4* __restrict__ out,
+    int rows,
+    int hidden) {
+  const int row = static_cast<int>(blockIdx.x);
+  const int i0 = (static_cast<int>(blockIdx.y) * 256 + static_cast<int>(threadIdx.x)) * 4;
+  if (row >= rows || i0 >= hidden) return;
+
+  float residual[4];
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    residual[i] = x[static_cast<int64_t>(row) * hidden + i0 + i];
+  }
+
+  const int block_idx = i0 / 128;
+  const int iqs = i0 & 127;
+  const int64_t plane_blocks = static_cast<int64_t>(hidden / 128) * rows;
+#pragma unroll
+  for (int pass = 0; pass < residual_passes; ++pass) {
+    float amax = 0.0f;
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      amax = fmaxf(amax, fabsf(residual[i]));
+    }
+#pragma unroll
+    for (int offset = 4; offset > 0; offset >>= 1) {
+      amax = fmaxf(amax, __shfl_xor(amax, offset, 32));
+    }
+    const float d = amax == 0.0f ? 0.0f : amax / 127.0f;
+    block_q8_1_mmq_d4* dst =
+        out + static_cast<int64_t>(pass) * plane_blocks +
+        static_cast<int64_t>(block_idx) * rows + row;
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+      int q = d == 0.0f ? 0 : static_cast<int>(roundf(residual[i] / d));
+      q = max(-128, min(127, q));
+      dst->qs[iqs + i] = static_cast<int8_t>(q);
+      residual[i] = fmaf(-static_cast<float>(q), d, residual[i]);
+    }
+    if ((iqs & 31) == 0) dst->d4[iqs >> 5] = d;
+  }
+}
+
 template <bool need_output_check, int activation_passes, typename output_t, bool collect_risks>
 __launch_bounds__(256, 2)
 __global__ void q8_0_raw_mmq128_q8_1_d4_kernel(
@@ -492,6 +538,55 @@ int launch_mmq(
   return static_cast<int>(hipGetLastError());
 }
 
+__launch_bounds__(128, 2)
+__global__ void q8_0_sparse_exact_correct_f32_kernel(
+    const float* __restrict__ x,
+    const uint8_t* __restrict__ qweight,
+    float* __restrict__ out,
+    const int* __restrict__ risk_count,
+    const int* __restrict__ risk_indices,
+    int max_risks,
+    int rows,
+    int hidden,
+    int out_features) {
+  const int count = min(max(*risk_count, 0), max_risks);
+  const int row_bytes = (hidden / Q8_QK) * Q8_BLOCK_BYTES;
+  const int lane = static_cast<int>(threadIdx.x) & 31;
+  const int wave = static_cast<int>(threadIdx.x) >> 5;
+  __shared__ float wave_sums[4];
+
+  for (int risk_slot = static_cast<int>(blockIdx.x);
+       risk_slot < count;
+       risk_slot += static_cast<int>(gridDim.x)) {
+    const int output_idx = risk_indices[risk_slot];
+    if (output_idx < 0 || output_idx >= rows * out_features) continue;
+
+    const int row = output_idx / out_features;
+    const int output_col = output_idx - row * out_features;
+    const uint8_t* weight_row =
+        qweight + static_cast<int64_t>(output_col) * row_bytes;
+    const float* x_row = x + static_cast<int64_t>(row) * hidden;
+
+    float acc = 0.0f;
+    for (int k = static_cast<int>(threadIdx.x); k < hidden; k += 128) {
+      acc += x_row[k] * q8_0_weight(weight_row, k);
+    }
+    for (int offset = 16; offset > 0; offset >>= 1) {
+      acc += __shfl_down(acc, offset);
+    }
+
+    if (lane == 0) wave_sums[wave] = acc;
+    __syncthreads();
+    if (threadIdx.x == 0) {
+      float total = 0.0f;
+#pragma unroll
+      for (int group = 0; group < 4; ++group) total += wave_sums[group];
+      out[output_idx] = total;
+    }
+    __syncthreads();
+  }
+}
+
 int launch_sparse_exact_correct(
     const uint16_t* x,
     const uint8_t* qweight,
@@ -650,6 +745,77 @@ extern "C" int hipengine_gguf_q8_0_mmq128_sparse_exact_correct_bf16(
   return launch_sparse_exact_correct(
       x, qweight, out, risk_count, risk_indices, max_risks,
       rows, hidden, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_mmq128_quantize_f32_d4x3(
+    const float* x,
+    void* out_d4,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  if (x == nullptr || out_d4 == nullptr || rows <= 0 || hidden <= 0 ||
+      (hidden % 128) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(256);
+  const dim3 grid(
+      static_cast<unsigned int>(rows),
+      static_cast<unsigned int>((hidden + 1023) / 1024));
+  hipLaunchKernelGGL(
+      (q8_0_mmq128_quantize_f32_residual_d4_kernel<3>),
+      grid, block, 0, stream, x,
+      reinterpret_cast<block_q8_1_mmq_d4*>(out_d4),
+      static_cast<int>(rows), static_cast<int>(hidden));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
+    const void* x_d4,
+    const uint8_t* qweight,
+    float* out,
+    int* risk_count,
+    int* risk_indices,
+    int64_t max_risks,
+    float risk_threshold,
+    int64_t rows,
+    int64_t hidden,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_mmq<3, float, true>(
+      reinterpret_cast<const block_q8_1_mmq_d4*>(x_d4),
+      qweight, out, rows, hidden, out_features, stream,
+      risk_count, risk_indices, max_risks, risk_threshold);
+}
+
+extern "C" int hipengine_gguf_q8_0_mmq128_sparse_exact_correct_f32(
+    const float* x,
+    const uint8_t* qweight,
+    float* out,
+    const int* risk_count,
+    const int* risk_indices,
+    int64_t max_risks,
+    int64_t rows,
+    int64_t hidden,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || out == nullptr ||
+      risk_count == nullptr || risk_indices == nullptr ||
+      max_risks <= 0 || max_risks > INT32_MAX ||
+      rows <= 0 || hidden <= 0 || out_features <= 0 ||
+      rows * out_features > INT32_MAX || (hidden % Q8_QK) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(128);
+  const int64_t grid_blocks =
+      max_risks < SPARSE_EXACT_MAX_BLOCKS ? max_risks : SPARSE_EXACT_MAX_BLOCKS;
+  const dim3 grid(static_cast<unsigned int>(grid_blocks));
+  hipLaunchKernelGGL(
+      q8_0_sparse_exact_correct_f32_kernel,
+      grid, block, 0, stream,
+      x, qweight, out, risk_count, risk_indices,
+      static_cast<int>(max_risks), static_cast<int>(rows),
+      static_cast<int>(hidden), static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
 }
 
 extern "C" int hipengine_gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_f32_out(

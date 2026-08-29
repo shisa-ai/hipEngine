@@ -20,6 +20,14 @@ should be removed or collapsed.
 
 ## 2026-08-29 Qwen4Exp late-layer production prefill
 
+- `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL` (new, default off) opens the guarded
+  raw-Q8 MMQ128 prefill session for Qwen4Exp dense Q8_0 projections (F32
+  in/out, D4x3 Q8_1 activations, int8-WMMA tiles, `QWEN4EXP_Q8_MMQ_PREFILL_POLICY`
+  shape gates). Strict coltile stays the exact default/fallback. Removal
+  trigger: once the complete strict-teacher 450-row packet plus paired
+  p508/p1012 gates pass, fold the session opening into the named production
+  profile (not the env) and drop the env bridge; the (320, 10240) hc-down and
+  K%256!=0 shapes stay exact by construction.
 - `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` and the temporary
   `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`/tile plus
   `HIPENGINE_QWEN4_EXP_Q4_DP4A64{,_LAYERS}` bridges are bound by explicit
