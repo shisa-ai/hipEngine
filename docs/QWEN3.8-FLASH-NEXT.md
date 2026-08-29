@@ -90,15 +90,16 @@ incremental pooled-key cache, gathered decode attention, GDN concat fix,
 permute-free scoring, and distinct-stream MTP combiner are **already covered
 in-tree** — verified in source with retained evidence. The remaining campaigns:
 
-1. **Prefill dataflow:** close the 4.9x pp508 kernel-time gap. llama.cpp's
-   Q4_K/Q5_1/Q8_0 MMQ families total 1.226 s over 638 launches (MFMA integer
-   pipeline, one kernel per MoE GEMM); our grouped owner dequantizes to float
-   and contracts with scalar FMA (8.753 s total). Port MMQ cooperative grids
-   onto the Qwen4Exp grouped-MoE route (in-tree `gguf_q4_k_mmq_prefill` /
-   `gguf_q8_0_mmq_prefill` infrastructure exists) under the production gate
-   with the strict grouped chain as fallback. Cheap first measurement: a
-   prefill chunk-size sweep (256 vs 512 vs 1024; the fork's `-ub 2048` was
-   worth +10% on their side).
+1. **Prefill dataflow:** close the 4.9x pp508 kernel-time gap. Current strict
+   chunk-512 family budget (8.330 s kernels): Q8_0 dense float coltile
+   **2.460 s** (494 launches), Q5_1 selected down 1.812 s, Q4_K selected
+   gate/up 1.796 s, GDN 1.008 s. The in-tree raw-Q8 MMQ128 body measures
+   **6.4–7.3x faster** than the current Q8_0 dense owner at the three dominant
+   real shapes (12.7 TFLOPS); first unit: open the existing
+   `q8_mmq_prefill_session` in the Qwen4Exp prefill path and register the
+   `raw_q8_mmq128` policy for `gguf_ud_q4_k_xl` under the production gate.
+   Then Q5_1/Q4_K selected MMQ consumers and the GDN prefill scan
+   (1.0 s vs llama 0.085 s). Chunk 512 is now the default (`f9a0750f9`).
 2. **MTP economics:** verification is a serial per-candidate target loop
    (budget 1..4), so every drafted token costs a full target decode row; the
    multirow candidate was rejected because `rows >= 2` switches MoE to the
