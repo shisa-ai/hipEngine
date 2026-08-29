@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8 MTP E1a prompt streaming retained] Scope exact post-output-norm prompt streaming to the production standard-`Q4_K_M` physical-C3 key: complete K3 wall improves **33.673→26.501 s (-21.30%)** and throughput **21.382→27.169 tok/s (+27.06%)**, now **1.1280x AR** with exact 471/597 E0 acceptance and every category positive. The row is 1.26% below the frozen external target and remains explicit pending full promotion/serving gates. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e1a-prompt-streaming-retained.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8 MTP E0 current baseline] Rebase MTP to current AR/profile manifests: strict C1 natural25 is **18.191 vs 11.062 tok/s (1.6445x)** and remains automatic; production C2 is **19.146 vs 18.032 (1.0618x)** with mixed at 0.9451x, so it becomes explicit-only/K0 automatic; C3 K3 is **21.382 vs 24.119 (0.8865x)**. Current profiling assigns **41.26 ms/cycle** to three Q6 proposal-head sweeps. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8 AR P3 blocker attribution] C1 remains 1.9% short with **96.6%** of transition wall in kernels after the historical owner ladder; C2 remains 9.9% short after graph replay, with graph-record plus the P2.2 prefill gap explaining ~250.6/262.7 ms per request. P3 is partial pending new operation-complete C1/C2 dataflows. `benchmarks/results/2026-08-29-gfx1151-qwen38-ar-c1-c2-blockers.json`.

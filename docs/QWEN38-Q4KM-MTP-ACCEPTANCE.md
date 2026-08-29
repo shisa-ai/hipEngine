@@ -1,10 +1,10 @@
 # Qwen3.8-27B `Q4_K_M` physical-C3 MTP decode-economics campaign
 
-- Status: **E0 complete on current source; E1a physical-C3 activation adjudication next**
-- Created: 2026-08-28; corrected review: 2026-08-28
+- Status: **E1a exact physical-C3 prompt streaming retained; E1b proposal-head row reuse next**
+- Created: 2026-08-28; corrected review: 2026-08-28; E1a retained: 2026-08-29
 - Hardware lane: **AMD Ryzen AI MAX+ 395 / Radeon 8060S / `hip_gfx1151` / HIP 7.15**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile, physical C3, raw greedy, context 1-67, D24**
-- Current product state after E0: **strict C1/K3 automatic at 1.6445x; production C2/K3 explicit diagnostic at 1.0618x and automatic K0 after the faster-AR rebase; C3/K3 diagnostic at 0.8865x and automatic K0**
+- Current product state after E1a: **strict C1/K3 natural25 remains automatic at 1.6445x; production C2/K3 remains an explicit diagnostic at 1.0618x and automatic K0; C3/K3 is an exact explicit diagnostic at 1.1280x and remains automatic K0 pending the complete production/serving gate**
 - Primary promotion gate: **C3 `>=1.10x` true same-protocol AR overall, full/heldout/every category non-regressive, complete production correctness and serving gates**
 - Stretch target: **`>1.30x` true AR**, consistent with [`BENCHMARK.md`](BENCHMARK.md)
 - Binding predecessors (extend; do not reimplement):
@@ -18,7 +18,8 @@
   [`C3 retained rowtiles`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json),
   [`OI-2 adaptive rejection`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi2-adaptive-rejected.json),
   [`OI-4 post-norm rejection`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi4-postnorm-rejected.json),
-  [`current E0 baseline`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json)
+  [`current E0 baseline`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json),
+  [`E1a prompt streaming`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e1a-prompt-streaming-retained.json)
 - Normative dependencies: [`PLAN.md`](PLAN.md), [`TESTING.md`](TESTING.md),
   [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
   [`BENCHMARK.md`](BENCHMARK.md), [`KERNELS.md`](KERNELS.md), and
@@ -45,9 +46,12 @@ repaired; the remaining work is an optimization problem:
 > route, while preserving automatic C1, exact C2 diagnostics/K0 policy, and
 > every strict fallback.**
 
-The E0 current-source C3/K3 route is **21.382 vs 24.119 tok/s true AR
-(0.8865x)**. The faster AR denominator supersedes the opening 0.9589x ratio.
-The campaign succeeds if one of these outcomes is reached:
+The E0 current-source C3/K3 route was **21.382 vs 24.119 tok/s true AR
+(0.8865x)**. E1a reduces complete MTP wall from 33.673 to 26.501 seconds and
+now reaches **27.169 vs 24.085 tok/s (1.1280x)** with exact E0 acceptance and
+every category positive. This clears the economic threshold but not the full
+production/serving promotion bundle, so automatic C3 remains K0. The campaign
+succeeds if one of these outcomes is reached:
 
 1. **Primary success:** a physical-C3 fixed-budget cell clears `>=1.10x` true
    same-protocol AR overall, has no full/heldout/category/task/SLO regression,
@@ -76,28 +80,26 @@ profiles/scopes differ and must remain explicit:
 | --- | --- | ---: | ---: | --- |
 | C1/K3 | strict, cap1/cap4 realized singleton, context 1-67, natural25 | **18.191 / 11.062 = 1.6445x** | 161/220 = **73.18%** | automatic; current manifest refreshed |
 | C2/K3 | production, cap4 physical C2, context 1-128, D24 | **19.146 / 18.032 = 1.0618x** | 314/398 = **78.89%** | explicit diagnostic; automatic K0 |
-| C3/K3 | production, canonical natural contexts (<=67), D24 | **21.382 / 24.119 = 0.8865x** | 471/597 = **78.89%** | retained diagnostic; automatic K0 |
+| C3/K3 | production, canonical natural contexts (<=67), D24 | **27.169 / 24.085 = 1.1280x** | 471/597 = **78.89%** | retained exact diagnostic; automatic K0 pending full gate |
 | C4+ | unqualified economics | n/a | n/a | automatic K0 |
 
-C2 and C3 still have identical draft acceptance. The C2-to-C3 loss is not
-proposal-quality collapse; AR scales faster than the remaining proposal/target
-dataflow. C2 no longer clears the automatic gate after the AR rebase, and its
-mixed category is 0.9451x, so E0 explicitly demotes it while preserving the
-exact opt-in diagnostic.
+C2 and C3 still have identical draft acceptance. E1a removes the C3 activation
+wall without changing E0 candidate IDs or the 471/597 acceptance trajectory.
+C2 remains below the automatic gate and its mixed category remains 0.9451x, so
+its exact opt-in diagnostic and K0 policy are unchanged.
 
-Current E0 C3 category economics:
+Current E1a C3 category economics:
 
-| Category | MTP tok/s | AR tok/s | Ratio | Immediate requirement |
+| Category | MTP tok/s | AR tok/s | Ratio | Status |
 | --- | ---: | ---: | ---: | --- |
-| code | 21.782 | 24.324 | 0.8955x | recover 11.67% to non-regression |
-| general English | 23.498 | 24.408 | 0.9627x | recover 3.87% |
-| general Japanese | 21.193 | 24.261 | 0.8735x | recover 14.48% |
-| mixed Japanese/English | 19.130 | 23.311 | **0.8206x** | recover **21.86%** |
-| full | 21.382 | 24.119 | **0.8865x** | recover **24.08%** to reach 1.10x AR |
+| code | 27.562 | 24.572 | 1.1217x | positive |
+| general English | 28.834 | 24.350 | 1.1841x | positive |
+| general Japanese | 25.911 | 24.483 | 1.0583x | positive |
+| mixed Japanese/English | 26.180 | 22.576 | **1.1596x** | positive |
+| full | 27.169 | 24.085 | **1.1280x** | economic gate passed |
 
-The mixed category, not the aggregate, is the binding non-regression pressure.
-No category-specific runtime branch is permitted; the table only sizes the
-content-independent wall reduction required.
+The policy key is model/quant/profile/physical-width only. No category,
+prompt, or prompt-length selector was added.
 
 ### 2.2 Acceptance and provider-state facts — closed unless re-triggered
 
@@ -130,8 +132,10 @@ not authorize it.
 
 Two proposal-policy experiments are already closed:
 
-- OI-4 post-output-norm hidden is rejected: B3 **-1.62%**, with code/Japanese/
-  mixed regressions; a B2 aggregate gain still failed heldout/Japanese gates.
+- OI-4 post-output-norm **draft output** hidden is rejected: B3 **-1.62%**,
+  with code/Japanese/mixed regressions; a B2 aggregate gain still failed
+  heldout/Japanese gates. That proposal-chain policy is distinct from E1a's
+  post-output-norm target prompt seed contract.
 - OI-2 content-agnostic adaptive B1/B2/B3 is rejected: **-0.58% to -1.72%**
   versus fixed B3, with category regressions. Its exact transition
   infrastructure may be reused; its controller is not rerun.
@@ -149,17 +153,20 @@ backbone, retains request-major candidate IDs/hidden rows on device, and hands
 them to one packed target group. Do not add another generic “batch the drafter”
 task.
 
-Prompt activation is different. The adapter currently advertises
-`physical_prompt_streaming = False`: the adjacent `Q4_K_S` physical C2/C4
-streaming candidate was disabled after general-English regressions of
-11.86%/10.16%, so current physical groups retain host-hidden capture/replay.
-That different-quant result is a negative prior, not Q4_K_M evidence. The current C3 category data
-makes activation worth re-measuring rather than assuming away: general English
-and mixed Japanese/English both accept 84.21% of drafts, yet their ratios are
-1.061x and 0.845x, while the mixed prompt roots are around positions 60-67
-versus 35-36. This is a correlation, not attribution; E0 must report prompt-
-length/activation wall, and E1a either re-closes or qualifies the existing
-candidate before any new batched-activation design.
+Prompt activation is different. E1a now admits the existing shifted streaming
+path only for the gfx1151 dense-H5120 `MOSTLY_Q4_K_M` production physical-C3
+key. Streamed target rows are output-normalized on device before NextN consumes
+them; the first pre-output-norm screen was rejected after changing acceptance
+from 471/597 to 468/597. C2/C4, other quant/model/profile keys, and peer backends
+retain host-hidden capture/replay. The adjacent `Q4_K_S` C2/C4 category
+rejection therefore remains binding in its own scope.
+
+On the 36-token profile child, `nextn_prompt_prime` falls from 746.7 to 41.5 ms
+while complete wall falls from 3.285 to 2.664 seconds. Target prefill rises from
+543.1 to 701.1 ms because it now includes streamed NextN work, but measured
+activation-to-first-decode ownership falls from 1.290 to 0.701 seconds. The
+refreshed 41.5 ms prime is only 1.6% of profile-child complete wall, so a new
+multi-request state-only priming kernel no longer has a material E1a premise.
 
 Current cached profiles expose two steady-cycle walls as well:
 
@@ -204,12 +211,11 @@ The E0 C3 packet generates 720 tokens per arm:
 - MTP complete wall: **33.673 s** (`21.382 tok/s`);
 - `1.10x` promotion ceiling: **27.138 s** (`26.531 tok/s`).
 
-C3 must remove **6.534 s / 19.40% of current complete wall** at unchanged AR,
-a **24.08% throughput increase**. The frozen external K3 target of 27.515
-tok/s requires a 28.68% uplift. Mixed Japanese/English remains the binding
-category at 0.8206x. E0 also measures 543.1 ms target prefill and 746.7 ms
-NextN prompt prime in the profiled 36-token C3 packet, so activation is
-material and E1a remains first.
+E1a removes **7.171 s / 21.30%** from complete MTP wall and improves throughput
+by **27.06%**. It clears the 1.10x economic threshold and leaves **0.346 tok/s
+(1.26%)** to the frozen 27.515 tok/s external K3 row. Complete production and
+serving admission remain open; E1b is next because its measured 41.26 ms/cycle
+Q6 proposal-head wall can close the remaining parity gap.
 
 ## 3. What already exists — do not reimplement or relabel
 
@@ -220,10 +226,10 @@ material and E1a remains first.
   packed target R4-R16 mechanics, one group accept payload, and zero routine
   candidate D2H before target execution.
 - OI-3 exact C1 streaming prompt priming, provider pooling/groups, fixed cycle
-  slabs, and zero hot allocation after warmup. Physical C2/C4 streaming was
-  category-rejected on the adjacent `Q4_K_S` campaign and remains disabled;
-  its implementation is the E1a starting candidate, while Q4_K_M/C3 requires
-  independent evidence.
+  slabs, and zero hot allocation after warmup. Physical C2/C4 streaming remains
+  disabled after the adjacent `Q4_K_S` category rejection; E1a independently
+  qualifies post-output-norm streaming for the standard-`Q4_K_M` production C3
+  key only.
 - P7 root snapshots and conditional provider repair for reject/K-1/full/other
   depths; final-state direct-commit cleanup.
 - Production C3 K1/R6, K2/R9, K3/R12 full-logit manifests, three repeats,
@@ -337,11 +343,11 @@ No implementation changes.
 
 Exit: complete 2026-08-29 in the
 [`E0 artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json).
-K1 is the current fastest unoptimized C3 depth (0.9344x), but the Q6 head is
-41.26 ms/cycle at K3 and remains the first new route candidate. E1b's projected
-K3 rate is 25.86 tok/s, still below 1.10x alone; E1a plus E1b can plausibly
-close the gate. Strict C1 automatic is refreshed; production C2 remains explicit
-only after failing the rebased automatic/category gates.
+K1 was the fastest unoptimized C3 depth (0.9344x), but the Q6 head is
+41.26 ms/cycle at K3 and remains the first new route candidate. E1a subsequently
+raises K3 to 1.1280x AR; E1b now targets parity margin rather than the initial
+economic threshold. Strict C1 automatic is refreshed; production C2 remains
+explicit after failing the rebased automatic/category gates.
 
 ### E1 — close proposal-side activation and head walls
 
@@ -349,28 +355,29 @@ only after failing the rebased automatic/category gates.
 
 This starts with an existing exact candidate, not fresh device code.
 
-- [ ] Under the E0 protocol, compare current physical host replay with the
-      already-implemented streaming prompt path at C3. Report target prefill,
-      provider open, `nextn_prompt_prime`, TTFT, complete wall, prompt-length
-      bins, and every category.
-- [ ] Preserve shifted NextN semantics exactly: prompt row 0 consumes `t[0]`
-      with zero hidden; row i consumes `t[i]` with target hidden `h[i-1]`;
-      cursors/KV and final carried hidden agree with replay; no discarded prompt
-      scoring.
-- [ ] If the existing path repeats the C2/C4 category rejection, leave
-      `physical_prompt_streaming=False` and record the C3 closeout. Do not tune
-      the selector by category or prompt length.
-- [ ] Only if E0 still attributes material complete wall to physical provider
-      activation, screen a distinct **true multi-request state-only priming**
-      design: at each prompt position, pack active request rows through one
-      NextN state transition, with ragged masks and no logits. Reuse the existing
-      batch state-only primitive/strict per-request replay; do not call serial
-      streaming “batched.”
-- [ ] RED the new design over equal/ragged prompt lengths, chunk boundaries,
-      warm offsets, request permutation, cancellation between chunks, provider
-      cursor/KV/state, first proposal, and teardown before a GPU candidate.
-- [ ] Retain only a full/heldout/every-category complete-wall win. Otherwise
-      close activation and proceed to E1b.
+- [~] Under the E0 protocol, compare current physical host replay with the
+      already-implemented streaming prompt path at C3. Complete wall, target
+      prefill, provider open, `nextn_prompt_prime`, three prompt-length bins,
+      and every category are recorded in the E1a artifact. The profile child's
+      activation-to-first-decode owner improves 1.290→0.701 seconds; direct
+      scheduler/client SSE TTFT remains for the serving gate.
+- [x] Preserve shifted NextN semantics exactly: prompt row 0 consumes `t[0]`
+      with zero hidden; row i consumes `t[i]` with post-output-norm target hidden
+      `h[i-1]`; E0 candidate IDs and 471/597 acceptance are exact. The rejected
+      pre-output-norm screen changed acceptance to 468/597 and was not retained.
+- [x] The existing path does not repeat the C2/C4 category rejection: all four
+      categories are positive. Admission uses one model/quant/profile/C3 key,
+      with no category, prompt, or length selector.
+- [x] Do not build a distinct true multi-request state-only prime: refreshed
+      `nextn_prompt_prime` is 41.5 ms, only 1.6% of the profile-child complete
+      wall, so the material-entry condition no longer holds after E1a.
+- [x] The conditional RED matrix for a new priming design is not applicable
+      because that candidate did not pass its entry condition. Existing
+      equal/ragged/chunk/offset/permutation/cancel/teardown coverage remains.
+- [x] Retain the exact full/heldout/every-category win: **27.169 vs 24.085 tok/s
+      (1.1280x AR)**, up **27.06%** from E0, with all ten cells exact/engaged/
+      budget-conformant. Proceed to E1b; automatic C3 remains K0 pending full
+      promotion gates. [`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e1a-prompt-streaming-retained.json)
 
 #### E1b — exact physical proposal-head row reuse (first new kernel-route candidate)
 
@@ -586,7 +593,7 @@ These are ordered follow-ons, not assumptions in the primary claim:
 
 | Priority | Candidate | Measured premise | First falsifier / stop |
 | ---: | --- | --- | --- |
-| 0a | Physical C3 prompt activation | E0 measures 746.7 ms NextN prompt prime in the profiled 36-token C3 packet; physical streaming remains disabled after an adjacent Q4_K_S C2/C4 category rejection | existing/new exact batching fails complete wall or any category |
+| 0a | Physical C3 prompt activation | E1a retained: 746.7→41.5 ms prompt prime and 21.382→27.169 tok/s, exact acceptance, every category positive | closed retained; direct SSE TTFT remains in E6 |
 | 0b | Physical proposal Q6 F32 rowtile | E0 measures 41.26 ms across three K3 head calls; existing actual root rowtile is 4.60-4.66 ms/depth | no actual-head/complete-wall win or any row/top-1 mismatch |
 | 1 | True R9/R12/R16 target owner | R12 still R8+R4; Q4/Q6/Q5 about 102/55/14 ms | cannot reduce sweep count or actual target/complete wall |
 | 2 | Fixed K4 | max zero-cost visible lift 17.54%; external K4 is diagnostic | measured p4/cost score cannot beat fixed K3 |
