@@ -225,6 +225,14 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     short; profile those two current decode routes before changing kernels or
     dispatch
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-ar-c1c8-refreeze.json)).
+  - Progress 2026-08-29: cached marker traces show C1 at **81.77 ms wall /
+    78.96 ms kernel sum / 592 launches**, while C2 is **97.28 / 81.56 ms /
+    880 launches**. A model/quant/physical-width policy now admits only dense
+    standard-Q4 packed C2 to HIP graph capture at all 23 D24 transitions.
+    Clean C2 improves **16.993→18.072 tok/s (+6.35%)** with all ten cells exact;
+    C1 stays eager and non-regressive at **11.122 tok/s**. Remaining gaps are
+    C1 1.9% and C2 9.9%
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-packed-c2-short-graph-retained.json)).
 
 ### P4 — MTP K3 C1-C8 parity via the acceptance campaign
 
