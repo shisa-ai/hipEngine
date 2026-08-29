@@ -142,7 +142,7 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     24.2%/31.9%. Frozen C1 reaches **147.11 tok/s**, +105.6% cumulative and
     5.9% above the 138.95 comparator, with all ten exact cells green
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-row49-80-prefill-parity-retained.json)).
-- [ ] P2.2 C2-C8 prefill parity at the frozen protocol; each cell closes at
+- [~] P2.2 C2-C8 prefill parity at the frozen protocol; each cell closes at
   its frozen winner (194.07/180.09/192.54/217.39/243.52/245.61/296.82) or a
   measured named blocker. Slab rows scale with width, so the small-M fix
   carries part of C2-C4; the rest is multi-row route efficiency.
@@ -173,10 +173,15 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     high-row blocker
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-q4-shared2-prefill-retained.json)).
   - Repeatability 2026-08-29: C7 clean runs are
-    **237.53/237.42/237.60 tok/s**, median 237.53 (3.3% below 245.61), so the
-    prior 244.85 row is a favorable grouping outlier and C7 remains open. C4's
-    crossing requires the same repeatability audit
-    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-prefill-c7-repeatability.json)).
+    **237.53/237.42/237.60 tok/s**, median 237.53 (3.3% below 245.61); C4
+    clean runs are **189.212/189.207/189.229**, median 189.212 (1.7% below
+    192.54). Their favorable one-run rows are superseded; both remain open
+    ([`C7 artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-prefill-c7-repeatability.json),
+    [`C4 artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-prefill-c4-repeatability.json)).
+    **Partial blocker:** only C1 is repeatably at parity. C2-C8 remain
+    GPU-bound by high-row Q4/device work plus physical-grouping variance;
+    selector and scheduler ladders above are exhausted. Continue with a new
+    high-row Q4 algorithm/fusion after P3, not more threshold tuning.
 - [x] P2.3 Small-row T16 wmma prefill GEMM kernel family (Q4/Q5/Q6 T16
   dense + qmicro planar wmma prefill): low-M efficiency work per
   `docs/KERNELS.md` + strict/production gates + rocprof trace evidence per

@@ -3,9 +3,9 @@
   "date": "2026-08-29",
   "status": "accepted",
   "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
-  "items": ["P2.2 progress: Q4 shared-B2 retained; C4 one-run parity pending repeatability"],
+  "items": ["P2.2 progress: Q4 shared-B2 retained; C4/C7 one-run statuses superseded"],
   "title": "Reduced-accumulator Q4 shared-B owners lift C2-C8",
-  "superseded_c7_note": "The one-run C7 244.85 status is superseded by a three-run median 237.53 tok/s in the C7 repeatability artifact; C7 remains open.",
+  "superseded_c4_c7_note": "The one-run C4/C7 statuses are superseded by three-run medians 189.21/237.53 tok/s in the repeatability artifacts; both remain open.",
   "host": {
     "physical_host": "gfx1151",
     "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
@@ -66,7 +66,7 @@
       [1, 146.78011651464692, 105.1, 5.6, "parity"],
       [2, 142.8760087505565, 90.8, -26.4, "open"],
       [3, 168.48987962352564, 61.2, -6.4, "open"],
-      [4, 196.2328108968778, 57.8, 1.9, "parity"],
+      [4, 196.2328108968778, 57.8, 1.9, "superseded favorable one-run grouping result; three-run median is 189.21"],
       [5, 211.90578064395194, 49.8, -2.5, "open; controlled neutral versus pre-unit"],
       [6, 232.61991810483616, 52.8, -4.5, "open"],
       [7, 244.8527772497157, 51.1, -0.3, "superseded favorable one-run grouping result; three-run median is 237.53"],
@@ -87,8 +87,8 @@
     "no_compiler_inside_profiler": true
   },
   "parity_context": {
-    "closed_prefill_cells": [1, 4],
-    "open_prefill_cells": [2, 3, 5, 6, 7, 8],
+    "closed_prefill_cells": [1],
+    "open_prefill_cells": [2, 3, 4, 5, 6, 7, 8],
     "next": "C7 three-run median is 3.3% short; C8 remains a high-row Q4 algorithm/fusion blocker. C4 one-run parity needs repeatability audit."
   },
   "gates": {
