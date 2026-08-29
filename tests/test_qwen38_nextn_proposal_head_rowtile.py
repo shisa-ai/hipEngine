@@ -38,6 +38,9 @@ def test_qwen38_nextn_proposal_head_rowtile_matches_direct_parent(
     from hipengine.core.hip import HipMemcpyKind, get_hip_runtime
     from hipengine.core.memory import free, host_array_ptr, malloc
     from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32_rows_i32
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
+        gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
+    )
     from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
@@ -63,7 +66,7 @@ def test_qwen38_nextn_proposal_head_rowtile_matches_direct_parent(
         vocab_size = int(session.runner.vocab_size)
         assert (hidden_size, vocab_size) == (5120, 248320)
 
-        for rows in (2, 3, 4):
+        for rows in (2, 3, 4, 5, 6, 7, 8):
             hidden_host = _f32_to_bf16_bits(
                 rng.normal(0.0, 0.2, size=(rows, hidden_size)).astype(np.float32)
             )
@@ -96,37 +99,68 @@ def test_qwen38_nextn_proposal_head_rowtile_matches_direct_parent(
                     output_dtype=GGUF_OUTPUT_F32,
                     runtime=runtime,
                 )
-                assert session._proposal_lm_head_rowtile(
-                    hidden.ptr,
-                    candidate_ptr,
-                    rows,
-                    runtime=runtime,
+                candidate_functions = (
+                    (("package", None),)
+                    if rows in {2, 3, 4, 7, 8}
+                    else (
+                        (
+                            "exact-unadmitted",
+                            gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
+                        ),
+                    )
                 )
-                runtime.device_synchronize()
-
                 reference_host = np.empty((rows, vocab_size), dtype=np.float32)
-                candidate_host = np.empty((rows, vocab_size), dtype=np.float32)
                 runtime.memcpy(
                     host_array_ptr(reference_host),
                     reference.ptr,
                     reference_host.nbytes,
                     HipMemcpyKind.DEVICE_TO_HOST,
                 )
-                runtime.memcpy(
-                    host_array_ptr(candidate_host),
-                    candidate_ptr,
-                    candidate_host.nbytes,
-                    HipMemcpyKind.DEVICE_TO_HOST,
-                )
-                runtime.memcpy(
-                    host_array_ptr(guarded_host),
-                    candidate.ptr,
-                    guarded_host.nbytes,
-                    HipMemcpyKind.DEVICE_TO_HOST,
-                )
-                np.testing.assert_array_equal(candidate_host, reference_host)
-                assert np.all(guarded_host[:guard_words] == guard_value)
-                assert np.all(guarded_host[-guard_words:] == guard_value)
+                for candidate_name, candidate_fn in candidate_functions:
+                    runtime.memcpy(
+                        candidate.ptr,
+                        host_array_ptr(guarded_host),
+                        guarded_host.nbytes,
+                        HipMemcpyKind.HOST_TO_DEVICE,
+                    )
+                    if candidate_fn is None:
+                        assert session._proposal_lm_head_rowtile(
+                            hidden.ptr,
+                            candidate_ptr,
+                            rows,
+                            runtime=runtime,
+                        )
+                    else:
+                        candidate_fn(
+                            hidden.ptr,
+                            weight.allocation("tiles").tensor.ptr,
+                            candidate_ptr,
+                            rows,
+                            hidden_size,
+                            vocab_size,
+                            runtime=runtime,
+                        )
+                    runtime.device_synchronize()
+                    candidate_host = np.empty((rows, vocab_size), dtype=np.float32)
+                    runtime.memcpy(
+                        host_array_ptr(candidate_host),
+                        candidate_ptr,
+                        candidate_host.nbytes,
+                        HipMemcpyKind.DEVICE_TO_HOST,
+                    )
+                    runtime.memcpy(
+                        host_array_ptr(guarded_host),
+                        candidate.ptr,
+                        guarded_host.nbytes,
+                        HipMemcpyKind.DEVICE_TO_HOST,
+                    )
+                    np.testing.assert_array_equal(
+                        candidate_host,
+                        reference_host,
+                        err_msg=f"rows={rows} candidate={candidate_name}",
+                    )
+                    assert np.all(guarded_host[:guard_words] == guard_value)
+                    assert np.all(guarded_host[-guard_words:] == guard_value)
 
                 session._ensure_verify_lm_head_buffers(rows, runtime=runtime)
                 assert session._verify_lm_block_values is not None

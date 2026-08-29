@@ -127,6 +127,8 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
             (5120, 248320, 2),
             (5120, 248320, 3),
             (5120, 248320, 4),
+            (5120, 248320, 7),
+            (5120, 248320, 8),
         }
     )
     assert backend_package_capability(
