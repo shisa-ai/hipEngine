@@ -50,6 +50,12 @@ _Q4_QMICRO_DENSE_WMMA_BF16 = (
 _Q4_DENSE_WMMA_SMALLM_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out"
 )
+_Q4_DENSE_WMMA_LOWVGPR_BF16 = (
+    "hipengine_gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out"
+)
+_Q4_DENSE_WMMA_LOWVGPR48_BF16 = (
+    "hipengine_gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out"
+)
 _Q4_DENSE_WMMA_SHARED_B_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out"
 )
@@ -259,6 +265,43 @@ def gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out(
     )
 
 
+def gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+) -> None:
+    """Launch the low-VGPR 16-column Q4T16 owner for latency-bound low-M slabs.
+
+    One 16-column output tile and two 16-row tiles per 32-thread block: the
+    accumulator footprint drops to 16 floats so more waves fit per SIMD.
+    Identical per-tile K16 WMMA association to the 48-column single-wave
+    owner (bit-exact).
+    """
+
+    del tile_m, tile_n
+    _launch_dense_t16(
+        _Q4_DENSE_WMMA_LOWVGPR_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -287,6 +330,43 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
         in_features,
         out_features,
         **kwargs,
+    )
+
+
+def gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+) -> None:
+    """Launch the low-VGPR 48-row-block 16-column Q4T16 owner.
+
+    One 16-column output tile and three 16-row tiles per 32-thread block
+    (24-float accumulator): one row-block for slabs up to 48 rows, avoiding
+    the 32-row block-boundary padding. Identical per-tile K16 WMMA
+    association to the 48-column single-wave owner (bit-exact).
+    """
+
+    del tile_m, tile_n
+    _launch_dense_t16(
+        _Q4_DENSE_WMMA_LOWVGPR48_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
     )
 
 
@@ -1042,6 +1122,8 @@ __all__ = [
     "gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out",
+    "gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out",
+    "gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out",
     "gguf_q4_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",

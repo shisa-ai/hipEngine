@@ -842,8 +842,25 @@ def test_gfx1151_backend_routes_admitted_lowm_rows_to_single_wave_wmma(
         "GGUF_Q4_T16_DENSE_LOWM_SHAPES",
         None,
     )
+    lowvgpr_max_rows = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS",
+        None,
+    )
+    lowvgpr48_max_rows = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS",
+        None,
+    )
+    lowvgpr48_shapes = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES",
+        None,
+    )
     assert callable(selector)
     assert lowm_max_rows == 64
+    assert lowvgpr_max_rows == 32
+    assert lowvgpr48_max_rows == 48
     assert lowm_shapes == frozenset(
         {
             (5_120, 6_144),
@@ -852,6 +869,13 @@ def test_gfx1151_backend_routes_admitted_lowm_rows_to_single_wave_wmma(
             (5_120, 17_408),
             (6_144, 5_120),
             (17_408, 5_120),
+        }
+    )
+    assert lowvgpr48_shapes == frozenset(
+        {
+            (5_120, 10_240),
+            (5_120, 12_288),
+            (5_120, 17_408),
         }
     )
     calls: list[str] = []
@@ -873,8 +897,33 @@ def test_gfx1151_backend_routes_admitted_lowm_rows_to_single_wave_wmma(
         lambda *args, **kwargs: calls.append("shared"),
         raising=False,
     )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("lowvgpr"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("lowvgpr48"),
+        raising=False,
+    )
 
-    for rows in (17, 24, 45, 64):
+    # rows 17-32: lowvgpr on every admitted shape
+    for rows in (17, 24, 32):
+        for in_features, out_features in sorted(lowm_shapes):
+            selector(1, 2, 3, rows, in_features, out_features)
+    # rows 33-48: lowvgpr48 on its three shapes, lowvgpr on the other three
+    for rows in (33, 45, 48):
+        for in_features, out_features in sorted(lowvgpr48_shapes):
+            selector(1, 2, 3, rows, in_features, out_features)
+    others = sorted(lowm_shapes - lowvgpr48_shapes)
+    for rows in (33, 45, 48):
+        for in_features, out_features in others:
+            selector(1, 2, 3, rows, in_features, out_features)
+    # rows 49-64: single-wave default keeps the band
+    for rows in (49, 64):
         for in_features, out_features in sorted(lowm_shapes):
             selector(1, 2, 3, rows, in_features, out_features)
     for rows, in_features, out_features in (
@@ -886,7 +935,13 @@ def test_gfx1151_backend_routes_admitted_lowm_rows_to_single_wave_wmma(
     ):
         selector(1, 2, 3, rows, in_features, out_features)
 
-    assert calls == ["single"] * (4 * len(lowm_shapes)) + ["shared"] * 5
+    assert calls == (
+        ["lowvgpr"] * (3 * len(lowm_shapes))
+        + ["lowvgpr48"] * (3 * len(lowvgpr48_shapes))
+        + ["lowvgpr"] * (3 * len(others))
+        + ["single"] * (2 * len(lowm_shapes))
+        + ["shared"] * 5
+    )
 
 
 def test_gfx1151_backend_registers_q4_physical_route_and_explicit_fallbacks() -> None:

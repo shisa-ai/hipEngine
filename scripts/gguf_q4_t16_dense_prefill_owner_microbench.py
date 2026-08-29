@@ -35,6 +35,8 @@ from hipengine.core.memory import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_wmma_prefill_bf16_bf16_out as launch_default,
+    gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out as launch_lowvgpr,
+    gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out as launch_lowvgpr48,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out as launch_shared_b,
     gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out as launch_smallm,
 )
@@ -105,6 +107,8 @@ def main() -> None:
         owners: dict[str, object] = {
             "shared_b": launch_shared_b,
             "default": launch_default,
+            "lowvgpr": launch_lowvgpr,
+            "lowvgpr48": launch_lowvgpr48,
         }
         if rows <= 16:
             owners["smallm"] = launch_smallm
