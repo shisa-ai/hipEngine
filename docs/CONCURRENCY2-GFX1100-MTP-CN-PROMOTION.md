@@ -681,6 +681,19 @@ P8 current punchlist (20260829):
       `--allow-c1-arithmetic-drift` + numerical quality artifact per the
       ZBOOK chain). Remaining: quality artifact, lifecycle-with-drift,
       permutation/neighbor isolation, long-context task gate.
+- [x] Strict-teacher R6 verifier numerics gate passed and retained
+      (KL mean 5.2e-05 / max 5.8e-04 vs 1e-03/0.05; top-1 240/240 across
+      category/shape/transition; 3/3 deterministic repeats) - commit
+      `6dfc33500`.
+- [x] Batch-route quality gate passed bit-exact (current_package_direct,
+      widths 3,5,6,7: KL 0.0, top-1 1.0) and satisfies the lifecycle gate's
+      quality-artifact contract.
+- [ ] Lifecycle gate under the drift protocol: all runtime checks green
+      (tokens, state/KV accepted, drain, reuse, no fallback); fails only the
+      embedded sparse-mask expectation vs the occupancy-adaptive dense
+      regrouping after cancellation (worklog 20260829T082552). Resolve which
+      side is normative, then rerun. Permutation/neighbor isolation and the
+      long-context task gate remain.
 
 Exit: an explicit-only, correctness-qualified physical C2 baseline and an
 explained acceptance curve. Automatic remains K0.
