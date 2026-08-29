@@ -77,6 +77,8 @@ from hipengine.tokenization.identity import token_ids_sha256
 
 
 _LOGGER = logging.getLogger("uvicorn.error")
+# Solo-idle batch dispatch slice for the arrival-aware generation window.
+_SOLO_DISPATCH_SLICE_SECONDS = 0.002
 _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET = frozenset(GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS)
 _THINKING_START_MARKER = "<think>"
 _THINKING_CLOSE_MARKER = "</think>"
@@ -2879,7 +2881,23 @@ class _GenerationBatcher:
     async def _run(self) -> None:
         try:
             if self._batch_window_seconds > 0.0:
-                await asyncio.sleep(self._batch_window_seconds)
+                # Arrival-aware window: a solo submission on an idle engine
+                # dispatches after one short slice instead of paying the full
+                # window (measured 2026-08-29: the fixed 50 ms window was the
+                # largest single slice of C1 request latency, and no second
+                # submission can join an idle solo batch). Two or more queued
+                # submissions, or a busy engine, still honor the full window
+                # so concurrent-arrival batching behavior is unchanged.
+                solo_slice = min(
+                    _SOLO_DISPATCH_SLICE_SECONDS, self._batch_window_seconds
+                )
+                await asyncio.sleep(solo_slice)
+                if not (
+                    len(self._queue) <= 1 and self._active_requests == 0
+                ):
+                    remaining = self._batch_window_seconds - solo_slice
+                    if remaining > 0.0:
+                        await asyncio.sleep(remaining)
             while self._queue:
                 first = self._queue.popleft()
                 if _queued_generation_cancelled(first):
