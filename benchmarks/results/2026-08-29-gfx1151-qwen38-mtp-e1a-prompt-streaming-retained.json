@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "retained_scoped_win",
+  "campaign": "docs/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+  "items": [
+    "E1a: retain exact post-output-norm physical-C3 prompt streaming",
+    "C3 remains explicit pending complete promotion and serving gates"
+  ],
+  "title": "Qwen3.8 Q4_K_M physical-C3 MTP prompt streaming",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "baseline_commit": "6e750a55fc3768bd767194101bb9bc87c3b2c570",
+    "candidate_commit": "bef3ac5b248bc603775093f74c1e5b5f33880e03",
+    "tracked_dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "heldout_included": true,
+    "sampling": "raw greedy",
+    "physical_width": 3,
+    "candidate_budget": 3,
+    "common_horizon": 24,
+    "batch_window_ms": 50,
+    "max_sequence_length": 1024,
+    "execution_profile": "production",
+    "production_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "correctness": "self-exact greedy IDs, route expectation, budget conformance, and exact E0 acceptance trajectory",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "anti_gaming": "all ten fixed categories plus heldouts; one model/quant/profile/width policy key; no prompt/category/length selector"
+  },
+  "commands": {
+    "clean_c3_k3": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 3 --resident-capacity 3 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths 3 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/p250-e1a-c3k3-clean.json",
+    "stage_ledger": "same cached environment; scripts/specdec2_perf_bridge.py --backend hip_gfx1151 --target-arch gfx1151 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 3 --budgets 3 --max-tokens 24 --runs 1 --warmup --roctx-markers --profile-child --output /tmp/p250-e1a-c3k3-profile.json",
+    "strict_c1_d24": "same canonical server harness with execution-profile strict, width/resident-capacity 1, D24, K3; output /tmp/p250-e1a-c1k3-clean.json",
+    "strict_c1_d25_scope_check": "same strict-C1 command at max-tokens 25; output /tmp/p250-e1a-c1k3-natural25-clean.json"
+  },
+  "c3_k3_complete_wall": {
+    "columns": ["route", "ar_tok_s", "mtp_tok_s", "ratio", "mtp_wall_seconds", "accepted", "proposed", "draft_acceptance"],
+    "rows": [
+      ["E0 host replay", 24.118751447513986, 21.382407547546592, 0.8865470335012122, 33.67254124209285, 471, 597, 0.7889447236180904],
+      ["E1a post-norm prompt streaming", 24.08506302108578, 27.168739952511203, 1.1280327532764083, 26.501044997246936, 471, 597, 0.7889447236180904]
+    ],
+    "mtp_uplift_pct": 27.061182853698497,
+    "complete_wall_reduction_seconds": 7.171496244845912,
+    "complete_wall_reduction_pct": 21.29775769902712,
+    "external_target_tok_s": 27.515,
+    "gap_to_external_pct": -1.2584410230376042,
+    "promotion_gate": "overall and every category exceed true AR; complete production/serving policy gates remain pending"
+  },
+  "c3_k3_categories": {
+    "columns": ["category", "ar_tok_s", "mtp_tok_s", "ratio"],
+    "rows": [
+      ["code", 24.572464938739255, 27.562121095984644, 1.1216669212754518],
+      ["general_en", 24.350128406697515, 28.834166884272193, 1.1841484530464053],
+      ["general_ja", 24.483342762975695, 25.911076764121415, 1.058314504476275],
+      ["mixed_ja_en", 22.576426367667388, 26.18002028536611, 1.1596175523536167]
+    ],
+    "every_category_positive": true
+  },
+  "prompt_length_bins": {
+    "columns": ["input_token_range", "prompt_cells", "e0_mtp_tok_s", "e1a_mtp_tok_s", "mtp_uplift_pct", "e1a_vs_ar_ratio"],
+    "rows": [
+      ["35-40", 5, 22.17801080410195, 27.09869869830637, 22.187237339131927, 1.096991621851736],
+      ["41-59", 3, 21.79031869384112, 27.99415454910269, 28.47060633865368, 1.1589618862961322],
+      ["60-67", 2, 19.12963404096923, 26.18002028536611, 36.855834404868015, 1.1596175523536167]
+    ],
+    "note": "Length bins are diagnostic only and do not affect routing. The shortest bin is positive versus E0 but 0.30% below the per-bin 1.10x ratio; the binding promotion rule is overall plus non-regressive categories."
+  },
+  "stage_ledger_train_prompt": {
+    "columns": ["stage", "e0_seconds", "e1a_seconds", "delta_pct"],
+    "rows": [
+      ["complete_wall", 3.2849575020372868, 2.663971438072622, -18.903929916278607],
+      ["target_prefill", 0.5430835129227489, 0.7010854908730835, 29.093495602546415],
+      ["nextn_prompt_prime", 0.7466663559898734, 0.041504838736727834, -94.44131392773096],
+      ["provider_open_total", 0.00008829450234770775, 0.00007354817353188992, -16.70129897527042],
+      ["cycle_total", 1.979296309640631, 1.950018476229161, -1.479204163058634]
+    ],
+    "streaming_telemetry": {
+      "requests_streaming": 3,
+      "prompt_prime_rows_per_request": 36,
+      "carried_hidden_bytes_per_request": 10240,
+      "fallback_reason": null
+    },
+    "ttft_note": "The profile child does not expose client/scheduler TTFT directly. Target-prefill plus initial provider attachment is the measured activation-to-first-decode owner: 1.2899 s at E0 versus 0.7011 s at E1a (-45.6%). Direct SSE TTFT remains part of the later serving gate."
+  },
+  "correctness": {
+    "exact_cells": 10,
+    "engaged_cells": 10,
+    "budget_conformed_cells": 10,
+    "generated_ids_equal_ar": true,
+    "e0_acceptance_equal": true,
+    "e0_and_e1a_accepted_proposed": "471/597",
+    "post_output_norm_contract": "streamed BF16 rows are output-normalized on device before shifted NextN consumption; normalized tails are reused for target sampling",
+    "rejected_screen": "The first pre-output-norm screen reached 27.068 tok/s but changed acceptance to 468/597 and was rejected before retention."
+  },
+  "adjacent_controls": {
+    "strict_c1_d24": {
+      "ar_tok_s": 11.042312367333095,
+      "mtp_tok_s": 17.855562716907706,
+      "ratio": 1.6170130062368564,
+      "accepted": 153,
+      "proposed": 211,
+      "exact_cells": 10,
+      "engaged_cells": 10,
+      "every_category_positive": true
+    },
+    "strict_c1_d25": {
+      "status": "diagnostic_harness_scope_miss",
+      "decision_reason": "diagnostic_scope_miss",
+      "engaged_cells": 0,
+      "note": "The temporary Generation-2 diagnostic plan is D24-only. This check does not supersede the separate natural25 automatic serving evidence and is not a product-admission result."
+    },
+    "production_c2": "No prompt sinks are admitted at physical C2; host replay and the existing explicit/K0 policy are unchanged by construction and covered by scope tests."
+  },
+  "scope": {
+    "enabled": "gfx1151 dense-H5120 MOSTLY_Q4_K_M production physical-C3",
+    "unchanged": ["physical C2", "physical C4", "other model geometries", "other quant labels", "strict profile package admission", "peer backends"],
+    "automatic_mtp_policy": "unchanged; C3 remains explicit until the complete D7 production and serving bundle passes"
+  },
+  "raw_sources": [
+    ["/tmp/p240-e0-c1c3-k3.json", "cea8e28cc4a081b577217edc7e098be537a78f5dc59dd45dabb741293d024529", 4379573],
+    ["/tmp/p250-e1a-c3k3-clean.json", "76c844c6d58345a23f46f4414e49ed004523c360eb08eab8b57788076b2a55e5", 1052980],
+    ["/tmp/p250-e1a-c3k3-profile.json", "4515d1f906ef980128afd2a77bb87d641baf22d04e5e19e9cfa00f530911128b", 71510],
+    ["/tmp/p250-e1a-c1k3-clean.json", "fb8b42de46383db60cd53dc5e6c0320b19eca649490c25dfa7d994a2bf168f6d", 751348],
+    ["/tmp/p250-e1a-c1k3-natural25-clean.json", "a11d9dd787ca669697620a7d9aa4113869b1d0d444db643f33c81744c5accd13", 732410]
+  ],
+  "verdict": {
+    "retained": true,
+    "reason": "The exact post-output-norm C3 path improves complete MTP wall overall and in every category without changing generated IDs or the E0 acceptance trajectory.",
+    "next": "E1b exact physical proposal-head row reuse; only 0.346 tok/s (1.26%) remains to the frozen external K3 row."
+  }
+}
