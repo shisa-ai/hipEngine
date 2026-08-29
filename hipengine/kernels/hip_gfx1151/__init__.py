@@ -1740,6 +1740,19 @@ GGUF_SPECDEC2_MTP2_C4 = True
 GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (3,),
 }
+# E1b reuses the exact Q6 F32 small-B rowtile only for physical proposal-head
+# dimensions/rows that have actual Qwen3.8 evidence. NextN adapts the source
+# model to a one-block geometry and does not carry its file-type label, so this
+# key uses the immutable H/N head shape; primitive resolution still requires
+# Q6 T16. The direct producer remains the strict policy-miss fallback. The
+# rowtile wrapper selects its col8 body at rows3/4 and 16-column body at rows2.
+GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES = frozenset(
+    {
+        (5120, 248320, 2),
+        (5120, 248320, 3),
+        (5120, 248320, 4),
+    }
+)
 GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT = 65544
 GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT = 65544
 # F4's clean all-candidate, all-workload production gate selects fair:256 at
@@ -2938,6 +2951,7 @@ __all__ = [
     "GGUF_SPECDEC2_MTP2_C1",
     "GGUF_SPECDEC2_MTP2_C4",
     "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
+    "GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES",
     "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
     "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT",
     "GGUF_FUSED_LINEAR_STATE_TRANSFER",
