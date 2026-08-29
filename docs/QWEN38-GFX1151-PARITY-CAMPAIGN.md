@@ -162,11 +162,16 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     2 ms slice
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-prefill-c2-c8-attribution.json)).
   - Progress 2026-08-29: exact periodic rows81-144 Q4/Q5/Q6 bands plus Q6
-    shared4 reuse lift C3-C8 to **165.60/188.64/218.70/225.40/234.54/248.14
-    tok/s**. C5 now beats 217.39 by 0.6%; C4 is 2.0% and C7 4.5% short.
-    C8 improves 8.6% but remains 16.4% short; Q4 shared-B is the best existing
-    owner above row144, naming a new high-row Q4 kernel/fusion blocker
+    shared4 reuse lift C3/C4/C6/C7/C8 to **165.60/188.64/225.40/234.54/248.14
+    tok/s**. The initial C5 218.70 row was a grouping outlier; clean pre-unit
+    and candidate repeats are neutral at 212.216/212.207, so C5 remains open.
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-highrow-prefill-reuse-retained.json)).
+  - Progress 2026-08-29: new exact 32-column Q4 shared-B owners (VGPR
+    256→224) close C4 at **196.23 tok/s** (+1.9% over 192.54), lift C7 to
+    **244.85** (0.3% short), and improve C2/C3/C6/C8. C5 is controlled
+    neutral versus the pre-unit repeat and remains 2.5% short. Rows385+ still
+    use parent shared-B, preserving the C8 high-row blocker
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-q4-shared2-prefill-retained.json)).
 - [x] P2.3 Small-row T16 wmma prefill GEMM kernel family (Q4/Q5/Q6 T16
   dense + qmicro planar wmma prefill): low-M efficiency work per
   `docs/KERNELS.md` + strict/production gates + rocprof trace evidence per
