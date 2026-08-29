@@ -1,0 +1,473 @@
+{
+  "accept_global_sync_removal": {
+    "focused_after": {
+      "complete_wall_seconds": 0.9922160161659122,
+      "composite_ms_per_physical_cycle": 64.6952479146421,
+      "cycle_ms_per_physical_cycle": 71.15071709267795,
+      "decode_only_seconds": 0.391928818076849,
+      "physical_cycles": 4,
+      "proposal_ms_per_physical_cycle": 6.294661900028586
+    },
+    "focused_before": {
+      "complete_wall_seconds": 0.9848737656138837,
+      "composite_ms_per_physical_cycle": 64.4656039075926,
+      "cycle_ms_per_physical_cycle": 70.7888207398355,
+      "decode_only_seconds": 0.386732610873878,
+      "physical_cycles": 4,
+      "proposal_ms_per_physical_cycle": 6.171060376800597
+    },
+    "headline_policy": "synchronization-count/queue-ownership win only; focused and aggregate wall are variance-flat, so no standalone speed claim",
+    "mechanism": "remove whole-device sync immediately before bounded blocking default-stream D2H payload/committed-row copies",
+    "trace_after": {
+      "composite_sync_calls": 4,
+      "composite_sync_wait_ms": 5.396891,
+      "cycle_sync_calls": 4,
+      "cycle_sync_wait_ms": 5.396891,
+      "kernel_calls": 5774,
+      "kernel_ms": 240.248214,
+      "proposal_sync_calls": 0,
+      "proposal_sync_wait_ms": 0.0
+    },
+    "trace_before": {
+      "composite_sync_calls": 8,
+      "composite_sync_wait_ms": 8.495007,
+      "cycle_sync_calls": 8,
+      "cycle_sync_wait_ms": 8.495007,
+      "kernel_calls": 5774,
+      "kernel_ms": 238.769012,
+      "proposal_sync_calls": 0,
+      "proposal_sync_wait_ms": 0.0
+    },
+    "trace_changes": {
+      "composite_sync_calls": {
+        "after": 4,
+        "before": 8,
+        "delta": -4,
+        "percent": -50.0
+      },
+      "composite_sync_wait_ms": {
+        "after": 5.396891,
+        "before": 8.495007,
+        "delta": -3.098115999999999,
+        "percent": -36.46984634621254
+      },
+      "cycle_sync_calls": {
+        "after": 4,
+        "before": 8,
+        "delta": -4,
+        "percent": -50.0
+      },
+      "kernel_calls_unchanged": true
+    }
+  },
+  "cycle_budget": {
+    "combined_ratio": 1.1931896470543102,
+    "p9_1_10_ms": 155.69817858726051,
+    "p9_1_30_ms": 131.74461265075888,
+    "verdict": "continues to clear 1.10x; does not reach 1.30x"
+  },
+  "date": "2026-08-30",
+  "decision": {
+    "automatic": "unchanged K0; P11/P12 own integrated qualification/promotion",
+    "fallbacks": [
+      "step_hidden_batch_native synchronize=True remains the default for all other callers",
+      "legacy diagnostic host accept path remains synchronized",
+      "strict/profile misses unchanged"
+    ],
+    "retained": [
+      "batched NextN model step stays enqueue-only on device-resident proposal path",
+      "accept readback relies on first bounded blocking default-stream D2H instead of prior whole-device sync"
+    ],
+    "scope": "Qwen3.8-27B standard Q4_K_M, hip_gfx1100, production/BF16 explicit C2/K2/R6 context<=95 D24"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "gpu_max_hw_queues": null,
+    "physical_host": "epyc",
+    "rocm": "HIP 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100"
+  },
+  "kind": "w7900_qwen38_q4km_p10_synchronization_wins",
+  "limitations": [
+    "Focused marker comparisons are one D12 prompt under rocprofv3 and attribution-only.",
+    "Proposal marker shrinks more than cycle wall because queued work moves into the following composite; only cycle/decode/complete wall are additive wins.",
+    "Accept global-sync removal is retained for exact synchronization reduction; its wall effect is below run variance.",
+    "The stable integrated full gate, not the earlier overlapping process, is binding combined correctness evidence."
+  ],
+  "model": {
+    "kv": "BF16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "nextn_enqueue_only": {
+    "changes": {
+      "cycle_ms": {
+        "after": 70.7888207398355,
+        "before": 71.4566158130765,
+        "delta": -0.6677950732409954,
+        "percent": -0.934546179723772
+      },
+      "decode_seconds": {
+        "after": 0.386732610873878,
+        "before": 0.38873568549752235,
+        "delta": -0.002003074623644352,
+        "percent": -0.5152793268980993
+      },
+      "proposal_ms": {
+        "after": 6.171060376800597,
+        "before": 13.457516906782985,
+        "delta": -7.286456529982388,
+        "percent": -54.14413803418518
+      }
+    },
+    "focused_after": {
+      "complete_wall_seconds": 0.9848737656138837,
+      "composite_ms_per_physical_cycle": 64.4656039075926,
+      "cycle_ms_per_physical_cycle": 70.7888207398355,
+      "decode_only_seconds": 0.386732610873878,
+      "physical_cycles": 4,
+      "proposal_ms_per_physical_cycle": 6.171060376800597
+    },
+    "focused_before": {
+      "complete_wall_seconds": 0.9863604637794197,
+      "composite_ms_per_physical_cycle": 57.853939244523644,
+      "cycle_ms_per_physical_cycle": 71.4566158130765,
+      "decode_only_seconds": 0.38873568549752235,
+      "physical_cycles": 4,
+      "proposal_ms_per_physical_cycle": 13.457516906782985
+    },
+    "mechanism": "device-resident caller passes synchronize=False to packed hidden batch; all kernels/copies continue on stream 0 and later target/readback dependencies retire them",
+    "trace_after": {
+      "composite_sync_calls": 8,
+      "composite_sync_wait_ms": 8.495007,
+      "cycle_sync_calls": 8,
+      "cycle_sync_wait_ms": 8.495007,
+      "kernel_calls": 5774,
+      "kernel_ms": 238.769012,
+      "proposal_sync_calls": 0,
+      "proposal_sync_wait_ms": 0.0
+    },
+    "trace_before": {
+      "composite_sync_calls": 8,
+      "composite_sync_wait_ms": 8.725122,
+      "cycle_sync_calls": 15,
+      "cycle_sync_wait_ms": 44.865006,
+      "kernel_calls": 5774,
+      "kernel_ms": 239.260257,
+      "proposal_sync_calls": 7,
+      "proposal_sync_wait_ms": 36.139884
+    },
+    "trace_changes": {
+      "cycle_sync_calls": {
+        "after": 8,
+        "before": 15,
+        "delta": -7,
+        "percent": -46.666666666666664
+      },
+      "cycle_sync_wait_ms": {
+        "after": 8.495007,
+        "before": 44.865006,
+        "delta": -36.369999,
+        "percent": -81.06540540750179
+      },
+      "kernel_calls_unchanged": true,
+      "proposal_sync_calls": {
+        "after": 0,
+        "before": 7,
+        "delta": -7,
+        "percent": -100.0
+      }
+    }
+  },
+  "passed": true,
+  "performance_claim": true,
+  "quality": {
+    "checks": {
+      "full_suite": true,
+      "lifecycle": true,
+      "neighbor_permutation_isolation": true,
+      "numerical": true,
+      "output_repeat": true,
+      "physical_capture": true,
+      "profiles": true,
+      "repeat_determinism": true,
+      "task_noninferiority": true
+    },
+    "clean": true,
+    "commit": "417da8a26cc1e989f5a7c50b01ac514b2cfc2dda",
+    "isolation": {
+      "max_abs_logit_delta": 0.0,
+      "max_kl": 0.0,
+      "mean_kl": 0.0,
+      "p95_kl": 0.0,
+      "p99_kl": 0.0,
+      "rows": 252,
+      "top1_agreement": 1.0,
+      "top1_matches": 252,
+      "top1_mismatches": 0,
+      "top5_overlap_mean": 1.0
+    },
+    "lifecycle": {
+      "checks": {
+        "active_children_zero": true,
+        "active_states_zero": true,
+        "candidate_d2h_zero": true,
+        "command_queue_empty": true,
+        "legacy_fallback_zero": true,
+        "provider_groups_zero": true,
+        "recoveries_zero": true,
+        "sole_driver": true
+      },
+      "engine_service": {
+        "active_children": 0,
+        "command_queue_depth": 0,
+        "driver_thread_id": 139684897961664,
+        "last_speculative_draft_depth": null,
+        "last_speculative_route": "engine_service_verify_chain",
+        "last_speculative_work_kind": "verify_chain",
+        "sole_driver": true,
+        "speculative_routes": {
+          "engine_service_verify_chain": 50,
+          "legacy_prelaunch_fallback": 0
+        }
+      },
+      "mtp2_adapter": {
+        "active_states": 0,
+        "batch_accept_workspace_allocated": true,
+        "cycle_workspace": {
+          "allocated": true,
+          "ngram_tokens_ptr": 0,
+          "proposal_ptr": 139655338946560,
+          "repair_ptr": 139655338967040,
+          "shape": [
+            2,
+            5120
+          ]
+        },
+        "prompt_streaming_sinks": 0,
+        "provider_groups": 0
+      }
+    },
+    "numerical": {
+      "max_abs_logit_delta": 0.0,
+      "max_kl": 0.0,
+      "mean_kl": 0.0,
+      "p95_kl": 0.0,
+      "p99_kl": 0.0,
+      "rows": 252,
+      "top1_agreement": 1.0,
+      "top1_matches": 252,
+      "top1_mismatches": 0,
+      "top5_overlap_mean": 1.0
+    },
+    "profiles": {
+      "checks": {
+        "production_manifest": true,
+        "production_profile": true,
+        "registered_strict_fallback": true,
+        "strict_manifest": true,
+        "strict_profile": true
+      },
+      "production": {
+        "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+        "name": "production",
+        "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+      },
+      "strict": {
+        "manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d",
+        "name": "strict",
+        "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+      }
+    },
+    "repeat": true,
+    "sha256": "4ffd71858d472547a48dc3e68a7ecb3496080a376605cd872ab552e1e36aad9e",
+    "source": "/tmp/gfx1100-qwen38-p10-integrated-full-production-gate.json",
+    "status": "passed",
+    "tasks": true
+  },
+  "raw_sources": {
+    "baseline_economics": {
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k2-pad6-clean-d24.json",
+      "sha256": "756cb96a5cd557bbb09a66f9d3b42f7b0c5cf3cd3d1df5666cde52479af1df80"
+    },
+    "before_phase": {
+      "path": "/tmp/gfx1100-qwen38-p9-c2k2-profile-phase-summary.json",
+      "sha256": "a38278f23a2039a24bc02dc67255c11c9c960f61b2cce9d2d359d7da951ba02d"
+    },
+    "before_profile": {
+      "path": "/tmp/gfx1100-qwen38-p9-c2k2-profile-child.json",
+      "sha256": "7a9019661af9af52198e2c5d1cbdc2f35ceab5dea61bd7bd7c5df511d74d7d14"
+    },
+    "before_trace": {
+      "path": "/tmp/gfx1100-qwen38-p9-c2k2-profile-trace-summary.json",
+      "sha256": "924e650d113999799c56e82e42eda46e9daa8dcc63bfe58e6a74e5bd410ce760"
+    },
+    "combined_economics": {
+      "path": "/tmp/gfx1100-qwen38-p10-nextn-enqueue-c2k2-d24.json",
+      "sha256": "4d5e7b6f64c65698275ee58fbdd7723890fb83abd1370d4750cb4e9fb2451c26"
+    },
+    "combined_phase": {
+      "path": "/tmp/gfx1100-qwen38-p10-combined-phase-summary.json",
+      "sha256": "605d16e980f1311fb049358da4fbb2bc7f391bdd58fcb476b1230ee3549b3fdd"
+    },
+    "combined_profile": {
+      "path": "/tmp/gfx1100-qwen38-p10-combined-profile.json",
+      "sha256": "d630104fdc92ed70a938d578ffb5bd495b8d18eb380d0dd9b8955f4e6b60ebe3"
+    },
+    "combined_trace": {
+      "path": "/tmp/gfx1100-qwen38-p10-combined-trace-summary.json",
+      "sha256": "f7b55bd0e2441f3d2c7dbd52b660e1e0b27fad2e8eff4b05213152366136d99c"
+    },
+    "nextn_phase": {
+      "path": "/tmp/gfx1100-qwen38-p10-nextn-enqueue-phase-summary.json",
+      "sha256": "0cf2626ae72410e9a1be80b27618421b99ad83fd5d41a4f9520d51e8e9463f0c"
+    },
+    "nextn_profile": {
+      "path": "/tmp/gfx1100-qwen38-p10-nextn-enqueue-profile.json",
+      "sha256": "902072d390f12141c43d0d3134e2710f31ec2881a57f9d1afbb2c511e67aff5b"
+    },
+    "nextn_screen": {
+      "path": "/tmp/gfx1100-qwen38-p10-nextn-enqueue-screen.json",
+      "sha256": "b7eeaa9566dfa603bc2f81353c91a8503a6434c371d581f2abaa8d1816bd57eb"
+    },
+    "nextn_trace": {
+      "path": "/tmp/gfx1100-qwen38-p10-nextn-enqueue-trace-summary.json",
+      "sha256": "22d568d830a8b8c453c772b3494c50226d3bcfa44e821257334811cf56205c8e"
+    },
+    "p9": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-08-29-w7900-qwen38-q4km-p9-cycle-attribution.json",
+      "sha256": "9462f8be87a024fce55b05da7a8fd82f927de6d87dbfcf5c3d630619dac3a337"
+    },
+    "quality": {
+      "path": "/tmp/gfx1100-qwen38-p10-integrated-full-production-gate.json",
+      "sha256": "4ffd71858d472547a48dc3e68a7ecb3496080a376605cd872ab552e1e36aad9e"
+    }
+  },
+  "same_suite_economics": {
+    "baseline": {
+      "acceptance": 0.8029411764705883,
+      "clean": true,
+      "commit": "b5a974a5cf8d4e6c0d09786b9813b6a82663fc2d",
+      "named_stage_sum_ms_per_request_cycle": 70.35282202064991,
+      "recoverable_failures": [],
+      "request_cycles": 175,
+      "sha256": "756cb96a5cd557bbb09a66f9d3b42f7b0c5cf3cd3d1df5666cde52479af1df80",
+      "source": "/tmp/gfx1100-qwen38-p8-c2-k2-pad6-clean-d24.json",
+      "stage_ms_per_request_cycle": {
+        "accept": 31.08346083068422,
+        "commit": 0.7795195707253048,
+        "proposal": 13.280741444655828,
+        "provider": 2.934951013220208,
+        "target": 22.274149161364353
+      },
+      "summary": {
+        "ar": {
+          "generated_tokens": 480,
+          "tok_s": 30.463317214043865,
+          "wall_seconds": 15.756655673030764
+        },
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "engaged_cells": 10,
+        "exact_cells": 10,
+        "mtp": {
+          "generated_tokens": 480,
+          "tok_s": 36.257442813886605,
+          "wall_seconds": 13.238661161623895
+        },
+        "mtp_expected": true,
+        "mtp_vs_ar_percent": 19.020008750628104,
+        "mtp_vs_ar_ratio": 1.190200087506281,
+        "route_expectation_passed": true
+      }
+    },
+    "changes": {
+      "ar_tok_s": {
+        "after": 30.29587531220719,
+        "before": 30.463317214043865,
+        "delta": -0.16744190183667484,
+        "percent": -0.5496509150995643
+      },
+      "mtp_tok_s": {
+        "after": 36.148724770973885,
+        "before": 36.257442813886605,
+        "delta": -0.10871804291272014,
+        "percent": -0.2998502775575784
+      },
+      "mtp_vs_ar": {
+        "after": 1.1931896470543102,
+        "before": 1.190200087506281,
+        "delta": 0.0029895595480291526,
+        "percent": 0.25118125762306764
+      },
+      "named_stage_sum_ms_per_request_cycle": {
+        "after": 69.86862497936401,
+        "before": 70.35282202064991,
+        "delta": -0.4841970412858956,
+        "percent": -0.6882411072917205
+      },
+      "proposal_ms_per_request_cycle": {
+        "after": 2.650107028228896,
+        "before": 13.280741444655828,
+        "delta": -10.630634416426933,
+        "percent": -80.04548888123036
+      }
+    },
+    "combined": {
+      "acceptance": 0.8029411764705883,
+      "clean": true,
+      "commit": "417da8a26cc1e989f5a7c50b01ac514b2cfc2dda",
+      "named_stage_sum_ms_per_request_cycle": 69.86862497936401,
+      "recoverable_failures": [],
+      "request_cycles": 175,
+      "sha256": "4d5e7b6f64c65698275ee58fbdd7723890fb83abd1370d4750cb4e9fb2451c26",
+      "source": "/tmp/gfx1100-qwen38-p10-nextn-enqueue-c2k2-d24.json",
+      "stage_ms_per_request_cycle": {
+        "accept": 31.622657347470522,
+        "commit": 0.7829414840255465,
+        "proposal": 2.650107028228896,
+        "provider": 2.970127984881401,
+        "target": 31.842791134757654
+      },
+      "summary": {
+        "ar": {
+          "generated_tokens": 480,
+          "tok_s": 30.29587531220719,
+          "wall_seconds": 15.843740940093994
+        },
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "engaged_cells": 10,
+        "exact_cells": 10,
+        "mtp": {
+          "generated_tokens": 480,
+          "tok_s": 36.148724770973885,
+          "wall_seconds": 13.278476710896939
+        },
+        "mtp_expected": true,
+        "mtp_vs_ar_percent": 19.318964705431018,
+        "mtp_vs_ar_ratio": 1.1931896470543102,
+        "route_expectation_passed": true
+      }
+    },
+    "interpretation": "acceptance/IDs/cycle count are unchanged; aggregate MTP is -0.30% within run variance while ratio rises because AR also moves. Retain exact sub-window and sync reductions, not a headline rate change."
+  },
+  "schema": 1,
+  "source": {
+    "accept_commit": "417da8a26",
+    "measurement_commit": "417da8a26cc1e989f5a7c50b01ac514b2cfc2dda",
+    "nextn_commit": "54ab91b9d"
+  },
+  "status": "retained",
+  "tests": {
+    "adapter_seam": "53 passed",
+    "nextn_checkpoint_materialize_recovery": "11 passed, 1 HIP-skipped",
+    "nextn_provider": "23 passed, 2 HIP-skipped",
+    "red_contracts": [
+      "device batch top1 passes synchronize=False",
+      "accept readback raises if a whole-device sync is attempted"
+    ]
+  }
+}

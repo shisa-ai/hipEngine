@@ -805,17 +805,24 @@ records temporary flags in `REFACTOR.md`, and lands as its own validated commit.
 - [x] P7 confirms one active-row proposal batch per shared depth, request-major
       device candidates, rows=1 ragged tails, and no candidate D2H before target.
       Generic draft batching is closed as already implemented.
-- [ ] Preserve exact proposal tokens/logits, provider hidden/KV/cursors,
+- [x] Preserve exact proposal tokens/logits, provider hidden/KV/cursors,
       masks/positions, RNG, checkpoints, ragged K, EOS/stop, cancellation, and
-      refill while optimizing only a P9-measured proposal leaf.
-- [ ] If full-vocabulary head or another projection dominates, reuse/requalify a
-      genuine rows=C weight-amortized owner behind the registry; retain the
-      current batched executor and rows=1 strict fallback.
+      refill while optimizing the P9-measured synchronization boundary. Commit
+      `54ab91b9d` keeps the device-resident packed NextN model step enqueue-only
+      on stream 0; every other caller retains `synchronize=True`. Focused
+      proposal sync calls fall 7 -> 0 and proposal marker wall
+      13.46 -> 6.17 ms/cycle (-54.1%); cycle wall improves 0.93% under the
+      matched profiler despite attribution moving into the following composite.
+- [x] Do not add a new head/projection owner: after removing the barriers,
+      unchanged kernel names/counts plus the stable 252-row gate show the next
+      proposal optimization requires a separately measured kernel premise.
+      Retain the current batched executor and rows=1 strict fallback.
 
 ##### Track C — Recover visible yield only after correctness
 
-- [ ] If P8 proves the acceptance drop is a state/composition defect, fix that
-      defect before considering policy changes.
+- [x] P8 refutes persistent state/composition corruption: full-logit isolation,
+      exact ownership, and the cooldown discriminator identify hard correction
+      tokens. No acceptance policy or prompt-conditioned mechanism is added.
 - [ ] If acceptance is correct but insufficient, evaluate K/context/horizon
       admission and then provider-declared tree/adaptive proposals only when
       expected visible tokens per verified row improve under the full category
@@ -824,12 +831,21 @@ records temporary flags in `REFACTOR.md`, and lands as its own validated commit.
 
 ##### Track D — Follow any other measured owner
 
-- [ ] If accept/commit, host synchronization, graph selection, copies, repair,
-      or another family owns more recoverable wall, optimize it first with the
-      same RED/profile/fallback/registry discipline.
+- [x] Remove the measured redundant accept dependency (`417da8a26`): the first
+      bounded blocking default-stream D2H payload copy already retires the accept
+      producer, so the preceding whole-device sync is unnecessary. Composite
+      sync calls fall 8 -> 4 and wait 2.12 -> 1.35 ms/cycle; kernel counts stay
+      unchanged. Wall is variance-flat, so retain this as an exact sync/queue-
+      ownership win, not a headline speed claim. Legacy diagnostic accept keeps
+      its strict synchronized path.
 
-Exit: retained independent wins meet the selected candidate's promotion budget,
-or a profile-backed blocker closes the implementation tracks.
+P10 exit achieved. Stable integrated quality passes 252/252 logits bit-exact
+plus repeat/permutation/tasks/profiles/lifecycle. Complete-suite explicit C2/K2
+remains **36.149 vs 30.296 tok/s = 1.1932x AR**, above the 1.10x budget but below
+1.30x; acceptance is unchanged at 0.80294. The same-suite proposal timer falls
+13.28 -> 2.65 ms/request-cycle and named-stage sum 70.35 -> 69.87 ms; aggregate
+MTP wall is noise-flat (-0.30%). Automatic remains K0 for P11/P12. Evidence:
+[`P10 sync wins`](../benchmarks/results/2026-08-30-w7900-qwen38-q4km-p10-sync-wins.json).
 
 #### P11 — Integrated explicit C2 qualification
 
