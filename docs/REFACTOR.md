@@ -302,13 +302,18 @@ fallback count is not a success metric.
   when the production adapter and backend capability agree; strict keeps the
   registered single-wave/shared-B fallbacks. The same request-local policy
   selects the bit-exact Q5 rows6 four-column and planar-Q6 rows6 col8 rowtiles
-  while strict keeps their serial-row owners.
-  The scope avoids changing the existing C1 production manifest while C2 owns
-  an independent policy fingerprint and quality/economics packet.
-- Removal trigger: after one release window with the exact C2 production key,
-  collapse prompt streaming and these boolean scopes into a general profile-
-  resolved physical-target variant manifest keyed by C/R/shape, preserving the
-  strict fallbacks and focused ownership/selector tests.
+  while strict keeps their serial-row owners. Since 2026-08-29, physical groups
+  pad to rows6 multiples through R24 and split Q4/Q5/Q6 plus the unfused
+  gate/up fallback into consecutive qualified rows6 launches. Scope misses,
+  strict arithmetic, and ordinary prefill retain the prior owners.
+  The scope avoids changing the existing C1 production manifest while physical
+  production owns an independent policy fingerprint and quality/economics
+  packet.
+- Removal trigger: after one release window with the exact C2 production key
+  and rows6-multiple explicit C3/C4 route, collapse prompt streaming, padding,
+  and these boolean scopes into a general profile-resolved physical-target
+  variant manifest keyed by C/R/shape. Preserve strict fallbacks, unfused pair
+  ownership, and focused offset/selector tests.
 
 ## SPECDEC2 dense NextN host/device proposal duplication
 

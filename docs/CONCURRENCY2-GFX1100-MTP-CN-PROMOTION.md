@@ -711,10 +711,18 @@ rows6; gfx1151 admits {6,8,9,12}). Prefill W7900 lane: 870.8 / 909.9 /
 stage 30.4 ms full-device sync, (2) C3+ off-tile verify, (3) proposal
 13.3 ms vs <1 ms weights floor, (4) verify 22.5 ms vs ~17.4 ms weights floor.
 Production-extraction punchlist (each behind its own numerics+perf gate):
-admit Q4 verifier rowtile rows {8,9,12} (the R6 gate already passed two
-orders under thresholds; unlocks C3/K2 R9, C4/K2 R12, C2/K3 R8),
-Q8_T16 decode rowtile/pair min-rows, Q4/Q5/Q6 selected pairreuse min-rows,
-Q5 selected tile8, and the indexed singleton decode. Survey ports for W7900:
+rows {8,9,12} are now covered by padding to rows6 multiples and splitting each
+projection into qualified rows6 launches; remaining candidates are Q8_T16
+decode rowtile/pair min-rows, Q4/Q5/Q6 selected pairreuse min-rows, Q5 selected
+tile8, and the indexed singleton decode. The retained rows6-multiple result
+passes clean C2/K3/R8 and C3/K3/R12 full-logit gates (240 rows each, KL max
+0.001341, top-1 100%) plus cached-build rowtile tracing. Same-protocol K2 moves
+C3 **21.549 -> 32.776 tok/s (+52.10%, 0.9079x AR)** and C4 **24.314 ->
+36.141 tok/s (+48.64%, 0.9196x AR)** with 20/20 exact/engaged cells and no
+recoverable failures. C2-C4 K3 is mechanically clean but reaches only
+0.9695x/0.8536x/0.7854x AR. Retain explicit scope; automatic C3/C4 remains K0.
+Evidence: `2026-08-29-w7900-qwen38-q4km-rows6-multiple-rowtiles-retained.json`.
+Survey ports for W7900:
 the standardized C1-C8 llama.cpp HIP matrix (hipEngine side measured;
 llama.cpp side pending), Laurent built-in MTP K3 as the broad comparator, and
 q38rocm strict K4 C1 as a technique reference; Kyanite warm-replay and
