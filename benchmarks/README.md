@@ -80,7 +80,7 @@ Each value is the total tokens per second across all active requests:
 | --- | ---: | ---: |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — strict C1 MTP-3 automatic | **18.191 tok/s** | **1.6445x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2 MTP-3 explicit diagnostic | **21.690 tok/s** | **1.2025x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2 MTP-3 explicit diagnostic | **25.749 tok/s** | **1.4316x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — production C3 MTP-3 explicit diagnostic | **29.564 tok/s** | **1.2297x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
@@ -99,8 +99,9 @@ W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE K2 and 27B dense K3;
 other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
 
 Strix Halo Qwen3.8 `Q4_K_M`: strict C1/K3 natural25 remains automatic at
-**18.191 vs 11.062 tok/s (1.6445x)**. Exact physical proposal-head row reuse
-raises production C2/K3 to **21.690 vs 18.038 tok/s (1.2025x)**. Standard-Q6
+**18.191 vs 11.062 tok/s (1.6445x)**. Exact C2 prompt streaming plus
+proposal-head row reuse raises production C2/K3 to **25.749 vs 17.986 tok/s
+(1.4316x)**. Standard-Q6
 true-R12 owners then lift C3/K3 to **29.564 vs 24.042 (1.2297x)**, with
 unchanged acceptance and every category positive. C3 is 7.45% above the frozen
 external row. Both remain explicit/K0 pending refreshed complete admission and
