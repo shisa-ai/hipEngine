@@ -625,9 +625,11 @@ automatic K0 and record the concrete blocker.
 
 These are ordered follow-ons, not assumptions in the primary claim:
 
-1. **C4:** independently profile/qualify C4/K1-K4. Shared R16 device code may be
-   reused, but C4 request topology, isolation, acceptance, complete wall, SLO,
-   and policy evidence do not transfer from C3.
+1. **C4:** post-E2 K3 is **20.384 vs 30.425 tok/s AR**, 24.54% below the
+   frozen 27.015 external target. E1b applies, but C3-only prompt streaming and
+   R12 owners do not transfer to replay + logical R16. Independently adjudicate
+   standard-Q4 C4 streaming before new R16 device code; topology, isolation,
+   acceptance, complete wall, SLO, and policy evidence do not transfer from C3.
 2. **Context 68-128:** run the predeclared padded full category/heldout packet,
    production numerics, state/isolation, and same-protocol economics before
    extending the first C3 key. C2's context128 evidence does not transfer.
@@ -640,6 +642,10 @@ These are ordered follow-ons, not assumptions in the primary claim:
    numerical/state gates.
 5. **gfx1100:** source ideas may transfer, absolute rates, manifests, and
    thresholds may not.
+6. **C5-C8:** post-E2 physical-group rows5-8 keep the direct proposal head
+   because E1b stops at rows4; MTP is 15.244/20.830/23.245/19.650 tok/s and
+   42-64% below external targets. Screen exact proposal-head row reuse first,
+   then prompt streaming, before R20-R32 target kernels.
 
 ## 6. Candidate priority and reopen matrix
 

@@ -112,7 +112,9 @@ requires custom FP4 and one slot; Laurent's adaptive DFlash2 result remains
 rejected for sequential serving after state-contaminated output.
 
 The current external-parity campaign has C1 prefill parity, AR wins at C3-C8,
-and a C3/K3 MTP win 7.45% above the frozen external row. Prefill C2-C8 and AR
+and a C3/K3 MTP win 7.17% above the frozen external row in the current C1-C8
+matrix. Other production-D24 MTP widths remain 24.5-64.2% below their frozen
+comparators; C5-C8 still miss E1b proposal-head reuse. Prefill C2-C8 and AR
 C1/C2 remain measured high-row/device blockers; a scoped packed-C2 graph
 improves AR **16.993→18.072 tok/s (+6.35%)**.
 [`Campaign`](../docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md) ·
