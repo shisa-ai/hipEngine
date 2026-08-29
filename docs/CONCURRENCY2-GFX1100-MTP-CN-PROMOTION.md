@@ -849,21 +849,32 @@ MTP wall is noise-flat (-0.30%). Automatic remains K0 for P11/P12. Evidence:
 
 #### P11 — Integrated explicit C2 qualification
 
-- [ ] Re-run exact request/state/KV/control ownership, strict and production
-      numerical/task gates, same-schedule determinism, same-width isolation,
-      batch-composition diagnostics/declared guarantees, graph/eager
-      reconciliation, and registered strict fallback on the integrated route.
-- [ ] Re-run reject/partial/full accept, delayed arrival, refill, sparse
-      retirement, cancellation, prefix/COW policy, pressure/failure recovery,
-      overload/soak, blocking/SSE, bounded peak/workspace, and zero final owners.
-- [ ] Prove retained C1 is non-regressive and every unsupported or losing key
-      reaches ordinary AR before provider mutation without speculative-cap
-      decomposition or hidden allocation.
-- [ ] Capture a final cached-build `rocprofv3 --kernel-trace` showing the expected
-      proposal/target/accept/commit owners under the exact candidate manifest.
+- [x] Integrated production passes all **252** actual full-logit rows bit-exact
+      (KL 0, top-1 100%), three-repeat live/teacher determinism, same-width
+      neighbor/permutation isolation, all ten tasks, strict/production manifests,
+      and registered strict fallback. Current strict C2 K1/K2/K3 each pass 10/10
+      exact/engaged. Batch-composition generated-ID equality remains diagnostic
+      under production; the selected physical policy is eager-only, so graph/
+      eager reconciliation is N/A rather than transferred to a future graph owner.
+- [x] Retain P8 reject/partial/full and pre/postcommit failure evidence, then
+      re-run integrated serving/resources: three concurrent SSE pairs are
+      deterministic by lane; cancel-after-5 leaves the survivor exact; capacity-2
+      overload completes three explicit requests. Prefix/COW fails closed at
+      `cache_off` with zero COW/reuse/admission fallback. All runs drain active
+      requests/states/provider groups/sinks/queues, candidate D2H and recovery are
+      zero, and tracked allocator returns to zero after 24.233/23.354 GB peaks.
+- [x] Retained production C1/K3/cap1 is non-regressive at **1.5022x AR**.
+      Public automatic C2/C4 executes 0/20 MTP cells at **0.9989x/1.0012x** AR,
+      proving ordinary K0 before provider mutation for unqualified keys.
+- [x] Final cached-build trace at the integrated manifest records four physical
+      cycles, rows6 Q4/Q5/Q6 target owners, request-major proposal rows,
+      accept/commit owners, 5,774 kernel calls, zero DMA copies/candidate D2H,
+      and only eager execution routes.
 
-Exit: one explicit-only physical C2 candidate passes the complete correctness,
-lifecycle, resource, and trace packet. Automatic remains K0 until P12.
+P11 exit achieved: the explicit-only physical C2/K2/R6 candidate passes the
+complete correctness, lifecycle, resource, serving, negative-key, and trace
+packet. Automatic remains K0 until P12. Evidence:
+[`P11 integrated`](../benchmarks/results/2026-08-30-w7900-qwen38-q4km-p11-integrated-explicit-c2.json).
 
 #### P12 — Economics, promotion, and wider widths
 
