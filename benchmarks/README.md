@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-28**
+Last updated: **2026-08-29**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -101,6 +101,8 @@ Dense K3; other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-
 Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 automatic at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) is **15.609 vs 9.807 tok/s (1.5916x)**; [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) remains available. Exact C2 verifier [Q6](results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json) and [Q5](results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json), followed by [production-profile Q4 rowtiles](results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json), lift K3 **11.724→17.031 tok/s (+45.27%)** and **0.8170x→1.1441x true AR**. Independently qualified [C3 R6/R9/R12 rowtiles](results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json) improve C3/K3 **19.070→19.934 tok/s (+4.53%)**, but remain **0.9589x AR**; production C2/K3 is automatic only for context1-128/D24, while C3-C8 and scope misses remain K0.
 
 The [Qwen3.8 external reproduction survey](results/2026-08-28-gfx1151-qwen38-external-reproduction-survey.json) separates source-claim reproductions from a matched standard-`Q4_K_M` C1-C8 comparison. `q38rocm` strict MTP K4 reproduces **38.85 decode tok/s** under its source protocol, but requires custom FP4 and exactly one slot. In the matched matrix, Laurent is the strongest broad alternate llama.cpp route; hipEngine leads AR at C3-C7, while its MTP route beats its own AR only at C2. Laurent adaptive DFlash2 remains rejected because cross-request state contamination produced invalid output.
+
+The external-parity campaign's first retained kernel unit routes low-M dense Q4T16 prefill (rows 17-64, six physical shapes) to the single-wave WMMA owner: standard-`Q4_K_M` server prefill improves **C1 71.55→84.59 tok/s (+18.2%)** and **C2 74.87→90.86 tok/s (+21.4%)** with exact outputs. [`retained unit`](results/2026-08-29-gfx1151-qwen38-lowm-dense-q4t16-prefill-retained.json)
 
 `Q4_K_S` uses FP16 recurrent state with FP32 rollback. Its exact W8192 DMS
 sidecar stays default-off. [`DMS`](../docs/DMS.md).

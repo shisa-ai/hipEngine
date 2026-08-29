@@ -135,6 +135,14 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   `docs/KERNELS.md` + strict/production gates + rocprof trace evidence per
   AGENTS.md. This is now first-priority kernel work (the wall is below the
   serving boundary), not conditional on P2.1/P2.2.
+  - Progress 2026-08-29 (first retained unit): Q4 dense low-M band (rows
+    17-64, six shapes) routed to the single-wave owner — server prefill C1
+    71.55→84.59 (+18.2%), C2 74.87→90.86 (+21.4%), isolated 45-token
+    -18.9%, bit-exact, RED-first, 76/76 family tests
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-lowm-dense-q4t16-prefill-retained.json)).
+    Remaining in this item: Q5/Q6 families (146.5 ms/pass), deep bandwidth
+    (owners at 25-60 GB/s effective vs 256 peak), then re-freeze the C1-C8
+    prefill row.
 
 ### P3 — AR decode C1/C2/C8 (defend the C3-C7 lead)
 
