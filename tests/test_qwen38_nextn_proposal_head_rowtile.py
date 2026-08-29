@@ -101,7 +101,7 @@ def test_qwen38_nextn_proposal_head_rowtile_matches_direct_parent(
                 )
                 candidate_functions = (
                     (("package", None),)
-                    if rows in {2, 3, 4, 7, 8}
+                    if rows in {2, 3, 4}
                     else (
                         (
                             "exact-unadmitted",

@@ -4,7 +4,9 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
-- [2026-08-29 gfx1151 Qwen3.8 post-E2 MTP C1-C8 re-freeze] Current exact production-D24/K3 is **7.814/21.581/29.489/20.384/15.244/20.830/23.245/19.650 tok/s**. C3 beats its frozen comparator by 7.17%; all other widths remain 24.5-64.2% below. Acceptance is identical at 78.894%, all 80 cells pass, and every width is one physical group; C5-C8 still miss E1b proposal-head reuse. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-post-e2-c1c8-refreeze.json`.
+- [2026-08-29 gfx1151 Qwen3.8 wide proposal policy rejected] Actual head rows5-8 rowtiles are exact and 75.6-84.4% faster than hypothetical direct rows5-8, but request telemetry proves wide proposals already lower as rows4+remainder and no rows5-8 key can engage. The apparent C7/C8 +1.11%/+3.78% is unattributed run variance; rows7/8 policy is removed. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-wide-proposal-policy-rejected.json`.
+
+- [2026-08-29 gfx1151 Qwen3.8 post-E2 MTP C1-C8 re-freeze] Current exact production-D24/K3 is **7.814/21.581/29.489/20.384/15.244/20.830/23.245/19.650 tok/s**. C3 beats its frozen comparator by 7.17%; all other widths remain 24.5-64.2% below. Acceptance is identical at 78.894% and all 80 cells pass. Follow-up telemetry corrects C5-C8 attribution: proposals are rows4+remainder and already use E1b; remaining walls are replay plus R20-R32 target/accept. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-post-e2-c1c8-refreeze.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8 MTP E2 Q5 true-R12 retained] Scope one exact R12 col8 sweep to Q5 K6144/N5120: leaf improves **0.2654→0.1940 ms (-26.91%)**, traced family **97.11→78.07 ms (-19.60%)**, and clean C3/K3 **29.409→29.564 tok/s (+0.53%)**, exact 471/597 acceptance and every category positive. E2 closes with Q4/planar-Q6 rejected and standard-Q6/Q5 retained. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e2-q5-true-r12-retained.json`.
 
