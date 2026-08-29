@@ -14,8 +14,8 @@
     "quant": "Unsloth UD-Q4_K_XL",
     "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
   },
-  "selected_manifest_sha256": "fa0bc8967250ade5a4500851c9ab4996cd35ddb5bb696f51c0f211bc0b2eab7a",
-  "strict_manifest_sha256": "2cea76c571463429b1c264477660da0c135f7a6e9fb635542c2bb975b82f6063",
+  "selected_manifest_sha256": "6ec035b7c08e747ba24bfede677352493f2291d10730905c616ed0fe6706d35c",
+  "strict_manifest_sha256": "9e648eb89a6b893c8e88e95e5066ff3af40dc8913c6ea5a267198d9bce0d8fb4",
   "production_manifest": {
     "backend": "hip_gfx1151",
     "execution_profile": "production",
@@ -26,6 +26,14 @@
     "quant": "gguf_ud_q4_k_xl",
     "schema_version": 1,
     "selections": [
+      {
+        "evidence_artifact": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json",
+        "layer": "gdn_recurrence_norm_gate",
+        "registry_quant": "f32_state",
+        "scope": "prefill_rows_ge2_layers35_47_gdn",
+        "selected_variant": "qwen4exp_sigmoid_peer_prefill",
+        "strict_fallback_variant": "qwen4exp_sigmoid_strict_prefill"
+      },
       {
         "evidence_artifact": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-dp4a-safe43-decode.json",
         "layer": "linear",
@@ -72,6 +80,14 @@
     "selections": [
       {
         "evidence_artifact": null,
+        "layer": "gdn_recurrence_norm_gate",
+        "registry_quant": "f32_state",
+        "scope": "prefill_rows_ge2_layers35_47_gdn",
+        "selected_variant": "qwen4exp_sigmoid_strict_prefill",
+        "strict_fallback_variant": "qwen4exp_sigmoid_strict_prefill"
+      },
+      {
+        "evidence_artifact": null,
         "layer": "linear",
         "registry_quant": "gguf_q4_k",
         "scope": "decode_c1_calibrated_q4_dp4a_43_layers",
@@ -109,7 +125,8 @@
     "q8_mmq": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-q8-mmq-prefill-production.json",
     "q5_1_mmq": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-q5-1-mmq-suffix32-production.json",
     "q4_k_mmq": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-q4-k-mmq-suffix35-production.json",
-    "dp4a43": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-dp4a-safe43-decode.json"
+    "dp4a43": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-dp4a-safe43-decode.json",
+    "gdn_peer": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json"
   },
   "binder": {
     "legacy_cooperative_moe": false,
@@ -193,13 +210,28 @@
       47
     ],
     "strict_fail_closed_envs": true,
-    "post_construction_resource_configuration": true
+    "post_construction_resource_configuration": true,
+    "gdn_peer_layers": [
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47
+    ]
   },
   "public_profile_smoke": {
     "command": "uv run python /tmp/qwen4exp_profile_manifest_smoke.py",
     "production": {
-      "manifest_sha256": "fa0bc8967250ade5a4500851c9ab4996cd35ddb5bb696f51c0f211bc0b2eab7a",
-      "strict_manifest_sha256": "2cea76c571463429b1c264477660da0c135f7a6e9fb635542c2bb975b82f6063",
+      "manifest_sha256": "6ec035b7c08e747ba24bfede677352493f2291d10730905c616ed0fe6706d35c",
+      "strict_manifest_sha256": "9e648eb89a6b893c8e88e95e5066ff3af40dc8913c6ea5a267198d9bce0d8fb4",
       "fell_back_to_strict": false,
       "resources_allocated": {
         "q8": true,
@@ -213,10 +245,10 @@
         "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL": "1",
         "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0"
       },
-      "seconds": 7.792256860004272,
-      "tok_s": 65.19292281128955,
+      "seconds": 7.613237791985739,
+      "tok_s": 66.72588114018436,
       "top1": 248068,
-      "logits_sha256": "33cb156dfa445a6de769e665644d6a8e00ea06059bea56a953d70a36b00a62d7",
+      "logits_sha256": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c",
       "tracked_after_close": {
         "current_allocated_bytes": 0,
         "peak_allocated_bytes": 83474325404,
@@ -227,8 +259,8 @@
       }
     },
     "strict_after_production_same_process": {
-      "manifest_sha256": "2cea76c571463429b1c264477660da0c135f7a6e9fb635542c2bb975b82f6063",
-      "strict_manifest_sha256": "2cea76c571463429b1c264477660da0c135f7a6e9fb635542c2bb975b82f6063",
+      "manifest_sha256": "9e648eb89a6b893c8e88e95e5066ff3af40dc8913c6ea5a267198d9bce0d8fb4",
+      "strict_manifest_sha256": "9e648eb89a6b893c8e88e95e5066ff3af40dc8913c6ea5a267198d9bce0d8fb4",
       "fell_back_to_strict": false,
       "resources_allocated": {
         "q8": true,
@@ -242,8 +274,8 @@
         "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL": "0",
         "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0"
       },
-      "seconds": 9.438593644008506,
-      "tok_s": 53.821577573950506,
+      "seconds": 9.34876159200212,
+      "tok_s": 54.33874797220145,
       "top1": 248068,
       "logits_sha256": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48",
       "tracked_after_close": {
@@ -255,7 +287,7 @@
         "peak_allocations": 1650
       }
     },
-    "expected_production_logits_sha256": "33cb156dfa445a6de769e665644d6a8e00ea06059bea56a953d70a36b00a62d7",
+    "expected_production_logits_sha256": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c",
     "expected_strict_logits_sha256": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48",
     "verdict": "production resources allocated after binding; hashes match paired evidence; strict envs disable routes despite preallocated resources; both close to zero tracked bytes"
   }

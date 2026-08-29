@@ -112,14 +112,10 @@ from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out,
     qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
 )
-from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
-    qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32,
-)
 from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
     qwen4_exp_gdn_decode_f32,
+    qwen4_exp_gdn_peer_prefill_f32,
     qwen4_exp_gdn_prefill_f32,
-    qwen4_exp_gdn_prefill_prepare_f32,
-    qwen4_exp_gdn_prefill_sigmoid_gate_f32,
 )
 from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_gated_mean_f32,
@@ -164,13 +160,13 @@ from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 from hipengine.runtime.moe_graph import MoeGraphCache
 
 
-def _qwen4_exp_mmq_layer_allowed(
-    weights: Mapping[str, GGUFDeviceWeight],
+def _qwen4_exp_layer_allowed(
+    weight: GGUFDeviceWeight,
     *,
     env_name: str,
     default: str,
 ) -> bool:
-    parts = weights["expert_gate"].spec.slot_path.split(".")
+    parts = weight.spec.slot_path.split(".")
     if len(parts) <= 2 or parts[0] != "layers":
         return False
     try:
@@ -196,8 +192,8 @@ def _qwen4_exp_mmq_layer_allowed(
 def _qwen4_exp_q5_1_mmq_layer_allowed(weights: Mapping[str, GGUFDeviceWeight]) -> bool:
     """Certified Q5_1-MMQ prefill layer set (suffix 32-47 by default)."""
 
-    return _qwen4_exp_mmq_layer_allowed(
-        weights,
+    return _qwen4_exp_layer_allowed(
+        weights["expert_gate"],
         env_name="HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS",
         default="32-47",
     )
@@ -206,9 +202,19 @@ def _qwen4_exp_q5_1_mmq_layer_allowed(weights: Mapping[str, GGUFDeviceWeight]) -
 def _qwen4_exp_q4_k_mmq_layer_allowed(weights: Mapping[str, GGUFDeviceWeight]) -> bool:
     """Certified Q4_K-MMQ prefill layer set (suffix 35-47 by default)."""
 
-    return _qwen4_exp_mmq_layer_allowed(
-        weights,
+    return _qwen4_exp_layer_allowed(
+        weights["expert_gate"],
         env_name="HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS",
+        default="35-47",
+    )
+
+
+def _qwen4_exp_gdn_peer_layer_allowed(
+    weights: Mapping[str, GGUFDeviceWeight],
+) -> bool:
+    return _qwen4_exp_layer_allowed(
+        weights["attn_qkv"],
+        env_name="HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS",
         default="35-47",
     )
 
@@ -4014,53 +4020,30 @@ def run_qwen4_exp_gdn_token_mixer(
             head_dim == 128
             and os.environ.get("HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL", "")
             not in {"", "0", "false", "False"}
+            and _qwen4_exp_gdn_peer_layer_allowed(weights)
         )
         if peer_prefill:
             compact_width = rows * num_k_heads * head_dim
             query_ptr = scratch.qkv.ptr
             key_ptr = query_ptr + compact_width * DType.FP32.itemsize
             value_ptr = key_ptr + compact_width * DType.FP32.itemsize
-            qwen4_exp_gdn_prefill_prepare_f32(
+            qwen4_exp_gdn_peer_prefill_f32(
                 scratch.conv.ptr,
+                scratch.gate.ptr,
                 scratch.alpha.ptr,
                 scratch.beta.ptr,
                 dt_bias_ptr,
                 a_ptr,
-                query_ptr,
-                key_ptr,
-                value_ptr,
-                scratch.beta.ptr,
-                scratch.alpha.ptr,
-                rows,
-                num_k_heads,
-                num_v_heads,
-                head_dim,
-                head_dim,
-                stream=stream,
-                runtime=active_runtime,
-            )
-            qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32(
-                query_ptr,
-                key_ptr,
-                value_ptr,
-                scratch.beta.ptr,
-                scratch.alpha.ptr,
-                recurrent_state_ptr,
-                scratch.core.ptr,
-                rows,
-                num_k_heads,
-                num_v_heads,
-                head_dim,
-                head_dim,
-                stream=stream,
-                runtime=active_runtime,
-            )
-            qwen4_exp_gdn_prefill_sigmoid_gate_f32(
-                scratch.core.ptr,
-                scratch.gate.ptr,
                 norm_weight_ptr,
+                recurrent_state_ptr,
+                query_ptr,
+                key_ptr,
+                value_ptr,
+                scratch.core.ptr,
                 rows,
+                num_k_heads,
                 num_v_heads,
+                head_dim,
                 head_dim,
                 stream=stream,
                 runtime=active_runtime,

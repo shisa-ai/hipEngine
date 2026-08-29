@@ -128,11 +128,10 @@ should be removed or collapsed.
 
 ## 2026-08-27 Qwen4Exp grouped prefill performance candidates
 
-- Qwen4Exp grouped Q4/Q5/Q8 MoE, peer-GDN, Q4 tile, and Q8 tile candidates are
+- Qwen4Exp grouped Q4/Q5/Q8 MoE, Q4 tile, and Q8 tile candidates are
   controlled by `HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL`,
   `HIPENGINE_QWEN4_EXP_Q5_1_WMMA`,
   `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA`,
-  `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL`,
   `HIPENGINE_QWEN4_EXP_Q4_TILE_M/N`, and
   `HIPENGINE_GGUF_Q8_0_WMMA_TILE_M/N`. They raise warm repeated-token 512
   prefill from 8.67 to 211.76 tok/s and corrected natural-suite wall by 6.60x,
@@ -144,6 +143,11 @@ should be removed or collapsed.
   direct/grouped routes only after the full category+heldout mean/tail/max,
   per-category top-1, determinism/isolation, BF16-relative, task, and lifecycle
   gates pass; otherwise remove the candidates after the campaign.
+- `HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL{,_LAYERS}` is now an internal named
+  production-profile bridge selecting certified global layers 35–47. Strict
+  binds it off; the all-layer and suffix-34 candidates are measured failures.
+  Remove the process-global transport with the MMQ/DP4A bridges when profile
+  state is request-local; retain `qwen4exp_sigmoid_strict_prefill` fallback.
 - `HIPENGINE_QWEN4_EXP_Q5_1_WAVE64` selects a 64-thread decode reduction that
   improves warm decode by 6-8% but fails production mean/p95 KL
   (`0.002565/0.007202`). Keep it default-off only for exact-repack/reduction

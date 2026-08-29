@@ -19,6 +19,7 @@ QWEN4_EXP_MODEL = "qwen4_exp_gguf"
 QWEN4_EXP_BACKEND = "hip_gfx1151"
 QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
 PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
+PRODUCTION_GDN_PEER_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS = tuple(range(32, 48))
 PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_Q4_DP4A_DECODE_LAYERS = (
@@ -31,6 +32,10 @@ _STACK_EVIDENCE = (
 _DECODE_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-29-gfx1151-qwen38-flash-next-production-dp4a-safe43-decode.json"
+)
+_GDN_PEER_EVIDENCE = (
+    "benchmarks/results/"
+    "2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json"
 )
 
 
@@ -77,6 +82,13 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
             "gguf_q8_0",
         ),
         _selection(
+            "gdn_recurrence_norm_gate",
+            "prefill_rows_ge2_layers35_47_gdn",
+            "qwen4exp_sigmoid_strict_prefill",
+            "qwen4exp_sigmoid_strict_prefill",
+            "f32_state",
+        ),
+        _selection(
             "linear",
             "decode_c1_calibrated_q4_dp4a_43_layers",
             "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
@@ -113,6 +125,14 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             evidence=_STACK_EVIDENCE,
         ),
         _selection(
+            "gdn_recurrence_norm_gate",
+            "prefill_rows_ge2_layers35_47_gdn",
+            "qwen4exp_sigmoid_peer_prefill",
+            "qwen4exp_sigmoid_strict_prefill",
+            "f32_state",
+            evidence=_GDN_PEER_EVIDENCE,
+        ),
+        _selection(
             "linear",
             "decode_c1_calibrated_q4_dp4a_43_layers",
             "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out",
@@ -142,6 +162,12 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS": (
             ",".join(map(str, PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS))
+            if production
+            else ""
+        ),
+        "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS": (
+            ",".join(map(str, PRODUCTION_GDN_PEER_PREFILL_LAYERS))
             if production
             else ""
         ),
@@ -231,6 +257,7 @@ def qwen4_exp_gfx1151_profiles_registered() -> bool:
 
 
 __all__ = [
+    "PRODUCTION_GDN_PEER_PREFILL_LAYERS",
     "PRODUCTION_MOE_PREFILL_ENV",
     "PRODUCTION_Q4_DP4A_DECODE_LAYERS",
     "PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS",

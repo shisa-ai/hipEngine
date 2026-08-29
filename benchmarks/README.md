@@ -239,8 +239,12 @@ safe-43 decode passes at `3.23e-4/1.70e-3/4.79e-3/1.24e-2`, **448/450
 top-1**, exact state/repeat/c2, and improves same-session strict p508/p1012
 **8.383→6.754 s (-19.43%, 75.21 tok/s)** /
 **17.040→13.702 s (-19.58%, 73.86 tok/s)**. This stack is the named gfx1151
-`production` profile (`fa0bc896…`; strict `2cea76c5…`); strict binds every MMQ
-route off even if resources were allocated earlier in the process.
+`production` profile. Certified compact peer-GDN on global layers 35–47 then
+improves that profile p508/p1012 **6.689→6.500 s (-2.84%, 78.16 tok/s)** /
+**13.649→13.188 s (-3.38%, 76.74 tok/s)** while passing the complete stack at
+`3.16e-4/1.61e-3/4.25e-3/9.92e-3`, **448/450 top-1**, exact state/repeat/c2.
+The final production/strict hashes are `6ec035b7…` / `9e648eb8…`; strict binds
+all production routes off even if resources were allocated earlier.
 Current natural 16K improves **946.999→341.177 s (-63.96%, 47.989 tok/s; chunk-512 gate**
 re-passed with retrieval/oracle/transactional/teardown exact) with every
 binding control exact; 64K historical evidence is retained but not rerun because
@@ -248,7 +252,7 @@ binding control exact; 64K historical evidence is retained but not rerun because
 prompts but remains opt-in at **0.955x AR**. <=1K image/video/PNG chat and
 request-owned c2 blocking/SSE pass with zero teardown; packed c-aware speed,
 remote media, multimodal SSE, and 128K+/262K inference are not claimed.
-Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json) · [`chunk512`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-chunk512.json) · [`Q8 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q8-mmq-prefill-production.json) · [`Q5_1 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q5-1-mmq-suffix32-production.json) · [`Q4_K MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q4-k-mmq-suffix35-production.json) · [`MMQ+DP4A stack`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json) · [`profile manifest`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-profile-manifest.json).
+Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json) · [`chunk512`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-chunk512.json) · [`Q8 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q8-mmq-prefill-production.json) · [`Q5_1 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q5-1-mmq-suffix32-production.json) · [`Q4_K MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q4-k-mmq-suffix35-production.json) · [`MMQ+DP4A stack`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json) · [`profile manifest`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-profile-manifest.json) · [`peer GDN`](results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json).
 
 ## Current Qwen3.6-35B quantization quality
 

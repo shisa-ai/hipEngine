@@ -183,6 +183,82 @@ def qwen4_exp_gdn_prefill_sigmoid_gate_f32(
         runtime.check(int(error))
 
 
+def qwen4_exp_gdn_peer_prefill_f32(
+    conv_ptr: int,
+    output_gate_ptr: int,
+    alpha_ptr: int,
+    beta_logits_ptr: int,
+    dt_bias_ptr: int,
+    a_ptr: int,
+    norm_weight_ptr: int,
+    recurrent_state_ptr: int,
+    query_ptr: int,
+    key_ptr: int,
+    value_ptr: int,
+    output_ptr: int,
+    tokens: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run the compact peer-wave32 Qwen4Exp GDN prefill chain."""
+
+    from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+        qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32,
+    )
+
+    runtime = runtime or get_hip_runtime()
+    qwen4_exp_gdn_prefill_prepare_f32(
+        conv_ptr,
+        alpha_ptr,
+        beta_logits_ptr,
+        dt_bias_ptr,
+        a_ptr,
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_logits_ptr,
+        alpha_ptr,
+        tokens,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        runtime=runtime,
+    )
+    qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_f32(
+        query_ptr,
+        key_ptr,
+        value_ptr,
+        beta_logits_ptr,
+        alpha_ptr,
+        recurrent_state_ptr,
+        output_ptr,
+        tokens,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream=stream,
+        runtime=runtime,
+    )
+    qwen4_exp_gdn_prefill_sigmoid_gate_f32(
+        output_ptr,
+        output_gate_ptr,
+        norm_weight_ptr,
+        tokens,
+        num_v_heads,
+        head_v_dim,
+        stream=stream,
+        runtime=runtime,
+    )
+
+
 def qwen4_exp_gdn_prefill_f32(
     conv_ptr: int,
     output_gate_ptr: int,
@@ -244,6 +320,7 @@ def register_qwen4_exp_gdn_kernels(*, replace: bool = True) -> None:
     registrations = {
         "qwen4exp_sigmoid_strict": qwen4_exp_gdn_decode_f32,
         "qwen4exp_sigmoid_strict_prefill": qwen4_exp_gdn_prefill_f32,
+        "qwen4exp_sigmoid_peer_prefill": qwen4_exp_gdn_peer_prefill_f32,
     }
     for variant, function in registrations.items():
         register(
@@ -265,6 +342,7 @@ __all__ = [
     "build_qwen4_exp_gdn",
     "plan_qwen4_exp_gdn_build",
     "qwen4_exp_gdn_decode_f32",
+    "qwen4_exp_gdn_peer_prefill_f32",
     "qwen4_exp_gdn_prefill_f32",
     "qwen4_exp_gdn_prefill_prepare_f32",
     "qwen4_exp_gdn_prefill_sigmoid_gate_f32",
