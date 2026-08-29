@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- **2026-08-30** — W7900 Qwen3.8-27B `Q4_K_M` P11 qualifies integrated explicit C2/K2/R6: 252/252 bit-exact logits, strict K1-K3, three SSE pairs, cancel/survivor, capacity-2 overload, bounded **22.569 GiB** tracked peak, C1 **1.5022x**, negative C2/C4 K0, and final trace pass. Artifact: `benchmarks/results/2026-08-30-w7900-qwen38-q4km-p11-integrated-explicit-c2.json`.
+
 - **2026-08-30** — W7900 Qwen3.8-27B `Q4_K_M` P10 removes proposal sync calls **7 -> 0** and accept/composite sync calls **8 -> 4** per four-cycle profile; 252/252 full-logit rows remain bit-exact and explicit C2/K2 is **1.1932x AR**. Artifact: `benchmarks/results/2026-08-30-w7900-qwen38-q4km-p10-sync-wins.json`.
 
 - **2026-08-29** — W7900 Qwen3.8-27B `Q4_K_M` P9 attribution selects production C2/K2/R6 at **1.1902x AR**, **92 physical cycles**, and **155.70/131.74 ms** 1.10x/1.30x cycle budgets; focused C2 wall is 71.46 ms with target rowtiles then proposal ranked highest. Artifact: `benchmarks/results/2026-08-29-w7900-qwen38-q4km-p9-cycle-attribution.json`.
