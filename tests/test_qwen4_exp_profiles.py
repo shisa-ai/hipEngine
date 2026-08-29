@@ -11,6 +11,7 @@ from hipengine.execution_profiles import (
     resolve_runtime_profile,
 )
 from hipengine.generation.qwen4_exp_profiles import (
+    PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS,
     PRODUCTION_GDN_PEER_PREFILL_LAYERS,
     PRODUCTION_MOE_PREFILL_ENV,
     PRODUCTION_Q4_DP4A_DECODE_LAYERS,
@@ -100,11 +101,11 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     )
     assert q8["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
     gdn = selections[
-        ("gdn_recurrence_norm_gate", "prefill_rows_ge2_layers35_47_gdn")
+        ("gdn_recurrence_norm_gate", "prefill_rows_ge2_layers27_47_gdn")
     ]
-    assert gdn["selected_variant"] == "qwen4exp_sigmoid_peer_prefill"
+    assert gdn["selected_variant"] == "qwen4exp_gdn_columnwarps_prefill"
     assert gdn["strict_fallback_variant"] == "qwen4exp_sigmoid_strict_prefill"
-    assert gdn["evidence_artifact"].endswith("production-gdn-peer35.json")
+    assert gdn["evidence_artifact"].endswith("gdn-colwarps27-production.json")
     dp4a = selections[("linear", "decode_c1_calibrated_q4_dp4a_43_layers")]
     assert dp4a["selected_variant"] == (
         "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out"
@@ -148,6 +149,13 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
         int(value)
         for value in os.environ["HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS"].split(",")
     ) == PRODUCTION_Q4_IU8_PREFILL_LAYERS
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL"] == "1"
+    assert tuple(
+        int(value)
+        for value in os.environ[
+            "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"
+        ].split(",")
+    ) == PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL"] == "1"
     assert tuple(
         int(value)

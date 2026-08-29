@@ -379,6 +379,7 @@ def register_qwen4_exp_gdn_kernels(*, replace: bool = True) -> None:
         "qwen4exp_sigmoid_strict": qwen4_exp_gdn_decode_f32,
         "qwen4exp_sigmoid_strict_prefill": qwen4_exp_gdn_prefill_f32,
         "qwen4exp_sigmoid_peer_prefill": qwen4_exp_gdn_peer_prefill_f32,
+        "qwen4exp_gdn_columnwarps_prefill": qwen4_exp_gdn_prefill_columnwarps_f32,
     }
     for variant, function in registrations.items():
         register(
