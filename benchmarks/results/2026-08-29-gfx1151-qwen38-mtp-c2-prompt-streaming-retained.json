@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "retained_c2_c4_rejected",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "title": "Qwen3.8 Q4_K_M physical C2 prompt streaming",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "control_commit": "0c59aaeaee5971c62f85a1a1c5116623223a1475",
+    "candidate_commit": "8210664490616e69cefbe28b581597716a940093",
+    "tracked_dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "heldout_included": true,
+    "sampling": "raw greedy",
+    "candidate_budget": 3,
+    "common_horizon": 24,
+    "batch_window_ms": 50,
+    "max_sequence_length": 1024,
+    "execution_profile": "production",
+    "production_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "correctness": "self-exact greedy IDs, exact control acceptance for retained T0 width, route expectation, budget conformance",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "anti_gaming": "one model/quant/profile/physical-width policy; no prompt/category/length selector"
+  },
+  "commands": {
+    "clean_c2": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 2 --resident-capacity 4 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths 2 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/p330-c2-streaming-clean.json",
+    "c2_c4_screen": "same full-suite harness through /tmp/p330_c2c4_streaming_bench.py with temporary C2/C4 policy; output /tmp/p330-c2c4-streaming-dirty.json",
+    "stage_ledgers": "cached committed C2 specdec2_perf_bridge child versus /tmp replay-policy control, one 36-token prompt, D24/K3"
+  },
+  "c2_complete_wall": {
+    "columns": ["route", "ar_tok_s", "mtp_tok_s", "mtp_vs_ar", "mtp_wall_seconds", "accepted", "proposed"],
+    "rows": [
+      ["post-E2 host replay", 17.937290746849307, 21.58102290659696, 1.2031372636577058, 22.241763148922473, 314, 398],
+      ["post-output-norm streaming", 17.98554472699356, 25.748573453428456, 1.4316259998944472, 18.641809452790767, 314, 398]
+    ],
+    "mtp_uplift_pct": 19.311181702872602,
+    "mtp_wall_reduction_pct": 16.185558995605575,
+    "external_target_tok_s": 32.378,
+    "gap_to_external_pct": -20.475095887860718
+  },
+  "c2_categories": {
+    "columns": ["category", "ar_tok_s", "mtp_tok_s", "ratio"],
+    "rows": [
+      ["code", 18.104139557568164, 26.13821434508179, 1.4437700428659754],
+      ["general_en", 18.160607582774166, 29.340738060848903, 1.6156253543344772],
+      ["general_ja", 18.136081327623465, 25.04369998974509, 1.3808771331213914],
+      ["mixed_ja_en", 16.964630595892327, 22.90051880657852, 1.3498978758855769]
+    ],
+    "every_category_positive": true
+  },
+  "stage_attribution": {
+    "columns": ["stage", "replay_seconds", "streaming_seconds", "streaming_delta_pct"],
+    "rows": [
+      ["complete_wall", 2.261368985986337, 1.9685248469468206, -12.949860940618995],
+      ["nextn_prompt_prime", 0.4010914429090917, 0.028058642987161875, -93.0044274234189],
+      ["target_prefill", 0.41314440593123436, 0.5216446390841156, 26.262060334163294],
+      ["activation_to_first_decode", 0.8142358488403261, 0.5497032820712775, -32.48844510418064],
+      ["cycle_total", 1.4352746275253594, 1.4352351010311395, -0.002753932485244359]
+    ],
+    "streaming_telemetry": {
+      "requests_streaming": 2,
+      "prompt_prime_rows_per_request": 36,
+      "carried_hidden_bytes_per_request": 10240,
+      "fallback_reason": null
+    }
+  },
+  "c4_rejection": {
+    "control_mtp_tok_s": 20.384436564632978,
+    "candidate_mtp_tok_s": 21.541757322746733,
+    "candidate_uplift_pct": 5.6774723914700065,
+    "control_accepted_proposed": "628/796",
+    "candidate_accepted_proposed": "624/800",
+    "every_category_below_ar": true,
+    "category_ratios": [0.7272718256819158, 0.7434787127803535, 0.6849522103600867, 0.7137300453881421],
+    "reason": "Reject: acceptance/opportunity trajectory changes under a T0 candidate and every category remains below true AR. C4 keeps replay."
+  },
+  "scope": {
+    "enabled": "gfx1151 dense-H5120 MOSTLY_Q4_K_M production physical C2/C3",
+    "rejected": "physical C4",
+    "unchanged": ["strict profile", "other model/quant keys", "physical C1/C4-C8", "peer backends"]
+  },
+  "raw_sources": [
+    ["/tmp/p310-post-e2-mtp-c1c8-clean.json", "2c5900b6137295d25b521ca1b6cdb045f0321b661ff695749240b246b79eeeb7", 20675296],
+    ["/tmp/p330-c2c4-streaming-dirty.json", "ada75ac8c249fcf7f16aa0576bdaa0158b7a61464e7237255e6d2bbd58059d58", 3586468],
+    ["/tmp/p330-c2-streaming-clean.json", "9b7fb1fecff1559ff51c5452f6ad77a8613a4e1464ebd2286ae9b6be77ba02e1", 1586995],
+    ["/tmp/p330-c2-replay-profile.json", "fd12a3f241a7abf6f2ee5450dbf8cf1e44c246ce7f2f5eb8f0b0fada8033c4ae", 56861],
+    ["/tmp/p330-c2-streaming-profile.json", "5baecf5ee8e05747bf851d8e39d5979f659e835b1306391e60915858c251282e", 56676]
+  ],
+  "verdict": {
+    "c2_retained": true,
+    "c4_rejected": true,
+    "automatic_policy": "unchanged; typed evidence and serving gates must be refreshed before C2 automatic admission",
+    "next": "C2 external gap is now 20.48%; profile remaining R8 target wall or begin typed evidence refresh. C4/wide require operation-complete target/accept work."
+  }
+}

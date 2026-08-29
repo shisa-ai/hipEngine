@@ -4,7 +4,7 @@
 - Created: 2026-08-28; corrected review: 2026-08-28; E1a retained: 2026-08-29
 - Hardware lane: **AMD Ryzen AI MAX+ 395 / Radeon 8060S / `hip_gfx1151` / HIP 7.15**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile, physical C3, raw greedy, context 1-67, D24**
-- Current product state after E2: **strict C1/K3 natural25 remains automatic at 1.6445x; production C2/K3 is an exact explicit diagnostic at 1.2025x and remains automatic K0 pending refreshed evidence; C3/K3 is an exact explicit diagnostic at 1.2297x, 7.45% above the frozen external row, and remains automatic K0 pending the complete production/serving gate**
+- Current product state after C2 streaming: **strict C1/K3 natural25 remains automatic at 1.6445x; production C2/K3 is an exact explicit diagnostic at 1.4316x and remains automatic K0 pending refreshed evidence; C3/K3 is an exact explicit diagnostic at 1.2297x, 7.45% above the frozen external row, and remains automatic K0 pending the complete production/serving gate**
 - Primary promotion gate: **C3 `>=1.10x` true same-protocol AR overall, full/heldout/every category non-regressive, complete production correctness and serving gates**
 - Stretch target: **`>1.30x` true AR**, consistent with [`BENCHMARK.md`](BENCHMARK.md)
 - Binding predecessors (extend; do not reimplement):
@@ -80,15 +80,16 @@ profiles/scopes differ and must remain explicit:
 | Cell | Profile/scope | MTP vs true AR | Draft acceptance | Product state |
 | --- | --- | ---: | ---: | --- |
 | C1/K3 | strict, cap1/cap4 realized singleton, context 1-67, natural25 | **18.191 / 11.062 = 1.6445x** | 161/220 = **73.18%** | automatic; current manifest refreshed |
-| C2/K3 | production, cap4 physical C2, context 1-128, D24 | **21.690 / 18.038 = 1.2025x** | 314/398 = **78.89%** | retained exact diagnostic; automatic K0 pending refresh |
+| C2/K3 | production, cap4 physical C2, context 1-128, D24 | **25.749 / 17.986 = 1.4316x** | 314/398 = **78.89%** | retained exact diagnostic; automatic K0 pending refresh |
 | C3/K3 | production, canonical natural contexts (<=67), D24 | **29.564 / 24.042 = 1.2297x** | 471/597 = **78.89%** | external parity passed; automatic K0 pending full gate |
 | C4+ | unqualified economics | n/a | n/a | automatic K0 |
 
-C2 and C3 still have identical draft acceptance. E1a removes the C3 activation
-wall and E1b removes duplicate physical proposal-head sweeps without changing
-candidate IDs or either acceptance trajectory. C2 now clears the implementation
-economic/category gate too, but its typed automatic evidence remains unchanged
-until the complete admission bundle is refreshed.
+C2 and C3 still have identical draft acceptance. Post-output-norm prompt
+streaming now removes the activation wall at both widths, while E1b removes
+duplicate physical proposal-head sweeps without changing candidate IDs or either
+acceptance trajectory. C2 clears the implementation economic/category gate too,
+but its typed automatic evidence remains unchanged until the complete admission
+bundle is refreshed.
 
 Current E2 C3 category economics:
 
@@ -626,10 +627,10 @@ automatic K0 and record the concrete blocker.
 These are ordered follow-ons, not assumptions in the primary claim:
 
 1. **C4:** post-E2 K3 is **20.384 vs 30.425 tok/s AR**, 24.54% below the
-   frozen 27.015 external target. E1b applies, but C3-only prompt streaming and
-   R12 owners do not transfer to replay + logical R16. Independently adjudicate
-   standard-Q4 C4 streaming before new R16 device code; topology, isolation,
-   acceptance, complete wall, SLO, and policy evidence do not transfer from C3.
+   frozen 27.015 external target. Standard-Q4 streaming screens at 21.542 tok/s
+   (+5.68%) but changes acceptance 628/796→624/800 and leaves every category
+   below AR, so it is rejected. E1b applies, but R12 owners do not transfer to
+   logical R16; topology, isolation, SLO, and policy evidence do not transfer.
 2. **Context 68-128:** run the predeclared padded full category/heldout packet,
    production numerics, state/isolation, and same-protocol economics before
    extending the first C3 key. C2's context128 evidence does not transfer.

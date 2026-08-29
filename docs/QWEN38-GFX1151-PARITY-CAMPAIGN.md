@@ -70,7 +70,7 @@ Standing context that shapes the plan:
   E2 attacks, and it gates the T3 adaptive-K / B4-clamp reopen.
 - E1b current state (2026-08-29): strict C1/K3 natural25 remains automatic at
   **18.191 vs 11.062 tok/s (1.6445x)**. Production C2/K3 is now an exact
-  explicit diagnostic at **21.690 vs 18.038 (1.2025x)** and remains automatic
+  explicit diagnostic at **25.749 vs 17.986 (1.4316x)** and remains automatic
   K0 pending refreshed evidence. E1a+E1b+E2 lift C3/K3 to **29.564 vs 24.042
   (1.2297x)**, 7.45% above the frozen external row; C3 remains automatic K0
   pending the full production/serving gate.
@@ -295,9 +295,9 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   | C | MTP tok/s | True AR tok/s | MTP/AR | External gap | Status / named blocker |
   | ---: | ---: | ---: | ---: | ---: | --- |
   | 1 | 7.814 | 11.024 | 0.7088x | -63.28% | production-D24 keeps direct/scalar proposal + replay; strict-natural25 evidence does not transfer |
-  | 2 | 21.581 | 17.937 | 1.2031x | -33.35% | E1b applies, but C3-only streaming/R12 owners do not transfer to replay + R8 |
+  | 2 | **25.749** | 17.986 | **1.4316x** | -20.48% | C2 streaming retained; remaining logical R8 target/accept wall |
   | 3 | **29.489** | 23.969 | **1.2303x** | **+7.17%** | **closed win** |
-  | 4 | 20.384 | 30.425 | 0.6700x | -24.54% | E1b applies; C3-only streaming/R12 owners do not transfer to replay + R16 |
+  | 4 | 20.384 | 30.425 | 0.6700x | -24.54% | C4 streaming changes acceptance and is rejected; R16 target/accept wall |
   | 5 | 15.244 | 35.551 | 0.4288x | -53.44% | proposals rows4+1; replay + operation-complete R20 target/accept wall |
   | 6 | 20.830 | 39.983 | 0.5210x | -42.18% | proposals rows4+2; replay + operation-complete R24 target/accept wall |
   | 7 | 23.245 | 42.747 | 0.5438x | -45.05% | proposals rows4+3; replay + operation-complete R28 target/accept wall |
@@ -308,9 +308,12 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   blocker is execution-cost scaling, not acceptance or request-serial lowering.
   A follow-up trace shows wide proposals already lower to rows4 plus a remainder,
   so E1b covers them; rows5-8 policy keys cannot engage. Next: independent
-  standard-Q4 C2/C4 prompt streaming, then wide target/accept profiling
+  C2 streaming is subsequently retained at **25.749 tok/s (+19.31%)**; C4 is
+  rejected after changing acceptance. Next: profile C2 R8 and wide R16-R32
+  target/accept walls
   ([`matrix`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-post-e2-c1c8-refreeze.json),
-  [`proposal correction`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-wide-proposal-policy-rejected.json)).
+  [`proposal correction`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-wide-proposal-policy-rejected.json),
+  [`C2 streaming`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-prompt-streaming-retained.json)).
 - [ ] P4.3 Reopen T3 adaptive-K and the B4 clamp once verifier rowtile work
   lands (per the CONCURRENCY2 supersession note); require full-suite
   acceptance/speed validation per anti-gaming.
