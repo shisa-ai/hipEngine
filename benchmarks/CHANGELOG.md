@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-30 gfx1151 Qwen3.8-Flash-Next QSA flash key-parallel iteration] Lane-owns-key serial-dim QK (no per-key shuffles) takes the flash kernel **7.85→3.72 ms/layer** (3.2x over the spans owner); recertified at 35-47 (packet 446/450, mean 2.87e-4); clean paired p508 **-0.86%**. Binder 35-47. `benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-qsa-flash31-production.json` (key_parallel_iteration).
+
 - [2026-08-30 gfx1151 Qwen3.8-Flash-Next certified QSA flash 31-47] Gather + block-per-Q-tile online-softmax flash kernel (33%/launch over the spans owner; flash==spans to 1.9e-6 on identical buffers) passes the 450-row packet at mean/max `2.79e-4/6.53e-3`, **446/450 top-1**, zero scope failures; clean paired p508 **-0.25%** (5 of 12 QSA layers admissible). Bound into the binder (31-47). `benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-qsa-flash31-production.json`.
 
 - [2026-08-30 gfx1151 Qwen3.8-Flash-Next certified GDN column-warp 27-47] llama-layout column-warp GDN prefill (warp-per-column register state shards, shuffle reductions, in-place norm+gate tail; 4.58x per launch, family 751ms -> ~120ms) passes the 450-row packet at mean/max `2.90e-4/7.62e-3`, **446/450 top-1**, zero scope failures; paired p508/p1012 **-17.1%/-15.7%** vs production (peer-GDN). Bound into the binder (27-47, peer superseded). `benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps27-production.json`.
