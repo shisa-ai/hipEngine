@@ -1,0 +1,127 @@
+{
+  "schema": 1,
+  "date": "2026-08-30",
+  "status": "accepted",
+  "scope": "iu8-WMMA Q4_K dual gate/up on MoE layers 35-47 (3 residual quantization planes, exact q + min-offset ds-trick): replaces the f16-WMMA kernel on those layers within the production WMMA-MoE27 stack; layers 27-34 keep f16-WMMA; strict owners remain 0-26 and registered fallbacks",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+  },
+  "kernel": {
+    "name": "gguf_q4_k_selected_dual_wmma_iu8_prefill_kernel",
+    "planes": 3,
+    "arithmetic": "exact Q4_K q nibbles (0-15) as iu8 B-fragments; activations quantized to 3 residual int8 planes (error ~1.6e-6*amax) staged in LDS; min-offset reconstructed per subblock from staged plane sums (llama ds-trick); f32 rescale per 32-k subblock",
+    "microbench": {
+      "best_ms": 10.81,
+      "tflops": 2.46,
+      "reference": {
+        "f16_wmma_tm16": {
+          "best_ms": 12.88,
+          "tflops": 2.07
+        },
+        "llama_mul_mat_q": {
+          "ms": 4.9,
+          "tflops": 3.4
+        },
+        "one_plane": {
+          "best_ms": 7.1,
+          "tflops": 3.75
+        }
+      }
+    }
+  },
+  "numerical_gate": {
+    "rows": 450,
+    "repeats": 3,
+    "scenario_id": "qwen4exp-ud-q4-k-xl-c1-iu8-gate-up-35",
+    "kl_mean": 0.0002616529162891797,
+    "kl_p95": 0.0014614200933710318,
+    "kl_p99": 0.003520062485052718,
+    "kl_max": 0.0055209771240084145,
+    "top1_matches": 446,
+    "top1_agreement": 0.9911111111111112,
+    "per_category_top1": {
+      "code": 0.9866666666666667,
+      "general_en": 1.0,
+      "general_ja": 0.99,
+      "mixed_ja_en": 0.99
+    },
+    "prefill_last": {
+      "mean": 0.0004722821642551567,
+      "top1": 1.0
+    },
+    "scope_failures": [],
+    "hard_gates_passed": true,
+    "requires_outlier_review": false,
+    "eligible_for_automatic_admission": true,
+    "repeat_determinism_passed": true,
+    "state_repeat_exact": true
+  },
+  "free_generation": {
+    "strict_exact": 15,
+    "candidate_repeat_exact": 18,
+    "total": 18,
+    "note": "3 divergences, task-valid"
+  },
+  "c2_physical": {
+    "serial_c2_ids_exact": true,
+    "stream_chunks": 6,
+    "teardown_bytes": 0
+  },
+  "performance": {
+    "protocol": "counterbalanced 8-rep alternating, one residency per length, median of four per mode, one deterministic logits SHA per mode; this session ran ~10% slow in absolute terms, deltas are matched-conditions",
+    "p508": {
+      "baseline_median_s": 7.430110729488661,
+      "candidate_median_s": 6.650269259509514,
+      "delta_percent": -10.49569109224857,
+      "shas": {
+        "baseline": [
+          "1c09c4bdac07de54"
+        ],
+        "candidate": [
+          "738faed6d485d6c1"
+        ]
+      }
+    },
+    "p1012": {
+      "baseline_median_s": 15.260057165505714,
+      "candidate_median_s": 13.468691437490634,
+      "delta_percent": -11.738918855850267,
+      "shas": {
+        "baseline": [
+          "d810a3e1ac4f8cb7"
+        ],
+        "candidate": [
+          "48481fcb29d34dd2"
+        ]
+      }
+    }
+  },
+  "route": {
+    "env": "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL=1",
+    "layers_env": "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS=35-47",
+    "baseline": "production f16-WMMA MoE 27-47 (manifest 3b7a0644)"
+  },
+  "rejected_attempts": {
+    "one_plane_35_47": "top1 445 + review row (max 2.79e-2)",
+    "two_plane_27_47": "top1 445; 32_47 prefill_last mean 1.43e-3",
+    "three_plane_27_47": "top1 444 (corrected harness)",
+    "harness_bug_note": "earlier 27/32/35 packets were measured with the candidate accidentally routing layers 0-26 through f16-WMMA (capability patched to 0-47 with global PRODUCTION_MOE=1); corrected scripts use the default 27-47 capability"
+  },
+  "commands": {
+    "screen": "uv run python /tmp/qwen4exp_iu8_layer_screen.py",
+    "gate": "uv run python /tmp/qwen4exp_iu8_35_gate.py",
+    "free_generation": "uv run python /tmp/qwen4exp_iu8_35_free_generation.py",
+    "c2": "uv run python /tmp/qwen4exp_iu8_35_c2_physical.py",
+    "paired": "uv run python /tmp/qwen4exp_iu835_paired.py (+p508 leg)",
+    "microbench": "uv run python /tmp/qwen4exp_q4k_iu8_check.py"
+  }
+}

@@ -1407,8 +1407,10 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_prefill_kernel(
     int64_t out_features_b,
     int64_t num_experts,
     int64_t wmma_total_rows) {
-  __shared__ int8_t lds_q8a[16 * IU8_LDS_ROW_STRIDE];
-  __shared__ float lds_da[16 * Q4_K_SUBBLOCKS];
+  constexpr int IU8_ACT_PLANES = 3;  // residual quantization planes (ds4 class)
+  __shared__ int8_t lds_q8a[IU8_ACT_PLANES * 16 * IU8_LDS_ROW_STRIDE];
+  __shared__ float lds_da[IU8_ACT_PLANES * 16 * Q4_K_SUBBLOCKS];
+  __shared__ int lds_sumq8a[IU8_ACT_PLANES * 16 * Q4_K_SUBBLOCKS];
   __shared__ int64_t meta[4];
 
   const int tid = static_cast<int>(threadIdx.x);
@@ -1477,20 +1479,34 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_prefill_kernel(
         vals[l] = v;
         amax = fmaxf(amax, fabsf(v));
       }
-      const float da = amax > 0.0f ? amax / 127.0f : 0.0f;
-      lds_da[actrow * Q4_K_SUBBLOCKS + sub] = da;
-      int8_t* dst = lds_q8a + actrow * IU8_LDS_ROW_STRIDE + sub * Q4_K_SUBBLOCK;
-      if (da > 0.0f) {
-        const float inv = 1.0f / da;
+      float work[32];
 #pragma unroll
-        for (int l = 0; l < 32; ++l) {
-          int q = __float2int_rn(vals[l] * inv);
-          q = max(-127, min(127, q));
-          dst[l] = static_cast<int8_t>(q);
+      for (int l = 0; l < 32; ++l) work[l] = vals[l];
+#pragma unroll
+      for (int plane = 0; plane < IU8_ACT_PLANES; ++plane) {
+        float plane_max = 0.0f;
+#pragma unroll
+        for (int l = 0; l < 32; ++l) plane_max = fmaxf(plane_max, fabsf(work[l]));
+        const float da = plane_max > 0.0f ? plane_max / 127.0f : 0.0f;
+        lds_da[plane * 16 * Q4_K_SUBBLOCKS + actrow * Q4_K_SUBBLOCKS + sub] = da;
+        int8_t* dst = lds_q8a + plane * 16 * IU8_LDS_ROW_STRIDE +
+                      actrow * IU8_LDS_ROW_STRIDE + sub * Q4_K_SUBBLOCK;
+        int qsum = 0;
+        if (da > 0.0f) {
+          const float inv = 1.0f / da;
+#pragma unroll
+          for (int l = 0; l < 32; ++l) {
+            int q = __float2int_rn(work[l] * inv);
+            q = max(-127, min(127, q));
+            dst[l] = static_cast<int8_t>(q);
+            qsum += q;
+            work[l] = fmaf(-static_cast<float>(q), da, work[l]);
+          }
+        } else {
+#pragma unroll
+          for (int l = 0; l < 32; ++l) dst[l] = 0;
         }
-      } else {
-#pragma unroll
-        for (int l = 0; l < 32; ++l) dst[l] = 0;
+        lds_sumq8a[plane * 16 * Q4_K_SUBBLOCKS + actrow * Q4_K_SUBBLOCKS + sub] = qsum;
       }
     }
     __syncthreads();
@@ -1521,49 +1537,33 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_prefill_kernel(
     }
 #pragma unroll 1
     for (int sub = 0; sub < Q4_K_SUBBLOCKS; ++sub) {
+      // Weight bytes are the raw Q4_K nibble values q (0..15) exactly; the
+      // min-offset term is reconstructed per subblock from the staged
+      // activation q8 sums (llama mul_mat_q ds-trick), so the weight path has
+      // no requantization error at all.
       int8_t wq8[32];
-      float dw8 = 0.0f;
       if (wcol_valid) {
-        const float dsub = sub_d[sub];
-        const float msub = sub_m[sub];
-        const float c = dsub != 0.0f ? msub / dsub : 0.0f;
-        const float amax = fmaxf(fabsf(c), fabsf(15.0f - c));
-        dw8 = dsub * amax / 127.0f;
-        const float inv = 127.0f / amax;
         const uint8_t* qs = block_ptr + Q4_K_QS_OFFSET;
 #pragma unroll
         for (int l = 0; l < 32; ++l) {
-          const float q = static_cast<float>(gguf_q4_k_quant(qs, sub, l));
-          int v = __float2int_rn((q - c) * inv);
-          v = max(-127, min(127, v));
-          wq8[l] = static_cast<int8_t>(v);
+          wq8[l] = static_cast<int8_t>(gguf_q4_k_quant(qs, sub, l));
         }
       } else {
 #pragma unroll
         for (int l = 0; l < 32; ++l) wq8[l] = 0;
       }
+      const float dsub = sub_d[sub];
+      const float msub = sub_m[sub];
 
 #pragma unroll
       for (int g = 0; g < 2; ++g) {
-        iu8_int32x8 acc = {0, 0, 0, 0, 0, 0, 0, 0};
+        iu8_int32x8 acc[IU8_ACT_PLANES];
+#pragma unroll
+        for (int plane = 0; plane < IU8_ACT_PLANES; ++plane) {
+          acc[plane] = {0, 0, 0, 0, 0, 0, 0, 0};
+        }
 #pragma unroll
         for (int khalf = 0; khalf < 2; ++khalf) {
-          signed char abytes[16];
-          if (a_row >= 0) {
-            const int8_t* src = lds_q8a + (g * 8 + a_row) * IU8_LDS_ROW_STRIDE +
-                                sub * Q4_K_SUBBLOCK + khalf * 16;
-#pragma unroll
-            for (int j = 0; j < 16; ++j) abytes[j] = src[j];
-          } else {
-#pragma unroll
-            for (int j = 0; j < 16; ++j) abytes[j] = 0;
-          }
-          iu8_int32x4 a_frag;
-          {
-            int32_t words[4];
-            memcpy(words, abytes, 16);
-            a_frag = (iu8_int32x4){words[0], words[1], words[2], words[3]};
-          }
           signed char bbytes[16];
 #pragma unroll
           for (int j = 0; j < 16; ++j) bbytes[j] = wq8[khalf * 16 + j];
@@ -1573,15 +1573,43 @@ __global__ void gguf_q4_k_selected_dual_wmma_iu8_prefill_kernel(
             memcpy(words, bbytes, 16);
             b_frag = (iu8_int32x4){words[0], words[1], words[2], words[3]};
           }
-          acc = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32(
-              true, a_frag, true, b_frag, acc, true);
+#pragma unroll
+          for (int plane = 0; plane < IU8_ACT_PLANES; ++plane) {
+            signed char abytes[16];
+            if (a_row >= 0) {
+              const int8_t* src = lds_q8a + plane * 16 * IU8_LDS_ROW_STRIDE +
+                                  (g * 8 + a_row) * IU8_LDS_ROW_STRIDE +
+                                  sub * Q4_K_SUBBLOCK + khalf * 16;
+#pragma unroll
+              for (int j = 0; j < 16; ++j) abytes[j] = src[j];
+            } else {
+#pragma unroll
+              for (int j = 0; j < 16; ++j) abytes[j] = 0;
+            }
+            iu8_int32x4 a_frag;
+            {
+              int32_t words[4];
+              memcpy(words, abytes, 16);
+              a_frag = (iu8_int32x4){words[0], words[1], words[2], words[3]};
+            }
+            acc[plane] = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32(
+                true, a_frag, true, b_frag, acc[plane], true);
+          }
         }
-        const int* cr = reinterpret_cast<const int*>(&acc);
 #pragma unroll
         for (int i = 0; i < 8; ++i) {
           const int r = g * 8 + i;
-          sum[r] += dw8 * lds_da[r * Q4_K_SUBBLOCKS + sub] *
-                    static_cast<float>(cr[i]);
+          float main_sum = 0.0f;
+          float act_sum = 0.0f;
+#pragma unroll
+          for (int plane = 0; plane < IU8_ACT_PLANES; ++plane) {
+            const float da = lds_da[plane * 16 * Q4_K_SUBBLOCKS + r * Q4_K_SUBBLOCKS + sub];
+            const int asumb = lds_sumq8a[plane * 16 * Q4_K_SUBBLOCKS + r * Q4_K_SUBBLOCKS + sub];
+            const int* cr = reinterpret_cast<const int*>(&acc[plane]);
+            main_sum += da * static_cast<float>(cr[i]);
+            act_sum += da * static_cast<float>(asumb);
+          }
+          sum[r] += dsub * main_sum - msub * act_sum;
         }
       }
     }
