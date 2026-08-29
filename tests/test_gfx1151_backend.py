@@ -824,6 +824,71 @@ def test_gfx1151_backend_routes_admitted_physical_q4_shapes_to_smallm_wmma(
     ] * 5
 
 
+def test_gfx1151_backend_routes_admitted_lowm_rows_to_single_wave_wmma(
+    monkeypatch,
+) -> None:
+    selector = getattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out",
+        None,
+    )
+    lowm_max_rows = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS",
+        None,
+    )
+    lowm_shapes = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_DENSE_LOWM_SHAPES",
+        None,
+    )
+    assert callable(selector)
+    assert lowm_max_rows == 64
+    assert lowm_shapes == frozenset(
+        {
+            (5_120, 6_144),
+            (5_120, 10_240),
+            (5_120, 12_288),
+            (5_120, 17_408),
+            (6_144, 5_120),
+            (17_408, 5_120),
+        }
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("smallm"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("single"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("shared"),
+        raising=False,
+    )
+
+    for rows in (17, 24, 45, 64):
+        for in_features, out_features in sorted(lowm_shapes):
+            selector(1, 2, 3, rows, in_features, out_features)
+    for rows, in_features, out_features in (
+        (65, 5_120, 17_408),
+        (80, 5_120, 10_240),
+        (96, 5_120, 12_288),
+        (45, 5_120, 1_024),
+        (45, 4_096, 4_096),
+    ):
+        selector(1, 2, 3, rows, in_features, out_features)
+
+    assert calls == ["single"] * (4 * len(lowm_shapes)) + ["shared"] * 5
+
+
 def test_gfx1151_backend_registers_q4_physical_route_and_explicit_fallbacks() -> None:
     gfx1151_backend.register_gfx1151_kernels(replace=True)
 
