@@ -28,6 +28,13 @@ should be removed or collapsed.
   p508/p1012 gates pass, fold the session opening into the named production
   profile (not the env) and drop the env bridge; the (320, 10240) hc-down and
   K%256!=0 shapes stay exact by construction.
+- `HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL` and
+  `HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL` (both default off) open the certified
+  raw selected-MoE MMQ routes. Their layer bridges default to Q5_1 down layers
+  32–47 and Q4_K dual gate/up layers 35–47; omitted layers use the strict
+  grouped owners. Remove all four env bridges after the stacked profile row is
+  retained and the named production manifest resolves these variants directly;
+  retain the registered strict grouped fallbacks.
 - `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` and the temporary
   `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`/tile plus
   `HIPENGINE_QWEN4_EXP_Q4_DP4A64{,_LAYERS}` bridges are bound by explicit
