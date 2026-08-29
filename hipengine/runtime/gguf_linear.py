@@ -201,7 +201,19 @@ _Q4_T16_DENSE_ROWTILE_MAX_ROWS_BY_QUANT = MappingProxyType(
         "gguf_q4_k_qmicro_t16_v1": 4,
     }
 )
-_Q4_T16_UNEQUAL_DUAL_WMMA_MIN_ROWS = 512
+# Unequal dual-WMMA prefill owner floor (QKV shape 5120 -> 10240/6144). Unlike the
+# shared linear_pair_silu gate, this route is ContextVar-scoped to the resident
+# prefill entry (q4_t16_unequal_pair_prefill_session, opened only by
+# Qwen35GGUFResidentSession.prefill), so the floor does not have to hold back
+# captured target verification. 512 was a perf-qualification floor: outputs are
+# bit-identical to the two singletons at the dispatched shape for rows 16/24/32/
+# 45/96/512, and the W7900 Qwen3.8-27B-Q4_K_M shipping route measured +1.7/+1.9/
+# +1.8/+2.1/+1.8/+1.7% prefill at rows 16/24/32/45/96/192 with identical generated
+# ids in every cell. The floor stays above the rows<=8 GEMV/rowtile decode owners.
+# The constant is global, but the route is additionally capability-gated by
+# GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES (currently only the gfx1100 dense
+# H5120 MOSTLY_Q4_K_M identity), so other backends keep the legacy singletons.
+_Q4_T16_UNEQUAL_DUAL_WMMA_MIN_ROWS = 16
 _Q4_T16_UNEQUAL_DUAL_WMMA_SHAPE = (5_120, 10_240, 6_144)
 _Q4_T16_COL4_ALL_ROWS_SHAPES = frozenset({(5_120, 1_024)})
 _Q4_T16_DENSE_PAIR_SILU_Q8_1X2_VARIANT = (
