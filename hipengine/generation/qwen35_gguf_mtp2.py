@@ -22,6 +22,7 @@ from hipengine.core.memory import (
 )
 from hipengine.core.tensor import Tensor
 from hipengine.kernels.backends import backend_package_capability
+from hipengine.kernels.policy import GGUFModelGeometry
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
     ACCEPT_PACKED_PAYLOAD_FIELDS,
     build_dflash_accept,
@@ -240,6 +241,37 @@ class _PhysicalTargetCommitError(RuntimeError):
     """Target state may be committed; AR fallback requires canonical rebuild."""
 
 
+def _physical_prompt_streaming_widths(owner: Any, generator: Any) -> tuple[int, ...]:
+    """Resolve package-owned model/quant/profile prompt-streaming widths."""
+
+    shared_runner = getattr(owner, "_shared_runner", None)
+    weights = getattr(shared_runner, "weights", None)
+    if weights is None:
+        return ()
+    geometry = getattr(weights, "geometry", None)
+    if geometry is None:
+        geometry = GGUFModelGeometry.try_from_config(getattr(weights, "config", None))
+    if not isinstance(geometry, GGUFModelGeometry):
+        return ()
+    file_type_name = str(getattr(weights, "file_type_name", "") or "")
+    profile = getattr(generator, "execution_profile", None)
+    profile = str(getattr(profile, "value", profile) or "")
+    policies = backend_package_capability(
+        str(getattr(generator, "backend", "")),
+        "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
+        {},
+    )
+    if not isinstance(policies, Mapping):
+        raise RuntimeError("backend prompt-streaming policies must be a mapping")
+    raw = policies.get((geometry, file_type_name, profile), ())
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
+        raise RuntimeError("backend prompt-streaming widths must be a sequence")
+    widths = tuple(sorted({int(value) for value in raw}))
+    if any(value <= 1 or value > 4 for value in widths):
+        raise RuntimeError("backend prompt-streaming widths must be within [2, 4]")
+    return widths
+
+
 class Qwen35GGUFMTP2Adapter:
     """Staged C1/C2/C4 adapter over the retained exact dense components."""
 
@@ -260,6 +292,10 @@ class Qwen35GGUFMTP2Adapter:
         self.target_verify_mode = str(target_verify_mode)
         self.candidate_budget = int(candidate_budget)
         self.quant = str(quant)
+        self.physical_prompt_streaming_widths = _physical_prompt_streaming_widths(
+            owner,
+            self.generator,
+        )
         use_ngram = (
             _env_enabled(_NGRAM_MOD_ENV)
             if ngram_enabled is None
@@ -268,7 +304,7 @@ class Qwen35GGUFMTP2Adapter:
         self._ngram = RequestLocalNgramMod(
             ngram_config or _ngram_mod_config_from_env()
         ) if use_ngram else None
-        self.physical_prompt_streaming = False
+        self.physical_prompt_streaming = bool(self.physical_prompt_streaming_widths)
         self.device_chain_qualification_oracle = os.environ.get(
             "HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE",
             "0",
@@ -369,6 +405,12 @@ class Qwen35GGUFMTP2Adapter:
             eligibility_by_request[rid] = static_eligibility
         self._disabled_requests.discard(rid)
 
+    def _physical_prompt_streaming_admitted(self, request_count: int) -> bool:
+        if not bool(self.physical_prompt_streaming):
+            return False
+        widths = tuple(getattr(self, "physical_prompt_streaming_widths", ()))
+        return not widths or int(request_count) in widths
+
     def begin_prompt_streaming(
         self,
         request_ids: Sequence[int],
@@ -398,7 +440,7 @@ class Qwen35GGUFMTP2Adapter:
         if (
             int(getattr(self.owner, "capacity", 1)) > 1
             and not automatic_singleton
-            and not bool(self.physical_prompt_streaming)
+            and not self._physical_prompt_streaming_admitted(len(ids))
         ):
             for row in rows:
                 row.mtp2_prompt_fallback_reason = "physical_streaming_category_rejected"
