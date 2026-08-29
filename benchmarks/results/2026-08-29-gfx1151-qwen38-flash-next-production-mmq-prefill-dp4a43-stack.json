@@ -99,8 +99,10 @@
     ],
     "legacy_cooperative_moe": false,
     "pre_fold_manifest_sha256": "aac6946b1de812e918ca3cfa87ac11ff1bc46be0459413c7f6f5143f39e2f60c",
-    "strict_manifest_sha256": "a9b6e0765a05112699d4fc048601a4a64721a1fa9a6d9c07adacd04cec80b701",
-    "manifest_fold_pending": true
+    "strict_manifest_sha256": "2cea76c571463429b1c264477660da0c135f7a6e9fb635542c2bb975b82f6063",
+    "manifest_fold_pending": false,
+    "selected_manifest_sha256": "fa0bc8967250ade5a4500851c9ab4996cd35ddb5bb696f51c0f211bc0b2eab7a",
+    "manifest_artifact": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-profile-manifest.json"
   },
   "numerical_gate": {
     "command": "uv run python /tmp/qwen4exp_production_mmq_prefill_dp4a43_gate.py",

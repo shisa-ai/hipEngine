@@ -223,9 +223,12 @@ def _configure_qwen4_exp_moe_mmq_scratch(
     runtime: HipRuntime,
 ) -> None:
     compact_capacity = rows * top_k
-    if os.environ.get(
-        "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL", "0"
-    ) not in {"", "0", "false", "False"} and ffn % 128 == 0:
+    if (
+        os.environ.get("HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL", "0")
+        not in {"", "0", "false", "False"}
+        and ffn % 128 == 0
+        and getattr(moe, "q5_1_mmq_ds4_workspace", None) is None
+    ):
         from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_mmq_selected_prefill import (
             build_gguf_q5_1_mmq_selected_prefill,
             ds4_workspace_nbytes,
@@ -235,9 +238,12 @@ def _configure_qwen4_exp_moe_mmq_scratch(
             ds4_workspace_nbytes(compact_capacity, ffn), runtime=runtime
         )
         moe.q5_1_mmq_library = build_gguf_q5_1_mmq_selected_prefill(load=True)
-    if os.environ.get(
-        "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL", "0"
-    ) not in {"", "0", "false", "False"} and hidden % 128 == 0:
+    if (
+        os.environ.get("HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL", "0")
+        not in {"", "0", "false", "False"}
+        and hidden % 128 == 0
+        and getattr(moe, "q4_k_mmq_ds4_workspace", None) is None
+    ):
         from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
             build_gguf_q4_k_q8_1_selected_prefill,
         )
@@ -2730,7 +2736,9 @@ def run_qwen4_exp_moe(
         weights["expert_gate"], rows=rows
     )
     q4_k_mmq_prefill = (
-        scratch.q4_k_mmq_ds4_workspace is not None
+        os.environ.get("HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL", "0")
+        not in {"", "0", "false", "False"}
+        and scratch.q4_k_mmq_ds4_workspace is not None
         and scratch.q4_k_mmq_identity is not None
         and rows >= 2
         and hidden % 256 == 0
@@ -3025,7 +3033,9 @@ def run_qwen4_exp_moe(
                 "HIPENGINE_QWEN4_EXP_Q5_1_WMMA", ""
             ) not in {"", "0", "false", "False"}
             q5_mmq = (
-                scratch.q5_1_mmq_ds4_workspace is not None
+                os.environ.get("HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL", "0")
+                not in {"", "0", "false", "False"}
+                and scratch.q5_1_mmq_ds4_workspace is not None
                 and rows >= 2
                 and ffn % 128 == 0
                 and _qwen4_exp_q5_1_mmq_layer_allowed(weights)
@@ -4287,40 +4297,64 @@ class Qwen4ExpGGUFResidentModelRunner:
         self._q8_mmq_policy = None
         self._q8_mmq_library = None
         self._q8_mmq_buffers: tuple[DeviceBuffer, ...] = ()
-        if os.environ.get(
-            "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL", "0"
-        ) not in {"", "0", "false", "False"}:
-            policy = resolve_q8_mmq_prefill_policy("gguf_ud_q4_k_xl")
-            if policy is not None:
-                from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
-                    build_gguf_q8_0_mmq_prefill,
-                    q8_mmq_d4x3_nbytes,
-                )
+        self._configure_q8_mmq_prefill_resources()
 
-                rows_cap = min(int(self.prefill_chunk_size), int(policy.max_rows))
-                hidden_cap = max(
-                    int(hidden) for hidden, _ in policy.min_rows
-                )
-                self._q8_mmq_policy = policy
-                self._q8_mmq_library = build_gguf_q8_0_mmq_prefill(load=True)
-                workspace = malloc(
-                    q8_mmq_d4x3_nbytes(rows_cap, hidden_cap), runtime=self.runtime
-                )
-                risk_count = malloc(
-                    DType.INT32.itemsize, runtime=self.runtime
-                )
-                risk_indices = malloc(
-                    policy.risk_indices_nbytes(rows_cap), runtime=self.runtime
-                )
-                self._q8_mmq_buffers = (workspace, risk_count, risk_indices)
-                self._buffers.extend(self._q8_mmq_buffers)
+    def _configure_q8_mmq_prefill_resources(self) -> None:
+        if self._q8_mmq_buffers or os.environ.get(
+            "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL", "0"
+        ) in {"", "0", "false", "False"}:
+            return
+        policy = resolve_q8_mmq_prefill_policy("gguf_ud_q4_k_xl")
+        if policy is None:
+            return
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
+            build_gguf_q8_0_mmq_prefill,
+            q8_mmq_d4x3_nbytes,
+        )
+
+        rows_cap = min(int(self.prefill_chunk_size), int(policy.max_rows))
+        hidden_cap = max(int(hidden) for hidden, _ in policy.min_rows)
+        self._q8_mmq_policy = policy
+        self._q8_mmq_library = build_gguf_q8_0_mmq_prefill(load=True)
+        workspace = malloc(
+            q8_mmq_d4x3_nbytes(rows_cap, hidden_cap), runtime=self.runtime
+        )
+        risk_count = malloc(DType.INT32.itemsize, runtime=self.runtime)
+        risk_indices = malloc(
+            policy.risk_indices_nbytes(rows_cap), runtime=self.runtime
+        )
+        self._q8_mmq_buffers = (workspace, risk_count, risk_indices)
+        self._buffers.extend(self._q8_mmq_buffers)
+
+    def configure_mmq_prefill_resources(self) -> None:
+        """Allocate profile-selected MMQ resources after cold-path binding."""
+
+        if self.closed:
+            raise RuntimeError("Qwen4Exp runner is closed")
+        self._configure_q8_mmq_prefill_resources()
+        cfg = self.config
+        prefill_rows = min(self.prefill_chunk_size, self.max_sequence_length)
+        for owner in (self.gdn_prefill_scratch, self.qsa_prefill_scratch):
+            if owner is None:
+                continue
+            _configure_qwen4_exp_moe_mmq_scratch(
+                owner.moe,
+                rows=prefill_rows,
+                hidden=cfg.hidden_size,
+                ffn=cfg.expert_feed_forward_length,
+                top_k=cfg.expert_used_count,
+                runtime=self.runtime,
+            )
 
     def _q8_mmq_prefill_context(self):
         """Expose the guarded Q8 MMQ session while a chunked prefill runs."""
 
+        enabled = os.environ.get(
+            "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL", "0"
+        ) not in {"", "0", "false", "False"}
         workspace, risk_count, risk_indices = (
             self._q8_mmq_buffers
-            if self._q8_mmq_buffers
+            if enabled and self._q8_mmq_buffers
             else (None, None, None)
         )
         return q8_mmq_prefill_session(
@@ -4330,8 +4364,8 @@ class Qwen4ExpGGUFResidentModelRunner:
             risk_count_nbytes=0 if risk_count is None else risk_count.nbytes,
             risk_indices_ptr=0 if risk_indices is None else risk_indices.ptr,
             risk_indices_nbytes=0 if risk_indices is None else risk_indices.nbytes,
-            policy=self._q8_mmq_policy,
-            library=self._q8_mmq_library,
+            policy=self._q8_mmq_policy if enabled else None,
+            library=self._q8_mmq_library if enabled else None,
         )
 
     @property
