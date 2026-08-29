@@ -48,6 +48,7 @@ from hipengine.runtime.gguf_linear import (
     resolve_q8_mmq_prefill_policy,
     set_wmma_prefill_enabled,
     target_verifier_production_q4_rowtile_session,
+    target_verifier_rowtile_session,
     wmma_prefill_session,
 )
 from hipengine.runtime.prefill import PrefillConfig
@@ -4987,6 +4988,61 @@ def test_gfx1151_production_verifier_q4_scope_chunks_single_rowtiles(
             {"stream": 7, "runtime": "runtime-sentinel"},
         )
         for chunk_rows, row_base in chunks
+    ]
+
+
+def test_gfx1151_production_verifier_q6_true_r12_uses_one_rowtile() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16,
+        quant_key="gguf_q6_k_t16_v1",
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q6_k_t16_v1",
+        "t16_gemv_rowtile12_col8_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=candidate_key.backend,
+        layer=candidate_key.layer,
+        quant=candidate_key.quant,
+        variant=candidate_key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+    register(
+        candidate_key,
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+        replace=True,
+    )
+    try:
+        with (
+            target_verifier_rowtile_session(True),
+            target_verifier_production_q4_rowtile_session(True),
+        ):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=400,
+                rows=12,
+                in_features=5_120,
+                out_features=10_240,
+                backend="hip_gfx1151",
+                stream=7,
+                runtime="runtime-sentinel",
+                use_wmma_prefill=False,
+            )
+    finally:
+        register(candidate_key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            (100, 14, 400, 12, 5_120, 10_240),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
     ]
 
 

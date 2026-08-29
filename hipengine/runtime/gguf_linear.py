@@ -2226,6 +2226,47 @@ def _native_split_row_chunk(
     return chunk
 
 
+def _target_verifier_true_rowtile_variant(
+    weight: GGUFDeviceWeight,
+    *,
+    backend: str,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch | None:
+    """Resolve one package-qualified operation-complete verifier rowtile."""
+
+    if not (
+        _target_verifier_rowtile_session_enabled.get()
+        and _target_verifier_production_q4_rowtile_session_enabled.get()
+    ):
+        return None
+    policies = backend_package_capability(
+        backend,
+        "GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS",
+        {},
+    )
+    if not isinstance(policies, Mapping):
+        raise RuntimeError("target verifier true-rowtile policies must be a mapping")
+    variant = policies.get(
+        (
+            str(weight.spec.quant_key),
+            int(rows),
+            int(in_features),
+            int(out_features),
+        )
+    )
+    if variant is None:
+        return None
+    variant = str(variant)
+    parent = resolve_gguf_linear_dispatch(weight, backend=backend, rows=rows)
+    if parent.abi != "t16":
+        return None
+    key = KernelKey(backend, parent.key.layer, str(weight.spec.quant_key), variant)
+    _ensure_linear_kernel_registered(key)
+    return GGUFLinearDispatch(key, parent.abi) if is_registered(key) else None
+
+
 def _native_rowtile_chunk_groups(
     weight: GGUFDeviceWeight,
     *,
@@ -2376,6 +2417,49 @@ def launch_gguf_linear(
                 use_wmma_prefill=use_wmma_prefill,
                 use_gemv_decode=use_gemv_decode,
             )
+        return
+    true_rowtile_dispatch = (
+        _target_verifier_true_rowtile_variant(
+            weight,
+            backend=resolved_backend,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        if activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and threads == 0
+        and not use_q4_pack8_wmma
+        and registered_variant is None
+        else None
+    )
+    if true_rowtile_dispatch is not None:
+        fn = resolve(
+            backend=true_rowtile_dispatch.key.backend,
+            layer=true_rowtile_dispatch.key.layer,
+            quant=true_rowtile_dispatch.key.quant,
+            variant=true_rowtile_dispatch.key.variant,
+        )
+        library = None
+        if libraries is not None:
+            library = libraries.get(
+                f"{true_rowtile_dispatch.key.quant}:"
+                f"{true_rowtile_dispatch.key.variant}",
+                libraries.get(true_rowtile_dispatch.key.quant),
+            )
+        kwargs = {"stream": stream, "runtime": runtime}
+        if library is not None:
+            kwargs["library"] = library
+        _LAUNCH_ABI[true_rowtile_dispatch.abi](
+            fn,
+            weight,
+            x_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            kwargs,
+        )
         return
     native_rowtile_groups = (
         _native_rowtile_chunk_groups(
