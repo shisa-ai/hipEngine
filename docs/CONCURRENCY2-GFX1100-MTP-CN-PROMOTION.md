@@ -662,6 +662,14 @@ P8 current punchlist (20260829):
       one-shot policy nets 1.1480x < 1.1902x and stays default-off. The
       catchup's positional semantics (`root_position = target.position` at
       prepare time) need audit before any policy retry.
+- [x] Catchup audit complete (worklog 20260829T053618/074350): catchup
+      positions/tokens/hidden provenance verified correct; the en degradation
+      was the packed AR decode never refreshing
+      `_last_target_hidden_ptr`, seeding post-K0 proposals two positions
+      behind. Fixed in `6b580ad25`; cooldown rerun recovers en post-reject
+      0.167 -> 0.667 and 1.1480x -> 1.1700x; default no-cooldown path is
+      output-identical (acceptance equal to four decimals) and its retained
+      economics stand. Cooldown policy stays off (1.1700x < 1.1890x at D24).
 - [ ] Complete the P8 production numerics/determinism/lifecycle packet for
       C2/K2 before any automatic promotion; automatic stays K0.
 
