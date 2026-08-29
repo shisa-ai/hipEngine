@@ -92,7 +92,7 @@ def test_qsa_flash_prefill_matches_numpy_reference(
         allocs.append(ks)
         vs = malloc(context_len * kv_heads * head_dim * 2, runtime=runtime)
         allocs.append(vs)
-        out_d = malloc(rows * q_heads * head_dim * 2, runtime=runtime)
+        out_d = malloc(rows * q_heads * head_dim * 4, runtime=runtime)
         allocs.append(out_d)
         qwen4_exp_qsa_flash_prefill(
             q_d.ptr, kc.ptr, vc.ptr, bt_d.ptr, pos_d.ptr, ks.ptr, vs.ptr, out_d.ptr,
@@ -100,13 +100,13 @@ def test_qsa_flash_prefill_matches_numpy_reference(
             context_len, scale, runtime=runtime,
         )
         runtime.device_synchronize()
-        out_h = np.empty(rows * q_heads * head_dim, dtype=np.uint16)
+        out_h = np.empty(rows * q_heads * head_dim, dtype=np.float32)
         copy_device_to_host(host_array_ptr(out_h), out_d, out_h.nbytes, runtime=runtime)
     finally:
         for allocation in reversed(allocs):
             free(allocation, runtime=runtime)
 
-    got = _bf16_to_f32(out_h).reshape(rows, q_heads, head_dim).astype(np.float64)
+    got = out_h.reshape(rows, q_heads, head_dim).astype(np.float64)
     err = np.abs(got - ref)
     tolerance = _TOLERANCE * np.maximum(np.abs(ref).max(), 1.0)
     assert err.max() < tolerance, f"max err {err.max()} vs tol {tolerance}"
