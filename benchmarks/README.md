@@ -98,6 +98,12 @@ W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE C1/K2 and production
 C2/K2/D24, plus 27B Dense C1/K3 and production C2/K2/D24. Physical C2 requires
 resident capacity 2; other keys use K0. [`Final audit`](results/2026-08-28-w7900-dual-model-physical-c2-campaign-final.json).
 
+W7900 Qwen3.8 explicit physical C3/C4 now pads verifier groups to rows6
+multiples and reuses the qualified rows6 owners. K2 improves C3 **21.549 ->
+32.776 tok/s (+52.10%)** and C4 **24.314 -> 36.141 tok/s (+48.64%)**, but
+remains **0.9079x/0.9196x true AR**, so automatic C3/C4 stays K0.
+[`Rows6 multiples`](results/2026-08-29-w7900-qwen38-q4km-rows6-multiple-rowtiles-retained.json).
+
 Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 automatic at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) is **15.609 vs 9.807 tok/s (1.5916x)**; [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) remains available. Exact C2 verifier [Q6](results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json) and [Q5](results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json), followed by [production-profile Q4 rowtiles](results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json), lift K3 **11.724→17.031 tok/s (+45.27%)** and **0.8170x→1.1441x true AR**. Independently qualified [C3 R6/R9/R12 rowtiles](results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json) improve C3/K3 **19.070→19.934 tok/s (+4.53%)**, but remain **0.9589x AR**; production C2/K3 is automatic only for context1-128/D24, while C3-C8 and scope misses remain K0.
 
 The [Qwen3.8 external reproduction survey](results/2026-08-28-gfx1151-qwen38-external-reproduction-survey.json) separates source-claim reproductions from a matched standard-`Q4_K_M` C1-C8 comparison. `q38rocm` strict MTP K4 reproduces **38.85 decode tok/s** under its source protocol, but requires custom FP4 and exactly one slot. In the matched matrix, Laurent is the strongest broad alternate llama.cpp route; hipEngine leads AR at C3-C7, while its MTP route beats its own AR only at C2. Laurent adaptive DFlash2 remains rejected because cross-request state contamination produced invalid output.
