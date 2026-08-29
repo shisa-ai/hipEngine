@@ -161,6 +161,33 @@ from hipengine.runtime.gguf_weight import GGUFDeviceWeight
 from hipengine.runtime.moe_graph import MoeGraphCache
 
 
+def _qwen4_exp_q5_1_mmq_layer_allowed(weights: Mapping[str, GGUFDeviceWeight]) -> bool:
+    """Certified Q5_1-MMQ prefill layer set (suffix 32-47 by default)."""
+
+    parts = weights["expert_gate"].spec.slot_path.split(".")
+    if len(parts) > 2 and parts[0] == "layers":
+        try:
+            layer = int(parts[1])
+        except ValueError:
+            return False
+    else:
+        return False
+    raw = os.environ.get("HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS", "32-47")
+    if raw in {"", "all"}:
+        return True
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if "-" in token:
+            low, high = token.split("-", 1)
+            if int(low) <= layer <= int(high):
+                return True
+        elif int(token) == layer:
+            return True
+    return False
+
+
 def stage_qwen4_exp_ple_rows(
     staging: object,
     rows: Sequence[Sequence[int]],
@@ -2874,6 +2901,7 @@ def run_qwen4_exp_moe(
                 scratch.q5_1_mmq_ds4_workspace is not None
                 and rows >= 2
                 and ffn % 128 == 0
+                and _qwen4_exp_q5_1_mmq_layer_allowed(weights)
             )
             if q5_mmq:
                 down_input_ptr = (
