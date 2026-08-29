@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- **2026-08-30** — W7900 standardized Qwen3.8 `Q4_K_M` C1-C8: hipEngine leads AR at C1/C3-C5; Laurent leads AR C6-C8 and K3 MTP C1/C3-C8; current HIP leads AR/MTP C2 and prefill C1-C7. All current and 78/80 Laurent AR/MTP cells are content-exact. Artifact: `benchmarks/results/2026-08-30-w7900-qwen38-q4km-c1c8-cross-engine.json`.
+
 - **2026-08-30** — W7900 Qwen3.8-27B `Q4_K_M` automatic physical C2/K2 promotion: three-run median **36.726 vs 30.720 tok/s = 1.1970x AR**, every category ≥1.1363x; all streaming SLOs pass, exact negative keys stay K0, and C3/C4 remain 0.9124x/0.9237x AR. Artifact: `benchmarks/results/2026-08-30-w7900-qwen38-q4km-p12-c2-automatic-promotion.json`.
 
 - **2026-08-30** — W7900 Qwen3.8-27B `Q4_K_M` P11 qualifies integrated explicit C2/K2/R6: 252/252 bit-exact logits, strict K1-K3, three SSE pairs, cancel/survivor, capacity-2 overload, bounded **22.569 GiB** tracked peak, C1 **1.5022x**, negative C2/C4 K0, and final trace pass. Artifact: `benchmarks/results/2026-08-30-w7900-qwen38-q4km-p11-integrated-explicit-c2.json`.

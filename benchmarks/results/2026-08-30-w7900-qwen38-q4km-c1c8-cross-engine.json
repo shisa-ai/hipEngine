@@ -1,0 +1,555 @@
+{
+  "commands": {
+    "current_ar_prefill": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 python3 <harness> --server llama.cpp-upstream/build-hip-gfx1100/bin/llama-server ...",
+    "current_mtp": "same plus --spec (draft-mtp K3)",
+    "hipengine": "scripts/gguf_mtp_c1c8_server_bench.py --model Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --execution-profile production --widths 1,2,3,4,5,6,7,8 --resident-capacity 8 --candidate-budget 3 --generation2-diagnostic --mtp-request-mode explicit --max-tokens 24",
+    "laurent_ar_prefill": "same with llama.cpp-laurent@c28d538d",
+    "laurent_mtp": "same with Laurent plus --spec"
+  },
+  "comparisons": {
+    "hipengine_vs_current_ar": [
+      1.0069689083406148,
+      0.8593406135466125,
+      1.1571233080717889,
+      1.4132316211395042,
+      1.1300919262248077,
+      0.9332575963207227,
+      0.8392618362586924,
+      0.7547685733252496
+    ],
+    "hipengine_vs_current_mtp_k3": [
+      0.9567828435541621,
+      0.7221609090896659,
+      0.6739657051335901,
+      0.6209410246806856,
+      0.5156509351763702,
+      0.4189757246426244,
+      0.4060358018837918,
+      0.3255887505834342
+    ],
+    "hipengine_vs_laurent_ar": [
+      1.0189945949581898,
+      0.8676553659939208,
+      1.1628716097695548,
+      1.4179787029828381,
+      1.1275248971383651,
+      0.9272148619886234,
+      0.8293170817244965,
+      0.7470779727760674
+    ],
+    "hipengine_vs_laurent_mtp_k3": [
+      0.9515394706644815,
+      0.726300756648151,
+      0.6648231629264861,
+      0.6078360887710378,
+      0.5040758534116219,
+      0.405316368976284,
+      0.3908537433011696,
+      0.30517278957491734
+    ]
+  },
+  "conclusion": "hipEngine leads AR at C1 and C3-C5; Laurent leads AR C6-C8 and K3 MTP at C1/C3-C8; current mainline narrowly leads K3 MTP C2 and prefill C1-C7. hipEngine automatic product remains exact C2/K2 only.",
+  "correctness": {
+    "current_lane_and_repetition_guards": "80/80; AR/MTP content exact 80/80",
+    "current_laurent_ar_content_exact_cells": 80,
+    "current_laurent_mtp_content_exact_cells": 78,
+    "hipengine_exact_engaged": "80/80",
+    "laurent_lane_and_repetition_guards": "80/80; AR/MTP content exact 78/80, with two valid deterministic C8 arithmetic differences"
+  },
+  "date": "2026-08-30",
+  "hardware": {
+    "backend": "gfx1100/HIP",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_index": 0,
+    "physical_host": "epyc",
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "kind": "w7900_qwen38_q4km_c1c8_cross_engine",
+  "limitations": [
+    "hipEngine common-boundary C1-C8 prefill was not measured in this packet; its separately retained 512/1K/4K prefill protocol is not inserted into the table.",
+    "llama.cpp built-in acceptance was not exposed by the compact response API and is reported null.",
+    "Laurent C8 MTP differs from its AR output in two cells but passes lane determinism and anti-repetition guards; do not label those rows token-exact.",
+    "K3 engine ranking is diagnostic and distinct from hipEngine final automatic C2/K2 product policy."
+  ],
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "size_bytes": 17106773984
+  },
+  "passed": true,
+  "performance_claim": true,
+  "product_automatic_context": {
+    "ar_complete_wall_tok_s": [
+      21.871,
+      30.720211024093615,
+      35.625,
+      39.231,
+      41.124,
+      42.49,
+      43.57,
+      44.338
+    ],
+    "note": "Not ranked as K3: final product policy is automatic K0 except exact C2/K2.",
+    "requested_automatic_tok_s": [
+      21.871,
+      36.72587835041304,
+      35.625,
+      39.231,
+      41.124,
+      42.49,
+      43.57,
+      44.338
+    ],
+    "routes": [
+      "K0",
+      "automatic C2/K2",
+      "K0",
+      "K0",
+      "K0",
+      "K0",
+      "K0",
+      "K0"
+    ]
+  },
+  "protocol": {
+    "decode_tokens_per_request": 24,
+    "guards": {
+      "maximum_word_trigram_repeats": 3,
+      "minimum_unique_char30_fraction": 0.5
+    },
+    "heldouts": 4,
+    "kv_precision_note": "hipEngine production BF16; llama.cpp F16. Deployable-configuration comparison, not identical internal arithmetic.",
+    "llamacpp_server": "-c 8192 -b 2048 -ub 512 -ngl 999 -np 8 --no-mmap -fa on -ctk f16 -ctv f16",
+    "mtp_depth": 3,
+    "prefill_tokens_per_request": "response tokens_evaluated numerator; one generated token overhead in wall",
+    "prompt_cache": false,
+    "prompts": 10,
+    "sampling": "greedy",
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "timing": "per prompt barrier-to-last complete wall, summed across ten prompts",
+    "widths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ]
+  },
+  "purpose": "Port the gfx1151 standardized Q4_K_M C1-C8 comparison to physical W7900 for hipEngine, stock llama.cpp HIP, and Laurent HIP.",
+  "raw_sources": {
+    "current_ar": {
+      "path": "/tmp/qwen38-w7900-current-c1c8-ar-prefill.json",
+      "sha256": "6648a3275fdd7420d55df60868b733474e582288070d2398f0991420e2b68ac9"
+    },
+    "current_mtp": {
+      "path": "/tmp/qwen38-w7900-current-c1c8-mtp.json",
+      "sha256": "70c1e419ad0be702f4c34be83bef77ae57220d2b5ea0f5cf239ca03b0923414d"
+    },
+    "harness": {
+      "path": "/tmp/qwen38_llama_c1c8_matrix.py",
+      "sha256": "286e93598578f2a08865475a47d7eb1fc2389cc7c570e2e42d6370391232d9b9"
+    },
+    "hip": {
+      "path": "/tmp/gfx1100-qwen38-final-k3-c1c8.json",
+      "sha256": "d94c8843ef48e8eb2f2d1e9a6862c66175ad4bea719be1514e88b1157597cbe8"
+    },
+    "laurent_ar": {
+      "path": "/tmp/qwen38-w7900-laurent-c1c8-ar-prefill.json",
+      "sha256": "e4081187d1cc09dbb5e447e5be2f144db851fb503479b23810b0e3481b986853"
+    },
+    "laurent_mtp": {
+      "path": "/tmp/qwen38-w7900-laurent-c1c8-mtp.json",
+      "sha256": "ec390b3937d18fae1793623d4fa8dcf18dc53399f5d1e9c3da91941faa3a23e4"
+    },
+    "p12": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-08-30-w7900-qwen38-q4km-p12-c2-automatic-promotion.json",
+      "sha256": "9e22ca6a6c6c4421db514a9fb1a3319776bb7393d59754c29b3b254a3c1d1313"
+    }
+  },
+  "rows": {
+    "current_hip": {
+      "ar_complete_wall_tok_s": [
+        21.719593038191153,
+        35.439535226748745,
+        30.78742113746357,
+        27.75953389499771,
+        36.39005261528653,
+        45.52888973412913,
+        51.914449702010316,
+        58.743506899219334
+      ],
+      "backend": "HIP/ROCm",
+      "commit": "b19cbe925be361d229f0fe03435affe4a2717f37",
+      "correctness": {
+        "ar_mtp_content_exact_cells": 80,
+        "cells": 80,
+        "lane_exact_and_guards": true
+      },
+      "implementation": "stock llama.cpp current",
+      "kv": "F16",
+      "mtp_acceptance_pct": null,
+      "mtp_k3_complete_wall_tok_s": [
+        32.55320634616379,
+        41.04166362821798,
+        45.32416229507618,
+        49.9766771338149,
+        59.64381838433134,
+        72.19458331964695,
+        75.35384594911382,
+        94.7345779509097
+      ],
+      "prefill_complete_wall_tok_s": [
+        200.94568412747427,
+        239.65810823394875,
+        259.0363046011671,
+        281.82782338940444,
+        323.0432827326265,
+        366.213262489735,
+        374.20686341975954,
+        424.0715504963578
+      ]
+    },
+    "hipengine": {
+      "ar_complete_wall_tok_s": [
+        21.87095489126976,
+        30.454631945561054,
+        35.624842593581164,
+        39.23065108850463,
+        41.12410465543125,
+        42.49018219642458,
+        43.56981638526871,
+        44.337752894445735
+      ],
+      "backend": "HIP/gfx1100",
+      "commit": "d12be411882045b7df04d730bd8230efe59c0319",
+      "correctness": {
+        "engaged_cells": 80,
+        "exact_cells": 80,
+        "passed": true
+      },
+      "implementation": "hipEngine explicit diagnostic K3",
+      "kv": "BF16",
+      "mtp_acceptance_pct": [
+        78.89447236180905,
+        61.388286334056396,
+        46.675031367628605,
+        46.771037181996086,
+        52.006552006552006,
+        51.31490222521915,
+        46.728971962616825,
+        46.771037181996086
+      ],
+      "mtp_k3_complete_wall_tok_s": [
+        31.146349334687986,
+        29.638685116306174,
+        30.546931000790295,
+        31.03256910960681,
+        30.755390727370038,
+        30.247777861621405,
+        30.596359264976144,
+        30.844512872085645
+      ],
+      "prefill_complete_wall_tok_s": null
+    },
+    "laurent_hip": {
+      "ar_complete_wall_tok_s": [
+        21.463268794048066,
+        35.09991770831097,
+        30.635232896124194,
+        27.666601061059406,
+        36.47290162709788,
+        45.825605194997316,
+        52.536981747281594,
+        59.348226704758886
+      ],
+      "backend": "HIP/ROCm",
+      "commit": "c28d538df5c02643e701a8004db84dbf1bb0ffb2",
+      "correctness": {
+        "ar_mtp_content_exact_cells": 78,
+        "cells": 80,
+        "different_cells": [
+          [
+            8,
+            "code_merge_intervals"
+          ],
+          [
+            8,
+            "general_ja_plan"
+          ]
+        ],
+        "lane_exact_and_guards": true
+      },
+      "implementation": "LaurentZuijdwijk fork",
+      "kv": "F16",
+      "mtp_acceptance_pct": null,
+      "mtp_k3_complete_wall_tok_s": [
+        32.73258786935847,
+        40.80772991768248,
+        45.94745295324205,
+        51.05417345710825,
+        61.01341795925222,
+        74.62757533829401,
+        78.28083980099004,
+        101.07229060313577
+      ],
+      "prefill_complete_wall_tok_s": [
+        195.8032486549485,
+        231.3068909975982,
+        252.8932776889682,
+        274.5200866876394,
+        316.16903519419736,
+        358.0532802349893,
+        368.13627887691115,
+        424.2019576096093
+      ]
+    }
+  },
+  "schema": 1,
+  "status": "complete",
+  "winners": {
+    "ar_complete_wall_tok_s": [
+      {
+        "rows": {
+          "current_hip": 21.719593038191153,
+          "hipengine": 21.87095489126976,
+          "laurent_hip": 21.463268794048066
+        },
+        "tok_s": 21.87095489126976,
+        "width": 1,
+        "winner": "hipengine"
+      },
+      {
+        "rows": {
+          "current_hip": 35.439535226748745,
+          "hipengine": 30.454631945561054,
+          "laurent_hip": 35.09991770831097
+        },
+        "tok_s": 35.439535226748745,
+        "width": 2,
+        "winner": "current_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 30.78742113746357,
+          "hipengine": 35.624842593581164,
+          "laurent_hip": 30.635232896124194
+        },
+        "tok_s": 35.624842593581164,
+        "width": 3,
+        "winner": "hipengine"
+      },
+      {
+        "rows": {
+          "current_hip": 27.75953389499771,
+          "hipengine": 39.23065108850463,
+          "laurent_hip": 27.666601061059406
+        },
+        "tok_s": 39.23065108850463,
+        "width": 4,
+        "winner": "hipengine"
+      },
+      {
+        "rows": {
+          "current_hip": 36.39005261528653,
+          "hipengine": 41.12410465543125,
+          "laurent_hip": 36.47290162709788
+        },
+        "tok_s": 41.12410465543125,
+        "width": 5,
+        "winner": "hipengine"
+      },
+      {
+        "rows": {
+          "current_hip": 45.52888973412913,
+          "hipengine": 42.49018219642458,
+          "laurent_hip": 45.825605194997316
+        },
+        "tok_s": 45.825605194997316,
+        "width": 6,
+        "winner": "laurent_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 51.914449702010316,
+          "hipengine": 43.56981638526871,
+          "laurent_hip": 52.536981747281594
+        },
+        "tok_s": 52.536981747281594,
+        "width": 7,
+        "winner": "laurent_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 58.743506899219334,
+          "hipengine": 44.337752894445735,
+          "laurent_hip": 59.348226704758886
+        },
+        "tok_s": 59.348226704758886,
+        "width": 8,
+        "winner": "laurent_hip"
+      }
+    ],
+    "mtp_k3_complete_wall_tok_s": [
+      {
+        "rows": {
+          "current_hip": 32.55320634616379,
+          "hipengine": 31.146349334687986,
+          "laurent_hip": 32.73258786935847
+        },
+        "tok_s": 32.73258786935847,
+        "width": 1,
+        "winner": "laurent_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 41.04166362821798,
+          "hipengine": 29.638685116306174,
+          "laurent_hip": 40.80772991768248
+        },
+        "tok_s": 41.04166362821798,
+        "width": 2,
+        "winner": "current_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 45.32416229507618,
+          "hipengine": 30.546931000790295,
+          "laurent_hip": 45.94745295324205
+        },
+        "tok_s": 45.94745295324205,
+        "width": 3,
+        "winner": "laurent_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 49.9766771338149,
+          "hipengine": 31.03256910960681,
+          "laurent_hip": 51.05417345710825
+        },
+        "tok_s": 51.05417345710825,
+        "width": 4,
+        "winner": "laurent_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 59.64381838433134,
+          "hipengine": 30.755390727370038,
+          "laurent_hip": 61.01341795925222
+        },
+        "tok_s": 61.01341795925222,
+        "width": 5,
+        "winner": "laurent_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 72.19458331964695,
+          "hipengine": 30.247777861621405,
+          "laurent_hip": 74.62757533829401
+        },
+        "tok_s": 74.62757533829401,
+        "width": 6,
+        "winner": "laurent_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 75.35384594911382,
+          "hipengine": 30.596359264976144,
+          "laurent_hip": 78.28083980099004
+        },
+        "tok_s": 78.28083980099004,
+        "width": 7,
+        "winner": "laurent_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 94.7345779509097,
+          "hipengine": 30.844512872085645,
+          "laurent_hip": 101.07229060313577
+        },
+        "tok_s": 101.07229060313577,
+        "width": 8,
+        "winner": "laurent_hip"
+      }
+    ],
+    "prefill_complete_wall_tok_s": [
+      {
+        "rows": {
+          "current_hip": 200.94568412747427,
+          "laurent_hip": 195.8032486549485
+        },
+        "tok_s": 200.94568412747427,
+        "width": 1,
+        "winner": "current_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 239.65810823394875,
+          "laurent_hip": 231.3068909975982
+        },
+        "tok_s": 239.65810823394875,
+        "width": 2,
+        "winner": "current_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 259.0363046011671,
+          "laurent_hip": 252.8932776889682
+        },
+        "tok_s": 259.0363046011671,
+        "width": 3,
+        "winner": "current_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 281.82782338940444,
+          "laurent_hip": 274.5200866876394
+        },
+        "tok_s": 281.82782338940444,
+        "width": 4,
+        "winner": "current_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 323.0432827326265,
+          "laurent_hip": 316.16903519419736
+        },
+        "tok_s": 323.0432827326265,
+        "width": 5,
+        "winner": "current_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 366.213262489735,
+          "laurent_hip": 358.0532802349893
+        },
+        "tok_s": 366.213262489735,
+        "width": 6,
+        "winner": "current_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 374.20686341975954,
+          "laurent_hip": 368.13627887691115
+        },
+        "tok_s": 374.20686341975954,
+        "width": 7,
+        "winner": "current_hip"
+      },
+      {
+        "rows": {
+          "current_hip": 424.0715504963578,
+          "laurent_hip": 424.2019576096093
+        },
+        "tok_s": 424.2019576096093,
+        "width": 8,
+        "winner": "laurent_hip"
+      }
+    ]
+  }
+}

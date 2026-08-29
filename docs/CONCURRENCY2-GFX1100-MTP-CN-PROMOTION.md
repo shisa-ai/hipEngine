@@ -739,10 +739,15 @@ C3 **21.549 -> 32.776 tok/s (+52.10%, 0.9079x AR)** and C4 **24.314 ->
 recoverable failures. C2-C4 K3 is mechanically clean but reaches only
 0.9695x/0.8536x/0.7854x AR. Retain explicit scope; automatic C3/C4 remains K0.
 Evidence: `2026-08-29-w7900-qwen38-q4km-rows6-multiple-rowtiles-retained.json`.
-Survey ports for W7900:
-the standardized C1-C8 llama.cpp HIP matrix (hipEngine side measured;
-llama.cpp side pending), Laurent built-in MTP K3 as the broad comparator, and
-q38rocm strict K4 C1 as a technique reference; Kyanite warm-replay and
+W7900 survey port complete (20260830): the standardized common-suite C1-C8
+matrix now includes hipEngine plus current/Laurent llama.cpp HIP on the same
+standard Q4_K_M file and complete-wall boundary. hipEngine leads AR at C1 and
+C3-C5; Laurent leads AR C6-C8 and K3 MTP C1/C3-C8; current leads AR/MTP C2 and
+prefill C1-C7. All current rows and 78/80 Laurent AR/MTP cells are content-
+exact; the two Laurent C8 differences are deterministic/non-repetitive. K3 is
+an engine diagnostic distinct from the promoted hipEngine C2/K2 product key.
+Evidence: `2026-08-30-w7900-qwen38-q4km-c1c8-cross-engine.json`. q38rocm strict
+K4 C1 remains a custom-FP4 technique reference; Kyanite warm replay and
 DFlash2-adaptive sequential results stay excluded as invalid/unsafe.
 
 #### P9 — Decision controls, cycle budget, and measured attribution
