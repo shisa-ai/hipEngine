@@ -22081,6 +22081,27 @@ class Qwen35GGUFResidentSession:
                 require_logits=bool(return_logits or require_logits),
             )
         )
+        # The packed AR decode must preserve the target-attached contract that
+        # ``last_target_hidden`` is the trunk row that produced each session's
+        # most recent sample. Copy each active session's final hidden row into
+        # its private one-row buffer so the next speculative proposal seeds the
+        # NextN provider from the decoded row instead of a stale verify-era
+        # row (post-K0 proposals were observed two positions behind).
+        hidden_row_nbytes = int(self.runner.hidden_size) * DType.BF16.itemsize
+        for session, row_index in zip(physical_session_tuple, active_slots, strict=False):
+            if session is None or int(row_index) < 0:
+                continue
+            destination = getattr(session, "_hidden_a", None)
+            if destination is None:
+                continue
+            runtime.memcpy_async(
+                destination.ptr,
+                int(packed_scratch.norm.ptr) + int(row_index) * hidden_row_nbytes,
+                hidden_row_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                int(stream),
+            )
+            session._last_target_hidden_ptr = int(destination.ptr)
         token_host = self._read_target_block_row_tokens(rows, stream=stream)
         logits_host = None
         if return_logits:
