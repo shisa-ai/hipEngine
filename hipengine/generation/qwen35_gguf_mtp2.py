@@ -2322,9 +2322,13 @@ class Qwen35GGUFMTP2Adapter:
         *,
         runtime: Any,
     ) -> TargetAcceptSummary:
-        """Read one bounded committed-output/status result after device commit."""
+        """Read one bounded committed-output/status result after device commit.
 
-        runtime.device_synchronize()
+        The first blocking default-stream D2H copy is the required producer-to-
+        host dependency. Do not synchronize the whole device first: unrelated
+        streams need not retire before this transaction's bounded payload.
+        """
+
         payload_host = np.empty(
             (pending.request_count, ACCEPT_PACKED_PAYLOAD_FIELDS),
             dtype=np.int32,
