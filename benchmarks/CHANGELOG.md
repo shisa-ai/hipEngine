@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8 AR P3 blocker attribution] C1 remains 1.9% short with **96.6%** of transition wall in kernels after the historical owner ladder; C2 remains 9.9% short after graph replay, with graph-record plus the P2.2 prefill gap explaining ~250.6/262.7 ms per request. P3 is partial pending new operation-complete C1/C2 dataflows. `benchmarks/results/2026-08-29-gfx1151-qwen38-ar-c1-c2-blockers.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8 packed C2 short graph retained] Scope a 23-transition HIP graph floor to dense standard-Q4 physical C2 after cached traces show **97.28 ms wall / 81.56 ms kernel sum / 880 launches**. Clean full-suite D24 C2 improves **16.993→18.072 tok/s (+6.35%)**, C1 is non-regressive at 11.122 tok/s, and all 20 cells are exact. `benchmarks/results/2026-08-29-gfx1151-qwen38-packed-c2-short-graph-retained.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8 AR C1-C8 re-freeze] Current exact standard-`Q4_K_M` D24 AR is **11.060/16.993/24.032/30.623/35.896/40.585/44.220/47.781 tok/s**. C3-C8 beat their frozen external comparators by 4.4-20.8%; C1/C2 remain 2.4%/15.3% short and move to focused attribution. `benchmarks/results/2026-08-29-gfx1151-qwen38-ar-c1c8-refreeze.json`.
