@@ -140,7 +140,62 @@
     "llama_tg32_trace": "/tmp/llama-master-hip-trace/llama-master-tg32-warm_kernel_trace.csv",
     "hipengine_pp508_trace": "/tmp/qwen4exp-gdn-peer35-p508_kernel_trace.csv",
     "hipengine_decode_trace": "/tmp/q4dp4a64safe43_kernel_trace.csv",
-    "rebaseline_artifact": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-llamacpp-master-rebaseline.json"
+    "rebaseline_artifact": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-llamacpp-master-rebaseline.json",
+    "wmma_sweep_script": "/tmp/qwen4exp_q4k_wmma_vs_rowbench.py",
+    "wmma_sweep_result": "/tmp/qwen4exp-q4k-wmma-vs-rowbench.json"
   },
-  "caveats": "Trace-derived rates carry rocprofv3 overhead on both sides (roughly symmetric); per-FLOP figures use ideal routed-row counts (5080 expert-rows) so llama TF/s is a lower bound when experts are skipped"
+  "caveats": "Trace-derived rates carry rocprofv3 overhead on both sides (roughly symmetric); per-FLOP figures use ideal routed-row counts (5080 expert-rows) so llama TF/s is a lower bound when experts are skipped",
+  "wmma_tile_sweep_realshape": {
+    "shape": {
+      "compact_rows": 5080,
+      "experts": 512,
+      "in_features": 2048,
+      "out_features": 640,
+      "dual": true,
+      "flop_g": 26.63
+    },
+    "rows": {
+      "rowbatch_bf16_owner": {
+        "best_ms": 22.665,
+        "median_ms": 24.312,
+        "tflops_best": 1.175
+      },
+      "wmma_tm16_tn16": {
+        "best_ms": 12.969,
+        "median_ms": 19.513,
+        "tflops_best": 2.054
+      },
+      "wmma_tm16_tn32": {
+        "best_ms": 22.038,
+        "median_ms": 22.182,
+        "tflops_best": 1.209
+      },
+      "wmma_tm32_tn16": {
+        "best_ms": 20.318,
+        "median_ms": 21.572,
+        "tflops_best": 1.311
+      },
+      "wmma_tm32_tn32": {
+        "best_ms": 21.788,
+        "median_ms": 22.243,
+        "tflops_best": 1.222
+      },
+      "wmma_tm64_tn16": {
+        "best_ms": 19.165,
+        "median_ms": 19.612,
+        "tflops_best": 1.39
+      },
+      "wmma_tm64_tn32": {
+        "best_ms": 20.283,
+        "median_ms": 21.165,
+        "tflops_best": 1.313
+      }
+    },
+    "llama_reference": {
+      "kernel": "mul_mat_q<type12,128,false> WMMA",
+      "us_per_launch": 4902,
+      "tflops": 3.4
+    },
+    "conclusion": "Existing WMMA compact kernel already beats the retained rowbatch owner 1.19-1.75x at the real shape (best tiles), but remains 1.7-2.4x behind llama mul_mat_q. Structural gap: per-row-tile weight re-dequant from global memory without LDS staging and single-warp blocks; next unit is the mul_mat_q dataflow port (SRAM-staged I x J tiles, cooperative loads) with lineage ggml-org/llama.cpp@17252c769 ggml/src/ggml-cuda/mmq.cuh."
+  }
 }
