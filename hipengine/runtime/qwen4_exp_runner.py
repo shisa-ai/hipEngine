@@ -31,6 +31,9 @@ from hipengine.kernels.backends import (
     backend_package_capability,
     load_backend_kernel_package,
 )
+from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa_flash import (
+    qwen4_exp_qsa_flash_prefill,
+)
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
     qwen35_paged_full_attn_decode_context_bf16_batch_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
@@ -1354,6 +1357,11 @@ class Qwen4ExpQSAScratch:
             )
         ):
             free(buffer, runtime=self.runtime)
+        for lazy_key in ("flash_k_scratch", "flash_v_scratch"):
+            lazy = getattr(self, lazy_key, None)
+            if lazy is not None:
+                free(lazy, runtime=self.runtime)
+                setattr(self, lazy_key, None)
         self.closed = True
 
 
@@ -2341,7 +2349,55 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
         runtime=active_runtime,
     )
     dense_rows = max(0, min(count, index_state.dense_equivalent_limit - start))
-    if dense_rows:
+    qsa_flash = (
+        dense_rows > 0
+        and head_dim == 256
+        and kv_heads * head_dim == 512
+        and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL", "0")
+        not in {"", "0", "false", "False"}
+        and _qwen4_exp_layer_allowed(
+            weights.projections["attn_q"],
+            env_name="HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS",
+            default="all",
+        )
+    )
+    if qsa_flash:
+        context_len = start + dense_rows
+        kv_elems = context_len * kv_heads * head_dim
+        kv_bytes = kv_elems * DType.BF16.itemsize
+        k_scratch = getattr(scratch, "flash_k_scratch", None)
+        if k_scratch is None or k_scratch.nbytes < kv_bytes:
+            if k_scratch is not None:
+                free(k_scratch, runtime=active_runtime)
+                free(getattr(scratch, "flash_v_scratch"), runtime=active_runtime)
+            k_scratch = malloc(kv_bytes, runtime=active_runtime)
+            scratch.flash_k_scratch = k_scratch
+            scratch.flash_v_scratch = malloc(kv_bytes, runtime=active_runtime)
+        block_table_ptr = (
+            metadata.block_tables.ptr
+            + 0 * metadata.block_table_len * DType.INT32.itemsize
+        )
+        qwen4_exp_qsa_flash_prefill(
+            scratch.query.ptr,
+            attention_state.key_cache.ptr,
+            attention_state.value_cache.ptr,
+            block_table_ptr,
+            metadata.positions.ptr,
+            scratch.flash_k_scratch.ptr,
+            scratch.flash_v_scratch.ptr,
+            scratch.context.ptr,
+            dense_rows,
+            query_heads,
+            kv_heads,
+            head_dim,
+            attention_state.block_size,
+            metadata.block_table_len,
+            context_len,
+            head_dim ** -0.5,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    elif dense_rows:
         qwen35_paged_full_attn_decode_context_bf16_batch_spans(
             scratch.query.ptr,
             attention_state.key_cache.ptr,
