@@ -655,8 +655,13 @@ P8 current punchlist (20260829):
       Verify rows ride the rows6 tile every cycle ({6: 228} / {6: 175});
       accept stage falls to ~30 ms/request-cycle. Evidence:
       [`rows6 group padding`](../benchmarks/results/2026-08-29-w7900-qwen38-q4km-c2-rows6-group-padding.json).
-- [ ] Forced K0-catchup-after-reject experiment (acceptance policy vs state
-      corruption discriminator above).
+- [x] Forced K0-catchup-after-reject experiment run (commits `d01365bc8`,
+      `6a835dd72`; worklog 20260829T052637). Verdict: the catchup repairs
+      code post-reject acceptance (0.471 -> 1.000) and lifts code to 82.54% /
+      1.1820x, but degrades en/other post-reject cycles (en 0.167) so the
+      one-shot policy nets 1.1480x < 1.1902x and stays default-off. The
+      catchup's positional semantics (`root_position = target.position` at
+      prepare time) need audit before any policy retry.
 - [ ] Complete the P8 production numerics/determinism/lifecycle packet for
       C2/K2 before any automatic promotion; automatic stays K0.
 
