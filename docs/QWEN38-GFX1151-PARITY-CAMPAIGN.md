@@ -152,10 +152,14 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     71.55→84.59 (+18.2%), C2 74.87→90.86 (+21.4%), isolated 45-token
     -18.9%, bit-exact, RED-first, 76/76 family tests
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-lowm-dense-q4t16-prefill-retained.json)).
-    Q6/Q6-planar already route to plain owners below 512 rows (no band win);
-    their cost is deep-bandwidth kernel work. Remaining in this item: Q5/Q6
-    families (146.5 ms/pass), deep bandwidth (owners at 25-60 GB/s effective
-    vs 256 peak), then re-freeze the C1-C8 prefill row.
+  - Progress 2026-08-29 (fourth retained unit): low-VGPR 16-column Q4T16
+    owners (VGPR 248→96/80, bit-exact) for rows 17-48 — cumulative C1
+    71.55→122.09 (+70.6%), C2 74.87→115.58 (+54.3%); isolated 45-token
+    prefill 0.515→0.331 s; rocprof: Q4 family 263→174.9 ms
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-lowvgpr-q4t16-prefill-retained.json)).
+    Remaining in this item: Q6 qmicro-planar (103.1 ms, 184 VGPR) and Q5
+    dense (35.9 ms, 200 VGPR) show the same latency-bound pattern; then
+    re-freeze the C1-C8 prefill row.
 
 ### P3 — AR decode C1/C2/C8 (defend the C3-C7 lead)
 
