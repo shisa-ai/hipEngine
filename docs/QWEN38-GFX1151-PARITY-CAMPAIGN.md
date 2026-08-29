@@ -120,7 +120,7 @@ P1.3 decomposition per C1 request: ~534 ms GPU-bound prefill (small-row T16
 wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
 ~323-332 ms.
 
-- [ ] P2.1 Close the route + small-M GEMM walls; target C1 complete-wall
+- [x] P2.1 Close the route + small-M GEMM walls; target C1 complete-wall
   `>= 138.95` tok/s with the exact/correctness gate green. Route small slabs
   through the best owners (kill the ~111 ms packed-vs-bulk overhead), then
   lift the small-M T16 wmma prefill family (360.6 ms at M=45; target
@@ -135,13 +135,20 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     template-scan removal (direct memsets, identical bytes) — cumulative
     C1 71.55→102.21 (+42.8%), C2 74.87→97.18 (+29.8%), exact outputs
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-zerostates-reclaim-retained.json)).
-    Remaining in this item: residual ~5-15 ms/request host/reclaim overhead
-    and the packed-vs-bulk owner gap at C2-C8 slab shapes; the dominant
-    remaining C1 wall is now the prefill GPU work itself (P2.3).
+  - Closure 2026-08-29 (seventh retained unit): current telemetry falsified
+    the uniform host-wall hypothesis—35-48-token requests were 285-291 ms,
+    but rows60/67 were 449/596 ms. General (not prompt-specific) rows49-64
+    and rows65-80 Q4/Q5/Q6 low-VGPR bands cut isolated rows60/67 by
+    24.2%/31.9%. Frozen C1 reaches **147.11 tok/s**, +105.6% cumulative and
+    5.9% above the 138.95 comparator, with all ten exact cells green
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-row49-80-prefill-parity-retained.json)).
 - [ ] P2.2 C2-C8 prefill parity at the frozen protocol; each cell closes at
   its frozen winner (194.07/180.09/192.54/217.39/243.52/245.61/296.82) or a
   measured named blocker. Slab rows scale with width, so the small-M fix
   carries part of C2-C4; the rest is multi-row route efficiency.
+  - Progress 2026-08-29: the rows49-80 extension raises C2 to 136.89 tok/s
+    (+82.8% cumulative), still 29.5% below 194.07. C3-C8 require the fresh
+    full-width re-freeze (same artifact).
 - [x] P2.3 Small-row T16 wmma prefill GEMM kernel family (Q4/Q5/Q6 T16
   dense + qmicro planar wmma prefill): low-M efficiency work per
   `docs/KERNELS.md` + strict/production gates + rocprof trace evidence per
@@ -167,9 +174,9 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     owners (VGPR 200→96/112, bit-exact) cut Q5 35.79→28.74 ms and lift C1
     132.54→134.37 (+1.4%; +87.8% cumulative). C2 is controlled neutral:
     every slab exceeds the selector's row-48 cap, and same-protocol candidate
-    versus plain is 125.74 versus 125.67 tok/s. P2.3 is closed; the remaining
-    3.3% C1 gap is a P2.1 host/serving attribution item, while P2.2 owns the
-    C1-C8 re-freeze
+    versus plain is 125.74 versus 125.67 tok/s. P2.3 closes the original
+    rows17-48 family. The subsequent P2.1 attribution found and retained the
+    general rows49-80 extension; P2.2 owns the C1-C8 re-freeze
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-lowvgpr-q5t16-prefill-retained.json)).
 
 ### P3 — AR decode C1/C2/C8 (defend the C3-C7 lead)
