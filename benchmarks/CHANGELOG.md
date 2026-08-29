@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8 MTP E0 current baseline] Rebase MTP to current AR/profile manifests: strict C1 natural25 is **18.191 vs 11.062 tok/s (1.6445x)** and remains automatic; production C2 is **19.146 vs 18.032 (1.0618x)** with mixed at 0.9451x, so it becomes explicit-only/K0 automatic; C3 K3 is **21.382 vs 24.119 (0.8865x)**. Current profiling assigns **41.26 ms/cycle** to three Q6 proposal-head sweeps. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8 AR P3 blocker attribution] C1 remains 1.9% short with **96.6%** of transition wall in kernels after the historical owner ladder; C2 remains 9.9% short after graph replay, with graph-record plus the P2.2 prefill gap explaining ~250.6/262.7 ms per request. P3 is partial pending new operation-complete C1/C2 dataflows. `benchmarks/results/2026-08-29-gfx1151-qwen38-ar-c1-c2-blockers.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8 packed C2 short graph retained] Scope a 23-transition HIP graph floor to dense standard-Q4 physical C2 after cached traces show **97.28 ms wall / 81.56 ms kernel sum / 880 launches**. Clean full-suite D24 C2 improves **16.993→18.072 tok/s (+6.35%)**, C1 is non-regressive at 11.122 tok/s, and all 20 cells are exact. `benchmarks/results/2026-08-29-gfx1151-qwen38-packed-c2-short-graph-retained.json`.

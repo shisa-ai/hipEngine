@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted_baseline",
+  "campaign": "docs/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+  "items": ["E0 complete: current baseline, controls, trace, and Amdahl freeze"],
+  "title": "Qwen3.8 Q4_K_M current MTP E0 baseline",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "baseline_commit": "6e9ac4fd847e3ffce4f2648902f995b211f55e94",
+    "policy_commit": "529f502a3",
+    "tracked_dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "heldout_included": true,
+    "sampling": "raw greedy",
+    "common_horizon": 24,
+    "candidate_budgets": [1, 2, 3],
+    "batch_window_ms": 50,
+    "max_sequence_length": 1024,
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "execution_profile": "production",
+    "production_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b",
+    "correctness": "self-exact greedy IDs, route expectation, and budget conformance",
+    "no_prompt_conditioning": true
+  },
+  "commands": {
+    "common_k3": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2,3 --resident-capacity 3 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths 1,2,3 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/p240-e0-c1c3-k3.json",
+    "fixed_k1_k2": "same common command at width3 with candidate-budget 1 and 2; outputs /tmp/p240-e0-c3-k{1,2}.json",
+    "strict_c1": "same harness, execution-profile strict, width1/resident-capacity1/max-tokens25/budget3, current evidence policy, output /tmp/p240-e0-strict-c1-clean.json",
+    "production_c2_explicit": "same harness, execution-profile production, width2/resident-capacity4/max-tokens24/budget3, output /tmp/p240-e0-production-c2-cap4-explicit-clean.json",
+    "intent_k0": "temporary diagnostic restores removed D6 force-cycle-K0 behavior without a production flag; common width3/K3 output /tmp/p240-e0-c3-intent-k0.json",
+    "profile": "cached-only rocprofv3 kernel+marker+HIP+copy+allocation over specdec2_perf_bridge.py --scope train --limit 1 --concurrency 3 --budgets 3 --max-tokens 24 --warmup --roctx-markers --profile-child"
+  },
+  "common_k3": {
+    "columns": ["width", "ar_tok_s", "mtp_tok_s", "ratio", "accepted", "proposed", "draft_acceptance", "external_target_tok_s", "gap_to_external_pct"],
+    "rows": [
+      [1, 11.114785286874652, 7.826431971142933, 0.7041460333367928, 157, 199, 0.7889447236180904, 21.277, -63.218],
+      [2, 18.20492639939759, 19.145666644974238, 1.0516750370167813, 314, 398, 0.7889447236180904, 32.378, -40.868],
+      [3, 24.118751447513986, 21.382407547546592, 0.8865470335012122, 471, 597, 0.7889447236180904, 27.515, -22.292]
+    ],
+    "correctness": "30/30 exact/engaged/budget-conformant cells"
+  },
+  "c3_fixed_depth": {
+    "columns": ["budget", "ar_tok_s", "mtp_tok_s", "ratio", "wall_seconds", "cycles", "accepted", "proposed", "draft_acceptance"],
+    "rows": [
+      [1, 23.986974300609614, 22.414352626464797, 0.9344385142354178, 32.122275043977425, 345, 330, 345, 0.9565217391304348],
+      [2, 24.283210397271066, 20.804229991145558, 0.8567330946275343, 34.608346490422264, 249, 438, 483, 0.906832298136646],
+      [3, 24.118751447513986, 21.382407547546592, 0.8865470335012122, 33.67254124209285, 213, 471, 597, 0.7889447236180904]
+    ],
+    "current_best": "K1 by complete wall; K3 remains the first optimization target because the proposal-head saving scales with depth."
+  },
+  "c3_k3_categories": {
+    "columns": ["category", "ar_tok_s", "mtp_tok_s", "ratio"],
+    "rows": [
+      ["code", 24.324237792330475, 21.78171707018624, 0.8954737762452765],
+      ["general_en", 24.40810043186347, 23.498163557517664, 0.962719881586609],
+      ["general_ja", 24.261386680159855, 21.192936063217097, 0.8735253406000889],
+      ["mixed_ja_en", 23.311489979539267, 19.12963404096923, 0.8206096674969942]
+    ],
+    "binding_category": "mixed_ja_en"
+  },
+  "controls": {
+    "strict_c1_natural25": {
+      "ar_tok_s": 11.062000233373544,
+      "mtp_tok_s": 18.191009733125934,
+      "ratio": 1.644459351776589,
+      "accepted": 161,
+      "proposed": 220,
+      "draft_acceptance": 0.7318181818181818,
+      "exact_cells": 10,
+      "every_category_positive": true,
+      "automatic_eligible": true,
+      "policy": "strict manifest refreshed to current hash"
+    },
+    "production_c2_d24": {
+      "ar_tok_s": 18.03156563341181,
+      "mtp_tok_s": 19.14600748704345,
+      "ratio": 1.061805052111871,
+      "accepted": 314,
+      "proposed": 398,
+      "draft_acceptance": 0.7889447236180904,
+      "exact_cells": 10,
+      "mixed_ratio": 0.9451205295343631,
+      "automatic_eligible": false,
+      "policy": "retained explicit diagnostic only after faster AR rebase"
+    },
+    "c3_intent_k0": {
+      "ar_tok_s": 24.20957262076366,
+      "intent_k0_tok_s": 18.48838752132188,
+      "ratio": 0.7636808716509548,
+      "exact_cells": 10,
+      "mtp_cycles": 0,
+      "provider_intent": true
+    }
+  },
+  "current_c3_k3_profile": {
+    "complete_wall_ms": 3284.931363,
+    "target_prefill_ms": 543.089545,
+    "nextn_prompt_prime_ms": 746.672398,
+    "steady_cycles": 7,
+    "steady_cycle_wall_ms": 262.73,
+    "steady_proposal_wall_ms": 62.321831,
+    "steady_proposal_kernel_ms": 59.840542,
+    "proposal_launches_per_cycle": 187,
+    "proposal_q6_f32_head_ms": 41.258,
+    "proposal_q6_f32_head_calls": 3,
+    "proposal_q4_nextn_ms": 12.745,
+    "steady_target_accept_commit_provider_wall_ms": 200.483482,
+    "steady_target_kernel_ms": 192.219783,
+    "target_launches_per_cycle": 1695.43,
+    "profile_reconciliation": {
+      "proposal_kernel_fraction": 0.960183,
+      "target_kernel_fraction": 0.958779
+    },
+    "compiler_ran_inside_profiler": false
+  },
+  "break_even": {
+    "c3_ar_wall_seconds": 29.852291548624635,
+    "c3_k3_wall_seconds": 33.67254124209285,
+    "promotion_target_tok_s": 26.53062659226539,
+    "promotion_wall_ceiling_seconds": 27.13844686238603,
+    "required_wall_reduction_seconds": 6.5340943797068185,
+    "required_wall_reduction_pct": 19.40481513625345,
+    "required_throughput_uplift_pct": 24.078,
+    "external_target_tok_s": 27.515,
+    "external_required_throughput_uplift_pct": 28.681
+  },
+  "candidate_amdahl": {
+    "e1a_activation": {
+      "premise": "current physical prompt streaming is disabled; measured NextN prompt prime is 746.7 ms for the profiled 36-token C3 packet",
+      "decision": "material; adjudicate the existing exact path first"
+    },
+    "e1b_proposal_head": {
+      "premise": "three direct full-vocabulary Q6 head sweeps consume 41.258 ms/cycle (66.2% of proposal kernels)",
+      "existing_rowtile_leaf_ms_per_depth": 4.63,
+      "projected_k1_tok_s": 24.849046319733816,
+      "projected_k2_tok_s": 23.947906525711954,
+      "projected_k3_tok_s": 25.859136366601245,
+      "projected_k3_wall_saving_seconds": 5.829384,
+      "decision": "K3 becomes projected best but E1b alone remains below the 1.10x gate; E1a plus E1b can plausibly close it"
+    },
+    "e2_target": {
+      "premise": "steady target is 200.5 ms/cycle and 95.9% kernel-bound; Q4/Q6/Q5 remain the ordered high-row families",
+      "decision": "retain as second new-kernel lever after E1"
+    }
+  },
+  "policy_correction": {
+    "finding": "pre-E0 strict and production evidence rows bound superseded manifest hashes, so actual requests selected K0 with execution_profile_manifest_not_qualified",
+    "resolution_commit": "529f502a3",
+    "strict_c1": "current manifest refreshed and automatic retained",
+    "production_c2": "current manifest refreshed for explicit diagnostics; automatic disabled because overall <1.10x and mixed <1.0x",
+    "c3": "automatic remains K0"
+  },
+  "raw_sources": [
+    ["/tmp/p240-e0-c1c3-k3.json", "cea8e28cc4a081b577217edc7e098be537a78f5dc59dd45dabb741293d024529", 4379573],
+    ["/tmp/p240-e0-c3-k1.json", "eee0497e3fdfb467b490116b4eeb03cbb2e2f777942eaad826a52342d8ff18a4", 1052590],
+    ["/tmp/p240-e0-c3-k2.json", "7185e53bf7d4227b0ed33a9a58da62ceef47c938158465b0beba12e5fee8970b", 1049954],
+    ["/tmp/p240-e0-c3-intent-k0.json", "21b035175b2f876bef33ef7f362993d8061b124bab1b9f8ae12153376505f4e9", 995264],
+    ["/tmp/p240-e0-strict-c1-clean.json", "dda8bf565d2c7aab4d926dff553d44096642197685c40040450a65e600e2a396", 771208],
+    ["/tmp/p240-e0-production-c2-cap4-explicit-clean.json", "e6286d84f804bc88db46141f674372f87c35ace16055e1937abfc2fdf465487a", 1664244],
+    ["/tmp/p240-c3k3-e0-profile.json", "c6968dee8225434afe922b4d928101086d3feb2993db534fd704df02965c81d6", 71728],
+    ["/tmp/p240-c3k3-e0-rocprof/gfx1151/3729960_kernel_trace.csv", "6fca81e14f719b01f9971b344ae6f799ae6945b04bd901168c68dc05bf0a35d8", 12702880],
+    ["/tmp/p240-c3k3-e0-rocprof/gfx1151/3729960_marker_api_trace.csv", "76abef1d39905d99b866bb96b168788224bf71a5ea217dbdaf1f557438099353", 18252]
+  ],
+  "verdict": {
+    "e0_complete": true,
+    "next": "E1a existing physical-C3 prompt streaming adjudication, then E1b exact Q6 F32 proposal-head row reuse. K3 remains the optimization target despite K1 leading the current unoptimized depth table."
+  }
+}

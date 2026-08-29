@@ -1,10 +1,10 @@
 # Qwen3.8-27B `Q4_K_M` physical-C3 MTP decode-economics campaign
 
-- Status: **replanned after evidence/source audit; E0-E7 scoped, no campaign implementation started**
+- Status: **E0 complete on current source; E1a physical-C3 activation adjudication next**
 - Created: 2026-08-28; corrected review: 2026-08-28
 - Hardware lane: **AMD Ryzen AI MAX+ 395 / Radeon 8060S / `hip_gfx1151` / HIP 7.15**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile, physical C3, raw greedy, context 1-67, D24**
-- Opening product state: **C1/K3 and C2/K3 are automatic; C3/K3 is a retained 0.9589x diagnostic; C3 automatic remains K0**
+- Current product state after E0: **strict C1/K3 automatic at 1.6445x; production C2/K3 explicit diagnostic at 1.0618x and automatic K0 after the faster-AR rebase; C3/K3 diagnostic at 0.8865x and automatic K0**
 - Primary promotion gate: **C3 `>=1.10x` true same-protocol AR overall, full/heldout/every category non-regressive, complete production correctness and serving gates**
 - Stretch target: **`>1.30x` true AR**, consistent with [`BENCHMARK.md`](BENCHMARK.md)
 - Binding predecessors (extend; do not reimplement):
@@ -14,10 +14,11 @@
   [`SPECDEC2.md`](SPECDEC2.md), and [`SPECDEC2-PERF.md`](SPECDEC2-PERF.md)
 - Opening evidence:
   [`C1 matched acceptance closeout`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c1-acceptance-parity-closeout.json),
-  [`C2 automatic production`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json),
+  [`C2 production rowtiles`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json),
   [`C3 retained rowtiles`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json),
   [`OI-2 adaptive rejection`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi2-adaptive-rejected.json),
-  [`OI-4 post-norm rejection`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi4-postnorm-rejected.json)
+  [`OI-4 post-norm rejection`](../benchmarks/results/2026-08-25-gfx1151-qwen38-omlx-oi4-postnorm-rejected.json),
+  [`current E0 baseline`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json)
 - Normative dependencies: [`PLAN.md`](PLAN.md), [`TESTING.md`](TESTING.md),
   [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
   [`BENCHMARK.md`](BENCHMARK.md), [`KERNELS.md`](KERNELS.md), and
@@ -41,11 +42,12 @@ made wide verification reread weights per row was real and is substantially
 repaired; the remaining work is an optimization problem:
 
 > **Lower physical-C3 complete wall enough to promote the already-correct C3
-> route, while preserving the automatic C1 and C2 cells and every strict
-> fallback.**
+> route, while preserving automatic C1, exact C2 diagnostics/K0 policy, and
+> every strict fallback.**
 
-The current C3/K3 route is **19.934 vs 20.788 tok/s true AR (0.9589x)**. The
-campaign succeeds if one of these outcomes is reached:
+The E0 current-source C3/K3 route is **21.382 vs 24.119 tok/s true AR
+(0.8865x)**. The faster AR denominator supersedes the opening 0.9589x ratio.
+The campaign succeeds if one of these outcomes is reached:
 
 1. **Primary success:** a physical-C3 fixed-budget cell clears `>=1.10x` true
    same-protocol AR overall, has no full/heldout/category/task/SLO regression,
@@ -72,24 +74,26 @@ profiles/scopes differ and must remain explicit:
 
 | Cell | Profile/scope | MTP vs true AR | Draft acceptance | Product state |
 | --- | --- | ---: | ---: | --- |
-| C1/K3 | strict, cap4 realized singleton, context 1-67, natural25 | **15.609 / 9.807 = 1.5916x** | 165/210 = **78.57%** | automatic |
-| C2/K3 | production, context 1-128, D24 | **17.031 / 14.887 = 1.1441x** | 314/398 = **78.89%** | automatic |
-| C3/K3 | production, canonical natural contexts (<=67), D24 | **19.934 / 20.788 = 0.9589x** | 471/597 = **78.89%** | retained diagnostic; automatic K0 |
+| C1/K3 | strict, cap1/cap4 realized singleton, context 1-67, natural25 | **18.191 / 11.062 = 1.6445x** | 161/220 = **73.18%** | automatic; current manifest refreshed |
+| C2/K3 | production, cap4 physical C2, context 1-128, D24 | **19.146 / 18.032 = 1.0618x** | 314/398 = **78.89%** | explicit diagnostic; automatic K0 |
+| C3/K3 | production, canonical natural contexts (<=67), D24 | **21.382 / 24.119 = 0.8865x** | 471/597 = **78.89%** | retained diagnostic; automatic K0 |
 | C4+ | unqualified economics | n/a | n/a | automatic K0 |
 
-C2 and C3 have essentially identical draft acceptance. The C2-to-C3 loss is
-therefore not evidence of proposal-quality collapse; AR scales faster than the
-remaining proposal/target dataflow.
+C2 and C3 still have identical draft acceptance. The C2-to-C3 loss is not
+proposal-quality collapse; AR scales faster than the remaining proposal/target
+dataflow. C2 no longer clears the automatic gate after the AR rebase, and its
+mixed category is 0.9451x, so E0 explicitly demotes it while preserving the
+exact opt-in diagnostic.
 
-C3 category economics:
+Current E0 C3 category economics:
 
 | Category | MTP tok/s | AR tok/s | Ratio | Immediate requirement |
 | --- | ---: | ---: | ---: | --- |
-| code | 20.268 | 20.728 | 0.9778x | recover 2.27% throughput to non-regression |
-| general English | 21.748 | 20.489 | 1.0614x | preserve |
-| general Japanese | 19.774 | 20.715 | 0.9546x | recover 4.76% |
-| mixed Japanese/English | 17.987 | 21.298 | **0.8445x** | recover **18.41%** |
-| full | 19.934 | 20.788 | **0.9589x** | recover **14.71%** to reach 1.10x AR |
+| code | 21.782 | 24.324 | 0.8955x | recover 11.67% to non-regression |
+| general English | 23.498 | 24.408 | 0.9627x | recover 3.87% |
+| general Japanese | 21.193 | 24.261 | 0.8735x | recover 14.48% |
+| mixed Japanese/English | 19.130 | 23.311 | **0.8206x** | recover **21.86%** |
+| full | 21.382 | 24.119 | **0.8865x** | recover **24.08%** to reach 1.10x AR |
 
 The mixed category, not the aggregate, is the binding non-regression pressure.
 No category-specific runtime branch is permitted; the table only sizes the
@@ -159,13 +163,13 @@ candidate before any new batched-activation design.
 
 Current cached profiles expose two steady-cycle walls as well:
 
-**Proposal (final C3/K2 steady trace):**
+**Proposal (E0 current C3/K3 steady trace):**
 
-- proposal wall **41.84-41.98 ms** after first-cycle noise;
-- two full-vocabulary planar-Q6 head calls **27.67-27.71 ms** (about 66% of
-  steady proposal kernels);
-- Q4 NextN work **8.47-8.49 ms**;
-- remaining proposal kernels **3.89-3.90 ms**.
+- proposal wall **62.32 ms**, with **59.84 ms** in kernels;
+- three full-vocabulary planar-Q6 head calls **41.26 ms** (66.2% of steady
+  proposal kernels);
+- Q4 NextN work **12.75 ms**;
+- remaining proposal kernels about **5.83 ms**.
 
 The physical F32 proposal head currently bypasses the existing exact Q6 F32
 rowtile and executes the direct planar body at rows=3, effectively rereading the
@@ -173,9 +177,10 @@ rowtile and executes the direct planar body at rows=3, effectively rereading the
 rowtile evidence is **4.60-4.66 ms** with exact logits/top-1. Transfer to the
 physical proposal path is the first campaign candidate, not yet a claim.
 
-**Target (final C3/K2 R9 steady trace):**
+**Target (E0 current C3/K3 R12 steady trace):**
 
-- target/accept/commit/provider wall **195.16-196.37 ms**;
+- target/accept/commit/provider wall **200.48 ms**, with **192.22 ms** in
+  kernels;
 - Q4 rowtiles **97.06-97.40 ms / 400 calls**;
 - Q6 rowtiles **53.94-53.99 ms / 131 calls**;
 - Q5 rowtiles **11.04-11.08 ms / 96 calls**;
@@ -193,18 +198,18 @@ claim. E0 must join cached leaf attribution with unprofiled timing-owner totals.
 
 ### 2.4 Complete-wall break-even budget
 
-The retained C3 packet generates 720 tokens per arm:
+The E0 C3 packet generates 720 tokens per arm:
 
-- true AR complete wall: `720 / 20.7882 = 34.635 s`;
-- MTP complete wall: `720 / 19.9341 = 36.119 s`;
-- `1.10x` promotion ceiling: `720 / (1.10 * 20.7882) = 31.486 s`.
+- true AR complete wall: **29.852 s** (`24.119 tok/s`);
+- MTP complete wall: **33.673 s** (`21.382 tok/s`);
+- `1.10x` promotion ceiling: **27.138 s** (`26.531 tok/s`).
 
-C3 must remove **4.633 s / 12.83% of current complete wall** at unchanged AR.
-That is a **14.71% throughput increase**. Mixed Japanese/English must remove
-**1.244 s / 15.55%** of its current wall merely to reach 1.0x AR. E0 recomputes
-these budgets from its own counterbalanced baseline and reconciles them to
-actual physical cycles, tails, TTFT, and lifecycle costs before any candidate
-is sized.
+C3 must remove **6.534 s / 19.40% of current complete wall** at unchanged AR,
+a **24.08% throughput increase**. The frozen external K3 target of 27.515
+tok/s requires a 28.68% uplift. Mixed Japanese/English remains the binding
+category at 0.8206x. E0 also measures 543.1 ms target prefill and 746.7 ms
+NextN prompt prime in the profiled 36-token C3 packet, so activation is
+material and E1a remains first.
 
 ## 3. What already exists — do not reimplement or relabel
 
@@ -311,28 +316,32 @@ parent harness that launches nested processes.
 
 No implementation changes.
 
-- [ ] Run a common D24 current-source C1/C2/C3 K3 diagnostic under one committed
+- [x] Run a common D24 current-source C1/C2/C3 K3 diagnostic under one committed
       raw-token rendering and timing contract. Separately rerun the certified
       strict-C1 natural25 and production-C2 D24 scopes as regression controls;
       do not silently equate their horizons/profiles.
-- [ ] Run C3 K1/K2/K3 plus true AR and intent K0, counterbalanced, with full/
+- [x] Run C3 K1/K2/K3 plus true AR and intent K0, counterbalanced, with full/
       train/heldout/category and position telemetry.
-- [ ] Collect one final cached-only C3/K3 child trace: proposal depth families,
+- [x] Collect one final cached-only C3/K3 child trace: proposal depth families,
       target Q4/Q5/Q6/attention/GDN/head, accept/commit/repair, copies, syncs,
       allocations, and host residual.
-- [ ] Reconcile non-profiled timing-owner totals to physical cycles and tails;
+- [x] Reconcile non-profiled timing-owner totals to physical cycles and tails;
       separate provider open, prompt prime/TTFT, steady cycles, and reclaim.
       Report activation by prompt-length/root-position bin and explain the
       general-English vs mixed-category wall split without using content in
       policy.
-- [ ] Recompute the exact complete-wall reduction required for aggregate
+- [x] Recompute the exact complete-wall reduction required for aggregate
       `>=1.10x` and every category `>=1.0x`.
-- [ ] Publish one baseline artifact and a candidate Amdahl table. No candidate
+- [x] Publish one baseline artifact and a candidate Amdahl table. No candidate
       starts without a named parent row and maximum complete-wall contribution.
 
-Exit: clean baseline artifact, guarded objective, final manifest hashes, and a
-ranked wall budget. If the Q6 proposal head is no longer material, E1b is
-re-ranked from the fresh trace rather than executed by plan inertia.
+Exit: complete 2026-08-29 in the
+[`E0 artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json).
+K1 is the current fastest unoptimized C3 depth (0.9344x), but the Q6 head is
+41.26 ms/cycle at K3 and remains the first new route candidate. E1b's projected
+K3 rate is 25.86 tok/s, still below 1.10x alone; E1a plus E1b can plausibly
+close the gate. Strict C1 automatic is refreshed; production C2 remains explicit
+only after failing the rebased automatic/category gates.
 
 ### E1 — close proposal-side activation and head walls
 
@@ -367,7 +376,8 @@ This starts with an existing exact candidate, not fresh device code.
 
 Hypothesis: physical rows2-4 proposal scoring should use the existing exact
 planar-Q6 F32 rowtile (one head weight sweep) plus the existing GPU row argmax,
-not one direct head sweep per request row.
+not one direct head sweep per request row. E0 measures **41.26 ms across three
+K3 head calls per cycle**, 66.2% of proposal kernels.
 
 - [ ] RED actual immutable K5120/N248320 rows2/3/4 fixture: every FP32 logit,
       lowest-ID tie behavior, top-1 ID/value, row order, and guard bytes match
@@ -576,11 +586,11 @@ These are ordered follow-ons, not assumptions in the primary claim:
 
 | Priority | Candidate | Measured premise | First falsifier / stop |
 | ---: | --- | --- | --- |
-| 0a | Physical C3 prompt activation | physical streaming is disabled after an adjacent Q4_K_S C2/C4 category rejection; mixed Q4_K_M prompts are longer despite acceptance matching English | E0 shows immaterial wall, or existing/new exact batching fails any category |
-| 0b | Physical proposal Q6 F32 rowtile | 27.7 ms across two K2 head calls; existing actual root rowtile 4.60-4.66 ms | no actual-head/complete-wall win or any row/top-1 mismatch |
+| 0a | Physical C3 prompt activation | E0 measures 746.7 ms NextN prompt prime in the profiled 36-token C3 packet; physical streaming remains disabled after an adjacent Q4_K_S C2/C4 category rejection | existing/new exact batching fails complete wall or any category |
+| 0b | Physical proposal Q6 F32 rowtile | E0 measures 41.26 ms across three K3 head calls; existing actual root rowtile is 4.60-4.66 ms/depth | no actual-head/complete-wall win or any row/top-1 mismatch |
 | 1 | True R9/R12/R16 target owner | R12 still R8+R4; Q4/Q6/Q5 about 102/55/14 ms | cannot reduce sweep count or actual target/complete wall |
 | 2 | Fixed K4 | max zero-cost visible lift 17.54%; external K4 is diagnostic | measured p4/cost score cannot beat fixed K3 |
-| 3 | NextN norm/concat/Q4 residual | about 12 ms total in C3/K2 proposal after head | < material refreshed Amdahl share or compound-only idea |
+| 3 | NextN norm/concat/Q4 residual | E0 Q4 NextN work is 12.75 ms/cycle at C3/K3 after the head | < material refreshed Amdahl share or compound-only idea |
 | 4 | Provider update/selected commit | unprofiled telemetry currently single-digit ms/cycle | <=5% refreshed wall or P7 already owns best path |
 | 5 | Graph/submission/overlap | steady trace uncovered about 10 ms target wall | no trace-proven slack; kernel work still dominates |
 | conditional | target-hidden provider repair | matched C1 acceptance already at parity | no repeat-confirmed matched economic deficit |

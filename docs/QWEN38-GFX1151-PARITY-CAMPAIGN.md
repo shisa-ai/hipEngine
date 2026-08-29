@@ -68,9 +68,10 @@ Standing context that shapes the plan:
   (the reverted rowtile-8 halving 620→310 ms was AR-divergent and never
   root-caused). This is the same multi-row amortization wall the MTP campaign's
   E2 attacks, and it gates the T3 adaptive-K / B4-clamp reopen.
-- Post-CONCURRENCY2 state: production C2/K3/context1-128 is automatic at
-  17.031 vs 14.887 tok/s (1.1441x AR); realized-singleton C1/K3 is 15.769
-  (+59.65%); C3+ and scope misses remain K0.
+- E0 current state (2026-08-29): strict C1/K3 is automatic at **18.191 vs
+  11.062 tok/s (1.6445x)**. Production C2/K3 is an exact explicit diagnostic
+  at **19.146 vs 18.032 (1.0618x)** and automatic K0 after the faster-AR rebase;
+  C3/K3 is **21.382 vs 24.119 (0.8865x)** and remains K0.
 
 ## 3. Punchlist
 
@@ -248,6 +249,13 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
 
 - [ ] P4.1 Execute `docs/QWEN38-Q4KM-MTP-ACCEPTANCE.md` E0-E5 as written;
   its own binding gates and statistical discipline apply unchanged.
+  - E0 complete 2026-08-29: common K3 C1/C2/C3 is
+    **7.826/19.146/21.382 tok/s** versus true AR
+    **11.115/18.205/24.119**; all 30 cells are exact and acceptance remains
+    78.89%. C3 fixed K1/K2/K3 is **22.414/20.804/21.382 tok/s**. Current
+    profiling measures **746.7 ms** prompt prime and a **41.26 ms/cycle** Q6
+    proposal head, so E1a then E1b remains the order
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json)).
 - [ ] P4.2 Frozen MTP parity targets: C1 `>= 21.277`, C2 `>= 32.378`, C3
   `>= 27.515`, C4 `>= 27.015`, C5 `>= 32.74`, C6 `>= 36.023`, C7 `>= 42.304`,
   C8 `>= 54.834`; each cell closes with a measured win or named blocker.
