@@ -1,0 +1,350 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "accepted_production_candidate_pending_manifest_fold",
+  "scope": "Qwen4Exp gfx1151 replacement production stack: Q8 dense MMQ + Q5_1 down MMQ layers 32-47 + Q4_K dual MMQ layers 35-47 + calibrated DP4A decode safe-43; strict grouped omitted prefill layers; legacy cooperative MoE disabled",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+  },
+  "profile": {
+    "name": "production",
+    "classification": "T2",
+    "q8_mmq": true,
+    "q5_1_mmq_layers": [
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47
+    ],
+    "q4_k_mmq_layers": [
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47
+    ],
+    "q4_dp4a_decode_layers": [
+      0,
+      2,
+      5,
+      6,
+      8,
+      9,
+      10,
+      11,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47
+    ],
+    "legacy_cooperative_moe": false,
+    "pre_fold_manifest_sha256": "aac6946b1de812e918ca3cfa87ac11ff1bc46be0459413c7f6f5143f39e2f60c",
+    "strict_manifest_sha256": "a9b6e0765a05112699d4fc048601a4a64721a1fa9a6d9c07adacd04cec80b701",
+    "manifest_fold_pending": true
+  },
+  "numerical_gate": {
+    "command": "uv run python /tmp/qwen4exp_production_mmq_prefill_dp4a43_gate.py",
+    "rows": 450,
+    "repeats": 3,
+    "kl_mean": 0.00032258602048999824,
+    "kl_p95": 0.001697348419112624,
+    "kl_p99": 0.004785358633551351,
+    "kl_max": 0.012376285575885201,
+    "top1_matches": 448,
+    "scope_failures": [],
+    "prefill_last": {
+      "rows": 18,
+      "kl_mean": 0.000978077926772643,
+      "kl_p50": 9.620681890684722e-05,
+      "kl_p95": 0.003642365781277849,
+      "kl_p99": 0.010629501616963716,
+      "kl_max": 0.012376285575885201,
+      "top1_agreement": 1.0,
+      "top1_matches": 18,
+      "topk_overlap_mean": 0.9888888888888889,
+      "strict_teacher_nll_mean": 0.2994724796606097,
+      "candidate_teacher_nll_mean": 0.2952454513571711,
+      "teacher_nll_delta": -0.004227028303438574,
+      "teacher_delta_p_mean": 0.001851288705222834,
+      "strict_margin_min": 0.2081584930419922,
+      "max_abs_logit_delta": 0.9427419900894165,
+      "passed": true
+    },
+    "repeat_determinism": true,
+    "state_repeat_exact": true,
+    "eligible_for_automatic_admission": true
+  },
+  "rejected_compositions": {
+    "legacy_cooperative_plus_mmqs_before_ownership_fix": {
+      "reason": "Q5 MMQ read stale expert_gate under production grouped MoE; repeat/state failed",
+      "action": "fixed selector to consume expert_intermediate for cooperative/Q4-MMQ producers"
+    },
+    "legacy_cooperative_plus_mmqs_after_fix_q4_suffix35": {
+      "kl_mean": 0.000328,
+      "top1_matches": 449,
+      "reason": "prefill_last p95 5.25e-3 > 5e-3"
+    },
+    "legacy_cooperative_plus_q8_q5_no_q4": {
+      "kl_mean": 0.000327,
+      "top1_matches": 448,
+      "reason": "prefill_last mean/p95 1.10e-3/6.21e-3"
+    },
+    "decision": "replace rather than stack the legacy cooperative prefill; MMQ stack is faster and passes with strict grouped omitted layers"
+  },
+  "performance": {
+    "508": {
+      "length": 508,
+      "rows": [
+        {
+          "mode": "baseline",
+          "seconds": 9.355842788994778,
+          "tok_s": 54.29762037018807,
+          "top1": 248068,
+          "sha": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.691877064004075,
+          "tok_s": 75.91293072799502,
+          "top1": 248068,
+          "sha": "33cb156dfa445a6de769e665644d6a8e00ea06059bea56a953d70a36b00a62d7"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 8.363534754986176,
+          "tok_s": 60.73986835496084,
+          "top1": 248068,
+          "sha": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.764839712006506,
+          "tok_s": 75.09416654741744,
+          "top1": 248068,
+          "sha": "33cb156dfa445a6de769e665644d6a8e00ea06059bea56a953d70a36b00a62d7"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 8.358092881011544,
+          "tok_s": 60.7794154996898,
+          "top1": 248068,
+          "sha": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.746901159989648,
+          "tok_s": 75.29382570661217,
+          "top1": 248068,
+          "sha": "33cb156dfa445a6de769e665644d6a8e00ea06059bea56a953d70a36b00a62d7"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 8.402367336995667,
+          "tok_s": 60.45915152546038,
+          "top1": 248068,
+          "sha": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.761442527989857,
+          "tok_s": 75.1318964698833,
+          "top1": 248068,
+          "sha": "33cb156dfa445a6de769e665644d6a8e00ea06059bea56a953d70a36b00a62d7"
+        }
+      ],
+      "median_seconds": {
+        "baseline": 8.382951045990922,
+        "candidate": 6.754171843989752
+      },
+      "median_tok_s": {
+        "baseline": 60.59918484707684,
+        "candidate": 75.21277393201764
+      },
+      "delta_percent": -19.42966376715417
+    },
+    "1012": {
+      "length": 1012,
+      "rows": [
+        {
+          "mode": "baseline",
+          "seconds": 18.706660273019224,
+          "tok_s": 54.098379145721495,
+          "top1": 248068,
+          "sha": "97e81f05e8ae3ea9346f29660579445827861e3d02752c31834dbb7348b1fe39"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 13.748940654011676,
+          "tok_s": 73.60567082706244,
+          "top1": 248068,
+          "sha": "90a8dab34ae0a0f4d6a0e4d79933c22e13f0b2a9d367e516f52cdfcaba158dc3"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 16.973848747991724,
+          "tok_s": 59.62112747821767,
+          "top1": 248068,
+          "sha": "97e81f05e8ae3ea9346f29660579445827861e3d02752c31834dbb7348b1fe39"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 13.655949606007198,
+          "tok_s": 74.10689327345095,
+          "top1": 248068,
+          "sha": "90a8dab34ae0a0f4d6a0e4d79933c22e13f0b2a9d367e516f52cdfcaba158dc3"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 17.013541955995606,
+          "tok_s": 59.48202923397554,
+          "top1": 248068,
+          "sha": "97e81f05e8ae3ea9346f29660579445827861e3d02752c31834dbb7348b1fe39"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 13.634847928013187,
+          "tok_s": 74.22158320671967,
+          "top1": 248068,
+          "sha": "90a8dab34ae0a0f4d6a0e4d79933c22e13f0b2a9d367e516f52cdfcaba158dc3"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 17.065721563005354,
+          "tok_s": 59.30015887483998,
+          "top1": 248068,
+          "sha": "97e81f05e8ae3ea9346f29660579445827861e3d02752c31834dbb7348b1fe39"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 14.030416675988818,
+          "tok_s": 72.12900538669695,
+          "top1": 248068,
+          "sha": "90a8dab34ae0a0f4d6a0e4d79933c22e13f0b2a9d367e516f52cdfcaba158dc3"
+        }
+      ],
+      "median_seconds": {
+        "baseline": 17.03963175950048,
+        "candidate": 13.702445130009437
+      },
+      "median_tok_s": {
+        "baseline": 59.39095482129521,
+        "candidate": 73.85543166917269
+      },
+      "delta_percent": -19.584851812483496
+    }
+  },
+  "free_generation": {
+    "command": "uv run python /tmp/qwen4exp_production_mmq_dp4a43_free_generation.py",
+    "prompts": 18,
+    "strict_candidate_exact": 16,
+    "candidate_repeat_exact": 18,
+    "task_valid_divergences": [
+      {
+        "id": "code_topological_sort",
+        "category": "code",
+        "strict_text": "```python\nfrom collections import deque\n\n\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n   ",
+        "candidate_text": "```python\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n    Args:\n        nodes",
+        "verdict": "task-valid alternate implementation/explanation"
+      },
+      {
+        "id": "heldout_general_ja_speculative",
+        "category": "general_ja",
+        "strict_text": "\u6295\u6a5f\u7684\u30c7\u30b3\u30fc\u30c9\uff08Speculative Decoding\uff09\u306f\u3001\u5c0f\u3055\u306a\u300c\u30c9\u30e9\u30d5\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u8907\u6570\u306e\u30c8\u30fc\u30af\u30f3\u3092\u4e88\u6e2c\u3057\u3001\u5927\u304d\u306a\u300c\u30bf\u30fc\u30b2\u30c3\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u4e26",
+        "candidate_text": "\u6295\u6a5f\u7684\u30c7\u30b3\u30fc\u30c9\uff08Speculative Decoding\uff09\u306f\u3001\u5c0f\u3055\u306a\u300c\u30c9\u30e9\u30d5\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u751f\u6210\u3057\u305f\u5019\u88dc\u30c8\u30fc\u30af\u30f3\u3092\u3001\u5927\u304d\u306a\u300c\u30bf\u30fc\u30b2\u30c3\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u4e26",
+        "verdict": "task-valid alternate implementation/explanation"
+      }
+    ]
+  },
+  "c2_physical": {
+    "command": "uv run python /tmp/qwen4exp_production_mmq_dp4a43_c2_physical.py",
+    "exact": [
+      true,
+      true
+    ],
+    "c2_wall_s": 33.644157033995725,
+    "stream_chunks": 6,
+    "teardown_zero": true
+  },
+  "kernel_trace": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace -f csv -o qwen4exp-stacked-p508 -d /tmp -- uv run python /tmp/qwen4exp_stacked_p508_trace_child.py",
+    "compiler_spawned_under_profiler": false,
+    "families": {
+      "q8_mmq": {
+        "launches": 314,
+        "duration_ms": 27.817746,
+        "sample_symbol": "void (anonymous namespace)::q8_0_mmq128_quantize_f32_residual_d4_kernel<3>(float const*, (anonymous namespace)::block_q8_1_mmq_d4*, int, int)"
+      },
+      "q5_1_mmq": {
+        "launches": 14,
+        "duration_ms": 209.576576,
+        "sample_symbol": "(anonymous namespace)::q5_1_mmq_ds4_selected_prefill_kernel((anonymous namespace)::block_q8_1_mmq_ds4 const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, int)"
+      },
+      "q4_k_mmq": {
+        "launches": 13,
+        "duration_ms": 118.497407,
+        "sample_symbol": "(anonymous namespace)::gguf_q4_k_selected_dual_q8_1_ds4_mmq32_prefill_compact32_kernel((anonymous namespace)::block_q8_1_mmq_ds4 const*, long const*, long const*, long const*, long const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long, long, long, long)"
+      }
+    }
+  },
+  "next": "Fold these exact selections and evidence paths into hipengine/generation/qwen4_exp_profiles.py; bind resources before generator construction; verify the resolved manifest hash and public profile smoke."
+}

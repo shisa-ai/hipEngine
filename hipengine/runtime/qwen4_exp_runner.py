@@ -3033,7 +3033,11 @@ def run_qwen4_exp_moe(
             if q5_mmq:
                 down_input_ptr = (
                     scratch.expert_intermediate.ptr
-                    if exact_grouped_q4_gate
+                    if (
+                        exact_grouped_q4_gate
+                        or production_grouped_moe
+                        or q4_k_mmq_prefill
+                    )
                     else scratch.expert_gate.ptr
                 )
                 gguf_q8_1_mmq_ds4_pack_bf16(
