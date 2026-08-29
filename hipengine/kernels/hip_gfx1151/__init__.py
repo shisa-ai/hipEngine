@@ -87,15 +87,30 @@ def gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
     out_features: int,
     **kwargs,
 ):
-    """Select the admitted strict one-row-tile WMMA owner for physical rows."""
+    """Select the admitted strict one-row-tile WMMA owner for physical rows.
 
-    fn = (
-        gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out
-        if int(rows) in GGUF_Q4_T16_PHYSICAL_SMALLM_ROWS
-        and (int(in_features), int(out_features))
-        in GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES
-        else gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
-    )
+    Owner bands follow the 2026-08-29 measured owner crossover on the six
+    physical Qwen3.8 dense prefill shapes (synthetic Q4T16 microbench,
+    bit-exact siblings): the 32-thread single-wave owner (48 cols x 64-row
+    capacity) wins rows 17-64 on every admitted shape by 4-68% over the
+    LDS-staged shared-B owner, while shared-B wins from ~row 96 and above
+    (and stays the fail-closed fallback for every unadmitted shape).
+    """
+
+    row_count = int(rows)
+    shape = (int(in_features), int(out_features))
+    if (
+        row_count in GGUF_Q4_T16_PHYSICAL_SMALLM_ROWS
+        and shape in GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out
+    elif (
+        17 <= row_count <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
+    else:
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
     return fn(
         x_ptr,
         tiles_ptr,
@@ -1068,6 +1083,23 @@ GGUF_DENSE_Q5_T16_QKV = True
 # peer backends, rows, and shape misses retain their source registrations.
 GGUF_Q4_T16_PHYSICAL_SMALLM_ROWS = frozenset({6, 8, 12, 16})
 GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES = frozenset(
+    {
+        (5_120, 6_144),
+        (5_120, 10_240),
+        (5_120, 12_288),
+        (5_120, 17_408),
+        (6_144, 5_120),
+        (17_408, 5_120),
+    }
+)
+# Measured 2026-08-29 low-M dense prefill band (parity campaign P2.3): the
+# 32-thread single-wave owner (48 cols x 64-row capacity) beats the LDS-
+# staged shared-B owner on every one of the six physical shapes for rows
+# 17-64 (4-68%), with the crossover to shared-B between rows 80 and 96.
+# Outputs are bit-exact strict siblings (same K16 WMMA association);
+# unadmitted shapes and rows > 64 retain shared-B fail-closed.
+GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS = 64
+GGUF_Q4_T16_DENSE_LOWM_SHAPES = frozenset(
     {
         (5_120, 6_144),
         (5_120, 10_240),
