@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8 MTP E1b proposal-head rowtile retained] Reuse the exact Q6 F32 rowtile for physical proposal rows2-4: actual row3 improves **13.736→4.711 ms (-65.70%)**; clean C3/K3 improves **27.169→29.198 tok/s (+7.47%)** to **1.2041x AR** and 6.12% above the frozen external row; C2 improves **19.146→21.690 (+13.29%)**. C2/C3 acceptance remains exactly 314/398 and 471/597, with every category positive. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e1b-proposal-head-rowtile-retained.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8 MTP E1a prompt streaming retained] Scope exact post-output-norm prompt streaming to the production standard-`Q4_K_M` physical-C3 key: complete K3 wall improves **33.673→26.501 s (-21.30%)** and throughput **21.382→27.169 tok/s (+27.06%)**, now **1.1280x AR** with exact 471/597 E0 acceptance and every category positive. The row is 1.26% below the frozen external target and remains explicit pending full promotion/serving gates. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e1a-prompt-streaming-retained.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8 MTP E0 current baseline] Rebase MTP to current AR/profile manifests: strict C1 natural25 is **18.191 vs 11.062 tok/s (1.6445x)** and remains automatic; production C2 is **19.146 vs 18.032 (1.0618x)** with mixed at 0.9451x, so it becomes explicit-only/K0 automatic; C3 K3 is **21.382 vs 24.119 (0.8865x)**. Current profiling assigns **41.26 ms/cycle** to three Q6 proposal-head sweeps. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json`.

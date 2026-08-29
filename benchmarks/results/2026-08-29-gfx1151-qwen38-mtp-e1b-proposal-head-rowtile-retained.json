@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "retained_scoped_win",
+  "campaign": "docs/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+  "items": [
+    "E1b: exact physical Q6 F32 proposal-head row reuse retained",
+    "Frozen external C3/K3 throughput target passed"
+  ],
+  "title": "Qwen3.8 Q4_K_M physical proposal-head Q6 rowtile",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "e1a_baseline_commit": "bef3ac5b248bc603775093f74c1e5b5f33880e03",
+    "e1a_evidence_commit": "73faab76d7dbced304343475372af2ed67ee47c9",
+    "candidate_commit": "a3629b9be38263edcb0daf8071eefd638666dec1",
+    "tracked_dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "heldout_included": true,
+    "sampling": "raw greedy",
+    "candidate_budget": 3,
+    "common_horizon": 24,
+    "batch_window_ms": 50,
+    "max_sequence_length": 1024,
+    "execution_profile": "production",
+    "production_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "correctness": "self-exact greedy IDs, route expectation, budget conformance, exact E1a acceptance trajectory, and actual-weight every-logit parent parity",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "anti_gaming": "all ten fixed categories plus heldouts; immutable H5120/N248320 rows2-4 package key; no prompt/category/token selector"
+  },
+  "commands": {
+    "clean_c3": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 3 --resident-capacity 3 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths 3 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/p260-e1b-c3-clean.json",
+    "clean_c2": "same canonical command with widths 2, resident-capacity 4, expected-mtp-widths 2; output /tmp/p260-e1b-c2-clean.json",
+    "actual_fixture": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 -m pytest tests/test_qwen38_nextn_proposal_head_rowtile.py -q",
+    "leaf_micro": "15 counterbalanced HIP-event pairs over actual H5120/N248320 row3 direct parent versus package-qualified rowtile; /tmp/p260-e1b-head-micro.json",
+    "trace": "cached-only rocprofv3 kernel+marker+HIP+copy+allocation trace over specdec2_perf_bridge.py --scope train --limit 1 --concurrency 3 --budgets 3 --max-tokens 24 --warmup --roctx-markers --profile-child"
+  },
+  "c3_k3_complete_wall": {
+    "columns": ["route", "ar_tok_s", "mtp_tok_s", "ratio", "mtp_wall_seconds", "accepted", "proposed", "draft_acceptance"],
+    "rows": [
+      ["E1a prompt streaming", 24.08506302108578, 27.168739952511203, 1.1280327532764083, 26.501044997246936, 471, 597, 0.7889447236180904],
+      ["E1b proposal-head rowtile", 24.249279529095617, 29.198336459447766, 1.2040908854390497, 24.658939080312848, 471, 597, 0.7889447236180904]
+    ],
+    "e1b_mtp_uplift_pct": 7.470337271747374,
+    "e1b_complete_wall_reduction_pct": 6.951068975300611,
+    "e0_to_e1b_mtp_uplift_pct": 36.55308175434142,
+    "external_target_tok_s": 27.515,
+    "margin_over_external_pct": 6.117886459922817,
+    "economic_gate": "passed overall and in every category; automatic admission still requires E5/E6 correctness and serving gates"
+  },
+  "c3_k3_categories": {
+    "columns": ["category", "ar_tok_s", "mtp_tok_s", "ratio"],
+    "rows": [
+      ["code", 24.50251707899862, 29.61690250547881, 1.2087289811896014],
+      ["general_en", 24.437942506615673, 31.050172068536185, 1.270572269336115],
+      ["general_ja", 25.252814930988585, 27.9836709678456, 1.108140658549154],
+      ["mixed_ja_en", 22.7025553453795, 27.954387650988295, 1.2313322102164883]
+    ],
+    "every_category_positive": true
+  },
+  "c2_k3_regression_control": {
+    "columns": ["route", "ar_tok_s", "mtp_tok_s", "ratio", "accepted", "proposed"],
+    "rows": [
+      ["E0 direct-head", 18.03156563341181, 19.14600748704345, 1.061805052111871, 314, 398],
+      ["E1b proposal-head rowtile", 18.037870558109663, 21.69010174566352, 1.2024757399044448, 314, 398]
+    ],
+    "mtp_uplift_pct": 13.287857848910377,
+    "category_ratios": {
+      "code": 1.2099302796905003,
+      "general_en": 1.3690589670107565,
+      "general_ja": 1.1836875142885546,
+      "mixed_ja_en": 1.083197384777289
+    },
+    "every_category_positive": true,
+    "automatic_policy": "unchanged in this unit; prior C2 evidence row remains explicit-only until its complete admission bundle is refreshed"
+  },
+  "actual_weight_red": {
+    "shape": {"hidden_size": 5120, "vocab_size": 248320, "rows": [2, 3, 4]},
+    "every_fp32_logit_bit_exact": true,
+    "row_order_exact": true,
+    "guard_words_exact": true,
+    "top1_id_value_exact": true,
+    "lowest_id_tie_exact": true,
+    "full_vocab_logits_preserved": true,
+    "generic_gpu_argmax_preserved": true,
+    "direct_f32_fallback_registered": true
+  },
+  "leaf_microbenchmark": {
+    "rows": 3,
+    "warmups_per_arm": 5,
+    "counterbalanced_pairs": 15,
+    "direct_median_ms": 13.735898971557617,
+    "rowtile_median_ms": 4.710970878601074,
+    "rowtile_reduction_pct": 65.70322125726248,
+    "paired_rowtile_wins": 15
+  },
+  "engagement_trace": {
+    "proposal_windows_per_trace": 9,
+    "e1a_c3_direct_qmicro_f32_calls": 25,
+    "e1a_c3_direct_qmicro_f32_kernel_sum_ms": 342.621671,
+    "e1b_direct_qmicro_f32_calls": 0,
+    "e1b_c2_rows2_rowtile_calls": 25,
+    "e1b_c2_rows2_rowtile_kernel_sum_ms": 114.866605,
+    "e1b_c3_rows3_rowtile_calls": 25,
+    "e1b_c3_rows3_rowtile_kernel_sum_ms": 117.094461,
+    "e1b_c4_rows4_rowtile_calls": 25,
+    "e1b_c4_rows4_rowtile_kernel_sum_ms": 118.787451,
+    "one_rowtile_call_per_physical_proposal_depth": true,
+    "fallback_calls": 0,
+    "proposal_stage_seconds": {"e1a": 0.4510137131437659, "e1b": 0.2583353586960584},
+    "proposal_stage_reduction_pct": 42.72117428639892,
+    "profile_child_complete_seconds": {"e1a": 2.663971438072622, "e1b": 2.503281697863713},
+    "profile_child_complete_reduction_pct": 6.031961826331278,
+    "compiler_ran_inside_profiler": false,
+    "note": "Marker-scoped counts isolate proposal windows. The C2/C4 engagement-only children reported newly untracked evidence drafts after running; their code is candidate commit a3629b9be, and no speed claim uses those profiled walls. The clean C3 trace and separate clean C2/C3 server packets own attribution and product speed respectively."
+  },
+  "scope": {
+    "enabled": "hip_gfx1151 physical NextN proposal head H5120/N248320 rows2-4 with Q6 T16 primitive resolution",
+    "unchanged": ["C1 proposal", "AR decode", "target verification", "prefill", "unlisted H/N/rows", "unregistered/non-Q6 primitives", "peer backends"],
+    "new_allocations": 0,
+    "new_workspace_bytes": 0
+  },
+  "raw_sources": [
+    ["/tmp/p250-e1a-c3k3-clean.json", "76c844c6d58345a23f46f4414e49ed004523c360eb08eab8b57788076b2a55e5", 1052980],
+    ["/tmp/p260-e1b-c3-control-dirty.json", "ef312fa8fe3748d63860f333c76405abf0b3ee05d3855c9103922da976513035", 1052996],
+    ["/tmp/p260-e1b-c3-candidate2-dirty.json", "068bf8bcb6589eb73f331e2ed4bed6d69cab2b97283782e43f539257be525785", 1052970],
+    ["/tmp/p260-e1b-c3-clean.json", "753a2dd8632050cc3f56f2a74846850c3c58eeb40e1df8fb01a3cca4e1f3ff79", 1053031],
+    ["/tmp/p260-e1b-c2-clean.json", "8c12c8337d6a31463e04134f4e3e0f6465b23b7fb56cac746e3800e63da7df57", 1664267],
+    ["/tmp/p260-e1b-head-micro.json", "be5cf576b08323d322d9b254ddb71dc2b68c6e2244c744349ae05493fddc9273", 747],
+    ["/tmp/p260-e1b-c3-clean-profile.json", "af4f84d93c9af9293c1c1f757f0b7a35b9dd6d046f68edd8bf7583d03df8236e", 71542],
+    ["/tmp/p260-e1b-c3-rocprof/gfx1151/3863771_kernel_trace.csv", "9f9eb7164b668af08955c6bf410826b970fdb6751c932d739f153624e32166c6", 13019132],
+    ["/tmp/p260-e1b-c2-clean-rocprof/gfx1151/3878590_kernel_trace.csv", "3a6a89613c4fdb0e9a139149b5d29f8bf030cf2881ca17686706272c8451e8cf", 11564526],
+    ["/tmp/p260-e1b-c2-clean-rocprof/gfx1151/3878590_marker_api_trace.csv", "8935f41a141913a6b19723fdc821ab981821cf63c14478e246d6cff232310c2f", 15670],
+    ["/tmp/p260-e1b-c3-clean-rocprof/gfx1151/3875368_kernel_trace.csv", "fbbbbdf75906fb5dfbf3565609afc5f04671ca574aa63020778ba87f5d76e93b", 13014667],
+    ["/tmp/p260-e1b-c3-clean-rocprof/gfx1151/3875368_marker_api_trace.csv", "f086ed8a8b01dde2eb4a4555f52758152a8ad036636d04b1ea4703b2eb256306", 17948],
+    ["/tmp/p260-e1b-c4-clean-rocprof/gfx1151/3879679_kernel_trace.csv", "a7bc4329c2fa9e0d0008e73813be5c6ab2ef0d090bbd1c5c10a7d97d070ce6f7", 12684655],
+    ["/tmp/p260-e1b-c4-clean-rocprof/gfx1151/3879679_marker_api_trace.csv", "2df11e294b38c89a7af4359d1cc8f8f20a9ea07402a6a4a83e3a680d8ef4fa", 20834]
+  ],
+  "verdict": {
+    "retained": true,
+    "c3_external_parity_passed": true,
+    "reason": "The exact rowtile improves actual leaf, proposal stage, C2/C3 complete wall, and every category while preserving all candidate IDs and acceptance telemetry.",
+    "next": "Refresh the cumulative C3 Amdahl table, then proceed to E2 high-row target amortization and the complete E5/E6 promotion bundle."
+  }
+}
