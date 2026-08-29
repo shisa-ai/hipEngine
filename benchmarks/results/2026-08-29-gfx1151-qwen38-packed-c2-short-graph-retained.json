@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": [
+    "P3.1 progress: packed C2 short-horizon graph retained"
+  ],
+  "title": "Scoped packed C2 D24 HIP graph admission",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)"
+  },
+  "source": {
+    "control_commit": "57aca3172f56945bd6eedb1af0af6a93b1592a41",
+    "candidate_commit": "7d5c863cef6dac3b513a8d6066748b6734e80cf0",
+    "dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+  },
+  "change": {
+    "summary": "Resolve a backend-package model/quant/physical-width packed graph floor and admit only gfx1151 dense-H5120 MOSTLY_Q4_K_M physical C2 at 23 remaining transitions.",
+    "policy": {
+      "key": ["QWEN35_DENSE_H5120_GEOMETRY", "MOSTLY_Q4_K_M", 2],
+      "min_remaining_transitions": 23,
+      "transport": "hipgraph",
+      "fallback": "global graph floor 128, scaled by physical rows"
+    },
+    "unchanged": "Scalar C1 and every unlisted backend/model/quant/physical-width key retain the prior floor."
+  },
+  "profile_attribution": {
+    "command_shape": "cached direct owner, prompt64/D24, transition3, GPU_MAX_HW_QUEUES=2, rocprofv3 kernel+HIP+copy traces",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "require_cached_build": true,
+    "compiler_ran_inside_profiler": false,
+    "columns": [
+      "physical_width",
+      "wall_ms",
+      "kernel_sum_ms",
+      "kernel_launches",
+      "single_queue",
+      "wall_minus_kernel_sum_ms"
+    ],
+    "rows": [
+      [1, 81.771791, 78.959968, 592, true, 2.811823],
+      [2, 97.276963, 81.557784, 880, true, 15.719179]
+    ],
+    "verdict": "C2 device work is only 3.3% above C1, while 288 extra launches increase submission gaps by about 12.9 ms per transition."
+  },
+  "server_gate": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths '' --correctness-contract ar_exact --output /tmp/p221-clean-policy-c1c2-d24.json",
+    "protocol": "ten common-suite prompts, code/general_en/general_ja/mixed_ja_en including heldouts, raw greedy D24, blocking OpenAI barrier-to-last-completion complete wall",
+    "execution_profile": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "columns": [
+      "width",
+      "control_tok_s",
+      "candidate_tok_s",
+      "delta_pct",
+      "external_target_tok_s",
+      "gap_to_target_pct",
+      "status"
+    ],
+    "rows": [
+      [1, 11.060027632551684, 11.121671115697076, 0.557, 11.336, -1.891, "open; unchanged eager C1"],
+      [2, 16.99261645573364, 18.07240693598259, 6.354, 20.056, -9.891, "open; retained graph win"]
+    ],
+    "correctness": "20/20 exact cells; route and budget expectations pass; no MTP engagement",
+    "route_evidence": {
+      "c1": "native_c1_eager in all measured cells; zero packed graph captures/replays",
+      "c2": "decode_graph_replay in all measured cells; every request captures once and replays all 23 transitions"
+    }
+  },
+  "gates": {
+    "red_green": "D24 packed-C2 admission and model/width policy tests fail before and pass after implementation",
+    "tests": "decode-graph + GGUF sampling + packed-graph + gfx1151 backend files pass",
+    "compileall": "pass",
+    "math_change": false,
+    "full_suite_note": "The preceding broad guard on the same base reached 82% with six failures then HIP-aborted in an unrelated P10 X2 layer test; that node passes isolated. Per focused-repair policy no broad rerun was made for this scoped change."
+  },
+  "verdict": {
+    "retained": true,
+    "c1_regression": false,
+    "c2_parity_closed": false,
+    "next": "Profile graph replay itself and reduce the remaining C2 graph/capture or kernel wall; do not lower thresholds for unlisted keys."
+  }
+}
