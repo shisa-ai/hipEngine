@@ -89,6 +89,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out,
     gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out,
     gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out,
+    gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
@@ -205,6 +206,16 @@ def _qwen4_exp_q4_k_mmq_layer_allowed(weights: Mapping[str, GGUFDeviceWeight]) -
     return _qwen4_exp_layer_allowed(
         weights["expert_gate"],
         env_name="HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS",
+        default="35-47",
+    )
+
+
+def _qwen4_exp_q4_iu8_layer_allowed(weights: Mapping[str, GGUFDeviceWeight]) -> bool:
+    """iu8-WMMA selected-dual prefill layer set (dp4a class, screened suffix)."""
+
+    return _qwen4_exp_layer_allowed(
+        weights["expert_gate"],
+        env_name="HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS",
         default="35-47",
     )
 
@@ -2973,30 +2984,57 @@ def run_qwen4_exp_moe(
                 runtime=active_runtime,
             )
         elif weights["expert_gate"].spec.quant_key == "gguf_q4_k":
-            gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
-                scratch.expert_down.ptr,
-                scratch.group_expert_start.ptr,
-                scratch.group_wmma_expert_start.ptr,
-                scratch.group_tile_expert.ptr,
-                weights["expert_gate"].allocation("raw").tensor.ptr,
-                weights["expert_up"].allocation("raw").tensor.ptr,
-                scratch.group_gate_up.ptr,
-                compact,
-                hidden,
-                ffn,
-                ffn,
-                experts,
-                wmma_total_rows,
-                tile_m=int(
-                    os.environ.get(
-                        "HIPENGINE_QWEN4_EXP_Q4_TILE_M",
-                        "64" if rows >= 512 else "16",
-                    )
-                ),
-                tile_n=int(os.environ.get("HIPENGINE_QWEN4_EXP_Q4_TILE_N", "16")),
-                stream=stream,
-                runtime=active_runtime,
+            q4_iu8 = (
+                os.environ.get("HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL", "0")
+                not in {"", "0", "false", "False"}
+                and rows >= 2
+                and hidden % 256 == 0
+                and ffn % 128 == 0
+                and _qwen4_exp_q4_iu8_layer_allowed(weights)
             )
+            if q4_iu8:
+                gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out(
+                    scratch.expert_down.ptr,
+                    scratch.group_expert_start.ptr,
+                    scratch.group_wmma_expert_start.ptr,
+                    scratch.group_tile_expert.ptr,
+                    weights["expert_gate"].allocation("raw").tensor.ptr,
+                    weights["expert_up"].allocation("raw").tensor.ptr,
+                    scratch.group_gate_up.ptr,
+                    compact,
+                    hidden,
+                    ffn,
+                    ffn,
+                    experts,
+                    wmma_total_rows,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+            else:
+                gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
+                    scratch.expert_down.ptr,
+                    scratch.group_expert_start.ptr,
+                    scratch.group_wmma_expert_start.ptr,
+                    scratch.group_tile_expert.ptr,
+                    weights["expert_gate"].allocation("raw").tensor.ptr,
+                    weights["expert_up"].allocation("raw").tensor.ptr,
+                    scratch.group_gate_up.ptr,
+                    compact,
+                    hidden,
+                    ffn,
+                    ffn,
+                    experts,
+                    wmma_total_rows,
+                    tile_m=int(
+                        os.environ.get(
+                            "HIPENGINE_QWEN4_EXP_Q4_TILE_M",
+                            "64" if rows >= 512 else "16",
+                        )
+                    ),
+                    tile_n=int(os.environ.get("HIPENGINE_QWEN4_EXP_Q4_TILE_N", "16")),
+                    stream=stream,
+                    runtime=active_runtime,
+                )
             silu_mul_dual_out_bf16(
                 scratch.group_gate_up.ptr,
                 scratch.expert_intermediate.ptr,
