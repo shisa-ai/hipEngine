@@ -15,6 +15,7 @@ from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.core.dtype import DType
 from hipengine.core.specdec2_scope import q5_t16_physical_rowtile_enabled
 from hipengine.kernels.registry import KernelKey, register
 
@@ -1620,6 +1621,46 @@ def _check_dense_q4_t16_rowtile_geometry(
         raise ValueError("out_features must be a positive multiple of 16")
 
 
+def launch_physical_rows6_chunked(
+    launch_one,
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> bool:
+    """Run one physical-scope projection as admitted rows6 launches.
+
+    The gfx1100 physical rowtile is qualified at exactly rows6. A verify group
+    padded to a rows6 multiple (12/18/24) splits into consecutive rows6
+    launches over the same tiles so every launch matches the qualified shape
+    bit-for-bit. Returns False when ``rows`` is not a chunkable multiple.
+    """
+
+    total = int(rows)
+    if total < 12 or total % 6:
+        return False
+    element = DType.BF16.itemsize
+    for row_base in range(0, total, 6):
+        launch_one(
+            x_ptr + row_base * int(in_features) * element,
+            tiles_ptr,
+            out_ptr + row_base * int(out_features) * element,
+            6,
+            int(in_features),
+            int(out_features),
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+    return True
+
+
 def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -1634,6 +1675,31 @@ def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
 ) -> None:
     """Launch the one-expert dense Q5T16 producer."""
 
+    if q5_t16_physical_rowtile_enabled() and launch_physical_rows6_chunked(
+        lambda x, tiles, out, row_count, in_f, out_f, **kw: (
+            _check_dense_q5_t16_shape(row_count, in_f, out_f, rowtile=True),
+            _launch_dense_q5_t16(
+                _Q5_DENSE_ROWTILE_BF16,
+                x,
+                tiles,
+                out,
+                row_count,
+                in_f,
+                out_f,
+                **kw,
+            ),
+        ),
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    ):
+        return
     physical_rowtile = q5_t16_physical_rowtile_enabled() and int(rows) == 6
     _check_dense_q5_t16_shape(
         rows,

@@ -52,6 +52,7 @@ from hipengine.speculative.frontier import (
     SpeculativeCapability,
     TargetFrontier,
     pad_candidate_graph_rows,
+    physical_group_pad_rows,
 )
 from hipengine.speculative.buffers import (
     TargetVerifyBufferOwner,
@@ -92,6 +93,9 @@ from hipengine.speculative.transaction import (
 
 _NGRAM_MOD_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD"
 _NGRAM_MOD_N_MATCH_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MATCH"
+# Physical group accept buffers must hold any padded row multiple the
+# backend admits (gfx1100 rows6 multiples up to 24 rows for C4/K3 groups).
+_PHYSICAL_ACCEPT_MAX_ROWS = 24
 _NGRAM_MOD_N_MIN_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MIN"
 _NGRAM_MOD_PROBE_MAX_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_PROBE_MAX"
 
@@ -2041,18 +2045,14 @@ class Qwen35GGUFMTP2Adapter:
             raise
 
     def _target_group_pad_rows(self, *, request_count: int, candidate_rows: int) -> int:
-        """Return inactive pad rows lifting a physical group to an admitted tile."""
+        """Return inactive pad rows lifting a physical group to admitted multiples."""
 
-        counts = self.production_target_pad_row_counts
-        if not counts:
-            return 0
-        physical = int(request_count) + int(candidate_rows)
-        if physical <= 0:
-            return 0
-        for admitted in counts:
-            if admitted > physical:
-                return int(admitted) - physical
-        return 0
+        return physical_group_pad_rows(
+            self.production_target_pad_row_counts,
+            request_count,
+            candidate_rows,
+            _PHYSICAL_ACCEPT_MAX_ROWS,
+        )
 
     def _target_pad_token_tensor(
         self,
@@ -2106,9 +2106,9 @@ class Qwen35GGUFMTP2Adapter:
             workspace = RuntimeWorkspace(device=Device("hip", 0), runtime=runtime)
             spec = TargetVerifyBufferSpec(
                 backend=str(self.generator.backend),
-                bucket="gguf-mtp2-physical-r16-c4",
+                bucket="gguf-mtp2-physical-r24-c4",
                 device=Device("hip", 0),
-                max_rows=16,
+                max_rows=_PHYSICAL_ACCEPT_MAX_ROWS,
                 max_requests=4,
                 mode="verify_chain",
             )
@@ -2118,12 +2118,12 @@ class Qwen35GGUFMTP2Adapter:
                 workspace=workspace,
             )
             self._batch_accept_remaining = workspace.reserve_tensor(
-                "target_verify/gguf-mtp2-physical-r16-c4/remaining_decode",
+                "target_verify/gguf-mtp2-physical-r24-c4/remaining_decode",
                 (4,),
                 DType.INT32,
             )
             self._batch_accept_payload = workspace.reserve_tensor(
-                "target_verify/gguf-mtp2-physical-r16-c4/packed_accept_payload",
+                "target_verify/gguf-mtp2-physical-r24-c4/packed_accept_payload",
                 (4, ACCEPT_PACKED_PAYLOAD_FIELDS),
                 DType.INT32,
             )

@@ -24,6 +24,7 @@ from hipengine.kernels.hip_gfx1100 import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
+    launch_physical_rows6_chunked,
 )
 from hipengine.kernels.registry import KernelKey, register
 from hipengine.core.specdec2_scope import (
@@ -275,6 +276,27 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
     """Select the C1-equivalent rowtile for the admitted physical R6 shapes."""
 
     shape = (int(in_features), int(out_features))
+    rowtile_shapes = (
+        GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES
+        | GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES
+    )
+    if (
+        int(rows) > 6
+        and q4_t16_physical_extra_rowtiles_enabled()
+        and int(rows) % 6 == 0
+        and shape in rowtile_shapes
+        and launch_physical_rows6_chunked(
+            gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
+            x_ptr,
+            tiles_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+    ):
+        return
     if int(rows) not in GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS:
         fn = gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
     elif shape in GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES:

@@ -142,3 +142,26 @@ class TestPadCandidateGraphRows:
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))
+
+
+class TestPhysicalGroupPadRows:
+    def test_pads_to_next_admitted_multiple(self) -> None:
+        from hipengine.speculative.frontier import physical_group_pad_rows
+
+        # counts=(6,), max 24: pad physical rows up to the next multiple of 6.
+        assert physical_group_pad_rows((6,), 2, 2, 24) == 2   # 4 -> 6
+        assert physical_group_pad_rows((6,), 2, 4, 24) == 0   # 6 exact
+        assert physical_group_pad_rows((6,), 2, 6, 24) == 4   # 8 -> 12
+        assert physical_group_pad_rows((6,), 3, 6, 24) == 3   # 9 -> 12
+        assert physical_group_pad_rows((6,), 4, 8, 24) == 0   # 12 exact
+        assert physical_group_pad_rows((6,), 5, 10, 24) == 3  # 15 -> 18
+        assert physical_group_pad_rows((6,), 4, 12, 24) == 2  # 16 -> 18
+        assert physical_group_pad_rows((6,), 4, 14, 24) == 0  # 18 exact
+
+    def test_no_pad_when_multiple_exceeds_capacity(self) -> None:
+        from hipengine.speculative.frontier import physical_group_pad_rows
+
+        # 20 rows -> next multiple 24 exceeds a 22-row cap: no pad.
+        assert physical_group_pad_rows((6,), 7, 15, 22) == 0
+        # Empty admitted counts disable padding entirely.
+        assert physical_group_pad_rows((), 2, 2, 24) == 0
