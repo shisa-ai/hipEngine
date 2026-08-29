@@ -715,7 +715,7 @@ def test_q4_t16_dense_small_row_pair_silu_uses_canonical_tiles() -> None:
     assert calls[0][:4] == (0x3000, 0x1000, 0x2000, 0x4000)
 
 
-@pytest.mark.parametrize("rows", [12, 45, 48, 128, 256, 511, 512])
+@pytest.mark.parametrize("rows", [33, 45, 48, 128, 256, 511, 512])
 def test_q4_t16_dense_bulk_pair_silu_uses_canonical_tiles(rows: int) -> None:
     weight_a = _weight(0x1000, in_features=5_120, out_features=17_408)
     weight_b = _weight(0x2000, in_features=5_120, out_features=17_408)
@@ -751,12 +751,12 @@ def test_q4_t16_dense_bulk_pair_silu_uses_canonical_tiles(rows: int) -> None:
     assert calls[0][:4] == (0x3000, 0x1000, 0x2000, 0x4000)
 
 
-@pytest.mark.parametrize("rows", [2, 5, 8, 11])
-def test_q4_t16_dense_bulk_pair_silu_keeps_unfused_fallback_below_12(
+@pytest.mark.parametrize("rows", [2, 5, 8, 11, 16, 32])
+def test_q4_t16_dense_bulk_pair_silu_keeps_unfused_fallback_below_33(
     rows: int,
 ) -> None:
-    # rows<=8 keep their dedicated small-B rowtile/GEMV owners; 11 is the last
-    # row count under the fused floor.
+    # rows<=8 keep their dedicated small-B rowtile/GEMV owners, and rows 16/32
+    # are the captured target-verify group widths, which measured slower fused.
     weight_a = _weight(0x1000, in_features=5_120, out_features=17_408)
     weight_b = _weight(0x2000, in_features=5_120, out_features=17_408)
 
