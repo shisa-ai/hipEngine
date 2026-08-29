@@ -318,6 +318,13 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   [`proposal correction`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-wide-proposal-policy-rejected.json),
   [`C2 streaming`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-prompt-streaming-retained.json),
   [`C2 blocker`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-post-streaming-blocker.json)).
+  C4 attribution then measures target/accept/commit/provider at **3.533/4.861 s
+  (72.68%)**, 97.78% kernel-bound; Q6/Q4 dominate at **1.847/1.059 s** and R16
+  misses exact rowtile chunking. Across C5-C8, target enqueue plus its following
+  synchronization/commit/readback owner consumes 57.5-69.5% of wall. Exact Q6
+  R16 screening is admitted; C5-C8 remain blocked on R20-R32 operation-complete
+  target work pending that result
+  ([`wide blockers`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-c8-target-blockers.json)).
 - [ ] P4.3 Reopen T3 adaptive-K and the B4 clamp once verifier rowtile work
   lands (per the CONCURRENCY2 supersession note); require full-suite
   acceptance/speed validation per anti-gaming.

@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8 C4-C8 target blockers] C4 target/accept/commit/provider is **3.533/4.861 s (72.68%)** and 97.78% kernel-bound; Q6/Q4 consume **1.847/1.059 s**, with R16 missing exact rowtile chunking. Deduplicated wide telemetry assigns 57.5-69.5% of C5-C8 wall to target enqueue plus synchronization/commit/readback. Exact Q6 R16 screening is admitted; wider R20-R32 waits on that result. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-c8-target-blockers.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8 C2 post-streaming blocker] C2 remains 20.48% below the frozen target after activation closure. Cached attribution assigns **1.205/1.996 s (60.38%)** to target/accept/commit/provider with 95.38% kernel reconciliation; Q4/Q6/Q5 consume **740/246/64 ms**. Qualified R8 shapes are already one-sweep; narrow-Q4 shared-B is numerically unqualified and insufficient alone. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-post-streaming-blocker.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8 C2 prompt streaming retained] Extend exact post-output-norm prompt streaming to standard-`Q4_K_M` physical C2: clean K3 improves **21.581→25.749 tok/s (+19.31%)** to **1.4316x AR**, exact 314/398 acceptance and every category positive. C4 is rejected: +5.68% speed but acceptance changes 628/796→624/800 and every category remains below AR. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-prompt-streaming-retained.json`.
