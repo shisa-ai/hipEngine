@@ -48,6 +48,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_bf16_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
@@ -138,6 +141,59 @@ def gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
         fn = gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
     else:
         fn = gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
+    return fn(
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
+def gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    **kwargs,
+):
+    """Select measured low-VGPR Q5 owners on physical low-M shapes.
+
+    Rows 17-32 take the 32-row/16-column owner on all six shapes. For rows
+    33-48, the 32-row owner wins on (17408,5120), the 48-row owner wins on
+    four shapes, and (5120,17408) retains the plain 32-column owner. Shape
+    and row misses also retain plain. This selector is registered only for
+    the dense linear prefill key; compact MoE and verifier aliases keep their
+    independently qualified owners.
+    """
+
+    row_count = int(rows)
+    shape = (int(in_features), int(out_features))
+    if (
+        17 <= row_count <= GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR48_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
+    else:
+        fn = gguf_q5_k_t16_wmma_prefill_bf16_bf16_out
     return fn(
         x_ptr,
         tiles_ptr,
@@ -1176,6 +1232,23 @@ GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES = frozenset(
         (5_120, 10_240),
         (5_120, 12_288),
         (5_120, 17_408),
+    }
+)
+# Measured 2026-08-29 Q5 dense prefill bands (parity campaign P2.3).
+# The 96/112-VGPR 16-column owners preserve the plain owner's per-tile K16
+# WMMA/BF16 order. Rows 17-32 use the 32-row owner on every physical shape.
+# At rows 33-48, the 32-row owner wins 17408->5120, the 48-row owner wins
+# four shapes, and 5120->17408 retains plain; misses remain fail-closed.
+GGUF_Q5_T16_DENSE_LOWM_SHAPES = GGUF_Q4_T16_DENSE_LOWM_SHAPES
+GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS = 32
+GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS = 48
+GGUF_Q5_T16_DENSE_LOWVGPR_SHAPES = frozenset({(17_408, 5_120)})
+GGUF_Q5_T16_DENSE_LOWVGPR48_SHAPES = frozenset(
+    {
+        (5_120, 6_144),
+        (5_120, 10_240),
+        (5_120, 12_288),
+        (6_144, 5_120),
     }
 )
 # Exact standard-Q4 two-wave/16-column output ownership. The shape map is the
@@ -2333,6 +2406,11 @@ _GFX1151_OVERRIDES = {
         "gguf_q4_k_t16_v1",
         "t16_wmma_prefill_bf16_bf16_out",
     ): gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out,
+    (
+        "linear",
+        "gguf_q5_k_t16_v1",
+        "t16_wmma_prefill_bf16_bf16_out",
+    ): gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out,
     (
         "linear",
         "gguf_q6_k_t16_v1",
