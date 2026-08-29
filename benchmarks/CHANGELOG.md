@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-30 gfx1151 Qwen3.8-Flash-Next parity campaign final] Rollup + audit: p508 **8.273→5.97 s (61.4→~85 tok/s)** vs llama HIP ~295; **tg32 16.2 vs 17.0 (1.05×)**. Module verdicts: MoE gate/up matched, down beaten, GDN prefill+decode matched, QSA partial (3.2×/launch kernel), elementwise ours. 22 commits; open lanes recorded. `benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-parity-campaign-final.json`.
+
 - [2026-08-30 gfx1151 Qwen3.8-Flash-Next GDN colwarps decode all-layers] The column-warp GDN kernel serves decode rows on all 36 GDN layers (prefill stays 27-47): matched A/B decode **10.97→15.77 tok/s (+43.7%)**; packet ADMITTED (446/450, mean 2.87e-4). Binder decode layers 0-47. `benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps-decode-all.json`.
 
 - [2026-08-30 gfx1151 Qwen3.8-Flash-Next QSA flash key-parallel iteration] Lane-owns-key serial-dim QK (no per-key shuffles) takes the flash kernel **7.85→3.72 ms/layer** (3.2x over the spans owner); recertified at 35-47 (packet 446/450, mean 2.87e-4); clean paired p508 **-0.86%**. Binder 35-47. `benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-qsa-flash31-production.json` (key_parallel_iteration).

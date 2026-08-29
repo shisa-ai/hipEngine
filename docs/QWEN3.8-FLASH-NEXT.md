@@ -37,8 +37,8 @@ the exact-bit profile; production is the certified T2 profile with manifest
 
 | Row | Strict | Production / certified opt-ins | Beat first: llama.cpp HIP, same host + GGUF | Stretch: llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| p508 prefill | 61.40 (chunk 512) | **~100–108** +GDN-colwarps27 (paired −17.1%) | **294.1–298.6** master HIP | 332.1–333.8 master Vulkan |
-| p1012 prefill | 60.20 (chunk 512) | **~92–95** +GDN-colwarps27 (paired −15.7%) | **307.2–318.9** master HIP | 308.4–310.5 master Vulkan |
+| p508 prefill | 61.40 (chunk 512) | **~85** measured (parity campaign final) | **294.1–298.6** master HIP | 332.1–333.8 master Vulkan |
+| p1012 prefill | 60.20 (chunk 512) | **~79–95** (mixed-session) | **307.2–318.9** master HIP | 308.4–310.5 master Vulkan |
 | tg32 decode | 13.880 | **15.543** (98.1% of HIP) | **15.848** | 18.716 |
 | Natural 16K prefill | 47.989 (chunk 512, gate passed) | — | ≥100 tok/s unlocks the 64K rung | — |
 | MTP vs true AR | 0.955x aggregate (opt-in; 10/10 exact, 84.28% acceptance) | — | ≥1.0x to promote; ≥1.5x real target | external MTP fork ~2.7x |
