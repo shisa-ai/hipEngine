@@ -3716,6 +3716,10 @@ class Qwen35GGUFMTP2Adapter:
             self._batch_accept_remaining = None
             self._batch_accept_payload = None
             self._batch_accept_library = None
+        if self._target_pad_token_scratch is not None:
+            free(self._target_pad_token_scratch)
+            self._target_pad_token_scratch = None
+            self._target_pad_token_capacity = 0
 
     def _open_batch_requests(self, request_ids: tuple[int, ...]) -> None:
         rows = [self.owner._row(request_id) for request_id in request_ids]
