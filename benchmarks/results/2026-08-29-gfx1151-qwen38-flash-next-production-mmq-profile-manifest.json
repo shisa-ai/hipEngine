@@ -228,7 +228,7 @@
     ]
   },
   "public_profile_smoke": {
-    "command": "uv run python /tmp/qwen4exp_profile_manifest_smoke.py",
+    "command": "uv run python /tmp/qwen4exp_gdn_peer_profile_manifest_smoke.py",
     "production": {
       "manifest_sha256": "6ec035b7c08e747ba24bfede677352493f2291d10730905c616ed0fe6706d35c",
       "strict_manifest_sha256": "9e648eb89a6b893c8e88e95e5066ff3af40dc8913c6ea5a267198d9bce0d8fb4",

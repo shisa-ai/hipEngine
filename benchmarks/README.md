@@ -202,49 +202,22 @@ with the full gate passing (prior chunk-256 steady rows were p508 58.466 and
 p1006 55.046 tok/s). A
 same-host/same-GGUF PR #27742 reference measures Vulkan/HIP pp508
 **316.380/274.996 tok/s**, pp1006 **290.450/284.485**, and tg32
-**18.716/15.848** versus then-current hipEngine **58.466/55.046/5.890**. Exact
-per-layer MoE graphs improve eager decode **6.511→11.515 tok/s (1.769x)**; the
-exact Q5_1 logical256/physical128 owner reaches **12.140 tok/s** (+6.27%) and
-exact Q4_K logical128/physical64 reaches **13.167 tok/s** (+8.84%); Q5_1's
-second exact contraction to physical64 reaches **13.302 tok/s** (+1.69%); exact
-Q5 down+weighted fusion reaches **13.523 tok/s** (+1.06%), with primitive bits,
-full logits, and IDs exact—1.17x behind llama.cpp HIP. Explicit production
-calibrated Q4-DP4A decode layers reach **15.543 tok/s**, 1.020x behind llama.cpp HIP.
-Matched HIP pp508 is **1.798 s kernels / 5,543 launches** versus hipEngine
-**8.753 s / 4,933**, making MMQ/cooperative dataflow the remaining target.
-Exact PLE/Conv/QSA cuts p512 launches **29,341→4,933**. Explicit production
-(MoE/Q8 prefill plus calibrated Q4-DP4A decode on 43 static layers) passes 450
-rows/three repeats at KL mean/p95/p99/max
-`2.72e-4/1.40e-3/4.00e-3/5.77e-3`, 99.333% top-1, and reaches p508/p1012
-**73.361/71.834 tok/s** plus tg32 **15.543 tok/s**; layers `1,3,4,7,12` and
-omitted profile stay exact strict. The certified guarded Q8-MMQ dense-prefill
-opt-in (`HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL=1`, orthogonal to and stackable
-with the MoE/WMMA production layers) passes the complete packet at KL
-mean/p95/p99/max `1.01e-4/1.04e-4/2.23e-3/1.05e-2` with **450/450 top-1**,
-three categories bit-exact, 18/18 strict-exact free generation, exact c2,
-zero teardown, and improves strict p508/p1012 **8.270→7.393 s (-10.61%,
-68.71 tok/s)** / **16.751→15.167 s (-9.45%, 66.72 tok/s)**. The certified
-Q5_1-MMQ down suffix (`HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL=1`, layers 32-47;
-7.6x over the strict grouped owner at the real shape) stacks on top: complete
-packet at KL mean/p95/p99/max `1.40e-4/4.67e-4/2.22e-3/1.12e-2`, **450/450
-top-1**, 18/18 strict-exact free generation, exact c2, and a further
-**-0.55 s at p508** in interleaved same-conditions runs (p1012 68.83 tok/s).
-The certified raw Q4_K dual gate/up MMQ suffix (layers 35-47) adds a 3.14x
-real-shape kernel win and passes at `1.52e-4/5.57e-4/2.14e-3/1.24e-2`,
-**450/450 top-1**, exact free generation/c2, improving the Q8+Q5 stack by
-**7.0621→6.6974 s (-5.16%, 75.85 tok/s)** at p508 and
-**14.3059→13.5897 s (-5.01%, 74.47 tok/s)** at p1012. Replacing the legacy
-cooperative prefill with all three MMQ routes and stacking calibrated DP4A
-safe-43 decode passes at `3.23e-4/1.70e-3/4.79e-3/1.24e-2`, **448/450
-top-1**, exact state/repeat/c2, and improves same-session strict p508/p1012
-**8.383→6.754 s (-19.43%, 75.21 tok/s)** /
-**17.040→13.702 s (-19.58%, 73.86 tok/s)**. This stack is the named gfx1151
-`production` profile. Certified compact peer-GDN on global layers 35–47 then
-improves that profile p508/p1012 **6.689→6.500 s (-2.84%, 78.16 tok/s)** /
-**13.649→13.188 s (-3.38%, 76.74 tok/s)** while passing the complete stack at
-`3.16e-4/1.61e-3/4.25e-3/9.92e-3`, **448/450 top-1**, exact state/repeat/c2.
-The final production/strict hashes are `6ec035b7…` / `9e648eb8…`; strict binds
-all production routes off even if resources were allocated earlier.
+**18.716/15.848** versus then-current hipEngine **58.466/55.046/5.890**. Exact per-layer MoE graphs and strict contraction/fusion raise exact decode to
+**13.523 tok/s**; calibrated DP4A safe-43 reaches **15.543 tok/s**, 98.1% of
+the same-host llama.cpp HIP row. The final named gfx1151 `production` profile
+selects guarded dense-Q8 MMQ, Q5_1 down MMQ layers 32–47, Q4_K dual MMQ
+layers 35–47, compact peer-GDN layers 35–47, and DP4A safe-43; omitted routes
+stay strict. Direct same-session strict→production p508/p1012 is
+**8.273→6.487 s (-21.59%, 78.31 tok/s)** /
+**16.810→13.178 s (-21.61%, 76.79 tok/s)**. The complete 450-row/three-repeat
+stack passes KL mean/p95/p99/max `3.16e-4/1.61e-3/4.25e-3/9.92e-3`,
+**448/450 top-1**, all scopes, exact state/repeat/c2, and 18/18 deterministic
+free generation (16/18 strict-exact; two task-valid alternatives). Final
+production/strict manifests are `6ec035b7…` / `9e648eb8…`. Cached p508 kernel
+wall is **6.548 s / 3,684 launches**, down 25.2% from the pre-campaign
+8.753 s / 4,933; same-host llama.cpp HIP remains 1.798 s / 5,543. The largest
+localized remainder is 27 exact GDN layers at 723.91 ms; broader peer-GDN
+admission is numerically rejected.
 Current natural 16K improves **946.999→341.177 s (-63.96%, 47.989 tok/s; chunk-512 gate**
 re-passed with retrieval/oracle/transactional/teardown exact) with every
 binding control exact; 64K historical evidence is retained but not rerun because
@@ -252,7 +225,7 @@ binding control exact; 64K historical evidence is retained but not rerun because
 prompts but remains opt-in at **0.955x AR**. <=1K image/video/PNG chat and
 request-owned c2 blocking/SSE pass with zero teardown; packed c-aware speed,
 remote media, multimodal SSE, and 128K+/262K inference are not claimed.
-Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json) · [`chunk512`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-chunk512.json) · [`Q8 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q8-mmq-prefill-production.json) · [`Q5_1 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q5-1-mmq-suffix32-production.json) · [`Q4_K MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q4-k-mmq-suffix35-production.json) · [`MMQ+DP4A stack`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json) · [`profile manifest`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-profile-manifest.json) · [`peer GDN`](results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json).
+Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json) · [`chunk512`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-chunk512.json) · [`Q8 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q8-mmq-prefill-production.json) · [`Q5_1 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q5-1-mmq-suffix32-production.json) · [`Q4_K MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q4-k-mmq-suffix35-production.json) · [`MMQ+DP4A stack`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json) · [`profile manifest`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-profile-manifest.json) · [`peer GDN`](results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json) · [`final campaign`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-mmq-campaign-final.json).
 
 ## Current Qwen3.6-35B quantization quality
 

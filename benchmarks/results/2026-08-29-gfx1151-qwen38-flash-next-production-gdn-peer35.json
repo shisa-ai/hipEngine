@@ -439,5 +439,150 @@
     },
     "compiler_spawned_under_profiler": false,
     "analysis": "exact fused family 992.158 ms/36; peer35 leaves 723.911 ms/27 exact and replaces nine with 26.766 ms, reducing traced GDN family by 241.48 ms. Remaining 27 numerically hot exact layers are the next algorithmic target; llama.cpp matched GDN family is 85 ms."
+  },
+  "final_direct_strict_comparison": {
+    "command": "uv run python /tmp/qwen4exp_production_final_peer35_paired.py",
+    "protocol": "one residency per length; exact/candidate/exact/candidate repeated four times; median of four per mode",
+    "p508": {
+      "length": 508,
+      "rows": [
+        {
+          "mode": "baseline",
+          "seconds": 9.18433135500527,
+          "tok_s": 55.311593230262815,
+          "top1": 248068,
+          "sha": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.452966085984372,
+          "tok_s": 78.72348827361098,
+          "top1": 248068,
+          "sha": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 8.237077377998503,
+          "tok_s": 61.672359829577935,
+          "top1": 248068,
+          "sha": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.4866911270073615,
+          "tok_s": 78.31419595191456,
+          "top1": 248068,
+          "sha": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 8.267020924016833,
+          "tok_s": 61.44897958636951,
+          "top1": 248068,
+          "sha": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.487396154989256,
+          "tok_s": 78.30568503348033,
+          "top1": 248068,
+          "sha": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 8.279787726001814,
+          "tok_s": 61.354229940542886,
+          "top1": 248068,
+          "sha": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.493436816002941,
+          "tok_s": 78.23283946461827,
+          "top1": 248068,
+          "sha": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c"
+        }
+      ],
+      "median_seconds": {
+        "baseline": 8.273404325009324,
+        "candidate": 6.4870436409983085
+      },
+      "median_tok_s": {
+        "baseline": 61.40156821109157,
+        "candidate": 78.30994026145052
+      },
+      "delta_percent": -21.591603816715466
+    },
+    "p1012": {
+      "length": 1012,
+      "rows": [
+        {
+          "mode": "baseline",
+          "seconds": 18.40491413298878,
+          "tok_s": 54.98531493749822,
+          "top1": 248068,
+          "sha": "97e81f05e8ae3ea9346f29660579445827861e3d02752c31834dbb7348b1fe39"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 13.168190240015974,
+          "tok_s": 76.85186662360768,
+          "top1": 248068,
+          "sha": "c986e93e58fddb5cac6d3eed982276ce6b9333c1be8b7c0d3eb29acc3fba3cdd"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 16.749185203021625,
+          "tok_s": 60.42084959556306,
+          "top1": 248068,
+          "sha": "97e81f05e8ae3ea9346f29660579445827861e3d02752c31834dbb7348b1fe39"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 13.133578326000134,
+          "tok_s": 77.05440017033098,
+          "top1": 248068,
+          "sha": "c986e93e58fddb5cac6d3eed982276ce6b9333c1be8b7c0d3eb29acc3fba3cdd"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 16.803535404003924,
+          "tok_s": 60.22542135739256,
+          "top1": 248068,
+          "sha": "97e81f05e8ae3ea9346f29660579445827861e3d02752c31834dbb7348b1fe39"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 13.1882500500069,
+          "tok_s": 76.73497212766833,
+          "top1": 248068,
+          "sha": "c986e93e58fddb5cac6d3eed982276ce6b9333c1be8b7c0d3eb29acc3fba3cdd"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 16.816909702989506,
+          "tok_s": 60.177524757720434,
+          "top1": 248068,
+          "sha": "97e81f05e8ae3ea9346f29660579445827861e3d02752c31834dbb7348b1fe39"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 13.190082294022432,
+          "tok_s": 76.72431281635178,
+          "top1": 248068,
+          "sha": "c986e93e58fddb5cac6d3eed982276ce6b9333c1be8b7c0d3eb29acc3fba3cdd"
+        }
+      ],
+      "median_seconds": {
+        "baseline": 16.810222553496715,
+        "candidate": 13.178220145011437
+      },
+      "median_tok_s": {
+        "baseline": 60.20146353086162,
+        "candidate": 76.7933748916077
+      },
+      "delta_percent": -21.605915072967196
+    },
+    "decode_tg32_tok_s": 15.54293254198248
   }
 }
