@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": ["P2.1 (second retained unit: arrival-aware solo batch dispatch)"],
+  "title": "Solo generation dispatch without the full batch window retained",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "tuned_profile": "accelerator-performance"
+  },
+  "change": {
+    "file": "hipengine/server/api.py",
+    "summary": "_GenerationBatcher._run pays the generation batch window only when it can help: a solo queued submission on an idle engine dispatches after one 2 ms slice; two or more queued submissions or a busy engine still honor the full window, so concurrent-arrival batching is unchanged."
+  },
+  "control_measurement": {
+    "note": "Before the change, the frozen protocol's 50 ms window was paid in full by every solo request; a --batch-window-ms 0 control isolated the cost.",
+    "command": "frozen prefill arm, widths 1,2, batch-window 0 vs 50 (post low-M owner band)",
+    "c1_window50_s": 5.308,
+    "c1_window0_s": 4.835,
+    "c2_window50_s": 9.883,
+    "c2_window0_s": 9.638
+  },
+  "measurements": {
+    "server_prefill_frozen_protocol": {
+      "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2,4 --max-tokens 1 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths '' --correctness-contract ar_exact",
+      "c1": {"frozen_tok_s": 71.545, "post_lowm_tok_s": 84.59, "after_tok_s": 93.26, "cumulative_delta_pct": 30.4},
+      "c2": {"frozen_tok_s": 74.873, "post_lowm_tok_s": 90.86, "after_tok_s": 88.35, "cumulative_delta_pct": 18.0},
+      "c4": {"frozen_tok_s": 124.354, "after_tok_s": 137.84, "cumulative_delta_pct": 10.8},
+      "correctness": "every cell ar_self_exact / mtp_self_exact / ar_mtp_equal passed"
+    }
+  },
+  "gates": {
+    "red": "tests/test_server_api.py::test_generation_batcher_dispatches_solo_submission_before_full_window failed at 0.101 s elapsed before the change, passes after (dispatch slice 2 ms)",
+    "batcher_tests": "tests/test_server_api.py -k generation_batcher: 30/30 (coalescing behavior unchanged)",
+    "full_suite": "only the 3 pre-existing test_specdec2_perf_bridge ordering flakes; compileall, check_fixtures, smoke registry, smoke cpu-fixtures OK"
+  },
+  "parity_context": {
+    "frozen_c1_winner": {"engine": "Nathan", "tok_s": 138.95},
+    "hipengine_c1_now_tok_s": 93.26,
+    "remaining_gap_pct": 49.0,
+    "remaining_walls": [
+      "deep bandwidth work (T16 wmma owners at 25-60 GB/s effective vs 256 peak)",
+      "Q5/Q6 T16 prefill families ~146 ms/pass",
+      "residual C1 host/route overhead ~65 ms (scheduler tick, reclaim/events, one-token decode, API boundary)"
+    ]
+  }
+}

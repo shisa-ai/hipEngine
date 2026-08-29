@@ -126,6 +126,13 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   lift the small-M T16 wmma prefill family (360.6 ms at M=45; target
   `<= ~130 ms` via N-split/split-K workgroup partitioning or low-M tile
   variants) under the strict/production gates.
+  - Progress 2026-08-29 (second retained unit): arrival-aware solo batch
+    dispatch (2 ms slice idle-solo; full window for ≥2 queued or busy) —
+    cumulative server prefill C1 71.55→93.26 (+30.4%), C4 124.35→137.84
+    (+10.8%), exact outputs
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-solo-dispatch-window-retained.json)).
+    Remaining in this item: residual ~65 ms C1 host/route overhead and the
+    packed-vs-bulk owner gap at C2-C8 slab shapes.
 - [ ] P2.2 C2-C8 prefill parity at the frozen protocol; each cell closes at
   its frozen winner (194.07/180.09/192.54/217.39/243.52/245.61/296.82) or a
   measured named blocker. Slab rows scale with width, so the small-M fix
@@ -140,9 +147,10 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     71.55→84.59 (+18.2%), C2 74.87→90.86 (+21.4%), isolated 45-token
     -18.9%, bit-exact, RED-first, 76/76 family tests
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-lowm-dense-q4t16-prefill-retained.json)).
-    Remaining in this item: Q5/Q6 families (146.5 ms/pass), deep bandwidth
-    (owners at 25-60 GB/s effective vs 256 peak), then re-freeze the C1-C8
-    prefill row.
+    Q6/Q6-planar already route to plain owners below 512 rows (no band win);
+    their cost is deep-bandwidth kernel work. Remaining in this item: Q5/Q6
+    families (146.5 ms/pass), deep bandwidth (owners at 25-60 GB/s effective
+    vs 256 peak), then re-freeze the C1-C8 prefill row.
 
 ### P3 — AR decode C1/C2/C8 (defend the C3-C7 lead)
 
