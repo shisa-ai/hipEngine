@@ -21658,17 +21658,32 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
                 runtime=runtime,
             )
-            launch_gguf_linear(
-                self.runner.weights.root("lm_head"),
+            proposal_rowtile = self._proposal_lm_head_rowtile(
                 int(output_hidden_ptr),
                 int(logits_ptr),
-                rows=rows,
-                in_features=self.runner.hidden_size,
-                out_features=self.runner.vocab_size,
-                output_dtype=GGUF_OUTPUT_F32,
+                rows,
                 stream=stream,
                 runtime=runtime,
             )
+            if not proposal_rowtile:
+                launch_gguf_linear(
+                    self.runner.weights.root("lm_head"),
+                    int(output_hidden_ptr),
+                    int(logits_ptr),
+                    rows=rows,
+                    in_features=self.runner.hidden_size,
+                    out_features=self.runner.vocab_size,
+                    output_dtype=GGUF_OUTPUT_F32,
+                    stream=stream,
+                    runtime=runtime,
+                )
+            self.last_specdec2_proposal_lm_head_path = (
+                "q6_rowtile_f32_logits"
+                if proposal_rowtile
+                else "row_linear_f32_logits"
+            )
+        else:
+            self.last_specdec2_proposal_lm_head_path = "state_only"
         self._scatter_packed_decode_state(
             session_tuple,
             layout,
@@ -25599,6 +25614,41 @@ class Qwen35GGUFResidentSession:
         self._verify_lm_out_values = malloc(rows * DType.FP32.itemsize, runtime=runtime)
         self._verify_lm_q8_1 = malloc(_q8_1_workspace_bytes(rows, self.runner.hidden_size), runtime=runtime)
         self._verify_lm_rows_capacity = rows
+
+    def _proposal_lm_head_rowtile(
+        self,
+        hidden_ptr: int,
+        out_ptr: int,
+        rows: int,
+        *,
+        stream: int = 0,
+        runtime=None,
+    ) -> bool:
+        """Run the package-qualified exact physical proposal-head rowtile."""
+
+        if self.runner is None or self.runner.weights is None:
+            return False
+        policies = backend_package_capability(
+            self.runner.backend,
+            "GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES",
+            frozenset(),
+        )
+        if not isinstance(policies, (set, frozenset, tuple, list)):
+            raise RuntimeError("proposal lm-head rowtile policies must be a collection")
+        policy_key = (
+            int(self.runner.hidden_size),
+            int(self.runner.vocab_size),
+            int(rows),
+        )
+        if policy_key not in policies:
+            return False
+        return self._verify_lm_head_rowtile(
+            int(hidden_ptr),
+            int(out_ptr),
+            int(rows),
+            stream=int(stream),
+            runtime=runtime,
+        )
 
     def _verify_lm_head_rowtile(
         self, hidden_ptr: int, out_ptr: int, rows: int, *, stream: int = 0, runtime=None

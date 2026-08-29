@@ -118,6 +118,22 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
     ) == {
         (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (3,),
     }
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES",
+        frozenset(),
+    ) == frozenset(
+        {
+            (5120, 248320, 2),
+            (5120, 248320, 3),
+            (5120, 248320, 4),
+        }
+    )
+    assert backend_package_capability(
+        "hip_gfx1100",
+        "GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES",
+        frozenset(),
+    ) == frozenset()
 
 
 def test_qwen38_production_prompt_streaming_policy_admits_only_physical_c3() -> None:
