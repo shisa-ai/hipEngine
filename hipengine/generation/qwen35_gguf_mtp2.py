@@ -386,6 +386,9 @@ class Qwen35GGUFMTP2Adapter:
             "HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE",
             "0",
         ).strip().lower() in {"1", "true", "yes", "on"}
+        self.post_reject_cooldown_enabled = _env_enabled(
+            "HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN"
+        )
         if self.candidate_budget not in {1, 2, 3}:
             raise ValueError("MTP2 candidate budget must be 1, 2, or 3")
         self._intents: dict[int, int] = {}
@@ -1106,6 +1109,28 @@ class Qwen35GGUFMTP2Adapter:
                 for request_id in plan.speculative_request_ids
             )
         )
+
+    def post_reject_cooldown(self, request_ids: Sequence[int]) -> tuple[bool, ...]:
+        """Report whether each request's last committed physical cycle rejected."""
+
+        if not self.post_reject_cooldown_enabled:
+            return tuple(False for _ in request_ids)
+        flags: list[bool] = []
+        for request_id in request_ids:
+            row = self.owner._row(int(request_id))
+            candidate_counts = tuple(
+                int(count) for count in getattr(row, "mtp2_candidate_counts", ())
+            )
+            accepted_counts = tuple(
+                int(count) for count in getattr(row, "mtp2_accepted_counts", ())
+            )
+            flags.append(
+                bool(candidate_counts)
+                and candidate_counts[-1] > 0
+                and bool(accepted_counts)
+                and accepted_counts[-1] == 0
+            )
+        return tuple(flags)
 
     def prepare_k0(
         self,

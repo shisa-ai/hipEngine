@@ -4565,3 +4565,16 @@ should be boring.
   D64 gate plus focused strict schedule/commit and state-owner regressions.
   Remove the old simultaneous `run()` in the next cleanup unit; keep only the
   sequential evaluator.
+
+## SPECDEC2 post-reject cooldown experiment (2026-08-29)
+
+- `HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN` (default off) forces a
+  K0-transitional cycle after any request whose last physical cycle accepted
+  zero candidates, routing the provider repair through the target-hidden
+  catchup instead of immediate re-speculation. Wiring:
+  `plan_speculative_requests(suppress_speculation=...)`, engine-loop probe,
+  runner hook `speculative_post_reject_cooldown`, adapter telemetry read.
+- **Ready:** remove the flag, hook, and planner parameter once the C2/K2
+  discriminator settles policy-vs-corruption for the post-reject code
+  acceptance collapse; either promote the cooldown as measured default-off
+  policy with its own gate or delete it if rejected.

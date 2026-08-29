@@ -9,6 +9,7 @@ from hipengine.speculative.policy import (
 from hipengine.speculative import (
     ProviderAttachment,
     ProviderCatchupMode,
+    SpecK0Class,
     SpecPlanReason,
     SpecTransactionMode,
     SpeculativeCapability,
@@ -241,3 +242,26 @@ def test_policy_rejects_misaligned_or_negative_desired_depth() -> None:
             cycle_id=1,
             context_bucket_size=256,
         )
+
+
+def test_suppressed_request_plans_k0_transitional_for_catchup_repair() -> None:
+    semantics = (_semantics(1), _semantics(2))
+    plan = _plan(
+        _capability(),
+        semantics,
+        (2, 2),
+        suppress_speculation=(True, False),
+    )
+    assert plan.candidate_counts == (0, 2)
+    assert plan.reasons[0] is SpecPlanReason.POLICY_SELECTED_AR
+    assert plan.reasons[1] is SpecPlanReason.SPECULATIVE_QUALIFIED
+    # desired stayed positive for the suppressed request, so its K0 class is
+    # TRANSITIONAL: prepare_k0 must run the target-hidden catchup advance.
+    assert plan.k0_classes[0] is SpecK0Class.TRANSITIONAL
+    assert plan.k0_classes[1] is SpecK0Class.NOT_K0
+
+
+def test_suppress_speculation_must_align_with_semantics() -> None:
+    semantics = (_semantics(1), _semantics(2))
+    with pytest.raises(ValueError, match="suppress_speculation"):
+        _plan(_capability(), semantics, (2, 2), suppress_speculation=(True,))
