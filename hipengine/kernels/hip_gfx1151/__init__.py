@@ -1579,8 +1579,8 @@ GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT = {
 # listed. C3/K1 R6 already fits the exact native Q5/Q6 rowtile scope.
 GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT = {
     "gguf_q5_k_t16_v1": frozenset({9, 12}),
-    "gguf_q6_k_t16_v1": frozenset({9, 12, 16}),
-    "gguf_q6_k_t16_qmicro_planar_v1": frozenset({9, 12, 16}),
+    "gguf_q6_k_t16_v1": frozenset({9, 12, 16, 20, 24, 28, 32}),
+    "gguf_q6_k_t16_qmicro_planar_v1": frozenset({9, 12, 16, 20, 24, 28, 32}),
 }
 # E2 standard-Q6 true-R12: exact one-sweep col8 wins its actual K5120/N10240
 # target shape. Planar K5120/N1024 and K17408/N5120 lose their all-shape leaf
