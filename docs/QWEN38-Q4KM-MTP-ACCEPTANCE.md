@@ -634,8 +634,11 @@ These are ordered follow-ons, not assumptions in the primary claim:
 1. **C4:** post-E2 K3 is **20.384 vs 30.425 tok/s AR**, 24.54% below the
    frozen 27.015 external target. Standard-Q4 streaming screens at 21.542 tok/s
    (+5.68%) but changes acceptance 628/796→624/800 and leaves every category
-   below AR, so it is rejected. E1b applies, but R12 owners do not transfer to
-   logical R16; topology, isolation, SLO, and policy evidence do not transfer.
+   below AR, so it is rejected. The replay trace assigns **3.533/4.861 s
+   (72.68%)** to target/accept/commit/provider and reconciles 97.78% to kernels;
+   Q6/Q4 are **1.847/1.059 s**. R16 misses exact rowtile chunking, admitting an
+   independent exact-Q6 R16 screen; topology, isolation, SLO, and policy
+   evidence do not transfer.
 2. **Context 68-128:** run the predeclared padded full category/heldout packet,
    production numerics, state/isolation, and same-protocol economics before
    extending the first C3 key. C2's context128 evidence does not transfer.
@@ -652,8 +655,9 @@ These are ordered follow-ons, not assumptions in the primary claim:
    42-64% below external targets. Proposal telemetry is rows4+remainder
    (C5 4+1, C6 4+2, C7 4+3, C8 4+4), so E1b already covers every
    non-singleton proposal subgroup. A rows5-8 package experiment was unengaged
-   and removed. Screen prompt streaming, then profile operation-complete
-   R20-R32 target/accept/commit/provider work.
+   and removed. Wide telemetry assigns 57.5-69.5% of wall to target enqueue plus
+   its following synchronization/commit/readback owner; R20-R32 work remains
+   blocked pending the C4 R16 result.
 
 ## 6. Candidate priority and reopen matrix
 
@@ -661,7 +665,8 @@ These are ordered follow-ons, not assumptions in the primary claim:
 | ---: | --- | --- | --- |
 | 0a | Physical C3 prompt activation | E1a retained: 746.7→41.5 ms prompt prime and 21.382→27.169 tok/s, exact acceptance, every category positive | closed retained; direct SSE TTFT remains in E6 |
 | 0b | Physical proposal Q6 F32 rowtile | E1b retained: row3 13.736→4.711 ms; C3 27.169→29.198 tok/s; exact C2/C3 acceptance | closed retained; C3 external parity passed |
-| 1 | True R9/R12/R16 target owner | Post-E1 target was 190.12 ms/cycle; Q4/Q6/Q5 were 102.71/50.19/12.98 ms | E2 closed: Q4 rejected; standard Q6 + Q5 retained; planar Q6 rejected. Reopen only with new >=5% premise. |
+| 1 | True R9/R12 target owner | Post-E1 C3 target was 190.12 ms/cycle; Q4/Q6/Q5 were 102.71/50.19/12.98 ms | E2 C3 closed: Q4 rejected; standard Q6 + Q5 retained; planar Q6 rejected. |
+| 1b | C4 exact Q6 R16 | C4 target owner is 72.68% of child, 97.78% kernel-bound; Q6 direct kernels are 1.847 s | admitted independently; screen exact R8+R8/true-R16, reject without leaf + complete C4 win |
 | 2 | Fixed K4 | max zero-cost visible lift 17.54%; external K4 is diagnostic | measured p4/cost score cannot beat fixed K3 |
 | 3 | NextN norm/concat/Q4 residual | E0 Q4 NextN work is 12.75 ms/cycle at C3/K3 after the head | < material refreshed Amdahl share or compound-only idea |
 | 4 | Provider update/selected commit | unprofiled telemetry currently single-digit ms/cycle | <=5% refreshed wall or P7 already owns best path |
