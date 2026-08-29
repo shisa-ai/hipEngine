@@ -498,6 +498,74 @@ class CandidateGraph:
         )
 
 
+def pad_candidate_graph_rows(
+    graph: CandidateGraph,
+    *,
+    pad_rows: int,
+    pad_token_id: int,
+    token_ids: "Tensor | None" = None,
+) -> CandidateGraph:
+    """Append inactive candidate rows owned by the graph's last request.
+
+    Physical target verification prefers the backend's admitted production
+    rowtile row counts (gfx1100: rows6). Groups whose root+candidate total
+    falls below that shape pay the shared-B padded-tile fallback instead.
+    Padding appends ``pad_rows`` inactive candidate rows to the last request so
+    the physical launch rides the qualified rowtile while accept, commit, and
+    acceptance accounting stay driven by the active rows only. ``token_ids``
+    optionally supplies a device tensor covering the padded row count; when
+    omitted, host candidate tokens are extended with ``pad_token_id``.
+    """
+
+    pads = int(pad_rows)
+    if pads <= 0:
+        raise ValueError("pad_rows must be positive")
+    if int(pad_token_id) < 0:
+        raise ValueError("pad_token_id must be non-negative")
+    if not graph.request_ids:
+        raise ValueError("candidate graph requires at least one request")
+    owner = int(graph.request_ids[-1])
+    base_rows = graph.candidate_rows
+    owner_rows = base_rows - int(graph.row_offsets[-2])
+    parents: list[int] = list(graph.parent_candidate_rows)
+    depths: list[int] = list(graph.draft_depths)
+    previous_row = base_rows - 1 if owner_rows else -1
+    previous_depth = depths[previous_row] if previous_row >= 0 else 0
+    for pad_index in range(pads):
+        parents.append(previous_row)
+        previous_depth += 1
+        depths.append(previous_depth)
+        previous_row = base_rows + pad_index
+    host_tokens: tuple[int, ...] = ()
+    if graph.candidate_tokens:
+        host_tokens = tuple(graph.candidate_tokens) + (int(pad_token_id),) * pads
+    elif token_ids is None:
+        raise ValueError("device-token graphs require a padded token_ids tensor")
+    candidate_ids = graph.candidate_ids
+    if candidate_ids:
+        candidate_ids = tuple(candidate_ids) + (candidate_ids[-1],) * pads
+    return CandidateGraph(
+        provider_key=graph.provider_key,
+        method_key=graph.method_key,
+        policy_fingerprint=graph.policy_fingerprint,
+        cycle_id=graph.cycle_id,
+        transaction_id=graph.transaction_id,
+        request_ids=graph.request_ids,
+        resident_slots=graph.resident_slots,
+        root_positions=graph.root_positions,
+        row_offsets=(*graph.row_offsets[:-1], base_rows + pads),
+        row_to_request=(*graph.row_to_request, *((owner,) * pads)),
+        parent_candidate_rows=tuple(parents),
+        draft_depths=tuple(depths),
+        active_mask=(*graph.active_mask, *((False,) * pads)),
+        candidate_tokens=host_tokens,
+        token_ids=token_ids if token_ids is not None else graph.token_ids,
+        candidate_ids=candidate_ids,
+        mode=graph.mode,
+        provider_metadata=graph.provider_metadata,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class TargetFrontier:
     """Canonical root-only or root+candidate target work for one cycle."""
