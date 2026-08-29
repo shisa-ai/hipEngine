@@ -21,6 +21,7 @@ QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
 PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
 PRODUCTION_GDN_PEER_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS = tuple(range(27, 48))
+PRODUCTION_GDN_COLWARPS_DECODE_LAYERS = tuple(range(48))
 PRODUCTION_QSA_FLASH_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_WMMA_MOE_PREFILL_LAYERS = tuple(range(27, 48))
 PRODUCTION_Q4_IU8_PREFILL_LAYERS = tuple(range(35, 48))
@@ -199,10 +200,16 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
             if production
             else ""
         ),
-        # Certified column-warp GDN prefill suffix (supersedes peer-GDN).
+        # Certified column-warp GDN prefill suffix (supersedes peer-GDN);
+        # decode extends to all GDN layers (same kernel, rows==1 route).
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": (
             ",".join(map(str, PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS))
+            if production
+            else ""
+        ),
+        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS": (
+            ",".join(map(str, PRODUCTION_GDN_COLWARPS_DECODE_LAYERS))
             if production
             else ""
         ),

@@ -4125,7 +4125,11 @@ def run_qwen4_exp_gdn_token_mixer(
             not in {"", "0", "false", "False"}
             and _qwen4_exp_layer_allowed(
                 weights["attn_qkv"],
-                env_name="HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS",
+                env_name=(
+                    "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS"
+                    if rows == 1
+                    else "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"
+                ),
                 default="all",
             )
         )
