@@ -28,39 +28,42 @@ normative in [`TESTING.md`](TESTING.md),
 
 ## 0. Campaign checkpoint (2026-08-29)
 
-Consolidated position after the production stack landed through `a2ba2ecf6`.
-All rows are same-host `zbook` / gfx1151 / `UD-Q4_K_XL` unless stated. Strict
-is the exact-bit default; production is the certified T2 profile.
+Consolidated position after the prefill MMQ campaign and peer-GDN scan. All
+rows are same-host `zbook` / gfx1151 / `UD-Q4_K_XL` unless stated. Strict is
+the exact-bit profile; production is the certified T2 profile with manifest
+`6ec035b7…` (strict `9e648eb8…`).
 
 ### 0.1 Where we are
 
 | Row | Strict | Production / certified opt-ins | Beat first: llama.cpp HIP, same host + GGUF | Stretch: llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| p508 prefill | 61.43 (chunk 512) | **73.361** profile · **68.71** +Q8-MMQ (stacked row pending) | **274.996** | 316.380 |
-| p1006/p1012 prefill | 60.42 (chunk 512) | **71.834** profile · **66.72** +Q8-MMQ | **284.485** | 290.450 |
+| p508 prefill | 61.40 (chunk 512) | **78.31** final profile | **274.996** | 316.380 |
+| p1006/p1012 prefill | 60.20 (chunk 512) | **76.79** final profile | **284.485** | 290.450 |
 | tg32 decode | 13.880 | **15.543** (98.1% of HIP) | **15.848** | 18.716 |
 | Natural 16K prefill | 47.989 (chunk 512, gate passed) | — | ≥100 tok/s unlocks the 64K rung | — |
 | MTP vs true AR | 0.955x aggregate (opt-in; 10/10 exact, 84.28% acceptance) | — | ≥1.0x to promote; ≥1.5x real target | external MTP fork ~2.7x |
 
-Production = cooperative Q4 gate/up + Q5_1 down MoE prefill on layers 27–47,
-dense-Q8 WMMA prefill on 32–47, and one-plane Q8_1 DP4A Q4 decode on 43
-calibrated layers `0,2,5,6,8,9,10,11,13–47` (`1,3,4,7,12` stay exact). The
-combined 450-row/three-repeat gate passes at KL mean/p95/p99/max
-`2.72e-4/1.40e-3/4.00e-3/5.77e-3`, 447/450 top-1. Matched pp508 kernel time:
-llama.cpp `1.798 s / 5,543 launches` versus hipEngine `8.753 s / 4,933` —
-**4.9x kernel time at fewer launches: prefill is a dataflow gap, not a
-launch-count gap.**
+Production = guarded dense-Q8 MMQ, Q5_1 down MMQ layers 32–47, Q4_K dual
+MMQ layers 35–47, compact peer-GDN layers 35–47 (nine actual GDN layers), and
+Q8_1 DP4A decode on calibrated layers `0,2,5,6,8,9,10,11,13–47`. Omitted
+layers stay strict. The complete 450-row/three-repeat stack passes at KL
+mean/p95/p99/max `3.16e-4/1.61e-3/4.25e-3/9.92e-3`, 448/450 top-1, with exact
+state/repeat/c2. Matched pp508 kernel time is now hipEngine
+`6.548 s / 3,684 launches` versus llama.cpp HIP `1.798 s / 5,543`: the campaign
+removed 25.2% of kernel wall, but the remaining **3.64x** gap is still dataflow,
+not launch count.
 
 ### 0.2 What we learned
 
-1. **Mine dataflow, not launches.** hipEngine already issues fewer kernels
-   than llama.cpp at pp508 yet spends 4.9x longer in them. The gap lives in
-   MMQ/cooperative grid geometry (weight reuse across the batch, quantized
-   activation paths), which is exactly where Vulkan's `mul_mat_id` wins.
-2. **Numerical admissibility is front-loaded by layer.** Every cooperative
-   prefill layer 0–26 fails the final-prompt mean/p95 screen individually;
-   27–47 is the certified maximal suffix. Decode DP4A fails exactly
-   `1,3,4,7,12`. Cheap screens guide; only complete 450-row packets promote.
+1. **Mine dataflow, not launches.** Reusing quantized weights across routed rows
+   cut the Q5_1 and Q4_K real-shape leaves 7.6x/3.14x; dense Q8 MMQ and nine
+   peer-GDN layers reduce the final pp508 trace to 6.548 s at 3,684 launches.
+   llama.cpp remains faster with more launches, so further work still belongs
+   in kernel/dataflow geometry.
+2. **Numerical admissibility is layer- and composition-specific.** Certified
+   suffixes are Q5_1 32–47, Q4_K 35–47, and peer-GDN 35–47; DP4A excludes
+   `1,3,4,7,12`. Full-layer and adjacent boundary candidates were measured and
+   rejected. Cheap screens guide; only complete 450-row packets promote.
 3. **Exact thread contractions beat naive packing.** Mapping logical lanes
    onto fewer physical threads while preserving the declared reduction tree
    (Q5_1 t128→t64, Q4_K physical64, fused weighted down) kept every bit exact
@@ -90,15 +93,13 @@ incremental pooled-key cache, gathered decode attention, GDN concat fix,
 permute-free scoring, and distinct-stream MTP combiner are **already covered
 in-tree** — verified in source with retained evidence. The remaining campaigns:
 
-1. **Prefill dataflow:** close the remaining pp508 kernel-time gap. Delivered
-   2026-08-29: chunk-512 default (+2-6%) and the certified guarded Q8-MMQ
-   dense prefill (`-10.6%` p508 strict wall; 450/450 top-1 packet). Remaining
-   family budget at pp508 (7.55 s kernels): Q5_1 selected down **1.85 s**,
-   Q4_K selected dual gate/up **1.80 s**, GDN scan **0.96 s**, Q8 remnant
-   0.89 s. Next units: Q5_1/Q4_K selected-expert MMQ consumers over the
-   grouped compact layout, then the GDN prefill scan (llama runs GDN at
-   0.085 s); then the stacked production-profile row and the named-profile
-   manifest fold-in for the Q8-MMQ env bridge.
+1. **Prefill dataflow:** the bounded MMQ campaign is complete. Chunk-512, Q8
+   MMQ, Q5_1/Q4_K selected-expert MMQ, the stacked profile/manifest, and the
+   peer-GDN scan are retained. Direct paired strict→production p508/p1012 is
+   `8.273→6.487` / `16.810→13.178 s` (-21.59%/-21.61%). The next independent
+   prefill campaign must target the 27 numerically hot exact GDN layers
+   (723.91 ms traced) or another remaining kernel family; widening current peer
+   arithmetic past layer 34 is rejected.
 2. **MTP economics:** verification is a serial per-candidate target loop
    (budget 1..4), so every drafted token costs a full target decode row; the
    multirow candidate was rejected because `rows >= 2` switches MoE to the
@@ -107,9 +108,9 @@ in-tree** — verified in source with retained evidence. The remaining campaigns
    launch, or proven bit-equal batched kernels), then sweep budget 4→6
    (fork reference: n-max 6 at ~0.9 code acceptance). Promote at ≥1.0x AR,
    target ≥1.5x, gated on the full mtp-bench suite against same-protocol AR.
-3. **Depth/64K rung:** natural 16K prefill must reach ≥100 tok/s (currently
-   44.973) to re-open the 64K rung; this rides on unit 1, not on new
-   attention machinery.
+3. **Depth/64K rung:** natural 16K prefill must reach ≥100 tok/s (strict
+   chunk-512 is 47.989) to re-open the 64K rung. The final production profile
+   has not been rerun at 16K, so no long-context production rate is claimed.
 
 ---
 
@@ -823,8 +824,8 @@ MoE graphs plus exact Q5_1 logical256/physical64 and Q4_K
 logical128/physical64 decode owners plus exact fused Q5 down+weighted combine
 now reach **13.523 tok/s** counterbalanced, with all generated IDs and full-logit
 SHA rows exact. Exact strict remains 1.17x behind llama.cpp HIP; explicit
-`production` reaches **15.543 tok/s** and closes that gap to **1.020x**. Current
-exact/production p508 is **58.466/73.361 tok/s** versus same-host llama.cpp
+`production` reaches **15.543 tok/s** and closes that gap to **1.020x**. Current paired
+strict/production p508 is **61.40/78.31 tok/s** versus same-host llama.cpp
 Vulkan/HIP `316/275 tok/s`.
 
 Binding implementation order:
@@ -855,9 +856,9 @@ Binding implementation order:
    certifies static layers `0,2,5,6,8,9,10,11,13–47` together at 447/450.
    Layers `1,3,4,7,12` remain exact. The 43-layer profile reaches
    `15.543 tok/s` (+10.70%).
-   Next port Vulkan/llama.cpp `mul_mat_id` dataflow to the remaining strict
-   layers and Q8 projections; do not widen the certified DP4A suffix without a
-   fresh complete profile gate.
+   Prefill now uses certified dense-Q8 and selected Q5_1/Q4_K MMQ routes;
+   omitted layers stay strict. Do not widen any calibrated prefill/decode set
+   without a fresh complete profile gate.
 3. **Retain exact Q4/Q5 micro-wins only atop the grouped shape.** The Q5_1
    logical256 contraction is now the selected default at 64 physical threads:
    the first t128 step cut Q5 cycle-wall `692.930→410.364 ms`, and t64 then cuts
@@ -888,18 +889,13 @@ Binding implementation order:
    grouped submission work, but never report profiler wall-minus-kernel as
    unprofiled Python overhead.
 6. **Maintain strict and production targets.** T0 packing/fusion stays exact.
-   T1/T2 cooperative math needs full teacher-forced category+heldout rows,
-   three deterministic repeats, applicable state/task/BF16 gates, a manifest,
-   and a registered strict fallback. Final-prompt KL or 100% top-1 is not a
-   promotion gate. The definitive maximal suffix is layers 27–47: layer 27 is
-   the only individually admissible layer before the earlier suffix; every
-   layer 0–26 fails final-prompt mean or p95. The complete 450-row/three-repeat
-   gate passes mean/p95/p99/max KL `1.05e-4/3.81e-4/1.52e-3/5.59e-3`, top-1
-   448/450, every scope, deterministic state, task/free-generation, c2,
-   manifest, and teardown. Adding dense-Q8 WMMA on its maximal passing suffix
-   layers 32–47 still passes 450 rows at mean/p95/p99/max KL
-   `1.20e-4/4.93e-4/1.72e-3/8.69e-3`, 449/450 top-1, and raises p508/p1012
-   **59.445→73.361** / **58.866→71.834 tok/s**; omitted/`strict` stays exact.
+   T1/T2 math requires full category+heldout rows, three repeats, state/task/c2,
+   a manifest, and registered strict fallbacks. The final named profile selects
+   Q8 MMQ, Q5_1 MMQ 32–47, Q4_K MMQ 35–47, peer-GDN 35–47, and DP4A safe-43.
+   Its complete gate passes mean/p95/p99/max KL
+   `3.16e-4/1.61e-3/4.25e-3/9.92e-3`, 448/450 top-1, all scopes, exact
+   state/repeat/c2, and deterministic task generation. Production/strict
+   manifest hashes are `6ec035b7…` / `9e648eb8…`; omitted routes stay strict.
 7. **Keep MTP separate.** It may improve serving economics only under the full
    anti-gaming suite and same-protocol no-MTP denominator; it cannot mask the
    base AR or 5× prefill gap.
@@ -971,23 +967,22 @@ CPU top-512, replay/rollback, and teardown pass. Current 64K is not rerun becaus
 [`2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-exact-q4-metadata-chunk256.json) and
 [`2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json`](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-natural-qsa-16k-current.json).
 
-Explicit gfx1151 `production` selects cooperative Q4 gate/up plus Q5_1 down on
-certified prefill layers 27–47, dense-Q8 WMMA prefill layers 32–47, and
-one-plane Q8_1 DP4A Q4 gate/up+SiLU on calibrated static decode layers
-`0,2,5,6,8,9,10,11,13–47`; measured-failing layers `1,3,4,7,12` stay exact.
-Manifest `aac6946b...` falls back to strict `a9b6e076...`. The combined 450-row
-gate passes mean/p95/p99/max KL `2.72e-4/1.40e-3/4.00e-3/5.77e-3`, **447/450
-(99.333%) top-1**, three deterministic logits/state repeats, task/c2/lifecycle
-gates, and no BF16-relative claim because no qualified full-BF16 target runtime
-exists. Decode improves **13.880→15.543 tok/s (+10.70%)**; Q4 target cycle-wall
-falls **825.340→397.755 ms (-51.81%)**. A direct suffix13→calibrated43
-counterbalance is +0.37%. Existing p508/p1012 production remains
-**73.361/71.834 tok/s**. Suffix12 and all-layer DP4A are rejected at 445/450;
-omitted profile remains exact strict. Evidence:
-[`2026-08-29-gfx1151-qwen38-flash-next-production-dp4a-safe43-decode.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-dp4a-safe43-decode.json).
+Explicit gfx1151 `production` selects guarded dense-Q8 MMQ, Q5_1 down MMQ
+layers 32–47, Q4_K dual MMQ layers 35–47, compact peer-GDN global layers
+35–47, and DP4A Q4 gate/up+SiLU on calibrated decode layers
+`0,2,5,6,8,9,10,11,13–47`. Manifest `6ec035b7...` falls back to strict
+`9e648eb8...`. The combined 450-row gate passes mean/p95/p99/max KL
+`3.16e-4/1.61e-3/4.25e-3/9.92e-3`, **448/450 top-1**, exact state/repeat/c2,
+and deterministic task generation. Direct paired p508/p1012 improves
+**8.273→6.487 s (-21.59%, 78.31 tok/s)** /
+**16.810→13.178 s (-21.61%, 76.79 tok/s)**; decode remains **15.543 tok/s**.
+Omitted routes remain exact strict. Evidence:
+[`2026-08-29-gfx1151-qwen38-flash-next-prefill-mmq-campaign-final.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-prefill-mmq-campaign-final.json),
+[`2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json), and
+[`2026-08-29-gfx1151-qwen38-flash-next-production-mmq-profile-manifest.json`](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-profile-manifest.json).
 
 The broader default-off F7 research candidate still remains rejected: grouped Q4/Q5/Q8 MoE,
-Q5_1 WMMA down, peer-GDN, and tuned Q4/Q8 tiles raise warm repeated-token 512
+Q5_1 WMMA down, all-layer peer-GDN, and tuned Q4/Q8 tiles raise warm repeated-token 512
 prefill from `8.67` to `211.76 tok/s` and the 18-prompt natural suite from
 `5.36` to `35.43 tok/s` after the PLE ring-ownership fix. It is not promoted:
 strict→candidate mean/p95/p99/max KL are now
