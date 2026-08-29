@@ -3,8 +3,19 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+import pytest
+
 from scripts import gguf_ngram_mtp_code_bench as code_bench
 from scripts import specdec2_perf_bridge as bridge
+
+
+@pytest.fixture(autouse=True)
+def _restore_canonical_bridge_contract():
+    names = ("DEFAULT_PROMPTS", "FULL_PROMPT_IDS", "_REQUIRED_CATEGORIES", "_HELDOUT_IDS")
+    before = {name: getattr(bridge, name) for name in names}
+    yield
+    for name, value in before.items():
+        setattr(bridge, name, value)
 
 
 def test_code_repetition_wrapper_binds_fixed_train_and_heldout_contract() -> None:
