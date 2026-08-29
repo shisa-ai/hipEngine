@@ -1122,6 +1122,12 @@ GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
         "transport": "hipgraph"
     },
 }
+# Qwen3.8 dense Q4_K packed C2 has 880 eager launches per transition. The exact
+# ten-prompt D24 gate admits HIP graph capture at all 23 remaining transitions;
+# scalar C1 and every unlisted model/quant/width retain the global floor above.
+GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {2: 23},
+}
 # SH3-M1 admits loader-time host ownership only for private c1 sessions. Q8_0
 # retains its CPU-copy route. Qwen3.8 Q4_K uses an anonymous immutable host
 # copy: directly registering the file-backed mmap corrupted complete-model
@@ -2844,6 +2850,7 @@ __all__ = [
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
+    "GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY",
     "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",
     "GGUF_GDN_PREFILL_AUTO_MODE",
