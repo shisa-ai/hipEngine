@@ -200,9 +200,18 @@ p508 **8.458→8.270 s (-2.22%)** and p1012 **17.062→16.751 s (-1.82%)** with
 identical logits SHAs, and natural 16K improves to **341.177 s / 47.989 tok/s**
 with the full gate passing (prior chunk-256 steady rows were p508 58.466 and
 p1006 55.046 tok/s). A
-same-host/same-GGUF PR #27742 reference measures Vulkan/HIP pp508
+same-host/same-GGUF PR #27742 reference measured Vulkan/HIP pp508
 **316.380/274.996 tok/s**, pp1006 **290.450/284.485**, and tg32
-**18.716/15.848** versus then-current hipEngine **58.466/55.046/5.890**. Exact per-layer MoE graphs and strict contraction/fusion raise exact decode to
+**18.716/15.848**. Re-baselined 2026-08-29 against merged master `17252c769`
+(b10685, qwen4exp #27742 + graph-splits #27880): warm HIP **pp508 298.6 /
+pp1006 307.2–318.9 / tg32 17.1–17.3 tok/s** and Vulkan **pp508 332–334 /
+pp1006 308–311 / tg32 24.0–24.1 tok/s** (Vulkan tg32 gains from #27925/#26686).
+Current hipEngine production stands at 78.31/76.79/15.54: prefill gap **3.8×
+(HIP) / 4.3× (Vulkan)**, decode gap **1.10×/1.55×**. Matched pp508 kernel
+families: MoE+dense matmul **1258 vs 5527 ms (4.4×)**, GDN **86 vs 751 ms
+(8.7×)**, QSA flash-attn **14.5 vs 141.5 ms (9.8×)**; hipEngine wins fused
+elementwise (~126 vs ~275 ms). Root cause: llama `mul_mat_q` uses RDNA4 WMMA
+matrix cores on gfx1151 while hipEngine MMQ is dp4a. Exact per-layer MoE graphs and strict contraction/fusion raise exact decode to
 **13.523 tok/s**; calibrated DP4A safe-43 reaches **15.543 tok/s**, 98.1% of
 the same-host llama.cpp HIP row. The final named gfx1151 `production` profile
 selects guarded dense-Q8 MMQ, Q5_1 down MMQ layers 32–47, Q4_K dual MMQ
@@ -225,7 +234,7 @@ binding control exact; 64K historical evidence is retained but not rerun because
 prompts but remains opt-in at **0.955x AR**. <=1K image/video/PNG chat and
 request-owned c2 blocking/SSE pass with zero teardown; packed c-aware speed,
 remote media, multimodal SSE, and 128K+/262K inference are not claimed.
-Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json) · [`chunk512`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-chunk512.json) · [`Q8 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q8-mmq-prefill-production.json) · [`Q5_1 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q5-1-mmq-suffix32-production.json) · [`Q4_K MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q4-k-mmq-suffix35-production.json) · [`MMQ+DP4A stack`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json) · [`profile manifest`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-profile-manifest.json) · [`peer GDN`](results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json) · [`final campaign`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-mmq-campaign-final.json).
+Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json) · [`chunk512`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-chunk512.json) · [`Q8 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q8-mmq-prefill-production.json) · [`Q5_1 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q5-1-mmq-suffix32-production.json) · [`Q4_K MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q4-k-mmq-suffix35-production.json) · [`MMQ+DP4A stack`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json) · [`profile manifest`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-profile-manifest.json) · [`peer GDN`](results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json) · [`final campaign`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-mmq-campaign-final.json) · [`master re-baseline`](results/2026-08-29-gfx1151-qwen38-flash-next-llamacpp-master-rebaseline.json).
 
 ## Current Qwen3.6-35B quantization quality
 
