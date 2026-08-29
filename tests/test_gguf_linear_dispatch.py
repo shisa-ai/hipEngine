@@ -50,6 +50,9 @@ from hipengine.runtime.gguf_linear import (
     wmma_prefill_session,
     wmma_prefill_weight_filter_session,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
+    q8_mmq_d4x3_nbytes,
+)
 from hipengine.runtime.prefill import PrefillConfig
 
 
@@ -6121,3 +6124,136 @@ def test_registered_q6_f32_decode_pair_is_c1_only_and_fail_closed() -> None:
     args, kwargs = calls[1]
     assert args == (101, 10, 10, 201, 301, 1, 3072, 9216, 72)
     assert kwargs["stream"] == 0
+
+
+def test_qwen4exp_mmq_prefill_policy_is_registry_selected() -> None:
+    policy = resolve_q8_mmq_prefill_policy("gguf_ud_q4_k_xl")
+    assert policy is not None
+    assert policy(512, 6144, 2560)
+    assert policy(512, 2560, 12288)
+    assert policy(512, 10240, 320)
+    assert not policy(32, 6144, 2560)  # below min_rows
+    assert not policy(512, 320, 10240)  # unadmitted shape (hc down)
+    assert not policy(2049, 6144, 2560)  # above max_rows
+    assert not policy(512, 2048, 8192)  # Qwen3.6 shape is not admitted here
+    # F32 outputs have no BF16 rounding grid to protect: the guard queues only
+    # exact-boundary values so the sparse repair stays effectively free.
+    assert policy.risk_threshold == 0.0
+
+
+_PREFILL_F32 = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "prefill_f32_f32_out")
+_PREFILL_MMQ128_X3_GUARDED_F32 = KernelKey(
+    "hip_gfx1100",
+    "linear",
+    "gguf_q8_0",
+    "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
+)
+
+
+def test_qwen4exp_mmq_prefill_session_swaps_f32_f32_prefill(monkeypatch) -> None:
+    quantize_calls = []
+    correction_calls = []
+
+    class FakeRuntime:
+        def memset_async(self, *args) -> None:
+            return None
+
+    def fake_quantize(*args, **kwargs):
+        quantize_calls.append((args, kwargs))
+
+    def fake_correct(*args, **kwargs):
+        correction_calls.append((args, kwargs))
+
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q8_0_mmq128_quantize_f32_d4x3",
+        fake_quantize,
+    )
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q8_0_mmq128_sparse_exact_correct_f32",
+        fake_correct,
+    )
+    policy = resolve_q8_mmq_prefill_policy("gguf_ud_q4_k_xl")
+    assert policy is not None
+    weight = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0")
+    keys = (_PREFILL_F32, _PREFILL_MMQ128_X3_GUARDED_F32)
+    originals = {
+        k: resolve(backend=k.backend, layer=k.layer, quant=k.quant, variant=k.variant)
+        for k in keys
+    }
+    captured: dict[str, object] = {}
+
+    def make_fake(key: KernelKey):
+        def fake(*args, **kwargs):
+            captured[str(key.variant)] = (args, kwargs)
+
+        return fake
+
+    library = object()
+    try:
+        for k in keys:
+            register(k, make_fake(k), replace=True)
+        with q8_mmq_prefill_session(
+            workspace_ptr=10_000_000,
+            workspace_nbytes=q8_mmq_d4x3_nbytes(512, 10240),
+            risk_count_ptr=40_000_000,
+            risk_count_nbytes=4,
+            risk_indices_ptr=50_000_000,
+            risk_indices_nbytes=policy.risk_indices_nbytes(512),
+            policy=policy,
+            library=library,  # type: ignore[arg-type]
+        ):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100_000_000,
+                out_ptr=200_000_000,
+                rows=512,
+                in_features=6144,
+                out_features=2560,
+                activation_dtype=GGUF_ACTIVATION_F32,
+                output_dtype=GGUF_OUTPUT_F32,
+                stream=7,
+                runtime=FakeRuntime(),
+            )
+        assert "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out" in captured
+        assert quantize_calls and correction_calls
+        quantize_args, _ = quantize_calls[0]
+        assert quantize_args == (100_000_000, 10_000_000, 512, 6144)
+        launch_args, launch_kwargs = captured[
+            "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
+        ]
+        assert launch_args[:3] == (10_000_000, 10, 200_000_000)
+        assert launch_args[3:5] == (40_000_000, 50_000_000)
+        assert launch_kwargs["library"] is library
+
+        # Non-admitted shapes keep the exact owner even inside the session.
+        captured.clear()
+        quantize_calls.clear()
+        with q8_mmq_prefill_session(
+            workspace_ptr=10_000_000,
+            workspace_nbytes=q8_mmq_d4x3_nbytes(512, 10240),
+            risk_count_ptr=40_000_000,
+            risk_count_nbytes=4,
+            risk_indices_ptr=50_000_000,
+            risk_indices_nbytes=policy.risk_indices_nbytes(512),
+            policy=policy,
+            library=library,  # type: ignore[arg-type]
+        ):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100_000_000,
+                out_ptr=200_000_000,
+                rows=512,
+                in_features=320,  # hc down: never admitted
+                out_features=10240,
+                activation_dtype=GGUF_ACTIVATION_F32,
+                output_dtype=GGUF_OUTPUT_F32,
+                stream=7,
+                runtime=FakeRuntime(),
+            )
+        assert "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out" not in captured
+        assert not quantize_calls
+    finally:
+        for k, fn in originals.items():
+            register(k, fn, replace=True)

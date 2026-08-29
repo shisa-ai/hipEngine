@@ -30,6 +30,14 @@ _PREFILL_X3_VARIANT = "mmq128_prefill_q8_1_d4x3_bf16_bf16_out"
 _PREFILL_X3_GUARDED_VARIANT = "mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out"
 _PREFILL_X3_F32_VARIANT = "mmq128_prefill_q8_1_d4x3_bf16_f32_out"
 _POLICY_VARIANT = "raw_q8_mmq128"
+_QUANT_F32_X3_SYMBOL = "hipengine_gguf_q8_0_mmq128_quantize_f32_d4x3"
+_PREFILL_X3_GUARDED_F32_SYMBOL = (
+    "hipengine_gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
+)
+_PREFILL_X3_GUARDED_F32_VARIANT = (
+    "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
+)
+_SPARSE_EXACT_F32_SYMBOL = "hipengine_gguf_q8_0_mmq128_sparse_exact_correct_f32"
 
 Q8_MMQ_PREFILL_POLICY_KEY = KernelKey(
     "hip_gfx1100",
@@ -77,6 +85,33 @@ UD_Q3_K_M_Q8_MMQ_PREFILL_POLICY = Q8MMQPrefillPolicy(
     max_rows=4096,
     risk_threshold=1.0e-5,
     max_out_features=8192,
+)
+
+# Qwen4Exp (UD-Q4_K_XL) dense-Q8_0 projections on gfx1151. Gates measured in
+# 2026-08-29 targeting: the float-coltile owner loses 6.4-7.3x to MMQ128 at
+# these shapes; constraint-failing shapes (K%256!=0: hc down 320, shexp gate)
+# never enter the dispatch check and stay exact.
+_QWEN4EXP_MIN_ROWS: dict[tuple[int, int], int] = {
+    (2560, 10240): 64,  # GDN attn_qkv + PLE key
+    (2560, 12288): 64,  # QSA attn_q
+    (6144, 2560): 64,   # GDN ssm_out
+    (10240, 320): 64,   # GR hc_*_up
+    (2560, 2560): 64,   # PLE value
+    (2560, 640): 64,    # shared-expert gate/up
+    (2560, 512): 64,    # QSA attn_v
+}
+
+QWEN4EXP_Q8_MMQ_PREFILL_POLICY = Q8MMQPrefillPolicy(
+    min_rows=_QWEN4EXP_MIN_ROWS,
+    max_rows=2048,
+    # The guard criterion is "near a BF16 rounding boundary", which only
+    # protects BF16 outputs. This path emits F32: a 1e-5 threshold queues a
+    # large fraction of all floats and degenerates the repair pass into a
+    # near-full exact recompute (measured 0.634 s at pp508). Threshold zero
+    # queues only exact-boundary values, making the repair effectively free;
+    # the arithmetic change is covered by the production profile gate.
+    risk_threshold=0.0,
+    max_out_features=12288,
 )
 
 
@@ -508,6 +543,159 @@ def gguf_q8_0_mmq128_sparse_exact_correct_bf16(
         runtime.check(int(err))
 
 
+def gguf_q8_0_mmq128_quantize_f32_d4x3(
+    x_ptr: int,
+    out_d4_ptr: int,
+    rows: int,
+    hidden: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Pack F32 rows into source-compatible K-major D4 MMQ blocks."""
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if hidden <= 0 or hidden % 128 != 0:
+        raise ValueError("hidden must be a positive multiple of 128")
+    library = library or build_gguf_q8_0_mmq_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _QUANT_F32_X3_SYMBOL)
+    fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p] + [ctypes.c_int64] * 2 + [
+        ctypes.c_void_p
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(out_d4_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
+    x_d4_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    risk_count_ptr: int,
+    risk_indices_ptr: int,
+    max_risks: int,
+    risk_threshold: float,
+    rows: int,
+    hidden: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch D4x3 MMQ (F32 output) and enqueue near-boundary outputs."""
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if hidden <= 0 or hidden % 256 != 0:
+        raise ValueError("hidden must be a positive multiple of 256")
+    if out_features <= 0 or out_features % 16 != 0:
+        raise ValueError("out_features must be a positive multiple of 16")
+    if max_risks <= 0:
+        raise ValueError("max_risks must be positive")
+    if risk_threshold < 0:
+        raise ValueError("risk_threshold must be non-negative")
+    library = library or build_gguf_q8_0_mmq_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _PREFILL_X3_GUARDED_F32_SYMBOL)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_float,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_d4_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(risk_count_ptr),
+        ctypes.c_void_p(risk_indices_ptr),
+        ctypes.c_int64(max_risks),
+        ctypes.c_float(risk_threshold),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q8_0_mmq128_sparse_exact_correct_f32(
+    x_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    risk_count_ptr: int,
+    risk_indices_ptr: int,
+    max_risks: int,
+    rows: int,
+    hidden: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Recompute queued F32 output elements with the exact reduction."""
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if hidden <= 0 or hidden % 32 != 0:
+        raise ValueError("hidden must be a positive multiple of 32")
+    if out_features <= 0:
+        raise ValueError("out_features must be positive")
+    if max_risks <= 0:
+        raise ValueError("max_risks must be positive")
+    library = library or build_gguf_q8_0_mmq_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SPARSE_EXACT_F32_SYMBOL)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_void_p(risk_count_ptr),
+        ctypes.c_void_p(risk_indices_ptr),
+        ctypes.c_int64(max_risks),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_f32_out(
     x_d4_ptr: int,
     qweight_ptr: int,
@@ -566,6 +754,21 @@ def register_gguf_q8_0_mmq_prefill_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "linear", "gguf_q8_0", _PREFILL_X3_GUARDED_F32_VARIANT),
+        gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_prefill_policy",
+            "gguf_ud_q4_k_xl",
+            _POLICY_VARIANT,
+        ),
+        QWEN4EXP_Q8_MMQ_PREFILL_POLICY,
+        replace=replace,
+    )
+    register(
         Q8_MMQ_PREFILL_POLICY_KEY,
         UD_Q3_K_M_Q8_MMQ_PREFILL_POLICY,
         replace=replace,
@@ -578,17 +781,21 @@ register_gguf_q8_0_mmq_prefill_kernels()
 __all__ = [
     "Q8MMQPrefillPolicy",
     "Q8_MMQ_PREFILL_POLICY_KEY",
+    "QWEN4EXP_Q8_MMQ_PREFILL_POLICY",
     "UD_Q3_K_M_Q8_MMQ_PREFILL_POLICY",
     "build_gguf_q8_0_mmq_prefill",
     "gguf_q8_0_mmq128_prefill_q8_1_d4_bf16_bf16_out",
     "gguf_q8_0_mmq128_prefill_q8_1_d4x2_bf16_bf16_out",
     "gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_bf16_out",
     "gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out",
+    "gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
     "gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_f32_out",
     "gguf_q8_0_mmq128_sparse_exact_correct_bf16",
+    "gguf_q8_0_mmq128_sparse_exact_correct_f32",
     "gguf_q8_0_mmq128_quantize_bf16_d4",
     "gguf_q8_0_mmq128_quantize_bf16_d4x2",
     "gguf_q8_0_mmq128_quantize_bf16_d4x3",
+    "gguf_q8_0_mmq128_quantize_f32_d4x3",
     "plan_gguf_q8_0_mmq_prefill_build",
     "q8_mmq_d4_nbytes",
     "q8_mmq_d4x2_nbytes",
