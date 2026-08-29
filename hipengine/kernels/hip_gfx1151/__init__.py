@@ -1752,16 +1752,19 @@ GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (3,),
 }
 # E1b reuses the exact Q6 F32 small-B rowtile only for physical proposal-head
-# dimensions/rows that have actual Qwen3.8 evidence. NextN adapts the source
+# dimensions/rows2-4 and rows7-8 that have Qwen3.8 complete-wall evidence.
+# Rows5/6 have exact leaf wins but neutral/regressive full suites. NextN adapts the source
 # model to a one-block geometry and does not carry its file-type label, so this
 # key uses the immutable H/N head shape; primitive resolution still requires
 # Q6 T16. The direct producer remains the strict policy-miss fallback. The
-# rowtile wrapper selects its col8 body at rows3/4 and 16-column body at rows2.
+# rowtile wrapper selects its col8 body at rows3-8 and 16-column body at rows2.
 GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES = frozenset(
     {
         (5120, 248320, 2),
         (5120, 248320, 3),
         (5120, 248320, 4),
+        (5120, 248320, 7),
+        (5120, 248320, 8),
     }
 )
 GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT = 65544
