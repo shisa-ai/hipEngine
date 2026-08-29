@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- **2026-08-29** — W7900 Qwen3.8-27B `Q4_K_M` P9 attribution selects production C2/K2/R6 at **1.1902x AR**, **92 physical cycles**, and **155.70/131.74 ms** 1.10x/1.30x cycle budgets; focused C2 wall is 71.46 ms with target rowtiles then proposal ranked highest. Artifact: `benchmarks/results/2026-08-29-w7900-qwen38-q4km-p9-cycle-attribution.json`.
+
 - **2026-08-29** — W7900 Qwen3.8-27B `Q4_K_M` P8 closure: explicit physical C2/context<=95/D24 passes **252/252** current-source full-logit rows bit-exact, repeat/permutation/tasks/lifecycle/fallback/drain, plus strict K1-K3 controls; acceptance is explained across all six required dimensions. Automatic remains K0. Artifact: `benchmarks/results/2026-08-29-w7900-qwen38-q4km-p8-c2-correctness-closure.json`.
 
 - **2026-08-29** — W7900 Qwen3.8-27B GGUF `Q4_K_M` explicit physical K2: qualified rows6-multiple verifier chunks lift C3 **21.549 -> 32.776 tok/s (+52.10%)** and C4 **24.314 -> 36.141 tok/s (+48.64%)**; both remain below AR, so automatic stays K0. Artifact: `benchmarks/results/2026-08-29-w7900-qwen38-q4km-rows6-multiple-rowtiles-retained.json`.
