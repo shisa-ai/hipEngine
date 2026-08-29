@@ -1,0 +1,501 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_c2_rows6_group_padding",
+  "created_at": "2026-08-29T05:05:55.595691+00:00",
+  "status": "complete",
+  "passed": true,
+  "performance_claim": true,
+  "source": {
+    "head": "b5a974a5cf8d4e6c0d09786b9813b6a82663fc2d",
+    "commits": [
+      "a3722550c feat: pad physical C2 target groups to rows6 tile",
+      "b5a974a5c fix: free target pad scratch on adapter close"
+    ],
+    "baseline_artifact": "benchmarks/results/2026-08-28-w7900-qwen38-q4km-repaired-c2-k1-k3-screen.json"
+  },
+  "hardware": {
+    "host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_index": 0,
+    "arch": "gfx1100",
+    "rocm": "7.2.4",
+    "gpu_max_hw_queues": "unset"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "size_bytes": 17106773984,
+    "kv": "BF16"
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "heldouts": 4,
+    "C": 2,
+    "D": 24,
+    "budgets": [
+      1,
+      2
+    ],
+    "sampling": "raw greedy",
+    "timing": "blocking barrier-to-last-completion complete wall",
+    "runs": 2,
+    "profile": "production",
+    "request_mode": "explicit MTP"
+  },
+  "change": "Pad physical C2 target verify groups to the admitted gfx1100 rows6 rowtile with inactive tail candidates (capability GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS=(6,)). Off-tile R4/ragged cycles previously rode the shared-B 256-row padded tile at ~5.1x cost.",
+  "runs": {
+    "k1_baseline": {
+      "economics": {
+        "summary": {
+          "ar": {
+            "wall_seconds": 15.733892298303545,
+            "generated_tokens": 480,
+            "tok_s": 30.507390726943925
+          },
+          "mtp": {
+            "wall_seconds": 30.372866129502654,
+            "generated_tokens": 480,
+            "tok_s": 15.803579351168063
+          },
+          "mtp_vs_ar_ratio": 0.5180246154978586,
+          "mtp_vs_ar_percent": -48.19753845021414,
+          "exact_cells": 10,
+          "engaged_cells": 10,
+          "budget_conformed_cells": 10,
+          "cells": 10,
+          "mtp_expected": true,
+          "route_expectation_passed": true
+        },
+        "categories": {
+          "code": {
+            "mtp_tok_s": 16.156,
+            "ar_tok_s": 30.962,
+            "ratio": 0.5218
+          },
+          "general_en": {
+            "mtp_tok_s": 16.147,
+            "ar_tok_s": 30.748,
+            "ratio": 0.5252
+          },
+          "general_ja": {
+            "mtp_tok_s": 15.309,
+            "ar_tok_s": 30.654,
+            "ratio": 0.4994
+          },
+          "mixed_ja_en": {
+            "mtp_tok_s": 15.304,
+            "ar_tok_s": 29.279,
+            "ratio": 0.5227
+          }
+        },
+        "acceptance": {
+          "code": 0.9333,
+          "general_en": 0.9318,
+          "general_ja": 0.875,
+          "mixed_ja_en": 0.913
+        }
+      },
+      "stage_ms_per_req_cycle": {
+        "proposal_ms": 6.9,
+        "target_ms": 27.7,
+        "accept_ms": 165.6,
+        "provider_update_ms": 3.6,
+        "selected_commit_ms": 0.8
+      },
+      "target_row_histogram": {
+        "4": 228
+      }
+    },
+    "k1_padded": {
+      "economics": {
+        "summary": {
+          "ar": {
+            "wall_seconds": 15.632867127656937,
+            "generated_tokens": 480,
+            "tok_s": 30.70454038151495
+          },
+          "mtp": {
+            "wall_seconds": 14.386720354668796,
+            "generated_tokens": 480,
+            "tok_s": 33.36410162752832
+          },
+          "mtp_vs_ar_ratio": 1.0866178491183183,
+          "mtp_vs_ar_percent": 8.661784911831827,
+          "exact_cells": 10,
+          "engaged_cells": 10,
+          "budget_conformed_cells": 10,
+          "cells": 10,
+          "mtp_expected": true,
+          "route_expectation_passed": true
+        },
+        "categories": {
+          "code": {
+            "mtp_tok_s": 33.998,
+            "ar_tok_s": 31.065,
+            "ratio": 1.0944
+          },
+          "general_en": {
+            "mtp_tok_s": 33.58,
+            "ar_tok_s": 30.996,
+            "ratio": 1.0834
+          },
+          "general_ja": {
+            "mtp_tok_s": 33.354,
+            "ar_tok_s": 30.882,
+            "ratio": 1.08
+          },
+          "mixed_ja_en": {
+            "mtp_tok_s": 31.975,
+            "ar_tok_s": 29.57,
+            "ratio": 1.0813
+          }
+        },
+        "acceptance": {
+          "code": 0.9333,
+          "general_en": 0.9318,
+          "general_ja": 0.875,
+          "mixed_ja_en": 0.913
+        }
+      },
+      "stage_ms_per_req_cycle": {
+        "proposal_ms": 7.2,
+        "target_ms": 22.4,
+        "accept_ms": 30.5,
+        "provider_update_ms": 3.9,
+        "selected_commit_ms": 0.8
+      },
+      "target_row_histogram": {
+        "6": 228
+      }
+    },
+    "k1_padded_corroborating": {
+      "economics": {
+        "summary": {
+          "ar": {
+            "wall_seconds": 15.542819551192224,
+            "generated_tokens": 480,
+            "tok_s": 30.882427632840994
+          },
+          "mtp": {
+            "wall_seconds": 14.302586850244552,
+            "generated_tokens": 480,
+            "tok_s": 33.56036254321314
+          },
+          "mtp_vs_ar_ratio": 1.086713873086984,
+          "mtp_vs_ar_percent": 8.671387308698408,
+          "exact_cells": 10,
+          "engaged_cells": 10,
+          "budget_conformed_cells": 10,
+          "cells": 10,
+          "mtp_expected": true,
+          "route_expectation_passed": true
+        },
+        "categories": {
+          "code": {
+            "mtp_tok_s": 34.096,
+            "ar_tok_s": 31.183,
+            "ratio": 1.0934
+          },
+          "general_en": {
+            "mtp_tok_s": 33.914,
+            "ar_tok_s": 31.249,
+            "ratio": 1.0853
+          },
+          "general_ja": {
+            "mtp_tok_s": 33.598,
+            "ar_tok_s": 31.081,
+            "ratio": 1.081
+          },
+          "mixed_ja_en": {
+            "mtp_tok_s": 32.178,
+            "ar_tok_s": 29.77,
+            "ratio": 1.0809
+          }
+        },
+        "acceptance": {
+          "code": 0.9333,
+          "general_en": 0.9318,
+          "general_ja": 0.875,
+          "mixed_ja_en": 0.913
+        }
+      },
+      "stage_ms_per_req_cycle": {
+        "proposal_ms": 7.2,
+        "target_ms": 22.6,
+        "accept_ms": 30.1,
+        "provider_update_ms": 3.9,
+        "selected_commit_ms": 0.8
+      },
+      "target_row_histogram": {
+        "6": 228
+      }
+    },
+    "k2_baseline": {
+      "economics": {
+        "summary": {
+          "ar": {
+            "wall_seconds": 15.636357750743628,
+            "generated_tokens": 480,
+            "tok_s": 30.697685973395714
+          },
+          "mtp": {
+            "wall_seconds": 14.963444642256945,
+            "generated_tokens": 480,
+            "tok_s": 32.07817527820261
+          },
+          "mtp_vs_ar_ratio": 1.0449704680021583,
+          "mtp_vs_ar_percent": 4.4970468002158315,
+          "exact_cells": 10,
+          "engaged_cells": 10,
+          "budget_conformed_cells": 10,
+          "cells": 10,
+          "mtp_expected": true,
+          "route_expectation_passed": true
+        },
+        "categories": {
+          "code": {
+            "mtp_tok_s": 27.351,
+            "ar_tok_s": 31.096,
+            "ratio": 0.8796
+          },
+          "general_en": {
+            "mtp_tok_s": 35.841,
+            "ar_tok_s": 30.965,
+            "ratio": 1.1575
+          },
+          "general_ja": {
+            "mtp_tok_s": 36.097,
+            "ar_tok_s": 30.83,
+            "ratio": 1.1708
+          },
+          "mixed_ja_en": {
+            "mtp_tok_s": 36.843,
+            "ar_tok_s": 29.559,
+            "ratio": 1.2464
+          }
+        },
+        "acceptance": {
+          "code": 0.7292,
+          "general_en": 0.8182,
+          "general_ja": 0.8485,
+          "mixed_ja_en": 0.9062
+        }
+      },
+      "stage_ms_per_req_cycle": {
+        "proposal_ms": 13.3,
+        "target_ms": 23.2,
+        "accept_ms": 44.4,
+        "provider_update_ms": 2.9,
+        "selected_commit_ms": 0.8
+      },
+      "target_row_histogram": {
+        "2": 1,
+        "3": 8,
+        "4": 8,
+        "5": 2,
+        "6": 156
+      }
+    },
+    "k2_padded": {
+      "economics": {
+        "summary": {
+          "ar": {
+            "wall_seconds": 15.756655673030764,
+            "generated_tokens": 480,
+            "tok_s": 30.463317214043865
+          },
+          "mtp": {
+            "wall_seconds": 13.238661161623895,
+            "generated_tokens": 480,
+            "tok_s": 36.257442813886605
+          },
+          "mtp_vs_ar_ratio": 1.190200087506281,
+          "mtp_vs_ar_percent": 19.020008750628104,
+          "exact_cells": 10,
+          "engaged_cells": 10,
+          "budget_conformed_cells": 10,
+          "cells": 10,
+          "mtp_expected": true,
+          "route_expectation_passed": true
+        },
+        "categories": {
+          "code": {
+            "mtp_tok_s": 34.942,
+            "ar_tok_s": 30.844,
+            "ratio": 1.1329
+          },
+          "general_en": {
+            "mtp_tok_s": 37.362,
+            "ar_tok_s": 30.79,
+            "ratio": 1.2135
+          },
+          "general_ja": {
+            "mtp_tok_s": 37.772,
+            "ar_tok_s": 30.588,
+            "ratio": 1.2348
+          },
+          "mixed_ja_en": {
+            "mtp_tok_s": 36.462,
+            "ar_tok_s": 29.31,
+            "ratio": 1.244
+          }
+        },
+        "acceptance": {
+          "code": 0.7292,
+          "general_en": 0.8182,
+          "general_ja": 0.8485,
+          "mixed_ja_en": 0.9062
+        }
+      },
+      "stage_ms_per_req_cycle": {
+        "proposal_ms": 13.3,
+        "target_ms": 22.3,
+        "accept_ms": 31.1,
+        "provider_update_ms": 2.9,
+        "selected_commit_ms": 0.8
+      },
+      "target_row_histogram": {
+        "6": 175
+      }
+    },
+    "k2_padded_corroborating": {
+      "economics": {
+        "summary": {
+          "ar": {
+            "wall_seconds": 15.623681691009551,
+            "generated_tokens": 480,
+            "tok_s": 30.72259211964168
+          },
+          "mtp": {
+            "wall_seconds": 13.115357254631817,
+            "generated_tokens": 480,
+            "tok_s": 36.59831681904687
+          },
+          "mtp_vs_ar_ratio": 1.1912509425156448,
+          "mtp_vs_ar_percent": 19.125094251564477,
+          "exact_cells": 10,
+          "engaged_cells": 10,
+          "budget_conformed_cells": 10,
+          "cells": 10,
+          "mtp_expected": true,
+          "route_expectation_passed": true
+        },
+        "categories": {
+          "code": {
+            "mtp_tok_s": 35.228,
+            "ar_tok_s": 31.111,
+            "ratio": 1.1323
+          },
+          "general_en": {
+            "mtp_tok_s": 37.713,
+            "ar_tok_s": 31.036,
+            "ratio": 1.2151
+          },
+          "general_ja": {
+            "mtp_tok_s": 38.102,
+            "ar_tok_s": 30.804,
+            "ratio": 1.2369
+          },
+          "mixed_ja_en": {
+            "mtp_tok_s": 36.923,
+            "ar_tok_s": 29.605,
+            "ratio": 1.2472
+          }
+        },
+        "acceptance": {
+          "code": 0.7292,
+          "general_en": 0.8182,
+          "general_ja": 0.8485,
+          "mixed_ja_en": 0.9062
+        }
+      },
+      "stage_ms_per_req_cycle": {
+        "proposal_ms": 13.3,
+        "target_ms": 22.5,
+        "accept_ms": 30.4,
+        "provider_update_ms": 2.9,
+        "selected_commit_ms": 0.8
+      },
+      "target_row_histogram": {
+        "6": 175
+      }
+    }
+  },
+  "exactness_identity": {
+    "k1_acceptance_positions_equal": true,
+    "k1_committed_tokens_identical": true,
+    "k2_acceptance_positions_equal": true,
+    "k2_committed_tokens_identical": true
+  },
+  "gates": {
+    "k1_padded": {
+      "exact_cells": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "failures_zero": true,
+      "drain_zero": true
+    },
+    "k2_padded": {
+      "exact_cells": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "failures_zero": true,
+      "drain_zero": true
+    }
+  },
+  "headline": {
+    "k2_baseline_ratio": 1.0449704680021583,
+    "k2_padded_ratio": 1.190200087506281,
+    "k2_padded_corroborating_ratio": 1.1912509425156448,
+    "k1_baseline_ratio": 0.5180246154978586,
+    "k1_padded_ratio": 1.0866178491183183,
+    "k2_category_min_ratio": 1.1329
+  },
+  "decision": "Explicit physical C2/K2 clears the promotion economics screen: 1.1902x true AR aggregate with every category >= 1.1329x, acceptance and committed tokens bit-identical to the unpadded baseline. K1 rises to 1.0866x with every category >= 1.08x. Automatic stays K0 until the P8 production numerics/determinism/lifecycle packet completes.",
+  "raw_sources": [
+    {
+      "name": "k1_baseline",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k1-default-d24.json",
+      "sha256": "bd48f8eba55387eaeb9385665893a1cfa519b7743b47dceb29bebe70a89e313d",
+      "size_bytes": 1469428,
+      "retained_in_git": false
+    },
+    {
+      "name": "k1_padded",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k1-pad6-clean-d24.json",
+      "sha256": "d25fdcb02ecbfb0531037812cd8b772b7591df4557c7fcf8d995cc141f4807d1",
+      "size_bytes": 1469410,
+      "retained_in_git": false
+    },
+    {
+      "name": "k1_padded_corroborating",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k1-pad6-d24.json",
+      "sha256": "ce340a94fd78ba2f41a6a8b55cbdc87a4706a3c58e9c3d45ae5841e98a13f2d8",
+      "size_bytes": 1469413,
+      "retained_in_git": false
+    },
+    {
+      "name": "k2_baseline",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k2-default-d24.json",
+      "sha256": "d50c54d8e79b0d7aec32b370abd1f0168a2634f372365f02c907c7d2e9e2cf4b",
+      "size_bytes": 1399283,
+      "retained_in_git": false
+    },
+    {
+      "name": "k2_padded",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k2-pad6-clean-d24.json",
+      "sha256": "756cb96a5cd557bbb09a66f9d3b42f7b0c5cf3cd3d1df5666cde52479af1df80",
+      "size_bytes": 1418447,
+      "retained_in_git": false
+    },
+    {
+      "name": "k2_padded_corroborating",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k2-pad6-d24.json",
+      "sha256": "aa0bd06aead40cdf632bc42e061afc953bf797147ccde593cbf28061f51e9e82",
+      "size_bytes": 1418447,
+      "retained_in_git": false
+    }
+  ]
+}
