@@ -1,0 +1,443 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "accepted_named_production_profile",
+  "scope": "Qwen4Exp gfx1151 compact peer-wave32 GDN prefill on certified global suffix 35-47 (actual GDN layers 36,37,38,40,41,42,44,45,46), stacked with MMQ prefill and DP4A safe-43",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+  },
+  "profile": {
+    "name": "production",
+    "classification": "T2",
+    "declared_layers": [
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47
+    ],
+    "actual_gdn_layers": [
+      36,
+      37,
+      38,
+      40,
+      41,
+      42,
+      44,
+      45,
+      46
+    ],
+    "selected_manifest_sha256": "6ec035b7c08e747ba24bfede677352493f2291d10730905c616ed0fe6706d35c",
+    "strict_manifest_sha256": "9e648eb89a6b893c8e88e95e5066ff3af40dc8913c6ea5a267198d9bce0d8fb4",
+    "selected_variant": "qwen4exp_sigmoid_peer_prefill",
+    "strict_fallback": "qwen4exp_sigmoid_strict_prefill"
+  },
+  "suffix_screen": {
+    "47": {
+      "seconds": 15.549109857995063,
+      "mean_kl": 0.00044311152276178774,
+      "p95_kl": 0.0022309505914658895,
+      "p99_kl": 0.002792782633380095,
+      "max_kl": 0.002933240643858648,
+      "top1_rate": 1.0,
+      "screen_passed": true
+    },
+    "44": {
+      "seconds": 15.163573961996008,
+      "mean_kl": 0.00045388914808049314,
+      "p95_kl": 0.0022223283552066826,
+      "p99_kl": 0.0026876458208643693,
+      "max_kl": 0.002803975187278792,
+      "top1_rate": 1.0,
+      "screen_passed": true
+    },
+    "40": {
+      "seconds": 15.005911759013543,
+      "mean_kl": 0.00045565149067979243,
+      "p95_kl": 0.0023273672007920964,
+      "p99_kl": 0.002788342109645418,
+      "max_kl": 0.0029035858368587496,
+      "top1_rate": 1.0,
+      "screen_passed": true
+    },
+    "36": {
+      "seconds": 14.906907656986732,
+      "mean_kl": 0.0008046206162068256,
+      "p95_kl": 0.0034010362312738196,
+      "p99_kl": 0.00398434985682746,
+      "max_kl": 0.004130178263215872,
+      "top1_rate": 1.0,
+      "screen_passed": true
+    },
+    "32": {
+      "seconds": 14.819239984994056,
+      "mean_kl": 0.0005347262138390415,
+      "p95_kl": 0.0025464385934854577,
+      "p99_kl": 0.003284506153615167,
+      "max_kl": 0.0034690230436475963,
+      "top1_rate": 1.0,
+      "screen_passed": true
+    },
+    "28": {
+      "seconds": 14.76326823598356,
+      "mean_kl": 0.0005213056155490586,
+      "p95_kl": 0.0023901547687967526,
+      "p99_kl": 0.004023956730027958,
+      "max_kl": 0.004432407220335763,
+      "top1_rate": 1.0,
+      "screen_passed": true
+    },
+    "24": {
+      "seconds": 14.679089995013783,
+      "mean_kl": 0.0022077991710386415,
+      "p95_kl": 0.012918394339506405,
+      "p99_kl": 0.0133365786486947,
+      "max_kl": 0.013441124725991776,
+      "top1_rate": 1.0,
+      "screen_passed": false
+    },
+    "20": {
+      "seconds": 14.58852620900143,
+      "mean_kl": 0.003037721338161237,
+      "p95_kl": 0.010150342970224081,
+      "p99_kl": 0.02503806457201541,
+      "max_kl": 0.02875999497246328,
+      "top1_rate": 1.0,
+      "screen_passed": false
+    },
+    "16": {
+      "seconds": 14.490991836995818,
+      "mean_kl": 0.0018347214125134222,
+      "p95_kl": 0.006992159656863362,
+      "p99_kl": 0.008493399961746865,
+      "max_kl": 0.008868710037967744,
+      "top1_rate": 1.0,
+      "screen_passed": false
+    },
+    "12": {
+      "seconds": 14.315720603975933,
+      "mean_kl": 0.004101242048095806,
+      "p95_kl": 0.015712095592853793,
+      "p99_kl": 0.017019242462435507,
+      "max_kl": 0.01734602917983094,
+      "top1_rate": 1.0,
+      "screen_passed": false
+    },
+    "8": {
+      "seconds": 14.250131722015794,
+      "mean_kl": 0.005367504193500381,
+      "p95_kl": 0.018908745074347717,
+      "p99_kl": 0.022591153134072464,
+      "max_kl": 0.02351175514900366,
+      "top1_rate": 1.0,
+      "screen_passed": false
+    },
+    "4": {
+      "seconds": 14.137384624016704,
+      "mean_kl": 0.010739232267204992,
+      "p95_kl": 0.04405249795388932,
+      "p99_kl": 0.07550371385026691,
+      "max_kl": 0.08336651782436139,
+      "top1_rate": 1.0,
+      "screen_passed": false
+    },
+    "0": {
+      "seconds": 14.157288481015712,
+      "mean_kl": 0.00845501550815491,
+      "p95_kl": 0.024312332310164067,
+      "p99_kl": 0.051626012381269966,
+      "max_kl": 0.05845443239904651,
+      "top1_rate": 1.0,
+      "screen_passed": false
+    }
+  },
+  "numerical_gate": {
+    "command": "uv run python /tmp/qwen4exp_production_mmq_gdn_peer36_dp4a43_gate.py",
+    "declared_35_equivalent_reason": "layer 35 is QSA, so global suffix 35-47 and 36-47 select identical GDN layers",
+    "rows": 450,
+    "repeats": 3,
+    "kl_mean": 0.0003159690665032807,
+    "kl_p95": 0.0016092834649717234,
+    "kl_p99": 0.004250560942306012,
+    "kl_max": 0.009918399291229231,
+    "top1_matches": 448,
+    "scope_failures": [],
+    "prefill_last": {
+      "rows": 18,
+      "kl_mean": 0.0007207503885062355,
+      "kl_p50": 0.00012007073823745879,
+      "kl_p95": 0.002439639001291535,
+      "kl_p99": 0.007319104422464042,
+      "kl_max": 0.008538970777757181,
+      "top1_agreement": 1.0,
+      "top1_matches": 18,
+      "topk_overlap_mean": 0.9888888888888889,
+      "strict_teacher_nll_mean": 0.2994724796606097,
+      "candidate_teacher_nll_mean": 0.2966111036613164,
+      "teacher_nll_delta": -0.002861375999293314,
+      "teacher_delta_p_mean": 0.001063985075254104,
+      "strict_margin_min": 0.2081584930419922,
+      "max_abs_logit_delta": 0.6671743392944336,
+      "passed": true
+    },
+    "repeat_determinism": true,
+    "state_repeat_exact": true,
+    "eligible_for_automatic_admission": true,
+    "rejections": {
+      "all_layers": {
+        "kl_mean": 0.000643,
+        "top1_matches": 445,
+        "prefill_last_mean": 0.00167,
+        "prefill_last_p95": 0.00745
+      },
+      "suffix28": {
+        "prefill_last_mean": 0.00114,
+        "prefill_last_p95": 0.00591
+      },
+      "suffix34": {
+        "prefill_last_mean": 0.00108,
+        "prefill_last_p95": 0.0055
+      }
+    }
+  },
+  "performance": {
+    "508": {
+      "length": 508,
+      "rows": [
+        {
+          "mode": "baseline",
+          "seconds": 7.760318034008378,
+          "tok_s": 65.46123467798222,
+          "top1": 248068,
+          "sha": "33cb156dfa445a6de769e665644d6a8e00ea06059bea56a953d70a36b00a62d7"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.467558850010391,
+          "tok_s": 78.54586433321496,
+          "top1": 248068,
+          "sha": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 6.654671722993953,
+          "tok_s": 76.33734933080208,
+          "top1": 248068,
+          "sha": "33cb156dfa445a6de769e665644d6a8e00ea06059bea56a953d70a36b00a62d7"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.491896362014813,
+          "tok_s": 78.25140323748761,
+          "top1": 248068,
+          "sha": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 6.6805417359864805,
+          "tok_s": 76.04173734347404,
+          "top1": 248068,
+          "sha": "33cb156dfa445a6de769e665644d6a8e00ea06059bea56a953d70a36b00a62d7"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.5072852020093706,
+          "tok_s": 78.06634936534452,
+          "top1": 248068,
+          "sha": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 6.69805037000333,
+          "tok_s": 75.84296503278573,
+          "top1": 248068,
+          "sha": "33cb156dfa445a6de769e665644d6a8e00ea06059bea56a953d70a36b00a62d7"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 6.514718417980475,
+          "tok_s": 77.97727659232845,
+          "top1": 248068,
+          "sha": "17075ab9c60e42ff8a149be1d5f786435f19aed4e168a53843335ff9da93f55c"
+        }
+      ],
+      "median_seconds": {
+        "baseline": 6.689296052994905,
+        "candidate": 6.499590782012092
+      },
+      "median_tok_s": {
+        "baseline": 75.94222112094445,
+        "candidate": 78.15876676511893
+      },
+      "delta_percent": -2.835952684406595
+    },
+    "1012": {
+      "length": 1012,
+      "rows": [
+        {
+          "mode": "baseline",
+          "seconds": 14.450118109001778,
+          "tok_s": 70.03402964364487,
+          "top1": 248068,
+          "sha": "90a8dab34ae0a0f4d6a0e4d79933c22e13f0b2a9d367e516f52cdfcaba158dc3"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 13.177577046008082,
+          "tok_s": 76.79712260203159,
+          "top1": 248068,
+          "sha": "c986e93e58fddb5cac6d3eed982276ce6b9333c1be8b7c0d3eb29acc3fba3cdd"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 13.543391018989496,
+          "tok_s": 74.72279273197177,
+          "top1": 248068,
+          "sha": "90a8dab34ae0a0f4d6a0e4d79933c22e13f0b2a9d367e516f52cdfcaba158dc3"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 13.166138992994092,
+          "tok_s": 76.86383992592673,
+          "top1": 248068,
+          "sha": "c986e93e58fddb5cac6d3eed982276ce6b9333c1be8b7c0d3eb29acc3fba3cdd"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 13.729450383019866,
+          "tok_s": 73.71016113300561,
+          "top1": 248068,
+          "sha": "90a8dab34ae0a0f4d6a0e4d79933c22e13f0b2a9d367e516f52cdfcaba158dc3"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 13.206474559992785,
+          "tok_s": 76.62908033501357,
+          "top1": 248068,
+          "sha": "c986e93e58fddb5cac6d3eed982276ce6b9333c1be8b7c0d3eb29acc3fba3cdd"
+        },
+        {
+          "mode": "baseline",
+          "seconds": 13.568672107008751,
+          "tok_s": 74.58356956516491,
+          "top1": 248068,
+          "sha": "90a8dab34ae0a0f4d6a0e4d79933c22e13f0b2a9d367e516f52cdfcaba158dc3"
+        },
+        {
+          "mode": "candidate",
+          "seconds": 13.197652826987905,
+          "tok_s": 76.68030166171361,
+          "top1": 248068,
+          "sha": "c986e93e58fddb5cac6d3eed982276ce6b9333c1be8b7c0d3eb29acc3fba3cdd"
+        }
+      ],
+      "median_seconds": {
+        "baseline": 13.649061245014309,
+        "candidate": 13.187614936497994
+      },
+      "median_tok_s": {
+        "baseline": 74.14429328388138,
+        "candidate": 76.73866767213475
+      },
+      "delta_percent": -3.3807915448021864
+    }
+  },
+  "free_generation": {
+    "command": "uv run python /tmp/qwen4exp_production_mmq_gdn_peer35_dp4a43_free_generation.py",
+    "prompts": 18,
+    "strict_candidate_exact": 16,
+    "candidate_repeat_exact": 18,
+    "task_valid_divergences": [
+      {
+        "id": "code_topological_sort",
+        "category": "code",
+        "strict_text": "```python\nfrom collections import deque\n\n\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n   ",
+        "candidate_text": "```python\ndef topo_sort(nodes, edges):\n    \"\"\"\n    Perform topological sort on a directed graph.\n    \n    Args:\n        nodes",
+        "verdict": "task-valid alternate implementation/explanation"
+      },
+      {
+        "id": "heldout_general_ja_speculative",
+        "category": "general_ja",
+        "strict_text": "\u6295\u6a5f\u7684\u30c7\u30b3\u30fc\u30c9\uff08Speculative Decoding\uff09\u306f\u3001\u5c0f\u3055\u306a\u300c\u30c9\u30e9\u30d5\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u8907\u6570\u306e\u30c8\u30fc\u30af\u30f3\u3092\u4e88\u6e2c\u3057\u3001\u5927\u304d\u306a\u300c\u30bf\u30fc\u30b2\u30c3\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u4e26",
+        "candidate_text": "\u6295\u6a5f\u7684\u30c7\u30b3\u30fc\u30c9\uff08Speculative Decoding\uff09\u306f\u3001\u5c0f\u3055\u306a\u300c\u30c9\u30e9\u30d5\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u751f\u6210\u3057\u305f\u5019\u88dc\u30c8\u30fc\u30af\u30f3\u3092\u3001\u5927\u304d\u306a\u300c\u30bf\u30fc\u30b2\u30c3\u30c8\u30e2\u30c7\u30eb\u300d\u3067\u4e26",
+        "verdict": "task-valid alternate implementation/explanation"
+      }
+    ]
+  },
+  "c2_physical": {
+    "command": "uv run python /tmp/qwen4exp_production_mmq_gdn_peer35_dp4a43_c2_physical.py",
+    "exact": [
+      true,
+      true
+    ],
+    "c2_wall_s": 27.094164290989283,
+    "stream_chunks": 6,
+    "teardown_zero": true
+  },
+  "kernel_trace": {
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace -f csv -o qwen4exp-gdn-peer35-p508 -d /tmp -- uv run python /tmp/qwen4exp_gdn_peer35_p508_trace_child.py",
+    "exact_baseline": {
+      "exact_fused": {
+        "launches": 36,
+        "duration_ms": 992.158019,
+        "sample_symbol": "(anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)"
+      },
+      "peer_prepare": {
+        "launches": 0,
+        "duration_ms": 0.0,
+        "sample_symbol": null
+      },
+      "peer_recurrent": {
+        "launches": 0,
+        "duration_ms": 0.0,
+        "sample_symbol": null
+      },
+      "peer_gate": {
+        "launches": 0,
+        "duration_ms": 0.0,
+        "sample_symbol": null
+      }
+    },
+    "peer35": {
+      "exact_fused": {
+        "launches": 27,
+        "duration_ms": 723.911408,
+        "sample_symbol": "(anonymous namespace)::qwen4_exp_gdn_prefill_f32_kernel(float const*, float const*, float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long, long)"
+      },
+      "peer_prepare": {
+        "launches": 9,
+        "duration_ms": 5.23244,
+        "sample_symbol": "(anonymous namespace)::qwen4_exp_gdn_prefill_prepare_f32_kernel(float const*, float const*, float const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)"
+      },
+      "peer_recurrent": {
+        "launches": 9,
+        "duration_ms": 19.881829,
+        "sample_symbol": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_kernel<float>(float const*, float const*, float const*, float const*, float const*, float*, float*, long, long, long, long)"
+      },
+      "peer_gate": {
+        "launches": 9,
+        "duration_ms": 1.651866,
+        "sample_symbol": "(anonymous namespace)::qwen4_exp_gdn_prefill_sigmoid_gate_f32_kernel(float*, float const*, float const*, long, long, long)"
+      }
+    },
+    "compiler_spawned_under_profiler": false,
+    "analysis": "exact fused family 992.158 ms/36; peer35 leaves 723.911 ms/27 exact and replaces nine with 26.766 ms, reducing traced GDN family by 241.48 ms. Remaining 27 numerically hot exact layers are the next algorithmic target; llama.cpp matched GDN family is 85 ms."
+  }
+}

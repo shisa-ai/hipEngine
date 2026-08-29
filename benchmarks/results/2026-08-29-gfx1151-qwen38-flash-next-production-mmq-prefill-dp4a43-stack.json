@@ -348,5 +348,6 @@
       }
     }
   },
-  "next": "Fold these exact selections and evidence paths into hipengine/generation/qwen4_exp_profiles.py; bind resources before generator construction; verify the resolved manifest hash and public profile smoke."
+  "next": "Fold these exact selections and evidence paths into hipengine/generation/qwen4_exp_profiles.py; bind resources before generator construction; verify the resolved manifest hash and public profile smoke.",
+  "superseded_by": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json"
 }
