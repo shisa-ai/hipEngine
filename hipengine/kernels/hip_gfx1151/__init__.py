@@ -44,6 +44,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
 )
@@ -89,12 +91,14 @@ def gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
 ):
     """Select the admitted strict one-row-tile WMMA owner for physical rows.
 
-    Owner bands follow the 2026-08-29 measured owner crossover on the six
-    physical Qwen3.8 dense prefill shapes (synthetic Q4T16 microbench,
-    bit-exact siblings): the 32-thread single-wave owner (48 cols x 64-row
-    capacity) wins rows 17-64 on every admitted shape by 4-68% over the
-    LDS-staged shared-B owner, while shared-B wins from ~row 96 and above
-    (and stays the fail-closed fallback for every unadmitted shape).
+    Owner bands follow measured owner crossovers on the six physical Qwen3.8
+    dense prefill shapes (synthetic Q4T16 microbench, bit-exact siblings):
+    the low-VGPR 16-column owners (one out tile per 32-thread block, 16/24-
+    float accumulators) roughly double effective weight bandwidth at rows
+    17-48 where the 48-column owners are latency-bound at ~2 waves/SIMD
+    (248 VGPRs); rows 49-64 keep the 48-column single-wave owner and larger
+    slabs keep the LDS-staged shared-B owner. Unadmitted shapes retain the
+    shared-B fail-closed fallback.
     """
 
     row_count = int(rows)
@@ -105,7 +109,28 @@ def gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
     ):
         fn = gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out
     elif (
-        17 <= row_count <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        17 <= row_count <= GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
         and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
     ):
         fn = gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
@@ -1092,12 +1117,16 @@ GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES = frozenset(
         (17_408, 5_120),
     }
 )
-# Measured 2026-08-29 low-M dense prefill band (parity campaign P2.3): the
+# Measured 2026-08-29 low-M dense prefill bands (parity campaign P2.3): the
 # 32-thread single-wave owner (48 cols x 64-row capacity) beats the LDS-
 # staged shared-B owner on every one of the six physical shapes for rows
-# 17-64 (4-68%), with the crossover to shared-B between rows 80 and 96.
-# Outputs are bit-exact strict siblings (same K16 WMMA association);
-# unadmitted shapes and rows > 64 retain shared-B fail-closed.
+# 17-64, with the crossover to shared-B between rows 80 and 96. Outputs are
+# bit-exact strict siblings (same K16 WMMA association); unadmitted shapes
+# and rows > 64 retain shared-B fail-closed. The low-VGPR 16-column owners
+# (one out tile per 32-thread block) then split the band: rows 17-32 take
+# the 32-row-block variant everywhere, rows 33-48 take the 48-row-block
+# variant on the three shapes where its single row-block wins and the
+# 32-row variant on the other three; rows 49-64 keep the 48-column owner.
 GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS = 64
 GGUF_Q4_T16_DENSE_LOWM_SHAPES = frozenset(
     {
@@ -1107,6 +1136,15 @@ GGUF_Q4_T16_DENSE_LOWM_SHAPES = frozenset(
         (5_120, 17_408),
         (6_144, 5_120),
         (17_408, 5_120),
+    }
+)
+GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS = 32
+GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS = 48
+GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES = frozenset(
+    {
+        (5_120, 10_240),
+        (5_120, 12_288),
+        (5_120, 17_408),
     }
 )
 # Exact standard-Q4 two-wave/16-column output ownership. The shape map is the
