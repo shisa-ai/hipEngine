@@ -36,6 +36,7 @@ _SYMBOL_GROUPED_ROW8_OUT4_EXPERTGRID64_BF16 = (
     "hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out"
 )
 _SYMBOL_DUAL_BF16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out"
+_SYMBOL_IU8_BF16 = "hipengine_gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out"
 _SYMBOL_DUAL_FP16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out"
 _SYMBOL_HOT_BF16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out"
 _SYMBOL_HOT_FP16 = "hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_fp16_fp16_out"
@@ -324,6 +325,48 @@ def gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
         wmma_total_rows,
         tile_m=tile_m,
         tile_n=tile_n,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out(
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the iu8-WMMA (llama mul_mat_q class) selected dual prefill."""
+
+    _launch_wmma_iu8(
+        _SYMBOL_IU8_BF16,
+        x_ptr,
+        expert_start_compact_ptr,
+        expert_start_wmma_ptr,
+        tile_expert_ptr,
+        qweight_a_ptr,
+        qweight_b_ptr,
+        out_ptr,
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
         stream=stream,
         library=library,
         runtime=runtime,
@@ -631,6 +674,76 @@ def _launch_dual(
         runtime.check(int(err))
 
 
+def _launch_wmma_iu8(
+    symbol: str,
+    x_ptr: int,
+    expert_start_compact_ptr: int,
+    expert_start_wmma_ptr: int,
+    tile_expert_ptr: int,
+    qweight_a_ptr: int,
+    qweight_b_ptr: int,
+    out_ptr: int,
+    compact_rows: int,
+    in_features: int,
+    out_features_a: int,
+    out_features_b: int,
+    num_experts: int,
+    wmma_total_rows: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    _check_common(
+        compact_rows,
+        in_features,
+        out_features_a,
+        out_features_b,
+        num_experts,
+        wmma_total_rows,
+    )
+    if in_features % 256 != 0:
+        raise ValueError("iu8 selected dual prefill requires in_features % 256 == 0")
+    library = library or build_gguf_q4_k_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(expert_start_compact_ptr),
+        ctypes.c_void_p(expert_start_wmma_ptr),
+        ctypes.c_void_p(tile_expert_ptr),
+        ctypes.c_void_p(qweight_a_ptr),
+        ctypes.c_void_p(qweight_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features_a),
+        ctypes.c_int64(out_features_b),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(wmma_total_rows),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def _launch_sidemeta(
     symbol: str,
     x_ptr: int,
@@ -883,6 +996,16 @@ def register_gguf_q4_k_selected_prefill_kernels(*, replace: bool = True) -> None
             "hip_gfx1100",
             "moe_linear",
             "gguf_q4_k",
+            "selected_dual_wmma_iu8_prefill_bf16_bf16_out",
+        ),
+        gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_linear",
+            "gguf_q4_k",
             "selected_dual_wmma_prefill_compact_fp16_fp16_out",
         ),
         gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out,
@@ -957,6 +1080,7 @@ register_gguf_q4_k_selected_prefill_kernels()
 
 
 __all__ = [
+    "gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out",
     "build_gguf_q4_k_selected_prefill",
     "gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out",
     "gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out",
