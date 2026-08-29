@@ -29059,11 +29059,24 @@ class _FullStackScratch:
         copy_host_to_device(self.context_buf, host_array_ptr(self.context_host), runtime=runtime)
 
     def zero_states(self, runtime: HipRuntime, *, stream: int = 0, set_position: bool = True) -> None:
+        # conv_zero/recurrent_zero are immutable np.zeros templates constructed
+        # once at allocation and never mutated, and every state buffer is
+        # allocated from those template sizes, so each reset can issue its
+        # memset directly. The previous per-call template scan
+        # (``np.all(zeros == 0)`` over full state-sized arrays) dominated C1
+        # request reclaim (~39 ms/request across ~96 buffers; measured
+        # 2026-08-29, parity campaign P2.1).
         for conv_state, recurrent_state in zip(self.layer_conv_states, self.layer_recurrent_states, strict=True):
             if conv_state is not None:
-                _zero(runtime, conv_state, self.conv_zero, stream=stream)
+                if stream:
+                    runtime.memset_async(conv_state.ptr, 0, conv_state.nbytes, stream)
+                else:
+                    runtime.memset(conv_state.ptr, 0, conv_state.nbytes)
             if recurrent_state is not None:
-                _zero(runtime, recurrent_state, self.recurrent_zero, stream=stream)
+                if stream:
+                    runtime.memset_async(recurrent_state.ptr, 0, recurrent_state.nbytes, stream)
+                else:
+                    runtime.memset(recurrent_state.ptr, 0, recurrent_state.nbytes)
         if set_position:
             self.set_full_attention_position(0, runtime)
 
