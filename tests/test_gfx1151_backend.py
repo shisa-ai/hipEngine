@@ -661,6 +661,62 @@ def test_gfx1151_q6_planar_prefill_shared4_is_wide_shape_only(
     ]
 
 
+def test_gfx1151_q6_planar_prefill_lowvgpr_bands_route_by_rows_and_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    for name, tag in (
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out",
+            "plain",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out",
+            "lowvgpr",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out",
+            "lowvgpr48",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out",
+            "shared4",
+        ),
+    ):
+        monkeypatch.setattr(
+            gfx1151_backend,
+            name,
+            (lambda tag: lambda *a, **k: calls.append(tag))(tag),
+        )
+
+    fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out
+    shapes = sorted(gfx1151_backend.GGUF_Q4_T16_DENSE_LOWM_SHAPES)
+    for rows in (17, 32):
+        for in_f, out_f in shapes:
+            fn(1, 2, 3, rows, in_f, out_f)
+    for rows in (33, 48):
+        fn(1, 2, 3, rows, 5_120, 17_408)
+    others = [s for s in shapes if s != (5_120, 17_408)]
+    for rows in (33, 48):
+        for in_f, out_f in others:
+            fn(1, 2, 3, rows, in_f, out_f)
+    for rows, in_f, out_f in (
+        (49, 5_120, 6_144),
+        (64, 6_144, 5_120),
+        (16, 5_120, 6_144),
+        (45, 5_120, 1_024),
+        (512, 17_408, 5_120),
+    ):
+        fn(1, 2, 3, rows, in_f, out_f)
+
+    assert calls == (
+        ["lowvgpr"] * (2 * len(shapes))
+        + ["lowvgpr48"] * 2
+        + ["lowvgpr"] * (2 * len(others))
+        + ["plain", "plain", "plain", "plain", "shared4"]
+    )
+
+
 def test_gfx1151_backend_scopes_dense_down_residual_fusions() -> None:
     register_gfx1151_kernels()
 

@@ -51,6 +51,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out,
@@ -185,15 +187,44 @@ def gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out(
     out_features: int,
     **kwargs,
 ):
-    """Select shared-weight WMMA only for the admitted wide Q6 down shape."""
+    """Select shared-weight WMMA only for the admitted wide Q6 down shape.
 
-    fn = (
-        gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out
-        if int(rows) >= GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS
-        and (int(in_features), int(out_features))
-        in GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES
-        else gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out
-    )
+    Low-M slabs (rows 17-48) first route to the measured low-VGPR
+    16-column owners (bit-exact siblings; VGPR 184 -> 88 restores wave
+    residency on latency-bound slabs): rows 17-32 take the 32-row variant
+    on the six physical shapes, rows 33-48 take the 48-row variant on
+    (5120,17408) and the 32-row variant on the other five. Larger slabs
+    keep the plain planar owner and the >=512-row shared4 admission.
+    """
+
+    row_count = int(rows)
+    shape = (int(in_features), int(out_features))
+    if (
+        17 <= row_count <= GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape == (5_120, 17_408)
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        row_count >= GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS
+        and shape in GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out
+    else:
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out
     return fn(
         x_ptr,
         tiles_ptr,

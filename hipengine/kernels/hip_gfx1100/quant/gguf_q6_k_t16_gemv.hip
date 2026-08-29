@@ -722,10 +722,13 @@ void q6_k_t16_wmma_prefill_shared4_bf16_kernel(
   }
 }
 
-// Planar-qmicro replacement of the dense WMMA producer. One wave owns a
-// 48-column x 64-row tile, reusing each decoded weight fragment across four
-// activation fragments while preserving every per-output K16 WMMA/BF16
-// boundary from the legacy-T16 producer.
+// Planar-qmicro replacement of the dense WMMA producer. One wave owns an
+// OUT_TILES x ROW_TILES 16-column/16-row tile, reusing each decoded weight
+// fragment across the activation fragments while preserving every
+// per-output K16 WMMA/BF16 boundary from the legacy-T16 producer. The
+// default keeps 48 columns x 64 rows; the low-VGPR instantiations shrink
+// the accumulator footprint for latency-bound slabs.
+template <int ROW_TILES_PER_BLOCK_ = 4, int OUT_TILES_PER_BLOCK_ = 3>
 __global__ __launch_bounds__(32, 2)
 void q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel(
     const uint16_t* __restrict__ x,
@@ -734,8 +737,8 @@ void q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel(
     int64_t rows,
     int64_t in_features,
     int64_t out_features) {
-  constexpr int OUT_TILES_PER_BLOCK = 3;
-  constexpr int ROW_TILES_PER_BLOCK = 4;
+  constexpr int ROW_TILES_PER_BLOCK = ROW_TILES_PER_BLOCK_;
+  constexpr int OUT_TILES_PER_BLOCK = OUT_TILES_PER_BLOCK_;
   const int64_t col_tile_base =
       static_cast<int64_t>(blockIdx.x) * OUT_TILES_PER_BLOCK;
   const int64_t row_base =
@@ -1407,7 +1410,45 @@ int launch_q6_t16_qmicro_planar_wmma_prefill(
       static_cast<unsigned int>(
           (rows + Q6_DENSE_TILE_ROWS - 1) / Q6_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
-      q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel,
+      (q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<4, 3>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const uint16_t*>(x),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<uint16_t*>(out),
+      rows,
+      in_features,
+      out_features);
+  return hipGetLastError();
+}
+
+template <int Q6_LOWVGPR_ROW_TILES>
+static int launch_q6_t16_qmicro_planar_wmma_prefill_lowvgpr_impl(
+    const void* x,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles || !out || rows <= 0 || in_features <= 0 ||
+      out_features <= 0 || (in_features % QK_K) != 0 ||
+      (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  // Low-VGPR instantiation for latency-bound low-M slabs: one 16-column
+  // out tile per 32-thread block with a 16/24-float accumulator; identical
+  // per-tile K16 WMMA order to the 48-column planar owner.
+  const dim3 block(32);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / T16_COLS),
+      static_cast<unsigned int>(
+          (rows + Q6_LOWVGPR_ROW_TILES * 16 - 1) /
+              (Q6_LOWVGPR_ROW_TILES * 16)));
+  hipLaunchKernelGGL(
+      (q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel<Q6_LOWVGPR_ROW_TILES, 1>),
       grid,
       block,
       0,
@@ -2469,6 +2510,22 @@ hipengine_gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out(
     const void* x, const void* tiles, void* out, int64_t rows,
     int64_t in_features, int64_t out_features, hipStream_t stream) {
   return launch_q6_t16_qmicro_planar_wmma_prefill(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out(
+    const void* x, const void* tiles, void* out, int64_t rows,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_q6_t16_qmicro_planar_wmma_prefill_lowvgpr_impl<2>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out(
+    const void* x, const void* tiles, void* out, int64_t rows,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_q6_t16_qmicro_planar_wmma_prefill_lowvgpr_impl<3>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
