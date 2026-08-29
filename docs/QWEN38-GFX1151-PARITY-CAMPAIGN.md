@@ -214,7 +214,7 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
 
 ### P3 — AR decode C1/C2/C8 (defend the C3-C7 lead)
 
-- [ ] P3.1 Close C1 `9.637 -> >= 11.336`, C2 `14.247 -> >= 20.056`, C8
+- [~] P3.1 Close C1 `9.637 -> >= 11.336`, C2 `14.247 -> >= 20.056`, C8
   `39.057 -> >= 45.751` complete-wall tok/s, each with a measured win or named
   blocker, and no regression vs frozen C3-C7 (20.731/26.216/31.19/34.564/
   36.592).
@@ -233,6 +233,16 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     C1 stays eager and non-regressive at **11.122 tok/s**. Remaining gaps are
     C1 1.9% and C2 9.9%
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-packed-c2-short-graph-retained.json)).
+  - Partial closure 2026-08-29: C1 is 96.6% device-kernel time and needs
+    ~1.77 ms/transition; the prior Q4/Q5/Q6/norm/attention/activation/arena
+    ladders are exhausted, so its named blocker is a new operation-complete
+    serial dataflow. C2 graph replay is **85.26 ms wall / 81.38 ms kernels**;
+    free capture projects only 18.67 tok/s. Its graph-record step plus the
+    P2.2 GPU-bound prefill gap explain ~250.6 of the 262.7 ms/request deficit.
+    C2's named blocker is the P2.2 high-row Q4/prefill algorithm or a new row-2
+    operation-complete fusion. Do not reopen graph thresholds or multistep
+    replay without a new premise
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-ar-c1-c2-blockers.json)).
 
 ### P4 — MTP K3 C1-C8 parity via the acceptance campaign
 
