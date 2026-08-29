@@ -46,6 +46,44 @@ from scripts.qwen35_kv_policy_args import add_kv_policy_args, kv_policy_json, re
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
 _QUANT_ATTN_AOTRITON_MIN_TOKENS = {"gguf_ud_q3_k_m": 0}
+# The shipping GGUF AR session passes these projection/decode selectors
+# explicitly (hipengine/generation/qwen35_gguf.py), so leaving them unset in a
+# benchmark measures a route the product does not use. Measured on W7900 with
+# Qwen3.8-27B-Q4_K_M, 45-token prefill: 0.4577 s unset vs 0.2818 s with the
+# shipping kwargs (+62.4%); 512 tokens +1.7%.
+PUBLIC_AR_PROFILE_KWARGS: dict[str, bool] = {"use_wmma_prefill": True, "use_gemv_decode": True}
+
+
+def apply_public_ar_profile(args: argparse.Namespace) -> bool:
+    """Apply the shipping GGUF AR session kwargs, rejecting explicit conflicts.
+
+    Returns True when the profile was applied. An explicit ``--no-...`` for one
+    of the profile kwargs is a contradiction rather than a silent override, so
+    it raises instead of quietly changing the measured route.
+    """
+
+    if not bool(getattr(args, "public_ar_profile", False)):
+        return False
+    for name, value in PUBLIC_AR_PROFILE_KWARGS.items():
+        current = getattr(args, name, None)
+        if current is not None and current != value:
+            raise ValueError(
+                f"--public-ar-profile conflicts with --no-{name.replace('_', '-')}; "
+                "drop one of them so the measured route is unambiguous"
+            )
+        setattr(args, name, value)
+    return True
+
+
+def shipping_ar_route_mismatch(
+    public_ar_profile: bool,
+    effective_use_wmma_prefill: Sequence[bool | None],
+) -> bool:
+    """True when measured runs cannot be read as the shipping AR route."""
+
+    if public_ar_profile:
+        return False
+    return any(value is False for value in effective_use_wmma_prefill)
 
 
 def main() -> int:
@@ -182,6 +220,16 @@ def main() -> int:
         help="Load all expert sidecar host arrays during session load so measured prefill only copies host->device per layer.",
     )
     parser.add_argument(
+        "--public-ar-profile",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Run the shipping GGUF AR session selectors (use_wmma_prefill=True, "
+            "use_gemv_decode=True) instead of the low-level opt-in defaults, which "
+            "resolve off unless the HIPENGINE_* env vars are set."
+        ),
+    )
+    parser.add_argument(
         "--use-wmma-prefill",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -200,6 +248,8 @@ def main() -> int:
     )
     parser.add_argument("--json", type=Path, default=None)
     args = parser.parse_args()
+
+    public_ar_profile_applied = apply_public_ar_profile(args)
 
     if args.prompt_length <= 0:
         raise ValueError("--prompt-length must be positive")
@@ -438,10 +488,16 @@ def main() -> int:
         "use_gemv_decode": args.use_gemv_decode,
         "requested_use_wmma_prefill": args.use_wmma_prefill,
         "requested_use_gemv_decode": args.use_gemv_decode,
+        "public_ar_profile": bool(args.public_ar_profile),
+        "public_ar_profile_applied": bool(public_ar_profile_applied),
         "kv_storage_dtype": kv_policy.storage_dtype.value,
         "kv_policy": kv_policy_json(kv_policy),
         "effective_use_wmma_prefill_all": [run.get("effective_use_wmma_prefill") for run in runs],
         "effective_use_gemv_decode_all": [run.get("effective_use_gemv_decode") for run in runs],
+        "shipping_ar_route_mismatch": shipping_ar_route_mismatch(
+            bool(args.public_ar_profile),
+            [run.get("effective_use_wmma_prefill") for run in measured_runs],
+        ),
         "fastpath_safety": [run.get("fastpath_safety") for run in runs],
         "compiler_version_file": None if args.compiler_version_file is None else str(args.compiler_version_file),
         "compiler_version_first_line": None if compiler_version is None else compiler_version.splitlines()[0],
@@ -458,10 +514,19 @@ def main() -> int:
             "Measured decode excludes graph capture time when graph_replay_decode=true.",
             "--rocprof-selected-region wraps only the requested timed phase with ROCTX profiler resume/pause controls.",
             "--persistent-session creates one resident session and resets sequence state between warmup/measured runs, avoiding repeated GGUF load/decode-repack work. Historical artifacts used the default per-run session mode.",
+            "shipping_ar_route_mismatch=true means effective_use_wmma_prefill is False in a measured run, i.e. the default low-level selectors were measured and the numbers are not shipping AR-route rates; use --public-ar-profile for those.",
         ],
     }
     text = json.dumps(output, indent=2, ensure_ascii=False)
     print(text)
+    if output["shipping_ar_route_mismatch"]:
+        print(
+            "WARNING: measured route leaves use_wmma_prefill off while the shipping GGUF AR "
+            "session passes True; prefill rates here understate the product route "
+            "(W7900 Qwen3.8-27B-Q4_K_M: +62.4% at 45 tokens). Rerun with --public-ar-profile "
+            "for shipping-route numbers.",
+            file=sys.stderr,
+        )
     if args.json is not None:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(text + "\n")
