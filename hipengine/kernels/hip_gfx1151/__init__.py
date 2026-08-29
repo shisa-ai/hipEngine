@@ -1582,6 +1582,14 @@ GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT = {
     "gguf_q6_k_t16_v1": frozenset({9, 12}),
     "gguf_q6_k_t16_qmicro_planar_v1": frozenset({9, 12}),
 }
+# E2 standard-Q6 true-R12: exact one-sweep col8 wins its actual K5120/N10240
+# target shape. Planar K5120/N1024 and K17408/N5120 lose their all-shape leaf
+# screen and retain R8+R4.
+GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS = {
+    ("gguf_q6_k_t16_v1", 12, 5_120, 10_240): (
+        "t16_gemv_rowtile12_col8_bf16_bf16_out"
+    ),
+}
 # Profile-qualified T2 production owner: use per-row-direct-equivalent Q4
 # rowtiles for C2/K3 R8 and bounded C3/K1-K3 R6/R9/R12 physical targets on
 # actual shapes. Narrow K5120/N1024 is excluded because the historical broad
@@ -2940,6 +2948,7 @@ __all__ = [
     "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
     "GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT",
     "GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT",
+    "GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS",
     "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS",
     "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES",
     "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE",
