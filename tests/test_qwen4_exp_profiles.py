@@ -14,6 +14,7 @@ from hipengine.generation.qwen4_exp_profiles import (
     PRODUCTION_GDN_PEER_PREFILL_LAYERS,
     PRODUCTION_MOE_PREFILL_ENV,
     PRODUCTION_Q4_DP4A_DECODE_LAYERS,
+    PRODUCTION_Q4_IU8_PREFILL_LAYERS,
     PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS,
     PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS,
     QWEN4_EXP_BACKEND,
@@ -142,6 +143,11 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_TILE_M"] == "16"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_TILE_N"] == "16"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL"] == "1"
+    assert tuple(
+        int(value)
+        for value in os.environ["HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS"].split(",")
+    ) == PRODUCTION_Q4_IU8_PREFILL_LAYERS
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL"] == "1"
     assert tuple(
         int(value)

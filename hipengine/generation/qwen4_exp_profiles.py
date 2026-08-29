@@ -21,6 +21,7 @@ QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
 PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
 PRODUCTION_GDN_PEER_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_WMMA_MOE_PREFILL_LAYERS = tuple(range(27, 48))
+PRODUCTION_Q4_IU8_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS = tuple(range(32, 48))
 PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_Q4_DP4A_DECODE_LAYERS = (
@@ -185,6 +186,13 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_N": "32",
         "HIPENGINE_QWEN4_EXP_Q4_TILE_M": "16",
         "HIPENGINE_QWEN4_EXP_Q4_TILE_N": "16",
+        # Certified iu8-WMMA gate/up suffix within the WMMA-MoE27 route.
+        "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": (
+            ",".join(map(str, PRODUCTION_Q4_IU8_PREFILL_LAYERS))
+            if production
+            else ""
+        ),
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN": "1",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "1",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL": "1",

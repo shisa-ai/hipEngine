@@ -123,5 +123,26 @@
     "c2": "uv run python /tmp/qwen4exp_iu8_35_c2_physical.py",
     "paired": "uv run python /tmp/qwen4exp_iu835_paired.py (+p508 leg)",
     "microbench": "uv run python /tmp/qwen4exp_q4k_iu8_check.py"
+  },
+  "profile_manifest_fold_in": {
+    "date": "2026-08-30",
+    "binder_envs": {
+      "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1",
+      "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": "35-47"
+    },
+    "public_profile_smoke": {
+      "command": "uv run python /tmp/qwen4exp_wmma_moe27_profile_smoke.py",
+      "production": {
+        "fell_back_to_strict": false,
+        "logits_sha256": "673b04f19675769ea731e038087ce1e267f7f99a4ffb4de7be402beae413e38a",
+        "tok_s_cold": 69.78256101390471
+      },
+      "strict_after_production_same_process": {
+        "logits_sha256": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48",
+        "unchanged": true
+      },
+      "note": "production manifest selection (gate/up scope) unchanged; the iu8 route is the binder-selected kernel within the 27-47 WMMA MoE scope for layers 35-47"
+    },
+    "tests": "uv run pytest tests/test_qwen4_exp_profiles.py tests/test_qwen4_exp_model_runner.py tests/test_qwen4_exp_runner_gdn.py tests/test_gguf_q4_k_iu8_wmma_selected_prefill.py -q"
   }
 }
