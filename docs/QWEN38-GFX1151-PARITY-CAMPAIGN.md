@@ -50,12 +50,14 @@ required uplift:
 
 Standing context that shapes the plan:
 
-- hipEngine isolated gfx1151 prefill is **~1294/1358/1366 tok/s at 512/1K/4K**
-  (LCP tranche, `docs/GGUF-PREFILL-OPTIMIZATION.md`), while the server matrix
-  shows 71.5 tok/s at C1 — the first prefill wall is expected to be
-  serving-path ownership/activation/API boundary, not bulk prefill kernels.
-  CONCURRENCY2 T0.2 already implicated legacy prompt activation and cold
-  provider streaming (981.9 ms open, 189 allocations, 0.052 ms GPU).
+- hipEngine isolated gfx1151 prefill on **this parity model** is 402 tok/s
+  @512 / ~87 tok/s @45 (forced-bulk owners, 2026-08-29 attribution), while the
+  server matrix shows 71.5 tok/s at C1 — the first prefill wall was suspected
+  to be serving-path ownership, but **P1.3 measurement disproved that**: the
+  C1 request wall equals the isolated packed-prefill wall and is GPU-bound in
+  the small-row T16 wmma prefill GEMM family (see the corrected table below).
+  Note: the ~1294 tok/s @512 LCP row cited at campaign open is a different
+  model (Qwen3.6-35B-A3B) and never applied to Qwen3.8-27B.
 - hipEngine AR is at parity with stock llama.cpp implied-bandwidth on the
   identical quant (12.332 vs 12.27 tok/s, survey renormalization); our MTP
   cycle efficiency is 47-54% vs external 70-77% at matched K3.
@@ -102,22 +104,37 @@ validation, no single-prompt tuning). Kernel/math changes carry their
   the prefill winner cluster unforked (within 1.6-12.8% per cell), so **no
   fork kernel port is required for hipEngine parity**; port candidates park
   under P2.3 unless a below-serving-boundary wall is proven.
-- [ ] P1.3 hipEngine serving-path attribution: quantify the C1 prefill
-  71.5 tok/s server vs ~1294 tok/s isolated LCP leaf gap (ownership,
-  activation, API boundary, packing, timing owner) with a measured breakdown
-  that names the top walls; extends CONCURRENCY2 T0.2.
+- [x] P1.3 hipEngine serving-path attribution — closed 2026-08-29
+  ([`artifact`](../benchmarks/results/2026-08-29-parity-p13-c1-prefill-attribution.json)).
+  Per C1 request (~45-token prompt): total 628 ms = packed-route prefill
+  ~534 ms **GPU-bound** (rocprof: 1380 launches, 534/560 ms busy; top kernel
+  `gguf_q4_t16_dense_wmma_prefill_shared_b` 360.6 ms at M=45, ~20x
+  bandwidth-ideal) + packed-vs-bulk route overhead ~111 ms + serving stack
+  0-30 ms. Serving/ownership is NOT the wall; the small-row T16 wmma prefill
+  GEMM family and the route overhead are. Queues (1 vs 2) are neutral; the
+  published 1294 tok/s row was the wrong model (Qwen3.6-35B-A3B).
 
 ### P2 — prefill C1-C8 parity
 
-- [ ] P2.1 Close the serving-ownership gap from P1.3; target C1 complete-wall
-  `>= 138.95` tok/s with the exact/correctness gate green.
+P1.3 decomposition per C1 request: ~534 ms GPU-bound prefill (small-row T16
+wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
+~323-332 ms.
+
+- [ ] P2.1 Close the route + small-M GEMM walls; target C1 complete-wall
+  `>= 138.95` tok/s with the exact/correctness gate green. Route small slabs
+  through the best owners (kill the ~111 ms packed-vs-bulk overhead), then
+  lift the small-M T16 wmma prefill family (360.6 ms at M=45; target
+  `<= ~130 ms` via N-split/split-K workgroup partitioning or low-M tile
+  variants) under the strict/production gates.
 - [ ] P2.2 C2-C8 prefill parity at the frozen protocol; each cell closes at
   its frozen winner (194.07/180.09/192.54/217.39/243.52/245.61/296.82) or a
-  measured named blocker.
-- [ ] P2.3 Bulk-prefill kernel follow-through (port/adapt external wins from
-  P1.2) only for walls P1.3 places below the serving boundary; each retained
-  kernel change carries the strict/production gate and rocprof trace per
-  `docs/KERNELS.md`.
+  measured named blocker. Slab rows scale with width, so the small-M fix
+  carries part of C2-C4; the rest is multi-row route efficiency.
+- [ ] P2.3 Small-row T16 wmma prefill GEMM kernel family (Q4/Q5/Q6 T16
+  dense + qmicro planar wmma prefill): low-M efficiency work per
+  `docs/KERNELS.md` + strict/production gates + rocprof trace evidence per
+  AGENTS.md. This is now first-priority kernel work (the wall is below the
+  serving boundary), not conditional on P2.1/P2.2.
 
 ### P3 — AR decode C1/C2/C8 (defend the C3-C7 lead)
 
