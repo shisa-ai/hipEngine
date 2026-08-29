@@ -89,7 +89,12 @@ streaming now removes the activation wall at both widths, while E1b removes
 duplicate physical proposal-head sweeps without changing candidate IDs or either
 acceptance trajectory. C2 clears the implementation economic/category gate too,
 but its typed automatic evidence remains unchanged until the complete admission
-bundle is refreshed.
+bundle is refreshed. Its external parity gap is separately closed as a measured
+blocker: target/accept/commit/provider is 60.38% of the profile child and 95.38%
+kernel-bound; Q4/Q6/Q5 consume 740/246/64 ms. Qualified R8 shapes are already
+one-sweep, while narrow-Q4 shared-B is numerically unqualified and insufficient
+alone even at zero cost.
+[`C2 blocker`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-post-streaming-blocker.json)
 
 Current E2 C3 category economics:
 

@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted_diagnostic_blocker",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "title": "Qwen3.8 Q4_K_M C2 post-streaming target blocker",
+  "source": {
+    "commit": "8210664490616e69cefbe28b581597716a940093",
+    "tracked_dirty": false
+  },
+  "host": {
+    "physical_host": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "execution_profile": "production",
+    "physical_width": 2,
+    "logical_target_rows": 8,
+    "candidate_budget": 3,
+    "prompt": "code_merge_intervals",
+    "prompt_tokens": 36,
+    "max_tokens": 24,
+    "profile_child": true,
+    "cache_mode": "require_cached",
+    "selected_regions": ["proposal", "target_accept_commit_provider"],
+    "performance_claim": false
+  },
+  "external_gap": {
+    "current_mtp_tok_s": 25.748573453428456,
+    "external_target_tok_s": 32.378,
+    "gap_pct": -20.475095887860718,
+    "current_full_suite_wall_seconds": 18.641809452790767,
+    "target_wall_seconds": 14.824881092099574,
+    "required_wall_reduction_seconds": 3.8169283606911932,
+    "required_wall_reduction_pct": 20.475095887860718
+  },
+  "stage_reconciliation": {
+    "profile_child_complete_ms": 1995.754457078874,
+    "proposal_marker_ms": 248.787066,
+    "proposal_kernel_ms": 232.036677,
+    "proposal_kernel_reconciliation_pct": 93.26717852768117,
+    "target_marker_ms": 1205.033647,
+    "target_kernel_ms": 1149.408136,
+    "target_kernel_reconciliation_pct": 95.38390391517424,
+    "target_fraction_of_complete_pct": 60.37985498295074,
+    "measured_cycles": 8
+  },
+  "proposal_classes": {
+    "columns": ["class", "kernel_ms", "proposal_marker_pct"],
+    "rows": [
+      ["Q6 F32 proposal head", 102.095247, 41.0372004628247],
+      ["Q4 NextN", 93.349467, 37.521832827113286],
+      ["remaining kernels", 36.591963, 14.70814523774318]
+    ],
+    "note": "The proposal head is already one exact physical rows2 E1b rowtile; no direct duplicate sweep remains."
+  },
+  "target_classes": {
+    "columns": ["class", "kernel_ms", "target_marker_pct"],
+    "rows": [
+      ["Q4", 740.010846, 61.40997372499093],
+      ["Q6", 245.57792, 20.37934132473232],
+      ["Q5", 64.264141, 5.332974822735385],
+      ["all remaining kernels", 99.555229, 8.261614042715605]
+    ],
+    "q4_fraction_of_profile_child_pct": 37.079253080217676,
+    "sweep_state": "Physical R8 already fits one exact rowtile sweep for qualified standard Q4/Q5/Q6 shapes. Narrow Q4 K5120/N1024 retains shared-B after the prior production numerical exclusion."
+  },
+  "narrow_q4_fact": {
+    "shape": "K5120/N1024",
+    "rows8_python_launches_in_one_prompt_process": 336,
+    "trace_shared_b_calls_in_selected_target_windows": 501,
+    "trace_shared_b_kernel_ms": 350.197,
+    "qualification": "not in GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES because historical broad native-verify divergence localized to this narrow shape",
+    "shared_b_fraction_of_profile_child_pct": 17.547098479868755,
+    "free_removal_insufficient": "Even deleting all 350 ms from the profiled child is 17.55% of complete wall, below the 20.48% full-suite wall reduction required to match the external target."
+  },
+  "decision": {
+    "c2_external_parity": "blocked",
+    "named_blocker": "Operation-complete R8 target plus proposal model work. Target is 60.38% of child wall and 95.38% kernel-bound; Q4 alone is 740 ms. Qualified shapes are already one-sweep. The only large existing owner miss is narrow-Q4 shared-B, which is numerically unqualified and insufficient alone even at zero cost.",
+    "next_if_reopened": "A new exact operation-complete Q4 target dataflow or an independently gated narrow-Q4 production repair, combined with proposal-Q4 work. Do not retune rowtile thresholds or infer C3 R12 transfer."
+  },
+  "raw_sources": [
+    ["/tmp/p340-c2-clean-profile.json", "9899a60be88d5fb63c1df39f93794102f2526141f28ac271cddd340424386f6a", 56676],
+    ["/tmp/p340-c2-clean-rocprof/gfx1151/4010177_kernel_trace.csv", "ff4ef85665b3a3350f4ed3bc1ae3ef0af8854350b3659ca2b41c4339f212a115", 11666756],
+    ["/tmp/p340-c2-clean-rocprof/gfx1151/4010177_marker_api_trace.csv", "bb072e75fa9f1ee24edac929772b86391528f6a959b940d59df68357ab50b066", 15380],
+    ["/tmp/p340-c2-shape-trace.json", "10ba5c129d9a06bdfbe190e4e5b046bc99c42e027cffd47ffa47371e1d88eab3", 131389]
+  ]
+}
