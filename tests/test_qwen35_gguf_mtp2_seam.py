@@ -1877,6 +1877,7 @@ def test_k0_catchup_consumes_current_root_before_target_ar() -> None:
     adapter._intents = {7: 3}
     adapter._prompt_hidden_rows = {7: np.zeros((1, 4), dtype=np.float32)}
     adapter._disabled_requests = set()
+    adapter._post_reject_pending = set()
     adapter.owner = SimpleNamespace(
         _row=lambda request_id: row,
         _flush_row_owner=lambda owned_row: None,
