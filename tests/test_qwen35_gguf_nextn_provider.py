@@ -1316,3 +1316,71 @@ def test_real_dense_blk64_one_step_logits_match_llamacpp_oracle() -> None:
     finally:
         executor.close()
         free(hidden_buf, runtime=runtime)
+
+
+def test_device_batch_top1_keeps_model_step_enqueue_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    executor.hidden_size = 8
+    executor.vocab_size = 16
+    executor.max_requests = 2
+    executor.runtime = SimpleNamespace(memcpy_async=lambda *args, **kwargs: None)
+    executor._request_slots = {10: 0, 20: 1}
+    executor._batch_sessions = (
+        SimpleNamespace(position=4),
+        SimpleNamespace(position=7),
+    )
+    executor._token_buf = SimpleNamespace(ptr=100)
+    executor._embedding_buf = SimpleNamespace(ptr=200)
+    executor._enorm_buf = SimpleNamespace(ptr=300)
+    executor._hnorm_buf = SimpleNamespace(ptr=400)
+    executor._fusion_buf = SimpleNamespace(ptr=500)
+    executor._fused_buf = SimpleNamespace(ptr=600)
+    executor._final_hidden_buf = SimpleNamespace(ptr=700)
+    executor._logits_buf = SimpleNamespace(ptr=800)
+
+    def weight():
+        return SimpleNamespace(
+            allocation=lambda name="raw": SimpleNamespace(
+                tensor=SimpleNamespace(ptr=900)
+            )
+        )
+
+    executor.weights = SimpleNamespace(
+        fallback=lambda name: weight(),
+        nextn=lambda name: weight(),
+        config=SimpleNamespace(rms_norm_eps=1e-6),
+    )
+    calls = []
+    executor._batch_session = SimpleNamespace(
+        step_hidden_batch_native=lambda *args, **kwargs: calls.append(kwargs),
+    )
+    monkeypatch.setattr(nextn_mod, "launch_gguf_embedding", lambda *a, **k: None)
+    monkeypatch.setattr(nextn_mod, "gguf_rmsnorm_bf16_f32_weight", lambda *a, **k: None)
+    monkeypatch.setattr(nextn_mod, "launch_gguf_linear", lambda *a, **k: None)
+    monkeypatch.setattr(
+        Qwen35GGUFNextNExecutor,
+        "_device_top1_rows",
+        lambda self, rows: Tensor.from_handle(
+            1000,
+            (rows,),
+            DType.INT32,
+            Device("hip", 0),
+        ),
+    )
+    monkeypatch.setattr(
+        Qwen35GGUFNextNExecutor,
+        "_publish_batch_consumed_positions",
+        lambda *args, **kwargs: None,
+    )
+
+    tokens, hidden = executor._run_step_batch_device_top1(
+        (10, 20),
+        (4, 7),
+        Tensor.from_handle(1100, (2, 8), DType.BF16, Device("hip", 0)),
+    )
+
+    assert tokens.shape == (2,)
+    assert len(hidden) == 2
+    assert calls and calls[0]["synchronize"] is False

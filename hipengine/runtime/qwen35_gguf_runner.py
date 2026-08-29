@@ -21732,6 +21732,7 @@ class Qwen35GGUFResidentSession:
         logits_ptr: int,
         stream: int = 0,
         score_output: bool = True,
+        synchronize: bool = True,
     ) -> None:
         """Run one packed model step from caller-owned BF16 hidden rows.
 
@@ -21857,10 +21858,11 @@ class Qwen35GGUFResidentSession:
             copy_kv=True,
             copy_linear_state=True,
         )
-        if stream:
-            runtime.stream_synchronize(stream)
-        else:
-            runtime.device_synchronize()
+        if synchronize:
+            if stream:
+                runtime.stream_synchronize(stream)
+            else:
+                runtime.device_synchronize()
 
     def step_batch_native(
         self,
