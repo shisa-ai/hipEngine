@@ -1,0 +1,146 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "accepted",
+  "scope": "Per-module head-to-head microbench rates for hipEngine final production vs llama.cpp master 17252c769 on zbook gfx1151, Qwen3.8-Flash-Next UD-Q4_K_XL; derived from matched rocprofv3 traces and model geometry (48 layers, 36 GDN + 12 QSA, 512 routed experts top-10, H=2560, F=640)",
+  "model_geometry": {
+    "layers": 48,
+    "gdn_layers": 36,
+    "qsa_layers": 12,
+    "experts": 512,
+    "top_k": 10,
+    "hidden": 2560,
+    "moe_intermediate": 640,
+    "pp508_routed_flop_tflop": 2.4,
+    "pp508_expert_weight_stream_gb": 66.6,
+    "expert_stream_floor_ms_at_256gbps": 260
+  },
+  "prefill_modules_pp508": {
+    "moe_gate_up_q4k": {
+      "llama": {
+        "launches": 92,
+        "us_per_launch": 4902,
+        "tflops": 3.4
+      },
+      "hipengine": {
+        "launches": 34,
+        "us_per_launch": 38100,
+        "tflops": 0.87
+      },
+      "gap": 3.9,
+      "note": "llama mul_mat_q<type12> WMMA; hipEngine gguf_q4_k_selected_dual (covers gate+up per launch)"
+    },
+    "moe_down_q5_1": {
+      "llama": {
+        "launches": 43,
+        "us_per_launch": 7609,
+        "tflops": 2.2
+      },
+      "hipengine": {
+        "launches": 29,
+        "us_per_launch": 42300,
+        "tflops": 0.39
+      },
+      "gap": 5.6,
+      "note": "llama mul_mat_q<type7>; hipEngine q5_1_selected_grouped_prefill_logical256"
+    },
+    "dense_q8_0": {
+      "llama": {
+        "launches": 493,
+        "us_per_launch": 563
+      },
+      "hipengine": {
+        "launches": 314,
+        "us_per_launch": 2823
+      },
+      "gap": 2.3,
+      "note": "shape mixes differ; family-level"
+    },
+    "comgr_gemm_f32_f16": {
+      "llama": {
+        "ms": 198.5
+      },
+      "hipengine": {
+        "ms": 263.6,
+        "family": "dense gemv"
+      },
+      "gap": 1.3
+    },
+    "gdn_recurrence": {
+      "llama": {
+        "kernel": "gated_delta_net_cuda<128,false,false>",
+        "ms_per_layer": 2.39
+      },
+      "hipengine": {
+        "kernel": "qwen4_exp_gdn_prefill_f32 (exact 27) + peer-wave32 (9)",
+        "ms_per_layer": 20.9
+      },
+      "gap": 8.7
+    },
+    "qsa_flash_attn": {
+      "llama": {
+        "kernel": "flash_attn_tile<256,256,8,4>",
+        "ms_per_layer": 1.21
+      },
+      "hipengine": {
+        "family": "paged_full_attn + related",
+        "ms_per_layer": 11.8
+      },
+      "gap": 9.8
+    },
+    "elementwise_norm_rope": {
+      "llama_ms": 275.0,
+      "hipengine_ms": 125.8,
+      "gap": 0.46,
+      "winner": "hipEngine (fusion)"
+    }
+  },
+  "decode_modules_tg32": {
+    "moe_experts": {
+      "llama_ms_per_token": 7.6,
+      "hipengine_ms_per_token": 17.3,
+      "gap": 2.3,
+      "note": "llama mul_mat_vec_q type12+type7; hipEngine q5_1 weighted_sum + q4_k dual dp4a silu + k_selected"
+    },
+    "dense_q8_q6": {
+      "llama_ms_per_token": 21.6,
+      "hipengine_ms_per_token": 27.3,
+      "gap": 1.3,
+      "note": "llama mul_mat_vec_q<8> x406/token @53us; hipEngine gguf_k_pack8 x500/token @54.6us"
+    },
+    "dense_f32": {
+      "llama_ms_per_token": 2.7,
+      "hipengine_ms_per_token": 2.4,
+      "gap": 0.9,
+      "winner": "parity"
+    },
+    "gdn_decode": {
+      "llama": {
+        "us_per_layer": 10.3
+      },
+      "hipengine": {
+        "us_per_layer": 81.6
+      },
+      "gap": 7.9
+    },
+    "topk_routing": {
+      "llama_ms_per_token": 0.42,
+      "hipengine_ms_per_token": 0.53,
+      "gap": 1.3
+    }
+  },
+  "conclusions": {
+    "priority_1": "MoE expert matmul WMMA f16 matrix-core path: closes up to ~3.4s prefill and ~10ms/token decode; llama achieves 2.2-3.4 TF/s vs our 0.39-0.87 TF/s dp4a",
+    "priority_2": "GDN algorithm port (llama chunked gated_delta_net_cuda with state passing): closes ~0.66s prefill and ~2.5ms/token decode",
+    "priority_3": "QSA flash_attn_tile prefill port: closes ~0.13s",
+    "already_at_parity": "dense f32 gemv, routing/topk, fused elementwise (we win), norm/rope (we win)"
+  },
+  "evidence": {
+    "llama_pp508_warm_trace": "/tmp/llama-master-hip-trace/llama-master-pp508-warm_kernel_trace.csv",
+    "llama_tg32_trace": "/tmp/llama-master-hip-trace/llama-master-tg32-warm_kernel_trace.csv",
+    "hipengine_pp508_trace": "/tmp/qwen4exp-gdn-peer35-p508_kernel_trace.csv",
+    "hipengine_decode_trace": "/tmp/q4dp4a64safe43_kernel_trace.csv",
+    "rebaseline_artifact": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-llamacpp-master-rebaseline.json"
+  },
+  "caveats": "Trace-derived rates carry rocprofv3 overhead on both sides (roughly symmetric); per-FLOP figures use ideal routed-row counts (5080 expert-rows) so llama TF/s is a lower bound when experts are skipped"
+}
