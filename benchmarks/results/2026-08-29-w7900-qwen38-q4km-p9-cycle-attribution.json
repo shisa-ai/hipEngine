@@ -1,0 +1,1046 @@
+{
+  "cycle_budget": {
+    "definition": "max_cycle_wall = generated visible tokens / physical cycle count / (target_ratio * true AR aggregate tok/s)",
+    "note": "physical cycles are max co-scheduled request cycles per canonical cell, never the sum of request cycles or acceptance rate"
+  },
+  "date": "2026-08-29",
+  "decision": {
+    "automatic": "unchanged K0; P9 selects an explicit candidate for P10/P11, not product promotion",
+    "reason": "K2 is the only complete-suite candidate above 1.10x AR and has +11.80 ms normalized headroom to the 1.10x budget; K1/K3 miss by 1.54/20.84 ms",
+    "selected_candidate": {
+      "C": 2,
+      "K": 2,
+      "R": 6,
+      "profile": "production",
+      "provider": "Qwen3.8 NextN dense device chain",
+      "scope": "explicit standard Q4_K_M/BF16/context<=95/D24"
+    }
+  },
+  "focused_profile": {
+    "c1": {
+      "allocations": {
+        "api_ms_per_cycle": 0.0,
+        "calls_per_cycle": 0.0
+      },
+      "copies": {
+        "dma_calls_per_cycle": 0.75,
+        "dma_ms_per_cycle": 0.00422025
+      },
+      "cycles": 4,
+      "families": {
+        "accept": {
+          "calls_per_cycle": 1.0,
+          "ms_per_cycle": 0.00731
+        },
+        "attention": {
+          "calls_per_cycle": 141.5,
+          "ms_per_cycle": 0.9785065
+        },
+        "commit_repair": {
+          "calls_per_cycle": 2.5,
+          "ms_per_cycle": 0.52415375
+        },
+        "gdn": {
+          "calls_per_cycle": 48.0,
+          "ms_per_cycle": 1.72484
+        },
+        "other": {
+          "calls_per_cycle": 489.5,
+          "ms_per_cycle": 8.131234
+        },
+        "q4_t16_rowtile": {
+          "calls_per_cycle": 210.0,
+          "ms_per_cycle": 16.62338525
+        },
+        "q5_t16_rowtile": {
+          "calls_per_cycle": 48.0,
+          "ms_per_cycle": 3.06438925
+        },
+        "q6_t16_rowtile": {
+          "calls_per_cycle": 63.0,
+          "ms_per_cycle": 7.91411975
+        }
+      },
+      "host_api_gap_ms": 10.18677775,
+      "kernel_calls": 1003.5,
+      "kernel_ms": 38.9679385,
+      "sync": {
+        "hipDeviceSynchronize": {
+          "calls_per_cycle": 2.25,
+          "wait_ms_per_cycle": 0.9571685
+        },
+        "hipStreamSynchronize": {
+          "calls_per_cycle": 0.75,
+          "wait_ms_per_cycle": 31.46964875
+        }
+      },
+      "wall_ms": 49.15471625
+    },
+    "c1_to_c2_slope": {
+      "cycle_wall_ms": 22.306422250000004,
+      "family_ms": {
+        "accept": 0.00454,
+        "attention": -0.3047909999999999,
+        "commit_repair": 0.5861750000000001,
+        "gdn": 0.82382825,
+        "other": 9.781785,
+        "q4_t16_rowtile": 5.07401175,
+        "q5_t16_rowtile": 0.772081,
+        "q6_t16_rowtile": 4.10949575
+      },
+      "host_api_gap_ms": 1.4592965000000007,
+      "kernel_calls": 440.0,
+      "kernel_ms": 20.847125749999996
+    },
+    "c2": {
+      "allocations": {
+        "api_ms_per_cycle": 0.0013725,
+        "calls_per_cycle": 0.25
+      },
+      "copies": {
+        "dma_calls_per_cycle": 0.0,
+        "dma_ms_per_cycle": 0.0
+      },
+      "cycles": 4,
+      "families": {
+        "accept": {
+          "calls_per_cycle": 1.0,
+          "ms_per_cycle": 0.01185
+        },
+        "attention": {
+          "calls_per_cycle": 86.0,
+          "ms_per_cycle": 0.6737155
+        },
+        "commit_repair": {
+          "calls_per_cycle": 6.0,
+          "ms_per_cycle": 1.11032875
+        },
+        "gdn": {
+          "calls_per_cycle": 48.0,
+          "ms_per_cycle": 2.54866825
+        },
+        "other": {
+          "calls_per_cycle": 900.5,
+          "ms_per_cycle": 17.913019
+        },
+        "q4_t16_rowtile": {
+          "calls_per_cycle": 288.0,
+          "ms_per_cycle": 21.697397
+        },
+        "q5_t16_rowtile": {
+          "calls_per_cycle": 48.0,
+          "ms_per_cycle": 3.83647025
+        },
+        "q6_t16_rowtile": {
+          "calls_per_cycle": 66.0,
+          "ms_per_cycle": 12.0236155
+        }
+      },
+      "host_api_gap_ms": 11.64607425,
+      "kernel_calls": 1443.5,
+      "kernel_ms": 59.81506425,
+      "sync": {
+        "hipDeviceSynchronize": {
+          "calls_per_cycle": 3.75,
+          "wait_ms_per_cycle": 11.2162515
+        }
+      },
+      "wall_ms": 71.4611385
+    },
+    "c2_phase_api": {
+      "cycle": {
+        "allocation_calls": 1,
+        "hip_memcpy_api_ns_sum": 40553095,
+        "hip_memcpy_calls": 1376,
+        "kernel_calls": 5774,
+        "kernel_ns_sum": 239260257,
+        "rocclr_copybuffer_calls": 1376,
+        "rocclr_copybuffer_kernel_ns_sum": 6818455,
+        "sync_calls": 15,
+        "sync_ns_sum": 44865006,
+        "wall_ns_sum": 285844554,
+        "windows": 4
+      },
+      "proposal": {
+        "allocation_calls": 0,
+        "hip_memcpy_api_ns_sum": 861340,
+        "hip_memcpy_calls": 143,
+        "kernel_calls": 380,
+        "kernel_ns_sum": 43897772,
+        "rocclr_copybuffer_calls": 141,
+        "rocclr_copybuffer_kernel_ns_sum": 366962,
+        "sync_calls": 7,
+        "sync_ns_sum": 36139884,
+        "wall_ns_sum": 53838678,
+        "windows": 4
+      },
+      "target_accept_commit_provider": {
+        "allocation_calls": 1,
+        "hip_memcpy_api_ns_sum": 39691755,
+        "hip_memcpy_calls": 1233,
+        "kernel_calls": 5393,
+        "kernel_ns_sum": 193880914,
+        "rocclr_copybuffer_calls": 1235,
+        "rocclr_copybuffer_kernel_ns_sum": 6451493,
+        "sync_calls": 8,
+        "sync_ns_sum": 8725122,
+        "wall_ns_sum": 231432167,
+        "windows": 4
+      }
+    },
+    "c2_stage_breakdown": {
+      "accept_boundary_ms": 9.4139757566154,
+      "candidate_readback_ms": 0.0,
+      "cycle_wall_ms": 71.4611385,
+      "named_sum_ms": 71.65739312767982,
+      "proposal_ms": 13.457516906782985,
+      "provider_repair_ms": 3.211904433555901,
+      "selected_commit_ms": 1.000718679279089,
+      "target_ms": 44.57327735144645,
+      "uncovered_host_or_timer_overlap_ms": -0.19625462767982071
+    },
+    "cached_build_only": true,
+    "command_c2": "env ... rocprofv3 --kernel-trace --hip-runtime-trace --marker-trace --memory-copy-trace --memory-allocation-trace --output-format csv --output-directory /tmp/gfx1100-qwen38-p9-c2k2-profile-trace -- uv run python scripts/specdec2_perf_bridge.py ... --execution-profile production --scope train --limit 1 --concurrency 2 --budgets 2 --max-tokens 12 --runs 1 --warmup --require-cached-build --roctx-markers --profile-child",
+    "compiler_subprocess_observed": false,
+    "interpretation": {
+      "accept_kernel_ms_per_cycle": 0.01185,
+      "allocation_calls_per_cycle": 0.25,
+      "dma_copy_events_per_cycle": 0.0,
+      "proposal_sync_wait_ms_per_cycle": 9.034971,
+      "rocclr_copybuffer_calls_per_cycle": 344.0,
+      "rocclr_copybuffer_ms_per_cycle": 1.70461375,
+      "target_composite_sync_wait_ms_per_cycle": 2.1812805,
+      "target_projection_ms_per_cycle": 37.55748275
+    }
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "gpu_max_hw_queues": null,
+    "physical_host": "epyc",
+    "rocm": "HIP 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100"
+  },
+  "k_ladder": {
+    "k1": {
+      "accepted_draft_tokens": 209,
+      "ar_tok_s": 30.70454038151495,
+      "cycle_budget_ms": {
+        "1.10x": 124.66401218227219,
+        "1.30x": 105.48493338499956
+      },
+      "draft_acceptance": 0.9166666666666666,
+      "engaged_cells": 10,
+      "exact_cells": 10,
+      "generated_visible_tokens": 480,
+      "headroom_ms": {
+        "1.10x": -1.535289174471643,
+        "1.30x": -20.714367971744267
+      },
+      "k": 1,
+      "mtp_tok_s": 33.36410162752832,
+      "mtp_vs_ar": 1.0866178491183183,
+      "normalized_complete_wall_ms_per_physical_cycle": 126.19930135674383,
+      "per_request": {
+        "e2e_seconds": {
+          "max": 1.5217909417115152,
+          "median": 1.4274676882196218,
+          "min": 1.4033134458586574,
+          "p95": 1.5217726519331336
+        },
+        "jain_fairness": 0.9993927324015006,
+        "rows": [
+          {
+            "accepted": 10,
+            "cycles": 12,
+            "e2e_seconds": 1.41739390976727,
+            "lane": 0,
+            "prompt_id": "code_merge_intervals",
+            "proposed": 12,
+            "tok_s": 16.93248421248028
+          },
+          {
+            "accepted": 11,
+            "cycles": 12,
+            "e2e_seconds": 1.4169189240783453,
+            "lane": 1,
+            "prompt_id": "code_merge_intervals",
+            "proposed": 12,
+            "tok_s": 16.93816039305928
+          },
+          {
+            "accepted": 10,
+            "cycles": 11,
+            "e2e_seconds": 1.4056077878922224,
+            "lane": 0,
+            "prompt_id": "code_topological_sort",
+            "proposed": 11,
+            "tok_s": 17.07446430414929
+          },
+          {
+            "accepted": 11,
+            "cycles": 11,
+            "e2e_seconds": 1.4051349721848965,
+            "lane": 1,
+            "prompt_id": "code_topological_sort",
+            "proposed": 11,
+            "tok_s": 17.080209713008216
+          },
+          {
+            "accepted": 10,
+            "cycles": 11,
+            "e2e_seconds": 1.4059831141494215,
+            "lane": 0,
+            "prompt_id": "code_lru_cache",
+            "proposed": 11,
+            "tok_s": 17.06990628725957
+          },
+          {
+            "accepted": 11,
+            "cycles": 11,
+            "e2e_seconds": 1.4048774582333863,
+            "lane": 1,
+            "prompt_id": "code_lru_cache",
+            "proposed": 11,
+            "tok_s": 17.083340514395942
+          },
+          {
+            "accepted": 10,
+            "cycles": 11,
+            "e2e_seconds": 1.4172384249977767,
+            "lane": 0,
+            "prompt_id": "code_markdown_table",
+            "proposed": 11,
+            "tok_s": 16.934341869849916
+          },
+          {
+            "accepted": 11,
+            "cycles": 11,
+            "e2e_seconds": 1.4181322371587157,
+            "lane": 1,
+            "prompt_id": "code_markdown_table",
+            "proposed": 11,
+            "tok_s": 16.923668591079316
+          },
+          {
+            "accepted": 10,
+            "cycles": 11,
+            "e2e_seconds": 1.403377156239003,
+            "lane": 0,
+            "prompt_id": "general_en_plan",
+            "proposed": 11,
+            "tok_s": 17.10160372306407
+          },
+          {
+            "accepted": 11,
+            "cycles": 11,
+            "e2e_seconds": 1.4033134458586574,
+            "lane": 1,
+            "prompt_id": "general_en_plan",
+            "proposed": 11,
+            "tok_s": 17.102380135262592
+          },
+          {
+            "accepted": 10,
+            "cycles": 11,
+            "e2e_seconds": 1.4541520150378346,
+            "lane": 0,
+            "prompt_id": "general_en_explain",
+            "proposed": 11,
+            "tok_s": 16.504464286958033
+          },
+          {
+            "accepted": 10,
+            "cycles": 11,
+            "e2e_seconds": 1.4552413099445403,
+            "lane": 1,
+            "prompt_id": "general_en_explain",
+            "proposed": 11,
+            "tok_s": 16.492110164818403
+          },
+          {
+            "accepted": 10,
+            "cycles": 12,
+            "e2e_seconds": 1.4378830529749393,
+            "lane": 0,
+            "prompt_id": "general_ja_plan",
+            "proposed": 12,
+            "tok_s": 16.691204441379764
+          },
+          {
+            "accepted": 11,
+            "cycles": 12,
+            "e2e_seconds": 1.4368031392805278,
+            "lane": 1,
+            "prompt_id": "general_ja_plan",
+            "proposed": 12,
+            "tok_s": 16.703749695325612
+          },
+          {
+            "accepted": 10,
+            "cycles": 12,
+            "e2e_seconds": 1.440103952307254,
+            "lane": 0,
+            "prompt_id": "general_ja_explain",
+            "proposed": 12,
+            "tok_s": 16.665463601810508
+          },
+          {
+            "accepted": 11,
+            "cycles": 12,
+            "e2e_seconds": 1.4400046006776392,
+            "lane": 1,
+            "prompt_id": "general_ja_explain",
+            "proposed": 12,
+            "tok_s": 16.666613418253004
+          },
+          {
+            "accepted": 10,
+            "cycles": 11,
+            "e2e_seconds": 1.4798904140479863,
+            "lane": 0,
+            "prompt_id": "mixed_ja_en_translate",
+            "proposed": 11,
+            "tok_s": 16.217417027759588
+          },
+          {
+            "accepted": 11,
+            "cycles": 11,
+            "e2e_seconds": 1.480356219690293,
+            "lane": 1,
+            "prompt_id": "mixed_ja_en_translate",
+            "proposed": 11,
+            "tok_s": 16.212314090875417
+          },
+          {
+            "accepted": 10,
+            "cycles": 12,
+            "e2e_seconds": 1.5217909417115152,
+            "lane": 0,
+            "prompt_id": "mixed_ja_en_review",
+            "proposed": 12,
+            "tok_s": 15.770891613409052
+          },
+          {
+            "accepted": 11,
+            "cycles": 12,
+            "e2e_seconds": 1.5217726519331336,
+            "lane": 1,
+            "prompt_id": "mixed_ja_en_review",
+            "proposed": 12,
+            "tok_s": 15.771081159536145
+          }
+        ],
+        "tok_s": {
+          "max": 17.102380135262592,
+          "median": 16.813709143202466,
+          "min": 15.770891613409052
+        }
+      },
+      "physical_cycle_count": 114,
+      "proposed_draft_tokens": 228,
+      "request_cycle_count": 228,
+      "source": "/tmp/gfx1100-qwen38-p8-c2-k1-pad6-clean-d24.json",
+      "source_clean": true,
+      "source_commit": "b5a974a5cf8d4e6c0d09786b9813b6a82663fc2d",
+      "source_sha256": "d25fdcb02ecbfb0531037812cd8b772b7591df4557c7fcf8d995cc141f4807d1",
+      "streaming_slo": {
+        "available": false,
+        "reason": "counterbalanced canonical economics harness is blocking; P11 owns streaming TTFT/ITL/SLO qualification"
+      },
+      "target_shape": "C2_K1_R4",
+      "visible_tokens_per_physical_cycle": 4.2105263157894735
+    },
+    "k2": {
+      "accepted_draft_tokens": 273,
+      "ar_tok_s": 30.463317214043865,
+      "cycle_budget_ms": {
+        "1.10x": 155.69817858726051,
+        "1.30x": 131.74461265075888
+      },
+      "draft_acceptance": 0.8029411764705883,
+      "engaged_cells": 10,
+      "exact_cells": 10,
+      "generated_visible_tokens": 480,
+      "headroom_ms": {
+        "1.10x": 11.799687700044274,
+        "1.30x": -12.15387823645736
+      },
+      "k": 2,
+      "mtp_tok_s": 36.257442813886605,
+      "mtp_vs_ar": 1.190200087506281,
+      "normalized_complete_wall_ms_per_physical_cycle": 143.89849088721624,
+      "per_request": {
+        "e2e_seconds": {
+          "max": 1.5042171808890998,
+          "median": 1.2996919380966574,
+          "min": 1.2289327792823315,
+          "p95": 1.5032113478519022
+        },
+        "jain_fairness": 0.9963696834396605,
+        "rows": [
+          {
+            "accepted": 15,
+            "cycles": 8,
+            "e2e_seconds": 1.5032113478519022,
+            "lane": 0,
+            "prompt_id": "code_merge_intervals",
+            "proposed": 16,
+            "tok_s": 15.965818801392192
+          },
+          {
+            "accepted": 9,
+            "cycles": 13,
+            "e2e_seconds": 1.5042171808890998,
+            "lane": 1,
+            "prompt_id": "code_merge_intervals",
+            "proposed": 26,
+            "tok_s": 15.95514285099063
+          },
+          {
+            "accepted": 13,
+            "cycles": 9,
+            "e2e_seconds": 1.2968028113245964,
+            "lane": 0,
+            "prompt_id": "code_topological_sort",
+            "proposed": 17,
+            "tok_s": 18.507054264854364
+          },
+          {
+            "accepted": 14,
+            "cycles": 9,
+            "e2e_seconds": 1.2959062899462879,
+            "lane": 1,
+            "prompt_id": "code_topological_sort",
+            "proposed": 17,
+            "tok_s": 18.519857636461307
+          },
+          {
+            "accepted": 14,
+            "cycles": 8,
+            "e2e_seconds": 1.2289327792823315,
+            "lane": 0,
+            "prompt_id": "code_lru_cache",
+            "proposed": 15,
+            "tok_s": 19.529139758169237
+          },
+          {
+            "accepted": 15,
+            "cycles": 8,
+            "e2e_seconds": 1.2294006552547216,
+            "lane": 1,
+            "prompt_id": "code_lru_cache",
+            "proposed": 15,
+            "tok_s": 19.521707506351863
+          },
+          {
+            "accepted": 15,
+            "cycles": 8,
+            "e2e_seconds": 1.4643668569624424,
+            "lane": 0,
+            "prompt_id": "code_markdown_table",
+            "proposed": 15,
+            "tok_s": 16.389335695416893
+          },
+          {
+            "accepted": 10,
+            "cycles": 12,
+            "e2e_seconds": 1.4634383139200509,
+            "lane": 1,
+            "prompt_id": "code_markdown_table",
+            "proposed": 23,
+            "tok_s": 16.39973463296325
+          },
+          {
+            "accepted": 13,
+            "cycles": 8,
+            "e2e_seconds": 1.2675941833294928,
+            "lane": 0,
+            "prompt_id": "general_en_plan",
+            "proposed": 16,
+            "tok_s": 18.933504362540567
+          },
+          {
+            "accepted": 14,
+            "cycles": 8,
+            "e2e_seconds": 1.2675724630244076,
+            "lane": 1,
+            "prompt_id": "general_en_plan",
+            "proposed": 16,
+            "tok_s": 18.9338287948733
+          },
+          {
+            "accepted": 13,
+            "cycles": 9,
+            "e2e_seconds": 1.3008295139297843,
+            "lane": 0,
+            "prompt_id": "general_en_explain",
+            "proposed": 17,
+            "tok_s": 18.44976589399206
+          },
+          {
+            "accepted": 14,
+            "cycles": 9,
+            "e2e_seconds": 1.3008716139011085,
+            "lane": 1,
+            "prompt_id": "general_en_explain",
+            "proposed": 17,
+            "tok_s": 18.449168806157427
+          },
+          {
+            "accepted": 13,
+            "cycles": 9,
+            "e2e_seconds": 1.2985543622635305,
+            "lane": 0,
+            "prompt_id": "general_ja_plan",
+            "proposed": 17,
+            "tok_s": 18.482091083322246
+          },
+          {
+            "accepted": 14,
+            "cycles": 9,
+            "e2e_seconds": 1.298035074956715,
+            "lane": 1,
+            "prompt_id": "general_ja_plan",
+            "proposed": 17,
+            "tok_s": 18.489484963108808
+          },
+          {
+            "accepted": 14,
+            "cycles": 8,
+            "e2e_seconds": 1.243031157180667,
+            "lane": 0,
+            "prompt_id": "general_ja_explain",
+            "proposed": 16,
+            "tok_s": 19.307641535256987
+          },
+          {
+            "accepted": 15,
+            "cycles": 8,
+            "e2e_seconds": 1.241977992001921,
+            "lane": 1,
+            "prompt_id": "general_ja_explain",
+            "proposed": 16,
+            "tok_s": 19.324013915347123
+          },
+          {
+            "accepted": 14,
+            "cycles": 8,
+            "e2e_seconds": 1.3097441429272294,
+            "lane": 0,
+            "prompt_id": "mixed_ja_en_translate",
+            "proposed": 16,
+            "tok_s": 18.324189598100354
+          },
+          {
+            "accepted": 15,
+            "cycles": 8,
+            "e2e_seconds": 1.3098114440217614,
+            "lane": 1,
+            "prompt_id": "mixed_ja_en_translate",
+            "proposed": 16,
+            "tok_s": 18.323248059513258
+          },
+          {
+            "accepted": 14,
+            "cycles": 8,
+            "e2e_seconds": 1.322567786090076,
+            "lane": 0,
+            "prompt_id": "mixed_ja_en_review",
+            "proposed": 16,
+            "tok_s": 18.146517896788872
+          },
+          {
+            "accepted": 15,
+            "cycles": 8,
+            "e2e_seconds": 1.322474064771086,
+            "lane": 1,
+            "prompt_id": "mixed_ja_en_review",
+            "proposed": 16,
+            "tok_s": 18.147803907333554
+          }
+        ],
+        "tok_s": {
+          "max": 19.529139758169237,
+          "median": 18.465928488657152,
+          "min": 15.95514285099063
+        }
+      },
+      "physical_cycle_count": 92,
+      "proposed_draft_tokens": 340,
+      "request_cycle_count": 175,
+      "source": "/tmp/gfx1100-qwen38-p8-c2-k2-pad6-clean-d24.json",
+      "source_clean": true,
+      "source_commit": "b5a974a5cf8d4e6c0d09786b9813b6a82663fc2d",
+      "source_sha256": "756cb96a5cd557bbb09a66f9d3b42f7b0c5cf3cd3d1df5666cde52479af1df80",
+      "streaming_slo": {
+        "available": false,
+        "reason": "counterbalanced canonical economics harness is blocking; P11 owns streaming TTFT/ITL/SLO qualification"
+      },
+      "target_shape": "C2_K2_R6",
+      "visible_tokens_per_physical_cycle": 5.217391304347826
+    },
+    "k3": {
+      "accepted_draft_tokens": 283,
+      "ar_tok_s": 30.649217333994233,
+      "cycle_budget_ms": {
+        "1.10x": 154.7538050406211,
+        "1.30x": 130.94552734206403
+      },
+      "draft_acceptance": 0.613882863340564,
+      "engaged_cells": 10,
+      "exact_cells": 10,
+      "generated_visible_tokens": 480,
+      "headroom_ms": {
+        "1.10x": -20.83553916042149,
+        "1.30x": -44.64381685897857
+      },
+      "k": 3,
+      "mtp_tok_s": 29.713598670168317,
+      "mtp_vs_ar": 0.9694733260679976,
+      "normalized_complete_wall_ms_per_physical_cycle": 175.5893442010426,
+      "per_request": {
+        "e2e_seconds": {
+          "max": 1.8213778180070221,
+          "median": 1.5934536252170801,
+          "min": 1.418971387669444,
+          "p95": 1.8209592220373452
+        },
+        "jain_fairness": 0.9913125408743091,
+        "rows": [
+          {
+            "accepted": 15,
+            "cycles": 8,
+            "e2e_seconds": 1.7806573281995952,
+            "lane": 0,
+            "prompt_id": "code_merge_intervals",
+            "proposed": 22,
+            "tok_s": 13.478168775047898
+          },
+          {
+            "accepted": 10,
+            "cycles": 12,
+            "e2e_seconds": 1.779678403865546,
+            "lane": 1,
+            "prompt_id": "code_merge_intervals",
+            "proposed": 34,
+            "tok_s": 13.485582534389843
+          },
+          {
+            "accepted": 15,
+            "cycles": 7,
+            "e2e_seconds": 1.7705392339266837,
+            "lane": 0,
+            "prompt_id": "code_topological_sort",
+            "proposed": 21,
+            "tok_s": 13.5551924182855
+          },
+          {
+            "accepted": 10,
+            "cycles": 11,
+            "e2e_seconds": 1.7696169717237353,
+            "lane": 1,
+            "prompt_id": "code_topological_sort",
+            "proposed": 31,
+            "tok_s": 13.562256908410106
+          },
+          {
+            "accepted": 15,
+            "cycles": 7,
+            "e2e_seconds": 1.437287901993841,
+            "lane": 0,
+            "prompt_id": "code_lru_cache",
+            "proposed": 19,
+            "tok_s": 16.698115921456385
+          },
+          {
+            "accepted": 16,
+            "cycles": 7,
+            "e2e_seconds": 1.4361361763440073,
+            "lane": 1,
+            "prompt_id": "code_lru_cache",
+            "proposed": 19,
+            "tok_s": 16.71150716438127
+          },
+          {
+            "accepted": 17,
+            "cycles": 6,
+            "e2e_seconds": 1.620522070210427,
+            "lane": 0,
+            "prompt_id": "code_markdown_table",
+            "proposed": 17,
+            "tok_s": 14.810042048290997
+          },
+          {
+            "accepted": 12,
+            "cycles": 10,
+            "e2e_seconds": 1.6214468530379236,
+            "lane": 1,
+            "prompt_id": "code_markdown_table",
+            "proposed": 30,
+            "tok_s": 14.801595226531099
+          },
+          {
+            "accepted": 15,
+            "cycles": 6,
+            "e2e_seconds": 1.418971387669444,
+            "lane": 0,
+            "prompt_id": "general_en_plan",
+            "proposed": 18,
+            "tok_s": 16.913660281352275
+          },
+          {
+            "accepted": 16,
+            "cycles": 6,
+            "e2e_seconds": 1.419400863815099,
+            "lane": 1,
+            "prompt_id": "general_en_plan",
+            "proposed": 18,
+            "tok_s": 16.90854261951922
+          },
+          {
+            "accepted": 15,
+            "cycles": 7,
+            "e2e_seconds": 1.4470664937980473,
+            "lane": 0,
+            "prompt_id": "general_en_explain",
+            "proposed": 20,
+            "tok_s": 16.58527794186453
+          },
+          {
+            "accepted": 16,
+            "cycles": 7,
+            "e2e_seconds": 1.4460942521691322,
+            "lane": 1,
+            "prompt_id": "general_en_explain",
+            "proposed": 20,
+            "tok_s": 16.596428596545593
+          },
+          {
+            "accepted": 14,
+            "cycles": 8,
+            "e2e_seconds": 1.5168934180401266,
+            "lane": 0,
+            "prompt_id": "general_ja_plan",
+            "proposed": 21,
+            "tok_s": 15.821810362265758
+          },
+          {
+            "accepted": 15,
+            "cycles": 8,
+            "e2e_seconds": 1.5178777920082211,
+            "lane": 1,
+            "prompt_id": "general_ja_plan",
+            "proposed": 21,
+            "tok_s": 15.811549603243693
+          },
+          {
+            "accepted": 14,
+            "cycles": 8,
+            "e2e_seconds": 1.5659069940447807,
+            "lane": 0,
+            "prompt_id": "general_ja_explain",
+            "proposed": 23,
+            "tok_s": 15.326580755608825
+          },
+          {
+            "accepted": 15,
+            "cycles": 8,
+            "e2e_seconds": 1.5663851802237332,
+            "lane": 1,
+            "prompt_id": "general_ja_explain",
+            "proposed": 23,
+            "tok_s": 15.321901855948346
+          },
+          {
+            "accepted": 16,
+            "cycles": 7,
+            "e2e_seconds": 1.8213778180070221,
+            "lane": 0,
+            "prompt_id": "mixed_ja_en_translate",
+            "proposed": 19,
+            "tok_s": 13.176837755859543
+          },
+          {
+            "accepted": 10,
+            "cycles": 12,
+            "e2e_seconds": 1.8209592220373452,
+            "lane": 1,
+            "prompt_id": "mixed_ja_en_translate",
+            "proposed": 35,
+            "tok_s": 13.179866802919431
+          },
+          {
+            "accepted": 16,
+            "cycles": 7,
+            "e2e_seconds": 1.7715301234275103,
+            "lane": 0,
+            "prompt_id": "mixed_ja_en_review",
+            "proposed": 19,
+            "tok_s": 13.547610442866999
+          },
+          {
+            "accepted": 11,
+            "cycles": 11,
+            "e2e_seconds": 1.770568419713527,
+            "lane": 1,
+            "prompt_id": "mixed_ja_en_review",
+            "proposed": 31,
+            "tok_s": 13.554968976507066
+          }
+        ],
+        "tok_s": {
+          "max": 16.913660281352275,
+          "median": 15.065971952119671,
+          "min": 13.176837755859543
+        }
+      },
+      "physical_cycle_count": 92,
+      "proposed_draft_tokens": 461,
+      "request_cycle_count": 163,
+      "source": "/tmp/gfx1100-qwen38-rows6-chunked-k3-c234-d24-v2.json",
+      "source_clean": true,
+      "source_commit": "b2fa654e042ad87e893b7a139e75237502f745b6",
+      "source_sha256": "9034faf7eaa567f0f078b62919417f2bd4d111518bf294bee624fa0747aef0ed",
+      "streaming_slo": {
+        "available": false,
+        "reason": "counterbalanced canonical economics harness is blocking; P11 owns streaming TTFT/ITL/SLO qualification"
+      },
+      "target_shape": "C2_K3_R8",
+      "visible_tokens_per_physical_cycle": 5.217391304347826
+    }
+  },
+  "kind": "w7900_qwen38_q4km_p9_cycle_attribution",
+  "limitations": [
+    "The focused profile is one canonical train prompt at D12 and is attribution-only; complete-wall candidate selection uses the full D24 suite.",
+    "HIP API synchronization durations overlap GPU execution and are ceilings, not additive savings.",
+    "The runtime copy trace reports zero DMA events in C2 cycles; hipMemcpy calls materialize as rocclr copyBuffer kernels, so H2D/D2H byte direction is not inferred from API calls. Candidate D2H remains zero by request telemetry.",
+    "partitioned_c1 is not implemented and has no SLO metrics; do not call serial/K0 attempts a control."
+  ],
+  "model": {
+    "kv": "BF16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "partitioned_c1_control": {
+    "attempt_commits_reverted": [
+      "43b9545ee",
+      "41fb928a3",
+      "8d012b534",
+      "a2efc5a12"
+    ],
+    "implication": "This serving-control feature would be new P10/P12 policy implementation; it is not physical C2 evidence and does not block selected physical-C2 attribution.",
+    "passed": false,
+    "reason": "No current same-due scheduler/adapter owner partitions one logical C2 due group into two C1 MTP transactions. Benchmark prototypes were reverted rather than relabel serial or K0 requests. Cap-2 service and explicit singleton attempts both reported specdec2_mtp2_used=false and pure K0; therefore aggregate/per-request/fairness/TTFT/ITL/E2E metrics are N/A, not fabricated.",
+    "revert_tip": "6279548f1",
+    "status": "structurally_unavailable"
+  },
+  "passed": true,
+  "performance_claim": false,
+  "ranked_costs": [
+    {
+      "estimate_basis": "earlier same-host rows6 weight-floor model ~17.4 ms; every retained leaf still needs its own measured gate",
+      "estimated_recoverable_ms_per_cycle": 20.15748275,
+      "next_task": "reuse/retune only with production numerics + strict fallback",
+      "owned_ms_per_cycle": 37.55748275,
+      "owner": "target Q4/Q5/Q6 projection rowtiles",
+      "rank": 1,
+      "risk": "high: arithmetic/kernel ownership; rows6 already profile-qualified"
+    },
+    {
+      "estimate_basis": "same-host proposal weights floor <1 ms; current window includes synchronization and non-head work",
+      "estimated_recoverable_ms_per_cycle": 12.457516906782985,
+      "next_task": "#129",
+      "owned_ms_per_cycle": 13.457516906782985,
+      "owner": "proposal window",
+      "rank": 2,
+      "risk": "medium: already batched; optimize measured NextN leaf/sync without token/state changes"
+    },
+    {
+      "estimate_basis": "wait overlaps GPU work and is not additive; only a removed dependency counts",
+      "estimated_recoverable_ms_per_cycle": null,
+      "next_task": "#127, but proposal sync is larger than pure accept",
+      "owned_ms_per_cycle": 11.2162515,
+      "owner": "synchronization/API wait (overlapping attribution)",
+      "rank": 3,
+      "recoverable_ceiling_ms_per_cycle": 11.2162515,
+      "risk": "medium: remove dependency, not timer label; pure accept kernel is ~0.012 ms/cycle"
+    },
+    {
+      "estimate_basis": "full elimination ceiling only; 344 copyBuffer launches/cycle",
+      "estimated_recoverable_ms_per_cycle": 1.70461375,
+      "next_task": "profile-name drilldown before edits",
+      "owned_ms_per_cycle": 1.70461375,
+      "owner": "rocclr D2D copyBuffer kernels",
+      "rank": 4,
+      "risk": "medium/high: state/KV ownership and ordering"
+    },
+    {
+      "estimate_basis": "full elimination ceiling only",
+      "estimated_recoverable_ms_per_cycle": 1.11032875,
+      "next_task": "only after ranks 1-3",
+      "owned_ms_per_cycle": 1.11032875,
+      "owner": "commit/repair kernels",
+      "rank": 5,
+      "risk": "medium: exact state/KV ownership"
+    }
+  ],
+  "raw_sources": {
+    "c1_phase": {
+      "path": "/tmp/gfx1100-qwen38-p9-c1k2-profile-phase-summary.json",
+      "sha256": "24d843e7e5ca2c42950e9bd4803aa1b98fa4327d311d2a6dbe90ddc9c0b596aa"
+    },
+    "c1_profile": {
+      "path": "/tmp/gfx1100-qwen38-p9-c1k2-profile-child.json",
+      "sha256": "6cd738010d52c53b35d018e60c1219cffb978528f69acd3c61e853b385f450f6"
+    },
+    "c1_trace": {
+      "path": "/tmp/gfx1100-qwen38-p9-c1k2-profile-trace-summary.json",
+      "sha256": "271301ea95a31b0ab7fd700e6e4fe7d6232cdc334938037dade3cb5cc25033c9"
+    },
+    "c2_phase": {
+      "path": "/tmp/gfx1100-qwen38-p9-c2k2-profile-phase-summary.json",
+      "sha256": "a38278f23a2039a24bc02dc67255c11c9c960f61b2cce9d2d359d7da951ba02d"
+    },
+    "c2_profile": {
+      "path": "/tmp/gfx1100-qwen38-p9-c2k2-profile-child.json",
+      "sha256": "7a9019661af9af52198e2c5d1cbdc2f35ceab5dea61bd7bd7c5df511d74d7d14"
+    },
+    "c2_trace": {
+      "path": "/tmp/gfx1100-qwen38-p9-c2k2-profile-trace-summary.json",
+      "sha256": "924e650d113999799c56e82e42eda46e9daa8dcc63bfe58e6a74e5bd410ce760"
+    },
+    "k1": {
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k1-pad6-clean-d24.json",
+      "sha256": "d25fdcb02ecbfb0531037812cd8b772b7591df4557c7fcf8d995cc141f4807d1"
+    },
+    "k2": {
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k2-pad6-clean-d24.json",
+      "sha256": "756cb96a5cd557bbb09a66f9d3b42f7b0c5cf3cd3d1df5666cde52479af1df80"
+    },
+    "k3": {
+      "path": "/tmp/gfx1100-qwen38-rows6-chunked-k3-c234-d24-v2.json",
+      "sha256": "9034faf7eaa567f0f078b62919417f2bd4d111518bf294bee624fa0747aef0ed"
+    },
+    "p8": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-08-29-w7900-qwen38-q4km-p8-c2-correctness-closure.json",
+      "sha256": "43965eed8c082bd3a1222ea33670be0166b02f477dc6a6ec709f78dcfd685f93"
+    }
+  },
+  "schema": 1,
+  "status": "complete_with_partitioned_c1_structural_blocker",
+  "validation": {
+    "all_exact_engaged": true,
+    "full_suite_cells": 30,
+    "kernel_shapes": {
+      "c1": "R3 with qualified rows2/rows3 and tails",
+      "c2": "Q4/Q5/Q6 rows6 physical target; Q6 F32 head rows4/rows2 tails"
+    },
+    "p8_correctness_artifact": "/home/lhl/hipEngine-main/benchmarks/results/2026-08-29-w7900-qwen38-q4km-p8-c2-correctness-closure.json",
+    "profile_child_statuses": {
+      "c1": "complete",
+      "c2": "complete"
+    }
+  }
+}

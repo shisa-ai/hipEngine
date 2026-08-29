@@ -747,31 +747,41 @@ DFlash2-adaptive sequential results stay excluded as invalid/unsafe.
 
 #### P9 — Decision controls, cycle budget, and measured attribution
 
-- [ ] Screen correctness-qualified C2 K1/K2/K3 on the complete prompt suite
-      against same-protocol true AR; choose R4/R6/R8 from measured visible yield
-      and complete wall rather than inheriting C1/K3. Counterbalance order and
-      retain every sample.
-- [ ] Run the logical-C2 `partitioned_c1` control under the same due schedule.
-      Report aggregate/per-request throughput, fairness, TTFT/ITL/E2E, and
-      telemetry honestly; it is a serving control, not physical C2 evidence.
-- [ ] For each finalist compute break-even and promotion budgets from actual
-      telemetry:
-      `max_cycle_wall = visible_tokens_per_physical_cycle /
-      (1.10 * true_AR_aggregate_tok_s)`. Also report the `1.30x` project-target
-      budget. Never substitute acceptance rate for physical cycle count.
-- [ ] Prebuild every `.so`, freeze the compiler-version file, require cached
-      builds, and profile focused children—not the parent prompt-suite harness—
-      with `rocprofv3` marker, kernel, HIP-runtime, copy, and allocation traces.
-- [ ] Reconcile complete cycle wall with proposal, target, accept, commit,
-      provider repair, H2D/D2H, synchronization, graph/fallback, allocation, and
-      uncovered host shares. Compare C1/C2 marginal slopes and verify actual
-      kernel names, shapes, launch counts, and plausible durations.
-- [ ] Rank changes by recoverable complete-wall milliseconds and implementation
-      risk. If the top cost is not verifier or draft work, change P10 ordering
-      rather than forcing the original hypothesis.
+- [x] Screen correctness-qualified C2 K1/K2/K3 on the complete prompt suite
+      against same-protocol true AR. Select production C2/K2/R6: K1/K2/K3 are
+      1.0866x/1.1902x/0.9695x AR with 114/92/92 actual physical cycles and
+      4.2105/5.2174/5.2174 visible tokens per physical cycle.
+- [x] Audit the logical-C2 `partitioned_c1` control. No same-due owner exists:
+      cap-2 singleton service and explicit API attempts both resolve pure K0,
+      while serial calls are not a due group. The prototype commits were fully
+      reverted (`6279548f1`) rather than fabricating aggregate/per-request/
+      fairness/TTFT/ITL/E2E metrics. Implementing this control is new policy
+      work, is not physical C2 evidence, and remains N/A for P9.
+- [x] Compute physical-cycle budgets from generated visible tokens / actual
+      physical cycles (never acceptance): K1/K2/K3 1.10x budgets are
+      124.66/155.70/154.75 ms and 1.30x budgets 105.48/131.74/130.95 ms.
+      Normalized complete walls are 126.20/143.90/175.59 ms, giving K2
+      +11.80 ms headroom to 1.10x and -12.15 ms to 1.30x.
+- [x] Prebuild/freeze cached builds and profile focused current-model C1/C2
+      children with marker, kernel, HIP-runtime, copy, and allocation traces.
+- [x] Reconcile C2 cycle wall **71.46 ms**: proposal 13.46 ms and target+
+      accept+commit+provider 57.86 ms. One request's group timer decomposes to
+      target 44.57, accept boundary 9.41, provider repair 3.21, and commit
+      1.00 ms/cycle. Pure accept kernel is only 0.012 ms/cycle; 15 sync calls
+      over four cycles wait 11.22 ms/cycle but overlap GPU work. DMA trace is
+      zero; 344 rocclr copyBuffer kernels/cycle cost 1.70 ms; one tiny allocation
+      appears over four cycles. C1 -> C2 wall/kernel slopes are +22.31/+20.85 ms,
+      with actual R3 -> R6 Q4/Q5/Q6 kernel names and plausible durations.
+- [x] Rank measured owners: target Q4/Q5/Q6 projection rowtiles 37.56 ms/cycle
+      (high-risk arithmetic), proposal 13.46 ms (medium-risk, ~12.46 ms over the
+      prior weights floor), overlapping synchronization ceiling 11.22 ms,
+      copyBuffer kernels 1.70 ms, commit/repair 1.11 ms. P10 should not treat
+      the accept timer as pure accept compute.
 
-Exit: one selected C2 `(K,R,profile,provider)` candidate, a measured cycle
-budget, and ranked cost centers with enough recoverable wall to justify P10.
+P9 exit achieved with one selected C2 `(K2,R6,production,Qwen3.8 NextN dense
+chain)` candidate, measured 1.10x/1.30x budgets, and ranked cost centers.
+Automatic remains K0. Evidence:
+[`P9 attribution`](../benchmarks/results/2026-08-29-w7900-qwen38-q4km-p9-cycle-attribution.json).
 
 #### P10 — Evidence-ranked implementation tracks
 
