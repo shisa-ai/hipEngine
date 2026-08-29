@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted_attribution",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": ["P2.2 C7 repeatability adjudication"],
+  "title": "Three-run C7 median supersedes favorable one-run result",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151"
+  },
+  "source": {
+    "commit": "f335f397b",
+    "dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+  },
+  "protocol": {
+    "command_template": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 7 --max-tokens 1 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths '' --correctness-contract ar_exact --output /tmp/p218-c7-r{1|2|3}.json",
+    "independent_fresh_process_runs": 3,
+    "prompt_tokens_per_run": 3143,
+    "cells_per_run": 10
+  },
+  "measurements": {
+    "runs_tok_s": [237.5325045201152, 237.4191215244646, 237.60263342588084],
+    "runs_wall_s": [13.231873281300068, 13.238192357122898, 13.227967866696417],
+    "median_tok_s": 237.5325045201152,
+    "spread_tok_s": 0.1835119014162412,
+    "frozen_winner_tok_s": 245.61,
+    "median_gap_pct": -3.2887486176803926,
+    "prior_favorable_one_run_tok_s": 244.8527772497157,
+    "correctness": "all 30 cells exact/route/budget conformant"
+  },
+  "verdict": {
+    "parity": "open",
+    "named_blocker": "repeatable C7 device/scheduling wall is 3.3% below comparator; the preceding 244.85 row was a favorable physical-grouping outlier",
+    "supersedes_status_in": "benchmarks/results/2026-08-29-gfx1151-qwen38-q4-shared2-prefill-retained.json",
+    "next": "use repeat medians for sub-5% parity claims; audit C4 repeatability before treating its one-run crossing as closed"
+  }
+}

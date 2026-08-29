@@ -167,11 +167,16 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     and candidate repeats are neutral at 212.216/212.207, so C5 remains open.
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-highrow-prefill-reuse-retained.json)).
   - Progress 2026-08-29: new exact 32-column Q4 shared-B owners (VGPR
-    256→224) close C4 at **196.23 tok/s** (+1.9% over 192.54), lift C7 to
-    **244.85** (0.3% short), and improve C2/C3/C6/C8. C5 is controlled
-    neutral versus the pre-unit repeat and remains 2.5% short. Rows385+ still
-    use parent shared-B, preserving the C8 high-row blocker
+    256→224) produce a one-run C4 **196.23 tok/s** crossing and improve
+    C2/C3/C6/C7/C8. C5 is controlled neutral versus the pre-unit repeat and
+    remains 2.5% short. Rows385+ still use parent shared-B, preserving the C8
+    high-row blocker
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-q4-shared2-prefill-retained.json)).
+  - Repeatability 2026-08-29: C7 clean runs are
+    **237.53/237.42/237.60 tok/s**, median 237.53 (3.3% below 245.61), so the
+    prior 244.85 row is a favorable grouping outlier and C7 remains open. C4's
+    crossing requires the same repeatability audit
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-prefill-c7-repeatability.json)).
 - [x] P2.3 Small-row T16 wmma prefill GEMM kernel family (Q4/Q5/Q6 T16
   dense + qmicro planar wmma prefill): low-M efficiency work per
   `docs/KERNELS.md` + strict/production gates + rocprof trace evidence per
