@@ -3882,7 +3882,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         resident: Qwen4ExpResidentWeights,
         *,
         max_sequence_length: int = 2_051,
-        prefill_chunk_size: int = 256,
+        prefill_chunk_size: int = 512,
         backend: str = "hip_gfx1151",
         runtime: HipRuntime | None = None,
     ) -> None:

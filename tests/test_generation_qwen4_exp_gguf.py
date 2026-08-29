@@ -159,7 +159,7 @@ def test_qwen4_exp_generator_closes_resident_when_runner_construction_fails(
     )
     monkeypatch.setattr(
         "hipengine.generation.qwen4_exp_gguf.plan_qwen4_exp_residency",
-        lambda model_map: SimpleNamespace(),
+        lambda model_map, **kwargs: SimpleNamespace(),
     )
     monkeypatch.setattr(
         "hipengine.generation.qwen4_exp_gguf.materialize_qwen4_exp_weights",

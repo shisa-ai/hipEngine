@@ -45,7 +45,7 @@ class Qwen4ExpGGUFTextGenerator:
         tokenizer: Any | None = None,
         runner: Any | None = None,
         max_sequence_length: int = 2_051,
-        prefill_chunk_size: int = 256,
+        prefill_chunk_size: int = 512,
         vision_model_path: str | Path | None = None,
     ) -> None:
         self.model_path = Path(model_path)
@@ -73,7 +73,9 @@ class Qwen4ExpGGUFTextGenerator:
             model_map = build_qwen4_exp_gguf_tensor_map(
                 tuple(reader.info for reader in readers)
             )
-            plan = plan_qwen4_exp_residency(model_map)
+            plan = plan_qwen4_exp_residency(
+                model_map, staging_token_capacity=prefill_chunk_size
+            )
             self._resident = materialize_qwen4_exp_weights(
                 readers,
                 plan=plan,
