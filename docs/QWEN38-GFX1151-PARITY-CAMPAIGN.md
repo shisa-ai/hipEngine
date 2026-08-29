@@ -161,6 +161,12 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     rejected. Next screen existing Q4/Q5/Q6 owners at rows96-536; retain the
     2 ms slice
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-prefill-c2-c8-attribution.json)).
+  - Progress 2026-08-29: exact periodic rows81-144 Q4/Q5/Q6 bands plus Q6
+    shared4 reuse lift C3-C8 to **165.60/188.64/218.70/225.40/234.54/248.14
+    tok/s**. C5 now beats 217.39 by 0.6%; C4 is 2.0% and C7 4.5% short.
+    C8 improves 8.6% but remains 16.4% short; Q4 shared-B is the best existing
+    owner above row144, naming a new high-row Q4 kernel/fusion blocker
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-highrow-prefill-reuse-retained.json)).
 - [x] P2.3 Small-row T16 wmma prefill GEMM kernel family (Q4/Q5/Q6 T16
   dense + qmicro planar wmma prefill): low-M efficiency work per
   `docs/KERNELS.md` + strict/production gates + rocprof trace evidence per
