@@ -51,6 +51,7 @@ from hipengine.speculative.frontier import (
     SpecTransactionMode,
     SpeculativeCapability,
     TargetFrontier,
+    pad_candidate_graph_rows,
 )
 from hipengine.speculative.buffers import (
     TargetVerifyBufferOwner,
@@ -357,6 +358,20 @@ class Qwen35GGUFMTP2Adapter:
                 (),
             )
         )
+        self.production_target_pad_row_counts = (
+            tuple(
+                int(value)
+                for value in backend_package_capability(
+                    str(self.generator.backend),
+                    "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS",
+                    (),
+                )
+            )
+            if str(profile) == "production"
+            else ()
+        )
+        self._target_pad_token_scratch: DeviceBuffer | None = None
+        self._target_pad_token_capacity = 0
         use_ngram = (
             _env_enabled(_NGRAM_MOD_ENV)
             if ngram_enabled is None
@@ -2008,6 +2023,64 @@ class Qwen35GGUFMTP2Adapter:
             self._restore_provider_checkpoint(state)
             raise
 
+    def _target_group_pad_rows(self, *, request_count: int, candidate_rows: int) -> int:
+        """Return inactive pad rows lifting a physical group to an admitted tile."""
+
+        counts = self.production_target_pad_row_counts
+        if not counts:
+            return 0
+        physical = int(request_count) + int(candidate_rows)
+        if physical <= 0:
+            return 0
+        for admitted in counts:
+            if admitted > physical:
+                return int(admitted) - physical
+        return 0
+
+    def _target_pad_token_tensor(
+        self,
+        proposal: Qwen35GGUFNextNBatchDeviceProposal,
+        *,
+        pad_rows: int,
+        runtime: Any,
+    ) -> Tensor:
+        """Materialize ``[proposal tokens | pad tokens]`` in adapter scratch."""
+
+        real = int(proposal.token_ids.numel)
+        total = real + int(pad_rows)
+        nbytes = total * DType.INT32.itemsize
+        if (
+            self._target_pad_token_scratch is None
+            or self._target_pad_token_capacity < nbytes
+        ):
+            capacity = max(nbytes, 64)
+            if self._target_pad_token_scratch is not None:
+                free(self._target_pad_token_scratch)
+                self._target_pad_token_scratch = None
+            self._target_pad_token_scratch = malloc(capacity, runtime=runtime)
+            self._target_pad_token_capacity = capacity
+        scratch = self._target_pad_token_scratch
+        runtime.memcpy_async(
+            scratch.ptr,
+            proposal.token_ids.ptr,
+            real * DType.INT32.itemsize,
+            HipMemcpyKind.DEVICE_TO_DEVICE,
+            0,
+        )
+        pads = np.zeros((int(pad_rows),), dtype=np.int32)
+        copy_host_to_device(
+            DeviceBuffer(scratch.ptr + real * DType.INT32.itemsize, pads.nbytes),
+            host_array_ptr(pads),
+            pads.nbytes,
+            runtime=runtime,
+        )
+        return Tensor.from_handle(
+            scratch.ptr,
+            (total,),
+            DType.INT32,
+            proposal.token_ids.device,
+        )
+
     def _batch_accept_resources(
         self,
         runtime: Any,
@@ -2070,6 +2143,7 @@ class Qwen35GGUFMTP2Adapter:
         remaining_decode: Sequence[int],
         transaction_id: int,
         runtime: Any,
+        pad_rows: int = 0,
     ) -> _PhysicalAcceptPending:
         """Chain physical proposal/target IDs into GPU accept without D2H."""
 
@@ -2085,9 +2159,15 @@ class Qwen35GGUFMTP2Adapter:
             for result in results
         ):
             raise ValueError("physical target result transaction changed")
-        if tuple(int(result.rows) - 1 for result in results) != tuple(
-            proposal.candidate_counts
-        ):
+        slot_counts = tuple(int(count) for count in proposal.candidate_counts)
+        if int(pad_rows) > 0:
+            if not slot_counts:
+                raise ValueError("target row padding requires at least one request")
+            slot_counts = (
+                slot_counts[:-1]
+                + (slot_counts[-1] + int(pad_rows),)
+            )
+        if tuple(int(result.rows) - 1 for result in results) != slot_counts:
             raise ValueError("physical target rows do not match proposal counts")
         owner, remaining_owner, payload_owner = self._batch_accept_resources(runtime)
         buffers = owner.bind(batch, transaction_id=int(transaction_id))
@@ -2131,9 +2211,23 @@ class Qwen35GGUFMTP2Adapter:
             HipMemcpyKind.DEVICE_TO_DEVICE,
             0,
         )
+        if int(pad_rows) > 0:
+            pads = np.zeros((int(pad_rows),), dtype=np.int32)
+            self._upload_accept_array(
+                Tensor.from_handle(
+                    buffers.token_ids.ptr
+                    + (request_count + int(proposal.token_ids.numel))
+                    * DType.INT32.itemsize,
+                    (int(pad_rows),),
+                    DType.INT32,
+                    buffers.token_ids.device,
+                ),
+                pads,
+                runtime,
+            )
         candidate_offset = request_count
         for request_index, (result, candidate_count) in enumerate(
-            zip(results, proposal.candidate_counts, strict=True)
+            zip(results, slot_counts, strict=True)
         ):
             runtime.memcpy_async(
                 buffers.target_top1.ptr
@@ -2575,6 +2669,8 @@ class Qwen35GGUFMTP2Adapter:
             zip(frontier.request_ids, frontier.root_tokens, strict=True)
         )
         device_offsets: dict[int, tuple[int, int]] = {}
+        pad_rows = 0
+        pad_token_tensor: Tensor | None = None
         if device_draft is not None:
             offset = 0
             for request_id, count in zip(
@@ -2584,6 +2680,26 @@ class Qwen35GGUFMTP2Adapter:
             ):
                 device_offsets[int(request_id)] = (offset, int(count))
                 offset += int(count)
+            if (
+                batch is None
+                and ngram_proposal is None
+                and device_draft.request_ids
+            ):
+                pad_rows = self._target_group_pad_rows(
+                    request_count=len(device_draft.request_ids),
+                    candidate_rows=sum(
+                        int(count) for count in device_draft.candidate_counts
+                    ),
+                )
+            if pad_rows:
+                pad_token_tensor = self._target_pad_token_tensor(
+                    device_draft,
+                    pad_rows=pad_rows,
+                    runtime=targets[0].runtime,
+                )
+                last_request = int(device_draft.request_ids[-1])
+                last_offset, last_count = device_offsets[last_request]
+                device_offsets[last_request] = (last_offset, last_count + pad_rows)
         for request_id, target in zip(ids, targets, strict=True):
             job = {
                 "session": target,
@@ -2610,11 +2726,16 @@ class Qwen35GGUFMTP2Adapter:
                     int(root_token_by_id[request_id]),
                     *((0,) * count),
                 )
+                candidate_source = (
+                    pad_token_tensor
+                    if pad_token_tensor is not None
+                    else device_draft.token_ids
+                )
                 job["candidate_token_ids_device"] = Tensor.from_handle(
-                    device_draft.token_ids.ptr + offset * DType.INT32.itemsize,
+                    candidate_source.ptr + offset * DType.INT32.itemsize,
                     (count,),
                     DType.INT32,
-                    device_draft.token_ids.device,
+                    candidate_source.device,
                 )
             jobs.append(job)
         owner = self.owner._packed_execution_owner(targets[0])
@@ -2662,6 +2783,17 @@ class Qwen35GGUFMTP2Adapter:
             graph = frontier.candidate_graph
             assert graph is not None
             if batch is None:
+                if pad_rows:
+                    if pad_token_tensor is None or graph.token_ids is None:
+                        raise RuntimeError(
+                            "target row padding lost its device token tensor"
+                        )
+                    graph = pad_candidate_graph_rows(
+                        graph,
+                        pad_rows=pad_rows,
+                        pad_token_id=0,
+                        token_ids=pad_token_tensor,
+                    )
                 shape_graph = replace(
                     graph,
                     candidate_tokens=(0,) * graph.candidate_rows,
@@ -2694,6 +2826,7 @@ class Qwen35GGUFMTP2Adapter:
                 remaining_decode=remaining,
                 transaction_id=transaction_id,
                 runtime=targets[0].runtime,
+                pad_rows=pad_rows,
             )
             commit_batch = getattr(
                 owner,
