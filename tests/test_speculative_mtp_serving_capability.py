@@ -19,6 +19,8 @@ from hipengine.speculative.serving import (
 _MODEL_SHA256 = "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
 _STRICT_MANIFEST_SHA256 = "af82558349e40e6f1e9e383da3340d7eb0a03dc62734d03c464fd432867a692e"
 _PRODUCTION_MANIFEST_SHA256 = "534a8bac3ca74428e3c1a60e9c3cbd91254f8963ddfcd678949052783331c565"
+_W7900_MODEL_SHA256 = "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+_W7900_PRODUCTION_MANIFEST_SHA256 = "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff"
 
 
 def _key(**changes) -> SpeculativeMTPServingKey:
@@ -131,6 +133,50 @@ def test_qwen38_q4km_production_c2_k3_d24_is_automatic() -> None:
     assert decision.strict_fallback_key == "gguf_target_ar"
     assert over_horizon.admitted is False
     assert over_horizon.reason == "output_horizon_not_qualified"
+
+
+def test_qwen38_q4km_gfx1100_production_c2_k2_d24_is_exact_automatic_key() -> None:
+    evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
+    key = _key(
+        artifact_sha256=_W7900_MODEL_SHA256,
+        artifact_size_bytes=17_106_773_984,
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        execution_profile="production",
+        execution_profile_manifest_sha256=_W7900_PRODUCTION_MANIFEST_SHA256,
+        realized_group_rows=2,
+        resident_capacity=2,
+        candidate_budget=2,
+        context_tokens=95,
+        output_horizon_tokens=24,
+    )
+
+    decision = resolve_speculative_mtp_serving_plan(evidence, key=key)
+    assert decision.admitted is True
+    assert decision.automatic_eligible is True
+    assert decision.selected_candidate_count == 2
+    assert decision.reason == "qualified_automatic_gfx1100_production_c2_k2_d24"
+    assert decision.static_eligibility.max_realized_group_rows == 2
+    assert decision.evidence_artifacts[-1].endswith(
+        "2026-08-30-w7900-qwen38-q4km-p12-c2-automatic-promotion.json"
+    )
+
+    for changes, reason in (
+        ({"resident_capacity": 4}, "resident_capacity_not_qualified"),
+        ({"realized_group_rows": 1}, "physical_group_not_qualified"),
+        ({"candidate_budget": 3}, "candidate_budget_not_qualified"),
+        ({"context_tokens": 96}, "context_bucket_not_qualified"),
+        ({"context_tokens": 3}, "context_bucket_not_qualified"),
+        ({"output_horizon_tokens": 25}, "output_horizon_not_qualified"),
+        ({"sampling_mode": "sampled"}, "sampling_mode_not_qualified"),
+    ):
+        rejected = resolve_speculative_mtp_serving_plan(
+            evidence,
+            key=replace(key, **changes),
+        )
+        assert rejected.admitted is False
+        assert rejected.automatic_eligible is False
+        assert rejected.reason == reason
 
 
 def test_qwen38_q4km_strict_c1_b3_plan_is_automatic_product_scope() -> None:

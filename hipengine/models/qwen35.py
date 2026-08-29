@@ -357,6 +357,40 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         strict_fallback_key="gguf_target_ar",
         automatic_eligible=True,
     ),
+    SpeculativeMTPServingEvidence(
+        evidence_key="qwen38-q4km-gfx1100-production-bf16-c2-k2-d24",
+        artifact_sha256=(
+            "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+        ),
+        artifact_size_bytes=17_106_773_984,
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        weight_quant="gguf_q4_k_m",
+        execution_profile="production",
+        execution_profile_manifest_sha256=(
+            "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff"
+        ),
+        kv_storage="bf16",
+        kv_layout="uniform",
+        realized_group_rows=2,
+        resident_capacity=2,
+        candidate_budget=2,
+        sampling_modes=("greedy_fast",),
+        max_sequence_length=1024,
+        min_context_tokens=4,
+        max_context_tokens=95,
+        min_output_horizon_tokens=24,
+        max_output_horizon_tokens=24,
+        reason="qualified_automatic_gfx1100_production_c2_k2_d24",
+        evidence_artifacts=(
+            "benchmarks/results/2026-08-29-w7900-qwen38-q4km-p8-c2-correctness-closure.json",
+            "benchmarks/results/2026-08-30-w7900-qwen38-q4km-p11-integrated-explicit-c2.json",
+            "benchmarks/results/2026-08-30-w7900-qwen38-q4km-p12-c2-automatic-promotion.json",
+        ),
+        max_realized_group_rows=2,
+        strict_fallback_key="gguf_target_ar",
+        automatic_eligible=True,
+    ),
 )
 
 
