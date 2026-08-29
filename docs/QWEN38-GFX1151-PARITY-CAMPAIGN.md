@@ -146,9 +146,14 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   its frozen winner (194.07/180.09/192.54/217.39/243.52/245.61/296.82) or a
   measured named blocker. Slab rows scale with width, so the small-M fix
   carries part of C2-C4; the rest is multi-row route efficiency.
-  - Progress 2026-08-29: the rows49-80 extension raises C2 to 136.89 tok/s
-    (+82.8% cumulative), still 29.5% below 194.07. C3-C8 require the fresh
-    full-width re-freeze (same artifact).
+  - Re-freeze 2026-08-29: C1-C8 is now
+    **146.81/139.77/153.39/174.64/199.28/214.90/226.75/228.38 tok/s**,
+    all 80 cells exact. Every width improves 34.4-105.2% from frozen
+    hipEngine; only C1 is at parity. Remaining gaps are C2-C8
+    **28.0/14.8/9.3/8.3/11.8/7.7/23.1%**. Largest deficits are C2 and C8;
+    profile their current packed prefill owners before extending row bands
+    above 80
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-prefill-c1c8-refreeze.json)).
 - [x] P2.3 Small-row T16 wmma prefill GEMM kernel family (Q4/Q5/Q6 T16
   dense + qmicro planar wmma prefill): low-M efficiency work per
   `docs/KERNELS.md` + strict/production gates + rocprof trace evidence per

@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted_progress",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": ["P2.2 current C1-C8 re-freeze"],
+  "title": "Qwen3.8 standard-Q4 prefill C1-C8 re-freeze after row80 owners",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "tuned_profile": "accelerator-performance"
+  },
+  "source": {
+    "commit": "64938d77ca5c2a35fe7f6cd23063c4b7cef61ed1",
+    "dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008
+  },
+  "protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2,3,4,5,6,7,8 --max-tokens 1 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths '' --correctness-contract ar_exact --output /tmp/p214-server-c1c8-refreeze.json",
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_cells_per_width": 10,
+    "prompt_tokens_per_single_width": 449,
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "sampling": "raw greedy; max_tokens=1; no prompt cache",
+    "correctness_contract": "ar_exact",
+    "mtp_expected": false
+  },
+  "measurements": {
+    "columns": [
+      "width",
+      "wall_seconds",
+      "prompt_tokens",
+      "prefill_tok_s",
+      "frozen_hipengine_tok_s",
+      "delta_vs_frozen_pct",
+      "frozen_winner_tok_s",
+      "gap_vs_winner_pct",
+      "exact_cells"
+    ],
+    "rows": [
+      [1, 3.058335, 449, 146.811908, 71.55, 105.2, 138.95, 5.7, 10],
+      [2, 6.424921, 898, 139.768260, 74.87, 86.7, 194.07, -28.0, 10],
+      [3, 8.781431, 1347, 153.391854, 104.51, 46.8, 180.09, -14.8, 10],
+      [4, 10.283729, 1796, 174.644825, 124.35, 40.4, 192.54, -9.3, 10],
+      [5, 11.265438, 2245, 199.282090, 141.45, 40.9, 217.39, -8.3, 10],
+      [6, 12.535773, 2694, 214.904981, 152.20, 41.2, 243.52, -11.8, 10],
+      [7, 13.860899, 3143, 226.752971, 162.08, 39.9, 245.61, -7.7, 10],
+      [8, 15.727929, 3592, 228.383535, 169.96, 34.4, 296.82, -23.1, 10]
+    ],
+    "correctness": "all 80 cells passed ar_self_exact, mtp_self_exact, ar_mtp_equal, route expectation, and budget conformance",
+    "parity_cells": {
+      "passed": [1],
+      "open": [2, 3, 4, 5, 6, 7, 8]
+    }
+  },
+  "interpretation": {
+    "progress": "Every width improves at least 34.4% over the frozen hipEngine row; C1 exceeds its frozen external comparator.",
+    "largest_relative_deficits": [
+      "C2: 28.0% below 194.07 tok/s",
+      "C8: 23.1% below 296.82 tok/s",
+      "C3: 14.8% below 180.09 tok/s"
+    ],
+    "next": "Profile a current representative C2 and C8 packed prefill operation before extending any owner policy above row80. The re-freeze alone does not name a kernel blocker."
+  },
+  "gates": {
+    "full_prompt_suite": true,
+    "exact_cells": 80,
+    "failed_cells": 0,
+    "mechanical": "JSON parse, benchmark README synchronization, worklog validation, and diff check",
+    "broad_suite": "configured broad suite retains the known test_specdec2_perf_bridge order failure documented in prior iterations; this measurement changes only evidence/docs"
+  }
+}
