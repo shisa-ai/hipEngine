@@ -154,6 +154,13 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     profile their current packed prefill owners before extending row bands
     above 80
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-prefill-c1c8-refreeze.json)).
+  - Attribution 2026-08-29: fully grouped C2 rows134 and C8 rows536 are
+    98.4%/99.3% GPU-bound; Q4 owners consume 59.4%/59.8% of kernel sum, with
+    Q6 planar second. Batcher arrivals are already within 0.72/3.18 ms; a
+    10 ms solo slice regresses C1/C2 2.5%/2.2% for only +1.0% C8 and is
+    rejected. Next screen existing Q4/Q5/Q6 owners at rows96-536; retain the
+    2 ms slice
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-prefill-c2-c8-attribution.json)).
 - [x] P2.3 Small-row T16 wmma prefill GEMM kernel family (Q4/Q5/Q6 T16
   dense + qmicro planar wmma prefill): low-M efficiency work per
   `docs/KERNELS.md` + strict/production gates + rocprof trace evidence per

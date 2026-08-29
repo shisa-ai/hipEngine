@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted_attribution",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": ["P2.2 C2/C8 current-source attribution"],
+  "title": "C2/C8 prefill is device-bound; longer solo slice rejected",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)"
+  },
+  "source": {
+    "commit": "d8e31f4fc17e3249b8bbc6cf8b31b74bb5b5251f",
+    "dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+  },
+  "profile_method": {
+    "protocol": "frozen ten-prompt server benchmark, widths 2 and 8 separately, ar_exact, max_tokens=1",
+    "boundary": "Qwen35GGUFResidentModelRunner.prefill_batch",
+    "window_clock": "time.perf_counter_ns / CLOCK_MONOTONIC, same nanosecond domain as rocprof kernel timestamps",
+    "rocprof": "rocprofv3 --kernel-trace, precomputed compiler-version file, HIPENGINE_REQUIRE_CACHED_BUILD=1",
+    "note": "This ROCm build did not emit marker CSV output despite confirmed ROCTX callbacks, so kernel rows were sliced by directly recorded prefill start/end timestamps. No compiler ran inside rocprofv3."
+  },
+  "grouping": {
+    "c2_prefill_windows": {
+      "total": 32,
+      "true_c2": 12,
+      "c1": 20,
+      "row_counts": {"70": 1, "72": 4, "78": 2, "86": 1, "92": 1, "96": 1, "120": 1, "134": 1}
+    },
+    "c8_prefill_windows": {
+      "total": 31,
+      "true_c8": 13,
+      "c7": 9,
+      "c1": 9,
+      "interpretation": "some C8 arms execute C7+C1, but arrival timing and slice A/B show the HTTP solo slice is not the cause"
+    },
+    "batcher_arrival_spans_ms": {
+      "method": "temporary wrapper around _GenerationBatcher.submit; 22 arms per width including two warmups",
+      "c2": {"median": 0.429, "p90": 0.544, "max": 0.717, "within_2ms": "22/22"},
+      "c8": {"median": 2.082, "p90": 2.354, "max": 3.178, "within_2ms": "9/22", "within_5ms": "22/22"}
+    }
+  },
+  "representative_windows": {
+    "c2_rows134": {
+      "host_ms": 670.03,
+      "gpu_kernel_sum_ms": 659.43,
+      "gpu_share_pct": 98.4,
+      "kernel_launches": 1214,
+      "families_ms": {
+        "q4_shared_b": 391.80,
+        "q6_planar_plain": 112.67,
+        "q6_standard": 52.80,
+        "q5_plain": 44.30,
+        "gdn_recurrent": 21.21,
+        "dense_f32w": 8.06,
+        "full_attention": 4.75
+      },
+      "q4_share_of_gpu_pct": 59.4
+    },
+    "c8_rows536": {
+      "host_ms": 1726.85,
+      "gpu_kernel_sum_ms": 1714.29,
+      "gpu_share_pct": 99.3,
+      "kernel_launches": 1292,
+      "families_ms": {
+        "q4_dense_dual": 592.54,
+        "q4_shared_b": 432.10,
+        "q6_planar_shared4": 198.29,
+        "q5_plain": 121.32,
+        "gdn_recurrent": 96.05,
+        "q6_standard_shared4": 76.14,
+        "linear_attention_prepare": 41.72,
+        "dense_f32w": 29.81
+      },
+      "q4_combined_share_of_gpu_pct": 59.8
+    }
+  },
+  "solo_slice_ab": {
+    "candidate": "temporary general idle-solo slice 2 ms -> 10 ms; no tracked edit",
+    "command_scope": "full ten-prompt frozen C1/C2/C8 protocol",
+    "rows": {
+      "c1": {"baseline_tok_s": 146.8119, "slice10_tok_s": 143.0988, "delta_pct": -2.5},
+      "c2": {"baseline_tok_s": 139.7683, "slice10_tok_s": 136.6520, "delta_pct": -2.2},
+      "c8": {"baseline_tok_s": 228.3835, "slice10_tok_s": 230.7524, "delta_pct": 1.0}
+    },
+    "correctness": "all 30 cells exact and route-conformant",
+    "verdict": "rejected: C1/C2 regress for only a 1.0% C8 gain; arrivals already fit within 0.7/3.2 ms"
+  },
+  "conclusion": {
+    "named_blocker": "fully grouped high-row packed prefill is 98-99% GPU-bound, led by Q4 projection owners (~59-60% of GPU sum), with Q6 planar second",
+    "next": "screen existing Q4/Q5/Q6 owners at representative rows96-536 before extending exact selector bands or designing a new high-M owner",
+    "scheduler": "retain the 2 ms solo slice"
+  },
+  "correctness": {
+    "profile_runs": "C2 and C8 server artifacts passed all exact/route/budget cells",
+    "slice_ab": "C1/C2/C8 candidate passed all 30 exact/route/budget cells",
+    "anti_gaming": "full ten-prompt protocol; no token IDs, prompt branches, or exact prompt-row policy"
+  }
+}
