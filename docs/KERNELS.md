@@ -203,6 +203,11 @@ projection outputs to BF16 in LDS, then applies the existing SiLU boundary.
 The model's Q4/Q4 linear-attention K=5,120/N=10,240+6,144 pair has a separate
 exact unequal-output owner at M>=512: a dual-WMMA shared 6,144-column prefix plus
 a singleton-geometry QKV tail, with two direct BF16 outputs and no new storage.
+On gfx1100 dense H5120 `Q4_K_M` that floor is **M>=16** after the 2026-08-30
+re-qualification: bit-identical to the two singletons at the dispatched shape for
+rows 16/24/32/45/96/512 and +1.7-2.1% W7900 Qwen3.8 prefill across rows 16-192.
+The route is ContextVar-scoped to the resident prefill entry, so this differs from
+the shared `linear_pair_silu` gate and cannot reach captured target verification.
 Raw/pack8 Q4 bodies remain registered for other layouts and diagnostics, not as
 dense-27B sidecars. Evidence: [`XTX first fit`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json),
 [`output-major LDS keep`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-q4-t16-output-major-lds.json),

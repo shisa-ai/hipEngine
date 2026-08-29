@@ -56,8 +56,11 @@ from hipengine.core.specdec2_scope import (
 from hipengine.runtime.gguf_linear import (
     clear_gguf_linear_dispatch_cache,
     launch_gguf_linear,
+    launch_gguf_linear_pair,
     launch_gguf_linear_pair_silu,
     native_batch_decode_session,
+    q4_t16_unequal_pair_prefill_session,
+    wmma_prefill_session,
     resolve_gguf_linear_dispatch,
 )
 from tests._gguf_synthetic_weights import make_q4_k_weight
@@ -771,6 +774,84 @@ def test_q4_t16_dense_bulk_pair_silu_keeps_unfused_fallback_below_33(
     )
 
 
+_UNEQUAL_PAIR_KEY = KernelKey(
+    "hip_gfx1100",
+    "linear_pair",
+    "gguf_q4_k_t16_v1",
+    "dense_unequal_dual_wmma_prefill_bf16_bf16_out",
+)
+
+
+def _unequal_pair_launch(rows: int, *, session: bool = True) -> tuple[bool, list]:
+    """Launch the 5120 -> 10240/6144 pair under an explicit prefill session."""
+
+    weight_a = _weight(0x1000, in_features=5_120, out_features=10_240)
+    weight_b = _weight(0x2000, in_features=5_120, out_features=6_144)
+    original = resolve(
+        backend=_UNEQUAL_PAIR_KEY.backend,
+        layer=_UNEQUAL_PAIR_KEY.layer,
+        quant=_UNEQUAL_PAIR_KEY.quant,
+        variant=_UNEQUAL_PAIR_KEY.variant,
+    )
+    calls: list[tuple] = []
+    try:
+        register(_UNEQUAL_PAIR_KEY, lambda *args, **kwargs: calls.append(args), replace=True)
+        # The resident prefill entry opens both sessions; use_wmma defaults off
+        # outside it, so the pair route needs the same nesting as production.
+        with wmma_prefill_session(True), q4_t16_unequal_pair_prefill_session(session):
+            launched = launch_gguf_linear_pair(
+                weight_a,
+                weight_b,
+                0x3000,
+                0x4000,
+                0x5000,
+                rows,
+                5_120,
+                10_240,
+                out_features_b=6_144,
+            )
+    finally:
+        register(_UNEQUAL_PAIR_KEY, original, replace=True)
+    return launched, calls
+
+
+@pytest.mark.parametrize("rows", [16, 24, 32, 45, 96, 512])
+def test_q4_t16_dense_unequal_pair_prefill_uses_dual_owner_from_16(rows: int) -> None:
+    launched, calls = _unequal_pair_launch(rows)
+
+    assert launched
+    assert len(calls) == 1
+    # (x, tiles_a, tiles_b, out_a, out_b, rows, in, out_a, out_b)
+    assert (calls[0][0], calls[0][3], calls[0][4]) == (0x3000, 0x4000, 0x5000)
+    assert calls[0][5:] == (rows, 5_120, 10_240, 6_144)
+
+
+@pytest.mark.parametrize("rows", [2, 8, 15])
+def test_q4_t16_dense_unequal_pair_prefill_keeps_singletons_below_16(
+    rows: int,
+) -> None:
+    # rows<=8 keep their dedicated GEMV/rowtile decode owners; 15 is the last row
+    # count under the qualified dual floor.
+    launched, calls = _unequal_pair_launch(rows)
+
+    assert not launched
+    assert calls == []
+
+
+def test_q4_t16_dense_unequal_pair_prefill_requires_prefill_session() -> None:
+    """The dual is prefill-scoped, which is what keeps target verification off it.
+
+    ``q4_t16_unequal_pair_prefill_session`` is opened by the resident prefill entry
+    only, so a row-count floor alone does not have to protect the captured verify
+    groups the way the shared ``linear_pair_silu`` gate does.
+    """
+
+    launched, calls = _unequal_pair_launch(512, session=False)
+
+    assert not launched
+    assert calls == []
+
+
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_q4_t16_r6_rowtile_matches_two_retained_c1_r3_owners() -> None:
     from hipengine.core.hip import get_hip_runtime
@@ -1086,7 +1167,7 @@ def test_q4_t16_dense_unequal_dual_wmma_matches_singletons(rows: int) -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.parametrize("rows", [33, 45, 96, 512])
+@pytest.mark.parametrize("rows", [16, 24, 32, 45, 96, 512])
 def test_q4_t16_dense_unequal_dual_wmma_matches_singletons_at_production_shape(
     rows: int,
 ) -> None:
