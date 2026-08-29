@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "date": "2026-08-30",
+  "status": "accepted",
+  "scope": "Column-warp GDN prefill on layers 27-47 (llama gated_delta_net layout): one warp per (v_head, column) with the 128 state rows sharded across lanes in registers, warp-shuffle reductions, no __syncthreads in the token loop; companion in-place rms-norm+gate tail kernel. Replaces the strict fused owner (27-34) and peer-GDN (35-47) on those layers within the production stack",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "cpu": "AMD Ryzen AI Max+ Pro 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+  },
+  "kernel": {
+    "name": "qwen4_exp_gdn_prefill_columnwarps_f32_kernel",
+    "lineage": "ggml-org/llama.cpp@17252c769 ggml/src/ggml-cuda/gated_delta_net.cu",
+    "microbench_rows_320_real_geometry": {
+      "columnwarps_ms": 3.34,
+      "owner_ms": 15.3,
+      "speedup": 4.58,
+      "max_rel_vs_owner": 7.5e-07
+    },
+    "notes": "in-place tail kernel (norm_weight indexed [0..127] shared across heads, matching the fused owner); ~4096 warps in flight vs 32 blocks"
+  },
+  "numerical_gate": {
+    "rows": 450,
+    "repeats": 3,
+    "scenario_id": "qwen4exp-ud-q4-k-xl-c1-gdn-colwarps-27",
+    "kl_mean": 0.00028992541668820246,
+    "kl_p95": 0.0017061772312812746,
+    "kl_p99": 0.003929947436537171,
+    "kl_max": 0.007617963302857456,
+    "top1_matches": 446,
+    "per_category_top1": {
+      "code": 0.9866666666666667,
+      "general_en": 1.0,
+      "general_ja": 0.99,
+      "mixed_ja_en": 0.99
+    },
+    "scope_failures": [],
+    "eligible_for_automatic_admission": true,
+    "repeat_determinism_passed": true,
+    "state_repeat_exact": true
+  },
+  "free_generation": {
+    "strict_exact": 13,
+    "candidate_repeat_exact": 18,
+    "total": 18,
+    "note": "6 task-valid divergences (word choice/import order), 18/18 repeat-exact"
+  },
+  "c2_physical": {
+    "serial_c2_ids_exact": true,
+    "stream_chunks": 6,
+    "teardown_bytes": 0
+  },
+  "performance": {
+    "protocol": "counterbalanced 8-rep alternating vs current production (peer-GDN 35-47), one residency per length, median of four per mode",
+    "p508_delta_percent": -17.09,
+    "p1012_delta_percent": -15.67,
+    "note": "largest single retained win of the parity campaign; GDN family 750.7ms -> ~120ms projected"
+  },
+  "screen_evidence": {
+    "ladder": "/tmp/qwen4exp-gdn-cw-ladder.json",
+    "all_layer_mean": 0.0068,
+    "from27_mean": 0.00099,
+    "floor_44_47": 0.00059,
+    "note": "1e-6/layer kernel deltas amplify through the 36-layer recurrence chain; boundary at 27 admissible"
+  },
+  "debugging_notes": [
+    "initial fault: tail kernel indexed norm_weight[v_head*128+col] but the owner shares a 128-element norm across heads; fixed to norm_weight[col]",
+    "an earlier microbench reference mirrored the same wrong indexing, explaining a spurious 'owner vs numpy 17%' scare"
+  ],
+  "commands": {
+    "microbench": "uv run python /tmp/qwen4exp_gdn_cw_real.py",
+    "ladder": "uv run python /tmp/qwen4exp_gdn_cw_ladder.py",
+    "gate": "uv run python /tmp/qwen4exp_gdn_cw_gate.py",
+    "free_generation": "uv run python /tmp/qwen4exp_gdn_cw_free_generation.py",
+    "c2": "uv run python /tmp/qwen4exp_gdn_cw_c2.py",
+    "paired": "uv run python /tmp/qwen4exp_gdncw_paired.py"
+  }
+}

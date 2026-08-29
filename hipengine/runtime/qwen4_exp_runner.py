@@ -116,6 +116,7 @@ from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
 from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
     qwen4_exp_gdn_decode_f32,
     qwen4_exp_gdn_peer_prefill_f32,
+    qwen4_exp_gdn_prefill_columnwarps_f32,
     qwen4_exp_gdn_prefill_f32,
 )
 from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
@@ -4060,7 +4061,38 @@ def run_qwen4_exp_gdn_token_mixer(
             not in {"", "0", "false", "False"}
             and _qwen4_exp_gdn_peer_layer_allowed(weights)
         )
-        if peer_prefill:
+        colwarps_prefill = (
+            head_dim == 128
+            and os.environ.get(
+                "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL", "0"
+            )
+            not in {"", "0", "false", "False"}
+            and _qwen4_exp_layer_allowed(
+                weights["attn_qkv"],
+                env_name="HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS",
+                default="all",
+            )
+        )
+        if colwarps_prefill:
+            qwen4_exp_gdn_prefill_columnwarps_f32(
+                scratch.conv.ptr,
+                scratch.gate.ptr,
+                scratch.alpha.ptr,
+                scratch.beta.ptr,
+                dt_bias_ptr,
+                a_ptr,
+                norm_weight_ptr,
+                recurrent_state_ptr,
+                scratch.core.ptr,
+                rows,
+                num_k_heads,
+                num_v_heads,
+                head_dim,
+                head_dim,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        elif peer_prefill:
             compact_width = rows * num_k_heads * head_dim
             query_ptr = scratch.qkv.ptr
             key_ptr = query_ptr + compact_width * DType.FP32.itemsize
