@@ -623,9 +623,36 @@ via k0 catchups (23 observed) and C1/K2 full accepts hold 0.9615. The reject
 path restores the provider root snapshot
 (`restore_request_root_state`: conv/recurrent states + cursors) and re-seeds
 from verify hidden rows, unlike the healthy target-hidden k0-catchup repair.
+A follow-up device position probe (20260829 worklog, oracle traces + wrapped
+capture/restore/advance) verified 175/175 captures with
+`consumed_position == root_position` and restores rewinding cursors exactly,
+refuting a positional one-token hole; stale draft KV rows are overwritten at
+the same positions by the next root advance. Post-reject proposals are
+plausible-but-wrong (oracle traces: code 7 correct / 9 unrelated / 1
+branch-continuation; root continuity 21/21). Two hypotheses remain:
+(a) immediate re-speculation at a by-definition-hard correction token with
+code-clustered difficulty (K1 escapes because its k0 catchups advance one more
+token before re-speculating), or (b) a value-level provider-state corruption.
+Discriminating experiment: force a K0 catchup after every reject at C2/K2 —
+recovery to ~0.90 implies policy, persistence implies corruption.
 D24 walls are ~50% prefill, so these ratios understate steady-state decode
 gains. Evidence:
 [`stage/tile/acceptance diagnosis`](../benchmarks/results/2026-08-28-w7900-qwen38-q4km-c2-stage-tile-acceptance-diagnosis.json).
+
+P8 current punchlist (20260829):
+
+- [x] `pad_candidate_graph_rows` primitive landed (inactive tail rows owned
+      by the last request; padded `accept_from_top1` bit-identical to
+      unpadded; GPU accept already honors `active_mask`).
+- [ ] Executor integration: declare `GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS
+      = (6,)` on hip_gfx1100, pad scratch sized `max_requests x budget
+capacity`, device pad-token tail upload, split row-slot vs candidate-count
+      validation in `_enqueue_target_batch_accept`, oracle host-token padding;
+      strict profile stays unpadded. Gates: C2/K1 and C2/K2 `mtp_self_exact`
+      suites with acceptance unchanged (91.67%/80.29%) plus the speedup
+      measurement.
+- [ ] Forced K0-catchup-after-reject experiment (acceptance policy vs state
+      corruption discriminator above).
 
 Exit: an explicit-only, correctness-qualified physical C2 baseline and an
 explained acceptance curve. Automatic remains K0.
