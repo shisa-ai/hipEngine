@@ -218,6 +218,13 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   `39.057 -> >= 45.751` complete-wall tok/s, each with a measured win or named
   blocker, and no regression vs frozen C3-C7 (20.731/26.216/31.19/34.564/
   36.592).
+  - Re-freeze 2026-08-29: current C1-C8 AR is
+    **11.060/16.993/24.032/30.623/35.896/40.585/44.220/47.781 tok/s**, with
+    all 80 cells exact. C3-C8 beat their frozen targets by 4.4-20.8%, defending
+    the C3-C7 lead and closing C8. C1 remains 2.4% short and C2 remains 15.3%
+    short; profile those two current decode routes before changing kernels or
+    dispatch
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-ar-c1c8-refreeze.json)).
 
 ### P4 — MTP K3 C1-C8 parity via the acceptance campaign
 
