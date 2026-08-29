@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8 exact Q6 R20-R32 retained] Extend exact Q6 rowtile chunks through logical R20/R24/R28/R32: all 12 actual leaves win 180/180 timing pairs by 59-84%; clean C5-C8 improve **15.244/20.830/23.245/19.650→17.970/26.904/28.205/27.393 tok/s (+17.89%/+29.16%/+21.34%/+39.41%)**, with all 40 cells and 78.894% acceptance exact. Every width remains below AR and 25-50% below external. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-q6-r20-r32-retained.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8 C4 exact Q6 R16 retained] Reuse existing exact Q6 rowtiles as R8+R8 at logical R16: all three actual leaves improve 65.9-84.1%; traced Q6 falls **1.847→0.478 s (-74.10%)**; clean C4/K3 improves **20.384→27.450 tok/s (+34.66%)** with exact 628/796 acceptance, passing the frozen external target by 1.61%. C4 remains automatic K0 because overall and three categories trail AR. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8 C4-C8 target blockers] C4 target/accept/commit/provider is **3.533/4.861 s (72.68%)** and 97.78% kernel-bound; Q6/Q4 consume **1.847/1.059 s**, with R16 missing exact rowtile chunking. Deduplicated wide telemetry assigns 57.5-69.5% of C5-C8 wall to target enqueue plus synchronization/commit/readback. Exact Q6 R16 screening is admitted; wider R20-R32 waits on that result. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-c8-target-blockers.json`.
