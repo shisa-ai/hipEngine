@@ -217,7 +217,13 @@ Exact PLE/Conv/QSA cuts p512 launches **29,341→4,933**. Explicit production
 rows/three repeats at KL mean/p95/p99/max
 `2.72e-4/1.40e-3/4.00e-3/5.77e-3`, 99.333% top-1, and reaches p508/p1012
 **73.361/71.834 tok/s** plus tg32 **15.543 tok/s**; layers `1,3,4,7,12` and
-omitted profile stay exact strict.
+omitted profile stay exact strict. The certified guarded Q8-MMQ dense-prefill
+opt-in (`HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL=1`, orthogonal to and stackable
+with the MoE/WMMA production layers) passes the complete packet at KL
+mean/p95/p99/max `1.01e-4/1.04e-4/2.23e-3/1.05e-2` with **450/450 top-1**,
+three categories bit-exact, 18/18 strict-exact free generation, exact c2,
+zero teardown, and improves strict p508/p1012 **8.270→7.393 s (-10.61%,
+68.71 tok/s)** / **16.751→15.167 s (-9.45%, 66.72 tok/s)**.
 Current natural 16K improves **946.999→341.177 s (-63.96%, 47.989 tok/s; chunk-512 gate**
 re-passed with retrieval/oracle/transactional/teardown exact) with every
 binding control exact; 64K historical evidence is retained but not rerun because
@@ -225,7 +231,7 @@ binding control exact; 64K historical evidence is retained but not rerun because
 prompts but remains opt-in at **0.955x AR**. <=1K image/video/PNG chat and
 request-owned c2 blocking/SSE pass with zero teardown; packed c-aware speed,
 remote media, multimodal SSE, and 128K+/262K inference are not claimed.
-Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json) · [`chunk512`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-chunk512.json).
+Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json) · [`chunk512`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-chunk512.json) · [`Q8 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q8-mmq-prefill-production.json).
 
 ## Current Qwen3.6-35B quantization quality
 
