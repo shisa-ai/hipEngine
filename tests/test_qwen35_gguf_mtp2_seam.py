@@ -3021,3 +3021,86 @@ def test_ngram_target_rows_catch_mtp_up_through_root_and_accepted_prefix() -> No
     assert any(call[:4] == ("one", 10, 102, 7) for call in calls)
     assert rows[10].mtp2_ngram_accepted_tokens == 2
     assert rows[20].mtp2_ngram_accepted_tokens == 0
+
+
+def test_physical_accept_readback_uses_blocking_copy_dependency_not_global_sync(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    draft = DraftBatch(
+        request_ids=(10, 20),
+        candidate_tokens=(101, 201),
+        parent_positions=(5, 8),
+        draft_depths=(1, 1),
+        row_to_request=(10, 20),
+        tree_parents=(-1, -1),
+        active_mask=(True, True),
+    )
+    batch = TargetVerifyBatch.from_draft(
+        draft,
+        root_tokens=(100, 200),
+        root_positions=(5, 8),
+    )
+    pointer = iter(range(0x5000, 0x7000, 0x100))
+
+    def tensor(shape, dtype=DType.INT32):
+        return Tensor.from_handle(next(pointer), shape, dtype, Device("hip", 0))
+
+    output = tensor((2, 4))
+    buffers = TargetVerifyBuffers.for_batch(
+        batch,
+        token_ids=tensor((4,)),
+        positions=tensor((4,)),
+        parent_rows=tensor((4,)),
+        draft_depths=tensor((4,)),
+        row_to_request=tensor((4,)),
+        active_mask=tensor((4,), DType.BOOL),
+        target_top1=tensor((4,)),
+        accepted_counts=tensor((2,)),
+        commit_rows=tensor((2,)),
+        commit_tokens=tensor((2,)),
+        commit_positions=tensor((2,)),
+        next_tokens=tensor((2,)),
+        full_accept=tensor((2,), DType.BOOL),
+        committed_output_ids=output,
+        committed_output_lengths=tensor((2,)),
+        transaction_id=7,
+    )
+    payload = tensor((2, mtp2_module.ACCEPT_PACKED_PAYLOAD_FIELDS))
+    pending = mtp2_module._PhysicalAcceptPending(
+        batch=batch,
+        buffers=buffers,
+        payload=payload,
+        request_count=2,
+        output_stride=4,
+    )
+    payload_host = np.asarray(
+        [[1, 1, 101, 6, 999, 0, 2], [0, 2, 200, 9, 201, 0, 1]],
+        dtype=np.int32,
+    )
+    committed = np.asarray(
+        [[100, 101, -1, -1], [200, -1, -1, -1]],
+        dtype=np.int32,
+    )
+
+    def fake_copy(destination, source, nbytes, *, runtime):
+        if int(source.ptr) == int(payload.ptr):
+            ctypes.memmove(destination, payload_host.ctypes.data, nbytes)
+            return
+        row = (int(source.ptr) - int(output.ptr)) // (4 * DType.INT32.itemsize)
+        ctypes.memmove(destination, committed[row].ctypes.data, nbytes)
+
+    monkeypatch.setattr(mtp2_module, "copy_device_to_host", fake_copy)
+    runtime = SimpleNamespace(
+        device_synchronize=lambda: (_ for _ in ()).throw(
+            AssertionError("bounded blocking D2H must own the dependency")
+        )
+    )
+
+    summary = Qwen35GGUFMTP2Adapter._read_target_batch_accept(
+        pending,
+        runtime=runtime,
+    )
+
+    assert summary.accepted_counts == (1, 0)
+    assert summary.accepted_tokens == ((101,), ())
+    assert summary.commit_rows == (1, 2)
