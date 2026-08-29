@@ -73,7 +73,7 @@ qwen4_exp_qsa_flash_prefill_kernel(
     const uint16_t* __restrict__ k_gathered,  // [context, kv_heads, head_dim] bf16
     const uint16_t* __restrict__ v_gathered,  // [context, kv_heads, head_dim] bf16
     const int64_t* __restrict__ positions, // [rows] absolute positions
-    uint16_t* __restrict__ out,            // [rows, q_heads, head_dim] bf16
+    float* __restrict__ out,               // [rows, q_heads, head_dim] f32
     int64_t rows,
     int64_t q_heads,
     int64_t kv_heads,
@@ -205,16 +205,8 @@ qwen4_exp_qsa_flash_prefill_kernel(
     for (int d = 0; d < 8; ++d) {
       const int64_t vd = lane * 8 + d;
       if (vd < head_dim) {
-        const float value = acc[r][d] * inv_l;
-        union {
-          float f32;
-          uint32_t u32;
-        } in;
-        in.f32 = value;
-        const uint32_t lsb = (in.u32 >> 16) & 1U;
-        in.u32 += 0x7FFFU + lsb;
         out[(static_cast<int64_t>(row) * q_heads + q_head) * head_dim + vd] =
-            static_cast<uint16_t>(in.u32 >> 16);
+            acc[r][d] * inv_l;
       }
     }
   }
@@ -272,7 +264,7 @@ extern "C" int hipengine_qwen4_exp_qsa_flash_prefill(
         static_cast<const uint16_t*>(k_scratch),
         static_cast<const uint16_t*>(v_scratch),
         static_cast<const int64_t*>(positions),
-        static_cast<uint16_t*>(out),
+        static_cast<float*>(out),
         rows, q_heads, kv_heads, head_dim, context_len, scale);
     return static_cast<int>(hipGetLastError());
   }

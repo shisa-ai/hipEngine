@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "date": "2026-08-30",
+  "status": "accepted",
+  "scope": "QSA flash prefill on QSA layers 31-47 (gather + block-per-Q-tile online softmax; 33% per-launch family win): replaces the spans decode kernel on those layers within the production stack",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+  },
+  "kernel": {
+    "name": "qwen4_exp_qsa_flash_prefill",
+    "lineage": "ggml-org/llama.cpp@17252c769 ggml/src/ggml-cuda/fattn-tile.cuh scalar path",
+    "microbench_real_geometry": {
+      "flash_ms": 7.85,
+      "spans_ms": 11.8,
+      "per_launch_win_percent": 33
+    },
+    "buffer_ab": "flash vs spans agree to 1.9e-6 max on identical model buffers (mean 5.9e-8); the logits-level divergence is 36-layer amplification of ~1e-6/layer reassociation, same class as GDN colwarps"
+  },
+  "numerical_gate": {
+    "rows": 450,
+    "repeats": 3,
+    "scenario_id": "qwen4exp-ud-q4-k-xl-c1-qsa-flash-31",
+    "kl_mean": 0.00027898873673227483,
+    "kl_p95": 0.0016078675749532276,
+    "kl_p99": 0.0037738870268905194,
+    "kl_max": 0.006527415977276591,
+    "top1_matches": 446,
+    "per_category_top1": {
+      "code": 0.9866666666666667,
+      "general_en": 1.0,
+      "general_ja": 0.99,
+      "mixed_ja_en": 0.99
+    },
+    "scope_failures": [],
+    "eligible_for_automatic_admission": true,
+    "repeat_determinism_passed": true,
+    "state_repeat_exact": true,
+    "boundary_note": "27-47 missed top1 by one row (445/450); 31-47 admitted (446/450). Full-layer screens at 7.6e-3."
+  },
+  "free_generation": {
+    "strict_exact": 14,
+    "candidate_repeat_exact": 18,
+    "total": 18,
+    "note": "4 task-valid divergences; 18/18 repeat-exact"
+  },
+  "c2_physical": {
+    "serial_c2_ids_exact": true,
+    "stream_chunks": 6,
+    "teardown_bytes": 0,
+    "note": "lazy flash K/V scratch freed in Qwen4ExpQSAScratch.close"
+  },
+  "performance": {
+    "protocol": "clean global-env counterbalanced A/B (the inherited MoE-wrapper paired script contaminated its baseline legs; superseded)",
+    "p508": {
+      "baseline_median_s": 6.035,
+      "candidate_median_s": 6.02,
+      "delta_percent": -0.25,
+      "shas": {
+        "baseline": [
+          "4bf6201356bc0ce0"
+        ],
+        "candidate": [
+          "42e4a0c70b48b3cf"
+        ]
+      }
+    },
+    "note": "5 admissible QSA layers of 12; the retained value is the certified 33%-per-launch kernel with the key-parallel iteration queued to widen the family win"
+  },
+  "commands": {
+    "gate": "uv run python /tmp/qwen4exp_qsa_flash_gate.py",
+    "free_generation": "uv run python /tmp/qwen4exp_qsa_free_gen.py",
+    "c2": "uv run python /tmp/qwen4exp_qsa_c2.py",
+    "clean_paired": "uv run python /tmp/qsa_paired_clean.py",
+    "ladder": "uv run python /tmp/qwen4exp_qsa_flash_ladder.py"
+  }
+}
