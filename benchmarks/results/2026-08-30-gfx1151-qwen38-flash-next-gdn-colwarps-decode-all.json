@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "date": "2026-08-30",
+  "status": "accepted",
+  "scope": "GDN column-warp DECODE on all 36 GDN layers (prefill stays 27-47): the same columnwarps kernel serves rows==1 through a decode-specific layer env, replacing the block-per-head decode kernel on layers 0-26",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+  },
+  "numerical_gate": {
+    "rows": 450,
+    "repeats": 3,
+    "scenario_id": "qwen4exp-ud-q4-k-xl-c1-gdn-colwarps-decode-all",
+    "kl_mean": 0.0002865042766413891,
+    "kl_p95": 0.0015657909309882785,
+    "kl_p99": 0.003923487570930423,
+    "kl_max": 0.006677420051157262,
+    "top1_matches": 446,
+    "per_category_top1": {
+      "code": 0.9866666666666667,
+      "general_en": 1.0,
+      "general_ja": 0.99,
+      "mixed_ja_en": 0.99
+    },
+    "scope_failures": [],
+    "eligible_for_automatic_admission": true,
+    "repeat_determinism_passed": true,
+    "state_repeat_exact": true
+  },
+  "free_generation": {
+    "strict_exact": 14,
+    "candidate_repeat_exact": 18,
+    "total": 18,
+    "note": "4 task-valid divergences; 18/18 repeat-exact"
+  },
+  "c2_physical": {
+    "serial_c2_ids_exact": true,
+    "teardown_bytes": 0
+  },
+  "performance": {
+    "protocol": "matched A/B decode bench (64 forced steps after identical prefill)",
+    "decode_tok_s": {
+      "colwarps_decode_27_47": 10.965,
+      "colwarps_decode_0_47": 15.769,
+      "delta_percent": 43.7
+    },
+    "note": "closes most of the GDN decode gap (was 7.9x vs llama at 81.6us/layer on the strict decode kernel)"
+  },
+  "route": {
+    "env": "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS",
+    "default": "0-47 when colwarps enabled",
+    "binder": "production sets 0-47"
+  },
+  "commands": {
+    "gate": "uv run python /tmp/qwen4exp_gdn_cw_decode_gate.py",
+    "decode_bench": "uv run python /tmp/gdn_decode_bench.py",
+    "free_generation": "uv run python /tmp/qwen4exp_gdn_decode_free_gen.py",
+    "c2": "uv run python /tmp/qwen4exp_gdn_decode_c2.py"
+  }
+}
