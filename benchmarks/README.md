@@ -79,9 +79,8 @@ Each value is the total tokens per second across all active requests:
 | Model and mode | Text generation | Speed compared with AR |
 | --- | ---: | ---: |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — normal-owner C1 MTP-3 automatic | **15.609 tok/s** | **1.5916x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2 MTP-3 automatic | **17.031 tok/s** | **1.1441x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C1 MTP-3 c68-128 explicit | **13.088 tok/s** | **1.3998x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — strict C1 MTP-3 automatic | **18.191 tok/s** | **1.6445x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2 MTP-3 explicit diagnostic | **19.146 tok/s** | **1.0618x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
 ### RTX PRO 6000 Blackwell (`sm_120a`)
@@ -95,52 +94,29 @@ Rows use different models and tests; compare only matching protocols. The RX 790
 
 ## Current default notes
 
-W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE K2 and 27B
-Dense K3; other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
+W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE K2 and 27B dense K3;
+other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
 
-Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 automatic at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) is **15.609 vs 9.807 tok/s (1.5916x)**; [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) remains available. Exact C2 verifier [Q6](results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json) and [Q5](results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json), followed by [production-profile Q4 rowtiles](results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json), lift K3 **11.724→17.031 tok/s (+45.27%)** and **0.8170x→1.1441x true AR**. Independently qualified [C3 R6/R9/R12 rowtiles](results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json) improve C3/K3 **19.070→19.934 tok/s (+4.53%)**, but remain **0.9589x AR**; production C2/K3 is automatic only for context1-128/D24, while C3-C8 and scope misses remain K0.
+Strix Halo Qwen3.8 `Q4_K_M`: strict C1/K3 natural25 is automatic at **18.191
+vs 11.062 tok/s (1.6445x)**. Production C2/K3 remains an exact explicit
+diagnostic at **19.146 vs 18.032 (1.0618x)** but is automatic K0 because mixed
+Japanese/English is 0.9451x. C3/K3 is **21.382 vs 24.119 (0.8865x)** and K0.
+[`E0`](results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json)
 
-The [Qwen3.8 external reproduction survey](results/2026-08-28-gfx1151-qwen38-external-reproduction-survey.json) separates source-claim reproductions from a matched standard-`Q4_K_M` C1-C8 comparison. `q38rocm` strict MTP K4 reproduces **38.85 decode tok/s** under its source protocol, but requires custom FP4 and exactly one slot. In the matched matrix, Laurent is the strongest broad alternate llama.cpp route; hipEngine leads AR at C3-C7, while its MTP route beats its own AR only at C2. Laurent adaptive DFlash2 remains rejected because cross-request state contamination produced invalid output.
+The matched standard-`Q4_K_M` [external survey](results/2026-08-28-gfx1151-qwen38-external-reproduction-survey.json)
+keeps source-protocol claims separate from engine comparisons. `q38rocm` K4
+requires custom FP4 and one slot; Laurent's adaptive DFlash2 result remains
+rejected for sequential serving after state-contaminated output.
 
-The external-parity campaign's first retained kernel unit routes low-M dense Q4T16 prefill (rows 17-64, six physical shapes) to the single-wave WMMA owner: standard-`Q4_K_M` server prefill improves **C1 71.55→84.59 tok/s (+18.2%)** and **C2 74.87→90.86 tok/s (+21.4%)** with exact outputs. [`retained unit`](results/2026-08-29-gfx1151-qwen38-lowm-dense-q4t16-prefill-retained.json) Its second retained unit dispatches solo generations without the full batch window (2 ms slice when idle; concurrent-arrival batching unchanged), and its third removes the per-reset template scan in the reclaim path's `zero_states` (identical bytes, no host rescan). Its fourth through sixth retain low-VGPR Q4, Q6 qmicro-planar, and Q5 prefill owners. The seventh extends those exact owners with general rows49-80 bands from a seven-point morphology screen. Exact periodic high-row reuse and reduced-accumulator Q4 shared-B owners retain broad C2-C8 gains. C1 is at parity. C4 and C7 three-run medians are **189.21/237.53 tok/s**, 1.7%/3.3% short; their favorable one-run crossings are superseded. The earlier C5 218.70 row was likewise superseded by controlled 212.216/212.207 tok/s repeats. [`unit 2`](results/2026-08-29-gfx1151-qwen38-solo-dispatch-window-retained.json) [`unit 3`](results/2026-08-29-gfx1151-qwen38-zerostates-reclaim-retained.json) [`unit 4`](results/2026-08-29-gfx1151-qwen38-lowvgpr-q4t16-prefill-retained.json) [`unit 5`](results/2026-08-29-gfx1151-qwen38-lowvgpr-q6t16-prefill-retained.json) [`unit 6`](results/2026-08-29-gfx1151-qwen38-lowvgpr-q5t16-prefill-retained.json) [`unit 7`](results/2026-08-29-gfx1151-qwen38-row49-80-prefill-parity-retained.json) [`C1-C8 re-freeze`](results/2026-08-29-gfx1151-qwen38-prefill-c1c8-refreeze.json) [`high-row reuse`](results/2026-08-29-gfx1151-qwen38-highrow-prefill-reuse-retained.json) [`Q4 shared-B2`](results/2026-08-29-gfx1151-qwen38-q4-shared2-prefill-retained.json) [`C7 repeatability`](results/2026-08-29-gfx1151-qwen38-prefill-c7-repeatability.json) [`C4 repeatability`](results/2026-08-29-gfx1151-qwen38-prefill-c4-repeatability.json)
-
-The same campaign's full-suite D24 AR re-freeze was **11.060/16.993/24.032/30.623/35.896/40.585/44.220/47.781 tok/s** at C1-C8, with 80/80 exact cells. C3-C8 beat their frozen comparators by 4.4-20.8%. A scoped short-horizon HIP graph policy then improves packed C2 **16.993→18.072 tok/s (+6.35%)** while C1 is non-regressive at **11.122 tok/s**. P3 is partial: C1 remains 1.9% short on a 96.6%-device-bound, previously exhausted owner ladder; C2 remains 9.9% short on its P2.2 GPU-bound prefill gap plus graph-record/device cost. [`AR C1-C8 re-freeze`](results/2026-08-29-gfx1151-qwen38-ar-c1c8-refreeze.json) [`packed C2 graph`](results/2026-08-29-gfx1151-qwen38-packed-c2-short-graph-retained.json) [`C1/C2 blockers`](results/2026-08-29-gfx1151-qwen38-ar-c1-c2-blockers.json)
+The current external-parity campaign has C1 prefill parity and AR wins at
+C3-C8. Prefill C2-C8 and AR C1/C2 remain measured high-row/device blockers; a
+scoped packed-C2 graph improves AR **16.993→18.072 tok/s (+6.35%)**.
+[`Campaign`](../docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md) ·
+[`AR blockers`](results/2026-08-29-gfx1151-qwen38-ar-c1-c2-blockers.json)
 
 `Q4_K_S` uses FP16 recurrent state with FP32 rollback. Its exact W8192 DMS
-sidecar stays default-off. [`DMS`](../docs/DMS.md).
-
-### W7900 OLD versus CONCURRENCY2
-
-Same-host Qwen3.6-35B-A3B `UD-Q4_K_M`, BF16 KV, p512/d128 OpenAI SSE:
-
-| Implementation | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| OLD | 71.106 | 98.468 | 63.448 | 125.904 | 88.097 | 98.045 | 107.096 | 143.934 |
-| CONCURRENCY2 | **75.187** | **99.281** | **116.770** | **133.084** | **143.253** | **152.118** | **157.325** | **162.219** |
-| CONCURRENCY2 difference | **+5.74%** | **+0.83%** | **+84.04%** | **+5.70%** | **+62.61%** | **+55.15%** | **+46.90%** | **+12.70%** |
-
-All cells are exact; CONCURRENCY2 graphs every C2-C8 width. [`Evidence`](results/2026-08-26-w7900-old-vs-concurrency2-c1-c8.json).
-
-### Agentic quality (quality-only; no speed claim)
-
-| Model | Overall | Development | Sealed heldout | Code / instruction / repository / tool | Valid calls |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Qwen3.6-35B-A3B `UD-Q4_K_M` (reference) | 44/68 (64.71%) | 20/34 | 24/34 | 14/16 · 4/16 · 10/16 · 16/20 | 56/64 |
-| Qwen3.8-27B `Q4_K_M` | **50/68 (73.53%)** | **22/34** | **28/34** | 14/16 · **12/16** · 10/16 · 14/20 | **64/64** |
-| Ornith-1.5-35B-A3B `Q4_K_M` | 42/68 (61.76%) | 16/34 | 26/34 | 14/16 · 4/16 · 10/16 · 14/20 | 60/64 |
-
-All repeat/control/ownership gates pass; failures are model-owned, so no
-implementation is retained. [`Final`](results/2026-08-26-zbook-agentic-quality2-campaign-final.json).
-
-gfx1151 Qwen3.8 `Q4_K_S` P9 is exact **540/540**; C1/K2 is **1.4087x AR**, but
-normal capacity-4 automatic serving executes zero cycles. Post-closure strict
-small-M WMMA raises physical C2/C4 **9.958→11.462 (+15.10%) /
-15.718→17.555 tok/s (+11.69%)**, still **0.7510x/0.6218x AR**; K0 stays.
-[`Small-M`](results/2026-08-27-gfx1151-specdec2-smallm-q4-wmma-retained.json) · [`Closure`](results/2026-08-26-gfx1151-specdec2-perf-campaign-closure.json).
-
-gfx1100 dense C1 K1/K2/K3 is **1.272x/1.407x/1.439x AR**; packed PARO is
-**0.979x**. Physical C2 routing improves **16.974→22.393 tok/s (+31.93%)** but
-remains **0.7156x AR**, so K0 stays. [`Recovery`](../docs/MTP-CONCURRENCY2-RECOVERY.md).
+sidecar stays default-off. [`DMS`](../docs/DMS.md). Detailed historical and
+quality rows live in [`HISTORY.md`](HISTORY.md) and result artifacts.
 
 ## Where detailed evidence lives
 
