@@ -79,17 +79,19 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     assert production.manifest["kv_policy"] == "paged_bf16_qsa_index_f32"
     assert production.manifest["graph_policy"] == "request_owned_exact_moe_graph_c1"
     selections = _selection_map(production)
-    gate = selections[("moe_linear", "prefill_rows_ge2_layers35_47_gate_up")]
+    gate = selections[("moe_linear", "prefill_rows_ge2_layers27_47_gate_up")]
     assert gate["selected_variant"] == (
-        "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out"
+        "selected_dual_wmma_prefill_compact_bf16_bf16_out"
     )
     assert gate["strict_fallback_variant"].startswith(
         "selected_dual_grouped_rowbatch8"
     )
-    down = selections[("moe_linear", "prefill_rows_ge2_layers32_47_down")]
-    assert down["selected_variant"] == "q5_1_mmq_ds4_selected_prefill_bf16_bf16_out"
+    down = selections[("moe_linear", "prefill_rows_ge2_layers27_47_down")]
+    assert down["selected_variant"] == (
+        "selected_grouped_wmma_prefill_compact_bf16_bf16_out"
+    )
     assert down["evidence_artifact"].endswith(
-        "production-mmq-prefill-dp4a43-stack.json"
+        "wmma-moe27-production.json"
     )
     q8 = selections[("linear", "prefill_policy_qwen4exp_dense_q8_shapes")]
     assert q8["selected_variant"] == (
@@ -127,21 +129,19 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     )
     production.binder(SimpleNamespace(runner=fake_runner), production)
     assert configure_calls == [True]
-    assert os.environ[PRODUCTION_MOE_PREFILL_ENV] == "0"
+    assert os.environ[PRODUCTION_MOE_PREFILL_ENV] == "1"
     assert os.environ["HIPENGINE_GGUF_WMMA_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "1"
-    assert tuple(
-        int(value)
-        for value in os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS"].split(",")
-    ) == PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL"] == "1"
-    assert tuple(
-        int(value)
-        for value in os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS"].split(",")
-    ) == PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS
+    # The ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
+    # route; their envs stay off so they cannot preempt it.
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS"] == ""
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS"] == ""
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_TILE_M"] == "16"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_TILE_N"] == "16"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL"] == "1"
     assert tuple(
         int(value)
@@ -164,8 +164,8 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
         )
 
     assert not _qwen4_exp_production_moe_prefill_enabled(weight(26), rows=256)
-    assert not _qwen4_exp_production_moe_prefill_enabled(weight(27), rows=256)
-    assert not _qwen4_exp_production_moe_prefill_enabled(weight(47), rows=16)
+    assert _qwen4_exp_production_moe_prefill_enabled(weight(27), rows=256)
+    assert _qwen4_exp_production_moe_prefill_enabled(weight(47), rows=16)
     assert not _qwen4_exp_production_moe_prefill_enabled(weight(47), rows=15)
 
     strict = _resolve(ExecutionProfile.STRICT)
