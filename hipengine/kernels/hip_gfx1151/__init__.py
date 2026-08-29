@@ -48,6 +48,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out,
@@ -202,6 +204,34 @@ def gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
         and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_144_SHAPES
     ):
         fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W4_192_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_192_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_256_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_384_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out
     else:
         fn = gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
     return fn(
@@ -1466,6 +1496,20 @@ GGUF_Q4_T16_DENSE_LOWVGPR48_128_SHAPES = frozenset(
 )
 GGUF_Q4_T16_DENSE_LOWVGPR48_144_SHAPES = frozenset(
     {(5_120, 6_144), (17_408, 5_120), (5_120, 12_288), (6_144, 5_120)}
+)
+# Reduced-accumulator shared-B variants preserve the same per-output K16
+# schedule. Capacity-periodic screens at rows192/256/320/384 admit only these
+# shape bands; rows385+ retain the 48-column/4-wave parent.
+GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS = 192
+GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS = 256
+GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS = 384
+GGUF_Q4_T16_DENSE_SHARED2W4_192_SHAPES = frozenset({(17_408, 5_120)})
+GGUF_Q4_T16_DENSE_SHARED2W2_192_SHAPES = frozenset({(6_144, 5_120)})
+GGUF_Q4_T16_DENSE_SHARED2W2_256_SHAPES = frozenset(
+    {(17_408, 5_120), (6_144, 5_120)}
+)
+GGUF_Q4_T16_DENSE_SHARED2W2_384_SHAPES = frozenset(
+    GGUF_Q4_T16_DENSE_LOWM_SHAPES - {(5_120, 12_288)}
 )
 GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS = 96
 GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS = 128

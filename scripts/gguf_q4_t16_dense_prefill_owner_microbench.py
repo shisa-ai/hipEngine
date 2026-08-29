@@ -4,14 +4,15 @@
 Times and cross-validates the strict-sibling owners on synthetic Q4T16
 weights so low-M dispatch decisions are made from measurement, not analogy:
 
-* ``shared_b`` - 128-thread LDS-staged, 48 cols x 256-row-capacity blocks
-  (current default owner for rows 17-255 on gfx1151).
+* ``shared_b`` - 128-thread LDS-staged, 48 cols x 256-row-capacity blocks.
+* ``shared_b2w2`` - 64-thread LDS-staged, 32 cols x 128-row-capacity blocks.
+* ``shared_b2w4`` - 128-thread LDS-staged, 32 cols x 256-row-capacity blocks.
 * ``default``  - 32-thread, 48 cols x 64-row-capacity blocks
   (``gguf_q4_k_t16_wmma_prefill_bf16_bf16_out``).
 * ``smallm``   - 32-thread, 48 cols x 16-row-capacity blocks (rows <= 16).
 
-The three kernels share the same K16 WMMA association and BF16 store, so
-outputs must match bit-exactly; the script fails closed on any mismatch.
+The kernels share the same K16 WMMA association and BF16 store, so outputs
+must match bit-exactly; the script fails closed on any mismatch.
 """
 
 from __future__ import annotations
@@ -38,6 +39,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out as launch_lowvgpr,
     gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out as launch_lowvgpr48,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out as launch_shared_b,
+    gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out as launch_shared_b2w2,
+    gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out as launch_shared_b2w4,
     gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out as launch_smallm,
 )
 from hipengine.quant.gguf_q4_k import repack_gguf_q4_k_tile16
@@ -106,6 +109,8 @@ def main() -> None:
 
         owners: dict[str, object] = {
             "shared_b": launch_shared_b,
+            "shared_b2w2": launch_shared_b2w2,
+            "shared_b2w4": launch_shared_b2w4,
             "default": launch_default,
             "lowvgpr": launch_lowvgpr,
             "lowvgpr48": launch_lowvgpr48,

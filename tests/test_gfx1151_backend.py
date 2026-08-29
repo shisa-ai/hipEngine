@@ -841,6 +841,8 @@ def test_gfx1151_highrow_prefill_bands_route_by_family_and_shape(
         "gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out": "q4_lv",
         "gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out": "q4_lv48",
         "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out": "q4_shared",
+        "gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out": "q4_shared2w2",
+        "gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out": "q4_shared2w4",
         # Q5 owners
         "gguf_q5_k_t16_wmma_prefill_bf16_bf16_out": "q5_plain",
         "gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out": "q5_lv",
@@ -904,7 +906,33 @@ def test_gfx1151_highrow_prefill_bands_route_by_family_and_shape(
             (17_408, 5_120): "q4_lv48",
         },
     )
-    assert_routes(q4, (145,), {shape: "q4_shared" for shape in shapes})
+    assert_routes(
+        q4,
+        (145, 192),
+        {
+            **{shape: "q4_shared" for shape in shapes},
+            (17_408, 5_120): "q4_shared2w4",
+            (6_144, 5_120): "q4_shared2w2",
+        },
+    )
+    assert_routes(
+        q4,
+        (193, 256),
+        {
+            **{shape: "q4_shared" for shape in shapes},
+            (17_408, 5_120): "q4_shared2w2",
+            (6_144, 5_120): "q4_shared2w2",
+        },
+    )
+    assert_routes(
+        q4,
+        (257, 384),
+        {
+            **{shape: "q4_shared2w2" for shape in shapes},
+            (5_120, 12_288): "q4_shared",
+        },
+    )
+    assert_routes(q4, (385,), {shape: "q4_shared" for shape in shapes})
 
     q5 = gfx1151_backend.gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
     assert_routes(
