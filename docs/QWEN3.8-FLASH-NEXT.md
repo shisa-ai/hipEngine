@@ -34,12 +34,12 @@ is the exact-bit default; production is the certified T2 profile.
 
 ### 0.1 Where we are
 
-| Row | Strict | Production | Beat first: llama.cpp HIP, same host + GGUF | Stretch: llama.cpp Vulkan |
+| Row | Strict | Production / certified opt-ins | Beat first: llama.cpp HIP, same host + GGUF | Stretch: llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| p508 prefill | 51.220 first / 58.466 steady | **73.361** | **274.996** | 316.380 |
-| p1006/p1012 prefill | 55.046 | **71.834** | **284.485** | 290.450 |
+| p508 prefill | 61.43 (chunk 512) | **73.361** profile · **68.71** +Q8-MMQ (stacked row pending) | **274.996** | 316.380 |
+| p1006/p1012 prefill | 60.42 (chunk 512) | **71.834** profile · **66.72** +Q8-MMQ | **284.485** | 290.450 |
 | tg32 decode | 13.880 | **15.543** (98.1% of HIP) | **15.848** | 18.716 |
-| Natural 16K prefill | 44.973 | — | ≥100 tok/s unlocks the 64K rung | — |
+| Natural 16K prefill | 47.989 (chunk 512, gate passed) | — | ≥100 tok/s unlocks the 64K rung | — |
 | MTP vs true AR | 0.955x aggregate (opt-in; 10/10 exact, 84.28% acceptance) | — | ≥1.0x to promote; ≥1.5x real target | external MTP fork ~2.7x |
 
 Production = cooperative Q4 gate/up + Q5_1 down MoE prefill on layers 27–47,
@@ -90,16 +90,15 @@ incremental pooled-key cache, gathered decode attention, GDN concat fix,
 permute-free scoring, and distinct-stream MTP combiner are **already covered
 in-tree** — verified in source with retained evidence. The remaining campaigns:
 
-1. **Prefill dataflow:** close the 4.9x pp508 kernel-time gap. Current strict
-   chunk-512 family budget (8.330 s kernels): Q8_0 dense float coltile
-   **2.460 s** (494 launches), Q5_1 selected down 1.812 s, Q4_K selected
-   gate/up 1.796 s, GDN 1.008 s. The in-tree raw-Q8 MMQ128 body measures
-   **6.4–7.3x faster** than the current Q8_0 dense owner at the three dominant
-   real shapes (12.7 TFLOPS); first unit: open the existing
-   `q8_mmq_prefill_session` in the Qwen4Exp prefill path and register the
-   `raw_q8_mmq128` policy for `gguf_ud_q4_k_xl` under the production gate.
-   Then Q5_1/Q4_K selected MMQ consumers and the GDN prefill scan
-   (1.0 s vs llama 0.085 s). Chunk 512 is now the default (`f9a0750f9`).
+1. **Prefill dataflow:** close the remaining pp508 kernel-time gap. Delivered
+   2026-08-29: chunk-512 default (+2-6%) and the certified guarded Q8-MMQ
+   dense prefill (`-10.6%` p508 strict wall; 450/450 top-1 packet). Remaining
+   family budget at pp508 (7.55 s kernels): Q5_1 selected down **1.85 s**,
+   Q4_K selected dual gate/up **1.80 s**, GDN scan **0.96 s**, Q8 remnant
+   0.89 s. Next units: Q5_1/Q4_K selected-expert MMQ consumers over the
+   grouped compact layout, then the GDN prefill scan (llama runs GDN at
+   0.085 s); then the stacked production-profile row and the named-profile
+   manifest fold-in for the Q8-MMQ env bridge.
 2. **MTP economics:** verification is a serial per-candidate target loop
    (budget 1..4), so every drafted token costs a full target decode row; the
    multirow candidate was rejected because `rows >= 2` switches MoE to the
