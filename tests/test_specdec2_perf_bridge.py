@@ -16,6 +16,7 @@ from scripts.specdec2_perf_bridge import (
     _install_stage_ledger,
     _run_arm,
     _run_legacy_native,
+    _run_partitioned_c1,
     _summarize,
     arm_order,
     atomic_write_json,
@@ -169,6 +170,27 @@ def test_bridge_parses_only_supported_physical_cells() -> None:
         parse_budgets("2,2")
 
 
+def test_bridge_partitioned_c1_runs_logical_requests_serially(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = []
+    outputs = iter(((SimpleNamespace(name="first"),), (SimpleNamespace(name="second"),)))
+
+    def fake_service_route(service, request, concurrency, *, staged):
+        calls.append((service, request, concurrency, staged))
+        return next(outputs)
+
+    monkeypatch.setattr(bridge_module, "_run_service_route", fake_service_route)
+    rows, walls = _run_partitioned_c1("service", "request", 2)
+
+    assert [row.name for row in rows] == ["first", "second"]
+    assert len(walls) == 2 and all(value >= 0.0 for value in walls)
+    assert calls == [
+        ("service", "request", 1, True),
+        ("service", "request", 1, True),
+    ]
+
+
 def test_bridge_legacy_native_uses_model_owned_moe_route() -> None:
     calls = []
     generator = SimpleNamespace(
@@ -279,6 +301,18 @@ def test_roctx_prefers_profiler_sdk_overlay(monkeypatch) -> None:
 def test_bridge_counterbalance_is_index_only_and_reverses_ar_spec_order() -> None:
     assert arm_order(0) == ("true_ar", "legacy_native", "specdec2")
     assert arm_order(1) == ("specdec2", "legacy_native", "true_ar")
+    assert arm_order(0, include_partitioned_c1=True) == (
+        "true_ar",
+        "legacy_native",
+        "partitioned_c1",
+        "specdec2",
+    )
+    assert arm_order(1, include_partitioned_c1=True) == (
+        "specdec2",
+        "partitioned_c1",
+        "legacy_native",
+        "true_ar",
+    )
     assert [arm_order(index) for index in range(10)].count(
         ("true_ar", "legacy_native", "specdec2")
     ) == 5

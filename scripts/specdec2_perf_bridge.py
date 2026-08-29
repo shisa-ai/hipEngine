@@ -220,10 +220,19 @@ def resolve_platform(
     }
 
 
-def arm_order(prompt_index: int) -> tuple[str, str, str]:
-    """Counterbalance true AR and staged SPECDEC2 using only row index."""
+def arm_order(
+    prompt_index: int,
+    *,
+    include_partitioned_c1: bool = False,
+) -> tuple[str, ...]:
+    """Counterbalance all measured arms using only row index."""
 
-    return ARMS if int(prompt_index) % 2 == 0 else tuple(reversed(ARMS))
+    arms = (
+        (*ARMS[:-1], "partitioned_c1", ARMS[-1])
+        if include_partitioned_c1
+        else ARMS
+    )
+    return arms if int(prompt_index) % 2 == 0 else tuple(reversed(arms))
 
 
 def atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -609,6 +618,35 @@ def _run_service_route(service: Any, request: GenerationRequest, concurrency: in
     return tuple(handle.result(timeout=900) for handle in handles)
 
 
+def _run_partitioned_c1(
+    service: Any,
+    request: GenerationRequest,
+    logical_concurrency: int,
+) -> tuple[tuple[Any, ...], tuple[float, ...]]:
+    """Run due logical requests as consecutive C1 Generation-2 transactions.
+
+    This is an intentionally request-serial serving control. It shares the
+    loaded profile/provider and records one output and wall interval per
+    logical request, but it is never physical-C2 evidence.
+    """
+
+    width = int(logical_concurrency)
+    if width <= 1:
+        raise ValueError("partitioned_c1 requires logical concurrency > 1")
+    outputs: list[Any] = []
+    request_walls: list[float] = []
+    for _ in range(width):
+        started = time.perf_counter()
+        rows = _run_service_route(service, request, 1, staged=True)
+        request_walls.append(time.perf_counter() - started)
+        if len(rows) != 1:
+            raise BridgeContractError(
+                "partitioned_c1 child did not return exactly one request"
+            )
+        outputs.extend(rows)
+    return tuple(outputs), tuple(request_walls)
+
+
 def _run_legacy_native(
     direct_generator: Any,
     direct_config: Any,
@@ -647,12 +685,17 @@ def _route_identity(
         for row in timing_payloads
         if row.get("execution_path") is not None
     }
-    if arm == "specdec2":
+    if arm in {"specdec2", "partitioned_c1"}:
+        expected = arm
         if not recent_routes or not all(bool(row.get("specdec2_mtp2_used")) for row in recent_routes):
-            return "not_specdec2"
+            return f"not_{expected}"
         if paths and paths != {"gguf_specdec2_mtp2"}:
-            return "not_specdec2"
-        return "specdec2"
+            return f"not_{expected}"
+        if arm == "partitioned_c1" and any(
+            int(row.get("group_rows", 1) or 1) != 1 for row in timing_payloads
+        ):
+            return "not_partitioned_c1"
+        return expected
     if arm == "true_ar":
         if any(bool(row.get("specdec2_mtp2_used")) for row in recent_routes):
             return "specdec2"
@@ -674,7 +717,7 @@ def _decode_only_seconds(
     stage_totals = stage_ledger.get("totals_seconds", {})
     if arm == "true_ar":
         value = float(stage_totals.get("ar_decode", 0.0))
-    elif arm == "specdec2":
+    elif arm in {"specdec2", "partitioned_c1"}:
         value = float(stage_totals.get("cycle_total", 0.0)) + float(
             stage_totals.get("ar_decode", 0.0)
         )
@@ -717,11 +760,18 @@ def _run_arm(
         }
     before_memory = memory_stats()
     started = time.perf_counter()
+    per_request_walls: tuple[float, ...] = ()
     with ledger.arm(arm):
         if arm == "true_ar":
             outputs = _run_service_route(service, request, concurrency, staged=False)
         elif arm == "specdec2":
             outputs = _run_service_route(service, request, concurrency, staged=True)
+        elif arm == "partitioned_c1":
+            outputs, per_request_walls = _run_partitioned_c1(
+                service,
+                request,
+                concurrency,
+            )
         elif arm == "legacy_native":
             outputs = _run_legacy_native(direct_generator, direct_config, request)
         else:  # pragma: no cover - parser and caller own this
@@ -733,7 +783,7 @@ def _run_arm(
     timing_summary = normalize_timing_payloads(timing_payloads)
     recent_routes = (
         _recent_routes(service, concurrency)
-        if arm in {"true_ar", "specdec2"}
+        if arm in {"true_ar", "specdec2", "partitioned_c1"}
         else ()
     )
     generated = tuple(
@@ -753,6 +803,7 @@ def _run_arm(
         ),
         "generated_token_ids": [list(row) for row in generated],
         "generated_tokens": sum(len(row) for row in generated),
+        "per_request_complete_wall_seconds": list(per_request_walls),
         "timing_payloads": list(timing_payloads),
         "timing_ownership": timing_summary,
         "stage_ledger": stage_snapshot,
@@ -826,7 +877,12 @@ def validate_bridge_artifact(payload: Mapping[str, Any]) -> None:
         if not isinstance(arms, Mapping):
             raise BridgeContractError(f"cell {key} has no arms")
         complete_ids: list[tuple[tuple[int, ...], ...]] = []
-        for arm in ARMS:
+        required_arms = (
+            (*ARMS[:-1], "partitioned_c1", ARMS[-1])
+            if bool(workload.get("partitioned_c1_control", False))
+            else ARMS
+        )
+        for arm in required_arms:
             row = arms.get(arm)
             if not isinstance(row, Mapping):
                 raise BridgeContractError(f"cell {key} has no {arm} arm")
@@ -936,7 +992,10 @@ def _arm_ratios(cell: Mapping[str, Any]) -> dict[str, float | None]:
     ar = arms["true_ar"]
     denominator = float(ar["complete_wall_seconds"])
     result: dict[str, float | None] = {}
-    for arm in ("legacy_native", "specdec2"):
+    compared_arms = ["legacy_native", "specdec2"]
+    if "partitioned_c1" in arms:
+        compared_arms.append("partitioned_c1")
+    for arm in compared_arms:
         row = arms[arm]
         result[f"{arm}_over_true_ar_wall"] = (
             None
@@ -1040,6 +1099,14 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--max-sequence-length", type=int, default=1024)
     parser.add_argument("--warmup", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--partitioned-c1-control",
+        action="store_true",
+        help=(
+            "Add an honestly labeled logical-C>1 request-serial C1 Generation-2 "
+            "control; never physical concurrency evidence"
+        ),
+    )
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--roctx-markers", action="store_true")
@@ -1061,6 +1128,10 @@ def _validate_args(args: argparse.Namespace) -> None:
     if int(args.max_sequence_length) <= 0:
         raise ValueError("--max-sequence-length must be positive")
     bridge_service_capacity(args.concurrency)
+    if args.partitioned_c1_control and any(
+        int(value) <= 1 for value in args.concurrency
+    ):
+        raise ValueError("--partitioned-c1-control requires only C>1 widths")
     if args.require_cached_build and args.compiler_version_file is None:
         raise ValueError("--require-cached-build requires --compiler-version-file")
     if args.compiler_version_file is not None and not Path(args.compiler_version_file).is_file():
@@ -1159,18 +1230,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "concurrency": list(args.concurrency),
         "service_capacity": bridge_service_capacity(args.concurrency),
         "candidate_budgets": list(args.budgets),
+        "partitioned_c1_control": bool(args.partitioned_c1_control),
         "max_tokens": int(args.max_tokens),
         "runs": int(args.runs),
         "warmup": bool(args.warmup),
         "max_sequence_length": int(args.max_sequence_length),
         "sampling": "raw greedy; temperature=0, top_p=1",
         "counterbalance": (
-            "even prompt+run index true_ar→legacy_native→specdec2; "
-            "odd index reverse"
+            "even prompt+run index follows the declared execution_order; "
+            "odd index reverses it"
         ),
         "legacy_native_scope": (
             "C1 current-source direct dense transactional control only; "
             "C>1 skipped because direct dense ownership is request-serial"
+        ),
+        "partitioned_c1_scope": (
+            "optional logical-C>1 serving control: consecutive C1 Generation-2 "
+            "transactions on one loaded profile/provider; request-serial and "
+            "never physical-C evidence"
         ),
     }
     payload: dict[str, Any] = {
@@ -1288,7 +1365,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             min(int(args.max_tokens), 5),
                         )
                         for concurrency in args.concurrency:
-                            for arm in ARMS:
+                            for arm in arm_order(
+                                0,
+                                include_partitioned_c1=bool(
+                                    args.partitioned_c1_control
+                                ),
+                            ):
                                 warm = _run_arm(
                                     arm=arm,
                                     service=service,
@@ -1355,7 +1437,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                     "concurrency": int(concurrency),
                                     "candidate_budget": int(budget),
                                     "execution_order": list(
-                                        arm_order(prompt_index + run_index)
+                                        arm_order(
+                                            prompt_index + run_index,
+                                            include_partitioned_c1=bool(
+                                                args.partitioned_c1_control
+                                            ),
+                                        )
                                     ),
                                     "arms": {},
                                     "exact": False,
