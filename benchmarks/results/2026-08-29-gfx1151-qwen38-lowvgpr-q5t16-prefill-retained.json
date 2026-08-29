@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": ["P2.3 (sixth retained unit and low-M Q4/Q5/Q6 kernel-family closure)"],
+  "title": "Low-VGPR Q5 dense prefill selector retained on gfx1151",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "tuned_profile": "accelerator-performance"
+  },
+  "source": {
+    "candidate_commit": "b9f74ffcfeefc7ad99b6905336cae1128bc8935a",
+    "plain_control_commit": "57a0c0f34496e9edb729ed5dc772b9b870224eb1",
+    "dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008
+  },
+  "change": {
+    "files": [
+      "hipengine/kernels/hip_gfx1151/__init__.py",
+      "tests/test_gfx1151_backend.py"
+    ],
+    "summary": "Override only the gfx1151 dense-linear gguf_q5_k_t16_v1 t16_wmma_prefill key. Rows 17-32 use the <2,1> 16-column owner on six physical shapes; rows 33-48 use <2,1> on (17408,5120), <3,1> on four measured winners, and retain plain on (5120,17408). Row/shape misses, compact MoE, and target-verifier aliases retain their prior exact owners.",
+    "prepared_kernel_commit": "4a5ad112912686e7db7a7d3bec6550e069b052fb"
+  },
+  "selection_evidence": {
+    "harness": "/tmp/p210_ab.py, repeated after restoring the Q5 default kernel's __restrict__ qualifier; synthetic Q5T16, warmup 4 + 20 iterations",
+    "exactness": "all plain/lowvgpr/lowvgpr48 outputs bit-exact on six physical shapes at rows 24 and 45 (max_abs 0.0)",
+    "rows_17_32": "<2,1> wins all six shapes",
+    "rows_33_48": {
+      "17408_5120": {"plain_ms": 1.881, "lowvgpr_ms": 1.237, "selected": "<2,1>"},
+      "5120_6144": {"plain_ms": 0.499, "lowvgpr48_ms": 0.362, "selected": "<3,1>"},
+      "5120_10240": {"plain_ms": 0.698, "lowvgpr48_ms": 0.525, "selected": "<3,1>"},
+      "5120_12288": {"plain_ms": 0.807, "lowvgpr48_ms": 0.602, "selected": "<3,1>"},
+      "6144_5120": {"plain_ms": 0.587, "lowvgpr48_ms": 0.370, "selected": "<3,1>"},
+      "5120_17408": {"plain_ms": 0.950, "lowvgpr48_ms": 0.995, "lowvgpr_ms": 1.068, "selected": "plain"}
+    }
+  },
+  "measurements": {
+    "isolated_forced_bulk_prefill_45tok_s": {
+      "command": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 45 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p212-forcedbulk-45.json",
+      "before_s": 0.290,
+      "after_median_s": 0.28302428708411753,
+      "runs_after_s": [0.28302428708411753, 0.2835046090185642, 0.28267577290534973],
+      "delta_pct": -2.4,
+      "vs_campaign_start_pct": -45.0
+    },
+    "server_prefill_frozen_protocol": {
+      "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2 --max-tokens 1 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths '' --correctness-contract ar_exact --output /tmp/p212-server-c1c2-q5lowvgpr.json",
+      "c1": {
+        "prompt_tokens": 449,
+        "before_tok_s": 132.53938787493877,
+        "after_tok_s": 134.3735171936213,
+        "delta_pct": 1.4,
+        "cumulative_vs_frozen_pct": 87.8,
+        "remaining_gap_pct_of_winner": 3.3
+      },
+      "c2_initial_run": {
+        "prompt_tokens": 898,
+        "tok_s": 125.65226335709579,
+        "note": "One final AR arm incurred an extra 0.512 s while the immediately following route-identical K0/MTP arm was normal. A repeat reproduced this scheduler state, so a clean same-protocol plain-owner control was required."
+      },
+      "c2_controlled_ab": {
+        "candidate_commit": "b9f74ffc",
+        "candidate_wall_s": 7.1418494277168065,
+        "candidate_tok_s": 125.73773909527571,
+        "plain_commit": "57a0c0f34",
+        "plain_wall_s": 7.14552600402385,
+        "plain_tok_s": 125.6730434532476,
+        "delta_pct": 0.1,
+        "verdict": "neutral/no route effect: every C2 packed slab exceeds row 48, so the Q5 selector is inactive; the final-arm scheduler state reproduces in candidate and plain control"
+      },
+      "correctness": "candidate C1/C2, repeated candidate C2, and clean plain C2 control passed every ar_self_exact, mtp_self_exact, ar_mtp_equal, route-expectation, and budget-conformance cell"
+    }
+  },
+  "kernel_trace_evidence": {
+    "command": "cached-build rocprofv3 --kernel-trace on the isolated 45-token forced-bulk benchmark",
+    "measured_pass": {
+      "q5_dense_gpu_ms_before": 35.79,
+      "q5_dense_gpu_ms_after": 28.74,
+      "delta_pct": -19.7,
+      "q5_launches": 55,
+      "selected_kernel": "gguf_q5_t16_dense_wmma_prefill_bf16_kernel<3,1>",
+      "vgpr": 112,
+      "pass_gpu_busy_ms_before": 333.9,
+      "pass_gpu_busy_ms_after": 327.53,
+      "pass_delta_pct": -1.9
+    },
+    "cache_only_variant_trace": "<2,1> and <3,1> each launched eight times under expected names at 96/112 VGPR; no compiler ran inside rocprofv3"
+  },
+  "gates": {
+    "red_green": "RED failed because gfx1151 lacked a Q5 prefill selector; GREEN route/registry-scope node passed",
+    "tests": "tests/test_gfx1151_backend.py + tests/test_gguf_k_t16_selected_wmma_prefill.py: 99/99",
+    "registry_scope": "dense linear key resolves to the Q5 selector; compact MoE key remains the original selected_wmma_prefill_compact owner",
+    "mechanical": "compileall, check_fixtures, registry smoke, CPU-fixture smoke, worklog check, and diff check passed",
+    "full_suite": "configured broad suite retains the known test_specdec2_perf_bridge order failure documented in preceding iterations; affected nodes pass in isolation"
+  },
+  "parity_context": {
+    "frozen_c1_winner": {"engine": "Nathan", "tok_s": 138.95},
+    "hipengine_c1_now_tok_s": 134.3735171936213,
+    "remaining_gap_pct_of_winner": 3.3,
+    "p2_3_status": "closed: measured low-M Q4, Q5, and Q6 T16 families now use exact low-register owners with required traces",
+    "next": "attribute the residual C1 host/serving wall and re-freeze C1-C8 under P2.1/P2.2"
+  }
+}
