@@ -268,6 +268,11 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     **19.146→21.690 (+13.29%)**. Acceptance remains exactly 471/597 and 314/398;
     all 20 cells and every category pass
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e1b-proposal-head-rowtile-retained.json)).
+  - Post-E1 Amdahl 2026-08-29: C3 target remains **190.12 ms/cycle** and
+    **95.62% kernel-bound**; Q4/Q6/Q5 consume **102.71/50.19/12.98 ms** and
+    87.25% of target wall. E2 Q4 true-R12 work passes its entry condition and
+    remains the next shared-width/DFlash lever
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-post-e1-amdahl.json)).
 - [~] P4.2 Frozen MTP parity targets: C1 `>= 21.277`, C2 `>= 32.378`, C3
   `>= 27.515`, C4 `>= 27.015`, C5 `>= 32.74`, C6 `>= 36.023`, C7 `>= 42.304`,
   C8 `>= 54.834`; each cell closes with a measured win or named blocker.

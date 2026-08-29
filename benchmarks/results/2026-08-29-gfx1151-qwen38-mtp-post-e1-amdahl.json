@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted_diagnostic",
+  "campaign": "docs/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+  "title": "Qwen3.8 Q4_K_M post-E1 C3/K3 target Amdahl refresh",
+  "source": {
+    "commit": "a3629b9be38263edcb0daf8071eefd638666dec1",
+    "tracked_dirty": false
+  },
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "execution_profile": "production",
+    "physical_width": 3,
+    "candidate_budget": 3,
+    "prompt": "code_merge_intervals",
+    "prompt_tokens": 36,
+    "max_tokens": 24,
+    "profile_child": true,
+    "cache_mode": "require_cached",
+    "traces": ["kernel", "marker", "HIP", "copy", "allocation"],
+    "selected_region": "eight measured target_accept_commit_provider markers",
+    "performance_claim": false
+  },
+  "wall_reconciliation": {
+    "profile_child_complete_ms": 2503.281697863713,
+    "target_marker_total_ms": 1520.961526,
+    "target_marker_ms_per_cycle": 190.12019075,
+    "target_fraction_of_profile_child_pct": 60.75870435588533,
+    "target_kernel_total_ms": 1454.371212,
+    "target_kernel_ms_per_cycle": 181.7964015,
+    "kernel_fraction_of_target_marker_pct": 95.62182784628833,
+    "measured_cycles": 8
+  },
+  "target_kernel_classes": {
+    "columns": ["class", "calls", "total_ms", "ms_per_cycle", "target_marker_pct"],
+    "rows": [
+      ["Q4", 3254, 821.678204, 102.7097755, 54.023602172301096],
+      ["Q6", 983, 401.501081, 50.187635125, 26.397845976808753],
+      ["Q5", 720, 103.860014, 12.98250175, 6.82857601751065],
+      ["other", 6003, 71.226361, 8.903295125, 4.682982428051241],
+      ["GDN", 384, 34.372809, 4.296601125, 2.259939414141367],
+      ["norm", 1213, 12.491046, 1.56138075, 0.8212598271864504],
+      ["attention", 658, 8.761515, 1.095189375, 0.5760510604789617],
+      ["argmax", 16, 0.480182, 0.06002275, 0.031570949809811295]
+    ],
+    "q4_q6_q5_ms_per_cycle": 165.87991237500003,
+    "q4_q6_q5_fraction_of_target_marker_pct": 87.25002416662052,
+    "q4_q6_q5_fraction_of_target_kernels_pct": 91.24488219036616,
+    "q4_q6_q5_fraction_of_profile_child_pct": 53.01198423383546
+  },
+  "shape_fact": {
+    "logical_target_rows": 12,
+    "current_decomposition": "R8+R4",
+    "duplicate_weight_sweeps": true,
+    "first_family": "Q4 single plus gate/up/SiLU actual shapes",
+    "second_family": "standard and planar Q6 actual shapes",
+    "third_family": "Q5 recurrent output",
+    "strict_fallback_required": true
+  },
+  "decision": {
+    "e2_entry_condition_passed": true,
+    "reason": "The target remains 60.76% of profile-child complete wall and 95.62% kernel-bound. Q4 alone is 102.71 ms/cycle; Q4+Q6+Q5 are 87.25% of target marker wall.",
+    "next": "E2 Q4 true-R12 owner. RED actual R12 and prospective R16 outputs/masks before device changes; reject if the design does not reduce actual sweep count and complete C3/C4 wall.",
+    "c3_policy": "External throughput parity is passed; automatic admission still waits for E5/E6.",
+    "wider_widths": "C2 and C4-C8 parity remain open, so target amortization retains cross-width value."
+  },
+  "raw_sources": [
+    ["/tmp/p260-e1b-c3-clean-profile.json", "af4f84d93c9af9293c1c1f757f0b7a35b9dd6d046f68edd8bf7583d03df8236e", 71542],
+    ["/tmp/p260-e1b-c3-clean-rocprof/gfx1151/3875368_kernel_trace.csv", "fbbbbdf75906fb5dfbf3565609afc5f04671ca574aa63020778ba87f5d76e93b", 13014667],
+    ["/tmp/p260-e1b-c3-clean-rocprof/gfx1151/3875368_marker_api_trace.csv", "f086ed8a8b01dde2eb4a4555f52758152a8ad036636d04b1ea4703b2eb256306", 17948]
+  ]
+}
