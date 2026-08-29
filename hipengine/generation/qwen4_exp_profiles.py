@@ -19,13 +19,14 @@ QWEN4_EXP_MODEL = "qwen4_exp_gguf"
 QWEN4_EXP_BACKEND = "hip_gfx1151"
 QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
 PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
-PRODUCTION_Q8_PREFILL_LAYERS = tuple(range(32, 48))
+PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS = tuple(range(32, 48))
+PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_Q4_DP4A_DECODE_LAYERS = (
     0, 2, 5, 6, 8, 9, 10, 11
 ) + tuple(range(13, 48))
-_PREFILL_EVIDENCE = (
+_STACK_EVIDENCE = (
     "benchmarks/results/"
-    "2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json"
+    "2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json"
 )
 _DECODE_EVIDENCE = (
     "benchmarks/results/"
@@ -56,21 +57,21 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
     return (
         _selection(
             "moe_linear",
-            "prefill_rows_ge16_layers27_47_gate_up",
+            "prefill_rows_ge2_layers35_47_gate_up",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
             "gguf_q4_k",
         ),
         _selection(
             "moe_linear",
-            "prefill_rows_ge16_layers27_47_down",
+            "prefill_rows_ge2_layers32_47_down",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "gguf_q5_1",
         ),
         _selection(
             "linear",
-            "prefill_rows_ge16_layers32_47_q8",
+            "prefill_policy_qwen4exp_dense_q8_shapes",
             "coltile8_rowbatch4_f32_f32_out",
             "coltile8_rowbatch4_f32_f32_out",
             "gguf_q8_0",
@@ -89,27 +90,27 @@ def _production_selections() -> tuple[VariantSelection, ...]:
     return (
         _selection(
             "moe_linear",
-            "prefill_rows_ge16_layers27_47_gate_up",
-            "selected_dual_wmma_prefill_compact_bf16_bf16_out",
+            "prefill_rows_ge2_layers35_47_gate_up",
+            "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
             "gguf_q4_k",
-            evidence=_PREFILL_EVIDENCE,
+            evidence=_STACK_EVIDENCE,
         ),
         _selection(
             "moe_linear",
-            "prefill_rows_ge16_layers27_47_down",
-            "selected_grouped_wmma_prefill_compact_bf16_bf16_out",
+            "prefill_rows_ge2_layers32_47_down",
+            "q5_1_mmq_ds4_selected_prefill_bf16_bf16_out",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "gguf_q5_1",
-            evidence=_PREFILL_EVIDENCE,
+            evidence=_STACK_EVIDENCE,
         ),
         _selection(
             "linear",
-            "prefill_rows_ge16_layers32_47_q8",
-            "wmma_prefill_f32_f32_out",
+            "prefill_policy_qwen4exp_dense_q8_shapes",
+            "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
             "coltile8_rowbatch4_f32_f32_out",
             "gguf_q8_0",
-            evidence=_PREFILL_EVIDENCE,
+            evidence=_STACK_EVIDENCE,
         ),
         _selection(
             "linear",
@@ -123,26 +124,34 @@ def _production_selections() -> tuple[VariantSelection, ...]:
 
 
 def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool) -> None:
-    del generator
-    os.environ[PRODUCTION_MOE_PREFILL_ENV] = "1" if production else "0"
-    # Freeze all neighboring experiments so the manifest selects only the
-    # certified late-layer cooperative MoE arithmetic.
+    os.environ[PRODUCTION_MOE_PREFILL_ENV] = "0"
+    # Freeze neighboring experiments and select only the complete certified
+    # MMQ-prefill + DP4A-decode composition represented by the manifest.
     for key, value in {
         "HIPENGINE_GGUF_WMMA_PREFILL": "0",
         "HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL": "0",
         "HIPENGINE_QWEN4_EXP_Q5_1_WMMA": "0",
         "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA": "0",
+        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS": (
+            ",".join(map(str, PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS))
+            if production
+            else ""
+        ),
+        "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS": (
+            ",".join(map(str, PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS))
+            if production
+            else ""
+        ),
         "HIPENGINE_QWEN4_EXP_Q4_DP4A64": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS": (
             ",".join(map(str, PRODUCTION_Q4_DP4A_DECODE_LAYERS))
             if production
             else ""
         ),
-        "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": (
-            ",".join(map(str, PRODUCTION_Q8_PREFILL_LAYERS))
-            if production
-            else ""
-        ),
+        "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS": "",
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_M": "64",
         "HIPENGINE_GGUF_Q8_0_WMMA_TILE_N": "32",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN": "1",
@@ -151,6 +160,14 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256": resolved.manifest_sha256,
     }.items():
         os.environ[key] = value
+    if production:
+        configure = getattr(
+            getattr(generator, "runner", None),
+            "configure_mmq_prefill_resources",
+            None,
+        )
+        if callable(configure):
+            configure()
 
 
 def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
@@ -216,10 +233,11 @@ def qwen4_exp_gfx1151_profiles_registered() -> bool:
 __all__ = [
     "PRODUCTION_MOE_PREFILL_ENV",
     "PRODUCTION_Q4_DP4A_DECODE_LAYERS",
+    "PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS",
+    "PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS",
     "QWEN4_EXP_BACKEND",
     "QWEN4_EXP_MODEL",
     "QWEN4_EXP_QUANTS",
-    "PRODUCTION_Q8_PREFILL_LAYERS",
     "qwen4_exp_gfx1151_profiles_registered",
     "register_qwen4_exp_gfx1151_profiles",
 ]

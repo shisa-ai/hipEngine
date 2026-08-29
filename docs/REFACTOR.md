@@ -20,29 +20,23 @@ should be removed or collapsed.
 
 ## 2026-08-29 Qwen4Exp late-layer production prefill
 
-- `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL` (new, default off) opens the guarded
-  raw-Q8 MMQ128 prefill session for Qwen4Exp dense Q8_0 projections (F32
-  in/out, D4x3 Q8_1 activations, int8-WMMA tiles, `QWEN4EXP_Q8_MMQ_PREFILL_POLICY`
-  shape gates). Strict coltile stays the exact default/fallback. Removal
-  trigger: once the complete strict-teacher 450-row packet plus paired
-  p508/p1012 gates pass, fold the session opening into the named production
-  profile (not the env) and drop the env bridge; the (320, 10240) hc-down and
-  K%256!=0 shapes stay exact by construction.
-- `HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL` and
-  `HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL` (both default off) open the certified
-  raw selected-MoE MMQ routes. Their layer bridges default to Q5_1 down layers
-  32–47 and Q4_K dual gate/up layers 35–47; omitted layers use the strict
-  grouped owners. Remove all four env bridges after the stacked profile row is
-  retained and the named production manifest resolves these variants directly;
-  retain the registered strict grouped fallbacks.
-- `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` and the temporary
-  `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS`/tile plus
-  `HIPENGINE_QWEN4_EXP_Q4_DP4A64{,_LAYERS}` bridges are bound by explicit
-  strict/production manifests. They select certified MoE prefill layers 27–47,
-  dense-Q8 prefill layers 32–47, and calibrated Q4 DP4A decode layers
-  `0,2,5,6,8,9,10,11,13–47`. Remove
-  process-global env binding once Qwen4Exp profile state is request-local;
-  retain exact grouped Q4/Q5, coltile-Q8, and logical128/t64 Q4 fallbacks.
+- The named production manifest now owns `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`,
+  `HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL` (layers 32–47), and
+  `HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL` (layers 35–47). These process-global
+  env values are internal binder bridges, not independent public profiles;
+  strict binds them off and route checks fail closed even when workspaces were
+  allocated earlier in the process. Remove the env transport once resolved
+  profile state is request-local. Retain exact coltile-Q8 and grouped Q4/Q5
+  fallbacks; the Q8 (320,10240) hc-down and K%256!=0 shapes remain strict.
+- `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` and
+  `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` are superseded for the named production
+  profile by the faster admitted MMQ stack. Keep them only for artifact
+  reproduction/bisection until the post-manifest serving soak, then remove the
+  runtime dispatch bridges while retaining their registered kernels.
+- `HIPENGINE_QWEN4_EXP_Q4_DP4A64{,_LAYERS}` remains an internal named-profile
+  bridge for calibrated decode layers `0,2,5,6,8,9,10,11,13–47`. Remove the
+  process-global transport with the MMQ bridges once Qwen4Exp profile state is
+  request-local; retain logical128/t64 strict Q4 fallback.
 
 ## 2026-08-29 Qwen4Exp per-layer MoE graphs
 

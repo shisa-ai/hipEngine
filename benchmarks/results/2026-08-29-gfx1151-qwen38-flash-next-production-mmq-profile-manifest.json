@@ -1,0 +1,262 @@
+{
+  "schema": 1,
+  "date": "2026-08-29",
+  "status": "accepted_named_production_profile_manifest",
+  "scope": "Qwen4Exp gfx1151 named production profile: certified MMQ prefill replacement plus DP4A safe-43 decode",
+  "host": {
+    "identity": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5"
+  },
+  "selected_manifest_sha256": "fa0bc8967250ade5a4500851c9ab4996cd35ddb5bb696f51c0f211bc0b2eab7a",
+  "strict_manifest_sha256": "2cea76c571463429b1c264477660da0c135f7a6e9fb635542c2bb975b82f6063",
+  "production_manifest": {
+    "backend": "hip_gfx1151",
+    "execution_profile": "production",
+    "graph_policy": "request_owned_exact_moe_graph_c1",
+    "kind": "hipengine_execution_profile_manifest",
+    "kv_policy": "paged_bf16_qsa_index_f32",
+    "model": "qwen4_exp_gguf",
+    "quant": "gguf_ud_q4_k_xl",
+    "schema_version": 1,
+    "selections": [
+      {
+        "evidence_artifact": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-dp4a-safe43-decode.json",
+        "layer": "linear",
+        "registry_quant": "gguf_q4_k",
+        "scope": "decode_c1_calibrated_q4_dp4a_43_layers",
+        "selected_variant": "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out",
+        "strict_fallback_variant": "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out"
+      },
+      {
+        "evidence_artifact": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json",
+        "layer": "linear",
+        "registry_quant": "gguf_q8_0",
+        "scope": "prefill_policy_qwen4exp_dense_q8_shapes",
+        "selected_variant": "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
+        "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out"
+      },
+      {
+        "evidence_artifact": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json",
+        "layer": "moe_linear",
+        "registry_quant": "gguf_q5_1",
+        "scope": "prefill_rows_ge2_layers32_47_down",
+        "selected_variant": "q5_1_mmq_ds4_selected_prefill_bf16_bf16_out",
+        "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out"
+      },
+      {
+        "evidence_artifact": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json",
+        "layer": "moe_linear",
+        "registry_quant": "gguf_q4_k",
+        "scope": "prefill_rows_ge2_layers35_47_gate_up",
+        "selected_variant": "selected_dual_q8_1_ds4_mmq32_prefill_compact32_bf16_bf16_out",
+        "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out"
+      }
+    ]
+  },
+  "strict_manifest": {
+    "backend": "hip_gfx1151",
+    "execution_profile": "strict",
+    "graph_policy": "request_owned_exact_moe_graph_c1",
+    "kind": "hipengine_execution_profile_manifest",
+    "kv_policy": "paged_bf16_qsa_index_f32",
+    "model": "qwen4_exp_gguf",
+    "quant": "gguf_ud_q4_k_xl",
+    "schema_version": 1,
+    "selections": [
+      {
+        "evidence_artifact": null,
+        "layer": "linear",
+        "registry_quant": "gguf_q4_k",
+        "scope": "decode_c1_calibrated_q4_dp4a_43_layers",
+        "selected_variant": "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out",
+        "strict_fallback_variant": "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out"
+      },
+      {
+        "evidence_artifact": null,
+        "layer": "linear",
+        "registry_quant": "gguf_q8_0",
+        "scope": "prefill_policy_qwen4exp_dense_q8_shapes",
+        "selected_variant": "coltile8_rowbatch4_f32_f32_out",
+        "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out"
+      },
+      {
+        "evidence_artifact": null,
+        "layer": "moe_linear",
+        "registry_quant": "gguf_q5_1",
+        "scope": "prefill_rows_ge2_layers32_47_down",
+        "selected_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+        "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out"
+      },
+      {
+        "evidence_artifact": null,
+        "layer": "moe_linear",
+        "registry_quant": "gguf_q4_k",
+        "scope": "prefill_rows_ge2_layers35_47_gate_up",
+        "selected_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+        "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out"
+      }
+    ]
+  },
+  "composition_evidence": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json",
+  "component_evidence": {
+    "q8_mmq": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-q8-mmq-prefill-production.json",
+    "q5_1_mmq": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-q5-1-mmq-suffix32-production.json",
+    "q4_k_mmq": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-q4-k-mmq-suffix35-production.json",
+    "dp4a43": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-production-dp4a-safe43-decode.json"
+  },
+  "binder": {
+    "legacy_cooperative_moe": false,
+    "q8_mmq": true,
+    "q5_1_mmq_layers": [
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47
+    ],
+    "q4_k_mmq_layers": [
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47
+    ],
+    "q4_dp4a_layers": [
+      0,
+      2,
+      5,
+      6,
+      8,
+      9,
+      10,
+      11,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47
+    ],
+    "strict_fail_closed_envs": true,
+    "post_construction_resource_configuration": true
+  },
+  "public_profile_smoke": {
+    "command": "uv run python /tmp/qwen4exp_profile_manifest_smoke.py",
+    "production": {
+      "manifest_sha256": "fa0bc8967250ade5a4500851c9ab4996cd35ddb5bb696f51c0f211bc0b2eab7a",
+      "strict_manifest_sha256": "2cea76c571463429b1c264477660da0c135f7a6e9fb635542c2bb975b82f6063",
+      "fell_back_to_strict": false,
+      "resources_allocated": {
+        "q8": true,
+        "q8_policy": true,
+        "q5": true,
+        "q4": true
+      },
+      "route_env": {
+        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1",
+        "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "1",
+        "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL": "1",
+        "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0"
+      },
+      "seconds": 7.792256860004272,
+      "tok_s": 65.19292281128955,
+      "top1": 248068,
+      "logits_sha256": "33cb156dfa445a6de769e665644d6a8e00ea06059bea56a953d70a36b00a62d7",
+      "tracked_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 83474325404,
+        "total_allocated_bytes": 83474325404,
+        "total_freed_bytes": 83474325404,
+        "active_allocations": 0,
+        "peak_allocations": 1644
+      }
+    },
+    "strict_after_production_same_process": {
+      "manifest_sha256": "2cea76c571463429b1c264477660da0c135f7a6e9fb635542c2bb975b82f6063",
+      "strict_manifest_sha256": "2cea76c571463429b1c264477660da0c135f7a6e9fb635542c2bb975b82f6063",
+      "fell_back_to_strict": false,
+      "resources_allocated": {
+        "q8": true,
+        "q8_policy": true,
+        "q5": true,
+        "q4": true
+      },
+      "route_env": {
+        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "0",
+        "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "0",
+        "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL": "0",
+        "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "0"
+      },
+      "seconds": 9.438593644008506,
+      "tok_s": 53.821577573950506,
+      "top1": 248068,
+      "logits_sha256": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48",
+      "tracked_after_close": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 83474426364,
+        "total_allocated_bytes": 166948751768,
+        "total_freed_bytes": 166948751768,
+        "active_allocations": 0,
+        "peak_allocations": 1650
+      }
+    },
+    "expected_production_logits_sha256": "33cb156dfa445a6de769e665644d6a8e00ea06059bea56a953d70a36b00a62d7",
+    "expected_strict_logits_sha256": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48",
+    "verdict": "production resources allocated after binding; hashes match paired evidence; strict envs disable routes despite preallocated resources; both close to zero tracked bytes"
+  }
+}
