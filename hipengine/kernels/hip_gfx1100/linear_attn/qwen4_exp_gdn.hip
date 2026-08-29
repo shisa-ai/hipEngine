@@ -1,6 +1,7 @@
 // hipEngine-native strict Qwen4Exp GDN decode recurrence with sigmoid output gate.
 
 #include <hip/hip_runtime.h>
+#include <cstdio>
 #include <stdint.h>
 
 namespace {
@@ -310,6 +311,136 @@ __global__ void qwen4_exp_gdn_prefill_f32_kernel(
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// Column-warp GDN prefill (llama gated_delta_net.cu layout; lineage
+// ggml-org/llama.cpp@17252c769). One warp owns one output column; the
+// head_k_dim state rows are sharded across 32 lanes in registers; all
+// reductions are warp shuffles (no __syncthreads in the token loop); the
+// state lives in registers across the whole sequence. The output RMS norm
+// crosses columns, so this kernel writes the raw core and a companion tail
+// kernel applies rms-norm * weight * sigmoid(gate).
+// ---------------------------------------------------------------------------
+__device__ inline float warp_sum_f32(float value) {
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    value += __shfl_xor(value, offset);
+  }
+  return value;
+}
+
+template <int ROWS_PER_LANE>
+__global__ void __launch_bounds__(128, 4)
+qwen4_exp_gdn_prefill_columnwarps_f32_kernel(
+    const float* __restrict__ conv,
+    const float* __restrict__ alpha,
+    const float* __restrict__ beta_logits,
+    const float* __restrict__ dt_bias,
+    const float* __restrict__ a,
+    float* __restrict__ recurrent_state,
+    float* __restrict__ core_out,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim) {
+  const int64_t v_head = blockIdx.x;
+  if (v_head >= num_v_heads) return;
+  const int64_t k_head = v_head % num_k_heads;
+  const int warp_id = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  const int64_t col = static_cast<int64_t>(blockIdx.y) * 4 + warp_id;
+  if (col >= head_v_dim) return;
+  const int64_t key_width = num_k_heads * head_k_dim;
+  const int64_t qkv_width = 2 * key_width + num_v_heads * head_v_dim;
+  const int64_t q_offset = k_head * head_k_dim;
+  const int64_t k_offset = key_width + q_offset;
+  const int64_t v_offset = 2 * key_width + v_head * head_v_dim;
+  const int64_t core_width = num_v_heads * head_v_dim;
+  const int64_t state_col = v_head * head_k_dim * head_v_dim + col;
+
+  float s_shard[ROWS_PER_LANE];
+  int j_idx[ROWS_PER_LANE];
+#pragma unroll
+  for (int r = 0; r < ROWS_PER_LANE; ++r) {
+    j_idx[r] = r * 32 + lane;
+    s_shard[r] = recurrent_state[state_col + j_idx[r] * head_v_dim];
+  }
+
+  for (int64_t token = 0; token < tokens; ++token) {
+    const float* conv_row = conv + token * qkv_width;
+    float q_r[ROWS_PER_LANE];
+    float k_r[ROWS_PER_LANE];
+    float q_partial = 0.0f;
+    float k_partial = 0.0f;
+#pragma unroll
+    for (int r = 0; r < ROWS_PER_LANE; ++r) {
+      q_r[r] = conv_row[q_offset + j_idx[r]];
+      k_r[r] = conv_row[k_offset + j_idx[r]];
+      q_partial += q_r[r] * q_r[r];
+      k_partial += k_r[r] * k_r[r];
+    }
+    const float q_scale = rsqrtf(warp_sum_f32(q_partial) + 1.0e-6f)
+        * rsqrtf(static_cast<float>(head_k_dim));
+    const float k_scale = rsqrtf(warp_sum_f32(k_partial) + 1.0e-6f);
+    const float beta = sigmoid_f32(beta_logits[token * num_v_heads + v_head]);
+    const float decay = expf(
+        a[v_head] * softplus_f32(alpha[token * num_v_heads + v_head] + dt_bias[v_head]));
+
+    float kv_partial = 0.0f;
+#pragma unroll
+    for (int r = 0; r < ROWS_PER_LANE; ++r) {
+      kv_partial += (k_r[r] * k_scale) * s_shard[r];
+    }
+    const float memory = warp_sum_f32(kv_partial) * decay;
+    const float delta = (conv_row[v_offset + col] - memory) * beta;
+
+    float attn_partial = 0.0f;
+#pragma unroll
+    for (int r = 0; r < ROWS_PER_LANE; ++r) {
+      s_shard[r] = s_shard[r] * decay + (k_r[r] * k_scale) * delta;
+      attn_partial += (q_r[r] * q_scale) * s_shard[r];
+    }
+    const float attn = warp_sum_f32(attn_partial);
+    core_out[token * core_width + v_head * head_v_dim + col] = attn;
+  }
+
+#pragma unroll
+  for (int r = 0; r < ROWS_PER_LANE; ++r) {
+    recurrent_state[state_col + j_idx[r] * head_v_dim] = s_shard[r];
+  }
+}
+
+__global__ void qwen4_exp_gdn_core_norm_gate_f32_kernel(
+    float* __restrict__ core,
+    const float* __restrict__ output_gate,
+    const float* __restrict__ norm_weight,
+    int64_t tokens,
+    int64_t core_width,
+    int64_t num_v_heads,
+    int64_t head_v_dim) {
+  const int64_t token = blockIdx.x;
+  const int64_t v_head = blockIdx.y;
+  const int lane = threadIdx.x;
+  __shared__ float reductions[32];
+  const int64_t base = token * core_width + v_head * head_v_dim;
+  float partial = 0.0f;
+  for (int64_t col = lane; col < head_v_dim; col += 32) {
+    const float value = core[base + col];
+    partial += value * value;
+  }
+  partial = warp_sum_f32(partial);
+  if (lane == 0) reductions[0] = partial;
+  __syncthreads();
+  const float inv_rms = rsqrtf(
+      reductions[0] / static_cast<float>(head_v_dim) + 1.0e-6f);
+  for (int64_t col = lane; col < head_v_dim; col += 32) {
+    core[base + col] = core[base + col] * inv_rms
+        * norm_weight[col]
+        * sigmoid_f32(output_gate[base + col]);
+  }
+}
+
 }  // namespace
 
 extern "C" int hipengine_qwen4_exp_gdn_decode_f32(
@@ -441,5 +572,57 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_f32(
       static_cast<const float*>(norm_weight), static_cast<float*>(recurrent_state),
       static_cast<float*>(output), tokens, num_k_heads, num_v_heads,
       head_k_dim, head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+
+extern "C" int hipengine_qwen4_exp_gdn_prefill_columnwarps_f32(
+    const void* conv,
+    const void* output_gate,
+    const void* alpha,
+    const void* beta_logits,
+    const void* dt_bias,
+    const void* a,
+    const void* norm_weight,
+    void* recurrent_state,
+    void* core,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!conv || !output_gate || !alpha || !beta_logits || !dt_bias || !a ||
+      !norm_weight || !recurrent_state || !core ||
+      tokens <= 0 || num_k_heads <= 0 || num_v_heads <= 0 ||
+      num_v_heads % num_k_heads || head_k_dim != 128 || head_v_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t col_blocks = head_v_dim / 4;  // 4 columns (warps) per block
+  hipLaunchKernelGGL(
+      (qwen4_exp_gdn_prefill_columnwarps_f32_kernel<4>),
+      dim3(static_cast<uint32_t>(num_v_heads),
+           static_cast<uint32_t>(col_blocks)),
+      dim3(128), 0, stream,
+      static_cast<const float*>(conv),
+      static_cast<const float*>(alpha),
+      static_cast<const float*>(beta_logits),
+      static_cast<const float*>(dt_bias),
+      static_cast<const float*>(a),
+      static_cast<float*>(recurrent_state),
+      static_cast<float*>(core),
+      tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim);
+  const int err = static_cast<int>(hipGetLastError());
+  if (err != 0) return err;
+  const int64_t core_width = num_v_heads * head_v_dim;
+  hipLaunchKernelGGL(
+      qwen4_exp_gdn_core_norm_gate_f32_kernel,
+      dim3(static_cast<uint32_t>(tokens),
+           static_cast<uint32_t>(num_v_heads)),
+      dim3(32), 0, stream,
+      static_cast<float*>(core),
+      static_cast<const float*>(output_gate),
+      static_cast<const float*>(norm_weight),
+      tokens, core_width, num_v_heads, head_v_dim);
   return static_cast<int>(hipGetLastError());
 }
