@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8 C2 post-streaming blocker] C2 remains 20.48% below the frozen target after activation closure. Cached attribution assigns **1.205/1.996 s (60.38%)** to target/accept/commit/provider with 95.38% kernel reconciliation; Q4/Q6/Q5 consume **740/246/64 ms**. Qualified R8 shapes are already one-sweep; narrow-Q4 shared-B is numerically unqualified and insufficient alone. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-post-streaming-blocker.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8 C2 prompt streaming retained] Extend exact post-output-norm prompt streaming to standard-`Q4_K_M` physical C2: clean K3 improves **21.581→25.749 tok/s (+19.31%)** to **1.4316x AR**, exact 314/398 acceptance and every category positive. C4 is rejected: +5.68% speed but acceptance changes 628/796→624/800 and every category remains below AR. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-prompt-streaming-retained.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8 wide proposal policy rejected] Actual head rows5-8 rowtiles are exact and 75.6-84.4% faster than hypothetical direct rows5-8, but request telemetry proves wide proposals already lower as rows4+remainder and no rows5-8 key can engage. The apparent C7/C8 +1.11%/+3.78% is unattributed run variance; rows7/8 policy is removed. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-wide-proposal-policy-rejected.json`.

@@ -106,6 +106,9 @@ true-R12 owners then lift C3/K3 to **29.564 vs 24.042 (1.2297x)**, with
 unchanged acceptance and every category positive. C3 is 7.45% above the frozen
 external row. Both remain explicit/K0 pending refreshed complete admission and
 serving gates. [`E2`](results/2026-08-29-gfx1151-qwen38-mtp-e2-q5-true-r12-retained.json)
+C2 remains 20.48% below its external target: its post-streaming target wall is
+95.38% kernel-bound and Q4-dominant; qualified R8 shapes are already one-sweep.
+[`blocker`](results/2026-08-29-gfx1151-qwen38-mtp-c2-post-streaming-blocker.json)
 
 The matched standard-`Q4_K_M` [external survey](results/2026-08-28-gfx1151-qwen38-external-reproduction-survey.json)
 keeps source-protocol claims separate from engine comparisons. `q38rocm` K4

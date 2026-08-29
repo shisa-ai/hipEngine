@@ -295,7 +295,7 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   | C | MTP tok/s | True AR tok/s | MTP/AR | External gap | Status / named blocker |
   | ---: | ---: | ---: | ---: | ---: | --- |
   | 1 | 7.814 | 11.024 | 0.7088x | -63.28% | production-D24 keeps direct/scalar proposal + replay; strict-natural25 evidence does not transfer |
-  | 2 | **25.749** | 17.986 | **1.4316x** | -20.48% | C2 streaming retained; remaining logical R8 target/accept wall |
+  | 2 | **25.749** | 17.986 | **1.4316x** | -20.48% | blocked: target is 60.38% of child wall/95.38% kernel-bound; Q4 740 ms |
   | 3 | **29.489** | 23.969 | **1.2303x** | **+7.17%** | **closed win** |
   | 4 | 20.384 | 30.425 | 0.6700x | -24.54% | C4 streaming changes acceptance and is rejected; R16 target/accept wall |
   | 5 | 15.244 | 35.551 | 0.4288x | -53.44% | proposals rows4+1; replay + operation-complete R20 target/accept wall |
@@ -309,11 +309,15 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   A follow-up trace shows wide proposals already lower to rows4 plus a remainder,
   so E1b covers them; rows5-8 policy keys cannot engage. Next: independent
   C2 streaming is subsequently retained at **25.749 tok/s (+19.31%)**; C4 is
-  rejected after changing acceptance. Next: profile C2 R8 and wide R16-R32
-  target/accept walls
+  rejected after changing acceptance. C2 closes on a measured R8 blocker:
+  target/accept/commit/provider is **1.205/1.996 s**, 95.38% kernel-bound, with
+  Q4/Q6/Q5 **740/246/64 ms**. Qualified shapes are already one-sweep; narrow-Q4
+  shared-B is numerically unqualified and insufficient alone. Next: wide R16-R32
+  target/accept profiling
   ([`matrix`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-post-e2-c1c8-refreeze.json),
   [`proposal correction`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-wide-proposal-policy-rejected.json),
-  [`C2 streaming`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-prompt-streaming-retained.json)).
+  [`C2 streaming`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-prompt-streaming-retained.json),
+  [`C2 blocker`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-post-streaming-blocker.json)).
 - [ ] P4.3 Reopen T3 adaptive-K and the B4 clamp once verifier rowtile work
   lands (per the CONCURRENCY2 supersession note); require full-suite
   acceptance/speed validation per anti-gaming.
