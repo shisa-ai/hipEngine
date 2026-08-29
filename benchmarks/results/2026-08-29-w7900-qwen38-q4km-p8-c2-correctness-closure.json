@@ -1,0 +1,1147 @@
+{
+  "acceptance": {
+    "mechanism": {
+      "accept_absorbs_device_sync": "_read_target_batch_accept opens with runtime.device_synchronize(); accept_ms absorbs pending GPU work for the cycle",
+      "code_drop_deconfounded": "C1 strict vs production acceptance identical (0.9365/0.8485/0.8788/0.9375); the C2 code drop is concurrency-caused",
+      "d24_prefill_share": "stage arithmetic puts ~50% of both AR and MTP D24 walls in prefill; D24 ratios understate steady-state decode gains",
+      "k1_high_acceptance_low_speed": "K1 rides R4 off-tile at 165.6ms accept per request-cycle vs 29.7-30.9ms for pure-R6 K2 routes; 62.1% of K1 wall is the accept/sync stage",
+      "off_tile_penalty": "one off-tile cycle costs ~5.1x the rows6 cycle (fit 30.7+126.7*ragged_frac measured within the K2 run)",
+      "post_reject_collapse": "code pos-1 acceptance after a rejected cycle: K2 0.471 (n=17), K3 0.348 (n=46); K1 recovers (1.000, n=19) via k0 catchups (23 observed); C1 n=2",
+      "rowtile_admission": "gfx1100 GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS={6}; R4(K1)/R8(K3)/ragged 2-5 fall to the shared-B 256-row padded tile"
+    },
+    "prior_cycle_transition_pos1": {
+      "k1": {
+        "code": {
+          "first": {
+            "n": 8,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 76,
+            "pos1_acceptance": 0.9211
+          },
+          "reject": {
+            "n": 6,
+            "pos1_acceptance": 1.0
+          }
+        },
+        "non_code": {
+          "first": {
+            "n": 12,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 113,
+            "pos1_acceptance": 0.885
+          },
+          "reject": {
+            "n": 13,
+            "pos1_acceptance": 1.0
+          }
+        }
+      },
+      "k2": {
+        "code": {
+          "first": {
+            "n": 8,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 45,
+            "pos1_acceptance": 0.8444
+          },
+          "partial": {
+            "n": 5,
+            "pos1_acceptance": 0.8
+          },
+          "reject": {
+            "n": 17,
+            "pos1_acceptance": 0.4706
+          }
+        },
+        "non_code": {
+          "first": {
+            "n": 12,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 66,
+            "pos1_acceptance": 0.9394
+          },
+          "partial": {
+            "n": 18,
+            "pos1_acceptance": 1.0
+          },
+          "reject": {
+            "n": 4,
+            "pos1_acceptance": 1.0
+          }
+        }
+      },
+      "k3": {
+        "code": {
+          "first": {
+            "n": 8,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 28,
+            "pos1_acceptance": 0.8571
+          },
+          "partial": {
+            "n": 9,
+            "pos1_acceptance": 0.6667
+          },
+          "reject": {
+            "n": 23,
+            "pos1_acceptance": 0.3043
+          }
+        },
+        "non_code": {
+          "first": {
+            "n": 12,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 36,
+            "pos1_acceptance": 0.7778
+          },
+          "partial": {
+            "n": 27,
+            "pos1_acceptance": 0.963
+          },
+          "reject": {
+            "n": 23,
+            "pos1_acceptance": 0.3913
+          }
+        }
+      }
+    },
+    "production": {
+      "k1": {
+        "accepted": 209,
+        "by_category": {
+          "code": {
+            "accepted": 84,
+            "proposed": 90,
+            "rate": 0.9333333333333333
+          },
+          "general_en": {
+            "accepted": 41,
+            "proposed": 44,
+            "rate": 0.9318181818181818
+          },
+          "general_ja": {
+            "accepted": 42,
+            "proposed": 48,
+            "rate": 0.875
+          },
+          "mixed_ja_en": {
+            "accepted": 42,
+            "proposed": 46,
+            "rate": 0.9130434782608695
+          }
+        },
+        "by_depth": [
+          {
+            "accepted_cycles": 209,
+            "conditional_opportunities": 228,
+            "conditional_position_acceptance": 0.9166666666666666,
+            "position": 1,
+            "position_acceptance": 0.9166666666666666,
+            "proposed_cycles": 228
+          }
+        ],
+        "by_heldout": {
+          "heldout": {
+            "accepted": 83,
+            "proposed": 92,
+            "rate": 0.9021739130434783
+          },
+          "train": {
+            "accepted": 126,
+            "proposed": 136,
+            "rate": 0.9264705882352942
+          }
+        },
+        "by_lane": {
+          "lane_0": {
+            "accepted": 105,
+            "proposed": 114,
+            "rate": 0.9210526315789473
+          },
+          "lane_1": {
+            "accepted": 104,
+            "proposed": 114,
+            "rate": 0.9122807017543859
+          }
+        },
+        "by_request": {
+          "code_lru_cache:lane0": {
+            "accepted": 11,
+            "proposed": 11,
+            "rate": 1.0
+          },
+          "code_lru_cache:lane1": {
+            "accepted": 10,
+            "proposed": 11,
+            "rate": 0.9090909090909091
+          },
+          "code_markdown_table:lane0": {
+            "accepted": 10,
+            "proposed": 11,
+            "rate": 0.9090909090909091
+          },
+          "code_markdown_table:lane1": {
+            "accepted": 11,
+            "proposed": 11,
+            "rate": 1.0
+          },
+          "code_merge_intervals:lane0": {
+            "accepted": 11,
+            "proposed": 12,
+            "rate": 0.9166666666666666
+          },
+          "code_merge_intervals:lane1": {
+            "accepted": 10,
+            "proposed": 12,
+            "rate": 0.8333333333333334
+          },
+          "code_topological_sort:lane0": {
+            "accepted": 11,
+            "proposed": 11,
+            "rate": 1.0
+          },
+          "code_topological_sort:lane1": {
+            "accepted": 10,
+            "proposed": 11,
+            "rate": 0.9090909090909091
+          },
+          "general_en_explain:lane0": {
+            "accepted": 10,
+            "proposed": 11,
+            "rate": 0.9090909090909091
+          },
+          "general_en_explain:lane1": {
+            "accepted": 10,
+            "proposed": 11,
+            "rate": 0.9090909090909091
+          },
+          "general_en_plan:lane0": {
+            "accepted": 10,
+            "proposed": 11,
+            "rate": 0.9090909090909091
+          },
+          "general_en_plan:lane1": {
+            "accepted": 11,
+            "proposed": 11,
+            "rate": 1.0
+          },
+          "general_ja_explain:lane0": {
+            "accepted": 10,
+            "proposed": 12,
+            "rate": 0.8333333333333334
+          },
+          "general_ja_explain:lane1": {
+            "accepted": 11,
+            "proposed": 12,
+            "rate": 0.9166666666666666
+          },
+          "general_ja_plan:lane0": {
+            "accepted": 11,
+            "proposed": 12,
+            "rate": 0.9166666666666666
+          },
+          "general_ja_plan:lane1": {
+            "accepted": 10,
+            "proposed": 12,
+            "rate": 0.8333333333333334
+          },
+          "mixed_ja_en_review:lane0": {
+            "accepted": 11,
+            "proposed": 12,
+            "rate": 0.9166666666666666
+          },
+          "mixed_ja_en_review:lane1": {
+            "accepted": 10,
+            "proposed": 12,
+            "rate": 0.8333333333333334
+          },
+          "mixed_ja_en_translate:lane0": {
+            "accepted": 10,
+            "proposed": 11,
+            "rate": 0.9090909090909091
+          },
+          "mixed_ja_en_translate:lane1": {
+            "accepted": 11,
+            "proposed": 11,
+            "rate": 1.0
+          }
+        },
+        "k": 1,
+        "proposed": 228,
+        "rate": 0.9166666666666666
+      },
+      "k2": {
+        "accepted": 273,
+        "by_category": {
+          "code": {
+            "accepted": 105,
+            "proposed": 144,
+            "rate": 0.7291666666666666
+          },
+          "general_en": {
+            "accepted": 54,
+            "proposed": 66,
+            "rate": 0.8181818181818182
+          },
+          "general_ja": {
+            "accepted": 56,
+            "proposed": 66,
+            "rate": 0.8484848484848485
+          },
+          "mixed_ja_en": {
+            "accepted": 58,
+            "proposed": 64,
+            "rate": 0.90625
+          }
+        },
+        "by_depth": [
+          {
+            "accepted_cycles": 154,
+            "conditional_opportunities": 175,
+            "conditional_position_acceptance": 0.88,
+            "position": 1,
+            "position_acceptance": 0.88,
+            "proposed_cycles": 175
+          },
+          {
+            "accepted_cycles": 119,
+            "conditional_opportunities": 144,
+            "conditional_position_acceptance": 0.8263888888888888,
+            "position": 2,
+            "position_acceptance": 0.7212121212121212,
+            "proposed_cycles": 165
+          }
+        ],
+        "by_heldout": {
+          "heldout": {
+            "accepted": 110,
+            "proposed": 136,
+            "rate": 0.8088235294117647
+          },
+          "train": {
+            "accepted": 163,
+            "proposed": 204,
+            "rate": 0.7990196078431373
+          }
+        },
+        "by_lane": {
+          "lane_0": {
+            "accepted": 138,
+            "proposed": 171,
+            "rate": 0.8070175438596491
+          },
+          "lane_1": {
+            "accepted": 135,
+            "proposed": 169,
+            "rate": 0.7988165680473372
+          }
+        },
+        "by_request": {
+          "code_lru_cache:lane0": {
+            "accepted": 14,
+            "proposed": 15,
+            "rate": 0.9333333333333333
+          },
+          "code_lru_cache:lane1": {
+            "accepted": 15,
+            "proposed": 15,
+            "rate": 1.0
+          },
+          "code_markdown_table:lane0": {
+            "accepted": 15,
+            "proposed": 15,
+            "rate": 1.0
+          },
+          "code_markdown_table:lane1": {
+            "accepted": 10,
+            "proposed": 23,
+            "rate": 0.43478260869565216
+          },
+          "code_merge_intervals:lane0": {
+            "accepted": 9,
+            "proposed": 26,
+            "rate": 0.34615384615384615
+          },
+          "code_merge_intervals:lane1": {
+            "accepted": 15,
+            "proposed": 16,
+            "rate": 0.9375
+          },
+          "code_topological_sort:lane0": {
+            "accepted": 14,
+            "proposed": 17,
+            "rate": 0.8235294117647058
+          },
+          "code_topological_sort:lane1": {
+            "accepted": 13,
+            "proposed": 17,
+            "rate": 0.7647058823529411
+          },
+          "general_en_explain:lane0": {
+            "accepted": 14,
+            "proposed": 17,
+            "rate": 0.8235294117647058
+          },
+          "general_en_explain:lane1": {
+            "accepted": 13,
+            "proposed": 17,
+            "rate": 0.7647058823529411
+          },
+          "general_en_plan:lane0": {
+            "accepted": 14,
+            "proposed": 16,
+            "rate": 0.875
+          },
+          "general_en_plan:lane1": {
+            "accepted": 13,
+            "proposed": 16,
+            "rate": 0.8125
+          },
+          "general_ja_explain:lane0": {
+            "accepted": 15,
+            "proposed": 16,
+            "rate": 0.9375
+          },
+          "general_ja_explain:lane1": {
+            "accepted": 14,
+            "proposed": 16,
+            "rate": 0.875
+          },
+          "general_ja_plan:lane0": {
+            "accepted": 14,
+            "proposed": 17,
+            "rate": 0.8235294117647058
+          },
+          "general_ja_plan:lane1": {
+            "accepted": 13,
+            "proposed": 17,
+            "rate": 0.7647058823529411
+          },
+          "mixed_ja_en_review:lane0": {
+            "accepted": 14,
+            "proposed": 16,
+            "rate": 0.875
+          },
+          "mixed_ja_en_review:lane1": {
+            "accepted": 15,
+            "proposed": 16,
+            "rate": 0.9375
+          },
+          "mixed_ja_en_translate:lane0": {
+            "accepted": 15,
+            "proposed": 16,
+            "rate": 0.9375
+          },
+          "mixed_ja_en_translate:lane1": {
+            "accepted": 14,
+            "proposed": 16,
+            "rate": 0.875
+          }
+        },
+        "k": 2,
+        "proposed": 340,
+        "rate": 0.8029411764705883
+      },
+      "k3": {
+        "accepted": 283,
+        "by_category": {
+          "code": {
+            "accepted": 110,
+            "proposed": 193,
+            "rate": 0.5699481865284974
+          },
+          "general_en": {
+            "accepted": 62,
+            "proposed": 76,
+            "rate": 0.8157894736842105
+          },
+          "general_ja": {
+            "accepted": 58,
+            "proposed": 88,
+            "rate": 0.6590909090909091
+          },
+          "mixed_ja_en": {
+            "accepted": 53,
+            "proposed": 104,
+            "rate": 0.5096153846153846
+          }
+        },
+        "by_depth": [
+          {
+            "accepted_cycles": 485,
+            "conditional_opportunities": 802,
+            "conditional_position_acceptance": 0.6047381546134664,
+            "position": 1,
+            "position_acceptance": 0.6047381546134664,
+            "proposed_cycles": 802
+          },
+          {
+            "accepted_cycles": 380,
+            "conditional_opportunities": 450,
+            "conditional_position_acceptance": 0.8444444444444444,
+            "position": 2,
+            "position_acceptance": 0.4980340760157274,
+            "proposed_cycles": 763
+          },
+          {
+            "accepted_cycles": 268,
+            "conditional_opportunities": 346,
+            "conditional_position_acceptance": 0.7745664739884393,
+            "position": 3,
+            "position_acceptance": 0.3748251748251748,
+            "proposed_cycles": 715
+          }
+        ],
+        "by_heldout": {
+          "heldout": {
+            "accepted": 116,
+            "proposed": 183,
+            "rate": 0.6338797814207651
+          },
+          "train": {
+            "accepted": 167,
+            "proposed": 278,
+            "rate": 0.6007194244604317
+          }
+        },
+        "by_lane": {
+          "lane_0": {
+            "accepted": 149,
+            "proposed": 212,
+            "rate": 0.7028301886792453
+          },
+          "lane_1": {
+            "accepted": 134,
+            "proposed": 249,
+            "rate": 0.5381526104417671
+          }
+        },
+        "by_request": {
+          "code_lru_cache:lane0": {
+            "accepted": 16,
+            "proposed": 19,
+            "rate": 0.8421052631578947
+          },
+          "code_lru_cache:lane1": {
+            "accepted": 15,
+            "proposed": 19,
+            "rate": 0.7894736842105263
+          },
+          "code_markdown_table:lane0": {
+            "accepted": 12,
+            "proposed": 30,
+            "rate": 0.4
+          },
+          "code_markdown_table:lane1": {
+            "accepted": 17,
+            "proposed": 17,
+            "rate": 1.0
+          },
+          "code_merge_intervals:lane0": {
+            "accepted": 15,
+            "proposed": 22,
+            "rate": 0.6818181818181818
+          },
+          "code_merge_intervals:lane1": {
+            "accepted": 10,
+            "proposed": 34,
+            "rate": 0.29411764705882354
+          },
+          "code_topological_sort:lane0": {
+            "accepted": 15,
+            "proposed": 21,
+            "rate": 0.7142857142857143
+          },
+          "code_topological_sort:lane1": {
+            "accepted": 10,
+            "proposed": 31,
+            "rate": 0.3225806451612903
+          },
+          "general_en_explain:lane0": {
+            "accepted": 16,
+            "proposed": 20,
+            "rate": 0.8
+          },
+          "general_en_explain:lane1": {
+            "accepted": 15,
+            "proposed": 20,
+            "rate": 0.75
+          },
+          "general_en_plan:lane0": {
+            "accepted": 15,
+            "proposed": 18,
+            "rate": 0.8333333333333334
+          },
+          "general_en_plan:lane1": {
+            "accepted": 16,
+            "proposed": 18,
+            "rate": 0.8888888888888888
+          },
+          "general_ja_explain:lane0": {
+            "accepted": 14,
+            "proposed": 23,
+            "rate": 0.6086956521739131
+          },
+          "general_ja_explain:lane1": {
+            "accepted": 15,
+            "proposed": 23,
+            "rate": 0.6521739130434783
+          },
+          "general_ja_plan:lane0": {
+            "accepted": 14,
+            "proposed": 21,
+            "rate": 0.6666666666666666
+          },
+          "general_ja_plan:lane1": {
+            "accepted": 15,
+            "proposed": 21,
+            "rate": 0.7142857142857143
+          },
+          "mixed_ja_en_review:lane0": {
+            "accepted": 16,
+            "proposed": 19,
+            "rate": 0.8421052631578947
+          },
+          "mixed_ja_en_review:lane1": {
+            "accepted": 11,
+            "proposed": 31,
+            "rate": 0.3548387096774194
+          },
+          "mixed_ja_en_translate:lane0": {
+            "accepted": 16,
+            "proposed": 19,
+            "rate": 0.8421052631578947
+          },
+          "mixed_ja_en_translate:lane1": {
+            "accepted": 10,
+            "proposed": 35,
+            "rate": 0.2857142857142857
+          }
+        },
+        "k": 3,
+        "proposed": 461,
+        "rate": 0.613882863340564
+      }
+    }
+  },
+  "batch_route_quality": {
+    "clean": true,
+    "commit": "bf1b26b58722a82184cd93f45dc9e8c4cad030bc",
+    "kl_max": 0.0,
+    "kl_mean": 0.0,
+    "measurement_valid": true,
+    "repeat_passed": true,
+    "rows": 1950,
+    "sha256": "6093b97659713ca199201dc741517458fd3c4a942069cbb0661032bcc3e9f674",
+    "source": "/tmp/gfx1100-qwen38-batch-route-quality-current.json",
+    "status": "complete",
+    "top1_agreement": 1.0
+  },
+  "commands": {
+    "batch_quality": "... scripts/execution_profile_gguf_batch_route_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --route-profile current_package_direct --widths 3,5,6,7 --decode-steps 24 --repeat-runs 3 --json /tmp/gfx1100-qwen38-batch-route-quality-current.json",
+    "full_gate": "env -u GPU_MAX_HW_QUEUES HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HSA_OVERRIDE_GFX_VERSION=11.0.0 HIPENGINE_GGUF_GDN_PREFILL_MODE=exact PYTHONPATH=. uv run python scripts/qwen36_dense_mtp2_c2_production_gate.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 24 --artifact-kind qwen38_dense_mtp2_c2_production_gate --model-sha256 7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b --quant-label Q4_K_M --repeat-runs 3 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/gfx1100-qwen38-c2-full-production-gate.json",
+    "lifecycle": "... scripts/gguf_arbitrary_c_lifecycle.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --allow-c1-arithmetic-drift --quality-artifact /tmp/gfx1100-qwen38-batch-route-quality-current.json --json /tmp/gfx1100-qwen38-arbitrary-c-lifecycle-drift-current.json",
+    "strict_controls": "... scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --execution-profile strict --widths 2 --resident-capacity 2 --expected-mtp-widths 2 --max-tokens 24 --candidate-budget <1|2|3> --generation2-diagnostic --mtp-request-mode explicit --correctness-contract ar_exact --output /tmp/<output>.json"
+  },
+  "date": "2026-08-29",
+  "decision": {
+    "long_context": "context >95 is outside native-target scope and must fail closed to K0; the 1K/4K diagnostic does so, while one pre-existing production-AR slot-local near-tie remains recorded separately",
+    "result": "explicit-only correctness-qualified physical C2 baseline; automatic remains K0 pending P9-P12",
+    "scope": "Qwen3.8-27B standard Q4_K_M, hip_gfx1100, production/BF16, explicit physical C2, K1-K3, prompt context <=95, D24"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "gpu_index": 0,
+    "gpu_max_hw_queues": null,
+    "physical_host": "epyc",
+    "rocm": "HIP 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100"
+  },
+  "kind": "w7900_qwen38_q4km_p8_c2_correctness_closure",
+  "lifecycle": {
+    "clean": true,
+    "commit": "bf1b26b58722a82184cd93f45dc9e8c4cad030bc",
+    "declared_widths_only": true,
+    "execution_mask_policy": {
+      "actual_initial_masks": [
+        "11111111",
+        "11111"
+      ],
+      "actual_middle_hole_masks": [
+        "11111111",
+        "111"
+      ],
+      "actual_refill_masks": [
+        "11111111",
+        "11111"
+      ],
+      "expected_initial_masks": [
+        "11111111",
+        "11111"
+      ],
+      "expected_middle_hole_masks": [
+        "11111111",
+        "111"
+      ],
+      "expected_refill_masks": [
+        "11111111",
+        "11111"
+      ],
+      "middle_hole_dense_execution_rows": true,
+      "scheduler_slots_compacted": false
+    },
+    "memory": {
+      "active_allocation_delta": 0,
+      "active_allocations_after": 0,
+      "active_allocations_before": 0,
+      "current_allocated_bytes_after": 0,
+      "current_allocated_bytes_before": 0,
+      "current_allocated_delta_bytes": 0,
+      "passed": true,
+      "peak_allocated_bytes": 22941442424,
+      "scope": "hipengine_tracked_process",
+      "total_allocated_bytes": 26860208728,
+      "total_freed_bytes": 26860208728
+    },
+    "no_serial_fallback": true,
+    "passed": true,
+    "session_reuse": true,
+    "sha256": "a11646e19ea610458a9d91ff60d5d9842fa8c32d82df3f75ebf3ed084ce51d64",
+    "source": "/tmp/gfx1100-qwen38-arbitrary-c-lifecycle-drift-current.json",
+    "state_kv_accepted": true,
+    "status": "passed"
+  },
+  "limitations": [
+    "Explicit physical C2 target authorization ends at context 95 and D24. Longer requests fail closed to K0.",
+    "The 1K/4K K0 task diagnostic is 9/10 same-slot exact and records one production-AR slot-local near-tie; it is identical per slot between AR and explicit-MTP arms and has zero candidate cycles.",
+    "Automatic C2 remains K0 until P9-P12 choose and promote a bounded policy.",
+    "Cross-width generated-ID equality is diagnostic under production; same-width full-logit neighbor/permutation isolation passes bit-exact in the admitted scope."
+  ],
+  "long_context_out_of_scope": {
+    "declared_native_target_max_context": 95,
+    "diagnostic_failure": {
+      "first_lane_difference": {
+        "index": 17,
+        "lane0_token": 1560,
+        "lane1_token": 11233
+      },
+      "interpretation": "stable slot-local production AR near-tie; identical per slot in AR and explicit-MTP K0 arms; zero candidate cycles, outside physical-C2 scope",
+      "prompt_id": "general_ja_explain",
+      "prompt_tokens": 4089,
+      "reconverged": true
+    },
+    "exact_cells": 9,
+    "mtp_engaged_cells": 0,
+    "per_slot_ar_mtp_equal": true,
+    "prompt_token_counts": [
+      1026,
+      4096,
+      1016,
+      4098,
+      1025,
+      4103,
+      1029,
+      4089,
+      1016,
+      4100
+    ],
+    "sha256": "18f84be4efb89d41e95c6481fae362984344d99665bc37056bb254d2d0b574da",
+    "source": "/tmp/gfx1100-qwen38-c2-long-context-k0-task-gate.json",
+    "status": "failed"
+  },
+  "model": {
+    "kv": "BF16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "size_bytes": 17106773984
+  },
+  "passed": true,
+  "performance_claim": false,
+  "production_gate": {
+    "checks": {
+      "full_suite": true,
+      "lifecycle": true,
+      "neighbor_permutation_isolation": true,
+      "numerical": true,
+      "output_repeat": true,
+      "physical_capture": true,
+      "profiles": true,
+      "repeat_determinism": true,
+      "task_noninferiority": true
+    },
+    "clean": true,
+    "commit": "bf1b26b58722a82184cd93f45dc9e8c4cad030bc",
+    "isolation": {
+      "max_abs_logit_delta": 0.0,
+      "max_kl": 0.0,
+      "mean_kl": 0.0,
+      "p95_kl": 0.0,
+      "p99_kl": 0.0,
+      "rows": 252,
+      "top1_agreement": 1.0,
+      "top1_matches": 252,
+      "top1_mismatches": 0,
+      "top5_overlap_mean": 1.0
+    },
+    "lifecycle": {
+      "checks": {
+        "active_children_zero": true,
+        "active_states_zero": true,
+        "candidate_d2h_zero": true,
+        "command_queue_empty": true,
+        "legacy_fallback_zero": true,
+        "provider_groups_zero": true,
+        "recoveries_zero": true,
+        "sole_driver": true
+      },
+      "engine_service": {
+        "active_children": 0,
+        "command_queue_depth": 0,
+        "driver_thread_id": 140377821099712,
+        "last_speculative_draft_depth": null,
+        "last_speculative_route": "engine_service_verify_chain",
+        "last_speculative_work_kind": "verify_chain",
+        "sole_driver": true,
+        "speculative_routes": {
+          "engine_service_verify_chain": 50,
+          "legacy_prelaunch_fallback": 0
+        }
+      },
+      "mtp2_adapter": {
+        "active_states": 0,
+        "batch_accept_workspace_allocated": true,
+        "cycle_workspace": {
+          "allocated": true,
+          "ngram_tokens_ptr": 0,
+          "proposal_ptr": 140348261036032,
+          "repair_ptr": 140348261056512,
+          "shape": [
+            2,
+            5120
+          ]
+        },
+        "prompt_streaming_sinks": 0,
+        "provider_groups": 0
+      }
+    },
+    "numerical": {
+      "max_abs_logit_delta": 0.0,
+      "max_kl": 0.0,
+      "mean_kl": 0.0,
+      "p95_kl": 0.0,
+      "p99_kl": 0.0,
+      "rows": 252,
+      "top1_agreement": 1.0,
+      "top1_matches": 252,
+      "top1_mismatches": 0,
+      "top5_overlap_mean": 1.0
+    },
+    "physical_capture": {
+      "checks": {
+        "actual_full_logits": true,
+        "candidate_depth_bounded": true,
+        "physical_pairs": true
+      },
+      "cycles": 252,
+      "digest": "d8dd0dc992e8f58aa99c6708420f7a101244dd0c7bf06175663b6644253a60e0",
+      "rows": 252
+    },
+    "profiles": {
+      "checks": {
+        "production_manifest": true,
+        "production_profile": true,
+        "registered_strict_fallback": true,
+        "strict_manifest": true,
+        "strict_profile": true
+      },
+      "production": {
+        "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+        "name": "production",
+        "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+      },
+      "strict": {
+        "manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d",
+        "name": "strict",
+        "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+      }
+    },
+    "repeat_passed": true,
+    "sha256": "5b7d49980a7b1c6283b6dafdf5cb538e1e10945c670582392b43eaae3622ee6d",
+    "source": "/tmp/gfx1100-qwen38-c2-full-production-gate.json",
+    "status": "passed",
+    "task_prompt_count": 10,
+    "tasks_passed": true
+  },
+  "r6_verifier_numerics": {
+    "hard_gates_passed": true,
+    "kl_max": 0.0005841010483707892,
+    "kl_mean": 5.211222975118e-05,
+    "measurement_valid": true,
+    "rows": 240,
+    "sha256": "d63c507fe4b6d6acf9bf0f39d3bfc2e819f7e6bcb0e24be0cfb51456b2230eca",
+    "source": "/home/lhl/hipEngine-main/benchmarks/results/2026-08-29-w7900-qwen38-q4km-c2k2-verifier-numerics.json",
+    "status": "passed",
+    "top1_agreement": 1.0
+  },
+  "raw_sources": {
+    "full_gate": {
+      "path": "/tmp/gfx1100-qwen38-c2-full-production-gate.json",
+      "sha256": "5b7d49980a7b1c6283b6dafdf5cb538e1e10945c670582392b43eaae3622ee6d"
+    },
+    "lifecycle": {
+      "path": "/tmp/gfx1100-qwen38-arbitrary-c-lifecycle-drift-current.json",
+      "sha256": "a11646e19ea610458a9d91ff60d5d9842fa8c32d82df3f75ebf3ed084ce51d64"
+    },
+    "long_k0": {
+      "path": "/tmp/gfx1100-qwen38-c2-long-context-k0-task-gate.json",
+      "sha256": "18f84be4efb89d41e95c6481fae362984344d99665bc37056bb254d2d0b574da"
+    },
+    "numerics": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-08-29-w7900-qwen38-q4km-c2k2-verifier-numerics.json",
+      "sha256": "d63c507fe4b6d6acf9bf0f39d3bfc2e819f7e6bcb0e24be0cfb51456b2230eca"
+    },
+    "ownership": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-08-28-w7900-qwen38-q4km-c2-provider-kv-ownership-repaired.json",
+      "sha256": "5b70fc3596abe3d392a3485883531765df114021a1c5aa466c34bb7a95a4af37"
+    },
+    "prod_k1": {
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k1-pad6-clean-d24.json",
+      "sha256": "d25fdcb02ecbfb0531037812cd8b772b7591df4557c7fcf8d995cc141f4807d1"
+    },
+    "prod_k2": {
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k2-pad6-clean-d24.json",
+      "sha256": "756cb96a5cd557bbb09a66f9d3b42f7b0c5cf3cd3d1df5666cde52479af1df80"
+    },
+    "prod_k3": {
+      "path": "/tmp/gfx1100-qwen38-rows6-chunked-k3-c234-d24-v2.json",
+      "sha256": "9034faf7eaa567f0f078b62919417f2bd4d111518bf294bee624fa0747aef0ed"
+    },
+    "quality": {
+      "path": "/tmp/gfx1100-qwen38-batch-route-quality-current.json",
+      "sha256": "6093b97659713ca199201dc741517458fd3c4a942069cbb0661032bcc3e9f674"
+    },
+    "rows6": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-08-29-w7900-qwen38-q4km-c2-rows6-group-padding.json",
+      "sha256": "35205b73edf9dc8336cb0a82bd76156bca41d8e7f389ff4939143853a7c90163"
+    },
+    "stage": {
+      "path": "/home/lhl/hipEngine-main/benchmarks/results/2026-08-28-w7900-qwen38-q4km-c2-stage-tile-acceptance-diagnosis.json",
+      "sha256": "f720d367ca4ab49b25284cbcdb268b51f3b45fa5742b649c1e2d833ff65ddad8"
+    },
+    "strict_k1": {
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k1-strict-current-d24.json",
+      "sha256": "72d90d7b8f24c2a1509c1edbda33bea1945212778760a4cb3f37b92d1044ba95"
+    },
+    "strict_k2": {
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k2-strict-current-d24.json",
+      "sha256": "5c517a48b9edb05b3a42124c5c2a105166774e1b2014d3ac6937b56832d5be9c"
+    },
+    "strict_k3": {
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k3-strict-current-d24.json",
+      "sha256": "c548d0ce3e438c4e1041f7a3601b4402dad97d30fcb49e2c219615aeb6c005ec"
+    }
+  },
+  "requirement_map": {
+    "acceptance_explained": {
+      "conclusion": "acceptance degradation is concentrated after prior rejects, especially code K2/K3; forced one-cycle cooldown changes the curve but loses aggregate wall, while position/hidden/KV audits and current full-logit/isolation gates refute persistent provider-state corruption",
+      "dimensions": [
+        "K",
+        "draft depth",
+        "category",
+        "train/heldout",
+        "prior-cycle transition",
+        "request/lane"
+      ],
+      "passed": true
+    },
+    "failure_fallback_graph": {
+      "failure_test_result": "2 passed",
+      "failure_tests": [
+        "test_adapter_recovers_only_precommit_failure_with_canonical_target_cursors",
+        "test_model_runner_rebuilds_postcommit_targets_from_canonical_tokens"
+      ],
+      "graph_eager": "N/A: retained production manifest resolves eager-only specdec2_eager_c1; no physical graph owner selected",
+      "passed": true,
+      "registered_strict_fallback": true
+    },
+    "lifecycle_memory_drain": {
+      "cancel_refill_session_reuse": true,
+      "final_active": [],
+      "final_scheduler_active": 0,
+      "memory": {
+        "active_allocation_delta": 0,
+        "active_allocations_after": 0,
+        "active_allocations_before": 0,
+        "current_allocated_bytes_after": 0,
+        "current_allocated_bytes_before": 0,
+        "current_allocated_delta_bytes": 0,
+        "passed": true,
+        "peak_allocated_bytes": 22941442424,
+        "scope": "hipengine_tracked_process",
+        "total_allocated_bytes": 26860208728,
+        "total_freed_bytes": 26860208728
+      },
+      "passed": true,
+      "state_kv_accepted": true
+    },
+    "physical_transaction": {
+      "candidate_d2h_zero": true,
+      "engine_service_verify_chain": 50,
+      "evidence": "request-major C2 proposals; one physical R=2(1+K) target; grouped device accept and selected commit; zero candidate D2H",
+      "full_gate_physical_cycles": 252,
+      "ownership_artifact": "/home/lhl/hipEngine-main/benchmarks/results/2026-08-28-w7900-qwen38-q4km-c2-provider-kv-ownership-repaired.json",
+      "passed": true
+    },
+    "production_numerical_task_repeat_isolation": {
+      "checks": {
+        "full_suite": true,
+        "lifecycle": true,
+        "neighbor_permutation_isolation": true,
+        "numerical": true,
+        "output_repeat": true,
+        "physical_capture": true,
+        "profiles": true,
+        "repeat_determinism": true,
+        "task_noninferiority": true
+      },
+      "passed": true
+    },
+    "strict_c2_k1_k3": {
+      "passed": true
+    },
+    "transitions": {
+      "evidence": "C1-C2-C1, K0<->MTP, cancellation/refill, and post-reject catchup are covered by retained route/oracle packets plus current C13 lifecycle",
+      "passed": true
+    }
+  },
+  "schema": 1,
+  "source": {
+    "closure_commit": "bf1b26b58722a82184cd93f45dc9e8c4cad030bc",
+    "implementation_lineage": [
+      "fef9a3f5d",
+      "860a344ff",
+      "40c9ba315",
+      "24f4cfe87",
+      "6b580ad25",
+      "a3722550c",
+      "b5a974a5c"
+    ],
+    "lifecycle_oracle_fix": "bf1b26b58"
+  },
+  "status": "passed_explicit_scope",
+  "strict_controls": {
+    "k1": {
+      "acceptance": 0.9166666666666666,
+      "ar_tok_s": 30.43266695810558,
+      "budget_conformed_cells": 10,
+      "clean": true,
+      "commit": "bf1b26b58722a82184cd93f45dc9e8c4cad030bc",
+      "engaged_cells": 10,
+      "exact_cells": 10,
+      "k": 1,
+      "mtp_tok_s": 14.64578914454755,
+      "mtp_vs_ar": 0.48125224005866235,
+      "passed": true,
+      "positions": [
+        {
+          "accepted_cycles": 209,
+          "conditional_opportunities": 228,
+          "conditional_position_acceptance": 0.9166666666666666,
+          "position": 1,
+          "position_acceptance": 0.9166666666666666,
+          "proposed_cycles": 228
+        }
+      ],
+      "sha256": "72d90d7b8f24c2a1509c1edbda33bea1945212778760a4cb3f37b92d1044ba95",
+      "source": "/tmp/gfx1100-qwen38-p8-c2-k1-strict-current-d24.json"
+    },
+    "k2": {
+      "acceptance": 0.8029411764705883,
+      "ar_tok_s": 30.38996409915371,
+      "budget_conformed_cells": 10,
+      "clean": true,
+      "commit": "bf1b26b58722a82184cd93f45dc9e8c4cad030bc",
+      "engaged_cells": 10,
+      "exact_cells": 10,
+      "k": 2,
+      "mtp_tok_s": 20.95293420512104,
+      "mtp_vs_ar": 0.6894688699452768,
+      "passed": true,
+      "positions": [
+        {
+          "accepted_cycles": 154,
+          "conditional_opportunities": 175,
+          "conditional_position_acceptance": 0.88,
+          "position": 1,
+          "position_acceptance": 0.88,
+          "proposed_cycles": 175
+        },
+        {
+          "accepted_cycles": 119,
+          "conditional_opportunities": 144,
+          "conditional_position_acceptance": 0.8263888888888888,
+          "position": 2,
+          "position_acceptance": 0.7212121212121212,
+          "proposed_cycles": 165
+        }
+      ],
+      "sha256": "5c517a48b9edb05b3a42124c5c2a105166774e1b2014d3ac6937b56832d5be9c",
+      "source": "/tmp/gfx1100-qwen38-p8-c2-k2-strict-current-d24.json"
+    },
+    "k3": {
+      "acceptance": 0.613882863340564,
+      "ar_tok_s": 30.189496186109253,
+      "budget_conformed_cells": 10,
+      "clean": true,
+      "commit": "bf1b26b58722a82184cd93f45dc9e8c4cad030bc",
+      "engaged_cells": 10,
+      "exact_cells": 10,
+      "k": 3,
+      "mtp_tok_s": 15.802234195185966,
+      "mtp_vs_ar": 0.5234348429589516,
+      "passed": true,
+      "positions": [
+        {
+          "accepted_cycles": 120,
+          "conditional_opportunities": 163,
+          "conditional_position_acceptance": 0.7361963190184049,
+          "position": 1,
+          "position_acceptance": 0.7361963190184049,
+          "proposed_cycles": 163
+        },
+        {
+          "accepted_cycles": 95,
+          "conditional_opportunities": 110,
+          "conditional_position_acceptance": 0.8636363636363636,
+          "position": 2,
+          "position_acceptance": 0.6209150326797386,
+          "proposed_cycles": 153
+        },
+        {
+          "accepted_cycles": 68,
+          "conditional_opportunities": 89,
+          "conditional_position_acceptance": 0.7640449438202247,
+          "position": 3,
+          "position_acceptance": 0.4689655172413793,
+          "proposed_cycles": 145
+        }
+      ],
+      "sha256": "c548d0ce3e438c4e1041f7a3601b4402dad97d30fcb49e2c219615aeb6c005ec",
+      "source": "/tmp/gfx1100-qwen38-p8-c2-k3-strict-current-d24.json"
+    }
+  }
+}

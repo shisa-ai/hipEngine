@@ -103,6 +103,10 @@ multiples and reuses the qualified rows6 owners. K2 improves C3 **21.549 ->
 32.776 tok/s (+52.10%)** and C4 **24.314 -> 36.141 tok/s (+48.64%)**, but
 remains **0.9079x/0.9196x true AR**, so automatic C3/C4 stays K0.
 [`Rows6 multiples`](results/2026-08-29-w7900-qwen38-q4km-rows6-multiple-rowtiles-retained.json).
+The explicit physical-C2 production owner is correctness-qualified for
+standard `Q4_K_M`, BF16 KV, D24, and context <=95; longer requests fail closed
+to K0. Automatic remains K0 pending the policy campaign.
+[`P8 closure`](results/2026-08-29-w7900-qwen38-q4km-p8-c2-correctness-closure.json).
 
 Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 automatic at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) is **15.609 vs 9.807 tok/s (1.5916x)**; [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) remains available. Exact C2 verifier [Q6](results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json) and [Q5](results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json), followed by [production-profile Q4 rowtiles](results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json), lift K3 **11.724→17.031 tok/s (+45.27%)** and **0.8170x→1.1441x true AR**. Independently qualified [C3 R6/R9/R12 rowtiles](results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json) improve C3/K3 **19.070→19.934 tok/s (+4.53%)**, but remain **0.9589x AR**; production C2/K3 is automatic only for context1-128/D24, while C3-C8 and scope misses remain K0.
 
