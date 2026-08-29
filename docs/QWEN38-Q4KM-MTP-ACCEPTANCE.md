@@ -1,6 +1,6 @@
 # Qwen3.8-27B `Q4_K_M` physical-C3 MTP decode-economics campaign
 
-- Status: **E1a/E1b retained; C3/K3 external parity passed; post-E1 Amdahl confirms E2 Q4 next**
+- Status: **E1a/E1b retained; C3/K3 external parity passed; E2 Q4 rejected, Q6 next**
 - Created: 2026-08-28; corrected review: 2026-08-28; E1a retained: 2026-08-29
 - Hardware lane: **AMD Ryzen AI MAX+ 395 / Radeon 8060S / `hip_gfx1151` / HIP 7.15**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile, physical C3, raw greedy, context 1-67, D24**
@@ -442,12 +442,23 @@ without changing control or model representation.
 
 Candidate order follows measured wall, one logical unit at a time:
 
-1. Q4 single + gate/up/SiLU actual shapes (**102.71 ms/cycle** at R12);
-2. planar/standard Q6 actual shapes (**50.19 ms/cycle**);
+1. ~~Q4 single + gate/up/SiLU actual shapes (**102.71 ms/cycle** at R12);~~
+   **closed rejected:** exact col4 and shared-weight R12 owners are slower than
+   R8+R4 on every actual shape;
+2. planar/standard Q6 actual shapes (**50.19 ms/cycle**) — next;
 3. Q5 recurrent output (**12.98 ms/cycle**);
 4. only then profile-triggered attention/GDN/other leaves.
 
-For each quant family:
+Q4 closeout: the exact register-bounded col4 candidate is 9.11-44.74% slower
+than R8+R4 across all six actual single/dual shapes, with 0/15 paired wins per
+shape. The required shared-weight follow-up is 72.93-169.68% slower. Both match
+the representative actual-output parent and guard contract, but fail before
+runtime admission; no complete-wall run is warranted. The named blocker is
+that extra column workgroups or multi-wave LDS/barrier cost exceeds the second
+cached weight sweep at R12 on gfx1151. Keep R8+R4 and proceed to Q6.
+[`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e2-q4-true-r12-rejected.json)
+
+For each remaining quant family:
 
 - [ ] Freeze actual-weight R6/R9/R12 and prospective R15/R16 leaves, parent
       arithmetic, row maps, output dtype, and strict fallback before device
@@ -620,7 +631,7 @@ These are ordered follow-ons, not assumptions in the primary claim:
 | ---: | --- | --- | --- |
 | 0a | Physical C3 prompt activation | E1a retained: 746.7→41.5 ms prompt prime and 21.382→27.169 tok/s, exact acceptance, every category positive | closed retained; direct SSE TTFT remains in E6 |
 | 0b | Physical proposal Q6 F32 rowtile | E1b retained: row3 13.736→4.711 ms; C3 27.169→29.198 tok/s; exact C2/C3 acceptance | closed retained; C3 external parity passed |
-| 1 | True R9/R12/R16 target owner | Post-E1 target is 190.12 ms/cycle and 95.62% kernel-bound; Q4/Q6/Q5 are 102.71/50.19/12.98 ms | E2 admitted; Q4 true-R12 first; reject if sweep count or complete wall does not fall |
+| 1 | True R9/R12/R16 target owner | Post-E1 target is 190.12 ms/cycle; Q4/Q6/Q5 are 102.71/50.19/12.98 ms | Q4 closed: exact col4 +9.1-44.7%, shared +72.9-169.7%; keep R8+R4. Q6 next. |
 | 2 | Fixed K4 | max zero-cost visible lift 17.54%; external K4 is diagnostic | measured p4/cost score cannot beat fixed K3 |
 | 3 | NextN norm/concat/Q4 residual | E0 Q4 NextN work is 12.75 ms/cycle at C3/K3 after the head | < material refreshed Amdahl share or compound-only idea |
 | 4 | Provider update/selected commit | unprofiled telemetry currently single-digit ms/cycle | <=5% refreshed wall or P7 already owns best path |
