@@ -80,7 +80,7 @@ qwen4_exp_qsa_flash_prefill_kernel(
     int64_t head_dim,
     int64_t context_len,
     float scale) {
-  __shared__ float q_tile[QSA_QT * 256];
+  __shared__ uint16_t q_tile[QSA_QT * 256];
   __shared__ uint16_t k_tile[QSA_KT * 256];
   __shared__ uint16_t v_tile[QSA_KT * 256];
 
@@ -96,29 +96,46 @@ qwen4_exp_qsa_flash_prefill_kernel(
     const int r = idx / 256;
     const int d = idx % 256;
     const int row = row0 + r;
-    q_tile[idx] = (row < rows && d < head_dim)
+    const float v = (row < rows && d < head_dim)
         ? query[(static_cast<int64_t>(row) * q_heads + q_head) * head_dim + d]
         : 0.0f;
+    union {
+      float f32;
+      uint32_t u32;
+    } in;
+    in.f32 = v;
+    const uint32_t lsb = (in.u32 >> 16) & 1U;
+    in.u32 += 0x7FFFU + lsb;
+    q_tile[idx] = static_cast<uint16_t>(in.u32 >> 16);
   }
   __syncthreads();
 
-  // Each warp owns QSA_QT/8 = 2 query rows; lanes split the head dim. The
-  // XOR-butterfly reduction leaves each dot on every lane, so scores are
-  // buffered in registers (no shared s_tile).
+  // Key-parallel layout: lane k owns key k. Per row: 256 serial-dim FMAs for
+  // the QK dot (no per-key shuffles); softmax max/sum use one butterfly per
+  // row; p values stage through LDS so the accumulation phase reads them by
+  // (row, key). Accumulators live in LDS and survive tiles with the online
+  // rescale.
   constexpr int ROWS_PER_WARP = QSA_QT / 8;
   const int my_row_base = warp * ROWS_PER_WARP;
 
-  // Per-row online softmax state and V accumulator (8 dims per lane).
-  float m_val[ROWS_PER_WARP];
-  float l_val[ROWS_PER_WARP];
-  float acc[ROWS_PER_WARP][8];
+  __shared__ float m_run[QSA_QT];
+  __shared__ float l_run[QSA_QT];
+  __shared__ float s_p[QSA_QT * QSA_KT];
+  __shared__ float rescale[QSA_QT];
+
+  // Per-thread register accumulators: the (row, dim) mapping below is stable
+  // across tiles (idx = threadIdx.x + i*QSA_THREADS), so each thread owns the
+  // same 16 (row, dim) cells throughout.
+  constexpr int ACC_CELLS = QSA_QT * 256 / QSA_THREADS;  // 16
+  float acc_reg[ACC_CELLS];
 #pragma unroll
-  for (int r = 0; r < ROWS_PER_WARP; ++r) {
-    m_val[r] = -3.4e38f;
-    l_val[r] = 0.0f;
-#pragma unroll
-    for (int d = 0; d < 8; ++d) acc[r][d] = 0.0f;
+  for (int i = 0; i < ACC_CELLS; ++i) acc_reg[i] = 0.0f;
+
+  for (int idx = threadIdx.x; idx < QSA_QT; idx += QSA_THREADS) {
+    m_run[idx] = -3.4e38f;
+    l_run[idx] = 0.0f;
   }
+  __syncthreads();
 
   const int64_t max_context = context_len;
   const int64_t kv_tiles = (max_context + QSA_KT - 1) / QSA_KT;
@@ -126,7 +143,7 @@ qwen4_exp_qsa_flash_prefill_kernel(
   for (int64_t tile = 0; tile < kv_tiles; ++tile) {
     const int64_t k0 = tile * QSA_KT;
     const int64_t k_count = min(static_cast<int64_t>(QSA_KT), max_context - k0);
-    // Load the K and V tiles cooperatively (V stays bf16 in LDS).
+    // Cooperative K/V tile load (bf16 in LDS).
     for (int idx = threadIdx.x; idx < QSA_KT * 256; idx += QSA_THREADS) {
       const int t = idx / 256;
       const int d = idx % 256;
@@ -137,79 +154,75 @@ qwen4_exp_qsa_flash_prefill_kernel(
     }
     __syncthreads();
 
-    // Per row: compute all 32 dots (butterfly leaves the sum on every lane),
-    // buffer them, then run the online-softmax update and V accumulation.
-#pragma unroll
+    // Phase 1: per warp-row, lane k computes dot(row, key_k) serially.
     for (int r = 0; r < ROWS_PER_WARP; ++r) {
-      const int row = row0 + my_row_base + r;
+      const int q_row = my_row_base + r;
+      const int row = row0 + q_row;
       const bool row_ok = row < rows;
       const int64_t pos = row_ok ? positions[row] : -1;
-      float dots[QSA_KT];
-      float tile_max = m_val[r];
+      float dot = -3.4e38f;  // masked
+      if (row_ok && k0 + static_cast<int64_t>(lane) <= pos && lane < k_count) {
+        dot = 0.0f;
+        const uint16_t* qrow = q_tile + q_row * 256;
+        const uint16_t* krow = k_tile + lane * 256;
+#pragma unroll 8
+        for (int d = 0; d < 256; ++d) {
+          dot += qsa_bf16_to_float(qrow[d]) * qsa_bf16_to_float(krow[d]);
+        }
+        dot *= scale;
+      }
+      float mx = dot;
 #pragma unroll
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        mx = fmaxf(mx, __shfl_xor(mx, offset));
+      }
+      const float row_max = fmaxf(mx, m_run[q_row]);
+      if (lane == 0) {
+        rescale[q_row] = expf(m_run[q_row] - row_max);
+        m_run[q_row] = row_max;
+      }
+      const float p = expf(dot - row_max);  // masked -> 0
+      float l_partial = p;
+#pragma unroll
+      for (int offset = 16; offset > 0; offset >>= 1) {
+        l_partial += __shfl_xor(l_partial, offset);
+      }
+      if (lane == 0) {
+        l_run[q_row] = l_run[q_row] * rescale[q_row] + l_partial;
+      }
+      s_p[q_row * QSA_KT + lane] = p;
+    }
+    __syncthreads();
+
+    // Phase 2: accumulation into register cells; serial over keys.
+#pragma unroll
+    for (int i = 0; i < ACC_CELLS; ++i) {
+      const int idx = threadIdx.x + i * QSA_THREADS;
+      const int q_row = idx / 256;
+      const int d = idx % 256;
+      float sum = 0.0f;
       for (int k = 0; k < QSA_KT; ++k) {
-        const int64_t abs_k = k0 + k;
-        float dot = -3.4e38f;  // masked keys must not inflate the max
-        if (row_ok && abs_k <= pos && abs_k < max_context) {
-          dot = 0.0f;
-#pragma unroll
-          for (int d = 0; d < 8; ++d) {
-            dot += q_tile[(my_row_base + r) * 256 + lane * 8 + d] *
-                   qsa_bf16_to_float(k_tile[k * 256 + lane * 8 + d]);
-          }
-          dot *= scale;
-        }
-#pragma unroll
-        for (int offset = 16; offset > 0; offset >>= 1) {
-          dot += __shfl_xor(dot, offset);
-        }
-        dots[k] = dot;
-        tile_max = fmaxf(tile_max, dot);
+        sum += s_p[q_row * QSA_KT + k] * qsa_bf16_to_float(v_tile[k * 256 + d]);
       }
-      const float exp_scale = expf(m_val[r] - tile_max);
-      // Rescale the running accumulator once per tile (l is rescaled below
-      // with the same factor; both must happen regardless of key hits).
-#pragma unroll
-      for (int d = 0; d < 8; ++d) {
-        acc[r][d] *= exp_scale;
-      }
-      float l_new = 0.0f;
-#pragma unroll
-      for (int k = 0; k < QSA_KT; ++k) {
-        const int64_t abs_k = k0 + k;
-        const float p = expf(dots[k] - tile_max);  // masked dots give 0
-        l_new += p;
-        if (p != 0.0f) {
-#pragma unroll
-          for (int d = 0; d < 8; ++d) {
-            const int vd = lane * 8 + d;
-            const float vval = vd < head_dim
-                ? qsa_bf16_to_float(v_tile[k * 256 + vd]) : 0.0f;
-            acc[r][d] = fmaf(p, vval, acc[r][d]);
-          }
-        }
-      }
-      l_val[r] = l_val[r] * exp_scale + l_new;
-      m_val[r] = tile_max;
+      acc_reg[i] = acc_reg[i] * rescale[q_row] + sum;
     }
     __syncthreads();
   }
 
-  // Normalize and write bf16 output for this warp's rows.
+  // Normalize and write f32 output from the register cells.
 #pragma unroll
-  for (int r = 0; r < ROWS_PER_WARP; ++r) {
-    const int row = row0 + my_row_base + r;
-    if (row >= rows) continue;
-    const float inv_l = l_val[r] > 0.0f ? 1.0f / l_val[r] : 0.0f;
-#pragma unroll
-    for (int d = 0; d < 8; ++d) {
-      const int64_t vd = lane * 8 + d;
-      if (vd < head_dim) {
-        out[(static_cast<int64_t>(row) * q_heads + q_head) * head_dim + vd] =
-            acc[r][d] * inv_l;
-      }
+  for (int i = 0; i < ACC_CELLS; ++i) {
+    const int idx = threadIdx.x + i * QSA_THREADS;
+    const int q_row = idx / 256;
+    const int d = idx % 256;
+    const int row = row0 + q_row;
+    if (row < rows && d < head_dim) {
+      const float inv_l = l_run[q_row] > 0.0f ? 1.0f / l_run[q_row] : 0.0f;
+      out[(static_cast<int64_t>(row) * q_heads + q_head) * head_dim + d] =
+          acc_reg[i] * inv_l;
     }
   }
+
 }
 
 }  // namespace
