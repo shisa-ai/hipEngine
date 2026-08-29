@@ -644,15 +644,21 @@ P8 current punchlist (20260829):
 - [x] `pad_candidate_graph_rows` primitive landed (inactive tail rows owned
       by the last request; padded `accept_from_top1` bit-identical to
       unpadded; GPU accept already honors `active_mask`).
-- [ ] Executor integration: declare `GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS
-      = (6,)` on hip_gfx1100, pad scratch sized `max_requests x budget
-capacity`, device pad-token tail upload, split row-slot vs candidate-count
-      validation in `_enqueue_target_batch_accept`, oracle host-token padding;
-      strict profile stays unpadded. Gates: C2/K1 and C2/K2 `mtp_self_exact`
-      suites with acceptance unchanged (91.67%/80.29%) plus the speedup
-      measurement.
+- [x] Executor integration landed (commits `a3722550c`, `b5a974a5c`):
+      `GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS = (6,)` on hip_gfx1100,
+      adapter pad scratch, padded row-slot accept validation, pad-token tail
+      upload; strict profiles and other backends stay unpadded.
+      **Result: explicit C2/K2 rises 1.0450x -> 1.1902x true AR with every
+      category >= 1.1329x** (code 0.8796x -> 1.1329x), acceptance and
+      committed tokens bit-identical, 10/10 exact/engaged/budget-conformed,
+      zero failures, full drain. K1 rises 0.5180x -> 1.0866x (code 1.0944x).
+      Verify rows ride the rows6 tile every cycle ({6: 228} / {6: 175});
+      accept stage falls to ~30 ms/request-cycle. Evidence:
+      [`rows6 group padding`](../benchmarks/results/2026-08-29-w7900-qwen38-q4km-c2-rows6-group-padding.json).
 - [ ] Forced K0-catchup-after-reject experiment (acceptance policy vs state
       corruption discriminator above).
+- [ ] Complete the P8 production numerics/determinism/lifecycle packet for
+      C2/K2 before any automatic promotion; automatic stays K0.
 
 Exit: an explicit-only, correctness-qualified physical C2 baseline and an
 explained acceptance curve. Automatic remains K0.

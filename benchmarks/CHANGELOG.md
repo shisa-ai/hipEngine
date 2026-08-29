@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- **2026-08-29** — W7900 Qwen3.8-27B GGUF `Q4_K_M` explicit physical C2/K2 D24: rows6 group padding lifts **1.0450x -> 1.1902x** true-AR (+13.9%); every category >= 1.1329x; acceptance and committed tokens bit-identical. K1 0.5180x -> 1.0866x. Artifact: `benchmarks/results/2026-08-29-w7900-qwen38-q4km-c2-rows6-group-padding.json`.
+
 Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.

@@ -172,9 +172,7 @@ reading the input. Text generation is the speed of producing new tokens.
 | Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **875.364** | **28.681** |
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
-#### Multiple requests
-
-Each value is the total tokens per second across all active requests:
+#### Multiple requests (total tok/s across all active requests)
 
 | Model and interface | 1 request | 2 requests | 4 requests | 8 requests | 9 requests | 13 requests |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -186,6 +184,7 @@ Each value is the total tokens per second across all active requests:
 | --- | ---: | ---: |
 | Qwen3.6-27B Dense GGUF `Q4_K_M` — Generation-2 C1/K3 D24 | **32.076 tok/s** | **1.4382x** |
 | Qwen3.6-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **34.341 tok/s** | **1.1173x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 explicit (rows6-padded verify) | **36.257 tok/s** | **1.1902x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **93.644 tok/s public** / **98.505 tok/s three-run** | **1.1565x** / **1.1368x** |
 ### RX 7900 XTX (`gfx1100`) — Qwen3.8-27B `Q4_K_M` prefill
 
