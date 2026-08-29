@@ -42,6 +42,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
+    gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
     register_gguf_k_t16_selected_prefill_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
@@ -714,6 +715,77 @@ def test_gfx1151_q6_planar_prefill_lowvgpr_bands_route_by_rows_and_shape(
         + ["lowvgpr48"] * 2
         + ["lowvgpr"] * (2 * len(others))
         + ["plain", "plain", "plain", "plain", "shared4"]
+    )
+
+
+def test_gfx1151_q5_prefill_lowvgpr_bands_and_registry_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    for name, tag in (
+        ("gguf_q5_k_t16_wmma_prefill_bf16_bf16_out", "plain"),
+        (
+            "gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out",
+            "lowvgpr",
+        ),
+        (
+            "gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out",
+            "lowvgpr48",
+        ),
+    ):
+        monkeypatch.setattr(
+            gfx1151_backend,
+            name,
+            (lambda tag: lambda *a, **k: calls.append(tag))(tag),
+        )
+
+    fn = gfx1151_backend.gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
+    shapes = sorted(gfx1151_backend.GGUF_Q5_T16_DENSE_LOWM_SHAPES)
+    for rows in (17, 32):
+        for in_f, out_f in shapes:
+            fn(1, 2, 3, rows, in_f, out_f)
+    for rows in (33, 48):
+        fn(1, 2, 3, rows, 17_408, 5_120)
+    lowvgpr48_shapes = sorted(
+        gfx1151_backend.GGUF_Q5_T16_DENSE_LOWVGPR48_SHAPES
+    )
+    for rows in (33, 48):
+        for in_f, out_f in lowvgpr48_shapes:
+            fn(1, 2, 3, rows, in_f, out_f)
+    for rows, in_f, out_f in (
+        (33, 5_120, 17_408),
+        (48, 5_120, 17_408),
+        (16, 5_120, 6_144),
+        (49, 6_144, 5_120),
+        (45, 5_120, 1_024),
+    ):
+        fn(1, 2, 3, rows, in_f, out_f)
+
+    assert calls == (
+        ["lowvgpr"] * (2 * len(shapes))
+        + ["lowvgpr"] * 2
+        + ["lowvgpr48"] * (2 * len(lowvgpr48_shapes))
+        + ["plain"] * 5
+    )
+
+    register_gfx1151_kernels()
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="linear",
+            quant="gguf_q5_k_t16_v1",
+            variant="t16_wmma_prefill_bf16_bf16_out",
+        )
+        is fn
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="moe_linear",
+            quant="gguf_q5_k_t16_v1",
+            variant="selected_wmma_prefill_compact_bf16_bf16_out",
+        )
+        is gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out
     )
 
 
