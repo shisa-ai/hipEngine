@@ -4574,7 +4574,9 @@ should be boring.
   catchup instead of immediate re-speculation. Wiring:
   `plan_speculative_requests(suppress_speculation=...)`, engine-loop probe,
   runner hook `speculative_post_reject_cooldown`, adapter telemetry read.
-- **Ready:** remove the flag, hook, and planner parameter once the C2/K2
-  discriminator settles policy-vs-corruption for the post-reject code
-  acceptance collapse; either promote the cooldown as measured default-off
-  policy with its own gate or delete it if rejected.
+- **Settled 2026-08-29:** with the packed-decode hidden fix (`6b580ad25`) the
+  policy nets 1.1700x vs the 1.1890x default at D24 (code benefits, en/mixed
+  pay more for the lost speculation cycles). Not retained as default.
+  **Ready:** remove the flag, hook, and planner parameter whenever the
+  campaign stops considering longer-D cooldown economics; the measured
+  evidence lives in worklog entries 20260829T052637/074350.
