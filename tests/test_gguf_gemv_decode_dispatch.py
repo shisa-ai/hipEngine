@@ -395,7 +395,7 @@ def test_target_verifier_scope_routes_only_backend_admitted_q5_q6(
     assert key == _Q5_T16_DECODE
 
 
-def test_target_verifier_chunks_only_admitted_q6_r12_to_r8_plus_r4(
+def test_target_verifier_chunks_only_admitted_q6_r12_r16(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import hipengine.runtime.gguf_linear as gguf_linear
@@ -408,7 +408,7 @@ def test_target_verifier_chunks_only_admitted_q6_r12_to_r8_plus_r4(
         if name == "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT":
             return {"gguf_q6_k_t16_v1": 8}
         if name == "GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT":
-            return {"gguf_q6_k_t16_v1": frozenset({9, 12})}
+            return {"gguf_q6_k_t16_v1": frozenset({9, 12, 16})}
         return original_capability(backend, name, default)
 
     monkeypatch.setattr(gguf_linear, "backend_package_capability", capability)
@@ -522,7 +522,18 @@ def test_target_verifier_chunks_only_admitted_q6_r12_to_r8_plus_r4(
                 10_240,
             ),
         ),
-        (_Q6_T16_DECODE, (300, 14, 400, 16, 5_120, 10_240)),
+        (_Q6_T16_ROWTILE, (300, 14, 400, 8, 5_120, 10_240)),
+        (
+            _Q6_T16_ROWTILE,
+            (
+                300 + 8 * 5_120 * 2,
+                14,
+                400 + 8 * 10_240 * 2,
+                8,
+                5_120,
+                10_240,
+            ),
+        ),
     ]
 
 
