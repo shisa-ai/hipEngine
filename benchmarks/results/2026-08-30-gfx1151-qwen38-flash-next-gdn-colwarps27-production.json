@@ -81,5 +81,30 @@
     "free_generation": "uv run python /tmp/qwen4exp_gdn_cw_free_generation.py",
     "c2": "uv run python /tmp/qwen4exp_gdn_cw_c2.py",
     "paired": "uv run python /tmp/qwen4exp_gdncw_paired.py"
+  },
+  "profile_manifest_fold_in": {
+    "date": "2026-08-30",
+    "selection": {
+      "layer": "gdn_recurrence_norm_gate",
+      "scope": "prefill_rows_ge2_layers27_47_gdn",
+      "selected_variant": "qwen4exp_gdn_columnwarps_prefill",
+      "strict_fallback_variant": "qwen4exp_sigmoid_strict_prefill"
+    },
+    "binder_envs": {
+      "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1",
+      "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": "27-47"
+    },
+    "public_profile_smoke": {
+      "production": {
+        "fell_back_to_strict": false,
+        "logits_sha256": "071a5ce21db2044628ca54ba8d8f7dfd715cc178793f0740560e1614f7990e6d",
+        "tok_s_cold": 68.69043092129884
+      },
+      "strict_after_production_same_process": {
+        "logits_sha256": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48",
+        "unchanged": true
+      }
+    },
+    "tests": "uv run pytest tests/test_qwen4_exp_profiles.py tests/test_qwen4_exp_model_runner.py tests/test_qwen4_exp_runner_gdn.py tests/test_qwen4_exp_gdn_hip.py -q"
   }
 }

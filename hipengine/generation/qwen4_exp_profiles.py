@@ -20,6 +20,7 @@ QWEN4_EXP_BACKEND = "hip_gfx1151"
 QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
 PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
 PRODUCTION_GDN_PEER_PREFILL_LAYERS = tuple(range(35, 48))
+PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS = tuple(range(27, 48))
 PRODUCTION_WMMA_MOE_PREFILL_LAYERS = tuple(range(27, 48))
 PRODUCTION_Q4_IU8_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS = tuple(range(32, 48))
@@ -42,6 +43,10 @@ _DECODE_EVIDENCE = (
 _GDN_PEER_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json"
+)
+_GDN_COLWARPS_EVIDENCE = (
+    "benchmarks/results/"
+    "2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps27-production.json"
 )
 
 
@@ -89,7 +94,7 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             "gdn_recurrence_norm_gate",
-            "prefill_rows_ge2_layers35_47_gdn",
+            "prefill_rows_ge2_layers27_47_gdn",
             "qwen4exp_sigmoid_strict_prefill",
             "qwen4exp_sigmoid_strict_prefill",
             "f32_state",
@@ -132,11 +137,11 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             "gdn_recurrence_norm_gate",
-            "prefill_rows_ge2_layers35_47_gdn",
-            "qwen4exp_sigmoid_peer_prefill",
+            "prefill_rows_ge2_layers27_47_gdn",
+            "qwen4exp_gdn_columnwarps_prefill",
             "qwen4exp_sigmoid_strict_prefill",
             "f32_state",
-            evidence=_GDN_PEER_EVIDENCE,
+            evidence=_GDN_COLWARPS_EVIDENCE,
         ),
         _selection(
             "linear",
@@ -190,6 +195,13 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_Q4_IU8_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_IU8_LAYERS": (
             ",".join(map(str, PRODUCTION_Q4_IU8_PREFILL_LAYERS))
+            if production
+            else ""
+        ),
+        # Certified column-warp GDN prefill suffix (supersedes peer-GDN).
+        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": (
+            ",".join(map(str, PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS))
             if production
             else ""
         ),
