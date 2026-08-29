@@ -17,8 +17,11 @@ from hipengine.speculative.serving import (
 
 
 _MODEL_SHA256 = "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
-_STRICT_MANIFEST_SHA256 = "af82558349e40e6f1e9e383da3340d7eb0a03dc62734d03c464fd432867a692e"
-_PRODUCTION_MANIFEST_SHA256 = "534a8bac3ca74428e3c1a60e9c3cbd91254f8963ddfcd678949052783331c565"
+_STRICT_MANIFEST_SHA256 = "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+_PRODUCTION_MANIFEST_SHA256 = "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f"
+_PRODUCTION_EXPLICIT_MANIFEST_SHA256 = (
+    "534a8bac3ca74428e3c1a60e9c3cbd91254f8963ddfcd678949052783331c565"
+)
 
 
 def _key(**changes) -> SpeculativeMTPServingKey:
@@ -72,7 +75,7 @@ def test_qwen38_q4km_production_c1_b3_context128_is_explicit_only() -> None:
     evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
     key = _key(
         execution_profile="production",
-        execution_profile_manifest_sha256=_PRODUCTION_MANIFEST_SHA256,
+        execution_profile_manifest_sha256=_PRODUCTION_EXPLICIT_MANIFEST_SHA256,
         context_tokens=128,
         output_horizon_tokens=24,
     )
@@ -97,7 +100,7 @@ def test_qwen38_q4km_production_c1_b3_context128_is_explicit_only() -> None:
     assert over.reason == "context_bucket_not_qualified"
 
 
-def test_qwen38_q4km_production_c2_k3_d24_is_automatic() -> None:
+def test_qwen38_q4km_production_c2_k3_d24_is_explicit_after_ar_rebase() -> None:
     evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
     key = _key(
         execution_profile="production",
@@ -119,14 +122,14 @@ def test_qwen38_q4km_production_c2_k3_d24_is_automatic() -> None:
     )
 
     assert singleton.admitted is True
-    assert singleton.automatic_eligible is True
+    assert singleton.automatic_eligible is False
     assert singleton.static_eligibility.max_realized_group_rows == 2
-    assert singleton.reason == "qualified_automatic_production_cap4_c1_or_c2_k3_d24"
+    assert singleton.reason == "diagnostic_production_cap4_c1_or_c2_after_ar_rebase"
     assert decision.admitted is True
     assert decision.selected_route == "speculative_mtp"
     assert decision.selected_candidate_count == 3
-    assert decision.reason == "qualified_automatic_production_c2_k3_d24"
-    assert decision.automatic_eligible is True
+    assert decision.reason == "diagnostic_production_c2_after_ar_rebase"
+    assert decision.automatic_eligible is False
     assert decision.static_eligibility.max_realized_group_rows == 2
     assert decision.strict_fallback_key == "gguf_target_ar"
     assert over_horizon.admitted is False
@@ -148,6 +151,7 @@ def test_qwen38_q4km_strict_c1_b3_plan_is_automatic_product_scope() -> None:
         "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s1.json",
         "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s2.json",
         "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s3.json",
+        "benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json",
     )
     assert decision.plan_fingerprint.startswith("sha256:")
     assert decision.plan_fingerprint == resolve_speculative_mtp_serving_plan(
