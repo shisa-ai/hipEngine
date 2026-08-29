@@ -80,8 +80,8 @@ Each value is the total tokens per second across all active requests:
 | --- | ---: | ---: |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — strict C1 MTP-3 automatic | **18.191 tok/s** | **1.6445x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2 MTP-3 explicit diagnostic | **19.146 tok/s** | **1.0618x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C3 MTP-3 explicit diagnostic | **27.169 tok/s** | **1.1280x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2 MTP-3 explicit diagnostic | **21.690 tok/s** | **1.2025x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C3 MTP-3 explicit diagnostic | **29.198 tok/s** | **1.2041x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
 ### RTX PRO 6000 Blackwell (`sm_120a`)
@@ -99,12 +99,12 @@ W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE K2 and 27B dense K3;
 other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
 
 Strix Halo Qwen3.8 `Q4_K_M`: strict C1/K3 natural25 remains automatic at
-**18.191 vs 11.062 tok/s (1.6445x)**. Production C2/K3 remains an exact
-explicit diagnostic at **19.146 vs 18.032
-(1.0618x)** but is automatic K0 because mixed Japanese/English is 0.9451x.
-Exact physical-C3 prompt streaming raises C3/K3 to **27.169 vs 24.085
-(1.1280x)** with every category positive; it remains explicit pending the
-complete promotion/serving gate. [`E1a`](results/2026-08-29-gfx1151-qwen38-mtp-e1a-prompt-streaming-retained.json)
+**18.191 vs 11.062 tok/s (1.6445x)**. Exact physical proposal-head row reuse
+raises production C2/K3 to **21.690 vs 18.038 tok/s (1.2025x)** and C3/K3 to
+**29.198 vs 24.249 (1.2041x)**, with unchanged acceptance and every category
+positive. C3 is 6.12% above the frozen external row. Both remain explicit/K0
+pending refreshed complete admission and serving gates.
+[`E1b`](results/2026-08-29-gfx1151-qwen38-mtp-e1b-proposal-head-rowtile-retained.json)
 
 The matched standard-`Q4_K_M` [external survey](results/2026-08-28-gfx1151-qwen38-external-reproduction-survey.json)
 keeps source-protocol claims separate from engine comparisons. `q38rocm` K4
@@ -112,7 +112,7 @@ requires custom FP4 and one slot; Laurent's adaptive DFlash2 result remains
 rejected for sequential serving after state-contaminated output.
 
 The current external-parity campaign has C1 prefill parity, AR wins at C3-C8,
-and C3/K3 MTP within 1.26% of the frozen external row. Prefill C2-C8 and AR
+and a C3/K3 MTP win 6.12% above the frozen external row. Prefill C2-C8 and AR
 C1/C2 remain measured high-row/device blockers; a scoped packed-C2 graph
 improves AR **16.993→18.072 tok/s (+6.35%)**.
 [`Campaign`](../docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md) ·
@@ -383,7 +383,7 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Exact natural25 B3 | 11.692 | **21.158** | **1.8095x** | Clean current-main direct-leaf snapshot; all ten prompts and 30 MTP comparisons are exact, GPU/CPU acceptance agrees, and cached profiling confirms the qualified scalar-C1 and native Q4 rows4/2 owners. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 normal-cap4 realized-C1 B3, automatic | 9.807 | **15.609** | **1.5916x** | Current-source 10/10 >1.10x; all categories positive; 78.57% acceptance; C2-C8 group at normal AR width and select pure K0. [`artifact`](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public production/BF16 C1 B3, c68-128/h24, explicit | 9.350 | **13.088** | **1.3998x** | 10/10 >1.10x; all slices positive; 87.63% acceptance; numerics/blocking/SSE pass. c129+/auto K0. [`artifact`](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) |
-| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C3 K3 D24, explicit diagnostic | 24.085 | **27.169** | **1.1280x** | Exact post-output-norm prompt streaming improves MTP 27.06%; 10/10 exact/engaged/budget-conformant cells, exact 471/597 E0 acceptance, and every category positive. Automatic C3 remains K0 pending the complete production/serving gate. [`artifact`](results/2026-08-29-gfx1151-qwen38-mtp-e1a-prompt-streaming-retained.json) |
+| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C3 K3 D24, explicit diagnostic | 24.249 | **29.198** | **1.2041x** | Exact prompt streaming plus proposal-head row reuse improves MTP 36.55% from E0; exact 471/597 acceptance and every category positive. This beats the frozen external row by 6.12%; automatic C3 remains K0 pending complete production/serving gates. [`artifact`](results/2026-08-29-gfx1151-qwen38-mtp-e1b-proposal-head-rowtile-retained.json) |
 | W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production/default B1 fast, raw D24 | 110.830 | **115.770** | **1.0446x** | Exact `720/720`; complete 10-prompt numerical/repeat/task/state gate passes. Fast improves strict MTP 10.33% overall and every category. [`artifact`](results/2026-08-24-w7900-paro-fast-d24-3run-default.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |

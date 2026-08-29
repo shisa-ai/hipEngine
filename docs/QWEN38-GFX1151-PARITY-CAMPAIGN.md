@@ -68,12 +68,12 @@ Standing context that shapes the plan:
   (the reverted rowtile-8 halving 620→310 ms was AR-divergent and never
   root-caused). This is the same multi-row amortization wall the MTP campaign's
   E2 attacks, and it gates the T3 adaptive-K / B4-clamp reopen.
-- E1a current state (2026-08-29): strict C1/K3 natural25 remains automatic at
-  **18.191 vs 11.062 tok/s (1.6445x)**. Production C2/K3 remains an exact
-  explicit diagnostic at **19.146 vs 18.032 (1.0618x)** and automatic K0.
-  Exact physical-C3 prompt streaming lifts C3/K3
-  to **27.169 vs 24.085 (1.1280x)**, only 1.26% below the frozen external row;
-  C3 remains automatic K0 pending the full production/serving gate.
+- E1b current state (2026-08-29): strict C1/K3 natural25 remains automatic at
+  **18.191 vs 11.062 tok/s (1.6445x)**. Production C2/K3 is now an exact
+  explicit diagnostic at **21.690 vs 18.038 (1.2025x)** and remains automatic
+  K0 pending refreshed evidence. E1a+E1b lift C3/K3 to **29.198 vs 24.249
+  (1.2041x)**, 6.12% above the frozen external row; C3 remains automatic K0
+  pending the full production/serving gate.
 
 ## 3. Punchlist
 
@@ -261,13 +261,18 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   - E1a retained 2026-08-29: post-output-norm physical-C3 prompt streaming
     reduces complete MTP wall **33.673→26.501 s** and raises K3
     **21.382→27.169 tok/s (+27.06%)**, with exact 471/597 acceptance and every
-    category positive. The remaining C3 parity gap is **0.346 tok/s / 1.26%**;
-    E1b proposal-head row reuse is next
+    category positive
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e1a-prompt-streaming-retained.json)).
-- [ ] P4.2 Frozen MTP parity targets: C1 `>= 21.277`, C2 `>= 32.378`, C3
+  - E1b retained 2026-08-29: exact physical proposal-head row reuse moves C3
+    **27.169→29.198 tok/s (+7.47%)**, 6.12% above the frozen comparator, and C2
+    **19.146→21.690 (+13.29%)**. Acceptance remains exactly 471/597 and 314/398;
+    all 20 cells and every category pass
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e1b-proposal-head-rowtile-retained.json)).
+- [~] P4.2 Frozen MTP parity targets: C1 `>= 21.277`, C2 `>= 32.378`, C3
   `>= 27.515`, C4 `>= 27.015`, C5 `>= 32.74`, C6 `>= 36.023`, C7 `>= 42.304`,
   C8 `>= 54.834`; each cell closes with a measured win or named blocker.
-  Working theory: cycle efficiency 47-54% → 70-77% via E1/E2.
+  **C3 is closed at 29.198 tok/s (+6.12%).** C1/C2/C4-C8 remain open; E2's
+  high-row target amortization is the next shared-width lever.
 - [ ] P4.3 Reopen T3 adaptive-K and the B4 clamp once verifier rowtile work
   lands (per the CONCURRENCY2 supersession note); require full-suite
   acceptance/speed validation per anti-gaming.
