@@ -29,10 +29,13 @@ should be removed or collapsed.
   profile state is request-local. Retain exact coltile-Q8 and grouped Q4/Q5
   fallbacks; the Q8 (320,10240) hc-down and K%256!=0 shapes remain strict.
 - `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL` and
-  `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` are superseded for the named production
-  profile by the faster admitted MMQ stack. Keep them only for artifact
-  reproduction/bisection until the post-manifest serving soak, then remove the
-  runtime dispatch bridges while retaining their registered kernels.
+  `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` were superseded for the named production
+  profile by the faster admitted MMQ stack, but `PRODUCTION_MOE_PREFILL` is
+  re-admitted 2026-08-29 as the certified transport for the WMMA-MoE27
+  suffix (see `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-wmma-moe27-production.json`).
+  Remove the env transport once the WMMA-MoE27 selection is owned by the
+  named profile manifest; keep it for artifact reproduction/bisection until
+  then, and retain the registered strict-owner fallbacks.
 - `HIPENGINE_QWEN4_EXP_Q4_DP4A64{,_LAYERS}` remains an internal named-profile
   bridge for calibrated decode layers `0,2,5,6,8,9,10,11,13–47`. Remove the
   process-global transport with the MMQ bridges once Qwen4Exp profile state is

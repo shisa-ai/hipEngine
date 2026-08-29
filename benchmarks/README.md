@@ -227,6 +227,17 @@ wall is **6.548 s / 3,684 launches**, down 25.2% from the pre-campaign
 8.753 s / 4,933; same-host llama.cpp HIP remains 1.798 s / 5,543. The largest
 localized remainder is 27 exact GDN layers at 723.91 ms; broader peer-GDN
 admission is numerically rejected.
+The certified
+compact-WMMA MoE suffix (layers 27–47: Q4_K dual gate/up + Q5_1 down on the
+f16-WMMA matrix-core kernels, tile 16×16; replaces the ds4-MMQ suffixes and
+strict owners on those layers; `HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL=1`)
+passes the complete 450-row/three-repeat packet at KL
+mean/p95/p99/max `2.79e-4/1.53e-3/3.49e-3/5.98e-3`, **446/450 top-1** (all
+scopes ≥ 98.67%), exact repeat/state, 18/18 repeat-exact free generation
+(4 task-valid divergences), exact c2 with zero teardown, and improves paired
+p508/p1012 **6.572→6.287 s (-4.34%, 80.82 tok/s)** /
+**13.398→12.694 s (-5.26%, 79.73 tok/s)**. The layer-27 boundary is the
+maximal envelope-admissible suffix (full-layer WMMA screens at mean 5.9e-3).
 Current natural 16K improves **946.999→341.177 s (-63.96%, 47.989 tok/s; chunk-512 gate**
 re-passed with retrieval/oracle/transactional/teardown exact) with every
 binding control exact; 64K historical evidence is retained but not rerun because
@@ -234,7 +245,7 @@ binding control exact; 64K historical evidence is retained but not rerun because
 prompts but remains opt-in at **0.955x AR**. <=1K image/video/PNG chat and
 request-owned c2 blocking/SSE pass with zero teardown; packed c-aware speed,
 remote media, multimodal SSE, and 128K+/262K inference are not claimed.
-Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json) · [`chunk512`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-chunk512.json) · [`Q8 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q8-mmq-prefill-production.json) · [`Q5_1 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q5-1-mmq-suffix32-production.json) · [`Q4_K MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q4-k-mmq-suffix35-production.json) · [`MMQ+DP4A stack`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json) · [`profile manifest`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-profile-manifest.json) · [`peer GDN`](results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json) · [`final campaign`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-mmq-campaign-final.json) · [`master re-baseline`](results/2026-08-29-gfx1151-qwen38-flash-next-llamacpp-master-rebaseline.json).
+Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json) · [`chunk512`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-chunk512.json) · [`Q8 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q8-mmq-prefill-production.json) · [`Q5_1 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q5-1-mmq-suffix32-production.json) · [`Q4_K MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q4-k-mmq-suffix35-production.json) · [`MMQ+DP4A stack`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json) · [`profile manifest`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-profile-manifest.json) · [`peer GDN`](results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json) · [`final campaign`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-mmq-campaign-final.json) · [`master re-baseline`](results/2026-08-29-gfx1151-qwen38-flash-next-llamacpp-master-rebaseline.json) · [`WMMA MoE27`](results/2026-08-29-gfx1151-qwen38-flash-next-wmma-moe27-production.json).
 
 ## Current Qwen3.6-35B quantization quality
 
