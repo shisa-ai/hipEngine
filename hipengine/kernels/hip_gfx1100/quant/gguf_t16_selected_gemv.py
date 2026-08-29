@@ -151,6 +151,9 @@ _Q5_DENSE_ROWTILE_BF16 = (
 _Q5_DENSE_ROWTILE_COL8_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out"
 )
+_Q5_DENSE_ROWTILE12_COL8_BF16 = (
+    "hipengine_gguf_q5_k_t16_gemv_rowtile12_col8_bf16_bf16_out"
+)
 _Q5_SINGLE_DIRECT_BF16 = "hipengine_gguf_q5_k_t16_selected_gemv_bf16_bf16_out"
 _Q5_QMICRO_SINGLE_DIRECT_BF16 = (
     "hipengine_gguf_q5_k_qmicro_t16_selected_gemv_bf16_bf16_out"
@@ -1725,6 +1728,40 @@ def gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out(
     _check_dense_q5_t16_shape(rows, in_features, out_features, rowtile=True)
     _launch_dense_q5_t16(
         _Q5_DENSE_ROWTILE_COL8_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_gemv_rowtile12_col8_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Exact eight-column Q5T16 true-R12 candidate."""
+
+    if rows != 12:
+        raise ValueError("dense Q5T16 true-R12 owner requires rows == 12")
+    if in_features <= 0 or in_features % _QK_K:
+        raise ValueError("in_features must be a positive multiple of 256")
+    if out_features <= 0 or out_features % _T16_COLS:
+        raise ValueError("out_features must be a positive multiple of 16")
+    _launch_dense_q5_t16(
+        _Q5_DENSE_ROWTILE12_COL8_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -4059,6 +4096,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
         gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k_t16_v1",
+            "t16_gemv_rowtile12_col8_bf16_bf16_out",
+        ),
+        gguf_q5_k_t16_gemv_rowtile12_col8_bf16_bf16_out,
+        replace=replace,
+    )
     for variant, fn in (
         (
             "selected_dual_t16_gemv_decode_bf16_bf16_out",
@@ -4462,6 +4509,7 @@ __all__ = [
     "gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out",
+    "gguf_q5_k_t16_gemv_rowtile12_col8_bf16_bf16_out",
     "gguf_q5_k_qmicro_t16_selected_gemv_bf16_bf16_out",
     "gguf_q5_k_qmicro_t16_selected_qwen_tile8_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_gemv_bf16_bf16_out",
