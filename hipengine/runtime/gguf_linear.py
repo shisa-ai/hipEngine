@@ -12,6 +12,7 @@ from typing import Iterator, Mapping
 
 from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
+from hipengine.core.specdec2_scope import q4_t16_physical_extra_rowtiles_enabled
 from hipengine.kernels.backends import (
     backend_package_capability,
     load_backend_kernel_package,
@@ -4298,6 +4299,25 @@ def launch_gguf_linear_pair_silu(
             )
             else None
         )
+        if (
+            production_q4_chunk_groups is None
+            and dense_pair_quant == "gguf_q4_k_t16_v1"
+            and int(rows) >= 12
+            and int(rows) % 6 == 0
+            and q4_t16_physical_extra_rowtiles_enabled()
+        ):
+            physical_pad_counts = backend_package_capability(
+                resolved_backend,
+                "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS",
+                (),
+            )
+            if physical_pad_counts:
+                chunk = min(int(value) for value in physical_pad_counts)
+                if int(rows) % chunk == 0:
+                    production_q4_chunk_groups = [
+                        (chunk, row_base)
+                        for row_base in range(0, int(rows), chunk)
+                    ]
         if production_q4_chunk_groups is not None:
             token = _target_verifier_rowtile_chunk_child_enabled.set(True)
             try:

@@ -498,6 +498,36 @@ class CandidateGraph:
         )
 
 
+def physical_group_pad_rows(
+    admitted_counts: Sequence[int],
+    request_count: int,
+    candidate_rows: int,
+    max_rows: int,
+) -> int:
+    """Return inactive pad rows lifting a physical group to admitted multiples.
+
+    Backends that admit only one rowtile row count (gfx1100 rows6) qualify
+    exactly that launch shape. Groups pad up to the next multiple of the
+    smallest admitted count so a chunked dispatch can run every launch at the
+    admitted shape; groups whose next multiple exceeds the accept-buffer row
+    capacity stay unpadded (they keep the strict fallback route).
+    """
+
+    counts = tuple(int(value) for value in admitted_counts if int(value) > 0)
+    if not counts:
+        return 0
+    physical = int(request_count) + int(candidate_rows)
+    if physical <= 0:
+        return 0
+    step = min(counts)
+    if physical % step == 0:
+        return 0
+    padded = ((physical // step) + 1) * step
+    if padded > int(max_rows):
+        return 0
+    return padded - physical
+
+
 def pad_candidate_graph_rows(
     graph: CandidateGraph,
     *,
