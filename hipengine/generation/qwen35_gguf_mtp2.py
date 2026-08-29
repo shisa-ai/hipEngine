@@ -389,6 +389,7 @@ class Qwen35GGUFMTP2Adapter:
         self.post_reject_cooldown_enabled = _env_enabled(
             "HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN"
         )
+        self._post_reject_pending: set[int] = set()
         if self.candidate_budget not in {1, 2, 3}:
             raise ValueError("MTP2 candidate budget must be 1, 2, or 3")
         self._intents: dict[int, int] = {}
@@ -1111,26 +1112,16 @@ class Qwen35GGUFMTP2Adapter:
         )
 
     def post_reject_cooldown(self, request_ids: Sequence[int]) -> tuple[bool, ...]:
-        """Report whether each request's last committed physical cycle rejected."""
+        """Report a one-shot catchup need for each request.
+
+        A request is suppressed exactly once per fully rejected physical
+        cycle: the pending flag is set at reject commit and cleared when the
+        K0-transitional catchup advance repairs the provider state.
+        """
 
         if not self.post_reject_cooldown_enabled:
             return tuple(False for _ in request_ids)
-        flags: list[bool] = []
-        for request_id in request_ids:
-            row = self.owner._row(int(request_id))
-            candidate_counts = tuple(
-                int(count) for count in getattr(row, "mtp2_candidate_counts", ())
-            )
-            accepted_counts = tuple(
-                int(count) for count in getattr(row, "mtp2_accepted_counts", ())
-            )
-            flags.append(
-                bool(candidate_counts)
-                and candidate_counts[-1] > 0
-                and bool(accepted_counts)
-                and accepted_counts[-1] == 0
-            )
-        return tuple(flags)
+        return tuple(int(request_id) in self._post_reject_pending for request_id in request_ids)
 
     def prepare_k0(
         self,
@@ -1203,6 +1194,7 @@ class Qwen35GGUFMTP2Adapter:
                 target.last_target_hidden,
             )
             row.mtp2_k0_catchups += 1
+            self._post_reject_pending.discard(int(rid))
 
     def _cycle_hidden_tensors(
         self,
@@ -3086,6 +3078,15 @@ class Qwen35GGUFMTP2Adapter:
                 int(plan.candidate_counts[plan.request_ids.index(request_id)])
             )
             row.mtp2_accepted_counts.append(int(accepted))
+            if (
+                self.post_reject_cooldown_enabled
+                and int(accepted) == 0
+                and int(
+                    plan.candidate_counts[plan.request_ids.index(request_id)]
+                )
+                > 0
+            ):
+                self._post_reject_pending.add(int(request_id))
             row.mtp2_proposal_ms += float(states[index].last_proposal_seconds) * 1000.0
             row.mtp2_target_ms += float(target_seconds) * 1000.0
             row.mtp2_provider_update_ms += float(provider_update_seconds) * 1000.0
@@ -4059,6 +4060,7 @@ class Qwen35GGUFMTP2Adapter:
 
     def _drop_request(self, request_id: int, *, disable: bool) -> None:
         rid = int(request_id)
+        self._post_reject_pending.discard(rid)
         state = self._states.pop(rid, None)
         if state is not None:
             target = self.owner._row(rid).lease.session
