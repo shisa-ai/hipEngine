@@ -32,7 +32,7 @@ The root README exports this compact retained summary verbatim.
 | --- | ---: | ---: |
 | Qwen3.6-27B Dense GGUF `Q4_K_M` — Generation-2 C1/K3 D24 | **32.076 tok/s** | **1.4382x** |
 | Qwen3.6-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **34.341 tok/s** | **1.1173x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 explicit (rows6-padded verify) | **36.257 tok/s** | **1.1902x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **36.726 tok/s** | **1.1970x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **93.644 tok/s public** / **98.505 tok/s three-run** | **1.1565x** / **1.1368x** |
 ### RX 7900 XTX (`gfx1100`) — Qwen3.8-27B `Q4_K_M` prefill
 
@@ -109,12 +109,14 @@ to K0. P9 selects K2/R6 at **1.1902x AR** with a **155.70 ms** 1.10x physical-
 cycle budget. P10 removes seven proposal and four accept global synchronizations
 per four-cycle profile while preserving 252/252 bit-exact logits; complete-suite
 explicit C2 remains **1.1932x AR**. P11 passes strict controls, SSE/cancel/
-overload, bounded resources, negative K0 keys, and final trace. Automatic stays
-K0 pending P12 promotion.
+overload, bounded resources, negative K0 keys, and final trace. P12 promotes the
+exact cap2/C2/K2/context4-95/D24 key at **36.726 vs 30.720 tok/s (1.1970x
+AR)**; every category is ≥1.1363x. C3/C4 remain K0.
 [`P8 closure`](results/2026-08-29-w7900-qwen38-q4km-p8-c2-correctness-closure.json) ·
 [`P9 attribution`](results/2026-08-29-w7900-qwen38-q4km-p9-cycle-attribution.json) ·
 [`P10 sync wins`](results/2026-08-30-w7900-qwen38-q4km-p10-sync-wins.json) ·
-[`P11 integrated`](results/2026-08-30-w7900-qwen38-q4km-p11-integrated-explicit-c2.json).
+[`P11 integrated`](results/2026-08-30-w7900-qwen38-q4km-p11-integrated-explicit-c2.json) ·
+[`P12 promotion`](results/2026-08-30-w7900-qwen38-q4km-p12-c2-automatic-promotion.json).
 
 Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 automatic at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) is **15.609 vs 9.807 tok/s (1.5916x)**; [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) remains available. Exact C2 verifier [Q6](results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json) and [Q5](results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json), followed by [production-profile Q4 rowtiles](results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json), lift K3 **11.724→17.031 tok/s (+45.27%)** and **0.8170x→1.1441x true AR**. Independently qualified [C3 R6/R9/R12 rowtiles](results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json) improve C3/K3 **19.070→19.934 tok/s (+4.53%)**, but remain **0.9589x AR**; production C2/K3 is automatic only for context1-128/D24, while C3-C8 and scope misses remain K0.
 

@@ -878,23 +878,29 @@ packet. Automatic remains K0 until P12. Evidence:
 
 #### P12 — Economics, promotion, and wider widths
 
-- [ ] Run counterbalanced three-run complete-wall true AR versus physical C2 on
-      the exact committed suite and category-heldouts, with authoritative token
-      counts, all categories non-regressive, `>=1.10x` aggregate, and complete
-      TTFT/ITL/E2E/SLO-goodput reporting. Preserve the `>1.30x` project target.
-- [ ] Register only the exact model-SHA/profile/manifest/K/resident-capacity/
-      realized-C/context/horizon/sampling/provider key that passes. Prove real
-      automatic due-group selection before mutation, stable K0 reasons and
-      ordinary-AR performance for every negative key, and no prompt-conditioned
-      policy.
-- [ ] A passing `partitioned_c1` cell may be retained under its truthful name and
-      independent policy evidence, but cannot satisfy the physical-C2 objective.
-- [ ] Evaluate C3/C4 only after C2 promotion; independently repeat the
-      applicable P8-P11 ownership/correctness/attribution gates plus P12
-      economics, and keep every unsupported/losing wider cell K0.
-- [ ] Publish compact artifacts, benchmark README/changelog updates, immutable
-      worklogs, focused/milestone validation, refactor updates, and clean merge
-      handoff.
+- [x] Three clean counterbalanced complete-wall runs on all ten prompts/four
+      heldouts reach **1.1986x/1.1955x/1.1970x AR**, median **36.726 vs 30.720
+      tok/s = 1.1970x** with stable 0.80294 acceptance and every category
+      >=1.1363x. The >1.30x project target remains unmet. Predeclared streaming
+      thresholds TTFT-p95<=2.0 s, ITL-p99<=0.35 s, E2E-p95<=3.0 s pass for all
+      60 measured AR/MTP requests; SLO goodput is 30.503/32.193 tok/s and all
+      cross-arm IDs/repeats are exact.
+- [x] Register only full model SHA/size, gfx1100 production manifest, BF16,
+      capacity2/realized-C2/K2, greedy, max-seq1024, context4-95, and D24.
+      Unflagged automatic is 10/10 exact/engaged at **1.1976x AR**. Resident due-
+      group telemetry shows transitional no-provider K0 before the C2 group
+      selects `[2,2]`; no prompt content enters policy. Automatic SSE/cancel
+      drains exactly.
+- [x] `partitioned_c1` remains structurally unavailable and is not part of the
+      promotion. No serial/K0 result is relabeled.
+- [x] Post-policy negative runtime rows—cap4 C1/C2/C4, C3 policy unit, K3, D25,
+      context>95, and sampled—are status-200 ordinary K0 with zero cycles and no
+      adapter/provider allocation. Current explicit C3/C4 remains exact but
+      only **0.9124x/0.9237x AR** (category minima 0.8564/0.8801), so automatic
+      stays K0.
+- [x] Publish P8-P12 artifacts, README/changelog, immutable worklogs, focused
+      tests/traces, refactor note, and clean pushed commits.
 
-Exit: Qwen3.8 physical C2 promotion, or a durable profile-backed structural
-blocker record with all safe independent wins retained.
+P12 exit achieved: exact Qwen3.8 physical C2/K2 is automatic on W7900 within
+its bounded key; C3/C4 and every scope miss remain K0. Evidence:
+[`P12 promotion`](../benchmarks/results/2026-08-30-w7900-qwen38-q4km-p12-c2-automatic-promotion.json).

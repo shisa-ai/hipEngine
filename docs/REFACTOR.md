@@ -308,12 +308,17 @@ fallback count is not a success metric.
   strict arithmetic, and ordinary prefill retain the prior owners.
   The scope avoids changing the existing C1 production manifest while physical
   production owns an independent policy fingerprint and quality/economics
-  packet.
-- Removal trigger: after one release window with the exact C2 production key
-  and rows6-multiple explicit C3/C4 route, collapse prompt streaming, padding,
-  and these boolean scopes into a general profile-resolved physical-target
-  variant manifest keyed by C/R/shape. Preserve strict fallbacks, unfused pair
-  ownership, and focused offset/selector tests.
+  packet. P12 adds one exact automatic evidence row for standard Q4_K_M,
+  gfx1100 production/BF16/cap2/C2/K2/context4-95/D24; all scope misses remain
+  K0. The device-resident proposal's enqueue-only call retains synchronized
+  default behavior for every other caller, and physical accept relies on its
+  bounded blocking D2H while the legacy diagnostic path remains synchronized.
+- Removal trigger: after one release window with the exact automatic C2 key and
+  rows6-multiple explicit C3/C4 route, collapse prompt streaming, padding, and
+  these boolean scopes into a general profile-resolved physical-target variant
+  manifest keyed by C/R/shape. Preserve the exact evidence-row bounds, strict
+  fallbacks, synchronized caller fallback, unfused pair ownership, and focused
+  offset/selector tests.
 
 ## SPECDEC2 dense NextN host/device proposal duplication
 
