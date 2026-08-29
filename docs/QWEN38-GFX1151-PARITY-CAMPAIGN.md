@@ -71,8 +71,8 @@ Standing context that shapes the plan:
 - E1b current state (2026-08-29): strict C1/K3 natural25 remains automatic at
   **18.191 vs 11.062 tok/s (1.6445x)**. Production C2/K3 is now an exact
   explicit diagnostic at **21.690 vs 18.038 (1.2025x)** and remains automatic
-  K0 pending refreshed evidence. E1a+E1b lift C3/K3 to **29.198 vs 24.249
-  (1.2041x)**, 6.12% above the frozen external row; C3 remains automatic K0
+  K0 pending refreshed evidence. E1a+E1b+E2 standard Q6 lift C3/K3 to
+  **29.409 vs 23.902 (1.2304x)**, 6.88% above the frozen external row; C3 remains automatic K0
   pending the full production/serving gate.
 
 ## 3. Punchlist
@@ -275,12 +275,17 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-post-e1-amdahl.json)).
   - E2 Q4 closeout 2026-08-29: exact true-R12 col4 and shared-weight owners are
     respectively **9.1-44.7%** and **72.9-169.7% slower** than R8+R4 across all
-    six actual shapes, with zero paired wins. Q4 keeps R8+R4; E2 Q6 is next
+    six actual shapes, with zero paired wins. Q4 keeps R8+R4
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e2-q4-true-r12-rejected.json)).
+  - E2 Q6 retained 2026-08-29: standard K5120/N10240 true-R12 is exact and
+    moves leaf **0.6915→0.4468 ms (-35.38%)**, traced family
+    **98.12→75.21 ms (-23.35%)**, and clean C3 **29.198→29.409 tok/s (+0.72%)**.
+    Both planar R12 shapes lose and keep R8+R4; Q5 is next
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e2-standard-q6-true-r12-retained.json)).
 - [~] P4.2 Frozen MTP parity targets: C1 `>= 21.277`, C2 `>= 32.378`, C3
   `>= 27.515`, C4 `>= 27.015`, C5 `>= 32.74`, C6 `>= 36.023`, C7 `>= 42.304`,
   C8 `>= 54.834`; each cell closes with a measured win or named blocker.
-  **C3 is closed at 29.198 tok/s (+6.12%).** C1/C2/C4-C8 remain open; E2's
+  **C3 is closed at 29.409 tok/s (+6.88%).** C1/C2/C4-C8 remain open; E2's
   high-row target amortization is the next shared-width lever.
 - [ ] P4.3 Reopen T3 adaptive-K and the B4 clamp once verifier rowtile work
   lands (per the CONCURRENCY2 supersession note); require full-suite

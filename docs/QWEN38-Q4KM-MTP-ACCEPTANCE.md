@@ -1,10 +1,10 @@
 # Qwen3.8-27B `Q4_K_M` physical-C3 MTP decode-economics campaign
 
-- Status: **E1a/E1b retained; C3/K3 external parity passed; E2 Q4 rejected, Q6 next**
+- Status: **E1a/E1b retained; C3/K3 external parity passed; E2 standard Q6 retained, Q5 next**
 - Created: 2026-08-28; corrected review: 2026-08-28; E1a retained: 2026-08-29
 - Hardware lane: **AMD Ryzen AI MAX+ 395 / Radeon 8060S / `hip_gfx1151` / HIP 7.15**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile, physical C3, raw greedy, context 1-67, D24**
-- Current product state after E1b: **strict C1/K3 natural25 remains automatic at 1.6445x; production C2/K3 is an exact explicit diagnostic at 1.2025x and remains automatic K0 pending refreshed evidence; C3/K3 is an exact explicit diagnostic at 1.2041x, 6.12% above the frozen external row, and remains automatic K0 pending the complete production/serving gate**
+- Current product state after E2 Q6: **strict C1/K3 natural25 remains automatic at 1.6445x; production C2/K3 is an exact explicit diagnostic at 1.2025x and remains automatic K0 pending refreshed evidence; C3/K3 is an exact explicit diagnostic at 1.2304x, 6.88% above the frozen external row, and remains automatic K0 pending the complete production/serving gate**
 - Primary promotion gate: **C3 `>=1.10x` true same-protocol AR overall, full/heldout/every category non-regressive, complete production correctness and serving gates**
 - Stretch target: **`>1.30x` true AR**, consistent with [`BENCHMARK.md`](BENCHMARK.md)
 - Binding predecessors (extend; do not reimplement):
@@ -49,8 +49,8 @@ repaired; the remaining work is an optimization problem:
 
 The E0 current-source C3/K3 route was **21.382 vs 24.119 tok/s true AR
 (0.8865x)**. E1a and E1b reduce complete MTP wall from 33.673 to 24.659 seconds
-and now reach **29.198 vs 24.249 tok/s (1.2041x)** with exact E0 acceptance and
-every category positive. This beats the frozen external C3/K3 row by 6.12%
+and E2 standard Q6 now reaches **29.409 vs 23.902 tok/s (1.2304x)** with exact
+E0 acceptance and every category positive. This beats the frozen external C3/K3 row by 6.88%
 but does not replace the full production/serving promotion bundle, so automatic
 C3 remains K0. The campaign succeeds if one of these outcomes is reached:
 
@@ -81,7 +81,7 @@ profiles/scopes differ and must remain explicit:
 | --- | --- | ---: | ---: | --- |
 | C1/K3 | strict, cap1/cap4 realized singleton, context 1-67, natural25 | **18.191 / 11.062 = 1.6445x** | 161/220 = **73.18%** | automatic; current manifest refreshed |
 | C2/K3 | production, cap4 physical C2, context 1-128, D24 | **21.690 / 18.038 = 1.2025x** | 314/398 = **78.89%** | retained exact diagnostic; automatic K0 pending refresh |
-| C3/K3 | production, canonical natural contexts (<=67), D24 | **29.198 / 24.249 = 1.2041x** | 471/597 = **78.89%** | external parity passed; automatic K0 pending full gate |
+| C3/K3 | production, canonical natural contexts (<=67), D24 | **29.409 / 23.902 = 1.2304x** | 471/597 = **78.89%** | external parity passed; automatic K0 pending full gate |
 | C4+ | unqualified economics | n/a | n/a | automatic K0 |
 
 C2 and C3 still have identical draft acceptance. E1a removes the C3 activation
@@ -90,15 +90,15 @@ candidate IDs or either acceptance trajectory. C2 now clears the implementation
 economic/category gate too, but its typed automatic evidence remains unchanged
 until the complete admission bundle is refreshed.
 
-Current E1b C3 category economics:
+Current E2-Q6 C3 category economics:
 
 | Category | MTP tok/s | AR tok/s | Ratio | Status |
 | --- | ---: | ---: | ---: | --- |
-| code | 29.617 | 24.503 | 1.2087x | positive |
-| general English | 31.050 | 24.438 | 1.2706x | positive |
-| general Japanese | 27.984 | 25.253 | 1.1081x | positive |
-| mixed Japanese/English | 27.954 | 22.703 | **1.2313x** | positive |
-| full | 29.198 | 24.249 | **1.2041x** | external parity passed |
+| code | 29.851 | 24.248 | 1.2311x | positive |
+| general English | 31.298 | 24.187 | 1.2940x | positive |
+| general Japanese | 28.148 | 24.347 | 1.1561x | positive |
+| mixed Japanese/English | 28.139 | 22.582 | **1.2461x** | positive |
+| full | 29.409 | 23.902 | **1.2304x** | external parity passed |
 
 Runtime policies use model/quant/profile/physical-width or immutable H/N/row
 shape keys only. No category, prompt, token, or prompt-length selector was added.
@@ -215,8 +215,8 @@ The E0 C3 packet generates 720 tokens per arm:
 - MTP complete wall: **33.673 s** (`21.382 tok/s`);
 - `1.10x` promotion ceiling: **27.138 s** (`26.531 tok/s`).
 
-E1a+E1b remove **9.014 s / 26.77%** from E0 complete MTP wall and improve
-throughput by **36.55%**. C3/K3 is now **1.683 tok/s / 6.12% above** the frozen
+E1a+E1b+E2-Q6 remove **9.191 s / 27.29%** from E0 complete MTP wall and improve
+throughput by **37.54%**. C3/K3 is now **1.894 tok/s / 6.88% above** the frozen
 27.515 tok/s external row. Complete production and serving admission remain
 open.
 
@@ -445,8 +445,9 @@ Candidate order follows measured wall, one logical unit at a time:
 1. ~~Q4 single + gate/up/SiLU actual shapes (**102.71 ms/cycle** at R12);~~
    **closed rejected:** exact col4 and shared-weight R12 owners are slower than
    R8+R4 on every actual shape;
-2. planar/standard Q6 actual shapes (**50.19 ms/cycle**) — next;
-3. Q5 recurrent output (**12.98 ms/cycle**);
+2. ~~planar/standard Q6 actual shapes (**50.19 ms/cycle**);~~ **standard
+   K5120/N10240 true-R12 retained; planar R12 rejected and keeps R8+R4**;
+3. Q5 recurrent output (**12.98 ms/cycle**) — next;
 4. only then profile-triggered attention/GDN/other leaves.
 
 Q4 closeout: the exact register-bounded col4 candidate is 9.11-44.74% slower
@@ -457,6 +458,13 @@ runtime admission; no complete-wall run is warranted. The named blocker is
 that extra column workgroups or multi-wave LDS/barrier cost exceeds the second
 cached weight sweep at R12 on gfx1151. Keep R8+R4 and proceed to Q6.
 [`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e2-q4-true-r12-rejected.json)
+
+Q6 closeout: standard K5120/N10240 true-R12 is BF16-bit exact and improves
+**0.6915→0.4468 ms (-35.38%)**, 15/15 leaf wins. Clean C3 improves
+**29.198→29.409 tok/s (+0.72%)**; the trace replaces standard R8+R4
+**98.12→75.21 ms (-23.35%)**. Planar K5120/N1024 and K17408/N5120 R12
+candidates lose +6.13%/+3.73%, are removed, and keep R8+R4.
+[`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e2-standard-q6-true-r12-retained.json)
 
 For each remaining quant family:
 
@@ -631,7 +639,7 @@ These are ordered follow-ons, not assumptions in the primary claim:
 | ---: | --- | --- | --- |
 | 0a | Physical C3 prompt activation | E1a retained: 746.7→41.5 ms prompt prime and 21.382→27.169 tok/s, exact acceptance, every category positive | closed retained; direct SSE TTFT remains in E6 |
 | 0b | Physical proposal Q6 F32 rowtile | E1b retained: row3 13.736→4.711 ms; C3 27.169→29.198 tok/s; exact C2/C3 acceptance | closed retained; C3 external parity passed |
-| 1 | True R9/R12/R16 target owner | Post-E1 target is 190.12 ms/cycle; Q4/Q6/Q5 are 102.71/50.19/12.98 ms | Q4 closed: exact col4 +9.1-44.7%, shared +72.9-169.7%; keep R8+R4. Q6 next. |
+| 1 | True R9/R12/R16 target owner | Post-E1 target is 190.12 ms/cycle; Q4/Q6/Q5 are 102.71/50.19/12.98 ms | Q4 rejected; standard Q6 true-R12 retained (+0.72% C3), planar rejected; Q5 next. |
 | 2 | Fixed K4 | max zero-cost visible lift 17.54%; external K4 is diagnostic | measured p4/cost score cannot beat fixed K3 |
 | 3 | NextN norm/concat/Q4 residual | E0 Q4 NextN work is 12.75 ms/cycle at C3/K3 after the head | < material refreshed Amdahl share or compound-only idea |
 | 4 | Provider update/selected commit | unprofiled telemetry currently single-digit ms/cycle | <=5% refreshed wall or P7 already owns best path |
