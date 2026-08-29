@@ -6241,3 +6241,59 @@ def test_registered_q6_f32_decode_pair_is_c1_only_and_fail_closed() -> None:
     args, kwargs = calls[1]
     assert args == (101, 10, 10, 201, 301, 1, 3072, 9216, 72)
     assert kwargs["stream"] == 0
+
+
+def test_physical_q4_pair_chunks_rows6_and_preserves_unfused_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.core.specdec2_scope import (
+        q4_t16_physical_extra_rowtiles_session,
+    )
+
+    weight_a = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    calls: list[tuple[object, int, int, int, int, int]] = []
+
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "backend_package_capability",
+        lambda backend, name, default: (
+            (6,) if name == "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS" else default
+        ),
+    )
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "_resolve_gguf_linear_pair_kind",
+        lambda *args, **kwargs: None,
+    )
+
+    def fake_single(weight, x_ptr, out_ptr, rows, in_features, out_features, **kwargs):
+        calls.append((weight, x_ptr, out_ptr, rows, in_features, out_features))
+
+    monkeypatch.setattr(gguf_linear_module, "launch_gguf_linear", fake_single)
+
+    with q4_t16_physical_extra_rowtiles_session(True):
+        assert launch_gguf_linear_pair(
+            weight_a,
+            weight_b,
+            x_ptr=100,
+            out_a_ptr=200,
+            out_b_ptr=300,
+            rows=12,
+            in_features=10,
+            out_features=20,
+            backend="hip_gfx1100",
+        )
+
+    assert calls == [
+        (weight_a, 100, 200, 6, 10, 20),
+        (weight_b, 100, 300, 6, 10, 20),
+        (weight_a, 220, 440, 6, 10, 20),
+        (weight_b, 220, 540, 6, 10, 20),
+    ]

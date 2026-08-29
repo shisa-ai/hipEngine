@@ -3665,6 +3665,84 @@ def launch_gguf_linear_pair(
     use_gemv = _resolve_use_gemv_decode(use_gemv_decode)
     out_features_b = out_features if out_features_b is None else int(out_features_b)
 
+    # The gfx1100 physical verifier qualifies the dense Q4T16 projection at
+    # exactly rows6. A padded 12/18/24-row group therefore preserves that
+    # owner by decomposing the normal unfused gate/up fallback into rows6
+    # groups. Per-chunk pair misses intentionally fall through to two single
+    # projections; the caller keeps the existing full-row SiLU stage.
+    if (
+        not registered_decode_only
+        and activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and int(out_features_b) == int(out_features)
+        and weight_a.spec.quant_key == weight_b.spec.quant_key
+        == "gguf_q4_k_t16_v1"
+        and int(rows) >= 12
+        and q4_t16_physical_extra_rowtiles_enabled()
+    ):
+        physical_pad_counts = backend_package_capability(
+            resolved_backend,
+            "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS",
+            (),
+        )
+        if physical_pad_counts:
+            chunk = min(int(value) for value in physical_pad_counts)
+            if chunk > 0 and int(rows) % chunk == 0:
+                element = DType.BF16.itemsize
+                for row_base in range(0, int(rows), chunk):
+                    x_chunk = int(x_ptr) + row_base * int(in_features) * element
+                    out_a_chunk = (
+                        int(out_a_ptr) + row_base * int(out_features) * element
+                    )
+                    out_b_chunk = (
+                        int(out_b_ptr) + row_base * int(out_features_b) * element
+                    )
+                    paired = launch_gguf_linear_pair(
+                        weight_a,
+                        weight_b,
+                        x_chunk,
+                        out_a_chunk,
+                        out_b_chunk,
+                        chunk,
+                        in_features,
+                        out_features,
+                        out_features_b=out_features_b,
+                        activation_dtype=activation_dtype,
+                        output_dtype=output_dtype,
+                        backend=resolved_backend,
+                        stream=stream,
+                        libraries=libraries,
+                        runtime=runtime,
+                        use_wmma_prefill=use_wmma_prefill,
+                        use_gemv_decode=use_gemv_decode,
+                        threads=threads,
+                        registered_decode_variant=registered_decode_variant,
+                    )
+                    if paired:
+                        continue
+                    for weight, out_chunk, features in (
+                        (weight_a, out_a_chunk, out_features),
+                        (weight_b, out_b_chunk, out_features_b),
+                    ):
+                        launch_gguf_linear(
+                            weight,
+                            x_chunk,
+                            out_chunk,
+                            chunk,
+                            in_features,
+                            features,
+                            activation_dtype=activation_dtype,
+                            output_dtype=output_dtype,
+                            backend=resolved_backend,
+                            threads=threads,
+                            stream=stream,
+                            libraries=libraries,
+                            runtime=runtime,
+                            use_wmma_prefill=use_wmma_prefill,
+                            use_gemv_decode=use_gemv_decode,
+                        )
+                return True
+
     cache_key = (
         generation(),
         weight_a.spec.layout,
@@ -4299,25 +4377,6 @@ def launch_gguf_linear_pair_silu(
             )
             else None
         )
-        if (
-            production_q4_chunk_groups is None
-            and dense_pair_quant == "gguf_q4_k_t16_v1"
-            and int(rows) >= 12
-            and int(rows) % 6 == 0
-            and q4_t16_physical_extra_rowtiles_enabled()
-        ):
-            physical_pad_counts = backend_package_capability(
-                resolved_backend,
-                "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS",
-                (),
-            )
-            if physical_pad_counts:
-                chunk = min(int(value) for value in physical_pad_counts)
-                if int(rows) % chunk == 0:
-                    production_q4_chunk_groups = [
-                        (chunk, row_base)
-                        for row_base in range(0, int(rows), chunk)
-                    ]
         if production_q4_chunk_groups is not None:
             token = _target_verifier_rowtile_chunk_child_enabled.set(True)
             try:
