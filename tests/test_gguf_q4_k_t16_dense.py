@@ -1086,6 +1086,115 @@ def test_q4_t16_dense_unequal_dual_wmma_matches_singletons(rows: int) -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [33, 45, 96, 512])
+def test_q4_t16_dense_unequal_dual_wmma_matches_singletons_at_production_shape(
+    rows: int,
+) -> None:
+    """Unequal dual must equal the two singletons at the only shape it dispatches.
+
+    ``_Q4_T16_UNEQUAL_DUAL_WMMA_SHAPE`` is (5120 -> 10240, 6144); the fixture
+    geometry above is 256 -> 96, 64, so it cannot qualify a row-gate change on its
+    own - tile counts and the shared-x plan differ per N.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+
+    wrapper = getattr(
+        t16_prefill,
+        "gguf_q4_k_t16_dense_unequal_dual_wmma_prefill_bf16_bf16_out",
+        None,
+    )
+    assert callable(wrapper)
+    runtime = get_hip_runtime()
+    in_features = 5_120
+    out_features_a = 10_240
+    out_features_b = 6_144
+    raw_a = make_q4_k_weight(out_features_a, in_features)
+    raw_b = np.roll(make_q4_k_weight(out_features_b, in_features), shift=1, axis=0).copy()
+    tiles_a = repack_gguf_q4_k_tile16(raw_a[None, ...]).tiles
+    tiles_b = repack_gguf_q4_k_tile16(raw_b[None, ...]).tiles
+    rng = np.random.default_rng(0x7A1E0 + rows)
+    x_bits = _f32_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    expected_a = np.zeros((rows, out_features_a), dtype=np.uint16)
+    expected_b = np.zeros((rows, out_features_b), dtype=np.uint16)
+    actual_a = np.zeros_like(expected_a)
+    actual_b = np.zeros_like(expected_b)
+    buffers = []
+    try:
+        x_dev = malloc(x_bits.nbytes, runtime=runtime)
+        tiles_a_dev = malloc(tiles_a.nbytes, runtime=runtime)
+        tiles_b_dev = malloc(tiles_b.nbytes, runtime=runtime)
+        expected_a_dev = malloc(expected_a.nbytes, runtime=runtime)
+        expected_b_dev = malloc(expected_b.nbytes, runtime=runtime)
+        actual_a_dev = malloc(actual_a.nbytes, runtime=runtime)
+        actual_b_dev = malloc(actual_b.nbytes, runtime=runtime)
+        buffers.extend(
+            (
+                x_dev,
+                tiles_a_dev,
+                tiles_b_dev,
+                expected_a_dev,
+                expected_b_dev,
+                actual_a_dev,
+                actual_b_dev,
+            )
+        )
+        copy_host_to_device(x_dev, host_array_ptr(x_bits), runtime=runtime)
+        copy_host_to_device(tiles_a_dev, host_array_ptr(tiles_a), runtime=runtime)
+        copy_host_to_device(tiles_b_dev, host_array_ptr(tiles_b), runtime=runtime)
+        library = build_gguf_k_t16_selected_prefill(load=True)
+        gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
+            x_dev.ptr,
+            tiles_a_dev.ptr,
+            expected_a_dev.ptr,
+            rows,
+            in_features,
+            out_features_a,
+            library=library,
+            runtime=runtime,
+        )
+        gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
+            x_dev.ptr,
+            tiles_b_dev.ptr,
+            expected_b_dev.ptr,
+            rows,
+            in_features,
+            out_features_b,
+            library=library,
+            runtime=runtime,
+        )
+        wrapper(
+            x_dev.ptr,
+            tiles_a_dev.ptr,
+            tiles_b_dev.ptr,
+            actual_a_dev.ptr,
+            actual_b_dev.ptr,
+            rows,
+            in_features,
+            out_features_a,
+            out_features_b,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        for host, device in (
+            (expected_a, expected_a_dev),
+            (expected_b, expected_b_dev),
+            (actual_a, actual_a_dev),
+            (actual_b, actual_b_dev),
+        ):
+            copy_device_to_host(host_array_ptr(host), device, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(actual_a, expected_a)
+    np.testing.assert_array_equal(actual_b, expected_b)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize("rows", [2, 12, 45, 48, 128, 256, 511, 512, 513, 1_024])
 def test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain(rows: int) -> None:
     from hipengine.core.hip import get_hip_runtime
