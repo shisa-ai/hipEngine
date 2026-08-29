@@ -109,9 +109,10 @@ serving gates. [`E2`](results/2026-08-29-gfx1151-qwen38-mtp-e2-q5-true-r12-retai
 C2 remains 20.48% below its external target: its post-streaming target wall is
 95.38% kernel-bound and Q4-dominant; qualified R8 shapes are already one-sweep.
 [`blocker`](results/2026-08-29-gfx1151-qwen38-mtp-c2-post-streaming-blocker.json)
-C4 target/accept/commit/provider is 72.68% of its child wall and 97.78%
-kernel-bound; C5-C8 show the same operation-complete owner at 57.5-69.5%.
-[`wide blockers`](results/2026-08-29-gfx1151-qwen38-mtp-c4-c8-target-blockers.json)
+Exact Q6 R8+R8 lifts C4 to **27.450 tok/s**, 1.61% above its external target,
+but C4 remains slower than AR and automatic K0. C5-C8 show the same operation-
+complete target owner at 57.5-69.5%.
+[`C4`](results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json)
 
 The matched standard-`Q4_K_M` [external survey](results/2026-08-28-gfx1151-qwen38-external-reproduction-survey.json)
 keeps source-protocol claims separate from engine comparisons. `q38rocm` K4
@@ -394,6 +395,7 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 normal-cap4 realized-C1 B3, automatic | 9.807 | **15.609** | **1.5916x** | Current-source 10/10 >1.10x; all categories positive; 78.57% acceptance; C2-C8 group at normal AR width and select pure K0. [`artifact`](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public production/BF16 C1 B3, c68-128/h24, explicit | 9.350 | **13.088** | **1.3998x** | 10/10 >1.10x; all slices positive; 87.63% acceptance; numerics/blocking/SSE pass. c129+/auto K0. [`artifact`](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C3 K3 D24, explicit diagnostic | 24.042 | **29.564** | **1.2297x** | Exact prompt streaming, proposal-head reuse, and standard-Q6/Q5 true-R12 improve MTP 38.27% from E0; exact 471/597 acceptance and every category positive. This beats the frozen external row by 7.45%; automatic C3 remains K0 pending complete production/serving gates. [`artifact`](results/2026-08-29-gfx1151-qwen38-mtp-e2-q5-true-r12-retained.json) |
+| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C4 K3 D24, explicit diagnostic | 30.120 | **27.450** | **0.9114x** | Exact Q6 R8+R8 improves MTP 34.66%, preserves 628/796 acceptance, and beats the frozen external row by 1.61%. Overall and three categories remain below AR, so automatic C4 stays K0. [`artifact`](results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json) |
 | W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production/default B1 fast, raw D24 | 110.830 | **115.770** | **1.0446x** | Exact `720/720`; complete 10-prompt numerical/repeat/task/state gate passes. Fast improves strict MTP 10.33% overall and every category. [`artifact`](results/2026-08-24-w7900-paro-fast-d24-3run-default.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |

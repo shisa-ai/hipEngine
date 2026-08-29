@@ -72,8 +72,9 @@ Standing context that shapes the plan:
   **18.191 vs 11.062 tok/s (1.6445x)**. Production C2/K3 is now an exact
   explicit diagnostic at **25.749 vs 17.986 (1.4316x)** and remains automatic
   K0 pending refreshed evidence. E1a+E1b+E2 lift C3/K3 to **29.564 vs 24.042
-  (1.2297x)**, 7.45% above the frozen external row; C3 remains automatic K0
-  pending the full production/serving gate.
+  (1.2297x)**, 7.45% above the frozen external row. Exact Q6 R8+R8 closes C4
+  external parity at **27.450 tok/s (+1.61%)**. C3/C4 remain automatic K0
+  pending their full production/serving gates.
 
 ## 3. Punchlist
 
@@ -297,7 +298,7 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   | 1 | 7.814 | 11.024 | 0.7088x | -63.28% | production-D24 keeps direct/scalar proposal + replay; strict-natural25 evidence does not transfer |
   | 2 | **25.749** | 17.986 | **1.4316x** | -20.48% | blocked: target is 60.38% of child wall/95.38% kernel-bound; Q4 740 ms |
   | 3 | **29.489** | 23.969 | **1.2303x** | **+7.17%** | **closed win** |
-  | 4 | 20.384 | 30.425 | 0.6700x | -24.54% | C4 streaming changes acceptance and is rejected; R16 target/accept wall |
+  | 4 | **27.450** | 30.120 | 0.9114x | **+1.61%** | **closed win:** exact Q6 R8+R8 replaces R16 direct/WMMA |
   | 5 | 15.244 | 35.551 | 0.4288x | -53.44% | proposals rows4+1; replay + operation-complete R20 target/accept wall |
   | 6 | 20.830 | 39.983 | 0.5210x | -42.18% | proposals rows4+2; replay + operation-complete R24 target/accept wall |
   | 7 | 23.245 | 42.747 | 0.5438x | -45.05% | proposals rows4+3; replay + operation-complete R28 target/accept wall |
@@ -318,13 +319,14 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   [`proposal correction`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-wide-proposal-policy-rejected.json),
   [`C2 streaming`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-prompt-streaming-retained.json),
   [`C2 blocker`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-post-streaming-blocker.json)).
-  C4 attribution then measures target/accept/commit/provider at **3.533/4.861 s
-  (72.68%)**, 97.78% kernel-bound; Q6/Q4 dominate at **1.847/1.059 s** and R16
-  misses exact rowtile chunking. Across C5-C8, target enqueue plus its following
-  synchronization/commit/readback owner consumes 57.5-69.5% of wall. Exact Q6
-  R16 screening is admitted; C5-C8 remain blocked on R20-R32 operation-complete
-  target work pending that result
-  ([`wide blockers`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-c8-target-blockers.json)).
+  C4 attribution measures target/accept/commit/provider at **3.533/4.861 s
+  (72.68%)**, 97.78% kernel-bound. Exact Q6 R8+R8 then cuts the Q6 family
+  **1.847→0.478 s (-74.10%)** and clean C4 **20.384→27.450 tok/s (+34.66%)**,
+  1.61% above the frozen comparator, with exact 628/796 acceptance. Across
+  C5-C8, target enqueue plus its following synchronization/commit/readback
+  owner consumes 57.5-69.5% of wall; exact Q6 R20-R32 decomposition is next
+  ([`wide blockers`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-c8-target-blockers.json),
+  [`C4 win`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json)).
 - [ ] P4.3 Reopen T3 adaptive-K and the B4 clamp once verifier rowtile work
   lands (per the CONCURRENCY2 supersession note); require full-suite
   acceptance/speed validation per anti-gaming.

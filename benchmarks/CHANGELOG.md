@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-29 gfx1151 Qwen3.8 C4 exact Q6 R16 retained] Reuse existing exact Q6 rowtiles as R8+R8 at logical R16: all three actual leaves improve 65.9-84.1%; traced Q6 falls **1.847→0.478 s (-74.10%)**; clean C4/K3 improves **20.384→27.450 tok/s (+34.66%)** with exact 628/796 acceptance, passing the frozen external target by 1.61%. C4 remains automatic K0 because overall and three categories trail AR. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json`.
+
 - [2026-08-29 gfx1151 Qwen3.8 C4-C8 target blockers] C4 target/accept/commit/provider is **3.533/4.861 s (72.68%)** and 97.78% kernel-bound; Q6/Q4 consume **1.847/1.059 s**, with R16 missing exact rowtile chunking. Deduplicated wide telemetry assigns 57.5-69.5% of C5-C8 wall to target enqueue plus synchronization/commit/readback. Exact Q6 R16 screening is admitted; wider R20-R32 waits on that result. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-c8-target-blockers.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8 C2 post-streaming blocker] C2 remains 20.48% below the frozen target after activation closure. Cached attribution assigns **1.205/1.996 s (60.38%)** to target/accept/commit/provider with 95.38% kernel reconciliation; Q4/Q6/Q5 consume **740/246/64 ms**. Qualified R8 shapes are already one-sweep; narrow-Q4 shared-B is numerically unqualified and insufficient alone. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-post-streaming-blocker.json`.
