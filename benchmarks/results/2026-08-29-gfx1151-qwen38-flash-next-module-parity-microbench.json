@@ -197,5 +197,33 @@
       "tflops": 3.4
     },
     "conclusion": "Existing WMMA compact kernel already beats the retained rowbatch owner 1.19-1.75x at the real shape (best tiles), but remains 1.7-2.4x behind llama mul_mat_q. Structural gap: per-row-tile weight re-dequant from global memory without LDS staging and single-warp blocks; next unit is the mul_mat_q dataflow port (SRAM-staged I x J tiles, cooperative loads) with lineage ggml-org/llama.cpp@17252c769 ggml/src/ggml-cuda/mmq.cuh."
+  },
+  "decode_parity_update": {
+    "date": "2026-08-30",
+    "llama_hip_tg32_current": {
+      "avg": 17.018,
+      "samples": [
+        16.81,
+        17.11,
+        17.14
+      ]
+    },
+    "hipengine_production_tg32_runner_protocol": {
+      "avg": 14.43,
+      "steady_state": 16.2,
+      "samples": [
+        10.9,
+        16.09,
+        16.3
+      ],
+      "note": "first sample includes warmup; steady ~16.2"
+    },
+    "ratio_vs_hip": 1.05,
+    "vulkan_reference": 24.1,
+    "contributing_changes": [
+      "DP4A safe-43 (campaign start)",
+      "GDN colwarps decode 0-47 (+43.7% decode A/B, 53bc9f029)"
+    ],
+    "verdict": "HIP decode at parity within variance; Vulkan remains llama's fastest decode lane (mul_mat_vec_q stack) at 1.5x"
   }
 }
