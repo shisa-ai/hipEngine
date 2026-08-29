@@ -157,9 +157,14 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     71.55→122.09 (+70.6%), C2 74.87→115.58 (+54.3%); isolated 45-token
     prefill 0.515→0.331 s; rocprof: Q4 family 263→174.9 ms
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-lowvgpr-q4t16-prefill-retained.json)).
-    Remaining in this item: Q6 qmicro-planar (103.1 ms, 184 VGPR) and Q5
-    dense (35.9 ms, 200 VGPR) show the same latency-bound pattern; then
-    re-freeze the C1-C8 prefill row.
+  - Progress 2026-08-29 (fifth retained unit): the same low-VGPR treatment
+    routes Q6 qmicro-planar rows 17-48 through 16-column owners (VGPR
+    184→88, bit-exact). The measured Q6 family falls 103.1→57.7 ms and
+    cumulative server prefill reaches C1 71.55→132.54 (+85.2%) and C2
+    74.87→133.52 (+78.3%); C1 remains 4.6% below the 138.95 target
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-lowvgpr-q6t16-prefill-retained.json)).
+    Remaining in this item: dispatch the measured Q5 dense candidates (35.8
+    ms/pass at 200 VGPR), then re-freeze the C1-C8 prefill row.
 
 ### P3 — AR decode C1/C2/C8 (defend the C3-C7 lead)
 
