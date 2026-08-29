@@ -253,6 +253,13 @@ GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES = frozenset(
 )
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS = frozenset({6})
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS = frozenset({6})
+# Pad physical SPECDEC2 target verify groups up to the admitted rows6
+# production rowtile when the root+candidate total falls below it (K1 R4 and
+# ragged 2-5-row cycles otherwise ride the shared-B 256-row padded tile at a
+# measured ~5.1x cycle cost on W7900). Pad rows are inactive candidates owned
+# by the last request; accept/commit stay driven by active rows only. Strict
+# profiles do not read this capability.
+GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS = (6,)
 # W7900 retains the expanded-metadata T16 gate/up payload. The qmicro replacement
 # is qualified independently for gfx1151 and must fail closed on this backend.
 GGUF_DENSE_Q4_QMICRO_T16_GATE_UP = False
@@ -896,6 +903,7 @@ __all__ = [
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS",
+    "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
