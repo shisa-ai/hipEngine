@@ -79,14 +79,16 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     q8 = selections[("linear", "prefill_rows_ge16_layers32_47_q8")]
     assert q8["selected_variant"] == "wmma_prefill_f32_f32_out"
     assert q8["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
-    dp4a = selections[("linear", "decode_c1_layers13_47_q4_gate_up")]
+    dp4a = selections[("linear", "decode_c1_calibrated_q4_dp4a_43_layers")]
     assert dp4a["selected_variant"] == (
         "selected_dual_q8_1_dp4a_silu_logical128_t64_gemv_bf16_bf16_out"
     )
     assert dp4a["strict_fallback_variant"] == (
         "selected_dual_silu_logical128_t64_gemv_bf16_bf16_out"
     )
-    assert dp4a["evidence_artifact"].endswith("production-dp4a13-decode.json")
+    assert dp4a["evidence_artifact"].endswith(
+        "production-dp4a-safe43-decode.json"
+    )
 
 
 def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
