@@ -210,6 +210,24 @@ def _group_masks(plan: dict[str, Any] | None) -> list[str]:
     ]
 
 
+def _plan_uses_dense_execution_rows(plan: Mapping[str, Any] | None) -> bool:
+    """Return whether every group densifies only ephemeral execution rows.
+
+    Scheduler slots and state/KV ownership may remain sparse while the model
+    execution map is compact. Lifecycle mask expectations must follow the
+    plan's declared execution mapping, not the independent physical-slot
+    compaction control.
+    """
+
+    if plan is None:
+        return False
+    groups = tuple(plan.get("groups", ()))
+    return bool(groups) and all(
+        group.get("execution_row_mapping") == "dense_active_rows"
+        for group in groups
+    )
+
+
 def _expected_dense_group_masks(
     rows: int,
     buckets: Sequence[int] = _DEFAULT_CERT_WIDTHS,
@@ -888,10 +906,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             expected_initial_masks = _expected_dense_group_masks(
                 logical_c, _resolve_widths(), composition=_d2_composition(logical_c)
             )
+            dense_hole_execution = _plan_uses_dense_execution_rows(hole_plan)
             expected_hole_masks = _expected_hole_group_masks(
                 logical_c,
                 cancel_slots,
-                compact=bool(args.compact_after_middle_hole),
+                compact=dense_hole_execution,
                 buckets=_resolve_widths(),
                 composition=_d2_composition(logical_c),
             )
@@ -992,6 +1011,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "middle_hole_plan": hole_plan,
                 "new_admission_plan": refill_plan,
                 "all_decode_plans": all_plans,
+                "execution_mask_policy": {
+                    "scheduler_slots_compacted": bool(
+                        args.compact_after_middle_hole
+                    ),
+                    "middle_hole_dense_execution_rows": dense_hole_execution,
+                    "expected_initial_masks": expected_initial_masks,
+                    "expected_middle_hole_masks": expected_hole_masks,
+                    "expected_refill_masks": expected_refill_masks,
+                    "actual_initial_masks": _group_masks(initial_plan),
+                    "actual_middle_hole_masks": _group_masks(hole_plan),
+                    "actual_refill_masks": _group_masks(refill_plan),
+                },
                 "declared_widths_only": declared_widths_only,
                 "no_serial_fallback": no_serial_fallback,
                 "original_request_ids": list(original_ids),

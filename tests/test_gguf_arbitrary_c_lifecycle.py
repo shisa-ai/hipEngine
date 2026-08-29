@@ -14,6 +14,7 @@ from scripts.gguf_arbitrary_c_lifecycle import (
     _group_masks,
     _lifecycle_environment_snapshot,
     _load_quality_gate,
+    _plan_uses_dense_execution_rows,
     _resolve_widths,
     _state_kv_accepted,
     _tracked_memory_recovery,
@@ -206,6 +207,23 @@ def test_gguf_arbitrary_c_lifecycle_accepts_single_physical_group_shape() -> Non
     )
     with pytest.raises(ValueError, match="model does not exist"):
         run(args)
+
+
+def test_gguf_arbitrary_c_lifecycle_detects_dense_ephemeral_execution_rows() -> None:
+    dense = {
+        "groups": [
+            {"execution_row_mapping": "dense_active_rows"},
+            {"execution_row_mapping": "dense_active_rows"},
+        ]
+    }
+    stable_sparse = {
+        "groups": [
+            {"execution_row_mapping": "stable_physical_slots"},
+        ]
+    }
+    assert _plan_uses_dense_execution_rows(dense)
+    assert not _plan_uses_dense_execution_rows(stable_sparse)
+    assert not _plan_uses_dense_execution_rows(None)
 
 
 def test_gguf_arbitrary_c_lifecycle_derives_single_and_cross_group_masks() -> None:
