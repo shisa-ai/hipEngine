@@ -1,0 +1,144 @@
+{
+  "schema": 2,
+  "kind": "gguf_prefill_route_promotion",
+  "status": "accepted_promoted",
+  "created_at": "2026-08-29T22:42:06.284083+00:00",
+  "source_commit_base": "b47ab9d8bff71ae2c10386b557495777e84313ee",
+  "source_commit_note": "candidate measured in the working tree at this base; see the linked worklog entry for the promoting commit",
+  "hardware": {
+    "host": "GPD7-099448",
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "device_sharing": "exclusive"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "gguf_q4_k_m",
+    "execution_profile": "production",
+    "sampling": "greedy"
+  },
+  "change": {
+    "file": "hipengine/runtime/gguf_linear.py",
+    "constant": "_Q4_T16_DUAL_WMMA_SILU_MIN_ROWS",
+    "old": 512,
+    "new": 12,
+    "shape_admitted": {
+      "in_features": 5120,
+      "out_features": 17408
+    },
+    "route_selected": "linear_pair_silu / gguf_q4_k_t16_v1 / dense_dual_wmma_prefill_bf16_bf16_out",
+    "fallback_retained": "two gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out singletons + silu_mul_separate_out_bf16"
+  },
+  "arithmetic_class": "bit-identical",
+  "correctness": {
+    "parity_production_shape": {
+      "test": "tests/test_gguf_q4_k_t16_dense.py::test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain_at_production_shape",
+      "rows": [
+        45,
+        96,
+        192,
+        511,
+        512
+      ],
+      "result": "assert_array_equal on BF16 output bits passed"
+    },
+    "parity_fixture": {
+      "test": "tests/test_gguf_q4_k_t16_dense.py::test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain",
+      "rows": [
+        2,
+        12,
+        45,
+        48,
+        128,
+        256,
+        511,
+        512,
+        513,
+        1024
+      ],
+      "result": "passed"
+    },
+    "dispatch_contract": {
+      "fused_from_rows": 12,
+      "unfused_fallback_rows": [
+        2,
+        5,
+        8,
+        11
+      ],
+      "test": "test_q4_t16_dense_bulk_pair_silu_keeps_unfused_fallback_below_12"
+    },
+    "full_suite": "tests/test_gguf_q4_k_t16_dense.py -q -> 74 passed (GPU)",
+    "end_to_end": "identical generated token id and identical final logit in every measured A/B pair"
+  },
+  "commands": {
+    "candidate": "HE_DUAL_WMMA_SILU_MIN_ROWS=12 .venv/bin/python scripts/gguf_prefill_rowgate_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompt-length L --decode-tokens 1 --warmup-runs 1 --measured-runs 3 --persistent-session --public-ar-profile",
+    "control": "same with HE_DUAL_WMMA_SILU_MIN_ROWS=512 (restores the pre-change route at runtime)"
+  },
+  "measurements": [
+    {
+      "rows": 16,
+      "control_prefill_s": 0.236,
+      "candidate_prefill_s": 0.2289,
+      "gain_pct": 3.1,
+      "final_logit_equal": true,
+      "id_equal": true,
+      "runs": "3/3"
+    },
+    {
+      "rows": 32,
+      "control_prefill_s": 0.2601,
+      "candidate_prefill_s": 0.2498,
+      "gain_pct": 4.12,
+      "final_logit_equal": true,
+      "id_equal": true,
+      "runs": "3/3"
+    },
+    {
+      "rows": 45,
+      "control_prefill_s": 0.2811,
+      "candidate_prefill_s": 0.2697,
+      "gain_pct": 4.24,
+      "final_logit_equal": true,
+      "id_equal": true,
+      "runs": "2/3"
+    },
+    {
+      "rows": 96,
+      "control_prefill_s": 0.3171,
+      "candidate_prefill_s": 0.3044,
+      "gain_pct": 4.17,
+      "final_logit_equal": true,
+      "id_equal": true,
+      "runs": "3/3"
+    },
+    {
+      "rows": 192,
+      "control_prefill_s": 0.3998,
+      "candidate_prefill_s": 0.3811,
+      "gain_pct": 4.91,
+      "final_logit_equal": true,
+      "id_equal": true,
+      "runs": "3/3"
+    },
+    {
+      "rows": 512,
+      "control_prefill_s": 0.5791,
+      "candidate_prefill_s": 0.5798,
+      "gain_pct": -0.12,
+      "final_logit_equal": true,
+      "id_equal": true,
+      "runs": "3/3",
+      "note": "route unchanged at rows>=512; delta is run noise"
+    }
+  ],
+  "performance_claim": {
+    "scope": "GGUF bulk prefill at rows 12..511 for dense H5120 Q4_K_M gate/up projections",
+    "headline": "+4.2% prefill at 45 rows, +4.9% at 192 rows, unchanged at 512",
+    "topline": "AR C1/C8 re-check recorded separately; the admitted wave effect is bounded by the admission term (~0.28 s of the 0.305 s per-lane admission at C1)"
+  },
+  "related": {
+    "analysis": "worklog/entries/20260829T215206.066388Z-lhl-w7900-qwen38-submodule-parity-1921c9.md",
+    "kernel_catalog": "docs/KERNELS.md Q4/Q5/Q6 T16 selected row"
+  }
+}
