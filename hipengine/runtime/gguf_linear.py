@@ -177,14 +177,20 @@ _PACK8_ROWTILE_MIN_ROWS = 2
 _PACK8_ROWTILE_MAX_ROWS = 4
 _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES = 5_120
 _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES = 17_408
-# Fused dual+SiLU gate/up bulk prefill owner floor. 512 was a perf-qualification
-# floor, not a correctness boundary: the fused kernel is bit-identical to the
+# Fused dual+SiLU gate/up owner floor. 512 was a perf-qualification floor, not a
+# correctness boundary: the fused kernel is bit-identical to the
 # two-singleton+silu_mul chain at the only shape this predicate admits
-# (5120 -> 17408) for rows 45/96/192/511/512 and on the small fixture down to
-# rows 2 (tests/test_gguf_q4_k_t16_dense.py). W7900 Qwen3.8-27B-Q4_K_M shipping
-# route measured +4.2%/+4.2%/+4.9% prefill at 45/96/192 rows and unchanged at
-# 512. The floor stays above the dedicated small-B rowtile/GEMV domain (rows<=8).
-_Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 12
+# (5120 -> 17408) for rows 45/96/192/511/512 and on the fixture down to rows 2
+# (tests/test_gguf_q4_k_t16_dense.py). W7900 Qwen3.8-27B-Q4_K_M measured +4.2%
+# (45 rows), +4.2% (96), +4.9% (192) prefill and unchanged 512, so the floor came
+# down to 33 - one above the largest row count measured SLOWER for this owner.
+# Target verification runs the same shared FFN stage inside captured physical
+# groups of 16/32 rows (C4-C8 at K3), where the fused owner measured 8.2% slower
+# per cycle across three replications even though the identical-shape prefill A/B
+# is faster; rows<=32 therefore keep the unfused chain until a prefill-context
+# selector exists (docs/REFACTOR.md). The floor also stays clear of the
+# dedicated small-B rowtile/GEMV domain (rows<=8).
+_Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 33
 _Q4_QMICRO_T16_EXPANDED_META_MIN_ROWS = 4_096
 _Q4_T16_DENSE_QUANTS = frozenset(
     {"gguf_q4_k_t16_v1", "gguf_q4_k_qmicro_t16_v1"}
