@@ -701,21 +701,34 @@ def test_gfx1151_q6_planar_prefill_lowvgpr_bands_route_by_rows_and_shape(
     for rows in (33, 48):
         for in_f, out_f in others:
             fn(1, 2, 3, rows, in_f, out_f)
+    for rows in (49, 64):
+        for in_f, out_f in shapes:
+            fn(1, 2, 3, rows, in_f, out_f)
+    lowvgpr80_shapes = gfx1151_backend.GGUF_Q6_PLANAR_LOWVGPR80_SHAPES
+    for rows in (65, 80):
+        for in_f, out_f in sorted(lowvgpr80_shapes):
+            fn(1, 2, 3, rows, in_f, out_f)
+        for in_f, out_f in sorted(set(shapes) - lowvgpr80_shapes):
+            fn(1, 2, 3, rows, in_f, out_f)
     for rows, in_f, out_f in (
-        (49, 5_120, 6_144),
-        (64, 6_144, 5_120),
         (16, 5_120, 6_144),
+        (81, 6_144, 5_120),
         (45, 5_120, 1_024),
         (512, 17_408, 5_120),
     ):
         fn(1, 2, 3, rows, in_f, out_f)
 
-    assert calls == (
+    expected = (
         ["lowvgpr"] * (2 * len(shapes))
         + ["lowvgpr48"] * 2
         + ["lowvgpr"] * (2 * len(others))
-        + ["plain", "plain", "plain", "plain", "shared4"]
+        + ["lowvgpr"] * (2 * len(shapes))
     )
+    for _ in (65, 80):
+        expected += ["lowvgpr"] * len(lowvgpr80_shapes)
+        expected += ["lowvgpr48"] * len(set(shapes) - lowvgpr80_shapes)
+    expected += ["plain", "plain", "plain", "shared4"]
+    assert calls == expected
 
 
 def test_gfx1151_q5_prefill_lowvgpr_bands_and_registry_scope(
@@ -752,21 +765,41 @@ def test_gfx1151_q5_prefill_lowvgpr_bands_and_registry_scope(
     for rows in (33, 48):
         for in_f, out_f in lowvgpr48_shapes:
             fn(1, 2, 3, rows, in_f, out_f)
+    for rows in (33, 48):
+        fn(1, 2, 3, rows, 5_120, 17_408)
+    lowvgpr64_shapes = gfx1151_backend.GGUF_Q5_T16_DENSE_LOWVGPR64_SHAPES
+    for rows in (49, 64):
+        for in_f, out_f in sorted(lowvgpr64_shapes):
+            fn(1, 2, 3, rows, in_f, out_f)
+        for in_f, out_f in sorted(set(shapes) - lowvgpr64_shapes):
+            fn(1, 2, 3, rows, in_f, out_f)
+    lowvgpr80_shapes = gfx1151_backend.GGUF_Q5_T16_DENSE_LOWVGPR80_SHAPES
+    for rows in (65, 80):
+        for in_f, out_f in sorted(lowvgpr80_shapes):
+            fn(1, 2, 3, rows, in_f, out_f)
+        for in_f, out_f in sorted(set(shapes) - lowvgpr80_shapes):
+            fn(1, 2, 3, rows, in_f, out_f)
     for rows, in_f, out_f in (
-        (33, 5_120, 17_408),
-        (48, 5_120, 17_408),
         (16, 5_120, 6_144),
-        (49, 6_144, 5_120),
+        (81, 6_144, 5_120),
         (45, 5_120, 1_024),
     ):
         fn(1, 2, 3, rows, in_f, out_f)
 
-    assert calls == (
+    expected = (
         ["lowvgpr"] * (2 * len(shapes))
         + ["lowvgpr"] * 2
         + ["lowvgpr48"] * (2 * len(lowvgpr48_shapes))
-        + ["plain"] * 5
+        + ["plain"] * 2
     )
+    for _ in (49, 64):
+        expected += ["lowvgpr"] * len(lowvgpr64_shapes)
+        expected += ["plain"] * len(set(shapes) - lowvgpr64_shapes)
+    for _ in (65, 80):
+        expected += ["lowvgpr"] * len(lowvgpr80_shapes)
+        expected += ["lowvgpr48"] * len(set(shapes) - lowvgpr80_shapes)
+    expected += ["plain"] * 3
+    assert calls == expected
 
     register_gfx1151_kernels()
     assert (
@@ -985,8 +1018,18 @@ def test_gfx1151_backend_routes_admitted_lowm_rows_to_single_wave_wmma(
         "GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES",
         None,
     )
+    lowvgpr64_shapes = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_DENSE_LOWVGPR64_SHAPES",
+        None,
+    )
+    lowvgpr80_shapes = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_DENSE_LOWVGPR80_SHAPES",
+        None,
+    )
     assert callable(selector)
-    assert lowm_max_rows == 64
+    assert lowm_max_rows == 80
     assert lowvgpr_max_rows == 32
     assert lowvgpr48_max_rows == 48
     assert lowm_shapes == frozenset(
@@ -1006,6 +1049,8 @@ def test_gfx1151_backend_routes_admitted_lowm_rows_to_single_wave_wmma(
             (5_120, 17_408),
         }
     )
+    assert lowvgpr64_shapes == lowm_shapes - {(5_120, 17_408)}
+    assert lowvgpr80_shapes == frozenset({(17_408, 5_120)})
     calls: list[str] = []
     monkeypatch.setattr(
         gfx1151_backend,
@@ -1050,26 +1095,37 @@ def test_gfx1151_backend_routes_admitted_lowm_rows_to_single_wave_wmma(
     for rows in (33, 45, 48):
         for in_features, out_features in others:
             selector(1, 2, 3, rows, in_features, out_features)
-    # rows 49-64: single-wave default keeps the band
+    # rows 49-64: lowvgpr on five shapes; wide 5120->17408 keeps single.
     for rows in (49, 64):
-        for in_features, out_features in sorted(lowm_shapes):
+        for in_features, out_features in sorted(lowvgpr64_shapes):
+            selector(1, 2, 3, rows, in_features, out_features)
+        selector(1, 2, 3, rows, 5_120, 17_408)
+    # rows 65-80: 17408->5120 uses lowvgpr; the other five use lowvgpr48.
+    for rows in (65, 80):
+        for in_features, out_features in sorted(lowvgpr80_shapes):
+            selector(1, 2, 3, rows, in_features, out_features)
+        for in_features, out_features in sorted(lowm_shapes - lowvgpr80_shapes):
             selector(1, 2, 3, rows, in_features, out_features)
     for rows, in_features, out_features in (
-        (65, 5_120, 17_408),
-        (80, 5_120, 10_240),
+        (81, 5_120, 17_408),
         (96, 5_120, 12_288),
         (45, 5_120, 1_024),
         (45, 4_096, 4_096),
     ):
         selector(1, 2, 3, rows, in_features, out_features)
 
-    assert calls == (
+    expected = (
         ["lowvgpr"] * (3 * len(lowm_shapes))
         + ["lowvgpr48"] * (3 * len(lowvgpr48_shapes))
         + ["lowvgpr"] * (3 * len(others))
-        + ["single"] * (2 * len(lowm_shapes))
-        + ["shared"] * 5
     )
+    for _ in (49, 64):
+        expected += ["lowvgpr"] * len(lowvgpr64_shapes) + ["single"]
+    for _ in (65, 80):
+        expected += ["lowvgpr"] * len(lowvgpr80_shapes)
+        expected += ["lowvgpr48"] * len(lowm_shapes - lowvgpr80_shapes)
+    expected += ["shared"] * 4
+    assert calls == expected
 
 
 def test_gfx1151_backend_registers_q4_physical_route_and_explicit_fallbacks() -> None:
