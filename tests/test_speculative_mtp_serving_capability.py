@@ -164,6 +164,10 @@ def test_qwen38_q4km_gfx1100_production_c2_k2_d24_is_exact_automatic_key() -> No
     for changes, reason in (
         ({"resident_capacity": 4}, "resident_capacity_not_qualified"),
         ({"realized_group_rows": 1}, "physical_group_not_qualified"),
+        (
+            {"realized_group_rows": 3, "resident_capacity": 3},
+            "physical_group_not_qualified",
+        ),
         ({"candidate_budget": 3}, "candidate_budget_not_qualified"),
         ({"context_tokens": 96}, "context_bucket_not_qualified"),
         ({"context_tokens": 3}, "context_bucket_not_qualified"),
