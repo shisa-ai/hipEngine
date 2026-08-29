@@ -1,6 +1,6 @@
 # Qwen3.8-27B `Q4_K_M` physical-C3 MTP decode-economics campaign
 
-- Status: **E1a/E1b retained; C3/K3 external parity passed; refresh Amdahl table and proceed to E2/E5**
+- Status: **E1a/E1b retained; C3/K3 external parity passed; post-E1 Amdahl confirms E2 Q4 next**
 - Created: 2026-08-28; corrected review: 2026-08-28; E1a retained: 2026-08-29
 - Hardware lane: **AMD Ryzen AI MAX+ 395 / Radeon 8060S / `hip_gfx1151` / HIP 7.15**
 - Primary product key: **Qwen3.8-27B `Q4_K_M`, BF16 KV, production profile, physical C3, raw greedy, context 1-67, D24**
@@ -218,8 +218,28 @@ The E0 C3 packet generates 720 tokens per arm:
 E1a+E1b remove **9.014 s / 26.77%** from E0 complete MTP wall and improve
 throughput by **36.55%**. C3/K3 is now **1.683 tok/s / 6.12% above** the frozen
 27.515 tok/s external row. Complete production and serving admission remain
-open; refresh the post-E1 Amdahl table before choosing E2 high-row target work
-or beginning the combined E5/E6 promotion bundle.
+open.
+
+### 2.5 Post-E1 target Amdahl refresh
+
+The retained E1b C3/K3 child still spends **1.521/2.503 s (60.76%)** in eight
+`target_accept_commit_provider` markers. Their kernel sum is **1.454 s / 95.62%
+of marker wall**:
+
+| Target class | Calls | Total ms | ms/cycle | Target-marker share |
+| --- | ---: | ---: | ---: | ---: |
+| Q4 | 3,254 | 821.68 | **102.71** | **54.02%** |
+| Q6 | 983 | 401.50 | **50.19** | **26.40%** |
+| Q5 | 720 | 103.86 | **12.98** | **6.83%** |
+| all remaining kernels | 8,274 | 127.33 | 15.92 | 8.37% |
+
+Q4+Q6+Q5 are **165.88 ms/cycle**, 87.25% of target marker wall and 53.01% of
+profile-child complete wall. C3 R12 still decomposes to R8+R4, so duplicate
+weight sweeps remain the dominant actionable wall even after external C3 parity.
+E2 therefore passes its entry condition and starts with a true-R12 Q4 owner.
+The C3 E5/E6 promotion bundle remains required, but it does not replace E2's
+cross-width value while C2 and C4-C8 parity remain open.
+[`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-post-e1-amdahl.json)
 
 ## 3. What already exists — do not reimplement or relabel
 
@@ -422,9 +442,9 @@ without changing control or model representation.
 
 Candidate order follows measured wall, one logical unit at a time:
 
-1. Q4 single + gate/up/SiLU actual shapes (about 102 ms at R12);
-2. planar/standard Q6 actual shapes (about 54-55 ms);
-3. Q5 recurrent output (about 14 ms);
+1. Q4 single + gate/up/SiLU actual shapes (**102.71 ms/cycle** at R12);
+2. planar/standard Q6 actual shapes (**50.19 ms/cycle**);
+3. Q5 recurrent output (**12.98 ms/cycle**);
 4. only then profile-triggered attention/GDN/other leaves.
 
 For each quant family:
@@ -600,7 +620,7 @@ These are ordered follow-ons, not assumptions in the primary claim:
 | ---: | --- | --- | --- |
 | 0a | Physical C3 prompt activation | E1a retained: 746.7→41.5 ms prompt prime and 21.382→27.169 tok/s, exact acceptance, every category positive | closed retained; direct SSE TTFT remains in E6 |
 | 0b | Physical proposal Q6 F32 rowtile | E1b retained: row3 13.736→4.711 ms; C3 27.169→29.198 tok/s; exact C2/C3 acceptance | closed retained; C3 external parity passed |
-| 1 | True R9/R12/R16 target owner | R12 still R8+R4; Q4/Q6/Q5 about 102/55/14 ms | cannot reduce sweep count or actual target/complete wall |
+| 1 | True R9/R12/R16 target owner | Post-E1 target is 190.12 ms/cycle and 95.62% kernel-bound; Q4/Q6/Q5 are 102.71/50.19/12.98 ms | E2 admitted; Q4 true-R12 first; reject if sweep count or complete wall does not fall |
 | 2 | Fixed K4 | max zero-cost visible lift 17.54%; external K4 is diagnostic | measured p4/cost score cannot beat fixed K3 |
 | 3 | NextN norm/concat/Q4 residual | E0 Q4 NextN work is 12.75 ms/cycle at C3/K3 after the head | < material refreshed Amdahl share or compound-only idea |
 | 4 | Provider update/selected commit | unprofiled telemetry currently single-digit ms/cycle | <=5% refreshed wall or P7 already owns best path |
