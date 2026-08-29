@@ -109,10 +109,12 @@ serving gates. [`E2`](results/2026-08-29-gfx1151-qwen38-mtp-e2-q5-true-r12-retai
 C2 remains 20.48% below its external target: its post-streaming target wall is
 95.38% kernel-bound and Q4-dominant; qualified R8 shapes are already one-sweep.
 [`blocker`](results/2026-08-29-gfx1151-qwen38-mtp-c2-post-streaming-blocker.json)
-Exact Q6 R8+R8 lifts C4 to **27.450 tok/s**, 1.61% above its external target,
-but C4 remains slower than AR and automatic K0. C5-C8 show the same operation-
-complete target owner at 57.5-69.5%.
-[`C4`](results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json)
+Exact Q6 chunks lift C4 to **27.450 tok/s**, 1.61% above its external target,
+and improve C5-C8 to **17.970/26.904/28.205/27.393 tok/s** (+17.89% to
++39.41%). All wide cells remain exact, but they trail AR and their external
+targets; C4-C8 therefore remain automatic K0.
+[`C4`](results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json) ·
+[`C5-C8`](results/2026-08-29-gfx1151-qwen38-mtp-q6-r20-r32-retained.json)
 
 The matched standard-`Q4_K_M` [external survey](results/2026-08-28-gfx1151-qwen38-external-reproduction-survey.json)
 keeps source-protocol claims separate from engine comparisons. `q38rocm` K4
@@ -120,10 +122,10 @@ requires custom FP4 and one slot; Laurent's adaptive DFlash2 result remains
 rejected for sequential serving after state-contaminated output.
 
 The current external-parity campaign has C1 prefill parity, AR wins at C3-C8,
-and a C3/K3 MTP win 7.17% above the frozen external row in the current C1-C8
-matrix. Other production-D24 MTP widths remain 24.5-64.2% below their frozen
-comparators; C5-C8 proposals already use E1b rows4+remainder subgroups, leaving
-prompt replay and R20-R32 target/accept work. Prefill C2-C8 and AR
+and C3/C4 K3 MTP wins above their frozen external rows. C2 and C5-C8 remain
+20-50% below their comparators; wide proposals already use E1b rows4+remainder
+subgroups and exact Q6 target chunks, leaving prompt replay plus Q4/Q5 target
+work. Prefill C2-C8 and AR
 C1/C2 remain measured high-row/device blockers; a scoped packed-C2 graph
 improves AR **16.993→18.072 tok/s (+6.35%)**.
 [`Campaign`](../docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md) ·

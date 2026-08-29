@@ -82,7 +82,8 @@ profiles/scopes differ and must remain explicit:
 | C1/K3 | strict, cap1/cap4 realized singleton, context 1-67, natural25 | **18.191 / 11.062 = 1.6445x** | 161/220 = **73.18%** | automatic; current manifest refreshed |
 | C2/K3 | production, cap4 physical C2, context 1-128, D24 | **25.749 / 17.986 = 1.4316x** | 314/398 = **78.89%** | retained exact diagnostic; automatic K0 pending refresh |
 | C3/K3 | production, canonical natural contexts (<=67), D24 | **29.564 / 24.042 = 1.2297x** | 471/597 = **78.89%** | external parity passed; automatic K0 pending full gate |
-| C4+ | unqualified economics | n/a | n/a | automatic K0 |
+| C4/K3 | production, physical C4, D24 | **27.450 / 30.120 = 0.9114x** | 628/796 = **78.89%** | external parity passed; automatic K0 |
+| C5-C8/K3 | production diagnostics, D24 | **17.970-27.393 / 35.391-47.229 = 0.5078-0.6760x** | **78.89%** | exact implementation wins; automatic K0 |
 
 C2 and C3 still have identical draft acceptance. Post-output-norm prompt
 streaming now removes the activation wall at both widths, while E1b removes
@@ -650,13 +651,15 @@ These are ordered follow-ons, not assumptions in the primary claim:
    numerical/state gates.
 5. **gfx1100:** source ideas may transfer, absolute rates, manifests, and
    thresholds may not.
-6. **C5-C8:** post-E2 MTP is 15.244/20.830/23.245/19.650 tok/s and
-   42-64% below external targets. Proposal telemetry is rows4+remainder
-   (C5 4+1, C6 4+2, C7 4+3, C8 4+4), so E1b already covers every
-   non-singleton proposal subgroup. A rows5-8 package experiment was unengaged
-   and removed. Wide telemetry assigns 57.5-69.5% of wall to target enqueue plus
-   its following synchronization/commit/readback owner. C4 R16 succeeds, so
-   exact Q6 R20-R32 chunk decomposition is now the next wider screen.
+6. **C5-C8:** exact Q6 R20-R32 chunks improve clean MTP to
+   **17.970/26.904/28.205/27.393 tok/s (+17.89%/+29.16%/+21.34%/+39.41%)**.
+   All outputs and 78.894% acceptance remain exact; a C8 trace removes direct Q6
+   calls and reduces whole-process Q6 kernel time about 69.95%. Proposal
+   telemetry remains rows4+remainder, so E1b already covers every non-singleton
+   proposal subgroup. Every width still trails AR and its external target by
+   25-50%; refresh target attribution and pursue Q4/Q5 operation-complete work
+   only with their exact or production numerical gates.
+   [`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-q6-r20-r32-retained.json)
 
 ## 6. Candidate priority and reopen matrix
 
@@ -666,6 +669,7 @@ These are ordered follow-ons, not assumptions in the primary claim:
 | 0b | Physical proposal Q6 F32 rowtile | E1b retained: row3 13.736→4.711 ms; C3 27.169→29.198 tok/s; exact C2/C3 acceptance | closed retained; C3 external parity passed |
 | 1 | True R9/R12 target owner | Post-E1 C3 target was 190.12 ms/cycle; Q4/Q6/Q5 were 102.71/50.19/12.98 ms | E2 C3 closed: Q4 rejected; standard Q6 + Q5 retained; planar Q6 rejected. |
 | 1b | C4 exact Q6 R16 | C4 target owner was 72.68% of child; Q6 direct kernels were 1.847 s | closed retained: R8+R8 cuts Q6 74.10%, C4 reaches 27.450 tok/s and passes external parity |
+| 1c | C5-C8 exact Q6 R20-R32 | direct/WMMA Q6 remained in 57.5-69.5% target owner | closed retained: +17.89% to +39.41%; refresh Q4/Q5 Amdahl shares because every width remains below AR/external |
 | 2 | Fixed K4 | max zero-cost visible lift 17.54%; external K4 is diagnostic | measured p4/cost score cannot beat fixed K3 |
 | 3 | NextN norm/concat/Q4 residual | E0 Q4 NextN work is 12.75 ms/cycle at C3/K3 after the head | < material refreshed Amdahl share or compound-only idea |
 | 4 | Provider update/selected commit | unprofiled telemetry currently single-digit ms/cycle | <=5% refreshed wall or P7 already owns best path |
