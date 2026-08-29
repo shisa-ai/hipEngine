@@ -671,7 +671,16 @@ P8 current punchlist (20260829):
       output-identical (acceptance equal to four decimals) and its retained
       economics stand. Cooldown policy stays off (1.1700x < 1.1890x at D24).
 - [ ] Complete the P8 production numerics/determinism/lifecycle packet for
-      C2/K2 before any automatic promotion; automatic stays K0.
+      C2/K2 before any automatic promotion; automatic stays K0. Progress
+      (worklog 20260829T075637): cross-commit determinism proven (byte-identical
+      MTP/AR streams across `76d94b2ab` -> `6b580ad25`), cross-width
+      differential 20/20 C2 == C1 in both production and strict, strict C2/K2
+      control 0.7214x / 81.42%, and the lifecycle gate green on
+      tokens/memory/cancellation/no-serial-fallback with only c1-KV byte
+      identity failing under the wrong protocol (needs
+      `--allow-c1-arithmetic-drift` + numerical quality artifact per the
+      ZBOOK chain). Remaining: quality artifact, lifecycle-with-drift,
+      permutation/neighbor isolation, long-context task gate.
 
 Exit: an explicit-only, correctness-qualified physical C2 baseline and an
 explained acceptance curve. Automatic remains K0.
