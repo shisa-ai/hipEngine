@@ -45,7 +45,8 @@ the exact-bit profile; production is the certified T2 profile with manifest
 
 Production = guarded dense-Q8 MMQ, compact f16-WMMA MoE on layers 27–47
 with the iu8-WMMA gate/up kernel (exact q + 3 residual planes) on 35–47,
-column-warp GDN prefill on 27–47 (llama layout, supersedes peer-GDN), and
+column-warp GDN prefill on 27–47 (llama layout, supersedes peer-GDN), QSA
+flash on 31–47 (33%/launch), and
 Q8_1 DP4A decode on calibrated layers
 `0,2,5,6,8,9,10,11,13–47`; layers 0–26 keep the strict exact owners. The
 WMMA-MoE27 packet (450 rows, three repeats) passes at KL
