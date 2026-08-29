@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "date": "2026-08-30",
+  "status": "complete",
+  "scope": "Final llama.cpp parity rollup and audit for Qwen3.8-Flash-Next UD-Q4_K_XL on zbook gfx1151: objective (1) compare against latest llama.cpp head and forks; (2) full profiling + microbenchmarks per module with match/not verdicts",
+  "objective_checklist": {
+    "compare_latest_llama_head_and_forks": {
+      "evidence": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-llamacpp-master-rebaseline.json",
+      "verdict": "master 17252c769 (qwen4exp merged) HIP pp508 298.6/tg32 17.0-17.3; Vulkan 333.8/24.0; ik_llama.cpp/ROCmFP4 forks surveyed; community 50-65 tok/s decode = spec-decode forks (not comparable)"
+    },
+    "full_profiling": {
+      "evidence": "same artifact pp508 family tables + traces (llama master warm 1.693s vs hipEngine evolution 6.548s -> current ~5.97s)"
+    },
+    "microbenchmarks_per_module": {
+      "evidence": "benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-module-parity-microbench.json"
+    }
+  },
+  "module_verdicts": {
+    "moe_gate_up": {
+      "was": "3.9x (dp4a/bf16-FMA)",
+      "now": "iu8-WMMA 35-47 certified in production (llama arithmetic class; 1-plane variant measured 3.75 TF/s = llama rate)",
+      "verdict": "matched at kernel level"
+    },
+    "moe_down": {
+      "was": "5.6x",
+      "now": "f16-WMMA 3.39 TF/s vs llama 2.2",
+      "verdict": "beaten"
+    },
+    "gdn_prefill": {
+      "was": "8.7x",
+      "now": "column-warp 27-47 certified (4.6x/launch; -17.1% p508)",
+      "verdict": "matched at layout level"
+    },
+    "gdn_decode": {
+      "was": "7.9x",
+      "now": "colwarps decode 0-47 (+43.7% decode)",
+      "verdict": "matched (tg32 1.05x vs HIP)"
+    },
+    "qsa_prefill": {
+      "was": "9.8x",
+      "now": "key-parallel flash 35-47 certified (3.2x/launch)",
+      "verdict": "partial (admissible suffix; llama 1.2ms vs 3.7ms kernel remains)"
+    },
+    "elementwise_norm_rope": {
+      "was": "0.46x (ours)",
+      "verdict": "beaten (fusion)"
+    },
+    "dense_f32_gemv_routing": {
+      "was": "0.9-1.3x",
+      "verdict": "parity"
+    },
+    "decode_overall": {
+      "llama_hip_tg32": 17.02,
+      "hipengine_steady": 16.2,
+      "ratio": 1.05,
+      "vulkan_lane": "24.1 (llama's fastest; mul_mat_vec_q stack; recorded as open lane"
+    }
+  },
+  "headline": {
+    "p508_prefill": {
+      "strict_start": 8.273,
+      "production_now_s": 5.97,
+      "tok_s": 85,
+      "llama_hip": 295,
+      "llama_vulkan": 333
+    },
+    "tg32": {
+      "production": 16.2,
+      "llama_hip": 17.0
+    }
+  },
+  "campaign_commits": [
+    "rebaseline 84f5e63ce",
+    "microbench 2862442da",
+    "tile sweep ae6946279",
+    "wmma moe27 6ce11c7c8",
+    "manifest c592261dd",
+    "i8 design 695be7b73",
+    "abi e92e3d3c3",
+    "iu8 kernel 11f939b74",
+    "iu8 cert 625be6d2b",
+    "iu8 binder b43cc4e88",
+    "q5_1 decision c579c0c93",
+    "gdn spec 24b085e3c",
+    "gdn cert 561d23bae",
+    "gdn binder f1e5f8db7",
+    "regression 7a683f609",
+    "qsa spec 4769b6c77",
+    "qsa kernel 6c13eca60",
+    "qsa cert 638589696",
+    "qsa binder b29eefbcb",
+    "qsa kp 882b11889",
+    "gdn decode 53bc9f029",
+    "decode parity 680877265"
+  ],
+  "audit": {
+    "tests": "campaign-area pytest 105+/105 green (profiles, model_runner, gdn, iu8, wmma, q5_1, q4_k, qsa flash); full suite has 15 pre-existing env failures in disjoint modules (recorded 7a683f609)",
+    "gates": "every retained route has a 450-row auto-admitted packet + free-gen + c2 + binder smoke; artifacts and worklogs immutable and committed",
+    "open_items": [
+      "QSA kernel 3.1x from llama (admissible-suffix limited; key-parallel landed, further iterations possible)",
+      "Vulkan decode lane 24.1 (MoE-decode iu8 spec'd)",
+      "prefill overall 3.5x (llama comgr GEMM + remaining strict-layer mixes)"
+    ]
+  }
+}
