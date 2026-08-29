@@ -131,8 +131,13 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     cumulative server prefill C1 71.55→93.26 (+30.4%), C4 124.35→137.84
     (+10.8%), exact outputs
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-solo-dispatch-window-retained.json)).
-    Remaining in this item: residual ~65 ms C1 host/route overhead and the
-    packed-vs-bulk owner gap at C2-C8 slab shapes.
+  - Progress 2026-08-29 (third retained unit): reclaim-path `zero_states`
+    template-scan removal (direct memsets, identical bytes) — cumulative
+    C1 71.55→102.21 (+42.8%), C2 74.87→97.18 (+29.8%), exact outputs
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-zerostates-reclaim-retained.json)).
+    Remaining in this item: residual ~5-15 ms/request host/reclaim overhead
+    and the packed-vs-bulk owner gap at C2-C8 slab shapes; the dominant
+    remaining C1 wall is now the prefill GPU work itself (P2.3).
 - [ ] P2.2 C2-C8 prefill parity at the frozen protocol; each cell closes at
   its frozen winner (194.07/180.09/192.54/217.39/243.52/245.61/296.82) or a
   measured named blocker. Slab rows scale with width, so the small-M fix
