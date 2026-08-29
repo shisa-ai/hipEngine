@@ -273,6 +273,10 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     87.25% of target wall. E2 Q4 true-R12 work passes its entry condition and
     remains the next shared-width/DFlash lever
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-post-e1-amdahl.json)).
+  - E2 Q4 closeout 2026-08-29: exact true-R12 col4 and shared-weight owners are
+    respectively **9.1-44.7%** and **72.9-169.7% slower** than R8+R4 across all
+    six actual shapes, with zero paired wins. Q4 keeps R8+R4; E2 Q6 is next
+    ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e2-q4-true-r12-rejected.json)).
 - [~] P4.2 Frozen MTP parity targets: C1 `>= 21.277`, C2 `>= 32.378`, C3
   `>= 27.515`, C4 `>= 27.015`, C5 `>= 32.74`, C6 `>= 36.023`, C7 `>= 42.304`,
   C8 `>= 54.834`; each cell closes with a measured win or named blocker.
