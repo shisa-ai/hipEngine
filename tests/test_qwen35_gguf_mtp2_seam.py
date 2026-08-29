@@ -24,6 +24,7 @@ from hipengine.generation.qwen35_gguf_mtp2 import (
     _target_verify_mode_for_context,
 )
 from hipengine.kernels.backends import backend_package_capability
+from hipengine.kernels.policy import QWEN35_DENSE_H5120_GEOMETRY
 from hipengine.runtime import qwen35_gguf_runner as runner_mod
 from hipengine.runtime.qwen35_gguf_nextn import (
     Qwen35GGUFNextNBatchDeviceProposal,
@@ -110,6 +111,40 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_C4", False
     ) is False
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
+        {},
+    ) == {
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (3,),
+    }
+
+
+def test_qwen38_production_prompt_streaming_policy_admits_only_physical_c3() -> None:
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(
+            backend="hip_gfx1151",
+            execution_profile="production",
+        ),
+        capacity=4,
+        _shared_runner=SimpleNamespace(
+            weights=SimpleNamespace(
+                geometry=QWEN35_DENSE_H5120_GEOMETRY,
+                file_type_name="MOSTLY_Q4_K_M",
+            ),
+        ),
+    )
+    adapter = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=3,
+    )
+
+    assert adapter.physical_prompt_streaming_widths == (3,)
+    assert adapter._physical_prompt_streaming_admitted(3) is True
+    assert adapter._physical_prompt_streaming_admitted(2) is False
+    assert adapter._physical_prompt_streaming_admitted(4) is False
 
 
 def test_qwen_gguf_plugins_select_distinct_mtp2_adapters() -> None:
@@ -1926,6 +1961,50 @@ def test_packed_prompt_hidden_sinks_preserve_ragged_request_offsets() -> None:
         7: [("consume", 2, 0x1000, 2, 3)],
         8: [("consume", 5, 0x1010, 3, 3)],
     }
+
+
+def test_packed_prompt_hidden_sinks_consume_post_output_norm_rows(monkeypatch) -> None:
+    calls: list[tuple[int, ...]] = []
+    monkeypatch.setattr(
+        runner_mod,
+        "gguf_rmsnorm_bf16_f32_weight",
+        lambda src, weight, out, **kwargs: calls.append(
+            (
+                int(src),
+                int(weight),
+                int(out),
+                int(kwargs["rows"]),
+                int(kwargs["hidden_size"]),
+                int(kwargs["stream"]),
+            )
+        ),
+    )
+
+    result = runner_mod._normalize_packed_target_hidden_for_sinks(
+        sinks=(SimpleNamespace(), None, SimpleNamespace()),
+        src_ptr=0x1000,
+        out_ptr=0x2000,
+        rows=7,
+        hidden_size=5120,
+        output_norm_weight_ptr=0x3000,
+        eps=1e-6,
+        stream=5,
+        runtime=object(),
+    )
+
+    assert result == 0x2000
+    assert calls == [(0x1000, 0x3000, 0x2000, 7, 5120, 5)]
+    assert runner_mod._normalize_packed_target_hidden_for_sinks(
+        sinks=(None, None),
+        src_ptr=0x4000,
+        out_ptr=0x5000,
+        rows=2,
+        hidden_size=5120,
+        output_norm_weight_ptr=0x6000,
+        eps=1e-6,
+        stream=0,
+        runtime=object(),
+    ) == 0x4000
 
 
 def test_mtp2_streaming_prompt_success_transfers_one_carried_row_per_request(

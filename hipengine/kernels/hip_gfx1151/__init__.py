@@ -1734,6 +1734,12 @@ GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8
 # complete-wall packet. These capabilities expose adapters and AR fallback only.
 GGUF_SPECDEC2_MTP2_C1 = True
 GGUF_SPECDEC2_MTP2_C4 = True
+# E1a admits the existing exact shifted prompt-streaming path only for the
+# measured Qwen3.8 standard-Q4 production physical-C3 group. Adjacent C2/C4,
+# strict C1, other models/quants/profiles, and peer backends retain replay.
+GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (3,),
+}
 GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT = 65544
 GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT = 65544
 # F4's clean all-candidate, all-workload production gate selects fair:256 at
@@ -2931,6 +2937,7 @@ __all__ = [
     "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
     "GGUF_SPECDEC2_MTP2_C1",
     "GGUF_SPECDEC2_MTP2_C4",
+    "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
     "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
     "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT",
     "GGUF_FUSED_LINEAR_STATE_TRANSFER",

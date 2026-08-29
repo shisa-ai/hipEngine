@@ -360,7 +360,7 @@ DFLASH2_TAP_DEPTHS: tuple[int, ...] = tuple(layer + 1 for layer in DFLASH2_TAP_L
 
 
 class TargetHiddenChunkSink(Protocol):
-    """Request-owned consumer for completed pre-output-norm target chunks."""
+    """Request-owned consumer for completed post-output-norm target chunks."""
 
     request_id: int
     hidden_size: int
@@ -377,6 +377,35 @@ class TargetHiddenChunkSink(Protocol):
     ) -> None: ...
 
     def finish(self, *, request_id: int, total_rows: int, stream: int) -> None: ...
+
+
+def _normalize_packed_target_hidden_for_sinks(
+    *,
+    sinks: Sequence[TargetHiddenChunkSink | None],
+    src_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden_size: int,
+    output_norm_weight_ptr: int,
+    eps: float,
+    stream: int,
+    runtime: Any,
+) -> int:
+    """Return post-output-norm BF16 rows for the shifted NextN seed contract."""
+
+    if not any(sink is not None for sink in sinks):
+        return int(src_ptr)
+    gguf_rmsnorm_bf16_f32_weight(
+        int(src_ptr),
+        int(output_norm_weight_ptr),
+        int(out_ptr),
+        rows=int(rows),
+        hidden_size=int(hidden_size),
+        eps=float(eps),
+        stream=int(stream),
+        runtime=runtime,
+    )
+    return int(out_ptr)
 
 
 def _consume_packed_target_hidden_sinks(
@@ -21104,22 +21133,36 @@ class Qwen35GGUFResidentSession:
                     runtime=runtime,
                     stream=stream,
                 )
-            if any(sink is not None for sink in sink_tuple):
+            streaming_hidden_seed_rows = any(
+                sink is not None for sink in sink_tuple
+            )
+            output_norm_weight_ptr = (
+                self.runner.weights.root("output_norm").allocation().tensor.ptr
+            )
+            if streaming_hidden_seed_rows:
+                streaming_hidden_ptr = _normalize_packed_target_hidden_for_sinks(
+                    sinks=sink_tuple,
+                    src_ptr=int(src.ptr),
+                    out_ptr=int(packed_scratch.norm.ptr),
+                    rows=rows,
+                    hidden_size=self.runner.hidden_size,
+                    output_norm_weight_ptr=int(output_norm_weight_ptr),
+                    eps=self.runner.weights.config.rms_norm_eps,
+                    stream=int(stream),
+                    runtime=runtime,
+                )
                 _consume_packed_target_hidden_sinks(
                     sinks=sink_tuple,
                     request_ids=request_ids,
                     prompt_row_starts=chunk_starts,
                     packed_cu_seqlens=layout.cu_seqlens,
-                    hidden_base_ptr=int(src.ptr),
+                    hidden_base_ptr=streaming_hidden_ptr,
                     hidden_row_nbytes=self.runner.hidden_size * DType.BF16.itemsize,
                     stream=int(stream),
                     finish=bool(finish_target_hidden_sinks),
                 )
             token_host: np.ndarray | None = None
             if sample_output:
-                output_norm_weight_ptr = (
-                    self.runner.weights.root("output_norm").allocation().tensor.ptr
-                )
                 row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
                 if hidden_seed_buf is not None:
                     gguf_rmsnorm_bf16_f32_weight(
@@ -21157,32 +21200,51 @@ class Qwen35GGUFResidentSession:
                         )
                     output_norm_rows = rows
                 else:
-                    # RMSNorm is row-independent. Gather only the raw slot tails
-                    # and normalize the rows that the LM head will consume.
-                    for slot_index in range(int(layout.slot_count)):
-                        final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
-                        if final_row < int(layout.cu_seqlens[slot_index]):
-                            raise RuntimeError(
-                                "packed AR prefill slot has no final row to sample"
+                    # Streaming already normalized every prompt row for the
+                    # shifted NextN seed contract. Reuse those slot tails for
+                    # LM-head sampling; replay-only paths retain tail-only norm.
+                    if streaming_hidden_seed_rows:
+                        for slot_index in range(int(layout.slot_count)):
+                            final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
+                            if final_row < int(layout.cu_seqlens[slot_index]):
+                                raise RuntimeError(
+                                    "packed AR prefill slot has no final row to sample"
+                                )
+                            runtime.memcpy_async(
+                                self._prefill_hidden_a.ptr + slot_index * row_nbytes,
+                                packed_scratch.norm.ptr + final_row * row_nbytes,
+                                row_nbytes,
+                                HipMemcpyKind.DEVICE_TO_DEVICE,
+                                stream,
                             )
-                        runtime.memcpy_async(
-                            packed_scratch.norm.ptr + slot_index * row_nbytes,
-                            src.ptr + final_row * row_nbytes,
-                            row_nbytes,
-                            HipMemcpyKind.DEVICE_TO_DEVICE,
-                            stream,
+                        output_norm_rows = rows
+                    else:
+                        # RMSNorm is row-independent. Gather only the raw slot
+                        # tails and normalize rows consumed by the LM head.
+                        for slot_index in range(int(layout.slot_count)):
+                            final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
+                            if final_row < int(layout.cu_seqlens[slot_index]):
+                                raise RuntimeError(
+                                    "packed AR prefill slot has no final row to sample"
+                                )
+                            runtime.memcpy_async(
+                                packed_scratch.norm.ptr + slot_index * row_nbytes,
+                                src.ptr + final_row * row_nbytes,
+                                row_nbytes,
+                                HipMemcpyKind.DEVICE_TO_DEVICE,
+                                stream,
+                            )
+                        gguf_rmsnorm_bf16_f32_weight(
+                            packed_scratch.norm.ptr,
+                            output_norm_weight_ptr,
+                            self._prefill_hidden_a.ptr,
+                            rows=int(layout.slot_count),
+                            hidden_size=self.runner.hidden_size,
+                            eps=self.runner.weights.config.rms_norm_eps,
+                            stream=stream,
+                            runtime=runtime,
                         )
-                    gguf_rmsnorm_bf16_f32_weight(
-                        packed_scratch.norm.ptr,
-                        output_norm_weight_ptr,
-                        self._prefill_hidden_a.ptr,
-                        rows=int(layout.slot_count),
-                        hidden_size=self.runner.hidden_size,
-                        eps=self.runner.weights.config.rms_norm_eps,
-                        stream=stream,
-                        runtime=runtime,
-                    )
-                    output_norm_rows = int(layout.slot_count)
+                        output_norm_rows = int(layout.slot_count)
                 self.last_packed_prefill_plan["output_norm_rows"] = int(
                     output_norm_rows
                 )
