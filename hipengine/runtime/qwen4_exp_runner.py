@@ -96,6 +96,12 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
     gguf_q8_0_wmma_prefill_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+    gguf_q8_1_mmq_ds4_pack_bf16_d4x3 as gguf_q8_1_mmq_ds4_pack_bf16,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_mmq_selected_prefill import (
+    gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out,
+)
 from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
     qwen4_exp_gather_bf16_lanes,
     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
@@ -1283,6 +1289,21 @@ class Qwen4ExpQSALayerScratch:
                 rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
                 runtime=active_runtime,
             )
+            if os.environ.get(
+                "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL", "0"
+            ) not in {"", "0", "false", "False"} and ffn % 128 == 0:
+                from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_mmq_selected_prefill import (
+                    build_gguf_q5_1_mmq_selected_prefill,
+                    ds4_workspace_nbytes,
+                )
+
+                moe.q5_1_mmq_ds4_workspace = malloc(
+                    ds4_workspace_nbytes(rows * top_k, ffn),
+                    runtime=active_runtime,
+                )
+                moe.q5_1_mmq_library = build_gguf_q5_1_mmq_selected_prefill(
+                    load=True
+                )
             owners.append(moe)
             after_attention = malloc(rows * branches * hidden * 2, runtime=active_runtime)
             owners.append(after_attention)
@@ -1422,6 +1443,21 @@ class Qwen4ExpGDNLayerScratch:
                 rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
                 runtime=active_runtime,
             )
+            if os.environ.get(
+                "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL", "0"
+            ) not in {"", "0", "false", "False"} and ffn % 128 == 0:
+                from hipengine.kernels.hip_gfx1100.quant.gguf_q5_1_mmq_selected_prefill import (
+                    build_gguf_q5_1_mmq_selected_prefill,
+                    ds4_workspace_nbytes,
+                )
+
+                moe.q5_1_mmq_ds4_workspace = malloc(
+                    ds4_workspace_nbytes(rows * top_k, ffn),
+                    runtime=active_runtime,
+                )
+                moe.q5_1_mmq_library = build_gguf_q5_1_mmq_selected_prefill(
+                    load=True
+                )
             owners.append(moe)
             after_attention = malloc(rows * branches * hidden * 2, runtime=active_runtime)
             owners.append(after_attention)
@@ -1552,6 +1588,8 @@ class Qwen4ExpMoEScratch:
     group_lane_to_row: DeviceBuffer
     runtime: HipRuntime
     closed: bool = False
+    q5_1_mmq_ds4_workspace: DeviceBuffer | None = None
+    q5_1_mmq_library: object | None = None
 
     @classmethod
     def allocate(
@@ -1646,6 +1684,9 @@ class Qwen4ExpMoEScratch:
             )
         ):
             free(buffer, runtime=self.runtime)
+        if self.q5_1_mmq_ds4_workspace is not None:
+            free(self.q5_1_mmq_ds4_workspace, runtime=self.runtime)
+            self.q5_1_mmq_ds4_workspace = None
         self.closed = True
 
 
@@ -2829,7 +2870,40 @@ def run_qwen4_exp_moe(
             q5_wmma = production_grouped_moe or os.environ.get(
                 "HIPENGINE_QWEN4_EXP_Q5_1_WMMA", ""
             ) not in {"", "0", "false", "False"}
-            if exact_grouped_down:
+            q5_mmq = (
+                scratch.q5_1_mmq_ds4_workspace is not None
+                and rows >= 2
+                and ffn % 128 == 0
+            )
+            if q5_mmq:
+                down_input_ptr = (
+                    scratch.expert_intermediate.ptr
+                    if exact_grouped_q4_gate
+                    else scratch.expert_gate.ptr
+                )
+                gguf_q8_1_mmq_ds4_pack_bf16(
+                    down_input_ptr,
+                    scratch.q5_1_mmq_ds4_workspace.ptr,
+                    compact,
+                    ffn,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+                gguf_q5_1_mmq_ds4_selected_prefill_bf16_bf16_out(
+                    scratch.q5_1_mmq_ds4_workspace.ptr,
+                    scratch.group_expert_start.ptr,
+                    weights["expert_down"].allocation("raw").tensor.ptr,
+                    scratch.expert_down.ptr,
+                    compact,
+                    experts,
+                    ffn,
+                    hidden,
+                    3,
+                    stream=stream,
+                    runtime=active_runtime,
+                    library=scratch.q5_1_mmq_library,
+                )
+            elif exact_grouped_down:
                 grouped_q5_down = (
                     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out
                     if os.environ.get(
