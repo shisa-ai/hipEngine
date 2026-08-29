@@ -7,7 +7,10 @@ import pytest
 
 import hipengine.runtime.qwen35_gguf_runner as gguf_runner
 from hipengine.core.dtype import DType
-from hipengine.kernels.policy import QWEN35_MOE_H2048_E256_GEOMETRY
+from hipengine.kernels.policy import (
+    QWEN35_DENSE_H5120_GEOMETRY,
+    QWEN35_MOE_H2048_E256_GEOMETRY,
+)
 from hipengine.runtime.gguf_decode_graph import (
     Qwen35GGUFDecodeGraph,
     _decode_graph_kv_layout_admitted,
@@ -554,3 +557,29 @@ def test_decode_graph_capability_uses_runner_resolved_backend(monkeypatch) -> No
 
     assert session._resolve_decode_graph_min_replay_steps() == 128
     assert observed == ["hip_gfx1151"]
+
+
+def test_packed_decode_graph_minimum_uses_model_width_policy(monkeypatch) -> None:
+    identity = (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M")
+
+    def capability(backend: str, name: str, default=None):
+        assert backend == "hip_gfx1151"
+        if name == "GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY":
+            return {identity: {2: 23}}
+        return default
+
+    monkeypatch.setattr(gguf_runner, "backend_package_capability", capability)
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.backend = "auto"
+    session.runner = SimpleNamespace(
+        backend="hip_gfx1151",
+        weights=SimpleNamespace(
+            geometry=identity[0],
+            file_type_name=identity[1],
+        ),
+    )
+    session._decode_graph_min_replay_steps_cache = 128
+
+    assert session.packed_decode_graph_min_replay_steps(1) == 128
+    assert session.packed_decode_graph_min_replay_steps(2) == 23
+    assert session.packed_decode_graph_min_replay_steps(4) == 32

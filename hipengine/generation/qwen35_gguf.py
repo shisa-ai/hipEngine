@@ -7959,14 +7959,23 @@ class Qwen35GGUFResidentModelRunner:
         if graph is None and graph_eligible:
             minimum_fn = getattr(execution_owner, "decode_graph_min_replay_steps", None)
             minimum = minimum_fn() if callable(minimum_fn) else None
+            packed_minimum_fn = getattr(
+                execution_owner,
+                "packed_decode_graph_min_replay_steps",
+                None,
+            )
             remaining = min(
                 max(0, int(row.request.max_tokens) - len(slot.generated_ids))
                 for row, slot in zip(rows, concrete, strict=True)
             )
             scaled_minimum = (
-                None
-                if minimum is None
-                else max(1, (int(minimum) + width - 1) // width)
+                packed_minimum_fn(width)
+                if callable(packed_minimum_fn)
+                else (
+                    None
+                    if minimum is None
+                    else max(1, (int(minimum) + width - 1) // width)
+                )
             )
             capture = getattr(execution_owner, "capture_packed_decode_graph", None)
             if (

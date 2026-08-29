@@ -10672,6 +10672,40 @@ def _gguf_policy_identity(
     return geometry, None if file_type_name is None else str(file_type_name)
 
 
+def _resolve_gguf_packed_decode_graph_min_replay_steps(
+    backend: str,
+    *,
+    geometry: GGUFModelGeometry | None,
+    file_type_name: str | None,
+    physical_rows: int,
+    default_minimum: int,
+) -> int:
+    """Resolve a packed-graph floor from backend model/quant/width policy."""
+
+    rows = int(physical_rows)
+    default_value = int(default_minimum)
+    if rows <= 0 or default_value <= 0:
+        raise ValueError("packed decode graph rows and default minimum must be positive")
+    fallback = max(1, (default_value + rows - 1) // rows)
+    package_policies = backend_package_capability(
+        backend,
+        "GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY",
+        {},
+    )
+    if not isinstance(package_policies, Mapping):
+        raise RuntimeError("backend packed decode graph floor policies must be a mapping")
+    policy = package_policies.get((geometry, file_type_name), {})
+    if not isinstance(policy, Mapping):
+        raise RuntimeError("backend packed decode graph floor policy must be a mapping")
+    raw = policy.get(rows)
+    if raw is None:
+        return fallback
+    minimum = int(raw)
+    if minimum <= 0:
+        raise RuntimeError("backend packed decode graph floor must be positive")
+    return minimum
+
+
 def _resolve_gguf_decode_graph_submission_transport(
     backend: str,
     *,
@@ -16013,6 +16047,25 @@ class Qwen35GGUFResidentSession:
         """Return this backend package's admitted graph break-even, if any."""
 
         return self._decode_graph_min_replay_steps_cache
+
+    def packed_decode_graph_min_replay_steps(
+        self,
+        physical_rows: int,
+    ) -> int | None:
+        """Return the model/quant/width-qualified packed graph break-even."""
+
+        default = self._decode_graph_min_replay_steps_cache
+        if default is None or self.runner is None or self.runner.weights is None:
+            return None
+        identity = _gguf_policy_identity(self.runner.weights)
+        geometry, file_type_name = (None, None) if identity is None else identity
+        return _resolve_gguf_packed_decode_graph_min_replay_steps(
+            str(self.runner.backend),
+            geometry=geometry,
+            file_type_name=file_type_name,
+            physical_rows=int(physical_rows),
+            default_minimum=int(default),
+        )
 
     def _resolve_decode_graph_min_replay_steps(self) -> int | None:
         """Resolve backend graph capability once after resident initialization."""
