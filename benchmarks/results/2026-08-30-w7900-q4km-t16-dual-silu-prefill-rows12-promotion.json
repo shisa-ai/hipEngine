@@ -1,7 +1,7 @@
 {
   "schema": 2,
   "kind": "gguf_prefill_route_promotion",
-  "status": "accepted_promoted",
+  "status": "superseded",
   "created_at": "2026-08-29T22:42:06.284083+00:00",
   "source_commit_base": "b47ab9d8bff71ae2c10386b557495777e84313ee",
   "source_commit_note": "candidate measured in the working tree at this base; see the linked worklog entry for the promoting commit",
@@ -140,5 +140,7 @@
   "related": {
     "analysis": "worklog/entries/20260829T215206.066388Z-lhl-w7900-qwen38-submodule-parity-1921c9.md",
     "kernel_catalog": "docs/KERNELS.md Q4/Q5/Q6 T16 selected row"
-  }
+  },
+  "superseded_by": "2026-08-30-w7900-q4km-t16-dual-silu-prefill-rows33-promotion.json",
+  "decision": "Superseded the same day: the rows12 floor also captures the 16/32-row captured target-verify groups that share this FFN stage, and MTP C8 regressed (8.2% aggregate, +11.9% wall across 7/7 same-cycle prompts, 3/3 replications). Shipped floor is 33; see 2026-08-30-w7900-q4km-t16-dual-silu-prefill-rows33-promotion.json. All measurements above are retained."
 }
