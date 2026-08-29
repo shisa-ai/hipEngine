@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- **2026-08-29** — W7900 Qwen3.8-27B `Q4_K_M` P8 closure: explicit physical C2/context<=95/D24 passes **252/252** current-source full-logit rows bit-exact, repeat/permutation/tasks/lifecycle/fallback/drain, plus strict K1-K3 controls; acceptance is explained across all six required dimensions. Automatic remains K0. Artifact: `benchmarks/results/2026-08-29-w7900-qwen38-q4km-p8-c2-correctness-closure.json`.
+
 - **2026-08-29** — W7900 Qwen3.8-27B GGUF `Q4_K_M` explicit physical K2: qualified rows6-multiple verifier chunks lift C3 **21.549 -> 32.776 tok/s (+52.10%)** and C4 **24.314 -> 36.141 tok/s (+48.64%)**; both remain below AR, so automatic stays K0. Artifact: `benchmarks/results/2026-08-29-w7900-qwen38-q4km-rows6-multiple-rowtiles-retained.json`.
 
 - **2026-08-29** — W7900 Qwen3.8-27B GGUF `Q4_K_M` explicit physical C2/K2 D24: rows6 group padding lifts **1.0450x -> 1.1902x** true-AR (+13.9%); every category >= 1.1329x; acceptance and committed tokens bit-identical. K1 0.5180x -> 1.0866x. Artifact: `benchmarks/results/2026-08-29-w7900-qwen38-q4km-c2-rows6-group-padding.json`.

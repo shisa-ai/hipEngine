@@ -670,17 +670,13 @@ P8 current punchlist (20260829):
       0.167 -> 0.667 and 1.1480x -> 1.1700x; default no-cooldown path is
       output-identical (acceptance equal to four decimals) and its retained
       economics stand. Cooldown policy stays off (1.1700x < 1.1890x at D24).
-- [ ] Complete the P8 production numerics/determinism/lifecycle packet for
-      C2/K2 before any automatic promotion; automatic stays K0. Progress
-      (worklog 20260829T075637): cross-commit determinism proven (byte-identical
-      MTP/AR streams across `76d94b2ab` -> `6b580ad25`), cross-width
-      differential 20/20 C2 == C1 in both production and strict, strict C2/K2
-      control 0.7214x / 81.42%, and the lifecycle gate green on
-      tokens/memory/cancellation/no-serial-fallback with only c1-KV byte
-      identity failing under the wrong protocol (needs
-      `--allow-c1-arithmetic-drift` + numerical quality artifact per the
-      ZBOOK chain). Remaining: quality artifact, lifecycle-with-drift,
-      permutation/neighbor isolation, long-context task gate.
+- [x] Complete the P8 production numerics/determinism/lifecycle packet for
+      explicit C2/K2; automatic stays K0 pending P9-P12. Cross-commit
+      determinism is byte-identical (`76d94b2ab` -> `6b580ad25`), cross-width
+      differential is 20/20 C2 == C1 in production and strict, and clean
+      current-source strict C2 K1/K2/K3 controls are 10/10 exact/engaged at
+      0.4813x/0.6895x/0.5234x AR with acceptance
+      0.9167/0.8029/0.6139.
 - [x] Strict-teacher R6 verifier numerics gate passed and retained
       (KL mean 5.2e-05 / max 5.8e-04 vs 1e-03/0.05; top-1 240/240 across
       category/shape/transition; 3/3 deterministic repeats) - commit
@@ -688,15 +684,36 @@ P8 current punchlist (20260829):
 - [x] Batch-route quality gate passed bit-exact (current_package_direct,
       widths 3,5,6,7: KL 0.0, top-1 1.0) and satisfies the lifecycle gate's
       quality-artifact contract.
-- [ ] Lifecycle gate under the drift protocol: all runtime checks green
-      (tokens, state/KV accepted, drain, reuse, no fallback); fails only the
-      embedded sparse-mask expectation vs the occupancy-adaptive dense
-      regrouping after cancellation (worklog 20260829T082552). Resolve which
-      side is normative, then rerun. Permutation/neighbor isolation and the
-      long-context task gate remain.
+- [x] Lifecycle under the drift protocol passes after separating stable
+      scheduler/KV slots from the manifest-declared dense ephemeral execution
+      rows (`bf1b26b58`): C13 -> C11 -> C13 masks are exactly 8+5 -> 8+3 ->
+      8+5; tokens, externally authorized state/KV, cancellation/refill session
+      reuse, declared widths, no-serial-fallback, allocator recovery, and drain
+      all pass.
+- [x] Current-source comprehensive production gate passes all **252** physical
+      full-logit rows bit-exact, three-repeat live/teacher determinism,
+      neighbor replacement + row permutation, all ten paired task verdicts,
+      strict fallback/profile manifests, candidate-D2H-zero, zero recovery,
+      ownership, and drain. The selected graph policy is eager-only, so no
+      graph/eager arithmetic pair exists to reconcile.
+- [x] Acceptance is reported by K, draft depth, category, train/heldout,
+      prior-cycle transition, and each prompt/lane request. The concentration
+      after prior rejects (especially code K2/K3), the cooldown discriminator,
+      and exact position/hidden/KV/full-logit/isolation gates identify a
+      by-definition-hard correction-token policy effect rather than persistent
+      provider-state corruption.
+- [x] Long contexts are explicitly out of physical-target scope
+      (`GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT=95`) and fail closed to K0.
+      A ten-task 1K/4K diagnostic executes zero candidate cycles and is
+      per-slot AR/MTP equal; 9/10 cells are same-slot exact. One 4,089-token
+      Japanese heldout has a deterministic one-token slot-local production-AR
+      near-tie and reconverges immediately. Retain that pre-existing K0/AR
+      diagnostic as a limitation; it does not authorize or block the bounded
+      physical-C2 target candidate.
 
-Exit: an explicit-only, correctness-qualified physical C2 baseline and an
-explained acceptance curve. Automatic remains K0.
+P8 exit achieved: explicit-only, correctness-qualified physical C2 baseline
+and explained acceptance curve. Automatic remains K0. Evidence:
+[`P8 closure`](../benchmarks/results/2026-08-29-w7900-qwen38-q4km-p8-c2-correctness-closure.json).
 
 W7900 after-economics across C1-C8 (20260829, worklog 20260829T091847, artifact
 `2026-08-29-w7900-qwen38-q4km-after-c1c8-economics.json`): AR scales 21.88 ->
