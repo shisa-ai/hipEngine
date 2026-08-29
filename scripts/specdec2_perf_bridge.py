@@ -1342,12 +1342,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             temperature=float(child_request.temperature),
                             top_p=float(child_request.top_p),
                         )
-                        return tuple(
+                        chunks = tuple(
                             llm.stream_speculative_mtp_detailed(
                                 str(child_request.prompts[0]),
                                 sampling,
                             )
                         )
+                        if not chunks:
+                            raise BridgeContractError(
+                                "partitioned_c1 explicit stream returned no chunks"
+                            )
+                        return (chunks[-1],)
 
                     driver = service.inner
                     direct_generator = driver.inner
