@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next Implementation Campaign
 
-Status: **active performance bring-up — declared gfx1151 Q4 functionality passes, but same-host llama.cpp parity is the binding objective; no alternate-quant or feature expansion outranks base AR prefill/decode**
+Status: **bounded 512/1K functionality gates are closed (F0–F10); production decode reaches 98.1% of same-host llama.cpp HIP; closing the 3.7x prefill dataflow gap and making MTP economics positive are the binding objectives — no alternate-quant or feature expansion outranks them**
 
 This campaign brings the open-weight `Qwen/Qwen3.8-Flash-Next` checkpoint to
 hipEngine as a torch-free, registry-composed, text-generation path first, then
@@ -23,6 +23,77 @@ consistent with [`PLAN.md`](PLAN.md); numerical and evidence rules remain
 normative in [`TESTING.md`](TESTING.md),
 [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
 [`KERNELS.md`](KERNELS.md), and [`BENCHMARK.md`](BENCHMARK.md).
+
+---
+
+## 0. Campaign checkpoint (2026-08-29)
+
+Consolidated position after the production stack landed through `a2ba2ecf6`.
+All rows are same-host `zbook` / gfx1151 / `UD-Q4_K_XL` unless stated. Strict
+is the exact-bit default; production is the certified T2 profile.
+
+### 0.1 Where we are
+
+| Row | Strict | Production | Beat first: llama.cpp HIP, same host + GGUF | Stretch: llama.cpp Vulkan |
+| --- | ---: | ---: | ---: | ---: |
+| p508 prefill | 51.220 first / 58.466 steady | **73.361** | **274.996** | 316.380 |
+| p1006/p1012 prefill | 55.046 | **71.834** | **284.485** | 290.450 |
+| tg32 decode | 13.880 | **15.543** (98.1% of HIP) | **15.848** | 18.716 |
+| Natural 16K prefill | 44.973 | — | ≥100 tok/s unlocks the 64K rung | — |
+| MTP vs true AR | 0.955x aggregate (opt-in; 10/10 exact, 84.28% acceptance) | — | ≥1.0x to promote; ≥1.5x real target | external MTP fork ~2.7x |
+
+Production = cooperative Q4 gate/up + Q5_1 down MoE prefill on layers 27–47,
+dense-Q8 WMMA prefill on 32–47, and one-plane Q8_1 DP4A Q4 decode on 43
+calibrated layers `0,2,5,6,8,9,10,11,13–47` (`1,3,4,7,12` stay exact). The
+combined 450-row/three-repeat gate passes at KL mean/p95/p99/max
+`2.72e-4/1.40e-3/4.00e-3/5.77e-3`, 447/450 top-1. Matched pp508 kernel time:
+llama.cpp `1.798 s / 5,543 launches` versus hipEngine `8.753 s / 4,933` —
+**4.9x kernel time at fewer launches: prefill is a dataflow gap, not a
+launch-count gap.**
+
+### 0.2 What we learned
+
+1. **Mine dataflow, not launches.** hipEngine already issues fewer kernels
+   than llama.cpp at pp508 yet spends 4.9x longer in them. The gap lives in
+   MMQ/cooperative grid geometry (weight reuse across the batch, quantized
+   activation paths), which is exactly where Vulkan's `mul_mat_id` wins.
+2. **Numerical admissibility is front-loaded by layer.** Every cooperative
+   prefill layer 0–26 fails the final-prompt mean/p95 screen individually;
+   27–47 is the certified maximal suffix. Decode DP4A fails exactly
+   `1,3,4,7,12`. Cheap screens guide; only complete 450-row packets promote.
+3. **Exact thread contractions beat naive packing.** Mapping logical lanes
+   onto fewer physical threads while preserving the declared reduction tree
+   (Q5_1 t128→t64, Q4_K physical64, fused weighted down) kept every bit exact
+   and won repeatedly. Naive widening (pack8, Q4 pack2, residual Q8_1x2)
+   regressed decode each time and was removed with measured evidence (pack2:
+   8.312 vs 11.515 tok/s baseline).
+4. **The greedy-identity discipline works.** AR≡MTP generated-ID equality,
+   450-row full-vocab KL packets, physical c2 exactness, and teardown-zero
+   checks caught every bad candidate before promotion; nothing regressed
+   silently.
+5. **Vulkan beats HIP on this host at every depth** (same-host llama.cpp rows
+   plus the external fork below). HIP parity is therefore the binding target
+   and Vulkan the ceiling hypothesis, with Vulkan geometry as the shape proof
+   for our own HIP ports.
+6. **External fork hypotheses to validate in-tree** (see §1.2): distinct-stream
+   MTP hyper-connection combiner (0.87–0.96 acceptance versus 0.47 for the
+   naive mean), n-max 6 with verify batches kept ≤8, GPU radix top-k, an
+   incremental pooled-key QSA cache (+17% at 32k), gathered decode attention
+   (~2,300 selected KV rows), GDN conv-path concat contiguity (463→26 ms/chunk),
+   skinny-m inject routing, and mat-vec epilog fusion (3,550→2,800
+   dispatches/token).
+
+### 0.3 Next units (priority order)
+
+1. **Prefill dataflow:** close the 4.9x pp508 kernel-time gap — port/validate
+   the radix top-k, GDN concat, m=4 inject routing, and permute-free scoring
+   ideas against the matched llama.cpp HIP trace.
+2. **MTP economics:** audit the draft combiner's stream handling, sweep
+   n-max/verify batching, and measure acceptance on the full mtp-bench suite;
+   promote at ≥1.0x AR and target ≥1.5x.
+3. **Decode depth:** incremental pooled-key QSA cache plus gathered
+   selected-K/V decode under the `KVLiveSpans` ABI; lift natural 16K prefill
+   ≥100 tok/s to re-open the 64K rung.
 
 ---
 
@@ -75,6 +146,7 @@ committed.
 | llama.cpp PR #27739 | `dfa0c0fee2b704fd2ac228d365d40502c3006c40`; MTP design reference, used through EngramHalo's Qwen4Exp port rather than as the target-text/quantizer authority |
 | EngramHalo.cpp | `Aristo94/EngramHalo.cpp@4ff3affc2ac5861f7dda42bcf5ff653c776b816f`; PR #27742-based gfx1151 reference. MTP runtime `0f1c3e2ef41117033d91a83d7634fca4dfe12107`, MTP converter `2cc66f08ca03c6e3f385ec15412f92ad6d490794`; performance patches are ideas to validate in-tree, not inherited evidence. |
 | EngramHalo Q8_0 MTP sidecar | `EasiiX/Qwen3.8-Flash-Next-MTP-Strix-Halo-GGUF@6f7900648b1c6b14f067a182c640e47971e9ab35`; one 4,137,429,088-byte GGUF, SHA-256 `9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d`; strict 34-tensor inventory/shape/qtype map passes; execution remains unqualified |
+| apepojken llama.cpp fork | `github.com/apepojken/llama.cpp` default branch `qwen4exp-spec-mtp` (PR #27742 base + speculative-decode rollback fixes, native MTP head with distinct-stream combiner, 4-pass 8-bit radix top-k, incremental pooled-key cache, gathered decode attention, GDN concat fix, epilog fusion). Not yet commit-pinned: clone and freeze before porting. Reported rates (Vulkan/RADV, `UD-Q3_K_XL`, 50.4 tok/s decode at 0.96 acceptance, 338 tok/s prefill at 32k) are cross-runtime target lines only, not evidence. Sidecar: `jockevaupptaget/Qwen3.8-Flash-Next-MTP-GGUF` (4.1 GB Q8_0) |
 | vLLM PR #53896 | `vllm-project/vllm@2a4cd640ff1a61b66124ddbaaf02a73781f7295a`; paged raw/persistent-compressed QSA caches, GPU scoring/top-k/expansion, split-k sparse attention, MTP step-0 index reuse, and AMD path reference |
 | vLLM PR #53899 | `vllm-project/vllm@95dc96d1d012a25ff5c3823a1e77197c8dae4654`; PLE CPU-offload protocol/reference; known TP1 warmup deadlock is explicitly not inherited |
 | SGLang PR #36497 | `sgl-project/sglang@7c66045d71f067c1c5da2b85baad3c47d9a19cb7`; persistent compressed-QSA cache, fused exact index prep/compression, fast top-k, sparse attention, PLE offload, HC and MTP reference |
