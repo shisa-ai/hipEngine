@@ -1295,6 +1295,7 @@ class Qwen35GGUFNextNExecutor:
             output_hidden_ptr=self._final_hidden_buf.ptr,
             logits_ptr=self._logits_buf.ptr,
             score_output=True,
+            synchronize=False,
         )
         self._publish_batch_consumed_positions(ids, pos)
         token_ids = self._device_top1_rows(rows)
