@@ -658,6 +658,7 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_bf16_kernel(
 // so one lane's K16 B fragment is contiguous and compiles to vector LDS loads.
 // Every output retains the same FP16 operand, K16 WMMA sequence, FP32
 // accumulator, and BF16 store.
+template <int OUT_TILES_PER_BLOCK_ = 3, int WAVES_PER_BLOCK_ = 4>
 __launch_bounds__(128, 1)
 __global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
     const uint16_t* __restrict__ x,
@@ -666,9 +667,9 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
     int64_t rows,
     int64_t in_features,
     int64_t out_features) {
-  constexpr int OUT_TILES_PER_BLOCK = 3;
+  constexpr int OUT_TILES_PER_BLOCK = OUT_TILES_PER_BLOCK_;
   constexpr int ROW_TILES_PER_WAVE = 4;
-  constexpr int WAVES_PER_BLOCK = 4;
+  constexpr int WAVES_PER_BLOCK = WAVES_PER_BLOCK_;
   constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
   constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
   const int64_t col_tile_base =
@@ -1809,7 +1810,8 @@ int launch_q4_t16_dense_wmma_smallm_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
-int launch_q4_t16_dense_wmma_prefill_shared_b_bf16(
+template <int Q4_SHARED_OUT_TILES = 3, int Q4_SHARED_WAVES = 4>
+int launch_q4_t16_dense_wmma_prefill_shared_b_impl(
     const uint16_t* x,
     const uint8_t* tiles,
     uint16_t* out,
@@ -1822,16 +1824,17 @@ int launch_q4_t16_dense_wmma_prefill_shared_b_bf16(
       out_features <= 0 || (out_features % T16_COLS) != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  constexpr int Q4_DENSE_TILE_COLS = 3 * T16_COLS;
-  constexpr int Q4_DENSE_TILE_ROWS = 4 * 4 * 16;
-  const dim3 block(128);
+  constexpr int Q4_DENSE_TILE_COLS = Q4_SHARED_OUT_TILES * T16_COLS;
+  constexpr int Q4_DENSE_TILE_ROWS = Q4_SHARED_WAVES * 4 * 16;
+  const dim3 block(Q4_SHARED_WAVES * 32);
   const dim3 grid(
       static_cast<unsigned int>(
           (out_features + Q4_DENSE_TILE_COLS - 1) / Q4_DENSE_TILE_COLS),
       static_cast<unsigned int>(
           (rows + Q4_DENSE_TILE_ROWS - 1) / Q4_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
-      gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel,
+      (gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<
+          Q4_SHARED_OUT_TILES, Q4_SHARED_WAVES>),
       grid,
       block,
       0,
@@ -2162,7 +2165,31 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
-  return launch_q4_t16_dense_wmma_prefill_shared_b_bf16(
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<3, 4>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<2, 2>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<2, 4>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
