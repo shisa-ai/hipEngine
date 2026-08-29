@@ -32,10 +32,12 @@ should be removed or collapsed.
   `HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS` were superseded for the named production
   profile by the faster admitted MMQ stack, but `PRODUCTION_MOE_PREFILL` is
   re-admitted 2026-08-29 as the certified transport for the WMMA-MoE27
-  suffix (see `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-wmma-moe27-production.json`).
-  Remove the env transport once the WMMA-MoE27 selection is owned by the
-  named profile manifest; keep it for artifact reproduction/bisection until
-  then, and retain the registered strict-owner fallbacks.
+  suffix and now owned by the named production profile manifest
+  (`3b7a0644…`, see
+  `benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-wmma-moe27-production.json`).
+  The binder keeps the env transport as the request binding surface; fold it
+  into request-local profile state together with the other Qwen4Exp bridges
+  and retain the registered strict-owner fallbacks.
 - `HIPENGINE_QWEN4_EXP_Q4_DP4A64{,_LAYERS}` remains an internal named-profile
   bridge for calibrated decode layers `0,2,5,6,8,9,10,11,13–47`. Remove the
   process-global transport with the MMQ bridges once Qwen4Exp profile state is

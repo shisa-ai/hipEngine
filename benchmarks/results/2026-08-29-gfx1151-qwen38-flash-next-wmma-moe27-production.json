@@ -112,5 +112,45 @@
     "c2_physical": "/tmp/qwen4exp_wmma_moe27_c2_physical.py",
     "p508_p1012_paired": "/tmp/qwen4exp_wmma27_p1012_only.py + p508 legs from /tmp/qwen4exp_wmma27_paired_both.py",
     "ladder_screen": "/tmp/qwen4exp_wmma_layer_ladder_screen.py"
+  },
+  "profile_manifest_fold_in": {
+    "date": "2026-08-30",
+    "selected_manifest_sha256": "3b7a0644b2d05a94a5585f370ab80627b2b05bf1a5b3f7c2a9d5c1b5e31cf13f",
+    "strict_manifest_sha256": "9e1a1ea645de4901f8029b0c91fdc40e3ca5c82483c815f21f0d9d096925d9a5",
+    "supersedes_selected_manifest": "6ec035b7c08e747ba24bfede677352493f2291d10730905c616ed0fe6706d35c",
+    "selections": [
+      {
+        "layer": "moe_linear",
+        "scope": "prefill_rows_ge2_layers27_47_gate_up",
+        "selected_variant": "selected_dual_wmma_prefill_compact_bf16_bf16_out",
+        "strict_fallback_variant": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out"
+      },
+      {
+        "layer": "moe_linear",
+        "scope": "prefill_rows_ge2_layers27_47_down",
+        "selected_variant": "selected_grouped_wmma_prefill_compact_bf16_bf16_out",
+        "strict_fallback_variant": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out"
+      }
+    ],
+    "public_profile_smoke": {
+      "command": "uv run python /tmp/qwen4exp_wmma_moe27_profile_smoke.py",
+      "production": {
+        "fell_back_to_strict": false,
+        "logits_sha256": "602db140118abc78ca0885f668a21e131b01f5a6efac80060802684004a9f9e9",
+        "tok_s_cold": 68.42985958780554,
+        "route_env": {
+          "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1",
+          "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "0",
+          "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL": "0",
+          "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL": "1"
+        },
+        "tracked_after_close": 0
+      },
+      "strict_after_production_same_process": {
+        "logits_sha256": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48",
+        "unchanged_from_prior_manifest": true
+      }
+    },
+    "tests": "uv run pytest tests/test_qwen4_exp_profiles.py tests/test_qwen4_exp_model_runner.py tests/test_qwen4_exp_runner_gdn.py tests/test_qwen4_exp_gdn_hip.py -q"
   }
 }

@@ -31,7 +31,7 @@ normative in [`TESTING.md`](TESTING.md),
 Consolidated position after the prefill MMQ campaign and peer-GDN scan. All
 rows are same-host `zbook` / gfx1151 / `UD-Q4_K_XL` unless stated. Strict is
 the exact-bit profile; production is the certified T2 profile with manifest
-`6ec035b7…` (strict `9e648eb8…`).
+`3b7a0644…` (strict `9e648eb8…`).
 
 ### 0.1 Where we are
 
@@ -905,7 +905,7 @@ Binding implementation order:
    Its complete gate passes mean/p95/p99/max KL
    `3.16e-4/1.61e-3/4.25e-3/9.92e-3`, 448/450 top-1, all scopes, exact
    state/repeat/c2, and deterministic task generation. Production/strict
-   manifest hashes are `6ec035b7…` / `9e648eb8…`; omitted routes stay strict.
+   manifest hashes are `3b7a0644…` / `9e648eb8…`; omitted routes stay strict.
 7. **Keep MTP separate.** It may improve serving economics only under the full
    anti-gaming suite and same-protocol no-MTP denominator; it cannot mask the
    base AR or 5× prefill gap.
@@ -980,7 +980,7 @@ CPU top-512, replay/rollback, and teardown pass. Current 64K is not rerun becaus
 Explicit gfx1151 `production` selects guarded dense-Q8 MMQ, Q5_1 down MMQ
 layers 32–47, Q4_K dual MMQ layers 35–47, compact peer-GDN global layers
 35–47, and DP4A Q4 gate/up+SiLU on calibrated decode layers
-`0,2,5,6,8,9,10,11,13–47`. Manifest `6ec035b7...` falls back to strict
+`0,2,5,6,8,9,10,11,13–47`. Manifest `3b7a0644...` falls back to strict
 `9e648eb8...`. The combined 450-row gate passes mean/p95/p99/max KL
 `3.16e-4/1.61e-3/4.25e-3/9.92e-3`, **448/450 top-1**, exact state/repeat/c2,
 and deterministic task generation. Direct paired p508/p1012 improves
