@@ -86,16 +86,22 @@ validation, no single-prompt tuning). Kernel/math changes carry their
 
 ### P1 — attribution: engine-only deltas under a flag/commit-controlled protocol
 
-- [ ] P1.1 Protocol parity audit: recover the exact per-row server flags and
-  harness boundaries for all six standardized rows (batch/ubatch/context/
-  threads/poll/cache flags), then publish a flag-matched control matrix
-  separating config deltas from code deltas. The mainline-Vulkan 87.43 vs
-  forks ~136-139 C1-prefill cluster is a suspected flag artifact and must be
-  resolved before any porting decision.
-- [ ] P1.2 Commit bisect: Laurent `d222767c..c28d538d` and Nathan
-  `add19980..0eb52805` on the standardized matrix under P1.1-matched flags;
-  attribute each prefill/AR/MTP delta to a commit or a flag; record port/
-  non-port verdicts with source file + commit per AGENTS.md lineage rules.
+- [x] P1.1 Protocol parity audit — done 2026-08-29
+  ([`artifact`](../benchmarks/results/2026-08-29-parity-p1-protocol-attribution.json)).
+  All six frozen rows ran **identical flags** (`-b 2048 -ub 512 --no-mmap -c
+  8192 -np 8`); only device selectors differ. The mainline-Vulkan prefill
+  deficit (514 vs ~323-332 ms/request C1) is code/backend, not config. Suite
+  prompts are 35-67 tokens, so C1-C8 prefill rows measure **fixed per-request
+  serving cost** (GPU floor ~66 ms/prompt); hipEngine sits at ~628
+  ms/request vs the ~323-332 ms winner cluster.
+- [x] P1.2 Commit bisect — closed 2026-08-29 by pinned-diff classification +
+  stock-HIP control (same artifact); full rebuild bisect declined as
+  not-evidence-bearing. Every fork delta active on standard `Q4_K_M` is
+  Vulkan coopmat matmul tuning (LDS pad/bank conflicts/wave32/f16 operands,
+  GDN concat-transpose tiling) — Vulkan catching up to HIP. Stock HIP reaches
+  the prefill winner cluster unforked (within 1.6-12.8% per cell), so **no
+  fork kernel port is required for hipEngine parity**; port candidates park
+  under P2.3 unless a below-serving-boundary wall is proven.
 - [ ] P1.3 hipEngine serving-path attribution: quantify the C1 prefill
   71.5 tok/s server vs ~1294 tok/s isolated LCP leaf gap (ownership,
   activation, API boundary, packing, timing owner) with a measured breakdown

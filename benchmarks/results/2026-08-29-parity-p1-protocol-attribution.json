@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "completed",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": ["P1.1", "P1.2"],
+  "title": "Parity P1 protocol audit and engine-delta attribution",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151"
+  },
+  "p11_protocol_parity": {
+    "method": "Recovered the per-row server_command recorded by the standardized harness (llama_q4_c1c8.py) from /home/lhl/.local/state/hipengine-external-survey/results/q4-standard/*.json.",
+    "finding": "All six frozen rows ran IDENTICAL serving flags: -ngl 999 -fa on -b 2048 -ub 512 --no-mmap -c 8192 -np 8 (ar/prefill) plus --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.0 (mtp). Only device selectors differ (-dev Vulkan0 / -dev ROCm0 / -fit off).",
+    "conclusion": "The prefill C1 gap between mainline Vulkan (87.43 tok/s) and the fork/stock-HIP cluster (135.4-139.0) is NOT a flag artifact; it is code/backend. No flag-matched re-run is required for attribution.",
+    "row_commands": {
+      "mainline_vulkan": "repos/llama.cpp-mainline/build-vulkan/bin/llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 999 -fa on -b 2048 -ub 512 --no-mmap -c 8192 -np 8 [--spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.0]",
+      "stock_hip": "/home/lhl/llama.cpp/llama.cpp-hip/build/bin/llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -dev ROCm0 -ngl 99 -fa on -fit off -b 2048 -ub 512 --no-mmap -c 8192 -np 8 [+mtp flags]",
+      "laurent_vulkan": "repos/laurent/build-vulkan/bin/llama-server [same core flags] (ar/prefill: -ngl 999)",
+      "nathan_vulkan": "repos/nathan/build-vulkan/bin/llama-server [same core flags]",
+      "q38rocm_vulkan": "repos/q38rocm/engine/bin/llama-server -dev Vulkan0 -ngl 99 [same core flags] (+--no-spec-mtp-strict-qwen on mtp arm)",
+      "hipengine": "scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --max-tokens 1 (prefill arm) / 24 (decode arms) --batch-window-ms 50 --warmup-arms-per-width 2"
+    },
+    "prompt_scale": {
+      "prompt_tokens_total_width1": 449,
+      "per_prompt_tokens_range": [35, 67],
+      "note": "Common-suite prompts are tiny. C1 'prefill' rows measure fixed per-request serving cost, not bulk prefill throughput. GPU floor for one ~45-token prompt is ~one weight sweep (~66 ms at 256 GB/s over 17.1 GB)."
+    },
+    "per_request_fixed_cost_ms": {
+      "nathan_vulkan_c1": 323,
+      "laurent_vulkan_c1": 332,
+      "q38rocm_vulkan_c1": 329,
+      "stock_hip_c1": 328,
+      "mainline_vulkan_c1": 514,
+      "hipengine_c1": 628,
+      "source": "sweep wall_seconds x 10 requests (complete-wall protocol); llama.cpp internal prompt_ms is 257-320 of each ~300-357 ms wall at the winner cluster."
+    }
+  },
+  "p12_engine_delta_attribution": {
+    "method": "Commit-range diff classification (no rebuild bisect) plus the stock-HIP control row, justified because flags are identical and stock HIP (no fork changes) already sits at the winner cluster.",
+    "laurent_active_on_q4km": [
+      "2cef9744 vulkan: fix LDS bank conflict in the coopmat matmul tile stride (prefill matmul)",
+      "f97c0e6f vulkan: driver-gate the coopmat LDS stride pad (prefill matmul)",
+      "e98e64c3 vulkan: f16 B operand and tile probes for coopmat1 matmuls (prefill matmul)",
+      "1674aa4b vulkan: tiled concat-transpose for the delta-net conv state (GDN prefill+decode)",
+      "22ed5342 vulkan: gate the UMA bulk readback on host-cached mappings (decode host-copy)"
+    ],
+    "laurent_inactive_on_q4km": [
+      "8610c8b3/e282dfd6/f0a2bd6b ROCmFPx ports (model has no FPx tensors in this arm)",
+      "211abf6a IQ3_S mat-vec (tensor type absent)",
+      "20c9a7d9 swiglu split fuse (off by default)"
+    ],
+    "nathan_active_on_q4km": [
+      "25c45fea vulkan: quantised dense coopmat pipelines at wave32 (prefill matmul)",
+      "baf6360b vulkan: coopmat matmul LDS pad tuned per path on RADV (prefill matmul)",
+      "3ca6f21f vulkan: RADV coopmat pad2 driver gate"
+    ],
+    "nathan_inactive_on_q4km": [
+      "7b63cbd6/7b6c6133 DeepSeek V4 sparse prefill/KV gather (architecture absent)"
+    ],
+    "verdict": "Every fork delta that is active on standard Q4_K_M is Vulkan cooperative-matrix matmul tuning (LDS padding/bank conflicts/wave32/f16 operands) plus GDN concat-transpose tiling - i.e. Vulkan catching up to the HIP backend. Stock HIP reaches the prefill winner cluster without any fork change (C1-C8: 136.8/172.0/180.1/192.5/217.4/241.1/242.1/274.1 vs winners 139.0/194.1/180.1/192.5/217.4/243.5/245.6/296.8; within 1.6-12.8% per cell).",
+    "port_implication": "No fork kernel port is required for hipEngine (HIP-native) prefill parity. The prefill gap is hipEngine's per-request serving cost (628 ms vs ~323-332 ms winner cluster), consistent with the P1.3 hypothesis. Fork port candidates remain parked for P2.3 only if a below-serving-boundary wall is later proven.",
+    "mtp_note": "At C1, fork MTP (21.0-21.3) matches current mainline (21.0); the older stock-HIP pin lags (17.6) but wins C8 (54.8). MTP deltas between rows are small relative to hipEngine's 3.0x gap; the E-phase campaign remains the MTP vehicle.",
+    "bisect_decision": "Full rebuild bisect of both forks declined as not evidence-bearing for this campaign: identical flags + stock-HIP control already separate config from code, and no active-on-Q4_K_M fork change is a hipEngine port candidate."
+  },
+  "sources": [
+    "/home/lhl/.local/state/hipengine-external-survey/results/q4-standard/*.json (frozen rows, server_command fields)",
+    "/home/lhl/.local/state/hipengine-external-survey/repos/{laurent,nathan} git ranges d222767c..c28d538d, add19980..0eb52805",
+    "benchmarks/results/2026-08-28-gfx1151-qwen38-external-reproduction-survey.json"
+  ]
+}
