@@ -76,6 +76,12 @@ _Q4_DENSE_UNEQUAL_DUAL_WMMA_BF16 = (
 _Q5_DENSE_WMMA_BF16 = (
     "hipengine_gguf_q5_k_t16_wmma_prefill_bf16_bf16_out"
 )
+_Q5_DENSE_WMMA_LOWVGPR_BF16 = (
+    "hipengine_gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out"
+)
+_Q5_DENSE_WMMA_LOWVGPR48_BF16 = (
+    "hipengine_gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out"
+)
 _EXPERT_MAJOR_COMP_SYMBOLS = {
     "gguf_q4_k_t16": "hipengine_gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
     "gguf_q6_k_t16": "hipengine_gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
@@ -688,6 +694,68 @@ def gguf_q5_k_t16_wmma_prefill_bf16_bf16_out(
     )
 
 
+def gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+) -> None:
+    """Launch the low-VGPR 16-column Q5T16 owner (32-row blocks)."""
+
+    del tile_m, tile_n
+    _launch_dense_t16(
+        _Q5_DENSE_WMMA_LOWVGPR_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+) -> None:
+    """Launch the low-VGPR 16-column Q5T16 owner (48-row blocks)."""
+
+    del tile_m, tile_n
+    _launch_dense_t16(
+        _Q5_DENSE_WMMA_LOWVGPR48_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def _make_expert_major_comp_wrapper(quant: str):
     symbol = _EXPERT_MAJOR_COMP_SYMBOLS[quant]
 
@@ -1132,6 +1200,8 @@ __all__ = [
     "gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q5_k_t16_wmma_prefill_bf16_bf16_out",
+    "gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out",
+    "gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out",
     "gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
     "gguf_q6_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q6_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
