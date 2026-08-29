@@ -517,10 +517,13 @@ def test_gfx1151_backend_admits_dense_q6_qmicro_planar_exact_routes() -> None:
         "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS",
         (),
     ) == ("attn_qkv",)
-    assert GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS == 512
+    assert GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS == 96
     assert GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES == frozenset({(5_120, 10_240)})
-    assert GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS == 512
-    assert GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES == frozenset({(17_408, 5_120)})
+    assert GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS == 256
+    assert (
+        GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES
+        == gfx1151_backend.GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    )
     assert (
         resolve(
             backend="hip_gfx1151",
@@ -617,17 +620,19 @@ def test_gfx1151_q6_standard_prefill_shared4_is_qkv_shape_only(
     )
     fn = gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
     fn(1, 2, 3, 512, 5_120, 10_240, stream=7)
-    fn(1, 2, 3, 256, 5_120, 10_240, stream=8)
-    fn(1, 2, 3, 1_024, 5_120, 5_120, stream=9)
+    fn(1, 2, 3, 96, 5_120, 10_240, stream=8)
+    fn(1, 2, 3, 95, 5_120, 10_240, stream=9)
+    fn(1, 2, 3, 1_024, 5_120, 5_120, stream=10)
 
     assert calls == [
         ("shared4", (1, 2, 3, 512, 5_120, 10_240), {"stream": 7}),
-        ("retained", (1, 2, 3, 256, 5_120, 10_240), {"stream": 8}),
-        ("retained", (1, 2, 3, 1_024, 5_120, 5_120), {"stream": 9}),
+        ("shared4", (1, 2, 3, 96, 5_120, 10_240), {"stream": 8}),
+        ("retained", (1, 2, 3, 95, 5_120, 10_240), {"stream": 9}),
+        ("retained", (1, 2, 3, 1_024, 5_120, 5_120), {"stream": 10}),
     ]
 
 
-def test_gfx1151_q6_planar_prefill_shared4_is_wide_shape_only(
+def test_gfx1151_q6_planar_prefill_shared4_covers_physical_shapes_from_row256(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
@@ -651,14 +656,18 @@ def test_gfx1151_q6_planar_prefill_shared4_is_wide_shape_only(
     fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out
     fn(1, 2, 3, 512, 17_408, 5_120, stream=7)
     fn(1, 2, 3, 256, 17_408, 5_120, stream=8)
-    fn(1, 2, 3, 1_024, 5_120, 1_024, stream=9)
-    fn(1, 2, 3, 512, 5_120, 248_320, stream=11)
+    fn(1, 2, 3, 256, 5_120, 6_144, stream=9)
+    fn(1, 2, 3, 255, 5_120, 6_144, stream=10)
+    fn(1, 2, 3, 1_024, 5_120, 1_024, stream=11)
+    fn(1, 2, 3, 512, 5_120, 248_320, stream=12)
 
     assert calls == [
         ("shared4", (1, 2, 3, 512, 17_408, 5_120), {"stream": 7}),
-        ("retained", (1, 2, 3, 256, 17_408, 5_120), {"stream": 8}),
-        ("retained", (1, 2, 3, 1_024, 5_120, 1_024), {"stream": 9}),
-        ("retained", (1, 2, 3, 512, 5_120, 248_320), {"stream": 11}),
+        ("shared4", (1, 2, 3, 256, 17_408, 5_120), {"stream": 8}),
+        ("shared4", (1, 2, 3, 256, 5_120, 6_144), {"stream": 9}),
+        ("retained", (1, 2, 3, 255, 5_120, 6_144), {"stream": 10}),
+        ("retained", (1, 2, 3, 1_024, 5_120, 1_024), {"stream": 11}),
+        ("retained", (1, 2, 3, 512, 5_120, 248_320), {"stream": 12}),
     ]
 
 
@@ -712,7 +721,7 @@ def test_gfx1151_q6_planar_prefill_lowvgpr_bands_route_by_rows_and_shape(
             fn(1, 2, 3, rows, in_f, out_f)
     for rows, in_f, out_f in (
         (16, 5_120, 6_144),
-        (81, 6_144, 5_120),
+        (145, 6_144, 5_120),
         (45, 5_120, 1_024),
         (512, 17_408, 5_120),
     ):
@@ -781,7 +790,7 @@ def test_gfx1151_q5_prefill_lowvgpr_bands_and_registry_scope(
             fn(1, 2, 3, rows, in_f, out_f)
     for rows, in_f, out_f in (
         (16, 5_120, 6_144),
-        (81, 6_144, 5_120),
+        (145, 6_144, 5_120),
         (45, 5_120, 1_024),
     ):
         fn(1, 2, 3, rows, in_f, out_f)
@@ -820,6 +829,150 @@ def test_gfx1151_q5_prefill_lowvgpr_bands_and_registry_scope(
         )
         is gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out
     )
+
+
+def test_gfx1151_highrow_prefill_bands_route_by_family_and_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    symbols = {
+        # Q4 owners
+        "gguf_q4_k_t16_wmma_prefill_bf16_bf16_out": "q4_plain",
+        "gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out": "q4_lv",
+        "gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out": "q4_lv48",
+        "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out": "q4_shared",
+        # Q5 owners
+        "gguf_q5_k_t16_wmma_prefill_bf16_bf16_out": "q5_plain",
+        "gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out": "q5_lv",
+        "gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out": "q5_lv48",
+        # Q6 planar owners
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out": "q6_plain",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out": "q6_lv",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out": "q6_lv48",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out": "q6_shared4",
+    }
+    for name, tag in symbols.items():
+        monkeypatch.setattr(
+            gfx1151_backend,
+            name,
+            (lambda tag: lambda *a, **k: calls.append(tag))(tag),
+        )
+
+    shapes = sorted(gfx1151_backend.GGUF_Q4_T16_DENSE_LOWM_SHAPES)
+
+    def assert_routes(fn, rows: tuple[int, ...], expected: dict[tuple[int, int], str]):
+        for row_count in rows:
+            for shape in shapes:
+                fn(1, 2, 3, row_count, *shape)
+                assert calls.pop() == expected[shape]
+        assert not calls
+
+    q4 = gfx1151_backend.gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
+    assert_routes(
+        q4,
+        (81, 96),
+        {
+            (5_120, 6_144): "q4_lv48",
+            (5_120, 10_240): "q4_lv48",
+            (5_120, 12_288): "q4_lv",
+            (5_120, 17_408): "q4_lv48",
+            (6_144, 5_120): "q4_lv48",
+            (17_408, 5_120): "q4_lv",
+        },
+    )
+    assert_routes(
+        q4,
+        (97, 128),
+        {
+            (5_120, 6_144): "q4_plain",
+            (5_120, 10_240): "q4_lv",
+            (5_120, 12_288): "q4_lv48",
+            (5_120, 17_408): "q4_shared",
+            (6_144, 5_120): "q4_lv48",
+            (17_408, 5_120): "q4_lv",
+        },
+    )
+    assert_routes(
+        q4,
+        (129, 144),
+        {
+            (5_120, 6_144): "q4_lv48",
+            (5_120, 10_240): "q4_shared",
+            (5_120, 12_288): "q4_lv48",
+            (5_120, 17_408): "q4_shared",
+            (6_144, 5_120): "q4_lv48",
+            (17_408, 5_120): "q4_lv48",
+        },
+    )
+    assert_routes(q4, (145,), {shape: "q4_shared" for shape in shapes})
+
+    q5 = gfx1151_backend.gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
+    assert_routes(
+        q5,
+        (81, 96),
+        {
+            (5_120, 6_144): "q5_lv48",
+            (5_120, 10_240): "q5_lv48",
+            (5_120, 12_288): "q5_lv",
+            (5_120, 17_408): "q5_lv48",
+            (6_144, 5_120): "q5_lv48",
+            (17_408, 5_120): "q5_lv",
+        },
+    )
+    assert_routes(
+        q5,
+        (97, 128),
+        {
+            (5_120, 6_144): "q5_plain",
+            (5_120, 10_240): "q5_lv48",
+            (5_120, 12_288): "q5_lv48",
+            (5_120, 17_408): "q5_plain",
+            (6_144, 5_120): "q5_lv48",
+            (17_408, 5_120): "q5_lv48",
+        },
+    )
+    assert_routes(q5, (129, 144), {shape: "q5_lv48" for shape in shapes})
+    assert_routes(q5, (145,), {shape: "q5_plain" for shape in shapes})
+
+    q6 = gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out
+    assert_routes(
+        q6,
+        (81, 96),
+        {
+            (5_120, 6_144): "q6_lv48",
+            (5_120, 10_240): "q6_lv48",
+            (5_120, 12_288): "q6_lv",
+            (5_120, 17_408): "q6_lv48",
+            (6_144, 5_120): "q6_lv48",
+            (17_408, 5_120): "q6_lv",
+        },
+    )
+    assert_routes(
+        q6,
+        (97, 128),
+        {
+            (5_120, 6_144): "q6_plain",
+            (5_120, 10_240): "q6_shared4",
+            (5_120, 12_288): "q6_plain",
+            (5_120, 17_408): "q6_shared4",
+            (6_144, 5_120): "q6_lv48",
+            (17_408, 5_120): "q6_lv",
+        },
+    )
+    assert_routes(
+        q6,
+        (129, 144),
+        {
+            (5_120, 6_144): "q6_shared4",
+            (5_120, 10_240): "q6_shared4",
+            (5_120, 12_288): "q6_shared4",
+            (5_120, 17_408): "q6_shared4",
+            (6_144, 5_120): "q6_lv48",
+            (17_408, 5_120): "q6_lv48",
+        },
+    )
+    assert_routes(q6, (145, 255), {shape: "q6_plain" for shape in shapes})
+    assert_routes(q6, (256, 536), {shape: "q6_shared4" for shape in shapes})
 
 
 def test_gfx1151_backend_scopes_dense_down_residual_fusions() -> None:
@@ -1107,8 +1260,8 @@ def test_gfx1151_backend_routes_admitted_lowm_rows_to_single_wave_wmma(
         for in_features, out_features in sorted(lowm_shapes - lowvgpr80_shapes):
             selector(1, 2, 3, rows, in_features, out_features)
     for rows, in_features, out_features in (
-        (81, 5_120, 17_408),
-        (96, 5_120, 12_288),
+        (145, 5_120, 17_408),
+        (145, 5_120, 12_288),
         (45, 5_120, 1_024),
         (45, 4_096, 4_096),
     ):
