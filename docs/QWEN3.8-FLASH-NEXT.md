@@ -37,14 +37,15 @@ the exact-bit profile; production is the certified T2 profile with manifest
 
 | Row | Strict | Production / certified opt-ins | Beat first: llama.cpp HIP, same host + GGUF | Stretch: llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| p508 prefill | 61.40 (chunk 512) | **80.82** final+WMMA-MoE27 | **294.1–298.6** master HIP | 332.1–333.8 master Vulkan |
-| p1012 prefill | 60.20 (chunk 512) | **79.73** final+WMMA-MoE27 | **307.2–318.9** master HIP | 308.4–310.5 master Vulkan |
+| p508 prefill | 61.40 (chunk 512) | **~86–90** +iu8-35 (paired −10.5%) | **294.1–298.6** master HIP | 332.1–333.8 master Vulkan |
+| p1012 prefill | 60.20 (chunk 512) | **~85–89** +iu8-35 (paired −11.7%) | **307.2–318.9** master HIP | 308.4–310.5 master Vulkan |
 | tg32 decode | 13.880 | **15.543** (98.1% of HIP) | **15.848** | 18.716 |
 | Natural 16K prefill | 47.989 (chunk 512, gate passed) | — | ≥100 tok/s unlocks the 64K rung | — |
 | MTP vs true AR | 0.955x aggregate (opt-in; 10/10 exact, 84.28% acceptance) | — | ≥1.0x to promote; ≥1.5x real target | external MTP fork ~2.7x |
 
-Production = guarded dense-Q8 MMQ, compact f16-WMMA MoE (Q4_K dual gate/up
-+ Q5_1 down) on layers 27–47, and Q8_1 DP4A decode on calibrated layers
+Production = guarded dense-Q8 MMQ, compact f16-WMMA MoE on layers 27–47
+with the iu8-WMMA gate/up kernel (exact q + 3 residual planes) on 35–47,
+and Q8_1 DP4A decode on calibrated layers
 `0,2,5,6,8,9,10,11,13–47`; layers 0–26 keep the strict exact owners. The
 WMMA-MoE27 packet (450 rows, three repeats) passes at KL
 mean/p95/p99/max `2.79e-4/1.53e-3/3.49e-3/5.98e-3`, 446/450 top-1, all
