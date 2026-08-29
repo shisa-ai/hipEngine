@@ -1,0 +1,256 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_after_c1c8_economics_and_extraction_plan",
+  "created_at": "2026-08-29T09:18:37.488371+00:00",
+  "status": "complete",
+  "passed": true,
+  "performance_claim": true,
+  "source": {
+    "head": "1b0c41096e394d7bba36414fa09125b7df3de8c5",
+    "campaign_commits": [
+      "a3722550c rows6 padding",
+      "6b580ad25 packed-decode hidden fix"
+    ],
+    "before_artifacts": [
+      "/home/lhl/hipEngine-qwen38-q4-bench/benchmarks/results/2026-08-28-w7900-qwen38-q4km-canonical-rebaseline.json",
+      "benchmarks/results/2026-08-29-w7900-qwen38-q4km-c2-rows6-group-padding.json"
+    ]
+  },
+  "hardware": {
+    "host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_index": 0,
+    "arch": "gfx1100",
+    "rocm": "7.2.4"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "D": 24,
+    "budget": 2,
+    "timing": "complete wall incl prefill, barrier-to-last",
+    "note": "C1 row uses the resident-capacity-1 rerun; the cap-8 sweep cell differs by scheduling capacity"
+  },
+  "ar_curve": {
+    "C1": 21.882,
+    "C2": 30.473,
+    "C3": 35.509,
+    "C4": 39.169,
+    "C5": 41.012,
+    "C6": 42.552,
+    "C7": 43.547,
+    "C8": 44.354
+  },
+  "mtp_k2_curve": {
+    "C1": {
+      "ar_tok_s": 21.882,
+      "mtp_k2_tok_s": 29.28,
+      "mtp_vs_ar": 1.3381,
+      "acceptance": 0.9068,
+      "exact": 10,
+      "engaged": 10
+    },
+    "C2": {
+      "ar_tok_s": 30.473,
+      "mtp_k2_tok_s": 36.305,
+      "mtp_vs_ar": 1.1914,
+      "acceptance": 0.8029,
+      "exact": 10,
+      "engaged": 10
+    },
+    "C3": {
+      "ar_tok_s": 35.509,
+      "mtp_k2_tok_s": 21.549,
+      "mtp_vs_ar": 0.6069,
+      "acceptance": 0.6782,
+      "exact": 10,
+      "engaged": 10
+    },
+    "C4": {
+      "ar_tok_s": 39.169,
+      "mtp_k2_tok_s": 24.314,
+      "mtp_vs_ar": 0.6207,
+      "acceptance": 0.6755,
+      "exact": 10,
+      "engaged": 10
+    },
+    "C5": {
+      "ar_tok_s": 41.012,
+      "mtp_k2_tok_s": 24.911,
+      "mtp_vs_ar": 0.6074,
+      "acceptance": 0.7179,
+      "exact": 10,
+      "engaged": 10
+    },
+    "C6": {
+      "ar_tok_s": 42.552,
+      "mtp_k2_tok_s": 27.052,
+      "mtp_vs_ar": 0.6357,
+      "acceptance": 0.7164,
+      "exact": 10,
+      "engaged": 10
+    },
+    "C7": {
+      "ar_tok_s": 43.547,
+      "mtp_k2_tok_s": 22.925,
+      "mtp_vs_ar": 0.5264,
+      "acceptance": 0.6767,
+      "exact": 10,
+      "engaged": 10
+    },
+    "C8": {
+      "ar_tok_s": 44.354,
+      "mtp_k2_tok_s": 24.221,
+      "mtp_vs_ar": 0.5461,
+      "acceptance": 0.6755,
+      "exact": 10,
+      "engaged": 10
+    }
+  },
+  "c1_capacity1": {
+    "ar_tok_s": 21.872,
+    "mtp_tok_s": 32.446,
+    "ratio": 1.4834,
+    "acceptance": 0.9068
+  },
+  "prefill_warm_median_tok_s": {
+    "512": 870.8,
+    "1024": 909.9,
+    "4096": 888.2
+  },
+  "before_after": {
+    "C1_mtp_ratio": {
+      "before": 1.4882,
+      "after": 1.4834
+    },
+    "C2_mtp_ratio": {
+      "before": 1.045,
+      "after": 1.1914
+    },
+    "C2_mtp_tok_s": {
+      "before": 32.078,
+      "after": 36.305
+    },
+    "C1_mtp_tok_s": {
+      "before": 32.383,
+      "after": 32.446
+    },
+    "prefill": "decode/MTP-side commits do not touch prefill paths; W7900 lane row established (XTX-lane README rows are a different host product, not comparable)"
+  },
+  "llamacpp_same_host": {
+    "source": "2026-08-28 canonical rebaseline (one shape, complete wall)",
+    "hipengine_vs_current_mtp": 1.2642,
+    "hipengine_vs_laurent_mtp": 1.1962,
+    "hipengine_vs_current_ar": 1.0469,
+    "hipengine_vs_laurent_ar": 1.11,
+    "caveat": "llama.cpp decode-only medians (AR ~28.9, MTP ~47-49) are boundary-mismatched with complete-wall rows; the complete-wall ratios are the fair comparison; a W7900 C1-C8 llama.cpp matrix port remains open"
+  },
+  "microbenchmark_k2_padded_group_cycle_ms": {
+    "proposal": 13.3,
+    "target_verify_r6": 22.5,
+    "accept_sync": 30.4,
+    "provider_update": 2.9,
+    "commit": 0.8,
+    "accounted": 70.0,
+    "unaccounted_wall_share": "~50% prefill (D24) + scheduler gaps"
+  },
+  "loss_ranking": [
+    {
+      "rank": 1,
+      "item": "accept stage 30.4 ms",
+      "cause": "full device_synchronize absorbs target tail + commit scatter + provider repair",
+      "headroom": "largest single recoverable block; event-based wait or overlap could cut most of it"
+    },
+    {
+      "rank": 2,
+      "item": "C3+ verify off-tile (R9-R24 on shared-B 256-row fallback)",
+      "cause": "gfx1100 admits only rows6; gfx1151 admits {6,8,9,12}",
+      "headroom": "MTP C3-C8 collapse 0.53-0.64x with acceptance ~0.68 held; admitting R8/R9/R12 rowtiles is the C3+ unlock"
+    },
+    {
+      "rank": 3,
+      "item": "proposal 13.3 ms vs <1 ms weights floor",
+      "cause": "NextN provider forward overhead (launch/sync per depth, R2 packing)",
+      "headroom": "~12 ms/cycle"
+    },
+    {
+      "rank": 4,
+      "item": "verify 22.5 ms vs ~17.4 ms weights-bound floor",
+      "cause": "~77% weight-pass efficiency",
+      "headroom": "~5 ms/cycle"
+    }
+  ],
+  "production_extraction_punchlist": [
+    {
+      "item": "admit Q4 verifier rowtile rows {8,9,12} on gfx1100 (gfx1151 precedent)",
+      "gate": "R6 numerics evaluator already passed two orders under thresholds; rerun at R8/R12 + perf gate",
+      "impact": "C3/K2 (R9), C4/K2 (R12), C2/K3 (R8) MTP unlock"
+    },
+    {
+      "item": "Q8_T16_DECODE_ROWTILE_MIN_ROWS 0->4 and PAIR_ROWTILE 0->8",
+      "gate": "native-AR width gate on W7900",
+      "impact": "AR decode at C4-C8"
+    },
+    {
+      "item": "Q4/Q5/Q6 SELECTED_PAIRREUSE_MIN_ROWS 0->8",
+      "gate": "numerics + perf",
+      "impact": "decode projections"
+    },
+    {
+      "item": "Q5_SELECTED_QWEN_TILE8 False->True",
+      "gate": "numerics + perf",
+      "impact": "selected-down projections"
+    },
+    {
+      "item": "GDN_INDEXED_SINGLETON_DECODE False->True",
+      "gate": "independent measurement",
+      "impact": "singleton AR decode recurrence"
+    }
+  ],
+  "survey_port_recs": [
+    "standardized C1-C8 matrix vs llama.cpp HIP (current + Laurent) on W7900: hipEngine side done here; llama.cpp side pending",
+    "Laurent built-in MTP K3 as the broad MTP comparator",
+    "q38rocm strict K4 C1 (38.85 tok/s on gfx1151) as a C1 technique reference (custom FP4 model; not standard-Q4_K_M rankable)",
+    "Mike concurrency routing confirms MTP-at-low-C; our W7900 curve: MTP wins C1-C2 only on current tiles",
+    "do not chase: Kyanite warm-replay, DFlash2 adaptive sequential (invalid/unsafe per survey)"
+  ],
+  "gates": {
+    "all_exact": true,
+    "all_engaged": true
+  },
+  "raw_sources": [
+    {
+      "name": "c_sweep",
+      "path": "/tmp/gfx1100-qwen38-after-mtp-k2-c1c8-d24.json",
+      "sha256": "527eae146c5a1bb4f075dc70cbe3a36608fe387dd2ef6799df5012bc1cf7bc48",
+      "retained_in_git": false
+    },
+    {
+      "name": "c1_cap1",
+      "path": "/tmp/gfx1100-qwen38-after-c1-cap1-k2-d24.json",
+      "sha256": "4fd34239414ad74cafb31f2072f05db7a1aab839544df6a29b9437f6931263b3",
+      "retained_in_git": false
+    },
+    {
+      "name": "prefill_512",
+      "path": "/tmp/gfx1100-qwen38-after-prefill-512.json",
+      "sha256": "871ed586a97a60ace0d91bd53fabb2461a5e48f6ddacd9012440c49c23c3b76a",
+      "retained_in_git": false
+    },
+    {
+      "name": "prefill_1024",
+      "path": "/tmp/gfx1100-qwen38-after-prefill-1024.json",
+      "sha256": "50866c0ab28f5d887c2475662448e9ccadbacf056bdae3f9ad8fe5dcd077bae5",
+      "retained_in_git": false
+    },
+    {
+      "name": "prefill_4096",
+      "path": "/tmp/gfx1100-qwen38-after-prefill-4096.json",
+      "sha256": "126da47b61eaf818c090b6d7b7504f81adca936429d1c98d125f8f4f19f6ec46",
+      "retained_in_git": false
+    }
+  ]
+}

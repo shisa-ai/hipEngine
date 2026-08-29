@@ -698,6 +698,28 @@ P8 current punchlist (20260829):
 Exit: an explicit-only, correctness-qualified physical C2 baseline and an
 explained acceptance curve. Automatic remains K0.
 
+W7900 after-economics across C1-C8 (20260829, worklog 20260829T091847, artifact
+`2026-08-29-w7900-qwen38-q4km-after-c1c8-economics.json`): AR scales 21.88 ->
+44.35 tok/s (C1-C8) with all 80 cells exact; MTP K2 explicit wins only at
+C1 (1.4834x at capacity 1; 1.3381x in the cap-8 sweep cell) and C2 (1.1914x)
+and collapses to 0.53-0.64x at C3-C8 with acceptance held at ~0.68 because the
+R9-R24 verifies ride the shared-B 256-row fallback (gfx1100 admits only
+rows6; gfx1151 admits {6,8,9,12}). Prefill W7900 lane: 870.8 / 909.9 /
+888.2 tok/s at 512/1K/4K. Same-host llama.cpp complete-wall comparison
+(2026-08-28 rebaseline): hipEngine leads MTP by 1.2642x vs current and
+1.1962x vs Laurent, AR by 1.047/1.110x. Remaining-loss ranking: (1) accept
+stage 30.4 ms full-device sync, (2) C3+ off-tile verify, (3) proposal
+13.3 ms vs <1 ms weights floor, (4) verify 22.5 ms vs ~17.4 ms weights floor.
+Production-extraction punchlist (each behind its own numerics+perf gate):
+admit Q4 verifier rowtile rows {8,9,12} (the R6 gate already passed two
+orders under thresholds; unlocks C3/K2 R9, C4/K2 R12, C2/K3 R8),
+Q8_T16 decode rowtile/pair min-rows, Q4/Q5/Q6 selected pairreuse min-rows,
+Q5 selected tile8, and the indexed singleton decode. Survey ports for W7900:
+the standardized C1-C8 llama.cpp HIP matrix (hipEngine side measured;
+llama.cpp side pending), Laurent built-in MTP K3 as the broad comparator, and
+q38rocm strict K4 C1 as a technique reference; Kyanite warm-replay and
+DFlash2-adaptive sequential results stay excluded as invalid/unsafe.
+
 #### P9 — Decision controls, cycle budget, and measured attribution
 
 - [ ] Screen correctness-qualified C2 K1/K2/K3 on the complete prompt suite
