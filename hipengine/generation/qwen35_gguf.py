@@ -6114,6 +6114,17 @@ class Qwen35GGUFResidentModelRunner:
         adapter = self._resolved_mtp2_adapter()
         return None if adapter is None else adapter.capability(request_semantics)
 
+    def speculative_post_reject_cooldown(self, request_ids):
+        adapter = self._resolved_mtp2_adapter()
+        resolve = (
+            None if adapter is None else getattr(adapter, "post_reject_cooldown", None)
+        )
+        if not callable(resolve):
+            return tuple(False for _ in request_ids)
+        return tuple(
+            bool(flag) for flag in resolve(tuple(int(value) for value in request_ids))
+        )
+
     def speculative_graph_available(self, work) -> bool:
         del work
         adapter = self._resolved_mtp2_adapter()
