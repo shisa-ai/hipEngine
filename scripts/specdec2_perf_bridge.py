@@ -622,6 +622,8 @@ def _run_partitioned_c1(
     service: Any,
     request: GenerationRequest,
     logical_concurrency: int,
+    *,
+    run_one: Any | None = None,
 ) -> tuple[tuple[Any, ...], tuple[float, ...]]:
     """Run due logical requests as consecutive C1 Generation-2 transactions.
 
@@ -637,7 +639,11 @@ def _run_partitioned_c1(
     request_walls: list[float] = []
     for _ in range(width):
         started = time.perf_counter()
-        rows = _run_service_route(service, request, 1, staged=True)
+        rows = (
+            _run_service_route(service, request, 1, staged=True)
+            if run_one is None
+            else tuple(run_one(request))
+        )
         request_walls.append(time.perf_counter() - started)
         if len(rows) != 1:
             raise BridgeContractError(
@@ -745,6 +751,7 @@ def _run_arm(
     concurrency: int,
     ledger: _StageLedger,
     legacy_native_supported: bool = True,
+    partitioned_c1_runner: Any | None = None,
 ) -> dict[str, Any]:
     if arm == "legacy_native" and (
         int(concurrency) != 1 or not bool(legacy_native_supported)
@@ -771,6 +778,7 @@ def _run_arm(
                 service,
                 request,
                 concurrency,
+                run_one=partitioned_c1_runner,
             )
         elif arm == "legacy_native":
             outputs = _run_legacy_native(direct_generator, direct_config, request)
@@ -1159,7 +1167,7 @@ def _validate_args(args: argparse.Namespace) -> None:
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     _validate_args(args)
-    from hipengine import LLM
+    from hipengine import LLM, SamplingParams
     from hipengine.generation.qwen35_gguf import _gguf_mtp_required_tensor_names
 
     prompts = _selected_prompts(args)
@@ -1325,6 +1333,22 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         max_sequence_length=int(args.max_sequence_length)
                     )
                     service = llm._get_text_generator()
+
+                    def partitioned_c1_runner(
+                        child_request: GenerationRequest,
+                    ) -> tuple[Any, ...]:
+                        sampling = SamplingParams(
+                            max_tokens=int(child_request.max_tokens),
+                            temperature=float(child_request.temperature),
+                            top_p=float(child_request.top_p),
+                        )
+                        return tuple(
+                            llm.stream_speculative_mtp_detailed(
+                                str(child_request.prompts[0]),
+                                sampling,
+                            )
+                        )
+
                     driver = service.inner
                     direct_generator = driver.inner
                     direct_config, _block_id, _required = _gguf_mtp_required_tensor_names(
@@ -1382,6 +1406,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                     legacy_native_supported=(
                                         args.execution_profile == "strict"
                                     ),
+                                    partitioned_c1_runner=partitioned_c1_runner,
                                 )
                                 payload["warmups"].append(
                                     {
@@ -1460,6 +1485,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                         legacy_native_supported=(
                                             args.execution_profile == "strict"
                                         ),
+                                        partitioned_c1_runner=partitioned_c1_runner,
                                     )
                                     cell["arms"][str(arm)] = result
                                     payload["completed_arms"] = int(
