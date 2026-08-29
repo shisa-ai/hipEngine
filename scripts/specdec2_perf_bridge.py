@@ -1169,6 +1169,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     _validate_args(args)
     from hipengine import LLM, SamplingParams
     from hipengine.generation.qwen35_gguf import _gguf_mtp_required_tensor_names
+    from scripts.gguf_mtp_c1c8_server_bench import _install_diagnostic_plan
 
     prompts = _selected_prompts(args)
     repo_gate = _repo_provenance()
@@ -1239,6 +1240,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "service_capacity": bridge_service_capacity(args.concurrency),
         "candidate_budgets": list(args.budgets),
         "partitioned_c1_control": bool(args.partitioned_c1_control),
+        "partitioned_c1_admission": (
+            "benchmark-only Generation-2 diagnostic plan"
+            if args.partitioned_c1_control
+            else None
+        ),
         "max_tokens": int(args.max_tokens),
         "runs": int(args.runs),
         "warmup": bool(args.warmup),
@@ -1332,6 +1338,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     llm.prepare(
                         max_sequence_length=int(args.max_sequence_length)
                     )
+                    if args.partitioned_c1_control:
+                        _install_diagnostic_plan(llm)
                     service = llm._get_text_generator()
 
                     def partitioned_c1_runner(
