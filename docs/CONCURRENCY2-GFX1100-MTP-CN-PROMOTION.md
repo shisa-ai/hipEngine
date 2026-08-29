@@ -605,6 +605,28 @@ aggregate 1.10x floor alone needs 5.00%. These are screen rows, not profile or
 performance claims. Evidence:
 [`repaired K1-K3 screen`](../benchmarks/results/2026-08-28-w7900-qwen38-q4km-repaired-c2-k1-k3-screen.json).
 
+Stage/tile/acceptance diagnosis of the same repaired tree localizes both
+blockers. `_read_target_batch_accept` opens with a full
+`runtime.device_synchronize()`, so the accept stage absorbs all pending GPU
+work: per request-cycle it costs K1 165.6 ms, K2 44.4 ms, K3 178.8 ms (62.1% /
+26.0% / 52.9% of wall) while the target forward itself is only 23-28 ms.
+gfx1100 admits only `GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS = {6}`; K1's R4,
+K3's R8, and K2's ragged 2-5-row cycles fall back to the shared-B 256-row
+padded tile at ~5.1x cost (within-run fit: 30.7 + 126.7 x ragged-cycle
+fraction ms). That is the whole K1 paradox: 91.67% acceptance on an off-tile
+R4 verify. The C2 code acceptance drop is concurrency-caused, not
+profile-caused: C1 strict and production acceptance are identical
+(0.9365/0.8485/0.8788/0.9375), while C2/K2 code is 0.7292. Conditioning on
+the previous cycle shows code position-1 acceptance collapsing only after a
+rejected cycle: K2 0.4706 (n=17), K3 0.3043 (n=46), while K1 recovers at 1.000
+via k0 catchups (23 observed) and C1/K2 full accepts hold 0.9615. The reject
+path restores the provider root snapshot
+(`restore_request_root_state`: conv/recurrent states + cursors) and re-seeds
+from verify hidden rows, unlike the healthy target-hidden k0-catchup repair.
+D24 walls are ~50% prefill, so these ratios understate steady-state decode
+gains. Evidence:
+[`stage/tile/acceptance diagnosis`](../benchmarks/results/2026-08-28-w7900-qwen38-q4km-c2-stage-tile-acceptance-diagnosis.json).
+
 Exit: an explicit-only, correctness-qualified physical C2 baseline and an
 explained acceptance curve. Automatic remains K0.
 

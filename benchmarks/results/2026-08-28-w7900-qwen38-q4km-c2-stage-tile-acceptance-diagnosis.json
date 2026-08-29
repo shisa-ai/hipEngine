@@ -1,0 +1,420 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_c2_stage_tile_acceptance_diagnosis",
+  "created_at": "2026-08-29T03:35:04.518604+00:00",
+  "status": "complete",
+  "passed": true,
+  "performance_claim": false,
+  "source": {
+    "head": "cc98357b4d47b35609ae04128986f56d541c6653",
+    "screen_artifact": "benchmarks/results/2026-08-28-w7900-qwen38-q4km-repaired-c2-k1-k3-screen.json"
+  },
+  "hardware": {
+    "host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_index": 0,
+    "arch": "gfx1100",
+    "rocm": "7.2.4"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "C": 2,
+    "D": 24,
+    "budgets": [
+      1,
+      2,
+      3
+    ],
+    "runs": 1,
+    "oracle": "none (telemetry only)"
+  },
+  "runs": {
+    "k1": {
+      "ratio": 0.518,
+      "acceptance_all": 0.9167,
+      "acceptance_by_category": {
+        "code": 0.9333,
+        "general_en": 0.9318,
+        "general_ja": 0.875,
+        "mixed_ja_en": 0.913
+      },
+      "req_cycles": 228,
+      "stage_ms_per_req_cycle": {
+        "proposal_ms": 6.9,
+        "target_ms": 27.7,
+        "accept_ms": 165.6,
+        "provider_update_ms": 3.6,
+        "selected_commit_ms": 0.8
+      },
+      "stage_share_of_wall_pct": {
+        "proposal_ms": 2.6,
+        "target_ms": 10.4,
+        "accept_ms": 62.1,
+        "provider_update_ms": 1.4,
+        "selected_commit_ms": 0.3
+      },
+      "target_row_histogram": {
+        "4": 228
+      },
+      "conditional_pos1_acceptance": {
+        "non_code": {
+          "first": {
+            "n": 12,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 113,
+            "pos1_acceptance": 0.885
+          },
+          "reject": {
+            "n": 13,
+            "pos1_acceptance": 1.0
+          }
+        },
+        "code": {
+          "first": {
+            "n": 8,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 76,
+            "pos1_acceptance": 0.9211
+          },
+          "reject": {
+            "n": 6,
+            "pos1_acceptance": 1.0
+          }
+        }
+      }
+    },
+    "k2": {
+      "ratio": 1.045,
+      "acceptance_all": 0.8029,
+      "acceptance_by_category": {
+        "code": 0.7292,
+        "general_en": 0.8182,
+        "general_ja": 0.8485,
+        "mixed_ja_en": 0.9062
+      },
+      "req_cycles": 175,
+      "stage_ms_per_req_cycle": {
+        "proposal_ms": 13.3,
+        "target_ms": 23.2,
+        "accept_ms": 44.4,
+        "provider_update_ms": 2.9,
+        "selected_commit_ms": 0.8
+      },
+      "stage_share_of_wall_pct": {
+        "proposal_ms": 7.8,
+        "target_ms": 13.6,
+        "accept_ms": 26.0,
+        "provider_update_ms": 1.7,
+        "selected_commit_ms": 0.5
+      },
+      "target_row_histogram": {
+        "2": 1,
+        "3": 8,
+        "4": 8,
+        "5": 2,
+        "6": 156
+      },
+      "conditional_pos1_acceptance": {
+        "non_code": {
+          "first": {
+            "n": 12,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 66,
+            "pos1_acceptance": 0.9394
+          },
+          "partial": {
+            "n": 18,
+            "pos1_acceptance": 1.0
+          },
+          "reject": {
+            "n": 4,
+            "pos1_acceptance": 1.0
+          }
+        },
+        "code": {
+          "first": {
+            "n": 8,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 45,
+            "pos1_acceptance": 0.8444
+          },
+          "partial": {
+            "n": 5,
+            "pos1_acceptance": 0.8
+          },
+          "reject": {
+            "n": 17,
+            "pos1_acceptance": 0.4706
+          }
+        }
+      }
+    },
+    "k3": {
+      "ratio": 0.5611,
+      "acceptance_all": 0.5936,
+      "acceptance_by_category": {
+        "code": 0.5699,
+        "general_en": 0.8026,
+        "general_ja": 0.567,
+        "mixed_ja_en": 0.5096
+      },
+      "req_cycles": 166,
+      "stage_ms_per_req_cycle": {
+        "proposal_ms": 17.4,
+        "target_ms": 27.2,
+        "accept_ms": 178.8,
+        "provider_update_ms": 2.3,
+        "selected_commit_ms": 0.8
+      },
+      "stage_share_of_wall_pct": {
+        "proposal_ms": 5.2,
+        "target_ms": 8.0,
+        "accept_ms": 52.9,
+        "provider_update_ms": 0.7,
+        "selected_commit_ms": 0.2
+      },
+      "target_row_histogram": {
+        "2": 3,
+        "3": 2,
+        "4": 23,
+        "6": 10,
+        "7": 4,
+        "8": 124
+      },
+      "conditional_pos1_acceptance": {
+        "non_code": {
+          "first": {
+            "n": 12,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 36,
+            "pos1_acceptance": 0.7778
+          },
+          "partial": {
+            "n": 27,
+            "pos1_acceptance": 0.963
+          },
+          "reject": {
+            "n": 23,
+            "pos1_acceptance": 0.3913
+          }
+        },
+        "code": {
+          "first": {
+            "n": 8,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 28,
+            "pos1_acceptance": 0.8571
+          },
+          "partial": {
+            "n": 9,
+            "pos1_acceptance": 0.6667
+          },
+          "reject": {
+            "n": 23,
+            "pos1_acceptance": 0.3043
+          }
+        }
+      }
+    },
+    "c1_prod": {
+      "ratio": 1.4882,
+      "acceptance_all": 0.9068,
+      "acceptance_by_category": {
+        "code": 0.9365,
+        "general_en": 0.8485,
+        "general_ja": 0.8788,
+        "mixed_ja_en": 0.9375
+      },
+      "req_cycles": 83,
+      "stage_ms_per_req_cycle": {
+        "proposal_ms": 0.4,
+        "target_ms": 42.8,
+        "accept_ms": 0.0,
+        "provider_update_ms": 1.3,
+        "selected_commit_ms": 0.0
+      },
+      "stage_share_of_wall_pct": {
+        "proposal_ms": 0.2,
+        "target_ms": 24.2,
+        "accept_ms": 0.0,
+        "provider_update_ms": 0.7,
+        "selected_commit_ms": 0.0
+      },
+      "target_row_histogram": {},
+      "conditional_pos1_acceptance": {
+        "non_code": {
+          "first": {
+            "n": 6,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 35,
+            "pos1_acceptance": 0.9714
+          },
+          "partial": {
+            "n": 8,
+            "pos1_acceptance": 1.0
+          },
+          "reject": {
+            "n": 1,
+            "pos1_acceptance": 1.0
+          }
+        },
+        "code": {
+          "first": {
+            "n": 4,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 26,
+            "pos1_acceptance": 0.9615
+          },
+          "partial": {
+            "n": 2,
+            "pos1_acceptance": 1.0
+          },
+          "reject": {
+            "n": 1,
+            "pos1_acceptance": 1.0
+          }
+        }
+      }
+    },
+    "c1_strict": {
+      "ratio": 1.4864,
+      "acceptance_all": 0.9068,
+      "acceptance_by_category": {
+        "code": 0.9365,
+        "general_en": 0.8485,
+        "general_ja": 0.8788,
+        "mixed_ja_en": 0.9375
+      },
+      "req_cycles": 83,
+      "stage_ms_per_req_cycle": {
+        "proposal_ms": 0.4,
+        "target_ms": 43.0,
+        "accept_ms": 0.0,
+        "provider_update_ms": 1.3,
+        "selected_commit_ms": 0.0
+      },
+      "stage_share_of_wall_pct": {
+        "proposal_ms": 0.2,
+        "target_ms": 24.1,
+        "accept_ms": 0.0,
+        "provider_update_ms": 0.7,
+        "selected_commit_ms": 0.0
+      },
+      "target_row_histogram": {},
+      "conditional_pos1_acceptance": {
+        "non_code": {
+          "first": {
+            "n": 6,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 35,
+            "pos1_acceptance": 0.9714
+          },
+          "partial": {
+            "n": 8,
+            "pos1_acceptance": 1.0
+          },
+          "reject": {
+            "n": 1,
+            "pos1_acceptance": 1.0
+          }
+        },
+        "code": {
+          "first": {
+            "n": 4,
+            "pos1_acceptance": 1.0
+          },
+          "full": {
+            "n": 26,
+            "pos1_acceptance": 0.9615
+          },
+          "partial": {
+            "n": 2,
+            "pos1_acceptance": 1.0
+          },
+          "reject": {
+            "n": 1,
+            "pos1_acceptance": 1.0
+          }
+        }
+      }
+    }
+  },
+  "ragged_cycle_fit_k2": {
+    "intercept_ms": 30.7,
+    "slope_ms_per_ragged_frac": 126.7,
+    "on_tile_ms": 29.7,
+    "samples": 20
+  },
+  "findings": {
+    "accept_absorbs_device_sync": "_read_target_batch_accept opens with runtime.device_synchronize(); accept_ms absorbs pending GPU work for the cycle",
+    "rowtile_admission": "gfx1100 GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS={6}; R4(K1)/R8(K3)/ragged 2-5 fall to the shared-B 256-row padded tile",
+    "off_tile_penalty": "one off-tile cycle costs ~5.1x the rows6 cycle (fit 30.7+126.7*ragged_frac measured within the K2 run)",
+    "code_drop_deconfounded": "C1 strict vs production acceptance identical (0.9365/0.8485/0.8788/0.9375); the C2 code drop is concurrency-caused",
+    "post_reject_collapse": "code pos-1 acceptance after a rejected cycle: K2 0.471 (n=17), K3 0.348 (n=46); K1 recovers (1.000, n=19) via k0 catchups (23 observed); C1 n=2",
+    "k1_high_acceptance_low_speed": "K1 rides R4 off-tile at 165.6ms accept per request-cycle vs 29.7-30.9ms for pure-R6 K2 routes; 62.1% of K1 wall is the accept/sync stage",
+    "d24_prefill_share": "stage arithmetic puts ~50% of both AR and MTP D24 walls in prefill; D24 ratios understate steady-state decode gains"
+  },
+  "gates": {
+    "diagnostic_only": true
+  },
+  "next": "Oracle trace run (HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE=1) to localize the post-reject provider-state defect; then rows6 group padding for off-tile cycles.",
+  "raw_sources": [
+    {
+      "name": "k1",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k1-default-d24.json",
+      "sha256": "bd48f8eba55387eaeb9385665893a1cfa519b7743b47dceb29bebe70a89e313d",
+      "size_bytes": 1469428,
+      "retained_in_git": false
+    },
+    {
+      "name": "k2",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-k2-default-d24.json",
+      "sha256": "d50c54d8e79b0d7aec32b370abd1f0168a2634f372365f02c907c7d2e9e2cf4b",
+      "size_bytes": 1399283,
+      "retained_in_git": false
+    },
+    {
+      "name": "k3",
+      "path": "/tmp/gfx1100-qwen38-p8-c2-private-slot-copy-default-d24.json",
+      "sha256": "58b43fc3bb61c008c58d521bf5c790d92a984b00a3e61323ce7a902367dbf4bc",
+      "size_bytes": 1453472,
+      "retained_in_git": false
+    },
+    {
+      "name": "c1_prod",
+      "path": "/tmp/gfx1100-qwen38-p8-c1-k2-prod-d24.json",
+      "sha256": "cd73d6b7a3b064203103251be1da047ba61b5c0ad325453445e212d54a2dc3d0",
+      "size_bytes": 748660,
+      "retained_in_git": false
+    },
+    {
+      "name": "c1_strict",
+      "path": "/tmp/gfx1100-qwen38-p8-c1-k2-strict-d24.json",
+      "sha256": "9484ef2dc9111de641aed30e915a89df12162f807a56e0eb174c5f1bf0c30867",
+      "size_bytes": 747487,
+      "retained_in_git": false
+    }
+  ]
+}
