@@ -12,6 +12,7 @@ from hipengine.execution_profiles import (
 )
 from hipengine.generation.qwen4_exp_profiles import (
     PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS,
+    PRODUCTION_QSA_FLASH_PREFILL_LAYERS,
     PRODUCTION_GDN_PEER_PREFILL_LAYERS,
     PRODUCTION_MOE_PREFILL_ENV,
     PRODUCTION_Q4_DP4A_DECODE_LAYERS,
@@ -156,6 +157,13 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"
         ].split(",")
     ) == PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS
+    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL"] == "1"
+    assert tuple(
+        int(value)
+        for value in os.environ[
+            "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS"
+        ].split(",")
+    ) == PRODUCTION_QSA_FLASH_PREFILL_LAYERS
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL"] == "1"
     assert tuple(
         int(value)

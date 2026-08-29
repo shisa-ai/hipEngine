@@ -21,6 +21,7 @@ QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
 PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
 PRODUCTION_GDN_PEER_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS = tuple(range(27, 48))
+PRODUCTION_QSA_FLASH_PREFILL_LAYERS = tuple(range(31, 48))
 PRODUCTION_WMMA_MOE_PREFILL_LAYERS = tuple(range(27, 48))
 PRODUCTION_Q4_IU8_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS = tuple(range(32, 48))
@@ -202,6 +203,13 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS": (
             ",".join(map(str, PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS))
+            if production
+            else ""
+        ),
+        # Certified QSA flash prefill suffix.
+        "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": (
+            ",".join(map(str, PRODUCTION_QSA_FLASH_PREFILL_LAYERS))
             if production
             else ""
         ),

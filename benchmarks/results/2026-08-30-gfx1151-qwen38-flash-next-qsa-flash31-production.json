@@ -80,5 +80,24 @@
     "c2": "uv run python /tmp/qwen4exp_qsa_c2.py",
     "clean_paired": "uv run python /tmp/qsa_paired_clean.py",
     "ladder": "uv run python /tmp/qwen4exp_qsa_flash_ladder.py"
+  },
+  "profile_manifest_fold_in": {
+    "date": "2026-08-30",
+    "binder_envs": {
+      "HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL": "1",
+      "HIPENGINE_QWEN4_EXP_QSA_FLASH_LAYERS": "31-47"
+    },
+    "public_profile_smoke": {
+      "production": {
+        "fell_back_to_strict": false,
+        "logits_sha256": "dce4aabfe6934c6f8e006ae22ad23ba772ecb8f09cd15563c3a53ea1ae571e78",
+        "tok_s_cold": 72.3549434075466
+      },
+      "strict_after_production_same_process": {
+        "logits_sha256": "30a5accee27d33b9452fbac161ed48eafccda7dd17aeb1a2851844accf792b48",
+        "unchanged": true
+      }
+    },
+    "tests": "uv run pytest tests/test_qwen4_exp_profiles.py tests/test_qwen4_exp_qsa_flash_prefill.py -q"
   }
 }
