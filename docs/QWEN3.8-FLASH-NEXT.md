@@ -37,20 +37,23 @@ the exact-bit profile; production is the certified T2 profile with manifest
 
 | Row | Strict | Production / certified opt-ins | Beat first: llama.cpp HIP, same host + GGUF | Stretch: llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| p508 prefill | 61.40 (chunk 512) | **78.31** final profile | **274.996** | 316.380 |
-| p1006/p1012 prefill | 60.20 (chunk 512) | **76.79** final profile | **284.485** | 290.450 |
+| p508 prefill | 61.40 (chunk 512) | **80.82** final+WMMA-MoE27 | **294.1–298.6** master HIP | 332.1–333.8 master Vulkan |
+| p1012 prefill | 60.20 (chunk 512) | **79.73** final+WMMA-MoE27 | **307.2–318.9** master HIP | 308.4–310.5 master Vulkan |
 | tg32 decode | 13.880 | **15.543** (98.1% of HIP) | **15.848** | 18.716 |
 | Natural 16K prefill | 47.989 (chunk 512, gate passed) | — | ≥100 tok/s unlocks the 64K rung | — |
 | MTP vs true AR | 0.955x aggregate (opt-in; 10/10 exact, 84.28% acceptance) | — | ≥1.0x to promote; ≥1.5x real target | external MTP fork ~2.7x |
 
-Production = guarded dense-Q8 MMQ, Q5_1 down MMQ layers 32–47, Q4_K dual
-MMQ layers 35–47, compact peer-GDN layers 35–47 (nine actual GDN layers), and
-Q8_1 DP4A decode on calibrated layers `0,2,5,6,8,9,10,11,13–47`. Omitted
-layers stay strict. The complete 450-row/three-repeat stack passes at KL
-mean/p95/p99/max `3.16e-4/1.61e-3/4.25e-3/9.92e-3`, 448/450 top-1, with exact
-state/repeat/c2. Matched pp508 kernel time is now hipEngine
-`6.548 s / 3,684 launches` versus llama.cpp HIP `1.798 s / 5,543`: the campaign
-removed 25.2% of kernel wall, but the remaining **3.64x** gap is still dataflow,
+Production = guarded dense-Q8 MMQ, compact f16-WMMA MoE (Q4_K dual gate/up
++ Q5_1 down) on layers 27–47, and Q8_1 DP4A decode on calibrated layers
+`0,2,5,6,8,9,10,11,13–47`; layers 0–26 keep the strict exact owners. The
+WMMA-MoE27 packet (450 rows, three repeats) passes at KL
+mean/p95/p99/max `2.79e-4/1.53e-3/3.49e-3/5.98e-3`, 446/450 top-1, all
+scopes ≥ 98.67%, exact repeat/state, 18/18 repeat-exact free generation with
+4 task-valid divergences, exact c2 with zero teardown; paired p508/p1012
+`6.572→6.287 (-4.34%, 80.82 tok/s)` / `13.398→12.694 s (-5.26%, 79.73 tok/s)`.
+Matched pp508 kernel time is now hipEngine
+`6.548 s / 3,684 launches` (pre-WMMA-MoE profile) versus llama.cpp HIP
+`1.798 s / 5,543`: the campaign removed 25.2% of kernel wall, but the remaining **3.64x** gap is still dataflow,
 not launch count.
 
 ### 0.2 What we learned
@@ -93,13 +96,20 @@ incremental pooled-key cache, gathered decode attention, GDN concat fix,
 permute-free scoring, and distinct-stream MTP combiner are **already covered
 in-tree** — verified in source with retained evidence. The remaining campaigns:
 
-1. **Prefill dataflow:** the bounded MMQ campaign is complete. Chunk-512, Q8
-   MMQ, Q5_1/Q4_K selected-expert MMQ, the stacked profile/manifest, and the
-   peer-GDN scan are retained. Direct paired strict→production p508/p1012 is
-   `8.273→6.487` / `16.810→13.178 s` (-21.59%/-21.61%). The next independent
-   prefill campaign must target the 27 numerically hot exact GDN layers
-   (723.91 ms traced) or another remaining kernel family; widening current peer
-   arithmetic past layer 34 is rejected.
+1. **Prefill dataflow (llama.cpp parity):** master re-baseline (2026-08-29)
+   stands at HIP pp508 294.1–298.6 / pp1006 307.2–318.9 / tg32 17.1–17.3 and
+   Vulkan 332–334 / 308–311 / 24.0–24.1 tok/s; hipEngine gaps are 3.8–4.3x
+   prefill and 1.10–1.55x decode. Family gaps at pp508: MoE+dense matmul
+   4.4x (dp4a/bf16-FMA vs llama RDNA4 WMMA), GDN 8.7x, QSA 9.8x; fused
+   elementwise favors hipEngine. WMMA-MoE27 is certified (−4.34%/−5.26%
+   p508/p1012). Remaining units: (a) LDS-staged multi-warp WMMA kernel port
+   (llama `mul_mat_q` dataflow; 3.4→~5.4 TF/s hardware) applied to the
+   admitted suffix; (b) the 27 hot exact GDN layers (723.91 ms traced);
+   (c) QSA flash prefill (141 ms); (d) early-layer near-f32 WMMA via 3-pass
+   split-precision fragments after (a) — f16-WMMA (5.9e-3) and dp4a both
+   exceed the envelope below 27, while llama itself runs dp4a-class q8_1
+   ds-trick arithmetic on all layers, so early-layer parity is a quality-
+   contract decision, not just a kernel problem.
 2. **MTP economics:** verification is a serial per-candidate target loop
    (budget 1..4), so every drafted token costs a full target decode row; the
    multirow candidate was rejected because `rows >= 2` switches MoE to the
