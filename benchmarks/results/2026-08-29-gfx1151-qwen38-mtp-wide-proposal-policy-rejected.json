@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "rejected_unengaged_policy",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "title": "Qwen3.8 Q4_K_M wide proposal rows5-8 policy rejection",
+  "source": {
+    "control_commit": "0c59aaeaee5971c62f85a1a1c5116623223a1475",
+    "screen_commit": "9178ce3cbc48eff50b308433c6330e422a9e97c0",
+    "retained_runtime_change": false
+  },
+  "host": {
+    "physical_host": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "kv_dtype": "bf16"
+  },
+  "leaf_screen": {
+    "shape": "planar-Q6 F32 H5120/N248320",
+    "warmups_per_arm": 5,
+    "counterbalanced_pairs": 15,
+    "columns": ["rows", "direct_ms", "rowtile_ms", "rowtile_delta_pct", "rowtile_wins"],
+    "rows": [
+      [5, 23.16105079650879, 4.950527191162109, -78.62563648490277, 15],
+      [6, 27.636606216430664, 6.736958980560303, -75.62305976428101, 15],
+      [7, 32.34175109863281, 6.903350830078125, -78.65498745251938, 15],
+      [8, 36.73659896850586, 5.728025913238525, -84.40784919107743, 15]
+    ],
+    "actual_weight_correctness": "both direct and rowtile outputs are every-logit/top1/guard exact at rows5-8"
+  },
+  "complete_wall_screen": {
+    "columns": ["width", "control_mtp_tok_s", "screen_mtp_tok_s", "delta_pct", "verdict"],
+    "rows": [
+      [5, 15.243695775617372, 15.246562216754498, 0.018804108789094442, "neutral"],
+      [6, 20.82951926121899, 20.78869352219073, -0.1959994300217538, "reject"],
+      [7, 23.245294235003094, 23.504154863940844, 1.113604441056948, "unattributed variance"],
+      [8, 19.649791466384148, 20.39267274985328, 3.780606449386581, "unattributed variance"]
+    ],
+    "correctness": "all cells exact/engaged/budget-conformant; acceptance unchanged"
+  },
+  "engagement_finding": {
+    "proposal_subgroup_rows": {
+      "C5": {"4": 88, "1": 22},
+      "C6": {"4": 88, "2": 44},
+      "C7": {"4": 88, "3": 66},
+      "C8": {"4": 176}
+    },
+    "interpretation": "Generation-2 already decomposes wide proposal work into physical subgroups no wider than four. Existing E1b rows2-4 policy therefore already covers all non-singleton wide proposal calls.",
+    "c8_kernel_trace": {
+      "row8_proposal_kernel_calls": 0,
+      "qmicro_f32_row4_calls_whole_process": 451,
+      "qmicro_f32_direct_calls_whole_process": 1,
+      "note": "The one-prompt whole-process trace includes target/AR scoring, but decisively contains no ROW_TILE=8 proposal kernel. Request telemetry supplies the authoritative subgroup map."
+    }
+  },
+  "decision": {
+    "rows5_8_package_keys_retained": false,
+    "reason": "The keys cannot engage because wide proposals are already split into rows4 plus a remainder. Apparent C7/C8 gains are run variance, not candidate attribution.",
+    "corrected_wide_blocker": "Host prompt replay plus operation-complete target/accept/commit/provider cost at logical R20/R24/R28/R32. Proposal head is already E1b-amortized in rows2-4 subgroups.",
+    "next": "Independently screen standard-Q4 prompt streaming at C2/C4, then profile wide target/accept windows."
+  },
+  "supersedes": {
+    "worklog": "worklog/entries/20260829T205623.953553Z-lhl-qwen38-mtp-wide-7df3aa.md",
+    "correction": "That immutable checkpoint inferred rows7/8 engagement from clean complete-wall deltas before the trace and per-request proposal_physical_rows telemetry disproved engagement."
+  },
+  "raw_sources": [
+    ["/tmp/p320-head-rows5-8-micro.json", "610ee1acb5275540736791dd6c12f3c6f2cb8d4407763d9fdd28934789c3b9a6", 3720],
+    ["/tmp/p310-post-e2-mtp-c1c8-clean.json", "2c5900b6137295d25b521ca1b6cdb045f0321b661ff695749240b246b79eeeb7", 20675296],
+    ["/tmp/p320-head-rows7-8-candidate-clean.json", "73610c2ea438e1360b5d37b4e309fbe4ae9750abd821d59d481c48afda001778", 5506493],
+    ["/tmp/p320-head-row8-profile.json", "41571f5c0c029c8ad1d1b77fb659e227741823b18bcbc0f94c6dae0daf6098d7", 190401],
+    ["/tmp/p320-head-row8-clean-rocprof/gfx1151/3987555_kernel_trace.csv", "2e1e43ff322a73be3dcb665e61c292f84fb07da56b99c3adbdd7d383a6f93ef6", 29506960]
+  ]
+}

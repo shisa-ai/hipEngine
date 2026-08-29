@@ -70,14 +70,14 @@
     "C1": "Production-D24 singleton keeps its direct/scalar proposal and replay economics; E1b begins at physical rows2 and E1a streaming is C3-only. The distinct strict natural25 automatic cell does not transfer to this comparator.",
     "C2": "One physical rows2 group and exact proposal-head reuse clear AR economics, but host prompt replay plus logical R8 target cost leave a 33.35% external gap. C3-only prompt streaming and R12 owners do not transfer.",
     "C4": "One physical rows4 group gets E1b proposal reuse, but keeps host prompt replay and logical R16 target decomposition; E2 owners are R12-only. Complete wall remains 24.54% below target.",
-    "C5": "One physical rows5 group keeps the direct proposal head because E1b stops at rows4, host prompt replay, and decomposed logical R20 target. Complete wall is 53.44% below target.",
-    "C6": "One physical rows6 group keeps unqualified wide proposal/prime owners and decomposed logical R24 target. Complete wall is 42.18% below target.",
-    "C7": "One physical rows7 group keeps unqualified wide proposal/prime owners and decomposed logical R28 target. Complete wall is 45.05% below target.",
-    "C8": "One physical rows8 group keeps unqualified wide proposal/prime owners and decomposed logical R32 target. Complete wall is 64.16% below target."
+    "C5": "One outer rows5 group lowers proposals as rows4+1, so E1b already covers the non-singleton head. Host replay plus operation-complete logical R20 target/accept/commit/provider work leaves a 53.44% gap.",
+    "C6": "One outer rows6 group lowers proposals as rows4+2; host replay plus logical R24 target/accept/commit/provider work leaves a 42.18% gap.",
+    "C7": "One outer rows7 group lowers proposals as rows4+3; host replay plus logical R28 target/accept/commit/provider work leaves a 45.05% gap.",
+    "C8": "One outer rows8 group lowers proposals as rows4+4; host replay plus logical R32 target/accept/commit/provider work leaves a 64.16% gap."
   },
   "next_candidates": [
-    "Screen actual H5120/N248320 proposal-head row reuse at physical rows5-8 before new target kernels; direct-head ownership is a known E1b policy miss.",
     "Independently adjudicate standard-Q4 prompt streaming at C2/C4; adjacent Q4_K_S rejection does not decide Q4_K_M.",
+    "Profile wide target/accept/commit/provider windows after streaming; proposals already use E1b rows2-4 subgroup owners.",
     "Only after those screens profile operation-complete wide target R16-R32 owners."
   ],
   "raw_source": [
@@ -88,6 +88,6 @@
   "verdict": {
     "passed_widths": [3],
     "blocked_widths": [1, 2, 4, 5, 6, 7, 8],
-    "next": "Physical proposal-head rows5-8 exact rowtile screen, then independent C2/C4 prompt-streaming screen."
+    "next": "Independent C2/C4 prompt-streaming screen, then wide target/accept profiling. A later trace proved proposal rows5-8 policy keys cannot engage because proposals are subgrouped at rows4."
   }
 }

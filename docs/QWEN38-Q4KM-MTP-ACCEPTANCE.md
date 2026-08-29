@@ -642,10 +642,12 @@ These are ordered follow-ons, not assumptions in the primary claim:
    numerical/state gates.
 5. **gfx1100:** source ideas may transfer, absolute rates, manifests, and
    thresholds may not.
-6. **C5-C8:** post-E2 physical-group rows5-8 keep the direct proposal head
-   because E1b stops at rows4; MTP is 15.244/20.830/23.245/19.650 tok/s and
-   42-64% below external targets. Screen exact proposal-head row reuse first,
-   then prompt streaming, before R20-R32 target kernels.
+6. **C5-C8:** post-E2 MTP is 15.244/20.830/23.245/19.650 tok/s and
+   42-64% below external targets. Proposal telemetry is rows4+remainder
+   (C5 4+1, C6 4+2, C7 4+3, C8 4+4), so E1b already covers every
+   non-singleton proposal subgroup. A rows5-8 package experiment was unengaged
+   and removed. Screen prompt streaming, then profile operation-complete
+   R20-R32 target/accept/commit/provider work.
 
 ## 6. Candidate priority and reopen matrix
 
