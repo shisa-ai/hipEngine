@@ -1,0 +1,129 @@
+{
+  "schema": 2,
+  "kind": "gguf_prefill_route_promotion",
+  "date": "2026-08-30",
+  "subject": "gfx1100 dense Q4_K_M T16 fused dual+SiLU gate/up owner floor 512 -> 33 on W7900 Qwen3.8-27B-Q4_K_M",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_t16_v1",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100/RDNA3)",
+  "host": "w7900-rdna3",
+  "execution_profile": "production",
+  "git_commit": "3d11d88ff78f1192627ed8f7d46c14a373ce0067",
+  "supersedes": "2026-08-30-w7900-q4km-t16-dual-silu-prefill-rows12-promotion.json",
+  "status": "promoted",
+  "change": {
+    "constant": "_Q4_T16_DUAL_WMMA_SILU_MIN_ROWS",
+    "old": 512,
+    "new": 33,
+    "reason": "keeps the measured bulk-prefill win while leaving captured target-verify group widths on the proven unfused chain"
+  },
+  "prefill_ab_rows12_state": {
+    "note": "measured during the superseded rows12 step; byte-identical route and still the evidence for rows>=33",
+    "control_s": {
+      "16": 0.236,
+      "32": 0.2601,
+      "45": 0.2811,
+      "96": 0.3171,
+      "192": 0.3998,
+      "512": 0.5791
+    },
+    "candidate_s": {
+      "16": 0.2289,
+      "32": 0.2498,
+      "45": 0.2697,
+      "96": 0.3044,
+      "192": 0.3811,
+      "512": 0.5798
+    },
+    "pct_gain": {
+      "16": 3.1,
+      "32": 4.1,
+      "45": 4.2,
+      "96": 4.2,
+      "192": 4.9,
+      "512": -0.1
+    }
+  },
+  "topline": {
+    "protocol": "scripts/gguf_mtp_c1c8_server_bench.py --backend hip_gfx1100 --execution-profile production --resident-capacity 8 --generation2-diagnostic --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --candidate-budget 3 --mtp-request-mode explicit --max-tokens 24, exclusive device, one complete pass per floor value",
+    "ar_tok_s": {
+      "baseline_floor512": {
+        "C1": 21.87,
+        "C8": 44.34
+      },
+      "floor12": {
+        "C1": 22.16,
+        "C8": 46.01
+      },
+      "floor33": {
+        "C1": 22.15,
+        "C8": 45.95
+      }
+    },
+    "mtp_tok_s": {
+      "baseline_floor512": {
+        "C1": 31.15,
+        "C8": 30.84
+      },
+      "floor12": {
+        "C1": 31.7,
+        "C8": 28.3
+      },
+      "floor33": {
+        "C1": 31.69,
+        "C8": 31.72
+      }
+    },
+    "delta_vs_baseline_pct": {
+      "floor33": {
+        "AR_C1": 1.3,
+        "AR_C8": 3.6,
+        "MTP_C1": 1.7,
+        "MTP_C8": 2.9
+      },
+      "floor12": {
+        "AR_C1": 1.3,
+        "AR_C8": 3.8,
+        "MTP_C1": 1.8,
+        "MTP_C8": -8.2
+      }
+    }
+  },
+  "paired_verify_wall": {
+    "protocol": "same C8 MTP packet, prompts with identical draft-cycle counts vs the floor512 baseline (acceptance shifts between runs make aggregate MTP walls noisy)",
+    "floor12": {
+      "n": 7,
+      "mean_wall_pct": 11.9,
+      "all_prompts_worse": true,
+      "examples": {
+        "code_markdown_table(6cyc)": "+24.5%",
+        "mixed_ja_en_review(12cyc)": "+10.9%",
+        "general_en_explain(7cyc)": "+6.3%"
+      }
+    },
+    "floor33": {
+      "n": 7,
+      "mean_wall_pct": -2.6,
+      "all_prompts_better": true,
+      "examples": {
+        "code_lru_cache(11cyc)": "-2.7%",
+        "code_markdown_table(6cyc)": "-2.8%",
+        "mixed_ja_en_review(12cyc)": "-2.3%"
+      }
+    }
+  },
+  "replications": {
+    "floor12_mtp_c8_s": [
+      6.7841,
+      6.764,
+      6.826
+    ],
+    "baseline_mtp_c8_s": 6.2248,
+    "floor33_mtp_c8_s": 6.0529
+  },
+  "arithmetic": {
+    "identity": "bit-identical (assert_array_equal) between fused and unfused BF16 outputs at K5120/N17408 for rows 45/96/192/511/512 and on the fixture from rows 2; every measured pair reproduced the same token id and final logit",
+    "tests": "tests/test_gguf_q4_k_t16_dense.py 76 passed on GPU; fused contract rows 33/45/48/128/256/511/512, unfused fallback rows 2/5/8/11/16/32"
+  },
+  "decision": "Promoted at floor 33. rows>=33 gains 4.2-4.9% prefill and 1.3-3.6% AR plus 1.7-2.9% MTP; rows 16/32 (captured verify groups) keep the unfused chain. The stateless row-count floor is an explicit proxy for prefill-vs-verify context and is tracked in docs/REFACTOR.md, because a session-scoped floor would have to participate in _DISPATCH_RESOLVE_CACHE / _PAIR_DISPATCH_RESOLVE_CACHE keys to be safe."
+}
