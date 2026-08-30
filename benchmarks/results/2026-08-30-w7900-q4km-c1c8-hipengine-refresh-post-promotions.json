@@ -1,0 +1,220 @@
+{
+  "acceptance_all": {
+    "cycles": 3182,
+    "draft_acceptance": 0.4966,
+    "note": "draft acceptance falls with wave width; see by-width rows",
+    "positions": {
+      "1": 0.604,
+      "2": 0.497,
+      "3": 0.3754
+    }
+  },
+  "aggregate_convention": "per width: mean(generated_tokens)/mean(wall_seconds) per arm, 3 decimals",
+  "command": "scripts/bench_chain.sh c1c8-k3 -> scripts/gguf_mtp_c1c8_server_bench.py --widths 1..8 --resident-capacity 8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --mtp-request-mode explicit --generation2-diagnostic",
+  "correctness": {
+    "cells_passed": 80,
+    "cells_total": 80,
+    "mtp_engaged": 80
+  },
+  "date": "2026-08-30",
+  "elapsed_seconds": 611.6193926306441,
+  "engine_tree_note": "only docs/scripts/benchmarks commits between source_commit and HEAD; git diff 0740a9497..HEAD touches 0 files under hipengine/ or kernels/",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900 (gfx1100)",
+    "visible_devices": "0"
+  },
+  "kind": "w7900_q4km_c1c8_hipengine_refresh_post_promotions",
+  "measured_prefill_rates": {
+    "llamacpp_current_prefill_row": "200.946 (C1) -> 424.072 (C8) from benchmarks/README.md",
+    "source": "scripts/gguf_first_token_probe.py --public-ar-profile (medians of 2, <=0.25% stdev)",
+    "tok_s_at_45_rows": 167.603,
+    "tok_s_at_512_rows": 877.025
+  },
+  "model": {
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8552862704,
+        17105725408
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 17106773984,
+      "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+    },
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null
+  },
+  "passed": true,
+  "prompts_file": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "protocol": {
+    "batch_window_ms": 20.0,
+    "candidate_budget": 3,
+    "correctness_contract": "ar_exact",
+    "execution_profile": "production",
+    "max_tokens": 24,
+    "mtp_request_mode": "explicit",
+    "resident_capacity": 8,
+    "widths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ]
+  },
+  "quant": "gguf_q4_k_m",
+  "runtime_profile": {
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "requested": "production",
+    "resolved": "production"
+  },
+  "schema": 1,
+  "source_commit": "0740a9497b88d4224a5084f3be31ef0feae0df47",
+  "source_dirty": false,
+  "status": "complete",
+  "submodule_decomposition": {
+    "d1_is_pre_promotion": true,
+    "d1_packet_source_commit": "78938c645132b366d5e458144e74182df4effd3d",
+    "d24_engine_commit": "d12be41188 (pre-promotion baseline packet)",
+    "note": "admission = first-token wall (prefill+first token) from a one-token arm; decode = marginal tok/s after removing admission. Identity long_wall = admission + (tokens-1)*decode_step verified <0.5 ms at every width.",
+    "per_width": {
+      "1": {
+        "admission_ms_per_lane": 315.8,
+        "decode_tok_s_admission_removed": 30.71
+      },
+      "2": {
+        "admission_ms_per_lane": 305.0,
+        "decode_tok_s_admission_removed": 49.68
+      },
+      "3": {
+        "admission_ms_per_lane": 303.2,
+        "decode_tok_s_admission_removed": 64.78
+      },
+      "4": {
+        "admission_ms_per_lane": 305.1,
+        "decode_tok_s_admission_removed": 78.27
+      },
+      "5": {
+        "admission_ms_per_lane": 305.2,
+        "decode_tok_s_admission_removed": 86.2
+      },
+      "6": {
+        "admission_ms_per_lane": 304.7,
+        "decode_tok_s_admission_removed": 92.27
+      },
+      "7": {
+        "admission_ms_per_lane": 305.0,
+        "decode_tok_s_admission_removed": 97.63
+      },
+      "8": {
+        "admission_ms_per_lane": 305.1,
+        "decode_tok_s_admission_removed": 101.61
+      }
+    }
+  },
+  "widths": {
+    "1": {
+      "ar_tok_s": 22.094,
+      "correctness_passed": 10,
+      "cycles": 71,
+      "draft_acceptance": 0.7889,
+      "k3_speedup_vs_ar": 1.4289,
+      "k3_tok_s": 31.571,
+      "mtp_budget_conformed": 10,
+      "mtp_engaged": 10,
+      "n_cells": 10,
+      "position_acceptance_p1": 0.9296
+    },
+    "2": {
+      "ar_tok_s": 30.842,
+      "correctness_passed": 10,
+      "cycles": 163,
+      "draft_acceptance": 0.6139,
+      "k3_speedup_vs_ar": 0.9711,
+      "k3_tok_s": 29.95,
+      "mtp_budget_conformed": 10,
+      "mtp_engaged": 10,
+      "n_cells": 10,
+      "position_acceptance_p1": 0.7362
+    },
+    "3": {
+      "ar_tok_s": 36.345,
+      "correctness_passed": 10,
+      "cycles": 280,
+      "draft_acceptance": 0.4668,
+      "k3_speedup_vs_ar": 0.8539,
+      "k3_tok_s": 31.035,
+      "mtp_budget_conformed": 10,
+      "mtp_engaged": 10,
+      "n_cells": 10,
+      "position_acceptance_p1": 0.5714
+    },
+    "4": {
+      "ar_tok_s": 40.109,
+      "correctness_passed": 10,
+      "cycles": 359,
+      "draft_acceptance": 0.4677,
+      "k3_speedup_vs_ar": 0.7858,
+      "k3_tok_s": 31.518,
+      "mtp_budget_conformed": 10,
+      "mtp_engaged": 10,
+      "n_cells": 10,
+      "position_acceptance_p1": 0.571
+    },
+    "5": {
+      "ar_tok_s": 42.149,
+      "correctness_passed": 10,
+      "cycles": 430,
+      "draft_acceptance": 0.5201,
+      "k3_speedup_vs_ar": 0.7428,
+      "k3_tok_s": 31.307,
+      "mtp_budget_conformed": 10,
+      "mtp_engaged": 10,
+      "n_cells": 10,
+      "position_acceptance_p1": 0.6302
+    },
+    "6": {
+      "ar_tok_s": 43.788,
+      "correctness_passed": 10,
+      "cycles": 522,
+      "draft_acceptance": 0.5131,
+      "k3_speedup_vs_ar": 0.7025,
+      "k3_tok_s": 30.76,
+      "mtp_budget_conformed": 10,
+      "mtp_engaged": 10,
+      "n_cells": 10,
+      "position_acceptance_p1": 0.6226
+    },
+    "7": {
+      "ar_tok_s": 44.698,
+      "correctness_passed": 10,
+      "cycles": 639,
+      "draft_acceptance": 0.4673,
+      "k3_speedup_vs_ar": 0.6972,
+      "k3_tok_s": 31.162,
+      "mtp_budget_conformed": 10,
+      "mtp_engaged": 10,
+      "n_cells": 10,
+      "position_acceptance_p1": 0.5712
+    },
+    "8": {
+      "ar_tok_s": 45.657,
+      "correctness_passed": 10,
+      "cycles": 718,
+      "draft_acceptance": 0.4677,
+      "k3_speedup_vs_ar": 0.6887,
+      "k3_tok_s": 31.445,
+      "mtp_budget_conformed": 10,
+      "mtp_engaged": 10,
+      "n_cells": 10,
+      "position_acceptance_p1": 0.571
+    }
+  }
+}
