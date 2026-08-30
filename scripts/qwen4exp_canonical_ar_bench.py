@@ -578,8 +578,17 @@ def run_llamacpp(args: argparse.Namespace) -> dict[str, Any]:
                         flush=True,
                     )
             artifact["status"] = "completed"
+        except Exception as exc:
+            artifact["status"] = "failed"
+            artifact["error"] = f"{type(exc).__name__}: {exc}"
+            raise
         finally:
             _terminate(process)
+            server_log.flush()
+            artifact["server_returncode"] = process.returncode
+            artifact["server_log"] = str(log_path)
+            artifact["server_log_sha256"] = sha256_path(log_path)
+            _write_json(args.output, artifact)
     artifact["server_returncode"] = process.returncode
     artifact["server_log"] = str(log_path)
     artifact["server_log_sha256"] = sha256_path(log_path)
@@ -865,7 +874,7 @@ def build_parser() -> argparse.ArgumentParser:
     llama_parser.add_argument("--port", type=int, default=18080)
     llama_parser.add_argument("--warmups", type=int, default=1)
     llama_parser.add_argument("--repetitions", type=int, default=3)
-    llama_parser.add_argument("--startup-timeout", type=float, default=900.0)
+    llama_parser.add_argument("--startup-timeout", type=float, default=1800.0)
     llama_parser.add_argument("--request-timeout", type=float, default=1800.0)
 
     compare_parser = subparsers.add_parser("compare", help="Join completed engine artifacts")
