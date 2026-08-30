@@ -1777,6 +1777,15 @@ GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES = frozenset(
         (5120, 248320, 2),
         (5120, 248320, 3),
         (5120, 248320, 4),
+        # Scaling-campaign M2: the single wide proposal carries rows5-8.
+        # The planar T16 rowtile body is bit-identical to the direct parent
+        # across rows 2-8 (tests/test_qwen38_nextn_proposal_head_rowtile.py);
+        # without these keys the wide proposal head fell to the per-row
+        # direct gemv (measured 36.7 ms/launch vs ~4.8 ms chunked sweeps).
+        (5120, 248320, 5),
+        (5120, 248320, 6),
+        (5120, 248320, 7),
+        (5120, 248320, 8),
     }
 )
 GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT = 65544
