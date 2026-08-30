@@ -82,8 +82,8 @@ profiles/scopes differ and must remain explicit:
 | C1/K3 | strict, cap1/cap4 realized singleton, context 1-67, natural25 | **18.191 / 11.062 = 1.6445x** | 161/220 = **73.18%** | automatic; current manifest refreshed |
 | C2/K3 | production, cap4 physical C2, context 1-128, D24 | **25.749 / 17.986 = 1.4316x** | 314/398 = **78.89%** | retained exact diagnostic; automatic K0 pending refresh |
 | C3/K3 | production, canonical natural contexts (<=67), D24 | **29.564 / 24.042 = 1.2297x** | 471/597 = **78.89%** | external parity passed; automatic K0 pending full gate |
-| C4/K3 | production, physical C4, D24 | **27.450 / 30.120 = 0.9114x** | 628/796 = **78.89%** | external parity passed; automatic K0 |
-| C5-C8/K3 | production diagnostics, D24 | **17.970-27.393 / 35.391-47.229 = 0.5078-0.6760x** | **78.89%** | exact implementation wins; automatic K0 |
+| C4/K3 | production, physical C4, D24 | **29.493 / 30.291 = 0.9737x** | 628/796 = **78.89%** | external parity passed; automatic K0 on overall/category AR |
+| C5-C8/K3 | production diagnostics, D24 | **18.708-29.527 / 35.704-47.640 = 0.5240-0.7051x** | **78.89%** | exact implementation wins; automatic K0 |
 
 C2 and C3 still have identical draft acceptance. Post-output-norm prompt
 streaming now removes the activation wall at both widths, while E1b removes
@@ -632,12 +632,12 @@ automatic K0 and record the concrete blocker.
 
 These are ordered follow-ons, not assumptions in the primary claim:
 
-1. **C4:** exact Q6 R8+R8 cuts the traced family **1.847→0.478 s (-74.10%)**
-   and clean K3 reaches **27.450 vs 30.120 tok/s AR**, 1.61% above the frozen
-   external target, with exact 628/796 acceptance. Standard-Q4 streaming remains
-   rejected after changing acceptance. External parity is closed; automatic C4
-   remains K0 because overall/code/Japanese/mixed are below AR and no independent
-   production/serving bundle exists.
+1. **C4:** exact Q6 R8+R8 cuts its traced family **1.847→0.478 s (-74.10%)**;
+   exact Q5 true-R16 then raises clean K3 to **29.493 vs 30.291 tok/s AR**,
+   9.17% above external, with exact 628/796 acceptance. Standard-Q4 streaming
+   remains rejected after changing acceptance. External parity is closed;
+   automatic C4 remains K0 because overall/code/Japanese/mixed are below AR and
+   no independent production/serving bundle exists.
    [`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json)
 2. **Context 68-128:** run the predeclared padded full category/heldout packet,
    production numerics, state/isolation, and same-protocol economics before
@@ -656,9 +656,11 @@ These are ordered follow-ons, not assumptions in the primary claim:
    through C4-sized provider groups. Target decompositions are C5 R16+R4, C6
    R16+R8, C7 R16+R12, and C8 R16+R16—not logical R20-R32 calls; unengaged wide
    keys are removed. All outputs and 78.894% acceptance remain exact, and a C8
-   trace reduces whole-process BF16 Q6 **8.707→3.210 s (-63.13%)**. Proposal
+   trace reduces whole-process BF16 Q6 **8.707→3.210 s (-63.13%)**. Exact Q5
+   true-R16 then raises C5-C8 to **18.708/28.255/29.527/29.504 tok/s
+   (+4.10%/+5.02%/+4.68%/+7.71%)**, with every category positive. Proposal
    telemetry remains rows4+remainder. Every width still trails AR and external
-   by 25-50%; pursue R16/remainder Q4/Q5 work only with its exact or production
+   by 22-46%; pursue R16/remainder Q4 work only with its exact or production
    numerical gates.
    [`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-q6-r20-r32-retained.json)
 
@@ -670,7 +672,8 @@ These are ordered follow-ons, not assumptions in the primary claim:
 | 0b | Physical proposal Q6 F32 rowtile | E1b retained: row3 13.736→4.711 ms; C3 27.169→29.198 tok/s; exact C2/C3 acceptance | closed retained; C3 external parity passed |
 | 1 | True R9/R12 target owner | Post-E1 C3 target was 190.12 ms/cycle; Q4/Q6/Q5 were 102.71/50.19/12.98 ms | E2 C3 closed: Q4 rejected; standard Q6 + Q5 retained; planar Q6 rejected. |
 | 1b | C4 exact Q6 R16 | C4 target owner was 72.68% of child; Q6 direct kernels were 1.847 s | closed retained: R8+R8 cuts Q6 74.10%, C4 reaches 27.450 tok/s and passes external parity |
-| 1c | C5-C8 physical-R16 Q6 carryover | provider partitions targets as R16+R4/R8/R12/R16 | closed retained: +17.89% to +39.41%; unengaged logical R20-R32 keys removed; refresh provider-group Q4/Q5 shares |
+| 1c | C5-C8 physical-R16 Q6 carryover | provider partitions targets as R16+R4/R8/R12/R16 | closed retained: +17.89% to +39.41%; unengaged logical R20-R32 keys removed |
+| 1d | Physical-R16 Q5 one-sweep | Q5 R12 predecessor won; R16 parent paid two Python/ctypes launches | closed retained: C4-C8 +4.10% to +7.71% exactly; C4 reaches 0.9737x AR |
 | 2 | Fixed K4 | max zero-cost visible lift 17.54%; external K4 is diagnostic | measured p4/cost score cannot beat fixed K3 |
 | 3 | NextN norm/concat/Q4 residual | E0 Q4 NextN work is 12.75 ms/cycle at C3/K3 after the head | < material refreshed Amdahl share or compound-only idea |
 | 4 | Provider update/selected commit | unprofiled telemetry currently single-digit ms/cycle | <=5% refreshed wall or P7 already owns best path |

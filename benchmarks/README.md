@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-29**
+Last updated: **2026-08-30**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -100,12 +100,12 @@ other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audi
 
 Strix Halo Qwen3.8 `Q4_K_M` keeps strict C1/K3 automatic at **18.191 tok/s
 (1.6445x AR)**. Production C2/C3 diagnostics reach **25.749/29.564 tok/s**
-(1.4316x/1.2297x AR); C3 is 7.45% above its frozen external row. C4 reaches
-**27.450 tok/s**; C5-C8 reuse its physical provider-group owner and reach
-**17.970/26.904/28.205/27.393 tok/s**. C2-C8 remain automatic K0 pending their
+(1.4316x/1.2297x AR); C3 is 7.45% above its frozen external row. Exact Q5
+true-R16 then lifts C4 to **29.493 tok/s (0.9737x AR)** and C5-C8 to
+**18.708/28.255/29.527/29.504 tok/s**. C2-C8 remain automatic K0 pending their
 width-specific performance and serving
 gates. [`C3/C4`](../docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md) ·
-[`C5-C8`](results/2026-08-29-gfx1151-qwen38-mtp-q6-r20-r32-retained.json)
+[`C4-C8`](results/2026-08-30-gfx1151-qwen38-mtp-q5-r16-retained.json)
 
 The matched standard-`Q4_K_M` [external survey](results/2026-08-28-gfx1151-qwen38-external-reproduction-survey.json)
 keeps source-protocol claims separate from engine comparisons. Current campaign
