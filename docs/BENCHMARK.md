@@ -617,16 +617,15 @@ fields may remain for backward compatibility, but they do not replace the
 canonical block. Older artifacts without this block keep their documented
 legacy/diagnostic status until rerun.
 
-Recorded commands must stay executable. `scripts/check_published_command_drift.py`
-AST-extracts the declared flags of every tool invoked by an artifact cited in
-`benchmarks/README.md` and fails on `UNKNOWN-FLAG` (the tool no longer declares the flag),
-`SCRIPT-NOT-IN-REPO` (the command ran from `/tmp`, so the row was never reproducible), and
-`SCRIPT-MISSING`. It is parse-level only - no import, no GPU - and runs as
-`tests/test_scripts_check_published_command_drift.py`. Scope is the published set deliberately: the
-full `benchmarks/results` history contains 125 distinct drifts across 1579 recorded `scripts/*.py`
-commands, which is not a fixable backlog. Pre-existing problems owned by another lane are listed in
-the tool's `EXCEPTIONS` with dates and reasons, never rewritten, and a stale exception fails the gate
-by itself.
+Recorded commands must stay executable. `scripts/check_published_command_drift.py` AST-extracts
+the declared flags of every tool invoked by an artifact cited in `benchmarks/README.md` and fails
+on `UNKNOWN-FLAG` (the tool no longer declares the flag), `SCRIPT-NOT-IN-REPO` (the command ran
+from `/tmp`, so the row was never reproducible), and `SCRIPT-MISSING`. It is parse-level only -
+no import, no GPU - and runs as `tests/test_scripts_check_published_command_drift.py`. Scope is
+the published set deliberately: the full `benchmarks/results` history contains 125 distinct
+drifts across 1579 recorded `scripts/*.py` commands, which is not a fixable backlog. Pre-existing
+problems owned by another lane are listed in the tool's `EXCEPTIONS` with dates and reasons,
+never rewritten, and a stale exception fails the gate by itself.
 
 ## Human-readable Rollup
 
