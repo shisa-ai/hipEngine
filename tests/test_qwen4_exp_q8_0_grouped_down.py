@@ -148,6 +148,11 @@ def _run_grouped_gpu(fixture) -> np.ndarray:
         (4, 640, 2560, [64, 0, 32, 16]),
         # Route order with empty experts and uneven tails.
         (8, 512, 2048, [3, 0, 29, 7, 0, 0, 41, 5]),
+        # Full 512-expert layer-2 shape (ffn=640 in -> hidden=2560 out).
+        # Stresses the fixed-capacity device grid across the whole expert set
+        # with scattered empty experts, matching the real frozen MoE map.
+        (512, 640, 2560, [3, 0, 5, 0, 2, 0, 0, 4, 1, 0, 2, 0, 6, 0, 0, 1]
+         + [0] * 496),
         # Q8_0 block-multiple in_features, small out.
         (4, 32, 64, [2, 6, 0, 4]),
     ],
