@@ -364,8 +364,13 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
 
 ### P5 — DFlash2 revisit (acceptance parity proven; cost is the wall)
 
-- [ ] P5.1 Root-cause the reverted rowtile-8 AR divergence (verify 620→310 ms
-  halving, AR-divergent, never root-caused; `docs/DFLASH.md` top open item).
+- [x] P5.1 Root-cause the reverted rowtile-8 AR divergence. The old broad
+  rows<=8 dispatch lacked complete layout-qualified verifier ownership. Current
+  safe standard-Q4 rows5-8 plus qmicro fail-closed dispatch is exact on the
+  historical `code_lru_cache`: serial/native R8 **721.5→204.4 ms (3.53x)**,
+  all target IDs/pre-post-norm hidden/five taps exact, and row7 commit preserves
+  next AR token 1714.
+  [`artifact`](../benchmarks/results/2026-08-30-gfx1151-qwen38-dflash-row8-root-cause-closed.json)
 - [ ] P5.2 Attack the drafter+select cost wall (~96 ms/cycle vs MTP proposal
   2.4 ms) sharing the E2 high-row amortization work; measure before/after on
   the common suite.
