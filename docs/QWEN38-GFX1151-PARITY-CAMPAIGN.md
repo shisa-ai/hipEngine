@@ -68,12 +68,12 @@ Standing context that shapes the plan:
   (the reverted rowtile-8 halving 620→310 ms was AR-divergent and never
   root-caused). This is the same multi-row amortization wall the MTP campaign's
   E2 attacks, and it gates the T3 adaptive-K / B4-clamp reopen.
-- E1b current state (2026-08-29): strict C1/K3 natural25 remains automatic at
+- Current state (2026-08-30): strict C1/K3 natural25 remains automatic at
   **18.191 vs 11.062 tok/s (1.6445x)**. Production C2/K3 is now an exact
   explicit diagnostic at **25.749 vs 17.986 (1.4316x)** and remains automatic
   K0 pending refreshed evidence. E1a+E1b+E2 lift C3/K3 to **29.564 vs 24.042
-  (1.2297x)**, 7.45% above the frozen external row. Exact Q6 R8+R8 closes C4
-  external parity at **27.450 tok/s (+1.61%)**. C3/C4 remain automatic K0
+  (1.2297x)**, 7.45% above the frozen external row. Exact Q6 R8+R8 plus Q5
+  true-R16 close C4 external parity at **29.493 tok/s (+9.17%)**. C3/C4 remain automatic K0
   pending their full production/serving gates.
 
 ## 3. Punchlist
@@ -353,9 +353,14 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   [`Q5 R16`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q5-r16-retained.json),
   [`Q4 R16 reject`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q4-r16-rejected.json),
   [`C4 blocker`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-c4-post-q5-blocker.json)).
-- [ ] P4.3 Reopen T3 adaptive-K and the B4 clamp once verifier rowtile work
+- [~] P4.3 Reopen T3 adaptive-K and the B4 clamp once verifier rowtile work
   lands (per the CONCURRENCY2 supersession note); require full-suite
-  acceptance/speed validation per anti-gaming.
+  acceptance/speed validation per anti-gaming. Exact-raw fixed B4 with temporary
+  oracle-only capacity/native-R5 support improves full **27.575→28.826 tok/s
+  (+4.53%)**, code +11.03%, Japanese +6.31%, and mixed +4.98%, but regresses
+  heldout **-2.81%** and general English **-9.82%**. E3 therefore rejects fixed
+  B4 before adaptive K; all temporary code is removed and fixed K3 remains.
+  [`artifact`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-b4-reopen-rejected.json)
 
 ### P5 — DFlash2 revisit (acceptance parity proven; cost is the wall)
 
