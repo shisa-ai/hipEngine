@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-30 gfx1151 Qwen3.8 MTP E5 correctness] Current C3/K3 canonical/heldout production numerics pass at KL max **8.69e-4/8.45e-4**, top-1 **240/240 + 192/192**, three deterministic repeats, exact teardown, and the composed 64-test ownership/lifecycle bundle. E5 closes; E6 automatic policy remains separate. `benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-e5-combined-correctness.json`.
+
 - [2026-08-30 gfx1151 Qwen3.8 final six-engine matrix] Re-run hipEngine plus five preserved external implementations on one host/model/prompt/timing protocol. hipEngine wins AR **C3-C8** and MTP **C3-C4**; external engines win prefill C1-C8, AR C1-C2, and MTP C1-C2/C5-C8. `benchmarks/results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json`.
 
 - [2026-08-30 gfx1151 Qwen3.8 DFlash P5 closeout] P5.2 retains amortized Q6 select (**70→22 ms**, B3 **7.70→8.845 tok/s, +14.87%**) and rejects quality-losing variable-block forward. P5.3 remains blocked: the exact Qwen3.8 DFlash2 snapshot/reference are absent, and the available Qwen3.6 drafter is not substituted. `benchmarks/results/2026-08-30-gfx1151-qwen38-dflash-p5-closeout.json`.

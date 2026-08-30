@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-30",
+  "status": "e5_combined_correctness_passed_e6_policy_unchanged",
+  "campaign": "docs/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+  "title": "Qwen3.8 Q4_K_M E5 combined production correctness closure",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "commit": "6363c3a1c9f21d5c51b819ff6baf68f4e36f68d4",
+    "tracked_dirty": false,
+    "untracked_artifacts_present": true,
+    "production_changed": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "full_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "selected_stack": {
+    "production_arithmetic": "FP16 recurrent state plus shape-scoped production Q4 rowtiles with strict FP32-state/small-M-WMMA fallback",
+    "exact_t0_boundaries": [
+      "post-output-norm prompt streaming at physical C2/C3 scopes",
+      "Q6 F32 proposal-head rows2-4 rowtile",
+      "standard-Q6 true-R12",
+      "Q5 true-R12",
+      "standard/planar Q6 R8+R8 at physical R16",
+      "Q5 true-R16"
+    ],
+    "manifest": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_fallbacks_registered": true
+  },
+  "current_c3_k3_numerics": {
+    "protocol": "C3/K3/R12, D24, strict fixed-schedule full-vocabulary teacher, three candidate repeats",
+    "canonical": {
+      "rows": 240,
+      "kl_mean": 0.00004979289671534688,
+      "kl_p95": 0.0003003184654087804,
+      "kl_p99": 0.0005699325438902229,
+      "kl_max": 0.0008685188215045755,
+      "top1_agreement": 1.0,
+      "top1_matches": 240,
+      "repeat_determinism": true,
+      "all_category_scopes_passed": true,
+      "all_transition_scopes_passed": true,
+      "teardown_exact": true
+    },
+    "heldout": {
+      "rows": 192,
+      "kl_mean": 0.00004601380209307793,
+      "kl_p95": 0.00021574895164813232,
+      "kl_p99": 0.00047689342519609165,
+      "kl_max": 0.0008451434938693754,
+      "top1_agreement": 1.0,
+      "top1_matches": 192,
+      "repeat_determinism": true,
+      "all_category_scopes_passed": true,
+      "all_transition_scopes_passed": true,
+      "teardown_exact": true
+    },
+    "thresholds": {
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "max_kl_max": 0.05,
+      "top1_min": 0.99,
+      "per_scope_top1_min": 0.97
+    },
+    "hard_gates_passed": true
+  },
+  "composed_e5_evidence": {
+    "prior_c3_k1_k3_rows": 1296,
+    "prior_c3_k1_k3_canonical_and_heldout_passed": true,
+    "dynamic_production_teacher_rows": 1170,
+    "dynamic_production_kl_max": 0.04978771577044094,
+    "dynamic_production_top1": 0.9974358974358974,
+    "neighbor_substitution": true,
+    "row_permutation": true,
+    "sparse_retirement": true,
+    "long_context_smoke": true,
+    "c1_c2_c4_c8_transition_and_isolation": true,
+    "cancellation_refill_failure_following_health": true,
+    "blocking_and_sse": true,
+    "final_allocations_zero": true,
+    "later_q5_q6_owner_inheritance": "Every later owner is BF16-bit exact to the already-qualified production parent, so it cannot change logits/state/KV/control in its admitted row/shape scope."
+  },
+  "focused_current_tests": {
+    "passed": 64,
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 pytest tests/test_qwen35_gguf_mtp_session.py tests/test_gguf_mtp_lifecycle_gate.py tests/test_specdec2_s6_category_gate.py tests/test_specdec2_s6_failure_gate.py tests/test_specdec2_s6_soak_gate.py tests/test_generation_qwen35_gguf_sampling.py -q -k 'mtp or speculative or serving_plan or physical_width or resident_runner_lowers'",
+    "scope": "scheduler/session ownership, batch grouping/fallback, category, failure, soak, lifecycle, serving-plan, physical-width transitions"
+  },
+  "e5_checklist": {
+    "changed_boundaries_against_strict": true,
+    "canonical_heldout_full_logits": true,
+    "repeat_determinism": true,
+    "same_width_isolation": true,
+    "neighbor_permutation_ragged_sparse_cancel_refill": true,
+    "exact_request_slot_token_position_mask_kv_state_transaction_lifecycle": true,
+    "zero_final_allocations": true,
+    "c1_c2_regression_controls": true,
+    "t0_candidate_and_acceptance_exactness": true
+  },
+  "economics": {
+    "final_c3_ar_tok_s": 23.65944640689244,
+    "final_c3_mtp_tok_s": 29.468337109799673,
+    "c3_mtp_vs_ar": 1.2455209899254023,
+    "final_c4_ar_tok_s": 30.083455284916784,
+    "final_c4_mtp_tok_s": 29.38539000813243,
+    "automatic_policy": "unchanged: E5 correctness passing does not itself satisfy E6 repetitions/SLO/typed automatic admission; C2-C4 remain K0"
+  },
+  "commands": {
+    "canonical_numerics": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/qwen38_q4_verifier_numerics.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --concurrency 3 --candidate-budget 3 --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --decode-steps 24 --repeat-runs 3 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/p450-c3k3-current-canonical-numerics.json",
+    "heldout_numerics": "same command with --prompts benchmarks/prompts/gdn-prefill-category-heldouts.jsonl --output /tmp/p450-c3k3-current-heldout-numerics.json"
+  },
+  "evidence": [
+    ["/tmp/p450-c3k3-current-canonical-numerics.json", "0bf73ef5d9bb391d3ab1aa953c1e9f7f9bd7bdcd925cffe0485ea48b677f923e", 20101],
+    ["/tmp/p450-c3k3-current-heldout-numerics.json", "cd358ea22e001891de21b9373d5c8e89d1925ec9821b94e2dd2ff11e2fde3bb6", 18555],
+    ["benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d5-production-correctness.json", "0130cc3f7e9bb1a23004bd476b6b5f7bdc230567da13806ab984ef2043b886ef", 6777],
+    ["benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json", "e3861e4083aef9022888c3884f120a28c6296c4bf352e60529e51b63ddffb850", 38664],
+    ["benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e1a-prompt-streaming-retained.json", "c91075e7aa1be6bfa2dbf1707271f9db898b88e5d2311c15e40a63f6a80677e9", 8900],
+    ["benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e1b-proposal-head-rowtile-retained.json", "d3fafa2d02fb7b66db0428391c2298444e23b4565789e30ba41724563a86d1a2", 9902],
+    ["benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e2-standard-q6-true-r12-retained.json", "107093e85d4671c219466b6cd91daada29beed13f64e3bedfe1b81e3eb9fe56d", 6898],
+    ["benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e2-q5-true-r12-retained.json", "a4069e92510998d908dd50c77eda100a8bcac86aca0393b62e0cffda837924ca", 6665],
+    ["benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json", "e469cd6a7838b58f10091189873c6fc19da6af80c245fad7f625395051c42a5c", 6767],
+    ["benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q5-r16-retained.json", "4a08c1d8a763596ad7f22c5e4226b2c76355c62f381fd12b88330eb05296dae1", 6531]
+  ],
+  "decision": {
+    "p4_1_e0_e5": "complete",
+    "e5_correctness": "passed",
+    "e6_automatic_promotion": "not implied; separate economics/repetition/SLO/typed evidence owner",
+    "production_policy_changed": false
+  }
+}

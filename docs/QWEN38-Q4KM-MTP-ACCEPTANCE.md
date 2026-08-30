@@ -582,24 +582,32 @@ acceptance/task campaign and are not mixed into the exact E1-E4 ladder.
 Run after the selected implementation stack is frozen; do not qualify every
 exploratory combination.
 
-- [ ] Evaluate all changed T0/T1/T2 boundaries against strict parents and record
+- [x] Evaluate all changed T0/T1/T2 boundaries against strict parents and record
       the final selected/fallback manifest.
-- [ ] Canonical + category-heldout D24 full-logit production gate: calibrated
+- [x] Canonical + category-heldout D24 full-logit production gate: calibrated
       mean/p95/p99/max KL, top-1 by category/shape/transition/accepted depth,
       three deterministic repeats, task review where required.
-- [ ] Same-width C3 neighbor replacement, row permutation, slot movement,
+- [x] Same-width C3 neighbor replacement, row permutation, slot movement,
       ragged lengths, sparse retirement, delayed arrival, cancellation/reclaim,
       C1<->C2<->C3 transitions, refill, output tails, the context67/68
       admission boundary, and graph/eager fallback. Context68+ remains K0 in
       the primary packet.
-- [ ] Exact request/slot/token/position/mask/`KVLiveSpans`/state/KV/transaction/
+- [x] Exact request/slot/token/position/mask/`KVLiveSpans`/state/KV/transaction/
       lifecycle ownership and zero final allocations.
-- [ ] Regression controls: automatic strict C1 and production C2 remain within
+- [x] Regression controls: automatic strict C1 and production C2 remain within
       their certified scope and pass same-suite economics/correctness.
-- [ ] For T0/provider changes, same-schedule candidate IDs and target acceptance
+- [x] For T0/provider changes, same-schedule candidate IDs and target acceptance
       are exact. For T1/T2 target arithmetic, strict-vs-production generated-ID
       equality is diagnostic; the production distribution/task/control gates
       are binding.
+
+E5 closes 2026-08-30 by composition on the frozen selected stack. Current
+C3/K3 canonical/heldout KL max is **8.69e-4/8.45e-4**, top-1 **240/240 +
+192/192**, with three deterministic repeats and exact teardown. Existing C3
+K1-K3 evidence covers 1,296 rows; D5 plus the current 64-test bundle covers the
+ownership/lifecycle matrix. Later Q5/Q6 owners are BF16-bit exact to those
+qualified parents. E6 still owns automatic promotion.
+[`artifact`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-e5-combined-correctness.json)
 
 Any failed binding scope rejects the compound candidate. Do not average a
 failed category or transition into a pass.
