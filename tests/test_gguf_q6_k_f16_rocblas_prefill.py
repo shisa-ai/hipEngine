@@ -855,9 +855,15 @@ def test_q6_t16_f16_rocblas_actual_shapes_use_bounded_workspace_and_pass_quality
     x_bits = _bf16_bits(
         rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
     )
-    reader = __import__(
-        "hipengine.loading.gguf", fromlist=["GGUFReader"]
-    ).GGUFReader("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
+    try:
+        reader = __import__(
+            "hipengine.loading.gguf", fromlist=["GGUFReader"]
+        ).GGUFReader("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
+    except FileNotFoundError:
+        pytest.skip(
+            "Qwen3.6-27B-Q4_K_M.gguf asset is not present on this host "
+            "(external model-library state; removed 2026-08-30)"
+        )
     tensor_name = (
         "blk.0.ffn_down.weight"
         if (out_features, in_features) == (5_120, 17_408)
