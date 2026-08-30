@@ -4626,3 +4626,15 @@ chunks, qualify it against the strict unfused per-request chain, and then declar
 pursued, delete `next_prefill_batch_work` plus its `engine_loop` branch so the
 dead route stops advertising a capability the backend does not have. Measured
 evidence: `benchmarks/results/2026-08-30-w7900-q4km-c1c8-hipengine-refresh-post-promotions.json`.
+
+Correction while the section above is still fresh: the equal-length rule is a
+policy of the **resident AR route only**. The serving route reaches the very same
+`prefill_batch_native` entry point with arbitrary prompt lengths today
+(`hipengine/generation/qwen35_gguf.py:3025`, chunked only by
+`_MTP_SERVING_TARGET_BATCH_MAX_SLOTS`), and
+`tests/test_generation_qwen35_gguf_sampling.py::test_gguf_ar_packed_prefill_batches_unequal_prompt_lengths`
+pins that it groups eight prompts of three distinct lengths into one call. So the
+runner is not the limitation, and no padded/masked kernel work is implied: enabling
+wave-grouped AR prefill means declaring the capability **and** aligning
+`_try_prefill_native_work_batch`'s policy with the serving route's, qualified
+against the strict per-request chain. Trigger unchanged.

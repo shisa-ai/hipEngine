@@ -4722,6 +4722,105 @@ def test_gguf_ar_packed_prefill_runs_one_native_c8_slab(monkeypatch) -> None:
     assert os.environ.get("HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN") is None
 
 
+def test_gguf_ar_packed_prefill_batches_unequal_prompt_lengths(monkeypatch) -> None:
+    """Mixed-length prompts must group into one native prefill call.
+
+    Measured context: C1-C8 admission is flat at ~305 ms per lane while llama.cpp
+    batches its wave (1.41x behind at C1, 2.88x at C8), and admission parity alone
+    wins every AR cell.
+
+    This pins the *serving* route (``generate_detailed`` -> the packed prefill call
+    site around ``qwen35_gguf.py:3025``), which groups eight prompts of three
+    distinct lengths into one ``prefill_batch_native`` call today. It exists so a
+    future "equal lengths only" narrowing of that route fails loudly: the resident
+    AR route's ``_try_prefill_native_work_batch`` guard *does* require equal chunk
+    lengths, and that stricter policy - not a runner limitation - is what keeps the
+    C1-C8 matrix on one-prompt-at-a-time prefill. Keep this test green.
+    """
+
+    calls: list[tuple] = []
+
+    class FakeRuntime:
+        pass
+
+    class FakeFullStackRunner:
+        def __init__(self, model_path, **kwargs):
+            self.runtime = FakeRuntime()
+
+    class FakeSession:
+        def __init__(self, model_path, **kwargs):
+            self.slot_id = len([call for call in calls if call and call[0] == "session_init"])
+            self.runtime = kwargs["runtime"]
+            self.runner = kwargs["shared_runner"]
+            self.position = 0
+            calls.append(("session_init", self.slot_id))
+
+        def reset(self):
+            self.position = 0
+
+        def close(self):
+            calls.append(("close", self.slot_id))
+
+        def prefill(self, token_ids, *, return_logits=False):
+            calls.append(("scalar_prefill", self.slot_id, tuple(int(t) for t in token_ids)))
+            self.position = len(token_ids)
+            return SimpleNamespace(token_id=1)
+
+        def prefill_batch_native(self, prompt_token_ids, *, sessions, return_logits=False):
+            calls.append(
+                (
+                    "prefill_batch",
+                    self.slot_id,
+                    tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids),
+                    tuple(session.slot_id for session in sessions),
+                    return_logits,
+                )
+            )
+            for session, prompt in zip(sessions, prompt_token_ids, strict=True):
+                session.position = len(prompt)
+            return [SimpleNamespace(token_id=1) for _session in sessions]
+
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFFullStackRunner", FakeFullStackRunner)
+    monkeypatch.setattr(qwen35_gguf, "Qwen35GGUFResidentSession", FakeSession)
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "1")
+
+    generator = _generator()
+    generator.prepare()
+    mixed = ("long", "first", "second", "long", "first", "second", "long", "first")
+    outputs = generator.generate_detailed(_request(prompts=mixed, max_tokens=1))
+
+    assert [output.text for output in outputs] == ["B"] * 8
+    batch_calls = [call for call in calls if call[0] == "prefill_batch"]
+    scalar_calls = [call for call in calls if call[0] == "scalar_prefill"]
+    grouped_rows = {len(prompt) for call in batch_calls for prompt in call[2]}
+
+    # Target contract, currently unmet: one grouped call carrying every lane.
+    assert len(batch_calls) == 1 and len(batch_calls[0][2]) == 8, (
+        f"mixed-length wave was not grouped: {len(batch_calls)} batch call(s), "
+        f"{len(scalar_calls)} scalar call(s)"
+    )
+    assert grouped_rows == {4, 2, 1}, f"grouped call did not carry all three lengths: {grouped_rows}"
+
+
+def test_gguf_gfx1100_packed_prefill_capability_is_undeclared_by_default() -> None:
+    """Tripwire: the resident AR loop cannot batch prefill until this is declared.
+
+    ``engine_loop`` selects ``next_prefill_batch_work`` only when
+    ``runner.packed_prefill_max_rows > 1``, and that attribute reads
+    ``GGUF_C2_PACKED_PREFILL_MAX_ROWS`` from the backend package with a default of
+    1, which no backend package declares. This test records the reason the C1-C8
+    matrix prefills one request at a time. Declaring the capability for
+    gfx1100 - after qualifying unequal-length grouping against the strict
+    per-request chain - must update this test deliberately, not silently.
+    """
+
+    from hipengine.kernels.backends import backend_package_capability
+
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1
+    ) == 1, "capability declared: re-verify grouping parity and update this test"
+
+
 def test_gguf_ar_packed_prefill_notimplemented_falls_back(monkeypatch) -> None:
     calls: list[tuple] = []
 
