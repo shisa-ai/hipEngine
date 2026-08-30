@@ -15,7 +15,14 @@
     }
   },
   "change": "GGUF_C2_PACKED_PREFILL_MAX_ROWS=8 declared on hipengine/kernels/hip_gfx1100/__init__.py",
-  "command": "HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --output /tmp/he-c1c8-cap8/c1c8-cap8.json --widths 1,2,3,4,5,6,7,8 --require-mtp --expected-mtp-widths 1,2,3,4,5,6,7,8",
+  "command": "HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --output /tmp/he-c1c8-cap8/c1c8-cap8.json --widths 1,2,3,4,5,6,7,8 --expected-mtp-widths 1,2,3,4,5,6,7,8",
+  "command_as_run": "HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --output /tmp/he-c1c8-cap8/c1c8-cap8.json --widths 1,2,3,4,5,6,7,8 --require-mtp --expected-mtp-widths 1,2,3,4,5,6,7,8",
+  "command_drift": {
+    "model_flag_added": "the recorded command also omitted --model, and the tool default has since moved to Qwen3.6-27B, so a literal rerun of the old string would measure a different model. The packet for this row is Qwen3.8-27B-Q4_K_M.gguf (17,106,773,984 bytes), which is now pinned explicitly.",
+    "semantics_check": "packet /tmp/he-c1c8-cap8/c1c8-cap8.json shows mtp_engaged true in 80/80 cells including width 1 at resident_capacity 8 (the default is the max measured width), so --expected-mtp-widths 1..8 remains the expectation the run satisfied.",
+    "verification_level": "parse-verified against HEAD argparse (scripts/check_published_command_drift.py reports 0 problems for this artifact); the corrected string has not been re-executed end to end.",
+    "why_changed": "the run recorded --require-mtp, which scripts/gguf_mtp_c1c8_server_bench.py no longer declares (argparse: \"unrecognized arguments: --require-mtp\"), so the published row carried a repro recipe that exited 2. Explicit MTP requests are the tool default (--mtp-request-mode explicit), so dropping the flag preserves behaviour; verified by the source of _request_mtp_value."
+  },
   "correctness": {
     "cells": 80,
     "correctness_passed": 80,
