@@ -653,6 +653,19 @@ launched twice against fixed packet paths, and the second launch reported
 unique output paths (or hold a lock); identical filenames across concurrent
 launches produce a false "no data" that looks like a harness failure.
 
+### Session Pinning Beats Env Knobs on the Server Route
+
+Several GGUF route flags resolve as explicit kwarg > session context > environment - see
+`_resolve_use_q4k_rowtile` (hipengine/runtime/gguf_linear.py:1516) and its two sibling resolvers.
+The resident serving route opens the session, so an A/B that flips only an environment variable can
+measure the same kernels twice. Measured 2026-08-30: width-2 AR packets with
+`HIPENGINE_GGUF_Q4K_ROWTILE=0` traced 164,798 rowtile launches against 164,460 at the default - the
+same route, so four order-controlled packets (~8 min of GPU time) compared nothing.
+
+Before running any env-var A/B against a server route, either read the session opens or trace one
+run and confirm the kernel names actually changed. A single traced width-2 packet costs ~2 minutes
+and is the cheaper move whenever the mechanism is unproven.
+
 ## Human-readable Rollup
 
 `benchmarks/README.md` is the compact current scoreboard. A reader must be able

@@ -101,3 +101,28 @@ def test_knob_stops_mattering_above_the_rowtile_cap(monkeypatch):
     above = module.resolve_gguf_linear_dispatch(weight, rows=module._ROWTILE_MAX_ROWS + 1)
     assert "rowtile" not in above.key.variant
     assert module._ROWTILE_MIN_ROWS == 2 and module._ROWTILE_MAX_ROWS == 8
+
+
+def test_session_pinning_beats_the_env(monkeypatch):
+    """Why an env A/B on the server route measured nothing (measured on GPU, 2026-08-30).
+
+    A width-2 AR packet with HIPENGINE_GGUF_Q4K_ROWTILE=0 traced 164,798 rowtile launches against
+    164,460 with the default - the same route. The resident serving route opens the session, and the
+    session wins over the environment, so the env only moves plain bench/diagnostic calls.
+    """
+    module = _rowtile_resolver()
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4K_ROWTILE", "0")
+    assert module._resolve_use_q4k_rowtile(None) is False
+    with module.q4k_rowtile_session(True):
+        assert module._resolve_use_q4k_rowtile(None) is True
+        with module.q4k_rowtile_session(False):
+            assert module._resolve_use_q4k_rowtile(None) is False
+        assert module._resolve_use_q4k_rowtile(None) is True
+    assert module._resolve_use_q4k_rowtile(None) is False
+
+
+def test_explicit_kwarg_beats_the_session(monkeypatch):
+    module = _rowtile_resolver()
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4K_ROWTILE", "1")
+    with module.q4k_rowtile_session(True):
+        assert module._resolve_use_q4k_rowtile(False) is False
