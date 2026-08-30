@@ -100,6 +100,13 @@ bound, not a kernel bound. **The C5 `4+1` shape explains its matrix-worst
 0.5249x-AR result**: the trailing R4 group pays a near-full pass for a quarter
 of the rows.
 
+*Status 2026-08-30 (M1):* the eleven caps and the `GGUF_SPECDEC2_MTP2_C4`
+gate are gone - one capability-owned profile-keyed bound owns the width, the
+accept owner sizes through C8/R32, and the server batch route adopts the
+engine bound. The partition still runs at C5-C8 only because the measured
+wide single cycle regresses C6-C8 (missing wide-row owners and accept
+scaling, M1 blocker artifact); the default bound remains 4.
+
 The width-4 cap, its eleven cap expressions, and the C4 accept owner are tracked
 as [`REFACTOR.md`](REFACTOR.md) **RF-OI5** with removal tied to M1's outcome
 (punchlist R1, closed at campaign open). A1 is a measured performance defect,
@@ -248,22 +255,29 @@ is made.
   cycle (proposal + accept-interval sync), not target math. C1 production-D24
   baseline for M3: **7.841 tok/s**, streaming engaged on 0 requests, direct
   proposal head. No perf claim.
-- [ ] M1 **Single-group wide verify.** Lift the width-4 partition so one cycle
-  covers all due requests. Replace the eleven scattered cap expressions with
-  one capability-owned bound; update `partition_max_requests`, `claims_fit`,
-  `proposal_widths`, `max_requests`/`max_frontier_rows`, and replace or rename
-  the misleading `GGUF_SPECDEC2_MTP2_C4` gate. Resize and re-key
-  `_batch_accept_resources()` through C8/R32: its `TargetVerifyBufferSpec`,
-  remaining-decode tensor, and packed-payload tensor must all cover eight
-  requests and 32 rows, with allocation/reuse/teardown/pressure tests. Re-add
-  the R20-R32 target row buckets removed as unengaged. Because one proposal now
-  has rows5-8, qualify the rows5-8 proposal-head owner or explicitly measure and
-  record the direct fallback cost; do not assume the rows2-4 policy transfers.
-  Binding gates: exact control/ownership in every profile, all 80 cells exact,
-  acceptance unchanged at 78.894%, registered strict fallback, and C1-C4
-  non-regressive. Targets: C5 `18.657 -> >= 33`, C8 `28.577 -> >= 45` (its own
-  AR is 45.936). These are **intermediate** partition-lift targets — roughly
-  own-AR parity — not the campaign goal.
+- [x] M1 **Single-group wide verify.** **Mechanism done 2026-08-30; wide
+  default measured and blocked.** All eleven scattered caps were replaced by
+  one capability-owned profile-keyed bound
+  (`GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS`; the `GGUF_SPECDEC2_MTP2_C4`
+  gate is renamed `GGUF_SPECDEC2_MTP2_PHYSICAL`), the accept owner/spec/
+  remaining/payload tensors re-key through C8/R32, and the server
+  explicit-MTP batch route now adopts the engine-published bound instead of
+  its old hardcoded 4 (an outer wall the campaign inventory missed: without
+  it the engine never receives a due-group wider than 4). With the bound at
+  8 the frozen protocol ran **80/80 exact, engagement-complete, identical
+  78.894% acceptance, 1.00 physical target passes/cycle at every width** -
+  every M1 binding gate passed. The intermediate targets missed: C5 won
+  (+18.99%, `18.912 -> 22.503`, still below 33) but C6/C7/C8 regressed
+  (`-12.49/-19.56/-9.59%`), so the production default reverted to the
+  certified width-4 bound and the mechanism waits behind M2. The rows5-8
+  proposal head keeps the direct producer - measured cost: proposal member
+  sums `+198..+264%` (C8 `19.3 -> 70.3 s`). rocprof attribution (M2's entry
+  trace): at R>16 the wide pass loses every R<=16 owner - Q6-planar direct
+  gemv `4265.6 ms / 116 launches (~36.8 ms each)`, `qk_t16_selected_direct_
+  gemv` 1473 ms, Q4 `wmma_prefill<false,2>` 1868 ms - and the single
+  eight-request accept interval costs +69.6%. Full numbers:
+  [`m1-wide-cycle-blocked`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-m1-wide-cycle-blocked.json).
+  [`Entry`](../worklog/entries/20260830T142143.717427Z-lhl-qwen38-m1-wide-bound-blocker-8b3ed2.md)
 - [ ] M2 Per-row verify cost (A1). Using M1's per-quant attribution, close the
   gap between MTP ms/target-row and AR ms/row at matched width. M1+M2 jointly
   own the final `MTP >= 1.15x own AR` gates: C4 `>= 34.596`, C5 `>= 40.876`,
