@@ -651,14 +651,15 @@ These are ordered follow-ons, not assumptions in the primary claim:
    numerical/state gates.
 5. **gfx1100:** source ideas may transfer, absolute rates, manifests, and
    thresholds may not.
-6. **C5-C8:** exact Q6 R20-R32 chunks improve clean MTP to
-   **17.970/26.904/28.205/27.393 tok/s (+17.89%/+29.16%/+21.34%/+39.41%)**.
-   All outputs and 78.894% acceptance remain exact; a C8 trace removes direct Q6
-   calls and reduces whole-process Q6 kernel time about 69.95%. Proposal
-   telemetry remains rows4+remainder, so E1b already covers every non-singleton
-   proposal subgroup. Every width still trails AR and its external target by
-   25-50%; refresh target attribution and pursue Q4/Q5 operation-complete work
-   only with their exact or production numerical gates.
+6. **C5-C8:** the retained physical-R16 Q6 owner improves clean MTP to
+   **17.970/26.904/28.205/27.393 tok/s (+17.89%/+29.16%/+21.34%/+39.41%)**
+   through C4-sized provider groups. Target decompositions are C5 R16+R4, C6
+   R16+R8, C7 R16+R12, and C8 R16+R16—not logical R20-R32 calls; unengaged wide
+   keys are removed. All outputs and 78.894% acceptance remain exact, and a C8
+   trace reduces whole-process BF16 Q6 **8.707→3.210 s (-63.13%)**. Proposal
+   telemetry remains rows4+remainder. Every width still trails AR and external
+   by 25-50%; pursue R16/remainder Q4/Q5 work only with its exact or production
+   numerical gates.
    [`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-q6-r20-r32-retained.json)
 
 ## 6. Candidate priority and reopen matrix
@@ -669,7 +670,7 @@ These are ordered follow-ons, not assumptions in the primary claim:
 | 0b | Physical proposal Q6 F32 rowtile | E1b retained: row3 13.736→4.711 ms; C3 27.169→29.198 tok/s; exact C2/C3 acceptance | closed retained; C3 external parity passed |
 | 1 | True R9/R12 target owner | Post-E1 C3 target was 190.12 ms/cycle; Q4/Q6/Q5 were 102.71/50.19/12.98 ms | E2 C3 closed: Q4 rejected; standard Q6 + Q5 retained; planar Q6 rejected. |
 | 1b | C4 exact Q6 R16 | C4 target owner was 72.68% of child; Q6 direct kernels were 1.847 s | closed retained: R8+R8 cuts Q6 74.10%, C4 reaches 27.450 tok/s and passes external parity |
-| 1c | C5-C8 exact Q6 R20-R32 | direct/WMMA Q6 remained in 57.5-69.5% target owner | closed retained: +17.89% to +39.41%; refresh Q4/Q5 Amdahl shares because every width remains below AR/external |
+| 1c | C5-C8 physical-R16 Q6 carryover | provider partitions targets as R16+R4/R8/R12/R16 | closed retained: +17.89% to +39.41%; unengaged logical R20-R32 keys removed; refresh provider-group Q4/Q5 shares |
 | 2 | Fixed K4 | max zero-cost visible lift 17.54%; external K4 is diagnostic | measured p4/cost score cannot beat fixed K3 |
 | 3 | NextN norm/concat/Q4 residual | E0 Q4 NextN work is 12.75 ms/cycle at C3/K3 after the head | < material refreshed Amdahl share or compound-only idea |
 | 4 | Provider update/selected commit | unprofiled telemetry currently single-digit ms/cycle | <=5% refreshed wall or P7 already owns best path |

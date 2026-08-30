@@ -395,7 +395,7 @@ def test_target_verifier_scope_routes_only_backend_admitted_q5_q6(
     assert key == _Q5_T16_DECODE
 
 
-def test_target_verifier_chunks_only_admitted_q6_r12_r16_r20(
+def test_target_verifier_chunks_only_admitted_q6_r12_r16(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import hipengine.runtime.gguf_linear as gguf_linear
@@ -408,7 +408,7 @@ def test_target_verifier_chunks_only_admitted_q6_r12_r16_r20(
         if name == "GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT":
             return {"gguf_q6_k_t16_v1": 8}
         if name == "GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT":
-            return {"gguf_q6_k_t16_v1": frozenset({9, 12, 16, 20})}
+            return {"gguf_q6_k_t16_v1": frozenset({9, 12, 16})}
         return original_capability(backend, name, default)
 
     monkeypatch.setattr(gguf_linear, "backend_package_capability", capability)
@@ -488,18 +488,6 @@ def test_target_verifier_chunks_only_admitted_q6_r12_r16_r20(
                     runtime="runtime-sentinel",
                     use_wmma_prefill=False,
                 )
-                launch_gguf_linear(
-                    weight,
-                    x_ptr=900,
-                    out_ptr=1000,
-                    rows=20,
-                    in_features=5_120,
-                    out_features=10_240,
-                    backend="hip_gfx1100",
-                    stream=7,
-                    runtime="runtime-sentinel",
-                    use_wmma_prefill=False,
-                )
     finally:
         for key, fn in originals.items():
             if fn is None:
@@ -542,29 +530,6 @@ def test_target_verifier_chunks_only_admitted_q6_r12_r16_r20(
                 14,
                 400 + 8 * 10_240 * 2,
                 8,
-                5_120,
-                10_240,
-            ),
-        ),
-        (_Q6_T16_ROWTILE, (900, 14, 1000, 8, 5_120, 10_240)),
-        (
-            _Q6_T16_ROWTILE,
-            (
-                900 + 8 * 5_120 * 2,
-                14,
-                1000 + 8 * 10_240 * 2,
-                8,
-                5_120,
-                10_240,
-            ),
-        ),
-        (
-            _Q6_T16_ROWTILE,
-            (
-                900 + 16 * 5_120 * 2,
-                14,
-                1000 + 16 * 10_240 * 2,
-                4,
                 5_120,
                 10_240,
             ),
