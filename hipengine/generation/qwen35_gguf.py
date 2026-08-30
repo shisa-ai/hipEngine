@@ -6400,7 +6400,14 @@ class Qwen35GGUFResidentModelRunner:
                 self.configure_engine_loop(config)
 
     def _try_prefill_native_work_batch(self, work: WorkItem) -> bool:
-        """Run one same-length full-prompt scheduler work item as native cN."""
+        """Run one full-prompt scheduler work item as native cN.
+
+        Prompt lengths may differ across rows: the call forwards ``full_prompt_lengths``
+        per row, which is how the serving route already drives this entry point. The
+        earlier equal-length requirement was stricter than that ABI and kept the C1-C8
+        matrix on one-request-at-a-time prefill, because no realistic 8-wide wave has
+        uniform prompt lengths.
+        """
 
         if (
             len(work.request_ids) <= 1
@@ -6410,7 +6417,7 @@ class Qwen35GGUFResidentModelRunner:
             return False
         rows = [self._row(request_id) for request_id in work.request_ids]
         chunks = [tuple(int(token) for token in token_row) for token_row in work.token_rows]
-        if len({len(chunk) for chunk in chunks}) != 1:
+        if any(not chunk for chunk in chunks):
             return False
         for row, chunk in zip(rows, chunks, strict=True):
             if (
