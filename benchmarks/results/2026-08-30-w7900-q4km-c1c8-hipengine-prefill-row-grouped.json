@@ -1,0 +1,73 @@
+{
+ "content_exact": {
+  "ar_rows": 360,
+  "cross_packet_rows_compared": 720,
+  "mismatches": 0,
+  "mtp_rows": 360,
+  "note": "keyed by (width, arm, prompt_id, lane index); every row in both packets matched"
+ },
+ "control_packet": "/tmp/he-d1v3/he-d1v3.json",
+ "date": "2026-08-30",
+ "gain_pct_vs_control": {
+  "1": 0.12,
+  "2": 14.07,
+  "3": 37.65,
+  "4": 107.41,
+  "5": 102.96,
+  "6": 125.13,
+  "7": 176.02,
+  "8": 156.94
+ },
+ "kind": "w7900-q4km-c1c8-hipengine-prefill-row-grouped",
+ "measured_tok_s": {
+  "hipengine_grouped": {
+   "1": 149.072,
+   "2": 175.905,
+   "3": 212.235,
+   "4": 318.412,
+   "5": 312.682,
+   "6": 347.625,
+   "7": 426.692,
+   "8": 397.655
+  },
+  "hipengine_ungrouped_control": {
+   "1": 148.891,
+   "2": 154.209,
+   "3": 154.187,
+   "4": 153.517,
+   "5": 154.061,
+   "6": 154.408,
+   "7": 154.588,
+   "8": 154.767
+  }
+ },
+ "model": "Qwen3.8-27B Q4_K_M (GGUF)",
+ "notes": [
+  "C4 (318.412) exceeds C5 (312.682) and C7 (426.692) exceeds C8 (397.655): grouping benefit is not monotone in width, so the row is reported as measured rather than smoothed.",
+  "Width 1 is the control on itself: one request, nothing to group, +0.12%."
+ ],
+ "platform": "W7900 (gfx1100, RDNA3)",
+ "protocol": "one-token packet, 10 prompts x C1-C8, prompt tokens admitted per second summed over the 10 cells",
+ "schema": "hipengine.benchmark.artifact.v1",
+ "source_packet": "/tmp/he-d1-cap8/he-d1-cap8.json",
+ "vs_current": {
+  "1": 0.742,
+  "2": 0.734,
+  "3": 0.819,
+  "4": 1.13,
+  "5": 0.968,
+  "6": 0.949,
+  "7": 1.14,
+  "8": 0.938
+ },
+ "vs_laurent": {
+  "1": 0.761,
+  "2": 0.76,
+  "3": 0.839,
+  "4": 1.16,
+  "5": 0.989,
+  "6": 0.971,
+  "7": 1.159,
+  "8": 0.937
+ }
+}

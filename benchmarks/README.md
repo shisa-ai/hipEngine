@@ -122,35 +122,42 @@ W7900 standardized Qwen3.8 `Q4_K_M` C1-C8 complete-wall matrix (total tok/s):
 
 | Engine / arm | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine AR | **22.094** | 30.842 | **36.345** | **40.109** | **42.149** | 43.788 | 44.698 | 45.657 |
+| hipEngine AR | **21.999** | 31.916 | **45.309** | **54.151** | **61.881** | **71.226** | **74.903** | **78.667** |
 | llama.cpp current HIP AR | 21.720 | **35.440** | 30.787 | 27.760 | 36.390 | 45.529 | 51.914 | 58.744 |
-| llama.cpp Laurent HIP AR | 21.463 | 35.100 | 30.635 | 27.667 | 36.473 | **45.826** | **52.537** | **59.348** |
-| hipEngine explicit K3 | 31.571 | 29.950 | 31.035 | 31.518 | 31.307 | 30.760 | 31.162 | 31.445 |
+| llama.cpp Laurent HIP AR | 21.463 | 35.100 | 30.635 | 27.667 | 36.473 | 45.826 | 52.537 | 59.348 |
+| hipEngine explicit K3 | 31.455 | 39.820 | **54.590** | **55.780** | 47.960 | 49.020 | 55.225 | 55.860 |
 | llama.cpp current HIP K3 | 32.553 | **41.042** | 45.324 | 49.977 | 59.644 | 72.195 | 75.354 | 94.735 |
-| llama.cpp Laurent HIP K3 | **32.733** | 40.808 | **45.947** | **51.054** | **61.013** | **74.628** | **78.281** | **101.072** |
-| hipEngine prefill | 148.891 | 154.209 | 154.187 | 153.517 | 154.061 | 154.408 | 154.588 | 154.767 |
-| llama.cpp current HIP prefill | **200.946** | **239.658** | **259.036** | **281.828** | **323.043** | **366.213** | **374.207** | 424.072 |
+| llama.cpp Laurent HIP K3 | **32.733** | 40.808 | 45.947 | 51.054 | **61.013** | **74.628** | **78.281** | **101.072** |
+| hipEngine prefill | 149.072 | 175.905 | 212.235 | **318.412** | 312.682 | 347.625 | **426.692** | 397.655 |
+| llama.cpp current HIP prefill | **200.946** | **239.658** | **259.036** | 281.828 | **323.043** | **366.213** | **374.207** | 424.072 |
 | llama.cpp Laurent HIP prefill | 195.803 | 231.307 | 252.893 | 274.520 | 316.169 | 358.053 | 368.136 | **424.202** |
 
 All current rows and 78/80 Laurent AR/MTP cells are content-exact; Laurent's two
 C8 differences are deterministic and pass anti-repetition guards. Both hipEngine
-rows were re-measured on the current engine (`0740a9497`, engine tree identical
-to HEAD; only docs/scripts commits since): 80/80 cells content-exact, K3 engaged
-80/80, AR **+1.02%..+3.05%** and K3 **+1.05%..+1.95%** above the prior packet with
-no winner change. Draft acceptance falls **0.7889 (C1) -> 0.6139 (C2) -> 0.4668
-(C3)** inside that single run. Decomposed from the same packets, hipEngine
-marginal decode exceeds both peers at every width (1.01x-2.30x) while its
-admission module is 1.41x (C1) to 2.88x (C8) behind. K3 is an
-engine-ranking diagnostic, distinct from hipEngine's automatic C2/K2 product
-key. hipEngine prefill is now measured on the peer protocol (a one-token packet,
-10 prompts x C1-C8, content-exact): **148.891 at C1 rising only to 154.767 at
-C8**, so it is flat (+3.9%) where both peers more than double, because our
-admission does not overlap requests. That is 0.74x llama.cpp current at C1 and
-0.36x at C8. Two independent one-token packets agree to within 0.41% at every
-width.
+rows come from a packet taken after **grouped prefill was declared for gfx1100**
+(`GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8`), whose protocol block is byte-identical to
+the prior packet: 80/80 correctness cells, **720** cross-packet row comparisons with
+**0** mismatches on the one-token packet and **432** at full 24-token length. That
+change is AR **+3.5%..+72.2%** and K3 **+31.8%..+76.5%** versus the pre-declaration
+packet, and AR now leads **7 of 8 widths** - only C2, at 0.90x current. Draft
+acceptance is **0.7889 at every width** instead of falling to 0.4668 at C3:
+bypassing the packed verify path moved acceptance by exactly **+0.000** at C1/C2/C4/C8,
+so the ungrouped prefill schedule, not verification, caused the collapse. K3 leads
+the peers only at C3 (1.19x Laurent) and C4 (1.09x), and is behind our own AR from
+C5 onward; K3 remains an engine-ranking diagnostic, distinct from hipEngine's
+automatic C2/K2 product key. Prefill on the peer protocol (one-token packet, 10
+prompts x C1-C8, content-exact) is no longer flat: **149.072 at C1 to 426.692 at
+C7**, +14% to +176% against the ungrouped control at the same width, 1.13x current
+at C4 and 1.14x at C7, still 0.73x-0.97x elsewhere because grouping only admits
+whole prompts (`chunk == row.prompt_ids`) and does not overlap waves. It is
+non-monotone in width (C4 > C5, C7 > C8) and is reported as measured. Two
+independent *ungrouped* one-token packets agree within 0.41% at every width; the
+grouped row is a different configuration, not a repeat.
 [`W7900 matrix`](results/2026-08-30-w7900-qwen38-q4km-c1c8-cross-engine.json) ·
 [`hipEngine refresh + submodules`](results/2026-08-30-w7900-q4km-c1c8-hipengine-refresh-post-promotions.json) ·
 [`prefill row`](results/2026-08-30-w7900-q4km-c1c8-hipengine-prefill-row.json) ·
+[`prefill row, grouped`](results/2026-08-30-w7900-q4km-c1c8-hipengine-prefill-row-grouped.json) ·
+[`grouped-prefill promotion`](results/2026-08-30-w7900-q4km-c1c8-hipengine-grouped-prefill-promotion.json) ·
 [`admission/decode decomposition`](results/2026-08-30-w7900-q4km-c1c8-submodule-decomposition.json).
 
 Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 automatic at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) is **15.609 vs 9.807 tok/s (1.5916x)**; [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) remains available. Exact C2 verifier [Q6](results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json) and [Q5](results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json), followed by [production-profile Q4 rowtiles](results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json), lift K3 **11.724→17.031 tok/s (+45.27%)** and **0.8170x→1.1441x true AR**. Independently qualified [C3 R6/R9/R12 rowtiles](results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json) improve C3/K3 **19.070→19.934 tok/s (+4.53%)**, but remain **0.9589x AR**; production C2/K3 is automatic only for context1-128/D24, while C3-C8 and scope misses remain K0.

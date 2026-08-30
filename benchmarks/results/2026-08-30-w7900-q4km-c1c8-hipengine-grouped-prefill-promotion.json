@@ -1,0 +1,179 @@
+{
+ "attribution": {
+  "grouped_prefill_acceptance_delta_vs_native": {
+   "C1": 0.0,
+   "C2": 0.175,
+   "C4": 0.321,
+   "C8": 0.321
+  },
+  "reading": "packed verify path innocent; the ungrouped prefill schedule caused the acceptance collapse",
+  "serial_exact_acceptance_delta_vs_native": {
+   "C1": 0.0,
+   "C2": 0.0,
+   "C4": 0.0,
+   "C8": 0.0
+  }
+ },
+ "change": "GGUF_C2_PACKED_PREFILL_MAX_ROWS=8 declared on hipengine/kernels/hip_gfx1100/__init__.py",
+ "command": "HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --output /tmp/he-c1c8-cap8/c1c8-cap8.json --widths 1,2,3,4,5,6,7,8 --require-mtp --expected-mtp-widths 1,2,3,4,5,6,7,8",
+ "correctness": {
+  "cells": 80,
+  "correctness_passed": 80,
+  "cross_packet_mismatches": 0,
+  "cross_packet_row_id_comparisons": 432,
+  "excluded_prompt_lengths": [
+   36,
+   39
+  ],
+  "joined_prompts": 6
+ },
+ "date": "2026-08-30",
+ "delta_pct": {
+  "ar": {
+   "1": -0.4,
+   "2": 3.5,
+   "3": 24.6,
+   "4": 35.0,
+   "5": 46.8,
+   "6": 62.6,
+   "7": 67.5,
+   "8": 72.2
+  },
+  "mtp": {
+   "1": -0.6,
+   "2": 31.8,
+   "3": 74.9,
+   "4": 75.8,
+   "5": 52.5,
+   "6": 58.5,
+   "7": 76.2,
+   "8": 76.5
+  }
+ },
+ "draft_acceptance_after": {
+  "1": 0.7889,
+  "2": 0.7889,
+  "3": 0.7889,
+  "4": 0.7889,
+  "5": 0.7889,
+  "6": 0.7889,
+  "7": 0.7889,
+  "8": 0.7889
+ },
+ "draft_acceptance_before": {
+  "1": 0.7889,
+  "2": 0.6139,
+  "3": 0.4668,
+  "4": 0.4677,
+  "5": 0.5201,
+  "6": 0.5131,
+  "7": 0.4673,
+  "8": 0.4677
+ },
+ "grouping_directly_observed": {
+  "capability_echo": "GGUF_C2_PACKED_PREFILL_MAX_ROWS previous=None applied=8",
+  "native_full_prefill_groups_C1": 0,
+  "native_full_prefill_groups_C4": 10,
+  "native_full_prefill_groups_C8": 10
+ },
+ "kind": "w7900-q4km-c1c8-grouped-prefill-promotion",
+ "model": "Qwen3.8-27B Q4_K_M (GGUF)",
+ "platform": "W7900 (gfx1100, RDNA3)",
+ "pre_registered_prediction": {
+  "direction_correct_widths": 8,
+  "entry": "20260830T030803.578647Z-lhl-w7900-grouped-prefill-ar-flip-prediction-7fe388",
+  "error_pct": {
+   "1": -0.5,
+   "2": -1.2,
+   "3": 9.4,
+   "4": 0.8,
+   "5": 8.8,
+   "6": 14.7,
+   "7": 9.8,
+   "8": 14.2
+  },
+  "flips_measured": [
+   6,
+   7,
+   8
+  ],
+  "flips_predicted": [
+   6,
+   7,
+   8
+  ],
+  "measured": {
+   "1": 21.999,
+   "2": 31.916,
+   "3": 45.309,
+   "4": 54.151,
+   "5": 61.881,
+   "6": 71.226,
+   "7": 74.903,
+   "8": 78.667
+  },
+  "predicted": {
+   "1": 22.1,
+   "2": 32.3,
+   "3": 41.4,
+   "4": 53.7,
+   "5": 56.9,
+   "6": 62.1,
+   "7": 68.2,
+   "8": 68.9
+  }
+ },
+ "prior_packet": "/tmp/he-c1c8-k3/c1c8-k3-packet.json",
+ "protocol_identity": {
+  "new_elapsed_seconds": 421.2,
+  "only_field_differing": "elapsed_seconds",
+  "prior_elapsed_seconds": 611.6,
+  "protocol_block_identical": true
+ },
+ "schema": "hipengine.benchmark.artifact.v1",
+ "source_packet": "/tmp/he-c1c8-cap8/c1c8-cap8.json",
+ "tok_s_after": {
+  "ar": {
+   "1": 21.999,
+   "2": 31.916,
+   "3": 45.309,
+   "4": 54.151,
+   "5": 61.881,
+   "6": 71.226,
+   "7": 74.903,
+   "8": 78.667
+  },
+  "explicit_k3": {
+   "1": 31.455,
+   "2": 39.82,
+   "3": 54.59,
+   "4": 55.78,
+   "5": 47.96,
+   "6": 49.02,
+   "7": 55.225,
+   "8": 55.86
+  }
+ },
+ "tok_s_before": {
+  "ar": {
+   "1": 22.098,
+   "2": 30.851,
+   "3": 36.356,
+   "4": 40.124,
+   "5": 42.165,
+   "6": 43.807,
+   "7": 44.72,
+   "8": 45.684
+  },
+  "explicit_k3": {
+   "1": 31.654,
+   "2": 30.212,
+   "3": 31.219,
+   "4": 31.729,
+   "5": 31.458,
+   "6": 30.936,
+   "7": 31.339,
+   "8": 31.651
+  }
+ }
+}
