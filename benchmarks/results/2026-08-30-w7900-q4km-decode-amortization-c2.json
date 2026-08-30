@@ -1,0 +1,54 @@
+{
+  "c2_split": "With the committed comparator admission wall (llama 223.4 ms vs hipEngine 315.8 ms at C1, worklog 20260829T215206...-1921c9) and decode 23.6 vs 25.2 ms/token, the model predicts 1.504 s vs 1.355 s = 0.90x, which is the published deficit. Contribution: about 4.8% prefill fixed cost and 5.1% decode amortization. So half of C2 is task #12 and half is projection dispatch admission.",
+  "date": "2026-08-30",
+  "decode_amortization_from_committed_rows": [
+    {
+      "decode_ms_per_token": 33.2,
+      "hipengine_over_llama": 1.01,
+      "ratio_to_ideal": 1.0,
+      "wall_s": 1.091,
+      "weight_bound_ideal_ms": 33.2,
+      "width": 1
+    },
+    {
+      "decode_ms_per_token": 25.2,
+      "hipengine_over_llama": 0.9,
+      "ratio_to_ideal": 1.52,
+      "wall_s": 1.504,
+      "weight_bound_ideal_ms": 16.6,
+      "width": 2
+    },
+    {
+      "decode_ms_per_token": 18.0,
+      "hipengine_over_llama": 1.47,
+      "ratio_to_ideal": 1.62,
+      "wall_s": 1.589,
+      "weight_bound_ideal_ms": 11.1,
+      "width": 3
+    },
+    {
+      "decode_ms_per_token": 11.2,
+      "hipengine_over_llama": 1.34,
+      "ratio_to_ideal": 2.69,
+      "wall_s": 2.441,
+      "weight_bound_ideal_ms": 4.2,
+      "width": 8
+    }
+  ],
+  "finding": "Decode cost per token falls sub-linearly with width - 1.52x off the weight-bound ideal at C2, 1.62x at C3, 2.69x at C8 - i.e. weights are not amortised across rows. The scoreboard still wins from C3 up because llama.cpp is worse there; C2 is the width where that trade stops paying.",
+  "hardware": "W7900 (gfx1100)",
+  "kind": "w7900-q4km-decode-amortization-and-projection-dispatch",
+  "links": {
+    "c2_analysis": "worklog entry this artifact accompanies",
+    "parity_entry": "worklog/entries/20260829T215206...-1921c9",
+    "prefill_fixed_cost": "benchmarks/results/2026-08-30-w7900-q4km-pp512-cross-engine.json"
+  },
+  "mechanism_observed": "throughput_claim_eligible is false in 80/80 AR cells of /tmp/he-c1c8-cap8, the packet behind the promoted AR row, while native_caware_decode is true in the 70 cells with width>1 and false in the ten C1 cells, which is the expected shape for a width-aware route. In hipengine/dispatch/projection.py that flag is only true on path benchmark_accepted_caware_projection; rows==1 takes row_gemv_c1 and rows>1 falls back to row_gemv_until_caware_benchmark when no benchmark-accepted c-aware projection candidate applies. The only accepted-evidence artifacts in the tree are July PARO safetensors runs (2026-07-09-...native-decode...-selected-full-rowchunks.json and siblings); nothing accepts a c-aware projection for the GGUF Q4_K_M path on gfx1100.",
+  "method": "wall = width*24/rate from the published rows; per-token decode = (wall - F)/(width*24) with F = 295 ms, the measured median-of-3 wall of one ~42-token prefill. C1 landing at 1.00x the weight-read ideal (16 GB at ~460 GB/s) is a coincidence check on F, not a fit.",
+  "model": "Qwen3.8-27B Q4_K_M (GGUF)",
+  "question": "AR C2 is the one scoreboard deficit prefill cannot explain (0.90x at C2 while C3 is 1.47x). Where does it come from?",
+  "schema": "w7900_decode_amortization_c2.v1",
+  "status": "accepted-analysis-no-gpu-time",
+  "untested_inference": "That admitting a c-aware projection candidate at rows>1 would move decode toward the weight-bound ideal. The bound on the prize is the ratio column above (1.52x-2.69x on decode time, less the non-projection share). Not measured: the candidates are supplied by the caller and were not exercised here.",
+  "what_this_does_not_say": "The flag does not invalidate the published AR row: the walls are real and reproduce across independent runs to 0.13%. It says the engine did not use its fastest known projection route at width>1 because that route has no accepted benchmark for this model, so the row understates achievable decode rather than overstating it."
+}
