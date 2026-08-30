@@ -298,7 +298,7 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   | 1 | 7.814 | 11.024 | 0.7088x | -63.28% | production-D24 keeps direct/scalar proposal + replay; strict-natural25 evidence does not transfer |
   | 2 | **25.749** | 17.986 | **1.4316x** | -20.48% | blocked: target is 60.38% of child wall/95.38% kernel-bound; Q4 740 ms |
   | 3 | **29.564** | 24.042 | **1.2297x** | **+7.45%** | **closed win** |
-  | 4 | **29.493** | 30.291 | 0.9737x | **+9.17%** | **closed external win:** exact Q6 R8+R8 and Q5 true-R16; automatic blocked by overall/category AR |
+  | 4 | **29.493** | 30.291 | 0.9737x | **+9.17%** | **closed external win:** automatic blocked by prompt-replay exactness and overall/category AR |
   | 5 | **18.708** | 35.704 | 0.5240x | -42.86% | C4+1 provider groups: target R16+R4; replay + Q4 wall |
   | 6 | **28.255** | 40.072 | 0.7051x | -21.56% | C4+2 provider groups: target R16+R8; replay + Q4 wall |
   | 7 | **29.527** | 43.413 | 0.6801x | -30.20% | C4+3 provider groups: target R16+R12; replay + Q4 wall |
@@ -324,7 +324,9 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   cells/acceptance exact and every category positive; C4 reaches **29.493 tok/s
   (0.9737x AR)** and remains automatic K0. An exact Q4 true-R16 submission-
   amortization revisit is rejected: weighted GPU work rises 55.31% and one-
-  prompt C4 falls 6.39%. Attribute the residual outside this morphology
+  prompt C4 falls 6.39%. Current telemetry leaves a 0.8572 s full-suite AR gap;
+  historical prompt prime is 9.08% of its child, but C4 streaming changes
+  acceptance 628/796→624/800. Exact prompt replay is the named blocker
   ([`matrix`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-post-e2-c1c8-refreeze.json),
   [`proposal correction`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-wide-proposal-policy-rejected.json),
   [`C2 streaming`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-prompt-streaming-retained.json),
@@ -342,12 +344,15 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   below external. Exact Q5 true-R16 then improves clean C4-C8 by **4.10-7.71%**
   and C4 reaches **29.493 tok/s (0.9737x AR)**. Exact Q4 true-R16 is rejected
   after weighted GPU **+55.31%** and one-prompt C4 **-6.39%**; prompt replay and
-  non-Q4 operation-complete attribution are next
+  non-Q4 operation-complete attribution identify prompt prime/replay as the only
+  standalone measured stage able to close the residual: 9.08% of its child,
+  but existing C4 streaming changes acceptance 628/796→624/800
   ([`wide blockers`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-c8-target-blockers.json),
   [`C4 win`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json),
   [`wide Q6`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-q6-r20-r32-retained.json),
   [`Q5 R16`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q5-r16-retained.json),
-  [`Q4 R16 reject`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q4-r16-rejected.json)).
+  [`Q4 R16 reject`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q4-r16-rejected.json),
+  [`C4 blocker`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-c4-post-q5-blocker.json)).
 - [ ] P4.3 Reopen T3 adaptive-K and the B4 clamp once verifier rowtile work
   lands (per the CONCURRENCY2 supersession note); require full-suite
   acceptance/speed validation per anti-gaming.

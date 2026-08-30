@@ -642,11 +642,13 @@ These are ordered follow-ons, not assumptions in the primary claim:
 
 1. **C4:** exact Q6 R8+R8 cuts its traced family **1.847→0.478 s (-74.10%)**;
    exact Q5 true-R16 then raises clean K3 to **29.493 vs 30.291 tok/s AR**,
-   9.17% above external, with exact 628/796 acceptance. Standard-Q4 streaming
-   remains rejected after changing acceptance. External parity is closed;
-   automatic C4 remains K0 because overall/code/Japanese/mixed are below AR and
-   no independent production/serving bundle exists.
-   [`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json)
+   9.17% above external, with exact 628/796 acceptance. Current wall trails AR
+   by 0.8572 s across the suite; prior `nextn_prompt_prime` is 9.08% of its
+   child and can cover the residual, but C4 streaming changes acceptance to
+   624/800. External parity is closed; automatic C4 remains K0 until prompt
+   streaming preserves replay-equivalent state plus overall/code/Japanese/mixed
+   AR and independent production/serving gates.
+   [`artifact`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-c4-post-q5-blocker.json)
 2. **Context 68-128:** run the predeclared padded full category/heldout packet,
    production numerics, state/isolation, and same-protocol economics before
    extending the first C3 key. C2's context128 evidence does not transfer.
@@ -683,6 +685,7 @@ These are ordered follow-ons, not assumptions in the primary claim:
 | 1c | C5-C8 physical-R16 Q6 carryover | provider partitions targets as R16+R4/R8/R12/R16 | closed retained: +17.89% to +39.41%; unengaged logical R20-R32 keys removed |
 | 1d | Physical-R16 Q5 one-sweep | Q5 R12 predecessor won; R16 parent paid two Python/ctypes launches | closed retained: C4-C8 +4.10% to +7.71% exactly; C4 reaches 0.9737x AR |
 | 1e | Physical-R16 Q4 one-sweep revisit | Q5 proved launch count material, reopening the prior leaf-only stop once | rejected: weighted GPU +55.31% and one-prompt C4 -6.39%; candidate removed |
+| 1f | C4 prompt-prime exactness | prompt prime is 9.08% of child versus 2.63% overall gap | blocked: streaming changes 628/796→624/800; require replay-equivalent shifted state before economics |
 | 2 | Fixed K4 | max zero-cost visible lift 17.54%; external K4 is diagnostic | measured p4/cost score cannot beat fixed K3 |
 | 3 | NextN norm/concat/Q4 residual | E0 Q4 NextN work is 12.75 ms/cycle at C3/K3 after the head | < material refreshed Amdahl share or compound-only idea |
 | 4 | Provider update/selected commit | unprofiled telemetry currently single-digit ms/cycle | <=5% refreshed wall or P7 already owns best path |
