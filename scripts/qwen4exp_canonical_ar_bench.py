@@ -411,6 +411,20 @@ def _git_metadata(path: Path | None) -> dict[str, Any] | None:
     return {"path": str(path.resolve()), "head": head, "tracked_clean": not bool(status.strip())}
 
 
+def _rocm_platform_version() -> str | None:
+    try:
+        return importlib.metadata.version("rocm")
+    except importlib.metadata.PackageNotFoundError:
+        try:
+            result = subprocess.run(
+                ["rocm-sdk", "version"], capture_output=True, text=True, check=False
+            )
+        except OSError:
+            return None
+        value = result.stdout.strip() or result.stderr.strip()
+        return value or None
+
+
 def _host_metadata() -> dict[str, Any]:
     tuned = subprocess.run(
         ["tuned-adm", "active"], capture_output=True, text=True, check=False
@@ -424,17 +438,13 @@ def _host_metadata() -> dict[str, Any]:
             governors[path.read_text().strip()] += 1
         except OSError:
             continue
-    try:
-        rocm_platform = importlib.metadata.version("rocm")
-    except importlib.metadata.PackageNotFoundError:
-        rocm_platform = None
     return {
         "hostname": socket.gethostname(),
         "machine_id": Path("/etc/machine-id").read_text().strip(),
         "kernel": platform.release(),
         "tuned_active": tuned.stdout.strip() or tuned.stderr.strip(),
         "cpu_governors": dict(governors),
-        "rocm_platform": rocm_platform,
+        "rocm_platform": _rocm_platform_version(),
         "hipcc_version": hipcc.stdout.strip() or hipcc.stderr.strip(),
     }
 
