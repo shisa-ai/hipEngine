@@ -64,17 +64,22 @@ def test_value_is_read_at_call_time_not_bound_at_import(monkeypatch):
 
 
 def test_resident_sessions_no_longer_pass_a_literal_route_flag():
-    """Only the two resident server sites are in scope here.
+    """No resident session acquire/construct may pin the route literally.
 
-    Other call paths in this module still pass a literal True (non-resident/direct routes), so the
-    guard is adjacency-scoped: each resident `pool_name` must be followed by the resolver on its own
-    line. REFACTOR named exactly these two sites; widening the seam to every literal is a separate
-    decision with its own measurement, not a drive-by.
+    The first version of this guard asserted exactly two sites and was wrong in a way that cost a
+    2-minute trace to discover: the resident AR path opens its slots in `_open_ar_serving_slots` and
+    `_reserve_sessions`, not in `prepare_request_scratch`, so wiring only the latter left shipping
+    route pinned True and diagnostic inert. The assertion is now shaped like the requirement -
+    AR and MTP-target pools must resolve - with one exception, plus an exact resolved-site
+    count so silent unwiring shows up.
     """
     import re
 
     source = SOURCE.read_text()
-    for pool in ("ar_batch", "mtp_target"):
+    pinned = re.findall(r'pool_name="([a-z_0-9]+)",\s*\n\s*use_wmma_prefill=True,', source)
+    # One deliberate exception: the dense speculative MTP route was never part of this seam.
+    assert set(pinned) <= {"mtp_target_dense"}, f"unexpected literal-pinned pools: {pinned}"
+    for pool in ("ar_batch", "continuous_ar_dynamic_kv", "mtp_target"):
         resolver = r"use_wmma_prefill=_resident_session_wmma_prefill_default\(\),"
         pattern = re.compile(rf'pool_name="{pool}",\s*\n\s*{resolver}')
         assert pattern.search(source), (
@@ -82,4 +87,20 @@ def test_resident_sessions_no_longer_pass_a_literal_route_flag():
             'resolver; a literal there cannot be overridden by any bench - the dead end this '
             'resolver exists to remove'
         )
-    assert source.count("use_wmma_prefill=_resident_session_wmma_prefill_default(),") == 2
+    resolved = source.count("use_wmma_prefill=_resident_session_wmma_prefill_default(),")
+    # 2 prepare_request_scratch + 4 mtp_target (both pooled/pool-off branches) + 2 ar_batch serving
+    # slots + 2 continuous_ar_dynamic_kv reserve slots.
+    assert resolved == 10, f"expected 10 resolved sites, found {resolved}"
+
+
+def test_out_of_scope_literals_are_still_named():
+    """Exactly one literal remains, on the dense speculative MTP route."""
+    import re
+
+    source = SOURCE.read_text()
+    blocks = re.findall(r'pool_name="([a-z_0-9]+)",\s*\n\s*use_wmma_prefill=True,', source)
+    assert blocks == ["mtp_target_dense"], blocks
+    assert source.count("use_wmma_prefill=True,") == 1, (
+        "the single remaining literal belongs to _generate_dense_speculative_mtp_detailed; if the "
+        "count moved, a route was either wired (update the guard) or newly pinned"
+    )
