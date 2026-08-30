@@ -905,6 +905,41 @@ A new or ported kernel lands only when all applicable checks pass:
 7. **Integration:** run the narrowest applicable strict, production, or batch-invariant model/dynamic gate from `TESTING.md`.
 8. **Evidence:** performance claims follow `BENCHMARK.md` and record profile/schema and selected/fallback manifest hashes in artifact/rollup/changelog/worklog; do not add the narrative here.
 
+## MTP verify profiling traps (W7900, measured 2026-08-30)
+
+Four invocations failed before producing data; each is a property of the tool, not of the
+measurement, so record it instead of rediscovering it.
+
+1. **The self-contained wrappers cannot run on this host.** `gguf_mtp_verifier_rocprof.py`,
+   `gguf_decode_rocprof.py`, `gguf_packed_ar_rocprof.py`, `gguf_mtp_draft_rocprof.py`,
+   `gguf_continuous_owner_rocprof.py`, `gguf_sh_c0_profile.py`, `qwen35_rocprof_audit.py` and
+   `mtp_verifier_rocprof.py` all call `_prepare_roctx_override`, which raises unless a pip
+   ROCm SDK `librocprofiler-sdk-roctx.so.1` exists under `site-packages/_rocm_sdk_*/lib`.
+   No such library is installed anywhere here (`find` over the venv, `/opt/rocm*` and
+   `/usr/lib` returns nothing). Kernel tracing needs no ROCTX shim - only markers do - so the
+   working route is the wrapper's own `--child` mode driven under a direct
+   `rocprofv3 --kernel-trace`, rolled up with `gguf_kernel_trace_rollup.py TRACE_DIR`.
+2. **`rocprofv3` flags are not what they look like.** `-i/--input` is an input file and
+   `-d/--output_dir` is the directory; `-o/--output_file` is the name prefix and the format is
+   `-F`. Passing `-i <dir> -d csv` fails with "does not have a recognized extension" and then
+   writes into a stray `csv/` directory.
+3. **Defaults profile the wrong path.** `mtp_verifier_rocprof.py` defaults to
+   `--model /models/hipengine/Qwen3.6-35B-A3B-PARO-...-MTP-BF16`, a safetensors model, so it
+   cannot describe the GGUF path at all. `gguf_mtp_verifier_rocprof.py --mode` defaults to
+   `serial-step`, the historical verifier, not the native block verifier the resident route
+   reaches. Either default silently measures a path we do not ship.
+4. **`--mode block-verify` rejects its own padding.** With `--block-rows` beyond the prompt
+   tail the child raises `ValueError: token_id 2147483647 outside [0, 248320)` from
+   `qwen35_gguf_runner.py:19000`, so sweeping rows (the direct way to separate launch
+   overhead from real work, since K3 is 4 rows per lane and C8 is 32) needs the padding
+   contract fixed first - see `docs/REFACTOR.md`.
+
+For the server matrix itself: `gguf_mtp_c1c8_server_bench.py` accepts neither
+`--require-mtp`, `--tag` nor `--max-run-seconds`, and its `--model` default is
+`Qwen3.6-27B-Q4_K_M.gguf` - omitting `--model` benchmarks the wrong model and still produces
+a clean-looking packet, so always diff the written `protocol` block against a retained packet
+before trusting a comparison.
+
 ## Per-family port checklist
 
 1. Audit `source_lineage.json` and run the narrow lineage check.
