@@ -89,6 +89,41 @@ def _plan_shape(
     }
 
 
+def _provenance_block() -> dict[str, Any]:
+    """Derive host/commit metadata instead of typing it.
+
+    Every hand-written host block I produced today named the wrong machine: a hostname and CPU
+    model copied from another artifact's shape, plus an invented HEAD and wall time. The project
+    already has one normative source for this, so use it and fail loudly rather than narrating.
+    """
+
+    block: dict[str, Any] = {"python": platform.python_version()}
+    try:
+        from hipengine.benchmark.provenance import collect_artifact_provenance
+
+        prov = collect_artifact_provenance(repo_root=REPO_ROOT)
+        block["host_name"] = prov.get("host_name", platform.node())
+        block["device_name"] = prov.get("device_name", "unknown")
+        block["target_arch"] = prov.get("target_arch", "unknown")
+        block["hipengine_commit"] = prov.get("hipengine_commit", _git_rev())
+        block["git_branch"] = prov.get("git_branch", "unknown")
+        block["dirty"] = bool(prov.get("dirty"))
+    except Exception as exc:  # pragma: no cover - provenance failure must be visible, not silent
+        block["host_name"] = platform.node()
+        block["hipengine_commit"] = _git_rev()
+        block["provenance_error"] = f"{type(exc).__name__}: {exc}"
+    cpu = "unknown"
+    try:
+        for line in Path("/proc/cpuinfo").read_text().splitlines():
+            if line.startswith("model name"):
+                cpu = line.split(":", 1)[1].strip()
+                break
+    except OSError:  # pragma: no cover - non-Linux
+        pass
+    block["cpu"] = cpu
+    return block
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
@@ -149,12 +184,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "boundary line up with the non-monotone grouped admission row (C7 > C8)?"
         ),
         "model": {"path": str(args.model), "size_bytes": args.model.stat().st_size},
-        "host": {
-            "hostname": platform.node(),
-            "gpu": "AMD Radeon Pro W7900 (gfx1100)" if _hip_available() else "unavailable",
-            "cpu": platform.processor() or "unknown",
-        },
-        "software": {"head": _git_rev(), "python": platform.python_version()},
+        "provenance": _provenance_block(),
         "protocol": {
             "command": " ".join([sys.executable, Path(__file__).name, *list(argv or ())]),
             "prompt_tokens_per_lane": int(args.prompt_tokens),

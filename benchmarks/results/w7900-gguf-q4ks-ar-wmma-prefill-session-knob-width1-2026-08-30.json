@@ -1,88 +1,90 @@
 {
-  "schema": "hipengine.gguf.q4k.ar_wmma_prefill_session_knob.width1.2026-08-30",
-  "question": "Does taking the Q4_K T16 prefill route off WMMA change AR at the serving level, and is the session knob honoured there at all?",
-  "verdict": "knob_effective_after_rewiring; all_gemv_prefill_is_worse_at_width_1_by_7_percent_median; width_1_arm_answered",
-  "date": "2026-08-30",
-  "host": {
-    "hostname": "gputm-3087-00104",
-    "gpu": "AMD Radeon Pro W7900 (gfx1100), GPU 0",
-    "cpu": "AMD Ryzen Threadripper 3970X",
-    "driver": "6.14.11",
-    "processes": 1
-  },
   "code": {
     "baseline_head": "802a7e32b",
-    "knob_wired_at": "356be6858",
-    "knob_env": "HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL",
     "first_attempt_commit": "802a7e32b",
-    "first_attempt_outcome": "inert - the two sites named in docs/REFACTOR.md live in prepare_request_scratch, not in the serving route"
+    "first_attempt_outcome": "inert - the two sites named in docs/REFACTOR.md live in prepare_request_scratch, not in the serving route",
+    "knob_env": "HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL",
+    "knob_wired_at": "356be6858"
   },
-  "protocol": {
-    "harness": "scripts/gguf_c1c8_ar_only_control.py (AR_ONLY=1, KEEP_OUTPUT_ROOT=1)",
-    "wrapper": "/tmp/he-rowtile-ab/trace-prefill-diag.sh",
-    "model": "Qwen3.5-4B-GGUF Q4_K_M + qwen35-q4-k-t16",
-    "concurrency": 1,
-    "packets": 64,
-    "prompt_sha256": "8a8bae6f894b540ab12e3dcad61263330a9e0a8bfdb1d462909690182d9a9681",
-    "tool": "scripts/gguf_packed_ar_rocprof.py (ROCTX library discovery fixed at 44199b32b so the sweep window is measured, not the whole process)",
-    "arms": [
-      "knob=1 explicit all-WMMA prefill (same-session baseline)",
-      "knob=0 explicit all-GEMV prefill"
-    ],
-    "class_definition": "wmma_prefill = GLAUQ_UNPACK_Q4K_TMEM_WMMAs_*; local32_gemv = GLAUQ_UNPACK_Q4K_GLAUQ_GEMVS32_*",
-    "note": "AR_ONLY=1 with KEEP_OUTPUT_ROOT=1 is required: without it the child deletes its output root in finally and the packet JSON (and its guard tokens) become unreadable."
-  },
-  "measurements": {
-    "knob_1": {
-      "ar_median_ms": 17.68,
-      "ar_mean_ms": 17.799,
-      "cells": 58,
-      "guard_tokens_rejected": 0,
-      "window_prefill_ms": 9279.8,
-      "window_prefill_launches": 53376,
-      "window_decode_ms": 11377.3,
-      "window_decode_launches": 428544,
-      "window_other_ms": 13101.2,
-      "wmma_prefill_launches": 7392,
-      "local32_gemv_launches": 136224,
-      "trace_dir": "/tmp/he-rowtile-ab/tr-default"
-    },
-    "knob_0": {
-      "ar_median_ms": 18.91,
-      "ar_mean_ms": 18.933,
-      "cells": 58,
-      "guard_tokens_rejected": 0,
-      "window_prefill_ms": 4465.1,
-      "window_prefill_launches": 31808,
-      "local32_gemv_launches": 138688,
-      "other_wall_total_ms": 9308.1,
-      "wmma_prefill_launches": 4928,
-      "trace_dir": "/tmp/he-rowtile-ab/tr-gemv",
-      "startup_wall_misleading": "the knob=0 trace reported a 2942 ms packet window because an unrelated 190 s process shared the GPU; the packet medians and guard count are unaffected"
-    }
-  },
+  "date": "2026-08-30",
   "findings": [
     {
-      "id": "knob_inert_at_first",
-      "finding": "With HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL=0 the width-1 trace still showed 7392 wmma_prefill launches, byte-identical to the default route.",
       "cause": "docs/REFACTOR.md named two 'shipping call sites' that are inside prepare_request_scratch; the resident AR route pins True in _open_ar_serving_slots (pool ar_batch) and _reserve_sessions (pool continuous_ar_dynamic_kv), with four further mtp_target sites.",
-      "fixed": "356be6858 resolved 10 sites and left one literal by design on _generate_dense_speculative_mtp_detailed"
+      "finding": "With HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL=0 the width-1 trace still showed 7392 wmma_prefill launches, byte-identical to the default route.",
+      "fixed": "356be6858 resolved 10 sites and left one literal by design on _generate_dense_speculative_mtp_detailed",
+      "id": "knob_inert_at_first"
     },
     {
-      "id": "route_moves",
       "finding": "After the rewiring the flag moves exactly 2464 launches from wmma_prefill to local32_gemv and cuts prefill-class kernel wall 52% (9279.8ms -> 4465.1ms) over 64 packets.",
+      "id": "route_moves",
       "significance": "the Q4_K->k-quint4_tmem repack kernels disappear from 'other' too (13101.2ms -> 9308.1ms), which is why kernel wall falls so much more than latency improves"
     },
     {
-      "id": "all_gemv_prefill_worse",
       "finding": "AR median 17.68 -> 18.91 ms/token (+7.0%), mean 17.799 -> 18.933, in a same-session direct comparison at width 1.",
-      "status": "independent reproduction of benchmarks/CHANGELOG.md 2026-08-20 'gemv-prefill-blocked' (-8.4%); the sub-window agrees with the end-to-end sign",
-      "significance": "the all-GEMV prefill arm is not a width-1 candidate; the remaining question is widths >= 2, where prefill volume per token grows"
+      "id": "all_gemv_prefill_worse",
+      "significance": "the all-GEMV prefill arm is not a width-1 candidate; the remaining question is widths >= 2, where prefill volume per token grows",
+      "status": "independent reproduction of benchmarks/CHANGELOG.md 2026-08-20 'gemv-prefill-blocked' (-8.4%); the sub-window agrees with the end-to-end sign"
     }
   ],
   "gates": {
     "arithmetic": "route change only; both arms are default-off diagnostics that reproduce shipped choices (knob=1) or the registered full_gemv chain (knob=0)",
     "note": "this is a width-1 diagnostic trace, not the planned 4-width x correctness A/B; the wider sweep is now unblocked but no longer expected to favour all-GEMV at width 1"
   },
-  "stop_rule": "width-1 arm answered: all-GEMV prefill is 7% worse; remaining arms at widths 2/4/8 need the same knob and are now actually reachable"
+  "host": {
+    "correction": "the original host block named gputm-3087-00104 / Threadripper 3970X; both were copied from another artifact's shape rather than read from this machine",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "driver": "6.14.11",
+    "gpu": "AMD Radeon Pro W7900 (gfx1100), GPU 0",
+    "hostname": "epyc",
+    "processes": 1,
+    "source": "hipengine.benchmark.provenance.collect_artifact_provenance + /proc/cpuinfo"
+  },
+  "measurements": {
+    "knob_0": {
+      "ar_mean_ms": 18.933,
+      "ar_median_ms": 18.91,
+      "cells": 58,
+      "guard_tokens_rejected": 0,
+      "local32_gemv_launches": 138688,
+      "other_wall_total_ms": 9308.1,
+      "startup_wall_misleading": "the knob=0 trace reported a 2942 ms packet window because an unrelated 190 s process shared the GPU; the packet medians and guard count are unaffected",
+      "trace_dir": "/tmp/he-rowtile-ab/tr-gemv",
+      "window_prefill_launches": 31808,
+      "window_prefill_ms": 4465.1,
+      "wmma_prefill_launches": 4928
+    },
+    "knob_1": {
+      "ar_mean_ms": 17.799,
+      "ar_median_ms": 17.68,
+      "cells": 58,
+      "guard_tokens_rejected": 0,
+      "local32_gemv_launches": 136224,
+      "trace_dir": "/tmp/he-rowtile-ab/tr-default",
+      "window_decode_launches": 428544,
+      "window_decode_ms": 11377.3,
+      "window_other_ms": 13101.2,
+      "window_prefill_launches": 53376,
+      "window_prefill_ms": 9279.8,
+      "wmma_prefill_launches": 7392
+    }
+  },
+  "protocol": {
+    "arms": [
+      "knob=1 explicit all-WMMA prefill (same-session baseline)",
+      "knob=0 explicit all-GEMV prefill"
+    ],
+    "class_definition": "wmma_prefill = GLAUQ_UNPACK_Q4K_TMEM_WMMAs_*; local32_gemv = GLAUQ_UNPACK_Q4K_GLAUQ_GEMVS32_*",
+    "concurrency": 1,
+    "harness": "scripts/gguf_c1c8_ar_only_control.py (AR_ONLY=1, KEEP_OUTPUT_ROOT=1)",
+    "model": "Qwen3.5-4B-GGUF Q4_K_M + qwen35-q4-k-t16",
+    "note": "AR_ONLY=1 with KEEP_OUTPUT_ROOT=1 is required: without it the child deletes its output root in finally and the packet JSON (and its guard tokens) become unreadable.",
+    "packets": 64,
+    "prompt_sha256": "8a8bae6f894b540ab12e3dcad61263330a9e0a8bfdb1d462909690182d9a9681",
+    "tool": "scripts/gguf_packed_ar_rocprof.py (ROCTX library discovery fixed at 44199b32b so the sweep window is measured, not the whole process)",
+    "wrapper": "/tmp/he-rowtile-ab/trace-prefill-diag.sh"
+  },
+  "question": "Does taking the Q4_K T16 prefill route off WMMA change AR at the serving level, and is the session knob honoured there at all?",
+  "schema": "hipengine.gguf.q4k.ar_wmma_prefill_session_knob.width1.2026-08-30",
+  "stop_rule": "width-1 arm answered: all-GEMV prefill is 7% worse; remaining arms at widths 2/4/8 need the same knob and are now actually reachable",
+  "verdict": "knob_effective_after_rewiring; all_gemv_prefill_is_worse_at_width_1_by_7_percent_median; width_1_arm_answered"
 }
