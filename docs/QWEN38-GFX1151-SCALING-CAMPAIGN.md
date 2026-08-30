@@ -338,13 +338,18 @@ is made.
   **not** the blocker; the floor is the prefill owner's weight streaming, which
   is exactly P2/P3's algorithmic target. See
   [`blocker artifact`](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-c2-scaling-blocker.json).
-- [ ] P2 **C8 high-row Q4.** Re-trace the current head first (E: the final
-  frozen C2/C8 paths lack a current trace, and P1.3's 360 ms figure predates the
-  retained low-VGPR work). Then attack the named high-row Q4/device
-  algorithm with a real algorithmic change — N-split/split-K partitioning or a
-  new fusion — under the strict/production gates plus a `rocprofv3
-  --kernel-trace` entry. Target `247.216 -> >= 305.847` or a named blocker.
-  No threshold or scheduler ladders; those are exhausted and recorded as such.
+- [x] P2 **C8 high-row Q4. Done 2026-08-31, named blocker; P3 gate OPENED.**
+  Current-head `rocprofv3 --kernel-trace` of the frozen width-8 path: Q4 WMMA
+  family = **60%** of trace GPU (16.8 s of 27.9 s). Engine ticks are pure
+  kernel time (rows288: 1080.0 ms wall / 1080.0 ms hipEvent, **gapshare
+  0.0%**), and the standalone shared_b owner runs rows256-1024 at
+  **19-24 TF/s (~35% of the 60 TF/s MFMA peak)** with weight streaming far
+  under DRAM bandwidth: the wall is the **in-loop Q4 dequant ALU/LDS/issue
+  pass**, not bandwidth, gaps, or scheduling. Named blocker recorded;
+  P3's opening conditions (dequant dominance + written sizing assuming
+  INT8 WMMA == BF16 at 59.4 TOP/s; projection 247 -> ~330 >= 305.847)
+  are met. See
+  [`trace blocker`](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-c8-current-trace-blocker.json).
 - [ ] P3 Integer-MMQ continuation (F). Conditional on P2's trace showing dequant
   ALU dominance **and** a written sizing estimate that assumes INT8 WMMA equals
   BF16 WMMA rate on gfx1151. Must reproduce the shared MMQ tile/decomposition

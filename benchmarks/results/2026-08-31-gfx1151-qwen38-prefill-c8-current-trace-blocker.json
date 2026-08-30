@@ -1,0 +1,56 @@
+{
+ "schema": 1,
+ "kind": "gfx1151-qwen38-prefill-c8-current-trace-blocker",
+ "created_at": "2026-08-30T22:07:48.125337+00:00",
+ "title": "Scaling P2: C8 prefill re-traced at current head; high-row Q4 is dequant-ALU/issue-bound, not bandwidth or gaps",
+ "source_commit": "88160d1c863262ec213ab3179f15966d631519a5",
+ "status": "measured_named_blocker_p3_gate_open",
+ "trace": {
+  "protocol": "frozen prefill protocol widths=8 max_tokens=1, rocprofv3 --kernel-trace, prebuilt JIT cache",
+  "totals_ms": {
+   "other": 2080.2,
+   "q6": 5133.4,
+   "q4_wmma_family": 16790.2,
+   "gdn": 1818.3,
+   "q5": 2028.7
+  },
+  "total_ms": 27850.8,
+  "q4_share": 0.603
+ },
+ "engine_tick": "rows288 tick = 1080.0 ms wall / 1080.0 ms hipEvent GPU span (gapshare 0.0%): the tick is pure kernel time; launch-gap/graph theories excluded",
+ "kernel_micro": {
+  "owner": "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out, 5120x5120 Q4_K t16",
+  "rows_ms": {
+   "16": 0.502,
+   "64": 0.633,
+   "256": 0.714,
+   "512": 1.106,
+   "1024": 2.231
+  },
+  "tflops": {
+   "64": 5.3,
+   "256": 18.8,
+   "512": 24.3,
+   "1024": 24.1
+  },
+  "reading": "rows256+ runs 19-24 TF/s (60 TF/s MFMA peak, ~35%) while weight streaming sits far under DRAM bandwidth: dequant+LDS+issue wall confirmed"
+ },
+ "named_blocker": "C8 prefill >= 305.847 requires removing the in-loop Q4 dequant ALU pass; threshold/scheduler/launch-order measures are measured-null (P1) and gapshare-excluded (P2). The campaign-sanctioned continuation is F/P3 prequantized integer WMMA with the shared MMQ tile decomposition.",
+ "p3_gate": {
+  "dequant_alu_dominance": "measured",
+  "int8_wmma_rate": "59.4 TOP/s == BF16 WMMA per ROOFLINE-gfx1151.md",
+  "written_sizing": "Q4 family = 60% of C8 prefill GPU; at >=2x effective rate the Q4 share falls 16.8->~9s, projected aggregate 247->~330 >= 305.847 target"
+ },
+ "raw_sources": [
+  [
+   "/tmp/p2-gap-stamps.json",
+   "3c33fadfedaa0f6394f579ccf22a0e6eb15dd4119f3d842c6f62f71a630288ee",
+   9999
+  ],
+  [
+   "/tmp/p2-c8-prefill.json",
+   "34b8d6544d23641a659f8d56c14344743c66ea194208edea04667905385effc0",
+   1200000
+  ]
+ ]
+}
