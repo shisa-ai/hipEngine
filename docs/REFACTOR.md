@@ -4774,3 +4774,17 @@ literal `use_gemv_decode=True` sites on the dense path, or make the MoE safety c
 capability instead of a caller-supplied preference. Instrument notes for the next person: this flip is
 not reachable by environment variable, and patching `hipengine/runtime/gguf_linear.py` alone does
 nothing because `qwen35_gguf_runner.py` imports `gguf_gemv_decode_enabled` into its own namespace.
+
+
+### `_default_roctx_sdk` is duplicated across the profiler wrappers (2026-08-30)
+
+`gguf_packed_ar_rocprof.py`, `gguf_mtp_verifier_rocprof.py`, `gguf_decode_rocprof.py`,
+`gguf_mtp_draft_rocprof.py`, `gguf_continuous_owner_rocprof.py`, `gguf_sh_c0_profile.py`,
+`qwen35_rocprof_audit.py` and `mtp_verifier_rocprof.py` each carry their own copy of
+`_default_roctx_sdk` + `_prepare_roctx_override`. Today's fix (probe the prefix of
+`which("rocprofv3")`, then fall back to legacy `libroctx64`) landed in `gguf_packed_ar_rocprof.py`
+only, because that is the one with a measured end-to-end verification and a test. The others still
+fail with "rocprofiler SDK ROCTX library not found" under `.venv` unless `--roctx-sdk` is passed.
+Adopt it by extracting `scripts/roctx_discovery.py` and importing it from all eight the next time any
+of them is touched for another reason - do not sweep them blind, since wrapper behaviour changes
+invalidate profile comparisons other lanes may be mid-run on.
