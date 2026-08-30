@@ -21,6 +21,7 @@ from scripts.gguf_mtp_c1c8_server_bench import (
     build_parser,
     summarize,
     summarize_acceptance,
+    verdict_reasons,
 )
 
 
@@ -392,3 +393,84 @@ def test_mtp_c1c8_summary_accepts_expected_k0() -> None:
     assert row["exact_cells"] == row["cells"] == 1
     assert row["engaged_cells"] == 0
     assert row["route_expectation_passed"] is True
+
+
+# --- verdict_reasons: a `failed` status must never be silent ----------------------
+
+def _row(
+    *,
+    cells: int = 10,
+    exact: int | None = None,
+    budget: int | None = None,
+    engaged: int = 10,
+    mtp_expected: bool = True,
+) -> dict:
+    exact = cells if exact is None else exact
+    budget = cells if budget is None else budget
+    return {
+        "cells": cells,
+        "exact_cells": exact,
+        "budget_conformed_cells": budget,
+        "engaged_cells": engaged,
+        "mtp_expected": mtp_expected,
+        "route_expectation_passed": (engaged == cells) if mtp_expected else engaged == 0,
+    }
+
+
+def _old_predicate(summary: dict) -> bool:
+    """The pre-existing pass condition, kept here so equivalence is checked, not asserted."""
+    return all(
+        int(row["exact_cells"]) == int(row["budget_conformed_cells"]) == int(row["cells"]) == 10
+        and bool(row["route_expectation_passed"])
+        for row in summary.values()
+    )
+
+
+def test_verdict_reasons_is_empty_for_a_clean_run() -> None:
+    summary = {str(width): _row() for width in range(1, 9)}
+    assert verdict_reasons(summary, expected_cells=10, max_tokens=24) == []
+
+
+def test_verdict_reasons_matches_the_original_predicate() -> None:
+    grid = [
+        dict(),
+        dict(exact=9),
+        dict(budget=9),
+        dict(cells=9),
+        dict(engaged=9),
+        dict(engaged=0, mtp_expected=False),
+        dict(engaged=1, mtp_expected=False),
+        dict(exact=9, budget=8, engaged=0),
+    ]
+    for index, kwargs in enumerate(grid):
+        for width_pair in (({"1": _row(**kwargs)}), ({"1": _row(), "4": _row(**kwargs)})):
+            summary = {str(index) + k: v for k, v in width_pair.items()}
+            reasons = verdict_reasons(summary, expected_cells=10, max_tokens=24)
+            assert bool(reasons) == (not _old_predicate(summary)), (index, kwargs, reasons)
+
+
+def test_verdict_reasons_names_the_cells_that_disagreed() -> None:
+    summary = {"4": _row(exact=9, budget=8)}
+    reasons = verdict_reasons(summary, expected_cells=10, max_tokens=24)
+    assert len(reasons) == 1
+    assert "w4" in reasons[0]
+    assert "exact=9" in reasons[0]
+    assert "budget_conformed=8" in reasons[0]
+    assert "cells=10" in reasons[0]
+
+
+def test_verdict_reasons_explains_the_max_tokens_one_route_failure() -> None:
+    """Reproduces 2026-08-30: 8 widths x 10 prompts all exact, MTP never engaged, no explanation."""
+    summary = {str(width): _row(engaged=0) for width in range(1, 9)}
+    reasons = verdict_reasons(summary, expected_cells=10, max_tokens=1)
+    assert len(reasons) == 8, reasons
+    assert all(f"w{width}:" in reasons[width - 1] for width in range(1, 9))
+    assert "max_tokens=1" in reasons[0]
+    assert "admission overhead" in reasons[0], "the d1 mtp/ar ratio must not read as speculation"
+
+
+def test_verdict_reasons_omits_the_single_token_note_when_tokens_allow_speculation() -> None:
+    reasons = verdict_reasons({"1": _row(engaged=0)}, expected_cells=10, max_tokens=24)
+    assert len(reasons) == 1
+    assert "max_tokens=1" not in reasons[0]
+    assert "engaged=0/10" in reasons[0]

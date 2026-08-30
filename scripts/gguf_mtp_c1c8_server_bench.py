@@ -614,6 +614,41 @@ def summarize(
     return result
 
 
+def verdict_reasons(
+    summary: dict[str, Any], *, expected_cells: int, max_tokens: int
+) -> list[str]:
+    """Say why a run did not pass, one line per failed condition. Pure, so it is testable.
+
+    A `failed` status with no reason cost a 3-minute GPU arm and a grep through 20 KB of log to
+    diagnose. The predicate is unchanged: a row passes when exact cells, budget-conformed cells and
+    cells all agree with the prompt count, and the route expectation holds.
+    """
+
+    reasons: list[str] = []
+    for width, row in sorted(summary.items(), key=lambda item: int(item[0])):
+        cells = int(row["cells"])
+        exact = int(row["exact_cells"])
+        budget = int(row["budget_conformed_cells"])
+        if not exact == budget == cells == expected_cells:
+            reasons.append(
+                f"w{width}: exact={exact} budget_conformed={budget} cells={cells} "
+                f"expected_cells={expected_cells}"
+            )
+        if not bool(row["route_expectation_passed"]):
+            note = (
+                " - MTP cannot engage inside a single generated token, so max_tokens=1 makes this "
+                "expectation unsatisfiable; the mtp/ar ratio here measures admission overhead, not "
+                "speculation"
+                if int(max_tokens) < 2
+                else ""
+            )
+            reasons.append(
+                f"w{width}: route expectation engaged={row['engaged_cells']}/{cells} "
+                f"mtp_expected={row['mtp_expected']}{note}"
+            )
+    return reasons
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     prompts = load_prompt_suite(Path(args.prompts).resolve())
     widths = tuple(args.widths)
@@ -785,20 +820,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         widths=widths,
         expected_mtp_widths=expected_mtp_widths,
     )
-    passed = all(
-        int(row["exact_cells"])
-        == int(row["budget_conformed_cells"])
-        == int(row["cells"])
-        == len(prompts)
-        and bool(row["route_expectation_passed"])
-        for row in summary.values()
+    reasons = verdict_reasons(
+        summary,
+        expected_cells=len(prompts),
+        max_tokens=int(args.max_tokens),
     )
+    passed = not reasons
     payload = {
         "schema": 2,
         "kind": "gguf_mtp_c1c8_server_bench",
         "date": datetime.now(timezone.utc).isoformat(),
         "status": "complete" if passed else "failed",
         "passed": passed,
+        "failure_reasons": reasons,
         "source": {"commit": source_commit, "dirty": False},
         "model": collect_model_identity(args.model),
         "hardware": {
@@ -892,6 +926,8 @@ def main() -> int:
     args = build_parser().parse_args()
     payload = run(args)
     print(json.dumps({"status": payload["status"], "output": str(args.output)}))
+    for reason in payload.get("failure_reasons", ()):
+        print(f"  reason: {reason}")
     return 0 if payload["passed"] else 1
 
 
