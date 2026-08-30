@@ -250,6 +250,8 @@ class _PhysicalAcceptPending:
     payload: Tensor
     request_count: int
     output_stride: int
+    upload_seconds: float = 0.0
+    tail_seconds: float = 0.0
 
 
 class _PhysicalTargetCommitError(RuntimeError):
@@ -2201,8 +2203,16 @@ class Qwen35GGUFMTP2Adapter:
             DType.INT32,
             payload_owner.device,
         )
+        upload_seconds = 0.0
+
+        def _upload_timed(tensor: Tensor, values: np.ndarray, rt: Any) -> None:
+            nonlocal upload_seconds
+            started = time.perf_counter()
+            self._upload_accept_array(tensor, values, rt)
+            upload_seconds += time.perf_counter() - started
+
         roots = np.asarray(tuple(proposal.root_tokens), dtype=np.int32)
-        self._upload_accept_array(
+        _upload_timed(
             Tensor.from_handle(
                 buffers.token_ids.ptr,
                 (request_count,),
@@ -2220,7 +2230,7 @@ class Qwen35GGUFMTP2Adapter:
             (buffers.active_mask, np.asarray(batch.active_mask, dtype=np.uint8)),
             (remaining, np.asarray(tuple(remaining_decode), dtype=np.int32)),
         ):
-            self._upload_accept_array(tensor, values, runtime)
+            _upload_timed(tensor, values, runtime)
         runtime.memcpy_async(
             buffers.token_ids.ptr + request_count * DType.INT32.itemsize,
             proposal.token_ids.ptr,
@@ -2230,7 +2240,7 @@ class Qwen35GGUFMTP2Adapter:
         )
         if int(pad_rows) > 0:
             pads = np.zeros((int(pad_rows),), dtype=np.int32)
-            self._upload_accept_array(
+            _upload_timed(
                 Tensor.from_handle(
                     buffers.token_ids.ptr
                     + (request_count + int(proposal.token_ids.numel))
@@ -2242,6 +2252,7 @@ class Qwen35GGUFMTP2Adapter:
                 pads,
                 runtime,
             )
+        tail_started = time.perf_counter()
         candidate_offset = request_count
         for request_index, (result, candidate_count) in enumerate(
             zip(results, slot_counts, strict=True)
@@ -2314,6 +2325,8 @@ class Qwen35GGUFMTP2Adapter:
             payload=payload,
             request_count=request_count,
             output_stride=output_stride,
+            upload_seconds=upload_seconds,
+            tail_seconds=time.perf_counter() - tail_started,
         )
 
     @staticmethod
@@ -2795,6 +2808,8 @@ class Qwen35GGUFMTP2Adapter:
             raise RuntimeError("physical target verifier returned wrong result count")
         candidate_readback_seconds = 0.0
         bounded_readback_seconds = 0.0
+        accept_upload_seconds = 0.0
+        accept_tail_seconds = 0.0
         remaining = tuple(
             max(0, int(row.request.max_tokens) - len(row.slot.generated_ids))
             for row in rows
@@ -2849,6 +2864,8 @@ class Qwen35GGUFMTP2Adapter:
                 runtime=targets[0].runtime,
                 pad_rows=pad_rows,
             )
+            accept_upload_seconds = float(pending.upload_seconds)
+            accept_tail_seconds = float(pending.tail_seconds)
             commit_batch = getattr(
                 owner,
                 "_commit_deferred_packed_verify_states_batch_device",
@@ -3095,6 +3112,8 @@ class Qwen35GGUFMTP2Adapter:
             row.mtp2_target_ms += float(target_seconds) * 1000.0
             row.mtp2_provider_update_ms += float(provider_update_seconds) * 1000.0
             row.mtp2_accept_ms += float(accept_seconds) * 1000.0
+            row.mtp2_accept_upload_ms += accept_upload_seconds * 1000.0
+            row.mtp2_accept_tail_ms += accept_tail_seconds * 1000.0
             row.mtp2_target_readback_ms += float(bounded_readback_seconds) * 1000.0
             row.mtp2_selected_commit_ms += float(commit_seconds) * 1000.0
             row.mtp2_candidate_readback_ms += (
