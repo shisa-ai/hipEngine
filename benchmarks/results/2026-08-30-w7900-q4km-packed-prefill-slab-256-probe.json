@@ -1,0 +1,83 @@
+{
+  "code": {
+    "head": "0d12f731aa918acf5018fde35c16306044c98cef",
+    "planner": "hipengine/runtime/qwen35_gguf_runner.py:_plan_packed_ar_prefill_chunks",
+    "promotion_under_test": "72a29e9ad perf: ship grouped prefill on gfx1100",
+    "slab_source": "Qwen35GGUFResidentSession._bulk_prefill_scratch.rows = _prefill_scratch_rows(scratch.max_positions)"
+  },
+  "date": "2026-08-30",
+  "findings": [
+    {
+      "finding": "Every width up to 7 prefills as one chunk; width 8 (288 rows) splits into two slot-fair rounds because the resident slab is 256 rows.",
+      "id": "cliff_is_at_the_slab",
+      "significance": "the boundary is a buffer constant, not a scheduler policy; the planner is slot-fair, so a split round still visits all 8 lanes and never drops the tail"
+    },
+    {
+      "finding": "The slab is min(scratch.max_positions=256, linear chunk=256, full-attention chunk=256), so at this bench's default context all three terms are 256 and the cliff sits at 8x36 rows.",
+      "id": "cliff_moves_with_configured_context",
+      "significance": "at a larger configured context (or longer prompts) the cliff moves; any claim like 'width 8 splits' is shape-scoped and must be re-derived per configuration, which is why the probe prints the constant instead of the tests hardcoding it"
+    },
+    {
+      "cost": "slab rows are BF16 activation scratch, so the trade is memory for a possibly-negative throughput gain; measure before changing the geometry",
+      "finding": "Despite splitting into two rounds, fresh admission rates rise through the boundary: C7 381.496 -> C8 409.029 tok/s (lane-weighted, 80 cells). The older grouped packet had C7 426.692 > C8 397.655.",
+      "id": "split_is_not_currently_a_net_loss",
+      "status": "the extra parallel rows outweigh the extra round at this shape, so raising the slab to >=288 rows is a candidate improvement with an unknown sign, not a proven fix"
+    },
+    {
+      "finding": "I first recorded the hypothesis as disconfirmed because aggregate admission tok/s no longer dipped at C8. The constant settles it the other way: the split happens; what changed is that the split no longer costs more than it saves.",
+      "id": "my_own_inference_error",
+      "significance": "absence of a symptom is not absence of the mechanism - measure the mechanism"
+    }
+  ],
+  "gates": {
+    "arithmetic": "no arithmetic change; probe is read-only",
+    "note": "this artifact records a geometry constant, not a performance claim"
+  },
+  "host": {
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900 (gfx1100), GPU 0",
+    "hostname": "epyc",
+    "processes": 1,
+    "source": "hipengine.benchmark.provenance.collect_artifact_provenance + /proc/cpuinfo"
+  },
+  "measurements": {
+    "bulk_prefill_scratch_rows": 256,
+    "chunk_count_by_width": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      2
+    ],
+    "first_splitting_wave": 8,
+    "full_attention_layer_chunk_size": 256,
+    "linear_layer_chunk_size": 256,
+    "prefill_scratch_rows_planned": 256,
+    "scratch_max_positions": 256,
+    "total_rows_by_width": [
+      36,
+      72,
+      108,
+      144,
+      180,
+      216,
+      252,
+      288
+    ],
+    "wall_seconds": 65.775
+  },
+  "protocol": {
+    "cross_check": "the same planner run offline over 252/256/288 capacities reproduces the identical shape (tests/test_scripts_gguf_packed_prefill_slab_probe.py, CPU-only)",
+    "kind": "geometry probe: loads weights, reads buffer geometry and plans chunk shapes; no timed arm, no flag, no state mutation",
+    "prompt_shape": "36 tokens per lane (canonical mtp-bench suite encoding length), valid ids cycled from the verifier prompt defaults",
+    "tool": "scripts/gguf_packed_prefill_slab_probe.py --model Qwen3.8-27B-Q4_K_M --prompt-tokens 36 --require-cached-build",
+    "window": "23:00:32-23:01:39 local, after the d1 packet completed at 22:59:33 (no overlap)"
+  },
+  "question": "At which wave size does packed AR prefill stop running as one chunk, and does that boundary explain the non-monotone grouped admission row (C7 426.692 > C8 397.655 tok/s)?",
+  "schema": "hipengine.gguf.q4k.packed-prefill.slab-probe.2026-08-30",
+  "stop_rule": "constant measured and cross-checked offline; the slab-size question now needs an A/B (slab 256 vs >=288 at C8), not more probing",
+  "verdict": "boundary_measured_at_256_rows_c8_is_the_first_splitting_wave; split_is_real_but_not_currently_a_net_loss; raising_the_slab_needs_a_measurement"
+}

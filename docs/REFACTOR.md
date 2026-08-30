@@ -4831,7 +4831,8 @@ any env variable.
 > by name). Lesson for any future "make a route reachable" claim: name the function the server reaches,
 > and prove it with a 2-minute launch-count check before scheduling a 12-minute sweep.
 >
-> **Width-1 result (measured, `gputm-3087-00104`, C=1, 64 AR-only packets, packet-window trace):**
+> **Width-1 result (measured on host `epyc`, AMD Radeon Pro W7900 (gfx1100) GPU 0, C=1, 64
+> AR-only packets, packet-window trace):**
 > all-GEMV prefill moves exactly 2464 launches (`wmma_prefill` 7392 -> 4928, `local32_gemv`
 > 136224 -> 138688), halves prefill-class kernel wall 9279.8ms -> 4465.1ms and drops `other` wall 29% as
 > the Q4_K repacks disappear - and AR median gets **7.0% worse** (17.68ms -> 18.91ms, mean
