@@ -267,8 +267,8 @@ def _physical_prompt_streaming_widths(owner: Any, generator: Any) -> tuple[int, 
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
         raise RuntimeError("backend prompt-streaming widths must be a sequence")
     widths = tuple(sorted({int(value) for value in raw}))
-    if any(value <= 1 or value > 4 for value in widths):
-        raise RuntimeError("backend prompt-streaming widths must be within [2, 4]")
+    if any(value < 1 or value > 4 for value in widths):
+        raise RuntimeError("backend prompt-streaming widths must be within [1, 4]")
     return widths
 
 
