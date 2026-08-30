@@ -1,0 +1,58 @@
+{
+  "consequence": "The 512-token submodule is at parity on device work, so the C1-C3 prefill deficit is not a throughput-per-token problem: it is the ~250 ms fixed cost per prefill (task #12), which is also what block-verify pays from rows=2 upward (task #10, worklog 20260830T045623...-4f1dcc).",
+  "date": "2026-08-30",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100, RDNA3), device 0 of 2",
+  "hipengine_device_time": {
+    "source": "worklog 20260829T215206...-1921c9 retained packet, shipping AR route, device time per token",
+    "value_tok_s": 883.8,
+    "verdict_vs_llama": "+0.29% (inside llama 15.18 stdev)"
+  },
+  "hipengine_wall_time_today": {
+    "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 .venv/bin/python scripts/gguf_first_token_probe.py --model <gguf> --length-scan 216,224,232 --requests 3 --max-sequence-length 1024",
+    "non_prefill_residual_s": "About 0.24 s of the wall is not prefill: at 1.13 ms/token device time, 545 tokens plus the ~250 ms fitted prefill fixed cost predicts ~0.87 s against the measured 1.1045 s, and the difference is admission, the first decode step(s), sampling and HTTP.",
+    "prefill_only_wall_tok_s": 633,
+    "rows": [
+      {
+        "prompt_tokens": 545,
+        "spread_s": 0.0399,
+        "tok_s": 493.4,
+        "wall_s": 1.1045
+      },
+      {
+        "prompt_tokens": 569,
+        "spread_s": 0.0009,
+        "tok_s": 503.6,
+        "wall_s": 1.1299
+      },
+      {
+        "prompt_tokens": 593,
+        "spread_s": 0.0031,
+        "tok_s": 519.8,
+        "wall_s": 1.1408
+      }
+    ],
+    "verdict_vs_llama": "device time matches (1.003x); wall through the server is 0.56x raw, ~0.72x after removing the non-prefill residual"
+  },
+  "kind": "w7900-q4km-pp512-cross-engine",
+  "links": {
+    "parity_entry": "worklog/entries/20260829T215206...-1921c9 (883.8 internal, no comparator)",
+    "row_scaling": "benchmarks/results/2026-08-30-w7900-q4km-block-verify-row-scaling-trace.json"
+  },
+  "llama_cpp_current": {
+    "backend": "ROCm",
+    "binary": "/home/lhl/external-qwen38-bench/llama.cpp-upstream/build-hip-gfx1100/bin/llama-bench",
+    "build": "b19cbe925 (10671)",
+    "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 llama-bench -m <gguf> -p 512 -n 0 -ngl 99 -r 3",
+    "model_row": "qwen35 27B Q4_K - Medium | 15.92 GiB | 27.32 B",
+    "pp512_stdev": 15.18,
+    "pp512_tok_s": 881.25,
+    "reps": 3
+  },
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "not_quoted": "The probe printed \"fixed 694.5 ms + 0.76 ms/token\" for these three rows. That fit is meaningless: the bracket is 545-593 tokens wide, so slope and intercept are collinear over it (R2 0.9496 on 3 rows). The published fixed cost remains ~252-271 ms from the wide 1-285 token fits.",
+  "protocol_asymmetry": "llama-bench pp512 is a warm repeated batch with no admission, sampling or HTTP path; the hipEngine number goes through the resident server route a user actually hits. Neither is wrong, but only the device-time comparison is like-for-like on compute, and only the wall comparison describes what a caller sees. Both are reported rather than the flattering one.",
+  "quant": "Q4_K_M",
+  "question": "Task #13: does hipEngine match llama.cpp current at 512-token prefill? The retained parity entry 20260829T215206...-1921c9 had 883.8 tok/s internal at 512 tokens with no cross-engine measurement at all.",
+  "schema": "w7900_q4km_pp512_cross_engine.v1",
+  "status": "accepted-measurement-with-protocol-split"
+}
