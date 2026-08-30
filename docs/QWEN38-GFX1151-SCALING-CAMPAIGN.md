@@ -350,11 +350,17 @@ is made.
   INT8 WMMA == BF16 at 59.4 TOP/s; projection 247 -> ~330 >= 305.847)
   are met. See
   [`trace blocker`](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-c8-current-trace-blocker.json).
-- [ ] P3 Integer-MMQ continuation (F). Conditional on P2's trace showing dequant
-  ALU dominance **and** a written sizing estimate that assumes INT8 WMMA equals
-  BF16 WMMA rate on gfx1151. Must reproduce the shared MMQ tile/decomposition
-  per item 19's recorded condition. If P2 shows a bandwidth or occupancy wall
-  instead, P3 closes unopened with that reason.
+- [x] P3 **Integer-MMQ continuation. Done 2026-08-31, closed measured
+  negative.** Both opening conditions were met (P2 dequant dominance + written
+  sizing), so the mandated reproduction was screened rather than re-invented:
+  items 20/21 already built the shared MMQ tile/decomposition (T16-backed
+  MMQ128 +118.81%; source MMQ128 over prequantized `block_q8_0` spill-free and
+  still +3.95%/+5.32% slower). Re-screen at the current head (H5120, dual
+  18432, rows256): selected-wmma 10.71 ms / 9.03 TF/s vs best integer body
+  13.21 ms (0.81x), others 0.23-0.68x. INT8 WMMA == BF16 rate and the
+  dequant-free bodies hit the same LDS-staging/issue wall, so the >=2x
+  Q4-family gain the 305.847 target needs is unreachable by data-format
+  change. See [`negative`](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-p3-int-wmma-negative.json).
 
 ### R — refactor ledger
 
