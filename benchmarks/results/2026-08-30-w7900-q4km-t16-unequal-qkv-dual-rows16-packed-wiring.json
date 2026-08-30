@@ -150,6 +150,7 @@
     "order_bias_bound": "The shipping C8 +0.7% single same-chain pair is inside the measured second-arm order band (candidate-first vs control-first prefill A/B at rows 16/45 spans +0.01% to -0.84% on a dispatch-identical control), so that 0.7% is not separable from arm order and must not be quoted as an independent speed win.",
     "order_controlled_claims": "+1.81% packed prefill crossover (10/10) and byte-identity (20/20 trajectory hashes across both orders) are order-controlled and unaffected.",
     "quantified_by": "worklog/entries/20260830T021032.680079Z-lhl-w7900-qwen38-prefill-ab-orderswap-bcc9fe.md",
-    "added": "2026-08-30"
+    "added": "2026-08-30",
+    "floor_axis_server_recheck": "Surviving back-to-back server packets with the same production manifest (38a90b99...) give C8 AR 46.062 tok/s for the floor-33 arm and 45.999 tok/s for the shipped floor-16 arm: -0.14%, i.e. neutral on this axis, and the shipped arm ran second so the second-arm advantage (<=0.9%) makes the true value more negative, not less. The cited +0.7% pair (45.62 -> 45.94) is not reproducible from retained outputs: the later floor-16 server run aborted with 'benchmark requires tracked-clean source' and the packets above do not record the monkeypatched floor internally, so they are identified only by the chain log and filename. Treat C8 AR as neutral for this promotion."
   }
 }
