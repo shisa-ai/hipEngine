@@ -1,6 +1,6 @@
 # Environment variables
 
-Last updated: 2026-08-16
+Last updated: 2026-08-30
 
 This is the user-facing env-var reference for hipEngine. Most users should not
 need any hipEngine-specific env vars for normal `LLM.generate()` use; prefer
@@ -30,28 +30,36 @@ false unless the variable says otherwise.
 
 ### TheRock ROCm process setup
 
-For the retained W7900 benchmark stack, package install/repair commands, and
-ROCm 7.14 regression notes, see [`THEROCK.md`](THEROCK.md). This section only
-covers the process environment wrapper.
+For stable ROCm 10 installation/upgrade/rollback on gfx1151 and the separately
+retained W7900 ROCm 7.13 stack, see [`THEROCK.md`](THEROCK.md). This section only
+shows the current gfx1151 clean-process wrapper.
 
-TheRock installs ROCm pieces inside the Python environment. Activate it by
-building a clean process environment around the TheRock root rather than mixing
-random ROCm libraries from `/opt/rocm`:
+TheRock installs ROCm pieces inside the Python environment. Build the process
+environment around that prefix rather than mixing its libraries with
+`/opt/rocm`:
 
 ```bash
-CONDA_PREFIX=/home/lhl/mambaforge/envs/therock
-ROOT=$($CONDA_PREFIX/bin/python3.12 -m rocm_sdk path --root)
-env -i HOME=$HOME USER=$USER LOGNAME=$LOGNAME SHELL=$SHELL TERM=${TERM:-xterm} \
-  PATH="$ROOT/bin:$ROOT/lib/llvm/bin:$CONDA_PREFIX/bin:/usr/local/bin:/usr/bin:/bin" \
-  LD_LIBRARY_PATH="$ROOT/lib:$ROOT/lib64:$ROOT/lib/llvm/lib" \
-  HIP_PATH="$ROOT" ROCM_PATH="$ROOT" HIP_DEVICE_LIB_PATH="$ROOT/lib/llvm/amdgcn/bitcode" \
-  PYTHONPATH=. \
-  python <command>
+ENV_PREFIX=/home/lhl/miniforge3
+PY=$ENV_PREFIX/bin/python
+ROOT=$("$PY" -m rocm_sdk path --root)
+SITE=$ENV_PREFIX/lib/python3.13/site-packages
+ROCM_LIBS="$SITE/_rocm_sdk_core/lib:$SITE/_rocm_sdk_devel/lib:$SITE/_rocm_sdk_libraries/lib"
+
+env -i HOME="$HOME" USER="$USER" LOGNAME="$LOGNAME" \
+  SHELL="$SHELL" TERM="${TERM:-xterm}" \
+  PATH="$ENV_PREFIX/bin:$ROOT/bin:$ROOT/lib/llvm/bin:/usr/local/bin:/usr/bin:/bin" \
+  LD_LIBRARY_PATH="$ROCM_LIBS" \
+  HIP_PATH="$ROOT" ROCM_PATH="$ROOT" HIP_LIB_PATH="$ROOT/lib" \
+  HIP_INCLUDE_PATH="$ROOT/include" \
+  HIP_DEVICE_LIB_PATH="$ROOT/lib/llvm/amdgcn/bitcode" \
+  HIPENGINE_HIP_ARCH=gfx1151 PYTHONPATH=. \
+  "$PY" <command>
 ```
 
-Use `HSA_OVERRIDE_GFX_VERSION=11.0.0` only as a local compatibility workaround
-when the ROCm stack requires it for the attached gfx11 card; it is not a general
-hipEngine default.
+Use the W7900-specific wrapper in `THEROCK.md` for retained gfx1100 rows; its
+legacy package directory is different. Do not set `HSA_OVERRIDE_GFX_VERSION` for
+a real gfx1151 device. Use it on gfx1100 only as a measured local compatibility
+workaround, never as a general hipEngine default.
 
 ### Multi-GPU ROCm device selection
 

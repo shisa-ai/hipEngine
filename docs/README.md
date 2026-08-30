@@ -33,7 +33,7 @@ working on.
 | [`TESTING.md`](TESTING.md) | RED/GREEN workflow, correctness oracles, fixture policy, and gate selection. |
 | [`BENCHMARK.md`](BENCHMARK.md) | Benchmark protocol, required evidence fields, correctness thresholds, and artifact format. |
 | [`PROCESS-EXPLORATION.md`](PROCESS-EXPLORATION.md) | Optional methodology for broader optimization searches, hypothesis beams, structural maturation, evaluation firewalls, and anti-overfitting gates. |
-| [`THEROCK.md`](THEROCK.md) | Retained TheRock ROCm setup, `gfx110X-all` package choice, verification commands, and ROCm 7.14 regression notes. |
+| [`THEROCK.md`](THEROCK.md) | Current stable ROCm 10 `gfx1151` setup and rollback procedure, plus the separately retained W7900 ROCm 7.13 benchmark environment. |
 | [`DEBUG-GFX1151-STALL.md`](DEBUG-GFX1151-STALL.md) | Open gfx1151 128K prefill no-progress signature, eliminated hypotheses, KFD/MES debug plan, and upstream-report checklist. |
 | [`../benchmarks/README.md`](../benchmarks/README.md) | Canonical topline scoreboard, platform freshness, exact protocols, artifacts, and refresh commands. |
 | [`../benchmarks/HISTORY.md`](../benchmarks/HISTORY.md) | Archived experiment rollup, source-lineage targets, external baselines, and superseded diagnostics. |
@@ -82,9 +82,10 @@ working on.
   [`ROOFLINE.md`](ROOFLINE.md) to decide whether the proposed change matches the
   measured bottleneck.
 - **Before making a performance claim:** read [`BENCHMARK.md`](BENCHMARK.md),
-  verify the ROCm environment against [`THEROCK.md`](THEROCK.md) for W7900
-  TheRock rows,
-  update [`../benchmarks/README.md`](../benchmarks/README.md) and
+  verify the host-specific ROCm environment against [`THEROCK.md`](THEROCK.md),
+  and do not compare absolute rates across its independent gfx1151/ROCm 10 and
+  W7900/ROCm 7.13 lanes. Then update
+  [`../benchmarks/README.md`](../benchmarks/README.md) and
   [`../benchmarks/CHANGELOG.md`](../benchmarks/CHANGELOG.md), and write a compact
   artifact under [`../benchmarks/results/`](../benchmarks/results/).
 - **Before opening a less-bounded optimization search:** read

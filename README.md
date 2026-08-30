@@ -71,8 +71,8 @@ checkpoint or GGUF for broader compatibility.
 | NVIDIA Blackwell | Linux x86-64, Python 3.11+ and the CUDA toolkit with `nvcc`; Maple only |
 | Published wheel | glibc 2.39 or newer, such as Ubuntu 24.04 |
 
-ROCm 7.x is the safest choice for the current wheel. The first model load
-compiles and caches kernels, so it takes longer than later starts.
+See the [TheRock setup guide](docs/THEROCK.md) for retained ROCm 7.13 and gfx1151 ROCm 10 setup/JIT validation.
+The first model load compiles and caches kernels, so it takes longer than later starts.
 
 Install from PyPI:
 
