@@ -485,13 +485,8 @@
     "written": {
       "build_profile": null,
       "collected_at": "2026-08-30T14:18:28.332129+00:00",
-      "command": [
-        "/home/lhl/hipEngine-main/.venv/bin/python",
-        "<inline builder>",
-        "/tmp/he-parity/decomp-ar.json",
-        "->",
-        "2026-08-30-w7900-q4km-c1c8-admission-decomposition-post-grouping.json"
-      ],
+      "command": null,
+      "command_note": "null by design: this artifact was assembled by an inline heredoc builder with no argv, and the previous value here was a reconstructed command line ([python, '<inline builder>', '<packet>', '->', '<artifact>']) that no process ever ran. A provenance field must be observed or absent, never plausible.",
       "configured_backend": "auto",
       "device_name": "AMD Radeon Pro W7900",
       "dirty": true,
@@ -512,9 +507,12 @@
       "host_name": "epyc",
       "kind": "hipengine_artifact_provenance",
       "kv_dtype": null,
+      "measured_packet": "/tmp/he-parity/decomp-ar.json",
       "model_fingerprint": null,
       "model_path": null,
       "model_revision": null,
+      "packet_argv": "not recorded: the packet predates c6bae4667, which started stamping decomposition packets with their own argv",
+      "packet_launcher": "/tmp/he-parity/after-oracle.sh (scripts/gguf_engine_submodule_decomposition.py)",
       "profiler": null,
       "quant": null,
       "repetitions": null,
