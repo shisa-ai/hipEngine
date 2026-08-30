@@ -583,6 +583,14 @@ GGUF_RAW_K_PREFILL_COLTILE2_SHAPES = frozenset(
     }
 )
 GGUF_RAW_K_PREFILL_VARIANT = "coltile"
+# Grouped full-prompt prefill: admit up to eight same-wave rows into one native prefill
+# call. Declared for gfx1100 after the W7900 / Qwen3.8-27B Q4_K_M canonical-suite
+# measurement that kept every generated id identical (432 cross-packet row comparisons,
+# 0 mismatches; 80/80 correctness cells), left physical width 1 unchanged (-0.4% AR,
+# acceptance identical), lifted C8 AR 45.68 -> 78.67 tok/s, and removed the width-
+# dependent draft-acceptance collapse (0.467-0.614 at C2-C8 -> 0.789 at every width).
+# Scoped independently from decode widths; misses fall back before mutation.
+GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8
 # WPF-H7C is the retained exact raw-Q6 source for only the three physically and
 # actually timed M512 roles below. The named empty map remains the explicit
 # generic rollback. gguf_linear consumes this package map generically; no
@@ -948,5 +956,6 @@ __all__ = [
     "GGUF_RAW_K_PREFILL_ROWBATCH",
     "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
     "GGUF_RAW_K_PREFILL_VARIANT",
+    "GGUF_C2_PACKED_PREFILL_MAX_ROWS",
     "GGUF_ROUTER_F32_BF16_HIDDEN_THREADS",
 ]

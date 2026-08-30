@@ -4636,23 +4636,33 @@ lengths today (`hipengine/generation/qwen35_gguf.py:3025`, chunked only by
 
 **Landed:** that equal-chunk-length early-return has been removed from
 `_try_prefill_native_work_batch`, so the AR route groups mixed-length waves like
-the serving route. The change is inert by default because `engine_loop` still only
-reaches the batch route when `packed_prefill_max_rows > 1`. Two tests pin the
-contract (`test_resident_ar_packed_prefill_groups_mixed_prompt_lengths` for the AR
-route via `__new__`-stubbed rows, and
-`test_gguf_ar_packed_prefill_batches_unequal_prompt_lengths` for the serving route),
-plus `test_gguf_gfx1100_packed_prefill_capability_is_undeclared_by_default` as the
-tripwire. What still stands between this and promoted wave-grouped AR prefill:
-declaring `GGUF_C2_PACKED_PREFILL_MAX_ROWS` for gfx1100, the remaining whole-prompt-
-in-one-chunk requirement (`chunk == row.prompt_ids`, which chunked prefill of long
-prompts violates), and a same-suite content-exact + wall measurement against the
-per-request route. Trigger unchanged.
+the serving route, and a wave no longer loses grouping because one lane is over the
+chunk cap (the compatible subset groups; the odd lane stays on the chunked serial
+path). Two tests pin the contract
+(`test_resident_ar_packed_prefill_groups_mixed_prompt_lengths` for the AR route via
+`__new__`-stubbed rows, and
+`test_gguf_ar_packed_prefill_batches_unequal_prompt_lengths` for the serving route).
+
+**Promoted:** `GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8` is now declared for gfx1100, so
+`engine_loop` reaches the batch route by default. The old tripwire
+(`test_gguf_gfx1100_packed_prefill_capability_is_undeclared_by_default`) was inverted
+into `test_gguf_gfx1100_packed_prefill_capability_is_declared`, which keeps the
+protective half (the lookup still defaults to 1, so an unqualified package stays
+lane-by-lane). Qualifying evidence: canonical-suite packet with byte-identical
+protocol, 432 cross-packet per-row id comparisons and 0 mismatches, 80/80
+correctness cells, width 1 unchanged, C8 AR 45.68 -> 78.67 tok/s, and acceptance
+flattened to 0.789 at every width. Remove the declaration (back to 1) only if a
+long-prompt or multi-session workload shows a regression the canonical suite cannot
+see - the remaining known limit is `chunk == row.prompt_ids`, so prompts longer than
+the chunk cap still prefill serially and gain nothing.
 
 `worklog.py new` can mint an entry that `worklog.py check` then rejects. `new`
 derives the filename from `slugify(topic)`, but `slugify` truncates at ~48
 characters and can leave a trailing `-`, while `check` (a) requires
 `slugify(topic) == topic` and (b) requires the filename to start with the
-verbatim `topic`. A long or bracketed title therefore produces a filename whose
+verbatim `topic`. Note also that `new` writes the **title** text into the `## Topic`
+body, so a title containing `>=` or `;` fails `check` even when `--topic` is a clean
+slug - keep both flat. A long or bracketed title therefore produces a filename whose
 embedded slug can never validate - `20260830T025142...guard--0609f8.md` needed a
 manual topic shortening plus `git mv` inside an amend of an unpushed commit, and
 `check` blocks every later commit until that is done. Fix in `new`: after
