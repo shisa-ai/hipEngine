@@ -915,8 +915,19 @@ measurement, so record it instead of rediscovering it.
    `gguf_continuous_owner_rocprof.py`, `gguf_sh_c0_profile.py`, `qwen35_rocprof_audit.py` and
    `mtp_verifier_rocprof.py` all call `_prepare_roctx_override`, which raises unless a pip
    ROCm SDK `librocprofiler-sdk-roctx.so.1` exists under `site-packages/_rocm_sdk_*/lib`.
-   No such library is installed anywhere here (`find` over the venv, `/opt/rocm*` and
-   `/usr/lib` returns nothing). Kernel tracing needs no ROCTX shim - only markers do - so the
+   **That blocker was wrong and is retracted.** The sentence above came from a `find`
+   over the project venv, `/opt/rocm*` and `/usr/lib`, which misses where this host keeps
+   the SDK: **12 copies exist**, all under `~/mambaforge/envs/*/lib/python3.12/site-packages/`
+   in `_rocm_sdk_core/lib` and `_rocm_sdk_devel/lib` (including `.so.1.3.2`), in the
+   `therock` and `vllm` envs. The default only probes `sys.prefix`, and the wrappers are run
+   with `.venv/bin/python`, whose prefix has no `_rocm_sdk_core` at all - while
+   `shutil.which('rocprofv3')` is `/home/lhl/mambaforge/envs/therock/bin/rocprofv3`, so the
+   matching library sits in the very env that provides the profiler. Passing it works in the
+   sense that `_prepare_roctx_override(<therock _rocm_sdk_core path>)` returns an override
+   directory instead of raising (verified in plain Python 2026-08-30, no GPU); what is *not*
+   yet verified is that marker tracing then succeeds end to end under `rocprofv3`. The
+   permanent fix is for `_default_roctx_sdk` to also probe the prefix of `which(rocprofv3)`.
+   Kernel tracing needs no ROCTX shim - only markers do - so the
    working route is the wrapper's own `--child` mode driven under a direct
    `rocprofv3 --kernel-trace`, rolled up with `gguf_kernel_trace_rollup.py TRACE_DIR`.
 2. **`rocprofv3` flags are not what they look like.** `-i/--input` is an input file and
