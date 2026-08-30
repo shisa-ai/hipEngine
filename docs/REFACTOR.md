@@ -4762,3 +4762,15 @@ measured session is the pooled one, constructed from a literal `True`. Two follo
 booleans and keep one route owner, or route every call site through the single default. Until then,
 any experiment that toggles prefill route by the public default is silently vacuous, which is how
 this nearly got reported as "GEMV prefill is neutral".
+
+Measured 2026-08-30, the GEMV decode half is worse than pooling-inert: it is inert **at the
+consumer**. `qwen35_gguf_runner.py:13292` resolves the preference into
+`Qwen35GGUFFastPathSafety(requested_gemv_decode=...)` and its only two consumers, `disabled_wmma` and
+`disabled_gemv`, are gated on `is_qwen35moe`, so on the dense GGUF path the value moves one field of a
+safety record. Flipping it at the resolver - the only place a flip can land, since precedence is
+explicit kwarg > session > env - changed C1/C2 by 0.4%/0.7% (22.170 vs 22.250, 31.087 vs 31.290
+tok/s), with the resolver logging 3 calls per run, all incoming=True resolved=False. Delete the 11
+literal `use_gemv_decode=True` sites on the dense path, or make the MoE safety check query a real
+capability instead of a caller-supplied preference. Instrument notes for the next person: this flip is
+not reachable by environment variable, and patching `hipengine/runtime/gguf_linear.py` alone does
+nothing because `qwen35_gguf_runner.py` imports `gguf_gemv_decode_enabled` into its own namespace.
