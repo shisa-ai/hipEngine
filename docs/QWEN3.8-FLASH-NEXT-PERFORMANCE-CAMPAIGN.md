@@ -561,25 +561,41 @@ expert path.
 The frozen MoE map is 43 layers of Q4_K/Q4_K/Q5_1, layer 2 of
 Q5_K/Q5_K/Q8_0, and layers 4/30/46/47 of Q4_K/Q4_K/Q8_0.
 
-- [ ] Commit a generated quant/shape/owner inventory test so artifact drift
-      fails before timing.
-- [ ] Write actual-weight RED fixtures for layer-2 Q5_K dual gate/up and Q8_0
+- [x] Commit a generated quant/shape/owner inventory test so artifact drift
+      fails before timing. (82f646979)
+- [x] Write actual-weight RED fixtures for layer-2 Q5_K dual gate/up and Q8_0
       down, including compact row maps, empty experts, tails, and route order.
-- [ ] Route the existing selected Q5_K WMMA body for layer 2; classify its
+      (runner-level regression RED, 30a2fad9e)
+- [x] Route the existing selected Q5_K WMMA body for layer 2; classify its
       arithmetic before timing and preserve the strict selected chain.
-- [ ] Replace the Q8 path's `group_expert_start` D2H copy and Python loop over
+      **MEASURED: ~1% REGRESSION, REJECTED.** 5 counterbalanced p512 pairs
+      (t=-5.28) show grouped WMMA routing is slower than strict at the real
+      layer-2 active-row distribution (20260830T223941). Layer 2 stays strict.
+      Microbench showed the WMMA body wins 3.85x sparse / 1.73x wide, but that
+      does not transfer to the real p512 profile (20260830T202526).
+- [x] Replace the Q8 path's `group_expert_start` D2H copy and Python loop over
       512 experts with a device-driven grouped Q8 owner. Use a fixed-capacity
       grid guarded by device counts or an equivalent no-host-roundtrip design.
+      (2a58aa1d8). **Perf-negative** (20260830T202256); strict stays default.
 - [ ] Extend the proven Q8 owner to layers 4/30/46/47 when their independent
       actual-shape and composition gates pass; do not hardcode only layer 2.
+      (Deferred: owner is perf-negative, so extension is not warranted on
+      present evidence.)
 - [ ] Fuse route scaling/ordered accumulation into Q8 down only if the declared
-      strict/T2 contract passes.
+      strict/T2 contract passes. (Not attempted.)
 - [ ] Run the complete 450-row/three-repeat packet, tasks, physical c2,
       lifecycle, paired p512/p1024, and the canonical p4096 gate. Bind only
-      certified scopes.
+      certified scopes. (Not run: no candidate survived to promote.)
 
 Expected evidence: layer 2 falls from about 397.95 ms toward the comparator
 role range; its maximum standalone p508 contribution is about 6.6%.
+
+**Actual P1 outcome (2026-08-30):** layer-2 grouped routing does NOT close the
+isolated Q5_K miss; it is a measured ~1% regression. The ~19x layer-2 gap vs
+llama is a Q5_K gate/up dataflow problem (neither the strict selected chain nor
+the current grouped WMMA body is competitive), requiring a batched-over-rows
+kernel rewrite. The Q8_0 down strict-fallback regression from the device owner
+refactor was caught and fixed (30a2fad9e), restoring heldout max KL 0.0287.
 
 ### Phase P2 — early routed MoE layers 0-26
 
