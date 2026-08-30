@@ -20,6 +20,7 @@ from hipengine.kernels.hip_gfx1100 import (
     GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS,
     GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES,
     GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES,
+    GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS,
     GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
@@ -79,6 +80,39 @@ _EXPERT_MAJOR_COMP_SYMBOLS = {
     "gguf_q4_k_t16": "hipengine_gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
     "gguf_q6_k_t16": "hipengine_gguf_q6_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
 }
+
+
+_ENV_SINGLE_WAVE_MAX_ROWS = "HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS"
+_SINGLE_WAVE_MAX_ROWS_RESOLVED: int | None = None
+
+
+def _single_wave_max_rows() -> int:
+    """Row band in which single-wave owns a single-wave shape (0 forces shared-B).
+
+    Bisection switch for the 2026-08-30 promotion so a same-build A/B is possible
+    without reverting code. Resolved once because this sits on the launch path.
+    Remove it once shared-B has survived one release cycle as the strict sibling
+    (`worklog/entries/20260830T202339.871333Z-lhl-ar-prefill-owner-trace-9e0f16.md`).
+    """
+
+    global _SINGLE_WAVE_MAX_ROWS_RESOLVED
+    if _SINGLE_WAVE_MAX_ROWS_RESOLVED is None:
+        raw = os.environ.get(_ENV_SINGLE_WAVE_MAX_ROWS, "").strip()
+        if not raw:
+            value = int(GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS)
+        else:
+            try:
+                value = int(raw)
+            except ValueError as exc:
+                raise ValueError(
+                    f"{_ENV_SINGLE_WAVE_MAX_ROWS} must be a non-negative integer"
+                ) from exc
+            if value < 0:
+                raise ValueError(
+                    f"{_ENV_SINGLE_WAVE_MAX_ROWS} must be a non-negative integer"
+                )
+        _SINGLE_WAVE_MAX_ROWS_RESOLVED = value
+    return _SINGLE_WAVE_MAX_ROWS_RESOLVED
 
 
 def _extra_flags() -> tuple[str, ...]:
@@ -298,7 +332,17 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
     ):
         return
     if int(rows) not in GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS:
-        fn = gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
+        # The shared-B kernel is launched on a 256-row tile, so below the measured
+        # crossover it charges a full 256-row cost for a few dozen rows. The
+        # single-wave leaf is bit-identical on this shape across rows 2..128, so
+        # this is an ownership change, not an arithmetic change, and shared-B
+        # stays the registered sibling and strict fallback.
+        fn = (
+            gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
+            if shape in GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES
+            and 2 <= int(rows) <= _single_wave_max_rows()
+            else gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
+        )
     elif shape in GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES:
         fn = gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
     elif (
