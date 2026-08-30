@@ -8,19 +8,36 @@ from scripts import specdec2_perf_bridge as bridge
 
 
 def test_code_repetition_wrapper_binds_fixed_train_and_heldout_contract() -> None:
-    code_bench.configure_code_repetition_contract()
+    with code_bench.code_repetition_contract():
+        rows = bridge.load_prompt_suite(code_bench.DEFAULT_CODE_REPETITION_PROMPTS)
 
-    rows = bridge.load_prompt_suite(code_bench.DEFAULT_CODE_REPETITION_PROMPTS)
+        assert tuple(row["id"] for row in rows) == code_bench.CODE_REPETITION_PROMPT_IDS
+        assert {row["category"] for row in rows} == {"code"}
+        assert bridge._HELDOUT_IDS == code_bench.CODE_REPETITION_HELDOUT_IDS
+        assert bridge._REQUIRED_CATEGORIES == frozenset({"code"})
+        assert all(row["rendered_prompt"].endswith("<|im_start|>assistant\n") for row in rows)
+        assert all(
+            row["prompt_sha256"]
+            == hashlib.sha256(row["rendered_prompt"].encode("utf-8")).hexdigest()
+            for row in rows
+        )
 
-    assert tuple(row["id"] for row in rows) == code_bench.CODE_REPETITION_PROMPT_IDS
-    assert {row["category"] for row in rows} == {"code"}
-    assert bridge._HELDOUT_IDS == code_bench.CODE_REPETITION_HELDOUT_IDS
-    assert bridge._REQUIRED_CATEGORIES == frozenset({"code"})
-    assert all(row["rendered_prompt"].endswith("<|im_start|>assistant\n") for row in rows)
-    assert all(
-        row["prompt_sha256"]
-        == hashlib.sha256(row["rendered_prompt"].encode("utf-8")).hexdigest()
-        for row in rows
+    # The canonical contract must survive this test; an unscoped rebinding here
+    # is what made eight canonical bridge assertions fail under broad ordering.
+    assert bridge.FULL_PROMPT_IDS == (
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review",
+    )
+    assert bridge._REQUIRED_CATEGORIES == frozenset(
+        {"code", "general_en", "general_ja", "mixed_ja_en"}
     )
 
 
