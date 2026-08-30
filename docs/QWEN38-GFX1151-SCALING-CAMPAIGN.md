@@ -16,9 +16,10 @@ blockers stay closed under the parity campaign's named-blocker rule.
 
 Two measured objectives, in priority order:
 
-1. **MTP must scale with concurrency.** Today it does not: MTP is flat from C3
-   upward while AR keeps scaling. Target is `MTP >= 1.15x own AR at every
-   width C1-C8`, or a measured named blocker per cell.
+1. **MTP must scale with concurrency.** Today it does not: MTP reaches its peak
+   at C3 and collapses at C5 while AR keeps scaling. Target is
+   `MTP >= 1.15x own AR` at every width C1-C8, or a measured named blocker per
+   cell.
 2. **Close the two prefill cells that hold 60% of the prefill deficit** — C2
    and C8 — or name their blockers. The other six widths are already within
    4.3-9.5% and are explicitly *not* the target.
@@ -41,9 +42,10 @@ complete-wall tok/s.
 
 Two signatures drive the whole campaign:
 
-- **MTP saturates at ~29.5 tok/s from C3 onward** (29.468/29.385/18.657/28.195/
-  29.305/28.577) while AR climbs 23.659 -> 45.936. Every external engine's MTP
-  keeps rising with width. Ours stops.
+- **MTP reaches a ~29.5 tok/s ceiling from C3 onward and collapses at C5**
+  (29.468/29.385/18.657/28.195/29.305/28.577) while AR climbs 23.659 ->
+  45.936. Every external engine finishes materially higher at C8 than at C3;
+  ours does not scale beyond its C3 peak.
 - **Prefill C2 is lower than C1** (142.806 < 146.758) where every external
   engine rises steeply (stock HIP 146.2 -> 186.9; Laurent 149.1 -> 211.9).
   C2 and C8 hold **32.4%** and **27.5%** of the absolute prefill deficit; the
@@ -75,24 +77,26 @@ as the shared MTP/DFlash2 suspect (P5.3), now with a per-row number attached to 
 `hipengine/generation/engine_loop.py:2336` `_maybe_run_partitioned_speculative_decode`
 loops over subgroups and calls `_maybe_run_speculative_cycle` once per
 subgroup, so C5-C8 execute 2 full proposal+verify cycles per tick. The bound
-comes from a literal `4` in at least ten places, principally
-`hipengine/generation/qwen35_gguf_mtp2.py:871`
-(`max_requests = min(4, …)`), `:894` (`proposal_widths` in `(1, 2, 4)`),
-`:934` (`1 <= len(request_ids) <= 4`), and `partition_max_requests` at `:905`
-(`bound = min(4, capacity, max_realized_group_rows)`); the capability gate
-`GGUF_SPECDEC2_MTP2_C4` in `hipengine/kernels/hip_gfx1151/__init__.py:1750`
-stops at C4. Retained telemetry confirms the resulting subgroup shapes
-`4`, `4+1`, `4+2`, `4+3`, `4+4` at C4-C8.
+comes from eleven width-4 cap expressions in
+`hipengine/generation/qwen35_gguf_mtp2.py` at
+`:504/:780/:871/:894/:915/:934/:1028/:1052/:1159/:1314/:3413`. The capability
+gate `GGUF_SPECDEC2_MTP2_C4` in
+`hipengine/kernels/hip_gfx1151/__init__.py:1750` also stops at C4. A separate
+C4-only accept owner at `qwen35_gguf_mtp2.py:1865-1885` fixes
+`max_rows=16`, `max_requests=4`, and two request buffers to shape `(4,)`;
+`TargetVerifyBufferOwner.bind()` rejects larger batches. Retained telemetry
+confirms the resulting subgroup shapes `4`, `4+1`, `4+2`, `4+3`, `4+4` at
+C4-C8.
 
 This is a deliberate CONCURRENCY2 D4 decision ("physical through C4 and
 decomposed into bounded C4 frontiers above it"), correct as a functional
 milestone and now the binding scaling defect. It is a scheduler/ownership
-bound, not a kernel bound. **C5 is the worst cell in the matrix (0.5249x AR)
-precisely because `4+1` is the most unbalanced split**: the trailing R4 group
-pays a near-full pass for a quarter of the rows.
+bound, not a kernel bound. **The C5 `4+1` shape explains its matrix-worst
+0.5249x-AR result**: the trailing R4 group pays a near-full pass for a quarter
+of the rows.
 
-The width-4 cap and its ten literals are now tracked as
-[`REFACTOR.md`](REFACTOR.md) **RF-OI5** with removal tied to M1's outcome
+The width-4 cap, its eleven cap expressions, and the C4 accept owner are tracked
+as [`REFACTOR.md`](REFACTOR.md) **RF-OI5** with removal tied to M1's outcome
 (punchlist R1, closed at campaign open). A1 is a measured performance defect,
 not refactor debt, and stays owned here.
 
@@ -111,6 +115,11 @@ two policy tables that produced the C3 wins:
 - `GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES` (`:1765`) admits rows
   **2/3/4** only, so C1's proposal head keeps the direct/scalar producer. E1b
   was worth **+7.47%** at C3.
+
+The resolver `_physical_prompt_streaming_widths()` currently rejects width 1
+at `qwen35_gguf_mtp2.py:270-271`; adding a package-policy key alone raises an
+error. M3 therefore owns the resolver change and its policy-miss guards, not
+only the two package keys.
 
 E0 measured **746.7 ms** prompt prime and a **41.26 ms/cycle** proposal head on
 this route, so both keys are sized to matter at C1.
@@ -183,10 +192,12 @@ prompt-conditioned tuning. Commit each completed unit immediately.
 widths, each cell passing exact-generated-ID/output, engaged-route, and
 budget-conformance checks (the closeout's "exactness/route/budget gates").
 **Known evidence gap:** the frozen entry artifact embeds the full `protocol`
-block and raw-source hashes but **not the driver command line**; the parity
-closeout entry does not record it either. M0's artifact and worklog entry must
-therefore re-establish and record the exact reproducible command for the
-C1-C8 prefill/AR/MTP sweep before any M-track perf claim is made.
+block and raw-source hashes but **not the driver command lines**; the parity
+closeout entry does not record them either. Prefill and AR/MTP came from
+separate raw sources. M0's artifact and worklog entry must therefore
+re-establish and record the exact reproducible command set for the C1-C8
+prefill, AR, MTP, and instrumentation/profile runs before any M-track perf claim
+is made.
 
 ### X — external MTP batching survey (cheap, de-risks M1)
 
@@ -209,32 +220,44 @@ C1-C8 prefill/AR/MTP sweep before any M-track perf claim is made.
 
 - [ ] M0 Re-freeze and instrument. Emit per-cycle accounting for C1-C8:
   subgroup count, target rows per pass, model passes per cycle, **ms per target
-  row**, and **accepted tokens per target row**, with matched AR ms-per-row at
-  the same width. Establish ms/target-row as this campaign's primary economic
-  metric; complete-wall tok/s stays the reported headline. Deliverable: a
-  compact artifact under `benchmarks/results/` carrying the per-cycle table,
-  the recorded sweep command (see the evidence-gap rule above), and a worklog
-  entry. No perf claim.
+  row**, accepted draft tokens, committed output tokens per target pass, and
+  **operation-complete ms per committed output token**, with matched AR
+  ms-per-row at the same width. The committed-output metric is the primary
+  economic metric; ms/target-row diagnoses batching efficiency, and
+  complete-wall tok/s stays the reported headline. Deliverable: a compact
+  artifact under `benchmarks/results/` carrying the per-cycle table, exact
+  prefill/AR/MTP/instrumentation command set, source commit, full model/prompt
+  hashes, profile-manifest hashes, and a worklog entry. No perf claim.
 - [ ] M1 **Single-group wide verify.** Lift the width-4 partition so one cycle
-  covers all due requests: `partition_max_requests`, `claims_fit`,
-  `proposal_widths`, `max_requests`/`max_frontier_rows`, and the
-  `GGUF_SPECDEC2_MTP2_C4` capability. Re-add the R20-R32 target row buckets
-  removed as unengaged. Binding gates: exact control/ownership in every
-  profile, all 80 cells exact, acceptance unchanged at 78.894%, registered
-  strict fallback, and C1-C4 non-regressive. Targets: C5 `18.657 -> >= 33`,
-  C8 `28.577 -> >= 45` (its own AR is 45.936). These are **intermediate**
-  partition-lift targets — roughly own-AR parity — not the campaign goal;
-  the section-1 `>= 1.15x own AR` bar (C8 `>= 52.8`) is owned by M1+M2
-  together, since a single-group R32 verify still pays A1's per-row cost.
+  covers all due requests. Replace the eleven scattered cap expressions with
+  one capability-owned bound; update `partition_max_requests`, `claims_fit`,
+  `proposal_widths`, `max_requests`/`max_frontier_rows`, and replace or rename
+  the misleading `GGUF_SPECDEC2_MTP2_C4` gate. Resize and re-key
+  `_batch_accept_resources()` through C8/R32: its `TargetVerifyBufferSpec`,
+  remaining-decode tensor, and packed-payload tensor must all cover eight
+  requests and 32 rows, with allocation/reuse/teardown/pressure tests. Re-add
+  the R20-R32 target row buckets removed as unengaged. Because one proposal now
+  has rows5-8, qualify the rows5-8 proposal-head owner or explicitly measure and
+  record the direct fallback cost; do not assume the rows2-4 policy transfers.
+  Binding gates: exact control/ownership in every profile, all 80 cells exact,
+  acceptance unchanged at 78.894%, registered strict fallback, and C1-C4
+  non-regressive. Targets: C5 `18.657 -> >= 33`, C8 `28.577 -> >= 45` (its own
+  AR is 45.936). These are **intermediate** partition-lift targets — roughly
+  own-AR parity — not the campaign goal.
 - [ ] M2 Per-row verify cost (A1). Using M1's per-quant attribution, close the
-  gap between MTP ms/target-row and AR ms/row at matched width. Q4 owners above
-  R12 (C) open here **only if** M1's trace names Q4 as the binding class; the
-  two prior Q4 R16 rejections set the entry condition — weighted GPU work must
-  not rise.
-- [ ] M3 **C1 coverage** (B). Add width-1 prompt streaming and rows1 proposal
-  rowtile keys, then re-screen the reusable native target graph for the
-  production route. Target `7.809 -> >= 18.191` (our own strict number), stretch
-  `>= 21.126` (external). Must not change strict C1 automatic behavior.
+  gap between MTP ms/target-row and AR ms/row at matched width. M1+M2 jointly
+  own the final `MTP >= 1.15x own AR` gates: C4 `>= 34.596`, C5 `>= 40.876`,
+  C6 `>= 45.892`, C7 `>= 49.579`, and C8 `>= 52.827` tok/s, or a measured named
+  blocker for each missed cell. Q4 owners above R12 (C) open here **only if**
+  M1's trace names Q4 as the binding class; the two prior Q4 R16 rejections set
+  the entry condition — weighted GPU work must not rise.
+- [ ] M3 **C1 coverage** (B). Extend `_physical_prompt_streaming_widths()` to
+  admit width 1 without broadening the unqualified `>4` range; add the width-1
+  package-policy key and qualify the rows1 proposal rowtile owner. Re-screen the
+  reusable native target graph for the production route. Target
+  `7.809 -> >= 18.191` (our own strict number), stretch `>= 21.126` (external).
+  Resolver, policy-miss, and strict-C1 tests must prove strict automatic
+  behavior is unchanged.
 - [ ] M4 C4 prompt-streaming acceptance blocker. Streaming at C4 changed
   acceptance 628/796 -> 624/800 and was rejected. Decide explicitly whether the
   binding contract is exactness of the replayed prompt or of the acceptance
@@ -265,10 +288,10 @@ C1-C8 prefill/AR/MTP sweep before any M-track perf claim is made.
 
 ### R — refactor ledger
 
-- [x] R1 **Done at campaign open (2026-08-30).** The width-4 MTP partition,
-  its ten `qwen35_gguf_mtp2.py` literals, the per-subgroup sequential loop,
-  and the `GGUF_SPECDEC2_MTP2_C4` capability gate are recorded as
-  [`REFACTOR.md`](REFACTOR.md) RF-OI5 with an explicit removal condition tied
+- [x] R1 **Done and corrected on 2026-08-30.** The width-4 MTP partition,
+  eleven `qwen35_gguf_mtp2.py` cap expressions, C4-only accept owner,
+  per-subgroup sequential loop, and `GGUF_SPECDEC2_MTP2_C4` gate are recorded
+  as [`REFACTOR.md`](REFACTOR.md) RF-OI5 with an explicit removal condition tied
   to M1's outcome, success or blocker.
 
 ## 5. Order
