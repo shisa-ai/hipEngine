@@ -318,6 +318,68 @@ gguf_q8_0_wmma_prefill_dual_gate_up_fp16_fp16_out = _make_dual_wrapper(
 )
 
 
+# P1 device-driven grouped Q8_0 down owner. Signature:
+# (input_ptr, expert_start_ptr, weights_ptr, output_ptr, compact_rows,
+#  num_experts, in_features, out_features, stream=0).
+_GROUPED_ARGTYPES = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
+
+
+def gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out(
+    input_ptr: int,
+    expert_start_ptr: int,
+    weights_ptr: int,
+    output_ptr: int,
+    compact_rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch device-driven grouped Q8_0 down (no host roundtrip)."""
+
+    for value, name in (
+        (compact_rows, "compact_rows"),
+        (num_experts, "num_experts"),
+        (in_features, "in_features"),
+        (out_features, "out_features"),
+    ):
+        if value <= 0:
+            raise ValueError(f"{name} must be positive")
+    if in_features % 32:
+        raise ValueError("in_features must be divisible by Q8_0 block size 32")
+    library = library or build_gguf_q8_0_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = library.hipengine_gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out
+    fn.argtypes = _GROUPED_ARGTYPES
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(input_ptr),
+        ctypes.c_void_p(expert_start_ptr),
+        ctypes.c_void_p(weights_ptr),
+        ctypes.c_void_p(output_ptr),
+        ctypes.c_int64(compact_rows),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 _WRAPPERS = {
     "wmma_prefill_bf16_bf16_out": gguf_q8_0_wmma_prefill_bf16_bf16_out,
     "wmma_prefill_bf16_fp16_out": gguf_q8_0_wmma_prefill_bf16_fp16_out,
@@ -370,4 +432,5 @@ __all__ = [
     "gguf_q8_0_wmma_prefill_f32_f32_out",
     "gguf_q8_0_wmma_prefill_dual_gate_up_bf16_bf16_out",
     "gguf_q8_0_wmma_prefill_dual_gate_up_fp16_fp16_out",
+    "gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out",
 ]
