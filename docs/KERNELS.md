@@ -831,6 +831,18 @@ rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-smoke -- \
     --require-cached-build
 ```
 
+To attribute cost across wave widths, trace two runs of the same workload at different row counts and
+diff them per kernel with `scripts/gguf_rocprof_width_scale_diff.py`. It separates the two signatures
+that look alike in a single trace: `per_row_launches` (launch count scales with rows, i.e. one launch
+per row) and `per_row_inside_launch` (launch count flat, each launch longer). Kernels present in only
+one run are reported as `only_in_base` / `only_in_candidate` rather than dropped, which matters because
+an MTP verifier that engages only at rows >= 2 otherwise reads as row scaling - the reason a
+rows-scaling trace must be taken with speculation removed from both runs, not just from the summary.
+`scripts/gguf_packed_ar_rocprof.py` profiles this model but builds two warmups (`c1` and `c4`)
+regardless of `--concurrency`, and `--skip-warmbuild` fails inside `rocprofv3`, so budget 40-45 min per
+configuration or trace a narrower driver instead. Its `_default_roctx_sdk` now falls back to the legacy
+`/opt/rocm/lib/libroctx64.so.4`, which is what images without the pip ROCm SDK packages actually ship.
+
 For Generation-2 GGUF owner profiling, use the mechanical isolated-cache
 workflow instead of mutating the shared cache:
 
