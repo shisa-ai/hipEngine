@@ -85,7 +85,7 @@
   },
   "mechanism_followup": {
     "date": "2026-08-30, same session",
-    "decision_point_narrowed": "the route is not chosen by resolve_gguf_linear_dispatch: for LAYOUT_GGUF_Q4_K_T16 every rows>1 resolves t16_wmma_prefill_bf16_bf16_out regardless of HIPENGINE_GGUF_Q4K_ROWTILE (pinned by tests/test_runtime_gguf_linear_q4k_rowtile_knob.py). The env is consumed one level down at the launch sites - launch_gguf_linear (gguf_linear.py:2447), launch_gguf_linear_pair (:4182), launch_gguf_linear_pair_silu (:4658) - which matches the widest width-2 kernel being a *dual* (pair-route) rowtile launch.",
+    "decision_point_narrowed": "the route is not chosen by resolve_gguf_linear_dispatch: for LAYOUT_GGUF_Q4_K_T16 every rows>1 resolves t16_wmma_prefill_bf16_bf16_out regardless of HIPENGINE_GGUF_Q4K_ROWTILE (pinned by tests/test_runtime_gguf_linear_q4k_rowtile_knob.py). The env is consumed one level down at the launch sites - launch_gguf_linear (gguf_linear.py:2447), launch_gguf_linear_pair (:4182), launch_gguf_linear_pair_silu (:4658) - which matches the widest width-2 kernel being a *dual* (pair-route) rowtile launch. Caveat added after the A/B: those launch sites are reached only when no session has pinned the flag, and the resident serving route does pin it, so HIPENGINE_GGUF_Q4K_ROWTILE does not steer the shipping AR decode path at all.",
     "single_thread_established": "both traces run every kernel on one worker thread (width 1: thread 869469 carries 308,889 'other' + 137,632 width-1-route launches; width 2: thread 873535 carries 314,977 + 164,460 rowtile + 9,792 width-1-route). The only other thread has 322 launches / ~6 ms. So the width-2 route difference is not an artifact of a second arm running on its own thread - the control's nominal MTP arm shares the serving thread.",
     "still_unresolved": "which predicate inside those launch sites prefers rowtile over the WMMA fallback at rows 2..8, and whether that preference is optimal, is still unexplained. An order-controlled A/B on HIPENGINE_GGUF_Q4K_ROWTILE at width 2 is running to answer the optimality half.",
     "why_this_matters_for_the_original_claim": "the headline decomposition (prefill +9.9 ms/step, decode 1.24x for 2x rows) does not depend on any of this; only the sentence 'rows>=2 switches the decode route wholesale' was stated as observed-not-explained, and it remains observed."
@@ -96,6 +96,16 @@
   "quant": "Q4_K_M",
   "retained": true,
   "route": "GGUF direct (hipengine.dispatch.gguf_linear); engine AR with mtp_max_draft=0 and both sessions' mtp_enabled forced False",
+  "route_ab_invalid": {
+    "date": "2026-08-30",
+    "design": "four pure-AR width-2 packets in ON,OFF,OFF,ON order via scripts/gguf_c1c8_ar_only_control.py, medians over 20 cells each (both arms AR, mtp_engaged=0/40 verified).",
+    "invalid_reason": "the env never reached the route. A traced width-2 run with HIPENGINE_GGUF_Q4K_ROWTILE=0 shows 164,798 rowtile launches vs 164,460 at the default - the same kernels. Precedence is kwarg > session > env (gguf_linear.py:1516) and the resident serving route opens the session, so the env only moves plain bench calls. Pinned by tests/test_runtime_gguf_linear_q4k_rowtile_knob.py.",
+    "not_a_finding": "this is not evidence that the two routes are equivalent, and not evidence that rowtile is optimal. It is a null with a known cause.",
+    "question": "is the rows 2..8 rowtile route cheaper than the WMMA fallback it exists to avoid?",
+    "result": "on: 32.028 (position 1), 31.332 (position 4); off: 31.675 (2), 31.518 (3). Mode means 31.680 vs 31.597 (+0.26%), and the sign flips between position pairs, so no mode effect was visible.",
+    "useful_byproduct_measured": "process-position bias quantified at width 2: the same setting measured first vs last in the sequence differed 32.028 -> 31.332 = 2.2%. The changelog has been quoting '~1-2 points of same-protocol drift' as a rule of thumb; this is a direct measurement of it under an order-controlled design.",
+    "what_would_answer_the_question": "force the route in code (a test-only seam at launch_gguf_linear_pair) or microbenchmark the two kernel families directly at Q4_K_M shapes; an env A/B cannot reach it on the server route."
+  },
   "status": "accepted_diagnostic",
   "supersedes": "2026-08-30-w7900-q4km-decode-amortization-c2.json (its mechanism reading)",
   "supersedes_detail": "The earlier artifact's per-token numbers are not disputed. What this trace contradicts is its mechanism reading - 'weights are not amortised across rows' and its live hypothesis that decode runs per-row GEMV kernels. On the same model, decode changes route wholesale at rows>=2 and the route serving 2 rows costs 1.24x the route serving 1 row, so decode kernel time does amortize; the extra per-token cost is prefill scaling inside the wave, not un-amortized weights. Scope: only widths 1 and 2 are traced, so the 1.62x (C3) and 2.69x (C8) figures in that artifact are not explained here.",
