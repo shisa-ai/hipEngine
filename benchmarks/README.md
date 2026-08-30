@@ -122,20 +122,28 @@ W7900 standardized Qwen3.8 `Q4_K_M` C1-C8 complete-wall matrix (total tok/s):
 
 | Engine / arm | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine AR | **21.871** | 30.455 | **35.625** | **39.231** | **41.124** | 42.490 | 43.570 | 44.338 |
+| hipEngine AR | **22.094** | 30.842 | **36.345** | **40.109** | **42.149** | 43.788 | 44.698 | 45.657 |
 | llama.cpp current HIP AR | 21.720 | **35.440** | 30.787 | 27.760 | 36.390 | 45.529 | 51.914 | 58.744 |
 | llama.cpp Laurent HIP AR | 21.463 | 35.100 | 30.635 | 27.667 | 36.473 | **45.826** | **52.537** | **59.348** |
-| hipEngine explicit K3 | 31.146 | 29.639 | 30.547 | 31.033 | 30.755 | 30.248 | 30.596 | 30.845 |
+| hipEngine explicit K3 | 31.571 | 29.950 | 31.035 | 31.518 | 31.307 | 30.760 | 31.162 | 31.445 |
 | llama.cpp current HIP K3 | 32.553 | **41.042** | 45.324 | 49.977 | 59.644 | 72.195 | 75.354 | 94.735 |
 | llama.cpp Laurent HIP K3 | **32.733** | 40.808 | **45.947** | **51.054** | **61.013** | **74.628** | **78.281** | **101.072** |
 | llama.cpp current HIP prefill | **200.946** | **239.658** | **259.036** | **281.828** | **323.043** | **366.213** | **374.207** | 424.072 |
 | llama.cpp Laurent HIP prefill | 195.803 | 231.307 | 252.893 | 274.520 | 316.169 | 358.053 | 368.136 | **424.202** |
 
 All current rows and 78/80 Laurent AR/MTP cells are content-exact; Laurent's two
-C8 differences are deterministic and pass anti-repetition guards. K3 is an
+C8 differences are deterministic and pass anti-repetition guards. Both hipEngine
+rows were re-measured on the current engine (`0740a9497`, engine tree identical
+to HEAD; only docs/scripts commits since): 80/80 cells content-exact, K3 engaged
+80/80, AR **+1.02%..+3.05%** and K3 **+1.05%..+1.95%** above the prior packet with
+no winner change. Draft acceptance falls **0.7889 (C1) -> 0.6139 (C2) -> 0.4668
+(C3)** inside that single run. Decomposed from the same packets, hipEngine
+marginal decode exceeds both peers at every width (1.01x-2.30x) while its
+admission module is 1.41x (C1) to 2.88x (C8) behind. K3 is an
 engine-ranking diagnostic, distinct from hipEngine's automatic C2/K2 product
 key. hipEngine common-boundary prefill was not measured in this packet.
-[`W7900 matrix`](results/2026-08-30-w7900-qwen38-q4km-c1c8-cross-engine.json).
+[`W7900 matrix`](results/2026-08-30-w7900-qwen38-q4km-c1c8-cross-engine.json) ·
+[`hipEngine refresh + submodules`](results/2026-08-30-w7900-q4km-c1c8-hipengine-refresh-post-promotions.json).
 
 Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 automatic at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) is **15.609 vs 9.807 tok/s (1.5916x)**; [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) remains available. Exact C2 verifier [Q6](results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json) and [Q5](results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json), followed by [production-profile Q4 rowtiles](results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json), lift K3 **11.724→17.031 tok/s (+45.27%)** and **0.8170x→1.1441x true AR**. Independently qualified [C3 R6/R9/R12 rowtiles](results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json) improve C3/K3 **19.070→19.934 tok/s (+4.53%)**, but remain **0.9589x AR**; production C2/K3 is automatic only for context1-128/D24, while C3-C8 and scope misses remain K0.
 
