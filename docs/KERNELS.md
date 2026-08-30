@@ -960,6 +960,16 @@ measurement, so record it instead of rediscovering it.
    the cached file instead. Stranding is host-wide, not MTP-specific, so clean up outside a
    profiling session rather than during one.
 
+6. **The verify wrapper does not accept `--backend`, and callers pass it.** All four
+   `b1..b4` arms in one sweep died before reaching the GPU with
+   `gguf_mtp_verifier_rocprof.py: error: unrecognized arguments: --backend hip_gfx1100` - the
+   wrapper's parser takes `--mode`, `--roctx-sdk`, `--out`, `--top` and friends, but not
+   `--backend`. The four logs are byte-identical at 1907 bytes, so a whole budget ladder can
+   vanish with nothing but a usage error in it. It is single-backend by construction, so the
+   durable fix is either to accept and ignore the flag or to reject it with a message that names
+   the accepted flags; meanwhile do not pass it from a driver script, and treat an argparse exit
+   code 2 in a sweep log as "every arm in this file failed", never as a null result.
+
 For the server matrix itself: `gguf_mtp_c1c8_server_bench.py` accepts neither
 `--require-mtp`, `--tag` nor `--max-run-seconds`, and its `--model` default is
 `Qwen3.6-27B-Q4_K_M.gguf` - omitting `--model` benchmarks the wrong model and still produces
