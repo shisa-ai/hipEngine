@@ -24,6 +24,10 @@ Two measured objectives, in priority order:
    and C8 — or name their blockers. The other six widths are already within
    4.3-9.5% and are explicitly *not* the target.
 
+Scope note: this campaign targets MTP at C1-C8 and prefill at C2/C8 while
+preserving the existing AR lead. It does not claim literal leadership in all 24
+survey cells; AR C1/C2 and prefill C1/C3-C7 remain explicit non-goals.
+
 ## 2. Frozen entry state (2026-08-30 six-engine matrix)
 
 Source: [`final matrix`](../benchmarks/results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json),
@@ -31,8 +35,8 @@ complete-wall tok/s.
 
 | C | Prefill | vs best ext | AR | MTP | vs best ext | MTP / own AR | AR scale | MTP scale |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 146.758 | -4.33% | 11.021 | 7.809 | -63.04% | 0.7086x | 1.00x | 1.00x |
-| 2 | 142.806 | **-32.60%** | 17.918 | 25.740 | -20.11% | 1.4365x | 1.63x | 3.30x |
+| 1 | 146.758 | -4.33% | 11.021 | 7.809 | -63.03% | 0.7086x | 1.00x | 1.00x |
+| 2 | 142.806 | **-32.60%** | 17.918 | 25.740 | -20.12% | 1.4365x | 1.63x | 3.30x |
 | 3 | 174.878 | -9.12% | 23.659 | 29.468 | **+4.99%** | 1.2455x | 2.15x | 3.77x |
 | 4 | 188.942 | -5.75% | 30.083 | 29.385 | **+9.02%** | 0.9768x | 2.73x | 3.76x |
 | 5 | 211.737 | -6.36% | 35.544 | 18.657 | -42.97% | 0.5249x | 3.23x | 2.39x |
@@ -57,21 +61,22 @@ Findings A-C are new attributions from current source and retained telemetry.
 D-F restate measured facts already in the tree so the punchlist has one entry
 point.
 
-### A. The MTP wall is per-row verify cost, then a hardcoded width-4 partition
+### A. The MTP wall is operation-complete row cost, then a width-4 partition
 
 Two compounding defects, which must be measured separately:
 
-**A1 — the target verify costs more per row than AR decode costs per row.**
-From the retained wide telemetry
+**A1 — the operation-complete speculative cycle costs more per target row than
+AR decode costs per row.** From the retained wide telemetry
 ([`wide blockers`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-c8-target-blockers.json)),
-a C8 subgroup cycle is **688.1 ms** for R16, i.e. ~43 ms per target row. The
-matched AR cycle at C8 serves 8 rows at ~21.8 ms per row (derived from the
-matrix's complete-wall 45.936 tok/s, not from cycle telemetry — M0 replaces
-this side of the comparison with measured matched-width AR cycle accounting).
-A wide verify pass should cost *less* per row than AR decode — it amortizes
-one weight sweep over 4x the rows — and instead costs about **2x more**.
-This is the "multi-row verify amortization wall" the parity campaign named
-as the shared MTP/DFlash2 suspect (P5.3), now with a per-row number attached to it.
+a complete C8 subgroup cycle is **688.1 ms** for R16, i.e. ~43 ms per target
+row. The matched AR cycle at C8 serves 8 rows at ~21.8 ms per row (derived from
+the matrix's complete-wall 45.936 tok/s, not from cycle telemetry). The current
+operation-complete speculative cost is therefore about **2x higher per row**
+even though a wide verify pass should amortize one weight sweep over 4x the
+rows. The 688.1 ms is not a pure target-kernel measurement; M0 replaces both
+sides with matched cycle accounting and separates target, accept/commit, and
+other ownership. This is the "multi-row verify amortization wall" the parity
+campaign named as the shared MTP/DFlash2 suspect (P5.3).
 
 **A2 — every width above 4 runs sequential complete cycles.**
 `hipengine/generation/engine_loop.py:2336` `_maybe_run_partitioned_speculative_decode`
@@ -100,14 +105,17 @@ as [`REFACTOR.md`](REFACTOR.md) **RF-OI5** with removal tied to M1's outcome
 (punchlist R1, closed at campaign open). A1 is a measured performance defect,
 not refactor debt, and stays owned here.
 
-### B. C1 production MTP is missing coverage we already own
+### B. C1 production MTP has a strong missing-coverage hypothesis
 
-Production D24 C1 is **7.809 tok/s / 0.7086x AR**, but our own strict
-C1/K3 natural25 route is **18.191 vs 11.062 = 1.6445x**, and the gfx1100
+Production D24 C1 is **7.809 tok/s / 0.7086x AR**, while our strict C1/K3
+natural25 route is **18.191 vs 11.062 = 1.6445x**, and the gfx1100
 `llama-compat` route reaches **1.2679x own AR** on reusable native target
-graphs ([`MTP-LLAMACPP-PARITY.md`](MTP-LLAMACPP-PARITY.md)). The production C1
-deficit is coverage, not capability. Concretely, C1 is absent from exactly the
-two policy tables that produced the C3 wins:
+graphs ([`MTP-LLAMACPP-PARITY.md`](MTP-LLAMACPP-PARITY.md)). Those controls
+show that related routes can win; they do not establish production-D24
+capability because the execution profile/horizon or backend differs. Together
+with the missing production keys below, they make coverage the leading
+hypothesis. Concretely, C1 is absent from exactly the two policy tables that
+produced the C3 wins:
 
 - `GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES`
   (`hip_gfx1151/__init__.py:1754`) admits widths **`(2, 3)`** only, so C1 still
@@ -124,17 +132,20 @@ only the two package keys.
 E0 measured **746.7 ms** prompt prime and a **41.26 ms/cycle** proposal head on
 this route, so both keys are sized to matter at C1.
 
-### C. Q4 is the dominant verify cost and has no rowtile owner above R12
+### C. Q4 is a major verify cost and has no rowtile owner above R12
 
 `GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS = {6, 8, 9, 12}`
-(`:1604`); the R16 chunk row exists only for Q5/Q6
-(`GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT`, `:1580`). The C4 trace
-puts Q6 at 1846.5 ms and Q4 at 1059.0 ms of 3454.9 ms target kernel time; the
-C2 blocker records Q4 at 740 ms of a 95.38% kernel-bound target. Both prior Q4
-true-R16 submissions were rejected (weighted GPU work **+55.31%**, one-prompt
-C4 **-6.39%**). Widening the group (A2) without a Q4 owner above R12 will move
-the wall, not remove it, so **A2 must be measured with per-quant attribution**
-and C's entry condition is A2's trace, not another blind R16 retry.
+(`:1604`). Q6 R16 is admitted through
+`GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT` (`:1580`); Q5 R16 is a
+separately qualified entry in `GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS`.
+Neither table gives Q4 an owner above R12. The C4 trace puts Q6 at 1846.5 ms and
+Q4 at 1059.0 ms of 3454.9 ms target kernel time; the C2 blocker records Q4 at
+740 ms of a 95.38% kernel-bound target. Q4 first hit a leaf-only stop, then an
+operation-complete revisit. In that revisit, weighted GPU work rose **55.31%**
+and the one-prompt C4 screen regressed **6.39%**. Widening the group (A2)
+without a Q4 owner above R12 will move the wall, not remove it, so **A2 must be
+measured with per-quant attribution** and C's entry condition is A2's trace, not
+another blind R16 retry.
 
 ### D. Prefill is now two cells, not a trend
 
@@ -142,7 +153,7 @@ Six of eight widths sit within 4.3-9.5% of the best external engine. The
 campaign's prefill scope is only:
 
 - **C2 (-32.60%, 32.4% of the deficit).** hipEngine prefill *falls* from C1 to
-  C2 while all five external engines rise 25-42%. That is a grouping/dispatch
+  C2 while all five external engines rise 20-42%. That is a grouping/dispatch
   signature at width 2, not the high-row Q4 blocker the parity campaign named
   for C8. It was never independently attributed: the P2.2 attribution traced
   "fully grouped C2 rows134" and found it 98.4% GPU-bound with Q4 owners at
@@ -154,13 +165,20 @@ campaign's prefill scope is only:
 
 ### E. The recorded prefill kernel efficiency number is stale
 
-P1.3 traced M=45 at **1380 launches / 534.2 ms GPU busy**, with
+[`P1.3`](../benchmarks/results/2026-08-29-parity-p13-c1-prefill-attribution.json)
+traced M=45 at **1380 launches / 534.2 ms GPU busy**, with
 `gguf_q4_t16_dense_wmma_prefill_shared_b_bf16` at **360.56 ms / 298 launches /
-1.21 ms avg** — about **4.8x** that family's own weight-traffic floor
-(a full 17.1 GB sweep is ~74 ms at the measured 230 GB/s). P2.3's low-VGPR work
-then roughly doubled server prefill (C1 71.55 -> 146.76), so **the 360 ms
-figure no longer describes the current head**. No post-P2.3 prefill kernel
-trace exists. Any prefill kernel work must re-trace first.
+1.21 ms avg**. That one family alone was **4.66x** the **77.4 ms** full-model
+17.1 GB sweep anchor at the retained **221 GB/s** practical read roof
+([`ROOFLINE-gfx1151.md`](ROOFLINE-gfx1151.md)); this is a screening anchor, not
+a family-byte measurement. [P2.3's low-VGPR
+work](../benchmarks/results/2026-08-29-gfx1151-qwen38-lowvgpr-q5t16-prefill-retained.json)
+raised C1 server prefill from 71.55 to 134.37 tok/s, and [P2.1's subsequent
+rows49-80 extension](../benchmarks/results/2026-08-29-gfx1151-qwen38-row49-80-prefill-parity-retained.json)
+reached 147.11 tok/s; the final matrix records 146.76. Intermediate post-P2.3
+M=45 and post-P2.1 row-67 traces exist, but there is no current-head,
+frozen-protocol trace of the target C2/C8 paths. Any new prefill kernel work
+must re-trace those paths first.
 
 ### F. The integer-MMQ prefill continuation was specified and never done
 
@@ -218,9 +236,10 @@ is made.
 
 ### M — MTP scaling (primary track)
 
-- [ ] M0 Re-freeze and instrument. Emit per-cycle accounting for C1-C8:
-  subgroup count, target rows per pass, model passes per cycle, **ms per target
-  row**, accepted draft tokens, committed output tokens per target pass, and
+- [ ] M0 Re-freeze and instrument. Emit per-cycle accounting for C1-C8,
+  including an explicit production-D24 C1 baseline for M3: subgroup count,
+  target rows per pass, model passes per cycle, **ms per target row**, accepted
+  draft tokens, committed output tokens per target pass, and
   **operation-complete ms per committed output token**, with matched AR
   ms-per-row at the same width. The committed-output metric is the primary
   economic metric; ms/target-row diagnoses batching efficiency, and
@@ -249,15 +268,17 @@ is made.
   own the final `MTP >= 1.15x own AR` gates: C4 `>= 34.596`, C5 `>= 40.876`,
   C6 `>= 45.892`, C7 `>= 49.579`, and C8 `>= 52.827` tok/s, or a measured named
   blocker for each missed cell. Q4 owners above R12 (C) open here **only if**
-  M1's trace names Q4 as the binding class; the two prior Q4 R16 rejections set
-  the entry condition — weighted GPU work must not rise.
+  M1's trace names Q4 as the binding class; the leaf-only stop and
+  operation-complete revisit set the entry condition — weighted GPU work must
+  not rise.
 - [ ] M3 **C1 coverage** (B). Extend `_physical_prompt_streaming_widths()` to
   admit width 1 without broadening the unqualified `>4` range; add the width-1
   package-policy key and qualify the rows1 proposal rowtile owner. Re-screen the
-  reusable native target graph for the production route. Target
-  `7.809 -> >= 18.191` (our own strict number), stretch `>= 21.126` (external).
-  Resolver, policy-miss, and strict-C1 tests must prove strict automatic
-  behavior is unchanged.
+  reusable native target graph for the production route. Use M0's refreshed
+  production-D24 C1 result as the matched baseline. Target `>= 18.191` (the
+  strict natural25 result, used as an aspiration rather than a comparator),
+  stretch `>= 21.126` (external). Resolver, policy-miss, and strict-C1 tests
+  must prove strict automatic behavior is unchanged.
 - [ ] M4 C4 prompt-streaming acceptance blocker. Streaming at C4 changed
   acceptance 628/796 -> 624/800 and was rejected. Decide explicitly whether the
   binding contract is exactness of the replayed prompt or of the acceptance
@@ -274,8 +295,9 @@ is made.
   does. Trace the C2 packed prefill grouping directly against C1 and C3 under
   one committed protocol; the existing C2 attribution measured GPU-boundness but
   never the missing scaling. Target `142.806 -> >= 211.888` or a named blocker.
-- [ ] P2 **C8 high-row Q4.** Re-trace the current head first (E: the recorded
-  360 ms figure predates P2.3). Then attack the named high-row Q4/device
+- [ ] P2 **C8 high-row Q4.** Re-trace the current head first (E: the final
+  frozen C2/C8 paths lack a current trace, and P1.3's 360 ms figure predates the
+  retained low-VGPR work). Then attack the named high-row Q4/device
   algorithm with a real algorithmic change — N-split/split-K partitioning or a
   new fusion — under the strict/production gates plus a `rocprofv3
   --kernel-trace` entry. Target `247.216 -> >= 305.847` or a named blocker.
@@ -298,8 +320,8 @@ is made.
 
 `X1` -> `M0` -> `M1` -> `M3` -> `M2` -> `M4` -> `P1` -> `P2` -> `M5` -> `P3`,
 (`R1` closed at campaign open). X1 and M0 are cheap and de-risk the
-expensive M1 unit. M3 is placed early because it is coverage work against paths
-we already own, and is the largest single-cell deficit in the matrix (-63.04%).
+expensive M1 unit. M3 is placed early because it tests the leading coverage
+hypothesis and is the largest single-cell deficit in the matrix (-63.03%).
 
 ## 6. Non-goals
 
