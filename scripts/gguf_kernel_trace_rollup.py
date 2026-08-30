@@ -41,7 +41,9 @@ def main() -> int:
             reader = csv.DictReader(handle)
             fields = reader.fieldnames or []
             name_key = next((f for f in fields if "Kernel_Name" in f), None)
-            dur_key = next((f for f in fields if f.strip().lower() in ("duration", "durationns")), None)
+            dur_key = next(
+                (f for f in fields if f.strip().lower() in ("duration", "durationns")), None
+            )
             start_key = next((f for f in fields if "Start_Timestamp" in f), None)
             end_key = next((f for f in fields if "End_Timestamp" in f), None)
             if name_key is None or (dur_key is None and not (start_key and end_key)):
