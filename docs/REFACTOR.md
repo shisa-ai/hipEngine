@@ -4593,3 +4593,36 @@ should be boring.
   **Ready:** remove the flag, hook, and planner parameter whenever the
   campaign stops considering longer-D cooldown economics; the measured
   evidence lives in worklog entries 20260829T052637/074350.
+
+## gfx1100 grouped multi-request prefill is unreachable by construction (2026-08-30)
+
+`ResidentBatchScheduler.next_prefill_batch_work` ("emit one stable multi-request
+prefill quantum") exists and `engine_loop` will select it only when
+`runner.packed_prefill_max_rows > 1`. On gfx1100 that attribute comes from
+`backend_package_capability(backend, "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1)` and
+**no backend package declares it**, so the branch is dead today.
+
+Declaring the capability would still not batch a realistic wave, because
+`_try_prefill_native_work_batch` (`hipengine/generation/qwen35_gguf.py:6401`)
+additionally requires: every selected chunk to be the request's **entire prompt**
+(`chunk == row.prompt_ids`, first chunk only, no prefix reuse, no decode slot) and
+**all chunk lengths equal** (`len({len(chunk)}) == 1`). It therefore implements
+only the same-length "common boundary" case, and the standard suite's prompt
+lengths (35, 36, 36, 39, 39, 43, 46, 48, 60, 67 tokens) contain no 8-wide
+equal-length group. Lowering `HIPENGINE_MAX_PREFILL_CHUNK_TOKENS` cannot help:
+a partial chunk fails `chunk == row.prompt_ids`.
+
+Measurable cost of the dead path: hipEngine admission is flat at ~305 ms/lane and
+grows 304 ms per added lane, while llama.cpp's falls 223 -> 106 ms/lane
+(1.41x behind at C1, 2.88x at C8). Shipping-route prefill measures
+167.6 tok/s at 45 rows versus 877.0 tok/s at 512 rows, so a grouped 360-row wave
+is worth roughly 2441 -> ~855 ms of C8 admission (predicted 69.97 tok/s versus
+the current 58.74).
+
+Removal/enabling trigger: either (a) extend the grouped native prefill to accept
+unequal-length rows via padding plus attention/KV write masking and partial
+chunks, qualify it against the strict unfused per-request chain, and then declare
+`GGUF_C2_PACKED_PREFILL_MAX_ROWS` for gfx1100; or (b) if padded grouping is not
+pursued, delete `next_prefill_batch_work` plus its `engine_loop` branch so the
+dead route stops advertising a capability the backend does not have. Measured
+evidence: `benchmarks/results/2026-08-30-w7900-q4km-c1c8-hipengine-refresh-post-promotions.json`.
