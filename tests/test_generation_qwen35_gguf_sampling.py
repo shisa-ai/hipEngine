@@ -4900,23 +4900,36 @@ def test_resident_ar_packed_prefill_survives_one_over_long_lane(monkeypatch) -> 
     assert runner._route_counts["native_full_prefill_groups"] == 1
 
 
-def test_gguf_gfx1100_packed_prefill_capability_is_undeclared_by_default() -> None:
-    """Tripwire: the resident AR loop cannot batch prefill until this is declared.
+def test_gguf_gfx1100_packed_prefill_capability_is_declared() -> None:
+    """gfx1100 ships grouped prefill; this replaces the earlier "undeclared" tripwire.
 
-    ``engine_loop`` selects ``next_prefill_batch_work`` only when
-    ``runner.packed_prefill_max_rows > 1``, and that attribute reads
-    ``GGUF_C2_PACKED_PREFILL_MAX_ROWS`` from the backend package with a default of
-    1, which no backend package declares. This test records the reason the C1-C8
-    matrix prefills one request at a time. Declaring the capability for
-    gfx1100 - after qualifying unequal-length grouping against the strict
-    per-request chain - must update this test deliberately, not silently.
+    The tripwire existed because ``engine_loop`` selects ``next_prefill_batch_work``
+    only when ``runner.packed_prefill_max_rows > 1``, and no backend package declared
+    ``GGUF_C2_PACKED_PREFILL_MAX_ROWS``, so the C1-C8 matrix prefilled one request at a
+    time. The tripwire said to flip it only after qualifying grouping against the strict
+    per-request chain; that qualification is now measured on W7900 / Qwen3.8-27B
+    Q4_K_M with the canonical mtpbench suite (protocol byte-identical to the retained
+    pre-declaration packet): 432 cross-packet per-row id comparisons with 0 mismatches,
+    80/80 correctness cells, width 1 unchanged (-0.4% AR, acceptance identical at
+    0.789), C8 AR 45.68 -> 78.67 tok/s, and the width-dependent draft-acceptance
+    collapse removed (0.467-0.614 at C2-C8 -> 0.789 at every width). Grouping is also
+    directly observed: ``native_full_prefill_groups`` is 10 at C4/C8 and 0 at C1.
+
+    The protective half of the tripwire is kept: the lookup still defaults to 1, so a
+    package that has *not* qualified grouping stays lane-by-lane.
     """
 
+    from hipengine.kernels import hip_gfx1100
     from hipengine.kernels.backends import backend_package_capability
 
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1
-    ) == 1, "capability declared: re-verify grouping parity and update this test"
+    ) == 8, "grouped prefill regressed to one row per call"
+    assert "GGUF_C2_PACKED_PREFILL_MAX_ROWS" in hip_gfx1100.__all__
+    # Unqualified packages must keep the lane-by-lane default, not inherit 8.
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_C2_PACKED_PREFILL_MAX_ROWS_NOT_A_REAL_CAPABILITY", 1
+    ) == 1
 
 
 def test_resident_ar_packed_prefill_groups_mixed_prompt_lengths(monkeypatch) -> None:
