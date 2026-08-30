@@ -632,10 +632,10 @@ never rewritten, and a stale exception fails the gate by itself.
 `scripts/gguf_mtp_c1c8_server_bench.py` returns `0 if payload["passed"] else 1`.
 `passed` is the packet's own expectation gate (declared MTP widths engaged,
 content-exactness, acceptance), so a nonzero exit is normal for a packet that
-is complete and readable; `$?` is not a write receipt. A driver that treats
-exit status as "no data" silently throws away measured rows, and a driver that
-ignores it can publish a packet whose declared expectations were violated.
-Read `status`, `passed`, and the cells, and keep the signals separate.
+is complete and readable; `$?` is not a write receipt. Read `status`, `passed`,
+and the cells, and do not treat exit status as "no data" - measured on
+2026-08-30, a width-2 run exited 1 while all 10 cells held valid rates with
+speculation engaged 10/10 and the AR arm median at 31.917 tok/s.
 
 Two current default-path traps produce this. `--mtp-request-mode automatic`
 with `--expected-mtp-widths none` yields `status: "failed"` while every cell
@@ -646,6 +646,12 @@ content-exactness comparison reads the MTP rows unconditionally; use
 `scripts/gguf_c1c8_ar_only_control.py`, which patches the per-request
 speculation flag instead and refuses to run when the harness would not have
 speculated anyway.
+
+A third trap is on the driver, not the harness: this scratch driver was
+launched twice against fixed packet paths, and the second launch reported
+`NO PACKET` for files the first had not written yet. Repeat runs must derive
+unique output paths (or hold a lock); identical filenames across concurrent
+launches produce a false "no data" that looks like a harness failure.
 
 ## Human-readable Rollup
 
