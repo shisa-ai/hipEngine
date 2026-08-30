@@ -3,7 +3,7 @@
 Reads HE_DUAL_WMMA_SILU_MIN_ROWS / HE_UNEQUAL_DUAL_WMMA_MIN_ROWS from the
 environment, patches the module-level tuning gates in
 hipengine.runtime.gguf_linear (both are read at dispatch time), then executes
-the bench script with the remaining argv. Diagnostic only: never imported by
+HE_PROBE_TARGET (default scripts/qwen35_gguf_bench.py) with the remaining argv. Diagnostic only: never imported by
 product code and not a supported way to select a route.
 """
 
@@ -34,4 +34,5 @@ if unequal_min:
     gguf_linear._Q4_T16_UNEQUAL_DUAL_WMMA_MIN_ROWS = int(unequal_min)
 print(f"[probe] lowered dual prefill row gates: {patched}", file=sys.stderr, flush=True)
 
-runpy.run_path("scripts/qwen35_gguf_bench.py", run_name="__main__")
+target = os.environ.get("HE_PROBE_TARGET", "scripts/qwen35_gguf_bench.py")
+runpy.run_path(target, run_name="__main__")
