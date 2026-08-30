@@ -6300,3 +6300,83 @@ def test_physical_q4_pair_chunks_rows6_and_preserves_unfused_fallback(
         (weight_a, 220, 440, 6, 10, 20),
         (weight_b, 220, 540, 6, 10, 20),
     ]
+
+
+def test_w7900_q4_k_t16_ffn_pair_silu_scope_pins_the_rows33_floor() -> None:
+    """The dense Q4T16 bulk FFN fused SiLU owner stays admitted from 33 rows.
+
+    The floor moved 512 -> 33 on 2026-08-30: a same-process gate ladder measured
+    +4.21%/+4.21%/+4.89% prefill at 45/96/192 rows with bit-identical fused/unfused
+    outputs, and rows<33 keeps the strict unfused pair + SiLU chain. Nothing
+    asserted this scope before, so a dispatch change could send 45-row prefill back
+    to the unfused chain and only show up as wall time -- the same failure shape as
+    the packed-wiring regression that surfaced as a 3.5x slowdown with green tests.
+    """
+
+    weight_a = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    key = KernelKey(
+        "hip_gfx1100",
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1",
+        "dense_dual_wmma_prefill_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple] = []
+    register(
+        key,
+        lambda *args, **kwargs: calls.append(args),
+        replace=True,
+    )
+
+    def launch(
+        weight_a,
+        weight_b,
+        *,
+        rows: int,
+        out_features: int = 17_408,
+        backend: str = "hip_gfx1100",
+    ):
+        return launch_gguf_linear_pair_silu(
+            weight_a,
+            weight_b,
+            x_ptr=0x1000,
+            out_ptr=0x2000,
+            rows=rows,
+            in_features=5_120,
+            out_features=out_features,
+            backend=backend,
+            runtime="runtime-sentinel",
+        )
+
+    try:
+        with wmma_prefill_session(True):
+            for rows in (33, 45, 192, 512):
+                before = len(calls)
+                assert launch(weight_a, weight_b, rows=rows), rows
+                assert len(calls) == before + 1, rows
+            # 32 is the last row count that keeps the strict unfused pair + SiLU chain
+            assert not launch(weight_a, weight_b, rows=32)
+            # the owner is shape-qualified: a near-miss FFN shape stays unfused
+            assert not launch(weight_a, weight_b, rows=512, out_features=17_344)
+            # Measured 2026-08-30: with wmma_prefill_session(False) the owner is still
+            # selected at rows 512, so this t16 owner has no per-request opt-out (the
+            # q4_pack8_dual_wmma_silu_prefill_session and the
+            # HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL kill-switch gate the pack8
+            # owner). Rows and shape are therefore the only scope controls, which is
+            # exactly why this test pins both.
+    finally:
+        register(key, original, replace=True)
+
+    assert len(calls) == 4
