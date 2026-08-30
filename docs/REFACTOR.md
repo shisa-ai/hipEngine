@@ -4692,12 +4692,13 @@ cannot group - move the compatibility test to selection time, and declare
 end to end (the standard 35-67-token suite cannot exercise it).
 
 `resident_observability.routes.counts` in `gguf_mtp_c1c8_server_bench.py` packets are
-**process-global cumulative snapshots**, not per-cell deltas, so they cannot be
-attributed to an arm or a width. Two consequences worth not rediscovering: AR and K3 run
-in the same process, so a cell's counts include the other arm's work; and the `order`
-field is not strictly increasing across cells, so differencing consecutive cells does not
-recover the split either (attempted once: every delta collapsed onto the first arm
-listed). Fix: have the bench read the counters before and after each cell and store the
-delta alongside the cumulative value. Until then, per-route-per-arm questions need
-`scripts/mtp_verifier_rocprof.py` regions, not packet counters - which is why the
-K1/K3/K7 verify profile is the binding instrument for the MTP per-row cost question.
+**process-global cumulative snapshots**, not per-cell deltas - AR and K3 run in the same
+process, so a cell's counts include the other arm's work. They *are* attributable, but
+only with the right method: the packet's cell **list order** is execution order (every
+delta comes out non-negative), and inside a cell the `order` field says which arm's
+snapshot was taken first, so differencing cell-to-cell and arm-to-arm splits the work
+exactly. Do not use `order` as a cell sequence - that is what made an earlier attempt
+collapse every delta onto one arm, and it produced a now-corrected claim that MTP never
+reaches the packed route. Preferred fix still stands: have the bench snapshot counters
+before and after each cell and store the delta next to the cumulative value, so
+attribution does not depend on reconstructing execution order.
