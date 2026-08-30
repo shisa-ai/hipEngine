@@ -968,6 +968,11 @@ def _default_roctx_sdk() -> Path:
         Path(sys.prefix) / "lib" / python_dir / "site-packages" / "_rocm_sdk_core" / "lib" / "librocprofiler-sdk-roctx.so.1",
         Path(sys.prefix) / "lib" / python_dir / "site-packages" / "_rocm_sdk_devel" / "lib" / "librocprofiler-sdk-roctx.so.1",
         Path("/opt/rocm/lib/librocprofiler-sdk-roctx.so.1"),
+        # Images that ship the legacy ROCTX library but not the rocprofiler-sdk ROCTX package (this
+        # host: /opt/rocm/lib/libroctx64.so.4.1.0, no pip _rocm_sdk_* packages) otherwise fail the
+        # existence check in _prepare_roctx_override and need --roctx-sdk passed by hand.
+        Path("/opt/rocm/lib/libroctx64.so.4"),
+        Path("/opt/rocm/lib/libroctx64.so"),
     ]
     for candidate in candidates:
         if candidate.exists():
