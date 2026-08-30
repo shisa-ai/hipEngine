@@ -152,7 +152,13 @@ at C4 and 1.14x at C7, still 0.73x-0.97x elsewhere because grouping only admits
 whole prompts (`chunk == row.prompt_ids`) and does not overlap waves. It is
 non-monotone in width (C4 > C5, C7 > C8) and is reported as measured. Two
 independent *ungrouped* one-token packets agree within 0.41% at every width; the
-grouped row is a different configuration, not a repeat. Two cautions on the hipEngine
+grouped row is a different configuration, not a repeat. An independent
+same-protocol repeat pair on the current tree (two 24-token explicit-K3 runs) reproduces the
+AR row to within **4.09%** and the K3 row to within **1.24%**, with run-to-run spread of
+**0.66%-5.29%** on AR and **0.01%-1.06%** on K3; the verdicts against the carried-forward
+peer columns are unchanged, AR 7 of 8 widths and K3 only C3/C4
+([`repeat pair`](results/2026-08-30-w7900-q4km-c1c8-parity-refresh-repeat-pair.json)).
+Two cautions on the hipEngine
 rows. The K3 arm is forced: with `--mtp-request-mode automatic` on this host and model
 MTP is declined at **every** width (0/80 cells engaged, 0 accepted draft tokens), for
 `artifact_not_qualified` at C1, `resident_capacity_not_qualified` at C2 and

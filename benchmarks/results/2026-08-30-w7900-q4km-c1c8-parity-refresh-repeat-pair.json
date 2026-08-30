@@ -1,0 +1,274 @@
+{
+  "also_measured_not_publishable_as_k3": {
+    "k2_mtp_over_ar_ratio": {
+      "1": 1.34,
+      "2": 1.52,
+      "3": 1.12,
+      "4": 1.16,
+      "5": 0.79,
+      "6": 0.83,
+      "7": 0.75,
+      "8": 0.8
+    },
+    "k2_mtp_tok_s_mean": {
+      "1": 29.49,
+      "2": 49.16,
+      "3": 50.29,
+      "4": 62.41,
+      "5": 50.62,
+      "6": 57.06,
+      "7": 56.85,
+      "8": 62.38
+    },
+    "reason": "he-refresh-r1/r2 used the default --candidate-budget 2 (K2), so their MTP arm is not comparable to the K3 rows. Their AR arm is comparable and confirms AR.",
+    "why_it_still_matters": "K2 shows the same plateau shape, so cutting draft rows per lane from 4 to 3 does not remove the C5-C8 deficit."
+  },
+  "confirms_published_rows": {
+    "ar_max_abs_pct_vs_readme_row": 4.09,
+    "mtp_k3_max_abs_pct_vs_readme_row": 1.24,
+    "statement": "The README C1-C8 hipEngine AR and explicit-K3 rows are reproduced on the current tree; no row value is changed by this unit."
+  },
+  "date": "2026-08-30",
+  "kind": "parity-refresh-repeat-pair",
+  "limitations": [
+    "Peer rates are carried forward, not re-measured here, so they are not an old-to-new comparison against hipEngine from this run.",
+    "run_1 and run_2 differ by doc/test-only commits (ac0393fe2 -> 4eda91750); K3 spread <=1.06% is consistent with no arithmetic change.",
+    "Packets live under /tmp and are ephemeral; the compact series here is the retained record.",
+    "Acceptance is width-invariant in these packets, so the C5-C8 deficits are cost-side, not acceptance-side."
+  ],
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "next_blockers": [
+    "C2 AR (-9.32% against a 3.77% spread) and C5-C8 K3 (-22% to -45%) remain the open deficits."
+  ],
+  "peer_rates_carried_forward": {
+    "ar_current": {
+      "1": 21.72,
+      "2": 35.44,
+      "3": 30.787,
+      "4": 27.76,
+      "5": 36.39,
+      "6": 45.529,
+      "7": 51.914,
+      "8": 58.744
+    },
+    "ar_laurent": {
+      "1": 21.463,
+      "2": 35.1,
+      "3": 30.635,
+      "4": 27.667,
+      "5": 36.473,
+      "6": 45.826,
+      "7": 52.537,
+      "8": 59.348
+    },
+    "mtp_k3_current": {
+      "1": 32.553,
+      "2": 41.042,
+      "3": 45.324,
+      "4": 49.977,
+      "5": 59.644,
+      "6": 72.195,
+      "7": 75.354,
+      "8": 94.735
+    },
+    "mtp_k3_laurent": {
+      "1": 32.733,
+      "2": 40.808,
+      "3": 45.947,
+      "4": 51.054,
+      "5": 61.013,
+      "6": 74.628,
+      "7": 78.281,
+      "8": 101.072
+    },
+    "note": "Not re-measured in this unit. Carried forward from the benchmarks/README.md C1-C8 matrix (llama.cpp current HIP and Laurent HIP on this W7900, prior campaign protocol)."
+  },
+  "performance_claim": false,
+  "protocol": {
+    "batch_window_ms": 20.0,
+    "candidate_budget": 3,
+    "command": "scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2,3,4,5,6,7,8 --max-tokens 24 --candidate-budget 3 --mtp-request-mode explicit --generation2-diagnostic",
+    "max_tokens": 24,
+    "mtp_request_mode": "explicit",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "resident_capacity": 8,
+    "sampling": "raw greedy, no processed target, natural stop/EOS",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "widths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ]
+  },
+  "provenance": {
+    "engine_code_check": "git log --format=%h 356be6858..HEAD -- hipengine/ kernels/ (empty)",
+    "engine_code_equal_at_both_heads": true,
+    "head_at_packet": "0d12f731aa918acf5018fde35c16306044c98cef",
+    "head_at_packet_derivation": "git rev-list -1 --before=2026-08-30T14:00:32.517219+00:00 HEAD",
+    "head_when_written": "c6bae4667f5938738c820bb6718158c1a8838da9",
+    "launch_command_source": "/tmp/he-parity/after-oracle.sh (scripts/gguf_mtp_c1c8_server_bench.py packets he-d1/he-d24 fed this decomposition)",
+    "packet_generated_utc": "2026-08-30T14:00:32.517219+00:00",
+    "packet_self_provenance": "none; the packet predates c6bae4667 which started stamping packets",
+    "written": {
+      "build_profile": null,
+      "collected_at": "2026-08-30T14:18:28.332129+00:00",
+      "command": null,
+      "command_note": "null by design: this artifact was assembled by an inline heredoc builder with no argv, and the previous value here was a reconstructed command line ([python, '<inline builder>', '<packet>', '->', '<artifact>']) that no process ever ran. A provenance field must be observed or absent, never plausible.",
+      "configured_backend": "auto",
+      "device_name": "AMD Radeon Pro W7900",
+      "dirty": true,
+      "environment": {
+        "CUDA_VISIBLE_DEVICES": null,
+        "GPU_DEVICE_ORDINAL": null,
+        "GPU_MAX_HW_QUEUES": null,
+        "HIPENGINE_BACKEND": null,
+        "HIPENGINE_BUILD_CACHE_ROOT": null,
+        "HIPENGINE_HIP_ARCH": null,
+        "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+        "HIP_VISIBLE_DEVICES": null,
+        "ROCR_VISIBLE_DEVICES": null
+      },
+      "git_branch": "campaign/gfx1100-mtp-cn-promotion",
+      "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+      "hipengine_commit": "c6bae4667f5938738c820bb6718158c1a8838da9",
+      "host_name": "epyc",
+      "kind": "hipengine_artifact_provenance",
+      "kv_dtype": null,
+      "measured_packet": "/tmp/he-parity/decomp-ar.json",
+      "model_fingerprint": null,
+      "model_path": null,
+      "model_revision": null,
+      "packet_argv": "not recorded: the packet predates c6bae4667, which started stamping decomposition packets with their own argv",
+      "packet_launcher": "/tmp/he-parity/after-oracle.sh (scripts/gguf_engine_submodule_decomposition.py)",
+      "profiler": null,
+      "quant": null,
+      "repetitions": null,
+      "repo_root": "/home/lhl/hipEngine-main",
+      "resolved_backend": "hip_gfx1100",
+      "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+      "schema_version": 2,
+      "staged_dirty": false,
+      "target_arch": "gfx1100",
+      "timing_protocol": null,
+      "unstaged_dirty": false,
+      "untracked_count": 1,
+      "untracked_dirty": true,
+      "warmups": null
+    }
+  },
+  "quant": "gguf_q4_k_m",
+  "repeat_spread_pct": {
+    "ar": {
+      "1": 0.636,
+      "2": 2.672,
+      "3": 1.276,
+      "4": 2.917,
+      "5": 4.735,
+      "6": 1.809,
+      "7": 3.647,
+      "8": 1.085
+    },
+    "mtp_k3": {
+      "1": 1.057,
+      "2": 0.911,
+      "3": 0.214,
+      "4": 0.079,
+      "5": 0.344,
+      "6": 0.007,
+      "7": 0.019,
+      "8": 0.077
+    }
+  },
+  "runs": {
+    "k3_run_1": {
+      "ar_tok_s": {
+        "1": 22.062,
+        "2": 31.809,
+        "3": 44.92,
+        "4": 56.464,
+        "5": 65.638,
+        "6": 71.887,
+        "7": 72.463,
+        "8": 75.541
+      },
+      "commit": "ac0393fe295287a7cf5b42baf536f1d0da870d70",
+      "mtp_k3_tok_s": {
+        "1": 31.57,
+        "2": 39.936,
+        "3": 54.394,
+        "4": 55.283,
+        "5": 47.38,
+        "6": 48.73,
+        "7": 54.751,
+        "8": 55.348
+      },
+      "status": "complete"
+    },
+    "k3_run_2": {
+      "ar_tok_s": {
+        "1": 21.922,
+        "2": 30.97,
+        "3": 45.496,
+        "4": 54.84,
+        "5": 62.602,
+        "6": 70.598,
+        "7": 75.155,
+        "8": 76.365
+      },
+      "commit": "4eda917506f2c593a481c87264e0c5ad3b3af655",
+      "mtp_k3_tok_s": {
+        "1": 31.238,
+        "2": 39.574,
+        "3": 54.277,
+        "4": 55.327,
+        "5": 47.543,
+        "6": 48.727,
+        "7": 54.741,
+        "8": 55.305
+      },
+      "status": "complete"
+    }
+  },
+  "schema": 1,
+  "title": "W7900 Qwen3.8-27B Q4_K_M C1-C8 refresh: first genuine same-protocol repeat pair",
+  "verdict_vs_carried_forward_peers": {
+    "ar": {
+      "1": "win",
+      "2": "loss",
+      "3": "win",
+      "4": "win",
+      "5": "win",
+      "6": "win",
+      "7": "win",
+      "8": "win"
+    },
+    "mtp_k3": {
+      "1": "loss",
+      "2": "loss",
+      "3": "win",
+      "4": "win",
+      "5": "loss",
+      "6": "loss",
+      "7": "loss",
+      "8": "loss"
+    },
+    "rule": "win/loss recorded only when |gap| exceeds that width's repeat spread"
+  }
+}
