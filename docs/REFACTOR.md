@@ -4501,3 +4501,28 @@ should be boring.
   D64 gate plus focused strict schedule/commit and state-owner regressions.
   Remove the old simultaneous `run()` in the next cleanup unit; keep only the
   sequential evaluator.
+
+## RF-OI5 — width-4 MTP physical partition and `GGUF_SPECDEC2_MTP2_C4` cap (2026-08-30)
+
+- **State:** retained functional milestone (CONCURRENCY2 D4 "physical through
+  C4, bounded C4 frontiers above"); now the named binding scaling defect of the
+  gfx1151 scaling campaign (`docs/QWEN38-GFX1151-SCALING-CAMPAIGN.md` A2/M1).
+- **Paths:** ten width-4 literals in `hipengine/generation/qwen35_gguf_mtp2.py`
+  (`max_requests` :871, `proposal_widths` :894, `partition_max_requests` :905,
+  `claims_fit` :934, plus :504/:780/:1028/:1052/:1159/:1314/:3413),
+  `_maybe_run_partitioned_speculative_decode` in
+  `hipengine/generation/engine_loop.py` (one full proposal+verify cycle per
+  subgroup), and the `GGUF_SPECDEC2_MTP2_C4` capability gate in
+  `hipengine/kernels/hip_gfx1151/__init__.py`.
+- **Why retained:** D4 deliberately decomposed wide due groups into bounded C4
+  frontiers to ship exact C1-C8 ownership; every gate passed. The cost is
+  measured: C5-C8 run 2 sequential complete cycles per tick, MTP saturates at
+  ~29.5 tok/s from C3 while AR scales to 45.9, and C5 (`4+1`) is the worst
+  cell at 0.5249x own AR.
+- **Removal trigger:** scaling-campaign M1 (single-group wide verify). If M1
+  retains, replace the literals with one capability-owned width bound, lift
+  `GGUF_SPECDEC2_MTP2_C4` to the real bound, and delete the per-subgroup
+  sequential loop as the default path (strict fallback stays registered). If
+  M1 is blocked, record the measured blocker in the campaign doc and convert
+  the literals to one named constant with a pointer to that blocker; the ten
+  scattered literals must not survive either outcome.
