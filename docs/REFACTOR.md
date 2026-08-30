@@ -4507,22 +4507,27 @@ should be boring.
 - **State:** retained functional milestone (CONCURRENCY2 D4 "physical through
   C4, bounded C4 frontiers above"); now the named binding scaling defect of the
   gfx1151 scaling campaign (`docs/QWEN38-GFX1151-SCALING-CAMPAIGN.md` A2/M1).
-- **Paths:** ten width-4 literals in `hipengine/generation/qwen35_gguf_mtp2.py`
-  (`max_requests` :871, `proposal_widths` :894, `partition_max_requests` :905,
-  `claims_fit` :934, plus :504/:780/:1028/:1052/:1159/:1314/:3413),
+- **Paths:** eleven width-4 cap expressions in
+  `hipengine/generation/qwen35_gguf_mtp2.py`
+  (`:504/:780/:871/:894/:915/:934/:1028/:1052/:1159/:1314/:3413`); the
+  C4-only `_batch_accept_resources()` owner at `:1865-1885`
+  (`max_rows=16`, `max_requests=4`, and two request tensors shaped `(4,)`);
   `_maybe_run_partitioned_speculative_decode` in
   `hipengine/generation/engine_loop.py` (one full proposal+verify cycle per
-  subgroup), and the `GGUF_SPECDEC2_MTP2_C4` capability gate in
+  subgroup); and the `GGUF_SPECDEC2_MTP2_C4` capability gate in
   `hipengine/kernels/hip_gfx1151/__init__.py`.
 - **Why retained:** D4 deliberately decomposed wide due groups into bounded C4
   frontiers to ship exact C1-C8 ownership; every gate passed. The cost is
-  measured: C5-C8 run 2 sequential complete cycles per tick, MTP saturates at
-  ~29.5 tok/s from C3 while AR scales to 45.9, and C5 (`4+1`) is the worst
-  cell at 0.5249x own AR.
+  measured: C5-C8 run 2 sequential complete cycles per tick, MTP reaches a
+  ~29.5 tok/s ceiling while AR scales to 45.9, and the unbalanced C5 `4+1`
+  shape produces the worst cell at 0.5249x own AR.
 - **Removal trigger:** scaling-campaign M1 (single-group wide verify). If M1
-  retains, replace the literals with one capability-owned width bound, lift
-  `GGUF_SPECDEC2_MTP2_C4` to the real bound, and delete the per-subgroup
-  sequential loop as the default path (strict fallback stays registered). If
-  M1 is blocked, record the measured blocker in the campaign doc and convert
-  the literals to one named constant with a pointer to that blocker; the ten
-  scattered literals must not survive either outcome.
+  retains, replace all eleven cap expressions with one capability-owned width
+  bound; replace or rename the misleading `GGUF_SPECDEC2_MTP2_C4` gate; resize
+  and re-key the accept owner, remaining-decode tensor, and packed-payload
+  tensor through C8/R32; qualify or explicitly cost the rows5-8 proposal-head
+  fallback; and delete the per-subgroup sequential loop as the default path
+  while retaining the registered strict fallback. If M1 is blocked, record the
+  measured blocker in the campaign doc and convert the eleven expressions to
+  one named C4 constant with a pointer to that blocker. The scattered caps must
+  not survive either outcome.
