@@ -4776,6 +4776,81 @@ not reachable by environment variable, and patching `hipengine/runtime/gguf_line
 nothing because `qwen35_gguf_runner.py` imports `gguf_gemv_decode_enabled` into its own namespace.
 
 
+### Pending 2026-08-30: the packed prefill row is an A/B question, not a missing capability
+
+The 2026-08-29 grouped-prefill promotion left the Q4_K "prefill" column as `—` with "this row needs a
+separate full-engine measurement". `scripts/gguf_packed_grouping_probe.py --kind prefill --widths 1..8`
+now shows the grouped path is reachable at every width (e.g. 8.00x at rows=2, 1.97x at rows=97), so the
+gate is "does a win in two of six projections move the engine", not "can grouped prefill run".
+
+> **2026-08-30 correction: do not treat the probe as evidence about the engine at all.**
+> `resolve_gguf_linear_dispatch(weight, rows)` ignores every route preference - env and session session
+> flags alike - and picks purely by quant layout and row count: dense T16 uses `gemv_rowtile_n16` at
+> rows==1 and `t16_wmma_prefill_bf16_bf16_out` for every rows>1 (proven by
+> `tests/test_gguf_gemv_decode_dispatch.py::test_gguf_row_decode_preferences_do_not_override_the_t16_rowtile`,
+> which passes for all three env combinations). The Q4_K_T16 1536x1536 rows=1 probe arm therefore ran
+> `gemv_rowtile` on both sides: `--route packed-grouped` only swaps qkv/gate_up, and `gemv-prefill` only
+> differs at rows==1. A "full-GEMV prefill" arm is unreachable through the resolver; it needs the session
+> route below.
+
+The A/B that is worth the expensive run: same process, same model, same schedule, `--route exact` /
+`--route packed-grouped` / `--route gemv-prefill`, at each engine width 1/2/4/8, plus the default-packed
+engine control, and the correctness gate on every arm. Widths matter independently - 23% at rows=2 may
+not carry an e2e win while 72% at rows=129 probably does - so record per width, and do not promote the
+row without a measured engine delta. The probe supports both missing arms (`--route gemv-prefill` now
+sweats rows>1 explicitly; `--route packed-grouped` covers rows>1 at every width).
+
+> **2026-08-30: the engine-side A/B was then run, and it did not move.** Packed-grouped QKV+gate_up at
+> the resident AR route costs 63ms (17.70ms -> 18.07ms median, +0.37ms, over 58 cells / 194 tokens and
+> 264 paired launches) - see
+> `benchmarks/results/w7900-gguf-q4ks-ar-packed-grouping-e2e-default-route-2026-08-30.json`. The row stays
+> `—`: 3 of 6 projections regressed (down_proj 0.62x at rows=2) and prefill is a small share of AR wall at
+> these shapes.
+
+Remove when: the packed row is published, or the A/B says the branch is not needed.
+
+### Pending 2026-08-30: the all-GEMV prefill arm - knob landed, width-1 arm answered
+
+The 2026-08-20 "gemv-prefill-blocked" row rejected a *global* `use_wmma_prefill=False` at -8.4%: it
+changed decode too. A prefill-only arm needs no new kernel - Q4_K GEMV is already registered for
+rows>1 (`gguf_gemm.py:429 full_gemv`), and the rowtile is already a flag-free route.
+
+The gap was a control-surface gap, and it was worse than "a knob is missing":
+`launch_gguf_linear:2447` resolves `use_wmma_prefill` through `_resolve_use_wmma_prefill`, which prefers
+an **active session flag over the environment** (`gguf_linear.py:1469`), and every resident session
+construction passed `use_wmma_prefill=True` unconditionally. A bench could not reach the all-GEMV arm by
+any env variable.
+
+> **Landed at 802a7e32b + 356be6858, and the first attempt was inert.** `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL`
+> is validated (`0`/`1` only, empty rejected - an empty value would otherwise look like "env unset" and
+> fall back to the session's True). The first wiring only touched the two sites REFACTOR named, and those
+> are inside `prepare_request_scratch`: the resident AR route pins True in `_open_ar_serving_slots` (pool
+> `ar_batch`) and `_reserve_sessions` (pool `continuous_ar_dynamic_kv`), plus four `mtp_target`
+> acquire/construct sites. Ten sites now resolve through one helper; the single remaining literal is
+> `_generate_dense_speculative_mtp_detailed` (dense speculative MTP, deliberately out of scope, asserted
+> by name). Lesson for any future "make a route reachable" claim: name the function the server reaches,
+> and prove it with a 2-minute launch-count check before scheduling a 12-minute sweep.
+>
+> **Width-1 result (measured, `gputm-3087-00104`, C=1, 64 AR-only packets, packet-window trace):**
+> all-GEMV prefill moves exactly 2464 launches (`wmma_prefill` 7392 -> 4928, `local32_gemv`
+> 136224 -> 138688), halves prefill-class kernel wall 9279.8ms -> 4465.1ms and drops `other` wall 29% as
+> the Q4_K repacks disappear - and AR median gets **7.0% worse** (17.68ms -> 18.91ms, mean
+> 17.799 -> 18.933). Independent reproduction of the 2026-08-20 -8.4%, with sub-window and end-to-end now
+> agreeing. Artifact:
+> `benchmarks/results/w7900-gguf-q4ks-ar-wmma-prefill-session-knob-width1-2026-08-30.json`.
+
+Remove when: the all-GEMV prefill arm is measured at widths >= 2, or the arm is dropped. If it is
+dropped, delete the "prefill" column from the packed-grouping probe rather than leaving a column nobody
+can fill.
+
+### Pending 2026-08-30: `packed e2e` stays default when the win is concentrated in two projections
+
+Same discipline as the rowtile 50%-share rule below: a 3.9x sub-window win that lands on qkv+gate_up
+while down_proj regresses (0.62x at rows=2) is not a promotion. No env flag was added for the grouped
+AR route, so there is nothing to remove - this line exists so the next agent does not re-add a
+`HIPENGINE_GGUF_*PACKED*` default-on flag from the 2026-08-29 grouped-prefill evidence without the
+engine-side A/B.
+
 ### `_default_roctx_sdk` is duplicated across the profiler wrappers (2026-08-30)
 
 `gguf_packed_ar_rocprof.py`, `gguf_mtp_verifier_rocprof.py`, `gguf_decode_rocprof.py`,
