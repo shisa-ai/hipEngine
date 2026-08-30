@@ -29,12 +29,14 @@ Use semver-style bumps while the public API is still alpha:
       mention performance; every performance claim needs the project evidence policy.
 - [ ] Verify that the root performance summary still matches the retained benchmark
       rollup: `python3 scripts/sync_benchmark_readme.py --check`.
-- [ ] Verify retained-artifact provenance before exporting rows: `python3
-      scripts/check_artifact_provenance.py --export`. This catches the failure mode where two
-      README hardware rows cite one artifact, so a second device's numbers are the first device's
-      numbers with a new label; the Q4_K GPU table in `benchmarks/README.md` is a live example
-      (both W7900 rows reproduce 1x = 61.48/11.23 from one single-GPU artifact, and the cited set
-      names no second device). `--list-unreferenced` also shows stale exports.
+- [ ] Verify retained-artifact provenance before publishing: `python3
+      scripts/check_artifact_provenance.py --show-warnings`. It checks that hostname / gpu_id /
+      model / quant strings quoted by README rows exist in the artifact each row cites, warns when a
+      hardware or host string is used by exactly one artifact, and warns when one hostname carries
+      two different CPU families (the signature of a copied host block). On the current corpus: 51
+      cited artifacts, 0 violations, 1 warning - a gfx1151 artifact whose hardware string no other
+      artifact uses. Pair it with `scripts/check_published_command_drift.py`, which refuses
+      commands whose tool no longer accepts the flags recorded.
 - [ ] Reuse current retained benchmark artifacts for release claims. Do **not** rerun
       the full performance matrix only because a release is being cut. Run a focused
       benchmark only when code changed after the retained evidence in a way that can
