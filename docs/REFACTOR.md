@@ -4887,3 +4887,10 @@ other means and were not touched.
 - Remove the fallback only if pipelining work makes the page-locked path load-bearing, or delete the staging
   path too if the accept cycle is redesigned (route (b), `20260830T155541…`). Do not re-justify it as a speedup.
 
+### All-GEMV small-row prefill A/B - measured verdict: GEMV is worse
+
+- Measured with `HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL=0` against the shipping WMMA route, same protocol, widths
+  1-3 (worklog `20260830T164432…`): AR -15.0% / -21.8% / -29.9% and explicit K3 -20.4% / -28.6% / -36.1%.
+- Verdict: the WMMA route is the better one and the knob stays diagnostic-only. Remove the knob once the
+  small-row WMMA kernel itself is fixed; do not promote the GEMV route as a small-row fallback.
+
