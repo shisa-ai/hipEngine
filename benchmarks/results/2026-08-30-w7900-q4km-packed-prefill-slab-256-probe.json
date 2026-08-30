@@ -6,6 +6,12 @@
     "slab_source": "Qwen35GGUFResidentSession._bulk_prefill_scratch.rows = _prefill_scratch_rows(scratch.max_positions)"
   },
   "date": "2026-08-30",
+  "derived_fields": {
+    "chunk_count_by_width": "read from plans[i].chunk_count in the source packet (1,1,1,1,1,1,1,2)",
+    "total_rows_by_width": "sum of plans[i].chunk_rows; w8 is 256+32=288, and equals 36 x width here",
+    "source_packet": "/tmp/he-parity/slab-36.json (probe exit 0, wall_seconds 65.775 matches below)",
+    "packet_host_note": "the packet's own host.cpu is \"unknown\" because platform.processor() returns empty on this host; this artifact's host block is derived from collect_artifact_provenance + /proc/cpuinfo, and the probe now stamps that itself"
+  },
   "findings": [
     {
       "finding": "Every width up to 7 prefills as one chunk; width 8 (288 rows) splits into two slot-fair rounds because the resident slab is 256 rows.",
