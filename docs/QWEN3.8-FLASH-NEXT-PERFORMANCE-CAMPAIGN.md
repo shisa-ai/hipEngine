@@ -1,13 +1,13 @@
 # Qwen3.8-Flash-Next gfx1151 Performance Campaign
 
 Status: **active plan, reviewed 2026-08-30.** hipEngine has a working named
-`production` path. The frozen upstream llama.cpp role baseline still leads by
+`production` path. The frozen historical llama.cpp role baseline still leads by
 **3.22x** on p508 prefill and **1.10x** on tg32 decode. A same-day source/build
-refresh raised the provisional same-weight target: EngramHalo HIP leads by
+refresh raised the provisional same-weight shape target: EngramHalo HIP leads by
 **3.49x/1.16x**, and Nathan's Vulkan release leads by **4.87x/1.57x**, on its
-BF16-KV p508/tg32 shape rows. The external rows use `llama-bench`-generated
-inputs rather than hipEngine's exact p508 fixture, so P0 must close that protocol
-gap before they become binding parity claims. This document is the
+BF16-KV p508/tg32 rows. Those generated-input rows remain historical diagnostics.
+P0 now uses a category-balanced exact-token p512/p1024/p4096 matrix with 128
+autoregressive transitions after each prefix. This document is the
 performance-specific plan and punchlist.
 [`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md) remains the model/bring-up
 authority; this file owns only the gap-closure campaign.
@@ -33,8 +33,10 @@ backend, or one MTP budget wins.
 - Profiles: named `strict` and `production` manifests.
 - Binding AR representation: the pinned target weights with BF16 K/V. Q8 K/V
   is a separately declared T3 product configuration after BF16 AR parity.
-- Workloads: exact matched p508 and p1012 prefill, natural steady tg32 decode,
-  then the existing long-context and full-category MTP suites.
+- Workloads: category-balanced exact matched p512, p1024, and p4096 prefill
+  with 128 autoregressive transitions after each prefix, then the existing
+  long-context and full-category MTP suites. Legacy p508/p1012/tg32 rows remain
+  tail/continuity diagnostics, not closure targets.
 - Comparator lanes: upstream llama.cpp HIP/Vulkan, EngramHalo HIP, and Nathan
   Vulkan, each pinned to an exact source and binary identity.
 
@@ -187,45 +189,66 @@ both `llama-bench` SHA-256 values. Refresh the comparator only as a separate
 baseline event; do not compare old and new absolute rows as an old→new
 optimization.
 
-### 3.3 Collect end-to-end wall rows
+### 3.3 Collect canonical exact-token wall rows
 
-Prompt fixture:
-[`benchmarks/prompts/qwen4exp-p508.txt`](../benchmarks/prompts/qwen4exp-p508.txt),
-SHA-256 `9cf9d353b81b6ce1df61405b590f037b0502b52c7f6c0c19a543c33cbcb6dbb4`.
-
-hipEngine p508:
+The committed fixture
+[`qwen4exp_canonical_ar_p512_p1024_p4096.json`](../benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json)
+has SHA-256 `42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1`.
+It derives one code, English, Japanese, and mixed Japanese/English token array
+at each canonical length from the ten-prompt MTP bench source. Every engine
+consumes those exact IDs. Regenerate it only as an explicit protocol change:
 
 ```bash
 MODEL_ROOT=/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL
-HIPENGINE_HIP_ARCH=gfx1151 \
-HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen4exp-hipcc-version.txt \
-HIPENGINE_REQUIRE_CACHED_BUILD=1 \
-uv run python scripts/qwen4exp_profile_gap.py \
+uv run python scripts/qwen4exp_canonical_ar_bench.py fixture \
   --model-root "$MODEL_ROOT" \
-  --mode prefill \
-  --prompt-file benchmarks/prompts/qwen4exp-p508.txt \
-  --expected-prompt-tokens 508 \
-  --repetitions 3 \
-  --output /tmp/qwen4exp-p508-wall.json
+  --output benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json
 ```
 
-hipEngine steady decode and the exact-ID sync A/B:
+Run hipEngine from a clean worktree after the current compiler cache is warm:
 
 ```bash
-uv run python scripts/qwen4exp_decode_sync_ab.py \
+HIPENGINE_HIP_ARCH=gfx1151 \
+uv run python scripts/qwen4exp_canonical_ar_bench.py hipengine \
   --model-root "$MODEL_ROOT" \
-  --steps 32 --warmup-steps 8 --pair-repetitions 3 \
-  --output /tmp/qwen4exp-decode-sync-ab.json
+  --compiler-version-file /tmp/hipengine-qwen4exp-hipcc-version.txt \
+  --require-cached-build \
+  --output /tmp/qwen4exp-canonical-hipengine.json
 ```
 
-llama.cpp HIP/Vulkan rows use the first split GGUF path, `-p 508 -n 0` for
-prefill and `-p 0 -n 32` for decode, three repetitions, full GPU offload, BF16
-K/V, and flash attention `auto`. The artifact is the source for the exact
-binaries and retained JSON rows.
+Run each llama.cpp-compatible lane with its exact binary/source identity and
+backend settings. Arguments that begin with `-` use the `--server-arg=value`
+form:
+
+```bash
+MODEL_PART="$MODEL_ROOT/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf"
+uv run python scripts/qwen4exp_canonical_ar_bench.py llamacpp \
+  --server-bin /path/to/llama-server \
+  --source-root /path/to/source \
+  --model "$MODEL_PART" \
+  --engine-label ENGINE_LABEL \
+  --server-arg=-ngl --server-arg=999 \
+  --server-arg=-fa --server-arg=on \
+  --server-arg=-ctk --server-arg=bf16 \
+  --server-arg=-ctv --server-arg=bf16 \
+  --server-arg=-c --server-arg=4352 \
+  --server-arg=-b --server-arg=8192 \
+  --server-arg=-ub --server-arg=2048 \
+  --output /tmp/qwen4exp-canonical-ENGINE_LABEL.json \
+  --server-log /tmp/qwen4exp-canonical-ENGINE_LABEL.server.log
+```
+
+The driver discards one warmup and records three measured requests per case.
+The first sampled output belongs to prefill; it requests 129 visible outputs
+from llama.cpp and reports exactly 128 post-first-output transitions, matching
+hipEngine's 128 timed `runner.step()` calls. Prompt cache is disabled while OS
+page-cache state is warm. Synthetic `llama-bench` p512/p1024/p4096/tg128 rows
+remain a separate `shape_only` diagnostic class.
 
 ### 3.4 Collect role-resolved device traces
 
-hipEngine p508:
+The frozen role ledger remains on the historical p508 fixture until P4 emits
+its required fresh p512 ledger. hipEngine p508:
 
 ```bash
 TRACE=/tmp/qwen4exp-role-p508
@@ -300,6 +323,8 @@ None of these numbers are hipEngine results.
 | Local source/build refresh, 2026-08-30 | Existing `UD-Q4_K_XL` runs in both forks. EngramHalo BF16 reaches 296.12/362.72/17.62 and Nathan v0.7.2 reaches 413.04/396.25/23.85 at p508/p1012/tg32. Nathan lazy-on is 1.255x over the cache-cold-to-warm off average at p508 and neutral by p1012. Engram MTP is 1.128x complete-wall but only 9/10 AR-message exact. | Direct same-host evidence, but shape inputs are not yet exact-matched to hipEngine. AR rows are provisional competitor targets; the MTP speed row fails correctness and is diagnostic only. |
 | [Aristo94/EngramHalo.cpp](https://github.com/Aristo94/EngramHalo.cpp), refreshed at `1423f689986f670417128fd545a0aa1241166103` | Wide radix top-k (`33766da`), masked-slice FA skip (`bf8412d`), QSA top-k row gather (`2606d49`), MTP sidecar (`afb80ed` + `2ba3009`), PLE lazy row prefetch (`c911e6b`), and load-page drop-behind (`5486559`). Chunked GDN prefill exists (`62160a7`) but was explicitly not active in the published numbers. The published container additionally applies the tracked #25992 host-buffer and per-buffer-mmap patches. | Code and build mechanisms verified by source inspection and a local gfx1151 HIP build. hipEngine already covers the QSA selector/gather direction; PLE advice/prefetch, loader drop-behind, full-step graphing, and MTP economics remain open. |
 | [Nathanw1014/strix-halo-llamacpp v0.7.2](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.7.2), toolbox HEAD `a8631dfbf0aeb6a4004866fce1fd7e5c10370049`, source `ad914eb6587d3da8b2bf50f0056cc20b3d3e91f5` | `TENSOR_READ_LAZY` + `MADV_RANDOM` alone loses; merged `WILLNEED` row prefetch is the paying half (`77362a8`). Qwen4Exp also adds host PLE gather and reusable decode topology (`631b9ff`), per-block QSA bias (`024b7ad`), and MTP graph/context (`3543908` + `39817c4`). Vulkan lineage includes MoE row lists (`212cca8`), route-scale epilogue, SiLU/mul fusion, transposed concat (`30d8bb0`), dense wave32 (`25c45fe`), and LDS padding (`baf6360`). | Source mechanisms verified; release and local source builds agree within 1% on this host. Vulkan shader topology is not portable to HIP, but the removed data movement, host synchronization, graph rebuild, and LDS-bank mechanisms are actionable. |
+| [quimmedes/cafe-llama.cpp](https://github.com/quimmedes/cafe-llama.cpp), observed HEAD `2da84198eccb0aee59abba59e967dcc61f84ce07` | The fresh fork exposes pinned-host/CPU routed-expert placement, PLE n-gram SSD mmap or disable modes, and Qwen4Exp MTP trunk/combiner fixes. Commits `ba7bd23` and `7ee981d` add the PLE controls; `19aefd2` and `d98dc18` address MTP hidden export and mixer mapping. | Track as a source lead, not a measured comparator. SSD PLE and host-placement ownership may inform P9; `--no-ngram` changes the model and cannot close parity. No same-weight local rate or correctness packet has been verified. Confidence: high for repository/commit identity, medium for transfer applicability. |
+| [omlx PR #3260](https://github.com/jundot/omlx/pull/3260), open head `3343e4414f75b9808d2d8a6de1950ad96ce8dac8` | Adds row-addressable SSD expert reads, fixed preallocated expert banks, manifest pins plus an evictable hot tier, learned route-frequency hotlists, expert-major overflow chunks, and checked/speculative miss handling with transactional KV/SSM restore. The author reports exact expert output at a 0% substitution threshold. | Track the fixed-bank, telemetry, hotlist, and transactional retry mechanisms for constrained-residency work. This is an unmerged Apple MLX/safetensors path with a dirty merge state, not direct HIP/GGUF code or local performance evidence. Confidence: high for PR state/design, low for transfer magnitude. |
 | Upstream llama.cpp [#27742](https://github.com/ggml-org/llama.cpp/pull/27742) | Qwen4Exp architecture support; merged at `6c84c7d5`. | Already represented in the fresh comparator. |
 | Upstream [#27794](https://github.com/ggml-org/llama.cpp/pull/27794) | `TENSOR_READ_LAZY` plumbing; merged at `fac889fb`. Nathan's branch keeps the missing batched row-prefetch half. | Useful PLE hypothesis. |
 | Upstream [#27836](https://github.com/ggml-org/llama.cpp/pull/27836) | Qwen4Exp NextN/MTP draft head; open. Its key note is that the hyper-connection combiner must run per stream; mean pooling first destroys acceptance. | Matches our retained lesson; use it to audit, not re-derive, the Qwen4Exp MTP combiner. |
@@ -325,6 +350,7 @@ This is how each mechanism maps to the current hipEngine implementation:
 | Host-side PLE row gather | `Qwen4ExpPLEMMapTable` gathers/dequantizes only requested rows, and a pinned two-buffer ring stages them. It still creates temporary arrays and performs synchronous gather/copy. | Preserve ownership, but add direct-to-ring dequantization, duplicate/page coalescing, telemetry, and prefill overlap in P9. |
 | PLE random advice plus merged row prefetch | No equivalent `MADV_RANDOM` + page-aligned merged `WILLNEED` pair exists. | Implement both halves together with off/auto/on rollback. Never ship random advice alone; Nathan measured that half losing. |
 | Load-page drop-behind | Hot weights are uploaded without an explicit per-tensor file-page release policy. | Measure transient free/available/swap/load wall, then add bounded unmap/fadvise only for copied tensors; never drop lazy PLE pages. |
+| Fixed expert bank plus route hotlist | Current Qwen4Exp keeps the declared routed-expert representation resident; it has no SSD miss/promotion tier. | Keep omlx PR #3260 as a constrained-memory design lead. Any future port needs GGUF row indexing, exact 0%-substitution routing, request-safe bank ownership, transactional state restore, and cold/warm workload gates; it is not part of short-AR parity. |
 | MoE row-list prepass | Device count/prefix/scatter and expert-sorted lanes already exist. | Do not port Vulkan topology. Remove the remaining D2H tile-count synchronization and the Q8 expert-start D2H + Python expert loop; use guarded fixed-capacity device grids. |
 | Route-scale/weighted-down epilogue | c1 Q5 down can fuse ordered weighted sum; grouped prefill still writes expert outputs and runs a separate weighted lane reduction. | Add exact/T2 grouped down+route-weight+scatter/ordered-reduce candidates, with the current chain registered as fallback. |
 | Shared-expert and router completion | Shared gate/up, SiLU, down, gate projection, cast, and combine remain separate; router writes all 512 logits before top-10. | P3 owns operation-complete shared-expert and exact stable router+top-10 candidates after role measurement. |
@@ -362,7 +388,8 @@ Every code or kernel unit follows the same loop:
 4. Trace the expected kernel name with `rocprofv3`; a fast helper that is not
    selected is not evidence.
 5. Run the complete strict or production numerical/control/task/lifecycle gate
-   before promotion, then same-session p508/p1012/tg32 wall measurements.
+   before promotion, then same-session p512/p1024/p4096 and context-conditioned
+   tg128 wall measurements.
 6. Retain an exact non-regression or a fully gated production win; otherwise
    reject it and restore the registered incumbent. Do not tune the same family
    again after two measured losses without a new profile or mechanism.
@@ -375,16 +402,16 @@ Goal: turn the shape-only external refresh into one exact, repeatable target
 matrix before implementation claims parity.
 
 - [x] Promote the wall/profile driver, trace analyzers, role attributor, sync
-      diagnostic, report generator, and p508 fixture.
+      diagnostic, report generator, and historical p508 fixture.
 - [x] Refresh/build EngramHalo HIP and Nathan Vulkan at exact identities; retain
       same-weight BF16/Q8 shape diagnostics and the MTP correctness failure.
-- [ ] Commit a p1012 fixture and one cross-engine driver that feeds identical
-      text/token IDs, chat template, sampler, K/V type, prompt-cache state, and
-      output horizon to hipEngine and every comparator. Keep `llama-bench`
-      synthetic rows in a separate `shape_only` class.
-- [ ] Add at least one prompt from every code/general-English/general-Japanese/
-      mixed heldout category to the AR wall packet so one routed prompt cannot
-      define parity.
+- [x] Commit the category-balanced p512/p1024/p4096 fixture and cross-engine
+      driver that feed identical token IDs, sampler, K/V type, prompt-cache
+      state, and 128-transition output horizon to hipEngine and every comparator.
+      Keep generated `llama-bench` rows in a separate `shape_only` class.
+- [x] Add at least one prompt from every code/general-English/general-Japanese/
+      mixed category to the AR wall packet so one routed prompt cannot define
+      parity. Category-heldout expansion remains a closure gate.
 - [ ] Freeze the current best BF16 target per row: upstream llama.cpp,
       EngramHalo HIP, and Nathan Vulkan. Refresh a comparator only as a separate
       baseline event with old and new binaries measured on the same host.
@@ -395,8 +422,8 @@ matrix before implementation claims parity.
 - [ ] Add explicit warm-page-cache and isolated cold-PLE modes. Never average
       or compare them as one workload.
 - [ ] Sweep hipEngine prompt chunk 256/512/1024 (and 2048 where the prompt
-      permits) at p508/p1012 with memory and correctness controls; select by
-      model evidence rather than copying an external `ubatch` value.
+      permits) at p512/p1024/p4096 with memory and correctness controls; select
+      by model evidence rather than copying an external `ubatch` value.
 - [ ] Extend the gap report to carry per-layer role time, direct/graph launch
       APIs, blocking/async copies and bytes, synchronizations, compiler resource
       data, and unresolved wall-minus-device time.
@@ -423,7 +450,8 @@ Q5_K/Q5_K/Q8_0, and layers 4/30/46/47 of Q4_K/Q4_K/Q8_0.
 - [ ] Fuse route scaling/ordered accumulation into Q8 down only if the declared
       strict/T2 contract passes.
 - [ ] Run the complete 450-row/three-repeat packet, tasks, physical c2,
-      lifecycle, and paired p508/p1012. Bind only certified scopes.
+      lifecycle, paired p512/p1024, and the canonical p4096 gate. Bind only
+      certified scopes.
 
 Expected evidence: layer 2 falls from about 397.95 ms toward the comparator
 role range; its maximum standalone p508 contribution is about 6.6%.
@@ -474,8 +502,8 @@ left without an implementation phase.
 - [ ] Extend dense Q8 MMQ/WMMA scopes earlier only through the complete
       production packet. Optimize exact coltile/rowbatch fallbacks for layers
       that reject changed arithmetic.
-- [ ] Require each retained subunit to reduce its complete role and p508/p1012,
-      not merely an isolated GEMM.
+- [ ] Require each retained subunit to reduce its complete role and p512/p1024,
+      not merely an isolated GEMM; re-run p4096 at the phase gate.
 
 ### Phase P4 — GDN and QSA prefill parity
 
@@ -495,7 +523,7 @@ Goal: close the remaining **634.94 vs 92.34 ms** GDN and
 - [ ] Confirm selected-position attention already removes dense-mask work.
       Evaluate fully-masked-slice skipping only if a current trace proves such
       slices still execute.
-- [ ] Publish a fresh p508 device-role ledger after P4; no prefill phase may be
+- [ ] Publish a fresh p512 device-role ledger after P4; no prefill phase may be
       called closed with an unexplained multi-x owner.
 
 ### Phase P5 — device-owned AR output boundary
@@ -530,7 +558,7 @@ direct-launch surface before graph capture hides it.
 - [ ] Preserve the exact fused Q5 weighted-down and Q4 dual+SiLU fallbacks;
       replace them only with same-role evidence.
 - [ ] After every retained fusion, update direct launches, graph launches,
-      kernel rows, API time, copy bytes, and whole tg32 wall.
+      kernel rows, API time, copy bytes, and context-conditioned tg128 wall.
 
 ### Phase P7 — normalized/transposed GDN decode
 
@@ -545,8 +573,8 @@ c1-shaped layout without reviving the rejected prefill-colwarps route.
       constants.
 - [ ] Prove CPU-reference state/output parity on reduced and actual fixtures,
       repeated steps, restore/replay, cancellation, and c2 isolation.
-- [ ] Require expected kernel trace, complete profile packet, and tg32 win.
-      Never re-enable the invalid `GDN_COLWARPS_DECODE_LAYERS` route.
+- [ ] Require expected kernel trace, complete profile packet, and canonical
+      tg128 win. Never re-enable the invalid `GDN_COLWARPS_DECODE_LAYERS` route.
 
 ### Phase P8 — state-safe whole-transition graph
 
@@ -564,8 +592,8 @@ request-owned transition submission.
       rollback, reset, cancellation, c2 isolation, teardown, and at least three
       consecutive replays at every rung.
 - [ ] Compare direct/graph API time, graph build/reuse counts, kernel rows/span,
-      compact copies, first-token latency, and steady tg32. A graph that merely
-      hides a slower kernel chain is not a retained win.
+      compact copies, first-token latency, and context-conditioned tg128. A graph
+      that merely hides a slower kernel chain is not a retained win.
 - [ ] Target no per-layer graph launches and no unexplained direct launch in the
       steady transition; document any irreducible boundary.
 
@@ -586,8 +614,9 @@ warm GPU-kernel claims.
       lifetime. Decode remains demand-driven unless a real lookahead exists.
 - [ ] Add a safe isolated cold-cache protocol and a warm steady protocol. Do
       not use one process's warming repetitions as independent samples.
-- [ ] Measure lazy on/off, cold/warm p508/p1012, decode, page reads, RSS/file vs
-      anonymous memory, available/free/swap, and exact output hashes.
+- [ ] Measure lazy on/off, cold/warm p512/p1024/p4096 and tg128, page reads,
+      RSS/file versus anonymous memory, available/free/swap, and exact output
+      hashes.
 - [ ] Add optional per-tensor load drop-behind only for data already copied to
       device ownership. Never invalidate lazy PLE pages or validation readers;
       include reload-heavy and one-shot serving controls.
@@ -647,8 +676,8 @@ Goal: make the complete result reproducible, default, and reversible.
 - [ ] Refresh all comparator lanes once under P0's exact protocol and fixed host
       state; do not compare old absolute rows to new binaries.
 - [ ] Run the final strict/production packet, task/BF16/control/state/c2/
-      lifecycle gates, exact matched p508/p1012/tg32, and every unlocked
-      long-context/MTP milestone.
+      lifecycle gates, exact matched p512/p1024/p4096 with tg128, and every
+      unlocked long-context/MTP milestone.
 - [ ] Emit compact accepted/rejected/blocked artifacts, raw-log hashes, generated
       reports, benchmark README/changelog updates, and the model checkpoint.
 - [ ] Update `docs/KERNELS.md`, lineage metadata, `docs/REFACTOR.md`, and
@@ -675,8 +704,9 @@ milestone and denominator.
 - **Match** means the median ratio is at least 0.98, both arms have coefficient
   of variation at most 2%, and the paired 95% interval includes 1.0. A noisy
   result is neither a match nor a loss; stabilize and repeat.
-- p508, p1012, and tg32 bind independently. A large prefill win cannot average
-  away a decode loss, and one category cannot compensate for another.
+- p512, p1024, p4096, and context-conditioned tg128 bind independently. A large
+  prefill win cannot average away a decode loss, and one category cannot
+  compensate for another.
 - End-to-end unprofiled wall is binding. Kernel/sub-window/launch/copy wins are
   retainable evidence but do not by themselves close parity.
 
@@ -686,10 +716,11 @@ milestone and denominator.
    and binary identities, host state, cold/warm separation, and category
    heldouts are committed.
 2. **HIP short-AR parity:** named hipEngine production matches or beats the best
-   refreshed same-configuration HIP comparator on p508, p1012, and tg32.
+   refreshed same-configuration HIP comparator on p512, p1024, p4096, and the
+   corresponding tg128 rows.
 3. **Same-host short-AR parity:** the same path matches or beats the best
-   refreshed same-configuration HIP or Vulkan engine on all three rows. Vulkan
-   is a required second milestone, not an optional source of ideas.
+   refreshed same-configuration HIP or Vulkan engine on every canonical row.
+   Vulkan is a required second milestone, not an optional source of ideas.
 4. **Role closure:** no layer-2/early-MoE, shared/router/GR, GDN, QSA, output,
    submission, copy, or synchronization bucket remains an unexplained multi-x
    outlier. Any residual >=1.25x names a measured architectural reason and an
@@ -730,8 +761,9 @@ or one accepted optimization. Continue through the highest-Amdahl unblocked
 punchlist item, re-profile after every retained unit, and re-rank the remaining
 work. The short-AR objective is complete only when named hipEngine production
 matches or beats the final refreshed best same-host HIP and Vulkan comparators
-on exact-matched p508, p1012, and tg32 under section 6's statistical rule, while
-the complete execution-profile, task, determinism, state/isolation, lifecycle,
+on exact-matched p512, p1024, p4096, and their tg128 rows under section 6's
+statistical rule, while the complete execution-profile, task, determinism,
+state/isolation, lifecycle,
 and strict-fallback gates pass. Then continue through every unlocked
 long-context rung and the device-resident MTP milestone; MTP must beat true AR
 on the full category+heldout suite and reach the section 6 target without
@@ -762,6 +794,12 @@ cleanup, and commits are complete.
 - Profile contracts: [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md)
 - Kernel catalog and port rules: [`KERNELS.md`](KERNELS.md)
 - gfx1151 roofline: [`ROOFLINE-gfx1151.md`](ROOFLINE-gfx1151.md)
+- Canonical exact-token fixture and driver:
+  [`qwen4exp_canonical_ar_p512_p1024_p4096.json`](../benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json)
+  and `scripts/qwen4exp_canonical_ar_bench.py`.
+- Tracked implementation leads:
+  [cafe-llama.cpp](https://github.com/quimmedes/cafe-llama.cpp) and
+  [omlx PR #3260](https://github.com/jundot/omlx/pull/3260).
 - Fresh profile artifact:
   [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json)
 - External fork refresh:
