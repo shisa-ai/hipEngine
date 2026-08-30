@@ -1,0 +1,283 @@
+# Qwen3.8-27B gfx1151 Scaling Campaign (MTP batch scaling + prefill)
+
+Status: **open**, 2026-08-30. Successor to the closed
+[`external-parity campaign`](QWEN38-GFX1151-PARITY-CAMPAIGN.md).
+Owner: scaling loop.
+
+Scope: the same frozen product key as the parity campaign — physical gfx1151
+(Ryzen AI MAX+ 395 / Radeon 8060S), `Qwen3.8-27B` `standard_q4_k_m`
+(sha256 `7e78da5d…c6fe169`), BF16 KV, production profile, common ten-prompt
+suite (sha256 `fac920be…1d86084a`), raw greedy, no prompt cache, K3, D24.
+
+This campaign does **not** reopen AR decode. AR leads C3-C8 and its C1/C2
+blockers stay closed under the parity campaign's named-blocker rule.
+
+## 1. Goal
+
+Two measured objectives, in priority order:
+
+1. **MTP must scale with concurrency.** Today it does not: MTP is flat from C3
+   upward while AR keeps scaling. Target is `MTP >= 1.15x own AR at every
+   width C1-C8`, or a measured named blocker per cell.
+2. **Close the two prefill cells that hold 60% of the prefill deficit** — C2
+   and C8 — or name their blockers. The other six widths are already within
+   4.3-9.5% and are explicitly *not* the target.
+
+## 2. Frozen entry state (2026-08-30 six-engine matrix)
+
+Source: [`final matrix`](../benchmarks/results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json),
+complete-wall tok/s.
+
+| C | Prefill | vs best ext | AR | MTP | vs best ext | MTP / own AR | AR scale | MTP scale |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 146.758 | -4.33% | 11.021 | 7.809 | -63.04% | 0.7086x | 1.00x | 1.00x |
+| 2 | 142.806 | **-32.60%** | 17.918 | 25.740 | -20.11% | 1.4365x | 1.63x | 3.30x |
+| 3 | 174.878 | -9.12% | 23.659 | 29.468 | **+4.99%** | 1.2455x | 2.15x | 3.77x |
+| 4 | 188.942 | -5.75% | 30.083 | 29.385 | **+9.02%** | 0.9768x | 2.73x | 3.76x |
+| 5 | 211.737 | -6.36% | 35.544 | 18.657 | -42.97% | 0.5249x | 3.23x | 2.39x |
+| 6 | 226.616 | -9.50% | 39.906 | 28.195 | -24.11% | 0.7065x | 3.62x | 3.61x |
+| 7 | 240.672 | -4.60% | 43.112 | 29.305 | -36.41% | 0.6797x | 3.91x | 3.75x |
+| 8 | 247.216 | -19.17% | 45.936 | 28.577 | -49.17% | 0.6221x | 4.17x | 3.66x |
+
+Two signatures drive the whole campaign:
+
+- **MTP saturates at ~29.5 tok/s from C3 onward** (29.468/29.385/18.657/28.195/
+  29.305/28.577) while AR climbs 23.659 -> 45.936. Every external engine's MTP
+  keeps rising with width. Ours stops.
+- **Prefill C2 is lower than C1** (142.806 < 146.758) where every external
+  engine rises steeply (stock HIP 146.2 -> 186.9; Laurent 149.1 -> 211.9).
+  C2 and C8 hold **32.4%** and **27.5%** of the absolute prefill deficit; the
+  other six widths together hold 40.1%.
+
+## 3. Diagnosis
+
+Findings A-C are new attributions from current source and retained telemetry.
+D-F restate measured facts already in the tree so the punchlist has one entry
+point.
+
+### A. The MTP wall is per-row verify cost, then a hardcoded width-4 partition
+
+Two compounding defects, which must be measured separately:
+
+**A1 — the target verify costs more per row than AR decode costs per row.**
+From the retained wide telemetry
+([`wide blockers`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-c8-target-blockers.json)),
+a C8 subgroup cycle is **688.1 ms** for R16, i.e. ~43 ms per target row. The
+matched AR cycle at C8 serves 8 rows at ~21.8 ms per row. A wide verify pass
+should cost *less* per row than AR decode — it amortizes one weight sweep over
+4x the rows — and instead costs about **2x more**. This is the "multi-row
+verify amortization wall" the parity campaign named as the shared MTP/DFlash2
+suspect (P5.3), now with a per-row number attached to it.
+
+**A2 — every width above 4 runs sequential complete cycles.**
+`hipengine/generation/engine_loop.py:2336` `_maybe_run_partitioned_speculative_decode`
+loops over subgroups and calls `_maybe_run_speculative_cycle` once per
+subgroup, so C5-C8 execute 2 full proposal+verify cycles per tick. The bound
+comes from a literal `4` in at least ten places, principally
+`hipengine/generation/qwen35_gguf_mtp2.py:871`
+(`max_requests = min(4, …)`), `:894` (`proposal_widths` in `(1, 2, 4)`),
+`:934` (`1 <= len(request_ids) <= 4`), and `partition_max_requests` at `:905`
+(`bound = min(4, capacity, max_realized_group_rows)`); the capability gate
+`GGUF_SPECDEC2_MTP2_C4` in `hipengine/kernels/hip_gfx1151/__init__.py:1750`
+stops at C4. Retained telemetry confirms the resulting subgroup shapes
+`4`, `4+1`, `4+2`, `4+3`, `4+4` at C4-C8.
+
+This is a deliberate CONCURRENCY2 D4 decision ("physical through C4 and
+decomposed into bounded C4 frontiers above it"), correct as a functional
+milestone and now the binding scaling defect. It is a scheduler/ownership
+bound, not a kernel bound. **C5 is the worst cell in the matrix (0.5249x AR)
+precisely because `4+1` is the most unbalanced split**: the trailing R4 group
+pays a near-full pass for a quarter of the rows.
+
+Neither defect is recorded in [`REFACTOR.md`](REFACTOR.md); the width-4 cap has
+no removal condition on file.
+
+### B. C1 production MTP is missing coverage we already own
+
+Production D24 C1 is **7.809 tok/s / 0.7086x AR**, but our own strict
+C1/K3 natural25 route is **18.191 vs 11.062 = 1.6445x**, and the gfx1100
+`llama-compat` route reaches **1.2679x own AR** on reusable native target
+graphs ([`MTP-LLAMACPP-PARITY.md`](MTP-LLAMACPP-PARITY.md)). The production C1
+deficit is coverage, not capability. Concretely, C1 is absent from exactly the
+two policy tables that produced the C3 wins:
+
+- `GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES`
+  (`hip_gfx1151/__init__.py:1754`) admits widths **`(2, 3)`** only, so C1 still
+  pays full prompt replay. E1a's streaming was worth **+27.06%** at C3.
+- `GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES` (`:1765`) admits rows
+  **2/3/4** only, so C1's proposal head keeps the direct/scalar producer. E1b
+  was worth **+7.47%** at C3.
+
+E0 measured **746.7 ms** prompt prime and a **41.26 ms/cycle** proposal head on
+this route, so both keys are sized to matter at C1.
+
+### C. Q4 is the dominant verify cost and has no rowtile owner above R12
+
+`GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS = {6, 8, 9, 12}`
+(`:1604`); the R16 chunk row exists only for Q5/Q6
+(`GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT`, `:1580`). The C4 trace
+puts Q6 at 1846.5 ms and Q4 at 1059.0 ms of 3454.9 ms target kernel time; the
+C2 blocker records Q4 at 740 ms of a 95.38% kernel-bound target. Both prior Q4
+true-R16 submissions were rejected (weighted GPU work **+55.31%**, one-prompt
+C4 **-6.39%**). Widening the group (A2) without a Q4 owner above R12 will move
+the wall, not remove it, so **A2 must be measured with per-quant attribution**
+and C's entry condition is A2's trace, not another blind R16 retry.
+
+### D. Prefill is now two cells, not a trend
+
+Six of eight widths sit within 4.3-9.5% of the best external engine. The
+campaign's prefill scope is only:
+
+- **C2 (-32.60%, 32.4% of the deficit).** hipEngine prefill *falls* from C1 to
+  C2 while all five external engines rise 25-42%. That is a grouping/dispatch
+  signature at width 2, not the high-row Q4 blocker the parity campaign named
+  for C8. It was never independently attributed: the P2.2 attribution traced
+  "fully grouped C2 rows134" and found it 98.4% GPU-bound with Q4 owners at
+  59.4%, but did not explain the absence of any C1 -> C2 scaling.
+- **C8 (-19.17%, 27.5% of the deficit).** This is the named high-row Q4/device
+  blocker. It is real and terminal under threshold/scheduler tuning; the parity
+  campaign's own closing instruction was "continue with a new high-row Q4
+  algorithm/fusion, not more threshold tuning."
+
+### E. The recorded prefill kernel efficiency number is stale
+
+P1.3 traced M=45 at **1380 launches / 534.2 ms GPU busy**, with
+`gguf_q4_t16_dense_wmma_prefill_shared_b_bf16` at **360.56 ms / 298 launches /
+1.21 ms avg** — about **4.8x** that family's own weight-traffic floor
+(a full 17.1 GB sweep is ~74 ms at the measured 230 GB/s). P2.3's low-VGPR work
+then roughly doubled server prefill (C1 71.55 -> 146.76), so **the 360 ms
+figure no longer describes the current head**. No post-P2.3 prefill kernel
+trace exists. Any prefill kernel work must re-trace first.
+
+### F. The integer-MMQ prefill continuation was specified and never done
+
+[`GGUF-PREFILL-OPTIMIZATION.md`](GGUF-PREFILL-OPTIMIZATION.md) item 19
+(`LCP-3B`) rejected a direct prequantized Q8_1 x Q8T16 integer-WMMA prefill
+body (44.66% slower) with an explicit continuation condition: any retry "must
+reproduce the actual shared MMQ tile/decomposition, not route raw dp4a or retry
+direct T16." That continuation was never attempted. MMQ sources exist only
+under `kernels/hip_gfx1100/` (`gguf_k_mmq_prefill.hip`,
+`gguf_q8_0_mmq_prefill.hip`, `gguf_iq2_xs_mmq_prefill.hip`);
+`kernels/hip_gfx1151/` contains **no `.hip` files at all** and inherits gfx1100
+bodies through policy.
+
+**Size it before building it.** On gfx1151, INT8 WMMA is **59.4 TOP/s — the
+same rate as FP16/BF16 WMMA**, not double (only INT4 reaches 118.8 TOP/s)
+per [`ROOFLINE-gfx1151.md`](ROOFLINE-gfx1151.md). MMQ's payoff here is removing
+dequant ALU and halving activation register/LDS traffic, **not** a matmul-rate
+win. If P2's trace does not show dequant ALU dominance, F does not open.
+
+## 4. Punchlist
+
+Rules unchanged from the parity campaign: every cell closes at its target under
+the frozen protocol with the applicable `docs/EXECUTION-PROFILES.md` gate, or
+with a **measured, named blocker** recorded here and in the unit worklog entry.
+Full-suite plus category-heldout validation for every acceptance/speed claim; no
+prompt-conditioned tuning. Commit each completed unit immediately.
+
+### X — external MTP batching survey (cheap, de-risks M1)
+
+- [ ] X1 Read the pinned external checkouts under
+  `/home/lhl/.local/state/hipengine-external-survey/repos/` and record, for
+  llama.cpp server speculative decoding, **what the verification batch
+  dimension actually is**: whether draft verification for N slots is flattened
+  into one decode call or issued per slot, and what caps that width. Do the
+  same reading pass for vLLM V1 spec-decode and SGLang EAGLE proposer/verifier
+  batching from their published sources. Deliverable is a comparison table of
+  batch dimension, per-cycle model passes, and any width cap — cited by file
+  and commit, no vendoring, no code port. This directly tests A2's premise
+  against the field and is the only item that may precede M0.
+
+### M — MTP scaling (primary track)
+
+- [ ] M0 Re-freeze and instrument. Emit per-cycle accounting for C1-C8:
+  subgroup count, target rows per pass, model passes per cycle, **ms per target
+  row**, and **accepted tokens per target row**, with matched AR ms-per-row at
+  the same width. Establish ms/target-row as this campaign's primary economic
+  metric; complete-wall tok/s stays the reported headline. No perf claim.
+- [ ] M1 **Single-group wide verify.** Lift the width-4 partition so one cycle
+  covers all due requests: `partition_max_requests`, `claims_fit`,
+  `proposal_widths`, `max_requests`/`max_frontier_rows`, and the
+  `GGUF_SPECDEC2_MTP2_C4` capability. Re-add the R20-R32 target row buckets
+  removed as unengaged. Binding gates: exact control/ownership in every
+  profile, all 80 cells exact, acceptance unchanged at 78.894%, registered
+  strict fallback, and C1-C4 non-regressive. Targets: C5 `18.657 -> >= 33`,
+  C8 `28.577 -> >= 45` (its own AR is 45.936).
+- [ ] M2 Per-row verify cost (A1). Using M1's per-quant attribution, close the
+  gap between MTP ms/target-row and AR ms/row at matched width. Q4 owners above
+  R12 (C) open here **only if** M1's trace names Q4 as the binding class; the
+  two prior Q4 R16 rejections set the entry condition — weighted GPU work must
+  not rise.
+- [ ] M3 **C1 coverage** (B). Add width-1 prompt streaming and rows1 proposal
+  rowtile keys, then re-screen the reusable native target graph for the
+  production route. Target `7.809 -> >= 18.191` (our own strict number), stretch
+  `>= 21.126` (external). Must not change strict C1 automatic behavior.
+- [ ] M4 C4 prompt-streaming acceptance blocker. Streaming at C4 changed
+  acceptance 628/796 -> 624/800 and was rejected. Decide explicitly whether the
+  binding contract is exactness of the replayed prompt or of the acceptance
+  count, then either qualify a streaming variant that preserves it or record the
+  contract as the terminal blocker.
+- [ ] M5 Concurrency-aware admission. **Only after M1-M3.** Route by measured
+  physical concurrency and cycle economics, not a global switch: our own C4 sits
+  at 0.9768x AR and the external MikeVeerman result is 2.23x at C1 and 0.84x at
+  C4. This is admission policy work, not acceptance tuning.
+
+### P — prefill (secondary track, two cells only)
+
+- [ ] P1 **C2 root-cause.** Explain why prefill does not scale C1 -> C2 when AR
+  does. Trace the C2 packed prefill grouping directly against C1 and C3 under
+  one committed protocol; the existing C2 attribution measured GPU-boundness but
+  never the missing scaling. Target `142.806 -> >= 211.888` or a named blocker.
+- [ ] P2 **C8 high-row Q4.** Re-trace the current head first (E: the recorded
+  360 ms figure predates P2.3). Then attack the named high-row Q4/device
+  algorithm with a real algorithmic change — N-split/split-K partitioning or a
+  new fusion — under the strict/production gates plus a `rocprofv3
+  --kernel-trace` entry. Target `247.216 -> >= 305.847` or a named blocker.
+  No threshold or scheduler ladders; those are exhausted and recorded as such.
+- [ ] P3 Integer-MMQ continuation (F). Conditional on P2's trace showing dequant
+  ALU dominance **and** a written sizing estimate that assumes INT8 WMMA equals
+  BF16 WMMA rate on gfx1151. Must reproduce the shared MMQ tile/decomposition
+  per item 19's recorded condition. If P2 shows a bandwidth or occupancy wall
+  instead, P3 closes unopened with that reason.
+
+### R — refactor ledger
+
+- [ ] R1 Add the width-4 MTP partition and the `GGUF_SPECDEC2_MTP2_C4`
+  capability gate to [`REFACTOR.md`](REFACTOR.md) with an explicit removal
+  condition tied to M1, whether or not M1 succeeds.
+
+## 5. Order
+
+`X1` -> `M0` -> `M1` -> `M3` -> `M2` -> `M4` -> `P1` -> `P2` -> `M5` -> `P3`,
+with `R1` committed alongside `M1`. X1 and M0 are cheap and de-risk the
+expensive M1 unit. M3 is placed early because it is coverage work against paths
+we already own, and is the largest single-cell deficit in the matrix (-63.04%).
+
+## 6. Non-goals
+
+- No AR decode reopening. C3-C8 lead; C1/C2 blockers stay closed.
+- No prefill work at C1/C3-C7. Those six widths are within 4.3-9.5% and are not
+  worth a kernel campaign.
+- No FP4/ROCmFPX, Unsloth UD, or ngram-replay parity rows (parity campaign
+  decision 1A stands).
+- No external vendoring or fork porting. X1 is a reading pass that produces a
+  table, not code.
+- No benchmark gaming: no prompt-conditioned tuning; every acceptance/speed
+  claim validates on the full multi-prompt suite plus category heldouts, and
+  every MTP speedup claim uses a true no-MTP AR baseline from the same protocol.
+
+## 7. Document ownership
+
+- [`QWEN38-GFX1151-PARITY-CAMPAIGN.md`](QWEN38-GFX1151-PARITY-CAMPAIGN.md) owns
+  the closed parity punchlist and its terminal blockers; this campaign owns
+  their successors.
+- [`QWEN38-Q4KM-MTP-ACCEPTANCE.md`](QWEN38-Q4KM-MTP-ACCEPTANCE.md) owns the
+  E0-E6 implementation ladder and E6 automatic promotion.
+- [`CONCURRENCY2-GFX1151-MTP-DYNAMIC-ADMISSION.md`](CONCURRENCY2-GFX1151-MTP-DYNAMIC-ADMISSION.md)
+  owns the D4 bounded-C4 decomposition that M1 supersedes.
+- [`GGUF-PREFILL-OPTIMIZATION.md`](GGUF-PREFILL-OPTIMIZATION.md) owns prefill
+  kernel lineage and the LCP-3B continuation condition.
+- [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), [`TESTING.md`](TESTING.md),
+  and [`BENCHMARK.md`](BENCHMARK.md) own gates and evidence format.
+- [`ROOFLINE-gfx1151.md`](ROOFLINE-gfx1151.md) owns the hardware constraints
+  used to size P3.
