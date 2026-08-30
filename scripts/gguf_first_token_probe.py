@@ -186,25 +186,40 @@ def main() -> int:
         }
     with TestClient(app) as client:
         scan_rows: list[dict] = []
+        # Single-shot walls repeat at +-15% at the shortest lengths, which is enough to move
+        # a fitted fixed term by tens of milliseconds, so each length is measured repeatedly
+        # and carried as a median with its spread visible.
+        scan_reps = max(1, int(args.requests))
         for target in sorted(
             {int(v) for v in str(args.length_scan).split(",") if v.strip()}
         ):
-            try:
-                row = one(client, synthetic(target))
-            except RuntimeError as exc:
-                # A larger target only needs more context, so stop the sweep instead of
-                # killing it: the shorter lengths are the ones that separate fixed cost
-                # from throughput, and losing them to one over-long request is how a scan
-                # used to die at 512 with a 400 after nine good measurements.
-                if "context_length_exceeded" not in str(exc):
-                    raise
+            samples: list[dict] = []
+            over_context = False
+            for _ in range(scan_reps):
+                try:
+                    samples.append(one(client, synthetic(target)))
+                except RuntimeError as exc:
+                    # A larger target only needs more context, so stop the sweep instead of
+                    # killing it: the shorter lengths are the ones that separate fixed cost
+                    # from throughput, and losing them to one over-long request is how a scan
+                    # used to die at 512 with a 400 after nine good measurements.
+                    if "context_length_exceeded" not in str(exc):
+                        raise
+                    over_context = True
+                    break
+            if over_context or not samples:
                 print(f"length {target}: skipped (exceeds --max-sequence-length "
                       f"{args.max_sequence_length})", flush=True)
                 break
-            scan_rows.append({"target": target, **row})
+            walls = sorted(float(s["wall_seconds"]) for s in samples)
+            row = {"wall_seconds": walls[len(walls) // 2],
+                   "prompt_tokens": int(samples[0]["prompt_tokens"]),
+                   "samples": walls}
+            scan_rows.append(row)
             print(
                 f"length {target}: wall={row['wall_seconds']:.4f}s "
-                f"prompt={row['prompt_tokens']}",
+                f"prompt={row['prompt_tokens']} median_of={len(walls)} "
+                f"spread={walls[-1] - walls[0]:.4f}s",
                 flush=True,
             )
         fit = fixed_marginal_fit(scan_rows)
