@@ -942,6 +942,23 @@ measurement, so record it instead of rediscovering it.
    `qwen35_gguf_runner.py:19000`, so sweeping rows (the direct way to separate launch
    overhead from real work, since K3 is 4 rows per lane and C8 is 32) needs the padding
    contract fixed first - see `docs/REFACTOR.md`.
+5. **A profiler-injected tree poisons every compiler probe it spawns.** Under `rocprofv3`, the
+   injected libraries and `ROCPROF_*=1` environment are inherited by children, so even the JIT
+   path's `clang++ --version` probe loads the profiler, deadlocks in `futex_wait` on a control
+   channel whose owner is gone, and never exits. Measured on this host 2026-08-30: **77 orphaned
+   `clang++ --version` processes**, ages 11 to 46 days, states `SN`/`S<`, ppid 1 (about 1.7 per day
+   over 46 days). Six sampled across that range were identical: 15 profiler libraries in
+   `/proc/<pid>/maps`, `ROCPROF_KERNEL_TRACE=1` in `/proc/<pid>/environ`, `wchan=futex_wait`; one
+   also held an `anon_inode:kfd_smi_ev` fd, which is why `rocm-smi --showpids` lists a `clang++` as
+   a GPU process. The parents are gone because they were killed mid-profile - an interrupted
+   profile is what strands the child. Consequences: a live waiter on that probe hangs forever with
+   the GPU idle, which looks exactly like the stale-JIT-cache symptom above and is a second,
+   different cause of it; and the leftovers pollute the SMI pid table. The AGENTS rule - prebuild
+   the `.so` and pass a precomputed compiler-version file with `require_cached` instead of letting
+   the profiled process spawn `hipcc`/`clang` - is what avoids it; a permanent fix is for the probe
+   in the JIT build path to refuse to spawn when `ROCPROF_*`/`ROCT_*` is in the environment and use
+   the cached file instead. Stranding is host-wide, not MTP-specific, so clean up outside a
+   profiling session rather than during one.
 
 For the server matrix itself: `gguf_mtp_c1c8_server_bench.py` accepts neither
 `--require-mtp`, `--tag` nor `--max-run-seconds`, and its `--model` default is
