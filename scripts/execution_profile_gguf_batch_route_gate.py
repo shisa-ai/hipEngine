@@ -8,6 +8,15 @@ candidate environment overrides. Both profiles exercise sparse physical-c8
 masks and exact candidate repeats. The capture is numerical and transition
 evidence only: it does not fabricate full control telemetry, task verdicts, or
 a runtime-resolved production-profile manifest.
+
+``--packed-prefill-candidate`` changes only the *candidate's* prompt admission:
+the group enters through packed multi-request prefill instead of one session at
+a time. That route persists ``segmented_in_place_final_state`` while the strict
+teacher persists per-token-exact state, so the prefill calibration drops from
+byte-exact logits to token equality and every decode-step KL/top-1 threshold
+still applies unchanged. The artifact records
+``packed_prefill_candidate`` so a run can never be read as the canonical
+serial-admission protocol.
 """
 
 from __future__ import annotations
@@ -337,7 +346,39 @@ def _prefill_group(
     strict: Mapping[str, Sequence[Mapping[str, object]]],
     *,
     gdn_mode: str,
+    packed_candidate: bool = False,
 ) -> None:
+    """Admit the group's prompts and calibrate against the strict trajectory.
+
+    Serial admission requires byte-exact prefill logits. ``packed_candidate``
+    admits the whole group through ``prefill_batch_native`` on ``sessions[0]`` and
+    can therefore only require *token* equality: the packed route persists
+    ``segmented_in_place_final_state`` while the strict teacher persists
+    per-token-exact state, so their prefill outputs differ by reassociation near
+    one BF16 ulp (see the 2026-08-30 packed-prefill state gate entry). Numeric
+    judgment stays with the unchanged decode-step profile comparison. The packed
+    candidate deliberately keeps the package-default GDN route -- the arithmetic
+    production serving uses -- instead of the strict mode the teacher has.
+    """
+
+    if packed_candidate:
+        for session in sessions:
+            session.reset()
+        prompts = [
+            [int(token) for token in prompt_tokens[str(row["id"])]] for row in prompt_rows
+        ]
+        results = sessions[0].prefill_batch_native(prompts, sessions=tuple(sessions))
+        for row, result in zip(prompt_rows, results, strict=True):
+            prompt_id = str(row["id"])
+            if result is None:
+                raise CalibrationError(f"packed prefill returned no probe for {prompt_id}")
+            expected = strict[prompt_id][0]
+            if int(result.token_id) != int(expected["token_id"]):
+                raise CalibrationError(
+                    f"packed prefill token drift for {prompt_id}: "
+                    f"candidate={result.token_id}, strict={expected['token_id']}"
+                )
+        return
     for session, row in zip(sessions, prompt_rows, strict=True):
         session.reset()
         prompt_id = str(row["id"])
@@ -371,10 +412,18 @@ def _run_static_group(
     repeat_runs: int,
     gdn_mode: str,
     route_profile: str,
+    packed_candidate: bool = False,
 ) -> list[list[tuple[dict[str, object], ...]]]:
     all_runs: list[list[tuple[dict[str, object], ...]]] = []
     for _ in range(int(repeat_runs)):
-        _prefill_group(sessions, prompt_rows, prompt_tokens, strict, gdn_mode=gdn_mode)
+        _prefill_group(
+            sessions,
+            prompt_rows,
+            prompt_tokens,
+            strict,
+            gdn_mode=gdn_mode,
+            packed_candidate=packed_candidate,
+        )
         trajectories: list[list[dict[str, object]]] = [[] for _ in prompt_rows]
         with _candidate_route_policy(route_profile):
             for step in range(int(decode_steps)):
@@ -420,6 +469,7 @@ def _run_dynamic(
     repeat_runs: int,
     gdn_mode: str,
     route_profile: str,
+    packed_candidate: bool = False,
 ) -> tuple[
     list[dict[int, tuple[dict[str, object], ...]]],
     dict[int, tuple[str, ...]],
@@ -430,7 +480,14 @@ def _run_dynamic(
     shapes: dict[int, list[str]] = {index: [] for index in range(8)}
     transitions: dict[int, list[str]] = {index: [] for index in range(8)}
     for repeat_index in range(int(repeat_runs)):
-        _prefill_group(sessions, prompt_rows, prompt_tokens, strict, gdn_mode=gdn_mode)
+        _prefill_group(
+            sessions,
+            prompt_rows,
+            prompt_tokens,
+            strict,
+            gdn_mode=gdn_mode,
+            packed_candidate=packed_candidate,
+        )
         trajectories: dict[int, list[dict[str, object]]] = {index: [] for index in range(8)}
         with _candidate_route_policy(route_profile):
             for step in range(int(decode_steps)):
@@ -483,11 +540,19 @@ def _run_sparse_c8(
     repeat_runs: int,
     gdn_mode: str,
     route_profile: str,
+    packed_candidate: bool = False,
 ) -> list[list[tuple[dict[str, object], ...]]]:
     active_slots = (0, 2, 5, 7)
     all_runs: list[list[tuple[dict[str, object], ...]]] = []
     for _ in range(int(repeat_runs)):
-        _prefill_group(sessions, prompt_rows, prompt_tokens, strict, gdn_mode=gdn_mode)
+        _prefill_group(
+            sessions,
+            prompt_rows,
+            prompt_tokens,
+            strict,
+            gdn_mode=gdn_mode,
+            packed_candidate=packed_candidate,
+        )
         trajectories: list[list[dict[str, object]]] = [[] for _ in prompt_rows]
         with _candidate_route_policy(route_profile):
             for step in range(int(decode_steps)):
@@ -663,6 +728,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                     repeat_runs=int(args.repeat_runs),
                     gdn_mode=str(args.gdn_mode),
                     route_profile=route_profile,
+                    packed_candidate=bool(args.packed_prefill_candidate),
                 )
                 for row_index, row in enumerate(actual):
                     prompt_id = str(row["id"])
@@ -692,6 +758,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 repeat_runs=int(args.repeat_runs),
                 gdn_mode=str(args.gdn_mode),
                 route_profile=route_profile,
+                packed_candidate=bool(args.packed_prefill_candidate),
             )
             for index, row in enumerate(dynamic_rows):
                 length = len(runs[0][index])
@@ -723,6 +790,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 repeat_runs=int(args.repeat_runs),
                 gdn_mode=str(args.gdn_mode),
                 route_profile=route_profile,
+                packed_candidate=bool(args.packed_prefill_candidate),
             )
             for index, row in enumerate(sparse_rows):
                 prompt_id = str(row["id"])
@@ -889,6 +957,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "complete_prompt_and_heldout_suite": complete_suite,
             "prompt_count": len(prompt_rows),
             "decode_steps": int(args.decode_steps),
+            "packed_prefill_candidate": bool(args.packed_prefill_candidate),
             "candidate_repeat_runs": int(args.repeat_runs),
             "static_widths": list(widths),
             "dynamic_schedule": [list(value) for value in schedule] if args.dynamic else [],
@@ -933,6 +1002,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=ROUTE_PROFILE_Q8T16,
     )
     parser.add_argument("--widths", default="4,8")
+    parser.add_argument(
+        "--packed-prefill-candidate",
+        action="store_true",
+        help=(
+            "admit candidate prompts through packed multi-request prefill instead of one"
+            " session at a time; relaxes the prefill calibration from byte-exact logits to"
+            " token equality (the routes persist different final-state arithmetic) and"
+            " leaves the decode-step profile comparison unchanged"
+        ),
+    )
     parser.add_argument("--decode-steps", type=int, default=24)
     parser.add_argument("--repeat-runs", type=int, default=3)
     parser.add_argument("--dynamic", action=argparse.BooleanOptionalAction, default=True)

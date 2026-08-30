@@ -1,0 +1,892 @@
+{
+  "candidate_logits_sha256": "1ae944e9f3d9c63333a9dd0d1677b8b4c5591cdeb1c43cbdb365b8fb9263f399",
+  "created_at": "2026-08-30T01:06:48.426887+00:00",
+  "execution_manifests": [
+    {
+      "active_mask": [
+        true,
+        true,
+        true
+      ],
+      "active_rows": 3,
+      "active_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 1,
+        "device_to_device_state_import_copies": 384,
+        "device_to_device_state_scatter_copies": 384,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 12,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 3,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 24,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 0,
+        "host_to_device_metadata_copies": 0,
+        "host_to_device_total_bytes": 24,
+        "host_to_device_total_copies": 1
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 2979840,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            64,
+            74,
+            71
+          ],
+          "row_positions": 3
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 3
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 3,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "linear_state_storage": "packed_workspace",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "device_prepare_persistent",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 3,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 3,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "state_import_slots": 3,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        true,
+        true
+      ],
+      "active_rows": 3,
+      "active_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 1,
+        "device_to_device_state_import_copies": 384,
+        "device_to_device_state_scatter_copies": 384,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 12,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 3,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 24,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 0,
+        "host_to_device_metadata_copies": 0,
+        "host_to_device_total_bytes": 24,
+        "host_to_device_total_copies": 1
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 2979840,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            76,
+            74,
+            71
+          ],
+          "row_positions": 3
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 3
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 3,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "linear_state_storage": "packed_workspace",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "device_prepare_persistent",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 3,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 3,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        1,
+        2
+      ],
+      "state_import_slots": 3,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    },
+    {
+      "active_mask": [
+        true,
+        false,
+        true,
+        false,
+        false,
+        true,
+        false,
+        true
+      ],
+      "active_rows": 4,
+      "active_slot_indices": [
+        0,
+        2,
+        5,
+        7
+      ],
+      "claim_level": "exact_hybrid",
+      "full_attention_decode_path": "kv_live_spans_batch",
+      "gdn_recurrent_decode_path": "segments",
+      "host_device_movement": {
+        "device_metadata_prepare_launches": 0,
+        "device_to_device_state_import_copies": 512,
+        "device_to_device_state_scatter_copies": 512,
+        "device_to_host_scalar_copies": 0,
+        "device_to_host_vector_bytes": 32,
+        "device_to_host_vector_copies": 1,
+        "device_to_host_vector_values": 8,
+        "diagnostic_layer_capture_device_to_host_copies": 0,
+        "host_to_device_input_bytes": 64,
+        "host_to_device_input_copies": 1,
+        "host_to_device_metadata_bytes": 376,
+        "host_to_device_metadata_copies": 8,
+        "host_to_device_total_bytes": 440,
+        "host_to_device_total_copies": 9
+      },
+      "host_logits_d2h": true,
+      "host_logits_d2h_bytes": 7946240,
+      "kind": "gguf_packed_ar_execution_manifest",
+      "layer_families": {
+        "conv_gdn": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "conv_decode_indexed",
+            "gdn_recurrent_decode_segments_fp32_out"
+          ]
+        },
+        "full_attention": {
+          "decode_path": "kv_live_spans_batch",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "kv_abi": "KVLiveSpans",
+          "layer_invocations": 16,
+          "live_counts": [
+            64,
+            0,
+            74,
+            0,
+            0,
+            71,
+            0,
+            76
+          ],
+          "row_positions": 8
+        },
+        "lm_head": {
+          "decode_path": "q6_rowtile_f32_logits",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "full_vocab_host_readback": false,
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1,
+          "output_rows": 8
+        },
+        "moe_ffn": {
+          "decode_path": "dense_ffn_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "lane_to_row": "selected_lane // top_k",
+          "layer_invocations": 64,
+          "router_rows": 8,
+          "selected_lanes": 0,
+          "top_k": 0
+        },
+        "normalization": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "packed_layer_and_output_norms",
+            "linear_attention_attn_norm"
+          ]
+        },
+        "projection": {
+          "exact_row_local_kernel_launches": 0,
+          "exact_row_local_work": [],
+          "execution": "packed_native",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "packed_native_work": [
+            "embedding",
+            "full_attention_qkv_o",
+            "moe_selected_and_shared_projections",
+            "linear_attention_qkv_gate",
+            "linear_attention_alpha",
+            "linear_attention_beta",
+            "linear_attention_ssm_out_fp32_input"
+          ]
+        },
+        "sampler": {
+          "decode_path": "argmax_i32_rows",
+          "device_result": "argmax_i32_rows",
+          "exact_row_local_kernel_launches": 0,
+          "execution": "packed_native",
+          "host_readback": "one_i32_vector",
+          "host_row_iterations": 0,
+          "host_row_loop_sites": 0,
+          "layer_invocations": 1
+        }
+      },
+      "layers": {
+        "full_attention": 16,
+        "linear_attention": 48,
+        "total": 64
+      },
+      "linear_attention_decode_path": "indexed_batch",
+      "linear_state_storage": "packed_workspace",
+      "lm_head_decode_path": "q6_rowtile_f32_logits",
+      "metadata_prepare_path": "host_upload",
+      "mode": "decode",
+      "model_step": {
+        "complete_c1_layer_replays": 0,
+        "complete_c1_session_replays": 0,
+        "expected_exact_row_local_kernel_launches": 0,
+        "host_model_row_iterations": 0,
+        "host_model_row_loop_sites": 0,
+        "per_row_model_subgraph_invocations": 0
+      },
+      "moe_decode_path": "dense_ffn_rows",
+      "physical_rows": 8,
+      "profiler_contract": {
+        "expected_exact_row_local_kernel_launches": 0,
+        "expected_execution_buckets": [
+          "packed_native"
+        ],
+        "require_cached_build": true
+      },
+      "rows": 8,
+      "sampler_decode_path": "argmax_i32_rows",
+      "scalar_fallbacks": 0,
+      "scatter_state": true,
+      "schema": 1,
+      "state_import_slot_indices": [
+        0,
+        2,
+        5,
+        7
+      ],
+      "state_import_slots": 4,
+      "steady_packed_state_reused": false,
+      "synchronizations": 2
+    }
+  ],
+  "historical_source": {
+    "kind": "gfx1151_gguf_f3_q8t16_rowtile_rejected",
+    "label_does_not_affect_fresh_verdict": true,
+    "path": "benchmarks/results/2026-07-19-gfx1151-gguf-f3-q8t16-rowtile-rejected.json",
+    "sha256": "5a695a060a337bb7af11deffdfed2186787b7285c3215bb77156942d4c2dea7d",
+    "status": "rejected_trajectory_regression"
+  },
+  "kind": "hipengine_execution_profile_gguf_batch_route_requalification_capture",
+  "measurement_valid": false,
+  "performance_claim": false,
+  "profile_qualification_claim": false,
+  "prompts": [
+    {
+      "category": "code",
+      "id": "code_merge_intervals",
+      "prompt_sha256": "7224cb33532a875c51134b2ca48c2700328ea39faa156e462cda0b29ef1594d6",
+      "prompt_tokens": 40,
+      "suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "code",
+      "id": "code_topological_sort",
+      "prompt_sha256": "ab59c0e49ca4fb4ee3959f1201611bc03be53b10864cd95e29fe6738de9f609b",
+      "prompt_tokens": 50,
+      "suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "code",
+      "id": "code_lru_cache",
+      "prompt_sha256": "8d53303f99803bea6cbbe7436bc9776e923f9ddad67ef9f01141fa94ca800cf8",
+      "prompt_tokens": 47,
+      "suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    },
+    {
+      "category": "code",
+      "id": "code_markdown_table",
+      "prompt_sha256": "1148ced7b14c4f3a0763f0776b8fde37d70320bd372b2f48b7142a91ec18ffb9",
+      "prompt_tokens": 52,
+      "suite": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl"
+    }
+  ],
+  "protocol": {
+    "candidate_repeat_runs": 3,
+    "complete_prompt_and_heldout_suite": false,
+    "decode_steps": 24,
+    "dynamic_schedule": [
+      [
+        0,
+        7
+      ],
+      [
+        6,
+        6
+      ],
+      [
+        12,
+        5
+      ],
+      [
+        18,
+        3
+      ]
+    ],
+    "packed_prefill_candidate": true,
+    "prompt_count": 4,
+    "prompt_suites": [
+      "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+    ],
+    "route_profile": "current_package_direct",
+    "same_context_rule": "every batch row consumes its independent strict-c1 teacher token",
+    "sparse_physical_c8_active_slots": [
+      0,
+      2,
+      5,
+      7
+    ],
+    "static_widths": [
+      3
+    ],
+    "strict_gdn_mode": "chain_lds32_direct_nonvolatile",
+    "teacher_forced_rows": 192,
+    "thresholds_evaluated": {
+      "max_kl_max": 0.05,
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "per_scope_top1_min": 0.97,
+      "review_kl": 0.02,
+      "top1_min": 0.99
+    }
+  },
+  "provenance": {
+    "build_profile": "execution_profile_gguf_direct_width_batch_requalification",
+    "collected_at": "2026-08-30T01:06:48.426622+00:00",
+    "command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "scripts/execution_profile_gguf_batch_route_gate.py",
+      "--model",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--route-profile",
+      "current_package_direct",
+      "--packed-prefill-candidate",
+      "--limit",
+      "4",
+      "--widths",
+      "3",
+      "--repeat-runs",
+      "3",
+      "--compiler-version-file",
+      "/tmp/compiler-version-gfx1100.txt",
+      "--json",
+      "/tmp/he-profile-packed-c3.json"
+    ],
+    "configured_backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "dirty": true,
+    "environment": {
+      "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": null,
+      "HIPENGINE_GGUF_ROUTER_F32W_COOP": null,
+      "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER": null,
+      "HIPENGINE_HIP_ARCH": null,
+      "HIP_VISIBLE_DEVICES": "0"
+    },
+    "git_branch": "campaign/gfx1100-mtp-cn-promotion",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "hipengine_commit": "c543b9e805b69a6df4e5eed87bfdd6b32ab97a5c",
+    "host_name": "epyc",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8552862704,
+        17105725408
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 17106773984,
+      "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+    },
+    "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": {
+      "command": null,
+      "enabled": false,
+      "kind": null
+    },
+    "quant": "gguf_q4_k_m",
+    "repetitions": 3,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "resolved_backend": "hip_gfx1100",
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "schema_version": 2,
+    "staged_dirty": false,
+    "target_arch": "gfx1100",
+    "timing_protocol": "none_full_logits_only_v1",
+    "unstaged_dirty": true,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 0
+  },
+  "qualification_blockers": [
+    "route manifest is evidentiary and not runtime-profile resolved",
+    "adapter does not emit the complete exact control-plane record schema",
+    "fresh task and BF16-relative verdicts are not available"
+  ],
+  "quality": {
+    "by_scope": {
+      "category": {
+        "code": {
+          "candidate_teacher_nll_mean": 0.044061229811494844,
+          "kl_max": 0.0007697675064248563,
+          "kl_mean": 3.065967671000028e-05,
+          "kl_p50": 1.347246032226198e-07,
+          "kl_p95": 0.00020552183922715165,
+          "kl_p99": 0.0004478265581156049,
+          "max_abs_logit_delta": 0.5106668472290039,
+          "passed": true,
+          "rows": 192,
+          "strict_margin_min": 0.46836280822753906,
+          "strict_teacher_nll_mean": 0.04401170041495678,
+          "teacher_delta_p_mean": -4.2268415341205116e-05,
+          "teacher_nll_delta": 4.952939653806582e-05,
+          "top1_agreement": 1.0,
+          "top1_matches": 192,
+          "topk_overlap_mean": 0.9854166666666667
+        }
+      },
+      "shape": {
+        "c3": {
+          "candidate_teacher_nll_mean": 0.044061229811494844,
+          "kl_max": 0.0007697675064248563,
+          "kl_mean": 3.065967671000028e-05,
+          "kl_p50": 1.347246032226198e-07,
+          "kl_p95": 0.00019422377662069434,
+          "kl_p99": 0.0004336753076404707,
+          "max_abs_logit_delta": 0.5106668472290039,
+          "passed": true,
+          "rows": 96,
+          "strict_margin_min": 0.46836280822753906,
+          "strict_teacher_nll_mean": 0.04401170041495678,
+          "teacher_delta_p_mean": -4.2268415341205116e-05,
+          "teacher_nll_delta": 4.952939653806582e-05,
+          "top1_agreement": 1.0,
+          "top1_matches": 96,
+          "topk_overlap_mean": 0.9854166666666667
+        },
+        "c8_sparse4": {
+          "candidate_teacher_nll_mean": 0.044061229811494844,
+          "kl_max": 0.0007697675064248563,
+          "kl_mean": 3.065967671000028e-05,
+          "kl_p50": 1.347246032226198e-07,
+          "kl_p95": 0.00019422377662069434,
+          "kl_p99": 0.0004336753076404707,
+          "max_abs_logit_delta": 0.5106668472290039,
+          "passed": true,
+          "rows": 96,
+          "strict_margin_min": 0.46836280822753906,
+          "strict_teacher_nll_mean": 0.04401170041495678,
+          "teacher_delta_p_mean": -4.2268415341205116e-05,
+          "teacher_nll_delta": 4.952939653806582e-05,
+          "top1_agreement": 1.0,
+          "top1_matches": 96,
+          "topk_overlap_mean": 0.9854166666666667
+        }
+      },
+      "transition": {
+        "sparse_steady": {
+          "candidate_teacher_nll_mean": 0.044061229811494844,
+          "kl_max": 0.0007697675064248563,
+          "kl_mean": 3.065967671000028e-05,
+          "kl_p50": 1.347246032226198e-07,
+          "kl_p95": 0.00019422377662069434,
+          "kl_p99": 0.0004336753076404707,
+          "max_abs_logit_delta": 0.5106668472290039,
+          "passed": true,
+          "rows": 96,
+          "strict_margin_min": 0.46836280822753906,
+          "strict_teacher_nll_mean": 0.04401170041495678,
+          "teacher_delta_p_mean": -4.2268415341205116e-05,
+          "teacher_nll_delta": 4.952939653806582e-05,
+          "top1_agreement": 1.0,
+          "top1_matches": 96,
+          "topk_overlap_mean": 0.9854166666666667
+        },
+        "steady": {
+          "candidate_teacher_nll_mean": 0.044061229811494844,
+          "kl_max": 0.0007697675064248563,
+          "kl_mean": 3.065967671000028e-05,
+          "kl_p50": 1.347246032226198e-07,
+          "kl_p95": 0.00019422377662069434,
+          "kl_p99": 0.0004336753076404707,
+          "max_abs_logit_delta": 0.5106668472290039,
+          "passed": true,
+          "rows": 96,
+          "strict_margin_min": 0.46836280822753906,
+          "strict_teacher_nll_mean": 0.04401170041495678,
+          "teacher_delta_p_mean": -4.2268415341205116e-05,
+          "teacher_nll_delta": 4.952939653806582e-05,
+          "top1_agreement": 1.0,
+          "top1_matches": 96,
+          "topk_overlap_mean": 0.9854166666666667
+        }
+      }
+    },
+    "eligible_for_automatic_admission": true,
+    "finite": true,
+    "hard_gates_passed": true,
+    "requires_outlier_review": false,
+    "rows_over_review_boundary": [],
+    "scope_failures": [],
+    "summary": {
+      "candidate_teacher_nll_mean": 0.044061229811494844,
+      "kl_max": 0.0007697675064248563,
+      "kl_mean": 3.065967671000028e-05,
+      "kl_p50": 1.347246032226198e-07,
+      "kl_p95": 0.00020552183922715165,
+      "kl_p99": 0.0004478265581156049,
+      "max_abs_logit_delta": 0.5106668472290039,
+      "rows": 192,
+      "strict_margin_min": 0.46836280822753906,
+      "strict_teacher_nll_mean": 0.04401170041495678,
+      "teacher_delta_p_mean": -4.2268415341205116e-05,
+      "teacher_nll_delta": 4.952939653806582e-05,
+      "top1_agreement": 1.0,
+      "top1_matches": 192,
+      "topk_overlap_mean": 0.9854166666666667
+    },
+    "thresholds": {
+      "max_kl_max": 0.05,
+      "mean_kl_max": 0.001,
+      "p95_kl_max": 0.005,
+      "p99_kl_max": 0.02,
+      "per_scope_top1_min": 0.97,
+      "review_kl": 0.02,
+      "top1_min": 0.99
+    },
+    "top1_mismatch_rows": [],
+    "top_k": 5
+  },
+  "repeat_determinism": {
+    "mismatches": [],
+    "passed": true,
+    "runs": 3,
+    "trajectory_sha256_by_capture": [
+      [
+        "8c0774c63b05d9ebf166aa4455c208665050a4fe1444af912e8f3d1e33e6d4ee",
+        "8c0774c63b05d9ebf166aa4455c208665050a4fe1444af912e8f3d1e33e6d4ee",
+        "8c0774c63b05d9ebf166aa4455c208665050a4fe1444af912e8f3d1e33e6d4ee"
+      ],
+      [
+        "b93dbd3a5352c0c035c522a687cd7c1d73dc9c8d5363b53b310da8f098b3a084",
+        "b93dbd3a5352c0c035c522a687cd7c1d73dc9c8d5363b53b310da8f098b3a084",
+        "b93dbd3a5352c0c035c522a687cd7c1d73dc9c8d5363b53b310da8f098b3a084"
+      ],
+      [
+        "9c73962ef6a00d5c1968f18231cb7e51fac0ac438bbb8479a0144ec083b1db3f",
+        "9c73962ef6a00d5c1968f18231cb7e51fac0ac438bbb8479a0144ec083b1db3f",
+        "9c73962ef6a00d5c1968f18231cb7e51fac0ac438bbb8479a0144ec083b1db3f"
+      ],
+      [
+        "5dbc5ce2c6969e2399c98105bc4babc11846192fe7c75acda32524242738231e",
+        "5dbc5ce2c6969e2399c98105bc4babc11846192fe7c75acda32524242738231e",
+        "5dbc5ce2c6969e2399c98105bc4babc11846192fe7c75acda32524242738231e"
+      ],
+      [
+        "8c0774c63b05d9ebf166aa4455c208665050a4fe1444af912e8f3d1e33e6d4ee",
+        "8c0774c63b05d9ebf166aa4455c208665050a4fe1444af912e8f3d1e33e6d4ee",
+        "8c0774c63b05d9ebf166aa4455c208665050a4fe1444af912e8f3d1e33e6d4ee"
+      ],
+      [
+        "b93dbd3a5352c0c035c522a687cd7c1d73dc9c8d5363b53b310da8f098b3a084",
+        "b93dbd3a5352c0c035c522a687cd7c1d73dc9c8d5363b53b310da8f098b3a084",
+        "b93dbd3a5352c0c035c522a687cd7c1d73dc9c8d5363b53b310da8f098b3a084"
+      ],
+      [
+        "9c73962ef6a00d5c1968f18231cb7e51fac0ac438bbb8479a0144ec083b1db3f",
+        "9c73962ef6a00d5c1968f18231cb7e51fac0ac438bbb8479a0144ec083b1db3f",
+        "9c73962ef6a00d5c1968f18231cb7e51fac0ac438bbb8479a0144ec083b1db3f"
+      ],
+      [
+        "5dbc5ce2c6969e2399c98105bc4babc11846192fe7c75acda32524242738231e",
+        "5dbc5ce2c6969e2399c98105bc4babc11846192fe7c75acda32524242738231e",
+        "5dbc5ce2c6969e2399c98105bc4babc11846192fe7c75acda32524242738231e"
+      ]
+    ]
+  },
+  "route": {
+    "candidate_environment": {
+      "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": "unset: current package default",
+      "HIPENGINE_GGUF_ROUTER_F32W_COOP": "unset: current package default",
+      "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER": "unset: current package default"
+    },
+    "candidate_variants": {
+      "source": "current_package_execution_manifests"
+    },
+    "package_min_rows_capability": "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",
+    "package_min_rows_verified": 0,
+    "package_value_verified": false,
+    "policy_capability": "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
+    "policy_restored_after_capture": true,
+    "route_profile": "current_package_direct",
+    "router_candidate_included": false,
+    "strict_environment": {
+      "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL": "0"
+    },
+    "strict_variants": {
+      "c1_c2_c4": {
+        "pair": "t16_dual_gemv_decode_bf16_bf16_out",
+        "single": "t16_gemv_decode_bf16_bf16_out",
+        "triple": "t16_triple_gemv_decode_bf16_bf16_out"
+      },
+      "c8": {
+        "pair": "t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out",
+        "single": "t16_gemv_decode_bf16_bf16_out",
+        "triple": "t16_triple_gemv_decode_bf16_bf16_out"
+      }
+    }
+  },
+  "schema_version": 1,
+  "status": "invalid_or_screen_only",
+  "strict_logits_sha256": "caba048f9289437f225eca506a731a48fb71dd2357359b64e9ac8729dd850695",
+  "strict_selected_token_ids_sha256": "49a4e2ae59d70007b20816de991ad4ff7c06fc5744b7cae98495825993cba730"
+}
