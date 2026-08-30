@@ -627,6 +627,26 @@ drifts across 1579 recorded `scripts/*.py` commands, which is not a fixable back
 problems owned by another lane are listed in the tool's `EXCEPTIONS` with dates and reasons,
 never rewritten, and a stale exception fails the gate by itself.
 
+### C1-C8 Server Harness: Exit Code Is a Verdict, Not a Write Receipt
+
+`scripts/gguf_mtp_c1c8_server_bench.py` returns `0 if payload["passed"] else 1`.
+`passed` is the packet's own expectation gate (declared MTP widths engaged,
+content-exactness, acceptance), so a nonzero exit is normal for a packet that
+is complete and readable; `$?` is not a write receipt. A driver that treats
+exit status as "no data" silently throws away measured rows, and a driver that
+ignores it can publish a packet whose declared expectations were violated.
+Read `status`, `passed`, and the cells, and keep the signals separate.
+
+Two current default-path traps produce this. `--mtp-request-mode automatic`
+with `--expected-mtp-widths none` yields `status: "failed"` while every cell
+still carries valid AR and MTP rates, because speculation engages above one row
+and violates the "none expected" claim. And forcing `ARMS = ("ar",)` to remove
+speculation aborts before any packet is written, because the AR-vs-MTP
+content-exactness comparison reads the MTP rows unconditionally; use
+`scripts/gguf_c1c8_ar_only_control.py`, which patches the per-request
+speculation flag instead and refuses to run when the harness would not have
+speculated anyway.
+
 ## Human-readable Rollup
 
 `benchmarks/README.md` is the compact current scoreboard. A reader must be able
