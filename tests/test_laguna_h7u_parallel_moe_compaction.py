@@ -58,7 +58,7 @@ _POST_MERGE_SOURCE_SHA256 = {
     # Later Qwen3.8 and execution-profile package policies are orthogonal to
     # H7U's unchanged gfx1151 parallel-compaction owner.
     "hipengine/kernels/hip_gfx1151/__init__.py": (
-        "83383b28d43ca4a139f129274c4a9bcbeeb5c0a080284ed884624e34170179ce"
+        "10a5e6e609135facc96da6271e9e2949db581dd4d6492de7b21eaf76a19d0e37"
     ),
     "hipengine/runtime/laguna_moe.py": (
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"

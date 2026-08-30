@@ -1579,9 +1579,11 @@ GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT = {
 # listed. C3/K1 R6 already fits the exact native Q5/Q6 rowtile scope.
 GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT = {
     "gguf_q5_k_t16_v1": frozenset({9, 12}),
-    # M1 single-group wide verify engages the logical R20-R32 chunk classes.
-    "gguf_q6_k_t16_v1": frozenset({9, 12, 16, 20, 24, 28, 32}),
-    "gguf_q6_k_t16_qmicro_planar_v1": frozenset({9, 12, 16, 20, 24, 28, 32}),
+    # M1 measured the R20-R32 chunk classes under the single-group wide cycle;
+    # they stay unengaged at the certified width-4 default and return when a
+    # profile re-lists a bound >= 5.
+    "gguf_q6_k_t16_v1": frozenset({9, 12, 16}),
+    "gguf_q6_k_t16_qmicro_planar_v1": frozenset({9, 12, 16}),
 }
 # E2 standard-Q6 true-R12: exact one-sweep col8 wins its actual K5120/N10240
 # target shape. Planar K5120/N1024 and K17408/N5120 lose their all-shape leaf
@@ -1748,11 +1750,14 @@ GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8
 # promotion remains independently gated by each phase's correctness and
 # complete-wall packet. These capabilities expose adapters and AR fallback only.
 GGUF_SPECDEC2_MTP2_C1 = True
-# Production scaling-campaign M1 admits one physical cycle through C8/R32;
-# strict and any unlisted profile retain the certified width-4 partition as
-# the registered strict fallback.
+# Scaling-campaign M1 measured the production single-group wide cycle (bound 8)
+# exact at 80/80 with unchanged acceptance, but C6-C8 regressed versus the
+# two-subgroup default because rows>16 target verification falls to direct
+# Q6-planar/Q4-selected owners and the single accept interval scales with
+# width (see the M1 blocker artifact). Production retains the certified
+# width-4 default; an admitted profile re-lists its bound to lift the cap.
 GGUF_SPECDEC2_MTP2_PHYSICAL = True
-GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS = {"production": 8}
+GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS: dict[str, int] = {}
 # E1a/E7 admit the exact shifted prompt-streaming path for measured Qwen3.8
 # standard-Q4 production physical-C2/C3 groups. C4 changed acceptance and is
 # rejected; strict C1, other models/quants/profiles, and peers retain replay.

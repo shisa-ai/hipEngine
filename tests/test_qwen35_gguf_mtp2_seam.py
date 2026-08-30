@@ -109,7 +109,7 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
         "hip_gfx1151",
         "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS",
         {},
-    ) == {"production": 8}
+    ) == {}
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_C1", False
     ) is True
@@ -188,31 +188,53 @@ def _width_bound_owner(*, profile: str, capacity: int) -> SimpleNamespace:
 
 
 def test_physical_width_bound_is_package_owned_and_capacity_clamped() -> None:
-    production = Qwen35GGUFMTP2Adapter(
+    import hipengine.generation.qwen35_gguf_mtp2 as module
+
+    # Certified default: an empty package table resolves every profile to the
+    # width-4 boundary, capacity-clamped.
+    default_adapter = Qwen35GGUFMTP2Adapter(
         _width_bound_owner(profile="production", capacity=8),
         enabled=True,
         target_verify_mode="packed",
         candidate_budget=3,
     )
-    assert production.physical_max_requests == 8
-    assert production._max_physical_requests() == 8
+    assert default_adapter.physical_max_requests == 4
+    assert default_adapter._max_physical_requests() == 4
 
-    clamped = Qwen35GGUFMTP2Adapter(
-        _width_bound_owner(profile="production", capacity=5),
-        enabled=True,
-        target_verify_mode="packed",
-        candidate_budget=3,
-    )
-    assert clamped._max_physical_requests() == 5
+    real = module.backend_package_capability
 
-    strict = Qwen35GGUFMTP2Adapter(
-        _width_bound_owner(profile="strict", capacity=8),
-        enabled=True,
-        target_verify_mode="packed",
-        candidate_budget=3,
-    )
-    assert strict.physical_max_requests == 4
-    assert strict._max_physical_requests() == 4
+    def fake(backend: str, name: str, default: object = None) -> object:
+        if name == "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS":
+            return {"production": 8}
+        return real(backend, name, default)
+
+    module.backend_package_capability = fake
+    try:
+        lifted = Qwen35GGUFMTP2Adapter(
+            _width_bound_owner(profile="production", capacity=8),
+            enabled=True,
+            target_verify_mode="packed",
+            candidate_budget=3,
+        )
+        assert lifted.physical_max_requests == 8
+        assert lifted._max_physical_requests() == 8
+        clamped = Qwen35GGUFMTP2Adapter(
+            _width_bound_owner(profile="production", capacity=5),
+            enabled=True,
+            target_verify_mode="packed",
+            candidate_budget=3,
+        )
+        assert clamped._max_physical_requests() == 5
+        strict = Qwen35GGUFMTP2Adapter(
+            _width_bound_owner(profile="strict", capacity=8),
+            enabled=True,
+            target_verify_mode="packed",
+            candidate_budget=3,
+        )
+        assert strict.physical_max_requests == 4
+        assert strict._max_physical_requests() == 4
+    finally:
+        module.backend_package_capability = real
 
 
 @pytest.mark.parametrize("table", ["nope", {"production": 0}, {"production": None}])
@@ -238,6 +260,34 @@ def test_physical_width_bound_misconfiguration_fails_closed(table: object) -> No
             )
     finally:
         module.backend_package_capability = real
+
+
+def test_physical_width_bound_admits_wide_groups_when_listed() -> None:
+    # M1 mechanism check: a package-listed bound of 8 admits one 8-request
+    # group (capacity-clamped) while the bound-4 default partitions.
+    import hipengine.generation.qwen35_gguf_mtp2 as module
+
+    real = module.backend_package_capability
+
+    def fake(backend: str, name: str, default: object = None) -> object:
+        if name == "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS":
+            return {"production": 8}
+        return real(backend, name, default)
+
+    module.backend_package_capability = fake
+    try:
+        adapter = Qwen35GGUFMTP2Adapter(
+            _width_bound_owner(profile="production", capacity=8),
+            enabled=True,
+            target_verify_mode="packed",
+            candidate_budget=3,
+        )
+    finally:
+        module.backend_package_capability = real
+    assert adapter._max_physical_requests() == 8
+    max_requests = adapter._max_physical_requests()
+    max_rows = max_requests * (adapter.candidate_budget + 1)
+    assert (max_requests, max_rows) == (8, 32)
 
 
 def test_unregistered_model_plugin_mtp2_adapter_fails_closed() -> None:
