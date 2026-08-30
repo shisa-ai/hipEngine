@@ -1,5 +1,20 @@
 # hipEngine Benchmark Changelog
 
+- **2026-08-30** — W7900 Qwen3.8 `Q4_K_M` **single-wave owns the (5120, 17408) dense prefill band rows 2-128;
+  sub-window win, no published row replaced** — the owner kernel is launched on a `4*4*16 = 256` row tile, so
+  rows 2-256 all pay one 256-row tile (0.630 ms at 6 rows vs 1.081 ms at 256, stepping up again at 257), and
+  the registered single-wave leaf is **bit-identical (ULP 0)** and **1.43x-1.04x faster** across rows 2-128
+  (1.30x at row 35, 1.14x at 67, then 0.87x at 144 and 0.75x at 256, which sets the band). First-token A/B on
+  the same build, same host, same 35-row prompt: **252.56→233.29 ms (-7.75%, ~19.6 ms/request)**. The retained
+  24-token packet passed **80/80 exact** and moved explicit **K3 up at all eight widths
+  (+0.06%…+2.59%**, e.g. 31.455→**31.918** at C1, 39.820→**40.852** at C2) while AR stayed inside the
+  documented drift band (mean +1.2%). The published prefill row did **not** move in a same-session pair
+  (lane-weighted 312.193→315.330, **+1.0%**, per-cell ±8-16%): that metric's mean wave wall is **0.641 s**
+  against the engine's own **0.233 s** prefill wall, so ~0.4 s of non-kernel admission cost per cell dominates
+  it, and the **149.072 tok/s C1 row is left unchanged**. Retained as a measured sub-window win with shared-B
+  as the strict sibling and `HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS=0` as the bisection switch. Artifact:
+  [`single-wave prefill band`](results/2026-08-30-w7900-q4km-t16-single-wave-rows-accepted.json).
+
 - **2026-08-30** — W7900 Qwen3.8 `Q4_K_M` pack8 **dual-WMMA+SiLU prefill owner rejected at the exact suite
   rows, no row change** — the registered-but-undeclared `pack8_dual_wmma_prefill_bf16_bf16_out` owner (the
   only remaining task-#12 prefill hypothesis, and the one gfx1151 declares at row 512) was measured against
