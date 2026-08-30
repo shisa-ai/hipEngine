@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-30**
+Last updated: **2026-08-31**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -80,8 +80,8 @@ Each value is the total tokens per second across all active requests:
 | --- | ---: | ---: |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — strict C1 MTP-3 automatic | **18.191 tok/s** | **1.6445x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2 MTP-3 explicit diagnostic | **25.749 tok/s** | **1.4316x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C3 MTP-3 explicit diagnostic | **29.564 tok/s** | **1.2297x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2 MTP-3 explicit diagnostic | **28.125 tok/s** | **1.553x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C3 MTP-3 explicit diagnostic | **30.537 tok/s** | **1.270x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
 ### RTX PRO 6000 Blackwell (`sm_120a`)
@@ -99,13 +99,15 @@ W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE K2 and 27B dense K3;
 other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
 
 Strix Halo Qwen3.8 `Q4_K_M` keeps strict C1/K3 automatic at **18.191 tok/s
-(1.6445x AR)**. Production C2/C3 diagnostics reach **25.749/29.564 tok/s**
-(1.4316x/1.2297x AR); C3 is 7.45% above its frozen external row. Exact Q5
-true-R16 then lifts C4 to **29.493 tok/s (0.9737x AR)** and C5-C8 to
-**18.708/28.255/29.527/29.504 tok/s**. C2-C8 remain automatic K0 pending their
-width-specific performance and serving
+(1.6445x AR)**. Production C2/C3 diagnostics reach **28.125/30.537 tok/s**
+(1.553x/1.270x AR). The scaling-campaign M2j owner promotion (bit-exact
+low-VGPR/shared-B2W2 siblings at physical Q4 rows2-16) lifts production C1 to
+**13.759 tok/s (1.237x AR)**, C4 to **34.201 tok/s (1.138x AR; 1.1% short of
+its 34.596 gate)**, and C5-C8 to **26.059/31.885/32.395/33.491 tok/s**. C2-C8
+remain automatic K0 pending their width-specific performance and serving
 gates. [`C3/C4`](../docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md) ·
-[`C4-C8`](results/2026-08-30-gfx1151-qwen38-mtp-q5-r16-retained.json)
+[`M2j`](results/2026-08-31-gfx1151-qwen38-mtp-q4-verify-owner-retained.json) ·
+[`C4-C8 history`](results/2026-08-30-gfx1151-qwen38-mtp-q5-r16-retained.json)
 
 The final same-host standard-`Q4_K_M` six-engine refresh has hipEngine leading
 AR C3-C8 and MTP C3-C4; external engines lead prefill C1-C8, AR C1-C2, and MTP

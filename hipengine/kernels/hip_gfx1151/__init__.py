@@ -111,10 +111,22 @@ def gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
     row_count = int(rows)
     shape = (int(in_features), int(out_features))
     if (
-        row_count in GGUF_Q4_T16_PHYSICAL_SMALLM_ROWS
+        row_count <= GGUF_Q4_T16_PHYSICAL_SMALLM_MAX_ROWS
         and shape in GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES
     ):
-        fn = gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out
+        # Scaling-campaign M2j (2026-08-31 rows2-20 sibling screens, all six
+        # physical shapes, bit-exact vs shared-B): the 16-column low-VGPR
+        # owner beats the one-row-tile smallm at every physical verify row
+        # (1.19-1.65x at rows2-16), and the 32-thread shared-B sibling beats
+        # even low-VGPR on the N5120 down-projection (0.716-0.727 ms vs
+        # 0.772-0.775 ms). The former smallm band {6,8,12,16} is superseded
+        # here; the smallm launcher stays registered under its explicit
+        # variant for inventory and rollback.
+        fn = (
+            gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out
+            if shape == (17_408, 5_120)
+            else gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+        )
     elif (
         17 <= row_count <= GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
         and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
@@ -1409,6 +1421,10 @@ GGUF_DENSE_Q5_T16_QKV = True
 # Narrow K/V K5120/N1024 loses to shared-B and remains on that fallback; all
 # peer backends, rows, and shape misses retain their source registrations.
 GGUF_Q4_T16_PHYSICAL_SMALLM_ROWS = frozenset({6, 8, 12, 16})
+# Supersession bound (scaling-campaign M2j): physical rows at or below this
+# ceiling route to the measured low-VGPR/shared-B2W2 siblings below instead of
+# the one-row-tile smallm owner. The smallm launcher remains registered.
+GGUF_Q4_T16_PHYSICAL_SMALLM_MAX_ROWS = 16
 GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES = frozenset(
     {
         (5_120, 6_144),
@@ -2937,6 +2953,7 @@ __all__ = [
     "GGUF_Q4_K_M_PREFILL_DECODE_POLICY",
     "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",
     "GGUF_Q4_T16_PHYSICAL_SMALLM_ROWS",
+    "GGUF_Q4_T16_PHYSICAL_SMALLM_MAX_ROWS",
     "GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES",
     "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
