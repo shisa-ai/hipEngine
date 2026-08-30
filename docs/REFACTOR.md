@@ -4736,3 +4736,29 @@ open on 2026-08-30. Fix: have the harness submit a real prompt long enough to fi
 (`--prompt-ids` sized to `block_rows + prompt`), or give `verify()` an explicit padding token
 it accepts. Also consider a `--roctx-sdk auto` that degrades to plain kernel tracing when no
 pip ROCm SDK exists - see the profiling traps section in `docs/KERNELS.md`.
+
+## gfx1100 prefill route booleans are duplicated and inert-by-pooling (2026-08-30)
+
+### Resolved 2026-08-30: the branch is live, this section's premise is superseded
+
+The claim above ("no backend package declares it, so the branch is dead today") is no longer true.
+`hipengine/kernels/hip_gfx1100/__init__.py:593` now declares `GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8`
+and exports it at :959, shipped by `72a29e9ad` ("perf: ship grouped prefill on gfx1100, C8 AR
+45.68 -> 78.67"). The equal-length requirement described above is what that work replaced: the
+route now groups the compatible subset instead of refusing the whole wave, and the effect is
+observable, not inferred - `native_full_prefill_groups` is exactly 0 at C1 and 39-56 per prompt at
+C4 / 151-176 at C8 (min-max over 10 prompts), in
+`benchmarks/results/2026-08-30-w7900-q4km-c1c8-grouped-prefill-promotion.json`. What still stands
+from this section: the mixed-length case is handled by subsetting, so a wave of all-different
+lengths still yields many one-row groups - 6-9% of decode steps at each width run below the logical
+width - and that residue is what still has no owner.
+
+`hipengine/generation/qwen35_gguf.py:214-215` defines `_GGUF_PUBLIC_USE_WMMA_PREFILL = True` and
+`_GGUF_PUBLIC_USE_GEMV_DECODE = True` as defaults for `_resident_session_scope`, but 11 call sites
+pass `use_wmma_prefill=True` literally, including the warmup pools that create the sessions the AR
+route later reuses. Measured consequence: flipping the public default changes nothing observable -
+two probe arms gave 0.2950 s vs 0.2956 s at 42 tokens and 0.7115 s vs 0.7121 s at 285 - because the
+measured session is the pooled one, constructed from a literal `True`. Two follow-ups: delete the
+booleans and keep one route owner, or route every call site through the single default. Until then,
+any experiment that toggles prefill route by the public default is silently vacuous, which is how
+this nearly got reported as "GEMV prefill is neutral".
