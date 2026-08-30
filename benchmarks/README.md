@@ -103,9 +103,10 @@ Strix Halo Qwen3.8 `Q4_K_M` keeps strict C1/K3 automatic at **18.191 tok/s
 M3 width-1 prompt-streaming policy;
 production
 C2/C3 diagnostics reach **28.121/30.499 tok/s** (1.540x/1.295x AR). The M2j owner promotion (bit-exact
-low-VGPR/shared-B2W2 siblings at physical Q4 rows2-16) lifts C4 to
-**34.182 tok/s (1.118x AR; 1.2% short of its 34.596 gate)** and C5-C8 to
-**27.298/31.884/32.390/33.595 tok/s**. C2-C8 remain automatic K0 pending
+low-VGPR/shared-B2W2 siblings at physical Q4 rows2-16) and the M4 width-4
+streaming promotion lift C4 to
+**35.618 tok/s (1.178x AR, gate 34.596 PASS)** and C5-C8 to
+**28.012/32.743/33.143/35.495 tok/s**. C2-C8 remain automatic K0 pending
 width-specific serving gates. [`C3/C4`](../docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md) ·
 [`M3 C1`](results/2026-08-31-gfx1151-qwen38-mtp-c1-streaming-width1-retained.json) ·
 [`M2j`](results/2026-08-31-gfx1151-qwen38-mtp-q4-verify-owner-retained.json) ·

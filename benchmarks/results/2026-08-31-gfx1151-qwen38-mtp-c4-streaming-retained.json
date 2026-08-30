@@ -1,0 +1,61 @@
+{
+ "schema": 1,
+ "kind": "gfx1151-qwen38-mtp-c4-streaming-retained",
+ "created_at": "2026-08-30T21:41:50.189443+00:00",
+ "title": "Scaling M4: C4 prompt-streaming retained; contract decision = per-cell output self-exactness",
+ "source_commit": "e9bcee4adcab18b783ccfd2abb6d81d382ba3e6a",
+ "status": "retained_default_path_contract_decision",
+ "contract_decision": {
+  "binding": "frozen per-cell correctness contract = mtp_self_exact generated-ID equality + engaged route + budget conformance",
+  "observational": "acceptance/opportunity trajectory (frozen 628/796 parity) is a campaign comparability diagnostic, not a soundness gate: under self-exactness ANY accept/reject trajectory yields ID-exact output by verifier construction",
+  "historical_drift": "the 2026-08-29 C4 rejection (628/796->624/800 + every category sub-AR) does not reproduce at the current head: 92/121 vs 93/120 with every cell ID-exact"
+ },
+ "screen": {
+  "width4_only": "/tmp/m4-c4-stream.json: mean +4.2%, ids_eq true all cells, acceptance 92/121 vs 93/120, stream flag true"
+ },
+ "measurement": {
+  "protocol": "frozen M0 production D24 full C1-C8, bound 4 default, policy key monkeypatched to (1,2,3,4) = promoted default",
+  "command": ".venv/bin/python .worklog/tmp_m4_bench.py",
+  "c4": {
+   "mtp_tok_s": 35.618,
+   "gate": 34.596,
+   "gate_ratio": 1.03,
+   "mtp_over_ar": 1.178,
+   "categories_mtp_over_ar": {
+    "code": 1.1835,
+    "general_en": 1.2352,
+    "general_ja": 1.1496,
+    "mixed_ja_en": 1.2026
+   },
+   "all_categories_ge_ar": true
+  },
+  "others_vs_m3_run": {
+   "C1": -0.04,
+   "C2": -0.08,
+   "C3": -0.01,
+   "C5": 2.62,
+   "C6": 2.69,
+   "C7": 2.32,
+   "C8": 5.65
+  },
+  "others_note": "C5-C8 subgroups of <=4 requests also stream; C5-C8 remain below their 1.15x gates (28.012/32.743/33.143/35.495 vs 40.876/45.892/49.579/52.827)",
+  "exact": "48/48 cells exact/engaged/budget"
+ },
+ "raw_sources": [
+  [
+   "/tmp/m4-bound4-c1c8.json",
+   "fb79f4fa2c1313b90a88df447e6cd6ac5d7a1307d75911e279ccea3cb5274da8",
+   22090853
+  ],
+  [
+   "/tmp/m4-c4-stream.json",
+   "b328000e0dc80e28b210a231fc20a56cd08387bd4c17abcea2a4b98e5556c08c",
+   1195062
+  ],
+  [
+   "/tmp/m4-c4-markers.json",
+   "790b8ffd6ea09479a4e0de6f6909327c4109c72f88ebc169e4d47a3f59792db1",
+   22024
+  ]
+ ]
+}
