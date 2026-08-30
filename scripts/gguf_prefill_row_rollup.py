@@ -67,6 +67,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("packet", type=Path)
     ap.add_argument("--prior", type=Path, default=None)
+    ap.add_argument("--strict-prior", action="store_true",
+                    help="refuse instead of warning when the prior packet is not complete")
+    ap.add_argument("--prior-config-changed", action="store_true",
+                    help="the prior packet differs by configuration, so report the "
+                         "delta as an effect size and skip the drift-band check")
     args = ap.parse_args(argv)
 
     packet = json.loads(Path(args.packet).read_text(encoding="utf-8"))
@@ -80,6 +85,24 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     current = _rows(packet)
+
+    if args.prior is not None:
+        prior_packet = json.loads(Path(args.prior).read_text(encoding="utf-8"))
+        pstatus, ppassed = prior_packet.get("status"), prior_packet.get("passed")
+        if pstatus != "complete" or not ppassed:
+            # An engagement-expectation failure (an arm that was asked to engage MTP and
+            # was not asked to) still holds valid AR walls, so this is not automatically
+            # unusable - but a comparison against it is one-sided and must be quoted as
+            # such, which is why it is stated instead of silently accepted.
+            line = (
+                f"prior packet reports status={pstatus!r} passed={ppassed!r}; "
+                "the comparison is one-sided, so quote the band as directional unless the "
+                "failure is only an engagement expectation"
+            )
+            if args.strict_prior:
+                print(f"REFUSING: {line}", file=sys.stderr)
+                return 2
+            print(f"WARNING: {line}", file=sys.stderr)
     prior = _rows(json.loads(Path(args.prior).read_text(encoding="utf-8"))) if args.prior else {}
     cells = ["| hipEngine prefill "]
     for width in range(1, 9):
@@ -90,8 +113,9 @@ def main(argv: list[str] | None = None) -> int:
         cells.append(f"**{value:.3f}** |" if value >= max(PUBLISHED_PEER_PREFILL[width]) else f"{value:.3f} |")
     print(" ".join(cells))
     print()
+    prior_label = "d vs prior" if args.prior_config_changed else "vs prior"
     print(f"{'C':>2} {'hipEngine':>9} {'current':>8} {'laurent':>8} {'vs cur':>7} "
-          f"{'vs prior':>9}")
+          f"{prior_label:>10}")
     for width in range(1, 9):
         value = current[width]
         peer_cur, peer_lau = PUBLISHED_PEER_PREFILL[width]
@@ -100,6 +124,12 @@ def main(argv: list[str] | None = None) -> int:
               f"{value / peer_cur:6.2f}x {drift:>9}")
     if prior:
         spread = max(abs(current[w] / prior[w] - 1) for w in current if w in prior) * 100
+        if args.prior_config_changed:
+            # An A/B pair is a configuration change, so the number is an effect size and
+            # the same-protocol drift band says nothing about it.
+            print(f"\nmax delta vs prior packet: {spread:.2f}% (different configuration; "
+                  f"this is an effect size, not drift)")
+            return 0
         print(f"\nmax cross-session spread vs prior packet: {spread:.2f}%")
         if spread > 2.0:
             print("WARNING: spread exceeds the ~1% same-protocol band; do not publish "

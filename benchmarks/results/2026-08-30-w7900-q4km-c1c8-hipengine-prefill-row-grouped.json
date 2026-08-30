@@ -49,6 +49,7 @@
  "platform": "W7900 (gfx1100, RDNA3)",
  "protocol": "one-token packet, 10 prompts x C1-C8, prompt tokens admitted per second summed over the 10 cells",
  "schema": "hipengine.benchmark.artifact.v1",
+ "source_command": "scripts/gguf_prefill_row_rollup.py /tmp/he-d1-cap8/he-d1-cap8.json --prior /tmp/he-d1v3/he-d1v3.json --prior-config-changed",
  "source_packet": "/tmp/he-d1-cap8/he-d1-cap8.json",
  "vs_current": {
   "1": 0.742,
