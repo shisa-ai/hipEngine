@@ -152,7 +152,15 @@ at C4 and 1.14x at C7, still 0.73x-0.97x elsewhere because grouping only admits
 whole prompts (`chunk == row.prompt_ids`) and does not overlap waves. It is
 non-monotone in width (C4 > C5, C7 > C8) and is reported as measured. Two
 independent *ungrouped* one-token packets agree within 0.41% at every width; the
-grouped row is a different configuration, not a repeat.
+grouped row is a different configuration, not a repeat. Two cautions on the hipEngine
+rows. The K3 arm is forced: with `--mtp-request-mode automatic` on this host and model
+MTP is declined at **every** width (0/80 cells engaged, 0 accepted draft tokens), for
+`artifact_not_qualified` at C1, `resident_capacity_not_qualified` at C2 and
+`physical_group_not_qualified` at C3-C8, so what ships today is AR at all eight widths
+and the K3 row measures the engine, not the product. And AR carries a paired
+cross-session band: 80 cells matched prompt-to-prompt across two packets move a median
+**1.5%**, width medians sit near **+1%** except **C5 at +11.9%**, so only deltas well
+above that are reads. [`automatic route gating`](results/2026-08-30-w7900-q4km-automatic-mtp-route-gating.json)
 [`W7900 matrix`](results/2026-08-30-w7900-qwen38-q4km-c1c8-cross-engine.json) ·
 [`hipEngine refresh + submodules`](results/2026-08-30-w7900-q4km-c1c8-hipengine-refresh-post-promotions.json) ·
 [`prefill row`](results/2026-08-30-w7900-q4km-c1c8-hipengine-prefill-row.json) ·

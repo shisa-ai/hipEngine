@@ -4712,3 +4712,14 @@ collapse every delta onto one arm, and it produced a now-corrected claim that MT
 reaches the packed route. Preferred fix still stands: have the bench snapshot counters
 before and after each cell and store the delta next to the cumulative value, so
 attribution does not depend on reconstructing execution order.
+
+The **automatic MTP route is gated off** on gfx1100 / Qwen3.8 `Q4_K_M`, measured 2026-08-30:
+with `--mtp-request-mode automatic` no cell engages (0/80, zero accepted draft tokens),
+declining with `artifact_not_qualified` at C1, `resident_capacity_not_qualified` at C2 and
+`physical_group_not_qualified` at C3-C8. Consequence: the published explicit-K3 row is an
+engine ranking, and the product ships AR at all eight widths on this host. Un-sequencing
+this needs each gate qualified separately - they are three different qualification
+predicates, not one switch - and it is the reason the C5-C8 "AR beats our own K3" question
+has no user-facing urgency: there is no automatic K3 to displace yet. Until then do not
+read the K3 row as shipping behaviour. Removing this note = the automatic route engages at
+some width with acceptance counters proving it.

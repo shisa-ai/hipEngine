@@ -1,0 +1,65 @@
+{
+ "ar_paired_band_vs_explicit_packet": {
+  "median_abs_pct_per_cell": 1.54,
+  "median_pct_by_width": {
+   "1": 0.99,
+   "2": 1.47,
+   "3": 1.32,
+   "4": 1.03,
+   "5": 11.89,
+   "6": 0.47,
+   "7": 0.32,
+   "8": 0.12
+  },
+  "note": "C5 median is +11.89%, an order of magnitude above the other widths, so single-packet AR deltas under ~12% at C5 are not evidence",
+  "paired_cells": 80
+ },
+ "date": "2026-08-30",
+ "decline_reasons_by_width": {
+  "1": [
+   "artifact_not_qualified"
+  ],
+  "2": [
+   "resident_capacity_not_qualified"
+  ],
+  "3": [
+   "physical_group_not_qualified"
+  ],
+  "4": [
+   "physical_group_not_qualified"
+  ],
+  "5": [
+   "physical_group_not_qualified"
+  ],
+  "6": [
+   "physical_group_not_qualified"
+  ],
+  "7": [
+   "physical_group_not_qualified"
+  ],
+  "8": [
+   "physical_group_not_qualified"
+  ]
+ },
+ "explicit_arm_reference": {
+  "acceptance": 0.7889,
+  "accepted": 5652,
+  "drafted": 7164
+ },
+ "finding": "--mtp-request-mode automatic declines speculative decoding at every width on this host and model",
+ "kind": "w7900-q4km-automatic-mtp-route-gating",
+ "model": "Qwen3.8-27B Q4_K_M (GGUF)",
+ "packet": {
+  "accepted_draft_tokens_total": 0,
+  "cells": 80,
+  "cells_with_mtp_engaged": 0,
+  "elapsed_seconds": 383.9,
+  "mtp_request_mode": "automatic",
+  "server_mtp_mode": "auto",
+  "status": "failed"
+ },
+ "platform": "W7900 (gfx1100, RDNA3)",
+ "reference_packet": "/tmp/he-c1c8-cap8/c1c8-cap8.json",
+ "schema": "hipengine.benchmark.artifact.v1",
+ "source_packet": "/tmp/he-c1c8-auto/c1c8-auto.json"
+}
