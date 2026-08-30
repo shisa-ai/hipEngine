@@ -1,0 +1,558 @@
+{
+ "ar": {
+  "engines": {
+   "current": {
+    "1": {
+     "admission_ms": 223.4435,
+     "admission_ms_per_lane": 223.4435,
+     "decode_step_ms": 38.328244,
+     "decode_tok_s_aggregate": 26.09042,
+     "long_wall_ms": 1104.9931,
+     "published_long_tok_s": 21.719593
+    },
+    "2": {
+     "admission_ms": 374.7004,
+     "admission_ms_per_lane": 187.3502,
+     "decode_step_ms": 42.596484,
+     "decode_tok_s_aggregate": 46.952232,
+     "long_wall_ms": 1354.4196,
+     "published_long_tok_s": 35.439535
+    },
+    "3": {
+     "admission_ms": 520.0043,
+     "admission_ms_per_lane": 173.3348,
+     "decode_step_ms": 79.070135,
+     "decode_tok_s_aggregate": 37.941,
+     "long_wall_ms": 2338.6174,
+     "published_long_tok_s": 30.787421
+    },
+    "4": {
+     "admission_ms": 637.2685,
+     "admission_ms_per_lane": 159.3171,
+     "decode_step_ms": 122.652296,
+     "decode_tok_s_aggregate": 32.612516,
+     "long_wall_ms": 3458.2713,
+     "published_long_tok_s": 27.759534
+    },
+    "5": {
+     "admission_ms": 694.9533,
+     "admission_ms_per_lane": 138.9907,
+     "decode_step_ms": 113.158746,
+     "decode_tok_s_aggregate": 44.185714,
+     "long_wall_ms": 3297.6045,
+     "published_long_tok_s": 36.390053
+    },
+    "6": {
+     "admission_ms": 735.6369,
+     "admission_ms_per_lane": 122.6062,
+     "decode_step_ms": 105.530001,
+     "decode_tok_s_aggregate": 56.85587,
+     "long_wall_ms": 3162.827,
+     "published_long_tok_s": 45.52889
+    },
+    "7": {
+     "admission_ms": 839.9098,
+     "admission_ms_per_lane": 119.9871,
+     "decode_step_ms": 104.18189,
+     "decode_tok_s_aggregate": 67.19018,
+     "long_wall_ms": 3236.0932,
+     "published_long_tok_s": 51.91445
+    },
+    "8": {
+     "admission_ms": 847.0269,
+     "admission_ms_per_lane": 105.8784,
+     "decode_step_ms": 105.279107,
+     "decode_tok_s_aggregate": 75.988486,
+     "long_wall_ms": 3268.4463,
+     "published_long_tok_s": 58.743507
+    }
+   },
+   "hipengine": {
+    "1": {
+     "admission_ms": 302.3522,
+     "admission_ms_per_lane": 302.3522,
+     "decode_step_ms": 34.083903,
+     "decode_tok_s_aggregate": 29.339363,
+     "long_wall_ms": 1086.282,
+     "published_long_tok_s": 22.093711
+    },
+    "2": {
+     "admission_ms": 584.4706,
+     "admission_ms_per_lane": 292.2353,
+     "decode_step_ms": 42.254888,
+     "decode_tok_s_aggregate": 47.331803,
+     "long_wall_ms": 1556.3331,
+     "published_long_tok_s": 30.841728
+    },
+    "3": {
+     "admission_ms": 877.215,
+     "admission_ms_per_lane": 292.405,
+     "decode_step_ms": 47.992005,
+     "decode_tok_s_aggregate": 62.510412,
+     "long_wall_ms": 1981.0311,
+     "published_long_tok_s": 36.34471
+    },
+    "4": {
+     "admission_ms": 1172.4044,
+     "admission_ms_per_lane": 293.1011,
+     "decode_step_ms": 53.091036,
+     "decode_tok_s_aggregate": 75.342286,
+     "long_wall_ms": 2393.4983,
+     "published_long_tok_s": 40.108657
+    },
+    "5": {
+     "admission_ms": 1457.1804,
+     "admission_ms_per_lane": 291.4361,
+     "decode_step_ms": 60.429028,
+     "decode_tok_s_aggregate": 82.741692,
+     "long_wall_ms": 2847.048,
+     "published_long_tok_s": 42.14892
+    },
+    "6": {
+     "admission_ms": 1746.4293,
+     "admission_ms_per_lane": 291.0715,
+     "decode_step_ms": 67.050136,
+     "decode_tok_s_aggregate": 89.485277,
+     "long_wall_ms": 3288.5824,
+     "published_long_tok_s": 43.787864
+    },
+    "7": {
+     "admission_ms": 2033.334,
+     "admission_ms_per_lane": 290.4763,
+     "decode_step_ms": 75.008093,
+     "decode_tok_s_aggregate": 93.323263,
+     "long_wall_ms": 3758.5201,
+     "published_long_tok_s": 44.698444
+    },
+    "8": {
+     "admission_ms": 2320.7488,
+     "admission_ms_per_lane": 290.0936,
+     "decode_step_ms": 81.934033,
+     "decode_tok_s_aggregate": 97.639524,
+     "long_wall_ms": 4205.2315,
+     "published_long_tok_s": 45.657415
+    }
+   },
+   "laurent": {
+    "1": {
+     "admission_ms": 229.3118,
+     "admission_ms_per_lane": 229.3118,
+     "decode_step_ms": 38.646852,
+     "decode_tok_s_aggregate": 25.875329,
+     "long_wall_ms": 1118.1894,
+     "published_long_tok_s": 21.463269
+    },
+    "2": {
+     "admission_ms": 388.2288,
+     "admission_ms_per_lane": 194.1144,
+     "decode_step_ms": 42.578077,
+     "decode_tok_s_aggregate": 46.972531,
+     "long_wall_ms": 1367.5246,
+     "published_long_tok_s": 35.099918
+    },
+    "3": {
+     "admission_ms": 532.6357,
+     "admission_ms_per_lane": 177.5452,
+     "decode_step_ms": 79.026059,
+     "decode_tok_s_aggregate": 37.962161,
+     "long_wall_ms": 2350.2351,
+     "published_long_tok_s": 30.635233
+    },
+    "4": {
+     "admission_ms": 654.2326,
+     "admission_ms_per_lane": 163.5582,
+     "decode_step_ms": 122.419787,
+     "decode_tok_s_aggregate": 32.674456,
+     "long_wall_ms": 3469.8877,
+     "published_long_tok_s": 27.666601
+    },
+    "5": {
+     "admission_ms": 710.0632,
+     "admission_ms_per_lane": 142.0126,
+     "decode_step_ms": 112.176116,
+     "decode_tok_s_aggregate": 44.572768,
+     "long_wall_ms": 3290.1139,
+     "published_long_tok_s": 36.472902
+    },
+    "6": {
+     "admission_ms": 752.402,
+     "admission_ms_per_lane": 125.4003,
+     "decode_step_ms": 103.910697,
+     "decode_tok_s_aggregate": 57.74189,
+     "long_wall_ms": 3142.348,
+     "published_long_tok_s": 45.825605
+    },
+    "7": {
+     "admission_ms": 853.7599,
+     "admission_ms_per_lane": 121.9657,
+     "decode_step_ms": 101.912502,
+     "decode_tok_s_aggregate": 68.686372,
+     "long_wall_ms": 3197.7475,
+     "published_long_tok_s": 52.536982
+    },
+    "8": {
+     "admission_ms": 846.7665,
+     "admission_ms_per_lane": 105.8458,
+     "decode_step_ms": 103.842457,
+     "decode_tok_s_aggregate": 77.03978,
+     "long_wall_ms": 3235.143,
+     "published_long_tok_s": 59.348227
+    }
+   }
+  },
+  "winners": {
+   "admission_ms": {
+    "1": "current",
+    "2": "current",
+    "3": "current",
+    "4": "current",
+    "5": "current",
+    "6": "current",
+    "7": "current",
+    "8": "laurent"
+   },
+   "admission_ms_per_lane": {
+    "1": "current",
+    "2": "current",
+    "3": "current",
+    "4": "current",
+    "5": "current",
+    "6": "current",
+    "7": "current",
+    "8": "laurent"
+   },
+   "decode_step_ms": {
+    "1": "hipengine",
+    "2": "hipengine",
+    "3": "hipengine",
+    "4": "hipengine",
+    "5": "hipengine",
+    "6": "hipengine",
+    "7": "hipengine",
+    "8": "hipengine"
+   },
+   "decode_tok_s_aggregate": {
+    "1": "hipengine",
+    "2": "hipengine",
+    "3": "hipengine",
+    "4": "hipengine",
+    "5": "hipengine",
+    "6": "hipengine",
+    "7": "hipengine",
+    "8": "hipengine"
+   },
+   "long_tok_s_admission_removed": {
+    "1": "hipengine",
+    "2": "hipengine",
+    "3": "hipengine",
+    "4": "hipengine",
+    "5": "hipengine",
+    "6": "hipengine",
+    "7": "hipengine",
+    "8": "hipengine"
+   },
+   "published_long_tok_s": {
+    "1": "hipengine",
+    "2": "current",
+    "3": "hipengine",
+    "4": "hipengine",
+    "5": "hipengine",
+    "6": "laurent",
+    "7": "laurent",
+    "8": "laurent"
+   }
+  }
+ },
+ "command": "scripts/gguf_engine_submodule_decomposition.py --arm {ar,mtp} --arm-d1 \"prefill,ar\" --engine hipengine=hipengine:<d1>:<k3> --engine current=llamacpp:<peer>:<peer> --engine laurent=llamacpp:<peer>:<peer>",
+ "date": "2026-08-30",
+ "findings": [
+  "AR decode is faster than both peers at all eight widths (34.1 vs 38.3 ms/step at C1; 81.9 vs 105.3 at C8).",
+  "AR admission is slower than the peers at C1-C7 and slower than laurent at C8: it scales 302.4 -> 2320.7 ms across C1-C8 (7.68x) while llama.cpp current scales 223.4 -> 847.0 (3.79x), because our admission does not overlap requests.",
+  "Every AR row we lose is admission: the whole C8 gap is admission delta while decode is ahead by 23.4 ms/step.",
+  "On the K3 MTP arm our C8 admission (2311.9 ms) exceeds the peer entire 24-token C8 wall (2026.7 ms current, 1899.6 ms laurent).",
+  "Two separate MTP defects set our MTP flat at ~31 tok/s: MTP cycles do not pack across lanes (flat ~85-107 ms per lane-cycle, so a wave cycle costs 107 ms at C1 and 680 ms at C8), and the native GPU-accept path loses ~40% of accepted drafts at width >= 2 (per prompt 0.65-1.00 at C1 vs 0.30-0.69 at C4, with C4 identical to C8 for all ten prompts). See worklog entry 20260830T025717.533327Z-lhl-w7900-mtp-accept-width-invariance-break-f7c44a.md."
+ ],
+ "hardware": {
+  "gpu": "AMD Radeon Pro W7900 (gfx1100/RDNA3)",
+  "host_role": "default development host"
+ },
+ "inputs": {
+  "hipengine_admission": "/tmp/he-d1-clean/he-d1-clean.json (verdict failed only because a one-token arm cannot engage K3; AR walls content-exact, 10/10 cells)",
+  "hipengine_long": "/tmp/he-c1c8-k3/c1c8-k3-packet.json (status complete, 80/80 engaged, budget-conformed, exact)",
+  "peers_ar": "/tmp/qwen38-w7900-{current,laurent}-c1c8-ar-prefill.json (arms: prefill n_predict=1, ar n_predict=24)",
+  "peers_mtp": "/tmp/qwen38-w7900-{current,laurent}-c1c8-mtp.json (single arm, n_predict=24)"
+ },
+ "kind": "w7900_q4km_c1c8_submodule_decomposition",
+ "limitations": [
+  "peer MTP packets carry only the 24-token arm, so peer admission/decode cannot be split on arm=mtp; peer decode_step_ms 0 and decode_tok_s_aggregate null mean NOT COMPUTABLE, not free",
+  "hipEngine admission here is the one-token arm wall per lane, which is prefill-bound (measured GPU busy 287.0 ms vs 295 ms wall at 45 rows)"
+ ],
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "mtp": {
+  "engines": {
+   "current": {
+    "1": {
+     "admission_ms": 737.2546,
+     "admission_ms_per_lane": 737.2546,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 737.2546,
+     "published_long_tok_s": 32.553206
+    },
+    "2": {
+     "admission_ms": 1169.5432,
+     "admission_ms_per_lane": 584.7716,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 1169.5432,
+     "published_long_tok_s": 41.041664
+    },
+    "3": {
+     "admission_ms": 1588.5567,
+     "admission_ms_per_lane": 529.5189,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 1588.5567,
+     "published_long_tok_s": 45.324162
+    },
+    "4": {
+     "admission_ms": 1920.896,
+     "admission_ms_per_lane": 480.224,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 1920.896,
+     "published_long_tok_s": 49.976677
+    },
+    "5": {
+     "admission_ms": 2011.9436,
+     "admission_ms_per_lane": 402.3887,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 2011.9436,
+     "published_long_tok_s": 59.643818
+    },
+    "6": {
+     "admission_ms": 1994.6095,
+     "admission_ms_per_lane": 332.4349,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 1994.6095,
+     "published_long_tok_s": 72.194583
+    },
+    "7": {
+     "admission_ms": 2229.4814,
+     "admission_ms_per_lane": 318.4973,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 2229.4814,
+     "published_long_tok_s": 75.353846
+    },
+    "8": {
+     "admission_ms": 2026.7151,
+     "admission_ms_per_lane": 253.3394,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 2026.7151,
+     "published_long_tok_s": 94.734578
+    }
+   },
+   "hipengine": {
+    "1": {
+     "admission_ms": 302.9343,
+     "admission_ms_per_lane": 302.9343,
+     "decode_step_ms": 19.880664,
+     "decode_tok_s_aggregate": 50.300132,
+     "long_wall_ms": 760.1895,
+     "published_long_tok_s": 31.571074
+    },
+    "2": {
+     "admission_ms": 588.4001,
+     "admission_ms_per_lane": 294.2001,
+     "decode_step_ms": 44.09967,
+     "decode_tok_s_aggregate": 45.351813,
+     "long_wall_ms": 1602.6925,
+     "published_long_tok_s": 29.9496
+    },
+    "3": {
+     "admission_ms": 876.8396,
+     "admission_ms_per_lane": 292.2799,
+     "decode_step_ms": 62.744426,
+     "decode_tok_s_aggregate": 47.813012,
+     "long_wall_ms": 2319.9614,
+     "published_long_tok_s": 31.034999
+    },
+    "4": {
+     "admission_ms": 1176.8126,
+     "admission_ms_per_lane": 294.2032,
+     "decode_step_ms": 81.263896,
+     "decode_tok_s_aggregate": 49.222351,
+     "long_wall_ms": 3045.8822,
+     "published_long_tok_s": 31.517962
+    },
+    "5": {
+     "admission_ms": 1457.5295,
+     "admission_ms_per_lane": 291.5059,
+     "decode_step_ms": 103.279098,
+     "decode_tok_s_aggregate": 48.412507,
+     "long_wall_ms": 3832.9488,
+     "published_long_tok_s": 31.307489
+    },
+    "6": {
+     "admission_ms": 1747.1668,
+     "admission_ms_per_lane": 291.1945,
+     "decode_step_ms": 127.577631,
+     "decode_tok_s_aggregate": 47.030188,
+     "long_wall_ms": 4681.4524,
+     "published_long_tok_s": 30.759685
+    },
+    "7": {
+     "admission_ms": 2031.986,
+     "admission_ms_per_lane": 290.2837,
+     "decode_step_ms": 146.053588,
+     "decode_tok_s_aggregate": 47.927614,
+     "long_wall_ms": 5391.2185,
+     "published_long_tok_s": 31.161786
+    },
+    "8": {
+     "admission_ms": 2311.9097,
+     "admission_ms_per_lane": 288.9887,
+     "decode_step_ms": 164.954805,
+     "decode_tok_s_aggregate": 48.498133,
+     "long_wall_ms": 6105.8702,
+     "published_long_tok_s": 31.445149
+    }
+   },
+   "laurent": {
+    "1": {
+     "admission_ms": 733.2143,
+     "admission_ms_per_lane": 733.2143,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 733.2143,
+     "published_long_tok_s": 32.732588
+    },
+    "2": {
+     "admission_ms": 1176.2477,
+     "admission_ms_per_lane": 588.1239,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 1176.2477,
+     "published_long_tok_s": 40.80773
+    },
+    "3": {
+     "admission_ms": 1567.0074,
+     "admission_ms_per_lane": 522.3358,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 1567.0074,
+     "published_long_tok_s": 45.947453
+    },
+    "4": {
+     "admission_ms": 1880.3556,
+     "admission_ms_per_lane": 470.0889,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 1880.3556,
+     "published_long_tok_s": 51.054173
+    },
+    "5": {
+     "admission_ms": 1966.7805,
+     "admission_ms_per_lane": 393.3561,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 1966.7805,
+     "published_long_tok_s": 61.013418
+    },
+    "6": {
+     "admission_ms": 1929.5817,
+     "admission_ms_per_lane": 321.5969,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 1929.5817,
+     "published_long_tok_s": 74.627575
+    },
+    "7": {
+     "admission_ms": 2146.119,
+     "admission_ms_per_lane": 306.5884,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 2146.119,
+     "published_long_tok_s": 78.28084
+    },
+    "8": {
+     "admission_ms": 1899.6304,
+     "admission_ms_per_lane": 237.4538,
+     "decode_step_ms": 0.0,
+     "decode_tok_s_aggregate": null,
+     "long_wall_ms": 1899.6304,
+     "published_long_tok_s": 101.072291
+    }
+   }
+  },
+  "winners": {
+   "admission_ms": {
+    "1": "hipengine",
+    "2": "hipengine",
+    "3": "hipengine",
+    "4": "hipengine",
+    "5": "hipengine",
+    "6": "hipengine",
+    "7": "hipengine",
+    "8": "laurent"
+   },
+   "admission_ms_per_lane": {
+    "1": "hipengine",
+    "2": "hipengine",
+    "3": "hipengine",
+    "4": "hipengine",
+    "5": "hipengine",
+    "6": "hipengine",
+    "7": "hipengine",
+    "8": "laurent"
+   },
+   "decode_step_ms": {
+    "1": "current",
+    "2": "current",
+    "3": "current",
+    "4": "current",
+    "5": "current",
+    "6": "current",
+    "7": "current",
+    "8": "current"
+   },
+   "decode_tok_s_aggregate": {
+    "1": "hipengine",
+    "2": "hipengine",
+    "3": "hipengine",
+    "4": "hipengine",
+    "5": "hipengine",
+    "6": "hipengine",
+    "7": "hipengine",
+    "8": "hipengine"
+   },
+   "long_tok_s_admission_removed": {
+    "1": "hipengine",
+    "2": "hipengine",
+    "3": "hipengine",
+    "4": "hipengine",
+    "5": "hipengine",
+    "6": "hipengine",
+    "7": "hipengine",
+    "8": "hipengine"
+   },
+   "published_long_tok_s": {
+    "1": "laurent",
+    "2": "current",
+    "3": "laurent",
+    "4": "laurent",
+    "5": "laurent",
+    "6": "laurent",
+    "7": "laurent",
+    "8": "laurent"
+   }
+  }
+ },
+ "protocol": "10 prompts (mtpbench-code-general-ja) x widths 1-8, greedy, production profile; AR arm and explicit K3 MTP arm; one-token arm supplies admission, 24-token arm supplies decode",
+ "quant": "gguf_q4_k_m",
+ "schema": "hipengine.benchmarks.c1c8_submodule_decomposition.v1"
+}
