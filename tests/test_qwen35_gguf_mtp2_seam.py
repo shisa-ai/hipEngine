@@ -2968,3 +2968,75 @@ def test_ngram_target_rows_catch_mtp_up_through_root_and_accepted_prefix() -> No
     assert any(call[:4] == ("one", 10, 102, 7) for call in calls)
     assert rows[10].mtp2_ngram_accepted_tokens == 2
     assert rows[20].mtp2_ngram_accepted_tokens == 0
+
+
+
+
+def _streaming_owner(*, profile: str = "production", widths=None):
+    """Owner double for prompt-streaming resolver tests."""
+
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(
+            backend="hip_gfx1151",
+            execution_profile=profile,
+        ),
+        capacity=4,
+        _shared_runner=SimpleNamespace(
+            weights=SimpleNamespace(
+                geometry=QWEN35_DENSE_H5120_GEOMETRY,
+                file_type_name="MOSTLY_Q4_K_M",
+            ),
+        ),
+    )
+    return owner
+
+
+def test_prompt_streaming_resolver_accepts_width_one_and_rejects_out_of_range(
+    monkeypatch,
+) -> None:
+    """Scaling-campaign M3: the validator admits a registered width-1 policy
+    without broadening the unqualified upper bound; unregistered profiles and
+    models keep the replay route (empty widths)."""
+
+    import hipengine.kernels.hip_gfx1151 as gfx1151
+
+    monkeypatch.setitem(
+        gfx1151.GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES,
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"),
+        (1, 2, 3),
+    )
+    adapter = Qwen35GGUFMTP2Adapter(
+        _streaming_owner(),
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=3,
+    )
+    assert adapter.physical_prompt_streaming_widths == (1, 2, 3)
+    assert adapter._physical_prompt_streaming_admitted(1) is True
+    assert adapter._physical_prompt_streaming_admitted(4) is False
+
+    # Strict profile stays on replay: no strict key is registered.
+    strict = Qwen35GGUFMTP2Adapter(
+        _streaming_owner(profile="strict"),
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=3,
+    )
+    assert strict.physical_prompt_streaming_widths == ()
+    assert strict.physical_prompt_streaming is False
+    assert strict._physical_prompt_streaming_admitted(1) is False
+
+    # Out-of-range registered widths remain a hard error on both ends.
+    for bad in ((0, 2), (2, 5)):
+        monkeypatch.setitem(
+            gfx1151.GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES,
+            (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"),
+            bad,
+        )
+        with pytest.raises(RuntimeError, match=r"within \[1, 4\]"):
+            Qwen35GGUFMTP2Adapter(
+                _streaming_owner(),
+                enabled=True,
+                target_verify_mode="native",
+                candidate_budget=3,
+            )
