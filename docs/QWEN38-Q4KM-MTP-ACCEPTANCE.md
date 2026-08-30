@@ -524,35 +524,26 @@ new cost table.
 
 **Oracle before integration:**
 
-- [ ] Obtain same-model full-suite depth-4 proposal survival under a strict
-      eager/direct diagnostic with the exact raw prompt rendering. This is
-      proposal-quality evidence, not a product speed row.
-- [ ] Measure or tightly bound K4 proposal-depth and physical R15->R16 target
-      cost on the E1/E2 owners.
-- [ ] Compute `visible(K) = 1 + sum_j P(accept through j)` and
+- [x] Obtain same-model full-suite depth-4 proposal survival under a strict
+      eager/direct diagnostic with the exact raw prompt rendering. The exact-
+      raw B3/B4 oracle covers all ten canonical/heldout prompts.
+- [x] Measure the K4 proposal/native-R5 target cost on the current owners. B4
+      raises proposal time 9.95%, cuts target verify 7.26%, and improves visible
+      transitions/cycle 12.70% while reducing cycles 71→63.
+- [x] Compute `visible(K) = 1 + sum_j P(accept through j)` and
       `score(K)=visible(K)/complete_cycle_wall(K)` by full/train/heldout/category.
-      Reject K4 infrastructure if it cannot beat fixed K3 under the measured
-      cost, even at the favorable confidence bound.
+      B4 improves full +4.53% and train +9.63%, but fails heldout -2.81% and
+      general English -9.82%.
 
-If the oracle passes:
+The oracle fails, so the following integration work is explicitly **not
+opened**: Generation-2 B4 adapter/workspace/claim/graph extensions, B1-B4
+transition RED, physical C3 logical-R15/padded-R16 ownership, C3/K4 manifests,
+and the production/serving promotion bundle. Temporary oracle capacity,
+native-R5, and R5 Q4 policy changes are removed.
 
-- [ ] Extend Generation-2 adapter capability beyond `{1,2,3}` without broadening
-      existing C1 graph admission accidentally. Update fixed candidate/result/
-      hidden workspaces, claims, telemetry, graph keys, and teardown.
-- [ ] Add exact B1/B2/B3/B4 transition RED coverage, especially B3<->B4,
-      reject/every partial/full, tails with remaining room 1/B/B+1, cancellation,
-      reset, and subsequent AR/MTP health.
-- [ ] Lower C3/K4 as logical R15 with an explicit R16 physical bucket/padded-row
-      contract. Inactive row state/KV/output must remain untouched and padding
-      cannot enter acceptance denominators.
-- [ ] Register independent strict/production C3/K4 manifests and fail closed on
-      every scope miss.
-- [ ] Run canonical + heldout D24 full-logit gates, three repeats, same-width
-      isolation, lifecycle, and the complete fixed K1/K2/K3/K4 economics table.
-
-No online/adaptive controller is implemented in this campaign. If fixed K4 does
-not win every binding aggregate scope required for its role, fixed K3 remains
-the policy input.
+No online/adaptive controller is implemented in this campaign. Fixed K4 does
+not win every binding aggregate scope, so fixed K3 remains the policy input.
+[`artifact`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-b4-reopen-rejected.json)
 
 ### E4 — residual proposal, provider-update, and host tail (profile-triggered)
 
@@ -686,7 +677,7 @@ These are ordered follow-ons, not assumptions in the primary claim:
 | 1d | Physical-R16 Q5 one-sweep | Q5 R12 predecessor won; R16 parent paid two Python/ctypes launches | closed retained: C4-C8 +4.10% to +7.71% exactly; C4 reaches 0.9737x AR |
 | 1e | Physical-R16 Q4 one-sweep revisit | Q5 proved launch count material, reopening the prior leaf-only stop once | rejected: weighted GPU +55.31% and one-prompt C4 -6.39%; candidate removed |
 | 1f | C4 prompt-prime exactness | prompt prime is 9.08% of child versus 2.63% overall gap | blocked: streaming changes 628/796→624/800; require replay-equivalent shifted state before economics |
-| 2 | Fixed K4 | max zero-cost visible lift 17.54%; external K4 is diagnostic | measured p4/cost score cannot beat fixed K3 |
+| 2 | Fixed K4 / adaptive reopen | native-R5 exact-raw B4: full +4.53%, visible/cycle +12.70% | rejected: heldout -2.81%, general English -9.82%; adaptive not opened |
 | 3 | NextN norm/concat/Q4 residual | E0 Q4 NextN work is 12.75 ms/cycle at C3/K3 after the head | < material refreshed Amdahl share or compound-only idea |
 | 4 | Provider update/selected commit | unprofiled telemetry currently single-digit ms/cycle | <=5% refreshed wall or P7 already owns best path |
 | 5 | Graph/submission/overlap | steady trace uncovered about 10 ms target wall | no trace-proven slack; kernel work still dominates |

@@ -218,9 +218,11 @@ capacity/dynamic-lifecycle blockers.
 > rather than AR. The survey also records that hipEngine AR is at **parity**
 > with stock llama.cpp on the identical quant (12.332 vs 12.27 tok/s), that
 > our MTP cycle efficiency is 47-54% against 70-77% at matched K=3, and that
-> **T3 adaptive-K and the B4 clamp should be reopened** once the verifier
-> rowtile work lands, because both limits sat on top of the rows>4
-> amortization cliff. The *mechanism* columns below remain valid intake.
+> **T3 adaptive-K and the B4 clamp were reopened on 2026-08-30** after the
+> verifier rowtile work landed. Exact-raw native-R5 fixed B4 improves full
+> +4.53%, but regresses heldout -2.81% and general English -9.82%; E3 therefore
+> rejects fixed B4 before adaptation. Temporary oracle code is removed and
+> fixed B3 remains. The *mechanism* columns below remain valid intake.
 
 | Project | Commit | Mechanism worth transferring | Not transferable |
 | --- | --- | --- | --- |
@@ -327,6 +329,13 @@ capacity/dynamic-lifecycle blockers.
   c2+ has no MTP product cell; a curve would be hand-written without eligible
   evidence. Automatic remains K0. Evidence:
   [`T3 closeout`](../benchmarks/results/2026-08-27-gfx1151-qwen38-concurrency2-t31-adaptive-closeout.json).
+- [x] **T3.3 Post-rowtile B4 reopen rejected.** An exact-raw full-suite oracle
+  temporarily lifts proposal capacity and the native target clamp to R5. B4
+  improves full **27.575→28.826 tok/s (+4.53%)**, but regresses heldout
+  **-2.81%** and general English **-9.82%**. Per the predeclared fixed-before-
+  adaptive rule, no adaptive B3/B4 controller or serving infrastructure is
+  admitted; all temporary code is removed.
+  [`B4 oracle`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-b4-reopen-rejected.json).
 
 ### T4 — research / parked (no promotion path in this campaign)
 
@@ -509,11 +518,11 @@ residency, if replay erases the product benefit, or if any lifecycle/gate fails.
   adaptive K. Reopen only if retained D1 changes the measured cost surface; use
   content-agnostic per-request acceptance, replay, and cycle-wall telemetry.
   Do not import the external heuristic as a new default.
-- [ ] **CR-S3.2 Deeper N4–N7, conditional.** Do not copy the external N5/N7
-  settings. Current B4 clamps to B3 and native rows>4 lack the T2.2 owner
-  premise. Screen a deeper budget only after a registered rows5+ target owner
-  clears the existing leaf/ms-token admission gate and the full-row memory is
-  the demonstrated limiter.
+- [~] **CR-S3.2 Deeper N4–N7, measured blocked.** Do not copy external N5/N7
+  settings. Temporary exact B4 capacity plus native-R5 ownership improves the
+  full raw suite but fails heldout/general English, so it is removed before
+  serving integration. Deeper budgets remain blocked until fixed B4 wins every
+  binding scope under a new cost/quality premise.
 - [ ] **CR-S3.3 Keep unrelated controls out.** `--hip-fa-force-vec` is a
   quantized-KV llama.cpp capacity/PP trade and does not apply to this BF16-KV
   product key; route it through a separately qualified KV-backend campaign.

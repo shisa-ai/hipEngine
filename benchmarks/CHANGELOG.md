@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-30 gfx1151 Qwen3.8 B4/adaptive reopen rejected] Exact-raw native-R5 fixed B4 improves full direct MTP **27.575→28.826 tok/s (+4.53%)** and visible transitions/cycle **3.239→3.651 (+12.70%)**, but regresses heldout **-2.81%** and general English **-9.82%**. E3 rejects fixed B4 before adaptive K; all temporary oracle code is removed. `benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-b4-reopen-rejected.json`.
+
 - [2026-08-30 gfx1151 Qwen3.8 post-Q5 C4 blocker] Current C4 is **29.493 vs 30.291 tok/s AR (0.9737x)** with a 0.8572 s suite gap. Prompt prime is 9.08% of its measured child and can cover the residual, but existing streaming changes acceptance **628/796→624/800**. Automatic C4 remains K0 pending replay-equivalent prompt state and category gates. `benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-c4-post-q5-blocker.json`.
 
 - [2026-08-30 gfx1151 Qwen3.8 exact Q4 R16 revisit rejected] Q5 proved submission count material, but exact Q4 col4 R16 raises weighted GPU work **101.03→156.90 ms (+55.31%)** and loses all 90 leaf pairs; one-prompt C4 falls **29.610→27.717 tok/s (-6.39%)**. Candidate code is removed. `benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q4-r16-rejected.json`.
