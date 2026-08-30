@@ -1592,6 +1592,9 @@ GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS = {
     ("gguf_q5_k_t16_v1", 12, 6_144, 5_120): (
         "t16_gemv_rowtile12_col8_bf16_bf16_out"
     ),
+    ("gguf_q5_k_t16_v1", 16, 6_144, 5_120): (
+        "t16_gemv_rowtile16_col8_bf16_bf16_out"
+    ),
 }
 # Profile-qualified T2 production owner: use per-row-direct-equivalent Q4
 # rowtiles for C2/K3 R8 and bounded C3/K1-K3 R6/R9/R12 physical targets on

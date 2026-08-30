@@ -5046,7 +5046,17 @@ def test_gfx1151_production_verifier_q6_true_r12_uses_one_rowtile() -> None:
     ]
 
 
-def test_gfx1151_production_verifier_q5_true_r12_uses_one_rowtile() -> None:
+@pytest.mark.parametrize(
+    ("rows", "variant"),
+    (
+        (12, "t16_gemv_rowtile12_col8_bf16_bf16_out"),
+        (16, "t16_gemv_rowtile16_col8_bf16_bf16_out"),
+    ),
+)
+def test_gfx1151_production_verifier_q5_true_rowtile_uses_one_launch(
+    rows: int,
+    variant: str,
+) -> None:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
     register_gfx1151_kernels(replace=True)
@@ -5058,7 +5068,7 @@ def test_gfx1151_production_verifier_q5_true_r12_uses_one_rowtile() -> None:
         "hip_gfx1151",
         "linear",
         "gguf_q5_k_t16_v1",
-        "t16_gemv_rowtile12_col8_bf16_bf16_out",
+        variant,
     )
     original = resolve(
         backend=candidate_key.backend,
@@ -5081,7 +5091,7 @@ def test_gfx1151_production_verifier_q5_true_r12_uses_one_rowtile() -> None:
                 weight,
                 x_ptr=100,
                 out_ptr=400,
-                rows=12,
+                rows=rows,
                 in_features=6_144,
                 out_features=5_120,
                 backend="hip_gfx1151",
@@ -5095,7 +5105,7 @@ def test_gfx1151_production_verifier_q5_true_r12_uses_one_rowtile() -> None:
 
     assert calls == [
         (
-            (100, 14, 400, 12, 6_144, 5_120),
+            (100, 14, 400, rows, 6_144, 5_120),
             {"stream": 7, "runtime": "runtime-sentinel"},
         )
     ]

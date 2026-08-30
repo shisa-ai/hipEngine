@@ -198,6 +198,7 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES,
     GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT,
     GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT,
+    GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS,
     TARGET_ARCH,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out,
@@ -589,6 +590,9 @@ def test_gfx1151_target_verifier_admits_scoped_rowtile_rows_and_shapes() -> None
             {(5_120, 1_024), (17_408, 5_120)}
         ),
     }
+    assert GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS[
+        ("gguf_q5_k_t16_v1", 16, 6_144, 5_120)
+    ] == "t16_gemv_rowtile16_col8_bf16_bf16_out"
     assert GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT["gguf_q6_k_t16_v1"] == 8
     assert (
         GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[
