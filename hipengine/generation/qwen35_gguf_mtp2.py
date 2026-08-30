@@ -272,6 +272,37 @@ def _physical_prompt_streaming_widths(owner: Any, generator: Any) -> tuple[int, 
     return widths
 
 
+# Widths above this bound require the backend's explicit per-profile physical
+# admission; width 4 is the independently certified CONCURRENT2 C4 boundary.
+_MTP2_CERTIFIED_PHYSICAL_BOUND = 4
+
+
+def _physical_max_requests(generator: Any) -> int:
+    """Resolve the package-owned physical multi-request width bound."""
+
+    profile_value = getattr(generator, "execution_profile", None)
+    profile = str(getattr(profile_value, "value", profile_value) or "")
+    backend = str(getattr(generator, "backend", "") or "")
+    if not backend:
+        # Incomplete metadata cannot unlock wide physical cycles; the
+        # certified C4 boundary applies once a real backend package answers.
+        return _MTP2_CERTIFIED_PHYSICAL_BOUND
+    table = backend_package_capability(
+        backend,
+        "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS",
+        {},
+    )
+    if not isinstance(table, Mapping):
+        raise RuntimeError("backend MTP2 physical width bounds must be a mapping")
+    try:
+        bound = int(table.get(profile, _MTP2_CERTIFIED_PHYSICAL_BOUND))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("backend MTP2 physical width bound must be an int") from exc
+    if bound < 1:
+        raise RuntimeError("backend MTP2 physical width bound must be positive")
+    return bound
+
+
 class Qwen35GGUFMTP2Adapter:
     """Staged C1/C2/C4 adapter over the retained exact dense components."""
 
@@ -292,6 +323,7 @@ class Qwen35GGUFMTP2Adapter:
         self.target_verify_mode = str(target_verify_mode)
         self.candidate_budget = int(candidate_budget)
         self.quant = str(quant)
+        self.physical_max_requests = _physical_max_requests(self.generator)
         self.physical_prompt_streaming_widths = _physical_prompt_streaming_widths(
             owner,
             self.generator,
@@ -334,6 +366,23 @@ class Qwen35GGUFMTP2Adapter:
         self._cycle_repair_hidden: Tensor | None = None
         self._cycle_ngram_tokens: Tensor | None = None
         self._cycle_workspace_shape: tuple[int, int] | None = None
+
+    def _max_physical_requests(self) -> int:
+        """Return the capability-owned width bound clamped to resident capacity."""
+
+        bound = getattr(self, "physical_max_requests", None)
+        if bound is None:
+            try:
+                bound = _physical_max_requests(self.generator)
+            except (AttributeError, RuntimeError, ValueError):
+                # Partially constructed test doubles resolve to the certified
+                # width-4 boundary; real adapters fail closed in __init__.
+                bound = _MTP2_CERTIFIED_PHYSICAL_BOUND
+            self.physical_max_requests = int(bound)
+        return min(
+            int(bound),
+            max(1, int(getattr(self.owner, "capacity", _MTP2_CERTIFIED_PHYSICAL_BOUND))),
+        )
 
     def _target_profile_supported(self, target: Any) -> bool:
         runner = getattr(target, "runner", None)
@@ -499,10 +548,7 @@ class Qwen35GGUFMTP2Adapter:
             provider_capacity = (
                 1
                 if automatic_singleton
-                else max(
-                    len(ids),
-                    min(4, int(getattr(self.owner, "capacity", len(ids)))),
-                )
+                else max(len(ids), self._max_physical_requests())
             )
             provider, pool_key, _reused = self.generator._acquire_dense_mtp_draft_provider(
                 targets[0],
@@ -777,7 +823,7 @@ class Qwen35GGUFMTP2Adapter:
         request_semantics: Sequence[SpeculativeRequestSemantics],
     ) -> SpeculativeCapability | None:
         semantics = tuple(request_semantics)
-        if not self.enabled or not (1 <= len(semantics) <= 4):
+        if not self.enabled or not (1 <= len(semantics) <= self._max_physical_requests()):
             return None
         static_eligibilities = tuple(
             self._static_eligibility(item.request_id)
@@ -868,7 +914,7 @@ class Qwen35GGUFMTP2Adapter:
             else self.target_verify_mode
         )
         profile = str(getattr(self.generator, "execution_profile", None) or "legacy_exact")
-        max_requests = min(4, max(1, int(getattr(self.owner, "capacity", 4))))
+        max_requests = self._max_physical_requests()
         max_frontier_rows = max_requests * (max_candidate_count + 1)
         return SpeculativeCapability(
             capability_key=(
@@ -891,7 +937,7 @@ class Qwen35GGUFMTP2Adapter:
             max_candidates_per_request=max_candidate_count,
             max_frontier_rows=max_frontier_rows,
             proposal_widths=tuple(
-                width for width in (1, 2, 4) if width <= max_requests
+                width for width in (1, 2, 4, 8) if width <= max_requests
             ),
             target_row_buckets=tuple(range(2, max_frontier_rows + 1)),
             target_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
@@ -912,8 +958,7 @@ class Qwen35GGUFMTP2Adapter:
         if any(row is None or not row.eligible for row in eligibility):
             return 0
         bound = min(
-            4,
-            max(1, int(getattr(self.owner, "capacity", 1))),
+            self._max_physical_requests(),
             *(int(row.max_realized_group_rows) for row in eligibility if row is not None),
         )
         # Exact automatic-singleton evidence must fail the composed due group to
@@ -931,7 +976,7 @@ class Qwen35GGUFMTP2Adapter:
         return bool(
             self.enabled
             and self._active_claims is None
-            and 1 <= len(request_ids) <= 4
+            and 1 <= len(request_ids) <= self._max_physical_requests()
             and not (
                 len(request_ids) == 1
                 and int(getattr(self.owner, "capacity", 1)) > 1
@@ -1025,7 +1070,7 @@ class Qwen35GGUFMTP2Adapter:
         """Return stable max-width proposal and repair BF16 slabs."""
 
         shape = (
-            min(4, max(1, int(getattr(self.owner, "capacity", 1)))),
+            self._max_physical_requests(),
             int(hidden_size),
         )
         if shape[1] <= 0:
@@ -1049,8 +1094,7 @@ class Qwen35GGUFMTP2Adapter:
                 workspace.reserve_tensor(
                     "gguf_mtp2/cycle/ngram_tokens",
                     (
-                        min(4, max(1, int(getattr(self.owner, "capacity", 1))))
-                        * self.candidate_budget,
+                        self._max_physical_requests() * self.candidate_budget,
                     ),
                     DType.INT32,
                 )
@@ -1155,8 +1199,7 @@ class Qwen35GGUFMTP2Adapter:
                 f"{plan.operation_id}:transient",
                 {
                     "gguf_mtp2.result_rows": requests,
-                    "gguf_mtp2.cycle_hidden_rows": 2
-                    * min(4, max(1, int(getattr(self.owner, "capacity", 1)))),
+                    "gguf_mtp2.cycle_hidden_rows": 2 * self._max_physical_requests(),
                 },
                 lifetime=ClaimLifetime.WORK_ITEM,
             ),
@@ -1311,8 +1354,10 @@ class Qwen35GGUFMTP2Adapter:
     ) -> CandidateGraph:
         del stream
         ids = tuple(int(value) for value in plan.speculative_request_ids)
-        if not (1 <= len(ids) <= 4):
-            raise NotImplementedError("GGUF MTP2 supports c1/c2/c4 proposal")
+        if not (1 <= len(ids) <= self._max_physical_requests()):
+            raise NotImplementedError(
+                f"GGUF MTP2 supports c1 through c{self._max_physical_requests()} proposal"
+            )
         states = tuple(self._states[request_id] for request_id in ids)
         if len({state.provider_group_key for state in states}) != 1:
             raise RuntimeError("physical NextN proposal requires one provider group")
@@ -1865,13 +1910,16 @@ class Qwen35GGUFMTP2Adapter:
         runtime: Any,
     ) -> tuple[TargetVerifyBufferOwner, Tensor, Tensor]:
         if self._batch_accept_workspace is None:
+            max_requests = self._max_physical_requests()
+            max_rows = max_requests * (self.candidate_budget + 1)
+            bucket = f"gguf-mtp2-physical-r{max_rows}-c{max_requests}"
             workspace = RuntimeWorkspace(device=Device("hip", 0), runtime=runtime)
             spec = TargetVerifyBufferSpec(
                 backend=str(self.generator.backend),
-                bucket="gguf-mtp2-physical-r16-c4",
+                bucket=bucket,
                 device=Device("hip", 0),
-                max_rows=16,
-                max_requests=4,
+                max_rows=max_rows,
+                max_requests=max_requests,
                 mode="verify_chain",
             )
             self._batch_accept_workspace = workspace
@@ -1880,13 +1928,13 @@ class Qwen35GGUFMTP2Adapter:
                 workspace=workspace,
             )
             self._batch_accept_remaining = workspace.reserve_tensor(
-                "target_verify/gguf-mtp2-physical-r16-c4/remaining_decode",
-                (4,),
+                f"target_verify/{bucket}/remaining_decode",
+                (max_requests,),
                 DType.INT32,
             )
             self._batch_accept_payload = workspace.reserve_tensor(
-                "target_verify/gguf-mtp2-physical-r16-c4/packed_accept_payload",
-                (4, ACCEPT_PACKED_PAYLOAD_FIELDS),
+                f"target_verify/{bucket}/packed_accept_payload",
+                (max_requests, ACCEPT_PACKED_PAYLOAD_FIELDS),
                 DType.INT32,
             )
         if (
@@ -3419,7 +3467,7 @@ class Qwen35GGUFMTP2Adapter:
         )
         provider_capacity = max(
             len(request_ids),
-            min(4, int(getattr(self.owner, "capacity", len(request_ids)))),
+            self._max_physical_requests(),
         )
         provider, pool_key, _reused = self.generator._acquire_dense_mtp_draft_provider(
             targets[0],

@@ -58,7 +58,7 @@ _SOURCE_ADMISSION = {
     "no_subset_or_favorable_rerun": True,
 }
 _NORMALIZED_PACKAGE_SHA256 = (
-    "432c56dda7b0f6a48d2943491fc76a02ad15e8420dbda2d2e7a2397e3ddee643"
+    "6bcf7150bfb4ced08f9d20896afedf5a87a7081a59d2607d571f7732a77de707"
 )
 _SOURCE_SHA256 = {
     "hipengine/kernels/hip_gfx1100/quant/gguf_q5_k_f32_rocblas_prefill.py": (
@@ -83,7 +83,7 @@ _SOURCE_SHA256 = {
 _POST_MERGE_SOURCE_SHA256 = {
     # Later Qwen3.8 and execution-profile policies do not alter H8A's owner.
     "hipengine/kernels/hip_gfx1151/__init__.py": (
-        "493ce533247278fa1c4148c76a52d7f7ded959bbfae57510d0127d1997033f7c"
+        "83383b28d43ca4a139f129274c4a9bcbeeb5c0a080284ed884624e34170179ce"
     ),
     "hipengine/runtime/gguf_linear.py": (
         "24dec208c95406d7aa6fe1f3b41af87b13e43e5d60a536d592ba991bad058360"

@@ -1579,8 +1579,9 @@ GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT = {
 # listed. C3/K1 R6 already fits the exact native Q5/Q6 rowtile scope.
 GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT = {
     "gguf_q5_k_t16_v1": frozenset({9, 12}),
-    "gguf_q6_k_t16_v1": frozenset({9, 12, 16}),
-    "gguf_q6_k_t16_qmicro_planar_v1": frozenset({9, 12, 16}),
+    # M1 single-group wide verify engages the logical R20-R32 chunk classes.
+    "gguf_q6_k_t16_v1": frozenset({9, 12, 16, 20, 24, 28, 32}),
+    "gguf_q6_k_t16_qmicro_planar_v1": frozenset({9, 12, 16, 20, 24, 28, 32}),
 }
 # E2 standard-Q6 true-R12: exact one-sweep col8 wins its actual K5120/N10240
 # target shape. Planar K5120/N1024 and K17408/N5120 lose their all-shape leaf
@@ -1747,7 +1748,11 @@ GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8
 # promotion remains independently gated by each phase's correctness and
 # complete-wall packet. These capabilities expose adapters and AR fallback only.
 GGUF_SPECDEC2_MTP2_C1 = True
-GGUF_SPECDEC2_MTP2_C4 = True
+# Production scaling-campaign M1 admits one physical cycle through C8/R32;
+# strict and any unlisted profile retain the certified width-4 partition as
+# the registered strict fallback.
+GGUF_SPECDEC2_MTP2_PHYSICAL = True
+GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS = {"production": 8}
 # E1a/E7 admit the exact shifted prompt-streaming path for measured Qwen3.8
 # standard-Q4 production physical-C2/C3 groups. C4 changed acceptance and is
 # rejected; strict C1, other models/quants/profiles, and peers retain replay.
@@ -2966,7 +2971,8 @@ __all__ = [
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
     "GGUF_SPECDEC2_MTP2_C1",
-    "GGUF_SPECDEC2_MTP2_C4",
+    "GGUF_SPECDEC2_MTP2_PHYSICAL",
+    "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS",
     "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
     "GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES",
     "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",

@@ -103,14 +103,22 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
         "hip_gfx1151", "GGUF_SPECDEC2_MTP2_C1", False
     ) is True
     assert backend_package_capability(
-        "hip_gfx1151", "GGUF_SPECDEC2_MTP2_C4", False
+        "hip_gfx1151", "GGUF_SPECDEC2_MTP2_PHYSICAL", False
     ) is True
+    assert backend_package_capability(
+        "hip_gfx1151",
+        "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS",
+        {},
+    ) == {"production": 8}
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_C1", False
     ) is True
     assert backend_package_capability(
-        "hip_gfx1100", "GGUF_SPECDEC2_MTP2_C4", False
+        "hip_gfx1100", "GGUF_SPECDEC2_MTP2_PHYSICAL", False
     ) is False
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS", {}
+    ) == {}
     assert backend_package_capability(
         "hip_gfx1151",
         "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
@@ -166,6 +174,70 @@ def test_qwen38_production_prompt_streaming_policy_admits_only_physical_c2_c3() 
 def test_qwen_gguf_plugins_select_distinct_mtp2_adapters() -> None:
     assert Qwen35GGUFModel().speculative_mtp2_adapter == "dense_nextn"
     assert Qwen35MoeGGUFModel().speculative_mtp2_adapter == "moe_nextn"
+
+
+def _width_bound_owner(*, profile: str, capacity: int) -> SimpleNamespace:
+    return SimpleNamespace(
+        generator=SimpleNamespace(
+            backend="hip_gfx1151",
+            execution_profile=profile,
+        ),
+        capacity=capacity,
+        _shared_runner=None,
+    )
+
+
+def test_physical_width_bound_is_package_owned_and_capacity_clamped() -> None:
+    production = Qwen35GGUFMTP2Adapter(
+        _width_bound_owner(profile="production", capacity=8),
+        enabled=True,
+        target_verify_mode="packed",
+        candidate_budget=3,
+    )
+    assert production.physical_max_requests == 8
+    assert production._max_physical_requests() == 8
+
+    clamped = Qwen35GGUFMTP2Adapter(
+        _width_bound_owner(profile="production", capacity=5),
+        enabled=True,
+        target_verify_mode="packed",
+        candidate_budget=3,
+    )
+    assert clamped._max_physical_requests() == 5
+
+    strict = Qwen35GGUFMTP2Adapter(
+        _width_bound_owner(profile="strict", capacity=8),
+        enabled=True,
+        target_verify_mode="packed",
+        candidate_budget=3,
+    )
+    assert strict.physical_max_requests == 4
+    assert strict._max_physical_requests() == 4
+
+
+@pytest.mark.parametrize("table", ["nope", {"production": 0}, {"production": None}])
+def test_physical_width_bound_misconfiguration_fails_closed(table: object) -> None:
+    owner = _width_bound_owner(profile="production", capacity=8)
+    import hipengine.generation.qwen35_gguf_mtp2 as module
+
+    real = module.backend_package_capability
+
+    def fake(backend: str, name: str, default: object = None) -> object:
+        if name == "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS":
+            return table
+        return real(backend, name, default)
+
+    module.backend_package_capability = fake
+    try:
+        with pytest.raises(RuntimeError):
+            Qwen35GGUFMTP2Adapter(
+                owner,
+                enabled=True,
+                target_verify_mode="packed",
+                candidate_budget=3,
+            )
+    finally:
+        module.backend_package_capability = real
 
 
 def test_unregistered_model_plugin_mtp2_adapter_fails_closed() -> None:

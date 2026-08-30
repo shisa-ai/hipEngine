@@ -402,7 +402,11 @@ GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
 # SPECDEC2 S7 exposes only the independently-qualified dense GGUF C1 adapter on
 # gfx1100. Physical C2/C4 remains absent until its own frontier/economics gate.
 GGUF_SPECDEC2_MTP2_C1 = True
-GGUF_SPECDEC2_MTP2_C4 = False
+# Physical multi-request adapter admission plus the per-profile width bound.
+# Profiles absent from the mapping retain the certified width-4 C4 fallback;
+# profiles mapped to 0 (or an empty mapping) reject the physical adapter.
+GGUF_SPECDEC2_MTP2_PHYSICAL = False
+GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS: dict[str, int] = {}
 # W7900 P2 p128 found deterministic native target-graph NaN/sentinel output;
 # eager/serial target verification remains exact above the locally-qualified
 # natural25 context envelope.  This is graph admission, not model policy.
@@ -904,7 +908,8 @@ __all__ = [
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
     "GGUF_SPECDEC2_MTP2_C1",
-    "GGUF_SPECDEC2_MTP2_C4",
+    "GGUF_SPECDEC2_MTP2_PHYSICAL",
+    "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS",
     "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
     "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT",
     "PARO_SPECDEC2_MTP2_C1",
