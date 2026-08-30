@@ -1,0 +1,223 @@
+{
+ "admission": {
+  "candidate": "packed multi-request prompt prefill (prefill_batch_native)",
+  "decode_step_gates_binding": true,
+  "prefill_calibration": "token equality only",
+  "teacher": "independent serial c1 prefill + strict trajectory"
+ },
+ "attribution_caveat": "route_profile=q8t16_candidate forces candidate decode-route environment overrides, so this capture measures packed prompt admission plus the forced candidate decode policy, not the package-default shipping decode route; route.candidate_environment records the exact overrides. The 3/5/6/7 capture is the clean-attribution one.",
+ "backend": "hip_gfx1100",
+ "compared_rows": 1050,
+ "created_at": "2026-08-30T01:16:13.271785+00:00",
+ "device": "AMD Radeon Pro W7900",
+ "eligible_for_automatic_admission": true,
+ "hard_gates_passed": true,
+ "kind": "gguf_packed_prefill_profile_gate",
+ "logits_sha256": {
+  "candidate": "222118796e61c2fd65be654d32a6b9d03ee8f5e53740d94d3d62e10126a24dd9",
+  "strict": "f1c2e7f2e680ab69415c30459933c3a0678e206d75653449021096a770d56215"
+ },
+ "measurement_valid": true,
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "performance_claim": false,
+ "profile_qualification_claim": false,
+ "protocol": {
+  "candidate_repeat_runs": 3,
+  "complete_prompt_and_heldout_suite": true,
+  "decode_steps": 24,
+  "dynamic_schedule": [
+   [
+    0,
+    8
+   ],
+   [
+    6,
+    4
+   ],
+   [
+    12,
+    2
+   ],
+   [
+    18,
+    1
+   ]
+  ],
+  "packed_prefill_candidate": true,
+  "prompt_count": 18,
+  "prompt_suites": [
+   "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+   "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+  ],
+  "route_profile": "q8t16_candidate",
+  "same_context_rule": "every batch row consumes its independent strict-c1 teacher token",
+  "sparse_physical_c8_active_slots": [
+   0,
+   2,
+   5,
+   7
+  ],
+  "static_widths": [
+   4,
+   8
+  ],
+  "strict_gdn_mode": "chain_lds32_direct_nonvolatile",
+  "teacher_forced_rows": 1050,
+  "thresholds_evaluated": {
+   "max_kl_max": 0.05,
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02,
+   "top1_min": 0.99
+  }
+ },
+ "provenance": {
+  "build_profile": "execution_profile_gguf_q8t16_batch_requalification",
+  "command": [
+   "/home/lhl/hipEngine-main/.venv/bin/python",
+   "scripts/execution_profile_gguf_batch_route_gate.py",
+   "--model",
+   "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+   "--backend",
+   "hip_gfx1100",
+   "--route-profile",
+   "q8t16_candidate",
+   "--packed-prefill-candidate",
+   "--widths",
+   "4,8",
+   "--repeat-runs",
+   "3",
+   "--compiler-version-file",
+   "/tmp/compiler-version-gfx1100.txt",
+   "--json",
+   "/tmp/he-profile-packed-c4c8.json"
+  ],
+  "dirty": false,
+  "git_branch": "campaign/gfx1100-mtp-cn-promotion",
+  "hipengine_commit": "8535ff2b4c23a1179c82f18fcfd8bb07e66ad9c3"
+ },
+ "qualification_blockers": [
+  "route manifest is evidentiary and not runtime-profile resolved",
+  "adapter does not emit the complete exact control-plane record schema",
+  "fresh task and BF16-relative verdicts are not available"
+ ],
+ "quality_by_category": {
+  "code": {
+   "kl_max": 0.00076977,
+   "kl_mean": 3.55e-05,
+   "kl_p95": 0.00024197,
+   "kl_p99": 0.0006539,
+   "max_abs_logit_delta": 0.51066685,
+   "passed": true,
+   "rows": 366,
+   "strict_margin_min": 0.10751724,
+   "teacher_nll_delta": 0.00040746,
+   "top1_agreement": 1.0
+  },
+  "general_en": {
+   "kl_max": 0.00219139,
+   "kl_mean": 9.606e-05,
+   "kl_p95": 0.00037961,
+   "kl_p99": 0.00060367,
+   "max_abs_logit_delta": 1.14340496,
+   "passed": true,
+   "rows": 234,
+   "strict_margin_min": 0.02125359,
+   "teacher_nll_delta": -0.00035362,
+   "top1_agreement": 1.0
+  },
+  "general_ja": {
+   "kl_max": 0.00092866,
+   "kl_mean": 0.00011727,
+   "kl_p95": 0.00053365,
+   "kl_p99": 0.00072239,
+   "max_abs_logit_delta": 0.28922939,
+   "passed": true,
+   "rows": 234,
+   "strict_margin_min": 0.02449226,
+   "teacher_nll_delta": -0.00080079,
+   "top1_agreement": 0.99145299
+  },
+  "mixed_ja_en": {
+   "kl_max": 0.00073242,
+   "kl_mean": 8.652e-05,
+   "kl_p95": 0.00050285,
+   "kl_p99": 0.00071673,
+   "max_abs_logit_delta": 0.74648666,
+   "passed": true,
+   "rows": 216,
+   "strict_margin_min": 0.00411987,
+   "teacher_nll_delta": -0.00056143,
+   "top1_agreement": 1.0
+  }
+ },
+ "schema": 1,
+ "scope_failures": [],
+ "source_capture": "/tmp/he-profile-packed-c4c8.json",
+ "status": "complete",
+ "thresholds": {
+  "max_kl_max": 0.05,
+  "mean_kl_max": 0.001,
+  "p95_kl_max": 0.005,
+  "p99_kl_max": 0.02,
+  "per_scope_top1_min": 0.97,
+  "review_kl": 0.02,
+  "top1_min": 0.99
+ },
+ "top1_mismatch_rows": {
+  "count": 2,
+  "detail": [
+   {
+    "candidate_teacher_nll": 2.05011484,
+    "candidate_top1_token_id": 5205,
+    "category": "general_ja",
+    "kl": 0.00072239,
+    "max_abs_logit_delta": 0.11231613,
+    "request_id": "general_ja_explain",
+    "row_index": 178,
+    "scenario_id": "static_c4_group1",
+    "scenario_step": 178,
+    "shape": "c4",
+    "strict_margin": 0.02449226,
+    "strict_teacher_nll": 2.04206008,
+    "strict_top1_candidate_rank": 2,
+    "strict_top1_token_id": 241456,
+    "teacher_delta_p": -0.001041,
+    "teacher_step": 11,
+    "teacher_token_id": 241456,
+    "top1_equal": false,
+    "topk_overlap": 1.0,
+    "transition": "steady"
+   },
+   {
+    "candidate_teacher_nll": 2.05011484,
+    "candidate_top1_token_id": 5205,
+    "category": "general_ja",
+    "kl": 0.00072239,
+    "max_abs_logit_delta": 0.11231613,
+    "request_id": "general_ja_explain",
+    "row_index": 610,
+    "scenario_id": "static_c8_group0",
+    "scenario_step": 610,
+    "shape": "c8",
+    "strict_margin": 0.02449226,
+    "strict_teacher_nll": 2.04206008,
+    "strict_top1_candidate_rank": 2,
+    "strict_top1_token_id": 241456,
+    "teacher_delta_p": -0.001041,
+    "teacher_step": 11,
+    "teacher_token_id": 241456,
+    "top1_equal": false,
+    "topk_overlap": 1.0,
+    "transition": "steady"
+   }
+  ],
+  "unique_positions": 1
+ },
+ "widths": [
+  4,
+  8
+ ]
+}
