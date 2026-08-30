@@ -44,7 +44,7 @@ def test_qwen38_nextn_proposal_head_rowtile_matches_direct_parent(
     from hipengine.runtime.gguf_linear import GGUF_OUTPUT_F32, launch_gguf_linear
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
-    # This assertion is the RED boundary before the package-scoped route exists.
+    # The package route must own every wide proposal width (M2 admits rows5-8).
     assert hasattr(Qwen35GGUFResidentSession, "_proposal_lm_head_rowtile")
 
     runtime = get_hip_runtime()
@@ -100,11 +100,10 @@ def test_qwen38_nextn_proposal_head_rowtile_matches_direct_parent(
                     runtime=runtime,
                 )
                 candidate_functions = (
-                    (("package", None),)
-                    if rows in {2, 3, 4}
-                    else (
+                    (
+                        ("package", None),
                         (
-                            "exact-unadmitted",
+                            "exact-primitive",
                             gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
                         ),
                     )

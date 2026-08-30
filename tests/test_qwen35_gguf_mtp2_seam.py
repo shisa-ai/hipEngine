@@ -132,9 +132,7 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
         frozenset(),
     ) == frozenset(
         {
-            (5120, 248320, 2),
-            (5120, 248320, 3),
-            (5120, 248320, 4),
+            (5120, 248320, rows) for rows in (2, 3, 4, 5, 6, 7, 8)
         }
     )
     assert backend_package_capability(
