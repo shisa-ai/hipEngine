@@ -75,7 +75,8 @@ def aggregate(packet: dict) -> dict:
         usage = next((row.get("usage") for row in ar.get("rows") or [] if row.get("usage")), None)
         prompt_tokens = (usage or {}).get("prompt_tokens")
         if not rate or float(rate) <= 0.0 or not prompt_tokens or int(prompt_tokens) <= 0:
-            refused.append(f"C{width}:{cell.get('prompt_id')}:rate={rate},prompt_tokens={prompt_tokens}")
+            refused.append(f"C{width}:{cell.get('prompt_id')}"
+                           f":rate={rate},prompt_tokens={prompt_tokens}")
             continue
         # cell rate = lanes / wall with one completion token per lane.
         tokens = float(prompt_tokens) * width
@@ -104,6 +105,11 @@ def aggregate(packet: dict) -> dict:
     }
 
 
+def identity(row: dict) -> tuple[str, str]:
+    """Comparability identity of a rolled-up packet: protocol hash and model path."""
+    return (row["protocol_sha256"], row["model"])
+
+
 def drift(current: dict, prior: dict) -> tuple[float | None, bool, bool]:
     """Return ``(drift_fraction, comparable_both_ways, prior_status_ok)``.
 
@@ -111,7 +117,7 @@ def drift(current: dict, prior: dict) -> tuple[float | None, bool, bool]:
     status on the prior; without the latter the mismatch direction is missing,
     which is a one-sided check and must be labelled as one.
     """
-    same_protocol = (current["protocol_sha256"], current["model"]) == (prior["protocol_sha256"], prior["model"])
+    same_protocol = identity(current) == identity(prior)
     prior_ok = prior.get("packet_status") == STATUS_OK
     if not (same_protocol and prior_ok):
         return None, same_protocol and prior_ok, prior_ok
@@ -119,6 +125,24 @@ def drift(current: dict, prior: dict) -> tuple[float | None, bool, bool]:
     if not before:
         return None, False, prior_ok
     return abs(current["aggregate_tok_per_s"] - before) / before, True, prior_ok
+
+
+def spread(current: dict, prior: dict) -> tuple[float | None, dict[str, float]]:
+    """Return the max per-width delta and the per-width deltas.
+
+    The published repeatability figure is a *max per-width* spread, not an aggregate delta:
+    two packets can agree on the aggregate to 0.1% while one width moves 0.4%, and the band
+    is meant to catch the latter. Reporting only the aggregate hides exactly the case the
+    band exists for.
+    """
+    deltas = {}
+    for width, row in current["per_width"].items():
+        before = prior["per_width"].get(width, {}).get("tok_per_s")
+        if before:
+            deltas[width] = 100.0 * (row["tok_per_s"] / before - 1.0)
+    if not deltas:
+        return None, {}
+    return max(abs(value) for value in deltas.values()), deltas
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -130,6 +154,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="fail if the --prior packet is not comparable in both directions",
     )
+    ap.add_argument(
+        "--prior-config-changed",
+        action="store_true",
+        help="the prior packet differs by configuration (an A/B pair), so report the delta as "
+             "an effect size and skip the same-protocol drift band",
+    )
     args = ap.parse_args(argv)
 
     agg = aggregate(load(args.packet))
@@ -140,26 +170,48 @@ def main(argv: list[str] | None = None) -> int:
     line = (f"lane-weighted {agg['aggregate_tok_per_s']:8.3f} tok/s over mean wave wall "
             f"{agg['seconds']:7.3f}s across {agg['requests']} cells")
     if agg["excluded_cells"]:
-        line += f"  [refused {len(agg['excluded_cells'])} cells: {', '.join(agg['excluded_cells'][:3])}]"
+        shown = ", ".join(agg["excluded_cells"][:3])
+        line += f"  [refused {len(agg['excluded_cells'])} cells: {shown}]"
     print(line + "  (lane-weighted is not the published row)")
-    rates = [agg["per_width"][key]["tok_per_s"] for key in sorted(agg["per_width"], key=lambda k: int(k[1:]))]
+    widths = sorted(agg["per_width"], key=lambda key: int(key[1:]))
+    rates = [agg["per_width"][key]["tok_per_s"] for key in widths]
     for width in sorted(agg["per_width"], key=lambda key: int(key[1:])):
         print(f"  {width:>3} {agg['per_width'][width]['tok_per_s']:9.3f} tok/s")
     if len(rates) >= 2:
         print(f"flatness C1->Cmax: {100.0 * (rates[-1] / rates[0] - 1.0):+.2f}%")
 
     if args.prior:
-        frac, two_sided, prior_ok = drift(agg, aggregate(load(args.prior)))
+        prior = aggregate(load(args.prior))
+        prior_ok = prior.get("packet_status") == STATUS_OK
+        same_protocol = identity(agg) == identity(prior)
+        max_spread, deltas = spread(agg, prior)
+        if args.prior_config_changed:
+            if max_spread is None:
+                print("no overlapping widths with --prior; cannot report an effect size",
+                      file=sys.stderr)
+                return 3
+            print(f"max delta vs prior packet: {max_spread:.2f}% (different configuration; this "
+                  f"is an effect size, not drift)")
+            print("  per-width delta: " + " ".join(
+                f"{k}:{v:+.1f}%" for k, v in sorted(
+                    deltas.items(), key=lambda item: int(item[0][1:]))[:8]))
+            if not same_protocol:
+                print("  note: protocol hash and/or model differ, so only the declared config "
+                      "delta may be cited")
+            return 0
+        frac, two_sided, _ = drift(agg, prior)
         if frac is not None:
-            print(f"cross-session drift vs prior: {frac * 100:.2f}%")
+            print(f"cross-session drift vs prior: {max_spread:.2f}% max per-width "
+                  f"({frac * 100:.2f}% aggregate)")
         elif args.strict_prior:
             why = "packet status is not ok" if not prior_ok else "protocol or model differs"
             print(f"--strict-prior: prior packet is not comparable ({why})", file=sys.stderr)
             return 3
         else:
-            print("cross-session drift vs prior: not two-sided (prior packet status is not "
-                  "ok or protocol differs); AR admission walls may still be compared, but "
-                  "do not report this as drift")
+            print(f"cross-session drift vs prior: {max_spread:.2f}% max per-width, but NOT "
+                  f"two-sided (prior packet status is not ok or protocol differs); AR admission "
+                  f"walls may still be compared, and a configuration change must be reported "
+                  f"with --prior-config-changed rather than as drift")
     return 0
 
 
