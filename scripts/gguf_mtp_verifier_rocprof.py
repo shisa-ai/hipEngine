@@ -91,24 +91,35 @@ def _sum_stage_timings(rows: list[dict[str, float]]) -> dict[str, float]:
     return dict(sorted(totals.items()))
 
 
+def _roctx_candidates() -> list[Path]:
+    """Every place the ROCTX SDK could live, in priority order.
+
+    Searching only `sys.prefix` broke every profiling arm run through `.venv/bin/python`: the venv
+    has no `_rocm_sdk_*` packages at all, because the ROCm SDK comes from the conda env the venv is
+    built on, which is `sys.base_prefix`. Both prefixes must be tried, and the list must be
+    reportable, or the failure names one path while several were possible.
+    """
+
+    packages = ("_rocm_sdk_core", "_rocm_sdk_devel")
+    names = ("librocprofiler-sdk-roctx.so.1", "librocprofiler-sdk-roctx.so")
+    candidates: list[Path] = []
+    for root in dict.fromkeys((sys.prefix, sys.base_prefix)):
+        site = (
+            Path(root)
+            / "lib"
+            / f"python{sys.version_info.major}.{sys.version_info.minor}"
+            / "site-packages"
+        )
+        for package in packages:
+            for name in names:
+                candidates.append(site / package / "lib" / name)
+    candidates.append(Path("/opt/rocm/lib/librocprofiler-sdk-roctx.so.1"))
+    candidates.append(Path("/opt/rocm/lib/librocprofiler-sdk-roctx.so"))
+    return candidates
+
+
 def _default_roctx_sdk() -> Path:
-    candidates = [
-        Path(sys.prefix)
-        / "lib"
-        / f"python{sys.version_info.major}.{sys.version_info.minor}"
-        / "site-packages"
-        / "_rocm_sdk_core"
-        / "lib"
-        / "librocprofiler-sdk-roctx.so.1",
-        Path(sys.prefix)
-        / "lib"
-        / f"python{sys.version_info.major}.{sys.version_info.minor}"
-        / "site-packages"
-        / "_rocm_sdk_devel"
-        / "lib"
-        / "librocprofiler-sdk-roctx.so.1",
-        Path("/opt/rocm/lib/librocprofiler-sdk-roctx.so.1"),
-    ]
+    candidates = _roctx_candidates()
     for path in candidates:
         if path.exists():
             return path
@@ -476,7 +487,11 @@ def _hardware_label() -> str:
 
 def _prepare_roctx_override(sdk_path: Path) -> Path:
     if not sdk_path.exists():
-        raise FileNotFoundError(f"rocprofiler SDK ROCTX library not found: {sdk_path}")
+        searched = "\n  ".join(str(path) for path in _roctx_candidates())
+        raise FileNotFoundError(
+            f"rocprofiler SDK ROCTX library not found: {sdk_path}\n  searched:\n  {searched}\n"
+            "  pass --roctx-sdk <path> to override"
+        )
     override = Path("/tmp/hipengine-roctx-sdk-override-gguf-mtp")
     override.mkdir(parents=True, exist_ok=True)
     symlink = override / "libroctx64.so"
