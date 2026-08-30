@@ -102,12 +102,68 @@ def _route_deltas(payload: Mapping[str, Any]) -> dict[tuple[str, int], dict[str,
     return out
 
 
+def _invariance(payload: Mapping[str, Any], arm_order: tuple[str, ...] = ("ar", "mtp")):
+    """Cross-width generated-id gate: same prompt alone vs the same prompt in a lane.
+
+    ``correctness.ar_mtp_equal`` in a cell proves the arms agree at *that* width, so if
+    batching moved the target model's argmax, both arms would move together and the cell
+    would still pass. Batch-composition invariance needs a cross-width comparison, which
+    retained packets never asserted. Lanes are joined to prompts by ``prompt_tokens``
+    (per-cell rows carry `usage`); where two suite prompts share a length the join is
+    ambiguous, so those are reported as excluded rather than guessed.
+    """
+    by_len: dict[int, list[str]] = {}
+    refs: dict[tuple[str, int], list[int]] = {}
+    for cell in payload.get("cells", ()):
+        if int(cell.get("width") or 0) != 1:
+            continue
+        for arm in arm_order:
+            for row in ((cell.get(arm) or {}).get("rows") or ()):
+                ids = row.get("generated_ids")
+                pt = int((row.get("usage") or {}).get("prompt_tokens") or 0)
+                if not ids or not pt:
+                    continue
+                pid = str(cell.get("prompt_id"))
+                lengths = by_len.setdefault(pt, [])
+                if pid not in lengths:
+                    lengths.append(pid)
+                refs.setdefault((arm, pt), list(ids))
+    ambiguous = sorted(pt for pt, pids in by_len.items() if len(pids) > 1)
+    usable = {pt: pids[0] for pt, pids in by_len.items() if len(pids) == 1}
+    per_width: dict[int, dict[str, object]] = {}
+    for cell in payload.get("cells", ()):
+        w = int(cell.get("width") or 0)
+        if w <= 1:
+            continue
+        for arm in arm_order:
+            for row in ((cell.get(arm) or {}).get("rows") or ()):
+                ids = row.get("generated_ids")
+                pt = int((row.get("usage") or {}).get("prompt_tokens") or 0)
+                if not ids or pt not in usable:
+                    continue
+                base = refs.get((arm, pt))
+                if not base:
+                    continue
+                n = min(len(ids), len(base))
+                first = next((i for i in range(n) if ids[i] != base[i]), None)
+                bucket = per_width.setdefault(w, {"matches": 0, "divergent": 0, "examples": []})
+                if first is None:
+                    bucket["matches"] = int(bucket["matches"]) + 1
+                else:
+                    bucket["divergent"] = int(bucket["divergent"]) + 1
+                    if len(bucket["examples"]) < 4:
+                        bucket["examples"].append(f"{arm}/{usable[pt]}@C{w}:token {first}/{n}")
+    return {"per_width": per_width, "prompts_joined": usable, "ambiguous_prompt_lengths": ambiguous}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--baseline", required=True, metavar="LABEL=PACKET.json")
     ap.add_argument("comparisons", nargs="*", metavar="LABEL=PACKET.json")
     ap.add_argument("--arm", default="mtp")
     ap.add_argument("--widths", default="", help="comma list, default: all present")
+    ap.add_argument("--invariance", action="store_true",
+                    help="also gate cross-width generated-id equality")
     ap.add_argument("--routes", action="store_true", help="also print per-arm route deltas")
     ap.add_argument("--json", dest="json_out")
     args = ap.parse_args(argv)
@@ -168,6 +224,20 @@ def main(argv: list[str] | None = None) -> int:
                 rc = sum(s["accepted"] for s in c) / sum(s["drafted"] for s in c)
                 parts.append(f"C{w}={rc - rb:+.3f} ")
             print(f"  {label:16} {' '.join(parts)}")
+
+    if args.invariance:
+        inv = _invariance(base_payload)
+        print("\ncross-width generated-id gate (lane output vs the same prompt run alone):")
+        print(f"  joined by prompt_tokens: {len(inv['prompts_joined'])} prompts; "
+              f"ambiguous lengths excluded: {inv['ambiguous_prompt_lengths'] or 'none'}")
+        tot_ok = tot_bad = 0
+        for w in sorted(int(k) for k in inv["per_width"]):
+            b = inv["per_width"][str(w)] if str(w) in inv["per_width"] else inv["per_width"][w]
+            tot_ok += int(b["matches"]); tot_bad += int(b["divergent"])
+            flag = f"  {b['examples']}" if b["divergent"] else ""
+            print(f"  C{w}: matches={b['matches']} divergent={b['divergent']}{flag}")
+        verdict = "PASS" if tot_bad == 0 else "FAIL"
+        print(f"  {verdict}: {tot_ok + tot_bad} comparisons, {tot_bad} divergent")
 
     if args.routes:
         print("\nroute counters attributable per arm (cumulative snapshots differenced "
