@@ -146,7 +146,9 @@ def test_structured_hardware_is_not_flagged_unique(tmp_path):
 def test_exception_suppresses_and_stale_exception_fails(tmp_path):
     module = _load()
     repo = _pair(tmp_path, {"supersedes": "gone.json"})
-    wrong = module.exception_key("2026-01-02-b.json", "DANGLING-SUPERSEDES", "links cites gone.json")
+    wrong = module.exception_key(
+        "2026-01-02-b.json", "DANGLING-SUPERSEDES", "links cites gone.json"
+    )
     unmatched = module.check_repo(repo, exceptions={wrong: "2026-01-01 test reason"})
     assert unmatched["exceptions_unmatched"] == [wrong]
 
@@ -171,3 +173,103 @@ def test_published_set_in_this_repo_is_clean():
     report = _load().check_repo(repo)
     assert report["artifacts_checked"] >= 40
     assert report["violations"] == []
+
+
+# --- machine-identity rules (added after I fabricated host blocks in two artifacts) ---------------
+
+def _named(tmp_path, entries):
+    """Two or more artifacts that all name the machine and share every other field."""
+    return _repo(
+        tmp_path,
+        {
+            f"2026-01-0{i}-x.json": {
+                **BASE,
+                "provenance": {"host_name": host, "cpu_model": cpu},
+            }
+            for i, (host, cpu) in enumerate(entries, start=1)
+        },
+    )
+
+
+def _problems(report, problem):
+    return [w for w in report["warnings"] if w["problem"] == problem]
+
+
+def test_one_host_with_two_cpu_families_warns(tmp_path):
+    repo = _named(
+        tmp_path,
+        [
+            ("epyc", "AMD Ryzen 9 5950X 16-Core Processor"),
+            ("epyc", "AMD Ryzen Threadripper 3970X 32-Core Processor"),
+        ],
+    )
+    report = _load().check_repo(repo)
+    conflicts = _problems(report, "HOST-CPU-CONFLICT")
+    assert len(conflicts) == 1, conflicts
+    assert conflicts[0]["artifact"] == "2026-01-02-x.json"
+    assert "epyc" in conflicts[0]["detail"]
+    assert report["violations"] == [], "identity mismatches stay in the warning tier"
+
+
+def test_suffix_variants_of_one_cpu_are_not_a_conflict(tmp_path):
+    repo = _named(
+        tmp_path,
+        [
+            ("epyc", "AMD Ryzen 9 5950X"),
+            ("epyc", "AMD Ryzen 9 5950X 16-Core Processor"),
+            ("epyc", "AMD Ryzen 9 5950X (16 cores)"),
+        ],
+    )
+    assert _problems(_load().check_repo(repo), "HOST-CPU-CONFLICT") == []
+
+
+def test_prose_naming_another_cpu_does_not_trigger_the_rule(tmp_path):
+    """Key-scoped on purpose: quoting the wrong CPU is not the same as asserting it."""
+    repo = _repo(
+        tmp_path,
+        {
+            "2026-01-01-x.json": {
+                **BASE,
+                "provenance": {"host_name": "epyc", "cpu_model": "AMD Ryzen 9 5950X"},
+                "host_correction_note": "previously miswritten as Threadripper 3970X",
+            }
+        },
+    )
+    assert _problems(_load().check_repo(repo), "HOST-CPU-CONFLICT") == []
+
+
+def test_host_asserted_by_too_few_artifacts_warns(tmp_path):
+    """The signature of an invented hostname: a name hardly any published artifact cites."""
+    repo = _repo(
+        tmp_path,
+        {
+            f"2026-01-0{i}-x.json": {
+                **BASE,
+                "provenance": {
+                    "host_name": "epyc" if i < 4 else "gputm-3087-00104",
+                    "cpu_model": "AMD Ryzen 9 5950X",
+                },
+            }
+            for i in (1, 2, 3, 4)
+        },
+    )
+    report = _load().check_repo(repo)
+    rare = _problems(report, "RARE-HOST")
+    assert [w["artifact"] for w in rare] == ["2026-01-04-x.json"], rare
+    assert "gputm-3087-00104" in rare[0]["detail"]
+    assert report["violations"] == []
+
+
+def test_identity_coverage_is_reported(tmp_path):
+    repo = _repo(
+        tmp_path,
+        {
+            "2026-01-01-x.json": {
+                **BASE,
+                "provenance": {"host_name": "epyc", "cpu_model": "AMD Ryzen 9 5950X"},
+            },
+            "2026-01-02-x.json": dict(BASE),
+        },
+    )
+    coverage = _load().check_repo(repo)["identity_coverage"]
+    assert coverage == {"cited": 2, "naming_machine": 1}
