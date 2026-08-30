@@ -248,18 +248,178 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle(
     )
 
 
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_runner_moe_q8_0_down_grouped_strict_fallback(
+    monkeypatch,
+) -> None:
+    """Regression: Q8_0 expert-down through the grouped prefill path with no
+    opt-in Q8_0 grouped owner flag must fall back to the strict per-expert
+    selected gemv and match the CPU oracle.
+
+    The P1 device-driven grouped Q8_0 down owner restructured the Q8_0 down
+    dispatch in the grouped branch. A regression dropped the strict fallback
+    when neither ``HIPENGINE_QWEN4_EXP_Q8_0_GROUPED`` nor
+    ``HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA`` is set, leaving ``expert_down``
+    unwritten for Q8_0 layers (layer 2/4/30/46/47) and corrupting whole-model
+    prefill output. This test pins the default (no-flag) path to the CPU
+    oracle.
+    """
+    from hipengine.core.hip import get_hip_runtime
+    from tests._gguf_synthetic_weights import make_q8_0_weight
+
+    runtime = get_hip_runtime()
+    # Grouped prefill for rows>=16 with a Q4_K/Q4_K gate/up pair; Q8_0 down.
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "1")
+    # Ensure neither opt-in Q8_0 grouped owner is active (the buggy case).
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED", raising=False)
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA", raising=False)
+    rng = np.random.default_rng(2026)
+    hidden, ffn, experts, top_k = 256, 256, 4, 2
+    rows = 16
+    mixed = rng.normal(0.0, 0.1, size=(rows, hidden)).astype(np.float32)
+    router = rng.normal(0.0, 0.1, size=(experts, hidden)).astype(np.float32)
+    gate_raw = np.stack([make_q4_k_weight(ffn, hidden) for _ in range(experts)])
+    up_raw = np.stack([make_q4_k_weight(ffn, hidden) for _ in range(experts)])
+    down_raw = np.stack([make_q8_0_weight(hidden, ffn) for _ in range(experts)])
+    expert_gate = np.stack(
+        [dequantize_gguf_data(value, GGMLQuantizationType.Q4_K) for value in gate_raw]
+    )
+    expert_up = np.stack(
+        [dequantize_gguf_data(value, GGMLQuantizationType.Q4_K) for value in up_raw]
+    )
+    expert_down = np.stack(
+        [dequantize_gguf_data(value, GGMLQuantizationType.Q8_0) for value in down_raw]
+    )
+    shared_gate = rng.normal(0.0, 0.1, size=(ffn, hidden)).astype(np.float32)
+    shared_up = rng.normal(0.0, 0.1, size=(ffn, hidden)).astype(np.float32)
+    shared_down = rng.normal(0.0, 0.1, size=(hidden, ffn)).astype(np.float32)
+    shared_scalar = rng.normal(0.0, 0.1, size=(hidden,)).astype(np.float32)
+    expected = qwen4_exp_moe(
+        mixed,
+        Qwen4ExpMoEWeights(
+            router=router,
+            expert_gate=expert_gate,
+            expert_up=expert_up,
+            expert_down=expert_down,
+            shared_gate=shared_gate,
+            shared_up=shared_up,
+            shared_down=shared_down,
+            shared_gate_weight=shared_scalar,
+            experts_used=top_k,
+        ),
+    )
+
+    allocations = []
+    scratch = serial_scratch = None
+    try:
+        d_mixed = _upload(mixed, runtime, allocations)
+        weights = {
+            "router": _dense_f32_weight("router", router, runtime, allocations),
+            "expert_gate": _q4_weight("expert_gate", gate_raw, runtime, allocations),
+            "expert_up": _q4_weight("expert_up", up_raw, runtime, allocations),
+            "expert_down": _q8_0_weight("expert_down", down_raw, runtime, allocations),
+            "shared_gate": _dense_f32_weight("shared_gate", shared_gate, runtime, allocations),
+            "shared_up": _dense_f32_weight("shared_up", shared_up, runtime, allocations),
+            "shared_down": _dense_f32_weight("shared_down", shared_down, runtime, allocations),
+            "shared_gate_weight": _dense_f32_weight(
+                "shared_gate_weight",
+                shared_scalar.reshape(1, hidden),
+                runtime,
+                allocations,
+            ),
+        }
+        scratch = Qwen4ExpMoEScratch.allocate(
+            rows=rows,
+            hidden=hidden,
+            ffn=ffn,
+            experts=experts,
+            top_k=top_k,
+            runtime=runtime,
+        )
+        serial_scratch = Qwen4ExpMoEScratch.allocate(
+            rows=1, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
+            runtime=runtime,
+        )
+        result = run_qwen4_exp_moe(
+            d_mixed.ptr,
+            weights,
+            scratch=scratch,
+            rows=rows,
+            hidden=hidden,
+            ffn=ffn,
+            experts=experts,
+            top_k=top_k,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        actual_bits = _download(result.output, (rows, hidden), np.uint16, runtime)
+        selected = _download(result.selected, (rows, top_k), np.int64, runtime)
+        routing = _download(result.routing, (rows, top_k), np.float32, runtime)
+        # Strict rows=1 baseline: the Q8_0 down always uses the strict
+        # per-expert selected gemv. The grouped (rows=16) path with no opt-in
+        # flag must reproduce it within the grouped tolerance.
+        serial_bits = []
+        for row in range(rows):
+            serial = run_qwen4_exp_moe(
+                d_mixed.ptr + row * hidden * np.dtype(np.float32).itemsize,
+                weights,
+                scratch=serial_scratch,
+                rows=1, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            serial_bits.append(
+                _download(serial.output, (hidden,), np.uint16, runtime)
+            )
+        serial_bits = np.asarray(serial_bits)
+        np.testing.assert_array_equal(selected, expected.selected_experts.astype(np.int64))
+        np.testing.assert_allclose(routing, expected.routing_weights, rtol=2e-6, atol=2e-6)
+        # The grouped path must agree with the strict serial baseline. If the
+        # Q8_0 down fallback were dropped (the regression), expert_down would be
+        # unwritten and this would diverge far beyond tolerance.
+        np.testing.assert_allclose(
+            bf16_to_float32(actual_bits),
+            bf16_to_float32(serial_bits),
+            rtol=2e-2,
+            atol=2e-2,
+        )
+        down = bf16_to_float32(
+            _download(scratch.expert_down, (rows * top_k, hidden), np.uint16, runtime)
+        )
+        assert np.all(np.isfinite(down))
+    finally:
+        if serial_scratch is not None:
+            serial_scratch.close()
+        if scratch is not None:
+            scratch.close()
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+
 def _q4_weight(name, raw, runtime, allocations):
+    return _quant_weight(
+        name, raw, "gguf_q4_k", GGMLQuantizationType.Q4_K, 144, runtime, allocations
+    )
+
+
+def _q8_0_weight(name, raw, runtime, allocations):
+    return _quant_weight(
+        name, raw, "gguf_q8_0", GGMLQuantizationType.Q8_0, 34, runtime, allocations
+    )
+
+
+def _quant_weight(name, raw, quant_key, ggml_type, block_bytes, runtime, allocations):
     host = np.ascontiguousarray(raw, dtype=np.uint8)
     buffer = malloc(host.nbytes, runtime=runtime)
     allocations.append(buffer)
     copy_host_to_device(buffer, host_array_ptr(host), runtime=runtime)
-    shape = (raw.shape[0], raw.shape[1], 256 * (raw.shape[2] // 144))
+    shape = (raw.shape[0], raw.shape[1], 256 * (raw.shape[2] // block_bytes))
     tensor = GGUFTensorInfo(
         name=f"{name}.weight",
         shape=shape,
         ggml_shape=tuple(reversed(shape)),
-        ggml_type=int(GGMLQuantizationType.Q4_K),
-        ggml_type_name="Q4_K",
+        ggml_type=int(ggml_type),
+        ggml_type_name=ggml_type.name,
         n_elements=prod(shape),
         nbytes=int(host.nbytes),
         offset=0,
@@ -269,7 +429,7 @@ def _q4_weight(name, raw, runtime, allocations):
     spec = Qwen4ExpGGUFWeightSpec(
         slot_path=name,
         source_ref=Qwen4ExpGGUFTensorRef(0, Path("synthetic.gguf"), tensor),
-        quant_key="gguf_q4_k",
+        quant_key=quant_key,
         layout=LAYOUT_RAW_GGUF,
         allocation_names=("raw",),
         device_resident=True,

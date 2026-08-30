@@ -3277,6 +3277,21 @@ def run_qwen4_exp_moe(
                     stream=stream,
                     runtime=active_runtime,
                 )
+            else:
+                # Strict fallback: neither opt-in Q8_0 grouped owner is selected
+                # (both Q8_0_GROUPED_WMMA and Q8_0_GROUPED are off). Preserve the
+                # incumbent strict per-expert selected gemv so Q8_0 down layers
+                # (layer 2, 4, 30, 46, 47) are still computed correctly.
+                selected_projection(
+                    "expert_down",
+                    scratch.expert_intermediate.ptr,
+                    scratch.expert_down.ptr,
+                    compact,
+                    compact,
+                    ffn,
+                    hidden,
+                    selected_ptr=scratch.group_sorted_experts.ptr,
+                )
         else:
             selected_projection(
                 "expert_down",
