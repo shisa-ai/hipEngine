@@ -31,7 +31,11 @@
 > qualified verifier ownership. Later exact standard-Q4 rows5-8 owners plus
 > standard/qmicro fail-closed dispatch fix that class. Current `code_lru_cache`
 > R8 is bit-exact through five taps and selected commit at **721.5→204.4 ms
-> (3.53x)**; P5.1 is closed. The cross-lane FP8-BLOCK / PRO 6000
+> (3.53x)**; P5.1 is closed. P5.2 retains the amortized Q6 select
+> (**70→22 ms**, B3 **7.70→8.845 tok/s**) and rejects a quality-losing
+> variable-block forward; ~74 ms of launch-bound full-block drafter remains.
+> P5.3 is blocked because the exact Qwen3.8 DFlash2 snapshot and reference repo
+> are absent, so no unmatched substitute is used. The cross-lane FP8-BLOCK / PRO 6000
 > claim previously used to argue "hardware economics that do not transfer" is
 > unverifiable from this host, and its MTP-strength half is refuted by the
 > corrected MTP number. DFlash2 stays a diagnostic on this lane on the measured
