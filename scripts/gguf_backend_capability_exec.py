@@ -73,6 +73,12 @@ def main(argv: list[str] | None = None) -> int:
     target = rest[0]
     if not Path(target).is_file():
         ap.error(f"target script {target!r} is not a file; runpy needs a script path")
+    with Path(target).open("rb") as handle:
+        if b"\0" in handle.read(4096):
+            ap.error(
+                f"target {target!r} is not Python source (NUL bytes in the first 4 KiB); "
+                "pass the script path after `--`, not the interpreter executable"
+            )
     sys.argv = [target, *rest[1:]]
     runpy.run_path(target, run_name="__main__")
     return 0

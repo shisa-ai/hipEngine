@@ -4821,6 +4821,103 @@ def test_gguf_gfx1100_packed_prefill_capability_is_undeclared_by_default() -> No
     ) == 1, "capability declared: re-verify grouping parity and update this test"
 
 
+def test_resident_ar_packed_prefill_groups_mixed_prompt_lengths(monkeypatch) -> None:
+    """RED: the resident AR route must group a mixed-length wave like the serving route.
+
+    The C1-C8 matrix prefills one request per step (measured: 305-335 ms per lane,
+    flat in width, vs llama.cpp's 216-436 ms for the whole wave), which is why
+    admission leaves 1.41x at C1 and 2.88x at C8 - and admission parity alone flips
+    every AR cell. Two independent switches keep the matrix serial: the undeclared
+    ``GGUF_C2_PACKED_PREFILL_MAX_ROWS`` capability (covered by the tripwire above)
+    and this function's equal-chunk-length requirement. The serving route reaches the
+    same entry point with arbitrary lengths, and the call already forwards
+    ``full_prompt_lengths`` per row, so the guard is stricter than the ABI.
+
+    Target contract: a lease-backed wave of three different prompt lengths groups
+    into one ``prefill_batch_native`` call. Today the guard refuses and the route
+    falls back to per-request prefill, which is what this test currently records.
+    """
+
+    from hipengine.dispatch.batch import WorkItem, WorkKind
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
+
+    prompts = {
+        0: (10, 11, 12, 13),
+        1: (20, 21),
+        2: (30,),
+    }
+
+    class FakeSession:
+        def __init__(self, slot_id):
+            self.slot_id = slot_id
+            self.position = 0
+
+    class FakeLease:
+        def __init__(self, slot_id):
+            self.session = FakeSession(slot_id)
+
+    class FakeOwner:
+        def __init__(self):
+            self.calls: list[tuple] = []
+
+        def prefill_batch_native(
+            self, prompt_token_ids, *, sessions, full_prompt_lengths=None, **kwargs
+        ):
+            self.calls.append(
+                (
+                    tuple(tuple(int(t) for t in prompt) for prompt in prompt_token_ids),
+                    tuple(session.slot_id for session in sessions),
+                    None if full_prompt_lengths is None else tuple(full_prompt_lengths),
+                )
+            )
+            return [SimpleNamespace(token_id=1) for _ in sessions]
+
+    rows = {}
+    for request_id, prompt in prompts.items():
+        rows[request_id] = SimpleNamespace(
+            request_id=request_id,
+            prompt_ids=prompt,
+            request=SimpleNamespace(deadline_at=None, cancellation_token=None),
+            lease=FakeLease(request_id),
+            native_greedy=True,
+            slot=None,
+            prefill_tokens_seen=0,
+            prefix_reused_tokens=0,
+            mtp2_candidate_budget=0,
+            incremental_prefill=True,
+            prefill_ms=0.0,
+            prefill_chunk_count=0,
+        )
+
+    owner = FakeOwner()
+    runner = Qwen35GGUFResidentModelRunner.__new__(Qwen35GGUFResidentModelRunner)
+    runner.packed_prefill_max_rows = 8
+    runner._route_counts = {"native_full_prefill_rows": 0}
+    runner._row = lambda request_id: rows[int(request_id)]
+    runner._packed_execution_owner = lambda session: owner
+    runner._begin_mtp2_prompt_streaming = lambda _rows: [None] * len(prompts)
+    runner._finish_mtp2_prompt_streaming = lambda *args, **kwargs: None
+    runner._refresh_prefix_cache = lambda _row: None
+    runner._finish_native_prefill = lambda *args, **kwargs: None
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "1")
+
+    work = WorkItem(
+        kind=WorkKind.PREFILL,
+        request_ids=tuple(prompts),
+        row_to_request=tuple(prompts),
+        token_rows=tuple(prompts[r] for r in prompts),
+    )
+    grouped = runner._try_prefill_native_work_batch(work)
+
+    assert grouped is True, "mixed-length wave was refused and fell back to serial prefill"
+    assert len(owner.calls) == 1, f"expected one grouped call, got {len(owner.calls)}"
+    carried, slots, lengths = owner.calls[0]
+    assert carried == tuple(prompts[r] for r in prompts)
+    assert slots == (0, 1, 2)
+    assert lengths == (4, 2, 1), f"per-row lengths were not forwarded: {lengths}"
+    assert runner._route_counts["native_full_prefill_rows"] == 3
+
+
 def test_gguf_ar_packed_prefill_notimplemented_falls_back(monkeypatch) -> None:
     calls: list[tuple] = []
 

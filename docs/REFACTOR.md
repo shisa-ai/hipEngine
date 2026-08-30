@@ -4627,14 +4627,23 @@ pursued, delete `next_prefill_batch_work` plus its `engine_loop` branch so the
 dead route stops advertising a capability the backend does not have. Measured
 evidence: `benchmarks/results/2026-08-30-w7900-q4km-c1c8-hipengine-refresh-post-promotions.json`.
 
-Correction while the section above is still fresh: the equal-length rule is a
-policy of the **resident AR route only**. The serving route reaches the very same
-`prefill_batch_native` entry point with arbitrary prompt lengths today
-(`hipengine/generation/qwen35_gguf.py:3025`, chunked only by
-`_MTP_SERVING_TARGET_BATCH_MAX_SLOTS`), and
-`tests/test_generation_qwen35_gguf_sampling.py::test_gguf_ar_packed_prefill_batches_unequal_prompt_lengths`
-pins that it groups eight prompts of three distinct lengths into one call. So the
-runner is not the limitation, and no padded/masked kernel work is implied: enabling
-wave-grouped AR prefill means declaring the capability **and** aligning
-`_try_prefill_native_work_batch`'s policy with the serving route's, qualified
-against the strict per-request chain. Trigger unchanged.
+Correction while the section above is still fresh: the equal-length rule was a
+policy of the **resident AR route only**, not a runner limit. The serving route
+reaches the very same `prefill_batch_native` entry point with arbitrary prompt
+lengths today (`hipengine/generation/qwen35_gguf.py:3025`, chunked only by
+`_MTP_SERVING_TARGET_BATCH_MAX_SLOTS`), and the AR call site already forwarded
+`full_prompt_lengths` per row. So no padded/masked kernel work is implied.
+
+**Landed:** that equal-chunk-length early-return has been removed from
+`_try_prefill_native_work_batch`, so the AR route groups mixed-length waves like
+the serving route. The change is inert by default because `engine_loop` still only
+reaches the batch route when `packed_prefill_max_rows > 1`. Two tests pin the
+contract (`test_resident_ar_packed_prefill_groups_mixed_prompt_lengths` for the AR
+route via `__new__`-stubbed rows, and
+`test_gguf_ar_packed_prefill_batches_unequal_prompt_lengths` for the serving route),
+plus `test_gguf_gfx1100_packed_prefill_capability_is_undeclared_by_default` as the
+tripwire. What still stands between this and promoted wave-grouped AR prefill:
+declaring `GGUF_C2_PACKED_PREFILL_MAX_ROWS` for gfx1100, the remaining whole-prompt-
+in-one-chunk requirement (`chunk == row.prompt_ids`, which chunked prefill of long
+prompts violates), and a same-suite content-exact + wall measurement against the
+per-request route. Trigger unchanged.
