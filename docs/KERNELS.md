@@ -939,7 +939,8 @@ measurement, so record it instead of rediscovering it.
    sense that `_prepare_roctx_override(<therock _rocm_sdk_core path>)` returns an override
    directory instead of raising (verified in plain Python 2026-08-30, no GPU); what is *not*
    yet verified is that marker tracing then succeeds end to end under `rocprofv3`. The
-   permanent fix is for `_default_roctx_sdk` to also probe the prefix of `which(rocprofv3)`. **Done in one wrapper on 2026-08-30** (commit 7716ccf87):
+   permanent fix is for `_default_roctx_sdk` to also probe the prefix of `which(rocprofv3)`.
+   **Done in one wrapper on 2026-08-30** (commit 7716ccf87):
    `gguf_packed_ar_rocprof.py` globs
    `lib/python3*/site-packages/_rocm_sdk_{core,devel}/lib/librocprofiler-sdk-roctx.so*` under the
    `which(rocprofv3)` prefix, newest python first, then falls back to legacy `libroctx64`. On this
