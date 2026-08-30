@@ -6,9 +6,12 @@ transitions after each prefix. Named hipEngine production measures
 **82.51/81.22/67.93 tok/s** prefill and **13.82/13.79/10.40 tok/s** decode.
 Repeatability-valid screening comparators remain **2.90–4.34x** ahead on HIP
 prefill and **2.92–3.93x** ahead on Vulkan prefill; decode gaps are
-**1.24–1.42x** and **1.46–1.74x**. This is not section-6 closure: the run used
-three repetitions, several rows exceed 2% CV, and cold-PLE plus heldout modes
-remain open. The frozen p508/tg32 role baseline remains the attribution anchor.
+**1.24–1.42x** and **1.46–1.74x**. The first depth-specific blocker is the
+2,051-token QSA path transition: p1024→p4096 adds **23.67 ms/token** in
+hipEngine versus **5.61–8.47 ms/token** on the repeatability-valid upstream
+lanes. This is not section-6 closure: the run used three repetitions, several
+rows exceed 2% CV, and cold-PLE plus heldout modes remain open. The frozen
+p508/tg32 role baseline remains the attribution anchor.
 This document is the performance-specific plan and punchlist.
 [`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md) remains the model/bring-up
 authority; this file owns only the gap-closure campaign.
@@ -61,7 +64,7 @@ samples, host state, and output-repeatability verdicts. The role-resolved p508
 and tg32 attribution anchor remains
 [`2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json).
 
-### End-to-end rows
+### Historical p508/tg32 attribution rows
 
 | Workload | hipEngine production | llama.cpp HIP | llama.cpp Vulkan | HIP advantage | Vulkan advantage |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -83,13 +86,88 @@ tokens per second.
 | EngramHalo HIP `1423f689` | 234.84 / 17.44 | 314.98 / 17.04 | 381.17 / 15.99 | p512/p1024 exact; `code-p4096` alternates |
 | Nathan Vulkan `ad914eb` | 348.31 / 23.23 | 354.93 / 20.36 | 350.54 / 18.44 | 0/12 exact |
 
-Nathan's follow-up control repeated the identical p1024 token array 16 times
-and produced 16 distinct continuations, so its faster rates are non-binding
-diagnostics. EngramHalo is repeat-exact at p512/p1024 but not p4096. Pristine
-upstream HIP produced zero samples after separate 1,800-second default and
-`--no-host` starts. The two documented Strix Halo loader patches were therefore
-measured only as a separately labeled patched-upstream lane; that row is not
-stock upstream.
+#### Starting-point correctness and accuracy contract
+
+This screening measured exact greedy-continuation repeatability. It did **not**
+collect logits, KL divergence, task scores, or human accuracy ratings, so it
+cannot rank model accuracy. hipEngine's starting accuracy basis remains the
+existing BF16-teacher
+[`canonical text gate`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json),
+[`heldout logits gate`](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json),
+and named-production execution-profile packet (production manifest
+`9e27fec0...`, strict manifest `42509601...`). Any arithmetic change must re-run
+the applicable gates; a repeat-exact speed row does not replace them.
+
+The measured correctness status is:
+
+- hipEngine production, pristine upstream Vulkan, and patched-upstream HIP are
+  repeat-exact on all 12 cases.
+- EngramHalo is repeat-exact at p512 and p1024, but `code-p4096` alternates
+  between two continuation hashes with the first difference at output index 1
+  (the second generated token). Its p4096 rates are diagnostic only.
+- Nathan fails repeatability on all 12 cases. A follow-up repeated the identical
+  p1024 token array 16 times and produced 16 distinct continuations, often
+  diverging at output indices 1–9. All Nathan rates are diagnostic only.
+- Full 129-token hashes do not establish cross-engine parity: hipEngine matches
+  pristine upstream Vulkan on 1/12 cases, patched-upstream HIP on 0/12, and
+  EngramHalo on 1/12. Compounding arithmetic differences make this diagnostic,
+  not an accuracy verdict; the logits/KL/task gates remain binding. No external
+  lane becomes an accuracy oracle merely by being deterministic or faster.
+
+#### Required upstream HIP loader patch on this host
+
+Pristine upstream HIP `f1793c1c4` produced zero samples after separate
+1,800-second starts with default mmap and with `--no-host`. For this exact
+111-GB model on `zbook`, the only successful current-upstream HIP configuration
+tested applied both documented Strix Halo loader patches:
+
+1. `llama-cpp-25992-rocm-host-buffer.patch`, SHA-256
+   `aca70db134d0e65be7a250cf1eb4237bb739d9d586f5c5153ce972372f67b4de`;
+2. `llama-cpp-qwen38-per-buffer-mmap.patch`, SHA-256
+   `971d428de98ecdf59941946bb391c257e82501ce98b7c71cc1f34803181fe133`.
+
+The combined source diff is
+`a37fa3bb64cb693dbe26c98177c757bda60683de2aeb5bae56222bfbfe5783b1` and the
+measured HIP server is
+`bb41c7555c4ad6cd14df4d2a308d991ddb5d1b44ec21d294fa0fe24f5aeafa86`.
+No single-patch ablation was run, so individual necessity is unknown. The
+campaign treats the pair as one host/model-scoped startup requirement until an
+ablation proves otherwise; this is not a claim that every upstream HIP
+installation needs the patches. The result must remain labeled **patched
+upstream**; pristine upstream HIP remains `startup_blocked` and has no numeric
+row.
+
+#### Decode-depth cliff
+
+The depth loss is larger than for the other hipEngine models in the scoreboard
+and is partly specific to Qwen4Exp. Throughput and derived synchronized latency
+are:
+
+| Lane | tg128 p512 | tg128 p1024 | tg128 p4096 | Added ms/token, p1024→p4096 | p512→p4096 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| hipEngine production | 13.823 | 13.787 | 10.395 | **+23.67** | **-24.8%** |
+| Upstream Vulkan | 22.974 | 20.113 | 18.075 | +5.61 | -21.3% |
+| Patched-upstream HIP | 17.741 | 16.881 | 14.768 | +8.47 | -16.8% |
+| EngramHalo HIP | 17.439 | 17.044 | 15.989 | +3.87 | -8.3% (p4096 diagnostic) |
+| Nathan Vulkan | 23.225 | 20.358 | 18.442 | +5.10 | -20.6% (diagnostic) |
+
+For context only, the same-host scoreboards show Qwen3.8-27B Dense at
+13.069→13.038 tok/s (-0.2%) and Qwen3.6-35B-A3B at 54.330→54.798 tok/s
+(+0.9%) from p512 to p4096. Those are different architectures and are not
+comparison denominators, but they show that this is not a generic hipEngine
+context penalty.
+
+The target GGUF declares a 2,048-token QSA budget and compression ratio 4, so
+`qsa_dense_equivalent_max_tokens == 2051`. p512 and p1024 decode remain on the
+dense-equivalent path. p4096 crosses the boundary: each of 12 QSA layers adds
+the index-query projection, normalization/RoPE, score over about context/4
+pooled blocks, stable top-k expansion, and sparse attention over 2,048 selected
+tokens plus the tail. The path transition is confirmed from dispatch and model
+geometry. Which sub-role owns hipEngine's excess 15–20 ms/token versus the
+external transitions is **not yet measured**; it must be split by a boundary
+profile at QSA live counts 2,051/2,052 and at p4096 before optimization.
+
+#### Repeatability-valid performance targets
 
 The repeatability-valid screening targets and current hipEngine gaps are:
 
@@ -122,9 +200,9 @@ were both `ad914eb...`, and a local source build reproduced the release within
 | Nathan Vulkan v0.7.2 payload | **413.04** | **396.25** | **23.85** |
 | Nathan Vulkan local build of the same source | 416.41 | 394.57 | 23.95 |
 
-These are **provisional target lines**, not a source-only A/B and not a
-replacement for the frozen role profile. They use generated `llama-bench`
-inputs, `-b 8192 -ub 2048 -t 4`, lazy mmap, and fork-recommended backend
+These are **historical shape diagnostics**, not current targets, a source-only
+A/B, or a replacement for the frozen role profile. They use generated
+`llama-bench` inputs, `-b 8192 -ub 2048 -t 4`, lazy mmap, and fork-recommended backend
 settings. hipEngine's p508 row uses the committed text fixture, while its tg32
 diagnostic starts from token `9707`; prompt-dependent MoE routing and PLE page
 locality make exact-token matching material. P0 therefore adds one durable
@@ -599,6 +677,11 @@ direct-launch surface before graph capture hides it.
       composites one at a time with exact/T1/T2 declarations.
 - [ ] Re-rank dense Q8, selected Q4 gate/up, selected Q5_1/Q8 down, shared
       expert, router, QSA, and lm-head kernels after P5.
+- [ ] Profile decode immediately below/above the QSA transition (live counts
+      2,051/2,052) and at p4096. Split index-query projection,
+      normalization/RoPE, score/top-k, selected attention, graph/submission,
+      copies, and wall gaps. Explain or remove hipEngine's measured
+      +23.67 ms/token p1024→p4096 cost before claiming short-AR parity.
 - [ ] Tune Q4/Q5/Q8 c1 owners on rotating actual weights for coalescing,
       physical-lane contraction, occupancy, and operation-complete epilogues;
       do not force WMMA onto M=1.
