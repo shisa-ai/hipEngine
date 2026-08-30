@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-08-30",
-  "status": "complete",
+  "status": "superseded_invalid_decode_claim",
   "scope": "Final llama.cpp parity rollup and audit for Qwen3.8-Flash-Next UD-Q4_K_XL on zbook gfx1151: objective (1) compare against latest llama.cpp head and forks; (2) full profiling + microbenchmarks per module with match/not verdicts",
   "objective_checklist": {
     "compare_latest_llama_head_and_forks": {
@@ -34,7 +34,7 @@
     "gdn_decode": {
       "was": "7.9x",
       "now": "colwarps decode 0-47 (+43.7% decode)",
-      "verdict": "matched (tg32 1.05x vs HIP)"
+      "verdict": "INVALID prior claim; retained rows==1 owner is 5.72x slower than llama GDN family in the fresh trace"
     },
     "qsa_prefill": {
       "was": "9.8x",
@@ -53,7 +53,8 @@
       "llama_hip_tg32": 17.02,
       "hipengine_steady": 16.2,
       "ratio": 1.05,
-      "vulkan_lane": "24.1 (llama's fastest; mul_mat_vec_q stack; recorded as open lane"
+      "vulkan_lane": "24.1 (llama's fastest; mul_mat_vec_q stack; recorded as open lane",
+      "valid": false
     }
   },
   "headline": {
@@ -66,7 +67,8 @@
     },
     "tg32": {
       "production": 16.2,
-      "llama_hip": 17.0
+      "llama_hip": 17.0,
+      "valid": false
     }
   },
   "campaign_commits": [
@@ -101,5 +103,10 @@
       "Vulkan decode lane 24.1 (MoE-decode iu8 spec'd)",
       "prefill overall 3.5x (llama comgr GEMM + remaining strict-layer mixes)"
     ]
+  },
+  "invalidation": {
+    "date": "2026-08-30",
+    "reason": "The claimed decode-all GDN column-warp route was unreachable; the 16.2 tok/s helper also inherited all-layer DP4A rather than the admitted safe43 scope. Prefill results remain historical evidence; decode parity/module verdicts are superseded.",
+    "superseded_by": "benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json"
   }
 }
