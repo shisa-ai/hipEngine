@@ -1107,6 +1107,9 @@ def test_gfx1151_backend_declares_q4_two_wave_shape_and_row_policy() -> None:
 def test_gfx1151_backend_routes_admitted_physical_q4_shapes_to_smallm_wmma(
     monkeypatch,
 ) -> None:
+    """Scaling-campaign M2j: rows<=16 physical cells supersede the one-row-tile
+    smallm owner with the measured bit-exact siblings (low-VGPR everywhere,
+    shared-B2W2 on the N5120 down-projection)."""
     selector = getattr(
         gfx1151_backend,
         "gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out",
@@ -1153,22 +1156,37 @@ def test_gfx1151_backend_routes_admitted_physical_q4_shapes_to_smallm_wmma(
         lambda *args, **kwargs: calls.append("shared"),
         raising=False,
     )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("lowvgpr"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("shared_b2w2"),
+        raising=False,
+    )
 
-    for rows in sorted(rows_policy):
+    expected: list[str] = []
+    for rows in (2, 4, 6, 8, 12, 16):
         for in_features, out_features in sorted(shape_policy):
+            expected.append(
+                "shared_b2w2" if (in_features, out_features) == (17_408, 5_120)
+                else "lowvgpr"
+            )
             selector(1, 2, 3, rows, in_features, out_features)
+    tail: list[str] = []
     for rows, in_features, out_features in (
-        (4, 5_120, 10_240),
-        (7, 5_120, 10_240),
         (16, 5_120, 1_024),
         (16, 5_120, 5_120),
         (16, 1_024, 4_096),
     ):
+        tail.append("shared")
         selector(1, 2, 3, rows, in_features, out_features)
 
-    assert calls == ["smallm"] * (len(rows_policy) * len(shape_policy)) + [
-        "shared"
-    ] * 5
+    assert calls == expected + tail
 
 
 def test_gfx1151_backend_routes_admitted_lowm_rows_to_single_wave_wmma(
