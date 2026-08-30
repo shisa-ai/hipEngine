@@ -273,3 +273,46 @@ def test_identity_coverage_is_reported(tmp_path):
     )
     coverage = _load().check_repo(repo)["identity_coverage"]
     assert coverage == {"cited": 2, "naming_machine": 1}
+
+
+# --- placeholder invocations (after I shipped a command no process ever ran) -------------------
+
+def _with_command(tmp_path, command, extra: dict | None = None):
+    return _repo(tmp_path, {"2026-01-01-x.json": {**BASE, "command": command, **(extra or {})}})
+
+
+def test_a_placeholder_in_a_recorded_command_warns(tmp_path):
+    repo = _with_command(tmp_path, ".venv/bin/python script.py --model <path> --out <file>")
+    warnings = _problems(_load().check_repo(repo), "PLACEHOLDER-COMMAND")
+    assert len(warnings) == 1
+    assert "<file>" in warnings[0]["detail"] or "<path>" in warnings[0]["detail"]
+
+
+def test_null_command_is_honest_and_does_not_warn(tmp_path):
+    """The remedy for an unrecordable invocation is null plus an explanation."""
+    repo = _with_command(
+        tmp_path,
+        None,
+        {"command_note": "assembled by an inline builder with no argv"},
+    )
+    assert _problems(_load().check_repo(repo), "PLACEHOLDER-COMMAND") == []
+
+
+def test_a_real_command_does_not_warn(tmp_path):
+    repo = _with_command(tmp_path, "scripts/probe.py --model /models/a.gguf --widths 1,2,3")
+    assert _problems(_load().check_repo(repo), "PLACEHOLDER-COMMAND") == []
+
+
+def test_placeholder_scan_is_scoped_to_invocation_keys(tmp_path):
+    """Templates quoted in prose (findings, notes) must not be mistaken for recorded commands."""
+    repo = _repo(
+        tmp_path,
+        {
+            "2026-01-01-x.json": {
+                **BASE,
+                "command": "scripts/probe.py --rows 8",
+                "findings": ["the launch form is scripts/probe.py --rows <n> per lane"],
+            }
+        },
+    )
+    assert _problems(_load().check_repo(repo), "PLACEHOLDER-COMMAND") == []

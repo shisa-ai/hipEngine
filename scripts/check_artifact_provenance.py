@@ -211,6 +211,38 @@ def _rare_host_warnings(payloads: dict[str, Any], *, minimum: int = 3) -> list[d
     return warnings
 
 
+COMMAND_KEYS = frozenset({"command", "cmd", "argv", "cli", "invocation"})
+PLACEHOLDER = re.compile(r"<[a-z][a-z0-9 -]*>")
+
+
+def _placeholder_command_warnings(payloads: dict[str, Any]) -> list[dict[str, str]]:
+    """Warn when a recorded invocation contains placeholder tokens.
+
+    I shipped a `command` array containing `<inline builder>` and `->` today: a plausible-looking
+    argv that no process ever ran. `null` plus an explanation is honest; a reconstruction is not.
+    Some artifacts deliberately store a command *template* (the pre-grouping decomposition records
+    `--engine hipengine=hipengine:<d1>:<k3>`), so this is a warning rather than a violation - but a
+    template should say so in the artifact.
+    """
+
+    warnings: list[dict[str, str]] = []
+    for name, payload in payloads.items():
+        found: list[str] = []
+        for key, value in _strings(payload):
+            if key in COMMAND_KEYS and PLACEHOLDER.search(value):
+                found.extend(PLACEHOLDER.findall(value))
+        if found:
+            warnings.append(
+                {
+                    "artifact": name,
+                    "problem": "PLACEHOLDER-COMMAND",
+                    "detail": f"recorded invocation has placeholder(s) "
+                    f"{sorted(set(found))[:4]}; use null, or label the template"
+                }
+            )
+    return warnings
+
+
 def _identity_coverage(payloads: dict[str, Any]) -> dict[str, int]:
     """How many published artifacts actually name the machine they ran on.
 
@@ -299,6 +331,7 @@ def check_repo(repo: Path, exceptions: dict[str, str] | None = None) -> dict[str
             _uniqueness_warnings(payloads)
             + _host_cpu_conflict_warnings(payloads)
             + _rare_host_warnings(payloads)
+            + _placeholder_command_warnings(payloads)
         ),
         "identity_coverage": _identity_coverage(payloads),
         "exceptions_matched": sorted(matched_set),

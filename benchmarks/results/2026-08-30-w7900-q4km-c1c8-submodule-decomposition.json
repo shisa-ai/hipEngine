@@ -264,6 +264,7 @@
   }
  },
  "command": "scripts/gguf_engine_submodule_decomposition.py --arm {ar,mtp} --arm-d1 \"prefill,ar\" --engine hipengine=hipengine:<d1>:<k3> --engine current=llamacpp:<peer>:<peer> --engine laurent=llamacpp:<peer>:<peer>",
+ "command_kind": "TEMPLATE, not an invocation: <d1>/<k3> are the arm's decode-selector slots and <peer> is the peer packet id. The real launch for the AR arm is recorded in 2026-08-30-w7900-q4km-c1c8-admission-decomposition-post-grouping.json (provenance.packet_launcher).",
  "date": "2026-08-30",
  "findings": [
   "AR decode is faster than both peers at all eight widths (34.1 vs 38.3 ms/step at C1; 81.9 vs 105.3 at C8).",
