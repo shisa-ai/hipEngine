@@ -15,13 +15,15 @@
     }
   },
   "change": "GGUF_C2_PACKED_PREFILL_MAX_ROWS=8 declared on hipengine/kernels/hip_gfx1100/__init__.py",
-  "command": "HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --output /tmp/he-c1c8-cap8/c1c8-cap8.json --widths 1,2,3,4,5,6,7,8 --expected-mtp-widths 1,2,3,4,5,6,7,8",
-  "command_as_run": "HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --output /tmp/he-c1c8-cap8/c1c8-cap8.json --widths 1,2,3,4,5,6,7,8 --require-mtp --expected-mtp-widths 1,2,3,4,5,6,7,8",
+  "command": "HIPENGINE_EXECUTION_PROFILE=production .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --output /tmp/he-c1c8-cap8/c1c8-cap8.json --widths 1,2,3,4,5,6,7,8 --expected-mtp-widths 1,2,3,4,5,6,7,8 --max-tokens 24 --candidate-budget 3 --mtp-request-mode explicit --generation2-diagnostic",
+  "command_kind": "reconstructed current equivalent, not the original argv",
+  "command_as_run": null,
+  "command_as_run_note": "The packet did not retain argv. The superseded value included --require-mtp, but no committed version of this script has ever declared that flag, so it could not have been the direct invocation that produced the packet.",
   "command_drift": {
-    "model_flag_added": "the recorded command also omitted --model, and the tool default has since moved to Qwen3.6-27B, so a literal rerun of the old string would measure a different model. The packet for this row is Qwen3.8-27B-Q4_K_M.gguf (17,106,773,984 bytes), which is now pinned explicitly.",
-    "semantics_check": "packet /tmp/he-c1c8-cap8/c1c8-cap8.json shows mtp_engaged true in 80/80 cells including width 1 at resident_capacity 8 (the default is the max measured width), so --expected-mtp-widths 1..8 remains the expectation the run satisfied.",
-    "verification_level": "parse-verified against HEAD argparse (scripts/check_published_command_drift.py reports 0 problems for this artifact); the corrected string has not been re-executed end to end.",
-    "why_changed": "the run recorded --require-mtp, which scripts/gguf_mtp_c1c8_server_bench.py no longer declares (argparse: \"unrecognized arguments: --require-mtp\"), so the published row carried a repro recipe that exited 2. Explicit MTP requests are the tool default (--mtp-request-mode explicit), so dropping the flag preserves behaviour; verified by the source of _request_mtp_value."
+    "model_flag_added": "the packet is Qwen3.8-27B-Q4_K_M.gguf (17,106,773,984 bytes), while the tool default has moved, so the current equivalent pins --model explicitly.",
+    "semantics_check": "the source packet protocol records candidate_budget=3, mtp_request_mode=explicit, max_tokens=24, generation2_diagnostic_plan=true, and engagement in 80/80 cells. All five properties are represented in the reconstructed command; explicit opt-in without --generation2-diagnostic declines physical_group_not_qualified outside the shipped c2-k2-d24/max_rows=2 envelope.",
+    "verification_level": "parse-verified against HEAD argparse; a focused HEAD C3 execution of the reconstructed route completed with engagement 10/10 and all correctness/budget gates passing (/tmp/he-parity/k3-audit-c3-diagnostic.json). The full C1-C8 reconstructed command has not been re-executed.",
+    "why_changed": "The prior correction removed an impossible --require-mtp flag but also omitted --generation2-diagnostic, changing route semantics. This correction is derived from the source packet's protocol block rather than from an unrecoverable command string."
   },
   "correctness": {
     "cells": 80,
