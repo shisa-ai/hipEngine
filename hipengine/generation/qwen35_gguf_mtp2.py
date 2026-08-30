@@ -2153,6 +2153,69 @@ class Qwen35GGUFMTP2Adapter:
             runtime=runtime,
         )
 
+    _ACCEPT_STAGING_BYTES = 4 << 20
+    _ACCEPT_STAGING_SLOT_BYTES = 1 << 16
+    _ACCEPT_STAGING_SLOTS = _ACCEPT_STAGING_BYTES // _ACCEPT_STAGING_SLOT_BYTES
+
+    def _accept_staging_backing(self, runtime: Any) -> Any:
+        """Return the page-locked accept upload arena, registering it once.
+
+        ``None`` means staging is unavailable and callers keep the blocking pageable path.
+        Page-locking reuses the existing runtime capability (see
+        ``qwen35_gguf_runner.py:2651`` ``runtime.host_register``); no new core API.
+        """
+        state = getattr(self, "_accept_staging_state", "uninit")
+        if state == "off":
+            return None
+        arena = getattr(self, "_accept_staging_arena", None)
+        if state == "ok" and arena is not None:
+            return arena
+        register = getattr(runtime, "host_register", None)
+        if not callable(register):
+            self._accept_staging_state = "off"
+            return None
+        prepared = np.zeros(self._ACCEPT_STAGING_BYTES, dtype=np.uint8)
+        register(int(prepared.ctypes.data), int(prepared.nbytes))
+        self._accept_staging_arena = prepared
+        self._accept_staging_state = "ok"
+        return prepared
+
+    def _upload_accept_array_staged(
+        self,
+        tensor: Tensor,
+        values: np.ndarray,
+        runtime: Any,
+        arena: np.ndarray,
+        slot: int,
+    ) -> bool:
+        """Enqueue one accept upload from page-locked memory; False if it must stay blocking.
+
+        ``copy_host_to_device`` is a blocking ``hipMemcpy`` from pageable numpy memory, which
+        synchronizes the device once per call: measured as 85.4-101.6 ms per lane-cycle, 96.5%
+        of the accept window at C5-C8 (worklog 20260830T155357). Bytes are copied into a
+        persistent registered arena and released with ``memcpy_async`` on the same stream the
+        device-to-device accept copies already use. The accept window ends in the blocking D2H
+        ``_read_target_batch_accept``, which drains these enqueued copies before the cycle
+        returns, so a slot cannot still be in flight when the next cycle reuses it. The source
+        ``array`` is never referenced by the transfer, so the temporary dying here is safe.
+        """
+        array = np.ascontiguousarray(values)
+        if array.nbytes > tensor.numel * tensor.dtype.itemsize:
+            raise ValueError("physical accept upload exceeds tensor capacity")
+        nbytes = int(array.nbytes)
+        if nbytes > self._ACCEPT_STAGING_SLOT_BYTES:
+            return False
+        base = int(slot) * self._ACCEPT_STAGING_SLOT_BYTES
+        arena[base : base + nbytes] = np.frombuffer(array, dtype=np.uint8)
+        runtime.memcpy_async(
+            tensor.ptr,
+            int(arena.ctypes.data) + base,
+            nbytes,
+            HipMemcpyKind.HOST_TO_DEVICE,
+            0,
+        )
+        return True
+
     def _enqueue_target_batch_accept(
         self,
         batch: TargetVerifyBatch,
@@ -2204,11 +2267,25 @@ class Qwen35GGUFMTP2Adapter:
             payload_owner.device,
         )
         upload_seconds = 0.0
+        staging_arena = self._accept_staging_backing(runtime)
+        staging_slot = 0
 
         def _upload_timed(tensor: Tensor, values: np.ndarray, rt: Any) -> None:
-            nonlocal upload_seconds
+            nonlocal upload_seconds, staging_slot
             started = time.perf_counter()
-            self._upload_accept_array(tensor, values, rt)
+            staged = False
+            if staging_arena is not None and staging_slot < self._ACCEPT_STAGING_SLOTS:
+                staged = self._upload_accept_array_staged(
+                    tensor,
+                    values,
+                    rt,
+                    staging_arena,
+                    staging_slot,
+                )
+                if staged:
+                    staging_slot += 1
+            if not staged:
+                self._upload_accept_array(tensor, values, rt)
             upload_seconds += time.perf_counter() - started
 
         roots = np.asarray(tuple(proposal.root_tokens), dtype=np.int32)
