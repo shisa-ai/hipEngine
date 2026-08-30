@@ -1,4 +1,7 @@
 {
+ "caveats": [
+  "the prior packet reports status='failed' because it was run with an MTP engagement expectation the one-token protocol cannot satisfy; its AR walls are valid, so the 0.41% agreement is directional rather than a two-sided same-configuration band"
+ ],
  "command": "scripts/gguf_prefill_row_rollup.py /tmp/he-d1v3/he-d1v3.json --prior /tmp/he-d1-clean/he-d1-clean.json",
  "date": "2026-08-30",
  "fix_in_flight": "GGUF_C2_PACKED_PREFILL_MAX_ROWS + mixed-length grouping in the resident AR route (guard landed inert in 713ad7e1b; qualification run pending)",
@@ -63,6 +66,7 @@
   "prior_packet": "/tmp/he-d1-clean/he-d1-clean.json"
  },
  "schema": "hipengine.benchmarks.c1c8_prefill_row.v1",
+ "source_command": "scripts/gguf_prefill_row_rollup.py /tmp/he-d1v3/he-d1v3.json --prior /tmp/he-d1-clean/he-d1-clean.json",
  "status_checks": {
   "packet_status": "complete",
   "rollup_refuses_non_complete_packets": true
