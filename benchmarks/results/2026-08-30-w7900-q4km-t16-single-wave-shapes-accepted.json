@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "kind": "gguf_t16_single_wave_shape_extension_accepted",
+  "date": "2026-08-30",
+  "status": "retained",
+  "claim": "The single-wave leaf at rows 2-128 is extended from (5120,17408) to (5120,10240) and (5120,12288), both bit-identical and 1.02x-1.28x faster than the 256-row shared-B owner. The four dense shapes where single-wave is measurably slower are recorded as measured losses so nobody re-opens them.",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "MOSTLY_Q4_K_M, execution-time Q4_T16 tier",
+  "hardware": "epyc / AMD Radeon Pro W7900 gfx1100 / Ryzen 9 5950X",
+  "revision": "4f6fb3041",
+  "command": ".venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --all-shapes --rows 2,6,16,35,48,67,128,192 --reps 15 --warmup 4 --output /tmp/he-t16/shapes.json, then the same tool with --in-features 5120 --out-features 12288 --rows 67,80,96,112,128 and --out-features 10240 --rows 96,128,144,160",
+  "protocol": "Canonical repack_gguf_q4_k_tile16 payloads over a valid Q4_K block image, one weight upload per shape, wall around one launch plus device_synchronize, two passes per arm, best-of-two, ratios are shared_b/single_wave so >1.0 means single-wave is faster, worst BF16 ULP distance recorded against the shared-B output, outputs finite.",
+  "single_wave_ratio_vs_shared_b": {
+    "(5120,17408)": {"2": 1.4, "6": 1.41, "16": 1.37, "35": 1.25, "48": 1.24, "67": 1.16, "128": 1.09, "192": 0.83},
+    "(5120,10240)": {"2": 1.15, "6": 1.26, "16": 1.26, "35": 1.2, "48": 1.21, "67": 1.17, "96": 1.16, "128": 1.11, "144": 1.14, "160": 1.11, "192": 1.06},
+    "(5120,12288)": {"2": 1.14, "6": 1.28, "16": 1.25, "35": 1.21, "48": 1.22, "67": 1.07, "80": 1.13, "96": 1.2, "112": 1.1, "128": 1.02, "192": 0.95},
+    "(17408,5120)": {"2": 0.81, "6": 0.81, "16": 0.83, "35": 0.77, "48": 0.77, "67": 0.8, "128": 0.83, "192": 0.84},
+    "(5120,6144)": {"2": 0.77, "6": 0.85, "16": 0.83, "35": 0.76, "48": 0.77, "67": 0.83, "128": 0.75, "192": 0.76},
+    "(6144,5120)": {"2": 0.8, "6": 0.85, "16": 0.82, "35": 0.76, "48": 0.76, "67": 0.85, "128": 0.76, "192": 0.77},
+    "(5120,1024)": {"2": 0.63, "6": 0.63, "16": 0.63, "35": 0.73, "48": 0.74, "67": 0.92, "128": 0.78, "192": 0.88}
+  },
+  "ulp_vs_shared_b": "0 at every row and every shape measured",
+  "promoted": {
+    "shapes_added": [[5120, 10240], [5120, 12288]],
+    "rows": "2..128, the existing GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS band",
+    "row6_routes_untouched": "both shapes are in GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES and the row-6 branch is checked first, so their measured 7.28x and 7.32x rows6 rowtile wins are preserved"
+  },
+  "first_token_ab": {
+    "protocol": "public hipengine.LLM API, production profile, one 35-token suite prompt, max_tokens=1, third-iteration steady state, same build, HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS=0 to disable all three shapes",
+    "off_ms": [253.42, 252.92],
+    "on_ms": [231.34, 230.49],
+    "delta_pct": -8.8,
+    "note": "the two new shapes add ~2.2 ms on top of the -7.75% already banked for (5120,17408), which is small because the 35-token prompt admits few rows through those projections"
+  },
+  "down_projection_is_the_remaining_gap": {
+    "shape": "(17408, 5120), the FFN down projection",
+    "owner_ms_at_suite_rows": {"35": 1.231, "48": 1.25, "67": 1.374},
+    "reading": "it is the most expensive dense launch in the prefill wall and 1.7x slower than gate/up on the same 51.5 MB of weights, because out_features=5120 gives the shared-B grid only ~107 column blocks against 512 compute units, so the launch cannot saturate memory. No registered leaf beats it: single-wave is 0.77x-0.83x and the rows6 rowtile is neutral outside row 6. Closing it needs a split-K or column-resplit kernel, which is new kernel work with its own RED gate, not a declaration.",
+    "other_measured_losses": "(5120,6144), (6144,5120) and (5120,1024) have no registered leaf that beats shared-B at these rows either; their owners cost 0.30-0.49 ms."
+  },
+  "gates": {
+    "red_first": "tests/test_gguf_q4_k_t16_dense.py failed on the three-shape policy set before the shapes were added",
+    "unit": "pytest tests/test_gguf_q4_k_t16_dense.py tests/test_gguf_q4_k_wmma_prefill.py -> 151 passed",
+    "numerics": "bit-exact at every measured row and shape, so no KL/top-1 gate was required for the changed leaves",
+    "fallback": "shared-B remains the registered strict sibling; HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS=0 disables the whole band on the same build"
+  },
+  "scratch_hygiene": "Sweep JSON stays in /tmp/he-t16; only the ratios and this summary are committed."
+}

@@ -241,15 +241,26 @@ GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES = frozenset(
         (17_408, 5_120),
     }
 )
-GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES = frozenset({(5_120, 17_408)})
+GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES = frozenset(
+    {
+        (5_120, 17_408),
+        (5_120, 10_240),
+        (5_120, 12_288),
+    }
+)
 # Rows for which the single-wave leaf owns a single-wave shape instead of the
 # 256-row shared-B tile. The shared-B kernel launches on a
 # ``Q4_DENSE_TILE_ROWS = 4*4*16 = 256`` row tile, so small rows pay nearly the
-# full 256-row cost; a W7900 row sweep at (rows, 5120, 17408) measured
-# single-wave bit-identical and 1.43x-1.04x faster for rows 2..128 and 0.87x
-# slower from 144 rows up, which sets this band. Strict shared-B stays the
-# registered sibling and the fallback. Evidence:
-# benchmarks/results/2026-08-30-w7900-q4km-t16-single-wave-rows-accepted.json.
+# full 256-row cost; a W7900 row sweep measured single-wave bit-identical and
+# faster for rows 2..128 on all three shapes (1.43x-1.09x at 5120x17408,
+# 1.26x-1.08x at 5120x10240, 1.28x-1.02x at 5120x12288) and slower from 144 rows
+# up at 5120x17408, which sets this band. The shapes it does **not** contain are
+# measured losses, not unmeasured gaps: single-wave is 0.77x-0.83x at
+# (17408, 5120), 0.75x-0.85x at (5120, 6144) and (6144, 5120), and 0.63x-0.92x at
+# (5120, 1024). Strict shared-B stays the registered sibling and the fallback.
+# Evidence:
+# benchmarks/results/2026-08-30-w7900-q4km-t16-single-wave-rows-accepted.json and
+# benchmarks/results/2026-08-30-w7900-q4km-t16-single-wave-shapes-accepted.json.
 GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS = 128
 # Production C2 reuses C1-equivalent rows6 rowtiles for the remaining Q4
 # gate/up and full-attention output shapes. Complete strict-teacher, repeat,

@@ -55,8 +55,17 @@ if str(REPO) not in sys.path:
 
 QK_K = 256
 DEFAULT_ROWS = "6,32,33,35,36,39,43,46,48,60,64,65,67,96,128,192,255,256,257"
-IN_FEATURES = 5120
-OUT_FEATURES = 17408
+DEFAULT_IN_FEATURES = 5120
+DEFAULT_OUT_FEATURES = 17408
+# Dense shapes that still fall through to the 256-row shared-B tile at rows > 6.
+OTHER_SHAPES = (
+    (17_408, 5_120),
+    (5_120, 6_144),
+    (6_144, 5_120),
+    (5_120, 10_240),
+    (5_120, 12_288),
+    (5_120, 1_024),
+)
 
 
 def _git(*args: str) -> str:
@@ -158,6 +167,8 @@ def _timed(
     x_ptr: int,
     out_ptr: int,
     rows: int,
+    in_features: int,
+    out_features: int,
     reps: int,
     warmup: int,
     *,
@@ -165,18 +176,18 @@ def _timed(
     out_buf: object = None,
 ) -> dict[str, float]:
     for _ in range(warmup):
-        fn(x_ptr, buffers.tiles_ptr, out_ptr, rows, IN_FEATURES, OUT_FEATURES)
+        fn(x_ptr, buffers.tiles_ptr, out_ptr, rows, in_features, out_features)
         buffers.sync()
     samples: list[float] = []
     for index in range(reps):
         start = time.perf_counter()
-        fn(x_ptr, buffers.tiles_ptr, out_ptr, rows, IN_FEATURES, OUT_FEATURES)
+        fn(x_ptr, buffers.tiles_ptr, out_ptr, rows, in_features, out_features)
         buffers.sync()
         samples.append((time.perf_counter() - start) * 1e3)
         if capture and index == reps - 2:
             # One output snapshot per arm, taken before the next arm overwrites
             # the shared output buffer.
-            buffers.captured = _read_out(buffers, out_buf, rows).copy()
+            buffers.captured = _read_out(buffers, out_buf, rows, out_features).copy()
     samples.sort()
     out = {
         "best_median_ms": statistics.median(samples),
@@ -186,17 +197,17 @@ def _timed(
     return out
 
 
-def _read_out(buffers: _Buffers, out_buf: object, rows: int) -> np.ndarray:
+def _read_out(buffers: _Buffers, out_buf: object, rows: int, out_features: int) -> np.ndarray:
     from hipengine.core.memory import copy_device_to_host, host_array_ptr
 
-    host = np.zeros(rows * OUT_FEATURES, dtype=np.uint16)
+    host = np.zeros(rows * out_features, dtype=np.uint16)
     copy_device_to_host(host_array_ptr(host), out_buf, host.nbytes)
     buffers.sync()
     return host
 
 
-def _finite(buffers: _Buffers, out_buf: object, rows: int) -> bool:
-    f32 = (_read_out(buffers, out_buf, rows).astype(np.uint32) << 16).view(np.float32)
+def _finite(buffers: _Buffers, out_buf: object, rows: int, out_features: int) -> bool:
+    f32 = (_read_out(buffers, out_buf, rows, out_features).astype(np.uint32) << 16).view(np.float32)
     return bool(np.all(np.isfinite(f32)))
 
 
@@ -217,6 +228,13 @@ def _ulp_distance(a: np.ndarray, b: np.ndarray) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--rows", default=DEFAULT_ROWS)
+    parser.add_argument("--in-features", type=int, default=DEFAULT_IN_FEATURES)
+    parser.add_argument("--out-features", type=int, default=DEFAULT_OUT_FEATURES)
+    parser.add_argument(
+        "--all-shapes",
+        action="store_true",
+        help="also sweep the shapes that still fall through to shared-B",
+    )
     parser.add_argument("--reps", type=int, default=25)
     parser.add_argument("--warmup", type=int, default=6)
     parser.add_argument("--seed", type=int, default=20260830)
@@ -225,85 +243,114 @@ def main(argv: list[str] | None = None) -> int:
 
     rows_list = [int(v) for v in str(args.rows).split(",") if v.strip()]
     arms = _resolve_arms()
-    tiles = _tile16_payload(OUT_FEATURES, IN_FEATURES, args.seed)
-    weight_bytes = int(tiles.nbytes)
-    buffers = _Buffers(tiles)
+    shapes: list[tuple[int, int]] = [(int(args.in_features), int(args.out_features))]
+    if args.all_shapes:
+        shapes = shapes + [tuple(s) for s in OTHER_SHAPES]  # type: ignore[arg-type]
 
-    per_row: list[dict[str, object]] = []
-    for rows in rows_list:
-        x_host = _activations(rows, IN_FEATURES, args.seed + rows)
-        x_ptr = buffers.upload(x_host)
-        out_buf = buffers.malloc(rows * OUT_FEATURES * 2)
-        out_ptr = int(out_buf.ptr)
-        results: dict[str, object] = {}
-        names = list(arms)
-        reference_out: np.ndarray | None = None
-        for name in names:
-            try:
-                first = _timed(
-                    arms[name], buffers, x_ptr, out_ptr, rows, args.reps, args.warmup,
-                    capture=True, out_buf=out_buf,
+    shape_blocks: list[dict[str, object]] = []
+    for in_features, out_features in shapes:
+        tiles = _tile16_payload(out_features, in_features, args.seed)
+        weight_bytes = int(tiles.nbytes)
+        buffers = _Buffers(tiles)
+        per_row: list[dict[str, object]] = []
+        for rows in rows_list:
+            x_host = _activations(rows, in_features, args.seed + rows)
+            x_ptr = buffers.upload(x_host)
+            out_buf = buffers.malloc(rows * out_features * 2)
+            out_ptr = int(out_buf.ptr)
+            results: dict[str, object] = {}
+            medians: dict[str, list[float]] = {}
+            reference_out: np.ndarray | None = None
+            for name in list(arms):
+                try:
+                    first = _timed(
+                        arms[name], buffers, x_ptr, out_ptr, rows, in_features,
+                        out_features, args.reps, args.warmup, capture=True, out_buf=out_buf,
+                    )
+                    second = _timed(
+                        arms[name], buffers, x_ptr, out_ptr, rows, in_features,
+                        out_features, args.reps, args.warmup, capture=True, out_buf=out_buf,
+                    )
+                except Exception as exc:  # a leaf may reject a shape/tile combination
+                    results[name] = {"error": f"{type(exc).__name__}: {exc}"[:160]}
+                    continue
+                medians[name] = [first["best_median_ms"], second["best_median_ms"]]
+                results.setdefault(name, {})
+                if name == "shared_b":
+                    reference_out = getattr(buffers, "captured", None)
+                elif reference_out is not None:
+                    candidate = getattr(buffers, "captured", None)
+                    if candidate is not None:
+                        results[name] = {"ulp_vs_shared_b": _ulp_distance(reference_out, candidate)}
+            best_of: dict[str, float] = {}
+            for name in list(arms):
+                entry = results.get(name)
+                if not isinstance(entry, dict) or "error" in entry:  # type: ignore[operator]
+                    continue
+                passes = medians[name]
+                best = min(passes)
+                entry = entry or {}
+                entry.update(
+                    {
+                        "pass_medians_ms": passes,
+                        "best_median_ms": best,
+                        "spread_pct": abs(passes[0] - passes[1]) * 100.0 / max(best, 1e-9),
+                        "ms_per_row": best / rows,
+                        "effective_gbps": weight_bytes / (best * 1e-3) / 1e9,
+                    }
                 )
-                second = _timed(
-                    arms[name], buffers, x_ptr, out_ptr, rows, args.reps, args.warmup,
-                    capture=True, out_buf=out_buf,
-                )
-            except Exception as exc:  # a leaf may reject a shape/tile combination
-                results[name] = {"error": f"{type(exc).__name__}: {exc}"[:200]}
-                continue
-            if name == "shared_b":
-                reference_out = getattr(buffers, "captured", None)
-            else:
-                candidate = getattr(buffers, "captured", None)
-                if reference_out is not None and candidate is not None:
-                    results.setdefault(name, {})  # populated below
-                    name_ulp = _ulp_distance(reference_out, candidate)
-                    results[name] = {"ulp_vs_shared_b": name_ulp}
-                    buffers.captured = candidate
-            best = min(first["best_median_ms"], second["best_median_ms"])
-            entry = results.get(name, {})
-            entry.update({
-                "pass_medians_ms": [first["best_median_ms"], second["best_median_ms"]],
-                "best_median_ms": best,
-                "spread_pct": abs(first["best_median_ms"] - second["best_median_ms"])
-                * 100.0
-                / max(best, 1e-9),
-                "ms_per_row": best / rows,
-                "effective_gbps": weight_bytes / (best * 1e-3) / 1e9,
-            })
-            results[name] = entry
-        baseline = results.get("shared_b", {}).get("best_median_ms")
-        for name, value in results.items():
-            if isinstance(value, dict) and "best_median_ms" in value and baseline:
-                value["shared_b_over_candidate"] = baseline / value["best_median_ms"]
-        per_row.append({"rows": rows, "arms": results, "finite": _finite(buffers, out_buf, rows)})
-        line = f"rows={rows:>4}"
-        for name in names:
-            value = results.get(name, {})
-            if "best_median_ms" in value:
-                line += f"  {name}={value['best_median_ms']:>8.3f}ms"
-                if name != "shared_b":
-                    line += f"({value['shared_b_over_candidate']:.2f}x)"
-            else:
-                line += f"  {name}=  err"
-        print(line, flush=True)
+                results[name] = entry
+                best_of[name] = best
+            baseline = best_of.get("shared_b")
+            for name, value in results.items():
+                if isinstance(value, dict) and "best_median_ms" in value and baseline:
+                    value["shared_b_over_candidate"] = baseline / value["best_median_ms"]
+            per_row.append(
+                {
+                    "rows": rows,
+                    "arms": results,
+                    "finite": _finite(buffers, out_buf, rows, out_features),
+                }
+            )
+            line = f"shape=({in_features},{out_features}) rows={rows:>4}"
+            for name in list(arms):
+                value = results.get(name, {})
+                if isinstance(value, dict) and "best_median_ms" in value:
+                    line += f"  {name}={value['best_median_ms']:>8.3f}ms"
+                    if name != "shared_b":
+                        line += f"({value['shared_b_over_candidate']:.2f}x)"
+                else:
+                    line += f"  {name}=err"
+            print(line, flush=True)
+        shape_blocks.append(
+            {
+                "in_features": in_features,
+                "out_features": out_features,
+                "weight_tile_bytes": weight_bytes,
+                "rows": per_row,
+            }
+        )
 
     payload = {
-        "schema": 1,
+        "schema": 2,
         "kind": "gguf_t16_prefill_row_sweep",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "git": {"commit": _git("rev-parse", "HEAD"), "branch": _git("rev-parse", "--abbrev-ref", "HEAD"), "dirty": bool(_git("status", "--porcelain"))},
+        "git": {
+            "commit": _git("rev-parse", "HEAD"),
+            "branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
+            "dirty": bool(_git("status", "--porcelain")),
+        },
         "host": {"hostname": platform.node(), "machine": platform.machine(), "python": platform.python_version()},
-        "geometry": {"in_features": IN_FEATURES, "out_features": OUT_FEATURES, "weight_tile_bytes": weight_bytes},
+        "shapes": shape_blocks,
         "protocol": {
             "reps": args.reps,
             "warmup": args.warmup,
             "seed": args.seed,
             "timing": "wall around one launch plus device_synchronize; two passes per arm; best-of-two; ratios are shared_b/candidate so >1.0 means faster",
             "payload": "repack_gguf_q4_k_tile16 output over a valid Q4_K block image",
+            "ulp": "worst BF16 ULP distance against the shared-B output, an upper bound where signs differ",
         },
         "kernel_tile_rows": {"shared_b": 256},
-        "rows": per_row,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2) + "\n")

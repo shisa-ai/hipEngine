@@ -1,5 +1,17 @@
 # hipEngine Benchmark Changelog
 
+- **2026-08-30** — W7900 Qwen3.8 `Q4_K_M` **single-wave prefill band extended to two more dense shapes;
+  sub-window win, no published row changed** — sweeping every shape that still reaches the 256-row shared-B
+  tile found the win is shape-dependent, so it was extended by measurement: **bit-identical (ULP 0) and
+  1.02x-1.28x faster** at rows 2-128 for `(5120,10240)` (1.20x@35, 1.11x@128) and `(5120,12288)`
+  (1.21x@35, 1.02x@128), now promoted. Four shapes are recorded as **measured losses** so they are not
+  re-opened: `(17408,5120)` 0.77x-0.83x, `(5120,6144)`/`(6144,5120)` 0.75x-0.85x, `(5120,1024)` 0.63x-0.92x.
+  Row-6 routes are untouched, preserving the measured 7.28x rows6-rowtile wins. First-token same-build A/B:
+  **252.92→230.49 ms (-8.8%)**. The sweep also localises the last large dense gap: the FFN **down projection
+  costs 1.23-1.37 ms per launch** on the same 51.5 MB, because `out_features = 5120` gives the shared-B grid
+  ~107 column blocks against 512 compute units, and no registered leaf beats it — that needs split-K work, not
+  a declaration. Artifact: [`single-wave shapes`](results/2026-08-30-w7900-q4km-t16-single-wave-shapes-accepted.json).
+
 - **2026-08-30** — W7900 Qwen3.8 `Q4_K_M` **single-wave owns the (5120, 17408) dense prefill band rows 2-128;
   sub-window win, no published row replaced** — the owner kernel is launched on a `4*4*16 = 256` row tile, so
   rows 2-256 all pay one 256-row tile (0.630 ms at 6 rows vs 1.081 ms at 256, stepping up again at 257), and

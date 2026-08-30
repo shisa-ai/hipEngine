@@ -172,7 +172,9 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
             (17_408, 5_120),
         }
     )
-    assert single_wave_policy == frozenset({(5_120, 17_408)})
+    assert single_wave_policy == frozenset(
+        {(5_120, 17_408), (5_120, 10_240), (5_120, 12_288)}
+    )
     # Measured on W7900 at (rows, 5120, 17408) against the 256-row shared-B tile:
     # single-wave is bit-identical and 1.43x-1.04x faster for rows 2..128, and
     # 0.87x slower from 144 rows up. See
@@ -208,6 +210,10 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     selector(1, 2, 3, 128, 5_120, 17_408)
     selector(1, 2, 3, 129, 5_120, 17_408)
     selector(1, 2, 3, 35, 17_408, 5_120)
+    selector(1, 2, 3, 6, 5_120, 10_240)
+    selector(1, 2, 3, 35, 5_120, 10_240)
+    selector(1, 2, 3, 35, 5_120, 12_288)
+    selector(1, 2, 3, 35, 5_120, 6_144)
     assert calls == ["rowtile"] * len(shape_policy) + [
         "single_wave",
         "rowtile",
@@ -217,6 +223,10 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         "single_wave",
         "single_wave",
         "shared_b",
+        "shared_b",
+        "rowtile",
+        "single_wave",
+        "single_wave",
         "shared_b",
     ]
 
