@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -184,6 +185,22 @@ def test_summarize_samples_reports_shape_rates_and_determinism() -> None:
     assert summary["shapes"]["512"]["case_count"] == 4
     assert summary["shapes"]["512"]["prefill_tok_s_weighted"] > 500
     assert summary["shapes"]["512"]["decode_tok_s_weighted"] > 60
+
+
+def test_rocm_platform_falls_back_to_rocm_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _load_script()
+
+    def missing_distribution(_name: str) -> str:
+        raise module.importlib.metadata.PackageNotFoundError
+
+    monkeypatch.setattr(module.importlib.metadata, "version", missing_distribution)
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(stdout="10.0.0\n", stderr=""),
+    )
+
+    assert module._rocm_platform_version() == "10.0.0"
 
 
 def test_compare_rejects_different_case_sets(tmp_path: Path) -> None:
