@@ -153,12 +153,28 @@ class _Buffers:
 def _resolve_arms() -> dict[str, object]:
     from hipengine.kernels.hip_gfx1100.quant import gguf_k_t16_selected_prefill as P
 
-    return {
+    arms: dict[str, object] = {
         "shared_b": P.gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
         "single_wave": P.gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
         "smallm": P.gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out,
-        "rows6_rowtile": P.gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out,
+        "c1_rowtile_dispatch": P.gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out,
     }
+    # The sidecar leaves that the verifier / native-batch-decode scope selects are
+    # not exported from the prefill module, and the prefill dispatcher above only
+    # reaches the rowtile kernel at row 6. Measure the real leaves directly, or a
+    # shape's rowtile option stays unmeasured (as it was for (17408, 5120)).
+    try:
+        from hipengine.kernels.hip_gfx1100.quant import gguf_t16_selected_gemv as G
+    except Exception:  # pragma: no cover - module always present in-tree
+        return arms
+    for name, symbol in (
+        ("dense_rowtile", "gguf_q4_k_t16_dense_rowtile_bf16_bf16_out"),
+        ("rowtile_col4", "gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out"),
+    ):
+        fn = getattr(G, symbol, None) or getattr(P, symbol, None)
+        if fn is not None:
+            arms[name] = fn
+    return arms
 
 
 def _timed(
@@ -305,6 +321,13 @@ def main(argv: list[str] | None = None) -> int:
             for name, value in results.items():
                 if isinstance(value, dict) and "best_median_ms" in value and baseline:
                     value["shared_b_over_candidate"] = baseline / value["best_median_ms"]
+                # A leaf can time fast while reading buffers this harness does not
+                # supply, which is not a speedup. Mark the divergence so a ratio can
+                # never be read as a win: (17408, 5120) dense_rowtile timed 14.3x at
+                # 0.071 ms while disagreeing with the owner by ~1e7 BF16 ULPs.
+                if isinstance(value, dict) and value.get("ulp_vs_shared_b") not in (None, 0):
+                    value["output_diverges_from_owner"] = True
+                    value.pop("shared_b_over_candidate", None)
             per_row.append(
                 {
                     "rows": rows,
@@ -318,7 +341,10 @@ def main(argv: list[str] | None = None) -> int:
                 if isinstance(value, dict) and "best_median_ms" in value:
                     line += f"  {name}={value['best_median_ms']:>8.3f}ms"
                     if name != "shared_b":
-                        line += f"({value['shared_b_over_candidate']:.2f}x)"
+                        if value.get("output_diverges_from_owner"):
+                            line += "(DIV ulp=%s)" % value.get("ulp_vs_shared_b")
+                        else:
+                            line += f"({value['shared_b_over_candidate']:.2f}x)"
                 else:
                     line += f"  {name}=err"
             print(line, flush=True)
