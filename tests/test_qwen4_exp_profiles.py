@@ -43,6 +43,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS",
         "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL",
         "HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS",
+        "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS",
         "HIPENGINE_QWEN4_EXP_Q4_DP4A64",
         "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS",
         "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS",
@@ -157,6 +158,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
             "HIPENGINE_QWEN4_EXP_GDN_COLWARPS_LAYERS"
         ].split(",")
     ) == PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_FLASH_PREFILL"] == "1"
     assert tuple(
         int(value)
@@ -202,6 +204,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS"] == ""
+    assert os.environ["HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS"] == ""
     assert not _qwen4_exp_production_moe_prefill_enabled(weight(47), rows=256)

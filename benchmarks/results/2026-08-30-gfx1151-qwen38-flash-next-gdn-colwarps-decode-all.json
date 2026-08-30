@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-08-30",
-  "status": "accepted",
+  "status": "invalid_unreachable_route",
   "scope": "GDN column-warp DECODE on all 36 GDN layers (prefill stays 27-47): the same columnwarps kernel serves rows==1 through a decode-specific layer env, replacing the block-per-head decode kernel on layers 0-26",
   "host": {
     "identity": "zbook",
@@ -63,5 +63,18 @@
     "decode_bench": "uv run python /tmp/gdn_decode_bench.py",
     "free_generation": "uv run python /tmp/qwen4exp_gdn_decode_free_gen.py",
     "c2": "uv run python /tmp/qwen4exp_gdn_decode_c2.py"
+  },
+  "invalidation": {
+    "date": "2026-08-30",
+    "reason": "The rows==1 decode branch called qwen4_exp_gdn_decode_f32 before the column-warp selector in the rows>1 branch; HIPENGINE_QWEN4_EXP_GDN_COLWARPS_DECODE_LAYERS was unreachable. The packet compared the strict decode owner to itself and cannot certify decode column-warp arithmetic or performance.",
+    "fresh_trace_evidence": {
+      "strict_decode_kernel_ms_per_token": 2.454,
+      "actual_columnwarps_recurrence_ms_per_token": 6.832,
+      "actual_columnwarps_tail_ms_per_token": 0.117,
+      "actual_full_decode_tok_s": "14.46-14.55",
+      "retained_strict_full_decode_tok_s": "~15.1-15.5 same-session range"
+    },
+    "correction": "Production binder clears the decode-colwarps env; prefill colwarps 27-47 remains certified and unchanged.",
+    "superseding_artifact": "benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json"
   }
 }
