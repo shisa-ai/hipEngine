@@ -4676,8 +4676,17 @@ work item. Two consequences to remove when the capability is declared:
 * The refusal happens *after* the scheduler has already consumed the prefill cursors,
   so the fallback runs on post-advance state instead of never having committed.
 
-The fix is to filter candidates by whole-prompt-fit-before-chunk (and select the
-largest compatible subset) at selection time, so an over-long lane is routed to the
-chunked path without taxing its neighbours. Add a fixture with one 300-token lane and
-seven short lanes: today it must show zero grouped rows, and after the fix the seven
-short lanes must group while the long lane chunks.
+**Landed (inert by default):** `_try_prefill_native_work_batch` now partitions
+instead of refusing - it groups the largest compatible subset and returns the handled
+request ids, and `prefill_batch` skips those ids and serially prefills the rest, so an
+over-long lane goes to the chunked path without taxing its neighbours. The requested
+fixture exists and is green
+(`test_resident_ar_packed_prefill_survives_one_over_long_lane`: one 300-token lane plus
+seven short lanes asserts seven grouped rows, one call, and `prefill_tokens_seen == 0`
+for the long lane).
+
+**Still open:** the partition happens *after* `next_prefill_batch_work` has already
+advanced every selected cursor, so the scheduler still over-commits on rows it knows
+cannot group - move the compatibility test to selection time, and declare
+`GGUF_C2_PACKED_PREFILL_MAX_ROWS` once a mixed wave with a >256-token lane is measured
+end to end (the standard 35-67-token suite cannot exercise it).

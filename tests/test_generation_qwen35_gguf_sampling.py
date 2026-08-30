@@ -4802,6 +4802,103 @@ def test_gguf_ar_packed_prefill_batches_unequal_prompt_lengths(monkeypatch) -> N
     assert grouped_rows == {4, 2, 1}, f"grouped call did not carry all three lengths: {grouped_rows}"
 
 
+def test_resident_ar_packed_prefill_survives_one_over_long_lane(monkeypatch) -> None:
+    """RED: one chunked lane must not cost grouping for every other lane.
+
+    ``next_prefill_batch_work`` selects the first ``max_rows`` active requests
+    regardless of length and advances every prefill cursor, then
+    ``_try_prefill_native_work_batch`` refuses the **whole** work item if any row
+    fails its per-row checks - including ``chunk == row.prompt_ids``, which a prompt
+    longer than ``DEFAULT_MAX_PREFILL_CHUNK_TOKENS`` (256) always violates because its
+    chunk is truncated. A single long lane therefore drops a 7-lane grouped prefill
+    back to serial, and the standard 10-prompt suite (35-67 tokens) cannot observe
+    it. Target contract: the compatible subset groups and the long lane is left to
+    the chunked path.
+    """
+
+    from hipengine.dispatch.batch import WorkItem, WorkKind
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
+
+    long_prompt = tuple(range(1000, 1300))          # 300 tokens > 256-token chunk
+    short_prompt = (10, 11, 12, 13, 14, 15, 16, 17)
+    prompts = {i: (long_prompt if i == 0 else short_prompt) for i in range(8)}
+
+    class FakeSession:
+        def __init__(self, slot_id):
+            self.slot_id = slot_id
+            self.position = 0
+
+    class FakeLease:
+        def __init__(self, slot_id):
+            self.session = FakeSession(slot_id)
+
+    class FakeOwner:
+        def __init__(self):
+            self.calls: list[tuple] = []
+
+        def prefill_batch_native(
+            self, prompt_token_ids, *, sessions, full_prompt_lengths=None, **kwargs
+        ):
+            self.calls.append(
+                tuple(tuple(int(t) for t in prompt) for prompt in prompt_token_ids)
+            )
+            return [SimpleNamespace(token_id=1) for _ in sessions]
+
+    rows = {}
+    for request_id, prompt in prompts.items():
+        rows[request_id] = SimpleNamespace(
+            request_id=request_id,
+            prompt_ids=prompt,
+            request=SimpleNamespace(deadline_at=None, cancellation_token=None),
+            lease=FakeLease(request_id),
+            native_greedy=True,
+            slot=None,
+            prefill_tokens_seen=0,
+            prefix_reused_tokens=0,
+            mtp2_candidate_budget=0,
+            incremental_prefill=True,
+            prefill_ms=0.0,
+            prefill_chunk_count=0,
+        )
+
+    owner = FakeOwner()
+    runner = Qwen35GGUFResidentModelRunner.__new__(Qwen35GGUFResidentModelRunner)
+    runner.packed_prefill_max_rows = 8
+    runner._route_counts = {"native_full_prefill_rows": 0}
+    runner._row = lambda request_id: rows[int(request_id)]
+    runner._packed_execution_owner = lambda session: owner
+    runner._begin_mtp2_prompt_streaming = lambda _rows: [None] * len(prompts)
+    runner._finish_mtp2_prompt_streaming = lambda *args, **kwargs: None
+    runner._refresh_prefix_cache = lambda _row: None
+    runner._finish_native_prefill = lambda *args, **kwargs: None
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "1")
+
+    # What the scheduler emits: the long lane arrives as a truncated 256-token chunk.
+    token_rows = tuple(
+        prompts[r][:256] if r == 0 else prompts[r] for r in prompts
+    )
+    work = WorkItem(
+        kind=WorkKind.PREFILL,
+        request_ids=tuple(prompts),
+        row_to_request=tuple(prompts),
+        token_rows=token_rows,
+    )
+    handled = runner._try_prefill_native_work_batch(work)
+
+    assert handled == frozenset(range(1, 8)), (
+        "a single over-long lane refused the whole item; every compatible lane fell "
+        f"back to serial prefill (handled={handled!r})"
+    )
+    assert len(owner.calls) == 1 and len(owner.calls[0]) == 7, (
+        f"expected the 7 compatible lanes to group, got {len(owner.calls)} call(s)"
+    )
+    assert rows[0].prefill_tokens_seen == 0, (
+        "the over-long lane was consumed by the grouped call; it must stay on the "
+        "chunked serial path"
+    )
+    assert runner._route_counts["native_full_prefill_rows"] == 7
+
+
 def test_gguf_gfx1100_packed_prefill_capability_is_undeclared_by_default() -> None:
     """Tripwire: the resident AR loop cannot batch prefill until this is declared.
 
@@ -4907,9 +5004,11 @@ def test_resident_ar_packed_prefill_groups_mixed_prompt_lengths(monkeypatch) -> 
         row_to_request=tuple(prompts),
         token_rows=tuple(prompts[r] for r in prompts),
     )
-    grouped = runner._try_prefill_native_work_batch(work)
+    handled = runner._try_prefill_native_work_batch(work)
 
-    assert grouped is True, "mixed-length wave was refused and fell back to serial prefill"
+    assert handled == frozenset(prompts), (
+        f"mixed-length wave was refused and fell back to serial prefill: {handled!r}"
+    )
     assert len(owner.calls) == 1, f"expected one grouped call, got {len(owner.calls)}"
     carried, slots, lengths = owner.calls[0]
     assert carried == tuple(prompts[r] for r in prompts)
