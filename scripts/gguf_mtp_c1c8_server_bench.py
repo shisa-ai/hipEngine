@@ -263,8 +263,12 @@ def _backend_mtp_engaged(payload: Mapping[str, Any], *, width: int) -> bool:
 def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
     rows = int(kwargs["realized_group_rows"])
     budget = int(kwargs.get("candidate_budget", 2))
+    # M1 protocol: the gfx1151 production physical adapter is qualified one
+    # cycle through C8/R32; static grouping intent is advertised at width 8 and
+    # clamped per profile by the capability-owned bound.
+    diagnostic_max_rows = 8
     admitted = bool(
-        1 <= rows <= 4
+        1 <= rows <= diagnostic_max_rows
         and budget in {1, 2, 3}
         and kwargs["sampling_mode"] == "greedy_fast"
         and int(kwargs["context_tokens"]) <= 95
@@ -279,14 +283,14 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
     }
     digest = hashlib.sha256(json.dumps(key, sort_keys=True).encode("utf-8")).hexdigest()
     reason = "diagnostic_physical_gguf_mtp" if admitted else "diagnostic_scope_miss"
-    evidence_key = "gguf-c1-c4-generation2-diagnostic"
+    evidence_key = "gguf-c1-c8-generation2-diagnostic"
     static_key = {
         "candidate_budget": budget,
         "sampling_mode": str(kwargs["sampling_mode"]),
         "context_tokens": int(kwargs["context_tokens"]),
         "output_horizon_tokens": int(kwargs["output_horizon_tokens"]),
         "memory_fit": bool(kwargs["memory_fit"]),
-        "max_realized_group_rows": 4,
+        "max_realized_group_rows": diagnostic_max_rows,
     }
     static_digest = hashlib.sha256(
         json.dumps(static_key, sort_keys=True).encode("utf-8")
@@ -309,7 +313,7 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
             "eligible": admitted,
             "reason": reason,
             "max_candidate_count": budget if admitted else 0,
-            "max_realized_group_rows": 4 if admitted else 0,
+            "max_realized_group_rows": diagnostic_max_rows if admitted else 0,
             "automatic_eligible": False,
             "strict_fallback_key": "gguf_target_ar",
             "evidence_key": evidence_key,
@@ -640,7 +644,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.generation2_diagnostic:
         import hipengine.kernels.hip_gfx1100 as backend_package
 
-        backend_package.GGUF_SPECDEC2_MTP2_C4 = True
+        backend_package.GGUF_SPECDEC2_MTP2_PHYSICAL = True
     started = time.perf_counter()
     initial_memory = memory_stats()
     llm = LLM(

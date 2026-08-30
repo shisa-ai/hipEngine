@@ -6030,7 +6030,7 @@ class Qwen35GGUFResidentModelRunner:
         capability_name = (
             "GGUF_SPECDEC2_MTP2_C1"
             if int(self.capacity) == 1
-            else "GGUF_SPECDEC2_MTP2_C4"
+            else "GGUF_SPECDEC2_MTP2_PHYSICAL"
         )
         enabled = bool(
             backend_package_capability(
