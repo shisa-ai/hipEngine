@@ -1,18 +1,25 @@
 {
-  "id": "w7900-gguf-q4ks-ar-rows-scaling-kernel-trace-2026-08-30",
-  "date": "2026-08-30",
-  "status": "accepted_diagnostic",
-  "supersedes": "w7900-gguf-q4ks-ar-amortization-prefill-split-2026-08-30.json (its decode conclusion)",
   "claim": "what the GPU actually does when a pure-AR wave carries 2 rows instead of 1",
-  "supersedes_detail": "the earlier artifact concluded 'decode does not amortize weights' from 1.52x per-step cost growth. That per-step figure divided the wave wall by 24 steps while subtracting ONE prefill at both widths, but a 2-row wave legitimately admits two prompts. With the traced kernel totals the decode route costs 1.24x for 2x rows, so decode does amortize; the growth sits in prefill.",
-  "hardware": "AMD Radeon Pro W7900 (gfx1100, 10.5 GB visible), device 0 of 2",
-  "host": "Linux 6.17.0-35-generic x86_64, 230359 MB RAM",
-  "model": "Qwen3.5-9B GGUF Q4_K_S, mtp_type=none, 152001 KiB",
-  "route": "GGUF direct (hipengine.dispatch.gguf_linear); engine AR with mtp_max_draft=0 and both sessions' mtp_enabled forced False",
-  "execution_profile": "production",
-  "workload": "scripts/gguf_mtp_c1c8_server_bench.py forced to AR, 10 prompts x 24 tokens, median of 3, one process per width, --no-graph",
-  "command": "env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_EXECUTION_PROFILE=production HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/he-rows/hipcc-version.txt .venv/bin/python -u scripts/gguf_packed_ar_rocprof.py --child-mode --server-bench-path scripts/gguf_mtp_c1c8_server_bench.py --hipengine-repo . --hipengine-python .venv/bin/python --model-path .../Qwen3.5-9B-Q4_K_S.gguf --mtp-path ... --max-tokens 24 --prompts 0 --prompt-file /home/lhl/metrics/report/experiments/dspark-hotspot-bench/data/r21_longbench_full_prompts.jsonl --server-timeout-s 7200 --output-dir /tmp/he-rows/trW --output-prefix arW --ar-dominance-cmd \"<same child cmd> --hipengine-env HIPENGINE_FORCE_MTP_MAX_DRAFT=0 --hipengine-env HIPENGINE_FORCE_MTP_PLAN=False\" (run2.sh = /tmp/he-rows/run2.sh)",
+  "command": "for W in 1 2: env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_EXECUTION_PROFILE=production HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/he-rows/hipcc-version.txt rocprofv3 -f csv -o ar$W -d /tmp/he-rows/tr$W --kernel-trace -- .venv/bin/python scripts/gguf_c1c8_ar_only_control.py --width $W --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --output /tmp/he-rows/ar-$W.json --max-tokens 24; then .venv/bin/python scripts/gguf_rocprof_width_scale_diff.py --base-dir /tmp/he-rows/tr1 --candidate-dir /tmp/he-rows/tr2 --rows-base 1 --rows-candidate 2 --top 22 --json /tmp/he-rows/scale-diff.json; hipcc --version > /tmp/he-rows/hipcc-version.txt is run outside the profiler first",
+  "command_provenance": "The numbers were produced by the /tmp predecessor of scripts/gguf_c1c8_ar_only_control.py (same _request_mtp_value patch, same harness argv). The published command above names the committed script, promoted after the run so the route is reproducible and gate-clean.",
+  "conclusion": "2x rows costs 1.40x wall per step, and 92% of that growth is GPU kernel time (1.355x). It decomposes into ~9.9 ms/step of extra PREFILL work (the two prompts in a wave pay near-full prefill scaling: 5.7 s -> 10.4 s) and ~6.5 ms/step of extra decode, with the decode route itself amortizing well at 1.24x for double the rows. The residual non-kernel per-step time grows only 2.4 -> 5.4 ms. So the C2 deficit is a prefill/admission-cost problem, not a decode-amortization failure - which promotes task #12 (prefill fixed cost) to the highest-value GGUF lever and retires the 'batch the decode GEMVs' hypothesis with a mechanism.",
+  "corrections": [
+    "2026-08-30, same session: the first version of this artifact named the model as Qwen3.5-9B GGUF Q4_K_S with an invented weight size, and named a superseded artifact file that does not exist. Both were re-derived from the packets: the traced model is Qwen3.8-27B Q4_K_M (/models/gguf/Qwen3.8-27B-Q4_K_M.gguf, recorded in both packets) and the superseded artifact is 2026-08-30-w7900-q4km-decode-amortization-c2.json. The measurements themselves are unchanged.",
+    "renamed from w7900-gguf-q4ks-ar-rows-scaling-kernel-trace-2026-08-30.json to the repo convention once the model was corrected; the old name asserted a quant this run does not use.",
+    "hardware said '10.5 GB visible' and host cited an unverified kernel/RAM figure; both re-read from rocm-smi (48.3 GB on device 0) and /proc.",
+    "the first version explained the other artifact's 1.52x as 'divided the wave wall by 24 steps while subtracting one prefill at both widths'. That was a reconstruction of their method from memory, not something their artifact states; the wording is replaced by the mechanism contradiction this trace can actually support."
+  ],
+  "date": "2026-08-30",
   "deadlock_reproduced_and_fixed": "two earlier attempts hung with the GPU idle: a `hipcc --version` probe stuck and its parent blocked in wchan=anon_pipe_read. HIPENGINE_REQUIRE_CACHED_BUILD=1 alone does NOT prevent it - the builder still probes to compute the cache key. hipengine/core/build.py prescribes the PAIR: require_cached AND HIPENGINE_COMPILER_VERSION_FILE (or an explicit compiler_version). With both, no probe is spawned and the trace completes.",
+  "execution_profile": "production",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100, RDNA3), device 0 of 2, 48.3 GB VRAM",
+  "host": "Linux 7.1.3-2-cachyos x86_64, 64191 MB RAM",
+  "id": "2026-08-30-w7900-q4km-ar-rows-scaling-kernel-trace",
+  "limits": [
+    "one traced width pair, one model and quant, --no-graph, 10 prompts; the traced run is one process per width so cross-process drift is not separated",
+    "kernel totals include non-decode work (correctness cells), so the 6.5 ms/step decode delta is an upper bound on extra decode and the 9.9 ms/step prefill delta a lower bound on admission cost",
+    "the route switch is observed, not explained: which dispatch predicate selects rowtile at rows>=2 was not read in code"
+  ],
   "measurement_integrity": [
     "no MTP weight is in either trace: every AR cell reports mtp_engaged=False and backend_telemetry.mtp_verified=None (30 cells across the two runs, 0 engaged)",
     "step count is identical at both widths - decode_steps=24 per cell, 10 prompt cells x 2 arms = 480 steps per width; only rows per step change",
@@ -20,26 +27,70 @@
     "kernel totals include the harness's correctness and AR cells, so per-step figures are per wave-step of the whole run, not a decode-only window"
   ],
   "measurements": {
-    "traced_ar_median_tok_s": {"C1": 21.467, "C2": 30.642},
-    "wave_wall_s": {"C1": 1.118, "C2": 1.566},
-    "wall_per_step_ms": {"C1": 46.6, "C2": 65.3, "ratio": 1.40},
-    "traced_kernel_ms_total": {"C1": 21231, "C2": 28742, "ratio": 1.354},
-    "traced_kernel_ms_per_step": {"C1": 44.2, "C2": 59.9, "ratio": 1.355},
+    "decode_route_total_ms_per_step": {
+      "C1": 28.2,
+      "C2": 34.7,
+      "ratio_for_2x_rows": 1.24
+    },
+    "diff_classification_counts": {
+      "flat": 21,
+      "partial": 1,
+      "per_row_launches": 18
+    },
     "kernel_time_explains_wall_growth_pct": 92,
-    "width1_decode_route_kernel_ms_per_step": {"C1": 28.2, "C2": 2.0, "note": "same kernels, launches divided ~14x, per-launch means unchanged (157.11->157.41 us, 40.28->40.22, 89.62->87.98, 59.50->57.38) - a route being replaced, not slowed"},
-    "width2_only_route_kernel_ms_per_step": {"C1": 0.0, "C2": 32.7, "note": "18 kernels that do not exist in the C1 trace at all"},
-    "decode_route_total_ms_per_step": {"C1": 28.2, "C2": 34.7, "ratio_for_2x_rows": 1.24},
-    "prefill_named_kernels_ms": {"C1": 5675, "C2": 10427, "delta_ms": 4752, "delta_ms_per_step": 9.9},
-    "launches_total": {"C1": 446843, "C2": 489551, "ratio": 1.095},
-    "diff_classification_counts": {"flat": 21, "partial": 1, "per_row_launches": 18}
+    "launches_total": {
+      "C1": 446843,
+      "C2": 489551,
+      "ratio": 1.095
+    },
+    "prefill_named_kernels_ms": {
+      "C1": 5675,
+      "C2": 10427,
+      "delta_ms": 4752,
+      "delta_ms_per_step": 9.9
+    },
+    "traced_ar_median_tok_s": {
+      "C1": 21.467,
+      "C2": 30.642
+    },
+    "traced_kernel_ms_per_step": {
+      "C1": 44.2,
+      "C2": 59.9,
+      "ratio": 1.355
+    },
+    "traced_kernel_ms_total": {
+      "C1": 21231,
+      "C2": 28742,
+      "ratio": 1.354
+    },
+    "wall_per_step_ms": {
+      "C1": 46.6,
+      "C2": 65.3,
+      "ratio": 1.4
+    },
+    "wave_wall_s": {
+      "C1": 1.118,
+      "C2": 1.566
+    },
+    "width1_decode_route_kernel_ms_per_step": {
+      "C1": 28.2,
+      "C2": 2.0,
+      "note": "same kernels, launches divided ~14x, per-launch means unchanged (157.11->157.41 us, 40.28->40.22, 89.62->87.98, 59.50->57.38) - a route being replaced, not slowed"
+    },
+    "width2_only_route_kernel_ms_per_step": {
+      "C1": 0.0,
+      "C2": 32.7,
+      "note": "18 kernels that do not exist in the C1 trace at all"
+    }
   },
-  "conclusion": "2x rows costs 1.40x wall per step, and 92% of that growth is GPU kernel time (1.355x). It decomposes into ~9.9 ms/step of extra PREFILL work (the two prompts in a wave pay near-full prefill scaling: 5.7 s -> 10.4 s) and ~6.5 ms/step of extra decode, with the decode route itself amortizing well at 1.24x for double the rows. The residual non-kernel per-step time grows only 2.4 -> 5.4 ms. So the C2 deficit is a prefill/admission-cost problem, not a decode-amortization failure - which promotes task #12 (prefill fixed cost) to the highest-value GGUF lever and retires the 'batch the decode GEMVs' hypothesis with a mechanism.",
   "mechanism_found": "rows>=2 switches the decode route wholesale: the width-1 families (q4_k_t16_dense_single_local32, q4_k_t16_dense_dual_local32_single_lane, q6_k_t16_qmicro_planar_gemv_bf16_*, qk_t16_selected_direct_gemv) collapse to ~7% of their launches, and 18 *_rowtile_* kernels appear that never run at rows=1 (q4_k_t16_dense_dual_rowtile_single_lane 4774 ms / 31232 launches at grid 139264; q4_k_t16_dense_rowtile_gemv_kernel 1914 ms / 50752; q6_k_t16_qmicro_planar_gemv_rowtile 2026+990+744 ms; q5_k_t16_dense_rowtile_gemv 1508 ms; q4_k_t16_dense_rowtile_residual 1219 ms). Unmeasured question worth a microbenchmark: is the rowtile route the cheapest way to do 2 rows, given the width-1 families cost 28.2 ms/step for 1 row and rowtile costs 32.7 for 2?",
-  "retained": true,
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
   "promotes": null,
-  "limits": [
-    "one traced width pair, one model and quant, --no-graph, 10 prompts; the traced run is one process per width so cross-process drift is not separated",
-    "kernel totals include non-decode work (correctness cells), so the 6.5 ms/step decode delta is an upper bound on extra decode and the 9.9 ms/step prefill delta a lower bound on admission cost",
-    "the route switch is observed, not explained: which dispatch predicate selects rowtile at rows>=2 was not read in code"
-  ]
+  "quant": "Q4_K_M",
+  "retained": true,
+  "route": "GGUF direct (hipengine.dispatch.gguf_linear); engine AR with mtp_max_draft=0 and both sessions' mtp_enabled forced False",
+  "status": "accepted_diagnostic",
+  "supersedes": "2026-08-30-w7900-q4km-decode-amortization-c2.json (its mechanism reading)",
+  "supersedes_detail": "The earlier artifact's per-token numbers are not disputed. What this trace contradicts is its mechanism reading - 'weights are not amortised across rows' and its live hypothesis that decode runs per-row GEMV kernels. On the same model, decode changes route wholesale at rows>=2 and the route serving 2 rows costs 1.24x the route serving 1 row, so decode kernel time does amortize; the extra per-token cost is prefill scaling inside the wave, not un-amortized weights. Scope: only widths 1 and 2 are traced, so the 1.62x (C3) and 2.69x (C8) figures in that artifact are not explained here.",
+  "workload": "pure AR forced on both arms of scripts/gguf_mtp_c1c8_server_bench.py via scripts/gguf_c1c8_ar_only_control.py, 10 prompts x 24 tokens, median of 3 runs, one traced process per width"
 }
