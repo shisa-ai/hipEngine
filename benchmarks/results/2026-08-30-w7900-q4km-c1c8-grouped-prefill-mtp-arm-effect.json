@@ -1,0 +1,135 @@
+{
+  "attribution": "Exactly 3 commits touch hipengine/ or kernels/ between the two producer commits and all three are the grouping work: 9f2297314 (resident AR route groups mixed-length waves), 35794a1bb (group the compatible subset instead of refusing the wave), eb17bb589 (counter only). The post packet additionally ran with the capability applied, which is the behaviour 72a29e9ad later made the default.",
+  "caveats": "Cross-packet comparison of two complete packets on the same host, protocol, model and prompt file; each width is a single packet value, so repeatability comes from the separately measured ~0.4% AR drift, not from repeats inside these packets. Deltas of +32% to +77% are two orders of magnitude above that floor. Diagnostic re-reading of retained packets, not a new promotion; the post MTP row is already the published hipEngine explicit K3 row in benchmarks/README.md.",
+  "claim": "The grouped-prefill change that shipped as 72a29e9ad lifts the MTP arm as much as the AR arm, and its benefit is absent at exactly the width where the mechanism cannot fire.",
+  "date": "2026-08-30",
+  "derived_by": "python over the two packets; no GPU time",
+  "framing_consequence": "Pre-grouping MTP sat flat at 30.2-31.7 tok/s across C1-C8 while AR rose 21.7-45.7, which is what made MTP look like it degraded with batch width. It was prefill, not speculative decoding: the flat line disappears once waves group.",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100, RDNA3)",
+  "kind": "w7900-q4km-c1c8-grouped-prefill-mtp-arm-effect",
+  "links": {
+    "ar_promotion": "benchmarks/results/2026-08-30-w7900-q4km-c1c8-hipengine-prefill-row-grouped.json",
+    "grouping_promotion": "benchmarks/results/2026-08-30-w7900-q4km-c1c8-hipengine-grouped-prefill-promotion.json"
+  },
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "mtp_config": "K3 (candidate_budget=3), max_tokens=24, 10 prompts x widths 1-8, resident capacity 8",
+  "null_control": "C1 moves -0.6% on MTP and is inside the ~0.4% AR run-to-run drift measured by scripts/gguf_prefill_row_rollup.py, and native_full_prefill_groups is exactly 0 at C1, so the one width where grouping cannot fire is also the one width with no change.",
+  "post_packet": {
+    "capability_echo": "GGUF_C2_PACKED_PREFILL_MAX_ROWS previous=None applied=8",
+    "correctness_passed_cells": "80/80",
+    "mtp_engaged_cells": "80/80",
+    "passed": true,
+    "path": "/tmp/he-c1c8-cap8/c1c8-cap8.json",
+    "producer_commit": "13fa01e50b2d4c768502178edb2138a0d2acc65a",
+    "status": "complete"
+  },
+  "pre_packet": {
+    "correctness_passed_cells": "80/80",
+    "mtp_engaged_cells": "80/80",
+    "passed": true,
+    "path": "/tmp/he-c1c8-k3/c1c8-k3-packet.json",
+    "producer_commit": "0740a9497b88d4224a5084f3be31ef0feae0df47",
+    "status": "complete"
+  },
+  "quant": "Q4_K_M",
+  "rows_tok_s": {
+    "1": {
+      "ar": {
+        "delta_pct": -0.4,
+        "post": 21.999,
+        "pre": 22.098
+      },
+      "mtp": {
+        "delta_pct": -0.6,
+        "post": 31.455,
+        "pre": 31.654
+      }
+    },
+    "2": {
+      "ar": {
+        "delta_pct": 3.5,
+        "post": 31.916,
+        "pre": 30.851
+      },
+      "mtp": {
+        "delta_pct": 31.8,
+        "post": 39.82,
+        "pre": 30.212
+      }
+    },
+    "3": {
+      "ar": {
+        "delta_pct": 24.6,
+        "post": 45.309,
+        "pre": 36.356
+      },
+      "mtp": {
+        "delta_pct": 74.9,
+        "post": 54.59,
+        "pre": 31.219
+      }
+    },
+    "4": {
+      "ar": {
+        "delta_pct": 35.0,
+        "post": 54.151,
+        "pre": 40.124
+      },
+      "mtp": {
+        "delta_pct": 75.8,
+        "post": 55.78,
+        "pre": 31.729
+      }
+    },
+    "5": {
+      "ar": {
+        "delta_pct": 46.8,
+        "post": 61.881,
+        "pre": 42.165
+      },
+      "mtp": {
+        "delta_pct": 52.5,
+        "post": 47.96,
+        "pre": 31.458
+      }
+    },
+    "6": {
+      "ar": {
+        "delta_pct": 62.6,
+        "post": 71.226,
+        "pre": 43.807
+      },
+      "mtp": {
+        "delta_pct": 58.5,
+        "post": 49.02,
+        "pre": 30.936
+      }
+    },
+    "7": {
+      "ar": {
+        "delta_pct": 67.5,
+        "post": 74.903,
+        "pre": 44.72
+      },
+      "mtp": {
+        "delta_pct": 76.2,
+        "post": 55.225,
+        "pre": 31.339
+      }
+    },
+    "8": {
+      "ar": {
+        "delta_pct": 72.2,
+        "post": 78.667,
+        "pre": 45.684
+      },
+      "mtp": {
+        "delta_pct": 76.5,
+        "post": 55.86,
+        "pre": 31.651
+      }
+    }
+  },
+  "schema": "w7900_grouped_prefill_mtp_arm_effect.v1",
+  "status": "accepted-derived-measurement"
+}
