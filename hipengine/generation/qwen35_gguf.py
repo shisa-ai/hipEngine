@@ -215,6 +215,36 @@ _GGUF_PUBLIC_USE_WMMA_PREFILL = True
 _GGUF_PUBLIC_USE_GEMV_DECODE = True
 _MTP_SERVING_TARGET_USE_WMMA_PREFILL = False
 
+# Diagnostic escape hatch for the resident sessions' prefill route (docs/REFACTOR.md, "All-GEMV
+# small-row prefill A/B"). Both shipping call sites below passed `use_wmma_prefill=True` literally,
+# and `HIPENGINE_GGUF_WMMA_PREFILL` is opt-in-only, so no bench or diagnostic could take the WMMA
+# prefill route away - `setattr` misses it too because the constant is bound as a default argument.
+# This resolver is read at session-acquire time (once per session, not per token) and is a
+# *diagnostic* only: unset means the production route, unchanged.
+_GGUF_DIAGNOSTIC_WMMA_PREFILL_ENV = "HIPENGINE_GGUF_DIAGNOSTIC_WMMA_PREFILL"
+_WMMA_PREFILL_FALSY = frozenset({"0", "false", "no", "off"})
+_WMMA_PREFILL_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def _resident_session_wmma_prefill_default() -> bool:
+    """Return the prefill route for the resident AR / MTP-target sessions, default shipped True.
+
+    Raises on an unrecognised value rather than falling back: a typo silently reading as "route
+    unchanged" is how a route A/B becomes a null result with no clue why (measured the hard way on
+    2026-08-30 with HIPENGINE_GGUF_Q4K_ROWTILE, whose value the server session overrode).
+    """
+    raw = (os.environ.get(_GGUF_DIAGNOSTIC_WMMA_PREFILL_ENV) or "").strip().lower()
+    if not raw:
+        return True
+    if raw in _WMMA_PREFILL_TRUTHY:
+        return True
+    if raw in _WMMA_PREFILL_FALSY:
+        return False
+    raise ValueError(
+        f"invalid {_GGUF_DIAGNOSTIC_WMMA_PREFILL_ENV}={raw!r}; expected a boolean in "
+        f"{sorted(_WMMA_PREFILL_TRUTHY)} or {sorted(_WMMA_PREFILL_FALSY)}"
+    )
+
 
 def _target_arch_scoped(method):
     @wraps(method)
@@ -1104,7 +1134,7 @@ class Qwen35GGUFBringupGenerator:
                             session, key, _reused = self._acquire_shared_session(
                                 shared_runner,
                                 pool_name="ar_batch",
-                                use_wmma_prefill=True,
+                                use_wmma_prefill=_resident_session_wmma_prefill_default(),
                                 use_gemv_decode=True,
                             )
                             sessions.append(session)
@@ -1177,7 +1207,7 @@ class Qwen35GGUFBringupGenerator:
                             session, session_key, _session_reused = self._acquire_shared_session(
                                 shared_runner,
                                 pool_name="mtp_target",
-                                use_wmma_prefill=True,
+                                use_wmma_prefill=_resident_session_wmma_prefill_default(),
                                 use_gemv_decode=True,
                             )
                             sessions.append(session)
