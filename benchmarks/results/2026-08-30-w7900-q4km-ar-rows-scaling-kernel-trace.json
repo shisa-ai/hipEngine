@@ -83,6 +83,13 @@
       "note": "18 kernels that do not exist in the C1 trace at all"
     }
   },
+  "mechanism_followup": {
+    "date": "2026-08-30, same session",
+    "decision_point_narrowed": "the route is not chosen by resolve_gguf_linear_dispatch: for LAYOUT_GGUF_Q4_K_T16 every rows>1 resolves t16_wmma_prefill_bf16_bf16_out regardless of HIPENGINE_GGUF_Q4K_ROWTILE (pinned by tests/test_runtime_gguf_linear_q4k_rowtile_knob.py). The env is consumed one level down at the launch sites - launch_gguf_linear (gguf_linear.py:2447), launch_gguf_linear_pair (:4182), launch_gguf_linear_pair_silu (:4658) - which matches the widest width-2 kernel being a *dual* (pair-route) rowtile launch.",
+    "single_thread_established": "both traces run every kernel on one worker thread (width 1: thread 869469 carries 308,889 'other' + 137,632 width-1-route launches; width 2: thread 873535 carries 314,977 + 164,460 rowtile + 9,792 width-1-route). The only other thread has 322 launches / ~6 ms. So the width-2 route difference is not an artifact of a second arm running on its own thread - the control's nominal MTP arm shares the serving thread.",
+    "still_unresolved": "which predicate inside those launch sites prefers rowtile over the WMMA fallback at rows 2..8, and whether that preference is optimal, is still unexplained. An order-controlled A/B on HIPENGINE_GGUF_Q4K_ROWTILE at width 2 is running to answer the optimality half.",
+    "why_this_matters_for_the_original_claim": "the headline decomposition (prefill +9.9 ms/step, decode 1.24x for 2x rows) does not depend on any of this; only the sentence 'rows>=2 switches the decode route wholesale' was stated as observed-not-explained, and it remains observed."
+  },
   "mechanism_found": "rows>=2 switches the decode route wholesale: the width-1 families (q4_k_t16_dense_single_local32, q4_k_t16_dense_dual_local32_single_lane, q6_k_t16_qmicro_planar_gemv_bf16_*, qk_t16_selected_direct_gemv) collapse to ~7% of their launches, and 18 *_rowtile_* kernels appear that never run at rows=1 (q4_k_t16_dense_dual_rowtile_single_lane 4774 ms / 31232 launches at grid 139264; q4_k_t16_dense_rowtile_gemv_kernel 1914 ms / 50752; q6_k_t16_qmicro_planar_gemv_rowtile 2026+990+744 ms; q5_k_t16_dense_rowtile_gemv 1508 ms; q4_k_t16_dense_rowtile_residual 1219 ms). Unmeasured question worth a microbenchmark: is the rowtile route the cheapest way to do 2 rows, given the width-1 families cost 28.2 ms/step for 1 row and rowtile costs 32.7 for 2?",
   "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
   "promotes": null,
