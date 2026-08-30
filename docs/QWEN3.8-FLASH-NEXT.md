@@ -22,7 +22,9 @@ This document is the campaign authority. Architecture-wide decisions also stay
 consistent with [`PLAN.md`](PLAN.md); numerical and evidence rules remain
 normative in [`TESTING.md`](TESTING.md),
 [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md),
-[`KERNELS.md`](KERNELS.md), and [`BENCHMARK.md`](BENCHMARK.md).
+[`KERNELS.md`](KERNELS.md), and [`BENCHMARK.md`](BENCHMARK.md). The active
+gap-closure plan, profiling recipe, external-source audit, and punchlist are
+[`QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md`](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md).
 
 ---
 
@@ -101,6 +103,8 @@ launches and 48 graph launches per token.
 
 ### 0.3 Next units (priority order)
 
+The executable phase order and current punchlist are owned by
+[`QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md`](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md).
 Audit note (2026-08-29, `qwen4exp-fork-idea-audit`): the fork's radix top-k,
 incremental pooled-key cache, gathered decode attention, GDN concat fix,
 permute-free scoring, and distinct-stream MTP combiner are **already covered
