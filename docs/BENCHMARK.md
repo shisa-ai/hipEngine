@@ -480,6 +480,16 @@ request-scoped route-cap values, flattened actual backend-group widths, maximum
 backend width, per-group details, and total verifier rows. Missing or partial
 shape metadata makes a new hipEngine server row diagnostic rather than retained.
 
+An A/B chain counts as one measurement per arm, not per run. Each arm must leave its
+own artifact plus captured output, and the chain must report the per-arm exit code;
+an unconditional `*_DONE` marker is not evidence, because three chains on 2026-08-30
+printed one while an arm had died or written nothing at all (`RuntimeError: benchmark
+requires tracked-clean source`, two 14-byte logs with no artifact). Use
+`scripts/bench_chain.sh TAG OUTDIR "NAME|COMMAND" ...`, which tees each arm to
+`OUTDIR/TAG-NAME.log`, derives and validates `$CHAIN_JSON` (`status == "complete"`),
+and exits non-zero unless every arm measured. Arms that legitimately emit no artifact
+are named with a trailing `!` and are reported as `ok(no-artifact)`.
+
 ### Exact-token direct/HTTP gate
 
 Use [`scripts/exact_token_generation.py`](../scripts/exact_token_generation.py)
