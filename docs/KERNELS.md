@@ -981,6 +981,18 @@ measurement, so record it instead of rediscovering it.
    the accepted flags; meanwhile do not pass it from a driver script, and treat an argparse exit
    code 2 in a sweep log as "every arm in this file failed", never as a null result.
 
+7. **`block-verify` cannot run on a Q4_K_M repack without one specific env, and a wrapper flag
+   implies otherwise.** On a `q5_k_t16_v1` repack the verify path picks F32 activations unless
+   `use_prefill_gdn_capture` or `prefill_score_ready` (`qwen35_gguf_runner.py:8000`); with F32 both
+   dense-Q8 escapes require `quant_key == "gguf_q8_0_t16_v1"` (`_dense_q8_raw_ptr`, :12710), so they
+   are structurally unavailable and the plain fallback raises
+   `unsupported GGUF linear dispatch: layout='gguf_q5_k_t16_v1', activation='f32', output='bf16'`
+   (`gguf_linear.py:2181`). Four arms died identically that way. `--block-wmma-prefill` alone does
+   not clear it; `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1` does, by selecting bf16 activations.
+   Do not substitute `--verify-dense-q8-dp4a-f32`: nothing under `hipengine/` reads a
+   `verify_dense_q8_dp4a_f32` argument - the switch is the env var
+   `HIPENGINE_GGUF_DENSE_Q8_DP4A_F32` - and that route stays closed to a q5 repack anyway.
+
 For the server matrix itself: `gguf_mtp_c1c8_server_bench.py` accepts neither
 `--require-mtp`, `--tag` nor `--max-run-seconds`, and its `--model` default is
 `Qwen3.6-27B-Q4_K_M.gguf` - omitting `--model` benchmarks the wrong model and still produces
