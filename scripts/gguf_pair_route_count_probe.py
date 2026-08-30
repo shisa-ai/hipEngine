@@ -77,10 +77,17 @@ for _name in (
 
     def _make(name, fn):
         def _wrapped(self, *a, **kw):
-            pt = a[0] if a else kw.get("prompt_token_ids") or kw.get("prompt_ids") or kw.get("batch")
+            pt = a[0] if a else (
+                kw.get("prompt_token_ids") or kw.get("prompt_ids") or kw.get("batch")
+            )
+            width, rows = -1, -1
             try:
-                width = len(pt) if isinstance(pt, (list, tuple)) else 1
-                rows = sum(len(t) for t in pt) if isinstance(pt, (list, tuple)) and pt and isinstance(pt[0], (list, tuple)) else (len(pt) if isinstance(pt, (list, tuple)) else 0)
+                if isinstance(pt, (list, tuple)):
+                    width = len(pt)
+                    if pt and isinstance(pt[0], (list, tuple)):
+                        rows = sum(len(t) for t in pt)
+                    else:
+                        rows = len(pt)
             except Exception:
                 width, rows = -1, -1
             entries_by_entry[(name, width, rows)] += 1
@@ -92,9 +99,17 @@ for _name in (
 
 
 def _report() -> None:
-    print(f"[route-count] prefill entries (name,width,rows): {dict(sorted(entries_by_entry.items()))}", file=sys.stderr)
+    print(
+        "[route-count] prefill entries (name,width,rows): "
+        f"{dict(sorted(entries_by_entry.items()))}",
+        file=sys.stderr,
+    )
     print(f"[route-count] session entries (enabled->count): {dict(entries)}", file=sys.stderr)
-    print(f"[route-count] QKV-shape pair launches (rows, session): {dict(sorted(launches.items()))}", file=sys.stderr)
+    print(
+        "[route-count] QKV-shape pair launches (rows, session): "
+        f"{dict(sorted(launches.items()))}",
+        file=sys.stderr,
+    )
 
 
 atexit.register(_report)

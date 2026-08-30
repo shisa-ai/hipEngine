@@ -3,8 +3,9 @@
 Reads HE_DUAL_WMMA_SILU_MIN_ROWS / HE_UNEQUAL_DUAL_WMMA_MIN_ROWS from the
 environment, patches the module-level tuning gates in
 hipengine.runtime.gguf_linear (both are read at dispatch time), then executes
-HE_PROBE_TARGET (default scripts/qwen35_gguf_bench.py) with the remaining argv. Diagnostic only: never imported by
-product code and not a supported way to select a route.
+HE_PROBE_TARGET (default scripts/qwen35_gguf_bench.py) with the remaining
+argv. Diagnostic only: never imported by product code and not a supported way to
+select a route.
 """
 
 from __future__ import annotations

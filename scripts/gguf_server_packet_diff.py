@@ -36,7 +36,10 @@ def main(argv: list[str]) -> int:
     width = int(argv[3]) if len(argv) > 3 else 8
     control = json.load(open(control_path))
     candidate = json.load(open(candidate_path))
-    print(f"width C{width}  control={control_path.split('/')[-1]}  candidate={candidate_path.split('/')[-1]}")
+    print(
+        f"width C{width}  control={control_path.split("/")[-1]}  "
+        f"candidate={candidate_path.split("/")[-1]}"
+    )
     for arm in ("ar", "mtp"):
         base, cand = _cells(control, width, arm), _cells(candidate, width, arm)
         shared = sorted(set(base) & set(cand))
@@ -62,7 +65,10 @@ def main(argv: list[str]) -> int:
             f"better on {sum(1 for d in deltas if d < 0)}/{len(pairs)} prompts"
         )
         for p, cycles, wb, wc in pairs:
-            print(f"      {p[:28]:28s} {cycles:>3d} cyc  {wb:.3f} -> {wc:.3f}  {(wb - wc) / wb * 100:+5.1f}%")
+            print(
+                f"      {p[:28]:28s} {cycles:>3d} cyc  {wb:.3f} -> {wc:.3f}  "
+                f"{(wb - wc) / wb * 100:+5.1f}%"
+            )
     return 0
 
 
