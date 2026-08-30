@@ -1,0 +1,42 @@
+{
+  "arms": {
+    "baseline": {
+      "c1_ar_tok_s": 22.25,
+      "c2_ar_tok_s": 31.29,
+      "repeat_of_earlier_run": {
+        "agreement_percent": [
+          0.71,
+          0.78
+        ],
+        "c1": 22.409,
+        "c2": 31.537
+      }
+    },
+    "gemv_decode_off": {
+      "c1_ar_tok_s": 22.17,
+      "c2_ar_tok_s": 31.087,
+      "ratio_to_baseline": {
+        "c1": 0.996,
+        "c2": 0.993
+      }
+    }
+  },
+  "consequence": "The sub-linear decode amortization is not the GEMV decode preference. Remaining constraint set: not prefill (C3 is 1.47x on the same prefill cost), not the decode route flag. Next measurement is a kernel-trace comparison of decode at C1 vs C2 to find which kernel families scale with rows; per-step cost goes 33.2 ms -> 50.4 ms from C1 to C2, and a weight-bound batched step should stay near 33 ms.",
+  "control": "The route value is resolved once per session, not per step: the wrapper logged exactly 3 calls, all incoming=True, all resolved=False. So the flip demonstrably reached the resolver. Baseline and candidate ran through the identical driver, which installs the wrapper in both arms so the monkeypatch is not a variable.",
+  "date": "2026-08-30",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100), device 0",
+  "instrument_notes": "Two guards shaped the method, both worth keeping in mind. scripts/gguf_mtp_c1c8_server_bench.py:651 refuses to run against a dirty worktree, so the scratch-edit method used for the prefill arm is unavailable here; the flip was applied in memory at gguf_linear.gguf_gemv_decode_enabled, patching the runner namespace too because the runner imports the name directly. Precedence inside the resolver is explicit kwarg > session > env, and 11 call sites pass True explicitly, so no environment variable can override the route.",
+  "kind": "w7900-q4km-gemv-decode-preference-arm-neutral-and-explained",
+  "links": {
+    "hypothesis_source": "benchmarks/results/2026-08-30-w7900-q4km-decode-amortization-c2.json",
+    "method_lesson": "worklog entry 20260830T051053...-ffcdc6 (telemetry field provenance)"
+  },
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf (17,106,773,984 bytes)",
+  "not_claimed": "No rate claim is published from these arms beyond the C1/C2 medians shown, and these packets were produced by an in-memory patched driver, so they are diagnostic and stay under /tmp rather than entering the scoreboard.",
+  "protocol": "scripts/gguf_mtp_c1c8_server_bench.py --widths 1,2 --expected-mtp-widths 2 (MTP cannot engage at one row, so expecting it at width 1 makes the harness report failed), HIPENGINE_EXECUTION_PROFILE=production, 10 prompts, median of 10 per width.",
+  "quant": "Q4_K_M",
+  "question": "Task #14 first hypothesis: decode amortizes sub-linearly (1.52x off the weight-read ideal at C2, see 2026-08-30-w7900-q4km-decode-amortization-c2.json) because decode uses per-row GEMV kernels, so each wave row pays its own weight pass. Does turning the GEMV decode preference off change C1/C2?",
+  "schema": "w7900_gemv_decode_preference_arm.v1",
+  "status": "neutral-explained-by-code",
+  "why_neutral_is_explained_not_mysterious": "hipengine/runtime/qwen35_gguf_runner.py:13292 feeds the resolver result into Qwen35GGUFFastPathSafety(requested_gemv_decode=...), and the two consumers of that field are disabled_wmma and disabled_gemv, both gated on is_qwen35moe. For this dense model the flag changes only a safety-record field, so neutrality is predicted by the source, and the 11 literal use_gemv_decode=True call sites are inert on the dense GGUF path."
+}
