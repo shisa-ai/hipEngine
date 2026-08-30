@@ -274,26 +274,21 @@ def _run_monitored(
 
 def _default_roctx_sdk() -> Path:
     python_dir = f"python{sys.version_info.major}.{sys.version_info.minor}"
-    candidates = (
-        Path(sys.prefix)
-        / "lib"
-        / python_dir
-        / "site-packages"
-        / "_rocm_sdk_core"
-        / "lib"
-        / "librocprofiler-sdk-roctx.so.1",
-        Path(sys.prefix)
-        / "lib"
-        / python_dir
-        / "site-packages"
-        / "_rocm_sdk_devel"
-        / "lib"
-        / "librocprofiler-sdk-roctx.so.1",
-        Path("/opt/rocm/lib/librocprofiler-sdk-roctx.so.1"),
-    )
-    return next((path for path in candidates if path.exists()), candidates[0])
-
-
+    names = ("librocprofiler-sdk-roctx.so.1", "librocprofiler-sdk-roctx.so")
+    # sys.prefix alone is wrong for a venv built on a ROCm conda env: the venv has no _rocm_sdk_*
+    # packages of its own, so the search can never succeed. See worklog entry
+    # 20260830T043105 (diagnosis) and 8c59be6d8 (first implementation).
+    candidates = [
+        Path(root) / "lib" / python_dir / "site-packages" / pkg / "lib" / name
+        for root in dict.fromkeys((sys.prefix, sys.base_prefix))
+        for pkg in ("_rocm_sdk_core", "_rocm_sdk_devel")
+        for name in names
+    ]
+    candidates += [Path("/opt/rocm/lib") / name for name in names]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 def _prepare_roctx_override(sdk_path: Path, run_root: Path) -> tuple[Path, tuple[Path, ...]]:
     sdk_path = sdk_path.expanduser().resolve()
     if not sdk_path.is_file():

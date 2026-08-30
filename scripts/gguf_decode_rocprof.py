@@ -963,29 +963,22 @@ def _single_file(root: Path, pattern: str) -> Path:
 
 
 def _default_roctx_sdk() -> Path:
+    python_dir = f"python{sys.version_info.major}.{sys.version_info.minor}"
+    names = ("librocprofiler-sdk-roctx.so.1", "librocprofiler-sdk-roctx.so")
+    # sys.prefix alone is wrong for a venv built on a ROCm conda env: the venv has no _rocm_sdk_*
+    # packages of its own, so the search can never succeed. See worklog entry
+    # 20260830T043105 (diagnosis) and 8c59be6d8 (first implementation).
     candidates = [
-        Path(sys.prefix)
-        / "lib"
-        / f"python{sys.version_info.major}.{sys.version_info.minor}"
-        / "site-packages"
-        / "_rocm_sdk_core"
-        / "lib"
-        / "librocprofiler-sdk-roctx.so.1",
-        Path(sys.prefix)
-        / "lib"
-        / f"python{sys.version_info.major}.{sys.version_info.minor}"
-        / "site-packages"
-        / "_rocm_sdk_devel"
-        / "lib"
-        / "librocprofiler-sdk-roctx.so.1",
-        Path("/opt/rocm/lib/librocprofiler-sdk-roctx.so.1"),
+        Path(root) / "lib" / python_dir / "site-packages" / pkg / "lib" / name
+        for root in dict.fromkeys((sys.prefix, sys.base_prefix))
+        for pkg in ("_rocm_sdk_core", "_rocm_sdk_devel")
+        for name in names
     ]
+    candidates += [Path("/opt/rocm/lib") / name for name in names]
     for candidate in candidates:
         if candidate.exists():
             return candidate
     return candidates[0]
-
-
 def _prepare_roctx_override(sdk_path: Path) -> tuple[Path, tuple[Path, ...]]:
     if not sdk_path.exists():
         raise FileNotFoundError(f"rocprofiler SDK ROCTX library not found: {sdk_path}")

@@ -4864,3 +4864,17 @@ fail with "rocprofiler SDK ROCTX library not found" under `.venv` unless `--roct
 Adopt it by extracting `scripts/roctx_discovery.py` and importing it from all eight the next time any
 of them is touched for another reason - do not sweep them blind, since wrapper behaviour changes
 invalidate profile comparisons other lanes may be mid-run on.
+
+Status update (later 2026-08-30). Four of the eight now resolve: `gguf_mtp_verifier_rocprof.py` via
+8c59be6d8, and `gguf_continuous_owner_rocprof.py` / `gguf_decode_rocprof.py` / `gguf_packed_ar_rocprof.py`
+by this unit, each carrying an inline candidate list over `{sys.prefix, sys.base_prefix} x
+{_rocm_sdk_core, _rocm_sdk_devel}` plus `/opt/rocm`. `tests/test_scripts_roctx_sdk_discovery.py` pins
+all four against the installed SDK, so a regression to a prefix-only list fails a test rather than a
+profiling arm. This touched only discovery, not what any wrapper measures, and lanes that pass
+`--roctx-sdk` explicitly are unaffected - so no profile comparison is invalidated. One correction to
+the paragraph above: `gguf_packed_ar_rocprof.py` did carry the `which("rocprofv3")` helper (still at
+line 988), but `_default_roctx_sdk` in that file was still `sys.prefix`-only, so its `--roctx-sdk`
+default was broken like the others; "the one with the fix" was true of the helper, not of the default.
+Extraction into a shared module is still open, and the remaining four (`gguf_mtp_draft_rocprof.py`,
+`gguf_sh_c0_profile.py`, `qwen35_rocprof_audit.py`, `mtp_verifier_rocprof.py`) discover the SDK by
+other means and were not touched.
