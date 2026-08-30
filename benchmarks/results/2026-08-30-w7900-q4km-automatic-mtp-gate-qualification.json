@@ -1,0 +1,94 @@
+{
+  "correction_to_prior_framing": "Earlier entries describe \"three gates\" as if each encoded a performance verdict. They encode identity, deployment shape and table coverage. The task #11 framing should be replaced by: no gfx1100 rows exist at the widths we care about, and the model file on this host is not the qualified artifact.",
+  "date": "2026-08-30",
+  "effect_check_against_the_scoreboard": "Where K3 currently wins on W7900 is C3 (1.20x) and C4 (1.12x) - precisely the widths with no gfx1100 rows. Where it loses, C5-C8 at 0.80x/0.68x/0.73x/0.59x, automatic MTP would also be declined, but for the wrong reason. So the gates do not today enable anything they should not, and also block the two widths where enabling would be correct. Both facts are accidents of table coverage.",
+  "gate_by_gate": {
+    "artifact_not_qualified (C1)": "The predicate compares artifact_sha256 AND artifact_size_bytes (speculative/serving.py:510). Every row records 17,106,775,008 bytes; the file on this host is 17,106,773,984 bytes, 1,024 bytes smaller. So the qualified artifact is a different build of the same-named GGUF and no row can match, including the gfx1100 one. (Size compared by stat; the 16 GB file was not re-hashed.)",
+    "physical_group_not_qualified (C3-C8)": "Requires the row's realized_group_rows (2 on the only gfx1100 row) to equal the observed wave group rows (api.py:2146), which are 3..8 at C3-C8. Fails by construction at every width above 2.",
+    "resident_capacity_not_qualified (C2)": "The auto packet ran its server at resident_capacity 8, the only gfx1100 row requires 2. Mismatch of deployment shape, not of speed."
+  },
+  "gates_are_not_over_rejecting_reality": "Measured from the shipped-default packet (/tmp/he-c1c8-cap8, cumulative physical_width_decode_steps differenced per cell): 91-94% of decode steps in each cell run at the full logical width, only 6-9% below it (C2 93.2/6.8, C3 93.9/6.1, C4 92.5/7.5, C5 91.0/9.0, C6 93.9/6.1, C7 92.5/7.5, C8 93.2/6.8). So the resident route does realize width-matched groups most of the time; the rejections come from the table recording rows the widths do not have, not from waves failing to form.",
+  "kind": "w7900-q4km-automatic-mtp-gate-qualification",
+  "links": {
+    "gating_artifact": "benchmarks/results/2026-08-30-w7900-q4km-automatic-mtp-route-gating.json",
+    "pp512": "benchmarks/results/2026-08-30-w7900-q4km-pp512-cross-engine.json",
+    "row_scaling": "benchmarks/results/2026-08-30-w7900-q4km-block-verify-row-scaling-trace.json"
+  },
+  "model": "Qwen3.8-27B Q4_K_M (GGUF) at /models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "qualification_table": {
+    "arch_counts": {
+      "hip_gfx1100": 1,
+      "hip_gfx1151": 5
+    },
+    "gfx1100_row_detail": "exactly one: qwen38-q4km-gfx1100-production-bf16-c2-k2-d2..., resident_capacity 2, realized_group_rows 2, and it qualifies candidate budget K2, not the K3 the scoreboard measures.",
+    "gfx1100_rows": 1,
+    "gfx1151_rows": 5,
+    "location": "hipengine/models/qwen35.py:_QWEN38_Q4KM_MTP_SERVING_EVIDENCE",
+    "row_count": 6,
+    "rows": [
+      {
+        "automatic_eligible": true,
+        "backend": "hip_gfx1151",
+        "evidence_key": "qwen38-q4km-gfx1151-strict-bf16-c1-b3-natural25-s0",
+        "realized_group_rows": 1,
+        "resident_capacity": 1,
+        "size_bytes": 17106775008,
+        "target_arch": "gfx1151"
+      },
+      {
+        "automatic_eligible": true,
+        "backend": "hip_gfx1151",
+        "evidence_key": "qwen38-q4km-gfx1151-strict-bf16-cap4-realized-c1-b3",
+        "realized_group_rows": 1,
+        "resident_capacity": 4,
+        "size_bytes": 17106775008,
+        "target_arch": "gfx1151"
+      },
+      {
+        "automatic_eligible": false,
+        "backend": "hip_gfx1151",
+        "evidence_key": "qwen38-q4km-gfx1151-production-bf16-c1-b3-context128",
+        "realized_group_rows": 1,
+        "resident_capacity": 1,
+        "size_bytes": 17106775008,
+        "target_arch": "gfx1151"
+      },
+      {
+        "automatic_eligible": true,
+        "backend": "hip_gfx1151",
+        "evidence_key": "qwen38-q4km-gfx1151-production-bf16-cap4-c1-intent-k3-d24",
+        "realized_group_rows": 1,
+        "resident_capacity": 4,
+        "size_bytes": 17106775008,
+        "target_arch": "gfx1151"
+      },
+      {
+        "automatic_eligible": true,
+        "backend": "hip_gfx1151",
+        "evidence_key": "qwen38-q4km-gfx1151-production-bf16-c2-k3-d24",
+        "realized_group_rows": 2,
+        "resident_capacity": 4,
+        "size_bytes": 17106775008,
+        "target_arch": "gfx1151"
+      },
+      {
+        "automatic_eligible": true,
+        "backend": "hip_gfx1100",
+        "evidence_key": "qwen38-q4km-gfx1100-production-bf16-c2-k2-d24",
+        "realized_group_rows": 2,
+        "resident_capacity": 2,
+        "size_bytes": 17106773984,
+        "target_arch": "gfx1100"
+      }
+    ]
+  },
+  "question": "Task #11: qualify the three gates that keep --mtp-request-mode automatic off on gfx1100. It declines at every width (0/80 cells engaged, artifact 2026-08-30-w7900-q4km-automatic-mtp-route-gating.json). Are the gates doing the right thing?",
+  "schema": "w7900_automatic_mtp_gate_qualification.v1",
+  "status": "accepted-analysis-of-committed-evidence",
+  "verdict": "They are \"right in effect\" for reasons unrelated to performance. This is not three performance gates: it is one missing thing, gfx1100 evidence coverage, plus an artifact-identity mismatch. Automatic MTP cannot be admitted on this host by construction, whatever the rates do.",
+  "what_qualification_would_take": [
+    "A gfx1100 evidence row per intended width at this deployment: resident_capacity 8 with realized_group_rows 3 and 4 (for C3/C4) - and per the row schema also execution profile, manifest sha, kv storage/layout, sampling modes, sequence/context bounds and output horizon.",
+    "An artifact identity that matches: either install the qualified GGUF or re-qualify against this 17,106,773,984-byte file.",
+    "Rates that justify it: per #10 and the pp512 measurement, K3 at C5-C8 inherits the ~215-250 ms prefill fixed cost, so fixing #12 is expected to move those widths before an automatic row there would be honest."
+  ]
+}
