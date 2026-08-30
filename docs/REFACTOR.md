@@ -4504,30 +4504,47 @@ should be boring.
 
 ## RF-OI5 — width-4 MTP physical partition and `GGUF_SPECDEC2_MTP2_C4` cap (2026-08-30)
 
-- **State:** retained functional milestone (CONCURRENCY2 D4 "physical through
-  C4, bounded C4 frontiers above"); now the named binding scaling defect of the
-  gfx1151 scaling campaign (`docs/QWEN38-GFX1151-SCALING-CAMPAIGN.md` A2/M1).
-- **Paths:** eleven width-4 cap expressions in
-  `hipengine/generation/qwen35_gguf_mtp2.py`
-  (`:504/:780/:871/:894/:915/:934/:1028/:1052/:1159/:1314/:3413`); the
-  C4-only `_batch_accept_resources()` owner at `:1865-1885`
-  (`max_rows=16`, `max_requests=4`, and two request tensors shaped `(4,)`);
-  `_maybe_run_partitioned_speculative_decode` in
+- **State:** scattered caps resolved (M1, 2026-08-30); the width-4 default
+  itself remains, now as one named capability bound with a measured blocker
+  pointer. M1 landed one capability-owned profile-keyed bound
+  (`GGUF_SPECDEC2_MTP2_PHYSICAL` + `GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS`
+  in `hipengine/kernels/hip_gfx1151/__init__.py`, resolved once by
+  `_physical_max_requests()`/`_max_physical_requests()` in
+  `hipengine/generation/qwen35_gguf_mtp2.py`), re-keyed
+  `_batch_accept_resources()` and its tensors through C8/R32, published the
+  bound to the server explicit-MTP batch route
+  (`server_mtp_batch_max_active_requests`), and measured the bound-8 single
+  cycle: 80/80 exact, acceptance parity, 1.00 passes/cycle — but C6-C8
+  regress (C7 -19.56%), so the production table is `{}` (certified width-4
+  bound) until M2 qualifies rows17-32 Q4/Q6 verify owners, a rows5-8
+  proposal head, and C8 accept-interval scaling
+  (`benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-m1-wide-cycle-blocked.json`).
+  Removing this debt now means deleting the per-subgroup sequential loop in
+  `_maybe_run_partitioned_speculative_decode` by setting
+  `GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS = {"production": 8}` and
+  re-adding the R20-R32 Q6/planar chunk rows once those owners pass their
+  gates; no other width plumbing remains.
+- **Paths:** ~~eleven width-4 cap expressions in
+  `hipengine/generation/qwen35_gguf_mtp2.py`~~ — replaced 2026-08-30 by the
+  resolver above; ~~C4-only `_batch_accept_resources()` owner~~ — now sized
+  through C8/R32 by the bound; `_maybe_run_partitioned_speculative_decode` in
   `hipengine/generation/engine_loop.py` (one full proposal+verify cycle per
-  subgroup); and the `GGUF_SPECDEC2_MTP2_C4` capability gate in
-  `hipengine/kernels/hip_gfx1151/__init__.py`.
+  subgroup) remains the default-path loop and is the piece M2 deletes; the
+  `GGUF_SPECDEC2_MTP2_C4` gate is renamed `GGUF_SPECDEC2_MTP2_PHYSICAL`.
 - **Why retained:** D4 deliberately decomposed wide due groups into bounded C4
   frontiers to ship exact C1-C8 ownership; every gate passed. The cost is
   measured: C5-C8 run 2 sequential complete cycles per tick, MTP reaches a
   ~29.5 tok/s ceiling while AR scales to 45.9, and the unbalanced C5 `4+1`
-  shape produces the worst cell at 0.5249x own AR.
-- **Removal trigger:** scaling-campaign M1 (single-group wide verify). If M1
-  retains, replace all eleven cap expressions with one capability-owned width
-  bound; replace or rename the misleading `GGUF_SPECDEC2_MTP2_C4` gate; resize
-  and re-key the accept owner, remaining-decode tensor, and packed-payload
-  tensor through C8/R32; qualify or explicitly cost the rows5-8 proposal-head
-  fallback; and delete the per-subgroup sequential loop as the default path
-  while retaining the registered strict fallback. If M1 is blocked, record the
-  measured blocker in the campaign doc and convert the eleven expressions to
-  one named C4 constant with a pointer to that blocker. The scattered caps must
-  not survive either outcome.
+  shape produces the worst cell at 0.5249x own AR. M1 proved the single wide
+  cycle is exact/ownership-clean but slower at C6-C8 until wide-row owners
+  exist (M1 blocker artifact above).
+- **Removal trigger:** scaling-campaign M2. When rows17-32 Q4/Q6 verify
+  owners (or chunked R9/R12/R16 decomposition), a rows5-8 proposal head, and
+  C8 accept-interval scaling pass their correctness gates, set
+  `GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS = {"production": 8}`, re-add the
+  R20-R32 Q6/planar chunk rows, require C1-C8 non-regression plus the C5>=33
+  / C8>=45 partition-lift targets on the frozen protocol, then delete the
+  per-subgroup sequential loop as the default path while retaining the
+  registered strict fallback. (Original M1 mandate — scattered caps must not
+  survive either outcome — is satisfied: one named capability-bound default
+  with a pointer to the measured blocker.)
