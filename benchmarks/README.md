@@ -110,7 +110,7 @@ gates. [`C3/C4`](../docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md) ·
 The final same-host standard-`Q4_K_M` six-engine refresh has hipEngine leading
 AR C3-C8 and MTP C3-C4; external engines lead prefill C1-C8, AR C1-C2, and MTP
 C1-C2/C5-C8. [`Matrix`](results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json) ·
-[`Campaign`](../docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md)
+[`Closed campaign`](../docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md)
 
 `Q4_K_S` uses FP16 recurrent state with FP32 rollback. Its exact W8192 DMS
 sidecar stays default-off. [`DMS`](../docs/DMS.md). Detailed historical and
