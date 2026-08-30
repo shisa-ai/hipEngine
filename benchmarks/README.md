@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-29**
+Last updated: **2026-08-30**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -199,34 +199,25 @@ previously silently capped at 256): same-session counterbalanced sweeps give
 p508 **8.458→8.270 s (-2.22%)** and p1012 **17.062→16.751 s (-1.82%)** with
 identical logits SHAs, and natural 16K improves to **341.177 s / 47.989 tok/s**
 with the full gate passing (prior chunk-256 steady rows were p508 58.466 and
-p1006 55.046 tok/s). A
-same-host/same-GGUF PR #27742 reference measured Vulkan/HIP pp508
-**316.380/274.996 tok/s**, pp1006 **290.450/284.485**, and tg32
-**18.716/15.848**. Re-baselined 2026-08-29 against merged master `17252c769`
-(b10685, qwen4exp #27742 + graph-splits #27880): warm HIP **pp508 298.6 /
-pp1006 307.2–318.9 / tg32 17.1–17.3 tok/s** and Vulkan **pp508 332–334 /
-pp1006 308–311 / tg32 24.0–24.1 tok/s** (Vulkan tg32 gains from #27925/#26686).
-Current hipEngine production stands at 78.31/76.79/15.54: prefill gap **3.8×
-(HIP) / 4.3× (Vulkan)**, decode gap **1.10×/1.55×**. Matched pp508 kernel
-families: MoE+dense matmul **1258 vs 5527 ms (4.4×)**, GDN **86 vs 751 ms
-(8.7×)**, QSA flash-attn **14.5 vs 141.5 ms (9.8×)**; hipEngine wins fused
-elementwise (~126 vs ~275 ms). Root cause: llama `mul_mat_q` uses RDNA4 WMMA
-matrix cores on gfx1151 while hipEngine MMQ is dp4a. Exact per-layer MoE graphs and strict contraction/fusion raise exact decode to
-**13.523 tok/s**; calibrated DP4A safe-43 reaches **15.543 tok/s**, 98.1% of
-the same-host llama.cpp HIP row. The final named gfx1151 `production` profile
-selects guarded dense-Q8 MMQ, Q5_1 down MMQ layers 32–47, Q4_K dual MMQ
-layers 35–47, compact peer-GDN layers 35–47, and DP4A safe-43; omitted routes
-stay strict. Direct same-session strict→production p508/p1012 is
-**8.273→6.487 s (-21.59%, 78.31 tok/s)** /
-**16.810→13.178 s (-21.61%, 76.79 tok/s)**. The complete 450-row/three-repeat
-stack passes KL mean/p95/p99/max `3.16e-4/1.61e-3/4.25e-3/9.92e-3`,
-**448/450 top-1**, all scopes, exact state/repeat/c2, and 18/18 deterministic
-free generation (16/18 strict-exact; two task-valid alternatives). Final
-production/strict manifests are `6ec035b7…` / `9e648eb8…`. Cached p508 kernel
-wall is **6.548 s / 3,684 launches**, down 25.2% from the pre-campaign
-8.753 s / 4,933; same-host llama.cpp HIP remains 1.798 s / 5,543. The largest
-localized remainder is 27 exact GDN layers at 723.91 ms; broader peer-GDN
-admission is numerically rejected.
+p1006 55.046 tok/s). A fresh same-host rebuild at llama.cpp remote HEAD `57291f264` measures HIP
+**pp508 272.83 / tg32 16.64 tok/s** and Vulkan **pp508 331.03 / tg32 24.22**.
+Current named hipEngine production measures **84.83 / 15.19 tok/s**: prefill is
+**3.22×/3.90×** behind HIP/Vulkan; decode is **1.10×/1.59×** behind. Matched
+role/API traces put pp508 device kernels at **5.959 vs 1.625 s (3.67×)** and
+decode at **48.63 vs 38.90 ms/output (1.25×)**. The main p508 owners are MoE
+**3.161 s** (layers 0–26: **2.526 s**), GDN **634.94 ms**, and QSA
+**110.49 ms**. The largest single miss is layer-2 Q5_K gate/up at **301.47 ms
+vs llama 15.38 ms**. Decode still submits **1,195 direct kernels plus 48 MoE
+graphs/token**; 625 additional rows/token are graph-expanded nodes.
+
+The previous GDN decode-all claim is **invalid**: its selector was unreachable,
+so the packet compared the strict owner to itself; the 16.2 tok/s helper also
+used all-layer DP4A rather than admitted safe43. Wiring the actual candidate
+costs **6.832 ms/token plus a 0.117-ms tail**, versus **2.454 ms/token** for the
+retained GDN owner, and lowers full decode. Commit `15a436766` clears the dead
+binder route. Prefill colwarps 27–47 remains certified. Current
+production/strict manifests are `9e27fec0…` / `42509601…`; omitted routes stay
+strict.
 The certified
 compact-WMMA MoE suffix (layers 27–47: Q4_K dual gate/up + Q5_1 down on the
 f16-WMMA matrix-core kernels, tile 16×16; replaces the ds4-MMQ suffixes and
@@ -255,7 +246,7 @@ binding control exact; 64K historical evidence is retained but not rerun because
 prompts but remains opt-in at **0.955x AR**. <=1K image/video/PNG chat and
 request-owned c2 blocking/SSE pass with zero teardown; packed c-aware speed,
 remote media, multimodal SSE, and 128K+/262K inference are not claimed.
-Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json) · [`chunk512`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-chunk512.json) · [`Q8 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q8-mmq-prefill-production.json) · [`Q5_1 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q5-1-mmq-suffix32-production.json) · [`Q4_K MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q4-k-mmq-suffix35-production.json) · [`MMQ+DP4A stack`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json) · [`profile manifest`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-profile-manifest.json) · [`peer GDN`](results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json) · [`final campaign`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-mmq-campaign-final.json) · [`master re-baseline`](results/2026-08-29-gfx1151-qwen38-flash-next-llamacpp-master-rebaseline.json) · [`WMMA MoE27`](results/2026-08-29-gfx1151-qwen38-flash-next-wmma-moe27-production.json) · [`iu8 gate35`](results/2026-08-30-gfx1151-qwen38-flash-next-iu8-wmma-gate35-production.json) · [`GDN colwarps27`](results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps27-production.json) · [`QSA flash (key-parallel 35-47)`](results/2026-08-30-gfx1151-qwen38-flash-next-qsa-flash31-production.json) · [`GDN decode all`](results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps-decode-all.json) · [`parity final`](results/2026-08-30-gfx1151-qwen38-flash-next-parity-campaign-final.json).
+Evidence: [`gap`](results/2026-08-28-gfx1151-qwen38-flash-next-llamacpp-matched-baseline.json) · [`MoE graph`](results/2026-08-29-gfx1151-qwen38-flash-next-exact-moe-graph-decode.json) · [`production`](results/2026-08-29-gfx1151-qwen38-flash-next-moe27-q8-32-production.json) · [`chunk512`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-chunk512.json) · [`Q8 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q8-mmq-prefill-production.json) · [`Q5_1 MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q5-1-mmq-suffix32-production.json) · [`Q4_K MMQ`](results/2026-08-29-gfx1151-qwen38-flash-next-q4-k-mmq-suffix35-production.json) · [`MMQ+DP4A stack`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-prefill-dp4a43-stack.json) · [`profile manifest`](results/2026-08-29-gfx1151-qwen38-flash-next-production-mmq-profile-manifest.json) · [`peer GDN`](results/2026-08-29-gfx1151-qwen38-flash-next-production-gdn-peer35.json) · [`final campaign`](results/2026-08-29-gfx1151-qwen38-flash-next-prefill-mmq-campaign-final.json) · [`master re-baseline`](results/2026-08-29-gfx1151-qwen38-flash-next-llamacpp-master-rebaseline.json) · [`WMMA MoE27`](results/2026-08-29-gfx1151-qwen38-flash-next-wmma-moe27-production.json) · [`iu8 gate35`](results/2026-08-30-gfx1151-qwen38-flash-next-iu8-wmma-gate35-production.json) · [`GDN colwarps27`](results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps27-production.json) · [`QSA flash (key-parallel 35-47)`](results/2026-08-30-gfx1151-qwen38-flash-next-qsa-flash31-production.json) · [`fresh full profile`](results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json) · [`invalid GDN decode correction`](results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps-decode-all.json).
 
 ## Current Qwen3.6-35B quantization quality
 

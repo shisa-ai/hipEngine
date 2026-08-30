@@ -224,6 +224,9 @@
       "DP4A safe-43 (campaign start)",
       "GDN colwarps decode 0-47 (+43.7% decode A/B, 53bc9f029)"
     ],
-    "verdict": "HIP decode at parity within variance; Vulkan remains llama's fastest decode lane (mul_mat_vec_q stack) at 1.5x"
+    "verdict": "HIP decode at parity within variance; Vulkan remains llama's fastest decode lane (mul_mat_vec_q stack) at 1.5x",
+    "valid": false,
+    "invalidation": "16.2 helper inherited all-layer DP4A; GDN decode-colwarps env was unreachable. Superseded by 2026-08-30 fresh full profile (safe43 15.19 vs llama HEAD HIP 16.64).",
+    "superseded_by": "benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json"
   }
 }

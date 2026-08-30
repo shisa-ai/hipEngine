@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next Implementation Campaign
 
-Status: **bounded 512/1K functionality gates are closed (F0–F10); production decode reaches 98.1% of same-host llama.cpp HIP; closing the 3.7x prefill dataflow gap and making MTP economics positive are the binding objectives — no alternate-quant or feature expansion outranks them**
+Status: **bounded 512/1K functionality gates are closed (F0–F10); fresh production is 1.10x behind llama.cpp HIP decode and 3.22x behind HIP prefill; closing the measured projection/MoE/GDN dataflow and submission gaps outranks feature expansion**
 
 This campaign brings the open-weight `Qwen/Qwen3.8-Flash-Next` checkpoint to
 hipEngine as a torch-free, registry-composed, text-generation path first, then
@@ -26,50 +26,54 @@ normative in [`TESTING.md`](TESTING.md),
 
 ---
 
-## 0. Campaign checkpoint (2026-08-29)
+## 0. Campaign checkpoint (2026-08-30)
 
-Consolidated position after the prefill MMQ campaign and peer-GDN scan. All
-rows are same-host `zbook` / gfx1151 / `UD-Q4_K_XL` unless stated. Strict is
-the exact-bit profile; production is the certified T2 profile with manifest
-`3b7a0644…` (strict `9e648eb8…`).
+Consolidated position after the fresh remote-HEAD/API/role profile. All rows
+are same-host `zbook` / gfx1151 / `UD-Q4_K_XL` unless stated. Strict is the
+exact-bit profile; production is the certified T2 profile with manifest
+`9e27fec0…` (strict `42509601…`).
 
 ### 0.1 Where we are
 
 | Row | Strict | Production / certified opt-ins | Beat first: llama.cpp HIP, same host + GGUF | Stretch: llama.cpp Vulkan |
 | --- | ---: | ---: | ---: | ---: |
-| p508 prefill | 61.40 (chunk 512) | **~85** measured (parity campaign final) | **294.1–298.6** master HIP | 332.1–333.8 master Vulkan |
-| p1012 prefill | 60.20 (chunk 512) | **~79–95** (mixed-session) | **307.2–318.9** master HIP | 308.4–310.5 master Vulkan |
-| tg32 decode | 13.880 | **15.543** (98.1% of HIP) | **15.848** | 18.716 |
+| p508 prefill | 61.40 (chunk 512) | **84.83** (5.96–6.03 s) | **272.83** remote HEAD | **331.03** remote HEAD |
+| p1012 prefill | 60.20 (chunk 512) | **~79–95** (mixed-session; not rerun) | 307.2–318.9 prior master | 308.4–310.5 prior master |
+| tg32 decode | 13.880 | **15.19** admitted safe43 steady-state | **16.64** remote HEAD | **24.22** remote HEAD |
 | Natural 16K prefill | 47.989 (chunk 512, gate passed) | — | ≥100 tok/s unlocks the 64K rung | — |
 | MTP vs true AR | 0.955x aggregate (opt-in; 10/10 exact, 84.28% acceptance) | — | ≥1.0x to promote; ≥1.5x real target | external MTP fork ~2.7x |
 
 Production = guarded dense-Q8 MMQ, compact f16-WMMA MoE on layers 27–47
 with the iu8-WMMA gate/up kernel (exact q + 3 residual planes) on 35–47,
-column-warp GDN prefill on 27–47 (llama layout, supersedes peer-GDN), QSA
-flash on 31–47 (33%/launch), and
-Q8_1 DP4A decode on calibrated layers
+column-warp GDN prefill on 27–47 (llama layout, supersedes peer-GDN),
+key-parallel QSA flash on 35–47, and Q8_1 DP4A decode on calibrated layers
 `0,2,5,6,8,9,10,11,13–47`; layers 0–26 keep the strict exact owners. The
 WMMA-MoE27 packet (450 rows, three repeats) passes at KL
 mean/p95/p99/max `2.79e-4/1.53e-3/3.49e-3/5.98e-3`, 446/450 top-1, all
 scopes ≥ 98.67%, exact repeat/state, 18/18 repeat-exact free generation with
 4 task-valid divergences, exact c2 with zero teardown; paired p508/p1012
 `6.572→6.287 (-4.34%, 80.82 tok/s)` / `13.398→12.694 s (-5.26%, 79.73 tok/s)`.
-Matched pp508 kernel time is now hipEngine
-`6.548 s / 3,684 launches` (pre-WMMA-MoE profile) versus llama.cpp HIP
-`1.798 s / 5,543`: the campaign removed 25.2% of kernel wall, but the remaining **3.64x** gap is still dataflow,
-not launch count.
+The fresh role-resolved pp508 trace is hipEngine **5.959 s / 3,328 kernel
+rows** versus llama.cpp remote-HEAD HIP **1.625 s / 5,119 rows**: **3.67x**
+device-kernel gap. End to end is **84.83 vs 272.83 tok/s (3.22x)**. The
+corresponding decode trace is **48.63 vs 38.90 ms/output (1.25x)** in kernels;
+end to end is **15.19 vs 16.64 tok/s (1.10x)**. Kernel rows are not host
+launches: decode expands 625 MoE graph nodes but still issues 1,195 direct
+launches and 48 graph launches per token.
 
 ### 0.2 What we learned
 
-1. **Mine dataflow, not launches.** Reusing quantized weights across routed rows
-   cut the Q5_1 and Q4_K real-shape leaves 7.6x/3.14x; dense Q8 MMQ and nine
-   peer-GDN layers reduce the final pp508 trace to 6.548 s at 3,684 launches.
-   llama.cpp remains faster with more launches, so further work still belongs
-   in kernel/dataflow geometry.
-2. **Numerical admissibility is layer- and composition-specific.** Certified
-   suffixes are Q5_1 32–47, Q4_K 35–47, and peer-GDN 35–47; DP4A excludes
-   `1,3,4,7,12`. Full-layer and adjacent boundary candidates were measured and
-   rejected. Cheap screens guide; only complete 450-row packets promote.
+1. **Mine dataflow first, but count submission correctly.** llama.cpp prefill
+   remains faster while executing more kernel rows; hipEngine's profiled p508
+   span exceeds kernel sum by only 72 ms. Decode is different: 1,195 direct
+   launches plus 48 small graphs leave 37.1 ms/token between kernel sum and
+   span under profiling, so operation-complete fusion and larger state-safe
+   graphs are material there.
+2. **Numerical admissibility is layer- and composition-specific.** Current
+   certified scopes are f16-WMMA MoE 27–47, iu8 gate/up 35–47, GDN colwarps
+   27–47, QSA flash 35–47, and DP4A excluding `1,3,4,7,12`. Full-layer and
+   adjacent boundary candidates were measured and rejected. Cheap screens
+   guide; only complete 450-row packets promote.
 3. **Exact thread contractions beat naive packing.** Mapping logical lanes
    onto fewer physical threads while preserving the declared reduction tree
    (Q5_1 t128→t64, Q4_K physical64, fused weighted down) kept every bit exact
@@ -85,12 +89,15 @@ not launch count.
    and Vulkan the ceiling hypothesis, with Vulkan geometry as the shape proof
    for our own HIP ports.
 6. **External fork hypotheses to validate in-tree** (see §1.2): distinct-stream
-   MTP hyper-connection combiner (0.87–0.96 acceptance versus 0.47 for the
-   naive mean), n-max 6 with verify batches kept ≤8, GPU radix top-k, an
-   incremental pooled-key QSA cache (+17% at 32k), gathered decode attention
-   (~2,300 selected KV rows), GDN conv-path concat contiguity (463→26 ms/chunk),
-   skinny-m inject routing, and mat-vec epilog fusion (3,550→2,800
-   dispatches/token).
+   MTP hyper-connection combiner, n-max 6, GPU radix top-k, incremental pooled
+   QSA keys, gathered attention, skinny-m inject routing, and mat-vec epilog
+   fusion. Several are already implemented; role attribution now identifies
+   GR projection epilogs as the largest remaining direct-fusion surface.
+7. **The prior GDN decode-all claim is invalid.** Its selector was unreachable
+   below the `rows == 1` branch, so its packet compared the strict owner to
+   itself. Wiring the actual candidate costs 6.832 ms/token plus a 0.117-ms
+   tail versus 2.454 ms/token retained. Commit `15a436766` clears the dead
+   binder route; prefill colwarps remains certified.
 
 ### 0.3 Next units (priority order)
 
@@ -99,20 +106,15 @@ incremental pooled-key cache, gathered decode attention, GDN concat fix,
 permute-free scoring, and distinct-stream MTP combiner are **already covered
 in-tree** — verified in source with retained evidence. The remaining campaigns:
 
-1. **Prefill dataflow (llama.cpp parity):** master re-baseline (2026-08-29)
-   stands at HIP pp508 294.1–298.6 / pp1006 307.2–318.9 / tg32 17.1–17.3 and
-   Vulkan 332–334 / 308–311 / 24.0–24.1 tok/s; hipEngine gaps are 3.8–4.3x
-   prefill and 1.10–1.55x decode. Family gaps at pp508: MoE+dense matmul
-   4.4x (dp4a/bf16-FMA vs llama RDNA4 WMMA), GDN 8.7x, QSA 9.8x; fused
-   elementwise favors hipEngine. WMMA-MoE27 is certified (−4.34%/−5.26%
-   p508/p1012). Remaining units: (a) LDS-staged multi-warp WMMA kernel port
-   (llama `mul_mat_q` dataflow; 3.4→~5.4 TF/s hardware) applied to the
-   admitted suffix; (b) the 27 hot exact GDN layers (723.91 ms traced);
-   (c) QSA flash prefill (141 ms); (d) early-layer near-f32 WMMA via 3-pass
-   split-precision fragments after (a) — f16-WMMA (5.9e-3) and dp4a both
-   exceed the envelope below 27, while llama itself runs dp4a-class q8_1
-   ds-trick arithmetic on all layers, so early-layer parity is a quality-
-   contract decision, not just a kernel problem.
+1. **Fresh profile order:** (a) layer 2 high-precision MoE—397.95 ms total,
+   including Q5_K gate/up **301.47 vs llama 15.38 ms**—by routing the existing
+   selected Q5_K WMMA body, then adding grouped Q8_0 down; (b) early MoE layers
+   0–26, which own **2.526 s** of p508; (c) decode GR operation-complete
+   down+inject and projection-epilog fusion, up to 387 direct launches/token;
+   (d) normalized-Q/K, transposed-state GDN decode (**2.659 vs 0.465 ms/token**);
+   (e) a state-safe larger decode graph after the historical third-replay state
+   bug is resolved. QSA/GDN prefill suffix widening follows only after these
+   larger Amdahl units and requires fresh composition gates.
 2. **MTP economics:** verification is a serial per-candidate target loop
    (budget 1..4), so every drafted token costs a full target decode row; the
    multirow candidate was rejected because `rows >= 2` switches MoE to the
