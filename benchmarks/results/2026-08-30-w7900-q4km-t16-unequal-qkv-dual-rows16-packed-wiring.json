@@ -145,5 +145,11 @@
     "supersedes_route_visibility": "worklog/entries/20260829T231254.976601Z-lhl-w7900-qwen38-dual-silu-floor33-a8e1e4.md",
     "kernel_catalog": "docs/KERNELS.md Q4/Q5/Q6 T16 selected row",
     "refactor": "docs/REFACTOR.md GGUF prefill route-session stack"
+  },
+  "measurement_caveats": {
+    "order_bias_bound": "The shipping C8 +0.7% single same-chain pair is inside the measured second-arm order band (candidate-first vs control-first prefill A/B at rows 16/45 spans +0.01% to -0.84% on a dispatch-identical control), so that 0.7% is not separable from arm order and must not be quoted as an independent speed win.",
+    "order_controlled_claims": "+1.81% packed prefill crossover (10/10) and byte-identity (20/20 trajectory hashes across both orders) are order-controlled and unaffected.",
+    "quantified_by": "worklog/entries/20260830T021032.680079Z-lhl-w7900-qwen38-prefill-ab-orderswap-bcc9fe.md",
+    "added": "2026-08-30"
   }
 }
