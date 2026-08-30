@@ -186,6 +186,12 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     GPU-bound by high-row Q4/device work plus physical-grouping variance;
     selector and scheduler ladders above are exhausted. Continue with a new
     high-row Q4 algorithm/fusion after P3, not more threshold tuning.
+  - Final six-engine refresh 2026-08-30: hipEngine C1-C8 prefill is
+    **146.758/142.806/174.878/188.942/211.737/226.616/240.672/247.216 tok/s**.
+    Refreshed external winners are 153.401/211.888/192.419/200.463/226.117/
+    250.415/252.272/305.847, leaving **4.33-32.60%** gaps. The named high-row
+    Q4/device blocker remains; no threshold/scheduler candidate is reopened.
+    [`matrix`](../benchmarks/results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json)
 - [x] P2.3 Small-row T16 wmma prefill GEMM kernel family (Q4/Q5/Q6 T16
   dense + qmicro planar wmma prefill): low-M efficiency work per
   `docs/KERNELS.md` + strict/production gates + rocprof trace evidence per
@@ -247,6 +253,12 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
     operation-complete fusion. Do not reopen graph thresholds or multistep
     replay without a new premise
     ([`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-ar-c1-c2-blockers.json)).
+  - Final six-engine refresh 2026-08-30: hipEngine AR is
+    **11.021/17.918/23.659/30.083/35.544/39.906/43.112/45.936 tok/s**. It wins
+    C3-C8, including C8 by 0.71% over Laurent. C1 trails Nathan 1.26% and C2
+    trails Laurent 9.66%; their measured operation-complete/dataflow blockers
+    remain binding.
+    [`matrix`](../benchmarks/results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json)
 
 ### P4 — MTP K3 C1-C8 parity via the acceptance campaign
 
@@ -353,6 +365,11 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   [`Q5 R16`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q5-r16-retained.json),
   [`Q4 R16 reject`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q4-r16-rejected.json),
   [`C4 blocker`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-c4-post-q5-blocker.json)).
+  Final six-engine refresh: hipEngine MTP C1-C8 is
+  **7.809/25.740/29.468/29.385/18.657/28.195/29.305/28.577 tok/s**. It wins
+  C3/C4; refreshed gaps at C1/C2/C5/C6/C7/C8 are
+  **63.03/20.12/42.97/24.11/36.41/49.17%**, with the named blockers above.
+  [`matrix`](../benchmarks/results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json)
 - [~] P4.3 Reopen T3 adaptive-K and the B4 clamp once verifier rowtile work
   lands (per the CONCURRENCY2 supersession note); require full-suite
   acceptance/speed validation per anti-gaming. Exact-raw fixed B4 with temporary
@@ -386,12 +403,15 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
 
 ### P6 — closure and rollup
 
-- [ ] P6.1 Full standardized matrix re-run: all six external rows re-measured
-  same-host/protocol plus the final hipEngine row; artifact under
-  `benchmarks/results/`.
-- [ ] P6.2 Rollup: `benchmarks/README.md` row + `Last updated`,
-  `benchmarks/CHANGELOG.md` one-liners per retained win, campaign closeout
-  worklog entry, and `docs/PLAN.md` status refresh.
+- [x] P6.1 Full standardized matrix re-run: hipEngine plus five preserved
+  external implementations measured serially on the same host/model/prompt
+  hashes/widths/output lengths/timing boundary. hipEngine wins AR C3-C8 and MTP
+  C3-C4; external engines win prefill C1-C8, AR C1-C2, and MTP C1-C2/C5-C8.
+  [`matrix`](../benchmarks/results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json)
+- [x] P6.2 Rollup: `benchmarks/README.md`/`CHANGELOG.md`, this campaign,
+  closeout worklog, and `docs/PLAN.md` are refreshed. Automatic policy remains
+  unchanged; remaining partials below are measured blockers or E5 promotion
+  work, not missing topline measurement.
 
 ## 4. Non-goals
 

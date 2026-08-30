@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-30 gfx1151 Qwen3.8 final six-engine matrix] Re-run hipEngine plus five preserved external implementations on one host/model/prompt/timing protocol. hipEngine wins AR **C3-C8** and MTP **C3-C4**; external engines win prefill C1-C8, AR C1-C2, and MTP C1-C2/C5-C8. `benchmarks/results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json`.
+
 - [2026-08-30 gfx1151 Qwen3.8 DFlash P5 closeout] P5.2 retains amortized Q6 select (**70→22 ms**, B3 **7.70→8.845 tok/s, +14.87%**) and rejects quality-losing variable-block forward. P5.3 remains blocked: the exact Qwen3.8 DFlash2 snapshot/reference are absent, and the available Qwen3.6 drafter is not substituted. `benchmarks/results/2026-08-30-gfx1151-qwen38-dflash-p5-closeout.json`.
 
 - [2026-08-30 gfx1151 Qwen3.8 DFlash row8 correctness closed] Current layout-qualified R8 verifier resolves the historical broad-dispatch divergence: `code_lru_cache` serial/native verify is **721.5→204.4 ms (3.53x)** with all eight target IDs, pre/post-norm hidden, five taps, selected row7 commit, and next AR token bit/exact. P5.1 closes; DFlash remains unpromoted pending drafter/select and matched economics. `benchmarks/results/2026-08-30-gfx1151-qwen38-dflash-row8-root-cause-closed.json`.
