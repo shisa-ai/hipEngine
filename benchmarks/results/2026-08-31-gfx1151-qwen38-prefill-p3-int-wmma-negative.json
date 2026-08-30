@@ -1,0 +1,29 @@
+{
+ "schema": 1,
+ "kind": "gfx1151-qwen38-prefill-p3-integer-wmma-measured-negative",
+ "created_at": "2026-08-30T22:11:32.595748+00:00",
+ "title": "Scaling P3: integer-MMQ continuation closed on measured negative (prequantized body built + remeasured)",
+ "source_commit": "64fec87a87291004d49fd205bb842d7febebe84f",
+ "status": "closed_measured_negative",
+ "premise_check": {
+  "dequant_alu_dominance": "measured in P2 (19-24 TF/s, ~35% MFMA peak, BW-excluded)",
+  "int8_rate_premise": "INT8 WMMA == BF16 WMMA (59.4 TOP/s) per ROOFLINE-gfx1151 - no tensor-rate 2x available"
+ },
+ "in_tree_reproductions_remeasured": {
+  "harness": "scripts/gguf_q4_k_t16_selected_prefill_microbench.py --hidden 5120 --out-features-a 18432 --out-features-b 18432 --experts 1 --rows-per-expert 256 --iters 15",
+  "selected_wmma_ms_tflops": [
+   10.71,
+   9.03
+  ],
+  "integer_modes_ms": {
+   "q8_1_ds4_mmq32": 13.21,
+   "q8_1_ds4_t16_wmma32": 15.86,
+   "q8_1_ds4_wmma64": 20.84,
+   "q8_1_ds4_wmma32_ldspack": 24.23,
+   "q8_1_ds4_wmma32_lds": 39.27
+  },
+  "best_integer_ratio_vs_wmma": 0.81
+ },
+ "prior_built_measurement": "GGUF-PREFILL-OPTIMIZATION items 20/21 (LCP-3C/3D/3E): source-faithful MMQ128 over resident Q8T16 and over prequantized block_q8_0 rows were built, spill-free, and measured +118.81% and +3.95%/+5.32% vs production; removed under the frozen gate",
+ "conclusion": "The dequant-ALU-free integer body does not outpace the in-tree Q4T16 WMMA bodies on gfx1151 because the wall is the shared LDS-staging/issue structure, not the dequant pass: at equal 59.4 TOP/s tensor rate and 0.81x structural efficiency, prequantization cannot reach the >=2x Q4-family improvement the 305.847 C8 target requires. P3 closes with this measured negative; C8 prefill stays at the P2 named blocker."
+}
