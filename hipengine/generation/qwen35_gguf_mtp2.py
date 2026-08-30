@@ -3095,6 +3095,7 @@ class Qwen35GGUFMTP2Adapter:
             row.mtp2_target_ms += float(target_seconds) * 1000.0
             row.mtp2_provider_update_ms += float(provider_update_seconds) * 1000.0
             row.mtp2_accept_ms += float(accept_seconds) * 1000.0
+            row.mtp2_target_readback_ms += float(bounded_readback_seconds) * 1000.0
             row.mtp2_selected_commit_ms += float(commit_seconds) * 1000.0
             row.mtp2_candidate_readback_ms += (
                 float(candidate_readback_seconds) * 1000.0
