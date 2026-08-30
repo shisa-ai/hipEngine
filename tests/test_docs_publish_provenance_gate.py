@@ -21,7 +21,7 @@ def test_publish_checklist_runs_the_provenance_gate():
         "provenance honest"
     )
     # The gate is only useful if the reason is stated; a bare command line gets skipped.
-    assert "GPU row reuses one artifact" in text or "reuses one\n      artifact" in text
+    assert "hardware rows cite one artifact" in text
 
 
 def test_provenance_gate_sits_next_to_the_rollup_check():
