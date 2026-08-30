@@ -219,20 +219,19 @@ is made.
 
 ### X — external MTP batching survey (cheap, de-risks M1)
 
-- [ ] X1 Read the pinned external checkouts under
-  `/home/lhl/.local/state/hipengine-external-survey/repos/` and record, for
-  llama.cpp server speculative decoding, **what the verification batch
-  dimension actually is**: whether draft verification for N slots is flattened
-  into one decode call or issued per slot, and what caps that width. The
-  relevant pinned checkouts are `llama.cpp-mainline/` and
-  `llama.cpp-mike-152d337fa/` (plus the Vulkan fork pins `laurent/`,
-  `nathan/`, `q38rocm/`). **vLLM and SGLang are not pinned locally**: read
-  their published sources at commit-pinned upstream URLs for vLLM V1
-  spec-decode and SGLang EAGLE proposer/verifier batching, and cite those
-  URLs+commits in the table. Deliverable is a comparison table of
-  batch dimension, per-cycle model passes, and any width cap — cited by file
-  and commit, no vendoring, no code port. This directly tests A2's premise
-  against the field and is the only item that may precede M0.
+- [x] X1 **Done 2026-08-30.** Read all pinned checkouts under
+  `/home/lhl/.local/state/hipengine-external-survey/repos/` (llama.cpp
+  mainline `4e97ac86`, mike pin `152d337f`, Vulkan/ROCmFPX fork pins
+  `laurent/`, `nathan/`, `q38rocm/`) and the unpinned upstreams from
+  commit-pinned URLs (vLLM V1 `8c51b926…`, SGLang EAGLE `e51a3ae6…`). The
+  comparison table of batch dimension, per-cycle model passes, and width
+  caps — cited by file and commit, no vendoring, no code port — is in
+  [`EXTERNAL-MTP-BATCHING.md`](EXTERNAL-MTP-BATCHING.md). Verdict: every
+  surveyed engine flattens draft verification for all in-flight requests
+  into **one** target forward bounded by a generic token budget
+  (`n_batch`/`max_num_batched_tokens`), not a small fixed width; A2's
+  per-subgroup sequential cycles have no external analogue. This supports
+  proceeding with M1.
 
 ### M — MTP scaling (primary track)
 
