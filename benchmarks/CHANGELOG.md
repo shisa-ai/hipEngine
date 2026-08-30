@@ -4,7 +4,7 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
-- [2026-08-29 gfx1151 Qwen3.8 exact Q6 R20-R32 retained] Extend exact Q6 rowtile chunks through logical R20/R24/R28/R32: all 12 actual leaves win 180/180 timing pairs by 59-84%; clean C5-C8 improve **15.244/20.830/23.245/19.650→17.970/26.904/28.205/27.393 tok/s (+17.89%/+29.16%/+21.34%/+39.41%)**, with all 40 cells and 78.894% acceptance exact. Every width remains below AR and 25-50% below external. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-q6-r20-r32-retained.json`.
+- [2026-08-30 gfx1151 Qwen3.8 wide Q6 attribution corrected] Clean C5-C8 still improve **15.244/20.830/23.245/19.650→17.970/26.904/28.205/27.393 tok/s (+17.89%/+29.16%/+21.34%/+39.41%)** exactly, but provider telemetry proves physical target groups are C5 R16+R4, C6 R16+R8, C7 R16+R12, and C8 R16+R16. The gains come from the retained R16 Q6 owner; unengaged R20-R32 keys are removed. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-q6-r20-r32-retained.json`.
 
 - [2026-08-29 gfx1151 Qwen3.8 C4 exact Q6 R16 retained] Reuse existing exact Q6 rowtiles as R8+R8 at logical R16: all three actual leaves improve 65.9-84.1%; traced Q6 falls **1.847→0.478 s (-74.10%)**; clean C4/K3 improves **20.384→27.450 tok/s (+34.66%)** with exact 628/796 acceptance, passing the frozen external target by 1.61%. C4 remains automatic K0 because overall and three categories trail AR. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json`.
 

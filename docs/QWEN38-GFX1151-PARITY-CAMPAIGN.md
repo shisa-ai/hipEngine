@@ -299,25 +299,27 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   | 2 | **25.749** | 17.986 | **1.4316x** | -20.48% | blocked: target is 60.38% of child wall/95.38% kernel-bound; Q4 740 ms |
   | 3 | **29.564** | 24.042 | **1.2297x** | **+7.45%** | **closed win** |
   | 4 | **27.450** | 30.120 | 0.9114x | **+1.61%** | **closed win:** exact Q6 R8+R8 replaces R16 direct/WMMA |
-  | 5 | **17.970** | 35.391 | 0.5078x | -45.11% | exact Q6 R8+R8+R4 retained; replay + Q4/Q5 operation-complete R20 target wall |
-  | 6 | **26.904** | 39.797 | 0.6760x | -25.31% | exact Q6 R8x3 retained; replay + Q4/Q5 operation-complete R24 target wall |
-  | 7 | **28.205** | 43.341 | 0.6508x | -33.33% | exact Q6 R8x3+R4 retained; replay + Q4/Q5 operation-complete R28 target wall |
-  | 8 | **27.393** | 47.229 | 0.5800x | -50.04% | exact Q6 R8x4 retained; replay + Q4/Q5 operation-complete R32 target wall |
+  | 5 | **17.970** | 35.391 | 0.5078x | -45.11% | C4+1 provider groups: target R16+R4; replay + Q4/Q5 wall |
+  | 6 | **26.904** | 39.797 | 0.6760x | -25.31% | C4+2 provider groups: target R16+R8; replay + Q4/Q5 wall |
+  | 7 | **28.205** | 43.341 | 0.6508x | -33.33% | C4+3 provider groups: target R16+R12; replay + Q4/Q5 wall |
+  | 8 | **27.393** | 47.229 | 0.5800x | -50.04% | C4+C4 provider groups: target R16+R16; replay + Q4/Q5 wall |
 
   All 80 cells are exact/engaged/budget-conformant, and acceptance is identical
-  at 78.894% for every width. Each width is one physical group, so the wide
-  blocker is execution-cost scaling, not acceptance or request-serial lowering.
-  A follow-up trace shows wide proposals already lower to rows4 plus a remainder,
+  at 78.894% for every width. Provider telemetry corrects the earlier logical-
+  width inference: C5-C8 target execution is partitioned into physical C4-or-
+  smaller groups, not one R20-R32 group per cycle. Wide proposals likewise lower
+  to rows4 plus a remainder,
   so E1b covers them; rows5-8 policy keys cannot engage. Next: independent
   C2 streaming is subsequently retained at **25.749 tok/s (+19.31%)**; C4 is
   rejected after changing acceptance. C2 closes on a measured R8 blocker:
   target/accept/commit/provider is **1.205/1.996 s**, 95.38% kernel-bound, with
   Q4/Q6/Q5 **740/246/64 ms**. Qualified shapes are already one-sweep; narrow-Q4
-  shared-B is numerically unqualified and insufficient alone. Exact Q6 chunks
-  subsequently improve clean C5-C8 by **17.89%/29.16%/21.34%/39.41%**, remove
-  wide direct-Q6 calls, and preserve all outputs and acceptance. The widths
-  remain 25-50% below external and below AR; refresh wide target attribution,
-  then screen Q4/Q5 operation-complete work under their exact/production gates
+  shared-B is numerically unqualified and insufficient alone. The retained
+  physical-R16 Q6 owner subsequently improves clean C5-C8 by
+  **17.89%/29.16%/21.34%/39.41%** through their C4-sized provider groups and
+  preserves all outputs and acceptance. Unengaged logical R20-R32 package keys
+  are removed. The widths remain 25-50% below external and below AR; attribute
+  R16/remainder Q4/Q5 work under its exact/production gates
   ([`matrix`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-post-e2-c1c8-refreeze.json),
   [`proposal correction`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-wide-proposal-policy-rejected.json),
   [`C2 streaming`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-prompt-streaming-retained.json),
@@ -327,10 +329,12 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   **1.847→0.478 s (-74.10%)** and clean C4 **20.384→27.450 tok/s (+34.66%)**,
   1.61% above the frozen comparator, with exact 628/796 acceptance. Across
   C5-C8, target enqueue plus its following synchronization/commit/readback
-  owner consumes 57.5-69.5% of wall. Exact Q6 R20-R32 chunks then improve clean
-  C5-C8 by **17.89%/29.16%/21.34%/39.41%**, while a C8 trace removes direct Q6
-  and reduces whole-process Q6 kernel time by about 69.95%. Every width remains
-  below AR and 25-50% below external; refreshed Q4/Q5 target attribution is next
+  owner consumes 57.5-69.5% of wall. The retained R16 Q6 owner then improves
+  clean C5-C8 by **17.89%/29.16%/21.34%/39.41%** through physical target groups
+  R16+R4/R8/R12/R16; earlier R20-R32 attribution was incorrect and those
+  unengaged keys are removed. A C8 trace reduces whole-process BF16 Q6 kernel
+  time **8.707→3.210 s (-63.13%)**. Every width remains below AR and 25-50%
+  below external; refreshed R16/remainder Q4/Q5 attribution is next
   ([`wide blockers`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-c8-target-blockers.json),
   [`C4 win`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json),
   [`wide Q6`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-q6-r20-r32-retained.json)).
