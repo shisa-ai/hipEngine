@@ -124,7 +124,7 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
         "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
         {},
     ) == {
-        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 3),
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 3, 4),
     }
     assert backend_package_capability(
         "hip_gfx1151",
@@ -142,7 +142,7 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
     ) == frozenset()
 
 
-def test_qwen38_production_prompt_streaming_policy_admits_only_physical_c1_c2_c3() -> None:
+def test_qwen38_production_prompt_streaming_policy_admits_only_physical_c1_c4() -> None:
     owner = SimpleNamespace(
         generator=SimpleNamespace(
             backend="hip_gfx1151",
@@ -163,11 +163,12 @@ def test_qwen38_production_prompt_streaming_policy_admits_only_physical_c1_c2_c3
         candidate_budget=3,
     )
 
-    assert adapter.physical_prompt_streaming_widths == (1, 2, 3)
+    assert adapter.physical_prompt_streaming_widths == (1, 2, 3, 4)
     assert adapter._physical_prompt_streaming_admitted(1) is True
     assert adapter._physical_prompt_streaming_admitted(2) is True
     assert adapter._physical_prompt_streaming_admitted(3) is True
-    assert adapter._physical_prompt_streaming_admitted(4) is False
+    assert adapter._physical_prompt_streaming_admitted(4) is True
+    assert adapter._physical_prompt_streaming_admitted(5) is False
 
 
 def test_qwen_gguf_plugins_select_distinct_mtp2_adapters() -> None:

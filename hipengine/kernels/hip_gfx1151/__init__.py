@@ -1775,13 +1775,17 @@ GGUF_SPECDEC2_MTP2_C1 = True
 GGUF_SPECDEC2_MTP2_PHYSICAL = True
 GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS: dict[str, int] = {}
 # E1a/E7 admit the exact shifted prompt-streaming path for measured Qwen3.8
-# standard-Q4 production physical-C2/C3 groups. C4 changed acceptance and is
-# rejected; strict C1, other models/quants/profiles, and peers retain replay.
-# Scaling-campaign M3 screen (2026-08-31): width 1 engages the same exact path
-# (C1 +24.1% to 17.081 tok/s; every cell's generated IDs, acceptance, route,
-# and budget identical to the replay baseline; stream flag true, prime rows 43).
+# standard-Q4 production physical-C2/C3 groups. Scaling-campaign screens
+# (2026-08-31): width 1 engages the same exact path (C1 +24.1% screen,
+# IDs/acceptance/route/budget identical); width 4 now repeats that result at
+# the current head (C4 34.182->35.618, gate 34.596 PASS, every category >=
+# own AR, per-cell IDs exact, acceptance 92/121 vs 93/120 baseline). The
+# historical 628/796->624/800 C4 drift did not reproduce; the binding frozen
+# contract is per-cell output self-exactness (see the M4 decision entry),
+# with acceptance trajectory an observational diagnostic. Strict C1,
+# other models/quants/profiles, and peers retain replay.
 GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES = {
-    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 3),
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 3, 4),
 }
 # E1b reuses the exact Q6 F32 small-B rowtile only for physical proposal-head
 # dimensions/rows2-4 that have actual Qwen3.8 evidence. Wide request groups
