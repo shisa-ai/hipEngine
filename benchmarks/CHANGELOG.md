@@ -1,5 +1,20 @@
 # hipEngine Benchmark Changelog
 
+- **2026-08-30** — W7900 Qwen3.8 `Q4_K_M` pack8 **dual-WMMA+SiLU prefill owner rejected at the exact suite
+  rows, no row change** — the registered-but-undeclared `pack8_dual_wmma_prefill_bf16_bf16_out` owner (the
+  only remaining task-#12 prefill hypothesis, and the one gfx1151 declares at row 512) was measured against
+  the per-side pack8 WMMA chain at rows {35,36,39,43,46,48,60,67} with canonical `repack_gguf_q4_k_pack8`
+  payloads, bit-identical outputs and both arm orders. It is **14.6%-40.5% slower at every suite row**
+  (geomean **0.78x**, e.g. 1.692 ms vs 1.223 ms at row 35) and wins only from ~110 rows up (**1.18x** at 128,
+  **2.00x** at 256, **2.01x** at 512), so the gfx1151 row-512 +13.8% is a crossover artefact and not a W7900
+  candidate: packed prefill admits whole prompts and this suite's prompts are 35-67 tokens. No declaration
+  was made. Second finding, still open: the pack8 dual owner that the pair fallback selects costs **6.2 ms at
+  35 rows and 12.0 ms at 67** (row-linear, GEMV-like), which exceeds the whole published ~0.235 s C1 admission
+  wave across 64 layers, so the kernel that actually owns the small-row FFN pair has never been named —
+  gfx1100 declares no `GGUF_Q4_PACK8_WMMA_BULK_PREFILL` and the Q4_T16 dual owner qualifies from row 33, which
+  makes the next step a single `rocprofv3 --kernel-trace` question worth a 4-8x decision. Artifact:
+  [`pack8 dual-WMMA rows rejected`](results/2026-08-30-w7900-q4km-pack8-dual-wmma-rows-rejected.json).
+
 - **2026-08-30** — W7900 Qwen3.8 `Q4_K_M` grouped-prefill **command-provenance correction, no metric
   change** — the retained packet records `candidate_budget=3`, explicit MTP and
   `generation2_diagnostic_plan=true`, but the artifact's prior reconstructed command omitted

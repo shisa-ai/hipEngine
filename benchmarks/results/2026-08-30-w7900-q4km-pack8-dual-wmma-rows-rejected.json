@@ -1,0 +1,118 @@
+{
+  "schema": 1,
+  "kind": "gguf_pack8_dual_wmma_row_microbench_rejected",
+  "date": "2026-08-30",
+  "status": "rejected",
+  "question": "Does the registered-but-undeclared pack8 dual-WMMA+SiLU prefill owner beat the resident-pack8 WMMA gate/up pair at the exact prompt rows Qwen3.8-27B Q4_K_M prefilling actually produces, which is the only remaining task-#12 prefill hypothesis and the one gfx1151 declares at row 512?",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf (17106773984 bytes, sha256-sampled-v1 2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850)",
+  "quant": "MOSTLY_Q4_K_M, resident layout q4_k_pack8, policy identity (QWEN35_DENSE_H5120_GEOMETRY, MOSTLY_Q4_K_M)",
+  "hardware": "epyc / AMD Radeon Pro W7900 gfx1100 / Ryzen 9 5950X",
+  "workload_shape": "FFN gate/up pair (rows, in_features=5120, out_features=17408); exact suite rows {35,36,39,43,46,48,60,67} plus a 96-512 row crossover sweep",
+  "command": ".venv/bin/python scripts/gguf_pack8_dual_wmma_row_microbench.py --rows 35,36,39,43,46,48,60,67 --reps 30 --warmup 8 --output /tmp/he-pack8/arms-canonical.json",
+  "revision": "0d957c37b (branch campaign/gfx1100-mtp-cn-promotion)",
+  "protocol": "Kernel-level, one process, one weight pair uploaded once as canonical repack_gguf_q4_k_pack8 output. Each row is timed twice, once per arm order, median-of-reps per pass, best-of-two-passes per arm; an arm that wins in only one order does not count as a win. Timed window is one wall around the launch group plus device_synchronize, so host ctypes launch cost is included (3 launches for the pair, 1 for the fused owner). The two WMMA arms are bit-identical by construction and against the retained CPU-reference gate, so their comparison is arithmetic-free.",
+  "measurements": {
+    "suite_rows_ms": {
+      "35": {
+        "wmma_pair": 1.223,
+        "wmma_dual_silu": 1.692,
+        "pack8_dual_gemv_family": 6.201
+      },
+      "36": {
+        "wmma_pair": 1.202,
+        "wmma_dual_silu": 1.667,
+        "pack8_dual_gemv_family": 6.476
+      },
+      "39": {
+        "wmma_pair": 1.199,
+        "wmma_dual_silu": 1.684,
+        "pack8_dual_gemv_family": 6.952
+      },
+      "43": {
+        "wmma_pair": 1.207,
+        "wmma_dual_silu": 1.688,
+        "pack8_dual_gemv_family": 7.722
+      },
+      "46": {
+        "wmma_pair": 1.206,
+        "wmma_dual_silu": 1.689,
+        "pack8_dual_gemv_family": 8.226
+      },
+      "48": {
+        "wmma_pair": 1.211,
+        "wmma_dual_silu": 1.686,
+        "pack8_dual_gemv_family": 8.645
+      },
+      "60": {
+        "wmma_pair": 1.342,
+        "wmma_dual_silu": 1.695,
+        "pack8_dual_gemv_family": 10.73
+      },
+      "67": {
+        "wmma_pair": 1.478,
+        "wmma_dual_silu": 1.693,
+        "pack8_dual_gemv_family": 12.008
+      }
+    },
+    "suite_rows_fused_over_pair_slower_by_pct": {
+      "35": 38.4,
+      "36": 38.7,
+      "39": 40.5,
+      "43": 39.8,
+      "46": 40.1,
+      "48": 39.2,
+      "60": 26.4,
+      "67": 14.6
+    },
+    "crossover_ms": {
+      "96": {
+        "wmma_pair": 1.551,
+        "wmma_dual_silu": 1.721
+      },
+      "128": {
+        "wmma_pair": 2.044,
+        "wmma_dual_silu": 1.733
+      },
+      "192": {
+        "wmma_pair": 2.969,
+        "wmma_dual_silu": 1.798
+      },
+      "256": {
+        "wmma_pair": 3.884,
+        "wmma_dual_silu": 1.942
+      },
+      "512": {
+        "wmma_pair": 7.694,
+        "wmma_dual_silu": 3.826
+      }
+    },
+    "crossover_fused_wins_by": {
+      "128": 1.18,
+      "192": 1.65,
+      "256": 2.0,
+      "384": null,
+      "512": 2.01
+    },
+    "crossover_row": "between 96 and 128 rows",
+    "geomean_fused_over_pair_at_suite_rows": 0.78
+  },
+  "verdict": "REJECTED for the C1-C8 workload. The fused owner is 14.6%-40.5% slower at every row the suite actually produces and never wins in either arm order there. It wins only from ~110 rows up (1.18x at 128, 2.0x at 256, 2.01x at 512), which is why gfx1151 declares it at exactly (512, 1024, 3584) and why that +13.8% row was never a W7900 candidate: this suite never reaches the crossover, because packed prefill admits whole prompts and the 10-prompt suite prompts are 35-67 tokens.",
+  "no_declaration_made": "gfx1100 still declares none of GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL, its _SHAPES, or its _POLICIES. The kernel stays registered and undispatched; the strict per-side pack8 WMMA chain plus standalone SiLU remains the owner and the fallback, and HIPENGINE_GGUF_Q4_PACK8_DUAL_WMMA_SILU_PREFILL=0 remains the kill switch.",
+  "secondary_finding_unresolved_owner": {
+    "summary": "The pack8 dual kernel from the gemv family (what launch_gguf_linear_pair falls back to when no fused pair owner qualifies) costs 6.2 ms at 35 rows and 12.0 ms at 67 rows, i.e. it scales linearly with rows like a GEMV re-reading its weights per row. 64 layers x 6.2 ms = ~0.40 s, while the published C1 row implies a ~0.235 s wall for the whole 35-token admission wave including one decode step. That owner therefore cannot be what the shipping W7900 AR path runs at these rows, and the campaign has never recorded the kernel name for the FFN pair at rows 35-67.",
+    "why_it_matters": "gfx1100 declares neither GGUF_Q4_PACK8_WMMA_BULK_PREFILL nor its _SHAPES, so the per-side WMMA leaf that this harness measures at 1.20-1.48 ms is unreachable through the pair route on this backend, while the Q4_T16 dual-WMMA+SiLU owner qualifies from row 33. The identity of the real owner decides whether C1-C3 needs new kernels or one measured capability declaration, and nothing in the campaign answers it.",
+    "next_step": "Capture kernel names and per-launch durations for the FFN pair during a single real W7900 AR prefill at 35 rows with rocprofv3 --kernel-trace, prebuilding every .so outside the profiler and passing a precomputed compiler-version file with require_cached, per docs/KERNELS.md. Then re-declare or reject."
+  },
+  "instrumentation_history_that_matters": [
+    "First attempt fed randomly generated pack8-shaped byte arrays to all arms. The gemv-family consumer does not read that layout, the misread path timed at ~18 GB/s, and the arms disagreed by 34264 BF16 ULPs; every conclusion from that run is void. The harness now builds payloads with the shipping repack_gguf_q4_k_pack8 and asserts finite outputs, so the retained numbers above come from valid bytes.",
+    "The first version of the win flag compared the ratio in the wrong direction and reported losers as winners. Ratios are now uniformly reference/candidate and the direction is asserted in the harness docstring."
+  ],
+  "consequence_for_objective": "Task #12's last declared-hypothesis prefill candidate is closed with a measurement instead of another source reading, so AR C2 31.916 vs 35.440 and the C1-C3 prefill row stay unimproved by this route. The open path to the C1-C3 deficit is no longer 'find a better fused kernel' but 'name the kernel that actually owns the small-row FFN pair', which is a one-profile question with a 4-8x decision attached to it.",
+  "scratch_hygiene": "Raw rocprof output and per-run JSON stay under /tmp/he-pack8; only this compact artifact and the harness are committed.",
+  "correctness_gate": "No production arithmetic changed, so no strict/production numerical gate was run. The two compared WMMA arms are bit-identical to each other, and pack8-vs-CPU-reference exactness remains covered by tests/test_gguf_q4_k_wmma_prefill.py::test_gguf_q4_k_pack8_dual_wmma_silu_is_exact_to_unfused_chain.",
+  "commands": [
+    ".venv/bin/python scripts/gguf_pack8_dual_wmma_row_microbench.py --rows 35,36,39,43,46,48,60,67 --reps 30 --warmup 8 --output /tmp/he-pack8/arms-canonical.json",
+    ".venv/bin/python scripts/gguf_pack8_dual_wmma_row_microbench.py --rows 96,128,192,256,512 --reps 20 --warmup 6 --output /tmp/he-pack8/arms-crossover-canonical.json"
+  ],
+  "environment": "no HIPENGINE_* overrides; default execution profile, no diagnostic route pins"
+}
