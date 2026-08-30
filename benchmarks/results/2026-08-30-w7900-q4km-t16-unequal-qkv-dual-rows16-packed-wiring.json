@@ -1,0 +1,149 @@
+{
+  "schema": 2,
+  "kind": "gguf_prefill_route_promotion",
+  "date": "2026-08-30",
+  "subject": "gfx1100 dense Q4_K_M T16 unequal (QKV 5120->10240/6144) dual-WMMA prefill owner: floor 512 -> 16 and packed-admission session wiring",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_t16_v1",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100/RDNA3)",
+  "host": "w7900-rdna3",
+  "execution_profile": "production",
+  "git_commit": "72957ada20059def754ec5ff2b81d1b8ca93573f",
+  "commits": {
+    "floor": "bd7166351",
+    "wiring": "39079c799"
+  },
+  "status": "promoted",
+  "change": {
+    "constant": "_Q4_T16_UNEQUAL_DUAL_WMMA_MIN_ROWS",
+    "old": 512,
+    "new": 16,
+    "wiring": "Qwen35GGUFResidentSession.prefill_batch_native now opens q4_t16_unequal_pair_prefill_session under GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES",
+    "capability_scope": "gfx1100 dense H5120 MOSTLY_Q4_K_M only; other backends keep the singletons"
+  },
+  "arithmetic": {
+    "class": "bit-identical",
+    "kernel_parity": "assert_array_equal on BF16 bits vs two gguf_q4_k_t16_wmma_prefill_shared_b singletons at K5120/N10240+N6144 for rows 16/24/32/45/96/512",
+    "end_to_end": "identical measured trajectory hashes in 20/20 packed configurations across two measurement orders; identical generated ids in all bulk prefill cells",
+    "tests": "tests/test_gguf_q4_k_t16_dense.py 92 passed; tests/test_gguf_linear_dispatch.py 131 passed (contract negative rows 1/4/511 -> 1/4/15); packed prefill/verify/generate bundle exit 0"
+  },
+  "bulk_prefill_ab": {
+    "protocol": "scripts/gguf_prefill_rowgate_probe.py + scripts/qwen35_gguf_bench.py --public-ar-profile --persistent-session, prompt-length cells, decode 1, warmup 1, 3 measured runs, exclusive device, runtime-restored control",
+    "rows_median_seconds": {
+      "16": [
+        0.2362,
+        0.2321
+      ],
+      "24": [
+        0.2577,
+        0.2528
+      ],
+      "32": [
+        0.2599,
+        0.2552
+      ],
+      "45": [
+        0.2703,
+        0.2647
+      ],
+      "96": [
+        0.3056,
+        0.3001
+      ],
+      "192": [
+        0.3821,
+        0.3758
+      ]
+    },
+    "gain_pct": {
+      "16": 1.7,
+      "24": 1.9,
+      "32": 1.8,
+      "45": 2.1,
+      "96": 1.8,
+      "192": 1.7
+    },
+    "control_cross_check": "rows 16 and 32 controls reproduce across two independent probe sets (0.2362/0.2365, 0.2599/0.2599)"
+  },
+  "packed_crossover_ab": {
+    "protocol": "scripts/gguf_packed_ar_bench.py --prompt-length 45 --decode-steps 8 --warmup-runs 1 --measured-runs 3 through HE_PROBE_TARGET; both orders measured",
+    "prefill_delta_pct": {
+      "round1_512_first": 1.02,
+      "round2_16_first": 2.61,
+      "crossover_mean": 1.81
+    },
+    "prefill_configs_positive": "10/10 in both orders",
+    "decode_delta_pct": {
+      "round1_512_first": -0.41,
+      "round2_16_first": 0.95,
+      "crossover_mean": 0.27
+    },
+    "finding": "the first-measured process leads every rate by ~1-2 points regardless of floor, so single control-then-candidate pairs on this harness family are biased by about the size of the effect; decode is neutral once the order effect is removed"
+  },
+  "route_visibility": {
+    "instrument": "scripts/gguf_pair_route_count_probe.py",
+    "before": {
+      "session_entries": {},
+      "qkv_pair_launch_rows_with_session_false": [
+        35,
+        36,
+        39,
+        43,
+        46,
+        48,
+        60,
+        67
+      ],
+      "row1_decode_launches": 3168
+    },
+    "after": {
+      "session_entries": {
+        "True": 22
+      },
+      "qkv_pair_launch_rows_with_session_true": [
+        35,
+        36,
+        39,
+        43,
+        46,
+        48,
+        60,
+        67
+      ]
+    },
+    "entry_map": "prefill_batch_native -> _prefill_batch_native_impl at width 1, rows 35/36/39/43/46/48/60/67",
+    "verify_safety": "verify_target_blocks_batch/verify_rows never call the packed prefill entry, and the pair dispatch cache key already contains the session flag"
+  },
+  "topline_same_chain_pair": {
+    "protocol": "scripts/gguf_prefill_rowgate_probe.py HE_PROBE_TARGET=scripts/gguf_mtp_c1c8_server_bench.py --widths 1,8 --max-tokens 24 --candidate-budget 3 --mtp-request-mode explicit, control floor 512 first, candidate floor 16 second, identical binary",
+    "control": {
+      "C1_ar": 21.97,
+      "C1_ar_wall_s": 1.0926,
+      "C1_mtp": 31.36,
+      "C8_ar": 45.62,
+      "C8_ar_wall_s": 4.2089,
+      "C8_mtp": 31.51
+    },
+    "candidate": {
+      "C1_ar": 21.95,
+      "C1_ar_wall_s": 1.0932,
+      "C1_mtp": 31.33,
+      "C8_ar": 45.94,
+      "C8_ar_wall_s": 4.1797,
+      "C8_mtp": 31.57
+    },
+    "delta_pct": {
+      "C1_ar": -0.1,
+      "C1_mtp": -0.1,
+      "C8_ar": 0.7,
+      "C8_mtp": 0.2
+    },
+    "harness_resolution": "four same-state packets spread C1 21.97-22.16 and C8 45.62-46.06 (~1% packet-to-packet); back-to-back packets in one chain agreed to 0.24%"
+  },
+  "decision": "Promoted. Bit-identical, +1.8% packed prefill by crossover (10/10 configurations), decode neutral after removing the order effect, shipping C8 wall +0.7% in a same-chain pair where the candidate ran second. C1 stays flat because prefill is only ~25% of that wall.",
+  "related": {
+    "supersedes_route_visibility": "worklog/entries/20260829T231254.976601Z-lhl-w7900-qwen38-dual-silu-floor33-a8e1e4.md",
+    "kernel_catalog": "docs/KERNELS.md Q4/Q5/Q6 T16 selected row",
+    "refactor": "docs/REFACTOR.md GGUF prefill route-session stack"
+  }
+}
