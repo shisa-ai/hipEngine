@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -93,6 +94,21 @@ def test_qwen4exp_role_analyze_synthetic_window(tmp_path: Path) -> None:
     roles = {row["name"]: row for row in result["roles"]}
     assert roles["moe:layers.*.expert_gate"]["rows"] == 1
     assert roles["unattributed"]["rows"] == 1
+
+
+def test_qwen4exp_p508_prompt_fixture_is_pinned() -> None:
+    fixture = (
+        Path(__file__).resolve().parents[1]
+        / "benchmarks"
+        / "prompts"
+        / "qwen4exp-p508.txt"
+    )
+    data = fixture.read_bytes()
+    assert hashlib.sha256(data).hexdigest() == (
+        "9cf9d353b81b6ce1df61405b590f037b0502b52c7f6c0c19a543c33cbcb6dbb4"
+    )
+    assert data.startswith(b"<|im_start|>user\n")
+    assert len(data) == 2613
 
 
 def test_qwen4exp_perf_gap_report_renders_committed_artifact() -> None:
