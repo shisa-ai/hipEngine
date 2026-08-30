@@ -60,12 +60,55 @@ def _acceptance(payload: Mapping[str, Any], arm: str) -> dict[tuple[str, int], d
     return out
 
 
+def _route_deltas(payload: Mapping[str, Any]) -> dict[tuple[str, int], dict[str, int]]:
+    """Per-arm per-width route counters, reconstructed from cumulative snapshots.
+
+    ``resident_observability.routes.counts`` is a process-global cumulative counter set
+    and AR/K3 share a process, so a cell's snapshot includes the other arm's work. It is
+    still attributable: the packet's cell list order is execution order, and inside a
+    cell ``order`` names which arm's snapshot was taken first, so consecutive differences
+    give each arm's work exactly. Validated on four retained packets - every delta comes
+    out non-negative (a wrong ordering produces negatives immediately), and two
+    independent native-mode K3 packets attribute identically (AR 1831 / MTP 298 packed
+    decode steps). The durable fix is bench-side per-cell deltas; see docs/REFACTOR.md.
+    """
+    keys = (
+        "native_packed_decode_steps",
+        "native_c1_decode_steps",
+        "native_packed_graph_replays",
+        "native_full_prefill_rows",
+        "native_full_prefill_groups",
+    )
+    out: dict[tuple[str, int], dict[str, int]] = {}
+    prev: Mapping[str, int] = {}
+    for cell in payload.get("cells", ()):
+        snaps: dict[str, Mapping[str, int]] = {}
+        for arm in ("ar", "mtp"):
+            block = cell.get(arm)
+            if not isinstance(block, Mapping):
+                continue
+            counts = ((block.get("resident_observability") or {}).get("routes") or {}).get("counts") or {}
+            if counts:
+                snaps[arm] = counts
+        seq = [arm for arm in (cell.get("order") or ()) if arm in snaps] or list(snaps)
+        last = prev
+        for arm in seq:
+            cur = snaps[arm]
+            bucket = out.setdefault((arm, int(cell["width"])), {})
+            for key in keys:
+                bucket[key] = bucket.get(key, 0) + max(0, int(cur.get(key, 0)) - int(last.get(key, 0)))
+            last = cur
+        prev = last
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--baseline", required=True, metavar="LABEL=PACKET.json")
     ap.add_argument("comparisons", nargs="*", metavar="LABEL=PACKET.json")
     ap.add_argument("--arm", default="mtp")
     ap.add_argument("--widths", default="", help="comma list, default: all present")
+    ap.add_argument("--routes", action="store_true", help="also print per-arm route deltas")
     ap.add_argument("--json", dest="json_out")
     args = ap.parse_args(argv)
 
@@ -125,6 +168,20 @@ def main(argv: list[str] | None = None) -> int:
                 rc = sum(s["accepted"] for s in c) / sum(s["drafted"] for s in c)
                 parts.append(f"C{w}={rc - rb:+.3f} ")
             print(f"  {label:16} {' '.join(parts)}")
+
+    if args.routes:
+        print("\nroute counters attributable per arm (cumulative snapshots differenced "
+              "in cell list order):")
+        print(f"{'C':>2} | {'AR packed':>9} {'AR c1':>6} {'AR grp':>6} | {'MTP packed':>10} {'MTP c1':>7}")
+        routes = _route_deltas(base_payload)
+        for w in widths:
+            def g(arm: str, key: str, _r: Mapping[str, Any] = routes) -> int:
+                return _r.get((arm, w), {}).get(key, 0)
+            print(f"{w:>2} | {g('ar', 'native_packed_decode_steps'):>9} "
+                  f"{g('ar', 'native_c1_decode_steps'):>6} "
+                  f"{g('ar', 'native_full_prefill_groups'):>6} | "
+                  f"{g('mtp', 'native_packed_decode_steps'):>10} "
+                  f"{g('mtp', 'native_c1_decode_steps'):>7}")
 
     if args.json_out:
         out = {
