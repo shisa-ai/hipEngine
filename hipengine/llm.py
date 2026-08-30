@@ -612,6 +612,21 @@ class LLM:
         )
 
     @property
+    def server_mtp_batch_max_active_requests(self) -> int | None:
+        """Return the adapter-owned explicit-MTP HTTP grouping width bound."""
+
+        generator = self._text_generator
+        if generator is None:
+            return None
+        value = getattr(generator, "server_mtp_batch_max_active_requests", None)
+        if value is None:
+            return None
+        value = int(value)
+        if value < 1:
+            raise ValueError("server_mtp_batch_max_active_requests must be positive")
+        return value
+
+    @property
     def supports_independent_generation(self) -> bool:
         """Whether one sole model service owns independently completing children."""
 

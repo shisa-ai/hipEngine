@@ -384,6 +384,12 @@ class Qwen35GGUFMTP2Adapter:
             max(1, int(getattr(self.owner, "capacity", _MTP2_CERTIFIED_PHYSICAL_BOUND))),
         )
 
+    @property
+    def physical_request_bound(self) -> int:
+        """Public coalescing/plan width bound owned by this adapter's capability."""
+
+        return self._max_physical_requests()
+
     def _target_profile_supported(self, target: Any) -> bool:
         runner = getattr(target, "runner", None)
         return bool(
