@@ -4647,3 +4647,15 @@ declaring `GGUF_C2_PACKED_PREFILL_MAX_ROWS` for gfx1100, the remaining whole-pro
 in-one-chunk requirement (`chunk == row.prompt_ids`, which chunked prefill of long
 prompts violates), and a same-suite content-exact + wall measurement against the
 per-request route. Trigger unchanged.
+
+`worklog.py new` can mint an entry that `worklog.py check` then rejects. `new`
+derives the filename from `slugify(topic)`, but `slugify` truncates at ~48
+characters and can leave a trailing `-`, while `check` (a) requires
+`slugify(topic) == topic` and (b) requires the filename to start with the
+verbatim `topic`. A long or bracketed title therefore produces a filename whose
+embedded slug can never validate - `20260830T025142...guard--0609f8.md` needed a
+manual topic shortening plus `git mv` inside an amend of an unpushed commit, and
+`check` blocks every later commit until that is done. Fix in `new`: after
+slugifying, strip trailing/Repeated `-`, hard-truncate to the round-trip length,
+and assert `slugify(topic) == topic` and the filename prefix before writing the
+file. Remove this entry when `new` refuses to emit an invalid pair.
