@@ -985,7 +985,12 @@ measurement, so record it instead of rediscovering it.
    the GPU idle, which looks exactly like the stale-JIT-cache symptom above and is a second,
    different cause of it; and the leftovers pollute the SMI pid table. The AGENTS rule - prebuild
    the `.so` and pass a precomputed compiler-version file with `require_cached` instead of letting
-   the profiled process spawn `hipcc`/`clang` - is what avoids it; a permanent fix is for the probe
+   the profiled process spawn `hipcc`/`clang` - is what avoids it. Treat that as a **pair, not an
+   option**: measured again on 2026-08-30, `HIPENGINE_REQUIRE_CACHED_BUILD=1` on its own still lets
+   the builder run `hipcc --version` to compute the cache key, so the run deadlocks anyway with the
+   parent blocked in `wchan=anon_pipe_read` and the GPU idle - `HIPENGINE_COMPILER_VERSION_FILE` (or
+   an explicit `compiler_version`) is what removes the probe. In this symptom the *parent* waits in
+   `anon_pipe_read` rather than `futex_wait`. A permanent fix is for the probe
    in the JIT build path to refuse to spawn when `ROCPROF_*`/`ROCT_*` is in the environment and use
    the cached file instead. Stranding is host-wide, not MTP-specific, so clean up outside a
    profiling session rather than during one.
