@@ -32,6 +32,15 @@ should be removed or collapsed.
   flags together with the D2H branch. Never leave the D2H loop as the sole
   path.
 
+  > **Perf-negative as of 2026-08-30** — `scripts/gguf_q8_0_grouped_down_microbench.py`
+  > (layer-2 shape, 512 experts, in=640/out=2560) measured the grouped owner at
+  > 4.17/6.32/14.46 ms (sparse/dense/deep) vs strict `selected_gemv` at
+  > 0.34/1.26/4.87 ms. The grouped kernel launches `dim3(out, experts)` =
+  > 1.31M blocks with OUT_BATCH=1 and a serial expert loop (no weight reuse),
+  > so it is ~3-12x slower than the strict default. Do **not** promote it to
+  > default until a re-audited tile/grid version (weight reuse + output tiling
+  > + empty-expert skip) beats `strict_ms`; see worklog entry 20260830T202256.
+
 ## 2026-08-29 Qwen4Exp late-layer production prefill
 
 - The named production manifest now owns `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`,
