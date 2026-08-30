@@ -262,8 +262,13 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
 
 ### P4 — MTP K3 C1-C8 parity via the acceptance campaign
 
-- [ ] P4.1 Execute `docs/QWEN38-Q4KM-MTP-ACCEPTANCE.md` E0-E5 as written;
+- [x] P4.1 Execute `docs/QWEN38-Q4KM-MTP-ACCEPTANCE.md` E0-E5 as written;
   its own binding gates and statistical discipline apply unchanged.
+  E5 closes on the frozen selected stack: current C3/K3 canonical/heldout
+  strict-teacher KL max **8.69e-4/8.45e-4**, top-1 **240/240 + 192/192**, three
+  deterministic repeats, exact teardown, and the composed production
+  ownership/lifecycle bundle. E6 still owns automatic promotion.
+  [`artifact`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-e5-combined-correctness.json)
   - E0 complete 2026-08-29: common K3 C1/C2/C3 is
     **7.826/19.146/21.382 tok/s** versus true AR
     **11.115/18.205/24.119**; all 30 cells are exact and acceptance remains
