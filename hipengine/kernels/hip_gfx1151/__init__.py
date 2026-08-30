@@ -1777,8 +1777,11 @@ GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS: dict[str, int] = {}
 # E1a/E7 admit the exact shifted prompt-streaming path for measured Qwen3.8
 # standard-Q4 production physical-C2/C3 groups. C4 changed acceptance and is
 # rejected; strict C1, other models/quants/profiles, and peers retain replay.
+# Scaling-campaign M3 screen (2026-08-31): width 1 engages the same exact path
+# (C1 +24.1% to 17.081 tok/s; every cell's generated IDs, acceptance, route,
+# and budget identical to the replay baseline; stream flag true, prime rows 43).
 GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES = {
-    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (2, 3),
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 3),
 }
 # E1b reuses the exact Q6 F32 small-B rowtile only for physical proposal-head
 # dimensions/rows2-4 that have actual Qwen3.8 evidence. Wide request groups
