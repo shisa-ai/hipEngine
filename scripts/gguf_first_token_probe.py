@@ -86,6 +86,55 @@ def synthetic(target_tokens: int) -> str:
     return "<|im_start|>user\n" + body + "\n<|im_start|>assistant\n"
 
 
+def run_length_scan(
+    request,
+    synthetic_prompt,
+    length_scan,
+    reps,
+    max_sequence_length,
+) -> list[dict]:
+    """Sweep prompt lengths with per-length medians, stopping at the context ceiling.
+
+    Single-shot walls repeat at +-15% at the shortest lengths, which is enough to move a fitted
+    fixed term by tens of milliseconds, so each length is measured repeatedly and carried as a
+    median with its spread visible. A request past the server's context ceiling is not a failure
+    of the sweep - the short lengths are the ones that separate fixed cost from throughput, and
+    losing them is how a scan used to die at 512 with a 400 after nine good measurements - so the
+    scan stops and says so instead of tracebacks.
+    """
+
+    rows: list[dict] = []
+    for target in sorted({int(v) for v in str(length_scan).split(",") if v.strip()}):
+        samples: list[dict] = []
+        over_context = False
+        for _ in range(max(1, int(reps))):
+            try:
+                samples.append(request(synthetic_prompt(target)))
+            except RuntimeError as exc:
+                if "context_length_exceeded" not in str(exc):
+                    raise
+                over_context = True
+                break
+        if over_context or not samples:
+            print(f"length {target}: skipped (exceeds --max-sequence-length "
+                  f"{max_sequence_length})", flush=True)
+            break
+        walls = sorted(float(sample["wall_seconds"]) for sample in samples)
+        row = {
+            "wall_seconds": walls[len(walls) // 2],
+            "prompt_tokens": int(samples[0]["prompt_tokens"]),
+            "samples": walls,
+        }
+        rows.append(row)
+        print(
+            f"length {target}: wall={row['wall_seconds']:.4f}s "
+            f"prompt={row['prompt_tokens']} median_of={len(walls)} "
+            f"spread={walls[-1] - walls[0]:.4f}s",
+            flush=True,
+        )
+    return rows
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
@@ -185,43 +234,13 @@ def main() -> int:
             "completion_tokens": int(usage.get("completion_tokens", 0)),
         }
     with TestClient(app) as client:
-        scan_rows: list[dict] = []
-        # Single-shot walls repeat at +-15% at the shortest lengths, which is enough to move
-        # a fitted fixed term by tens of milliseconds, so each length is measured repeatedly
-        # and carried as a median with its spread visible.
-        scan_reps = max(1, int(args.requests))
-        for target in sorted(
-            {int(v) for v in str(args.length_scan).split(",") if v.strip()}
-        ):
-            samples: list[dict] = []
-            over_context = False
-            for _ in range(scan_reps):
-                try:
-                    samples.append(one(client, synthetic(target)))
-                except RuntimeError as exc:
-                    # A larger target only needs more context, so stop the sweep instead of
-                    # killing it: the shorter lengths are the ones that separate fixed cost
-                    # from throughput, and losing them to one over-long request is how a scan
-                    # used to die at 512 with a 400 after nine good measurements.
-                    if "context_length_exceeded" not in str(exc):
-                        raise
-                    over_context = True
-                    break
-            if over_context or not samples:
-                print(f"length {target}: skipped (exceeds --max-sequence-length "
-                      f"{args.max_sequence_length})", flush=True)
-                break
-            walls = sorted(float(s["wall_seconds"]) for s in samples)
-            row = {"wall_seconds": walls[len(walls) // 2],
-                   "prompt_tokens": int(samples[0]["prompt_tokens"]),
-                   "samples": walls}
-            scan_rows.append(row)
-            print(
-                f"length {target}: wall={row['wall_seconds']:.4f}s "
-                f"prompt={row['prompt_tokens']} median_of={len(walls)} "
-                f"spread={walls[-1] - walls[0]:.4f}s",
-                flush=True,
-            )
+        scan_rows = run_length_scan(
+            lambda prompt: one(client, prompt),
+            synthetic,
+            str(args.length_scan),
+            max(1, int(args.requests)),
+            int(args.max_sequence_length),
+        )
         fit = fixed_marginal_fit(scan_rows)
         if fit:
             fixed_ms, per_token_ms, r2, used = fit

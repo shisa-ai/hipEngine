@@ -80,3 +80,79 @@ def test_measured_w7900_scan_shape_still_reports_the_fixed_term():
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+def _fake_request(table: dict[str, float], fail_prompt: str | None = None, fail_text: str = ""):
+    """Stand-in for the HTTP call: prompt text -> wall, optionally raising on one prompt."""
+
+    def request(prompt: str) -> dict:
+        if prompt == fail_prompt:
+            raise RuntimeError(fail_text)
+        return {"wall_seconds": table[prompt], "prompt_tokens": int(prompt[1:])}
+
+    return request
+
+
+def test_length_scan_stops_at_the_context_ceiling(capsys) -> None:
+    # A 400 context_length_exceeded is the sweep running out of context, not a broken probe:
+    # it used to traceback after nine good measurements and lose the whole scan.
+    table = {"p1": 0.30, "p2": 0.26, "p4": 0.27}
+    rows = probe.run_length_scan(
+        _fake_request(
+            table,
+            fail_prompt="p8",
+            fail_text='HTTP 400: {"error":{"code":"context_length_exceeded"}}',
+        ),
+        lambda target: f"p{target}",
+        "1,2,4,8,16",
+        reps=1,
+        max_sequence_length=1024,
+    )
+    assert [row["prompt_tokens"] for row in rows] == [1, 2, 4]
+    out = capsys.readouterr().out
+    assert "skipped (exceeds --max-sequence-length 1024)" in out
+    assert "length 16" not in out  # stops rather than pressing on past the ceiling
+
+
+def test_length_scan_reraises_any_other_http_failure() -> None:
+    with pytest.raises(RuntimeError, match="HTTP 500"):
+        probe.run_length_scan(
+            _fake_request({}, fail_prompt="p1", fail_text="HTTP 500: boom"),
+            lambda target: f"p{target}",
+            "1",
+            reps=1,
+            max_sequence_length=1024,
+        )
+
+
+def test_length_scan_carries_the_median_and_shows_the_spread(capsys) -> None:
+    rows = probe.run_length_scan(
+        _fake_request({"p1": 0.300, "p2": 0.260}),
+        lambda target: f"p{target}",
+        "1",
+        reps=3,
+        max_sequence_length=1024,
+    )
+    assert len(rows) == 1
+    assert rows[0]["samples"] == [0.300, 0.300, 0.300]
+    out = capsys.readouterr().out
+    assert "median_of=3" in out and "wall=0.3000s" in out
+
+
+def test_fixed_marginal_fit_still_consumes_the_scan_rows() -> None:
+    # Walls on an exact line: 296 ms fixed + 4 ms/token. All three stay inside the 1.5x
+    # small-row regime, so the fit must consume them (a wider last wall is refused on purpose,
+    # which the refusal tests already pin).
+    rows = probe.run_length_scan(
+        _fake_request({"p1": 0.3000, "p2": 0.3040, "p4": 0.3120}),
+        lambda target: f"p{target}",
+        "1,2,4",
+        reps=1,
+        max_sequence_length=1024,
+    )
+    fit = probe.fixed_marginal_fit(rows)
+    assert fit is not None
+    fixed_ms, per_token_ms, r2, used = fit
+    assert used == 3 and r2 > 0.999
+    assert abs(fixed_ms - 296.0) < 1.0
+    assert abs(per_token_ms - 4.0) < 0.1
