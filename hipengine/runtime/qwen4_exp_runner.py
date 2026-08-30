@@ -99,6 +99,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
     gguf_q5_k_selected_wmma_prefill_compact_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
+    gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out,
     gguf_q8_0_wmma_prefill_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
@@ -3230,32 +3231,47 @@ def run_qwen4_exp_moe(
                     stream=stream,
                     runtime=active_runtime,
                 )
-        elif (
-            weights["expert_down"].spec.quant_key == "gguf_q8_0"
-            and os.environ.get("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA", "")
-            not in {"", "0", "false", "False"}
-        ):
-            expert_start_host = np.empty(experts + 1, dtype=np.int64)
-            copy_device_to_host(
-                host_array_ptr(expert_start_host),
-                scratch.group_expert_start,
-                expert_start_host.nbytes,
-                runtime=active_runtime,
-            )
-            expert_weight_bytes = hidden * (ffn // 32) * 34
-            for expert in range(experts):
-                start_row = int(expert_start_host[expert])
-                expert_rows = int(expert_start_host[expert + 1]) - start_row
-                if expert_rows <= 0:
-                    continue
-                gguf_q8_0_wmma_prefill_bf16_bf16_out(
-                    scratch.expert_intermediate.ptr
-                    + start_row * ffn * DType.BF16.itemsize,
-                    weights["expert_down"].allocation("raw").tensor.ptr
-                    + expert * expert_weight_bytes,
-                    scratch.expert_down.ptr
-                    + start_row * hidden * DType.BF16.itemsize,
-                    expert_rows,
+        elif weights["expert_down"].spec.quant_key == "gguf_q8_0":
+            # P1: device-driven grouped Q8_0 down owner (no D2H, no Python loop
+            # over 512 experts). Reads expert_start on device via a fixed worker
+            # grid. The legacy per-expert D2H+WMMA loop and the strict per-expert
+            # selected gemv remain available as explicit opt-outs for rollback /
+            # bisection until the P1 full packet gate passes.
+            if os.environ.get("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA", "") not in {"", "0", "false", "False"}:
+                expert_start_host = np.empty(experts + 1, dtype=np.int64)
+                copy_device_to_host(
+                    host_array_ptr(expert_start_host),
+                    scratch.group_expert_start,
+                    expert_start_host.nbytes,
+                    runtime=active_runtime,
+                )
+                expert_weight_bytes = hidden * (ffn // 32) * 34
+                for expert in range(experts):
+                    start_row = int(expert_start_host[expert])
+                    expert_rows = int(expert_start_host[expert + 1]) - start_row
+                    if expert_rows <= 0:
+                        continue
+                    gguf_q8_0_wmma_prefill_bf16_bf16_out(
+                        scratch.expert_intermediate.ptr
+                        + start_row * ffn * DType.BF16.itemsize,
+                        weights["expert_down"].allocation("raw").tensor.ptr
+                        + expert * expert_weight_bytes,
+                        scratch.expert_down.ptr
+                        + start_row * hidden * DType.BF16.itemsize,
+                        expert_rows,
+                        ffn,
+                        hidden,
+                        stream=stream,
+                        runtime=active_runtime,
+                    )
+            elif os.environ.get("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED", "") not in {"", "0", "false", "False"}:
+                gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out(
+                    scratch.expert_intermediate.ptr,
+                    scratch.group_expert_start.ptr,
+                    weights["expert_down"].allocation("raw").tensor.ptr,
+                    scratch.expert_down.ptr,
+                    compact,
+                    experts,
                     ffn,
                     hidden,
                     stream=stream,

@@ -18,6 +18,20 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-08-30 Qwen4Exp P1 device-driven grouped Q8_0 down
+
+- `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED=1` selects the new device-driven grouped
+  Q8_0 down owner
+  (`gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out`) that reads
+  `expert_start` on device and iterates experts via a fixed worker grid,
+  replacing the `group_expert_start` D2H copy + Python loop over 512 experts
+  (`HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA`). The strict per-expert selected
+  gemv remains the default. After the P1 full 450-row/task/c2/lifecycle/packet
+  gate and paired p512/p1024/p4096 evidence pass, promote the device-driven
+  owner to default and remove the `Q8_0_GROUPED` / `Q8_0_GROUPED_WMMA` opt-out
+  flags together with the D2H branch. Never leave the D2H loop as the sole
+  path.
+
 ## 2026-08-29 Qwen4Exp late-layer production prefill
 
 - The named production manifest now owns `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`,
