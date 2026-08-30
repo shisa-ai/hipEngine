@@ -6122,6 +6122,13 @@ class Qwen35GGUFResidentModelRunner:
         resolve = None if adapter is None else getattr(adapter, "partition_max_requests", None)
         return 0 if not callable(resolve) else int(resolve(work.request_ids))
 
+    @property
+    def server_mtp_batch_max_active_requests(self) -> int | None:
+        """Explicit-MTP batch-route width owned by the resolved adapter."""
+
+        adapter = self._resolved_mtp2_adapter()
+        return None if adapter is None else int(adapter.physical_request_bound)
+
     def speculative_claims_fit(self, plan) -> bool:
         adapter = self._resolved_mtp2_adapter()
         return bool(adapter is not None and adapter.claims_fit(plan))

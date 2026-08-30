@@ -2696,6 +2696,21 @@ class _GenerationBatcher:
         route_name = str(route)
         limit = self._max_active_requests
         route_limit = self._route_max_active_requests.get(route_name)
+        if route_name == _SPECULATIVE_MTP_BATCH_ROUTE:
+            # The physical MTP width is capability-owned: a resident adapter
+            # publishes its certified bound; engines without one retain the
+            # registered GGUF fallback constant.
+            registered_limit = getattr(
+                self._engine_factory(),
+                "server_mtp_batch_max_active_requests",
+                None,
+            )
+            if registered_limit is not None:
+                route_limit = int(registered_limit)
+                if route_limit < 1:
+                    raise ValueError(
+                        "server_mtp_batch_max_active_requests must be positive"
+                    )
         if route_name in {
             _SPECULATIVE_MTP_DEFAULT_ROUTE,
             _SPECULATIVE_MTP_AUTO_ROUTE,
