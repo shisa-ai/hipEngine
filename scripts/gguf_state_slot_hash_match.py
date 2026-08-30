@@ -65,7 +65,8 @@ def main() -> int:
 
     print(
         f"status={doc.get('status')} mode={doc.get('prefill_mode')}/{doc.get('decode_mode')} "
-        f"tokens_exact={doc.get('tokens_exact')} initial_state_exact={doc.get('initial_state_exact')} "
+        f"tokens_exact={doc.get('tokens_exact')} "
+        f"initial_state_exact={doc.get('initial_state_exact')} "
         f"final_state_exact={doc.get('final_state_exact')}"
     )
     first = doc.get("first_divergence")
