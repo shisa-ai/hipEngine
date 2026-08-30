@@ -327,10 +327,17 @@ is made.
 
 ### P — prefill (secondary track, two cells only)
 
-- [ ] P1 **C2 root-cause.** Explain why prefill does not scale C1 -> C2 when AR
-  does. Trace the C2 packed prefill grouping directly against C1 and C3 under
-  one committed protocol; the existing C2 attribution measured GPU-boundness but
-  never the missing scaling. Target `142.806 -> >= 211.888` or a named blocker.
+- [x] P1 **C2 root-cause. Done 2026-08-31, named blocker.** Prefill ticks are
+  **100.0% GPU-busy** (paired hipEvents, 55 calls, median 281.4 ms wall = GPU).
+  Rows 35-48 all cost ~278 ms regardless of rows: the Q4 `wmma_prefill` owner
+  streams ~16.3 GB of weights per tick at ~57 GB/s, and grouped ticks re-stream
+  per 16-row M-tile instead of amortizing (rows256 = 1418 ms, ~4.4 ms/row).
+  Removing the equal-length grouping gate fires ragged groups (rows72-96 at
+  ~410 ms vs 2x278 serial) but moves C2 only -3.0% / C3 +4.8% - inside drift;
+  the experiment was reverted byte-identical. Grouping/scheduling is measured
+  **not** the blocker; the floor is the prefill owner's weight streaming, which
+  is exactly P2/P3's algorithmic target. See
+  [`blocker artifact`](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-c2-scaling-blocker.json).
 - [ ] P2 **C8 high-row Q4.** Re-trace the current head first (E: the final
   frozen C2/C8 paths lack a current trace, and P1.3's 360 ms figure predates the
   retained low-VGPR work). Then attack the named high-row Q4/device
