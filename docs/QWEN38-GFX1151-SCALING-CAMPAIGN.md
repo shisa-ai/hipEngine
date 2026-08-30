@@ -235,17 +235,19 @@ is made.
 
 ### M — MTP scaling (primary track)
 
-- [ ] M0 Re-freeze and instrument. Emit per-cycle accounting for C1-C8,
-  including an explicit production-D24 C1 baseline for M3: subgroup count,
-  target rows per pass, model passes per cycle, **ms per target row**, accepted
-  draft tokens, committed output tokens per target pass, and
-  **operation-complete ms per committed output token**, with matched AR
-  ms-per-row at the same width. The committed-output metric is the primary
-  economic metric; ms/target-row diagnoses batching efficiency, and
-  complete-wall tok/s stays the reported headline. Deliverable: a compact
-  artifact under `benchmarks/results/` carrying the per-cycle table, exact
-  prefill/AR/MTP/instrumentation command set, source commit, full model/prompt
-  hashes, profile-manifest hashes, and a worklog entry. No perf claim.
+- [x] M0 **Done 2026-08-30.** Re-frozen the C1-C8 prefill/AR/MTP protocol at
+  head with the exact reproducible command set, model/prompt/profile-manifest
+  hashes, and raw-source hashes recorded in
+  [`2026-08-30-gfx1151-qwen38-mtp-scaling-m0-refreeze-instrumentation.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-scaling-m0-refreeze-instrumentation.json),
+  plus per-cycle accounting from append-only pass-ms samples
+  (`scripts/mtp_cycle_accounting.py`). Headline: 80/80 exact/engaged/budget,
+  identical 78.894% acceptance, exactly **2.00 physical target passes per
+  cycle at C5-C8** (width-4 partition confirmed per tick), C8 operation-complete
+  34.44 ms/committed-token vs matched AR 21.58 ms/row while the target kernel
+  itself costs only 2.63 ms/row - A1's gap lives in the operation-complete
+  cycle (proposal + accept-interval sync), not target math. C1 production-D24
+  baseline for M3: **7.841 tok/s**, streaming engaged on 0 requests, direct
+  proposal head. No perf claim.
 - [ ] M1 **Single-group wide verify.** Lift the width-4 partition so one cycle
   covers all due requests. Replace the eleven scattered cap expressions with
   one capability-owned bound; update `partition_max_requests`, `claims_fit`,

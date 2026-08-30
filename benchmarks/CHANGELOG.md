@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-30 gfx1151 Qwen3.8 scaling M0 re-freeze + instrumentation] Re-frozen the C1-C8 protocol at head with the exact command set (closing the recorded evidence gap) and per-cycle per-pass accounting: 80/80 exact/engaged, identical 78.894% acceptance, and exactly 2.00 physical target passes/cycle at C5-C8 vs 1.00 at C1-C4. Reproducibility check only - no rollup row replaced, no perf claim. `benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-scaling-m0-refreeze-instrumentation.json`.
+
 - [2026-08-30 gfx1151 Qwen3.8 parity campaign closeout] Close the umbrella campaign with no unmeasured items: hipEngine wins AR C3-C8 and MTP C3-C4; five `[~]` cells retain measured high-row-Q4, operation-complete, replay/provider, B4-scope, or missing-DFlash-asset blockers with explicit reopen conditions. `benchmarks/results/2026-08-30-gfx1151-qwen38-parity-campaign-closeout.json`.
 
 - [2026-08-30 gfx1151 Qwen3.8 MTP E5 correctness] Current C3/K3 canonical/heldout production numerics pass at KL max **8.69e-4/8.45e-4**, top-1 **240/240 + 192/192**, three deterministic repeats, exact teardown, and the composed 64-test ownership/lifecycle bundle. E5 closes; E6 automatic policy remains separate. `benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-e5-combined-correctness.json`.
