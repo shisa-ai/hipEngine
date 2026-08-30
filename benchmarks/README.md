@@ -125,6 +125,7 @@ hermetic target-architecture wrapper; see `docs/BENCHMARK.md`.
 | Harness (`scripts/`) | What it answers | AR | MTP | Prefill | Decode | Mem | Conc | Canonical entrypoint |
 | --- | --- | :-: | :-: | :-: | :-: | :-: | :-: | --- |
 | `qwen35_readme_sweep.py` | Single-request prefill/decode/memory per shape (llama-bench-style), one resident session, per-shape reset | ✓ | | ✓ | ✓ | ✓ | | `--engine gguf --model <model> --backend hip_gfx1151 --workloads 512/128 1K/128 ...` |
+| `qwen4exp_canonical_ar_bench.py` | Exact-token Qwen4Exp cross-engine p512/p1024/p4096 prefill plus context-conditioned tg128, output hashes, and comparison artifact | ✓ | | ✓ | ✓ | | | `hipengine --model-root <model>` or `llamacpp --server-bin <binary> --model <part1>` |
 | `qwen35_gguf_bench.py` | GGUF c=1 AR prefill/decode, fresh resident session per run, HIP-graph decode | ✓ | | ✓ | ✓ | ✓ | | `--model <model> --prompt-length 512 --decode-tokens 128` |
 | `gguf_true_ar_category_bench.py` | True no-MTP AR baseline over the mtp-bench category suite (the legitimate MTP speed denominator) | ✓ | | ✓ | ✓ | | | `--model <model> --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl` |
 | `gguf_mtp_category_bench.py` | MTP category matrix over budgets 1..8 with guarded objective extraction; attach a true-AR baseline for ratios | | ✓ | | ✓ | | | `--budgets 1,3,5 --objective-budget b5` |
@@ -199,22 +200,41 @@ previously silently capped at 256): same-session counterbalanced sweeps give
 p508 **8.458→8.270 s (-2.22%)** and p1012 **17.062→16.751 s (-1.82%)** with
 identical logits SHAs, and natural 16K improves to **341.177 s / 47.989 tok/s**
 with the full gate passing (prior chunk-256 steady rows were p508 58.466 and
-p1006 55.046 tok/s). A fresh same-host rebuild at llama.cpp remote HEAD `57291f264` measures HIP
-**pp508 272.83 / tg32 16.64 tok/s** and Vulkan **pp508 331.03 / tg32 24.22**.
-Current named hipEngine production measures **84.83 / 15.19 tok/s**: prefill is
-**3.22×/3.90×** behind HIP/Vulkan; decode is **1.10×/1.59×** behind. Matched
-role/API traces put pp508 device kernels at **5.959 vs 1.625 s (3.67×)** and
-decode at **48.63 vs 38.90 ms/output (1.25×)**. The main p508 owners are MoE
-**3.161 s** (layers 0–26: **2.526 s**), GDN **634.94 ms**, and QSA
-**110.49 ms**. The largest single miss is layer-2 Q5_K gate/up at **301.47 ms
-vs llama 15.38 ms**. Decode still submits **1,195 direct kernels plus 48 MoE
-graphs/token**; 625 additional rows/token are graph-expanded nodes.
+p1006 55.046 tok/s).
+
+The exact-token screening baseline now feeds all engines the same four category
+prompts at p512/p1024/p4096 and measures 128 decode transitions after each
+prefix:
+
+| Engine | p512 pp/tg128 | p1024 pp/tg128 | p4096 pp/tg128 | Repeatability |
+| --- | ---: | ---: | ---: | --- |
+| hipEngine production | **82.51 / 13.82** | **81.22 / 13.79** | **67.93 / 10.40** | 12/12 exact |
+| Upstream Vulkan `f1793c1c4` | 240.53 / 22.97 | 259.73 / 20.11 | 266.98 / 18.07 | 12/12 exact |
+| Patched-upstream HIP `f1793c1c4` | 239.23 / 17.74 | 301.68 / 16.88 | 294.47 / 14.77 | 12/12 exact; non-stock loader |
+| EngramHalo HIP `1423f689` | 234.84 / 17.44 | 314.98 / 17.04 | — | p512/p1024 exact; p4096 fails |
+
+Nathan produced 16 different outputs from 16 identical-prompt requests; its
+rates and EngramHalo's p4096 row remain only in the diagnostic artifact and
+changelog. Pristine upstream HIP did not finish loading in two 1,800-second
+attempts, so the
+measured patched-upstream lane is explicitly non-stock. This is a three-repeat
+screen, not section-6 closure: several rows exceed 2% CV, and five paired runs,
+cold-PLE isolation, and category heldouts remain open.
+[`canonical AR screening`](results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json).
+
+The frozen p508 role/API profile still puts hipEngine versus llama HIP device
+kernels at **5.959 vs 1.625 s (3.67×)** and decode at **48.63 vs 38.90
+ms/output (1.25×)**. The main p508 owners are MoE **3.161 s** (layers 0–26:
+**2.526 s**), GDN **634.94 ms**, and QSA **110.49 ms**. The largest single miss
+is layer-2 Q5_K gate/up at **301.47 vs 15.38 ms**. Decode submits **1,195
+direct kernels plus 48 MoE graphs/token**; 625 additional rows/token are
+graph-expanded nodes.
 
 A same-weight external-fork refresh built EngramHalo HIP `1423f689` and
 Nathan Vulkan `ad914eb` locally. BF16-KV p508/p1012/tg32 shape rows are
 **296.12/362.72/17.62** and **413.04/396.25/23.85 tok/s**; Nathan's local
-build agrees with its v0.7.2 payload within 1%. These are provisional
-`llama-bench` shape targets, not exact-prompt or source-only A/B rows. Nathan
+build agrees with its v0.7.2 payload within 1%. These are historical
+`llama-bench` shape diagnostics, not exact-prompt or source-only A/B rows. Nathan
 lazy-on/off averages **413.04/329.23 p508 (1.255x)** but converges by p1012;
 an Engram MTP diagnostic is 1.128x complete-wall at 94.55% acceptance but only
 **9/10** AR-message exact, so it is not a valid speed target.
