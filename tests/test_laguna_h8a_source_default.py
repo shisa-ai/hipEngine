@@ -83,7 +83,7 @@ _SOURCE_SHA256 = {
 _POST_MERGE_SOURCE_SHA256 = {
     # Later Qwen3.8 and execution-profile policies do not alter H8A's owner.
     "hipengine/kernels/hip_gfx1151/__init__.py": (
-        "83383b28d43ca4a139f129274c4a9bcbeeb5c0a080284ed884624e34170179ce"
+        "10a5e6e609135facc96da6271e9e2949db581dd4d6492de7b21eaf76a19d0e37"
     ),
     "hipengine/runtime/gguf_linear.py": (
         "24dec208c95406d7aa6fe1f3b41af87b13e43e5d60a536d592ba991bad058360"
