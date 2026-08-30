@@ -210,6 +210,16 @@ decode at **48.63 vs 38.90 ms/output (1.25×)**. The main p508 owners are MoE
 vs llama 15.38 ms**. Decode still submits **1,195 direct kernels plus 48 MoE
 graphs/token**; 625 additional rows/token are graph-expanded nodes.
 
+A same-weight external-fork refresh built EngramHalo HIP `1423f689` and
+Nathan Vulkan `ad914eb` locally. BF16-KV p508/p1012/tg32 shape rows are
+**296.12/362.72/17.62** and **413.04/396.25/23.85 tok/s**; Nathan's local
+build agrees with its v0.7.2 payload within 1%. These are provisional
+`llama-bench` shape targets, not exact-prompt or source-only A/B rows. Nathan
+lazy-on/off averages **413.04/329.23 p508 (1.255x)** but converges by p1012;
+an Engram MTP diagnostic is 1.128x complete-wall at 94.55% acceptance but only
+**9/10** AR-message exact, so it is not a valid speed target.
+[`external fork refresh`](results/2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json).
+
 The previous GDN decode-all claim is **invalid**: its selector was unreachable,
 so the packet compared the strict owner to itself; the 16.2 tok/s helper also
 used all-layer DP4A rather than admitted safe43. Wiring the actual candidate

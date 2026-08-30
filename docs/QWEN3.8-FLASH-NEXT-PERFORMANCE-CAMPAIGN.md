@@ -1,17 +1,27 @@
 # Qwen3.8-Flash-Next gfx1151 Performance Campaign
 
-Status: **active plan, 2026-08-30.** hipEngine has a working named `production`
-path, but the same-host llama.cpp HIP baseline still leads by **3.22x** on p508
-prefill and **1.10x** on tg32 decode. This document is the performance-specific
-plan and punchlist. [`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md) remains the
-model/bring-up authority; this file owns only the gap-closure campaign.
+Status: **active plan, reviewed 2026-08-30.** hipEngine has a working named
+`production` path. The frozen upstream llama.cpp role baseline still leads by
+**3.22x** on p508 prefill and **1.10x** on tg32 decode. A same-day source/build
+refresh raised the provisional same-weight target: EngramHalo HIP leads by
+**3.49x/1.16x**, and Nathan's Vulkan release leads by **4.87x/1.57x**, on its
+BF16-KV p508/tg32 shape rows. The external rows use `llama-bench`-generated
+inputs rather than hipEngine's exact p508 fixture, so P0 must close that protocol
+gap before they become binding parity claims. This document is the
+performance-specific plan and punchlist.
+[`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md) remains the model/bring-up
+authority; this file owns only the gap-closure campaign.
 
 ## 1. Objective and boundaries
 
-Close the same-host, same-model, same-quant performance gap to llama.cpp HIP
-first. Vulkan remains the stretch comparator. A retained win must preserve the
-published execution-profile contract and must come with a compact artifact, a
-worklog entry, and a benchmark rollup.
+Close the same-host, same-model, same-weight-quant performance gap to the best
+current HIP comparator first, then to the best same-host Vulkan comparator.
+Upstream llama.cpp remains the role-resolved attribution baseline; EngramHalo
+HIP and Nathan Vulkan are additional competitor lanes, not inherited evidence.
+A retained win must preserve the published execution-profile contract and must
+come with a compact artifact, a worklog entry, and a benchmark rollup. The
+campaign does not close merely because one microbenchmark, one prompt, one
+backend, or one MTP budget wins.
 
 ### In scope
 
@@ -21,13 +31,19 @@ worklog entry, and a benchmark rollup.
 - KV/cache policy: current BF16 baseline unless a row explicitly declares a
   different KV profile.
 - Profiles: named `strict` and `production` manifests.
-- Workloads: p508 prefill, p1012 prefill, tg32 steady decode, then the existing
-  long-context and MTP suites.
+- Binding AR representation: the pinned target weights with BF16 K/V. Q8 K/V
+  is a separately declared T3 product configuration after BF16 AR parity.
+- Workloads: exact matched p508 and p1012 prefill, natural steady tg32 decode,
+  then the existing long-context and full-category MTP suites.
+- Comparator lanes: upstream llama.cpp HIP/Vulkan, EngramHalo HIP, and Nathan
+  Vulkan, each pinned to an exact source and binary identity.
 
 ### Out of scope
 
 - Changing model representation, quant recipe, or prompts to improve a score.
 - Treating external EngramHalo/Nathan numbers as hipEngine results.
+- Treating a different weight quant, KV type, prompt, cache state, or MTP policy
+  as a same-configuration old-to-new comparison.
 - Vulkan-specific code in this campaign except as design evidence for HIP work.
 - New feature expansion that does not close a measured gap.
 - Inferring W7900/gfx1100 performance from this host.
@@ -46,6 +62,47 @@ hashes, production manifest `9e27fec0...`, and strict manifest `42509601...`.
 | --- | ---: | ---: | ---: | ---: | ---: |
 | p508 prefill | **84.83 tok/s** | 272.83 | 331.03 | **3.22x** | **3.90x** |
 | tg32 steady decode | **15.19 tok/s** | 16.64 | 24.22 | **1.10x** | **1.59x** |
+
+### 2.1 Latest external-fork refresh
+
+The 2026-08-30 refresh used the existing four-part `UD-Q4_K_XL`; no new
+weight quant was downloaded. EngramHalo HEAD remained `1423f689...`. Its
+locally built HIP binary also applied the two patches used by the fork's
+published container (`#25992` host-buffer workaround and per-buffer mmap).
+Nathan's toolbox HEAD was `a8631df...`, its source branch and v0.7.2 payload
+were both `ad914eb...`, and a local source build reproduced the release within
+1%. Compact evidence:
+[`2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json).
+
+| Same weights, BF16 K/V, `llama-bench` shape | p508 | p1012 | tg32 |
+| --- | ---: | ---: | ---: |
+| EngramHalo HIP HEAD + documented build patches | **296.12** | **362.72** | **17.62** |
+| Nathan Vulkan v0.7.2 payload | **413.04** | **396.25** | **23.85** |
+| Nathan Vulkan local build of the same source | 416.41 | 394.57 | 23.95 |
+
+These are **provisional target lines**, not a source-only A/B and not a
+replacement for the frozen role profile. They use generated `llama-bench`
+inputs, `-b 8192 -ub 2048 -t 4`, lazy mmap, and fork-recommended backend
+settings. hipEngine's p508 row uses the committed text fixture, while its tg32
+diagnostic starts from token `9707`; prompt-dependent MoE routing and PLE page
+locality make exact-token matching material. P0 therefore adds one durable
+cross-engine exact-prompt harness before closure comparisons.
+
+Q8 K/V diagnostics were EngramHalo **301.07/361.75/17.85** and Nathan
+**420.99/393.79/23.67** at p508/p1012/tg32. They do not replace the BF16-KV
+campaign denominator. Nathan lazy mode partially reproduced its published
+mechanism on this 128-GiB host: BF16 p508 averaged **329.23 off vs 413.04 on
+(1.255x)**, but the off arm warmed from 271.87 to 396.97 tok/s inside its three
+repetitions and p1012 was neutral (**399.67 off vs 396.25 on**). Decode was
+also neutral. Cold/warm cache state must remain separate.
+
+An EngramHalo MTP check on the full ten-prompt category+heldout suite reduced
+complete request wall from **17.75 to 15.74 s (1.128x)** at 94.55% draft
+acceptance, but AR/MTP message hashes matched only **9/10** prompts; the
+`general_ja_plan` continuation differed while repeated AR was stable. That MTP
+row is a correctness-failing diagnostic, not a speed target. hipEngine must
+beat a true same-protocol AR denominator while retaining its own exact/full
+profile gate; it must not copy a competitor's invalid speed row.
 
 ### Device-kernel windows
 
@@ -240,8 +297,9 @@ None of these numbers are hipEngine results.
 | Source | Mechanism or claim | Status for this campaign |
 | --- | --- | --- |
 | [Sleeping Robots, 2026-08-29](https://sleepingrobots.com/dreams/engramhalo-qwen38-flash-next-strix-halo/) | Independently tested EngramHalo on Strix Halo with a different quant. MTP reaches 28-38 tok/s at working depths; 26K MTP regresses to 15.0; kernel-only prefill improves up to about 35% at 26K. | Useful cross-check of the direction, not a same-quant baseline. Confidence: medium-high for the external fork, low for transfer magnitude. |
-| [Aristo94/EngramHalo.cpp](https://github.com/Aristo94/EngramHalo.cpp), inspected at `1423f689986f670417128fd545a0aa1241166103` | Wide radix top-k (`33766da`), masked-slice FA skip (`bf8412d`), QSA top-k row gather (`2606d49`), MTP sidecar (`afb80ed` + `2ba3009`), PLE lazy row prefetch (`c911e6b`), load-page drop-behind (`5486559`). Chunked GDN prefill exists (`62160a7`) but was explicitly not active in the published numbers. | Code mechanisms verified by source inspection. hipEngine already has device QSA top-k and sparse selected-position attention; PLE prefetch and MTP economics remain open. |
-| [Nathanw1014/strix-halo-llamacpp v0.7.2](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.7.2), branch source inspected at `ad914eb6587d3da8b2bf50f0056cc20b3d3e91f5` | `TENSOR_READ_LAZY` + `MADV_RANDOM` alone is not enough; batched `WILLNEED` row prefetch is the paying half. Release reports pp512 99.01→352.38 on a 64 GB box, about 1.35-1.53x prefill on three 128 GB boxes, and decode around neutral. | Strong design evidence for a separate cold-cache/PLE lane. It does not explain the current warm p508 GPU-kernel gap. Test on this host before claiming any win. |
+| Local source/build refresh, 2026-08-30 | Existing `UD-Q4_K_XL` runs in both forks. EngramHalo BF16 reaches 296.12/362.72/17.62 and Nathan v0.7.2 reaches 413.04/396.25/23.85 at p508/p1012/tg32. Nathan lazy-on is 1.255x over the cache-cold-to-warm off average at p508 and neutral by p1012. Engram MTP is 1.128x complete-wall but only 9/10 AR-message exact. | Direct same-host evidence, but shape inputs are not yet exact-matched to hipEngine. AR rows are provisional competitor targets; the MTP speed row fails correctness and is diagnostic only. |
+| [Aristo94/EngramHalo.cpp](https://github.com/Aristo94/EngramHalo.cpp), refreshed at `1423f689986f670417128fd545a0aa1241166103` | Wide radix top-k (`33766da`), masked-slice FA skip (`bf8412d`), QSA top-k row gather (`2606d49`), MTP sidecar (`afb80ed` + `2ba3009`), PLE lazy row prefetch (`c911e6b`), and load-page drop-behind (`5486559`). Chunked GDN prefill exists (`62160a7`) but was explicitly not active in the published numbers. The published container additionally applies the tracked #25992 host-buffer and per-buffer-mmap patches. | Code and build mechanisms verified by source inspection and a local gfx1151 HIP build. hipEngine already covers the QSA selector/gather direction; PLE advice/prefetch, loader drop-behind, full-step graphing, and MTP economics remain open. |
+| [Nathanw1014/strix-halo-llamacpp v0.7.2](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.7.2), toolbox HEAD `a8631dfbf0aeb6a4004866fce1fd7e5c10370049`, source `ad914eb6587d3da8b2bf50f0056cc20b3d3e91f5` | `TENSOR_READ_LAZY` + `MADV_RANDOM` alone loses; merged `WILLNEED` row prefetch is the paying half (`77362a8`). Qwen4Exp also adds host PLE gather and reusable decode topology (`631b9ff`), per-block QSA bias (`024b7ad`), and MTP graph/context (`3543908` + `39817c4`). Vulkan lineage includes MoE row lists (`212cca8`), route-scale epilogue, SiLU/mul fusion, transposed concat (`30d8bb0`), dense wave32 (`25c45fe`), and LDS padding (`baf6360`). | Source mechanisms verified; release and local source builds agree within 1% on this host. Vulkan shader topology is not portable to HIP, but the removed data movement, host synchronization, graph rebuild, and LDS-bank mechanisms are actionable. |
 | Upstream llama.cpp [#27742](https://github.com/ggml-org/llama.cpp/pull/27742) | Qwen4Exp architecture support; merged at `6c84c7d5`. | Already represented in the fresh comparator. |
 | Upstream [#27794](https://github.com/ggml-org/llama.cpp/pull/27794) | `TENSOR_READ_LAZY` plumbing; merged at `fac889fb`. Nathan's branch keeps the missing batched row-prefetch half. | Useful PLE hypothesis. |
 | Upstream [#27836](https://github.com/ggml-org/llama.cpp/pull/27836) | Qwen4Exp NextN/MTP draft head; open. Its key note is that the hyper-connection combiner must run per stream; mean pooling first destroys acceptance. | Matches our retained lesson; use it to audit, not re-derive, the Qwen4Exp MTP combiner. |
@@ -261,178 +319,442 @@ This is how each mechanism maps to the current hipEngine implementation:
 
 | Mechanism | Current hipEngine state | Campaign action |
 | --- | --- | --- |
-| Wide, graph-safe QSA radix top-k | Already implemented as the exact stable radix `qsa_topk_expand` owner in `qwen4_exp_qsa.hip`. | No port. Retain it as the reference when long-context QSA is re-profiled. |
-| Gather only selected QSA K/V rows | The paged sparse QSA owner consumes explicit selected positions and counts rather than scanning a dense mask. | Audit selected-row count and page locality at 16K+; do not reimplement llama's graph-level gather. |
-| Host-side PLE row gather | `Qwen4ExpPLEMMapTable` already gathers and dequantizes only requested rows on the host. | Keep this ownership; add measurement, advice, and batched prefetch in phase P6. |
-| Reuse decode graphs | 48 stateless per-layer MoE graphs are reused; stateful GDN/QSA/dense transitions remain direct launches. | Phase P5 must first prove exact state ownership and rollback before enlarging graph scope. |
-| Per-stream MTP combiner | The Qwen4Exp MTP sidecar runner normalizes embedding and the widened hidden row independently and executes the one-block hyper-connection path. | Reconfirm against PR #27836, then spend effort on verifier batching and full-suite economics rather than a mean-pool rewrite. |
-| q8_0 KV, `-ub 2048`, and `ROCBLAS_USE_HIPBLASLT` | Different llama.cpp representation/config knobs; the current hipEngine baseline is BF16 KV at chunk 512. | Do not import as defaults. A separate declared KV-profile experiment could compare them after AR parity. |
-| MoE row-list prepass | Selected grouped/tile-map and rowbatch owners already reuse routed rows and weights. | Fold any missing row-list behavior into phase P2's exact-association design; do not copy Vulkan shader topology. |
-| Projection/activation epilog fusion | Existing exact operation-complete Qwen4Exp owners prove the pattern. | Extend it to GR down+inject and activation epilogs in phase P3. |
-| Quantized-KV dequant-once and K/V contiguization | Current QSA uses BF16 paged K/V; there is no quantized-KV owner in this campaign. | Backend-disjoint Vulkan evidence only. Do not spend phase capacity on it before AR parity. |
-| Tiled transposed concat / SiLU-mul fusion | Prior exact PLE/Conv and operation-complete wins addressed analogous dataflow. | Revisit only if a fresh role trace names the remaining elementwise owner after P1-P5. |
-| Fully masked FA slice skip | Current key-parallel QSA flash may expose different slice geometry. | A local reduced-fixture A/B in phase P7; reject if it only helps masked dense rows hipEngine no longer scans. |
+| Wide, graph-safe QSA radix top-k | Exact stable four-pass radix selection already lives in `qwen4_exp_qsa.hip`; no host sort is used. | No port. Keep it as the selector oracle and re-profile only its real long-context score width. |
+| Persistent pooled QSA keys and per-block bias | Complete four-token blocks are pooled once into a persistent device buffer; selection is block-based rather than one bias value per KV cell. | Treat the Nathan fixes as corroboration. Audit metadata copies and append work, not the already-solved algorithm. |
+| Gather only selected QSA K/V rows | Paged sparse QSA consumes explicit selected positions/counts rather than scanning a dense mask. | Audit selected-row count, sort, page locality, and head-dim-256 geometry at 16K+; do not rebuild llama's graph gather. |
+| Host-side PLE row gather | `Qwen4ExpPLEMMapTable` gathers/dequantizes only requested rows, and a pinned two-buffer ring stages them. It still creates temporary arrays and performs synchronous gather/copy. | Preserve ownership, but add direct-to-ring dequantization, duplicate/page coalescing, telemetry, and prefill overlap in P9. |
+| PLE random advice plus merged row prefetch | No equivalent `MADV_RANDOM` + page-aligned merged `WILLNEED` pair exists. | Implement both halves together with off/auto/on rollback. Never ship random advice alone; Nathan measured that half losing. |
+| Load-page drop-behind | Hot weights are uploaded without an explicit per-tensor file-page release policy. | Measure transient free/available/swap/load wall, then add bounded unmap/fadvise only for copied tensors; never drop lazy PLE pages. |
+| MoE row-list prepass | Device count/prefix/scatter and expert-sorted lanes already exist. | Do not port Vulkan topology. Remove the remaining D2H tile-count synchronization and the Q8 expert-start D2H + Python expert loop; use guarded fixed-capacity device grids. |
+| Route-scale/weighted-down epilogue | c1 Q5 down can fuse ordered weighted sum; grouped prefill still writes expert outputs and runs a separate weighted lane reduction. | Add exact/T2 grouped down+route-weight+scatter/ordered-reduce candidates, with the current chain registered as fallback. |
+| Shared-expert and router completion | Shared gate/up, SiLU, down, gate projection, cast, and combine remain separate; router writes all 512 logits before top-10. | P3 owns operation-complete shared-expert and exact stable router+top-10 candidates after role measurement. |
+| Dense wave32 retile and LDS padding | gfx1151 HIP kernels are wave32-native, but each quant/shape has independent register/LDS behavior. Vulkan constants do not transfer. | Sweep actual rotating-weight shapes with compiler VGPR/LDS/scratch evidence. Port the bank-conflict/resource hypothesis, not constants. |
+| Tiled transpose and SiLU/mul fusion | Exact bulk Conv and selected gate/up+SiLU cover analogous paths, but GDN state layout and shared-expert SiLU still expose traffic. | Use the transpose hypothesis in P7 and the activation hypothesis in P3/P6 only where a current trace names the traffic. |
+| Reusable decode topology | 48 stateless per-layer MoE graphs are reused; the other 1,195 direct launches/token remain outside them. | P8 grows from one stateful layer to one transition and then a full step, with pointer/state/rollback/replay gates at every rung. |
+| Device-owned decode boundary | Qwen4Exp still synchronizes, copies the full vocabulary logits to the host, and computes argmax on the CPU every token. | P5 adds device argmax/sampling and copies only the token plus requested compact telemetry; full logits remain an explicit API path. |
+| Per-stream MTP combiner and graph | The combiner is correct, but draft hidden/logits and target full logits cross the host; target verification is serial. | Keep the combiner. P11 makes proposal, hidden chaining, verification, acceptance, commit, and rollback device-resident before budget tuning. |
+| q8_0 K/V, `-ub 2048`, and hipBLASLt | These are different llama.cpp representation/config knobs. Current hipEngine is BF16 K/V at chunk 512. | Chunk size is a P0 same-representation sweep. Q8 K/V remains a separately gated T3 profile after BF16 AR parity. |
+| Quantized-KV dequant-once/contiguization | There is no quantized-QSA-KV owner in the binding campaign. | Backend-disjoint evidence only until P10; it cannot close a BF16-KV milestone. |
+| Fully masked FA slice skip | Current sparse attention no longer scans a dense selected-token mask, while short prefill has separate dense flash geometry. | Test only against a trace-proven masked slice in P4/P10; reject if it optimizes work hipEngine does not execute. |
+| Chunked GDN prefill | hipEngine has strict serial/prepare+peer/column-warp owners; Engram's chunked kernel was not active in its published rows. | Treat it as a design hypothesis in P4. Require local arithmetic classification, state parity, and whole-role evidence. |
 
 ## 5. Plan
 
-### Phase P0 — durable baseline and measurement hygiene
+The phase order is the default priority, not permission to keep working a
+low-Amdahl idea after the profile changes. After every retained unit, collect a
+fresh role/launch/copy census and re-rank the remaining work. If a phase is
+blocked, record the concrete blocker and continue the highest-value independent
+phase; a blocker is not campaign closure.
 
-Goal: make every future unit start from the committed scripts and a named
-comparator instead of `/tmp` state.
+### 5.1 Definition of done for one optimization unit
 
-- [x] Promote the reusable wall/profile driver, trace analyzer, role
-      attributor, sync A/B diagnostic, and report generator.
-- [x] Commit the p508 prompt fixture.
-- [ ] Add a cold-page-cache PLE mode to the profiling driver, separate from
-      warm-cache GPU dataflow claims.
-- [ ] Record `rocm-smi` power/clock state and free memory in the next retained
-      artifact.
-- [ ] Refresh llama.cpp HIP/Vulkan only as a deliberate comparator event.
+Every code or kernel unit follows the same loop:
 
-### Phase P1 — layer-2 high-precision MoE prefill
+1. Name the measured owner, arithmetic class (T0-T3), affected layers/shapes,
+   Amdahl ceiling, expected mechanism, and registered strict fallback.
+2. Add the RED oracle before implementation. For a port, run
+   `scripts/check_lineage.py`, inspect source drift, and cite source path plus
+   commit.
+3. Microbenchmark actual immutable weights/shapes. Rotate more than 64 MiB of
+   weights for c1 tests so MALL does not fake DRAM throughput. Use warmups plus
+   counterbalanced pairs and record grid, waves, VGPR, LDS, scratch, spills,
+   duration, and effective bandwidth/throughput.
+4. Trace the expected kernel name with `rocprofv3`; a fast helper that is not
+   selected is not evidence.
+5. Run the complete strict or production numerical/control/task/lifecycle gate
+   before promotion, then same-session p508/p1012/tg32 wall measurements.
+6. Retain an exact non-regression or a fully gated production win; otherwise
+   reject it and restore the registered incumbent. Do not tune the same family
+   again after two measured losses without a new profile or mechanism.
+7. Emit the compact accepted/rejected/blocked artifact, update rollups/catalogs,
+   write the immutable worklog entry, and commit the validated unit immediately.
 
-Goal: remove the largest single-layer miss before touching broad early-layer
-numerics.
+### Phase P0 — binding comparator and measurement contract
 
-- [ ] Write the RED fixture for the layer-2 Q5_K gate/up and Q8_0 down shapes.
-- [ ] Route the existing selected Q5_K WMMA body for layer 2 and microbench it.
-- [ ] Add or select the grouped Q8_0 down path for layer 2.
-- [ ] Run the complete 450-row/three-repeat production packet, task gates,
-      physical c2, lifecycle, and paired p508/p1012 A/B.
-- [ ] Bind only after the full gate passes; retain strict fallbacks and update
-      the profile manifest.
+Goal: turn the shape-only external refresh into one exact, repeatable target
+matrix before implementation claims parity.
 
-Expected evidence: layer-2 role drops from about 397.95 ms toward the llama
-role range; p508 gain is bounded at roughly 6.6% before stacking other work.
+- [x] Promote the wall/profile driver, trace analyzers, role attributor, sync
+      diagnostic, report generator, and p508 fixture.
+- [x] Refresh/build EngramHalo HIP and Nathan Vulkan at exact identities; retain
+      same-weight BF16/Q8 shape diagnostics and the MTP correctness failure.
+- [ ] Commit a p1012 fixture and one cross-engine driver that feeds identical
+      text/token IDs, chat template, sampler, K/V type, prompt-cache state, and
+      output horizon to hipEngine and every comparator. Keep `llama-bench`
+      synthetic rows in a separate `shape_only` class.
+- [ ] Add at least one prompt from every code/general-English/general-Japanese/
+      mixed heldout category to the AR wall packet so one routed prompt cannot
+      define parity.
+- [ ] Freeze the current best BF16 target per row: upstream llama.cpp,
+      EngramHalo HIP, and Nathan Vulkan. Refresh a comparator only as a separate
+      baseline event with old and new binaries measured on the same host.
+- [ ] Record hostname/machine ID, source and binary hashes, compiler/driver,
+      profile manifest, model-part hashes, exact command, CPU governor/TuneD,
+      `amd_iommu`, power/clock samples, free/available/swap, and active GPU
+      processes in every closure artifact.
+- [ ] Add explicit warm-page-cache and isolated cold-PLE modes. Never average
+      or compare them as one workload.
+- [ ] Sweep hipEngine prompt chunk 256/512/1024 (and 2048 where the prompt
+      permits) at p508/p1012 with memory and correctness controls; select by
+      model evidence rather than copying an external `ubatch` value.
+- [ ] Extend the gap report to carry per-layer role time, direct/graph launch
+      APIs, blocking/async copies and bytes, synchronizations, compiler resource
+      data, and unresolved wall-minus-device time.
 
-### Phase P2 — early MoE layers 0-26
+### Phase P1 — layer 2 and the Q8 expert-down family
 
-Goal: attack the **2.526 s** early-MoE p508 owner without widening a numerical
-suffix that already failed.
+Goal: remove the largest isolated miss and replace the only host-driven grouped
+expert path.
 
-- [ ] Build a per-layer quant/shape map for layers 0-26 from the registered
-      owners and GGUF tensor map.
-- [ ] Prototype exact-association multiwarp weight reuse first; then test
-      split-precision WMMA where the production envelope permits it.
-- [ ] Keep the strict owner registered for every candidate.
-- [ ] Gate by category, shape, transition, repeat, task, c2, and manifest.
-- [ ] Do not promote from a final-prompt screen alone.
+The frozen MoE map is 43 layers of Q4_K/Q4_K/Q5_1, layer 2 of
+Q5_K/Q5_K/Q8_0, and layers 4/30/46/47 of Q4_K/Q4_K/Q8_0.
 
-### Phase P3 — decode GR operation-complete fusion
+- [ ] Commit a generated quant/shape/owner inventory test so artifact drift
+      fails before timing.
+- [ ] Write actual-weight RED fixtures for layer-2 Q5_K dual gate/up and Q8_0
+      down, including compact row maps, empty experts, tails, and route order.
+- [ ] Route the existing selected Q5_K WMMA body for layer 2; classify its
+      arithmetic before timing and preserve the strict selected chain.
+- [ ] Replace the Q8 path's `group_expert_start` D2H copy and Python loop over
+      512 experts with a device-driven grouped Q8 owner. Use a fixed-capacity
+      grid guarded by device counts or an equivalent no-host-roundtrip design.
+- [ ] Extend the proven Q8 owner to layers 4/30/46/47 when their independent
+      actual-shape and composition gates pass; do not hardcode only layer 2.
+- [ ] Fuse route scaling/ordered accumulation into Q8 down only if the declared
+      strict/T2 contract passes.
+- [ ] Run the complete 450-row/three-repeat packet, tasks, physical c2,
+      lifecycle, and paired p508/p1012. Bind only certified scopes.
 
-Goal: reduce both decode kernel time and the 1,195 direct launches/token.
+Expected evidence: layer 2 falls from about 397.95 ms toward the comparator
+role range; its maximum standalone p508 contribution is about 6.6%.
 
-- [ ] Fuse GR down+inject using the existing Q8 F32 unequal-pair owner.
-- [ ] Add down+scaled-SiLU and up+sigmoid+gated-mean epilogues.
-- [ ] Prove exact bits or declare the production T1/T2 class before timing.
-- [ ] Measure each fusion stacked on the previous one; retain only measured
-      non-regressions.
-- [ ] Update the role trace and launch census after each retained fusion.
+### Phase P2 — early routed MoE layers 0-26
 
-### Phase P4 — normalized/transposed GDN decode
+Goal: attack the **2.526 s** early-MoE owner without repeating the failed broad
+WMMA suffix experiment.
 
-Goal: replace the measured 2.659 ms/token recurrence with a decode-shaped
-layout, without reusing the rejected prefill colwarps path.
+- [ ] Split the role into Q4 gate/up, activation, Q5_1/Q8 down, route-weight
+      reduction, and host synchronization by layer and actual active-row count.
+- [ ] Remove the per-layer `group_wmma_total` stream sync/D2H read. Launch a
+      safe maximum tile grid with a device count guard, or prove a different
+      device-only submission scheme.
+- [ ] Optimize T0 exact association first: physical-lane contraction,
+      multi-row weight reuse, coalesced metadata, and output grouping while
+      preserving the strict reduction/publication tree.
+- [ ] Add operation-complete grouped dual gate/up+SiLU and
+      down+route-weight+scatter/ordered-reduce candidates. Keep primitive
+      chains registered.
+- [ ] Sweep wave32 ownership, workgroup size, row/output tiles, and LDS padding
+      on rotating actual weights. Use Nathan's wave32/bank-conflict findings as
+      hypotheses, never as transferable constants.
+- [ ] Test T1/T2 WMMA only in independently calibrated layer clusters. Every
+      candidate must pass category, shape, transition, repeat, task, c2, BF16-
+      relative, lifecycle, and manifest gates; no final-prompt or one-layer
+      screen can promote it.
+- [ ] Re-profile after each retained cluster and stop widening when the next
+      boundary fails. Layers that fail remain on strict owners.
 
-- [ ] Normalize Q/K once instead of per column.
-- [ ] Keep recurrent state transposed across steps, with explicit strict
-      conversion/fallback boundaries.
-- [ ] Port the relevant llama four-warp decode recurrence dataflow, not the
-      prefill body.
-- [ ] Add reduced fixtures, CPU-reference parity, trace evidence, and the full
-      profile packet.
-- [ ] Do not revive the invalidated decode-colwarps route.
+### Phase P3 — shared expert, router, dense projections, and GR prefill
 
-### Phase P5 — state-safe larger decode graph
+Goal: account for the large non-routed prefill remainder that the earlier plan
+left without an implementation phase.
 
-Goal: reduce the 48 tiny MoE graph launches plus 1,195 direct launches per
-token only after state ownership is proven.
+- [ ] Re-profile and separately name router, shared gate/up/down, attention and
+      FFN GR reads/writes, `attn_qkv`, `attn_gate`, `ssm_out`, QSA projections,
+      casts, and elementwise tails.
+- [ ] Evaluate an exact F32 router+stable-top-10 owner so 512 router logits are
+      not written and reread when the public path only needs deterministic
+      routing. Keep the full-logit primitive for diagnostics.
+- [ ] Fuse shared gate/up+SiLU, then shared down+sigmoid gate+combine, preserving
+      F32/BF16 boundaries and the strict shared-expert chain.
+- [ ] Fuse GR grouped RMSNorm + unequal down/inject where ownership permits;
+      add down+scaled-SiLU and up+sigmoid+gated-mean epilogues.
+- [ ] Evaluate output-projection+GR-write composites for attention and MoE
+      boundaries, including the exact inject ordering.
+- [ ] Extend dense Q8 MMQ/WMMA scopes earlier only through the complete
+      production packet. Optimize exact coltile/rowbatch fallbacks for layers
+      that reject changed arithmetic.
+- [ ] Require each retained subunit to reduce its complete role and p508/p1012,
+      not merely an isolated GEMM.
 
-- [ ] Audit the historical third-replay state corruption.
-- [ ] Capture one state-safe layer or transition first, not the whole model.
-- [ ] Include GDN/QSA pointer, state, rollback, and teardown controls.
-- [ ] Compare direct-launch API time, graph launches, kernel rows, and exact
-      IDs before and after.
+### Phase P4 — GDN and QSA prefill parity
 
-### Phase P6 — PLE cold-cache and host-mmap lane
+Goal: close the remaining **634.94 vs 92.34 ms** GDN and
+**110.49 vs 13.91 ms** QSA gaps after P1-P3 are stacked.
 
-Goal: test the Nathan/Engram PLE mechanism as a separate workload class.
+- [ ] Re-profile prepare, recurrence, norm/gate tail, projection, KV/index
+      append, selection, attention, and output roles by admitted layer scope.
+- [ ] For GDN, test exact early-layer column ownership, prepare+recurrence
+      fusion, state residency, and bounded chunking. Engram's chunked kernel is
+      a design reference only; it was not active in the fork's published rows.
+- [ ] Evaluate T1/T2 GDN suffix widening only with fresh all-category boundary
+      packets; keep every rejected early layer strict.
+- [ ] For QSA, compare current key-parallel head-dim-256 flash geometry with the
+      selected llama kernel family, including key tiles, online-softmax merge,
+      grid sufficiency, and register/LDS pressure.
+- [ ] Confirm selected-position attention already removes dense-mask work.
+      Evaluate fully-masked-slice skipping only if a current trace proves such
+      slices still execute.
+- [ ] Publish a fresh p508 device-role ledger after P4; no prefill phase may be
+      called closed with an unexplained multi-x owner.
 
-- [ ] Instrument `Qwen4ExpPLEMMapTable.gather_rows()` with row counts, unique
-      pages, gather wall, and page-cache state.
-- [ ] Add optional random-access advice and batched row prefetch to the
-      host-side owner, with an opt-out rollback.
-- [ ] Measure cold-cache and warm-cache p508 separately; never mix those rows.
-- [ ] Gate output IDs and tracked memory; document that external 3.5x rows are
-      64 GB/cold-cache claims, not warm 128 GB expectations.
-- [ ] Consider drop-behind load policy only if it improves a retained workload
-      without hurting reload-heavy serving.
+### Phase P5 — device-owned AR output boundary
 
-### Phase P7 — QSA/GDN prefill suffix and long-context follow-through
+Goal: remove full-vocabulary host readback and synchronization before enlarging
+graph scope.
 
-Goal: revisit lower-Amdahl prefill owners after the dominant MoE and decode
-units land.
+- [ ] Add a registered device argmax/greedy sampler after the lm head and copy
+      only the token ID plus explicitly requested compact telemetry to the host.
+- [ ] Keep full logits/probabilities as an explicit API/debug path; do not
+      silently change public response semantics.
+- [ ] Feed the device-owned token into the next embedding path where possible;
+      PLE hashing may consume one compact host token without a 248K-logit copy.
+- [ ] Reduce the current 28 blocking and 12 async memcpy calls/token to a
+      role-explained minimum and record bytes/directions, synchronization count,
+      first-token, steady-state, and exact-ID/logit controls.
+- [ ] Re-run natural multi-prompt decode, not only the repeated `9707` steady
+      diagnostic.
 
-- [ ] Re-profile QSA after P1/P2 with the same marker roles.
-- [ ] Evaluate suffix widening only with fresh all-category boundary packets.
-- [ ] Audit whether the selected-position gather already covers the external
-      dense-mask problem for our runtime; do not port llama graph code blindly.
-- [ ] Evaluate the masked-slice FA skip and head-dim-256 MMA geometry against
-      the current key-parallel QSA flash owner.
-- [ ] Keep chunked GDN prefill behind an explicit experiment until a local
-      packet proves it.
+### Phase P6 — decode GR, MoE, and dense operation completion
 
-### Phase P8 — MTP economics after AR parity work
+Goal: reduce the **48.63 vs 38.90 ms/token** device gap and the remaining
+direct-launch surface before graph capture hides it.
 
-Goal: use external MTP evidence as a stretch path without contaminating the AR
-parity baseline.
+- [ ] Stack GR down+inject, down+scaled-SiLU, up+sigmoid+gated-mean, and GR-write
+      composites one at a time with exact/T1/T2 declarations.
+- [ ] Re-rank dense Q8, selected Q4 gate/up, selected Q5_1/Q8 down, shared
+      expert, router, QSA, and lm-head kernels after P5.
+- [ ] Tune Q4/Q5/Q8 c1 owners on rotating actual weights for coalescing,
+      physical-lane contraction, occupancy, and operation-complete epilogues;
+      do not force WMMA onto M=1.
+- [ ] Preserve the exact fused Q5 weighted-down and Q4 dual+SiLU fallbacks;
+      replace them only with same-role evidence.
+- [ ] After every retained fusion, update direct launches, graph launches,
+      kernel rows, API time, copy bytes, and whole tg32 wall.
 
-- [ ] Reconfirm the per-stream hyper-connection combiner against the sidecar
-      fixture and PR #27836's warning.
-- [ ] Build the rows≤8 batch-invariant verifier path before increasing draft
-      budget beyond the current 1..4 envelope.
-- [ ] Sweep budgets on the full mtp-bench category suite with a true no-MTP AR
-      denominator from the same protocol.
-- [ ] Record acceptance by category and context depth; do not promote from a
-      synthetic repeated prompt.
-- [ ] Treat external 39 tok/s MTP rows as a different quant/KV/provider
-      configuration, not as the target for this UD-Q4_K_XL/BF16 campaign.
+### Phase P7 — normalized/transposed GDN decode
 
-### Phase P9 — closure and rollup
+Goal: replace the measured **2.659 vs 0.465 ms/token** recurrence with a
+c1-shaped layout without reviving the rejected prefill-colwarps route.
 
-Goal: make every retained result discoverable and reversible.
+- [ ] Normalize Q/K once per head instead of once per output column.
+- [ ] Keep recurrent state transposed in the decode-native layout across steps;
+      define exact construction, snapshot, rollback, reset, and strict
+      conversion boundaries.
+- [ ] Port the relevant llama four-warp decode dataflow, not its prefill body or
+      constants.
+- [ ] Prove CPU-reference state/output parity on reduced and actual fixtures,
+      repeated steps, restore/replay, cancellation, and c2 isolation.
+- [ ] Require expected kernel trace, complete profile packet, and tg32 win.
+      Never re-enable the invalid `GDN_COLWARPS_DECODE_LAYERS` route.
 
-- [ ] Emit a compact JSON artifact for every accepted, rejected, or blocked
-      unit.
-- [ ] Update `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and the
-      Qwen3.8-Flash-Next checkpoint row after each retained result.
-- [ ] Update `docs/KERNELS.md` and lineage metadata whenever kernel ownership
-      changes.
-- [ ] Add `docs/REFACTOR.md` entries for temporary flags and rejected paths.
-- [ ] Commit each validated logical unit immediately.
+### Phase P8 — state-safe whole-transition graph
 
-## 6. Acceptance criteria
+Goal: contract 48 small MoE graphs plus 1,195 direct launches/token toward one
+request-owned transition submission.
 
-The campaign closes the first milestone when all of the following are true on
-the same host, model, quant, and declared profile:
+- [ ] Reproduce and localize the historical third-replay state corruption
+      before changing capture scope.
+- [ ] Capture in rungs: one stateful layer, one complete attention/FFN
+      transition, a multi-layer segment, then the full token step.
+- [ ] Keep token/PLE input buffers and every weight/state/scratch pointer stable;
+      include profile-manifest hash, shape, context bucket, and fallback in the
+      graph key.
+- [ ] Gate GDN, QSA K/V/index append, PLE history, sampler output, snapshot,
+      rollback, reset, cancellation, c2 isolation, teardown, and at least three
+      consecutive replays at every rung.
+- [ ] Compare direct/graph API time, graph build/reuse counts, kernel rows/span,
+      compact copies, first-token latency, and steady tg32. A graph that merely
+      hides a slower kernel chain is not a retained win.
+- [ ] Target no per-layer graph launches and no unexplained direct launch in the
+      steady transition; document any irreducible boundary.
 
-1. p508 and p1012 production prefill meet or exceed the current same-host
-   llama.cpp HIP comparator after a deliberate comparator refresh.
-2. tg32 production decode meets or exceeds the same comparator without a
-   correctness or lifecycle regression.
-3. The role-resolved profile no longer shows layer-2 MoE, early MoE, GDN, or
-   QSA as unexplained multi-x outliers.
-4. The production manifest, strict fallbacks, complete numerical packet, task
-   gates, deterministic repeats, physical c2, and teardown gates pass.
-5. The final artifact includes exact commands, source/binary hashes, raw trace
-   hashes, launch/API/copy census, and a generated report from
-   `scripts/qwen4exp_perf_gap_report.py`.
+### Phase P9 — PLE mmap, cold-cache, and load-memory lane
 
-The Vulkan stretch milestone uses the same gates against llama.cpp Vulkan. MTP
-is a separate post-parity milestone because it changes provider economics and
-requires its own full-suite gate.
+Goal: implement the reproduced Nathan/Engram mechanism without mixing it into
+warm GPU-kernel claims.
 
-## 7. References
+- [ ] Instrument `Qwen4ExpPLEMMapTable` and staging with requested/unique rows,
+      unique/adjacent pages, bytes, prefetch ranges, faults or resident-page
+      proxy, dequant/copy/H2D wall, and cache mode.
+- [ ] Add off/auto/on random-access advice only together with page-aligned,
+      deduplicated and adjacent-range-merged `WILLNEED` prefetch.
+- [ ] Dequantize directly into the active pinned ring where practical; remove
+      temporary gather/value arrays and redundant copies.
+- [ ] For prefill, overlap next-chunk prefetch/dequant with current GPU work
+      using the existing two-buffer ownership plus explicit event/thread
+      lifetime. Decode remains demand-driven unless a real lookahead exists.
+- [ ] Add a safe isolated cold-cache protocol and a warm steady protocol. Do
+      not use one process's warming repetitions as independent samples.
+- [ ] Measure lazy on/off, cold/warm p508/p1012, decode, page reads, RSS/file vs
+      anonymous memory, available/free/swap, and exact output hashes.
+- [ ] Add optional per-tensor load drop-behind only for data already copied to
+      device ownership. Never invalidate lazy PLE pages or validation readers;
+      include reload-heavy and one-shot serving controls.
+
+### Phase P10 — long-context AR and optional KV profile
+
+Goal: close depth-dependent competitor gaps only after short BF16 AR parity and
+the existing escalation thresholds permit each rung.
+
+- [ ] Re-run natural 4K, 16K, then 64K retrieval with the current stacked
+      production path and exact selected-position/CPU selector controls.
+- [ ] Profile QSA score/top-k O(context/4), selected-K/V page locality, sparse
+      attention, PLE I/O, graph reuse, and KV bytes separately at each depth.
+- [ ] Compare exact matched same-weight/BF16-KV Engram/Nathan/upstream rows; do
+      not compare against their IQ3/IQ4 or quantized-KV headlines.
+- [ ] Optimize persistent compressed-key scoring, top-k, selected attention,
+      and graph/context buckets only where the depth profile ranks them.
+- [ ] After BF16 AR parity, open Q8 K/V as a T3 product configuration with its
+      own CPU/reference, BF16-relative, task/retrieval, memory, deterministic,
+      lifecycle, and same-config competitor gates. It cannot close BF16 parity.
+
+### Phase P11 — device-resident MTP economics
+
+Goal: exceed true AR on the full suite, then match only correctness-valid
+external MTP rows.
+
+- [ ] Reconfirm the per-stream hyper-connection combiner and sidecar tensor map;
+      do not replace it with mean pooling.
+- [ ] Add phase timing/census for target hidden export, draft input fusion,
+      draft layer/head, sampler, target verify, acceptance, commit/rollback,
+      copies, and graphs on every category.
+- [ ] Keep target hidden, draft hidden chaining, logits/top-k, and candidate IDs
+      on device. Remove per-draft full-logit/hidden D2H and host reconstruction;
+      read one compact candidate packet per cycle at most.
+- [ ] Build the rows<=8 batch-invariant target verifier before raising budget.
+      Its per-row decode arithmetic, GDN/QSA/PLE state, and outputs must equal
+      serial target verification under the declared contract.
+- [ ] Move acceptance, first-mismatch selection, commit, rollback, and cursor
+      repair to device-owned transactional kernels/graphs with exact recovery
+      and cancellation tests.
+- [ ] Sweep budgets 1-6 on the full category+heldout suite against a true
+      no-MTP AR denominator from the same command. Record acceptance, visible
+      tokens/cycle, target rows, phase wall, and speed by category and context.
+- [ ] Evaluate confidence thresholds and `ngram-mod` combination only as
+      explicit provider policies over the full suite. No fixed prompt, token,
+      or candidate-specific policy is retainable.
+- [ ] Require exact greedy outputs where that is the provider contract. The
+      refreshed Engram row is 1.128x but only 9/10 exact and is therefore not a
+      valid target or promotion precedent.
+- [ ] Promote at >=1.0x AR with every binding category non-regressive; continue
+      toward >=1.5x and the best correctness-valid same-config competitor.
+
+### Phase P12 — final refresh, cleanup, and rollup
+
+Goal: make the complete result reproducible, default, and reversible.
+
+- [ ] Refresh all comparator lanes once under P0's exact protocol and fixed host
+      state; do not compare old absolute rows to new binaries.
+- [ ] Run the final strict/production packet, task/BF16/control/state/c2/
+      lifecycle gates, exact matched p508/p1012/tg32, and every unlocked
+      long-context/MTP milestone.
+- [ ] Emit compact accepted/rejected/blocked artifacts, raw-log hashes, generated
+      reports, benchmark README/changelog updates, and the model checkpoint.
+- [ ] Update `docs/KERNELS.md`, lineage metadata, `docs/REFACTOR.md`, and
+      `docs/PLAN.md` if architecture moved.
+- [ ] Remove superseded experiment flags, dead selectors, duplicate fallback
+      chains, and stale graph routes only after their replacements are default.
+- [ ] Commit every validated logical unit; campaign closure is its own final
+      decision/worklog commit.
+
+## 6. Acceptance and closure
+
+All comparisons bind to the same physical host, exact target parts, weight
+quant, K/V type, prompt/token fixture, cache mode, sampler, output horizon,
+power policy, and declared profile. A different representation gets a separate
+milestone and denominator.
+
+### 6.1 Match and beat rules
+
+- Screening may use three counterbalanced repetitions. Closure uses at least
+  five counterbalanced pairs after warmup, reports every sample and coefficient
+  of variation, and keeps competitor/hipEngine runs in the same thermal window.
+- **Beat** means the paired 95% confidence interval for the hipEngine/comparator
+  throughput ratio is above 1.0.
+- **Match** means the median ratio is at least 0.98, both arms have coefficient
+  of variation at most 2%, and the paired 95% interval includes 1.0. A noisy
+  result is neither a match nor a loss; stabilize and repeat.
+- p508, p1012, and tg32 bind independently. A large prefill win cannot average
+  away a decode loss, and one category cannot compensate for another.
+- End-to-end unprofiled wall is binding. Kernel/sub-window/launch/copy wins are
+  retainable evidence but do not by themselves close parity.
+
+### 6.2 Milestones
+
+1. **P0 measurement closure:** exact matched cross-engine harness, frozen source
+   and binary identities, host state, cold/warm separation, and category
+   heldouts are committed.
+2. **HIP short-AR parity:** named hipEngine production matches or beats the best
+   refreshed same-configuration HIP comparator on p508, p1012, and tg32.
+3. **Same-host short-AR parity:** the same path matches or beats the best
+   refreshed same-configuration HIP or Vulkan engine on all three rows. Vulkan
+   is a required second milestone, not an optional source of ideas.
+4. **Role closure:** no layer-2/early-MoE, shared/router/GR, GDN, QSA, output,
+   submission, copy, or synchronization bucket remains an unexplained multi-x
+   outlier. Any residual >=1.25x names a measured architectural reason and an
+   exhausted or blocked action.
+5. **Correctness/product closure:** production manifest and strict fallbacks,
+   complete numerical/BF16/task/category packet, same-schedule deterministic
+   repeats, graph/eager and restore/replay, physical c2/isolation, cancellation,
+   memory, and teardown all pass.
+6. **Long-context parity:** every context rung unlocked by the benchmark ladder
+   passes retrieval/control gates and matches the best exact same-config
+   comparator at that depth. Historical or different-KV rows do not bind.
+7. **MTP parity:** the full category+heldout suite is exact under the provider
+   contract and non-regressive in every binding category versus true AR. It
+   reaches at least 1.5x AR or matches/beats the best correctness-valid
+   same-configuration external MTP row, whichever is higher. A competitor row
+   that fails output equivalence is not a target.
+8. **Evidence closure:** the final artifact contains exact commands,
+   source/binary/model/manifest hashes, raw trace/result hashes, role and
+   launch/API/copy census, host state, all correctness verdicts, and a generated
+   report from `scripts/qwen4exp_perf_gap_report.py`. Rollups, catalog, refactor
+   ledger, worklog, and atomic commits are current.
+
+A final deliberate comparator refresh freezes the closure target. A later
+external commit does not retroactively invalidate the artifact; it is a new
+baseline event and, if desired, a new campaign.
+
+## 7. Copyable coder goal
+
+```text
+Execute docs/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md as the active
+performance authority for Qwen3.8-Flash-Next on zbook/gfx1151. Keep the pinned
+Unsloth UD-Q4_K_XL target weights and BF16 K/V as the binding AR configuration.
+Do not obtain or substitute a new weight quant. Treat Q8 K/V and MTP as separate
+product configurations with their own gates.
+
+Do not declare success after a microbenchmark, a single prompt, HIP-only parity,
+or one accepted optimization. Continue through the highest-Amdahl unblocked
+punchlist item, re-profile after every retained unit, and re-rank the remaining
+work. The short-AR objective is complete only when named hipEngine production
+matches or beats the final refreshed best same-host HIP and Vulkan comparators
+on exact-matched p508, p1012, and tg32 under section 6's statistical rule, while
+the complete execution-profile, task, determinism, state/isolation, lifecycle,
+and strict-fallback gates pass. Then continue through every unlocked
+long-context rung and the device-resident MTP milestone; MTP must beat true AR
+on the full category+heldout suite and reach the section 6 target without
+benchmark gaming.
+
+For every implementation unit: declare the measured owner, Amdahl ceiling,
+arithmetic class, affected scope, mechanism, and strict fallback; add the RED
+oracle; inspect kernel lineage before a port; benchmark actual rotating weights;
+prove the expected kernel ran; run the full applicable gate and same-session
+whole-model A/B; retain or reject from evidence; update compact artifacts,
+benchmark rollups, kernel/refactor docs, and the immutable worklog; then commit
+the validated unit immediately. Never hardcode prompt/token/candidate behavior,
+weaken a gate, relabel a different representation, add torch to the hot path,
+or add backend/quant branches outside the registry.
+
+Do not stop because one hypothesis loses. Record the rejection and move to the
+next measured owner. If blocked, write the exact blocker and continue every
+independent phase. Stop only on explicit user pause or when all campaign
+acceptance criteria are satisfied and the final comparator refresh, evidence,
+cleanup, and commits are complete.
+```
+
+## 8. References
 
 - Campaign authority: [`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md)
 - Benchmark policy: [`BENCHMARK.md`](BENCHMARK.md)
@@ -442,6 +764,8 @@ requires its own full-suite gate.
 - gfx1151 roofline: [`ROOFLINE-gfx1151.md`](ROOFLINE-gfx1151.md)
 - Fresh profile artifact:
   [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json)
+- External fork refresh:
+  [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json)
 - Corrected invalid decode route:
   [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps-decode-all.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps-decode-all.json)
 - Durable profiling tools: `scripts/qwen4exp_profile_gap.py`,
