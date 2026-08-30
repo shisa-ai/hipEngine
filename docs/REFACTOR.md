@@ -4878,3 +4878,12 @@ default was broken like the others; "the one with the fix" was true of the helpe
 Extraction into a shared module is still open, and the remaining four (`gguf_mtp_draft_rocprof.py`,
 `gguf_sh_c0_profile.py`, `qwen35_rocprof_audit.py`, `mtp_verifier_rocprof.py`) discover the SDK by
 other means and were not touched.
+
+### GGUF MTP accept pinned staging (kept, measured neutral)
+
+- `hipengine/generation/qwen35_gguf_mtp2.py::_accept_staging_backing` / `_upload_accept_array_staged` is
+  default-on with the blocking `copy_host_to_device` path as automatic fallback. Measured perf-neutral
+  (worklog `20260830T160316…`): uploads 85.4-101.6 ms -> 0.1 ms per lane-cycle with no rate change.
+- Remove the fallback only if pipelining work makes the page-locked path load-bearing, or delete the staging
+  path too if the accept cycle is redesigned (route (b), `20260830T155541…`). Do not re-justify it as a speedup.
+
