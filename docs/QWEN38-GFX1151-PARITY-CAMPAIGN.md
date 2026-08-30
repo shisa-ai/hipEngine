@@ -371,12 +371,18 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   all target IDs/pre-post-norm hidden/five taps exact, and row7 commit preserves
   next AR token 1714.
   [`artifact`](../benchmarks/results/2026-08-30-gfx1151-qwen38-dflash-row8-root-cause-closed.json)
-- [ ] P5.2 Attack the drafter+select cost wall (~96 ms/cycle vs MTP proposal
-  2.4 ms) sharing the E2 high-row amortization work; measure before/after on
-  the common suite.
-- [ ] P5.3 Decision cell: promote DFlash2 on any phase×concurrency where it
-  beats both our MTP K3 and AR under the frozen protocol, or record the
-  measured named weakness and map each blocker to its MTP-shared fix.
+- [x] P5.2 Attack the drafter+select cost wall (~96 ms/cycle vs MTP proposal
+  2.4 ms). Retained amortized Q6_K select cuts **70→22 ms** and full-suite B3
+  **7.70→8.845 tok/s (+14.87%)**, exact acceptance/AR behavior unchanged. The
+  remaining ~74 ms five-layer forward is launch-bound; four-position forwarding
+  cuts 7 ms but harms acceptance/recall and is rejected.
+- [~] P5.3 Decision cell: DFlash2 remains diagnostic. The exact Qwen3.8 DFlash2
+  snapshot `50307d4c...` and `~/dflash` reference are absent, so the required
+  matched same-target/harness/timing full-suite AR/MTP/DFlash matrix cannot be
+  rerun. Current R8 cost projects historical B7 to 11.62 tok/s at measured
+  drafter/select cost (inferred, not a product row); the remaining weakness is
+  DFlash-specific full-block forward plus missing matched assets/protocol.
+  [`artifact`](../benchmarks/results/2026-08-30-gfx1151-qwen38-dflash-p5-closeout.json)
 
 ### P6 — closure and rollup
 

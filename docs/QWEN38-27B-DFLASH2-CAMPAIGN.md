@@ -392,7 +392,10 @@ serial/native wall is **721.5/204.4 ms (3.53x)**. This closes correctness, not
 DFlash product economics.
 [`artifact`](../benchmarks/results/2026-08-30-gfx1151-qwen38-dflash-row8-root-cause-closed.json)
 
-**N3 — Matched-protocol DFlash2-vs-MTP rerun.** The current comparison
+**N3 — Blocked 2026-08-30: matched-protocol DFlash2-vs-MTP rerun.** The exact
+Qwen3.8 DFlash2 snapshot `50307d4c...` and `~/dflash` reference remain absent;
+the available Qwen3.6-35B-A3B drafter is incompatible and is not substituted.
+Restore those assets before running this matrix. The current comparison
 conflates four independent differences. Hold all four fixed: (i) one target
 file, Q4_K_M for both; (ii) one harness and one timing boundary, with the
 `max_new_tokens / (max_new_tokens - 1)` AR off-by-one fixed; (iii) the same
@@ -400,6 +403,7 @@ verify entry point, run with and without DFlash2's tap capture; (iv) the same
 prompt suite and token budget. Cost is small — 10 prompts x 40 tokens x
 {AR, MTP B3, DFlash2 B3/B5/B7} in one resident session, well under an hour of
 GPU time plus N1.
+[`closeout`](../benchmarks/results/2026-08-30-gfx1151-qwen38-dflash-p5-closeout.json)
 
 What N3 would settle that the current data cannot:
 

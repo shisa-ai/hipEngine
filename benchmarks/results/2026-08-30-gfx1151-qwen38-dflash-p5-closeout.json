@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-30",
+  "status": "p5_cost_closed_decision_blocked",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "title": "Qwen3.8 DFlash2 P5.2 cost closeout and P5.3 decision blocker",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "commit": "8d5f70e67742b1b4423397668b25bc97de660765",
+    "production_changed": false,
+    "measurement_sources": "retained 2026-08-19/20 DFlash evidence plus current row8 correctness closure"
+  },
+  "asset_audit": {
+    "required_qwen38_drafter": "z-lab/Qwen3.8-27B-DFlash2 snapshot 50307d4c...",
+    "required_snapshot_present": false,
+    "reference_repo": "/home/lhl/dflash",
+    "reference_repo_present": false,
+    "available_incompatible_drafter": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719",
+    "incompatible_asset_used": false,
+    "reason": "A Qwen3.6-35B MoE drafter cannot reproduce the Qwen3.8-27B dense DFlash2 acceptance/cost route."
+  },
+  "p5_2_retained_cost_work": {
+    "q6_select": {
+      "before_select_ms": 70.0,
+      "after_select_ms": 22.0,
+      "before_logits_ms": 43.0,
+      "after_logits_ms": 12.0,
+      "b3_before_tok_s": 7.70,
+      "b3_after_tok_s": 8.845,
+      "b3_uplift_pct": 14.87012987012986,
+      "ar_exact_all_prompts": true,
+      "acceptance_unchanged_tokens_per_cycle": 2.80,
+      "mechanism": "replace 2.54-GiB BF16 full-vocabulary head read with amortized resident Q6_K T16 rowtile"
+    },
+    "variable_block_forward": {
+      "default_forward_ms": 74.0,
+      "candidate_forward_ms": 67.0,
+      "merge_acceptance_before": 3.08,
+      "merge_acceptance_after": 2.86,
+      "merge_recall16_before": 0.970,
+      "merge_recall16_after": 0.909,
+      "throughput_before_tok_s": 9.29,
+      "throughput_after_tok_s": 9.25,
+      "retained": false,
+      "reason": "non-causal trained block context is quality-bearing; forward is launch-bound"
+    },
+    "remaining_drafter_forward_ms": 74.0,
+    "decision": "P5.2 complete: retain Q6 select, reject variable-block forward, name the launch-bound full-block drafter as remaining cost."
+  },
+  "p5_3_decision": {
+    "historical_measured_b3": {
+      "dflash_tok_s": 8.845,
+      "ar_tok_s": 13.4,
+      "mtp_b3_tok_s": 23.85263,
+      "accepted_tokens_per_cycle": 2.80,
+      "drafter_plus_select_ms": 96.0,
+      "verify_ms": 166.0
+    },
+    "current_row8_root_cause_evidence": {
+      "accepted_tokens_per_cycle_historical_b7": 3.49,
+      "native_verify_ms": 204.41311807371676,
+      "drafter_plus_select_ms_historical": 96.0,
+      "inferred_tok_s_at_measured_cost": 11.617335562369178,
+      "inferred_zero_drafter_select_ceiling_tok_s": 17.073268256401306,
+      "label": "inferred from independently measured acceptance and current same-shape verify; not a product benchmark"
+    },
+    "matched_rerun_possible": false,
+    "binding_blockers": [
+      "exact Qwen3.8 DFlash2 drafter snapshot absent",
+      "reference repo absent",
+      "historical DFlash/AR/MTP rows use different target files/harnesses/token budgets",
+      "remaining full-block drafter forward is launch-bound and variable-block loses quality"
+    ],
+    "promotion": false,
+    "reopen_condition": "Restore the exact drafter snapshot and run one same-target/harness/timing/full-suite AR, current MTP K3, and DFlash B3/B5/B7 matrix."
+  },
+  "decision": {
+    "p5_2": "complete",
+    "p5_3": "measured_blocked",
+    "dflash2_default": "diagnostic_only",
+    "mapped_shared_fix": "row8 target amortization is closed and benefits MTP/packed execution; remaining weakness is DFlash-specific drafter forward plus unmatched assets/protocol",
+    "no_download_performed": true
+  },
+  "evidence": [
+    ["benchmarks/results/2026-08-20-gfx1151-qwen38-27b-dflash2-b3-q6-select-optimized-rejected.json", "0de21934bb89ae08c2e0d6f3285f9ae59b1812626d9dbe236abb58527700ce13", 5231],
+    ["benchmarks/results/2026-08-30-gfx1151-qwen38-dflash-row8-root-cause-closed.json", "2b088bd4aae4d5b8afe6934a3c6bb966054817dc54d9fd675bc11d366f520880", 4804],
+    ["worklog/entries/20260819T235720.374366Z-lhl-dflash2-select-via-amortized-q6-k-head-6296a9.md", null, null],
+    ["worklog/entries/20260820T001302.755777Z-lhl-dflash2-variable-block-forward-is-a-net-loss-acc-770fcf.md", null, null]
+  ]
+}
