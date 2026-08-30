@@ -45,6 +45,39 @@ _spec.loader.exec_module(matrix)
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 
 
+def fixed_marginal_fit(
+    rows: list[dict], *, regime_factor: float = 1.5
+) -> tuple[float, float, float, int] | None:
+    """Least-squares ``(fixed_ms, ms_per_token, r2, rows_used)`` for prefill walls.
+
+    Only the small-row regime is fitted: rows are sorted by prompt tokens and the prefix
+    whose wall stays within ``regime_factor`` of the fastest row is used. Fitting the whole
+    sweep is wrong because long prompts leave the fixed-cost regime and bend the slope, and
+    the fixed term is the quantity that explains the C1-C3 loses.
+    """
+    pts = [(int(r["prompt_tokens"]), float(r["wall_seconds"])) for r in rows
+           if r.get("prompt_tokens") and r.get("wall_seconds")]
+    if len(pts) < 3:
+        return None
+    pts.sort()
+    floor = min(wall for _, wall in pts)
+    used = [(tok, wall) for tok, wall in pts if wall <= regime_factor * floor]
+    if len(used) < 3 or len({tok for tok, _ in used}) < 3:
+        return None
+    n = len(used)
+    mean_x = sum(tok for tok, _ in used) / n
+    mean_y = sum(wall for _, wall in used) / n
+    denom = sum((tok - mean_x) ** 2 for tok, _ in used)
+    if not denom:
+        return None
+    slope = sum((tok - mean_x) * (wall - mean_y) for tok, wall in used) / denom
+    intercept = mean_y - slope * mean_x
+    ss_res = sum((wall - (intercept + slope * tok)) ** 2 for tok, wall in used)
+    ss_tot = sum((wall - mean_y) ** 2 for _, wall in used)
+    r2 = 1.0 - ss_res / ss_tot if ss_tot else 0.0
+    return intercept * 1000.0, slope * 1000.0, r2, n
+
+
 def synthetic(target_tokens: int) -> str:
     """ChatML prompt whose token count is close to ``target_tokens``."""
 
@@ -152,13 +185,35 @@ def main() -> int:
             "completion_tokens": int(usage.get("completion_tokens", 0)),
         }
     with TestClient(app) as client:
+        scan_rows: list[dict] = []
         for target in sorted(
             {int(v) for v in str(args.length_scan).split(",") if v.strip()}
         ):
-            row = one(client, synthetic(target))
+            try:
+                row = one(client, synthetic(target))
+            except RuntimeError as exc:
+                # A larger target only needs more context, so stop the sweep instead of
+                # killing it: the shorter lengths are the ones that separate fixed cost
+                # from throughput, and losing them to one over-long request is how a scan
+                # used to die at 512 with a 400 after nine good measurements.
+                if "context_length_exceeded" not in str(exc):
+                    raise
+                print(f"length {target}: skipped (exceeds --max-sequence-length "
+                      f"{args.max_sequence_length})", flush=True)
+                break
+            scan_rows.append({"target": target, **row})
             print(
                 f"length {target}: wall={row['wall_seconds']:.4f}s "
                 f"prompt={row['prompt_tokens']}",
+                flush=True,
+            )
+        fit = fixed_marginal_fit(scan_rows)
+        if fit:
+            fixed_ms, per_token_ms, r2, used = fit
+            print(
+                f"fixed {fixed_ms:.1f} ms + {per_token_ms:.2f} ms/token "
+                f"(R2 {r2:.4f} over {used} rows in the small-row regime; the fixed term "
+                f"is what a single-request wave cannot amortize)",
                 flush=True,
             )
 
