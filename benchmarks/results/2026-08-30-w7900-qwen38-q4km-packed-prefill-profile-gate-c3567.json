@@ -1,0 +1,268 @@
+{
+ "admission": {
+  "candidate": "packed multi-request prompt prefill (prefill_batch_native)",
+  "decode_step_gates_binding": true,
+  "prefill_calibration": "token equality only (routes persist different final-state arithmetic)",
+  "teacher": "independent serial c1 prefill + strict trajectory"
+ },
+ "backend": "hip_gfx1100",
+ "compared_rows": 1950,
+ "created_at": "2026-08-30T01:11:28.015470+00:00",
+ "device": "AMD Radeon Pro W7900",
+ "eligible_for_automatic_admission": true,
+ "execution_manifests": 18,
+ "hard_gates_passed": true,
+ "kind": "gguf_packed_prefill_profile_gate",
+ "logits_sha256": {
+  "candidate": "76081e8cbd3f68b8071cfd280e6f460d1b70e72ef69a3d9b212433936a01e717",
+  "strict": "78bf138417a18a6fa2a75c1b7bad256c75a15e349515c2406b19e5e7772c0090"
+ },
+ "measurement_valid": true,
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "performance_claim": false,
+ "profile_qualification_claim": false,
+ "protocol": {
+  "candidate_repeat_runs": 3,
+  "complete_prompt_and_heldout_suite": true,
+  "decode_steps": 24,
+  "dynamic_schedule": [
+   [
+    0,
+    7
+   ],
+   [
+    6,
+    6
+   ],
+   [
+    12,
+    5
+   ],
+   [
+    18,
+    3
+   ]
+  ],
+  "packed_prefill_candidate": true,
+  "prompt_count": 18,
+  "prompt_suites": [
+   "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+   "/home/lhl/hipEngine-main/benchmarks/prompts/gdn-prefill-category-heldouts.jsonl"
+  ],
+  "route_profile": "current_package_direct",
+  "same_context_rule": "every batch row consumes its independent strict-c1 teacher token",
+  "sparse_physical_c8_active_slots": [
+   0,
+   2,
+   5,
+   7
+  ],
+  "static_widths": [
+   3,
+   5,
+   6,
+   7
+  ],
+  "strict_gdn_mode": "chain_lds32_direct_nonvolatile",
+  "teacher_forced_rows": 1950,
+  "thresholds_evaluated": {
+   "max_kl_max": 0.05,
+   "mean_kl_max": 0.001,
+   "p95_kl_max": 0.005,
+   "p99_kl_max": 0.02,
+   "per_scope_top1_min": 0.97,
+   "review_kl": 0.02,
+   "top1_min": 0.99
+  }
+ },
+ "provenance": {
+  "build_profile": "execution_profile_gguf_direct_width_batch_requalification",
+  "command": [
+   "/home/lhl/hipEngine-main/.venv/bin/python",
+   "scripts/execution_profile_gguf_batch_route_gate.py",
+   "--model",
+   "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+   "--backend",
+   "hip_gfx1100",
+   "--route-profile",
+   "current_package_direct",
+   "--packed-prefill-candidate",
+   "--widths",
+   "3,5,6,7",
+   "--repeat-runs",
+   "3",
+   "--compiler-version-file",
+   "/tmp/compiler-version-gfx1100.txt",
+   "--json",
+   "/tmp/he-profile-packed-full.json"
+  ],
+  "dirty": false,
+  "git_branch": "campaign/gfx1100-mtp-cn-promotion",
+  "hipengine_commit": "e6fff4fbd59948fb6f7db5f2fca77ad5cba01a91"
+ },
+ "qualification_blockers": [
+  "route manifest is evidentiary and not runtime-profile resolved",
+  "adapter does not emit the complete exact control-plane record schema",
+  "fresh task and BF16-relative verdicts are not available"
+ ],
+ "quality_by_category": {
+  "code": {
+   "kl_max": 0.00076977,
+   "kl_mean": 3.591e-05,
+   "kl_p95": 0.00024376,
+   "kl_p99": 0.0006539,
+   "max_abs_logit_delta": 0.51066685,
+   "passed": true,
+   "rows": 678,
+   "strict_margin_min": 0.10751724,
+   "teacher_nll_delta": 0.0004433,
+   "top1_agreement": 1.0
+  },
+  "general_en": {
+   "kl_max": 0.00219139,
+   "kl_mean": 0.00010071,
+   "kl_p95": 0.00038371,
+   "kl_p99": 0.00160393,
+   "max_abs_logit_delta": 1.14340496,
+   "passed": true,
+   "rows": 438,
+   "strict_margin_min": 0.02125359,
+   "teacher_nll_delta": -0.00035213,
+   "top1_agreement": 1.0
+  },
+  "general_ja": {
+   "kl_max": 0.00092866,
+   "kl_mean": 0.00012016,
+   "kl_p95": 0.000575,
+   "kl_p99": 0.00072239,
+   "max_abs_logit_delta": 0.28922939,
+   "passed": true,
+   "rows": 426,
+   "strict_margin_min": 0.02449226,
+   "teacher_nll_delta": -0.00076689,
+   "top1_agreement": 0.99061033
+  },
+  "mixed_ja_en": {
+   "kl_max": 0.00073242,
+   "kl_mean": 8.599e-05,
+   "kl_p95": 0.00050285,
+   "kl_p99": 0.0007251,
+   "max_abs_logit_delta": 0.74648666,
+   "passed": true,
+   "rows": 408,
+   "strict_margin_min": 0.00411987,
+   "teacher_nll_delta": -0.0005289,
+   "top1_agreement": 1.0
+  }
+ },
+ "requires_outlier_review": false,
+ "schema": 1,
+ "scope_failures": [],
+ "selected_token_ids_sha256": "0418a9e9d7c6217b22aa040a2f199f18a1377c56e6ad2e7ee8f60f28e8bece0d",
+ "source_capture": "/tmp/he-profile-packed-full.json",
+ "status": "complete",
+ "thresholds": {
+  "max_kl_max": 0.05,
+  "mean_kl_max": 0.001,
+  "p95_kl_max": 0.005,
+  "p99_kl_max": 0.02,
+  "per_scope_top1_min": 0.97,
+  "review_kl": 0.02,
+  "top1_min": 0.99
+ },
+ "top1_mismatch_rows": {
+  "count": 4,
+  "detail": [
+   {
+    "candidate_teacher_nll": 2.05011484,
+    "candidate_top1_token_id": 5205,
+    "category": "general_ja",
+    "kl": 0.00072239,
+    "max_abs_logit_delta": 0.11231613,
+    "request_id": "general_ja_explain",
+    "row_index": 178,
+    "scenario_id": "static_c3_group2",
+    "scenario_step": 178,
+    "shape": "c3",
+    "strict_margin": 0.02449226,
+    "strict_teacher_nll": 2.04206008,
+    "strict_top1_candidate_rank": 2,
+    "strict_top1_token_id": 241456,
+    "teacher_delta_p": -0.001041,
+    "teacher_step": 11,
+    "teacher_token_id": 241456,
+    "top1_equal": false,
+    "topk_overlap": 1.0,
+    "transition": "steady"
+   },
+   {
+    "candidate_teacher_nll": 2.05011484,
+    "candidate_top1_token_id": 5205,
+    "category": "general_ja",
+    "kl": 0.00072239,
+    "max_abs_logit_delta": 0.11231613,
+    "request_id": "general_ja_explain",
+    "row_index": 610,
+    "scenario_id": "static_c5_group1",
+    "scenario_step": 610,
+    "shape": "c5",
+    "strict_margin": 0.02449226,
+    "strict_teacher_nll": 2.04206008,
+    "strict_top1_candidate_rank": 2,
+    "strict_top1_token_id": 241456,
+    "teacher_delta_p": -0.001041,
+    "teacher_step": 11,
+    "teacher_token_id": 241456,
+    "top1_equal": false,
+    "topk_overlap": 1.0,
+    "transition": "steady"
+   },
+   {
+    "candidate_teacher_nll": 2.05011484,
+    "candidate_top1_token_id": 5205,
+    "category": "general_ja",
+    "kl": 0.00072239,
+    "max_abs_logit_delta": 0.11231613,
+    "request_id": "general_ja_explain",
+    "row_index": 1042,
+    "scenario_id": "static_c6_group1",
+    "scenario_step": 1042,
+    "shape": "c6",
+    "strict_margin": 0.02449226,
+    "strict_teacher_nll": 2.04206008,
+    "strict_top1_candidate_rank": 2,
+    "strict_top1_token_id": 241456,
+    "teacher_delta_p": -0.001041,
+    "teacher_step": 11,
+    "teacher_token_id": 241456,
+    "top1_equal": false,
+    "topk_overlap": 1.0,
+    "transition": "steady"
+   },
+   {
+    "candidate_teacher_nll": 2.05011484,
+    "candidate_top1_token_id": 5205,
+    "category": "general_ja",
+    "kl": 0.00072239,
+    "max_abs_logit_delta": 0.11231613,
+    "request_id": "general_ja_explain",
+    "row_index": 1474,
+    "scenario_id": "static_c7_group1",
+    "scenario_step": 1474,
+    "shape": "c7",
+    "strict_margin": 0.02449226,
+    "strict_teacher_nll": 2.04206008,
+    "strict_top1_candidate_rank": 2,
+    "strict_top1_token_id": 241456,
+    "teacher_delta_p": -0.001041,
+    "teacher_step": 11,
+    "teacher_token_id": 241456,
+    "top1_equal": false,
+    "topk_overlap": 1.0,
+    "transition": "steady"
+   }
+  ],
+  "note": "all four rows are the same near-tie token position in general_ja_explain replayed through the static_c3/c5/c6/c7 group scenarios; identical kl, logit delta and teacher NLL",
+  "unique_positions": 1
+ }
+}
