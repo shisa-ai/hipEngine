@@ -1,0 +1,73 @@
+{
+  "caveats": "Traced with a non-default env because it is the only configuration in which block-verify runs at all on this quant; absolute milliseconds are therefore not the shipped default route and must not be quoted as production verify cost. Three steps per arm, one arm per row count, no repeats inside this artifact, so repeatability is unmeasured here (arms are ~2.3 min each). Diagnostic only: promotes no default.",
+  "command_recipe": "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1 .venv/bin/python scripts/gguf_mtp_verifier_rocprof.py --model <gguf> --mode block-verify --block-rows {1,2,4,8,16} --block-wmma-prefill --steps 3 --warmup 1 --require-cached --compiler-version-file /tmp/compiler-version-gfx1100.txt --roctx-sdk /home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/librocprofiler-sdk-roctx.so.1 --out rowsN.json",
+  "cross_link": "The ~215 ms fixed prefill-route cost is the same object as task #12 small-row prefill (fitted fixed cost ~252-271 ms per prefill), so block-verify at rows>=2 inherits that deficit rather than adding a speculative-decoding penalty.",
+  "date": "2026-08-30",
+  "decision_rule_verdict": "Per worklog 20260830T030945...-50b888 (low share = launch-bound, comparable = real kernel work): share is 0.794 at rows=1 and 0.963-0.966 at rows>=2, with host residual 8.1-8.9 ms/step. The verify cycle is kernel-bound, so extending graph capture to verify cycles is worth at most a few percent of the window; the lever is the prefill-route cost itself.",
+  "finding": "Verify cost does not scale per row. rows=1 runs the decode GEMV family (q4_k_t16_dense_dual_local32_silu_gemv, 30.5 ms/step). At rows=2 the route switches to gguf_q4_t16_dense_wmma_prefill_shared_b_bf16 and kernel time jumps 7.2x to ~218 ms, then stays essentially flat: 218.4 / 220.3 / 225.3 / 251.4 ms for rows 2/4/8/16, i.e. +15% for 8x the rows. Marginal cost above 2 rows is about 2.2 ms/row, and ms/row falls 109.2 -> 15.7. The cost is a ~215 ms fixed price for entering the prefill-shaped WMMA route, not per-row verify work.",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100, RDNA3)",
+  "kind": "w7900-q4km-block-verify-row-scaling-trace",
+  "links": {
+    "decision_rule": "worklog/entries/20260830T030945.802131Z-lhl-w7900-mtp-verify-decision-rule-50b888.md",
+    "killed_premise": "worklog/entries/20260830T030216.965536Z-lhl-w7900-mtp-cost-is-per-row-verify-not-packing-37f4a1.md",
+    "roctx_retraction": "worklog/entries/20260830T043105.164313Z-lhl-w7900-roctx-sdk-search-path-f615f7.md"
+  },
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "purpose": "Replace the wall-based inference about MTP verify cost scaling (worklog 20260830T030216...-37f4a1 killed the 3.21x premise; task #10) with kernel-trace evidence over block rows 1,2,4,8,16.",
+  "quant": "Q4_K_M",
+  "rows": {
+    "1": {
+      "host_ms_per_step": 38.43,
+      "host_residual_ms_per_step": 7.92,
+      "kernel_calls_per_step": 945,
+      "kernel_ms_per_step": 30.51,
+      "kernel_time_share_of_host_wall": 0.794,
+      "ms_per_row": 30.5,
+      "top_kernel": "q4_k_t16_dense_dual_local32_silu_gemv",
+      "top_kernel_pct": 32.9
+    },
+    "2": {
+      "host_ms_per_step": 226.64,
+      "host_residual_ms_per_step": 8.21,
+      "kernel_calls_per_step": 1073,
+      "kernel_ms_per_step": 218.42,
+      "kernel_time_share_of_host_wall": 0.964,
+      "ms_per_row": 109.2,
+      "top_kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16",
+      "top_kernel_pct": 65.7
+    },
+    "4": {
+      "host_ms_per_step": 228.64,
+      "host_residual_ms_per_step": 8.37,
+      "kernel_calls_per_step": 1073,
+      "kernel_ms_per_step": 220.27,
+      "kernel_time_share_of_host_wall": 0.963,
+      "ms_per_row": 55.1,
+      "top_kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16",
+      "top_kernel_pct": 65.5
+    },
+    "8": {
+      "host_ms_per_step": 233.9,
+      "host_residual_ms_per_step": 8.58,
+      "kernel_calls_per_step": 1074,
+      "kernel_ms_per_step": 225.32,
+      "kernel_time_share_of_host_wall": 0.963,
+      "ms_per_row": 28.2,
+      "top_kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16",
+      "top_kernel_pct": 64.3
+    },
+    "16": {
+      "host_ms_per_step": 260.28,
+      "host_residual_ms_per_step": 8.85,
+      "kernel_calls_per_step": 1133,
+      "kernel_ms_per_step": 251.43,
+      "kernel_time_share_of_host_wall": 0.966,
+      "ms_per_row": 15.7,
+      "top_kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16",
+      "top_kernel_pct": 57.7
+    }
+  },
+  "schema": "w7900_block_verify_row_scaling_trace.v1",
+  "status": "accepted-diagnostic-trace",
+  "why_the_env_is_required": "On a Q4_K_M (q5_k_t16_v1 repack) model the block-verify path computes ssm_out_activation_dtype = F32 unless use_prefill_gdn_capture or prefill_score_ready (qwen35_gguf_runner.py:8000). With F32 the two dense-Q8 escapes both need quant_key == \"gguf_q8_0_t16_v1\" (_dense_q8_raw_ptr, :12710), which this weight is not, and the plain fallback raises \"unsupported GGUF linear dispatch: layout=gguf_q5_k_t16_v1, activation=f32, output=bf16\" (gguf_linear.py:2181). --block-wmma-prefill alone does not clear it; the GDN capture env does, by selecting bf16 activations. The wrapper flag --verify-dense-q8-dp4a-f32 is inert here: hipengine reads the env var, not the flag."
+}
