@@ -13,10 +13,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import pathlib
 import statistics
 
-# Values currently printed in benchmarks/README.md (2026-08-30 cross-engine packet).
-README_ROWS = {
+# A point-in-time SNAPSHOT, not the baseline: the baseline is parsed from benchmarks/README.md at
+# runtime (see `read_readme_rows`). This exists only so the tool still runs if a label is renamed.
+# It drifted once already - it still says C8 AR 44.338 while the README has published 78.667 since
+# the grouped-prefill promotion, and a delta computed against it invented +76% that never happened.
+SNAPSHOT_ROWS = {
     "ar": {
         "hipengine": [21.871, 30.455, 35.625, 39.231, 41.124, 42.490, 43.570, 44.338],
         "llama_current": [21.720, 35.440, 30.787, 27.760, 36.390, 45.529, 51.914, 58.744],
@@ -28,7 +32,80 @@ README_ROWS = {
         "llama_laurent": [32.733, 40.808, 45.947, 51.054, 61.013, 74.628, 78.281, 101.072],
     },
 }
+# Back-compat name kept for any caller that imports this module directly.
+README_ROWS = SNAPSHOT_ROWS
 LABELS = {"ar": "hipEngine AR", "k3": "hipEngine explicit K3"}
+README_PATH = pathlib.Path(__file__).resolve().parents[1] / "benchmarks" / "README.md"
+# README row label -> (arm, role) in the row-table shape above.
+ROW_LABELS = {
+    "hipEngine AR": ("ar", "hipengine"),
+    "llama.cpp current HIP AR": ("ar", "llama_current"),
+    "llama.cpp Laurent HIP AR": ("ar", "llama_laurent"),
+    "hipEngine explicit K3": ("k3", "hipengine"),
+    "llama.cpp current HIP K3": ("k3", "llama_current"),
+    "llama.cpp Laurent HIP K3": ("k3", "llama_laurent"),
+}
+
+
+def parse_markdown_row(line: str) -> list[float] | None:
+    """Parse one markdown table row into floats, or None if it is not a numeric row.
+
+    Handles the published bold convention (`**78.667**`) and ignores separator/label-only rows.
+    """
+
+    parts = [p.strip() for p in line.strip().strip("|").split("|")]
+    if len(parts) < 3:
+        return None
+    values: list[float] = []
+    for cell in parts[1:]:
+        text = cell.strip().strip("*").strip()
+        try:
+            values.append(float(text))
+        except ValueError:
+            return None
+    return values
+
+
+def read_readme_rows(path: pathlib.Path | None = None) -> dict[str, dict[str, list[float]]]:
+    """Read the C1-C8 complete-wall rows straight out of benchmarks/README.md."""
+
+    target = README_PATH if path is None else pathlib.Path(path)
+    rows: dict[str, dict[str, list[float]]] = {
+        arm: {role: [] for role in ("hipengine", "llama_current", "llama_laurent")}
+        for arm in ("ar", "k3")
+    }
+    if not target.is_file():
+        return rows
+    for line in target.read_text().splitlines():
+        if not line.lstrip().startswith("|"):
+            continue
+        label = line.lstrip().strip().strip("|").split("|")[0].strip()
+        mapped = ROW_LABELS.get(label)
+        if mapped is None:
+            continue
+        parsed = parse_markdown_row(line)
+        if parsed and len(parsed) == 8:
+            arm, role = mapped
+            rows[arm][role] = parsed
+    return rows
+
+
+def baseline_rows(*, use_snapshot: bool = False) -> tuple[dict, str]:
+    """Return (rows, source_label); falls back to the snapshot only with a loud warning."""
+
+    if not use_snapshot:
+        parsed = read_readme_rows()
+        missing = [
+            f"{arm}/{role}"
+            for arm, roles in parsed.items()
+            for role, v in roles.items()
+            if not v
+        ]
+        if not missing:
+            return parsed, "benchmarks/README.md (parsed live)"
+        print(f"WARNING: could not parse {missing} from benchmarks/README.md; "
+              "falling back to the frozen SNAPSHOT_ROWS, whose deltas may be stale.")
+    return SNAPSHOT_ROWS, "frozen snapshot (may be stale)"
 
 
 def aggregate(packet: dict, width: int, arm: str) -> float:
@@ -44,10 +121,18 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("packet")
     ap.add_argument("--widths", default="1,2,3,4,5,6,7,8")
+    ap.add_argument(
+        "--baseline",
+        choices=("readme", "snapshot"),
+        default="readme",
+        help="what to diff against; README is parsed live so deltas are real",
+    )
     args = ap.parse_args()
     widths = [int(w) for w in args.widths.split(",")]
     packet = json.load(open(args.packet))
+    README_ROWS, baseline_source = baseline_rows(use_snapshot=args.baseline == "snapshot")
     print(f"packet status={packet.get('status')} passed={packet.get('passed')}")
+    print(f"baseline: {baseline_source}")
     for arm, key in (("ar", "ar"), ("mtp", "k3")):
         new = [round(aggregate(packet, w, arm), 3) for w in widths]
         old = [README_ROWS[key]["hipengine"][w - 1] for w in widths]
