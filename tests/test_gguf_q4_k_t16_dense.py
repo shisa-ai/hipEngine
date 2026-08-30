@@ -156,6 +156,11 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES",
         None,
     )
+    single_wave_max_rows = getattr(
+        gfx1100_backend,
+        "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS",
+        None,
+    )
     assert callable(selector)
     assert rows_policy == frozenset({6})
     assert shape_policy == frozenset(
@@ -168,6 +173,11 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         }
     )
     assert single_wave_policy == frozenset({(5_120, 17_408)})
+    # Measured on W7900 at (rows, 5120, 17408) against the 256-row shared-B tile:
+    # single-wave is bit-identical and 1.43x-1.04x faster for rows 2..128, and
+    # 0.87x slower from 144 rows up. See
+    # benchmarks/results/2026-08-30-w7900-q4km-t16-single-wave-rows-accepted.json.
+    assert single_wave_max_rows == 128
 
     calls: list[str] = []
     monkeypatch.setattr(
@@ -194,13 +204,33 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         selector(1, 2, 3, 6, 6_144, 5_120)
     selector(1, 2, 3, 5, 5_120, 17_408)
     selector(1, 2, 3, 6, 5_120, 5_120)
+    selector(1, 2, 3, 35, 5_120, 17_408)
+    selector(1, 2, 3, 128, 5_120, 17_408)
+    selector(1, 2, 3, 129, 5_120, 17_408)
+    selector(1, 2, 3, 35, 17_408, 5_120)
     assert calls == ["rowtile"] * len(shape_policy) + [
         "single_wave",
         "rowtile",
         "rowtile",
+        "single_wave",
+        "shared_b",
+        "single_wave",
+        "single_wave",
         "shared_b",
         "shared_b",
     ]
+
+    # Bisection switch: forcing the band to 0 must return every non-row-6 call to
+    # the strict shared-B sibling without touching the qualified row-6 routes.
+    calls.clear()
+    monkeypatch.setenv(t16_prefill._ENV_SINGLE_WAVE_MAX_ROWS, "0")
+    monkeypatch.setattr(t16_prefill, "_SINGLE_WAVE_MAX_ROWS_RESOLVED", None)
+    selector(1, 2, 3, 5, 5_120, 17_408)
+    selector(1, 2, 3, 35, 5_120, 17_408)
+    selector(1, 2, 3, 6, 5_120, 17_408)
+    assert calls == ["shared_b", "shared_b", "single_wave"]
+    monkeypatch.delenv(t16_prefill._ENV_SINGLE_WAVE_MAX_ROWS)
+    monkeypatch.setattr(t16_prefill, "_SINGLE_WAVE_MAX_ROWS_RESOLVED", None)
 
     selected = resolve(
         backend="hip_gfx1100",

@@ -242,6 +242,15 @@ GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES = frozenset(
     }
 )
 GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES = frozenset({(5_120, 17_408)})
+# Rows for which the single-wave leaf owns a single-wave shape instead of the
+# 256-row shared-B tile. The shared-B kernel launches on a
+# ``Q4_DENSE_TILE_ROWS = 4*4*16 = 256`` row tile, so small rows pay nearly the
+# full 256-row cost; a W7900 row sweep at (rows, 5120, 17408) measured
+# single-wave bit-identical and 1.43x-1.04x faster for rows 2..128 and 0.87x
+# slower from 144 rows up, which sets this band. Strict shared-B stays the
+# registered sibling and the fallback. Evidence:
+# benchmarks/results/2026-08-30-w7900-q4km-t16-single-wave-rows-accepted.json.
+GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS = 128
 # Production C2 reuses C1-equivalent rows6 rowtiles for the remaining Q4
 # gate/up and full-attention output shapes. Complete strict-teacher, repeat,
 # permutation-isolation, task, and lifecycle packets qualify this arithmetic
@@ -907,6 +916,7 @@ __all__ = [
     "GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS",
     "GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES",
+    "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_PROMPT_STREAMING",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS",
