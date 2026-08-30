@@ -928,6 +928,15 @@ measurement, so record it instead of rediscovering it.
    cannot describe the GGUF path at all. `gguf_mtp_verifier_rocprof.py --mode` defaults to
    `serial-step`, the historical verifier, not the native block verifier the resident route
    reaches. Either default silently measures a path we do not ship.
+   Worse, the *GGUF* wrapper is not safe either: its baseline child is
+   `scripts/mtp_chain_e2e_smoke.py`, which mentions GGUF zero times and is
+   safetensors-only, so `--model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf` is accepted by
+   argparse and then dies in `_run_ar_baseline` with
+   `MissingConfigError: config.json not found under /models/gguf/...`
+   (`mtp_chain_e2e_smoke.py:1768`). Four K1-K4 budget arms were lost to this on
+   2026-08-30; all four logs differ only in the budget string. That wrapper needs a
+   GGUF baseline child before any GGUF verify claim can be profiled.
+
 4. **`--mode block-verify` rejects its own padding.** With `--block-rows` beyond the prompt
    tail the child raises `ValueError: token_id 2147483647 outside [0, 248320)` from
    `qwen35_gguf_runner.py:19000`, so sweeping rows (the direct way to separate launch
