@@ -2931,6 +2931,9 @@ def test_gguf_submit_poll_runner_owns_and_reuses_resident_sessions(monkeypatch) 
         "persistent_kv_total_bytes": 0,
     }
     assert observability["routes"]["counts"] == {
+        # Grouped calls are counted separately from rows: this scenario has no native
+        # batch entry point, so three rows prefill serially and no group is formed.
+        "native_full_prefill_groups": 0,
         "native_full_prefill_rows": 3,
         "native_incremental_prefill_chunks": 0,
         "native_incremental_prefill_unsampled_chunks": 0,
@@ -4930,6 +4933,76 @@ def test_gguf_gfx1100_packed_prefill_capability_is_declared() -> None:
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_C2_PACKED_PREFILL_MAX_ROWS_NOT_A_REAL_CAPABILITY", 1
     ) == 1
+
+
+def test_gguf_packed_prefill_without_native_owner_returns_a_container(monkeypatch) -> None:
+    """Regression: the no-native-owner path must return a container, never a bool.
+
+    ``prefill_batch`` consumes the result as ``int(request_id) in handled``, so the
+    ``return False`` that survived the subset-grouping change raised
+    ``TypeError: argument of type 'bool' is not iterable`` for any wave whose packed
+    execution owner does not expose ``prefill_batch_native`` - a live path now that
+    gfx1100 declares ``GGUF_C2_PACKED_PREFILL_MAX_ROWS`` and the batch route is reached
+    by default. The correct behaviour is to handle nothing and let the caller prefill
+    each request serially.
+    """
+
+    from hipengine.dispatch.batch import WorkItem, WorkKind
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
+
+    prompts = {0: (10, 11, 12, 13), 1: (20, 21), 2: (30,)}
+
+    class FakeSession:
+        def __init__(self, slot_id):
+            self.slot_id = slot_id
+            self.position = 0
+
+    class FakeLease:
+        def __init__(self, slot_id):
+            self.session = FakeSession(slot_id)
+
+    class OwnerWithoutNativeBatch:
+        """Deliberately has no ``prefill_batch_native`` attribute."""
+
+    rows = {}
+    for request_id, prompt in prompts.items():
+        rows[request_id] = SimpleNamespace(
+            request_id=request_id,
+            prompt_ids=prompt,
+            request=SimpleNamespace(deadline_at=None, cancellation_token=None),
+            lease=FakeLease(request_id),
+            native_greedy=True,
+            slot=None,
+            prefill_tokens_seen=0,
+            prefix_reused_tokens=0,
+            mtp2_candidate_budget=0,
+            incremental_prefill=True,
+            prefill_ms=0.0,
+            prefill_chunk_count=0,
+        )
+
+    runner = Qwen35GGUFResidentModelRunner.__new__(Qwen35GGUFResidentModelRunner)
+    runner.packed_prefill_max_rows = 8
+    runner._route_counts = Counter(native_full_prefill_rows=0)
+    runner._row = lambda request_id: rows[int(request_id)]
+    runner._packed_execution_owner = lambda session: OwnerWithoutNativeBatch()
+    runner._begin_mtp2_prompt_streaming = lambda _rows: [None] * len(prompts)
+    runner._finish_mtp2_prompt_streaming = lambda *args, **kwargs: None
+    monkeypatch.setenv("HIPENGINE_GGUF_AR_PACKED_PREFILL", "1")
+
+    work = WorkItem(
+        kind=WorkKind.PREFILL,
+        request_ids=tuple(prompts),
+        row_to_request=tuple(prompts),
+        token_rows=tuple(prompts[r] for r in prompts),
+    )
+    handled = runner._try_prefill_native_work_batch(work)
+
+    assert isinstance(handled, frozenset), f"returned {type(handled).__name__}: {handled!r}"
+    assert handled == frozenset(), f"claimed to handle rows it never touched: {handled!r}"
+    # This is the expression the caller uses; it must not raise.
+    assert all(int(request_id) not in handled for request_id in prompts)
+    assert runner._route_counts["native_full_prefill_groups"] == 0
 
 
 def test_resident_ar_packed_prefill_groups_mixed_prompt_lengths(monkeypatch) -> None:

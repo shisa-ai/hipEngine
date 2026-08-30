@@ -6402,8 +6402,13 @@ class Qwen35GGUFResidentModelRunner:
             if config is not None:
                 self.configure_engine_loop(config)
 
-    def _try_prefill_native_work_batch(self, work: WorkItem) -> bool:
+    def _try_prefill_native_work_batch(self, work: WorkItem) -> frozenset[int]:
         """Run one full-prompt scheduler work item as native cN.
+
+        Returns the request ids the grouped call actually consumed; callers must fall
+        back per request for everything else, so the return type is a container and
+        never a bool - an earlier `False` on the no-native-owner path made the caller's
+        `request_id in handled` raise TypeError instead of prefilling serially.
 
         Prompt lengths may differ across rows: the call forwards ``full_prompt_lengths``
         per row, which is how the serving route already drives this entry point. The
@@ -6447,7 +6452,7 @@ class Qwen35GGUFResidentModelRunner:
         owner = self._packed_execution_owner(leases[0].session)
         prefill_batch = getattr(owner, "prefill_batch_native", None)
         if not callable(prefill_batch):
-            return False
+            return frozenset()
         started = time.perf_counter()
         streaming_sinks = self._begin_mtp2_prompt_streaming(rows)
         streaming = any(sink is not None for sink in streaming_sinks)
